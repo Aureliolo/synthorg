@@ -207,7 +207,30 @@ gh api repos/OWNER/REPO/issues/NUMBER/comments --paginate
 
 The goal is to ensure all external reviewer feedback is resolved before considering the PR review complete — not just the feedback from the first round.
 
-## Phase 10: Summary
+## Phase 10: Check CI status
+
+After pushing, check CI status on the PR:
+
+```bash
+gh pr checks NUMBER --watch --fail-fast 2>/dev/null || gh pr checks NUMBER
+```
+
+If CI checks are failing:
+
+1. **Identify failing checks** — parse the output for failed/pending jobs
+2. **Fetch logs for failed jobs** — use `gh run view RUN_ID --log-failed` to get error details
+3. **Fix failures** — if the failure is related to changes made in this review session, fix it. Common causes:
+   - Lint errors from newly added code
+   - Type check failures
+   - Test failures from changed behavior
+4. **Re-commit and push** — stage fixes, create a NEW commit (never amend), push
+5. **Re-check** — verify CI passes after the fix
+
+If the failure is **unrelated** to this PR's changes (e.g., flaky test, infrastructure issue), report it to the user but do not block the review.
+
+**Important:** Only wait for CI if the push just happened. If the user ran the skill long after pushing, CI results should already be available. Use `gh pr checks NUMBER` without `--watch` in that case.
+
+## Phase 11: Summary
 
 Report what was done:
 

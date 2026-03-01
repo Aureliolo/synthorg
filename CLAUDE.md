@@ -15,7 +15,7 @@ uv sync                                    # install all deps (dev + test)
 uv run ruff check src/ tests/              # lint
 uv run ruff check src/ tests/ --fix        # lint + auto-fix
 uv run ruff format src/ tests/             # format
-uv run mypy src/                           # type-check (strict)
+uv run mypy src/ tests/                    # type-check (strict)
 uv run pytest tests/ -m unit               # unit tests only
 uv run pytest tests/ -m integration        # integration tests only
 uv run pytest tests/ -n auto --cov=ai_company --cov-fail-under=80  # full suite + coverage
