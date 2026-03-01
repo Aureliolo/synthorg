@@ -153,7 +153,7 @@ class TestStrEnumBehavior:
         assert isinstance(SeniorityLevel.JUNIOR, str)
 
     def test_strenum_equality_with_string(self) -> None:
-        assert SeniorityLevel.JUNIOR.value == "junior"
+        assert SeniorityLevel.JUNIOR == "junior"  # type: ignore[comparison-overlap]
 
     def test_strenum_iteration(self) -> None:
         levels = list(SeniorityLevel)
@@ -161,7 +161,7 @@ class TestStrEnumBehavior:
         assert levels[0] == SeniorityLevel.JUNIOR
 
     def test_strenum_membership(self) -> None:
-        assert "senior" in [m.value for m in SeniorityLevel]
+        assert "senior" in SeniorityLevel.__members__.values()
 
     def test_strenum_from_value(self) -> None:
         assert SeniorityLevel("junior") is SeniorityLevel.JUNIOR

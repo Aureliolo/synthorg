@@ -26,8 +26,8 @@ class TestMessageRole:
         assert MessageRole.TOOL.value == "tool"
 
     def test_membership(self) -> None:
-        assert "system" in [m.value for m in MessageRole]
-        assert "tool" in [m.value for m in MessageRole]
+        assert "system" in MessageRole.__members__.values()
+        assert "tool" in MessageRole.__members__.values()
 
     def test_is_str_subclass(self) -> None:
         assert isinstance(MessageRole.USER, str)

@@ -29,5 +29,5 @@ class TestBudgetAlertLevel:
 
     def test_membership(self) -> None:
         """Verify string-based membership check works."""
-        assert "normal" in [m.value for m in BudgetAlertLevel]
-        assert "warning" in [m.value for m in BudgetAlertLevel]
+        assert "normal" in BudgetAlertLevel.__members__.values()
+        assert "warning" in BudgetAlertLevel.__members__.values()

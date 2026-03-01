@@ -28,8 +28,8 @@ class TestLogLevel:
         assert LogLevel.CRITICAL.value == "CRITICAL"
 
     def test_membership(self) -> None:
-        assert "DEBUG" in [m.value for m in LogLevel]
-        assert "INFO" in [m.value for m in LogLevel]
+        assert "DEBUG" in LogLevel.__members__.values()
+        assert "INFO" in LogLevel.__members__.values()
 
     def test_is_str_subclass(self) -> None:
         assert isinstance(LogLevel.DEBUG, str)
