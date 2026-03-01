@@ -97,7 +97,7 @@ class TestSanitizeSensitiveFields:
         assert result["session_id"] == "**REDACTED**"
 
     def test_non_string_key_preserved(self) -> None:
-        event: dict[str | int, str] = {42: "value", "event": "test"}  # type: ignore[assignment]
+        event: dict[str | int, str] = {42: "value", "event": "test"}
         result = sanitize_sensitive_fields(None, "info", event)  # type: ignore[arg-type]
         assert result[42] == "value"  # type: ignore[index]
         assert result["event"] == "test"

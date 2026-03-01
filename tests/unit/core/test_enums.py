@@ -87,61 +87,61 @@ class TestEnumStringValues:
             assert member.value == member.value.lower()
 
     def test_agent_status_values(self) -> None:
-        assert AgentStatus.ACTIVE == "active"
-        assert AgentStatus.ON_LEAVE == "on_leave"
-        assert AgentStatus.TERMINATED == "terminated"
+        assert AgentStatus.ACTIVE.value == "active"
+        assert AgentStatus.ON_LEAVE.value == "on_leave"
+        assert AgentStatus.TERMINATED.value == "terminated"
 
     def test_cost_tier_values(self) -> None:
-        assert CostTier.LOW == "low"
-        assert CostTier.MEDIUM == "medium"
-        assert CostTier.HIGH == "high"
-        assert CostTier.PREMIUM == "premium"
+        assert CostTier.LOW.value == "low"
+        assert CostTier.MEDIUM.value == "medium"
+        assert CostTier.HIGH.value == "high"
+        assert CostTier.PREMIUM.value == "premium"
 
     def test_company_type_values(self) -> None:
-        assert CompanyType.SOLO_FOUNDER == "solo_founder"
-        assert CompanyType.STARTUP == "startup"
-        assert CompanyType.CUSTOM == "custom"
+        assert CompanyType.SOLO_FOUNDER.value == "solo_founder"
+        assert CompanyType.STARTUP.value == "startup"
+        assert CompanyType.CUSTOM.value == "custom"
 
     def test_task_status_values(self) -> None:
-        assert TaskStatus.CREATED == "created"
-        assert TaskStatus.ASSIGNED == "assigned"
-        assert TaskStatus.IN_PROGRESS == "in_progress"
-        assert TaskStatus.IN_REVIEW == "in_review"
-        assert TaskStatus.COMPLETED == "completed"
-        assert TaskStatus.BLOCKED == "blocked"
-        assert TaskStatus.CANCELLED == "cancelled"
+        assert TaskStatus.CREATED.value == "created"
+        assert TaskStatus.ASSIGNED.value == "assigned"
+        assert TaskStatus.IN_PROGRESS.value == "in_progress"
+        assert TaskStatus.IN_REVIEW.value == "in_review"
+        assert TaskStatus.COMPLETED.value == "completed"
+        assert TaskStatus.BLOCKED.value == "blocked"
+        assert TaskStatus.CANCELLED.value == "cancelled"
 
     def test_task_type_values(self) -> None:
-        assert TaskType.DEVELOPMENT == "development"
-        assert TaskType.DESIGN == "design"
-        assert TaskType.RESEARCH == "research"
-        assert TaskType.REVIEW == "review"
-        assert TaskType.MEETING == "meeting"
-        assert TaskType.ADMIN == "admin"
+        assert TaskType.DEVELOPMENT.value == "development"
+        assert TaskType.DESIGN.value == "design"
+        assert TaskType.RESEARCH.value == "research"
+        assert TaskType.REVIEW.value == "review"
+        assert TaskType.MEETING.value == "meeting"
+        assert TaskType.ADMIN.value == "admin"
 
     def test_priority_values(self) -> None:
-        assert Priority.CRITICAL == "critical"
-        assert Priority.HIGH == "high"
-        assert Priority.MEDIUM == "medium"
-        assert Priority.LOW == "low"
+        assert Priority.CRITICAL.value == "critical"
+        assert Priority.HIGH.value == "high"
+        assert Priority.MEDIUM.value == "medium"
+        assert Priority.LOW.value == "low"
 
     def test_complexity_values(self) -> None:
-        assert Complexity.SIMPLE == "simple"
-        assert Complexity.MEDIUM == "medium"
-        assert Complexity.COMPLEX == "complex"
-        assert Complexity.EPIC == "epic"
+        assert Complexity.SIMPLE.value == "simple"
+        assert Complexity.MEDIUM.value == "medium"
+        assert Complexity.COMPLEX.value == "complex"
+        assert Complexity.EPIC.value == "epic"
 
     def test_artifact_type_values(self) -> None:
-        assert ArtifactType.CODE == "code"
-        assert ArtifactType.TESTS == "tests"
-        assert ArtifactType.DOCUMENTATION == "documentation"
+        assert ArtifactType.CODE.value == "code"
+        assert ArtifactType.TESTS.value == "tests"
+        assert ArtifactType.DOCUMENTATION.value == "documentation"
 
     def test_project_status_values(self) -> None:
-        assert ProjectStatus.PLANNING == "planning"
-        assert ProjectStatus.ACTIVE == "active"
-        assert ProjectStatus.ON_HOLD == "on_hold"
-        assert ProjectStatus.COMPLETED == "completed"
-        assert ProjectStatus.CANCELLED == "cancelled"
+        assert ProjectStatus.PLANNING.value == "planning"
+        assert ProjectStatus.ACTIVE.value == "active"
+        assert ProjectStatus.ON_HOLD.value == "on_hold"
+        assert ProjectStatus.COMPLETED.value == "completed"
+        assert ProjectStatus.CANCELLED.value == "cancelled"
 
 
 # ── StrEnum Behavior ───────────────────────────────────────────────
@@ -153,7 +153,7 @@ class TestStrEnumBehavior:
         assert isinstance(SeniorityLevel.JUNIOR, str)
 
     def test_strenum_equality_with_string(self) -> None:
-        assert SeniorityLevel.JUNIOR == "junior"
+        assert SeniorityLevel.JUNIOR.value == "junior"
 
     def test_strenum_iteration(self) -> None:
         levels = list(SeniorityLevel)

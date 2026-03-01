@@ -16,14 +16,14 @@ from ai_company.observability.enums import LogLevel, RotationStrategy, SinkType
 # -- Factories --------------------------------------------------------------
 
 
-class RotationConfigFactory(ModelFactory):
+class RotationConfigFactory(ModelFactory[RotationConfig]):
     __model__ = RotationConfig
     strategy = RotationStrategy.BUILTIN
     max_bytes = 10 * 1024 * 1024
     backup_count = 5
 
 
-class SinkConfigFactory(ModelFactory):
+class SinkConfigFactory(ModelFactory[SinkConfig]):
     __model__ = SinkConfig
     sink_type = SinkType.CONSOLE
     level = LogLevel.INFO
@@ -32,7 +32,7 @@ class SinkConfigFactory(ModelFactory):
     json_format = False
 
 
-class LogConfigFactory(ModelFactory):
+class LogConfigFactory(ModelFactory[LogConfig]):
     __model__ = LogConfig
     root_level = LogLevel.DEBUG
     logger_levels = ()

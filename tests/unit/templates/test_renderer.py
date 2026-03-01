@@ -21,21 +21,21 @@ if TYPE_CHECKING:
 
 @pytest.mark.unit
 class TestRenderTemplateBasic:
-    def test_render_builtin_solo_founder(self):
+    def test_render_builtin_solo_founder(self) -> None:
         loaded = load_template("solo_founder")
         config = render_template(loaded)
         assert isinstance(config, RootConfig)
         assert config.company_name == "My Company"
         assert len(config.agents) == 2
 
-    def test_render_builtin_startup(self):
+    def test_render_builtin_startup(self) -> None:
         loaded = load_template("startup")
         config = render_template(loaded)
         assert isinstance(config, RootConfig)
         assert config.company_name == "Startup Co"
         assert len(config.agents) == 5
 
-    def test_render_all_builtins_produce_valid_root_config(self):
+    def test_render_all_builtins_produce_valid_root_config(self) -> None:
         from ai_company.templates.loader import BUILTIN_TEMPLATES
 
         for name in BUILTIN_TEMPLATES:
@@ -44,7 +44,7 @@ class TestRenderTemplateBasic:
             assert isinstance(config, RootConfig), f"{name} failed"
             assert len(config.agents) >= 1, f"{name} has no agents"
 
-    def test_render_returns_frozen_config(self):
+    def test_render_returns_frozen_config(self) -> None:
         loaded = load_template("solo_founder")
         config = render_template(loaded)
         with pytest.raises(ValidationError):
@@ -58,8 +58,8 @@ class TestRenderTemplateBasic:
 class TestRenderTemplateVariables:
     def test_default_variables_applied(
         self,
-        tmp_template_file: Callable[[str, str], Path],
-    ):
+        tmp_template_file: Callable[..., Path],
+    ) -> None:
         path = tmp_template_file(TEMPLATE_WITH_VARIABLES_YAML)
         loaded = load_template_file(path)
         config = render_template(loaded)
@@ -67,8 +67,8 @@ class TestRenderTemplateVariables:
 
     def test_user_variables_override_defaults(
         self,
-        tmp_template_file: Callable[[str, str], Path],
-    ):
+        tmp_template_file: Callable[..., Path],
+    ) -> None:
         path = tmp_template_file(TEMPLATE_WITH_VARIABLES_YAML)
         loaded = load_template_file(path)
         config = render_template(loaded, variables={"company_name": "Acme Inc"})
@@ -76,8 +76,8 @@ class TestRenderTemplateVariables:
 
     def test_budget_variable_applied(
         self,
-        tmp_template_file: Callable[[str, str], Path],
-    ):
+        tmp_template_file: Callable[..., Path],
+    ) -> None:
         path = tmp_template_file(TEMPLATE_WITH_VARIABLES_YAML)
         loaded = load_template_file(path)
         config = render_template(loaded, variables={"budget": 100.0})
@@ -85,8 +85,8 @@ class TestRenderTemplateVariables:
 
     def test_required_variable_missing_raises_error(
         self,
-        tmp_template_file: Callable[[str, str], Path],
-    ):
+        tmp_template_file: Callable[..., Path],
+    ) -> None:
         path = tmp_template_file(TEMPLATE_REQUIRED_VAR_YAML)
         loaded = load_template_file(path)
         with pytest.raises(TemplateRenderError, match="Required template variable"):
@@ -94,8 +94,8 @@ class TestRenderTemplateVariables:
 
     def test_required_variable_provided(
         self,
-        tmp_template_file: Callable[[str, str], Path],
-    ):
+        tmp_template_file: Callable[..., Path],
+    ) -> None:
         path = tmp_template_file(TEMPLATE_REQUIRED_VAR_YAML)
         loaded = load_template_file(path)
         config = render_template(loaded, variables={"team_lead": "Alice"})
@@ -103,8 +103,8 @@ class TestRenderTemplateVariables:
 
     def test_extra_variables_passed_through(
         self,
-        tmp_template_file: Callable[[str, str], Path],
-    ):
+        tmp_template_file: Callable[..., Path],
+    ) -> None:
         path = tmp_template_file(TEMPLATE_WITH_VARIABLES_YAML)
         loaded = load_template_file(path)
         # Extra variables don't cause errors.
@@ -120,13 +120,13 @@ class TestRenderTemplateVariables:
 
 @pytest.mark.unit
 class TestRenderTemplateAgents:
-    def test_agents_have_unique_names(self):
+    def test_agents_have_unique_names(self) -> None:
         loaded = load_template("startup")
         config = render_template(loaded)
         names = [a.name for a in config.agents]
         assert len(names) == len(set(names))
 
-    def test_agent_name_from_jinja2(self):
+    def test_agent_name_from_jinja2(self) -> None:
         loaded = load_template("solo_founder")
         config = render_template(loaded, variables={"company_name": "ACME"})
         # The CEO agent's name is "{{ company_name }} CEO" → "ACME CEO".
@@ -134,7 +134,7 @@ class TestRenderTemplateAgents:
         assert len(ceo_agents) == 1
         assert "ACME" in ceo_agents[0].name
 
-    def test_auto_name_for_unnamed_agents(self):
+    def test_auto_name_for_unnamed_agents(self) -> None:
         loaded = load_template("research_lab")
         config = render_template(loaded)
         # research_lab agents don't have explicit names.
@@ -148,12 +148,12 @@ class TestRenderTemplateAgents:
 
 @pytest.mark.unit
 class TestRenderTemplateDepartments:
-    def test_departments_included(self):
+    def test_departments_included(self) -> None:
         loaded = load_template("startup")
         config = render_template(loaded)
         assert len(config.departments) >= 1
 
-    def test_department_names(self):
+    def test_department_names(self) -> None:
         loaded = load_template("solo_founder")
         config = render_template(loaded)
         dept_names = {d.name for d in config.departments}
@@ -167,8 +167,8 @@ class TestRenderTemplateDepartments:
 class TestRenderTemplateErrors:
     def test_invalid_jinja2_raises_render_error(
         self,
-        tmp_template_file: Callable[[str, str], Path],
-    ):
+        tmp_template_file: Callable[..., Path],
+    ) -> None:
         bad_yaml = """\
 template:
   name: "Bad Jinja"

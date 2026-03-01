@@ -27,7 +27,7 @@ from .conftest import (
 
 @pytest.mark.unit
 class TestProviderModelConfig:
-    def test_valid_minimal(self):
+    def test_valid_minimal(self) -> None:
         m = ProviderModelConfig(id="test-model:8b")
         assert m.id == "test-model:8b"
         assert m.alias is None
@@ -35,7 +35,7 @@ class TestProviderModelConfig:
         assert m.cost_per_1k_output == 0.0
         assert m.max_context == 200_000
 
-    def test_valid_full(self):
+    def test_valid_full(self) -> None:
         m = ProviderModelConfig(
             id="test-model:8b",
             alias="sonnet",
@@ -46,28 +46,28 @@ class TestProviderModelConfig:
         assert m.alias == "sonnet"
         assert m.cost_per_1k_input == 0.003
 
-    def test_blank_id_rejected(self):
+    def test_blank_id_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ProviderModelConfig(id="")
 
-    def test_whitespace_id_rejected(self):
+    def test_whitespace_id_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ProviderModelConfig(id="   ")
 
-    def test_whitespace_alias_rejected(self):
+    def test_whitespace_alias_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
             ProviderModelConfig(id="m1", alias="   ")
 
-    def test_negative_cost_rejected(self):
+    def test_negative_cost_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ProviderModelConfig(id="m1", cost_per_1k_input=-1.0)
 
-    def test_frozen(self):
+    def test_frozen(self) -> None:
         m = ProviderModelConfig(id="m1")
         with pytest.raises(ValidationError):
             m.id = "m2"  # type: ignore[misc]
 
-    def test_factory(self):
+    def test_factory(self) -> None:
         m = ProviderModelConfigFactory.build()
         assert isinstance(m, ProviderModelConfig)
         assert m.id
@@ -78,13 +78,13 @@ class TestProviderModelConfig:
 
 @pytest.mark.unit
 class TestProviderConfig:
-    def test_defaults(self):
+    def test_defaults(self) -> None:
         p = ProviderConfig()
         assert p.api_key is None
         assert p.base_url is None
         assert p.models == ()
 
-    def test_with_models(self):
+    def test_with_models(self) -> None:
         p = ProviderConfig(
             models=(
                 ProviderModelConfig(id="m1", alias="fast"),
@@ -93,7 +93,7 @@ class TestProviderConfig:
         )
         assert len(p.models) == 2
 
-    def test_duplicate_model_ids_rejected(self):
+    def test_duplicate_model_ids_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Duplicate model IDs"):
             ProviderConfig(
                 models=(
@@ -102,7 +102,7 @@ class TestProviderConfig:
                 ),
             )
 
-    def test_duplicate_aliases_rejected(self):
+    def test_duplicate_aliases_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Duplicate model aliases"):
             ProviderConfig(
                 models=(
@@ -111,19 +111,19 @@ class TestProviderConfig:
                 ),
             )
 
-    def test_whitespace_api_key_rejected(self):
+    def test_whitespace_api_key_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
             ProviderConfig(api_key="   ")
 
-    def test_whitespace_base_url_rejected(self):
+    def test_whitespace_base_url_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
             ProviderConfig(base_url="   ")
 
-    def test_api_key_hidden_from_repr(self):
+    def test_api_key_hidden_from_repr(self) -> None:
         p = ProviderConfig(api_key="sk-secret-key-123")
         assert "sk-secret-key-123" not in repr(p)
 
-    def test_factory(self):
+    def test_factory(self) -> None:
         p = ProviderConfigFactory.build()
         assert isinstance(p, ProviderConfig)
 
@@ -133,14 +133,14 @@ class TestProviderConfig:
 
 @pytest.mark.unit
 class TestRoutingRuleConfig:
-    def test_minimal(self):
+    def test_minimal(self) -> None:
         r = RoutingRuleConfig(preferred_model="sonnet")
         assert r.preferred_model == "sonnet"
         assert r.role_level is None
         assert r.task_type is None
         assert r.fallback is None
 
-    def test_full(self):
+    def test_full(self) -> None:
         r = RoutingRuleConfig(
             role_level=SeniorityLevel.SENIOR,
             task_type="development",
@@ -150,19 +150,19 @@ class TestRoutingRuleConfig:
         assert r.role_level == SeniorityLevel.SENIOR
         assert r.task_type == "development"
 
-    def test_blank_preferred_model_rejected(self):
+    def test_blank_preferred_model_rejected(self) -> None:
         with pytest.raises(ValidationError):
             RoutingRuleConfig(preferred_model="")
 
-    def test_whitespace_task_type_rejected(self):
+    def test_whitespace_task_type_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
             RoutingRuleConfig(preferred_model="sonnet", task_type="   ")
 
-    def test_whitespace_fallback_rejected(self):
+    def test_whitespace_fallback_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
             RoutingRuleConfig(preferred_model="sonnet", fallback="   ")
 
-    def test_factory(self):
+    def test_factory(self) -> None:
         r = RoutingRuleConfigFactory.build()
         assert isinstance(r, RoutingRuleConfig)
 
@@ -172,13 +172,13 @@ class TestRoutingRuleConfig:
 
 @pytest.mark.unit
 class TestRoutingConfig:
-    def test_defaults(self):
+    def test_defaults(self) -> None:
         r = RoutingConfig()
         assert r.strategy == "cost_aware"
         assert r.rules == ()
         assert r.fallback_chain == ()
 
-    def test_with_rules(self):
+    def test_with_rules(self) -> None:
         r = RoutingConfig(
             rules=(RoutingRuleConfig(preferred_model="sonnet"),),
             fallback_chain=("sonnet",),
@@ -186,15 +186,15 @@ class TestRoutingConfig:
         assert len(r.rules) == 1
         assert r.fallback_chain == ("sonnet",)
 
-    def test_whitespace_strategy_rejected(self):
+    def test_whitespace_strategy_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
             RoutingConfig(strategy="   ")
 
-    def test_whitespace_fallback_entry_rejected(self):
+    def test_whitespace_fallback_entry_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
             RoutingConfig(fallback_chain=("   ",))
 
-    def test_factory(self):
+    def test_factory(self) -> None:
         r = RoutingConfigFactory.build()
         assert isinstance(r, RoutingConfig)
 
@@ -204,7 +204,7 @@ class TestRoutingConfig:
 
 @pytest.mark.unit
 class TestAgentConfig:
-    def test_minimal(self):
+    def test_minimal(self) -> None:
         a = AgentConfig(
             name="Alice",
             role="Backend Developer",
@@ -215,7 +215,7 @@ class TestAgentConfig:
         assert a.personality == {}
         assert a.model == {}
 
-    def test_full(self):
+    def test_full(self) -> None:
         a = AgentConfig(
             name="Alice",
             role="Backend Developer",
@@ -227,20 +227,20 @@ class TestAgentConfig:
         assert a.level == SeniorityLevel.SENIOR
         assert a.personality == {"traits": ["analytical"]}
 
-    def test_blank_name_rejected(self):
+    def test_blank_name_rejected(self) -> None:
         with pytest.raises(ValidationError):
             AgentConfig(name="", role="dev", department="eng")
 
-    def test_whitespace_name_rejected(self):
+    def test_whitespace_name_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
             AgentConfig(name="   ", role="dev", department="eng")
 
-    def test_frozen(self):
+    def test_frozen(self) -> None:
         a = AgentConfig(name="A", role="R", department="D")
         with pytest.raises(ValidationError):
             a.name = "B"  # type: ignore[misc]
 
-    def test_factory(self):
+    def test_factory(self) -> None:
         a = AgentConfigFactory.build()
         assert isinstance(a, AgentConfig)
         assert a.name
@@ -251,7 +251,7 @@ class TestAgentConfig:
 
 @pytest.mark.unit
 class TestRootConfig:
-    def test_minimal(self):
+    def test_minimal(self) -> None:
         cfg = RootConfig(company_name="Test Corp")
         assert cfg.company_name == "Test Corp"
         assert cfg.company_type == CompanyType.CUSTOM
@@ -260,7 +260,7 @@ class TestRootConfig:
         assert cfg.providers == {}
         assert cfg.logging is None
 
-    def test_full(self):
+    def test_full(self) -> None:
         model = ProviderModelConfig(id="m1", alias="fast")
         cfg = RootConfig(
             company_name="Acme AI",
@@ -283,30 +283,30 @@ class TestRootConfig:
         assert len(cfg.agents) == 1
         assert "anthropic" in cfg.providers
 
-    def test_defaults_applied(self):
+    def test_defaults_applied(self) -> None:
         cfg = RootConfig(company_name="X")
         assert cfg.budget.total_monthly == 100.0
         assert cfg.communication.default_pattern.value == "hybrid"
         assert cfg.routing.strategy == "cost_aware"
 
-    def test_missing_company_name_rejected(self):
+    def test_missing_company_name_rejected(self) -> None:
         with pytest.raises(ValidationError):
             RootConfig()  # type: ignore[call-arg]
 
-    def test_blank_company_name_rejected(self):
+    def test_blank_company_name_rejected(self) -> None:
         with pytest.raises(ValidationError):
             RootConfig(company_name="")
 
-    def test_whitespace_company_name_rejected(self):
+    def test_whitespace_company_name_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
             RootConfig(company_name="   ")
 
-    def test_frozen(self):
+    def test_frozen(self) -> None:
         cfg = RootConfig(company_name="X")
         with pytest.raises(ValidationError):
             cfg.company_name = "Y"  # type: ignore[misc]
 
-    def test_unique_agent_names(self):
+    def test_unique_agent_names(self) -> None:
         with pytest.raises(ValidationError, match="Duplicate agent names"):
             RootConfig(
                 company_name="X",
@@ -316,20 +316,20 @@ class TestRootConfig:
                 ),
             )
 
-    def test_unique_department_names(self):
+    def test_unique_department_names(self) -> None:
         with pytest.raises(
             ValidationError,
             match="Duplicate department names",
         ):
             RootConfig(
                 company_name="X",
-                departments=(
+                departments=(  # type: ignore[arg-type]
                     {"name": "Engineering", "head": "cto"},
                     {"name": "Engineering", "head": "vp"},
                 ),
             )
 
-    def test_routing_references_unknown_model(self):
+    def test_routing_references_unknown_model(self) -> None:
         with pytest.raises(
             ValidationError,
             match="unknown model",
@@ -341,7 +341,7 @@ class TestRootConfig:
                 ),
             )
 
-    def test_routing_rule_unknown_fallback_rejected(self):
+    def test_routing_rule_unknown_fallback_rejected(self) -> None:
         model = ProviderModelConfig(id="m1", alias="fast")
         with pytest.raises(ValidationError, match="unknown fallback"):
             RootConfig(
@@ -357,7 +357,7 @@ class TestRootConfig:
                 ),
             )
 
-    def test_fallback_chain_unknown_model_rejected(self):
+    def test_fallback_chain_unknown_model_rejected(self) -> None:
         model = ProviderModelConfig(id="m1")
         with pytest.raises(
             ValidationError,
@@ -369,7 +369,7 @@ class TestRootConfig:
                 routing=RoutingConfig(fallback_chain=("nonexistent",)),
             )
 
-    def test_routing_ambiguous_model_ref_across_providers(self):
+    def test_routing_ambiguous_model_ref_across_providers(self) -> None:
         model_a = ProviderModelConfig(id="shared-model")
         model_b = ProviderModelConfig(id="shared-model")
         with pytest.raises(ValidationError, match="Ambiguous model reference"):
@@ -384,7 +384,7 @@ class TestRootConfig:
                 ),
             )
 
-    def test_routing_ambiguous_alias_across_providers(self):
+    def test_routing_ambiguous_alias_across_providers(self) -> None:
         model_a = ProviderModelConfig(id="m1", alias="fast")
         model_b = ProviderModelConfig(id="m2", alias="fast")
         with pytest.raises(ValidationError, match="Ambiguous model reference"):
@@ -399,7 +399,7 @@ class TestRootConfig:
                 ),
             )
 
-    def test_routing_references_valid_model(self):
+    def test_routing_references_valid_model(self) -> None:
         model = ProviderModelConfig(id="m1", alias="fast")
         cfg = RootConfig(
             company_name="X",
@@ -411,7 +411,7 @@ class TestRootConfig:
         )
         assert cfg.routing.rules[0].preferred_model == "fast"
 
-    def test_factory(self):
+    def test_factory(self) -> None:
         cfg = RootConfigFactory.build()
         assert isinstance(cfg, RootConfig)
         assert cfg.company_name

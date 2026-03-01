@@ -21,25 +21,25 @@ from ai_company.providers.models import (
 
 @pytest.mark.unit
 class TestMessagesToDicts:
-    def test_system_message(self):
+    def test_system_message(self) -> None:
         msg = ChatMessage(role=MessageRole.SYSTEM, content="You are helpful.")
         result = messages_to_dicts([msg])
 
         assert result == [{"role": "system", "content": "You are helpful."}]
 
-    def test_user_message(self):
+    def test_user_message(self) -> None:
         msg = ChatMessage(role=MessageRole.USER, content="Hello!")
         result = messages_to_dicts([msg])
 
         assert result == [{"role": "user", "content": "Hello!"}]
 
-    def test_assistant_message_text_only(self):
+    def test_assistant_message_text_only(self) -> None:
         msg = ChatMessage(role=MessageRole.ASSISTANT, content="Hi there!")
         result = messages_to_dicts([msg])
 
         assert result == [{"role": "assistant", "content": "Hi there!"}]
 
-    def test_assistant_message_with_tool_calls(self):
+    def test_assistant_message_with_tool_calls(self) -> None:
         tc = ToolCall(
             id="call_001",
             name="get_weather",
@@ -55,14 +55,19 @@ class TestMessagesToDicts:
         assert len(result) == 1
         assert result[0]["role"] == "assistant"
         assert "content" not in result[0]
-        tool_calls = result[0]["tool_calls"]
-        assert len(tool_calls) == 1
-        assert tool_calls[0]["id"] == "call_001"
-        assert tool_calls[0]["type"] == "function"
-        assert tool_calls[0]["function"]["name"] == "get_weather"
-        assert tool_calls[0]["function"]["arguments"] == '{"location": "London"}'
+        raw_tool_calls = result[0]["tool_calls"]
+        assert isinstance(raw_tool_calls, list)
+        assert len(raw_tool_calls) == 1
+        tc = raw_tool_calls[0]
+        assert isinstance(tc, dict)
+        assert tc["id"] == "call_001"
+        assert tc["type"] == "function"
+        func = tc["function"]
+        assert isinstance(func, dict)
+        assert func["name"] == "get_weather"
+        assert func["arguments"] == '{"location": "London"}'
 
-    def test_tool_result_message(self):
+    def test_tool_result_message(self) -> None:
         msg = ChatMessage(
             role=MessageRole.TOOL,
             tool_result=ToolResult(
@@ -80,7 +85,7 @@ class TestMessagesToDicts:
             },
         ]
 
-    def test_multiple_messages_preserve_order(self):
+    def test_multiple_messages_preserve_order(self) -> None:
         messages = [
             ChatMessage(role=MessageRole.SYSTEM, content="System prompt"),
             ChatMessage(role=MessageRole.USER, content="Question"),
@@ -93,7 +98,7 @@ class TestMessagesToDicts:
         assert result[1]["role"] == "user"
         assert result[2]["role"] == "assistant"
 
-    def test_empty_messages_list(self):
+    def test_empty_messages_list(self) -> None:
         assert messages_to_dicts([]) == []
 
 
@@ -102,7 +107,7 @@ class TestMessagesToDicts:
 
 @pytest.mark.unit
 class TestToolsToDicts:
-    def test_single_tool(self):
+    def test_single_tool(self) -> None:
         tool = ToolDefinition(
             name="search",
             description="Search the codebase",
@@ -128,13 +133,15 @@ class TestToolsToDicts:
             },
         }
 
-    def test_tool_with_empty_schema(self):
+    def test_tool_with_empty_schema(self) -> None:
         tool = ToolDefinition(name="ping", description="Ping the server")
         result = tools_to_dicts([tool])
 
-        assert result[0]["function"]["parameters"] == {}
+        func = result[0]["function"]
+        assert isinstance(func, dict)
+        assert func["parameters"] == {}
 
-    def test_multiple_tools(self):
+    def test_multiple_tools(self) -> None:
         tools = [
             ToolDefinition(name="a", description="Tool A"),
             ToolDefinition(name="b", description="Tool B"),
@@ -142,10 +149,14 @@ class TestToolsToDicts:
         result = tools_to_dicts(tools)
 
         assert len(result) == 2
-        assert result[0]["function"]["name"] == "a"
-        assert result[1]["function"]["name"] == "b"
+        func_0 = result[0]["function"]
+        func_1 = result[1]["function"]
+        assert isinstance(func_0, dict)
+        assert isinstance(func_1, dict)
+        assert func_0["name"] == "a"
+        assert func_1["name"] == "b"
 
-    def test_empty_tools_list(self):
+    def test_empty_tools_list(self) -> None:
         assert tools_to_dicts([]) == []
 
 
@@ -168,13 +179,13 @@ class TestMapFinishReason:
             ("content_filter", FinishReason.CONTENT_FILTER),
         ],
     )
-    def test_known_reasons(self, raw: str, expected: FinishReason):
+    def test_known_reasons(self, raw: str, expected: FinishReason) -> None:
         assert map_finish_reason(raw) == expected
 
-    def test_none_maps_to_error(self):
+    def test_none_maps_to_error(self) -> None:
         assert map_finish_reason(None) == FinishReason.ERROR
 
-    def test_unknown_string_maps_to_error(self):
+    def test_unknown_string_maps_to_error(self) -> None:
         assert map_finish_reason("some_unknown_reason") == FinishReason.ERROR
 
 
@@ -183,13 +194,13 @@ class TestMapFinishReason:
 
 @pytest.mark.unit
 class TestExtractToolCalls:
-    def test_none_returns_empty_tuple(self):
+    def test_none_returns_empty_tuple(self) -> None:
         assert extract_tool_calls(None) == ()
 
-    def test_empty_list_returns_empty_tuple(self):
+    def test_empty_list_returns_empty_tuple(self) -> None:
         assert extract_tool_calls([]) == ()
 
-    def test_single_tool_call_from_dict(self):
+    def test_single_tool_call_from_dict(self) -> None:
         raw = [
             {
                 "id": "call_001",
@@ -207,7 +218,7 @@ class TestExtractToolCalls:
         assert result[0].name == "get_weather"
         assert result[0].arguments == {"location": "London"}
 
-    def test_tool_call_from_object(self):
+    def test_tool_call_from_object(self) -> None:
         """Handle LiteLLM response objects with attribute access."""
         from unittest.mock import MagicMock
 
@@ -226,7 +237,7 @@ class TestExtractToolCalls:
         assert result[0].name == "search"
         assert result[0].arguments == {"query": "test"}
 
-    def test_multiple_tool_calls(self):
+    def test_multiple_tool_calls(self) -> None:
         raw = [
             {
                 "id": "call_001",
@@ -243,7 +254,7 @@ class TestExtractToolCalls:
         assert result[0].name == "a"
         assert result[1].name == "b"
 
-    def test_invalid_json_arguments_returns_empty_dict(self):
+    def test_invalid_json_arguments_returns_empty_dict(self) -> None:
         raw = [
             {
                 "id": "call_001",
@@ -254,7 +265,7 @@ class TestExtractToolCalls:
 
         assert result[0].arguments == {}
 
-    def test_pre_parsed_dict_arguments(self):
+    def test_pre_parsed_dict_arguments(self) -> None:
         raw = [
             {
                 "id": "call_001",
@@ -268,13 +279,13 @@ class TestExtractToolCalls:
 
         assert result[0].arguments == {"key": "value"}
 
-    def test_missing_function_skips_entry(self):
+    def test_missing_function_skips_entry(self) -> None:
         raw = [{"id": "call_001"}]
         result = extract_tool_calls(raw)
 
         assert result == ()
 
-    def test_missing_id_skips_entry(self):
+    def test_missing_id_skips_entry(self) -> None:
         raw = [{"function": {"name": "test", "arguments": "{}"}}]
         result = extract_tool_calls(raw)
 

@@ -21,15 +21,15 @@ class TestLogLevel:
         assert LogLevel.CRITICAL in members
 
     def test_values_are_strings(self) -> None:
-        assert LogLevel.DEBUG == "DEBUG"
-        assert LogLevel.INFO == "INFO"
-        assert LogLevel.WARNING == "WARNING"
-        assert LogLevel.ERROR == "ERROR"
-        assert LogLevel.CRITICAL == "CRITICAL"
+        assert LogLevel.DEBUG.value == "DEBUG"
+        assert LogLevel.INFO.value == "INFO"
+        assert LogLevel.WARNING.value == "WARNING"
+        assert LogLevel.ERROR.value == "ERROR"
+        assert LogLevel.CRITICAL.value == "CRITICAL"
 
     def test_membership(self) -> None:
-        assert "DEBUG" in LogLevel.__members__.values()
-        assert "INFO" in LogLevel.__members__.values()
+        assert "DEBUG" in [m.value for m in LogLevel]
+        assert "INFO" in [m.value for m in LogLevel]
 
     def test_is_str_subclass(self) -> None:
         assert isinstance(LogLevel.DEBUG, str)
@@ -46,8 +46,8 @@ class TestRotationStrategy:
         assert RotationStrategy.EXTERNAL in members
 
     def test_values_are_strings(self) -> None:
-        assert RotationStrategy.BUILTIN == "builtin"
-        assert RotationStrategy.EXTERNAL == "external"
+        assert RotationStrategy.BUILTIN.value == "builtin"
+        assert RotationStrategy.EXTERNAL.value == "external"
 
     def test_is_str_subclass(self) -> None:
         assert isinstance(RotationStrategy.BUILTIN, str)
@@ -64,8 +64,8 @@ class TestSinkType:
         assert SinkType.FILE in members
 
     def test_values_are_strings(self) -> None:
-        assert SinkType.CONSOLE == "console"
-        assert SinkType.FILE == "file"
+        assert SinkType.CONSOLE.value == "console"
+        assert SinkType.FILE.value == "file"
 
     def test_is_str_subclass(self) -> None:
         assert isinstance(SinkType.CONSOLE, str)

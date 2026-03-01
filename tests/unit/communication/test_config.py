@@ -435,7 +435,7 @@ class TestLoopPreventionConfigValidation:
             ValidationError,
             match="Input should be True",
         ):
-            LoopPreventionConfig(ancestry_tracking=False)
+            LoopPreventionConfig(ancestry_tracking=False)  # type: ignore[arg-type]
 
     def test_zero_delegation_depth_rejected(self) -> None:
         with pytest.raises(ValidationError):

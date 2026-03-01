@@ -243,7 +243,7 @@ class TestBaseCompletionProvider:
 
     def test_partial_implementation_rejected(self) -> None:
         class _PartialProvider(BaseCompletionProvider):
-            async def _do_complete(  # type: ignore[override]
+            async def _do_complete(  # type: ignore[empty-body]
                 self,
                 messages: list[ChatMessage],
                 model: str,

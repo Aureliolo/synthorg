@@ -32,7 +32,7 @@ def test_version_format() -> None:
 @pytest.mark.unit
 def test_markers_registered(pytestconfig: pytest.Config) -> None:
     """Verify custom markers are registered in pyproject.toml."""
-    raw_markers: list[str] = pytestconfig.getini("markers")  # type: ignore[assignment]
+    raw_markers: list[str] = pytestconfig.getini("markers")
     marker_names = {m.split(":")[0].strip() for m in raw_markers}
     expected = {"unit", "integration", "e2e", "slow"}
     missing = expected - marker_names

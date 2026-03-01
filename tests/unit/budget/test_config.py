@@ -51,7 +51,7 @@ class TestBudgetAlertConfig:
     def test_float_threshold_rejected(self) -> None:
         """Reject float value for threshold (strict int)."""
         with pytest.raises(ValidationError):
-            BudgetAlertConfig(warn_at=75.5, critical_at=90, hard_stop_at=100)
+            BudgetAlertConfig(warn_at=75.5, critical_at=90, hard_stop_at=100)  # type: ignore[arg-type]
 
     def test_negative_threshold_rejected(self) -> None:
         """Reject negative threshold values."""
@@ -153,7 +153,7 @@ class TestAutoDowngradeConfig:
     def test_float_threshold_rejected(self) -> None:
         """Reject float value for threshold (strict int)."""
         with pytest.raises(ValidationError):
-            AutoDowngradeConfig(threshold=85.5)
+            AutoDowngradeConfig(threshold=85.5)  # type: ignore[arg-type]
 
     def test_threshold_boundary_0(self) -> None:
         """Accept threshold at lower boundary (0)."""

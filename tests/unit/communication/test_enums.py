@@ -20,14 +20,14 @@ class TestMessageType:
         assert len(MessageType) == 8
 
     def test_values(self) -> None:
-        assert MessageType.TASK_UPDATE == "task_update"
-        assert MessageType.QUESTION == "question"
-        assert MessageType.ANNOUNCEMENT == "announcement"
-        assert MessageType.REVIEW_REQUEST == "review_request"
-        assert MessageType.APPROVAL == "approval"
-        assert MessageType.DELEGATION == "delegation"
-        assert MessageType.STATUS_REPORT == "status_report"
-        assert MessageType.ESCALATION == "escalation"
+        assert MessageType.TASK_UPDATE.value == "task_update"
+        assert MessageType.QUESTION.value == "question"
+        assert MessageType.ANNOUNCEMENT.value == "announcement"
+        assert MessageType.REVIEW_REQUEST.value == "review_request"
+        assert MessageType.APPROVAL.value == "approval"
+        assert MessageType.DELEGATION.value == "delegation"
+        assert MessageType.STATUS_REPORT.value == "status_report"
+        assert MessageType.ESCALATION.value == "escalation"
 
     def test_string_identity(self) -> None:
         assert str(MessageType.TASK_UPDATE) == "task_update"
@@ -39,10 +39,10 @@ class TestMessagePriority:
         assert len(MessagePriority) == 4
 
     def test_values(self) -> None:
-        assert MessagePriority.LOW == "low"
-        assert MessagePriority.NORMAL == "normal"
-        assert MessagePriority.HIGH == "high"
-        assert MessagePriority.URGENT == "urgent"
+        assert MessagePriority.LOW.value == "low"
+        assert MessagePriority.NORMAL.value == "normal"
+        assert MessagePriority.HIGH.value == "high"
+        assert MessagePriority.URGENT.value == "urgent"
 
     def test_normal_not_medium(self) -> None:
         """Message priority uses 'normal', not 'medium' like task Priority."""
@@ -57,9 +57,9 @@ class TestChannelType:
         assert len(ChannelType) == 3
 
     def test_values(self) -> None:
-        assert ChannelType.TOPIC == "topic"
-        assert ChannelType.DIRECT == "direct"
-        assert ChannelType.BROADCAST == "broadcast"
+        assert ChannelType.TOPIC.value == "topic"
+        assert ChannelType.DIRECT.value == "direct"
+        assert ChannelType.BROADCAST.value == "broadcast"
 
 
 @pytest.mark.unit
@@ -68,9 +68,9 @@ class TestAttachmentType:
         assert len(AttachmentType) == 3
 
     def test_values(self) -> None:
-        assert AttachmentType.ARTIFACT == "artifact"
-        assert AttachmentType.FILE == "file"
-        assert AttachmentType.LINK == "link"
+        assert AttachmentType.ARTIFACT.value == "artifact"
+        assert AttachmentType.FILE.value == "file"
+        assert AttachmentType.LINK.value == "link"
 
 
 @pytest.mark.unit
@@ -79,10 +79,10 @@ class TestCommunicationPattern:
         assert len(CommunicationPattern) == 4
 
     def test_values(self) -> None:
-        assert CommunicationPattern.EVENT_DRIVEN == "event_driven"
-        assert CommunicationPattern.HIERARCHICAL == "hierarchical"
-        assert CommunicationPattern.MEETING_BASED == "meeting_based"
-        assert CommunicationPattern.HYBRID == "hybrid"
+        assert CommunicationPattern.EVENT_DRIVEN.value == "event_driven"
+        assert CommunicationPattern.HIERARCHICAL.value == "hierarchical"
+        assert CommunicationPattern.MEETING_BASED.value == "meeting_based"
+        assert CommunicationPattern.HYBRID.value == "hybrid"
 
 
 @pytest.mark.unit
@@ -100,7 +100,7 @@ class TestMessageBusBackend:
         assert len(MessageBusBackend) == 4
 
     def test_values(self) -> None:
-        assert MessageBusBackend.INTERNAL == "internal"
-        assert MessageBusBackend.REDIS == "redis"
-        assert MessageBusBackend.RABBITMQ == "rabbitmq"
-        assert MessageBusBackend.KAFKA == "kafka"
+        assert MessageBusBackend.INTERNAL.value == "internal"
+        assert MessageBusBackend.REDIS.value == "redis"
+        assert MessageBusBackend.RABBITMQ.value == "rabbitmq"
+        assert MessageBusBackend.KAFKA.value == "kafka"

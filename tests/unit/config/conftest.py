@@ -24,35 +24,35 @@ from ai_company.core.company import CompanyConfig
 # ── Factories ──────────────────────────────────────────────────────
 
 
-class ProviderModelConfigFactory(ModelFactory):
+class ProviderModelConfigFactory(ModelFactory[ProviderModelConfig]):
     __model__ = ProviderModelConfig
 
 
-class ProviderConfigFactory(ModelFactory):
+class ProviderConfigFactory(ModelFactory[ProviderConfig]):
     __model__ = ProviderConfig
     models = ()
 
 
-class RoutingRuleConfigFactory(ModelFactory):
+class RoutingRuleConfigFactory(ModelFactory[RoutingRuleConfig]):
     __model__ = RoutingRuleConfig
 
 
-class RoutingConfigFactory(ModelFactory):
+class RoutingConfigFactory(ModelFactory[RoutingConfig]):
     __model__ = RoutingConfig
     rules = ()
     fallback_chain = ()
 
 
-class AgentConfigFactory(ModelFactory):
+class AgentConfigFactory(ModelFactory[AgentConfig]):
     __model__ = AgentConfig
 
 
-class RootConfigFactory(ModelFactory):
+class RootConfigFactory(ModelFactory[RootConfig]):
     __model__ = RootConfig
     departments = ()
     agents = ()
     custom_roles = ()
-    providers: dict[str, ProviderConfig] = {}  # type: ignore[assignment]  # noqa: RUF012
+    providers: dict[str, ProviderConfig] = {}  # noqa: RUF012
     config = CompanyConfig()
     budget = BudgetConfig()
     communication = CommunicationConfig()
@@ -139,7 +139,7 @@ def sample_root_config() -> RootConfig:
 
 
 @pytest.fixture
-def tmp_config_file(tmp_path: Path) -> Callable[[str, str], Path]:
+def tmp_config_file(tmp_path: Path) -> Callable[..., Path]:
     def _create(content: str, name: str = "config.yaml") -> Path:
         path = tmp_path / name
         path.write_text(content, encoding="utf-8")

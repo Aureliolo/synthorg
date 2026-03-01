@@ -41,98 +41,98 @@ from ai_company.core.task import AcceptanceCriterion, Task
 # ── Factories ──────────────────────────────────────────────────────
 
 
-class SkillFactory(ModelFactory):
+class SkillFactory(ModelFactory[Skill]):
     __model__ = Skill
 
 
-class AuthorityFactory(ModelFactory):
+class AuthorityFactory(ModelFactory[Authority]):
     __model__ = Authority
 
 
-class SeniorityInfoFactory(ModelFactory):
+class SeniorityInfoFactory(ModelFactory[SeniorityInfo]):
     __model__ = SeniorityInfo
 
 
-class RoleFactory(ModelFactory):
+class RoleFactory(ModelFactory[Role]):
     __model__ = Role
 
 
-class CustomRoleFactory(ModelFactory):
+class CustomRoleFactory(ModelFactory[CustomRole]):
     __model__ = CustomRole
 
 
-class PersonalityConfigFactory(ModelFactory):
+class PersonalityConfigFactory(ModelFactory[PersonalityConfig]):
     __model__ = PersonalityConfig
 
 
-class SkillSetFactory(ModelFactory):
+class SkillSetFactory(ModelFactory[SkillSet]):
     __model__ = SkillSet
 
 
-class ModelConfigFactory(ModelFactory):
+class ModelConfigFactory(ModelFactory[ModelConfig]):
     __model__ = ModelConfig
     temperature = 0.7
 
 
-class MemoryConfigFactory(ModelFactory):
+class MemoryConfigFactory(ModelFactory[MemoryConfig]):
     __model__ = MemoryConfig
     type = MemoryType.SESSION
 
 
-class ToolPermissionsFactory(ModelFactory):
+class ToolPermissionsFactory(ModelFactory[ToolPermissions]):
     __model__ = ToolPermissions
     allowed = ()
     denied = ()
 
 
-class AgentIdentityFactory(ModelFactory):
+class AgentIdentityFactory(ModelFactory[AgentIdentity]):
     __model__ = AgentIdentity
     memory = MemoryConfigFactory
     tools = ToolPermissionsFactory
 
 
-class TeamFactory(ModelFactory):
+class TeamFactory(ModelFactory[Team]):
     __model__ = Team
 
 
-class DepartmentFactory(ModelFactory):
+class DepartmentFactory(ModelFactory[Department]):
     __model__ = Department
     budget_percent = 10.0
 
 
-class CompanyConfigFactory(ModelFactory):
+class CompanyConfigFactory(ModelFactory[CompanyConfig]):
     __model__ = CompanyConfig
 
 
-class HRRegistryFactory(ModelFactory):
+class HRRegistryFactory(ModelFactory[HRRegistry]):
     __model__ = HRRegistry
 
 
-class CompanyFactory(ModelFactory):
+class CompanyFactory(ModelFactory[Company]):
     __model__ = Company
     departments = ()
 
 
-class ExpectedArtifactFactory(ModelFactory):
+class ExpectedArtifactFactory(ModelFactory[ExpectedArtifact]):
     __model__ = ExpectedArtifact
 
 
-class ArtifactFactory(ModelFactory):
+class ArtifactFactory(ModelFactory[Artifact]):
     __model__ = Artifact
 
 
-class AcceptanceCriterionFactory(ModelFactory):
+class AcceptanceCriterionFactory(ModelFactory[AcceptanceCriterion]):
     __model__ = AcceptanceCriterion
 
 
-class TaskFactory(ModelFactory):
+class TaskFactory(ModelFactory[Task]):
     __model__ = Task
     status = TaskStatus.CREATED
     assigned_to = None
     deadline = None
 
 
-class ProjectFactory(ModelFactory):
+class ProjectFactory(ModelFactory[Project]):
     __model__ = Project
     deadline = None
 

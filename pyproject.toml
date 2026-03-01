@@ -150,10 +150,6 @@ plugins = ["pydantic.mypy"]
 module = "litellm.*"
 ignore_missing_imports = true
 
-[[tool.mypy.overrides]]
-module = "tests.*"
-disallow_untyped_defs = false
-
 [tool.pydantic-mypy]
 init_forbid_extra = true
 init_typed = true

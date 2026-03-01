@@ -36,17 +36,17 @@ from .conftest import (
 
 @pytest.mark.unit
 class TestListBuiltinTemplates:
-    def test_returns_sorted_tuple(self):
+    def test_returns_sorted_tuple(self) -> None:
         names = list_builtin_templates()
         assert isinstance(names, tuple)
         assert names == tuple(sorted(names))
 
-    def test_contains_all_registered(self):
+    def test_contains_all_registered(self) -> None:
         names = list_builtin_templates()
         for name in BUILTIN_TEMPLATES:
             assert name in names
 
-    def test_count_matches_registry(self):
+    def test_count_matches_registry(self) -> None:
         assert len(list_builtin_templates()) == len(BUILTIN_TEMPLATES)
 
 
@@ -55,18 +55,18 @@ class TestListBuiltinTemplates:
 
 @pytest.mark.unit
 class TestListTemplates:
-    def test_returns_tuple_of_template_info(self):
+    def test_returns_tuple_of_template_info(self) -> None:
         templates = list_templates()
         assert isinstance(templates, tuple)
         assert all(isinstance(t, TemplateInfo) for t in templates)
 
-    def test_all_builtins_present(self):
+    def test_all_builtins_present(self) -> None:
         templates = list_templates()
         names = {t.name for t in templates}
         for builtin_name in BUILTIN_TEMPLATES:
             assert builtin_name in names
 
-    def test_builtin_source_label(self):
+    def test_builtin_source_label(self) -> None:
         templates = list_templates()
         for t in templates:
             if t.name in BUILTIN_TEMPLATES:
@@ -75,8 +75,8 @@ class TestListTemplates:
     def test_user_template_overrides_builtin(
         self,
         tmp_path: Path,
-        tmp_template_file: Callable[[str, str], Path],
-    ):
+        tmp_template_file: Callable[..., Path],
+    ) -> None:
         user_dir = tmp_path / "user_templates"
         user_dir.mkdir()
         user_yaml = MINIMAL_TEMPLATE_YAML
@@ -96,28 +96,28 @@ class TestListTemplates:
 
 @pytest.mark.unit
 class TestLoadTemplate:
-    def test_load_builtin_by_name(self):
+    def test_load_builtin_by_name(self) -> None:
         loaded = load_template("solo_founder")
         assert isinstance(loaded, LoadedTemplate)
         assert loaded.template.metadata.name == "Solo Founder"
         assert "<builtin:" in loaded.source_name
 
-    def test_load_builtin_case_insensitive(self):
+    def test_load_builtin_case_insensitive(self) -> None:
         loaded = load_template("  Solo_Founder  ")
         assert loaded.template.metadata.name == "Solo Founder"
 
-    def test_all_builtins_load_successfully(self):
+    def test_all_builtins_load_successfully(self) -> None:
         for name in BUILTIN_TEMPLATES:
             loaded = load_template(name)
             assert isinstance(loaded, LoadedTemplate)
             assert len(loaded.raw_yaml) > 0
             assert len(loaded.template.agents) >= 1
 
-    def test_unknown_name_raises_not_found(self):
+    def test_unknown_name_raises_not_found(self) -> None:
         with pytest.raises(TemplateNotFoundError, match="Unknown template"):
             load_template("does_not_exist")
 
-    def test_user_template_preferred(self, tmp_path: Path):
+    def test_user_template_preferred(self, tmp_path: Path) -> None:
         user_dir = tmp_path / "user_templates"
         user_dir.mkdir()
         (user_dir / "solo_founder.yaml").write_text(
@@ -140,8 +140,8 @@ class TestLoadTemplate:
 class TestLoadTemplateFile:
     def test_load_from_path(
         self,
-        tmp_template_file: Callable[[str, str], Path],
-    ):
+        tmp_template_file: Callable[..., Path],
+    ) -> None:
         path = tmp_template_file(MINIMAL_TEMPLATE_YAML)
         loaded = load_template_file(path)
         assert isinstance(loaded, LoadedTemplate)
@@ -149,37 +149,37 @@ class TestLoadTemplateFile:
 
     def test_load_with_variables(
         self,
-        tmp_template_file: Callable[[str, str], Path],
-    ):
+        tmp_template_file: Callable[..., Path],
+    ) -> None:
         path = tmp_template_file(TEMPLATE_WITH_VARIABLES_YAML)
         loaded = load_template_file(path)
         assert len(loaded.template.variables) == 2
         assert loaded.template.variables[0].name == "company_name"
 
-    def test_nonexistent_file_raises_not_found(self):
+    def test_nonexistent_file_raises_not_found(self) -> None:
         with pytest.raises(TemplateNotFoundError, match="not found"):
             load_template_file(Path("/nonexistent/template.yaml"))
 
     def test_invalid_yaml_raises_render_error(
         self,
-        tmp_template_file: Callable[[str, str], Path],
-    ):
+        tmp_template_file: Callable[..., Path],
+    ) -> None:
         path = tmp_template_file(INVALID_SYNTAX_YAML)
         with pytest.raises(TemplateRenderError, match="syntax error"):
             load_template_file(path)
 
     def test_missing_template_key_raises_validation_error(
         self,
-        tmp_template_file: Callable[[str, str], Path],
-    ):
+        tmp_template_file: Callable[..., Path],
+    ) -> None:
         path = tmp_template_file(MISSING_TEMPLATE_KEY_YAML)
         with pytest.raises(TemplateValidationError, match="template"):
             load_template_file(path)
 
     def test_accepts_string_path(
         self,
-        tmp_template_file: Callable[[str, str], Path],
-    ):
+        tmp_template_file: Callable[..., Path],
+    ) -> None:
         path = tmp_template_file(MINIMAL_TEMPLATE_YAML)
         loaded = load_template_file(str(path))
         assert isinstance(loaded, LoadedTemplate)
@@ -190,12 +190,12 @@ class TestLoadTemplateFile:
 
 @pytest.mark.unit
 class TestLoadedTemplate:
-    def test_frozen(self):
+    def test_frozen(self) -> None:
         loaded = load_template("solo_founder")
         with pytest.raises(AttributeError):
             loaded.source_name = "changed"  # type: ignore[misc]
 
-    def test_raw_yaml_is_string(self):
+    def test_raw_yaml_is_string(self) -> None:
         loaded = load_template("startup")
         assert isinstance(loaded.raw_yaml, str)
         assert "template:" in loaded.raw_yaml

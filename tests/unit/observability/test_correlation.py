@@ -198,7 +198,7 @@ class TestWithCorrelation:
         @with_correlation(request_id="inner")
         def inner() -> str:
             ctx = structlog.contextvars.get_contextvars()
-            return ctx["request_id"]
+            return ctx["request_id"]  # type: ignore[no-any-return]
 
         assert inner() == "inner"
         ctx = structlog.contextvars.get_contextvars()

@@ -17,6 +17,7 @@ from ai_company.communication.config import (
     RateLimitConfig,
 )
 from ai_company.communication.enums import (
+    AttachmentType,
     ChannelType,
     MessagePriority,
     MessageType,
@@ -26,11 +27,11 @@ from ai_company.communication.message import Attachment, Message, MessageMetadat
 # ── Factories ──────────────────────────────────────────────────────
 
 
-class AttachmentFactory(ModelFactory):
+class AttachmentFactory(ModelFactory[Attachment]):
     __model__ = Attachment
 
 
-class MessageMetadataFactory(ModelFactory):
+class MessageMetadataFactory(ModelFactory[MessageMetadata]):
     __model__ = MessageMetadata
     task_id = None
     project_id = None
@@ -39,52 +40,52 @@ class MessageMetadataFactory(ModelFactory):
     extra = ()
 
 
-class MessageFactory(ModelFactory):
+class MessageFactory(ModelFactory[Message]):
     __model__ = Message
     priority = MessagePriority.NORMAL
     attachments = ()
     metadata = MessageMetadataFactory
 
 
-class ChannelFactory(ModelFactory):
+class ChannelFactory(ModelFactory[Channel]):
     __model__ = Channel
     type = ChannelType.TOPIC
     subscribers = ()
 
 
-class MessageBusConfigFactory(ModelFactory):
+class MessageBusConfigFactory(ModelFactory[MessageBusConfig]):
     __model__ = MessageBusConfig
 
 
-class MeetingTypeConfigFactory(ModelFactory):
+class MeetingTypeConfigFactory(ModelFactory[MeetingTypeConfig]):
     __model__ = MeetingTypeConfig
     frequency = "daily"
     trigger = None
 
 
-class MeetingsConfigFactory(ModelFactory):
+class MeetingsConfigFactory(ModelFactory[MeetingsConfig]):
     __model__ = MeetingsConfig
     types = ()
 
 
-class HierarchyConfigFactory(ModelFactory):
+class HierarchyConfigFactory(ModelFactory[HierarchyConfig]):
     __model__ = HierarchyConfig
 
 
-class RateLimitConfigFactory(ModelFactory):
+class RateLimitConfigFactory(ModelFactory[RateLimitConfig]):
     __model__ = RateLimitConfig
 
 
-class CircuitBreakerConfigFactory(ModelFactory):
+class CircuitBreakerConfigFactory(ModelFactory[CircuitBreakerConfig]):
     __model__ = CircuitBreakerConfig
 
 
-class LoopPreventionConfigFactory(ModelFactory):
+class LoopPreventionConfigFactory(ModelFactory[LoopPreventionConfig]):
     __model__ = LoopPreventionConfig
     ancestry_tracking = True
 
 
-class CommunicationConfigFactory(ModelFactory):
+class CommunicationConfigFactory(ModelFactory[CommunicationConfig]):
     __model__ = CommunicationConfig
     meetings = MeetingsConfigFactory
     loop_prevention = LoopPreventionConfigFactory
@@ -95,7 +96,7 @@ class CommunicationConfigFactory(ModelFactory):
 
 @pytest.fixture
 def sample_attachment() -> Attachment:
-    return Attachment(type="artifact", ref="pr-42")
+    return Attachment(type=AttachmentType.ARTIFACT, ref="pr-42")
 
 
 @pytest.fixture
@@ -118,7 +119,7 @@ def sample_message(sample_metadata: MessageMetadata) -> Message:
         priority=MessagePriority.NORMAL,
         channel="#backend",
         content="Completed API endpoint for user authentication.",
-        attachments=(Attachment(type="artifact", ref="pr-42"),),
+        attachments=(Attachment(type=AttachmentType.ARTIFACT, ref="pr-42"),),
         metadata=sample_metadata,
     )
 

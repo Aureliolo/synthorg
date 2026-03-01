@@ -3,9 +3,13 @@
 All tests mock ``litellm.acompletion`` — no real API calls are made.
 """
 
-from unittest.mock import AsyncMock, patch
+from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 from ai_company.config.schema import ProviderConfig, ProviderModelConfig
 from ai_company.providers.drivers.litellm_driver import LiteLLMDriver
@@ -28,6 +32,7 @@ from ai_company.providers.errors import (
 from ai_company.providers.models import (
     ChatMessage,
     CompletionConfig,
+    StreamChunk,
     ToolDefinition,
 )
 
@@ -67,9 +72,9 @@ def _user_message(
 async def _collect_stream(
     driver: LiteLLMDriver,
     mock_call: AsyncMock,
-    chunks: list,
+    chunks: list[MagicMock],
     model: str = "sonnet",
-) -> list:
+) -> list[StreamChunk]:
     mock_call.return_value = mock_stream_response(chunks)
     stream = await driver.stream(_user_message(), model)
     return [chunk async for chunk in stream]
@@ -80,7 +85,7 @@ async def _collect_stream(
 
 @pytest.mark.unit
 class TestDoComplete:
-    async def test_basic_completion(self):
+    async def test_basic_completion(self) -> None:
         driver = _make_driver()
         mock_resp = make_mock_response()
 
@@ -94,7 +99,7 @@ class TestDoComplete:
         assert result.usage.input_tokens == 100
         assert result.usage.output_tokens == 50
 
-    async def test_completion_with_tool_calls(self):
+    async def test_completion_with_tool_calls(self) -> None:
         driver = _make_driver()
         tc = make_mock_tool_call()
         mock_resp = make_mock_response(
@@ -113,7 +118,7 @@ class TestDoComplete:
         assert result.tool_calls[0].name == "get_weather"
         assert result.finish_reason == FinishReason.TOOL_USE
 
-    async def test_model_alias_resolution(self):
+    async def test_model_alias_resolution(self) -> None:
         driver = _make_driver()
         mock_resp = make_mock_response()
 
@@ -124,7 +129,7 @@ class TestDoComplete:
         kw = m.call_args.kwargs
         assert kw["model"] == "anthropic/claude-haiku-4-5"
 
-    async def test_model_id_resolution(self):
+    async def test_model_id_resolution(self) -> None:
         driver = _make_driver()
         mock_resp = make_mock_response()
 
@@ -138,13 +143,13 @@ class TestDoComplete:
         kw = m.call_args.kwargs
         assert kw["model"] == "anthropic/claude-sonnet-4-6"
 
-    async def test_unknown_model_raises(self):
+    async def test_unknown_model_raises(self) -> None:
         driver = _make_driver()
 
         with pytest.raises(ModelNotFoundError, match="nonexistent"):
             await driver.complete(_user_message(), "nonexistent")
 
-    async def test_api_key_passed_to_litellm(self):
+    async def test_api_key_passed_to_litellm(self) -> None:
         driver = _make_driver()
         mock_resp = make_mock_response()
 
@@ -154,7 +159,7 @@ class TestDoComplete:
 
         assert m.call_args.kwargs["api_key"] == "sk-test-key"
 
-    async def test_base_url_passed_to_litellm(self):
+    async def test_base_url_passed_to_litellm(self) -> None:
         config = make_provider_config(
             base_url="https://custom.api.example.com",
         )
@@ -168,7 +173,7 @@ class TestDoComplete:
         kw = m.call_args.kwargs
         assert kw["api_base"] == "https://custom.api.example.com"
 
-    async def test_completion_config_parameters(self):
+    async def test_completion_config_parameters(self) -> None:
         driver = _make_driver()
         mock_resp = make_mock_response()
         comp_config = CompletionConfig(
@@ -194,7 +199,7 @@ class TestDoComplete:
         assert kw["top_p"] == 0.9
         assert kw["timeout"] == 30.0
 
-    async def test_tools_passed_to_litellm(self):
+    async def test_tools_passed_to_litellm(self) -> None:
         driver = _make_driver()
         mock_resp = make_mock_response()
         tools = [
@@ -217,7 +222,7 @@ class TestDoComplete:
         assert "tools" in kw
         assert kw["tools"][0]["function"]["name"] == "search"
 
-    async def test_provider_request_id_captured(self):
+    async def test_provider_request_id_captured(self) -> None:
         driver = _make_driver()
         mock_resp = make_mock_response(request_id="req_xyz789")
 
@@ -227,7 +232,7 @@ class TestDoComplete:
 
         assert result.provider_request_id == "req_xyz789"
 
-    async def test_cost_computed_from_config(self):
+    async def test_cost_computed_from_config(self) -> None:
         driver = _make_driver()
         mock_resp = make_mock_response(
             prompt_tokens=1000,
@@ -247,7 +252,7 @@ class TestDoComplete:
 
 @pytest.mark.unit
 class TestDoStream:
-    async def test_basic_streaming(self):
+    async def test_basic_streaming(self) -> None:
         driver = _make_driver()
         chunks = [
             make_stream_chunk(content="Hello"),
@@ -270,7 +275,7 @@ class TestDoStream:
         assert content_chunks[1].content == " world"
         assert collected[-1].event_type == StreamEventType.DONE
 
-    async def test_streaming_with_tool_calls(self):
+    async def test_streaming_with_tool_calls(self) -> None:
         driver = _make_driver()
         td1 = make_stream_tool_call_delta(
             index=0,
@@ -301,7 +306,7 @@ class TestDoStream:
         assert tc.name == "search"
         assert tc.arguments == {"query": "test"}
 
-    async def test_streaming_usage_chunk(self):
+    async def test_streaming_usage_chunk(self) -> None:
         driver = _make_driver()
         chunks = [
             make_stream_chunk(content="Hi"),
@@ -321,7 +326,7 @@ class TestDoStream:
         assert usage_chunks[0].usage.input_tokens == 50
         assert usage_chunks[0].usage.output_tokens == 10
 
-    async def test_stream_sets_stream_option(self):
+    async def test_stream_sets_stream_option(self) -> None:
         driver = _make_driver()
         chunks = [make_stream_chunk(content="ok")]
 
@@ -332,7 +337,7 @@ class TestDoStream:
         assert kw["stream"] is True
         assert kw["stream_options"] == {"include_usage": True}
 
-    async def test_streaming_incomplete_tool_call_dropped(self):
+    async def test_streaming_incomplete_tool_call_dropped(self) -> None:
         """Tool call with no id/name is silently dropped."""
         driver = _make_driver()
         # Delta with arguments but no id or name
@@ -353,7 +358,7 @@ class TestDoStream:
         ]
         assert len(tc_chunks) == 0
 
-    async def test_streaming_multiple_concurrent_tool_calls(self):
+    async def test_streaming_multiple_concurrent_tool_calls(self) -> None:
         """Multiple tool calls at different indices are emitted separately."""
         driver = _make_driver()
         td1_a = make_stream_tool_call_delta(
@@ -389,14 +394,18 @@ class TestDoStream:
             c for c in collected if c.event_type == StreamEventType.TOOL_CALL_DELTA
         ]
         assert len(tc_chunks) == 2
-        assert tc_chunks[0].tool_call_delta.id == "call_001"
-        assert tc_chunks[0].tool_call_delta.name == "search"
-        assert tc_chunks[0].tool_call_delta.arguments == {"q": "test"}
-        assert tc_chunks[1].tool_call_delta.id == "call_002"
-        assert tc_chunks[1].tool_call_delta.name == "read"
-        assert tc_chunks[1].tool_call_delta.arguments == {"path": "f.py"}
+        tc0 = tc_chunks[0].tool_call_delta
+        tc1 = tc_chunks[1].tool_call_delta
+        assert tc0 is not None
+        assert tc1 is not None
+        assert tc0.id == "call_001"
+        assert tc0.name == "search"
+        assert tc0.arguments == {"q": "test"}
+        assert tc1.id == "call_002"
+        assert tc1.name == "read"
+        assert tc1.arguments == {"path": "f.py"}
 
-    async def test_streaming_usage_only_chunk_no_choices(self):
+    async def test_streaming_usage_only_chunk_no_choices(self) -> None:
         """Usage-only chunk with empty choices is emitted."""
         from unittest.mock import MagicMock
 
@@ -418,9 +427,10 @@ class TestDoStream:
 
         usage_chunks = [c for c in collected if c.event_type == StreamEventType.USAGE]
         assert len(usage_chunks) == 1
+        assert usage_chunks[0].usage is not None
         assert usage_chunks[0].usage.input_tokens == 50
 
-    async def test_streaming_usage_emitted_when_prompt_tokens_zero(self):
+    async def test_streaming_usage_emitted_when_prompt_tokens_zero(self) -> None:
         """Usage with prompt_tokens=0 is still emitted."""
         driver = _make_driver()
         chunks = [
@@ -436,10 +446,11 @@ class TestDoStream:
 
         usage_chunks = [c for c in collected if c.event_type == StreamEventType.USAGE]
         assert len(usage_chunks) == 1
+        assert usage_chunks[0].usage is not None
         assert usage_chunks[0].usage.input_tokens == 0
         assert usage_chunks[0].usage.output_tokens == 10
 
-    async def test_tool_call_arguments_length_limit(self):
+    async def test_tool_call_arguments_length_limit(self) -> None:
         """Tool call arguments exceeding 1 MiB are truncated."""
         from ai_company.providers.drivers.litellm_driver import _ToolCallAccumulator
 
@@ -490,7 +501,7 @@ class TestExceptionMapping:
         self,
         litellm_exc_name: str,
         expected_type: type,
-    ):
+    ) -> None:
         import litellm as _litellm
 
         driver = _make_driver()
@@ -506,18 +517,19 @@ class TestExceptionMapping:
             with pytest.raises(expected_type) as exc_info:
                 await driver.complete(_user_message(), "sonnet")
 
+        assert isinstance(exc_info.value, ProviderError)
         assert exc_info.value.context["provider"] == "anthropic"
 
-    async def test_rate_limit_retry_after_extracted(self):
+    async def test_rate_limit_retry_after_extracted(self) -> None:
         import litellm as _litellm
 
         driver = _make_driver()
-        exc = _litellm.RateLimitError(
+        exc = _litellm.RateLimitError(  # type: ignore[attr-defined]
             message="Rate limited",
             model="test",
             llm_provider="anthropic",
         )
-        exc.headers = {"retry-after": "30"}
+        exc.headers = {"retry-after": "30"}  # type: ignore[attr-defined]
 
         with patch(
             _PATCH_ACOMPLETION,
@@ -529,17 +541,17 @@ class TestExceptionMapping:
 
         assert exc_info.value.retry_after == 30.0
 
-    async def test_rate_limit_retry_after_case_insensitive(self):
+    async def test_rate_limit_retry_after_case_insensitive(self) -> None:
         """Header lookup is case-insensitive per HTTP semantics."""
         import litellm as _litellm
 
         driver = _make_driver()
-        exc = _litellm.RateLimitError(
+        exc = _litellm.RateLimitError(  # type: ignore[attr-defined]
             message="Rate limited",
             model="test",
             llm_provider="anthropic",
         )
-        exc.headers = {"Retry-After": "15"}
+        exc.headers = {"Retry-After": "15"}  # type: ignore[attr-defined]
 
         with patch(
             _PATCH_ACOMPLETION,
@@ -551,12 +563,12 @@ class TestExceptionMapping:
 
         assert exc_info.value.retry_after == 15.0
 
-    async def test_rate_limit_no_headers(self):
+    async def test_rate_limit_no_headers(self) -> None:
         """No headers attribute yields retry_after=None."""
         import litellm as _litellm
 
         driver = _make_driver()
-        exc = _litellm.RateLimitError(
+        exc = _litellm.RateLimitError(  # type: ignore[attr-defined]
             message="Rate limited",
             model="test",
             llm_provider="anthropic",
@@ -572,17 +584,17 @@ class TestExceptionMapping:
 
         assert exc_info.value.retry_after is None
 
-    async def test_rate_limit_non_numeric_retry_after(self):
+    async def test_rate_limit_non_numeric_retry_after(self) -> None:
         """Non-numeric retry-after gracefully returns None."""
         import litellm as _litellm
 
         driver = _make_driver()
-        exc = _litellm.RateLimitError(
+        exc = _litellm.RateLimitError(  # type: ignore[attr-defined]
             message="Rate limited",
             model="test",
             llm_provider="anthropic",
         )
-        exc.headers = {
+        exc.headers = {  # type: ignore[attr-defined]
             "retry-after": "Wed, 21 Oct 2025 07:28:00 GMT",
         }
 
@@ -596,7 +608,7 @@ class TestExceptionMapping:
 
         assert exc_info.value.retry_after is None
 
-    async def test_unknown_exception_maps_to_internal(self):
+    async def test_unknown_exception_maps_to_internal(self) -> None:
         driver = _make_driver()
 
         with patch(
@@ -613,14 +625,14 @@ class TestExceptionMapping:
                     "sonnet",
                 )
 
-    async def test_stream_exception_during_iteration(self):
+    async def test_stream_exception_during_iteration(self) -> None:
         import litellm as _litellm
 
         driver = _make_driver()
 
-        async def _failing_stream():
+        async def _failing_stream() -> AsyncIterator[MagicMock]:
             yield make_stream_chunk(content="Hi")
-            raise _litellm.Timeout(
+            raise _litellm.Timeout(  # type: ignore[attr-defined]
                 message="Stream timed out",
                 model="test",
                 llm_provider="anthropic",
@@ -639,7 +651,7 @@ class TestExceptionMapping:
                 async for _ in stream:
                     pass
 
-    async def test_stream_exception_before_iteration(self):
+    async def test_stream_exception_before_iteration(self) -> None:
         """Stream setup failure maps to ProviderError."""
         import litellm as _litellm
 
@@ -648,7 +660,7 @@ class TestExceptionMapping:
             _PATCH_ACOMPLETION,
             new_callable=AsyncMock,
         ) as m:
-            m.side_effect = _litellm.AuthenticationError(
+            m.side_effect = _litellm.AuthenticationError(  # type: ignore[attr-defined]
                 message="Invalid key",
                 model="test",
                 llm_provider="anthropic",
@@ -656,7 +668,7 @@ class TestExceptionMapping:
             with pytest.raises(AuthenticationError):
                 await driver.stream(_user_message(), "sonnet")
 
-    async def test_response_mapping_error_wrapped_as_provider_error(self):
+    async def test_response_mapping_error_wrapped_as_provider_error(self) -> None:
         """Errors during response mapping are caught, not leaked raw."""
         from unittest.mock import MagicMock
 
@@ -678,7 +690,7 @@ class TestExceptionMapping:
 
 @pytest.mark.unit
 class TestGetModelCapabilities:
-    async def test_basic_capabilities(self):
+    async def test_basic_capabilities(self) -> None:
         driver = _make_driver()
         model_info = {
             "max_output_tokens": 8192,
@@ -702,7 +714,7 @@ class TestGetModelCapabilities:
         assert caps.cost_per_1k_input == 0.003
         assert caps.cost_per_1k_output == 0.015
 
-    async def test_capabilities_fallback_on_litellm_error(self):
+    async def test_capabilities_fallback_on_litellm_error(self) -> None:
         driver = _make_driver()
 
         with patch(
@@ -714,7 +726,7 @@ class TestGetModelCapabilities:
         assert caps.model_id == "claude-sonnet-4-6"
         assert caps.max_output_tokens == 4096
 
-    async def test_streaming_capability_from_model_info(self):
+    async def test_streaming_capability_from_model_info(self) -> None:
         """supports_streaming reads from model info, not hard-coded."""
         driver = _make_driver()
         model_info = {
@@ -731,7 +743,7 @@ class TestGetModelCapabilities:
         assert caps.supports_streaming is False
         assert caps.supports_streaming_tool_calls is False
 
-    async def test_streaming_tool_calls_requires_both(self):
+    async def test_streaming_tool_calls_requires_both(self) -> None:
         """supports_streaming_tool_calls needs streaming AND tools."""
         driver = _make_driver()
         model_info = {
@@ -748,7 +760,7 @@ class TestGetModelCapabilities:
         assert caps.supports_streaming is True
         assert caps.supports_streaming_tool_calls is False
 
-    async def test_max_output_capped_at_context(self):
+    async def test_max_output_capped_at_context(self) -> None:
         config = make_provider_config(
             models=(
                 ProviderModelConfig(
@@ -776,7 +788,7 @@ class TestGetModelCapabilities:
 # ── Helpers ──────────────────────────────────────────────────────
 
 
-def _litellm_exc_kwargs(exc_name: str) -> dict:
+def _litellm_exc_kwargs(exc_name: str) -> dict[str, str]:
     """Build constructor kwargs for litellm exceptions."""
     return {
         "message": f"Test {exc_name}",

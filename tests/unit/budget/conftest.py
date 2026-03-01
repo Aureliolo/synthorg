@@ -27,20 +27,20 @@ from ai_company.budget.spending_summary import (
 # ── Factories ──────────────────────────────────────────────────────
 
 
-class BudgetAlertConfigFactory(ModelFactory):
+class BudgetAlertConfigFactory(ModelFactory[BudgetAlertConfig]):
     __model__ = BudgetAlertConfig
     warn_at = 75
     critical_at = 90
     hard_stop_at = 100
 
 
-class AutoDowngradeConfigFactory(ModelFactory):
+class AutoDowngradeConfigFactory(ModelFactory[AutoDowngradeConfig]):
     __model__ = AutoDowngradeConfig
     enabled = False
     downgrade_map = ()
 
 
-class BudgetConfigFactory(ModelFactory):
+class BudgetConfigFactory(ModelFactory[BudgetConfig]):
     __model__ = BudgetConfig
     total_monthly = 100.0
     per_task_limit = 5.0
@@ -49,44 +49,44 @@ class BudgetConfigFactory(ModelFactory):
     auto_downgrade = AutoDowngradeConfigFactory
 
 
-class TeamBudgetFactory(ModelFactory):
+class TeamBudgetFactory(ModelFactory[TeamBudget]):
     __model__ = TeamBudget
     budget_percent = 10.0
 
 
-class DepartmentBudgetFactory(ModelFactory):
+class DepartmentBudgetFactory(ModelFactory[DepartmentBudget]):
     __model__ = DepartmentBudget
     budget_percent = 25.0
     teams = ()
 
 
-class BudgetHierarchyFactory(ModelFactory):
+class BudgetHierarchyFactory(ModelFactory[BudgetHierarchy]):
     __model__ = BudgetHierarchy
     departments = ()
 
 
-class CostRecordFactory(ModelFactory):
+class CostRecordFactory(ModelFactory[CostRecord]):
     __model__ = CostRecord
     input_tokens = 1000
     output_tokens = 500
     cost_usd = 0.05
 
 
-class PeriodSpendingFactory(ModelFactory):
+class PeriodSpendingFactory(ModelFactory[PeriodSpending]):
     __model__ = PeriodSpending
     start = datetime(2026, 2, 1, tzinfo=UTC)
     end = datetime(2026, 3, 1, tzinfo=UTC)
 
 
-class AgentSpendingFactory(ModelFactory):
+class AgentSpendingFactory(ModelFactory[AgentSpending]):
     __model__ = AgentSpending
 
 
-class DepartmentSpendingFactory(ModelFactory):
+class DepartmentSpendingFactory(ModelFactory[DepartmentSpending]):
     __model__ = DepartmentSpending
 
 
-class SpendingSummaryFactory(ModelFactory):
+class SpendingSummaryFactory(ModelFactory[SpendingSummary]):
     __model__ = SpendingSummary
     period = PeriodSpendingFactory
     by_agent = ()

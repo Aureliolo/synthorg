@@ -21,7 +21,7 @@ from ai_company.providers.models import (
 # ── Factories ──────────────────────────────────────────────────────
 
 
-class TokenUsageFactory(ModelFactory):
+class TokenUsageFactory(ModelFactory[TokenUsage]):
     __model__ = TokenUsage
     input_tokens = 100
     output_tokens = 50
@@ -29,32 +29,32 @@ class TokenUsageFactory(ModelFactory):
     cost_usd = 0.001
 
 
-class ToolDefinitionFactory(ModelFactory):
+class ToolDefinitionFactory(ModelFactory[ToolDefinition]):
     __model__ = ToolDefinition
     name = "get_weather"
     description = "Get current weather for a location"
-    parameters_schema = {  # type: ignore[var-annotated]  # noqa: RUF012
+    parameters_schema = {  # noqa: RUF012
         "type": "object",
         "properties": {"location": {"type": "string"}},
         "required": ["location"],
     }
 
 
-class ToolCallFactory(ModelFactory):
+class ToolCallFactory(ModelFactory[ToolCall]):
     __model__ = ToolCall
     id = "call_001"
     name = "get_weather"
-    arguments = {"location": "London"}  # type: ignore[var-annotated]  # noqa: RUF012
+    arguments = {"location": "London"}  # noqa: RUF012
 
 
-class ToolResultFactory(ModelFactory):
+class ToolResultFactory(ModelFactory[ToolResult]):
     __model__ = ToolResult
     tool_call_id = "call_001"
     content = "Sunny, 22°C"
     is_error = False
 
 
-class ChatMessageFactory(ModelFactory):
+class ChatMessageFactory(ModelFactory[ChatMessage]):
     __model__ = ChatMessage
     role = MessageRole.USER
     content = "Hello"
@@ -62,7 +62,7 @@ class ChatMessageFactory(ModelFactory):
     tool_result = None
 
 
-class CompletionConfigFactory(ModelFactory):
+class CompletionConfigFactory(ModelFactory[CompletionConfig]):
     __model__ = CompletionConfig
     temperature = 0.7
     max_tokens = 1024
@@ -71,7 +71,7 @@ class CompletionConfigFactory(ModelFactory):
     timeout = None
 
 
-class CompletionResponseFactory(ModelFactory):
+class CompletionResponseFactory(ModelFactory[CompletionResponse]):
     __model__ = CompletionResponse
     content = "Hello! How can I help you?"
     tool_calls = ()
@@ -81,7 +81,7 @@ class CompletionResponseFactory(ModelFactory):
     provider_request_id = None
 
 
-class StreamChunkFactory(ModelFactory):
+class StreamChunkFactory(ModelFactory[StreamChunk]):
     __model__ = StreamChunk
     event_type = StreamEventType.CONTENT_DELTA
     content = "Hello"
@@ -90,7 +90,7 @@ class StreamChunkFactory(ModelFactory):
     error_message = None
 
 
-class ModelCapabilitiesFactory(ModelFactory):
+class ModelCapabilitiesFactory(ModelFactory[ModelCapabilities]):
     __model__ = ModelCapabilities
     model_id = "test-model"
     provider = "test-provider"

@@ -22,12 +22,12 @@ class TestBudgetAlertLevel:
 
     def test_values_are_strings(self) -> None:
         """Verify StrEnum produces string values."""
-        assert BudgetAlertLevel.NORMAL == "normal"
-        assert BudgetAlertLevel.WARNING == "warning"
-        assert BudgetAlertLevel.CRITICAL == "critical"
-        assert BudgetAlertLevel.HARD_STOP == "hard_stop"
+        assert BudgetAlertLevel.NORMAL.value == "normal"
+        assert BudgetAlertLevel.WARNING.value == "warning"
+        assert BudgetAlertLevel.CRITICAL.value == "critical"
+        assert BudgetAlertLevel.HARD_STOP.value == "hard_stop"
 
     def test_membership(self) -> None:
         """Verify string-based membership check works."""
-        assert "normal" in BudgetAlertLevel.__members__.values()
-        assert "warning" in BudgetAlertLevel.__members__.values()
+        assert "normal" in [m.value for m in BudgetAlertLevel]
+        assert "warning" in [m.value for m in BudgetAlertLevel]
