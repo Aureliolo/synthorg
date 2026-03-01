@@ -212,7 +212,7 @@ The goal is to ensure all external reviewer feedback is resolved before consider
 After pushing, check CI status on the PR:
 
 ```bash
-gh pr checks NUMBER --watch --fail-fast 2>/dev/null || gh pr checks NUMBER
+gh pr checks NUMBER --watch --fail-fast || gh pr checks NUMBER
 ```
 
 If CI checks are failing:
