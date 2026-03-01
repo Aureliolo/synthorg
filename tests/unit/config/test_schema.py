@@ -133,12 +133,24 @@ class TestProviderConfig:
 
 @pytest.mark.unit
 class TestRoutingRuleConfig:
-    def test_minimal(self) -> None:
-        r = RoutingRuleConfig(preferred_model="sonnet")
+    def test_minimal_with_task_type(self) -> None:
+        r = RoutingRuleConfig(preferred_model="sonnet", task_type="dev")
         assert r.preferred_model == "sonnet"
         assert r.role_level is None
-        assert r.task_type is None
+        assert r.task_type == "dev"
         assert r.fallback is None
+
+    def test_minimal_with_role_level(self) -> None:
+        r = RoutingRuleConfig(
+            preferred_model="sonnet",
+            role_level=SeniorityLevel.SENIOR,
+        )
+        assert r.role_level == SeniorityLevel.SENIOR
+        assert r.task_type is None
+
+    def test_no_matcher_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="at least"):
+            RoutingRuleConfig(preferred_model="sonnet")
 
     def test_full(self) -> None:
         r = RoutingRuleConfig(
@@ -180,7 +192,12 @@ class TestRoutingConfig:
 
     def test_with_rules(self) -> None:
         r = RoutingConfig(
-            rules=(RoutingRuleConfig(preferred_model="sonnet"),),
+            rules=(
+                RoutingRuleConfig(
+                    preferred_model="sonnet",
+                    task_type="dev",
+                ),
+            ),
             fallback_chain=("sonnet",),
         )
         assert len(r.rules) == 1
@@ -337,7 +354,12 @@ class TestRootConfig:
             RootConfig(
                 company_name="X",
                 routing=RoutingConfig(
-                    rules=(RoutingRuleConfig(preferred_model="nonexistent"),),
+                    rules=(
+                        RoutingRuleConfig(
+                            preferred_model="nonexistent",
+                            task_type="dev",
+                        ),
+                    ),
                 ),
             )
 
@@ -352,6 +374,7 @@ class TestRootConfig:
                         RoutingRuleConfig(
                             preferred_model="fast",
                             fallback="nonexistent",
+                            task_type="dev",
                         ),
                     ),
                 ),
@@ -395,7 +418,12 @@ class TestRootConfig:
                     "provider_b": ProviderConfig(models=(model_b,)),
                 },
                 routing=RoutingConfig(
-                    rules=(RoutingRuleConfig(preferred_model="fast"),),
+                    rules=(
+                        RoutingRuleConfig(
+                            preferred_model="fast",
+                            task_type="dev",
+                        ),
+                    ),
                 ),
             )
 
@@ -405,7 +433,12 @@ class TestRootConfig:
             company_name="X",
             providers={"p": ProviderConfig(models=(model,))},
             routing=RoutingConfig(
-                rules=(RoutingRuleConfig(preferred_model="fast"),),
+                rules=(
+                    RoutingRuleConfig(
+                        preferred_model="fast",
+                        task_type="dev",
+                    ),
+                ),
                 fallback_chain=("m1",),
             ),
         )

@@ -10,8 +10,8 @@ class ResolvedModel(BaseModel):
     """A fully resolved model reference.
 
     Attributes:
-        provider_name: Provider that owns this model (e.g. ``"anthropic"``).
-        model_id: Concrete model identifier (e.g. ``"claude-sonnet-4-6"``).
+        provider_name: Provider that owns this model (e.g. ``"acme-provider"``).
+        model_id: Concrete model identifier (e.g. ``"acme-large-001"``).
         alias: Short alias used in routing rules, if any.
         cost_per_1k_input: Cost per 1 000 input tokens in USD.
         cost_per_1k_output: Cost per 1 000 output tokens in USD.
@@ -39,6 +39,11 @@ class ResolvedModel(BaseModel):
         description="Maximum context window size in tokens",
     )
 
+    @property
+    def total_cost_per_1k(self) -> float:
+        """Total cost per 1 000 tokens (input + output)."""
+        return self.cost_per_1k_input + self.cost_per_1k_output
+
 
 class RoutingRequest(BaseModel):
     """Inputs to a routing decision.
@@ -47,7 +52,11 @@ class RoutingRequest(BaseModel):
         agent_level: Seniority level of the requesting agent.
         task_type: Task type label (e.g. ``"development"``).
         model_override: Explicit model reference for manual routing.
-        remaining_budget: Remaining cost budget in USD.
+        remaining_budget: Per-request cost ceiling in USD.  Compared against
+            each model's ``total_cost_per_1k`` (i.e.
+            ``cost_per_1k_input + cost_per_1k_output``) to filter
+            models that exceed this threshold.  This is **not** a
+            total session budget — use the budget module for that.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -67,7 +76,10 @@ class RoutingRequest(BaseModel):
     remaining_budget: float | None = Field(
         default=None,
         ge=0.0,
-        description="Remaining cost budget in USD",
+        description=(
+            "Per-request cost ceiling (compared against model "
+            "total_cost_per_1k). Not a total session budget."
+        ),
     )
 
 

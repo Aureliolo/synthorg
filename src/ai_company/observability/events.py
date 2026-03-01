@@ -87,6 +87,7 @@ ROUTING_FALLBACK_ATTEMPTED: Final[str] = "routing.fallback.attempted"
 ROUTING_FALLBACK_EXHAUSTED: Final[str] = "routing.fallback.exhausted"
 ROUTING_NO_RULE_MATCHED: Final[str] = "routing.rule.no_match"
 ROUTING_BUDGET_EXCEEDED: Final[str] = "routing.budget.exceeded"
+ROUTING_SELECTION_FAILED: Final[str] = "routing.selection.failed"
 ROUTING_STRATEGY_UNKNOWN: Final[str] = "routing.strategy.unknown"
 
 # ── Role catalog ──────────────────────────────────────────────────

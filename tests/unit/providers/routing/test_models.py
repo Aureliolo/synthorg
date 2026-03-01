@@ -92,6 +92,22 @@ class TestRoutingRequest:
         ):
             RoutingRequest(remaining_budget=-1.0)
 
+    def test_blank_task_type_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            RoutingRequest(task_type="")
+
+    def test_whitespace_task_type_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            RoutingRequest(task_type="   ")
+
+    def test_blank_model_override_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            RoutingRequest(model_override="")
+
+    def test_whitespace_model_override_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            RoutingRequest(model_override="  ")
+
     def test_with_all_fields(self) -> None:
         request = RoutingRequest(
             agent_level=SeniorityLevel.SENIOR,

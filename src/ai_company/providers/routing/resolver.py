@@ -35,7 +35,7 @@ class ModelResolver:
         Build from config::
 
             resolver = ModelResolver.from_config(root_config.providers)
-            model = resolver.resolve("sonnet")
+            model = resolver.resolve("medium")
     """
 
     def __init__(
@@ -82,7 +82,7 @@ class ModelResolver:
                     if ref is None:
                         continue
                     existing = index.get(ref)
-                    if existing is not None and existing.model_id != resolved.model_id:
+                    if existing is not None and existing != resolved:
                         logger.error(
                             ROUTING_MODEL_RESOLUTION_FAILED,
                             ref=ref,
@@ -176,6 +176,6 @@ class ModelResolver:
         return tuple(
             sorted(
                 self.all_models(),
-                key=lambda m: m.cost_per_1k_input + m.cost_per_1k_output,
+                key=lambda m: m.total_cost_per_1k,
             ),
         )

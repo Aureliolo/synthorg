@@ -6,7 +6,7 @@ singletons registered in a module-level mapping.
 """
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, NoReturn, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, NoReturn, Protocol, runtime_checkable
 
 from ai_company.core.role_catalog import get_seniority_info
 from ai_company.observability import get_logger
@@ -22,6 +22,14 @@ from .errors import ModelResolutionError, NoAvailableModelError
 from .models import ResolvedModel, RoutingDecision, RoutingRequest
 
 logger = get_logger(__name__)
+
+# ── Strategy name constants ──────────────────────────────────────
+
+STRATEGY_NAME_MANUAL: Final[str] = "manual"
+STRATEGY_NAME_ROLE_BASED: Final[str] = "role_based"
+STRATEGY_NAME_COST_AWARE: Final[str] = "cost_aware"
+STRATEGY_NAME_SMART: Final[str] = "smart"
+STRATEGY_NAME_CHEAPEST: Final[str] = "cheapest"
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -84,6 +92,7 @@ def _try_resolve_with_fallback(
         NoAvailableModelError: If all candidates are exhausted.
     """
     tried: list[str] = []
+    seen: set[str] = set()
 
     # Try the primary ref
     model = resolver.resolve_safe(ref)
@@ -91,26 +100,31 @@ def _try_resolve_with_fallback(
         return model, tuple(tried)
 
     tried.append(ref)
+    seen.add(ref)
     logger.debug(ROUTING_FALLBACK_ATTEMPTED, ref=ref, source="primary")
 
-    # Try rule-level fallback
-    if rule is not None and rule.fallback is not None:
+    # Try rule-level fallback (skip if already tried)
+    if rule is not None and rule.fallback is not None and rule.fallback not in seen:
         model = resolver.resolve_safe(rule.fallback)
         if model is not None:
             return model, tuple(tried)
         tried.append(rule.fallback)
+        seen.add(rule.fallback)
         logger.debug(
             ROUTING_FALLBACK_ATTEMPTED,
             ref=rule.fallback,
             source="rule_fallback",
         )
 
-    # Walk global fallback chain
+    # Walk global fallback chain (skip refs already tried)
     for chain_ref in config.fallback_chain:
+        if chain_ref in seen:
+            continue
         model = resolver.resolve_safe(chain_ref)
         if model is not None:
             return model, tuple(tried)
         tried.append(chain_ref)
+        seen.add(chain_ref)
         logger.debug(
             ROUTING_FALLBACK_ATTEMPTED,
             ref=chain_ref,
@@ -153,18 +167,25 @@ def _walk_fallback_chain(
         Tuple of ``(resolved_model, fallbacks_tried)`` if any model
         resolves, or ``None`` if the entire chain is exhausted.
     """
+    if not config.fallback_chain:
+        logger.debug(
+            ROUTING_FALLBACK_EXHAUSTED,
+            source="global_chain",
+            reason="no fallback chain configured",
+        )
+        return None
+
     tried: list[str] = []
     for ref in config.fallback_chain:
         model = resolver.resolve_safe(ref)
         if model is not None:
             return model, tuple(tried)
         tried.append(ref)
-    if tried:
-        logger.warning(
-            ROUTING_FALLBACK_EXHAUSTED,
-            tried=tried,
-            source="global_chain",
-        )
+    logger.warning(
+        ROUTING_FALLBACK_EXHAUSTED,
+        tried=tried,
+        source="global_chain",
+    )
     return None
 
 
@@ -195,12 +216,11 @@ def _cheapest_within_budget(
         return all_models[0], False
 
     for model in all_models:
-        total = model.cost_per_1k_input + model.cost_per_1k_output
-        if total <= remaining_budget:
+        if model.total_cost_per_1k <= remaining_budget:
             return model, False
 
     cheapest = all_models[0]
-    cheapest_cost = cheapest.cost_per_1k_input + cheapest.cost_per_1k_output
+    cheapest_cost = cheapest.total_cost_per_1k
     logger.warning(
         ROUTING_BUDGET_EXCEEDED,
         remaining_budget=remaining_budget,
@@ -237,6 +257,12 @@ def _try_task_type_rules(
                     ),
                     fallbacks_tried=tried,
                 )
+    logger.debug(
+        ROUTING_NO_RULE_MATCHED,
+        task_type=request.task_type,
+        strategy=strategy_name,
+        source="task_type_rules",
+    )
     return None
 
 
@@ -269,6 +295,12 @@ def _try_role_rules(
                     ),
                     fallbacks_tried=tried,
                 )
+    logger.debug(
+        ROUTING_NO_RULE_MATCHED,
+        agent_level=request.agent_level.value,
+        strategy=strategy_name,
+        source="role_rules",
+    )
     return None
 
 
@@ -312,7 +344,7 @@ class ManualStrategy:
     @property
     def name(self) -> str:
         """Return strategy name."""
-        return "manual"
+        return STRATEGY_NAME_MANUAL
 
     def select(
         self,
@@ -357,7 +389,7 @@ class RoleBasedStrategy:
     @property
     def name(self) -> str:
         """Return strategy name."""
-        return "role_based"
+        return STRATEGY_NAME_ROLE_BASED
 
     def select(
         self,
@@ -457,7 +489,7 @@ class CostAwareStrategy:
     @property
     def name(self) -> str:
         """Return strategy name."""
-        return "cost_aware"
+        return STRATEGY_NAME_COST_AWARE
 
     def select(
         self,
@@ -508,7 +540,7 @@ class SmartStrategy:
     @property
     def name(self) -> str:
         """Return strategy name."""
-        return "smart"
+        return STRATEGY_NAME_SMART
 
     def select(
         self,
@@ -550,6 +582,13 @@ class SmartStrategy:
         request: RoutingRequest,
         resolver: ModelResolver,
     ) -> RoutingDecision | None:
+        """Attempt to resolve model_override as a soft preference.
+
+        Unlike ``ManualStrategy`` (which raises on unresolvable overrides),
+        SmartStrategy treats overrides as best-effort hints — if the
+        override cannot be resolved, the strategy falls through to the
+        next signal in the priority chain rather than failing the request.
+        """
         if request.model_override is None:
             return None
         model = resolver.resolve_safe(request.model_override)
@@ -571,7 +610,7 @@ class SmartStrategy:
         request: RoutingRequest,
         resolver: ModelResolver,
     ) -> RoutingDecision | None:
-        if not resolver.all_models_sorted_by_cost():
+        if not resolver.all_models():
             return None
         model, budget_exceeded = _cheapest_within_budget(
             resolver,
@@ -605,13 +644,13 @@ class SmartStrategy:
     def _raise_exhausted(self) -> NoReturn:
         logger.warning(
             ROUTING_FALLBACK_EXHAUSTED,
-            strategy="smart",
+            strategy=STRATEGY_NAME_SMART,
             reason="all signals exhausted",
         )
         msg = "SmartStrategy: no model available from any signal"
         raise NoAvailableModelError(
             msg,
-            context={"strategy": "smart"},
+            context={"strategy": STRATEGY_NAME_SMART},
         )
 
 
@@ -624,11 +663,11 @@ _SMART = SmartStrategy()
 
 STRATEGY_MAP: Mapping[str, RoutingStrategy] = MappingProxyType(
     {
-        "manual": _MANUAL,
-        "role_based": _ROLE_BASED,
-        "cost_aware": _COST_AWARE,
-        "smart": _SMART,
-        "cheapest": _COST_AWARE,
+        STRATEGY_NAME_MANUAL: _MANUAL,
+        STRATEGY_NAME_ROLE_BASED: _ROLE_BASED,
+        STRATEGY_NAME_COST_AWARE: _COST_AWARE,
+        STRATEGY_NAME_SMART: _SMART,
+        STRATEGY_NAME_CHEAPEST: _COST_AWARE,  # Alias for cost_aware
     },
 )
 """Maps config strategy names to singleton instances."""

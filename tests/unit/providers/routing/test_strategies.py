@@ -400,3 +400,72 @@ class TestSmartStrategy:
 
         assert decision.resolved_model.alias == "small"
         assert "exceed" in decision.reason.lower()
+
+    def test_override_soft_fail_falls_through(
+        self,
+        resolver: ModelResolver,
+        standard_routing_config: RoutingConfig,
+    ) -> None:
+        """Unresolvable override in SmartStrategy falls through (not raise)."""
+        strategy = SmartStrategy()
+        request = RoutingRequest(
+            model_override="nonexistent",
+            agent_level=SeniorityLevel.JUNIOR,
+        )
+
+        decision = strategy.select(
+            request,
+            standard_routing_config,
+            resolver,
+        )
+
+        # Should NOT have used the override signal
+        assert "override" not in decision.reason.lower()
+        # Should have fallen through to a role rule or seniority default
+        assert decision.resolved_model is not None
+
+    def test_full_three_stage_fallback(
+        self,
+        three_model_provider: dict[str, ProviderConfig],
+    ) -> None:
+        """Primary miss -> rule fallback miss -> global chain hit."""
+        provider = ProviderConfig(
+            models=(
+                three_model_provider["test-provider"].models[0],  # haiku only
+            ),
+        )
+        resolver = ModelResolver.from_config({"test-provider": provider})
+        config = RoutingConfig(
+            strategy="role_based",
+            rules=(
+                RoutingRuleConfig(
+                    role_level=SeniorityLevel.SENIOR,
+                    preferred_model="nonexistent",
+                    fallback="also-nonexistent",
+                ),
+            ),
+            fallback_chain=("small",),
+        )
+        request = RoutingRequest(agent_level=SeniorityLevel.SENIOR)
+
+        decision = RoleBasedStrategy().select(request, config, resolver)
+
+        assert decision.resolved_model.alias == "small"
+        assert "nonexistent" in decision.fallbacks_tried
+        assert "also-nonexistent" in decision.fallbacks_tried
+
+
+class TestCostAwareMidRangeBudget:
+    def test_mid_range_budget_picks_cheapest_within(
+        self,
+        resolver: ModelResolver,
+    ) -> None:
+        """Budget large enough for haiku+sonnet but not opus picks haiku."""
+        # haiku total=0.006, sonnet total=0.018, opus total=0.090
+        strategy = CostAwareStrategy()
+        request = RoutingRequest(remaining_budget=0.02)
+
+        decision = strategy.select(request, RoutingConfig(), resolver)
+
+        assert decision.resolved_model.alias == "small"
+        assert "exceed" not in decision.reason.lower()

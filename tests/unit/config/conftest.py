@@ -41,6 +41,7 @@ class ProviderConfigFactory(ModelFactory[ProviderConfig]):
 
 class RoutingRuleConfigFactory(ModelFactory[RoutingRuleConfig]):
     __model__ = RoutingRuleConfig
+    task_type = "test"
 
 
 class RoutingConfigFactory(ModelFactory[RoutingConfig]):

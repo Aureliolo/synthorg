@@ -35,6 +35,12 @@ from .models import (
 from .protocol import CompletionProvider
 from .registry import ProviderRegistry
 from .routing import (
+    STRATEGY_MAP,
+    STRATEGY_NAME_CHEAPEST,
+    STRATEGY_NAME_COST_AWARE,
+    STRATEGY_NAME_MANUAL,
+    STRATEGY_NAME_ROLE_BASED,
+    STRATEGY_NAME_SMART,
     CostAwareStrategy,
     ManualStrategy,
     ModelResolutionError,
@@ -52,6 +58,12 @@ from .routing import (
 )
 
 __all__ = [
+    "STRATEGY_MAP",
+    "STRATEGY_NAME_CHEAPEST",
+    "STRATEGY_NAME_COST_AWARE",
+    "STRATEGY_NAME_MANUAL",
+    "STRATEGY_NAME_ROLE_BASED",
+    "STRATEGY_NAME_SMART",
     "AuthenticationError",
     "BaseCompletionProvider",
     "ChatMessage",

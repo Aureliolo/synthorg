@@ -98,6 +98,9 @@ class ProviderConfig(BaseModel):
 class RoutingRuleConfig(BaseModel):
     """A single model routing rule.
 
+    At least one of ``role_level`` or ``task_type`` must be set so the
+    rule can match incoming requests.
+
     Attributes:
         role_level: Seniority level this rule applies to.
         task_type: Task type this rule applies to.
@@ -122,6 +125,13 @@ class RoutingRuleConfig(BaseModel):
         default=None,
         description="Fallback model alias or ID",
     )
+
+    @model_validator(mode="after")
+    def _at_least_one_matcher(self) -> Self:
+        if self.role_level is None and self.task_type is None:
+            msg = "Routing rule must specify at least role_level or task_type"
+            raise ValueError(msg)
+        return self
 
 
 class RoutingConfig(BaseModel):

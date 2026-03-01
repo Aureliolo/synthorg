@@ -108,6 +108,35 @@ class TestResolverAllModels:
         assert models[-1].alias == "large"
 
 
+class TestResolverCollisionDetection:
+    def test_duplicate_ref_different_models_raises(self) -> None:
+        """Two providers with same alias but different models should raise."""
+        providers = {
+            "test-provider-a": ProviderConfig(
+                models=(
+                    ProviderModelConfig(
+                        id="test-model-a",
+                        alias="shared-alias",
+                        cost_per_1k_input=0.001,
+                        cost_per_1k_output=0.005,
+                    ),
+                ),
+            ),
+            "test-provider-b": ProviderConfig(
+                models=(
+                    ProviderModelConfig(
+                        id="test-model-b",
+                        alias="shared-alias",
+                        cost_per_1k_input=0.002,
+                        cost_per_1k_output=0.010,
+                    ),
+                ),
+            ),
+        }
+        with pytest.raises(ModelResolutionError, match="Duplicate model reference"):
+            ModelResolver.from_config(providers)
+
+
 class TestResolverImmutability:
     def test_index_is_immutable(self, resolver: ModelResolver) -> None:
         with pytest.raises(TypeError):

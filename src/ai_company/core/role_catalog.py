@@ -440,6 +440,11 @@ def get_seniority_info(level: SeniorityLevel) -> SeniorityInfo:
     """
     info = _SENIORITY_INFO_BY_LEVEL.get(level)
     if info is None:
+        logger.warning(
+            ROLE_LOOKUP_MISS,
+            level=level.value,
+            reason="no seniority info in catalog",
+        )
         msg = f"No seniority info for level {level!r}; catalog may be incomplete"
         raise LookupError(msg)
     return info

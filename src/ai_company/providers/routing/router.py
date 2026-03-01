@@ -10,10 +10,11 @@ from ai_company.observability import get_logger
 from ai_company.observability.events import (
     ROUTING_DECISION_MADE,
     ROUTING_ROUTER_BUILT,
+    ROUTING_SELECTION_FAILED,
     ROUTING_STRATEGY_UNKNOWN,
 )
 
-from .errors import UnknownStrategyError
+from .errors import RoutingError, UnknownStrategyError
 from .resolver import ModelResolver
 from .strategies import STRATEGY_MAP
 
@@ -106,11 +107,25 @@ class ModelRouter:
             ModelResolutionError: If a required model cannot be found.
             NoAvailableModelError: If all candidates are exhausted.
         """
-        decision = self._strategy.select(
-            request,
-            self._config,
-            self._resolver,
-        )
+        try:
+            decision = self._strategy.select(
+                request,
+                self._config,
+                self._resolver,
+            )
+        except RoutingError:
+            logger.warning(
+                ROUTING_SELECTION_FAILED,
+                strategy=self._strategy.name,
+                agent_level=(
+                    request.agent_level.value
+                    if request.agent_level is not None
+                    else None
+                ),
+                task_type=request.task_type,
+                model_override=request.model_override,
+            )
+            raise
         logger.info(
             ROUTING_DECISION_MADE,
             strategy=decision.strategy_used,
