@@ -75,9 +75,12 @@ src/ai_company/
 
 ## CI
 
-- **Jobs**: lint (ruff) + type-check (mypy) + test (pytest + coverage) run in parallel → ci-pass (gate)
+- **Jobs**: lint (ruff) + type-check (mypy src/ tests/) + test (pytest + coverage) run in parallel → ci-pass (gate)
 - **Matrix**: Python 3.14
-- **Dependabot**: daily uv + github-actions updates, auto-merge for patch/minor
+- **Dependabot**: daily uv + github-actions updates, grouped minor/patch, no auto-merge
+- **Secret scanning**: gitleaks workflow on push/PR + weekly schedule
+- **Dependency review**: license deny-list (AGPL), PR comment summaries
+- **Coverage**: Codecov integration (replaces artifact-only uploads)
 
 ## Dependencies
 
