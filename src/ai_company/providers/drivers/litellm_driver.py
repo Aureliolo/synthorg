@@ -64,6 +64,8 @@ from ai_company.providers.models import (
     StreamChunk,
     ToolCall,
 )
+from ai_company.providers.resilience.rate_limiter import RateLimiter
+from ai_company.providers.resilience.retry import RetryHandler
 
 from .mappers import (
     extract_tool_calls,
@@ -123,6 +125,17 @@ class LiteLLMDriver(BaseCompletionProvider):
         provider_name: str,
         config: ProviderConfig,
     ) -> None:
+        retry_handler = (
+            RetryHandler(config.retry) if config.retry.max_retries > 0 else None
+        )
+        rate_limiter = RateLimiter(
+            config.rate_limiter,
+            provider_name=provider_name,
+        )
+        super().__init__(
+            retry_handler=retry_handler,
+            rate_limiter=rate_limiter if rate_limiter.is_enabled else None,
+        )
         self._provider_name = provider_name
         self._config = config
         self._model_lookup = self._build_model_lookup(config.models)

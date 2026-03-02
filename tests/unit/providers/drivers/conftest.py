@@ -5,7 +5,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ai_company.config.schema import ProviderConfig, ProviderModelConfig
+from ai_company.config.schema import (
+    ProviderConfig,
+    ProviderModelConfig,
+    RateLimiterConfig,
+    RetryConfig,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -13,14 +18,20 @@ if TYPE_CHECKING:
 # ── Sample ProviderConfig ────────────────────────────────────────
 
 
-def make_provider_config(
+def make_provider_config(  # noqa: PLR0913
     *,
     driver: str = "litellm",
     api_key: str | None = "sk-test-key",
     base_url: str | None = None,
     models: tuple[ProviderModelConfig, ...] | None = None,
+    retry: RetryConfig | None = None,
+    rate_limiter: RateLimiterConfig | None = None,
 ) -> ProviderConfig:
-    """Build a ``ProviderConfig`` for testing."""
+    """Build a ``ProviderConfig`` for testing.
+
+    Defaults to retries disabled (``max_retries=0``) so driver tests
+    exercise exception mapping in isolation.
+    """
     if models is None:
         models = (
             ProviderModelConfig(
@@ -43,6 +54,8 @@ def make_provider_config(
         api_key=api_key,
         base_url=base_url,
         models=models,
+        retry=retry or RetryConfig(max_retries=0),
+        rate_limiter=rate_limiter or RateLimiterConfig(),
     )
 
 

@@ -54,6 +54,14 @@ PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED: Final[str] = (
 PROVIDER_TOOL_CALL_MISSING_FUNCTION: Final[str] = "provider.tool_call.missing_function"
 PROVIDER_FINISH_REASON_UNKNOWN: Final[str] = "provider.finish_reason.unknown"
 
+# ── Provider resilience ──────────────────────────────────────────
+
+PROVIDER_RETRY_ATTEMPT: Final[str] = "provider.retry.attempt"
+PROVIDER_RETRY_EXHAUSTED: Final[str] = "provider.retry.exhausted"
+PROVIDER_RETRY_SKIPPED: Final[str] = "provider.retry.skipped"
+PROVIDER_RATE_LIMITER_THROTTLED: Final[str] = "provider.rate_limiter.throttled"
+PROVIDER_RATE_LIMITER_PAUSED: Final[str] = "provider.rate_limiter.paused"
+
 # ── Task state machine ────────────────────────────────────────────
 
 TASK_STATUS_CHANGED: Final[str] = "task.status.changed"

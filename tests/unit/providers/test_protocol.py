@@ -84,6 +84,7 @@ class _ConcreteProvider(BaseCompletionProvider):
     """Concrete subclass of BaseCompletionProvider for testing."""
 
     def __init__(self) -> None:
+        super().__init__()
         self._caps = ModelCapabilitiesFactory.build()
 
     async def _do_complete(
@@ -126,6 +127,7 @@ class _RecordingProvider(BaseCompletionProvider):
     """Records all arguments passed to hooks for forwarding verification."""
 
     def __init__(self) -> None:
+        super().__init__()
         self._caps = ModelCapabilitiesFactory.build()
         self.last_complete_kwargs: dict[str, object] = {}
         self.last_stream_kwargs: dict[str, object] = {}

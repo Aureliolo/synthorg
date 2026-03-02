@@ -17,7 +17,7 @@ from litellm.types.utils import (  # type: ignore[attr-defined]
     Usage,
 )
 
-from ai_company.config.schema import ProviderConfig, ProviderModelConfig
+from ai_company.config.schema import ProviderConfig, ProviderModelConfig, RetryConfig
 from ai_company.providers.enums import MessageRole
 from ai_company.providers.models import (
     ChatMessage,
@@ -52,6 +52,7 @@ def make_anthropic_config() -> dict[str, ProviderConfig]:
                     max_context=200_000,
                 ),
             ),
+            retry=RetryConfig(max_retries=0),
         ),
     }
 
@@ -79,6 +80,7 @@ def make_openrouter_config() -> dict[str, ProviderConfig]:
                     max_context=128_000,
                 ),
             ),
+            retry=RetryConfig(max_retries=0),
         ),
     }
 
@@ -99,6 +101,7 @@ def make_ollama_config() -> dict[str, ProviderConfig]:
                     max_context=128_000,
                 ),
             ),
+            retry=RetryConfig(max_retries=0),
         ),
     }
 

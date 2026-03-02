@@ -1,13 +1,14 @@
 """Abstract base class for completion providers.
 
 Concrete adapters subclass ``BaseCompletionProvider`` and implement
-the ``_do_*`` hooks.  The base class handles input validation and
-provides a cost-computation helper.
+the ``_do_*`` hooks.  The base class handles input validation,
+automatic retry, rate limiting, and provides a cost-computation helper.
 """
 
 import math
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator  # noqa: TC003
+from collections.abc import AsyncIterator, Callable, Coroutine  # noqa: TC003
+from typing import Any, TypeVar
 
 from ai_company.constants import BUDGET_ROUNDING_PRECISION
 from ai_company.observability import get_logger
@@ -19,7 +20,7 @@ from ai_company.observability.events import (
 )
 
 from .capabilities import ModelCapabilities  # noqa: TC001
-from .errors import InvalidRequestError
+from .errors import InvalidRequestError, RateLimitError
 from .models import (
     ChatMessage,
     CompletionConfig,
@@ -28,8 +29,12 @@ from .models import (
     TokenUsage,
     ToolDefinition,
 )
+from .resilience.rate_limiter import RateLimiter  # noqa: TC001
+from .resilience.retry import RetryHandler  # noqa: TC001
 
 logger = get_logger(__name__)
+
+_T = TypeVar("_T")
 
 
 class BaseCompletionProvider(ABC):
@@ -42,9 +47,24 @@ class BaseCompletionProvider(ABC):
     * ``_do_get_model_capabilities`` — capability lookup
 
     The public methods validate inputs before delegating to hooks.
+    When a ``retry_handler`` and/or ``rate_limiter`` are provided,
+    calls are automatically wrapped with retry and rate-limiting logic.
     A static ``compute_cost`` helper is available for subclasses to
     build ``TokenUsage`` records from raw token counts.
+
+    Args:
+        retry_handler: Optional retry handler for transient errors.
+        rate_limiter: Optional client-side rate limiter.
     """
+
+    def __init__(
+        self,
+        *,
+        retry_handler: RetryHandler | None = None,
+        rate_limiter: RateLimiter | None = None,
+    ) -> None:
+        self._retry_handler = retry_handler
+        self._rate_limiter = rate_limiter
 
     # -- Public API ---------------------------------------------------
 
@@ -58,6 +78,8 @@ class BaseCompletionProvider(ABC):
     ) -> CompletionResponse:
         """Validate inputs, delegate to ``_do_complete``.
 
+        Applies rate limiting and retry automatically when configured.
+
         Args:
             messages: Conversation history.
             model: Model identifier to use.
@@ -65,11 +87,11 @@ class BaseCompletionProvider(ABC):
             config: Optional completion parameters.
 
         Returns:
-            The completion response returned by the subclass
-            ``_do_complete`` hook, unmodified.
+            The completion response.
 
         Raises:
             InvalidRequestError: If messages are empty or model is blank.
+            RetryExhaustedError: If all retries are exhausted.
         """
         self._validate_messages(messages)
         self._validate_model(model)
@@ -78,13 +100,18 @@ class BaseCompletionProvider(ABC):
             model=model,
             message_count=len(messages),
         )
-        try:
-            result = await self._do_complete(
+
+        async def _attempt() -> CompletionResponse:
+            return await self._rate_limited_call(
+                self._do_complete,
                 messages,
                 model,
                 tools=tools,
                 config=config,
             )
+
+        try:
+            result = await self._resilient_execute(_attempt)
         except Exception:
             logger.error(PROVIDER_CALL_ERROR, model=model, exc_info=True)
             raise
@@ -104,6 +131,9 @@ class BaseCompletionProvider(ABC):
     ) -> AsyncIterator[StreamChunk]:
         """Validate inputs, delegate to ``_do_stream``.
 
+        Only the initial connection setup is retried; mid-stream errors
+        are not retried.
+
         Args:
             messages: Conversation history.
             model: Model identifier to use.
@@ -111,11 +141,11 @@ class BaseCompletionProvider(ABC):
             config: Optional completion parameters.
 
         Returns:
-            Async iterator of stream chunks returned by the subclass
-            ``_do_stream`` hook, unmodified.
+            Async iterator of stream chunks.
 
         Raises:
             InvalidRequestError: If messages are empty or model is blank.
+            RetryExhaustedError: If all retries are exhausted.
         """
         self._validate_messages(messages)
         self._validate_model(model)
@@ -124,13 +154,18 @@ class BaseCompletionProvider(ABC):
             model=model,
             message_count=len(messages),
         )
-        try:
-            return await self._do_stream(
+
+        async def _attempt() -> AsyncIterator[StreamChunk]:
+            return await self._rate_limited_call(
+                self._do_stream,
                 messages,
                 model,
                 tools=tools,
                 config=config,
             )
+
+        try:
+            return await self._resilient_execute(_attempt)
         except Exception:
             logger.error(PROVIDER_CALL_ERROR, model=model, exc_info=True)
             raise
@@ -207,6 +242,56 @@ class BaseCompletionProvider(ABC):
             ProviderError: All errors must use the provider error hierarchy.
         """
         ...
+
+    # -- Resilience helpers -------------------------------------------
+
+    async def _resilient_execute(
+        self,
+        attempt_fn: Callable[[], Coroutine[Any, Any, _T]],
+    ) -> _T:
+        """Execute *attempt_fn* with retry if configured.
+
+        Args:
+            attempt_fn: Zero-argument async callable for a single attempt.
+
+        Returns:
+            The return value of *attempt_fn*.
+        """
+        if self._retry_handler is not None:
+            return await self._retry_handler.execute(attempt_fn)
+        return await attempt_fn()
+
+    async def _rate_limited_call(
+        self,
+        func: Callable[..., Coroutine[Any, Any, _T]],
+        *args: Any,
+        **kwargs: Any,
+    ) -> _T:
+        """Wrap a single call with rate limiter acquire/release.
+
+        On ``RateLimitError`` with ``retry_after``, pauses the rate
+        limiter before re-raising so subsequent attempts respect the
+        provider's backoff hint.
+
+        Args:
+            func: Async callable to invoke.
+            *args: Positional arguments for *func*.
+            **kwargs: Keyword arguments for *func*.
+
+        Returns:
+            The return value of *func*.
+        """
+        if self._rate_limiter is not None:
+            await self._rate_limiter.acquire()
+        try:
+            return await func(*args, **kwargs)
+        except RateLimitError as exc:
+            if self._rate_limiter is not None and exc.retry_after is not None:
+                self._rate_limiter.pause(exc.retry_after)
+            raise
+        finally:
+            if self._rate_limiter is not None:
+                self._rate_limiter.release()
 
     # -- Helpers ------------------------------------------------------
 

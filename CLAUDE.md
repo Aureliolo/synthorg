@@ -70,6 +70,16 @@ src/ai_company/
 - **DEBUG** for object creation, internal flow, entry/exit of key functions
 - Pure data models, enums, and re-exports do NOT need logging
 
+## Resilience
+
+- **All provider calls** go through `BaseCompletionProvider` which applies retry + rate limiting automatically
+- **Never** implement retry logic in driver subclasses or calling code — it's handled by the base class
+- **RetryConfig** and **RateLimiterConfig** are set per-provider in `ProviderConfig`
+- **Retryable errors** (`is_retryable=True`): `RateLimitError`, `ProviderTimeoutError`, `ProviderConnectionError`, `ProviderInternalError`
+- **Non-retryable errors** raise immediately without retry
+- **`RetryExhaustedError`** signals that all retries failed — the engine layer catches this to trigger fallback chains
+- **Rate limiter** respects `RateLimitError.retry_after` from providers — automatically pauses future requests
+
 ## Testing
 
 - **Markers**: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.e2e`, `@pytest.mark.slow`
