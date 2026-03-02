@@ -376,7 +376,7 @@ def _expand_agents(
                 )
 
         # Model config (raw dict for AgentConfig).
-        model_tier = agent.get("model", "sonnet")
+        model_tier = agent.get("model", "medium")
         agent_dict["model"] = {"provider": "default", "model_id": model_tier}
 
         expanded.append(agent_dict)

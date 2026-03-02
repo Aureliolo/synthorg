@@ -144,3 +144,28 @@ class TestModelRouterRoute:
 
         with pytest.raises(NoAvailableModelError):
             router.route(RoutingRequest())
+
+    def test_logs_warning_on_routing_failure(
+        self,
+        three_model_provider: dict[str, ProviderConfig],
+    ) -> None:
+        """When route() raises, a warning log should be emitted."""
+        from ai_company.observability.events import ROUTING_SELECTION_FAILED
+
+        config = RoutingConfig(strategy="manual")
+        router = ModelRouter(config, three_model_provider)
+
+        with (
+            structlog.testing.capture_logs() as cap,
+            pytest.raises(ModelResolutionError),
+        ):
+            router.route(RoutingRequest())
+
+        warnings = [
+            e
+            for e in cap
+            if e.get("event") == ROUTING_SELECTION_FAILED
+            and e.get("log_level") == "warning"
+        ]
+        assert len(warnings) == 1
+        assert warnings[0]["strategy"] == "manual"

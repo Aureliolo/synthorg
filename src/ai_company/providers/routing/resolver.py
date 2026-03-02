@@ -7,8 +7,8 @@ immutability after construction.
 """
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
+from ai_company.config.schema import ProviderConfig  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events import (
     ROUTING_MODEL_RESOLUTION_FAILED,
@@ -20,9 +20,6 @@ from .errors import ModelResolutionError
 from .models import ResolvedModel
 
 logger = get_logger(__name__)
-
-if TYPE_CHECKING:
-    from ai_company.config.schema import ProviderConfig
 
 
 class ModelResolver:
@@ -53,6 +50,39 @@ class ModelResolver:
             dict(index),
         )
 
+    @staticmethod
+    def _index_ref(
+        index: dict[str, ResolvedModel],
+        ref: str,
+        resolved: ResolvedModel,
+        provider_name: str,
+    ) -> None:
+        """Register a model ref, raising on collision."""
+        existing = index.get(ref)
+        if existing is not None and existing != resolved:
+            logger.error(
+                ROUTING_MODEL_RESOLUTION_FAILED,
+                ref=ref,
+                existing_provider=existing.provider_name,
+                existing_model_id=existing.model_id,
+                new_provider=provider_name,
+                new_model_id=resolved.model_id,
+            )
+            msg = (
+                f"Duplicate model reference {ref!r}: "
+                f"{existing.provider_name}/{existing.model_id} "
+                f"vs {provider_name}/{resolved.model_id}"
+            )
+            raise ModelResolutionError(
+                msg,
+                context={
+                    "ref": ref,
+                    "existing_provider": existing.provider_name,
+                    "new_provider": provider_name,
+                },
+            )
+        index[ref] = resolved
+
     @classmethod
     def from_config(
         cls,
@@ -81,30 +111,7 @@ class ModelResolver:
                 for ref in (model_config.id, model_config.alias):
                     if ref is None:
                         continue
-                    existing = index.get(ref)
-                    if existing is not None and existing != resolved:
-                        logger.error(
-                            ROUTING_MODEL_RESOLUTION_FAILED,
-                            ref=ref,
-                            existing_provider=existing.provider_name,
-                            existing_model_id=existing.model_id,
-                            new_provider=provider_name,
-                            new_model_id=resolved.model_id,
-                        )
-                        msg = (
-                            f"Duplicate model reference {ref!r}: "
-                            f"{existing.provider_name}/{existing.model_id} "
-                            f"vs {provider_name}/{resolved.model_id}"
-                        )
-                        raise ModelResolutionError(
-                            msg,
-                            context={
-                                "ref": ref,
-                                "existing_provider": existing.provider_name,
-                                "new_provider": provider_name,
-                            },
-                        )
-                    index[ref] = resolved
+                    cls._index_ref(index, ref, resolved, provider_name)
 
         logger.info(
             ROUTING_RESOLVER_BUILT,

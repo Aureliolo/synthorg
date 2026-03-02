@@ -240,7 +240,7 @@ class TestCostAwareStrategy:
 
         assert decision.resolved_model.alias == "large"
 
-    def test_budget_filters_models(self, resolver: ModelResolver) -> None:
+    def test_tight_budget_picks_cheapest(self, resolver: ModelResolver) -> None:
         """With tight budget, should still return cheapest."""
         strategy = CostAwareStrategy()
         request = RoutingRequest(remaining_budget=0.01)
@@ -453,6 +453,75 @@ class TestSmartStrategy:
         assert decision.resolved_model.alias == "small"
         assert "nonexistent" in decision.fallbacks_tried
         assert "also-nonexistent" in decision.fallbacks_tried
+
+
+class TestGlobalFallbackChain:
+    def test_skips_unresolvable_entries(
+        self,
+        three_model_provider: dict[str, ProviderConfig],
+    ) -> None:
+        """Global chain should skip unknown refs and resolve the first valid."""
+        provider = ProviderConfig(
+            models=(three_model_provider["test-provider"].models[0],),  # haiku only
+        )
+        resolver = ModelResolver.from_config({"test-provider": provider})
+        config = RoutingConfig(
+            strategy="smart",
+            fallback_chain=("nonexistent-a", "nonexistent-b", "small"),
+        )
+        request = RoutingRequest()
+
+        decision = SmartStrategy().select(request, config, resolver)
+
+        assert decision.resolved_model.alias == "small"
+
+    def test_role_based_exhausted_non_empty_chain(
+        self,
+        three_model_provider: dict[str, ProviderConfig],
+    ) -> None:
+        """RoleBasedStrategy raises when all fallback_chain refs are invalid."""
+        provider = ProviderConfig(
+            models=(three_model_provider["test-provider"].models[0],),  # haiku only
+        )
+        resolver = ModelResolver.from_config({"test-provider": provider})
+        config = RoutingConfig(
+            strategy="role_based",
+            fallback_chain=("nonexistent-x", "nonexistent-y"),
+        )
+        request = RoutingRequest(agent_level=SeniorityLevel.C_SUITE)
+
+        with pytest.raises(NoAvailableModelError):
+            RoleBasedStrategy().select(request, config, resolver)
+
+
+class TestRuleFallbackDedup:
+    def test_dedup_when_rule_fallback_equals_primary(
+        self,
+        three_model_provider: dict[str, ProviderConfig],
+    ) -> None:
+        """When rule fallback equals preferred, it should not retry."""
+        provider = ProviderConfig(
+            models=(three_model_provider["test-provider"].models[0],),  # haiku only
+        )
+        resolver = ModelResolver.from_config({"test-provider": provider})
+        config = RoutingConfig(
+            strategy="role_based",
+            rules=(
+                RoutingRuleConfig(
+                    role_level=SeniorityLevel.SENIOR,
+                    preferred_model="nonexistent",
+                    fallback="nonexistent",  # same as preferred
+                ),
+            ),
+            fallback_chain=("small",),
+        )
+        request = RoutingRequest(agent_level=SeniorityLevel.SENIOR)
+
+        decision = RoleBasedStrategy().select(request, config, resolver)
+
+        assert decision.resolved_model.alias == "small"
+        # "nonexistent" should appear only once in tried (deduped)
+        assert decision.fallbacks_tried.count("nonexistent") == 1
 
 
 class TestCostAwareMidRangeBudget:

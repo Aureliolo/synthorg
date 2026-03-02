@@ -71,6 +71,31 @@ class TestResolvedModel:
         with pytest.raises(ValidationError):
             ResolvedModel(provider_name="test", model_id="")
 
+    def test_total_cost_per_1k(self) -> None:
+        model = ResolvedModel(
+            provider_name="test",
+            model_id="test-model",
+            cost_per_1k_input=0.003,
+            cost_per_1k_output=0.015,
+        )
+        assert model.total_cost_per_1k == pytest.approx(0.018)
+
+    def test_inf_cost_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ResolvedModel(
+                provider_name="test",
+                model_id="test-model",
+                cost_per_1k_input=float("inf"),
+            )
+
+    def test_nan_cost_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ResolvedModel(
+                provider_name="test",
+                model_id="test-model",
+                cost_per_1k_input=float("nan"),
+            )
+
 
 class TestRoutingRequest:
     def test_build_from_factory(self) -> None:

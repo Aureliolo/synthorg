@@ -4,8 +4,7 @@ Constructed from ``RoutingConfig`` and a provider config dict.
 Delegates to strategy implementations.
 """
 
-from typing import TYPE_CHECKING
-
+from ai_company.config.schema import ProviderConfig, RoutingConfig  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events import (
     ROUTING_DECISION_MADE,
@@ -15,15 +14,11 @@ from ai_company.observability.events import (
 )
 
 from .errors import RoutingError, UnknownStrategyError
+from .models import RoutingDecision, RoutingRequest  # noqa: TC001
 from .resolver import ModelResolver
 from .strategies import STRATEGY_MAP
 
 logger = get_logger(__name__)
-
-if TYPE_CHECKING:
-    from ai_company.config.schema import ProviderConfig, RoutingConfig
-
-    from .models import RoutingDecision, RoutingRequest
 
 
 class ModelRouter:
@@ -113,10 +108,12 @@ class ModelRouter:
                 self._config,
                 self._resolver,
             )
-        except RoutingError:
+        except RoutingError as exc:
             logger.warning(
                 ROUTING_SELECTION_FAILED,
                 strategy=self._strategy.name,
+                error_type=type(exc).__name__,
+                error=str(exc),
                 agent_level=(
                     request.agent_level.value
                     if request.agent_level is not None

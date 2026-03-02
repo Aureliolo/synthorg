@@ -76,7 +76,7 @@ class TestTemplateAgentConfig:
         assert a.role == "Backend Developer"
         assert a.name == ""
         assert a.level == SeniorityLevel.MID
-        assert a.model == "sonnet"
+        assert a.model == "medium"
         assert a.personality_preset is None
         assert a.department is None
 

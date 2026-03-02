@@ -85,7 +85,7 @@ class TemplateAgentConfig(BaseModel):
         name: Agent name (may contain Jinja2 placeholders; empty triggers
             auto-generation).
         level: Seniority level override.
-        model: Model tier alias (e.g. ``"opus"``, ``"sonnet"``, ``"haiku"``).
+        model: Model tier alias (e.g. ``"large"``, ``"medium"``, ``"small"``).
         personality_preset: Named personality preset from the presets registry.
         department: Department override (``None`` defaults to
             ``"engineering"`` during rendering).
@@ -99,7 +99,7 @@ class TemplateAgentConfig(BaseModel):
         default=SeniorityLevel.MID,
         description="Seniority level",
     )
-    model: str = Field(default="sonnet", description="Model tier alias")
+    model: str = Field(default="medium", description="Model tier alias")
     personality_preset: NotBlankStr | None = Field(
         default=None,
         description="Named personality preset",

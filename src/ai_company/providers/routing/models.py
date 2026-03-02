@@ -18,7 +18,7 @@ class ResolvedModel(BaseModel):
         max_context: Maximum context window size in tokens.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     provider_name: NotBlankStr = Field(description="Provider name")
     model_id: NotBlankStr = Field(description="Model identifier")
@@ -47,6 +47,13 @@ class ResolvedModel(BaseModel):
 
 class RoutingRequest(BaseModel):
     """Inputs to a routing decision.
+
+    Not all fields are used by every strategy:
+
+    - **ManualStrategy** requires ``model_override``.
+    - **RoleBasedStrategy** requires ``agent_level``.
+    - **CostAwareStrategy** uses ``task_type`` and ``remaining_budget``.
+    - **SmartStrategy** uses all fields in priority order.
 
     Attributes:
         agent_level: Seniority level of the requesting agent.
