@@ -164,6 +164,40 @@ This captures committed-but-unpushed changes AND any uncommitted/untracked work 
 | **logging-audit** | Any `src_py` changed | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **resilience-audit** | Files in `src/ai_company/providers/` changed | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **security-reviewer** | Files in `src/ai_company/api/`, `src/ai_company/security/`, `src/ai_company/tools/`, `src/ai_company/config/` changed, OR diff contains `subprocess`, `eval`, `exec`, `pickle`, `yaml.load`, auth/credential patterns | `everything-claude-code:security-reviewer` |
+| **docs-consistency** | **ALWAYS** — runs on every PR regardless of change type | `pr-review-toolkit:code-reviewer` (custom prompt below) |
+
+### Docs-consistency custom prompt
+
+The docs-consistency agent ensures project documentation never drifts from the codebase. It runs on **every PR** — code changes, config changes, docs-only changes, all of them.
+
+**What to check:**
+
+Read the current `DESIGN_SPEC.md`, `CLAUDE.md`, and `README.md` in full. Then compare them against the PR diff and the actual current state of the codebase. Flag anything that is now inaccurate, incomplete, or missing.
+
+**DESIGN_SPEC.md (CRITICAL — this is the project's source of truth):**
+1. §15.3 Project Structure — does it match the actual files/directories under `src/ai_company/`? Any new modules missing? Any listed files that no longer exist? (CRITICAL)
+2. §15.5 Pydantic Model Conventions — do the documented conventions match how models are actually written in code? (MAJOR)
+3. §15.4 Key Design Decisions — are technology choices and rationale still accurate? (MAJOR)
+4. §3.1 Agent Identity Card — does the config/runtime split documentation match the actual model code? (MAJOR)
+5. §10.2 Cost Tracking — does the implementation note match the actual `TokenUsage` and spending summary models? (MAJOR)
+6. §11.1.1 Tool Execution Model — does it match actual `ToolInvoker` behavior? (MAJOR)
+7. §15.2 Technology Stack — are versions, libraries, and rationale current? (MEDIUM)
+8. Any other section that describes behavior, structure, or patterns that have changed (MAJOR)
+
+**CLAUDE.md (CRITICAL — this guides all future development):**
+9. Code Conventions — do documented patterns match what's actually in the code? New patterns used but not documented? Documented patterns no longer followed? (CRITICAL)
+10. Logging section — are event import paths, logger patterns, and rules accurate? (CRITICAL)
+11. Resilience section — does it match the actual retry/rate-limit implementation? (MAJOR)
+12. Package Structure — does it match the actual directory layout? (MAJOR)
+13. Testing section — are markers, commands, and conventions current? (MEDIUM)
+14. Any other section that gives instructions that don't match reality (CRITICAL)
+
+**README.md:**
+15. Installation, usage, and getting-started instructions — still accurate? (MAJOR)
+16. Feature descriptions — do they match what's actually built? (MEDIUM)
+17. Links — any dead links or references to things that moved? (MINOR)
+
+**Key principle:** It is better to flag a false positive than to let documentation drift silently. When in doubt, flag it.
 
 ### Logging-audit custom prompt
 

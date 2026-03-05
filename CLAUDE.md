@@ -66,8 +66,10 @@ src/ai_company/
 - **PEP 758 except syntax**: use `except A, B:` (no parentheses) — ruff enforces this on Python 3.14
 - **Type hints**: all public functions, mypy strict mode
 - **Docstrings**: Google style, required on public classes/functions (enforced by ruff D rules)
-- **Immutability**: create new objects, never mutate existing ones
-- **Models**: Pydantic v2 (`BaseModel`, `model_validator`, `ConfigDict`)
+- **Immutability**: create new objects, never mutate existing ones. For `dict`/`list` fields in frozen Pydantic models, use `MappingProxyType` wrapping at construction (not `deepcopy` on access). Deep-copy only at system boundaries (e.g. passing data to `tool.execute()`, serializing for persistence).
+- **Config vs runtime state**: frozen Pydantic models for config/identity; separate mutable-via-copy models (using `model_copy(update=...)`) for runtime state that evolves (e.g. agent execution state, task progress). Never mix static config fields with mutable runtime fields in one model.
+- **Models**: Pydantic v2 (`BaseModel`, `model_validator`, `computed_field`, `ConfigDict`). Use `@computed_field` for derived values (e.g. `total_tokens = input + output`) instead of storing + validating redundant fields. Use `NotBlankStr` (from `core.types`) for all non-optional identifier/name fields instead of manual whitespace validators.
+- **Async concurrency**: use `asyncio.TaskGroup` for fan-out/fan-in parallel operations (e.g. multiple tool invocations, parallel agent calls). Prefer structured concurrency over bare `create_task`.
 - **Line length**: 88 characters (ruff)
 - **Functions**: < 50 lines, files < 800 lines
 - **Errors**: handle explicitly, never silently swallow
@@ -78,7 +80,7 @@ src/ai_company/
 - **Every module** with business logic MUST have: `from ai_company.observability import get_logger` then `logger = get_logger(__name__)`
 - **Never** use `import logging` / `logging.getLogger()` / `print()` in application code
 - **Variable name**: always `logger` (not `_logger`, not `log`)
-- **Event names**: always use constants from `ai_company.observability.events`
+- **Event names**: always use constants from the appropriate domain module under `ai_company.observability.events/` (e.g. `events.provider`, `events.budget`, `events.tool`, `events.config`, `events.template`, `events.routing`, `events.task`, `events.prompt`)
 - **Structured kwargs**: always `logger.info(EVENT, key=value)` — never `logger.info("msg %s", val)`
 - **All error paths** must log at WARNING or ERROR with context before raising
 - **All state transitions** must log at INFO

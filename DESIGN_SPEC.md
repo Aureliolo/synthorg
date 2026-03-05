@@ -101,9 +101,15 @@ Company
 
 ### 3.1 Agent Identity Card
 
-Every agent has a comprehensive identity:
+Every agent has a comprehensive identity. At the implementation level, agent data is split into two layers:
+
+- **Config (immutable)**: identity, personality, skills, model preferences, tool permissions, authority. Defined at hire time, changed only by explicit reconfiguration. Represented as frozen Pydantic models.
+- **Runtime state (mutable-via-copy)**: current status, active task, conversation history, execution metrics. Evolves during agent operation. Represented as Pydantic models using `model_copy(update=...)` for state transitions — never mutated in place.
+
+All non-optional identifier and name fields (id, name, role, department, etc.) use the `NotBlankStr` validated type from `core.types`.
 
 ```yaml
+# --- Config layer (frozen after creation) ---
 agent:
   id: "uuid"
   name: "Sarah Chen"
@@ -157,7 +163,12 @@ agent:
     can_delegate_to: ["junior_developers"]
     budget_limit: 5.00          # max USD per task
   hiring_date: "2026-02-27"
-  status: "active"              # active, on_leave, terminated
+
+# --- Runtime state layer (evolves via model_copy) ---
+# status: "active"              # active, on_leave, terminated
+# current_task_id: "task-456"
+# turn_count: 12
+# accumulated_cost_usd: 1.23
 ```
 
 ### 3.2 Seniority & Authority Levels
@@ -827,10 +838,13 @@ Every API call is tracked (illustrative schema):
   "model": "claude-sonnet-4-6",
   "input_tokens": 4500,
   "output_tokens": 1200,
+  "total_tokens": 5700,
   "cost_usd": 0.0315,
   "timestamp": "2026-02-27T10:30:00Z"
 }
 ```
+
+> **Implementation note:** `total_tokens` is a `@computed_field` (`input_tokens + output_tokens`), not stored separately. Spending summary models (`AgentSpending`, `DepartmentSpending`, `PeriodSpending`) share a common `_SpendingTotals` base for `total_cost`, `total_input_tokens`, `total_output_tokens`, and `record_count` fields.
 
 ### 10.3 CFO Agent Responsibilities
 
@@ -883,6 +897,12 @@ budget:
 | **Analytics** | Metrics, dashboards, reporting | Data analysts, CFO |
 | **Deployment** | CI/CD, container management | DevOps, SRE |
 | **MCP Servers** | Any MCP-compatible tool | Configurable per agent |
+
+### 11.1.1 Tool Execution Model
+
+When the LLM requests multiple tool calls in a single turn, `ToolInvoker.invoke_all` executes them **in parallel** using `asyncio.TaskGroup` for structured concurrency. Individual errors are captured as `ToolResult(is_error=True)` without cancelling sibling invocations.
+
+Tool parameter schemas (`parameters_schema`) are exposed as read-only via `MappingProxyType` wrapping at construction time — not via `deepcopy` on each access. Deep copies are made only at system boundaries (e.g. when passing arguments to `tool.execute()`).
 
 ### 11.2 Tool Access Levels
 
@@ -1225,7 +1245,7 @@ Run: ai-company start acme-corp
 
 | Component | Technology | Rationale |
 |-----------|-----------|-----------|
-| **Language** | Python 3.12+ | Best AI/ML ecosystem, all major frameworks use it, LiteLLM/Mem0/MCP all Python-native. Claude Code writes Python well. |
+| **Language** | Python 3.14+ | Best AI/ML ecosystem, all major frameworks use it, LiteLLM/Mem0/MCP all Python-native. PEP 649 native lazy annotations, PEP 758 except syntax. |
 | **API Framework** | FastAPI | Async-native, WebSocket support, auto OpenAPI docs, high performance, type-safe with Pydantic |
 | **LLM Abstraction** | LiteLLM | 100+ providers, unified API, built-in cost tracking, retries/fallbacks |
 | **Agent Memory** | Mem0 + SQLite | Mem0 for semantic/episodic memory, SQLite for structured data. Upgrade to Postgres later |
@@ -1253,19 +1273,21 @@ ai-company/
 │       │   ├── loader.py           # YAML/JSON config loader
 │       │   └── defaults.py         # Default configurations
 │       ├── core/                    # Core domain models
-│       │   ├── agent.py            # Agent identity, lifecycle
+│       │   ├── agent.py            # Agent config (frozen) + runtime state (mutable-via-copy)
+│       │   ├── types.py            # Shared validated types (NotBlankStr, etc.)
 │       │   ├── company.py          # Company structure
 │       │   ├── department.py       # Department management
-│       │   ├── task.py             # Task model & lifecycle
+│       │   ├── task.py             # Task model & state machine
 │       │   ├── project.py          # Project management
 │       │   ├── artifact.py         # Produced work items
 │       │   └── message.py          # Communication messages
 │       ├── engine/                  # Core engines
-│       │   ├── agent_engine.py     # Agent execution loop
-│       │   ├── task_engine.py      # Task routing & scheduling
-│       │   ├── workflow_engine.py  # Workflow orchestration
-│       │   ├── meeting_engine.py   # Meeting coordination
-│       │   └── hr_engine.py        # Hiring, firing, performance
+│       │   ├── prompt.py           # System prompt builder (implemented)
+│       │   ├── agent_engine.py     # Agent execution loop (M3)
+│       │   ├── task_engine.py      # Task routing & scheduling (M3-M4)
+│       │   ├── workflow_engine.py  # Workflow orchestration (M4)
+│       │   ├── meeting_engine.py   # Meeting coordination (M4)
+│       │   └── hr_engine.py        # Hiring, firing, performance (M7)
 │       ├── communication/           # Inter-agent communication
 │       │   ├── bus.py              # Message bus implementation
 │       │   ├── channels.py         # Topic/channel management
@@ -1276,13 +1298,31 @@ ai-company/
 │       │   ├── retrieval.py        # Memory retrieval & ranking
 │       │   ├── consolidation.py    # Memory compression over time
 │       │   └── shared.py           # Shared knowledge base
+│       ├── observability/           # Structured logging & correlation
+│       │   ├── __init__.py         # get_logger() entry point
+│       │   ├── context.py          # Correlation ID tracking
+│       │   ├── events/             # Per-domain event constants
+│       │   │   ├── config.py       # config.* events
+│       │   │   ├── provider.py     # provider.* events
+│       │   │   ├── routing.py      # routing.* events
+│       │   │   ├── budget.py       # budget.* events
+│       │   │   ├── tool.py         # tool.* events
+│       │   │   ├── task.py         # task.* events
+│       │   │   ├── template.py     # template.* events
+│       │   │   └── prompt.py       # prompt.* events
+│       │   └── sinks.py            # Log output backends
 │       ├── providers/               # LLM provider abstraction
-│       │   ├── base.py             # Provider interface
-│       │   ├── litellm_provider.py # LiteLLM wrapper
-│       │   ├── router.py           # Model routing logic
-│       │   └── cost_tracker.py     # Per-call cost tracking
+│       │   ├── base.py             # BaseCompletionProvider (retry + rate limiting)
+│       │   ├── litellm_driver.py   # LiteLLM adapter
+│       │   ├── routing/            # Model routing (5 strategies)
+│       │   ├── models.py           # CompletionRequest/Response, TokenUsage, ToolCall/Result
+│       │   ├── capabilities.py     # Provider capability registry
+│       │   └── resilience/         # RetryHandler, RateLimiter
 │       ├── tools/                   # Tool/capability system
-│       │   ├── registry.py         # Tool registration
+│       │   ├── base.py             # BaseTool ABC, ToolExecutionResult
+│       │   ├── registry.py         # Immutable tool registry (MappingProxyType)
+│       │   ├── invoker.py          # Tool invocation + parallel execution (TaskGroup)
+│       │   ├── errors.py           # Tool error hierarchy
 │       │   ├── sandbox.py          # Sandboxed execution
 │       │   ├── file_system.py      # File operations
 │       │   ├── git_tools.py        # Git operations
@@ -1295,7 +1335,10 @@ ai-company/
 │       │   ├── audit.py            # Audit logging
 │       │   └── permissions.py      # Permission checking
 │       ├── budget/                  # Cost management
-│       │   ├── tracker.py          # Real-time cost tracking
+│       │   ├── cost_record.py      # CostRecord model (frozen)
+│       │   ├── cost_tracker.py     # CostTracker service (records + queries)
+│       │   ├── spending_summary.py # SpendingTotals base + Agent/Dept/Period summaries
+│       │   ├── hierarchy.py        # BudgetHierarchy, BudgetConfig
 │       │   ├── limits.py           # Budget enforcement
 │       │   ├── optimizer.py        # Cost optimization (CFO logic)
 │       │   └── reports.py          # Spending reports
@@ -1357,7 +1400,7 @@ ai-company/
 
 | Decision | Choice | Alternatives Considered | Rationale |
 |----------|--------|------------------------|-----------|
-| Language | Python | TypeScript, Go, Rust | AI ecosystem, LiteLLM/Mem0 are Python, Claude Code writes Python well |
+| Language | Python 3.14+ | TypeScript, Go, Rust | AI ecosystem, LiteLLM/Mem0 are Python, PEP 649 lazy annotations, PEP 758 except syntax |
 | API | FastAPI | Flask, Django, aiohttp | Async native, Pydantic integration, auto docs, WebSocket support |
 | LLM Layer | LiteLLM | Direct APIs, OpenRouter only | 100+ providers, cost tracking, fallbacks, load balancing built-in |
 | Memory | Mem0 + SQLite | Custom, ChromaDB, Pinecone | Production-proven (26% accuracy boost), supports all memory types, open-source |
@@ -1365,6 +1408,20 @@ ai-company/
 | Config | YAML + Pydantic | JSON, TOML, Python dicts | Human-friendly, strict validation, good IDE support |
 | CLI | Typer | Click, argparse, Fire | Built on Click, auto-completion, type hints |
 | Web UI | Vue 3 | React, Svelte, HTMX | Simpler than React for dashboards, good with FastAPI |
+
+### 15.5 Pydantic Model Conventions (M2.5)
+
+These conventions were established during the M0–M2 review cycle and apply to all models going forward:
+
+| Convention | Decision | Rationale |
+|------------|----------|-----------|
+| **Immutability strategy** | `MappingProxyType` at construction for dict fields; deep-copy only at system boundaries | `deepcopy` on every property access is O(n) overhead; MappingProxyType is O(1) and prevents accidental mutation. Pydantic `frozen=True` is confirmed shallow (pydantic#7784). |
+| **Config vs runtime split** | Frozen models for config/identity; `model_copy(update=...)` for runtime state transitions | Frozen models cannot represent evolving state without serialize/validate round-trips. Separate models keep config immutable while state is explicit. |
+| **Derived fields** | `@computed_field` instead of stored + validated | Eliminates redundant storage and impossible-to-fail validators (e.g. `total_tokens = input + output`). |
+| **String validation** | `NotBlankStr` type from `core.types` for all identifiers | Eliminates per-model `@model_validator` boilerplate for whitespace checks. One type, one validator, used everywhere. |
+| **Shared field groups** | Extract common field sets into base models (e.g. `_SpendingTotals`) | Prevents field duplication across spending summary models. Changes propagate from one place. |
+| **Event constants** | Per-domain modules under `observability/events/` | Single 140+ line `events.py` doesn't scale. Domain grouping makes imports precise and auditing easier. |
+| **Parallel tool execution** | `asyncio.TaskGroup` in `ToolInvoker.invoke_all` | Structured concurrency with proper cancellation semantics. Individual errors captured without cancelling siblings. |
 
 ---
 
