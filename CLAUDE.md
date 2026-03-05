@@ -8,6 +8,21 @@
 - **Layout**: `src/ai_company/` (src layout), `tests/` (unit/integration/e2e)
 - **Design**: [DESIGN_SPEC.md](DESIGN_SPEC.md) (full high-level spec)
 
+## Design Spec (MANDATORY)
+
+- **ALWAYS read `DESIGN_SPEC.md`** before implementing any feature or planning any issue
+- The design spec is the **starting point** for architecture, data models, and behavior
+- If implementation deviates from the spec (better approach found, scope evolved, etc.), **alert the user and explain why** — user decides whether to proceed or update the spec
+- Do NOT silently diverge — every deviation needs explicit user approval
+- When a spec section is referenced (e.g. "Section 10.2"), read that section verbatim before coding
+- When approved deviations occur, update `DESIGN_SPEC.md` to reflect the new reality
+
+## Planning (MANDATORY)
+
+- Every implementation plan must be **presented to the user** for accept/deny before coding starts
+- At **every phase** of planning and implementation, be critical — actively look for ways to improve the design in the spirit of what we're building (robustness, correctness, simplicity, future-proofing where it's free)
+- Surface improvements as suggestions, not silent changes — user decides
+
 ## Quick Commands
 
 ```bash
