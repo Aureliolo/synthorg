@@ -23,6 +23,7 @@ from ai_company.budget.spending_summary import (
     PeriodSpending,
     SpendingSummary,
 )
+from ai_company.budget.tracker import CostTracker
 
 __all__ = [
     "AgentSpending",
@@ -32,6 +33,7 @@ __all__ = [
     "BudgetConfig",
     "BudgetHierarchy",
     "CostRecord",
+    "CostTracker",
     "DepartmentBudget",
     "DepartmentSpending",
     "PeriodSpending",

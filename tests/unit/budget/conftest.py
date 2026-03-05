@@ -1,6 +1,7 @@
 """Unit test configuration and fixtures for budget models."""
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import pytest
 from polyfactory.factories.pydantic_factory import ModelFactory
@@ -23,6 +24,10 @@ from ai_company.budget.spending_summary import (
     PeriodSpending,
     SpendingSummary,
 )
+from ai_company.budget.tracker import CostTracker
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # ── Factories ──────────────────────────────────────────────────────
 
@@ -189,4 +194,66 @@ def sample_spending_summary() -> SpendingSummary:
         budget_total_monthly=100.0,
         budget_used_percent=75.5,
         alert_level=BudgetAlertLevel.WARNING,
+    )
+
+
+# ── CostTracker fixtures ─────────────────────────────────────────
+
+
+_DEPARTMENT_MAP: dict[str, str] = {
+    "alice": "Engineering",
+    "bob": "Engineering",
+    "carol": "Product",
+    "dave": "Operations",
+}
+
+
+@pytest.fixture
+def budget_config_for_tracker() -> BudgetConfig:
+    """Budget config with known thresholds for tracker tests."""
+    return BudgetConfig(
+        total_monthly=100.0,
+        alerts=BudgetAlertConfig(warn_at=75, critical_at=90, hard_stop_at=100),
+    )
+
+
+@pytest.fixture
+def department_resolver() -> Callable[[str], str | None]:
+    """Maps agent_id → department via a static lookup."""
+    return _DEPARTMENT_MAP.get
+
+
+@pytest.fixture
+def cost_tracker(
+    budget_config_for_tracker: BudgetConfig,
+    department_resolver: Callable[[str], str | None],
+) -> CostTracker:
+    """CostTracker wired with budget config and department resolver."""
+    return CostTracker(
+        budget_config=budget_config_for_tracker,
+        department_resolver=department_resolver,
+    )
+
+
+def make_cost_record(  # noqa: PLR0913
+    *,
+    agent_id: str = "alice",
+    task_id: str = "task-001",
+    provider: str = "test-provider",
+    model: str = "test-model-001",
+    input_tokens: int = 1000,
+    output_tokens: int = 500,
+    cost_usd: float = 0.05,
+    timestamp: datetime | None = None,
+) -> CostRecord:
+    """Build a CostRecord with sensible defaults."""
+    return CostRecord(
+        agent_id=agent_id,
+        task_id=task_id,
+        provider=provider,
+        model=model,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cost_usd=cost_usd,
+        timestamp=timestamp or datetime(2026, 2, 15, 12, 0, 0, tzinfo=UTC),
     )

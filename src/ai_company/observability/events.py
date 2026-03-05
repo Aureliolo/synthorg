@@ -98,6 +98,12 @@ ROUTING_BUDGET_EXCEEDED: Final[str] = "routing.budget.exceeded"
 ROUTING_SELECTION_FAILED: Final[str] = "routing.selection.failed"
 ROUTING_STRATEGY_UNKNOWN: Final[str] = "routing.strategy.unknown"
 
+# ── Budget lifecycle ──────────────────────────────────────────────
+
+BUDGET_RECORD_ADDED: Final[str] = "budget.record.added"
+BUDGET_SUMMARY_BUILT: Final[str] = "budget.summary.built"
+BUDGET_DEPARTMENT_RESOLVE_FAILED: Final[str] = "budget.department.resolve_failed"
+
 # ── Role catalog ──────────────────────────────────────────────────
 
 ROLE_LOOKUP_MISS: Final[str] = "role.lookup.miss"
