@@ -357,17 +357,19 @@ def _build_agent_spendings(
     for rec in filtered:
         by_agent[rec.agent_id].append(rec)
 
-    return [
-        AgentSpending(
-            agent_id=aid,
-            total_cost_usd=agg.cost,
-            total_input_tokens=agg.input_tokens,
-            total_output_tokens=agg.output_tokens,
-            record_count=agg.record_count,
+    result: list[AgentSpending] = []
+    for aid in sorted(by_agent):
+        agg = _aggregate(by_agent[aid])
+        result.append(
+            AgentSpending(
+                agent_id=aid,
+                total_cost_usd=agg.cost,
+                total_input_tokens=agg.input_tokens,
+                total_output_tokens=agg.output_tokens,
+                record_count=agg.record_count,
+            )
         )
-        for aid in sorted(by_agent)
-        if (agg := _aggregate(by_agent[aid])) is not None
-    ]
+    return result
 
 
 def _aggregate(

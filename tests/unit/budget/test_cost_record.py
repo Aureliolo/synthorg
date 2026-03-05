@@ -187,6 +187,20 @@ class TestCostRecord:
         assert record.cost_usd == 0.0
         assert record.input_tokens == 100
 
+    def test_naive_datetime_rejected(self) -> None:
+        """Reject naive (timezone-unaware) timestamps."""
+        with pytest.raises(ValidationError, match="timestamp"):
+            CostRecord(
+                agent_id="agent-1",
+                task_id="task-1",
+                provider="test",
+                model="test-model",
+                input_tokens=100,
+                output_tokens=50,
+                cost_usd=0.001,
+                timestamp=datetime(2026, 2, 27),  # noqa: DTZ001
+            )
+
     def test_frozen(self, sample_cost_record: CostRecord) -> None:
         """Ensure CostRecord is immutable (append-only pattern)."""
         with pytest.raises(ValidationError):
