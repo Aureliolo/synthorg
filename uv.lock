@@ -7,6 +7,7 @@ name = "ai-company"
 source = { editable = "." }
 dependencies = [
     { name = "jinja2" },
+    { name = "jsonschema" },
     { name = "litellm" },
     { name = "pydantic" },
     { name = "pyyaml" },
@@ -44,6 +45,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "jinja2", specifier = "==3.1.6" },
+    { name = "jsonschema", specifier = "==4.26.0" },
     { name = "litellm", specifier = "==1.82.0" },
     { name = "pydantic", specifier = "==2.12.5" },
     { name = "pyyaml", specifier = "==6.0.3" },

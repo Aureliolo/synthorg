@@ -108,6 +108,19 @@ BUDGET_AGENT_COST_QUERIED: Final[str] = "budget.agent_cost.queried"
 BUDGET_TIME_RANGE_INVALID: Final[str] = "budget.time_range.invalid"
 BUDGET_DEPARTMENT_RESOLVE_FAILED: Final[str] = "budget.department.resolve_failed"
 
+# ── Tool lifecycle ────────────────────────────────────────────────
+
+TOOL_REGISTRY_BUILT: Final[str] = "tool.registry.built"
+TOOL_REGISTRY_DUPLICATE: Final[str] = "tool.registry.duplicate"
+TOOL_NOT_FOUND: Final[str] = "tool.not_found"
+TOOL_INVOKE_START: Final[str] = "tool.invoke.start"
+TOOL_INVOKE_SUCCESS: Final[str] = "tool.invoke.success"
+TOOL_INVOKE_TOOL_ERROR: Final[str] = "tool.invoke.tool_error"
+TOOL_INVOKE_NOT_FOUND: Final[str] = "tool.invoke.not_found"
+TOOL_INVOKE_PARAMETER_ERROR: Final[str] = "tool.invoke.parameter_error"
+TOOL_INVOKE_SCHEMA_ERROR: Final[str] = "tool.invoke.schema_error"
+TOOL_INVOKE_EXECUTION_ERROR: Final[str] = "tool.invoke.execution_error"
+
 # ── Role catalog ──────────────────────────────────────────────────
 
 ROLE_LOOKUP_MISS: Final[str] = "role.lookup.miss"
