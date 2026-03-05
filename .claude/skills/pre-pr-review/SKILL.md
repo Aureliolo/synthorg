@@ -297,10 +297,15 @@ git add -A
 
 4. **If PR already exists** (detected in Phase 0): push only, do NOT create a new PR.
 
-5. **If no PR exists**, create one:
-   ```bash
-   gh pr create --title "TITLE" --body "BODY"
-   ```
+5. **If no PR exists**, create one using the **`mcp__github__create_pull_request`** tool (NOT `gh pr create` — that is blocked by hookify):
+
+   Parameters:
+   - `owner`: repo owner (from `git remote get-url origin`)
+   - `repo`: repo name
+   - `title`: PR title
+   - `head`: current branch name
+   - `base`: main
+   - `body`: PR description
 
    PR body should include:
    - Summary bullets of what changed
