@@ -153,7 +153,7 @@ class TestBuildSystemPrompt:
         assert auth.reports_to in result.content
         for delegate in auth.can_delegate_to:
             assert delegate in result.content
-        assert "10.00" in result.content  # budget_limit
+        assert f"{auth.budget_limit:.2f}" in result.content
 
     @pytest.mark.unit
     def test_company_context_injected(
@@ -161,13 +161,15 @@ class TestBuildSystemPrompt:
         sample_agent_with_personality: AgentIdentity,
         sample_company: Company,
     ) -> None:
-        """Company name appears when company context is provided."""
+        """Company name and department names appear when provided."""
         result = build_system_prompt(
             agent=sample_agent_with_personality,
             company=sample_company,
         )
 
         assert sample_company.name in result.content
+        for dept in sample_company.departments:
+            assert dept.name in result.content
 
     @pytest.mark.unit
     def test_tool_availability_in_prompt(
@@ -214,7 +216,7 @@ class TestBuildSystemPrompt:
             task=sample_task_with_criteria,
         )
 
-        assert "5.00" in result.content
+        assert f"{sample_task_with_criteria.budget_limit:.2f}" in result.content
 
     @pytest.mark.unit
     def test_no_task_section_when_task_is_none(
@@ -377,8 +379,13 @@ class TestTokenEstimation:
             max_tokens=10,
         )
 
-        # At least some optional sections should have been removed.
+        # All optional sections should be removed.
         assert "company" not in trimmed.sections
+        assert "tools" not in trimmed.sections
+        assert "task" not in trimmed.sections
+        # Core sections remain.
+        assert "identity" in trimmed.sections
+        assert "personality" in trimmed.sections
 
     @pytest.mark.unit
     def test_custom_estimator_used(
@@ -516,8 +523,10 @@ class TestPromptLogging:
                 max_tokens=10,
             )
 
-        events = [entry["event"] for entry in logs]
-        assert "prompt.build.token_trimmed" in events
+        trim_entries = [e for e in logs if e["event"] == "prompt.build.token_trimmed"]
+        assert len(trim_entries) == 1
+        assert "trimmed_sections" in trim_entries[0]
+        assert "company" in trim_entries[0]["trimmed_sections"]
 
 
 # ── TestPromptErrorHandling ─────────────────────────────────────
@@ -611,3 +620,168 @@ class TestTrimmingPriority:
         assert "company" not in trimmed.sections
         assert "tools" in trimmed.sections
         assert "task" in trimmed.sections
+
+    @pytest.mark.unit
+    def test_tools_trimmed_before_task(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        sample_tool_definitions: tuple[ToolDefinition, ...],
+        sample_company: Company,
+    ) -> None:
+        """With a tighter budget, company and tools are trimmed but task remains."""
+        # Build with only task to find core + task size.
+        with_task = build_system_prompt(
+            agent=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        # Build with task + tools to find core + task + tools size.
+        with_tools = build_system_prompt(
+            agent=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+            available_tools=sample_tool_definitions,
+        )
+
+        budget = (with_task.estimated_tokens + with_tools.estimated_tokens) // 2
+        trimmed = build_system_prompt(
+            agent=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+            available_tools=sample_tool_definitions,
+            company=sample_company,
+            max_tokens=budget,
+        )
+
+        assert "company" not in trimmed.sections
+        assert "tools" not in trimmed.sections
+        assert "task" in trimmed.sections
+
+
+# ── TestDefaultAgentPrompt ─────────────────────────────────────
+
+
+class TestDefaultAgentPrompt:
+    """Tests for agents with minimal/default configuration."""
+
+    @pytest.mark.unit
+    def test_empty_optional_fields_render_without_error(self) -> None:
+        """Agent with default personality renders without errors."""
+        agent = AgentIdentity(
+            name="Default Agent",
+            role="Worker",
+            department="General",
+            model=ModelConfig(provider="test", model_id="test-001"),
+            hiring_date=date(2026, 1, 1),
+        )
+        result = build_system_prompt(agent=agent)
+
+        assert "Default Agent" in result.content
+        assert "Traits" not in result.content
+        assert result.estimated_tokens > 0
+
+    @pytest.mark.unit
+    def test_task_with_zero_budget_and_no_deadline(self) -> None:
+        """Task with zero budget and no deadline omits those sections."""
+        from ai_company.core.enums import Complexity, Priority, TaskStatus, TaskType
+        from ai_company.core.task import Task
+
+        task = Task(
+            id="task-zero-001",
+            title="Research task",
+            description="Investigate options.",
+            type=TaskType.RESEARCH,
+            priority=Priority.LOW,
+            project="proj-001",
+            created_by="pm",
+            estimated_complexity=Complexity.SIMPLE,
+            budget_limit=0.0,
+            assigned_to="worker",
+            status=TaskStatus.ASSIGNED,
+        )
+        agent = AgentIdentity(
+            name="Researcher",
+            role="Analyst",
+            department="Research",
+            model=ModelConfig(provider="test", model_id="test-001"),
+            hiring_date=date(2026, 1, 1),
+        )
+        result = build_system_prompt(agent=agent, task=task)
+
+        assert "Research task" in result.content
+        assert "Task budget" not in result.content
+        assert "Deadline" not in result.content
+
+
+# ── TestBudgetExceeded ─────────────────────────────────────────
+
+
+class TestBudgetExceeded:
+    """Tests for budget-exceeded warning and max_tokens validation."""
+
+    @pytest.mark.unit
+    def test_budget_exceeded_logs_warning(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """When prompt exceeds max_tokens after trimming, log budget_exceeded."""
+        with structlog.testing.capture_logs() as logs:
+            build_system_prompt(
+                agent=sample_agent_with_personality,
+                max_tokens=1,
+            )
+
+        exceeded_entries = [
+            e for e in logs if e["event"] == "prompt.build.budget_exceeded"
+        ]
+        assert len(exceeded_entries) == 1
+        assert exceeded_entries[0]["max_tokens"] == 1
+
+    @pytest.mark.unit
+    def test_max_tokens_zero_raises_error(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """max_tokens=0 raises PromptBuildError."""
+        with pytest.raises(PromptBuildError, match="max_tokens must be > 0"):
+            build_system_prompt(
+                agent=sample_agent_with_personality,
+                max_tokens=0,
+            )
+
+    @pytest.mark.unit
+    def test_max_tokens_negative_raises_error(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """Negative max_tokens raises PromptBuildError."""
+        with pytest.raises(PromptBuildError, match="max_tokens must be > 0"):
+            build_system_prompt(
+                agent=sample_agent_with_personality,
+                max_tokens=-1,
+            )
+
+
+# ── TestCatchAllExceptionWrapping ──────────────────────────────
+
+
+class TestCatchAllExceptionWrapping:
+    """Tests for the catch-all exception handler in build_system_prompt."""
+
+    @pytest.mark.unit
+    def test_unexpected_error_wrapped_in_prompt_build_error(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Non-PromptBuildError exceptions are wrapped with context."""
+        from ai_company.engine import prompt as prompt_module
+
+        def _broken_render(*_args: object, **_kwargs: object) -> None:
+            msg = "simulated failure"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(prompt_module, "_render_with_trimming", _broken_render)
+
+        with pytest.raises(PromptBuildError, match="Unexpected error") as exc_info:
+            build_system_prompt(agent=sample_agent_with_personality)
+
+        assert isinstance(exc_info.value.__cause__, RuntimeError)

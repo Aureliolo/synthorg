@@ -145,7 +145,6 @@ in the {{ agent_department }} department.
 ## Available Tools
 {% for tool in tools %}
 - **{{ tool.name }}**{% if tool.description %}: {{ tool.description }}{% endif %}
-
 {% endfor %}
 {% endif %}
 {% if company %}

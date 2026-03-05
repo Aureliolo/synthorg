@@ -26,6 +26,7 @@ from ai_company.engine.prompt_template import (
 )
 from ai_company.observability import get_logger
 from ai_company.observability.events import (
+    PROMPT_BUILD_BUDGET_EXCEEDED,
     PROMPT_BUILD_ERROR,
     PROMPT_BUILD_START,
     PROMPT_BUILD_SUCCESS,
@@ -43,6 +44,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Sandboxed to prevent arbitrary code execution in user-provided custom templates.
+# Thread-safe for parse/render (read-only ops); do NOT mutate at runtime.
 _SANDBOX_ENV = SandboxedEnvironment()
 
 
@@ -74,7 +77,7 @@ class SystemPrompt(BaseModel):
         description="Names of sections included in the prompt",
     )
     metadata: dict[str, str] = Field(
-        description="Agent identity metadata",
+        description="Agent identity metadata (treat as read-only)",
     )
 
 
@@ -178,6 +181,16 @@ def build_system_prompt(  # noqa: PLR0913
         PromptBuildError: If prompt construction fails (invalid template,
             rendering error, or unexpected error).
     """
+    if max_tokens is not None and max_tokens <= 0:
+        msg = f"max_tokens must be > 0, got {max_tokens}"
+        logger.error(
+            PROMPT_BUILD_ERROR,
+            agent_id=str(agent.id),
+            agent_name=agent.name,
+            max_tokens=max_tokens,
+        )
+        raise PromptBuildError(msg)
+
     logger.info(
         PROMPT_BUILD_START,
         agent_id=str(agent.id),
@@ -243,8 +256,9 @@ def _resolve_template(custom_template: str | None) -> str:
     if custom_template is None:
         return DEFAULT_TEMPLATE
 
-    logger.debug(PROMPT_CUSTOM_TEMPLATE_LOADED)
-
+    # Early-fail: validate syntax before building the template context.
+    # from_string() in _render_template would also catch this, but failing
+    # here produces a more specific "invalid syntax" error message.
     try:
         _SANDBOX_ENV.parse(custom_template)
     except TemplateSyntaxError as exc:
@@ -255,6 +269,7 @@ def _resolve_template(custom_template: str | None) -> str:
         msg = f"Custom template has invalid Jinja2 syntax: {exc}"
         raise PromptBuildError(msg) from exc
 
+    logger.debug(PROMPT_CUSTOM_TEMPLATE_LOADED)
     return custom_template
 
 
@@ -419,6 +434,91 @@ def _build_metadata(agent: AgentIdentity) -> dict[str, str]:
     }
 
 
+def _trim_sections(  # noqa: PLR0913
+    *,
+    template_str: str,
+    agent: AgentIdentity,
+    role: Role | None,
+    task: Task | None,
+    available_tools: tuple[ToolDefinition, ...],
+    company: Company | None,
+    max_tokens: int,
+    estimator: PromptTokenEstimator,
+) -> tuple[Task | None, tuple[ToolDefinition, ...], Company | None]:
+    """Progressively remove optional sections until under token budget.
+
+    Returns the (possibly cleared) task, available_tools, and company after
+    trimming. Logs warnings for trimmed sections and budget-exceeded state.
+
+    Args:
+        template_str: Jinja2 template text.
+        agent: Agent identity.
+        role: Optional role.
+        task: Optional task context.
+        available_tools: Tool definitions.
+        company: Optional company context.
+        max_tokens: Token budget.
+        estimator: Token estimator.
+
+    Returns:
+        Tuple of (task, available_tools, company) after trimming.
+    """
+    trimmed_sections: list[str] = []
+
+    for section in _TRIMMABLE_SECTIONS:
+        _, estimated = _render_and_estimate(
+            template_str,
+            agent,
+            role,
+            task,
+            available_tools,
+            company,
+            estimator,
+        )
+        if estimated <= max_tokens:
+            break
+
+        if section == _SECTION_COMPANY and company is not None:
+            company = None
+        elif section == _SECTION_TOOLS and available_tools:
+            available_tools = ()
+        elif section == _SECTION_TASK and task is not None:
+            task = None
+        else:
+            continue
+
+        trimmed_sections.append(section)
+
+    _, estimated = _render_and_estimate(
+        template_str,
+        agent,
+        role,
+        task,
+        available_tools,
+        company,
+        estimator,
+    )
+
+    if trimmed_sections:
+        logger.warning(
+            PROMPT_BUILD_TOKEN_TRIMMED,
+            agent_id=str(agent.id),
+            max_tokens=max_tokens,
+            estimated_tokens=estimated,
+            trimmed_sections=trimmed_sections,
+        )
+
+    if estimated > max_tokens:
+        logger.warning(
+            PROMPT_BUILD_BUDGET_EXCEEDED,
+            agent_id=str(agent.id),
+            max_tokens=max_tokens,
+            estimated_tokens=estimated,
+        )
+
+    return task, available_tools, company
+
+
 def _render_with_trimming(  # noqa: PLR0913
     *,
     template_str: str,
@@ -460,40 +560,25 @@ def _render_with_trimming(  # noqa: PLR0913
     )
 
     if max_tokens is not None and estimated > max_tokens:
-        trimmed_sections: list[str] = []
-
-        for section in _TRIMMABLE_SECTIONS:
-            if estimated <= max_tokens:
-                break
-
-            if section == _SECTION_COMPANY and company is not None:
-                company = None
-            elif section == _SECTION_TOOLS and available_tools:
-                available_tools = ()
-            elif section == _SECTION_TASK and task is not None:
-                task = None
-            else:
-                continue
-
-            trimmed_sections.append(section)
-            content, estimated = _render_and_estimate(
-                template_str,
-                agent,
-                role,
-                task,
-                available_tools,
-                company,
-                estimator,
-            )
-
-        if trimmed_sections:
-            logger.warning(
-                PROMPT_BUILD_TOKEN_TRIMMED,
-                agent_id=str(agent.id),
-                max_tokens=max_tokens,
-                estimated_tokens=estimated,
-                trimmed_sections=trimmed_sections,
-            )
+        task, available_tools, company = _trim_sections(
+            template_str=template_str,
+            agent=agent,
+            role=role,
+            task=task,
+            available_tools=available_tools,
+            company=company,
+            max_tokens=max_tokens,
+            estimator=estimator,
+        )
+        content, estimated = _render_and_estimate(
+            template_str,
+            agent,
+            role,
+            task,
+            available_tools,
+            company,
+            estimator,
+        )
 
     sections = _compute_sections(
         task=task,

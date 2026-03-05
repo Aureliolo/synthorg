@@ -66,7 +66,7 @@ def sample_agent_with_personality(sample_model_config: ModelConfig) -> AgentIden
 
 @pytest.fixture
 def sample_role_with_description() -> Role:
-    """Role with description set for prompt injection."""
+    """Role with description for prompt rendering tests."""
     return Role(
         name="Senior Backend Developer",
         department=DepartmentName.ENGINEERING,
