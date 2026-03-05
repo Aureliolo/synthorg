@@ -138,3 +138,12 @@ PROMPT_BUILD_ERROR: Final[str] = "prompt.build.error"
 PROMPT_BUILD_BUDGET_EXCEEDED: Final[str] = "prompt.build.budget_exceeded"
 PROMPT_CUSTOM_TEMPLATE_LOADED: Final[str] = "prompt.custom_template.loaded"
 PROMPT_CUSTOM_TEMPLATE_FAILED: Final[str] = "prompt.custom_template.failed"
+
+# ── Execution lifecycle ──────────────────────────────────────────
+
+EXECUTION_TASK_CREATED: Final[str] = "execution.task.created"
+EXECUTION_TASK_TRANSITION: Final[str] = "execution.task.transition"
+EXECUTION_COST_RECORDED: Final[str] = "execution.cost.recorded"
+EXECUTION_CONTEXT_CREATED: Final[str] = "execution.context.created"
+EXECUTION_CONTEXT_TURN: Final[str] = "execution.context.turn"
+EXECUTION_CONTEXT_SNAPSHOT: Final[str] = "execution.context.snapshot"

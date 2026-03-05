@@ -165,10 +165,21 @@ agent:
   hiring_date: "2026-02-27"
   status: "active"              # active, on_leave, terminated (on config model today)
 
-# --- Planned (M3): Runtime state — AgentRuntimeState (mutable-via-copy) ---
-# current_task_id: "task-456"
-# turn_count: 12
-# accumulated_cost_usd: 1.23
+# --- Adopted (M3): Runtime state — engine/ (frozen + model_copy) ---
+# TaskExecution wraps Task with evolving execution state:
+#   status: TaskStatus             # evolves via with_transition()
+#   transition_log: tuple[StatusTransition, ...]
+#   accumulated_cost: TokenUsage   # running totals
+#   turn_count: int                # LLM turns completed
+#   started_at / completed_at: AwareDatetime | None
+#
+# AgentContext wraps AgentIdentity + TaskExecution with:
+#   execution_id: str              # uuid4, unique per run
+#   conversation: tuple[ChatMessage, ...]
+#   accumulated_cost: TokenUsage   # running totals
+#   turn_count: int                # LLM turns completed
+#   max_turns: int                 # hard limit (default 20)
+#   started_at: AwareDatetime
 ```
 
 ### 3.2 Seniority & Authority Levels
@@ -534,6 +545,8 @@ When a loop is detected, the framework:
     │ CANCELLED  │
     └────────────┘
 ```
+
+> **Runtime wrapper (M3):** During execution, `Task` is wrapped by `TaskExecution` (in `engine/task_execution.py`). `TaskExecution` is a frozen Pydantic model that tracks status transitions via `model_copy(update=...)`, accumulates `TokenUsage` cost, and records a `StatusTransition` audit trail. The original `Task` is preserved unchanged; `to_task_snapshot()` produces a `Task` copy with the current execution status for persistence.
 
 ### 6.2 Task Definition
 
@@ -1288,8 +1301,10 @@ ai-company/
 │       │   ├── artifact.py         # Produced work items
 │       │   ├── role.py             # Role model
 │       │   └── role_catalog.py     # Role catalog
-│       ├── engine/                  # Core engines (M3+, stubs only)
+│       ├── engine/                  # Core engines (M3+)
 │       │   ├── prompt.py           # System prompt builder (M3)
+│       │   ├── task_execution.py   # TaskExecution + StatusTransition (M3)
+│       │   ├── context.py          # AgentContext + AgentContextSnapshot (M3)
 │       │   ├── agent_engine.py     # Agent execution loop (M3)
 │       │   ├── task_engine.py      # Task routing & scheduling (M3-M4)
 │       │   ├── workflow_engine.py  # Workflow orchestration (M4)
@@ -1420,7 +1435,7 @@ These conventions were established during the M0–M2 review cycle. **Adopted** 
 | Convention | Status | Decision | Rationale |
 |------------|--------|----------|-----------|
 | **Immutability strategy** | Adopted | `MappingProxyType` at construction for dict fields in registries and collections; `frozen=True` on all config/identity models | MappingProxyType is O(1) and prevents accidental mutation. Pydantic `frozen=True` is confirmed shallow (pydantic#7784). |
-| **Config vs runtime split** | Planned (M3) | Frozen models for config/identity; `model_copy(update=...)` for runtime state transitions | Frozen models cannot represent evolving state without serialize/validate round-trips. Separate models keep config immutable while state is explicit. Currently only config layer exists (`AgentIdentity`). |
+| **Config vs runtime split** | Adopted (M3) | Frozen models for config/identity; `model_copy(update=...)` for runtime state transitions | `TaskExecution` and `AgentContext` (in `engine/`) are frozen Pydantic models that use `model_copy(update=...)` for O(1) state transitions, skipping all validators. Config layer (`AgentIdentity`, `Task`) remains unchanged. |
 | **Derived fields** | Planned | `@computed_field` instead of stored + validated | Eliminates redundant storage and impossible-to-fail validators (e.g. `total_tokens = input + output`). Currently `total_tokens` uses stored `Field` + `@model_validator`. |
 | **String validation** | Planned | `NotBlankStr` type from `core.types` for all identifiers | Eliminates per-model `@model_validator` boilerplate for whitespace checks. `NotBlankStr` is defined but models still use `Field(min_length=1)` + manual validators. |
 | **Shared field groups** | Planned | Extract common field sets into base models (e.g. `_SpendingTotals`) | Prevents field duplication across spending summary models. Not yet implemented — each model independently defines fields. |

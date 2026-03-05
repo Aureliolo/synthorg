@@ -24,7 +24,9 @@ from ai_company.core.enums import (
 )
 from ai_company.core.role import Authority, Role
 from ai_company.core.task import AcceptanceCriterion, Task
-from ai_company.providers.models import ToolDefinition
+from ai_company.engine.context import AgentContext
+from ai_company.engine.task_execution import TaskExecution
+from ai_company.providers.models import TokenUsage, ToolDefinition
 
 
 @pytest.fixture
@@ -115,6 +117,35 @@ def sample_tool_definitions() -> tuple[ToolDefinition, ...]:
             name="file_editor",
             description="Read and edit source files.",
         ),
+    )
+
+
+@pytest.fixture
+def sample_token_usage() -> TokenUsage:
+    """Small token usage for testing cost accumulation."""
+    return TokenUsage(
+        input_tokens=100,
+        output_tokens=50,
+        total_tokens=150,
+        cost_usd=0.01,
+    )
+
+
+@pytest.fixture
+def sample_task_execution(sample_task_with_criteria: Task) -> TaskExecution:
+    """TaskExecution from sample task (starts at ASSIGNED)."""
+    return TaskExecution.from_task(sample_task_with_criteria)
+
+
+@pytest.fixture
+def sample_agent_context(
+    sample_agent_with_personality: AgentIdentity,
+    sample_task_with_criteria: Task,
+) -> AgentContext:
+    """AgentContext from sample agent + sample task."""
+    return AgentContext.from_identity(
+        sample_agent_with_personality,
+        task=sample_task_with_criteria,
     )
 
 
