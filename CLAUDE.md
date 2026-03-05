@@ -111,6 +111,14 @@ src/ai_company/
 - **Branches**: `<type>/<slug>` from main
 - **Pre-commit hooks**: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-json, check-merge-conflict, check-added-large-files, no-commit-to-branch (main), ruff check+format, gitleaks
 
+## Pre-PR Review (MANDATORY)
+
+- **NEVER create a PR directly** — `gh pr create` is blocked by hookify
+- **ALWAYS use `/pre-pr-review`** to create PRs — it runs automated checks + review agents + fixes before creating the PR
+- For trivial/docs-only changes: `/pre-pr-review quick` skips agents but still runs automated checks
+- After the PR exists, use `/aurelio-review-pr` to handle external reviewer feedback
+- The `/commit-push-pr` command is effectively blocked (it calls `gh pr create` internally)
+
 ## CI
 
 - **Jobs**: lint (ruff) + type-check (mypy src/ tests/) + test (pytest + coverage) run in parallel → ci-pass (gate)
