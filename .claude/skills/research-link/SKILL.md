@@ -22,6 +22,10 @@ Research any external content — URL, tool, concept, pasted article, code snipp
 
 ---
 
+## Phase 0: Load Project Context
+
+**Before doing anything else**, read `DESIGN_SPEC.md` in the project root. This is the authoritative source for the project's architecture, module design, technology choices, milestones, and risk register. You need this context loaded to produce accurate project mappings and verdicts in later phases. Read it in parallel with the Phase 1 content acquisition.
+
 ## Phase 1: Identify Input Type and Acquire Content
 
 Detect what the user provided:
