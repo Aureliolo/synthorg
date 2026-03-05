@@ -10,6 +10,7 @@ allowed-tools:
   - Glob
   - Task
   - AskUserQuestion
+  - mcp__github__create_pull_request
 ---
 
 # Pre-PR Review
@@ -30,9 +31,11 @@ Automated pre-PR pipeline that runs checks, launches review agents, triages find
 
    - If NOT on main: proceed normally.
    - If on main: do NOT abort. Continue to step 2 to detect changes first. If changes exist, ask the user for a branch name via AskUserQuestion (suggest one based on the changes, e.g. `feat/add-cost-tracking`). Then create and switch to that branch:
+
      ```bash
      git checkout -b <branch-name>
      ```
+
      Uncommitted/staged/untracked changes carry over to the new branch automatically.
 
 2. **Check for changes.** Collect uncommitted, staged, untracked, and committed-but-unpushed changes:
@@ -56,7 +59,7 @@ Automated pre-PR pipeline that runs checks, launches review agents, triages find
 3. **Check if a PR already exists for this branch:**
 
    ```bash
-   gh pr list --head $(git branch --show-current) --json number,title,url --jq '.[0]'
+   gh pr list --head "$(git branch --show-current)" --json number,title,url --jq '.[0]'
    ```
 
    If a PR exists, ask the user via AskUserQuestion:
@@ -87,7 +90,7 @@ Automated pre-PR pipeline that runs checks, launches review agents, triages find
 
 Determine if agent review can be skipped:
 
-- If `$ARGUMENTS` contains `quick` -> skip agents, go to Phase 2 then Phase 8
+- If `$ARGUMENTS` contains `quick` -> skip agents, go to Phase 2 then Phase 8, then Phase 10 and Phase 11
 - **Auto-detect**: If ALL changed files are non-substantive (only `.md` docs, config formatting, typo-level edits with no logic changes), skip agents automatically
   - Auto-skip examples: all changes are `.md` files; only `pyproject.toml` version bump; only `.yaml`/`.json` config with no Python changes
   - Do NOT auto-skip: any `.py` file changed; config changes that affect runtime behavior; new dependencies added
@@ -95,29 +98,36 @@ Determine if agent review can be skipped:
 
 ## Phase 2: Automated Checks (always run)
 
+**Scoping:** If no `.py` files changed (only `.md`, `.yaml`, `.toml`, `.json`, etc.), skip steps 1-5 entirely — ruff, mypy, and pytest only operate on Python files and running them is unnecessary for docs/config-only changes.
+
 Run these sequentially, fixing as we go:
 
 1. **Lint + auto-fix:**
+
    ```bash
    uv run ruff check src/ tests/ --fix
    ```
 
 2. **Format:**
+
    ```bash
    uv run ruff format src/ tests/
    ```
 
 3. If steps 1-2 changed any files, stage them:
+
    ```bash
    git add -A
    ```
 
 4. **Type-check:**
+
    ```bash
    uv run mypy src/ tests/
    ```
 
 5. **Test + coverage:**
+
    ```bash
    uv run pytest tests/ -n auto --cov=ai_company --cov-fail-under=80
    ```
@@ -128,7 +138,7 @@ Run these sequentially, fixing as we go:
 - If something can't be auto-fixed: present the error to the user via AskUserQuestion, ask how to proceed (fix now / skip check / abort)
 - After fixing, stage changes with `git add -A`
 
-**If in quick mode:** After automated checks pass, skip directly to Phase 8.
+**If in quick mode:** After automated checks pass, skip directly to Phase 8 (Post-Fix Verification), then continue to Phase 10 (Commit + Push + Create PR) and Phase 11 (Summary).
 
 ## Phase 3: Determine Agent Roster
 
@@ -153,7 +163,7 @@ This captures committed-but-unpushed changes AND any uncommitted/untracked work 
 | **type-design-analyzer** | Diff contains `class ` definitions, `BaseModel`, `TypedDict`, type aliases | `pr-review-toolkit:type-design-analyzer` |
 | **logging-audit** | Any `src_py` changed | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **resilience-audit** | Files in `src/ai_company/providers/` changed | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **security-reviewer** | Files in `api/`, `security/`, `tools/`, `config/` changed, OR diff contains `subprocess`, `eval`, `exec`, `pickle`, `yaml.load`, auth/credential patterns | `everything-claude-code:security-reviewer` |
+| **security-reviewer** | Files in `src/ai_company/api/`, `src/ai_company/security/`, `src/ai_company/tools/`, `src/ai_company/config/` changed, OR diff contains `subprocess`, `eval`, `exec`, `pickle`, `yaml.load`, auth/credential patterns | `everything-claude-code:security-reviewer` |
 
 ### Logging-audit custom prompt
 
@@ -171,10 +181,10 @@ The logging-audit agent must check for these violations (from CLAUDE.md `## Logg
 
 For every function touched by the changes, analyze its logic and suggest missing logging where appropriate:
 
-7. Error/except paths that don't `logger.warning()` or `logger.error()` with context before raising or returning (SUGGESTION)
-8. State transitions (status changes, lifecycle events, mode switches) that don't `logger.info()` (SUGGESTION)
-9. Object creation, entry/exit of key functions, or important branching decisions that don't `logger.debug()` (SUGGESTION)
-10. Any other code path that would benefit from logging for debuggability or operational visibility (SUGGESTION)
+1. Error/except paths that don't `logger.warning()` or `logger.error()` with context before raising or returning (SUGGESTION)
+2. State transitions (status changes, lifecycle events, mode switches) that don't `logger.info()` (SUGGESTION)
+3. Object creation, entry/exit of key functions, or important branching decisions that don't `logger.debug()` (SUGGESTION)
+4. Any other code path that would benefit from logging for debuggability or operational visibility (SUGGESTION)
 
 **Exclusions — do NOT flag these for coverage suggestions:**
 - Pure data models, Pydantic `BaseModel` subclasses, enums, TypedDict definitions
@@ -282,6 +292,7 @@ git add -A
 ## Phase 10: Commit + Push + Create PR
 
 1. **Stage all files:**
+
    ```bash
    git add -A
    ```
@@ -291,8 +302,9 @@ git add -A
    - If agents ran, add body: "Pre-reviewed by N agents, M findings addressed"
 
 3. **Push** with `-u` flag:
+
    ```bash
-   git push -u origin $(git branch --show-current)
+   git push -u origin "$(git branch --show-current)"
    ```
 
 4. **If PR already exists** (detected in Phase 0): push only, do NOT create a new PR.
