@@ -113,8 +113,10 @@ class AgentEngine:
             max_turns: Maximum LLM turns allowed (must be >= 1).
             memory_messages: Optional working memory messages to inject
                 between the system prompt and task instruction.
-            timeout_seconds: Optional wall-clock timeout. When exceeded,
-                the run terminates with an ERROR result.
+            timeout_seconds: Optional wall-clock timeout in seconds.
+                When exceeded, the execution loop is cancelled and the
+                run returns with ``TerminationReason.ERROR``. Cost
+                recording and post-execution processing still occur.
 
         Returns:
             ``AgentRunResult`` with execution outcome and metadata.
@@ -248,6 +250,8 @@ class AgentEngine:
             else:
                 execution_result = await coro
         except TimeoutError:
+            if timeout_seconds is None:
+                raise
             duration = time.monotonic() - start
             error_msg = (
                 f"Wall-clock timeout after {duration:.1f}s (limit: {timeout_seconds}s)"
@@ -265,14 +269,14 @@ class AgentEngine:
                 error_message=error_msg,
             )
 
-        duration = time.monotonic() - start
-
         await self._record_costs(execution_result, identity, agent_id, task_id)
         execution_result = self._apply_post_execution_transitions(
             execution_result,
             agent_id,
             task_id,
         )
+
+        duration = time.monotonic() - start
 
         result = AgentRunResult(
             execution_result=execution_result,
@@ -281,7 +285,7 @@ class AgentEngine:
             agent_id=agent_id,
             task_id=task_id,
         )
-        self._log_completion(result, execution_result, agent_id, task_id, duration)
+        self._log_completion(result, agent_id, task_id, duration)
         return result
 
     # ── Setup ────────────────────────────────────────────────────
@@ -404,6 +408,15 @@ class AgentEngine:
         IN_PROGRESS → IN_REVIEW → COMPLETED (two-hop auto-complete).
         All other reasons leave the task in its current state.
 
+        Note:
+            The IN_REVIEW → COMPLETED auto-complete is M3 scaffolding
+            (no reviewers yet). Later milestones will gate COMPLETED
+            on reviewer approval.
+
+        Transition failures are logged but do not discard the
+        successful execution result — a bookkeeping error must never
+        destroy the agent's work.
+
         Args:
             execution_result: Result from the execution loop.
             agent_id: Agent identifier for logging.
@@ -420,28 +433,39 @@ class AgentEngine:
         if execution_result.termination_reason != TerminationReason.COMPLETED:
             return execution_result
 
-        ctx = ctx.with_task_transition(
-            TaskStatus.IN_REVIEW,
-            reason="Agent completed execution",
-        )
-        logger.info(
-            EXECUTION_ENGINE_TASK_TRANSITION,
-            agent_id=agent_id,
-            task_id=task_id,
-            from_status=TaskStatus.IN_PROGRESS.value,
-            to_status=TaskStatus.IN_REVIEW.value,
-        )
-        ctx = ctx.with_task_transition(
-            TaskStatus.COMPLETED,
-            reason="Auto-completed (no reviewers in M3)",
-        )
-        logger.info(
-            EXECUTION_ENGINE_TASK_TRANSITION,
-            agent_id=agent_id,
-            task_id=task_id,
-            from_status=TaskStatus.IN_REVIEW.value,
-            to_status=TaskStatus.COMPLETED.value,
-        )
+        try:
+            ctx = ctx.with_task_transition(
+                TaskStatus.IN_REVIEW,
+                reason="Agent completed execution",
+            )
+            logger.info(
+                EXECUTION_ENGINE_TASK_TRANSITION,
+                agent_id=agent_id,
+                task_id=task_id,
+                from_status=TaskStatus.IN_PROGRESS.value,
+                to_status=TaskStatus.IN_REVIEW.value,
+            )
+            # TODO(M4): Replace auto-complete with review gate
+            ctx = ctx.with_task_transition(
+                TaskStatus.COMPLETED,
+                reason="Auto-completed (no reviewers in M3)",
+            )
+            logger.info(
+                EXECUTION_ENGINE_TASK_TRANSITION,
+                agent_id=agent_id,
+                task_id=task_id,
+                from_status=TaskStatus.IN_REVIEW.value,
+                to_status=TaskStatus.COMPLETED.value,
+            )
+        except (ValueError, ExecutionStateError) as exc:
+            logger.exception(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error=f"Post-execution transition failed: {exc}",
+            )
+            return execution_result
+
         return execution_result.model_copy(update={"context": ctx})
 
     def _make_tool_invoker(self) -> ToolInvoker | None:
@@ -453,19 +477,19 @@ class AgentEngine:
     def _log_completion(
         self,
         result: AgentRunResult,
-        execution_result: ExecutionResult,
         agent_id: str,
         task_id: str,
         duration: float,
     ) -> None:
         """Log structured completion event and proxy overhead metrics."""
+        accumulated = result.execution_result.context.accumulated_cost
         logger.info(
             EXECUTION_ENGINE_COMPLETE,
             agent_id=agent_id,
             task_id=task_id,
             termination_reason=result.termination_reason.value,
             total_turns=result.total_turns,
-            total_tokens=execution_result.context.accumulated_cost.total_tokens,
+            total_tokens=accumulated.total_tokens,
             duration_seconds=duration,
             cost_usd=result.total_cost_usd,
         )
@@ -659,7 +683,7 @@ class AgentEngine:
                 error=f"Failed to build error result: {build_exc}",
                 original_error=error_msg,
             )
-            raise exc from None
+            raise exc from build_exc
 
 
 def _format_task_instruction(task: Task) -> str:

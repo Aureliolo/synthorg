@@ -915,7 +915,7 @@ hybrid:
 
 `AgentEngine` (in `engine/agent_engine.py`) is the top-level entry point for running an agent on a task. It composes the execution loop with prompt construction, context management, tool invocation, and cost tracking into a single `run()` call.
 
-**`async run(identity, task, completion_config?, max_turns?, memory_messages?) -> AgentRunResult`**
+**`async run(identity, task, completion_config?, max_turns?, memory_messages?, timeout_seconds?) -> AgentRunResult`**
 
 Pipeline steps:
 
@@ -925,15 +925,16 @@ Pipeline steps:
 4. **Seed conversation** — injects system prompt, optional memory messages, and formatted task instruction as initial messages.
 5. **Transition task** — `ASSIGNED` → `IN_PROGRESS` (pass-through if already `IN_PROGRESS`).
 6. **Prepare tools and budget** — creates `ToolInvoker` from registry and `BudgetChecker` from task budget limit.
-7. **Delegate to loop** — calls `ExecutionLoop.execute()` with context, provider, tool invoker, budget checker, and completion config.
+7. **Delegate to loop** — calls `ExecutionLoop.execute()` with context, provider, tool invoker, budget checker, and completion config. If `timeout_seconds` is set, wraps the call in `asyncio.wait_for`; on expiry the run returns with `TerminationReason.ERROR` but cost recording and post-execution processing still occur.
 8. **Record costs** — records accumulated `TokenUsage` to `CostTracker` (if available). Cost recording failures are logged but do not affect the result.
-9. **Return result** — wraps `ExecutionResult` in `AgentRunResult` with engine-level metadata.
+9. **Apply post-execution transitions** — on `COMPLETED` termination: IN_PROGRESS → IN_REVIEW → COMPLETED (two-hop auto-complete in M3; reviewers deferred to M4+). All other termination reasons leave the task in its current state. Transition failures are logged but do not discard the successful execution result.
+10. **Return result** — wraps `ExecutionResult` in `AgentRunResult` with engine-level metadata.
 
 Error handling: `MemoryError` and `RecursionError` propagate unconditionally. All other exceptions are caught and wrapped in an `AgentRunResult` with `TerminationReason.ERROR`.
 
 Constructor accepts: `provider` (required), `execution_loop` (defaults to `ReactLoop`), `tool_registry`, `cost_tracker`. The `run()` method also accepts `memory_messages` — optional working memory to inject between the system prompt and task instruction (memory retrieval is M5; the engine provides the injection hook).
 
-Logs structured events under the `execution.engine.*` namespace (10 constants in `events/execution.py`): creation, start, prompt built, completion, errors, invalid input, task transitions, and cost recording outcomes.
+Logs structured events under the `execution.engine.*` namespace (12 constants in `events/execution.py`): creation, start, prompt built, completion, errors, invalid input, task transitions, cost recording outcomes, task metrics, and timeout.
 
 **`AgentRunResult`** — frozen Pydantic model wrapping `ExecutionResult` with engine metadata:
 
@@ -941,7 +942,7 @@ Logs structured events under the `execution.engine.*` namespace (10 constants in
 - `system_prompt` — the `SystemPrompt` used for this run
 - `duration_seconds` — wall-clock run time
 - `agent_id`, `task_id` — identifiers
-- Computed fields: `termination_reason`, `total_turns`, `total_cost_usd`, `is_success`
+- Computed fields: `termination_reason`, `total_turns`, `total_cost_usd`, `is_success`, `completion_summary`
 
 ### 6.6 Agent Crash Recovery
 
@@ -1463,11 +1464,14 @@ Every LLM provider call is tracked with comprehensive metadata for financial rep
 
 Every completion call produces a `CompletionResponse` with `TokenUsage` (token counts and cost). The engine layer creates a `CostRecord` (with agent/task context) and records it into `CostTracker` — the provider itself does not have agent/task context. In M3, the engine additionally logs **proxy overhead metrics** at task completion:
 
-- `turns_per_task` — number of LLM turns to complete the task (from `AgentContext.turn_count`)
+- `turns_per_task` — number of LLM turns to complete the task (from `AgentRunResult.total_turns`)
 - `tokens_per_task` — total tokens consumed (from `AgentContext.accumulated_cost.total_tokens`)
-- `cost_per_task` — total USD cost (from `TaskExecution.accumulated_cost.cost_usd`)
+- `cost_per_task` — total USD cost (from `AgentContext.accumulated_cost.cost_usd` via `AgentRunResult.total_cost_usd`)
+- `duration_seconds` — wall-clock execution time in seconds (from `AgentRunResult.duration_seconds`)
 
 These are natural overhead indicators — a task consuming 15 turns and 50k tokens for a one-line fix signals a problem.
+
+These metrics are captured in `TaskCompletionMetrics` (in `engine/metrics.py`), a frozen Pydantic model with a `from_run_result()` factory method. The engine logs these metrics at task completion via the `EXECUTION_ENGINE_TASK_METRICS` event.
 
 #### M4: Call Categorization + Orchestration Ratio
 
@@ -2153,6 +2157,7 @@ ai-company/
 │       │   ├── task_execution.py   # TaskExecution + StatusTransition
 │       │   ├── context.py          # AgentContext + AgentContextSnapshot
 │       │   ├── loop_protocol.py    # ExecutionLoop protocol + result models
+│       │   ├── metrics.py          # TaskCompletionMetrics proxy overhead model
 │       │   ├── react_loop.py       # ReAct loop implementation
 │       │   ├── run_result.py       # AgentRunResult outcome model
 │       │   ├── agent_engine.py     # Agent execution engine
