@@ -530,7 +530,7 @@ conflict_resolution:
 
 #### Strategy 2: Structured Debate + Judge
 
-Both agents present arguments (1 round each, capped at `max_tokens_per_argument`). A judge — their shared manager, or a configurable arbitrator agent — evaluates both positions and decides. The judge's reasoning and both arguments are logged as a dissent record.
+Both agents present arguments (1 round each, capped at `max_tokens_per_argument`). A judge — their shared manager, the CEO, or a configurable arbitrator agent — evaluates both positions and decides. The judge's reasoning and both arguments are logged as a dissent record.
 
 ```yaml
 conflict_resolution:
@@ -768,7 +768,7 @@ A single interleaved loop: the agent reasons about the current state, selects an
 ```
 
 ```yaml
-execution_loop: "react"              # react, plan_execute, hybrid
+execution_loop: "react"              # react, plan_execute, hybrid, auto
 ```
 
 - Simple, proven, flexible. Easy to implement. Works well for short tasks
@@ -844,7 +844,7 @@ hybrid:
 - Most complex to implement. Plan granularity needs tuning per task type
 - **Best for**: Complex tasks, multi-file refactoring, tasks requiring both planning and adaptivity
 
-> **Auto-selection (optional):** When `execution_loop: "auto"`, the framework selects the loop based on `estimated_complexity`: simple → ReAct, medium → Plan-and-Execute, complex/epic → Hybrid. Configurable via `auto_loop_rules`.
+> **Auto-selection (optional):** When `execution_loop: "auto"`, the framework selects the loop based on `estimated_complexity`: simple → ReAct, medium → Plan-and-Execute, complex/epic → Hybrid. Configurable via `auto_loop_rules` — a mapping of complexity thresholds to loop implementations (e.g., `{simple_max_tokens: 500, medium_max_tokens: 3000}` with corresponding loop assignments).
 
 ---
 
@@ -933,7 +933,7 @@ org_memory:
     entity_extraction: "auto"           # auto-extract entities from ADRs and policies
 ```
 
-- 3.4x accuracy improvement over vector-only retrieval. Multi-hop reasoning captures policy relationships
+- Significant accuracy improvement over vector-only retrieval (some benchmarks report 3–4x gains). Multi-hop reasoning captures policy relationships
 - More complex infrastructure. Entity extraction can be noisy. Heavier setup
 
 #### Backend 3: Temporal Knowledge Graph (Future)
@@ -952,7 +952,6 @@ org_memory:
 - Most complex. Potentially overkill for small companies or local-first use
 
 > **Extensibility:** All backends implement the `OrgMemoryBackend` protocol (`query(context) → list[OrgFact]`, `write(fact, author)`, `list_policies()`). The MVP ships with Backend 1; Backends 2 and 3 are planned extensions. The memory layer candidate (currently evaluating Mem0 and alternatives — see §15.2) may provide graph memory capabilities natively, reducing implementation effort for Backends 2-3.
-
 > **Write access control:** Core policies are human-only. ADRs and procedures can be written by senior+ agents. All writes are versioned and auditable. This prevents agents from corrupting shared organizational knowledge while allowing senior agents to document decisions.
 
 ---
@@ -1276,7 +1275,9 @@ trust:
   promotion_thresholds:
     sandboxed_to_restricted: 0.4
     restricted_to_standard: 0.6
-    standard_to_elevated: 0.8       # requires human approval regardless of score
+    standard_to_elevated:
+      score: 0.8
+      requires_human_approval: true  # always human-gated
 ```
 
 - Simple model, easy to understand. One number to track
@@ -1419,7 +1420,7 @@ A special meta-agent that reviews all actions before execution:
 
 When an action requires human approval (per autonomy level in §12.2), the agent must wait. The framework provides configurable timeout policies that determine what happens when a human doesn't respond. All policies implement a `TimeoutPolicy` protocol. The policy is configurable per autonomy level and per action risk tier.
 
-During any wait — regardless of policy — the agent **parks** the blocked task (saving its full `AgentContext` snapshot: conversation, progress, accumulated cost, turn count) and picks up other available tasks from its queue. When approval eventually arrives, the agent **resumes** the original context exactly where it left off. This mirrors real company behavior: a junior developer starts another task while waiting for a code review, then returns to the original work when feedback arrives.
+During any wait — regardless of policy — the agent **parks** the blocked task (saving its full serialized `AgentContext` state: conversation, progress, accumulated cost, turn count — i.e., the complete persisted context, distinct from the compact `AgentContextSnapshot` used for telemetry) and picks up other available tasks from its queue. When approval eventually arrives, the agent **resumes** the original context exactly where it left off. This mirrors real company behavior: a junior developer starts another task while waiting for a code review, then returns to the original work when feedback arrives.
 
 #### Policy 1: Wait Forever (Default for Critical Actions)
 
@@ -1703,7 +1704,7 @@ Run: ai-company start acme-corp
 | **Language** | Python 3.14+ | Best AI/ML ecosystem, all major frameworks use it, LiteLLM/MCP and memory layer candidates all Python-native. PEP 649 native lazy annotations, PEP 758 except syntax. |
 | **API Framework** | FastAPI | Async-native, WebSocket support, auto OpenAPI docs, high performance, type-safe with Pydantic |
 | **LLM Abstraction** | LiteLLM | 100+ providers, unified API, built-in cost tracking, retries/fallbacks |
-| **Agent Memory** | TBD (candidates: Mem0, Zep, Letta, custom) + SQLite | Memory layer library TBD after evaluation. SQLite for structured data. Upgrade to Postgres later |
+| **Agent Memory** | TBD (candidates: Mem0, Zep, Letta, Cognee, custom) + SQLite | Memory layer library TBD after evaluation. SQLite for structured data. Upgrade to Postgres later |
 | **Message Bus** | Internal (async queues) → Redis | Start with Python asyncio queues, upgrade to Redis for multi-process/distributed |
 | **Task Queue** | Internal → Celery/Redis | Start simple, scale with Celery when needed |
 | **Database** | SQLite → PostgreSQL | Start lightweight, migrate to Postgres for production/multi-user |
@@ -1866,7 +1867,7 @@ ai-company/
 | Language | Python 3.14+ | TypeScript, Go, Rust | AI ecosystem, LiteLLM/MCP and memory layer candidates are Python-native, PEP 649 lazy annotations, PEP 758 except syntax |
 | API | FastAPI | Flask, Django, aiohttp | Async native, Pydantic integration, auto docs, WebSocket support |
 | LLM Layer | LiteLLM | Direct APIs, OpenRouter only | 100+ providers, cost tracking, fallbacks, load balancing built-in |
-| Memory | TBD + SQLite | Mem0, Zep, Letta, Cognee, ChromaDB, custom | Memory layer library TBD — all candidates under evaluation. Must support episodic, semantic, procedural types behind `OrgMemoryBackend` protocol |
+| Memory | TBD + SQLite | Mem0, Zep, Letta, Cognee, ChromaDB, custom | Memory layer library TBD — all candidates under evaluation. Must support episodic, semantic, procedural memory types (§7.1–7.3). Org memory served via `OrgMemoryBackend` protocol (§7.4) |
 | Message Bus | asyncio queues → Redis | Kafka, RabbitMQ, NATS | Start simple, Redis well-supported, Kafka overkill for local |
 | Config | YAML + Pydantic | JSON, TOML, Python dicts | Human-friendly, strict validation, good IDE support |
 | CLI | Typer | Click, argparse, Fire | Built on Click, auto-completion, type hints |

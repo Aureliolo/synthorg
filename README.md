@@ -15,7 +15,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 - **Multi-Provider** - Anthropic Claude, OpenRouter (400+ models), local Ollama, and more via LiteLLM
 - **Smart Cost Management** - Per-agent budget tracking, auto model routing, CFO agent optimization
 - **Configurable Autonomy** - From fully autonomous to human-approves-everything, with a Security Ops agent in between
-- **Persistent Memory** - Agents remember past decisions, code, relationships (via Mem0)
+- **Persistent Memory** - Agents remember past decisions, code, relationships (memory layer TBD)
 - **HR System** - Hire, fire, promote agents. HR agent analyzes skill gaps and proposes candidates
 - **Real Tool Access** - File system, git, code execution, web, databases - role-based and sandboxed
 - **API-First** - REST + WebSocket API with local web dashboard
@@ -31,7 +31,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 - **uv** as package manager, **Hatchling** as build backend
 - **LiteLLM** for multi-provider LLM abstraction
 - **structlog** for structured logging and observability
-- **Mem0** for agent memory (planned)
+- **Memory layer TBD** (candidates: Mem0, Zep, Letta, Cognee, custom) for agent memory (planned)
 - **MCP** for tool integration (planned)
 - **Vue 3** for web dashboard (planned)
 - **SQLite** → PostgreSQL for data persistence (planned)
