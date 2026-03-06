@@ -846,6 +846,48 @@ hybrid:
 
 > **Auto-selection (optional):** When `execution_loop: "auto"`, the framework selects the loop based on `estimated_complexity`: simple → ReAct, medium → Plan-and-Execute, complex/epic → Hybrid. Configurable via `auto_loop_rules` — a mapping of complexity thresholds to loop implementations (e.g., `{simple_max_tokens: 500, medium_max_tokens: 3000}` with corresponding loop assignments).
 
+### 6.6 Agent Crash Recovery
+
+When an agent execution fails unexpectedly (unhandled exception, OOM, process kill), the framework needs a recovery mechanism. Recovery strategies are implemented behind a `RecoveryStrategy` protocol, making the system pluggable — new strategies can be added without modifying existing ones.
+
+#### Strategy 1: Fail-and-Reassign (Default / MVP)
+
+The engine catches the failure at its outermost boundary, logs the error with the full `AgentContext` snapshot for debugging, transitions the task to `FAILED`, and makes it available for reassignment (manual or automatic via the task router).
+
+```yaml
+crash_recovery:
+  strategy: "fail_reassign"            # fail_reassign, checkpoint
+```
+
+- Simple, no persistence dependency, M3-ready
+- All progress is lost on crash — acceptable for short single-agent tasks in the MVP
+
+On crash:
+1. Catch exception at the engine boundary (outermost `try/except` in the execution loop)
+2. Log at ERROR with full `AgentContext` snapshot (conversation, turn count, accumulated cost)
+3. Transition `TaskExecution` → `FAILED` with the exception as the failure reason
+4. Task becomes available for reassignment via the task router
+
+#### Strategy 2: Checkpoint Recovery (Planned — M4/M5)
+
+The engine persists an `AgentContext` snapshot after each completed turn. On crash, the framework detects the failure (via heartbeat timeout or exception), loads the last checkpoint, and resumes execution from the exact turn where it left off. The immutable `model_copy(update=...)` pattern makes checkpointing trivial — each `AgentContext` is a complete, self-contained frozen state that serializes cleanly via `model_dump_json()`.
+
+```yaml
+crash_recovery:
+  strategy: "checkpoint"
+  checkpoint:
+    persist_every_n_turns: 1           # checkpoint frequency
+    storage: "sqlite"                  # sqlite, filesystem
+    heartbeat_interval_seconds: 30     # detect unresponsive agents
+    max_resume_attempts: 2             # retry limit before falling back to fail_reassign
+```
+
+- Preserves progress — critical for long tasks (multi-step plans, epic-level work)
+- Requires persistence layer and environment state reconciliation on resume
+- Natural fit with the existing immutable state model
+
+> **Environment reconciliation:** When resuming from a checkpoint, the agent's tools and workspace may have changed (other agents modified files, external state drifted). The checkpoint strategy includes a reconciliation step: the resumed agent receives a summary of changes since the checkpoint timestamp and can adapt its plan accordingly. This is analogous to a developer returning to a branch after colleagues have pushed changes.
+
 ---
 
 ## 7. Memory & Persistence
@@ -1178,6 +1220,59 @@ budget:
 
 > **Auto-downgrade boundary:** Model downgrades apply only at **task assignment time**, never mid-execution. An agent halfway through an architecture review cannot be switched to a cheaper model — the task completes on its assigned model. The next task assignment respects the downgrade threshold. This prevents quality degradation from mid-thought model switches.
 
+### 10.5 LLM Call Analytics
+
+Every LLM provider call is tracked with comprehensive metadata for financial reporting, debugging, and orchestration overhead analysis. The analytics system builds incrementally across milestones.
+
+#### M3: Per-Call Tracking + Proxy Overhead Metrics
+
+Every call to `BaseCompletionProvider.complete()` already records a `CostRecord` with token counts, cost, provider, model, agent, and task. In M3, the engine additionally logs **proxy overhead metrics** at task completion:
+
+- `turns_per_task` — number of LLM turns to complete the task (from `AgentContext.turn_count`)
+- `tokens_per_task` — total tokens consumed (from `AgentContext.accumulated_cost`)
+- `cost_per_task` — total USD cost (from `TaskExecution.accumulated_cost.cost_usd`)
+
+These are natural overhead indicators — a task consuming 15 turns and 50k tokens for a one-line fix signals a problem.
+
+#### M4: Call Categorization + Orchestration Ratio
+
+When multi-agent coordination exists, each `CostRecord` is tagged with a **call category**:
+
+| Category | Description | Examples |
+|----------|-------------|---------|
+| `productive` | Direct task work — tool calls, code generation, task output | Agent writing code, running tests |
+| `coordination` | Inter-agent communication — delegation, reviews, meetings | Manager reviewing work, agent presenting in meeting |
+| `system` | Framework overhead — system prompt injection, context loading | Initial prompt, memory retrieval injection |
+
+The **orchestration ratio** (`coordination / total`) is surfaced in metrics and alerts. If coordination tokens consistently exceed productive tokens, the company configuration needs tuning (fewer approval layers, simpler meeting protocols, etc.).
+
+#### M5+: Full Analytics Layer
+
+Expanded per-call metadata for comprehensive financial and operational reporting:
+
+```yaml
+call_analytics:
+  track:
+    - call_category                    # productive, coordination, system
+    - success                          # true/false
+    - retry_count                      # 0 = first attempt succeeded
+    - retry_reason                     # rate_limit, timeout, internal_error
+    - latency_ms                       # wall-clock time for the call
+    - finish_reason                    # stop, tool_use, max_tokens, error
+    - cache_hit                        # prompt caching hit/miss (provider-dependent)
+  aggregation:
+    - per_agent_daily                  # agent spending over time
+    - per_task                         # total cost per task
+    - per_department                   # department-level rollups
+    - per_provider                     # provider reliability and cost comparison
+    - orchestration_ratio              # coordination vs productive tokens
+  alerts:
+    orchestration_ratio_warn: 0.5      # warn if coordination > 50% of total
+    retry_rate_warn: 0.1               # warn if > 10% of calls need retries
+```
+
+> **Design principle:** Analytics metadata is append-only and never blocks execution. Failed analytics writes are logged and skipped — the agent's task is never delayed by telemetry. All analytics data flows through the existing `CostRecord` and structured logging infrastructure.
+
 ---
 
 ## 11. Tool & Capability System
@@ -1203,6 +1298,57 @@ budget:
 When the LLM requests multiple tool calls in a single turn, `ToolInvoker.invoke_all` currently executes them **sequentially**. Migration to `asyncio.TaskGroup` for parallel structured concurrency is planned (see §15.5). Recoverable errors are captured as `ToolResult(is_error=True)` without aborting remaining invocations; non-recoverable errors (`MemoryError`, `RecursionError`) propagate immediately and abort the sequence.
 
 `BaseTool.parameters_schema` deep-copies the caller-supplied schema at construction and wraps it in `MappingProxyType` for read-only enforcement; the property returns a deep copy on access to prevent mutation of internal state. `ToolInvoker` deep-copies arguments at the tool execution boundary before passing them to `tool.execute()`. `MappingProxyType` wrapping is also used in `ToolRegistry` for its internal collections.
+
+### 11.1.2 Tool Sandboxing
+
+Tool execution requires safety boundaries proportional to the risk of each tool category. The framework uses a **layered sandboxing strategy** with a pluggable `SandboxBackend` protocol — new backends can be added without modifying existing ones. The default configuration uses lighter isolation for low-risk tools and stronger isolation for high-risk tools.
+
+#### Sandbox Backends
+
+| Backend | Isolation | Latency | Dependencies | Status |
+|---------|-----------|---------|--------------|--------|
+| `SubprocessSandbox` | Process-level: timeout, restricted PATH, workspace-scoped paths | ~ms | None | M3 |
+| `DockerSandbox` | Container-level: ephemeral container, mounted workspace, no network, resource limits (CPU/memory/time) | ~1-2s cold start | Docker | M3 |
+| `K8sSandbox` | Pod-level: per-agent containers, namespace isolation, resource quotas, network policies | ~2-5s | Kubernetes | Future |
+
+#### Default Layered Configuration
+
+```yaml
+sandboxing:
+  default_backend: "subprocess"        # subprocess, docker, k8s
+  overrides:                           # per-category backend overrides
+    file_system: "subprocess"          # low risk — fast, no deps
+    git: "subprocess"                  # low risk — workspace-scoped
+    web: "subprocess"                  # medium risk — timeout + allowlist
+    code_execution: "docker"           # high risk — strong isolation required
+    terminal: "docker"                 # high risk — arbitrary commands
+    database: "docker"                 # high risk — data mutation
+  subprocess:
+    timeout_seconds: 30
+    workspace_only: true               # restrict filesystem access to project dir
+    restricted_path: true              # strip dangerous binaries from PATH
+  docker:
+    image: "ai-company-sandbox:latest" # pre-built image with common runtimes
+    network: "none"                    # no network by default
+    memory_limit: "512m"
+    cpu_limit: "1.0"
+    timeout_seconds: 120
+    mount_mode: "rw"                   # rw for workspace dir, nothing else mounted
+    auto_remove: true                  # ephemeral — container removed after execution
+  k8s:                                 # future — per-agent pod isolation
+    namespace: "ai-company-agents"
+    resource_requests:
+      cpu: "250m"
+      memory: "256Mi"
+    resource_limits:
+      cpu: "1"
+      memory: "1Gi"
+    network_policy: "deny-all"         # default deny, allowlist per tool
+```
+
+> **User experience:** Docker is optional — only required when code execution or terminal tools are enabled. File system and git tools work out of the box with subprocess isolation. This keeps the "local first" experience lightweight while providing strong isolation where it matters.
+
+> **Scaling path:** In a future Kubernetes deployment (§18.2 Phase 3-4), each agent can run in its own pod via `K8sSandbox`. At that point, the layered configuration becomes less relevant — all tools execute within the agent's isolated pod. The `SandboxBackend` protocol makes this transition seamless.
 
 ### 11.2 Tool Access Levels
 
@@ -1804,7 +1950,10 @@ ai-company/
 │       │   ├── errors.py           # Tool error hierarchy
 │       │   ├── examples/           # Example tool implementations
 │       │   │   └── echo.py        # Echo tool (for testing)
-│       │   ├── sandbox.py          # Sandboxed execution (M3)
+│       │   ├── sandbox/            # Sandboxing backends (M3)
+│       │   │   ├── protocol.py    # SandboxBackend protocol
+│       │   │   ├── subprocess.py  # SubprocessSandbox (default for low-risk)
+│       │   │   └── docker.py      # DockerSandbox (for code_runner, terminal)
 │       │   ├── file_system.py      # File operations (M3)
 │       │   ├── git_tools.py        # Git operations (M3)
 │       │   ├── code_runner.py      # Code execution (M3)
@@ -1872,6 +2021,7 @@ ai-company/
 | Config | YAML + Pydantic | JSON, TOML, Python dicts | Human-friendly, strict validation, good IDE support |
 | CLI | Typer | Click, argparse, Fire | Built on Click, auto-completion, type hints |
 | Web UI | Vue 3 | React, Svelte, HTMX | Simpler than React for dashboards, good with FastAPI |
+| Sandboxing | Layered: subprocess + Docker | Docker-only, subprocess-only, WASM | Risk-proportionate: fast subprocess for file/git, Docker isolation for code execution. Pluggable `SandboxBackend` protocol enables K8s migration later |
 
 ### 15.5 Pydantic Model Conventions (M2.5)
 
@@ -1886,6 +2036,10 @@ These conventions were established during the M0–M2 review cycle. **Adopted** 
 | **Shared field groups** | Planned | Extract common field sets into base models (e.g. `_SpendingTotals`) | Prevents field duplication across spending summary models. Not yet implemented — each model independently defines fields. |
 | **Event constants** | Adopted (flat) | Single `events.py` module with domain-scoped naming (e.g. `PROVIDER_CALL_START`, `BUDGET_RECORD_ADDED`) | Current approach uses a single module. Splitting into per-domain submodules may be revisited when the file exceeds ~200 constants. |
 | **Parallel tool execution** | Planned | `asyncio.TaskGroup` in `ToolInvoker.invoke_all` | Structured concurrency with proper cancellation semantics. Currently sequential; migration planned for M3 when the agent engine needs concurrent tool calls. |
+| **Tool sandboxing** | Adopted (M3) | Layered `SandboxBackend` protocol: `SubprocessSandbox` for low-risk tools (file, git), `DockerSandbox` for high-risk tools (code_runner, terminal). `K8sSandbox` planned for future container deployments. | Risk-proportionate isolation. Docker optional — only needed for code execution. Pluggable protocol enables seamless migration to K8s per-agent pods in Phase 3-4. See §11.1.2. |
+| **Crash recovery** | Adopted (M3 partial) | Pluggable `RecoveryStrategy` protocol. M3: `FailAndReassignStrategy` (catch at engine boundary, log snapshot, mark FAILED, reassign). M4/M5: `CheckpointStrategy` (persist `AgentContext` per turn, resume from last checkpoint). | Immutable `model_copy` pattern makes checkpoint serialization trivial to add later. Fail-and-reassign is sufficient for short MVP tasks. See §6.6. |
+| **Agent behavior testing** | Adopted (M3) | Scripted `FakeProvider` for unit tests (deterministic turn sequences); behavioral outcome assertions for integration tests (task completed, tools called, cost within budget). | Leverages existing `FakeProvider` and `CompletionResponseFactory` fixtures. Precise engine testing without brittle response-matching at integration level. |
+| **LLM call analytics** | Planned (incremental) | M3: proxy metrics (`turns_per_task`, `tokens_per_task`). M4: call categorization (`productive`, `coordination`, `system`) + orchestration ratio. M5+: full analytics (retry tracking, latency, cache hits, per-provider comparison). | Append-only, never blocks execution. Builds on existing `CostRecord` infrastructure. Detects orchestration overhead early. See §10.5. |
 
 ---
 
@@ -1959,12 +2113,15 @@ What we **plan to leverage** (not fork) — subject to evaluation:
 | 6 | What metrics define "good" agent performance? | Medium | Open | Needed for HR/hiring/firing decisions |
 | 7 | How to prevent agent communication loops? | High | **Resolved** | Implemented in §5.5 Loop Prevention |
 | 8 | Optimal message bus for local-first architecture? | Medium | Open | asyncio queues vs Redis vs embedded broker |
-| 9 | How to handle code execution safely? | High | Open | Sandboxing strategy, Docker vs WASM vs subprocess |
+| 9 | How to handle code execution safely? | High | **Resolved** | Layered sandboxing behind `SandboxBackend` protocol — see §11.1.2 Tool Sandboxing |
 | 10 | What's the minimum viable meeting set? | Low | Open | Standup + planning + review as minimum? |
 | 11 | What is the agent execution loop architecture? | High | **Resolved** | Multiple configurable loops — see §6.5 Agent Execution Loop |
 | 12 | How should shared organizational memory work? | High | **Resolved** | Modular backends behind protocol — see §7.4 Shared Organizational Memory |
 | 13 | What happens when humans don't respond to approvals? | High | **Resolved** | Configurable timeout policies with task suspension — see §12.4 Approval Timeout |
 | 14 | Which memory layer library to use? | Medium | Open | Mem0, Zep, Letta, Cognee, custom — all candidates, TBD after evaluation (see §15.2) |
+| 15 | How to handle agent crashes mid-task? | High | **Resolved** | Pluggable `RecoveryStrategy` protocol — see §6.6 Agent Crash Recovery |
+| 16 | How to test non-deterministic agent behavior? | High | **Resolved** | Scripted providers for unit tests + behavioral assertions for integration — see §15.5 |
+| 17 | How to detect orchestration overhead? | Medium | **Resolved** | Incremental LLM call analytics with proxy metrics (M3) → full categorization (M4) — see §10.5 |
 
 ### 17.2 Technical Risks
 
@@ -1985,7 +2142,8 @@ What we **plan to leverage** (not fork) — subject to evaluation:
 | Over-engineering the MVP | High | Start with minimal viable company (3-5 agents), add complexity iteratively |
 | Config format becoming unwieldy | Medium | Good defaults, layered config (base + overrides), validation |
 | Agent execution bottlenecks | Medium | Async execution, parallel agent processing, queue-based |
-| Data loss on crash | Medium | WAL mode SQLite, periodic snapshots, recovery system |
+| Data loss on crash | Medium | WAL mode SQLite, `RecoveryStrategy` protocol (§6.6): fail-and-reassign in MVP, checkpoint recovery in M4/M5 |
+| Orchestration overhead exceeds productive work | Medium | LLM call analytics (§10.5): proxy metrics from M3, call categorization + orchestration ratio alerts from M4 |
 
 ---
 
