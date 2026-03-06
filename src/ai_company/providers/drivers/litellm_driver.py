@@ -1,7 +1,7 @@
 """LiteLLM-backed completion driver.
 
 Wraps ``litellm.acompletion`` behind the ``BaseCompletionProvider``
-contract, mapping between domain models and LiteLLM's OpenAI-compatible
+contract, mapping between domain models and LiteLLM's chat-completion
 API.
 """
 

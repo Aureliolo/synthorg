@@ -83,6 +83,10 @@ class TestProviderModelConfig:
         with pytest.raises(ValidationError, match="greater than"):
             ProviderModelConfig(id="test-model", estimated_latency_ms=-100)
 
+    def test_estimated_latency_ms_exceeds_upper_bound(self) -> None:
+        with pytest.raises(ValidationError, match="less than or equal"):
+            ProviderModelConfig(id="test-model", estimated_latency_ms=300_001)
+
     def test_factory(self) -> None:
         m = ProviderModelConfigFactory.build()
         assert isinstance(m, ProviderModelConfig)

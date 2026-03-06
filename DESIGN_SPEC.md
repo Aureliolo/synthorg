@@ -2142,7 +2142,7 @@ ai-company/
 │       │   ├── drivers/            # Provider driver implementations
 │       │   │   ├── litellm_driver.py  # LiteLLM adapter
 │       │   │   └── mappers.py     # Request/response mappers
-│       │   ├── routing/            # Model routing (5 strategies)
+│       │   ├── routing/            # Model routing (6 strategies)
 │       │   │   ├── errors.py      # Routing errors
 │       │   │   ├── models.py      # Routing models (candidates, results)
 │       │   │   ├── resolver.py    # Model resolver

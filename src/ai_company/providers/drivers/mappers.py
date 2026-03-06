@@ -1,8 +1,8 @@
 """Pure mapping functions between domain models and LLM API dict formats.
 
 These mappers convert between ``ai_company.providers.models`` and the
-OpenAI-compatible dict format that LiteLLM (and most providers) consume.
-Reusable by future native SDK drivers.
+standard chat-completion dict format that LiteLLM (and most providers)
+consume.  Reusable by future native SDK drivers.
 """
 
 import copy
@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 
 
 def messages_to_dicts(messages: list[ChatMessage]) -> list[dict[str, object]]:
-    """Convert a list of ``ChatMessage`` to OpenAI-compatible message dicts.
+    """Convert a list of ``ChatMessage`` to chat-completion message dicts.
 
     Args:
         messages: Domain message objects.
@@ -66,7 +66,7 @@ def _message_to_dict(message: ChatMessage) -> dict[str, object]:
 
 
 def tools_to_dicts(tools: list[ToolDefinition]) -> list[dict[str, object]]:
-    """Convert a list of ``ToolDefinition`` to OpenAI-compatible tool dicts.
+    """Convert a list of ``ToolDefinition`` to chat-completion tool dicts.
 
     Args:
         tools: Domain tool definitions.
@@ -79,7 +79,7 @@ def tools_to_dicts(tools: list[ToolDefinition]) -> list[dict[str, object]]:
 
 
 def _tool_to_dict(tool: ToolDefinition) -> dict[str, object]:
-    """Convert a single ``ToolDefinition`` to an OpenAI tool dict."""
+    """Convert a single ``ToolDefinition`` to a chat-completion tool dict."""
     return {
         "type": "function",
         "function": {
@@ -129,7 +129,7 @@ def map_finish_reason(reason: str | None) -> FinishReason:
 
 
 def extract_tool_calls(raw: list[Any] | None) -> tuple[ToolCall, ...]:
-    """Extract ``ToolCall`` objects from raw OpenAI-format tool call dicts.
+    """Extract ``ToolCall`` objects from raw chat-completion tool call dicts.
 
     Handles both parsed dicts and objects with attribute access (as
     returned by LiteLLM response objects).

@@ -197,8 +197,9 @@ class ModelResolver:
             sorted(
                 self.all_models(),
                 key=lambda m: (
-                    m.estimated_latency_ms is None,
-                    m.estimated_latency_ms or 0,
+                    m.estimated_latency_ms
+                    if m.estimated_latency_ms is not None
+                    else float("inf")
                 ),
             ),
         )

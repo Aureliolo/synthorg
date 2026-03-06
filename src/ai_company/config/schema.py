@@ -135,6 +135,7 @@ class ProviderModelConfig(BaseModel):
     estimated_latency_ms: int | None = Field(
         default=None,
         gt=0,
+        le=300_000,
         description="Estimated median latency in milliseconds",
     )
 

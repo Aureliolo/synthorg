@@ -42,6 +42,7 @@ class ResolvedModel(BaseModel):
     estimated_latency_ms: int | None = Field(
         default=None,
         gt=0,
+        le=300_000,
         description="Estimated median latency in milliseconds",
     )
 
@@ -59,6 +60,7 @@ class RoutingRequest(BaseModel):
     - **ManualStrategy** requires ``model_override``.
     - **RoleBasedStrategy** requires ``agent_level``.
     - **CostAwareStrategy** uses ``task_type`` and ``remaining_budget``.
+    - **FastestStrategy** uses ``task_type`` and ``remaining_budget``.
     - **SmartStrategy** uses all fields in priority order.
 
     Attributes:

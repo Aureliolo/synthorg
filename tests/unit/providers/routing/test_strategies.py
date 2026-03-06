@@ -410,6 +410,63 @@ class TestFastestStrategy:
 
         assert decision.resolved_model.alias == "cheap"
 
+    def test_task_type_rule_skipped_when_over_budget(
+        self,
+        resolver: ModelResolver,
+        standard_routing_config: RoutingConfig,
+    ) -> None:
+        """Task-type rule picks 'large' but budget is too low -> fastest."""
+        strategy = FastestStrategy()
+        # review rule -> large (total_cost=0.090), budget below that
+        request = RoutingRequest(task_type="review", remaining_budget=0.02)
+
+        decision = strategy.select(request, standard_routing_config, resolver)
+
+        # Should fall through to fastest within budget, not the over-budget model
+        assert decision.resolved_model.alias == "small"
+        assert "task-type rule" in decision.reason.lower()
+
+    def test_budget_exceeded_with_latency_models_only(self) -> None:
+        """All models with latency exceed budget -> fastest with warning."""
+        providers = {
+            "test-provider": ProviderConfig(
+                models=(
+                    ProviderModelConfig(
+                        id="test-fast-expensive",
+                        alias="fast-expensive",
+                        cost_per_1k_input=0.010,
+                        cost_per_1k_output=0.050,
+                        estimated_latency_ms=100,
+                    ),
+                    ProviderModelConfig(
+                        id="test-slow-expensive",
+                        alias="slow-expensive",
+                        cost_per_1k_input=0.015,
+                        cost_per_1k_output=0.075,
+                        estimated_latency_ms=500,
+                    ),
+                    ProviderModelConfig(
+                        id="test-no-latency-cheap",
+                        alias="no-latency-cheap",
+                        cost_per_1k_input=0.001,
+                        cost_per_1k_output=0.005,
+                    ),
+                ),
+            ),
+        }
+        resolver = ModelResolver.from_config(providers)
+        strategy = FastestStrategy()
+
+        decision = strategy.select(
+            RoutingRequest(remaining_budget=0.001),
+            RoutingConfig(),
+            resolver,
+        )
+
+        # Returns fastest with latency data, not the cheap no-latency one
+        assert decision.resolved_model.alias == "fast-expensive"
+        assert "exceed" in decision.reason.lower()
+
     def test_mixed_none_non_none_ignores_none(self) -> None:
         """Models with None latency are ignored when others have data."""
         providers = {

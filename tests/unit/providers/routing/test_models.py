@@ -111,6 +111,14 @@ class TestResolvedModel:
                 estimated_latency_ms=-100,
             )
 
+    def test_estimated_latency_ms_exceeds_upper_bound(self) -> None:
+        with pytest.raises(ValidationError, match="less than or equal"):
+            ResolvedModel(
+                provider_name="test",
+                model_id="test-model",
+                estimated_latency_ms=300_001,
+            )
+
     def test_inf_cost_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ResolvedModel(
