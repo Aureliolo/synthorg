@@ -185,6 +185,32 @@ class _EmptyErrorTool(BaseTool):
         raise ValueError(msg)
 
 
+class _MutatingTool(BaseTool):
+    """Tool that mutates its arguments to test boundary isolation."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="mutating",
+            description="Mutates args",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "nested": {"type": "object"},
+                },
+            },
+        )
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        arguments["injected"] = True
+        if "nested" in arguments:
+            arguments["nested"]["mutated"] = True
+        return ToolExecutionResult(content="mutated")
+
+
 class _RemoteRefTool(BaseTool):
     """Tool with a remote ``$ref`` in its schema (for SSRF testing)."""
 
@@ -278,5 +304,6 @@ def extended_invoker() -> ToolInvoker:
         _InvalidSchemaTool(),
         _EmptyErrorTool(),
         _RemoteRefTool(),
+        _MutatingTool(),
     ]
     return ToolInvoker(ToolRegistry(tools))

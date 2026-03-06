@@ -1,15 +1,13 @@
 """Tool invoker — validates and executes tool calls.
 
 Bridges LLM ``ToolCall`` objects with concrete ``BaseTool.execute``
-methods.  Never propagates exceptions — always returns a ``ToolResult``.
-
-Note:
-    ``BaseException`` subclasses (``KeyboardInterrupt``, ``SystemExit``,
-    ``asyncio.CancelledError``) are NOT caught and will propagate
-    normally.  Non-recoverable errors (``MemoryError``,
-    ``RecursionError``) are re-raised after logging.
+methods.  Recoverable errors are returned as ``ToolResult(is_error=True)``;
+non-recoverable errors (``MemoryError``, ``RecursionError``) and
+``BaseException`` subclasses (``KeyboardInterrupt``, ``SystemExit``,
+``asyncio.CancelledError``) propagate after logging.
 """
 
+import copy
 from typing import TYPE_CHECKING
 
 import jsonschema
@@ -19,6 +17,7 @@ from referencing.exceptions import NoSuchResource
 
 from ai_company.observability import get_logger
 from ai_company.observability.events import (
+    TOOL_INVOKE_DEEPCOPY_ERROR,
     TOOL_INVOKE_EXECUTION_ERROR,
     TOOL_INVOKE_NON_RECOVERABLE,
     TOOL_INVOKE_NOT_FOUND,
@@ -234,9 +233,40 @@ class ToolInvoker:
         tool: BaseTool,
         tool_call: ToolCall,
     ) -> ToolExecutionResult | ToolResult:
-        """Execute the tool, catching errors as ``ToolResult``."""
+        """Deep-copy arguments for isolation, then execute the tool.
+
+        Copy failures and execution errors are caught and returned as
+        ``ToolResult(is_error=True)``.  Non-recoverable errors
+        (``MemoryError``, ``RecursionError``) propagate after logging.
+        """
         try:
-            return await tool.execute(arguments=dict(tool_call.arguments))
+            safe_args = copy.deepcopy(tool_call.arguments)
+        except (MemoryError, RecursionError) as exc:
+            logger.exception(
+                TOOL_INVOKE_NON_RECOVERABLE,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            raise
+        except Exception as exc:
+            error_msg = str(exc) or f"{type(exc).__name__} (no message)"
+            logger.exception(
+                TOOL_INVOKE_DEEPCOPY_ERROR,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                error=f"Failed to deep-copy arguments: {error_msg}",
+            )
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                content=(
+                    f"Tool {tool_call.name!r} arguments could not be "
+                    f"safely copied: {error_msg}"
+                ),
+                is_error=True,
+            )
+        try:
+            return await tool.execute(arguments=safe_args)
         except (MemoryError, RecursionError) as exc:
             logger.exception(
                 TOOL_INVOKE_NON_RECOVERABLE,

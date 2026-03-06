@@ -915,7 +915,7 @@ budget:
 
 When the LLM requests multiple tool calls in a single turn, `ToolInvoker.invoke_all` currently executes them **sequentially**. Migration to `asyncio.TaskGroup` for parallel structured concurrency is planned (see §15.5). Recoverable errors are captured as `ToolResult(is_error=True)` without aborting remaining invocations; non-recoverable errors (`MemoryError`, `RecursionError`) propagate immediately and abort the sequence.
 
-Tool parameter schemas (`parameters_schema`) are currently exposed via `deepcopy` on each property access (construction also deep-copies). `MappingProxyType` wrapping is used in the `ToolRegistry` for its internal collections. Migrating `BaseTool.parameters_schema` to `MappingProxyType` at construction (removing per-access `deepcopy`) is a planned convention (see §15.5).
+`BaseTool.parameters_schema` deep-copies the caller-supplied schema at construction and wraps it in `MappingProxyType` for read-only enforcement; the property returns a deep copy on access to prevent mutation of internal state. `ToolInvoker` deep-copies arguments at the tool execution boundary before passing them to `tool.execute()`. `MappingProxyType` wrapping is also used in `ToolRegistry` for its internal collections.
 
 ### 11.2 Tool Access Levels
 
@@ -1302,11 +1302,11 @@ ai-company/
 │       │   ├── role.py             # Role model
 │       │   └── role_catalog.py     # Role catalog
 │       ├── engine/                  # Core engines (M3+)
-│       │   ├── errors.py           # Engine error hierarchy (M3)
-│       │   ├── prompt.py           # System prompt builder (M3)
-│       │   ├── prompt_template.py  # System prompt Jinja2 templates (M3)
-│       │   ├── task_execution.py   # TaskExecution + StatusTransition (M3)
-│       │   ├── context.py          # AgentContext + AgentContextSnapshot (M3)
+│       │   ├── errors.py           # Engine error hierarchy
+│       │   ├── prompt.py           # System prompt builder
+│       │   ├── prompt_template.py  # System prompt Jinja2 templates
+│       │   ├── task_execution.py   # TaskExecution + StatusTransition
+│       │   ├── context.py          # AgentContext + AgentContextSnapshot
 │       │   ├── agent_engine.py     # Agent execution loop (M3)
 │       │   ├── task_engine.py      # Task routing & scheduling (M3-M4)
 │       │   ├── workflow_engine.py  # Workflow orchestration (M4)
@@ -1436,7 +1436,7 @@ These conventions were established during the M0–M2 review cycle. **Adopted** 
 
 | Convention | Status | Decision | Rationale |
 |------------|--------|----------|-----------|
-| **Immutability strategy** | Adopted | `MappingProxyType` at construction for dict fields in registries and collections; `frozen=True` on all config/identity models | MappingProxyType is O(1) and prevents accidental mutation. Pydantic `frozen=True` is confirmed shallow (pydantic#7784). |
+| **Immutability strategy** | Adopted | `copy.deepcopy()` at construction + `MappingProxyType` wrapping for non-Pydantic internal collections (registries, `BaseTool`). For Pydantic frozen models: `frozen=True` prevents field reassignment; `copy.deepcopy()` at system boundaries (tool execution, LLM provider serialization) prevents nested mutation. No MappingProxyType inside Pydantic models (serialization friction). | Deep-copy at construction fully isolates nested structures; `MappingProxyType` enforces read-only access. Boundary-copy for Pydantic models is simple, centralized, and Pydantic-native. A future CPython built-in immutable mapping type (e.g. `frozendict`) would provide zero-friction field-level immutability when available. |
 | **Config vs runtime split** | Adopted (M3) | Frozen models for config/identity; `model_copy(update=...)` for runtime state transitions | `TaskExecution` and `AgentContext` (in `engine/`) are frozen Pydantic models that use `model_copy(update=...)` for copy-on-write state transitions without re-running validators (per Pydantic `model_copy` semantics). Config layer (`AgentIdentity`, `Task`) remains unchanged. |
 | **Derived fields** | Planned | `@computed_field` instead of stored + validated | Eliminates redundant storage and impossible-to-fail validators (e.g. `total_tokens = input + output`). Currently `total_tokens` uses stored `Field` + `@model_validator`. |
 | **String validation** | Planned | `NotBlankStr` type from `core.types` for all identifiers | Eliminates per-model `@model_validator` boilerplate for whitespace checks. `NotBlankStr` is defined but models still use `Field(min_length=1)` + manual validators. |

@@ -319,6 +319,103 @@ class TestInvokeSsrfProtection:
 
 
 @pytest.mark.unit
+class TestInvokeBoundaryIsolation:
+    """Tests that tool execution receives isolated argument copies."""
+
+    async def test_tool_receives_deep_copy_of_arguments(
+        self,
+        extended_invoker: ToolInvoker,
+    ) -> None:
+        """Nested argument structures are isolated from the frozen model."""
+        call = ToolCall(
+            id="c1",
+            name="mutating",
+            arguments={"nested": {"key": "original"}},
+        )
+        await extended_invoker.invoke(call)
+        assert call.arguments["nested"]["key"] == "original"
+        assert "mutated" not in call.arguments.get("nested", {})
+        assert "injected" not in call.arguments
+
+    async def test_nested_mutation_does_not_leak(
+        self,
+        extended_invoker: ToolInvoker,
+    ) -> None:
+        """Tool mutating nested dicts does not affect the original ToolCall."""
+        call = ToolCall(
+            id="c2",
+            name="mutating",
+            arguments={"nested": {"value": 42}},
+        )
+        await extended_invoker.invoke(call)
+        assert "mutated" not in call.arguments.get("nested", {})
+
+
+@pytest.mark.unit
+class TestInvokeDeepcopyFailure:
+    """Tests for argument deep-copy failure handling."""
+
+    async def test_deepcopy_failure_returns_error_result(
+        self,
+        extended_invoker: ToolInvoker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When deepcopy of arguments fails, a ToolResult error is returned."""
+        import copy as _copy_mod
+
+        real_deepcopy = _copy_mod.deepcopy
+        call_count = 0
+
+        def _fail_on_execute(obj: object, memo: object = None) -> object:
+            nonlocal call_count
+            call_count += 1
+            # First deepcopy call is in _validate_params via
+            # parameters_schema; let it pass. Fail on the second
+            # call in _execute_tool.
+            if call_count > 1:
+                msg = "cannot copy"
+                raise TypeError(msg)
+            return real_deepcopy(obj, memo)  # type: ignore[arg-type]
+
+        call = ToolCall(id="c_dc", name="mutating", arguments={"key": "val"})
+        monkeypatch.setattr(
+            "ai_company.tools.invoker.copy.deepcopy",
+            _fail_on_execute,
+        )
+        result = await extended_invoker.invoke(call)
+        assert result.is_error is True
+        assert "safely copied" in result.content
+        assert result.tool_call_id == "c_dc"
+
+    async def test_recursion_error_during_deepcopy_propagates(
+        self,
+        extended_invoker: ToolInvoker,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """RecursionError during deepcopy is re-raised, not swallowed."""
+        import copy as _copy_mod
+
+        real_deepcopy = _copy_mod.deepcopy
+        call_count = 0
+
+        def _fail_on_execute(obj: object, memo: object = None) -> object:
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                msg = "maximum recursion depth exceeded"
+                raise RecursionError(msg)
+            return real_deepcopy(obj, memo)  # type: ignore[arg-type]
+
+        call = ToolCall(id="c_rec", name="mutating", arguments={"key": "val"})
+        monkeypatch.setattr(
+            "ai_company.tools.invoker.copy.deepcopy",
+            _fail_on_execute,
+        )
+        with pytest.raises(RecursionError, match="maximum recursion depth"):
+            await extended_invoker.invoke(call)
+
+
+@pytest.mark.unit
 class TestInvokeEmptyErrorMessage:
     """Tests for empty exception message fallback."""
 
