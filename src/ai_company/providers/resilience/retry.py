@@ -5,7 +5,7 @@ import random
 from typing import TYPE_CHECKING, TypeVar
 
 from ai_company.observability import get_logger
-from ai_company.observability.events import (
+from ai_company.observability.events.provider import (
     PROVIDER_CALL_ERROR,
     PROVIDER_RETRY_ATTEMPT,
     PROVIDER_RETRY_EXHAUSTED,

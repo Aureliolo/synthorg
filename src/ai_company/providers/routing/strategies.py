@@ -13,7 +13,7 @@ from ai_company.config.schema import RoutingConfig, RoutingRuleConfig  # noqa: T
 from ai_company.core.enums import SeniorityLevel  # noqa: TC001
 from ai_company.core.role_catalog import get_seniority_info
 from ai_company.observability import get_logger
-from ai_company.observability.events import (
+from ai_company.observability.events.routing import (
     ROUTING_BUDGET_EXCEEDED,
     ROUTING_FALLBACK_ATTEMPTED,
     ROUTING_FALLBACK_EXHAUSTED,

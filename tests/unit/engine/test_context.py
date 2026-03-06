@@ -15,7 +15,7 @@ from ai_company.engine.context import (
     AgentContextSnapshot,
 )
 from ai_company.engine.errors import ExecutionStateError, MaxTurnsExceededError
-from ai_company.observability.events import (
+from ai_company.observability.events.execution import (
     EXECUTION_CONTEXT_CREATED,
     EXECUTION_CONTEXT_NO_TASK,
     EXECUTION_CONTEXT_SNAPSHOT,

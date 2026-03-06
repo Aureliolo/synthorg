@@ -16,7 +16,7 @@ transitions.
 
 from ai_company.core.enums import TaskStatus
 from ai_company.observability import get_logger
-from ai_company.observability.events import (
+from ai_company.observability.events.task import (
     TASK_TRANSITION_CONFIG_ERROR,
     TASK_TRANSITION_INVALID,
 )

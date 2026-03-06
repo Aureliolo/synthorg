@@ -9,7 +9,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Self
 
 from ai_company.observability import get_logger
-from ai_company.observability.events import (
+from ai_company.observability.events.provider import (
     PROVIDER_DRIVER_FACTORY_MISSING,
     PROVIDER_DRIVER_INSTANTIATED,
     PROVIDER_DRIVER_NOT_REGISTERED,

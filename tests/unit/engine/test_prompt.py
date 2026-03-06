@@ -23,6 +23,11 @@ from ai_company.engine.prompt_template import (
     AUTONOMY_INSTRUCTIONS,
     PROMPT_TEMPLATE_VERSION,
 )
+from ai_company.observability.events.prompt import (
+    PROMPT_BUILD_START,
+    PROMPT_BUILD_SUCCESS,
+    PROMPT_BUILD_TOKEN_TRIMMED,
+)
 
 if TYPE_CHECKING:
     from ai_company.core.company import Company
@@ -504,8 +509,8 @@ class TestPromptLogging:
             build_system_prompt(agent=sample_agent_with_personality)
 
         events = [entry["event"] for entry in logs]
-        assert "prompt.build.start" in events
-        assert "prompt.build.success" in events
+        assert PROMPT_BUILD_START in events
+        assert PROMPT_BUILD_SUCCESS in events
 
     @pytest.mark.unit
     def test_trim_logs_warning(
@@ -523,7 +528,7 @@ class TestPromptLogging:
                 max_tokens=10,
             )
 
-        trim_entries = [e for e in logs if e["event"] == "prompt.build.token_trimmed"]
+        trim_entries = [e for e in logs if e["event"] == PROMPT_BUILD_TOKEN_TRIMMED]
         assert len(trim_entries) == 1
         assert "trimmed_sections" in trim_entries[0]
         assert "company" in trim_entries[0]["trimmed_sections"]

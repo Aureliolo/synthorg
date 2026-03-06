@@ -11,7 +11,7 @@ from ai_company.core.enums import Complexity, Priority, TaskStatus, TaskType
 from ai_company.core.task_transitions import validate_transition
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.observability import get_logger
-from ai_company.observability.events import TASK_STATUS_CHANGED
+from ai_company.observability.events.task import TASK_STATUS_CHANGED
 
 logger = get_logger(__name__)
 

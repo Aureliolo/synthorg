@@ -12,7 +12,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from ai_company.observability import get_logger
-from ai_company.observability.events import TOOL_BASE_INVALID_NAME
+from ai_company.observability.events.tool import TOOL_BASE_INVALID_NAME
 from ai_company.providers.models import ToolDefinition
 
 logger = get_logger(__name__)

@@ -25,7 +25,7 @@ from ai_company.engine.prompt_template import (
     PROMPT_TEMPLATE_VERSION,
 )
 from ai_company.observability import get_logger
-from ai_company.observability.events import (
+from ai_company.observability.events.prompt import (
     PROMPT_BUILD_BUDGET_EXCEEDED,
     PROMPT_BUILD_ERROR,
     PROMPT_BUILD_START,

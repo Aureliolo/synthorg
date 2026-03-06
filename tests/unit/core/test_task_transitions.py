@@ -5,7 +5,7 @@ import structlog
 
 from ai_company.core.enums import TaskStatus
 from ai_company.core.task_transitions import VALID_TRANSITIONS, validate_transition
-from ai_company.observability.events import TASK_TRANSITION_INVALID
+from ai_company.observability.events.task import TASK_TRANSITION_INVALID
 
 pytestmark = pytest.mark.timeout(30)
 

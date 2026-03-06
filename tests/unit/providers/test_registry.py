@@ -6,7 +6,7 @@ import pytest
 import structlog
 
 from ai_company.config.schema import ProviderConfig, ProviderModelConfig
-from ai_company.observability.events import (
+from ai_company.observability.events.provider import (
     PROVIDER_DRIVER_NOT_REGISTERED,
     PROVIDER_REGISTRY_BUILT,
 )

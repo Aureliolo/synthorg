@@ -1,10 +1,32 @@
 """Tests for observability event name constants."""
 
+import importlib
+import pkgutil
 import re
 
 import pytest
 
 from ai_company.observability import events
+from ai_company.observability.events.budget import BUDGET_RECORD_ADDED
+from ai_company.observability.events.config import (
+    CONFIG_LOADED,
+    CONFIG_PARSE_FAILED,
+    CONFIG_VALIDATION_FAILED,
+)
+from ai_company.observability.events.execution import EXECUTION_TASK_CREATED
+from ai_company.observability.events.prompt import PROMPT_BUILD_START
+from ai_company.observability.events.provider import (
+    PROVIDER_CALL_START,
+    PROVIDER_REGISTRY_BUILT,
+)
+from ai_company.observability.events.role import ROLE_LOOKUP_MISS
+from ai_company.observability.events.routing import ROUTING_DECISION_MADE
+from ai_company.observability.events.task import TASK_STATUS_CHANGED
+from ai_company.observability.events.template import (
+    TEMPLATE_RENDER_START,
+    TEMPLATE_RENDER_SUCCESS,
+)
+from ai_company.observability.events.tool import TOOL_INVOKE_START
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -12,14 +34,16 @@ _DOT_PATTERN = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
 
 
 def _all_event_names() -> list[tuple[str, str]]:
-    """Return (attr_name, value) for every public string constant in events."""
+    """Return (attr_name, value) for every public string constant."""
     result: list[tuple[str, str]] = []
-    for attr in dir(events):
-        if attr.startswith("_"):
-            continue
-        val = getattr(events, attr)
-        if isinstance(val, str):
-            result.append((attr, val))
+    for info in pkgutil.iter_modules(events.__path__):
+        mod = importlib.import_module(f"ai_company.observability.events.{info.name}")
+        for attr in dir(mod):
+            if attr.startswith("_"):
+                continue
+            val = getattr(mod, attr)
+            if attr.isupper() and isinstance(val, str):
+                result.append((attr, val))
     return result
 
 
@@ -32,7 +56,7 @@ class TestEventConstants:
     def test_follow_dot_pattern(self) -> None:
         for attr, val in _all_event_names():
             assert _DOT_PATTERN.match(val), (
-                f"{attr}={val!r} does not match domain.noun.verb pattern"
+                f"{attr}={val!r} does not match domain.subject.qualifier pattern"
             )
 
     def test_no_duplicates(self) -> None:
@@ -44,21 +68,53 @@ class TestEventConstants:
     def test_has_at_least_20_events(self) -> None:
         assert len(_all_event_names()) >= 20
 
+    def test_all_domain_modules_discovered(self) -> None:
+        """Every expected domain module is found by pkgutil discovery."""
+        expected = {
+            "budget",
+            "config",
+            "execution",
+            "prompt",
+            "provider",
+            "role",
+            "routing",
+            "task",
+            "template",
+            "tool",
+        }
+        discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
+        assert discovered == expected
+
     def test_config_events_exist(self) -> None:
-        assert events.CONFIG_LOADED == "config.load.success"
-        assert events.CONFIG_PARSE_FAILED == "config.parse.failed"
-        assert events.CONFIG_VALIDATION_FAILED == "config.validation.failed"
+        assert CONFIG_LOADED == "config.load.success"
+        assert CONFIG_PARSE_FAILED == "config.parse.failed"
+        assert CONFIG_VALIDATION_FAILED == "config.validation.failed"
 
     def test_provider_events_exist(self) -> None:
-        assert events.PROVIDER_CALL_START == "provider.call.start"
-        assert events.PROVIDER_REGISTRY_BUILT == "provider.registry.built"
+        assert PROVIDER_CALL_START == "provider.call.start"
+        assert PROVIDER_REGISTRY_BUILT == "provider.registry.built"
 
     def test_task_events_exist(self) -> None:
-        assert events.TASK_STATUS_CHANGED == "task.status.changed"
+        assert TASK_STATUS_CHANGED == "task.status.changed"
 
     def test_template_events_exist(self) -> None:
-        assert events.TEMPLATE_RENDER_START == "template.render.start"
-        assert events.TEMPLATE_RENDER_SUCCESS == "template.render.success"
+        assert TEMPLATE_RENDER_START == "template.render.start"
+        assert TEMPLATE_RENDER_SUCCESS == "template.render.success"
 
     def test_role_events_exist(self) -> None:
-        assert events.ROLE_LOOKUP_MISS == "role.lookup.miss"
+        assert ROLE_LOOKUP_MISS == "role.lookup.miss"
+
+    def test_budget_events_exist(self) -> None:
+        assert BUDGET_RECORD_ADDED == "budget.record.added"
+
+    def test_execution_events_exist(self) -> None:
+        assert EXECUTION_TASK_CREATED == "execution.task.created"
+
+    def test_routing_events_exist(self) -> None:
+        assert ROUTING_DECISION_MADE == "routing.decision.made"
+
+    def test_prompt_events_exist(self) -> None:
+        assert PROMPT_BUILD_START == "prompt.build.start"
+
+    def test_tool_events_exist(self) -> None:
+        assert TOOL_INVOKE_START == "tool.invoke.start"

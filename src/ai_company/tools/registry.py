@@ -8,7 +8,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from ai_company.observability import get_logger
-from ai_company.observability.events import (
+from ai_company.observability.events.tool import (
     TOOL_NOT_FOUND,
     TOOL_REGISTRY_BUILT,
     TOOL_REGISTRY_CONTAINS_TYPE_ERROR,

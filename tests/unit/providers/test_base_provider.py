@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import pytest
 import structlog
 
-from ai_company.observability.events import (
+from ai_company.observability.events.provider import (
     PROVIDER_CALL_ERROR,
     PROVIDER_CALL_START,
     PROVIDER_CALL_SUCCESS,

@@ -2116,7 +2116,18 @@ ai-company/
 │       │   ├── config.py           # Observability config
 │       │   ├── correlation.py      # Correlation ID tracking
 │       │   ├── enums.py            # Log-related enums
-│       │   ├── events.py           # All event constants (domain-scoped via naming)
+│       │   ├── events/             # Per-domain event constants
+│       │   │   ├── __init__.py    # Package marker with usage docs; no re-exports
+│       │   │   ├── budget.py      # BUDGET_* constants
+│       │   │   ├── config.py      # CONFIG_* constants
+│       │   │   ├── execution.py   # EXECUTION_* constants
+│       │   │   ├── prompt.py      # PROMPT_* constants
+│       │   │   ├── provider.py    # PROVIDER_* constants
+│       │   │   ├── role.py        # ROLE_* constants
+│       │   │   ├── routing.py     # ROUTING_* constants
+│       │   │   ├── task.py        # TASK_* constants
+│       │   │   ├── template.py    # TEMPLATE_* constants
+│       │   │   └── tool.py        # TOOL_* constants
 │       │   ├── processors.py       # Log processors
 │       │   ├── setup.py            # Logging setup
 │       │   └── sinks.py            # Log output backends
@@ -2233,7 +2244,7 @@ These conventions were established during the M0–M2+ review cycle. **Adopted**
 | **Derived fields** | Adopted | `@computed_field` instead of stored + validated | Eliminates redundant storage and impossible-to-fail validators. `TokenUsage.total_tokens` migrated from stored `Field` + `@model_validator` to `@computed_field` property. |
 | **String validation** | Adopted | `NotBlankStr` type from `core.types` for all identifiers | Eliminates per-model `@model_validator` boilerplate for whitespace checks. All identifier/name fields use `NotBlankStr`; optional identifiers use `NotBlankStr \| None`; tuple fields use `tuple[NotBlankStr, ...]` for per-element validation. |
 | **Shared field groups** | Planned | Extract common field sets into base models (e.g. `_SpendingTotals`) | Prevents field duplication across spending summary models. Not yet implemented — each model independently defines fields. |
-| **Event constants** | Adopted (flat) | Single `events.py` module with domain-scoped naming (e.g. `PROVIDER_CALL_START`, `BUDGET_RECORD_ADDED`) | Current approach uses a single module. Splitting into per-domain submodules may be revisited when the file exceeds ~200 constants. |
+| **Event constants** | Adopted (per-domain) | Per-domain submodules under `events/` package (e.g. `events.provider`, `events.budget`). Import directly: `from ai_company.observability.events.<domain> import CONSTANT` | Split by domain for discoverability, co-location with domain logic, and reduced merge conflicts as constants grow. `__init__.py` serves as package marker with usage documentation; no re-exports. |
 | **Parallel tool execution** | Planned | `asyncio.TaskGroup` in `ToolInvoker.invoke_all` | Structured concurrency with proper cancellation semantics. Currently sequential; migration planned for M3 when the agent engine needs concurrent tool calls. |
 | **Tool sandboxing** | Planned (M3) | Layered `SandboxBackend` protocol: `SubprocessSandbox` for low-risk tools (file, git), `DockerSandbox` for high-risk tools (code_runner, terminal, web, database). `K8sSandbox` planned for future container deployments. | Risk-proportionate isolation. Docker optional — only needed for code execution and network-sensitive tools. Pluggable protocol enables seamless migration to K8s per-agent pods in Phase 3-4. See §11.1.2. |
 | **Crash recovery** | Planned (M3) | Pluggable `RecoveryStrategy` protocol. M3: `FailAndReassignStrategy` (catch at engine boundary, log snapshot, mark FAILED, reassign). M4/M5: `CheckpointStrategy` (persist `AgentContext` per turn, resume from last checkpoint). | Immutable `model_copy` pattern makes checkpoint serialization trivial to add later. Fail-and-reassign is sufficient for short MVP tasks. See §6.6. |

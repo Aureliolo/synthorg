@@ -6,7 +6,7 @@ Delegates to strategy implementations.
 
 from ai_company.config.schema import ProviderConfig, RoutingConfig  # noqa: TC001
 from ai_company.observability import get_logger
-from ai_company.observability.events import (
+from ai_company.observability.events.routing import (
     ROUTING_DECISION_MADE,
     ROUTING_ROUTER_BUILT,
     ROUTING_SELECTION_FAILED,

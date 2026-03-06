@@ -21,7 +21,7 @@ from pydantic import ValidationError
 
 from ai_company.config.errors import ConfigLocation
 from ai_company.observability import get_logger
-from ai_company.observability.events import (
+from ai_company.observability.events.template import (
     TEMPLATE_BUILTIN_DEFECT,
     TEMPLATE_LIST_SKIP_INVALID,
     TEMPLATE_LOAD_ERROR,

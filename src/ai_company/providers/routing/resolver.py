@@ -10,7 +10,7 @@ from types import MappingProxyType
 
 from ai_company.config.schema import ProviderConfig  # noqa: TC001
 from ai_company.observability import get_logger
-from ai_company.observability.events import (
+from ai_company.observability.events.routing import (
     ROUTING_MODEL_RESOLUTION_FAILED,
     ROUTING_MODEL_RESOLVED,
     ROUTING_RESOLVER_BUILT,

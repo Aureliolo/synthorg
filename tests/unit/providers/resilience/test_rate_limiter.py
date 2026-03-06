@@ -7,7 +7,7 @@ import time
 import pytest
 import structlog
 
-from ai_company.observability.events import (
+from ai_company.observability.events.provider import (
     PROVIDER_RATE_LIMITER_PAUSED,
     PROVIDER_RATE_LIMITER_THROTTLED,
 )

@@ -14,7 +14,7 @@ from ai_company.core.task import Task  # noqa: TC001
 from ai_company.core.task_transitions import VALID_TRANSITIONS, validate_transition
 from ai_company.engine.errors import ExecutionStateError
 from ai_company.observability import get_logger
-from ai_company.observability.events import (
+from ai_company.observability.events.execution import (
     EXECUTION_COST_ON_TERMINAL,
     EXECUTION_COST_RECORDED,
     EXECUTION_TASK_CREATED,

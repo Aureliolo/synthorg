@@ -5,7 +5,7 @@ import math
 import time
 
 from ai_company.observability import get_logger
-from ai_company.observability.events import (
+from ai_company.observability.events.provider import (
     PROVIDER_RATE_LIMITER_PAUSED,
     PROVIDER_RATE_LIMITER_THROTTLED,
 )

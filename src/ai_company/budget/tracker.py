@@ -22,7 +22,7 @@ from ai_company.budget.spending_summary import (
 )
 from ai_company.constants import BUDGET_ROUNDING_PRECISION
 from ai_company.observability import get_logger
-from ai_company.observability.events import (
+from ai_company.observability.events.budget import (
     BUDGET_AGENT_COST_QUERIED,
     BUDGET_DEPARTMENT_RESOLVE_FAILED,
     BUDGET_RECORD_ADDED,

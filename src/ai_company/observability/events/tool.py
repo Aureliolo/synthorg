@@ -1,0 +1,19 @@
+"""Tool event constants."""
+
+from typing import Final
+
+TOOL_REGISTRY_BUILT: Final[str] = "tool.registry.built"
+TOOL_REGISTRY_DUPLICATE: Final[str] = "tool.registry.duplicate"
+TOOL_NOT_FOUND: Final[str] = "tool.not_found"
+TOOL_INVOKE_START: Final[str] = "tool.invoke.start"
+TOOL_INVOKE_SUCCESS: Final[str] = "tool.invoke.success"
+TOOL_INVOKE_TOOL_ERROR: Final[str] = "tool.invoke.tool_error"
+TOOL_INVOKE_NOT_FOUND: Final[str] = "tool.invoke.not_found"
+TOOL_INVOKE_PARAMETER_ERROR: Final[str] = "tool.invoke.parameter_error"
+TOOL_INVOKE_SCHEMA_ERROR: Final[str] = "tool.invoke.schema_error"
+TOOL_INVOKE_EXECUTION_ERROR: Final[str] = "tool.invoke.execution_error"
+TOOL_INVOKE_DEEPCOPY_ERROR: Final[str] = "tool.invoke.deepcopy_error"
+TOOL_INVOKE_NON_RECOVERABLE: Final[str] = "tool.invoke.non_recoverable"
+TOOL_INVOKE_VALIDATION_UNEXPECTED: Final[str] = "tool.invoke.validation_unexpected"
+TOOL_BASE_INVALID_NAME: Final[str] = "tool.base.invalid_name"
+TOOL_REGISTRY_CONTAINS_TYPE_ERROR: Final[str] = "tool.registry.contains_type_error"

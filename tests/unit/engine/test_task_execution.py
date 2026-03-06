@@ -10,7 +10,7 @@ from ai_company.core.enums import TaskStatus
 from ai_company.core.task import Task
 from ai_company.engine.errors import ExecutionStateError
 from ai_company.engine.task_execution import StatusTransition, TaskExecution
-from ai_company.observability.events import (
+from ai_company.observability.events.execution import (
     EXECUTION_COST_ON_TERMINAL,
     EXECUTION_COST_RECORDED,
     EXECUTION_TASK_CREATED,

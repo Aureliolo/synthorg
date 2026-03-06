@@ -5,7 +5,10 @@ import structlog
 
 from ai_company.config.schema import ProviderConfig, RoutingConfig
 from ai_company.core.enums import SeniorityLevel
-from ai_company.observability.events import ROUTING_DECISION_MADE, ROUTING_ROUTER_BUILT
+from ai_company.observability.events.routing import (
+    ROUTING_DECISION_MADE,
+    ROUTING_ROUTER_BUILT,
+)
 from ai_company.providers.routing.errors import (
     ModelResolutionError,
     NoAvailableModelError,
@@ -150,7 +153,7 @@ class TestModelRouterRoute:
         three_model_provider: dict[str, ProviderConfig],
     ) -> None:
         """When route() raises, a warning log should be emitted."""
-        from ai_company.observability.events import ROUTING_SELECTION_FAILED
+        from ai_company.observability.events.routing import ROUTING_SELECTION_FAILED
 
         config = RoutingConfig(strategy="manual")
         router = ModelRouter(config, three_model_provider)
