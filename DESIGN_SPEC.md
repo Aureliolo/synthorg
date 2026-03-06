@@ -70,7 +70,7 @@ The MVP validates the core hypothesis: **a single agent can complete a real task
 
 - Multi-agent coordination, delegation, message bus (M4)
 - Meetings, conflict resolution, meeting protocols (M4)
-- Progressive trust — disabled by default, static access levels (M7)
+- Progressive trust (M7) — disabled by default, static access levels only in M3–M6
 - HR/CFO agents, hiring/firing, performance tracking (M5–M7)
 - Memory layer integration, org memory backends (M5)
 - Web UI, WebSocket real-time updates (M6)
@@ -561,7 +561,7 @@ When a loop is detected, the framework:
 
 When two or more agents disagree on an approach (architecture, implementation, priority, etc.), the framework provides multiple configurable resolution strategies behind a `ConflictResolver` protocol. New strategies can be added without modifying existing ones. The strategy is configurable per company, per department, or per conflict type.
 
-> **MVP: Authority + Dissent Log only (Strategy 1).** Other strategies are M4+.
+> **MVP: Not in M3.** Conflict resolution is an M4 feature (M3 is single-agent). Authority + Dissent Log (Strategy 1) is the initial default.
 
 #### Strategy 1: Authority + Dissent Log (Default)
 
@@ -907,7 +907,7 @@ When an agent execution fails unexpectedly (unhandled exception, OOM, process ki
 
 The engine catches the failure at its outermost boundary, logs a redacted `AgentContext` snapshot (turn count, accumulated cost — excluding message contents to avoid leaking sensitive prompts/tool outputs), transitions the task to `FAILED`, and makes it available for reassignment (manual or automatic via the task router).
 
-> **New terminal state:** `FAILED` is a new `TaskStatus` variant to be added alongside `CANCELLED`. The §6.1 lifecycle diagram and `TaskStatus` enum will be updated when crash recovery is implemented in M3. `FAILED` differs from `CANCELLED` in that failed tasks are eligible for automatic reassignment.
+> **New non-terminal state:** `FAILED` is a new `TaskStatus` variant to be added alongside `CANCELLED`. The §6.1 lifecycle diagram and `TaskStatus` enum will be updated when crash recovery is implemented in M3. `FAILED` differs from `CANCELLED` (which is terminal) in that failed tasks are eligible for automatic reassignment.
 
 ```yaml
 crash_recovery:
@@ -968,10 +968,10 @@ On shutdown signal:
 4. Force-cancel remaining agents (`task.cancel()`) — tasks transition to `INTERRUPTED`
 5. Cleanup phase (`cleanup_seconds`): persist cost records, close provider connections, flush logs
 
-> **New non-terminal status:** `INTERRUPTED` is a new `TaskStatus` variant. Unlike `FAILED` (eligible for automatic reassignment) or `CANCELLED` (terminal), `INTERRUPTED` indicates the task was stopped due to process shutdown and is eligible for manual or automatic reassignment on restart.
-
+> **Planned non-terminal status:** `INTERRUPTED` will be introduced as a new `TaskStatus` variant (and the task status transition map updated) when graceful shutdown is implemented. Unlike `FAILED` (eligible for automatic reassignment) or `CANCELLED` (terminal), `INTERRUPTED` indicates the task was stopped due to process shutdown and is eligible for manual or automatic reassignment on restart.
+>
 > **Windows compatibility:** `loop.add_signal_handler()` is not supported on Windows. The implementation uses `signal.signal()` as a fallback. SIGINT (Ctrl+C) works cross-platform; SIGTERM on Windows requires `os.kill()`.
-
+>
 > **In-flight LLM calls:** Non-streaming API calls that are interrupted result in tokens billed but no response received (silent cost leak). The engine logs request start (with input token count) before each provider call, so interrupted calls have at minimum an input-cost audit record. Streaming calls are charged only for tokens sent before disconnect.
 
 #### Strategy 2: Immediate Cancel (Future Option)
@@ -985,6 +985,8 @@ Like cooperative timeout, but waits for the current tool invocation to complete 
 #### Strategy 4: Checkpoint and Stop (Planned — M4/M5)
 
 On shutdown signal, each agent persists its full `AgentContext` snapshot and transitions to `SUSPENDED`. On restart, the engine loads checkpoints and resumes execution. This naturally extends the `CheckpointStrategy` from §6.6 — the only difference is whether the checkpoint was written proactively (graceful shutdown) or loaded from the last turn (crash recovery).
+
+> **Planned non-terminal status:** `SUSPENDED` is a new `TaskStatus` variant for checkpoint-based shutdown, to be added alongside `INTERRUPTED` in M4/M5.
 
 ### 6.8 Concurrent Workspace Isolation (M4+)
 
@@ -1043,7 +1045,7 @@ These are complementary systems handling different types of shared state:
 | Framework state (tasks, assignments, budget) | Centralized single-writer (`TaskEngine`) | `model_copy(update=...)` via async queue |
 | Code and files (agent work output) | Workspace isolation (`WorkspaceIsolationStrategy`) | Git worktrees / branches |
 | Agent memory (personal) | Per-agent ownership | Each agent owns its memory exclusively |
-| Org memory (shared knowledge) | Single-writer (`OrgMemoryBackend`) | Write-access controlled by role level |
+| Org memory (shared knowledge) | Single-writer (`OrgMemoryBackend`) | `OrgMemoryBackend` protocol with role-based write access control |
 
 ---
 
@@ -1120,9 +1122,7 @@ org_memory:
 - Simple to implement. Core rules always present. Extended knowledge scales
 - Basic retrieval may miss relational connections between policies
 
----
-
-### Research Directions (M5+)
+#### Research Directions (M5+)
 
 The following backends illustrate why `OrgMemoryBackend` is a protocol — the architecture supports future upgrades without modifying existing code. These are **not planned implementations**; they are research directions that may inform future work if/when organizational memory needs outgrow the Hybrid Prompt + Retrieval approach.
 
@@ -1156,7 +1156,7 @@ org_memory:
 - Handles policy evolution naturally. Agents understand when and why things changed
 - Most complex. Potentially overkill for small companies or local-first use
 
-> **Extensibility:** All backends implement the `OrgMemoryBackend` protocol (`query(context) → list[OrgFact]`, `write(fact, author)`, `list_policies()`). The MVP ships with Backend 1; Backends 2 and 3 are planned extensions. The memory layer candidate (currently evaluating Mem0 and alternatives — see §15.2) may provide graph memory capabilities natively, reducing implementation effort for Backends 2-3.
+> **Extensibility:** All backends implement the `OrgMemoryBackend` protocol (`query(context) → list[OrgFact]`, `write(fact, author)`, `list_policies()`). The MVP ships with Backend 1; Backends 2 and 3 are research directions that may be explored if the default approach proves insufficient. The memory layer candidate (currently evaluating Mem0 and alternatives — see §15.2) may provide graph memory capabilities natively, reducing implementation effort for Backends 2-3.
 > **Write access control:** Core policies are human-only. ADRs and procedures can be written by senior+ agents. All writes are versioned and auditable. This prevents agents from corrupting shared organizational knowledge while allowing senior agents to document decisions.
 
 ---
@@ -1367,10 +1367,12 @@ The CFO agent (when enabled) acts as a cost management system:
 ### 10.4 Cost Controls
 
 > **Minimal config:**
+>
 > ```yaml
 > budget:
 >   total_monthly: 100.00
 > ```
+>
 > All other fields below have sensible defaults.
 
 ```yaml
@@ -1709,11 +1711,13 @@ trust:
 
 ### 12.2 Autonomy Levels
 
-> **Minimal config:**
+> **Planned minimal config (not yet implemented — current schema uses a float):**
+>
 > ```yaml
 > autonomy:
 >   level: "semi"
 > ```
+>
 > All presets below are built-in. Most users only set the level.
 
 ```yaml
