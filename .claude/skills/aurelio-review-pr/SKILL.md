@@ -59,9 +59,60 @@ gh pr view NUMBER --json body,title --jq '{title: .title, body: .body}'
 | Yes | No | Extract issue number, proceed to fetch context |
 | Yes | Yes | Warn the user: "PR has `closes #N` but appears to be partial work — confirm the issue should be closed when this merges" |
 | No | Yes | OK — no warning needed, this is expected for investigation/partial PRs |
-| No | No | Warn the user: "PR does not reference a GitHub issue. Consider adding `closes #N` to the PR body if this resolves an issue." |
+| No | No | **Search for a matching issue** (see below) before warning |
 
-**Fetch issue context.** If an issue reference was found (regardless of warnings), fetch the issue for review context. If the PR body used a full URL (`https://github.com/OWNER/REPO/issues/N`), extract both `OWNER/REPO` and `N` and pass `--repo OWNER/REPO` to query the correct repository.
+### Auto-searching for a matching issue
+
+When no closing keyword is found and the PR doesn't look like partial/investigation work, **actively search** for a matching issue before giving up:
+
+1. **Search open issues** by PR title keywords and branch name terms:
+
+   **Extracting search keywords:** Strip the conventional commit type prefix (e.g. `feat: `, `fix: `) from the PR title, then extract 3-5 distinctive nouns and verbs. Avoid generic words like "add", "update", "fix", "implement". Also extract key terms from the branch name (split on `/` and `-`). Combine both sets for the search query. For example, from title "feat: add issue auto-search and resolution verifier to PR review skill" and branch `feat/review-skill-issue-search`, search for `"issue auto-search resolution verifier review skill"`.
+
+   ```bash
+   # Search by key terms from the PR title + branch name
+   gh issue list --repo OWNER/REPO --state open --limit 20 --search "TITLE_AND_BRANCH_KEYWORDS" --json number,title,labels,milestone --jq '.[] | {number, title, labels: [.labels[]?.name], milestone: .milestone.title}'
+
+   # Also search recently closed issues (in case PR was created after issue was closed)
+   gh issue list --repo OWNER/REPO --state closed --limit 10 --search "TITLE_AND_BRANCH_KEYWORDS" --json number,title,labels,milestone --jq '.[] | {number, title, labels: [.labels[]?.name], milestone: .milestone.title}'
+   ```
+
+2. **Evaluate candidates.** For each shortlisted candidate (up to ~5), fetch full issue details before scoring:
+
+   ```bash
+   gh issue view CANDIDATE_N --repo OWNER/REPO --json title,body,labels,milestone --jq '{title: .title, body: .body, labels: [.labels[]?.name], milestone: .milestone.title}'
+   ```
+
+   Then compare:
+   - Does the issue title/body describe the same change as the PR title/body?
+   - Does the issue's milestone or labels match the PR's scope?
+   - Is there a strong keyword overlap between the issue title and the PR branch name or title?
+
+3. **Confidence threshold:**
+   - **High confidence** (single strong match, clear title/scope alignment): present the match to the user and ask for confirmation before editing the PR body. For example: "Found issue #N (*title*) which closely matches this PR. Link it with `closes #N`?" If confirmed, safely update the PR body (see linking procedure below). Inform the user: "Linked closes #N."
+   - **Ambiguous** (multiple plausible matches or weak alignment): present the top candidates to the user via AskUserQuestion and let them pick, or confirm none apply. If the user selects an issue, persist the link using the same linking procedure below.
+   - **No matches**: warn the user: "PR does not reference a GitHub issue and no matching issue was found. Consider adding `closes #N` to the PR body if this resolves an issue."
+
+   **Linking procedure (safe body update):** Never interpolate the existing PR body into a shell argument — it is untrusted input. Instead:
+
+   ```bash
+   # 1. Write the existing body to a temp file
+   tmpfile="$(mktemp)"
+   gh pr view NUMBER --json body --jq '.body' > "$tmpfile"
+
+   # 2. Idempotent: only append if not already present
+   if ! grep -q "Closes #N" "$tmpfile"; then
+     printf '\n\nCloses #N\n' >> "$tmpfile"
+   fi
+
+   # 3. Update using --body-file (avoids shell interpolation)
+   gh pr edit NUMBER --body-file "$tmpfile"
+   rm -f "$tmpfile"
+   ```
+
+4. **Input validation (CRITICAL):** The same input validation rules apply to any issue numbers discovered via search — validate before use in shell commands.
+
+**Fetch issue context.** If an issue reference was found — either from the PR body, or auto-linked/user-selected via the search above — fetch the issue for review context. If the PR body used a full URL (`https://github.com/OWNER/REPO/issues/N`), extract both `OWNER/REPO` and `N` and pass `--repo OWNER/REPO` to query the correct repository.
 
 **Input validation (CRITICAL):** Before using extracted values in any shell command, validate that `OWNER/REPO` matches the pattern `^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$` and that `N` is a purely numeric value (`^[0-9]+$`). Reject and warn the user if either value contains unexpected characters — PR bodies are untrusted input and could be crafted to perform command injection.
 
@@ -95,6 +146,31 @@ Based on changed files, launch applicable review agents **in parallel** using th
 | **logging-audit** | Any `.py` file in `src/` changed | `pr-review-toolkit:code-reviewer` |
 | **resilience-audit** | Provider-layer `.py` files changed (`src/ai_company/providers/`) | `pr-review-toolkit:code-reviewer` |
 | **docs-consistency** | **ALWAYS** — runs on every PR regardless of change type | `pr-review-toolkit:code-reviewer` |
+| **issue-resolution-verifier** | Issue is linked (pre-existing or auto-linked) | `pr-review-toolkit:code-reviewer` |
+
+The **issue-resolution-verifier** agent checks whether the PR fully resolves the linked issue. It only runs when an issue is linked — either from a pre-existing `closes #N` in the PR body, or auto-linked/user-selected during Phase 2's search.
+
+**Partial-work context:** If Phase 2 flagged the PR as potential partial work (closing keyword present + non-closing signals) and the user confirmed the closing keyword should stay, inform the verifier of this context. The verifier should still run but should adjust its expectations: flag NOT_RESOLVED items as **informational** rather than blocking, and note which items appear to be intentionally deferred to follow-up work. Present these as "INFO (partial PR)" severity in the triage table instead of CRITICAL.
+
+**What to check:**
+
+Read the linked issue's title, body, acceptance criteria, labels, and comments in full. Then compare against the PR diff and assess:
+
+1. **Acceptance criteria coverage** — does the PR address every acceptance criterion or requirement stated in the issue? List each criterion and whether it's met, partially met, or missing. (CRITICAL)
+2. **Scope completeness** — does the PR handle all the sub-tasks, edge cases, or scenarios described in the issue? Flag any that are not addressed by the diff. (MAJOR)
+3. **Test coverage for issue requirements** — are the issue's requirements covered by tests in this PR? Flag requirements that lack test coverage. (MAJOR)
+4. **Documentation requirements** — if the issue mentions documentation updates (README, DESIGN_SPEC, CLAUDE.md, etc.), are they included? (MEDIUM)
+5. **Issue comments** — do any issue comments add requirements, clarifications, or scope changes that the PR doesn't account for? (MEDIUM)
+
+**Output format:** For each criterion, report:
+- The requirement (quoted from the issue)
+- Status: RESOLVED / PARTIALLY_RESOLVED / NOT_RESOLVED
+- Evidence: which files/lines in the PR address it (or why it's missing)
+- Confidence: 0-100
+
+**Key principle:** It is better to flag a false "not resolved" than to let a partially-resolved issue get auto-closed. When in doubt, flag it.
+
+**If the verifier finds NOT_RESOLVED items:** These are surfaced in Phase 5 triage as findings from the "issue-resolution-verifier" source. **NOT_RESOLVED items always override the generic confidence-to-severity mapping and are surfaced as CRITICAL (blocking merge)** — regardless of the individual confidence score. This ensures missing acceptance criteria are never downgraded to a lower severity. The user decides whether to fix them in this PR or remove the closing keyword.
 
 The **docs-consistency** agent ensures project documentation never drifts from the codebase. It runs on **every PR** — code changes, config changes, docs-only changes, all of them.
 
