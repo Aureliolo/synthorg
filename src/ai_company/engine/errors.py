@@ -22,8 +22,18 @@ class MaxTurnsExceededError(EngineError):
 
 
 class BudgetExhaustedError(EngineError):
-    """Raised when the budget checker signals exhaustion before an LLM call."""
+    """Budget exhaustion signal for the engine layer.
+
+    The execution loop returns ``TerminationReason.BUDGET_EXHAUSTED``
+    internally.  This exception is available for the engine layer above
+    the loop to convert that result into a raised error when appropriate.
+    """
 
 
 class LoopExecutionError(EngineError):
-    """Raised when the execution loop encounters a non-recoverable error."""
+    """Non-recoverable execution loop error for the engine layer.
+
+    The execution loop returns ``TerminationReason.ERROR`` internally.
+    This exception is available for the engine layer above the loop to
+    convert that result into a raised error when appropriate.
+    """

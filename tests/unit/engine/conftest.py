@@ -4,9 +4,6 @@ from datetime import date
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
-
 import pytest
 
 from ai_company.core.agent import (
@@ -39,6 +36,9 @@ from ai_company.providers.models import (
     TokenUsage,
     ToolDefinition,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 
 @pytest.fixture

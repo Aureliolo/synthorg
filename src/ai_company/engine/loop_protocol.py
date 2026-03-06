@@ -7,9 +7,9 @@ run a task, along with ``ExecutionResult``, ``TurnRecord``,
 
 from collections.abc import Callable
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, Self, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from ai_company.engine.context import AgentContext
 from ai_company.providers.enums import FinishReason  # noqa: TC001
@@ -36,6 +36,7 @@ class TurnRecord(BaseModel):
         turn_number: 1-indexed turn number.
         input_tokens: Input tokens consumed this turn.
         output_tokens: Output tokens generated this turn.
+        total_tokens: Sum of input and output tokens (computed).
         cost_usd: Cost in USD for this turn.
         tool_calls_made: Names of tools invoked this turn.
         finish_reason: LLM finish reason for this turn.
@@ -55,6 +56,12 @@ class TurnRecord(BaseModel):
         description="LLM finish reason this turn",
     )
 
+    @computed_field(description="Total token count")  # type: ignore[prop-decorator]
+    @property
+    def total_tokens(self) -> int:
+        """Sum of input and output tokens."""
+        return self.input_tokens + self.output_tokens
+
 
 class ExecutionResult(BaseModel):
     """Result returned by an execution loop.
@@ -63,9 +70,12 @@ class ExecutionResult(BaseModel):
         context: Final agent context after execution.
         termination_reason: Why the loop stopped.
         turns: Per-turn metadata records.
-        total_tool_calls: Total number of tool calls across all turns.
+        total_tool_calls: Total tool calls across all turns (computed).
         error_message: Error description when termination_reason is ERROR.
         metadata: Forward-compatible dict for future loop types.
+            Note: ``frozen=True`` prevents field reassignment but not
+            in-place mutation of the dict contents; deep-copy at
+            system boundaries per project conventions.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -78,10 +88,6 @@ class ExecutionResult(BaseModel):
         default=(),
         description="Per-turn metadata",
     )
-    total_tool_calls: int = Field(
-        ge=0,
-        description="Total tool calls across all turns",
-    )
     error_message: str | None = Field(
         default=None,
         description="Error description (when reason is ERROR)",
@@ -90,6 +96,25 @@ class ExecutionResult(BaseModel):
         default_factory=dict,
         description="Forward-compatible metadata for future loop types",
     )
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Total tool calls across all turns",
+    )
+    @property
+    def total_tool_calls(self) -> int:
+        """Sum of tool calls from all turn records."""
+        return sum(len(t.tool_calls_made) for t in self.turns)
+
+    @model_validator(mode="after")
+    def _validate_error_message(self) -> Self:
+        if self.termination_reason == TerminationReason.ERROR:
+            if self.error_message is None:
+                msg = "error_message is required when termination_reason is ERROR"
+                raise ValueError(msg)
+        elif self.error_message is not None:
+            msg = "error_message must be None when termination_reason is not ERROR"
+            raise ValueError(msg)
+        return self
 
 
 BudgetChecker = Callable[[AgentContext], bool]

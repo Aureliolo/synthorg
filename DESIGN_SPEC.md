@@ -799,6 +799,20 @@ The agent execution loop defines how an agent processes a task from start to fin
 
 > **MVP: ReAct only (Loop 1).** Plan-and-Execute and Hybrid are M4+. Auto-selection is M4+.
 
+#### ExecutionLoop Protocol
+
+All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol (defined in `engine/loop_protocol.py`):
+
+- **`get_loop_type() -> str`** — returns a unique identifier (e.g. `"react"`)
+- **`execute(...) -> ExecutionResult`** — runs the loop to completion, accepting `AgentContext`, `CompletionProvider`, optional `ToolInvoker`, optional `BudgetChecker`, and optional `CompletionConfig`
+
+Supporting models:
+
+- **`TerminationReason`** — enum: `COMPLETED`, `MAX_TURNS`, `BUDGET_EXHAUSTED`, `ERROR`
+- **`TurnRecord`** — frozen per-turn stats (tokens, cost, tool calls, finish reason)
+- **`ExecutionResult`** — frozen outcome with final context, termination reason, turn records, and optional error message (required when reason is `ERROR`)
+- **`BudgetChecker`** — callback type `Callable[[AgentContext], bool]` invoked before each LLM call
+
 #### Loop 1: ReAct (Default for Simple Tasks)
 
 A single interleaved loop: the agent reasons about the current state, selects an action (tool call or response), observes the result, and repeats until done or `max_turns` is reached.
@@ -814,7 +828,7 @@ A single interleaved loop: the agent reasons about the current state, selects an
 │       └─────────────────────────┘        │
 │                                          │
 │  Terminate when: task complete, max      │
-│  turns, budget exhausted, or blocked     │
+│  turns, budget exhausted, or error       │
 └──────────────────────────────────────────┘
 ```
 
@@ -2106,7 +2120,9 @@ ai-company/
 │       │   ├── prompt_template.py  # System prompt Jinja2 templates
 │       │   ├── task_execution.py   # TaskExecution + StatusTransition
 │       │   ├── context.py          # AgentContext + AgentContextSnapshot
-│       │   ├── agent_engine.py     # Agent execution loop (M3)
+│       │   ├── loop_protocol.py    # ExecutionLoop protocol + result models
+│       │   ├── react_loop.py       # ReAct loop implementation
+│       │   ├── agent_engine.py     # Agent execution engine (M3)
 │       │   ├── task_engine.py      # Task routing & scheduling (M3-M4)
 │       │   ├── workflow_engine.py  # Workflow orchestration (M4)
 │       │   ├── meeting_engine.py   # Meeting coordination (M4)

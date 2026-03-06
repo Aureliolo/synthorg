@@ -69,6 +69,26 @@ class TestTurnRecord:
         )
         assert record.tool_calls_made == ()
 
+    def test_total_tokens_computed(self) -> None:
+        record = TurnRecord(
+            turn_number=1,
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.01,
+            finish_reason=FinishReason.STOP,
+        )
+        assert record.total_tokens == 150
+
+    def test_total_tokens_zero(self) -> None:
+        record = TurnRecord(
+            turn_number=1,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            finish_reason=FinishReason.STOP,
+        )
+        assert record.total_tokens == 0
+
 
 @pytest.mark.unit
 class TestExecutionResult:
@@ -82,7 +102,6 @@ class TestExecutionResult:
             context=sample_agent_context,
             termination_reason=TerminationReason.COMPLETED,
             turns=(),
-            total_tool_calls=0,
         )
         assert result.termination_reason == TerminationReason.COMPLETED
         assert result.total_tool_calls == 0
@@ -97,7 +116,6 @@ class TestExecutionResult:
             context=sample_agent_context,
             termination_reason=TerminationReason.ERROR,
             turns=(),
-            total_tool_calls=0,
             error_message="something went wrong",
         )
         assert result.error_message == "something went wrong"
@@ -110,7 +128,6 @@ class TestExecutionResult:
             context=sample_agent_context,
             termination_reason=TerminationReason.COMPLETED,
             turns=(),
-            total_tool_calls=0,
             metadata={"plan": "step1"},
         )
         assert result.metadata == {"plan": "step1"}
@@ -123,10 +140,67 @@ class TestExecutionResult:
             context=sample_agent_context,
             termination_reason=TerminationReason.COMPLETED,
             turns=(),
-            total_tool_calls=0,
         )
         with pytest.raises(ValidationError):
-            result.total_tool_calls = 5  # type: ignore[misc]
+            result.termination_reason = TerminationReason.ERROR  # type: ignore[misc]
+
+    def test_total_tool_calls_computed(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        turns = (
+            TurnRecord(
+                turn_number=1,
+                input_tokens=10,
+                output_tokens=5,
+                cost_usd=0.001,
+                tool_calls_made=("search", "read"),
+                finish_reason=FinishReason.TOOL_USE,
+            ),
+            TurnRecord(
+                turn_number=2,
+                input_tokens=10,
+                output_tokens=5,
+                cost_usd=0.001,
+                tool_calls_made=("write",),
+                finish_reason=FinishReason.STOP,
+            ),
+        )
+        result = ExecutionResult(
+            context=sample_agent_context,
+            termination_reason=TerminationReason.COMPLETED,
+            turns=turns,
+        )
+        assert result.total_tool_calls == 3
+
+    def test_error_message_required_when_error(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="error_message is required",
+        ):
+            ExecutionResult(
+                context=sample_agent_context,
+                termination_reason=TerminationReason.ERROR,
+                turns=(),
+            )
+
+    def test_error_message_forbidden_when_not_error(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="error_message must be None",
+        ):
+            ExecutionResult(
+                context=sample_agent_context,
+                termination_reason=TerminationReason.COMPLETED,
+                turns=(),
+                error_message="unexpected",
+            )
 
 
 @pytest.mark.unit

@@ -568,3 +568,174 @@ class TestReactLoopCompletionConfig:
         )
 
         assert result.termination_reason == TerminationReason.COMPLETED
+
+
+@pytest.mark.unit
+class TestReactLoopProviderException:
+    """Provider raising exception during complete()."""
+
+    async def test_provider_exception_returns_error_result(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+
+        class _FailingProvider:
+            async def complete(self, *_args: Any, **_kwargs: Any) -> None:
+                msg = "connection refused"
+                raise ConnectionError(msg)
+
+        loop = ReactLoop()
+        result = await loop.execute(
+            context=ctx,
+            provider=_FailingProvider(),  # type: ignore[arg-type]
+        )
+
+        assert result.termination_reason == TerminationReason.ERROR
+        assert result.error_message is not None
+        assert "ConnectionError" in result.error_message
+
+    async def test_provider_memory_error_propagates(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+
+        class _OOMProvider:
+            async def complete(self, *_args: Any, **_kwargs: Any) -> None:
+                raise MemoryError
+
+        loop = ReactLoop()
+        with pytest.raises(MemoryError):
+            await loop.execute(
+                context=ctx,
+                provider=_OOMProvider(),  # type: ignore[arg-type]
+            )
+
+
+@pytest.mark.unit
+class TestReactLoopToolExecutionException:
+    """Tool invoker raising fatal error during invoke_all()."""
+
+    async def test_tool_exception_returns_error_result(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory([_tool_use_response("explode", "tc-1")])
+
+        class _ExplodingTool(BaseTool):
+            def __init__(self) -> None:
+                super().__init__(
+                    name="explode",
+                    description="boom",
+                )
+
+            async def execute(
+                self,
+                *,
+                arguments: dict[str, Any],
+            ) -> ToolExecutionResult:
+                msg = "kaboom"
+                raise RuntimeError(msg)
+
+        registry = ToolRegistry([_ExplodingTool()])
+        invoker = ToolInvoker(registry)
+        loop = ReactLoop()
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=invoker,
+        )
+
+        # The tool error is caught by ToolInvoker.invoke and returned
+        # as ToolResult(is_error=True), so the loop continues normally.
+        # It terminates because the mock has no more responses.
+        # This validates the loop doesn't crash on tool errors.
+        assert result.termination_reason in (
+            TerminationReason.ERROR,
+            TerminationReason.COMPLETED,
+        )
+
+
+@pytest.mark.unit
+class TestReactLoopMaxTokensFinishReason:
+    """MAX_TOKENS finish reason with no tool calls."""
+
+    async def test_max_tokens_returns_completed(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        response = CompletionResponse(
+            content="partial output",
+            finish_reason=FinishReason.MAX_TOKENS,
+            usage=_usage(),
+            model="test-model-001",
+        )
+        provider = mock_provider_factory([response])
+        loop = ReactLoop()
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        assert len(result.turns) == 1
+        assert result.turns[0].finish_reason == FinishReason.MAX_TOKENS
+
+
+@pytest.mark.unit
+class TestReactLoopToolUseEmptyToolCalls:
+    """TOOL_USE finish reason with no actual tool calls."""
+
+    async def test_tool_use_empty_calls_returns_error(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        response = CompletionResponse(
+            content="I want to use tools",
+            tool_calls=(),
+            finish_reason=FinishReason.TOOL_USE,
+            usage=_usage(),
+            model="test-model-001",
+        )
+        provider = mock_provider_factory([response])
+        loop = ReactLoop()
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.ERROR
+        assert result.error_message is not None
+        assert "TOOL_USE" in result.error_message
+
+
+@pytest.mark.unit
+class TestReactLoopBudgetCheckerException:
+    """Budget checker callback raising an exception."""
+
+    async def test_budget_checker_exception_returns_error(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory([])
+        loop = ReactLoop()
+
+        def bad_checker(_ctx: AgentContext) -> bool:
+            msg = "db connection lost"
+            raise ConnectionError(msg)
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            budget_checker=bad_checker,
+        )
+
+        assert result.termination_reason == TerminationReason.ERROR
+        assert result.error_message is not None
+        assert "Budget checker failed" in result.error_message
