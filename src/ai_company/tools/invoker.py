@@ -2,18 +2,18 @@
 
 Bridges LLM ``ToolCall`` objects with concrete ``BaseTool.execute``
 methods.  Recoverable errors are returned as ``ToolResult(is_error=True)``;
-non-recoverable errors (``MemoryError``, ``RecursionError``) and
-``BaseException`` subclasses (``KeyboardInterrupt``, ``SystemExit``,
-``asyncio.CancelledError``) propagate after logging.
+non-recoverable errors (``MemoryError``, ``RecursionError``) are logged and
+re-raised.  ``BaseException`` subclasses (``KeyboardInterrupt``,
+``SystemExit``, ``asyncio.CancelledError``) propagate uncaught.
 """
 
 import asyncio
 import copy
-from typing import TYPE_CHECKING
+from contextlib import nullcontext
+from typing import TYPE_CHECKING, Never
 
 import jsonschema
 from referencing import Registry as JsonSchemaRegistry
-from referencing import Resource
 from referencing.exceptions import NoSuchResource
 
 from ai_company.observability import get_logger
@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def _no_remote_retrieve(uri: str) -> Resource:
+def _no_remote_retrieve(uri: str) -> Never:
     """Block remote ``$ref`` resolution to prevent SSRF."""
     raise NoSuchResource(uri)
 
@@ -179,7 +179,7 @@ class ToolInvoker:
         error_msg: str,
     ) -> ToolResult:
         """Build an error result for an invalid tool schema."""
-        logger.exception(
+        logger.error(
             TOOL_INVOKE_SCHEMA_ERROR,
             tool_call_id=tool_call.id,
             tool_name=tool_call.name,
@@ -221,7 +221,7 @@ class ToolInvoker:
         error_msg: str,
     ) -> ToolResult:
         """Build an error result for unexpected validation failures."""
-        logger.exception(
+        logger.error(
             TOOL_INVOKE_VALIDATION_UNEXPECTED,
             tool_call_id=tool_call.id,
             tool_name=tool_call.name,
@@ -329,22 +329,29 @@ class ToolInvoker:
         self,
         index: int,
         tool_call: ToolCall,
-        results: list[ToolResult | None],
+        results: dict[int, ToolResult],
         fatal_errors: list[Exception],
         semaphore: asyncio.Semaphore | None,
     ) -> None:
         """Execute a single tool call, storing fatal errors instead of raising.
 
         This wrapper ensures that ``MemoryError`` / ``RecursionError`` do not
-        cancel sibling tasks inside a ``TaskGroup``.
+        cancel sibling tasks inside a ``TaskGroup``.  ``BaseException``
+        subclasses (``KeyboardInterrupt``, ``CancelledError``) are not
+        intercepted and will cancel the group normally.
         """
         try:
-            if semaphore is not None:
-                async with semaphore:
-                    results[index] = await self.invoke(tool_call)
-            else:
+            ctx = semaphore if semaphore is not None else nullcontext()
+            async with ctx:
                 results[index] = await self.invoke(tool_call)
         except (MemoryError, RecursionError) as exc:
+            logger.warning(
+                TOOL_INVOKE_NON_RECOVERABLE,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                index=index,
+                error=f"{type(exc).__name__}: {exc}",
+            )
             fatal_errors.append(exc)
 
     async def invoke_all(
@@ -370,8 +377,8 @@ class ToolInvoker:
 
         Raises:
             ValueError: If ``max_concurrency`` is less than 1.
-            RecursionError: If exactly one fatal error occurred.
-            MemoryError: If exactly one fatal error occurred.
+            MemoryError: Re-raised if it was the sole fatal error.
+            RecursionError: Re-raised if it was the sole fatal error.
             ExceptionGroup: If multiple fatal errors occurred.
         """
         if max_concurrency is not None and max_concurrency < 1:
@@ -388,7 +395,10 @@ class ToolInvoker:
             max_concurrency=max_concurrency,
         )
 
-        results: list[ToolResult | None] = [None] * len(calls)
+        # SAFETY: Both ``results`` and ``fatal_errors`` are mutated by
+        # concurrent tasks.  This is safe because asyncio runs tasks on
+        # a single thread — dict assignment and list.append() never race.
+        results: dict[int, ToolResult] = {}
         fatal_errors: list[Exception] = []
         semaphore = (
             asyncio.Semaphore(max_concurrency) if max_concurrency is not None else None
@@ -412,4 +422,4 @@ class ToolInvoker:
             msg = "multiple non-recoverable tool errors"
             raise ExceptionGroup(msg, fatal_errors)
 
-        return tuple(results)  # type: ignore[arg-type]
+        return tuple(results[i] for i in range(len(calls)))

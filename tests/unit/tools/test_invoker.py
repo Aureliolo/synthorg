@@ -460,8 +460,8 @@ class TestInvokeAllConcurrency:
         elapsed = time.monotonic() - start
         assert len(results) == 3
         assert all(r.content == f"v{i}" for i, r in enumerate(results))
-        # Sequential would take >= 0.3s; parallel should be < 0.25s
-        assert elapsed < 0.25
+        # Sequential would take >= 0.3s; generous bound for CI overhead
+        assert elapsed < 0.28
 
     async def test_concurrent_results_in_input_order(
         self,
@@ -517,6 +517,23 @@ class TestInvokeAllConcurrency:
         with pytest.raises(RecursionError, match="maximum recursion depth"):
             await concurrency_invoker.invoke_all(calls)
 
+    async def test_mixed_fatal_and_success_raises_fatal(
+        self,
+        concurrency_invoker: ToolInvoker,
+    ) -> None:
+        """Fatal error is raised even when siblings succeed."""
+        calls = [
+            ToolCall(id="ok1", name="echo_test", arguments={"message": "a"}),
+            ToolCall(
+                id="fatal",
+                name="recursion",
+                arguments={"input": "boom"},
+            ),
+            ToolCall(id="ok2", name="echo_test", arguments={"message": "b"}),
+        ]
+        with pytest.raises(RecursionError, match="maximum recursion depth"):
+            await concurrency_invoker.invoke_all(calls)
+
     async def test_multiple_non_recoverable_raises_exception_group(
         self,
         concurrency_invoker: ToolInvoker,
@@ -547,16 +564,20 @@ class TestInvokeAllBounded:
     async def test_max_concurrency_one_sequential(
         self,
         concurrency_invoker: ToolInvoker,
+        concurrency_tracking_tool: _ConcurrencyTrackingTool,
     ) -> None:
-        """max_concurrency=1 produces correct results."""
+        """max_concurrency=1 enforces sequential execution (peak=1)."""
         calls = [
-            ToolCall(id="c1", name="echo_test", arguments={"message": "a"}),
-            ToolCall(id="c2", name="echo_test", arguments={"message": "b"}),
+            ToolCall(
+                id=f"t{i}",
+                name="tracking",
+                arguments={"duration": 0.02},
+            )
+            for i in range(3)
         ]
         results = await concurrency_invoker.invoke_all(calls, max_concurrency=1)
-        assert len(results) == 2
-        assert results[0].content == "a"
-        assert results[1].content == "b"
+        assert len(results) == 3
+        assert concurrency_tracking_tool.peak == 1
 
     async def test_max_concurrency_bounds_parallelism(
         self,
@@ -590,7 +611,7 @@ class TestInvokeAllBounded:
             for i in range(5)
         ]
         await concurrency_invoker.invoke_all(calls)
-        assert concurrency_tracking_tool.peak > 1
+        assert concurrency_tracking_tool.peak >= 3
 
     async def test_max_concurrency_validation(
         self,

@@ -2156,7 +2156,7 @@ ai-company/
 │       ├── tools/                   # Tool/capability system
 │       │   ├── base.py             # BaseTool ABC, ToolExecutionResult
 │       │   ├── registry.py         # Immutable tool registry (MappingProxyType)
-│       │   ├── invoker.py          # Tool invocation (sequential execution)
+│       │   ├── invoker.py          # Tool invocation (concurrent via TaskGroup)
 │       │   ├── errors.py           # Tool error hierarchy
 │       │   ├── examples/           # Example tool implementations
 │       │   │   └── echo.py        # Echo tool (for testing)
