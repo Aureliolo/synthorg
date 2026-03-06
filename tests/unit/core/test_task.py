@@ -192,7 +192,7 @@ class TestTaskStringValidation:
         task = _make_task(deadline="2026-12-31T23:59:59")
         assert task.deadline == "2026-12-31T23:59:59"
 
-    def test_empty_reviewer_rejected(self) -> None:
+    def test_whitespace_reviewer_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
             _make_task(reviewers=("valid", "   "))
 

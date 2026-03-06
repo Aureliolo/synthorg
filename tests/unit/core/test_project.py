@@ -109,7 +109,7 @@ class TestProjectStringValidation:
         project = _make_project(deadline="2026-12-31T23:59:59")
         assert project.deadline == "2026-12-31T23:59:59"
 
-    def test_empty_team_member_rejected(self) -> None:
+    def test_whitespace_team_member_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
             _make_project(team=("agent-1", "   "))
 

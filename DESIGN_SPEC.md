@@ -106,7 +106,7 @@ Every agent has a comprehensive identity. At the design level, agent data splits
 - **Config (immutable)**: identity, personality, skills, model preferences, tool permissions, authority. Defined at hire time, changed only by explicit reconfiguration. Represented as frozen Pydantic models.
 - **Runtime state (mutable-via-copy)**: current status, active task, conversation history, execution metrics. Evolves during agent operation. Represented as Pydantic models using `model_copy(update=...)` for state transitions — never mutated in place.
 
-> **Current state (M2):** Only the config layer exists as `AgentIdentity` (frozen Pydantic model in `core/agent.py`). The runtime state layer will be introduced in M3 when the agent execution engine is implemented. All identifier/name fields use `NotBlankStr` (from `core.types`) for automatic whitespace rejection; tuple fields use `tuple[NotBlankStr, ...]` for per-element validation.
+> **Current state (M2):** Only the config layer exists as `AgentIdentity` (frozen Pydantic model in `core/agent.py`). The runtime state layer will be introduced in M3 when the agent execution engine is implemented. All identifier/name fields use `NotBlankStr` (from `core.types`) for automatic whitespace rejection; optional identifier fields use `NotBlankStr | None`; tuple fields use `tuple[NotBlankStr, ...]` for per-element validation.
 
 ```yaml
 # --- Current (M2): Config layer — AgentIdentity (frozen) ---
@@ -851,13 +851,12 @@ Every API call is tracked (illustrative schema):
   "model": "claude-sonnet-4-6",
   "input_tokens": 4500,
   "output_tokens": 1200,
-  "total_tokens": 5700,
   "cost_usd": 0.0315,
   "timestamp": "2026-02-27T10:30:00Z"
 }
 ```
 
-> **Implementation note:** `total_tokens` is a `@computed_field` property that returns `input_tokens + output_tokens` — no stored field or validator needed. Spending summary models (`AgentSpending`, `DepartmentSpending`, `PeriodSpending`) each independently define `total_cost_usd`, `total_input_tokens`, `total_output_tokens`, and `record_count` fields. Extracting a shared `_SpendingTotals` base is a planned convention (see §15.5).
+> **Implementation note:** `CostRecord` stores `input_tokens` and `output_tokens`; `total_tokens` is not stored on `CostRecord` — it is a `@computed_field` property on `TokenUsage` (the model embedded in `CompletionResponse`). Spending summary models (`AgentSpending`, `DepartmentSpending`, `PeriodSpending`) each independently define `total_cost_usd`, `total_input_tokens`, `total_output_tokens`, and `record_count` fields. Extracting a shared `_SpendingTotals` base is a planned convention (see §15.5).
 
 ### 10.3 CFO Agent Responsibilities
 
@@ -1439,7 +1438,7 @@ These conventions were established during the M0–M2 review cycle. **Adopted** 
 | **Immutability strategy** | Adopted | `copy.deepcopy()` at construction + `MappingProxyType` wrapping for non-Pydantic internal collections (registries, `BaseTool`). For Pydantic frozen models: `frozen=True` prevents field reassignment; `copy.deepcopy()` at system boundaries (tool execution, LLM provider serialization) prevents nested mutation. No MappingProxyType inside Pydantic models (serialization friction). | Deep-copy at construction fully isolates nested structures; `MappingProxyType` enforces read-only access. Boundary-copy for Pydantic models is simple, centralized, and Pydantic-native. A future CPython built-in immutable mapping type (e.g. `frozendict`) would provide zero-friction field-level immutability when available. |
 | **Config vs runtime split** | Adopted (M3) | Frozen models for config/identity; `model_copy(update=...)` for runtime state transitions | `TaskExecution` and `AgentContext` (in `engine/`) are frozen Pydantic models that use `model_copy(update=...)` for copy-on-write state transitions without re-running validators (per Pydantic `model_copy` semantics). Config layer (`AgentIdentity`, `Task`) remains unchanged. |
 | **Derived fields** | Adopted | `@computed_field` instead of stored + validated | Eliminates redundant storage and impossible-to-fail validators. `TokenUsage.total_tokens` migrated from stored `Field` + `@model_validator` to `@computed_field` property. |
-| **String validation** | Adopted | `NotBlankStr` type from `core.types` for all identifiers | Eliminates per-model `@model_validator` boilerplate for whitespace checks. All identifier/name fields use `NotBlankStr`; tuple fields use `tuple[NotBlankStr, ...]` for per-element validation. |
+| **String validation** | Adopted | `NotBlankStr` type from `core.types` for all identifiers | Eliminates per-model `@model_validator` boilerplate for whitespace checks. All identifier/name fields use `NotBlankStr`; optional identifiers use `NotBlankStr \| None`; tuple fields use `tuple[NotBlankStr, ...]` for per-element validation. |
 | **Shared field groups** | Planned | Extract common field sets into base models (e.g. `_SpendingTotals`) | Prevents field duplication across spending summary models. Not yet implemented — each model independently defines fields. |
 | **Event constants** | Adopted (flat) | Single `events.py` module with domain-scoped naming (e.g. `PROVIDER_CALL_START`, `BUDGET_RECORD_ADDED`) | Current approach uses a single module. Splitting into per-domain submodules may be revisited when the file exceeds ~200 constants. |
 | **Parallel tool execution** | Planned | `asyncio.TaskGroup` in `ToolInvoker.invoke_all` | Structured concurrency with proper cancellation semantics. Currently sequential; migration planned for M3 when the agent engine needs concurrent tool calls. |

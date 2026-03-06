@@ -97,13 +97,30 @@ class AutoDowngradeConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _normalize_downgrade_map(cls, data: Any) -> Any:
-        """Strip whitespace from downgrade_map alias strings."""
+        """Normalize downgrade_map aliases by stripping leading/trailing whitespace.
+
+        Runs before NotBlankStr validation so that ``" gpt-4 "`` becomes
+        ``"gpt-4"`` rather than being kept with surrounding spaces.
+        Non-string or malformed entries are passed through unchanged so
+        that Pydantic can surface a proper field-level ``ValidationError``.
+        """
         if isinstance(data, dict) and "downgrade_map" in data:
             raw_map = data["downgrade_map"]
             if isinstance(raw_map, (list, tuple)):
+                normalized: list[Any] = []
+                for item in raw_map:
+                    if (
+                        isinstance(item, (list, tuple))
+                        and len(item) == 2  # noqa: PLR2004
+                        and isinstance(item[0], str)
+                        and isinstance(item[1], str)
+                    ):
+                        normalized.append((item[0].strip(), item[1].strip()))
+                    else:
+                        normalized.append(item)
                 return {
                     **data,
-                    "downgrade_map": tuple((s.strip(), t.strip()) for s, t in raw_map),
+                    "downgrade_map": tuple(normalized),
                 }
         return data
 

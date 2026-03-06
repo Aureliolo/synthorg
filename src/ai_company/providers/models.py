@@ -78,7 +78,7 @@ class ToolDefinition(BaseModel):
         modify the schema.  See DESIGN_SPEC.md section 15.5.
 
     Attributes:
-        name: Tool name (must be non-blank).
+        name: Tool name.
         description: Human-readable description of the tool.
         parameters_schema: JSON Schema dict describing the tool parameters.
     """

@@ -130,7 +130,7 @@ class LogConfig(BaseModel):
         default=LogLevel.DEBUG,
         description="Root logger level",
     )
-    logger_levels: tuple[tuple[str, LogLevel], ...] = Field(
+    logger_levels: tuple[tuple[NotBlankStr, LogLevel], ...] = Field(
         default=(),
         description="Per-logger level overrides as (name, level) pairs",
     )
