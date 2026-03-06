@@ -80,16 +80,30 @@ class TestTokenUsage:
         assert dumped["total_tokens"] == 150
 
     def test_total_tokens_roundtrip(self) -> None:
-        """Stale total_tokens in deserialized payload is silently recomputed."""
-        usage = TokenUsage.model_validate(
-            {
-                "input_tokens": 10,
-                "output_tokens": 5,
-                "cost_usd": 0.0,
-                "total_tokens": 999,
-            }
-        )
+        """Stale total_tokens in serialized data is ignored on load."""
+        payload = TokenUsage(
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.0,
+        ).model_dump()
+        payload["total_tokens"] = 999
+        usage = TokenUsage.model_validate(payload)
         assert usage.total_tokens == 15
+
+        # JSON roundtrip also recomputes correctly
+        json_str = TokenUsage(
+            input_tokens=20,
+            output_tokens=10,
+            cost_usd=0.01,
+        ).model_dump_json()
+        restored = TokenUsage.model_validate_json(json_str)
+        assert restored.total_tokens == 30
+
+    def test_total_tokens_not_assignable(self) -> None:
+        """Computed property rejects direct assignment."""
+        usage = TokenUsage(input_tokens=10, output_tokens=5, cost_usd=0.0)
+        with pytest.raises((ValidationError, AttributeError)):
+            usage.total_tokens = 999  # type: ignore[misc]
 
     def test_factory(self) -> None:
         usage = TokenUsageFactory.build()

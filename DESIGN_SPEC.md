@@ -1335,7 +1335,7 @@ ai-company/
 │       ├── providers/               # LLM provider abstraction
 │       │   ├── base.py             # BaseCompletionProvider (retry + rate limiting)
 │       │   ├── protocol.py         # Provider protocol (abstract interface)
-│       │   ├── models.py           # CompletionRequest/Response, TokenUsage, ToolCall/Result
+│       │   ├── models.py           # CompletionConfig/Response, TokenUsage, ToolCall/Result
 │       │   ├── capabilities.py     # Provider capability registry
 │       │   ├── registry.py         # Provider registry
 │       │   ├── enums.py            # Provider enumerations
