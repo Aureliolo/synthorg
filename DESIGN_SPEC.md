@@ -911,6 +911,36 @@ hybrid:
 
 > **Auto-selection (optional):** When `execution_loop: "auto"`, the framework selects the loop based on `estimated_complexity`: simple → ReAct, medium → Plan-and-Execute, complex/epic → Hybrid. Configurable via `auto_loop_rules` — a mapping of complexity thresholds to loop implementations (e.g., `{simple_max_tokens: 500, medium_max_tokens: 3000}` with corresponding loop assignments).
 
+#### AgentEngine Orchestrator
+
+`AgentEngine` (in `engine/agent_engine.py`) is the top-level entry point for running an agent on a task. It composes the execution loop with prompt construction, context management, tool invocation, and cost tracking into a single `run()` call.
+
+**`run(identity, task, completion_config?, max_turns?) -> AgentRunResult`**
+
+Pipeline steps:
+
+1. **Validate inputs** — agent must be `ACTIVE`, task must be `ASSIGNED` or `IN_PROGRESS`. Raises `ExecutionStateError` on violation.
+2. **Build system prompt** — calls `build_system_prompt()` with agent identity, task, and available tool definitions.
+3. **Create context** — `AgentContext.from_identity()` with the configured `max_turns`.
+4. **Seed conversation** — injects system prompt and formatted task instruction as initial messages.
+5. **Transition task** — `ASSIGNED` → `IN_PROGRESS` (pass-through if already `IN_PROGRESS`).
+6. **Prepare tools and budget** — creates `ToolInvoker` from registry and `BudgetChecker` from task budget limit.
+7. **Delegate to loop** — calls `ExecutionLoop.execute()` with context, provider, tool invoker, budget checker, and completion config.
+8. **Record costs** — records accumulated `TokenUsage` to `CostTracker` (if available). Cost recording failures are logged but do not affect the result.
+9. **Return result** — wraps `ExecutionResult` in `AgentRunResult` with engine-level metadata.
+
+Error handling: `MemoryError` and `RecursionError` propagate unconditionally. All other exceptions are caught and wrapped in an `AgentRunResult` with `TerminationReason.ERROR`.
+
+Constructor accepts: `provider` (required), `execution_loop` (defaults to `ReactLoop`), `tool_registry`, `cost_tracker`.
+
+**`AgentRunResult`** — frozen Pydantic model wrapping `ExecutionResult` with engine metadata:
+
+- `execution_result` — outcome from the execution loop
+- `system_prompt` — the `SystemPrompt` used for this run
+- `duration_seconds` — wall-clock run time
+- `agent_id`, `task_id` — identifiers
+- Computed fields: `termination_reason`, `total_turns`, `total_cost_usd`, `is_success`
+
 ### 6.6 Agent Crash Recovery
 
 When an agent execution fails unexpectedly (unhandled exception, OOM, process kill), the framework needs a recovery mechanism. Recovery strategies are implemented behind a `RecoveryStrategy` protocol, making the system pluggable — new strategies can be added without modifying existing ones.
@@ -2122,6 +2152,7 @@ ai-company/
 │       │   ├── context.py          # AgentContext + AgentContextSnapshot
 │       │   ├── loop_protocol.py    # ExecutionLoop protocol + result models
 │       │   ├── react_loop.py       # ReAct loop implementation
+│       │   ├── run_result.py       # AgentRunResult outcome model
 │       │   ├── agent_engine.py     # Agent execution engine (M3)
 │       │   ├── task_engine.py      # Task routing & scheduling (M3-M4)
 │       │   ├── workflow_engine.py  # Workflow orchestration (M4)

@@ -6,8 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from ai_company.budget.tracker import CostTracker
 from ai_company.core.agent import AgentIdentity  # noqa: TC001
-from ai_company.core.enums import AgentStatus, TaskStatus
+from ai_company.core.enums import AgentStatus, Priority, TaskStatus, TaskType
 from ai_company.core.task import Task
 from ai_company.engine.agent_engine import AgentEngine, _format_task_instruction
 from ai_company.engine.context import AgentContext
@@ -209,8 +210,6 @@ class TestAgentEngineInvalidInput:
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """A task already COMPLETED cannot be executed."""
-        from ai_company.core.enums import Priority, TaskType
-
         completed_task = Task(
             id="task-done",
             title="Already done",
@@ -237,8 +236,6 @@ class TestAgentEngineInvalidInput:
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """A task still in CREATED status (unassigned) cannot be executed."""
-        from ai_company.core.enums import TaskType
-
         created_task = Task(
             id="task-new",
             title="New task",
@@ -301,28 +298,41 @@ class TestAgentEngineWithTools:
 class TestAgentEngineBudgetChecker:
     """Budget limit creates checker, exhaustion terminates."""
 
-    async def test_budget_exhausted_terminates(
+    async def test_budget_checker_passed_and_terminates(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        # Task has budget_limit=5.0; response cost exceeds it
-        response = _make_completion_response(cost_usd=6.0)
-        provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        """Budget limit > 0 creates checker and passes it to the loop."""
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        mock_result = ExecutionResult(
+            context=ctx,
+            termination_reason=TerminationReason.BUDGET_EXHAUSTED,
+            turns=(),
+        )
+        mock_loop = MagicMock()
+        mock_loop.execute = AsyncMock(return_value=mock_result)
+        mock_loop.get_loop_type = MagicMock(return_value="react")
+
+        provider = mock_provider_factory([])
+        engine = AgentEngine(
+            provider=provider,
+            execution_loop=mock_loop,
+        )
 
         result = await engine.run(
             identity=sample_agent_with_personality,
             task=sample_task_with_criteria,
         )
 
-        # The budget checker should fire on the second iteration
-        # after the first turn accumulates cost >= 5.0
-        assert result.termination_reason in {
-            TerminationReason.BUDGET_EXHAUSTED,
-            TerminationReason.COMPLETED,
-        }
+        call_kwargs = mock_loop.execute.call_args.kwargs
+        assert call_kwargs["budget_checker"] is not None
+        assert result.termination_reason == TerminationReason.BUDGET_EXHAUSTED
+        assert result.is_success is False
 
     async def test_no_budget_limit_no_checker(
         self,
@@ -330,8 +340,6 @@ class TestAgentEngineBudgetChecker:
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """Task with budget_limit=0 should not create a budget checker."""
-        from ai_company.core.enums import TaskType
-
         task = Task(
             id="task-no-budget",
             title="No budget limit",
@@ -366,8 +374,6 @@ class TestAgentEngineCostRecording:
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        from ai_company.budget.tracker import CostTracker
-
         tracker = CostTracker()
         response = _make_completion_response(cost_usd=0.05)
         provider = mock_provider_factory([response])
@@ -404,6 +410,130 @@ class TestAgentEngineCostRecording:
 
         assert result.is_success is True
 
+    async def test_zero_cost_not_recorded(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """CostTracker present but zero cost/tokens -> no record created."""
+        tracker = CostTracker()
+        task = Task(
+            id="task-free",
+            title="Free task",
+            description="Zero cost run.",
+            type=TaskType.DEVELOPMENT,
+            project="proj-001",
+            created_by="manager",
+            assigned_to="someone",
+            status=TaskStatus.ASSIGNED,
+        )
+        response = _make_completion_response(
+            cost_usd=0.0,
+            input_tokens=0,
+            output_tokens=0,
+        )
+        provider = mock_provider_factory([response])
+        engine = AgentEngine(provider=provider, cost_tracker=tracker)
+
+        await engine.run(identity=sample_agent_with_personality, task=task)
+
+        count = await tracker.get_record_count()
+        assert count == 0
+
+    async def test_cost_tracker_failure_preserves_result(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """CostTracker.record() failure does not affect execution result."""
+        tracker = MagicMock()
+        tracker.record = AsyncMock(side_effect=RuntimeError("DB write failed"))
+        response = _make_completion_response(cost_usd=0.05)
+        provider = mock_provider_factory([response])
+        engine = AgentEngine(provider=provider, cost_tracker=tracker)
+
+        result = await engine.run(
+            identity=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+
+        assert result.is_success is True
+        assert result.termination_reason == TerminationReason.COMPLETED
+
+
+@pytest.mark.unit
+class TestAgentEngineCompletionConfig:
+    """completion_config is forwarded to the execution loop."""
+
+    async def test_completion_config_forwarded(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A provided CompletionConfig reaches the execution loop."""
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        mock_result = ExecutionResult(
+            context=ctx,
+            termination_reason=TerminationReason.COMPLETED,
+            turns=(
+                TurnRecord(
+                    turn_number=1,
+                    input_tokens=10,
+                    output_tokens=5,
+                    cost_usd=0.001,
+                    finish_reason=FinishReason.STOP,
+                ),
+            ),
+        )
+        mock_loop = MagicMock()
+        mock_loop.execute = AsyncMock(return_value=mock_result)
+        mock_loop.get_loop_type = MagicMock(return_value="custom")
+
+        config = MagicMock()
+        provider = mock_provider_factory([])
+        engine = AgentEngine(
+            provider=provider,
+            execution_loop=mock_loop,
+        )
+
+        await engine.run(
+            identity=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+            completion_config=config,
+        )
+
+        call_kwargs = mock_loop.execute.call_args.kwargs
+        assert call_kwargs["completion_config"] is config
+
+
+@pytest.mark.unit
+class TestAgentEngineMaxTurns:
+    """max_turns parameter is forwarded to the execution context."""
+
+    async def test_max_turns_forwarded(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Custom max_turns value is propagated to the context."""
+        response = _make_completion_response()
+        provider = mock_provider_factory([response])
+        engine = AgentEngine(provider=provider)
+
+        result = await engine.run(
+            identity=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+            max_turns=5,
+        )
+
+        assert result.execution_result.context.max_turns == 5
+
 
 @pytest.mark.unit
 class TestAgentEngineErrorHandling:
@@ -416,7 +546,6 @@ class TestAgentEngineErrorHandling:
     ) -> None:
         provider = MagicMock()
         provider.complete = AsyncMock(side_effect=RuntimeError("LLM is down"))
-        provider.get_loop_type = MagicMock(return_value="react")
         engine = AgentEngine(provider=provider)
 
         result = await engine.run(
@@ -676,9 +805,12 @@ class TestFormatTaskInstruction:
         assert "- Login endpoint returns JWT token" in result
         assert "$5.00 USD" in result
 
-    def test_no_criteria_no_budget(self) -> None:
-        from ai_company.core.enums import TaskType
+    def test_deadline_included(self, sample_task_with_criteria: Task) -> None:
+        result = _format_task_instruction(sample_task_with_criteria)
 
+        assert "**Deadline:** 2026-04-01T00:00:00" in result
+
+    def test_no_criteria_no_budget(self) -> None:
         task = Task(
             id="task-simple",
             title="Simple task",

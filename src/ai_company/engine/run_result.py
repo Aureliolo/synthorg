@@ -1,7 +1,7 @@
 """Agent run result model.
 
 Frozen Pydantic model wrapping ``ExecutionResult`` with outer metadata
-from the engine layer (system prompt, wall-clock duration, identity).
+from the engine layer (system prompt, wall-clock duration, agent/task IDs).
 """
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
@@ -43,7 +43,7 @@ class AgentRunResult(BaseModel):
     agent_id: NotBlankStr = Field(description="Agent identifier")
     task_id: NotBlankStr | None = Field(
         default=None,
-        description="Task identifier (if task-bound)",
+        description="Task identifier, or None for future taskless runs",
     )
 
     @computed_field(  # type: ignore[prop-decorator]
@@ -51,7 +51,7 @@ class AgentRunResult(BaseModel):
     )
     @property
     def termination_reason(self) -> TerminationReason:
-        """Delegate to execution_result.termination_reason."""
+        """Why the execution loop terminated."""
         return self.execution_result.termination_reason
 
     @computed_field(  # type: ignore[prop-decorator]

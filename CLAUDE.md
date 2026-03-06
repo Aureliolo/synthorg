@@ -48,7 +48,7 @@ src/ai_company/
   communication/  # Inter-agent message bus and channels
   config/         # YAML company config loading and validation
   core/           # Shared domain models and base classes
-  engine/         # Agent execution engine and task lifecycle
+  engine/         # Agent orchestration, execution loops, and task lifecycle
   memory/         # Persistent agent memory (memory layer TBD)
   observability/  # Structured logging, correlation tracking, log sinks
   providers/      # LLM provider abstraction (LiteLLM adapter)

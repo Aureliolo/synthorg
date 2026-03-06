@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from ai_company.budget.cost_record import CostRecord
 from ai_company.core.enums import AgentStatus, TaskStatus
-from ai_company.engine.context import AgentContext
+from ai_company.engine.context import DEFAULT_MAX_TURNS, AgentContext
 from ai_company.engine.errors import ExecutionStateError
 from ai_company.engine.loop_protocol import (
     ExecutionResult,
@@ -22,9 +22,13 @@ from ai_company.engine.run_result import AgentRunResult
 from ai_company.observability import get_logger
 from ai_company.observability.events.execution import (
     EXECUTION_ENGINE_COMPLETE,
+    EXECUTION_ENGINE_COST_FAILED,
     EXECUTION_ENGINE_COST_RECORDED,
+    EXECUTION_ENGINE_COST_SKIPPED,
+    EXECUTION_ENGINE_CREATED,
     EXECUTION_ENGINE_ERROR,
     EXECUTION_ENGINE_INVALID_INPUT,
+    EXECUTION_ENGINE_PROMPT_BUILT,
     EXECUTION_ENGINE_START,
     EXECUTION_ENGINE_TASK_TRANSITION,
 )
@@ -43,9 +47,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-DEFAULT_MAX_TURNS: int = 20
-"""Default hard limit on LLM turns per agent engine run."""
-
 _EXECUTABLE_STATUSES = frozenset({TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS})
 """Task statuses the engine will accept for execution."""
 
@@ -61,7 +62,8 @@ class AgentEngine:
         provider: LLM completion provider (required).
         execution_loop: Loop implementation. Defaults to ``ReactLoop()``.
         tool_registry: Optional tools available to the agent.
-        cost_tracker: Optional cost recording service.
+        cost_tracker: Optional cost recording service. When ``None``,
+            cost recording is skipped silently.
     """
 
     def __init__(
@@ -76,6 +78,12 @@ class AgentEngine:
         self._loop: ExecutionLoop = execution_loop or ReactLoop()
         self._tool_registry = tool_registry
         self._cost_tracker = cost_tracker
+        logger.debug(
+            EXECUTION_ENGINE_CREATED,
+            loop_type=self._loop.get_loop_type(),
+            has_tool_registry=self._tool_registry is not None,
+            has_cost_tracker=self._cost_tracker is not None,
+        )
 
     async def run(
         self,
@@ -95,11 +103,16 @@ class AgentEngine:
 
         Returns:
             ``AgentRunResult`` with execution outcome and metadata.
+
+        Raises:
+            ExecutionStateError: If the agent is not ACTIVE or the task
+                is not ASSIGNED/IN_PROGRESS.
+            MemoryError: Re-raised unconditionally (non-recoverable).
+            RecursionError: Re-raised unconditionally (non-recoverable).
         """
         agent_id = str(identity.id)
         task_id = task.id
 
-        # 1. Validate inputs
         self._validate_agent(identity, agent_id)
         self._validate_task(task, agent_id, task_id)
 
@@ -111,6 +124,7 @@ class AgentEngine:
             max_turns=max_turns,
         )
 
+        start = time.monotonic()
         try:
             return await self._execute(
                 identity=identity,
@@ -119,6 +133,7 @@ class AgentEngine:
                 task_id=task_id,
                 completion_config=completion_config,
                 max_turns=max_turns,
+                start=start,
             )
         except MemoryError, RecursionError:
             raise
@@ -129,6 +144,7 @@ class AgentEngine:
                 task=task,
                 agent_id=agent_id,
                 task_id=task_id,
+                duration_seconds=time.monotonic() - start,
             )
 
     async def _execute(  # noqa: PLR0913
@@ -140,44 +156,26 @@ class AgentEngine:
         task_id: str,
         completion_config: CompletionConfig | None,
         max_turns: int,
+        start: float,
     ) -> AgentRunResult:
-        """Core execution flow after validation."""
-        # 2. Build system prompt
-        tool_defs = self._get_tool_definitions()
-        system_prompt = build_system_prompt(
-            agent=identity,
+        """Run loop, record costs, return result."""
+        ctx, system_prompt = self._prepare_context(
+            identity=identity,
             task=task,
-            available_tools=tool_defs,
-        )
-
-        # 3. Create context
-        ctx = AgentContext.from_identity(
-            identity,
-            task=task,
+            agent_id=agent_id,
+            task_id=task_id,
             max_turns=max_turns,
         )
-
-        # 4. Inject working memory (system + user messages)
-        ctx = ctx.with_message(
-            ChatMessage(role=MessageRole.SYSTEM, content=system_prompt.content),
-        )
-        ctx = ctx.with_message(
-            ChatMessage(role=MessageRole.USER, content=_format_task_instruction(task)),
-        )
-
-        # 5. Transition task ASSIGNED -> IN_PROGRESS
-        ctx = self._transition_task_if_needed(ctx, agent_id, task_id)
-
-        # 6. Create budget checker
         budget_checker = _make_budget_checker(task)
-
-        # 7. Create tool invoker
         tool_invoker = self._make_tool_invoker()
 
-        # 8. Record start time
-        start = time.monotonic()
+        logger.debug(
+            EXECUTION_ENGINE_PROMPT_BUILT,
+            agent_id=agent_id,
+            task_id=task_id,
+            estimated_tokens=system_prompt.estimated_tokens,
+        )
 
-        # 9. Delegate to loop
         execution_result = await self._loop.execute(
             context=ctx,
             provider=self._provider,
@@ -185,13 +183,15 @@ class AgentEngine:
             budget_checker=budget_checker,
             completion_config=completion_config,
         )
-
         duration = time.monotonic() - start
 
-        # 10. Record costs
-        await self._record_costs(execution_result, identity, task)
+        await self._record_costs(
+            execution_result,
+            identity,
+            agent_id,
+            task_id,
+        )
 
-        # 11. Build result
         result = AgentRunResult(
             execution_result=execution_result,
             system_prompt=system_prompt,
@@ -199,17 +199,55 @@ class AgentEngine:
             agent_id=agent_id,
             task_id=task_id,
         )
-
         logger.info(
             EXECUTION_ENGINE_COMPLETE,
             agent_id=agent_id,
             task_id=task_id,
             termination_reason=result.termination_reason.value,
             total_turns=result.total_turns,
+            total_tokens=execution_result.context.accumulated_cost.total_tokens,
             duration_seconds=duration,
             cost_usd=result.total_cost_usd,
         )
         return result
+
+    # ── Setup ────────────────────────────────────────────────────
+
+    def _prepare_context(
+        self,
+        *,
+        identity: AgentIdentity,
+        task: Task,
+        agent_id: str,
+        task_id: str,
+        max_turns: int,
+    ) -> tuple[AgentContext, SystemPrompt]:
+        """Build system prompt and prepare execution context."""
+        tool_defs = self._get_tool_definitions()
+        system_prompt = build_system_prompt(
+            agent=identity,
+            task=task,
+            available_tools=tool_defs,
+        )
+
+        ctx = AgentContext.from_identity(
+            identity,
+            task=task,
+            max_turns=max_turns,
+        )
+        # Seed conversation with system prompt and task instruction
+        ctx = ctx.with_message(
+            ChatMessage(role=MessageRole.SYSTEM, content=system_prompt.content),
+        )
+        ctx = ctx.with_message(
+            ChatMessage(
+                role=MessageRole.USER,
+                content=_format_task_instruction(task),
+            ),
+        )
+
+        ctx = self._transition_task_if_needed(ctx, agent_id, task_id)
+        return ctx, system_prompt
 
     # ── Validation ───────────────────────────────────────────────
 
@@ -289,35 +327,58 @@ class AgentEngine:
         self,
         result: ExecutionResult,
         identity: AgentIdentity,
-        task: Task,
+        agent_id: str,
+        task_id: str,
     ) -> None:
-        """Record accumulated costs to the CostTracker if available."""
+        """Record accumulated costs to the CostTracker if available.
+
+        Cost recording failures are logged but do not affect the
+        execution result — a successful run is never downgraded to
+        an error because of a recording failure.
+        """
         if self._cost_tracker is None:
             return
 
         usage = result.context.accumulated_cost
         if usage.cost_usd <= 0.0 and usage.input_tokens == 0:
+            logger.debug(
+                EXECUTION_ENGINE_COST_SKIPPED,
+                agent_id=agent_id,
+                task_id=task_id,
+                reason="zero cost and zero input tokens",
+            )
             return
 
-        record = CostRecord(
-            agent_id=str(identity.id),
-            task_id=task.id,
-            provider=identity.model.provider,
-            model=identity.model.model_id,
-            input_tokens=usage.input_tokens,
-            output_tokens=usage.output_tokens,
-            cost_usd=usage.cost_usd,
-            timestamp=datetime.now(UTC),
-        )
-        await self._cost_tracker.record(record)
+        try:
+            record = CostRecord(
+                agent_id=agent_id,
+                task_id=task_id,
+                provider=identity.model.provider,
+                model=identity.model.model_id,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                cost_usd=usage.cost_usd,
+                timestamp=datetime.now(UTC),
+            )
+            await self._cost_tracker.record(record)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                EXECUTION_ENGINE_COST_FAILED,
+                agent_id=agent_id,
+                task_id=task_id,
+            )
+            return
+
         logger.info(
             EXECUTION_ENGINE_COST_RECORDED,
-            agent_id=str(identity.id),
-            task_id=task.id,
+            agent_id=agent_id,
+            task_id=task_id,
             cost_usd=usage.cost_usd,
         )
 
-    def _handle_fatal_error(
+    def _handle_fatal_error(  # noqa: PLR0913
         self,
         *,
         exc: Exception,
@@ -325,8 +386,9 @@ class AgentEngine:
         task: Task,
         agent_id: str,
         task_id: str,
+        duration_seconds: float,
     ) -> AgentRunResult:
-        """Catch unexpected errors and return an error result."""
+        """Build an error result from an unexpected exception."""
         error_msg = f"{type(exc).__name__}: {exc}"
         logger.exception(
             EXECUTION_ENGINE_ERROR,
@@ -335,14 +397,12 @@ class AgentEngine:
             error=error_msg,
         )
 
-        # Build a minimal error result
         ctx = AgentContext.from_identity(identity, task=task)
         error_execution = ExecutionResult(
             context=ctx,
             termination_reason=TerminationReason.ERROR,
             error_message=error_msg,
         )
-        # Minimal system prompt for the error result
         error_prompt = SystemPrompt(
             content="",
             template_version="error",
@@ -353,21 +413,14 @@ class AgentEngine:
         return AgentRunResult(
             execution_result=error_execution,
             system_prompt=error_prompt,
-            duration_seconds=0.0,
+            duration_seconds=duration_seconds,
             agent_id=agent_id,
             task_id=task_id,
         )
 
 
 def _format_task_instruction(task: Task) -> str:
-    """Format a task into a user message for the initial conversation.
-
-    Args:
-        task: The task to format.
-
-    Returns:
-        Formatted task instruction string.
-    """
+    """Format a task into a user message for the initial conversation."""
     parts = [f"# Task: {task.title}", "", task.description]
 
     if task.acceptance_criteria:
@@ -386,14 +439,7 @@ def _format_task_instruction(task: Task) -> str:
 
 
 def _make_budget_checker(task: Task) -> BudgetChecker | None:
-    """Create a budget checker callback if the task has a budget limit.
-
-    Args:
-        task: Task with optional budget_limit.
-
-    Returns:
-        Budget checker callable or None.
-    """
+    """Create a budget checker if the task has a positive budget limit."""
     if task.budget_limit <= 0:
         return None
 
