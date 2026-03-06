@@ -27,7 +27,7 @@ template:
   agents:
     - role: "Backend Developer"
       level: "mid"
-      model: "sonnet"
+      model: "medium"
       department: "engineering"
 """
 
@@ -60,7 +60,7 @@ template:
     - role: "Backend Developer"
       name: "{{ company_name }} Dev"
       level: "senior"
-      model: "sonnet"
+      model: "medium"
       department: "engineering"
 """
 
@@ -82,7 +82,7 @@ template:
     - role: "Backend Developer"
       name: "{{ team_lead }}"
       level: "mid"
-      model: "sonnet"
+      model: "medium"
       department: "engineering"
 """
 
@@ -111,7 +111,7 @@ def _make_template_dict(**overrides: Any) -> dict[str, Any]:
             {
                 "role": "Backend Developer",
                 "level": "mid",
-                "model": "sonnet",
+                "model": "medium",
             },
         ),
     }

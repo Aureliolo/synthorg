@@ -65,7 +65,7 @@ class ToolDefinition(BaseModel):
     """Schema for a tool the model can invoke.
 
     Uses raw JSON Schema for ``parameters_schema`` because every LLM
-    provider (OpenAI, Anthropic, LiteLLM) consumes it natively.
+    provider consumes it natively.
 
     Note:
         The ``parameters_schema`` dict is shallowly frozen by Pydantic's

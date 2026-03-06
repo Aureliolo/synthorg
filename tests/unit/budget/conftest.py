@@ -111,7 +111,7 @@ def sample_budget_config() -> BudgetConfig:
         auto_downgrade=AutoDowngradeConfig(
             enabled=True,
             threshold=80,
-            downgrade_map=(("opus", "sonnet"), ("sonnet", "haiku")),
+            downgrade_map=(("large", "medium"), ("medium", "small")),
         ),
     )
 
@@ -121,7 +121,7 @@ def sample_cost_record() -> CostRecord:
     return CostRecord(
         agent_id="sarah_chen",
         task_id="task-123",
-        provider="anthropic",
+        provider="example-provider",
         model="test-model-001",
         input_tokens=4500,
         output_tokens=1200,

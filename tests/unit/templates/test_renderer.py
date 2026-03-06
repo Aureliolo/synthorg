@@ -188,7 +188,7 @@ template:
     - role: "Dev"
       name: "{{ undefined_func() | bad_filter }}"
       level: "mid"
-      model: "sonnet"
+      model: "medium"
       department: "engineering"
 """
         path = tmp_template_file(bad_yaml)

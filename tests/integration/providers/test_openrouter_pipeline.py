@@ -34,7 +34,7 @@ async def test_base_url_forwarded(
     with patch(
         _PATCH_TARGET, new_callable=AsyncMock, return_value=mock_resp
     ) as mock_call:
-        await driver.complete(user_messages, "or-sonnet")
+        await driver.complete(user_messages, "or-medium")
 
     kwargs = mock_call.call_args.kwargs
     assert kwargs["api_base"] == "https://openrouter.ai/api/v1"
@@ -52,7 +52,7 @@ async def test_model_prefixed(
     with patch(
         _PATCH_TARGET, new_callable=AsyncMock, return_value=mock_resp
     ) as mock_call:
-        await driver.complete(user_messages, "or-sonnet")
+        await driver.complete(user_messages, "or-medium")
 
     kwargs = mock_call.call_args.kwargs
     assert kwargs["model"] == "openrouter/test-model-openrouter-001"
@@ -70,7 +70,7 @@ async def test_api_key_forwarded(
     with patch(
         _PATCH_TARGET, new_callable=AsyncMock, return_value=mock_resp
     ) as mock_call:
-        await driver.complete(user_messages, "or-sonnet")
+        await driver.complete(user_messages, "or-medium")
 
     kwargs = mock_call.call_args.kwargs
     assert kwargs["api_key"] == "sk-or-test-key"
@@ -91,7 +91,7 @@ async def test_full_response_mapping(
         request_id="or_req_001",
     )
     with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mock_resp):
-        result = await driver.complete(user_messages, "or-sonnet")
+        result = await driver.complete(user_messages, "or-medium")
 
     assert result.content == "OpenRouter response"
     assert result.finish_reason == FinishReason.STOP

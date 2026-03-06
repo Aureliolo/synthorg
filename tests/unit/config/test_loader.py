@@ -237,7 +237,7 @@ class TestLoadConfig:
         assert cfg.company_name == "Test Corp"
         assert len(cfg.agents) == 1
         assert cfg.agents[0].name == "Alice"
-        assert "anthropic" in cfg.providers
+        assert "example-provider" in cfg.providers
 
     def test_layered_override(self, tmp_config_file: ConfigFileFactory) -> None:
         base_path = tmp_config_file(
@@ -592,11 +592,11 @@ class TestLoadConfigEnvVar:
         self, tmp_config_file: ConfigFileFactory, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("COMPANY_NAME", "Nested Corp")
-        monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://custom.api")
+        monkeypatch.setenv("EXAMPLE_PROVIDER_BASE_URL", "https://custom.api")
         path = tmp_config_file(ENV_VAR_NESTED_YAML)
         cfg = load_config(path)
         assert cfg.company_name == "Nested Corp"
-        assert cfg.providers["anthropic"].base_url == "https://custom.api"
+        assert cfg.providers["example-provider"].base_url == "https://custom.api"
 
     def test_env_var_in_load_config_from_string(
         self, monkeypatch: pytest.MonkeyPatch

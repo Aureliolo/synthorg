@@ -4,6 +4,7 @@ import pytest
 
 from ai_company.config.schema import (
     ProviderConfig,
+    ProviderModelConfig,
     RoutingConfig,
     RoutingRuleConfig,
 )
@@ -17,6 +18,7 @@ from ai_company.providers.routing.resolver import ModelResolver
 from ai_company.providers.routing.strategies import (
     STRATEGY_MAP,
     CostAwareStrategy,
+    FastestStrategy,
     ManualStrategy,
     RoleBasedStrategy,
     RoutingStrategy,
@@ -32,13 +34,26 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 class TestRoutingStrategyProtocol:
     @pytest.mark.parametrize(
         "cls",
-        [ManualStrategy, RoleBasedStrategy, CostAwareStrategy, SmartStrategy],
+        [
+            ManualStrategy,
+            RoleBasedStrategy,
+            CostAwareStrategy,
+            FastestStrategy,
+            SmartStrategy,
+        ],
     )
     def test_implements_protocol(self, cls: type) -> None:
         assert isinstance(cls(), RoutingStrategy)
 
     def test_strategy_map_has_all_names(self) -> None:
-        expected = {"manual", "role_based", "cost_aware", "smart", "cheapest"}
+        expected = {
+            "manual",
+            "role_based",
+            "cost_aware",
+            "fastest",
+            "smart",
+            "cheapest",
+        }
         assert set(STRATEGY_MAP) == expected
 
 
@@ -56,7 +71,7 @@ class TestManualStrategy:
 
         decision = strategy.select(request, config, resolver)
 
-        assert decision.resolved_model.model_id == "test-sonnet-001"
+        assert decision.resolved_model.model_id == "test-medium-001"
         assert decision.strategy_used == "manual"
         assert "override" in decision.reason.lower()
 
@@ -65,11 +80,11 @@ class TestManualStrategy:
         resolver: ModelResolver,
     ) -> None:
         strategy = ManualStrategy()
-        request = RoutingRequest(model_override="test-opus-001")
+        request = RoutingRequest(model_override="test-large-001")
 
         decision = strategy.select(request, RoutingConfig(), resolver)
 
-        assert decision.resolved_model.model_id == "test-opus-001"
+        assert decision.resolved_model.model_id == "test-large-001"
 
     def test_raises_without_override(
         self,
@@ -137,7 +152,7 @@ class TestRoleBasedStrategy:
         self,
         resolver: ModelResolver,
     ) -> None:
-        """MID has no rule -> uses seniority catalog (sonnet tier)."""
+        """MID has no rule -> uses seniority catalog (medium tier)."""
         strategy = RoleBasedStrategy()
         config = RoutingConfig(strategy="role_based")
         request = RoutingRequest(agent_level=SeniorityLevel.MID)
@@ -151,10 +166,10 @@ class TestRoleBasedStrategy:
         self,
         three_model_provider: dict[str, ProviderConfig],
     ) -> None:
-        """LEAD has tier=opus; if opus not registered, use fallback chain."""
+        """LEAD has tier=large; if large not registered, use fallback chain."""
         provider = ProviderConfig(
             models=(
-                three_model_provider["test-provider"].models[0],  # haiku only
+                three_model_provider["test-provider"].models[0],  # small only
             ),
         )
         resolver = ModelResolver.from_config({"test-provider": provider})
@@ -193,7 +208,7 @@ class TestRoleBasedStrategy:
         """When preferred not found, rule's fallback is tried."""
         provider = ProviderConfig(
             models=(
-                three_model_provider["test-provider"].models[0],  # haiku only
+                three_model_provider["test-provider"].models[0],  # small only
             ),
         )
         resolver = ModelResolver.from_config({"test-provider": provider})
@@ -277,7 +292,7 @@ class TestCostAwareStrategy:
     ) -> None:
         """Task-type rule picks 'large' but budget is too low -> cheapest."""
         strategy = CostAwareStrategy()
-        # review rule -> large (cost=0.090), budget below that
+        # review rule -> large (total_cost=0.090), budget below that
         request = RoutingRequest(task_type="review", remaining_budget=0.02)
 
         decision = strategy.select(request, standard_routing_config, resolver)
@@ -304,6 +319,236 @@ class TestCostAwareStrategy:
         decision = strategy.select(request, config, resolver)
 
         assert decision.resolved_model.alias == "small"
+
+
+# ── FastestStrategy ──────────────────────────────────────────────
+
+
+class TestFastestStrategy:
+    def test_picks_fastest(self, resolver: ModelResolver) -> None:
+        strategy = FastestStrategy()
+        request = RoutingRequest()
+
+        decision = strategy.select(request, RoutingConfig(), resolver)
+
+        # small has lowest latency (200ms)
+        assert decision.resolved_model.alias == "small"
+        assert decision.strategy_used == "fastest"
+
+    def test_task_type_rule_takes_priority(
+        self,
+        resolver: ModelResolver,
+        standard_routing_config: RoutingConfig,
+    ) -> None:
+        strategy = FastestStrategy()
+        request = RoutingRequest(task_type="review")
+
+        decision = strategy.select(request, standard_routing_config, resolver)
+
+        assert decision.resolved_model.alias == "large"
+
+    def test_budget_respected(self, resolver: ModelResolver) -> None:
+        """With a budget, should pick fastest within budget."""
+        strategy = FastestStrategy()
+        # small total=0.006, medium total=0.018, large total=0.090
+        request = RoutingRequest(remaining_budget=0.02)
+
+        decision = strategy.select(request, RoutingConfig(), resolver)
+
+        assert decision.resolved_model.alias == "small"
+        assert "exceed" not in decision.reason.lower()
+
+    def test_budget_exceeded_still_returns(self, resolver: ModelResolver) -> None:
+        """Even if budget is 0.0, returns fastest with warning."""
+        strategy = FastestStrategy()
+        request = RoutingRequest(remaining_budget=0.0)
+
+        decision = strategy.select(request, RoutingConfig(), resolver)
+
+        assert decision.resolved_model.alias == "small"
+        assert "exceed" in decision.reason.lower()
+
+    def test_no_models_raises(self) -> None:
+        resolver = ModelResolver.from_config({})
+        strategy = FastestStrategy()
+
+        with pytest.raises(NoAvailableModelError):
+            strategy.select(
+                RoutingRequest(),
+                RoutingConfig(),
+                resolver,
+            )
+
+    def test_no_latency_data_falls_back_to_cheapest(self) -> None:
+        """When no models have latency data, delegates to cheapest."""
+        providers = {
+            "test-provider": ProviderConfig(
+                models=(
+                    ProviderModelConfig(
+                        id="test-expensive",
+                        alias="expensive",
+                        cost_per_1k_input=0.010,
+                        cost_per_1k_output=0.050,
+                    ),
+                    ProviderModelConfig(
+                        id="test-cheap",
+                        alias="cheap",
+                        cost_per_1k_input=0.001,
+                        cost_per_1k_output=0.005,
+                    ),
+                ),
+            ),
+        }
+        resolver = ModelResolver.from_config(providers)
+        strategy = FastestStrategy()
+
+        decision = strategy.select(
+            RoutingRequest(),
+            RoutingConfig(),
+            resolver,
+        )
+
+        assert decision.resolved_model.alias == "cheap"
+
+    def test_task_type_rule_skipped_when_over_budget(
+        self,
+        resolver: ModelResolver,
+        standard_routing_config: RoutingConfig,
+    ) -> None:
+        """Task-type rule picks 'large' but budget is too low -> fastest."""
+        strategy = FastestStrategy()
+        # review rule -> large (total_cost=0.090), budget below that
+        request = RoutingRequest(task_type="review", remaining_budget=0.02)
+
+        decision = strategy.select(request, standard_routing_config, resolver)
+
+        # Should fall through to fastest within budget, not the over-budget model
+        assert decision.resolved_model.alias == "small"
+        assert "task-type rule" in decision.reason.lower()
+
+    def test_budget_exceeded_with_latency_models_only(self) -> None:
+        """All models with latency exceed budget -> fastest with warning."""
+        providers = {
+            "test-provider": ProviderConfig(
+                models=(
+                    ProviderModelConfig(
+                        id="test-fast-expensive",
+                        alias="fast-expensive",
+                        cost_per_1k_input=0.010,
+                        cost_per_1k_output=0.050,
+                        estimated_latency_ms=100,
+                    ),
+                    ProviderModelConfig(
+                        id="test-slow-expensive",
+                        alias="slow-expensive",
+                        cost_per_1k_input=0.015,
+                        cost_per_1k_output=0.075,
+                        estimated_latency_ms=500,
+                    ),
+                    ProviderModelConfig(
+                        id="test-no-latency-cheap",
+                        alias="no-latency-cheap",
+                        cost_per_1k_input=0.001,
+                        cost_per_1k_output=0.005,
+                    ),
+                ),
+            ),
+        }
+        resolver = ModelResolver.from_config(providers)
+        strategy = FastestStrategy()
+
+        decision = strategy.select(
+            RoutingRequest(remaining_budget=0.001),
+            RoutingConfig(),
+            resolver,
+        )
+
+        # Returns fastest with latency data, not the cheap no-latency one
+        assert decision.resolved_model.alias == "fast-expensive"
+        assert "exceed" in decision.reason.lower()
+
+    def test_mixed_none_non_none_ignores_none(self) -> None:
+        """Models with None latency are ignored when others have data."""
+        providers = {
+            "test-provider": ProviderConfig(
+                models=(
+                    ProviderModelConfig(
+                        id="test-slow-cheap",
+                        alias="slow-cheap",
+                        cost_per_1k_input=0.001,
+                        cost_per_1k_output=0.005,
+                        estimated_latency_ms=800,
+                    ),
+                    ProviderModelConfig(
+                        id="test-no-latency",
+                        alias="no-latency",
+                        cost_per_1k_input=0.001,
+                        cost_per_1k_output=0.005,
+                    ),
+                    ProviderModelConfig(
+                        id="test-fast-expensive",
+                        alias="fast-expensive",
+                        cost_per_1k_input=0.010,
+                        cost_per_1k_output=0.050,
+                        estimated_latency_ms=100,
+                    ),
+                ),
+            ),
+        }
+        resolver = ModelResolver.from_config(providers)
+        strategy = FastestStrategy()
+
+        decision = strategy.select(
+            RoutingRequest(),
+            RoutingConfig(),
+            resolver,
+        )
+
+        # Should pick fast-expensive (100ms), not no-latency
+        assert decision.resolved_model.alias == "fast-expensive"
+
+    def test_budget_picks_slower_when_fastest_exceeds(self) -> None:
+        """Fastest model exceeds budget, slower model is within budget."""
+        providers = {
+            "test-provider": ProviderConfig(
+                models=(
+                    ProviderModelConfig(
+                        id="test-fast-expensive",
+                        alias="fast-expensive",
+                        cost_per_1k_input=0.050,
+                        cost_per_1k_output=0.100,
+                        estimated_latency_ms=100,
+                    ),
+                    ProviderModelConfig(
+                        id="test-medium-speed",
+                        alias="medium-speed",
+                        cost_per_1k_input=0.005,
+                        cost_per_1k_output=0.010,
+                        estimated_latency_ms=500,
+                    ),
+                    ProviderModelConfig(
+                        id="test-slow-cheap",
+                        alias="slow-cheap",
+                        cost_per_1k_input=0.001,
+                        cost_per_1k_output=0.005,
+                        estimated_latency_ms=1000,
+                    ),
+                ),
+            ),
+        }
+        resolver = ModelResolver.from_config(providers)
+        strategy = FastestStrategy()
+
+        # Budget 0.02: fast-expensive total=0.150 (exceeds),
+        # medium-speed total=0.015 (within budget)
+        decision = strategy.select(
+            RoutingRequest(remaining_budget=0.02),
+            RoutingConfig(),
+            resolver,
+        )
+
+        assert decision.resolved_model.alias == "medium-speed"
+        assert "exceed" not in decision.reason.lower()
 
 
 # ── SmartStrategy ────────────────────────────────────────────────
@@ -340,7 +585,7 @@ class TestSmartStrategy:
 
         decision = strategy.select(request, standard_routing_config, resolver)
 
-        # review rule -> opus; junior role rule -> haiku; task wins
+        # review rule -> large; junior role rule -> small; task wins
         assert decision.resolved_model.alias == "large"
         assert "task-type" in decision.reason.lower()
 
@@ -383,7 +628,7 @@ class TestSmartStrategy:
         three_model_provider: dict[str, ProviderConfig],
     ) -> None:
         """Empty resolver but fallback chain has a valid ref."""
-        # Build resolver with only haiku
+        # Build resolver with only small
         provider = ProviderConfig(
             models=(three_model_provider["test-provider"].models[0],),
         )
@@ -446,7 +691,7 @@ class TestSmartStrategy:
         """Primary miss -> rule fallback miss -> global chain hit."""
         provider = ProviderConfig(
             models=(
-                three_model_provider["test-provider"].models[0],  # haiku only
+                three_model_provider["test-provider"].models[0],  # small only
             ),
         )
         resolver = ModelResolver.from_config({"test-provider": provider})
@@ -477,7 +722,7 @@ class TestGlobalFallbackChain:
     ) -> None:
         """Global chain should skip unknown refs and resolve the first valid."""
         provider = ProviderConfig(
-            models=(three_model_provider["test-provider"].models[0],),  # haiku only
+            models=(three_model_provider["test-provider"].models[0],),  # small only
         )
         resolver = ModelResolver.from_config({"test-provider": provider})
         config = RoutingConfig(
@@ -496,7 +741,7 @@ class TestGlobalFallbackChain:
     ) -> None:
         """RoleBasedStrategy raises when all fallback_chain refs are invalid."""
         provider = ProviderConfig(
-            models=(three_model_provider["test-provider"].models[0],),  # haiku only
+            models=(three_model_provider["test-provider"].models[0],),  # small only
         )
         resolver = ModelResolver.from_config({"test-provider": provider})
         config = RoutingConfig(
@@ -516,7 +761,7 @@ class TestRuleFallbackDedup:
     ) -> None:
         """When rule fallback equals preferred, it should not retry."""
         provider = ProviderConfig(
-            models=(three_model_provider["test-provider"].models[0],),  # haiku only
+            models=(three_model_provider["test-provider"].models[0],),  # small only
         )
         resolver = ModelResolver.from_config({"test-provider": provider})
         config = RoutingConfig(
@@ -544,8 +789,8 @@ class TestCostAwareMidRangeBudget:
         self,
         resolver: ModelResolver,
     ) -> None:
-        """Budget large enough for haiku+sonnet but not opus picks haiku."""
-        # haiku total=0.006, sonnet total=0.018, opus total=0.090
+        """Budget large enough for small+medium but not large picks small."""
+        # small total=0.006, medium total=0.018, large total=0.090
         strategy = CostAwareStrategy()
         request = RoutingRequest(remaining_budget=0.02)
 

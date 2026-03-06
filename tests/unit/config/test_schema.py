@@ -38,12 +38,12 @@ class TestProviderModelConfig:
     def test_valid_full(self) -> None:
         m = ProviderModelConfig(
             id="test-model:8b",
-            alias="sonnet",
+            alias="medium",
             cost_per_1k_input=0.003,
             cost_per_1k_output=0.015,
             max_context=200_000,
         )
-        assert m.alias == "sonnet"
+        assert m.alias == "medium"
         assert m.cost_per_1k_input == 0.003
 
     def test_blank_id_rejected(self) -> None:
@@ -66,6 +66,26 @@ class TestProviderModelConfig:
         m = ProviderModelConfig(id="m1")
         with pytest.raises(ValidationError):
             m.id = "m2"  # type: ignore[misc]
+
+    def test_estimated_latency_ms_default_none(self) -> None:
+        m = ProviderModelConfig(id="test-model")
+        assert m.estimated_latency_ms is None
+
+    def test_estimated_latency_ms_valid(self) -> None:
+        m = ProviderModelConfig(id="test-model", estimated_latency_ms=200)
+        assert m.estimated_latency_ms == 200
+
+    def test_estimated_latency_ms_zero_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="greater than"):
+            ProviderModelConfig(id="test-model", estimated_latency_ms=0)
+
+    def test_estimated_latency_ms_negative_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="greater than"):
+            ProviderModelConfig(id="test-model", estimated_latency_ms=-100)
+
+    def test_estimated_latency_ms_exceeds_upper_bound(self) -> None:
+        with pytest.raises(ValidationError, match="less than or equal"):
+            ProviderModelConfig(id="test-model", estimated_latency_ms=300_001)
 
     def test_factory(self) -> None:
         m = ProviderModelConfigFactory.build()
@@ -134,15 +154,15 @@ class TestProviderConfig:
 @pytest.mark.unit
 class TestRoutingRuleConfig:
     def test_minimal_with_task_type(self) -> None:
-        r = RoutingRuleConfig(preferred_model="sonnet", task_type="dev")
-        assert r.preferred_model == "sonnet"
+        r = RoutingRuleConfig(preferred_model="medium", task_type="dev")
+        assert r.preferred_model == "medium"
         assert r.role_level is None
         assert r.task_type == "dev"
         assert r.fallback is None
 
     def test_minimal_with_role_level(self) -> None:
         r = RoutingRuleConfig(
-            preferred_model="sonnet",
+            preferred_model="medium",
             role_level=SeniorityLevel.SENIOR,
         )
         assert r.role_level == SeniorityLevel.SENIOR
@@ -150,14 +170,14 @@ class TestRoutingRuleConfig:
 
     def test_no_matcher_rejected(self) -> None:
         with pytest.raises(ValidationError, match="at least"):
-            RoutingRuleConfig(preferred_model="sonnet")
+            RoutingRuleConfig(preferred_model="medium")
 
     def test_full(self) -> None:
         r = RoutingRuleConfig(
             role_level=SeniorityLevel.SENIOR,
             task_type="development",
-            preferred_model="opus",
-            fallback="sonnet",
+            preferred_model="large",
+            fallback="medium",
         )
         assert r.role_level == SeniorityLevel.SENIOR
         assert r.task_type == "development"
@@ -168,11 +188,11 @@ class TestRoutingRuleConfig:
 
     def test_whitespace_task_type_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
-            RoutingRuleConfig(preferred_model="sonnet", task_type="   ")
+            RoutingRuleConfig(preferred_model="medium", task_type="   ")
 
     def test_whitespace_fallback_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
-            RoutingRuleConfig(preferred_model="sonnet", fallback="   ")
+            RoutingRuleConfig(preferred_model="medium", fallback="   ")
 
     def test_factory(self) -> None:
         r = RoutingRuleConfigFactory.build()
@@ -194,14 +214,14 @@ class TestRoutingConfig:
         r = RoutingConfig(
             rules=(
                 RoutingRuleConfig(
-                    preferred_model="sonnet",
+                    preferred_model="medium",
                     task_type="dev",
                 ),
             ),
-            fallback_chain=("sonnet",),
+            fallback_chain=("medium",),
         )
         assert len(r.rules) == 1
-        assert r.fallback_chain == ("sonnet",)
+        assert r.fallback_chain == ("medium",)
 
     def test_whitespace_strategy_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
@@ -239,7 +259,7 @@ class TestAgentConfig:
             department="Engineering",
             level=SeniorityLevel.SENIOR,
             personality={"traits": ["analytical"]},
-            model={"provider": "anthropic", "model_id": "test-model:8b"},
+            model={"provider": "example-provider", "model_id": "test-model:8b"},
         )
         assert a.level == SeniorityLevel.SENIOR
         assert a.personality == {"traits": ["analytical"]}
@@ -290,7 +310,7 @@ class TestRootConfig:
                 ),
             ),
             providers={
-                "anthropic": ProviderConfig(models=(model,)),
+                "example-provider": ProviderConfig(models=(model,)),
             },
             routing=RoutingConfig(
                 fallback_chain=("fast",),
@@ -298,7 +318,7 @@ class TestRootConfig:
         )
         assert cfg.company_type == CompanyType.STARTUP
         assert len(cfg.agents) == 1
-        assert "anthropic" in cfg.providers
+        assert "example-provider" in cfg.providers
 
     def test_defaults_applied(self) -> None:
         cfg = RootConfig(company_name="X")

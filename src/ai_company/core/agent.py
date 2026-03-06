@@ -76,8 +76,8 @@ class ModelConfig(BaseModel):
     """LLM model configuration for an agent.
 
     Attributes:
-        provider: LLM provider name (e.g. ``"anthropic"``).
-        model_id: Model identifier (e.g. ``"claude-sonnet-4-6"``).
+        provider: LLM provider name (e.g. ``"example-provider"``).
+        model_id: Model identifier (e.g. ``"example-medium-001"``).
         temperature: Sampling temperature (0.0 to 2.0).
         max_tokens: Maximum output tokens.
         fallback_model: Optional fallback model identifier.

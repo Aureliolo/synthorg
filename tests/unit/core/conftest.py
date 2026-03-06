@@ -174,10 +174,10 @@ def sample_role() -> Role:
 def sample_model_config() -> ModelConfig:
     return ModelConfig(
         provider="test-provider",
-        model_id="test-model-sonnet-4-6",
+        model_id="test-model-medium-001",
         temperature=0.3,
         max_tokens=8192,
-        fallback_model="test-provider/test-model-haiku",
+        fallback_model="test-provider/test-model-small",
     )
 
 

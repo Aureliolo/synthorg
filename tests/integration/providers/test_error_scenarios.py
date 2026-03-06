@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 
 from .conftest import (
     build_content_chunk,
-    make_anthropic_config,
+    make_provider_config,
 )
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
@@ -47,10 +47,10 @@ _PATCH_TARGET = "ai_company.providers.drivers.litellm_driver._litellm.acompletio
 
 
 def _make_driver() -> tuple[BaseCompletionProvider, dict[str, ProviderConfig]]:
-    """Build an Anthropic driver from config."""
-    config = make_anthropic_config()
+    """Build a provider driver from config."""
+    config = make_provider_config()
     registry = ProviderRegistry.from_config(config)
-    return registry.get("anthropic"), config
+    return registry.get("example-provider"), config
 
 
 def _make_litellm_rate_limit(
@@ -65,12 +65,12 @@ def _make_litellm_rate_limit(
     """
     response = httpx.Response(
         status_code=429,
-        request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"),
+        request=httpx.Request("POST", "https://api.example-provider.com/v1/messages"),
     )
     exc = LiteLLMRateLimit(
         message="Rate limit exceeded",
-        model="anthropic/test-model-001",
-        llm_provider="anthropic",
+        model="example-provider/test-model-001",
+        llm_provider="example-provider",
         response=response,
     )
     if retry_after is not None:
@@ -82,12 +82,12 @@ def _make_litellm_auth_error() -> LiteLLMAuthError:
     """Build a LiteLLM AuthenticationError."""
     response = httpx.Response(
         status_code=401,
-        request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"),
+        request=httpx.Request("POST", "https://api.example-provider.com/v1/messages"),
     )
     return LiteLLMAuthError(
         message="Invalid API key",
-        model="anthropic/test-model-001",
-        llm_provider="anthropic",
+        model="example-provider/test-model-001",
+        llm_provider="example-provider",
         response=response,
     )
 
@@ -96,8 +96,8 @@ def _make_litellm_timeout() -> LiteLLMTimeout:
     """Build a LiteLLM Timeout error."""
     return LiteLLMTimeout(
         message="Request timed out",
-        model="anthropic/test-model-001",
-        llm_provider="anthropic",
+        model="example-provider/test-model-001",
+        llm_provider="example-provider",
     )
 
 
@@ -105,9 +105,9 @@ def _make_litellm_connection_error() -> LiteLLMConnectionError:
     """Build a LiteLLM APIConnectionError."""
     return LiteLLMConnectionError(
         message="Connection refused",
-        model="anthropic/test-model-001",
-        llm_provider="anthropic",
-        request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"),
+        model="example-provider/test-model-001",
+        llm_provider="example-provider",
+        request=httpx.Request("POST", "https://api.example-provider.com/v1/messages"),
     )
 
 
@@ -115,12 +115,12 @@ def _make_litellm_internal_error() -> LiteLLMInternalError:
     """Build a LiteLLM InternalServerError."""
     response = httpx.Response(
         status_code=500,
-        request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"),
+        request=httpx.Request("POST", "https://api.example-provider.com/v1/messages"),
     )
     return LiteLLMInternalError(
         message="Internal server error",
-        model="anthropic/test-model-001",
-        llm_provider="anthropic",
+        model="example-provider/test-model-001",
+        llm_provider="example-provider",
         response=response,
     )
 
@@ -139,12 +139,12 @@ async def test_rate_limit_maps_to_retryable_error(
         patch(_PATCH_TARGET, new_callable=AsyncMock, side_effect=exc),
         pytest.raises(errors.RateLimitError) as exc_info,
     ):
-        await driver.complete(user_messages, "sonnet")
+        await driver.complete(user_messages, "medium")
 
     assert exc_info.value.is_retryable is True
     assert exc_info.value.retry_after == 30.0
-    assert exc_info.value.context["provider"] == "anthropic"
-    assert exc_info.value.context["model"] == "sonnet"
+    assert exc_info.value.context["provider"] == "example-provider"
+    assert exc_info.value.context["model"] == "medium"
 
 
 async def test_rate_limit_without_retry_after(
@@ -158,11 +158,11 @@ async def test_rate_limit_without_retry_after(
         patch(_PATCH_TARGET, new_callable=AsyncMock, side_effect=exc),
         pytest.raises(errors.RateLimitError) as exc_info,
     ):
-        await driver.complete(user_messages, "sonnet")
+        await driver.complete(user_messages, "medium")
 
     assert exc_info.value.is_retryable is True
     assert exc_info.value.retry_after is None
-    assert exc_info.value.context["provider"] == "anthropic"
+    assert exc_info.value.context["provider"] == "example-provider"
 
 
 async def test_rate_limit_during_streaming(
@@ -178,14 +178,14 @@ async def test_rate_limit_during_streaming(
 
     mock_stream = _failing_stream()
     with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mock_stream):
-        stream = await driver.stream(user_messages, "sonnet")
+        stream = await driver.stream(user_messages, "medium")
         with pytest.raises(errors.RateLimitError) as exc_info:
             async for _ in stream:
                 pass
 
     assert exc_info.value.is_retryable is True
     assert exc_info.value.retry_after == 5.0
-    assert exc_info.value.context["provider"] == "anthropic"
+    assert exc_info.value.context["provider"] == "example-provider"
 
 
 # ── Authentication ────────────────────────────────────────────────
@@ -202,11 +202,11 @@ async def test_auth_error_maps_to_non_retryable(
         patch(_PATCH_TARGET, new_callable=AsyncMock, side_effect=exc),
         pytest.raises(errors.AuthenticationError) as exc_info,
     ):
-        await driver.complete(user_messages, "sonnet")
+        await driver.complete(user_messages, "medium")
 
     assert exc_info.value.is_retryable is False
-    assert exc_info.value.context["provider"] == "anthropic"
-    assert exc_info.value.context["model"] == "sonnet"
+    assert exc_info.value.context["provider"] == "example-provider"
+    assert exc_info.value.context["model"] == "medium"
 
 
 async def test_auth_error_during_stream_setup(
@@ -220,10 +220,10 @@ async def test_auth_error_during_stream_setup(
         patch(_PATCH_TARGET, new_callable=AsyncMock, side_effect=exc),
         pytest.raises(errors.AuthenticationError) as exc_info,
     ):
-        await driver.stream(user_messages, "sonnet")
+        await driver.stream(user_messages, "medium")
 
     assert exc_info.value.is_retryable is False
-    assert exc_info.value.context["provider"] == "anthropic"
+    assert exc_info.value.context["provider"] == "example-provider"
 
 
 # ── Timeout ───────────────────────────────────────────────────────
@@ -240,11 +240,11 @@ async def test_timeout_maps_to_retryable(
         patch(_PATCH_TARGET, new_callable=AsyncMock, side_effect=exc),
         pytest.raises(errors.ProviderTimeoutError) as exc_info,
     ):
-        await driver.complete(user_messages, "sonnet")
+        await driver.complete(user_messages, "medium")
 
     assert exc_info.value.is_retryable is True
-    assert exc_info.value.context["provider"] == "anthropic"
-    assert exc_info.value.context["model"] == "sonnet"
+    assert exc_info.value.context["provider"] == "example-provider"
+    assert exc_info.value.context["model"] == "medium"
 
 
 async def test_timeout_during_streaming(
@@ -260,7 +260,7 @@ async def test_timeout_during_streaming(
 
     mock_stream = _failing_stream()
     with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mock_stream):
-        stream = await driver.stream(user_messages, "sonnet")
+        stream = await driver.stream(user_messages, "medium")
         with pytest.raises(errors.ProviderTimeoutError):
             async for _ in stream:
                 pass
@@ -280,11 +280,11 @@ async def test_connection_error_maps(
         patch(_PATCH_TARGET, new_callable=AsyncMock, side_effect=exc),
         pytest.raises(errors.ProviderConnectionError) as exc_info,
     ):
-        await driver.complete(user_messages, "sonnet")
+        await driver.complete(user_messages, "medium")
 
     assert exc_info.value.is_retryable is True
-    assert exc_info.value.context["provider"] == "anthropic"
-    assert exc_info.value.context["model"] == "sonnet"
+    assert exc_info.value.context["provider"] == "example-provider"
+    assert exc_info.value.context["model"] == "medium"
 
 
 async def test_connection_error_during_streaming(
@@ -300,13 +300,13 @@ async def test_connection_error_during_streaming(
 
     mock_stream = _failing_stream()
     with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mock_stream):
-        stream = await driver.stream(user_messages, "sonnet")
+        stream = await driver.stream(user_messages, "medium")
         with pytest.raises(errors.ProviderConnectionError) as exc_info:
             async for _ in stream:
                 pass
 
     assert exc_info.value.is_retryable is True
-    assert exc_info.value.context["provider"] == "anthropic"
+    assert exc_info.value.context["provider"] == "example-provider"
 
 
 # ── Internal server error ─────────────────────────────────────────
@@ -323,11 +323,11 @@ async def test_internal_error_maps(
         patch(_PATCH_TARGET, new_callable=AsyncMock, side_effect=exc),
         pytest.raises(errors.ProviderInternalError) as exc_info,
     ):
-        await driver.complete(user_messages, "sonnet")
+        await driver.complete(user_messages, "medium")
 
     assert exc_info.value.is_retryable is True
-    assert exc_info.value.context["provider"] == "anthropic"
-    assert exc_info.value.context["model"] == "sonnet"
+    assert exc_info.value.context["provider"] == "example-provider"
+    assert exc_info.value.context["model"] == "medium"
 
 
 # ── Unknown exception fallback ────────────────────────────────────
@@ -347,11 +347,11 @@ async def test_unknown_exception_maps_to_internal(
         ),
         pytest.raises(errors.ProviderInternalError) as exc_info,
     ):
-        await driver.complete(user_messages, "sonnet")
+        await driver.complete(user_messages, "medium")
 
-    assert exc_info.value.message == "Unexpected error from provider anthropic"
-    assert exc_info.value.context["provider"] == "anthropic"
-    assert exc_info.value.context["model"] == "sonnet"
+    assert exc_info.value.message == "Unexpected error from provider example-provider"
+    assert exc_info.value.context["provider"] == "example-provider"
+    assert exc_info.value.context["model"] == "medium"
     assert "something broke" in exc_info.value.context["detail"]
 
 
@@ -367,7 +367,7 @@ async def test_unknown_model_raises_model_not_found(
     with pytest.raises(errors.ModelNotFoundError) as exc_info:
         await driver.complete(user_messages, "nonexistent-model")
 
-    assert exc_info.value.context["provider"] == "anthropic"
+    assert exc_info.value.context["provider"] == "example-provider"
     assert exc_info.value.context["model"] == "nonexistent-model"
 
 
@@ -388,6 +388,6 @@ async def test_provider_error_passes_through_unmodified(
         patch(_PATCH_TARGET, new_callable=AsyncMock, side_effect=original),
         pytest.raises(errors.ModelNotFoundError) as exc_info,
     ):
-        await driver.complete(user_messages, "sonnet")
+        await driver.complete(user_messages, "medium")
 
     assert exc_info.value is original

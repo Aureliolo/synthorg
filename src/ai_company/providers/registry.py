@@ -40,12 +40,12 @@ class ProviderRegistry:
             registry = ProviderRegistry.from_config(
                 root_config.providers,
             )
-            driver = registry.get("anthropic")
-            response = await driver.complete(messages, "sonnet")
+            driver = registry.get("example-provider")
+            response = await driver.complete(messages, "medium")
 
         Check membership::
 
-            if "openrouter" in registry:
+            if "example-provider" in registry:
                 ...
     """
 
@@ -67,7 +67,7 @@ class ProviderRegistry:
         """Look up a driver by provider name.
 
         Args:
-            name: Provider name (e.g. ``"anthropic"``).
+            name: Provider name (e.g. ``"example-provider"``).
 
         Returns:
             The registered driver instance.

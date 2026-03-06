@@ -85,7 +85,7 @@ class TestTemplateAgentConfig:
             role="CEO",
             name="{{ company_name }} CEO",
             level=SeniorityLevel.C_SUITE,
-            model="opus",
+            model="large",
             personality_preset="visionary_leader",
             department="executive",
         )

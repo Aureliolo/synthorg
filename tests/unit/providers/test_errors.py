@@ -30,7 +30,7 @@ class TestProviderError:
         assert err.context == {}
 
     def test_context_stored(self) -> None:
-        ctx = {"provider": "anthropic", "model": "sonnet"}
+        ctx = {"provider": "example-provider", "model": "medium"}
         err = ProviderError("oops", context=ctx)
         assert err.context == ctx
 
@@ -117,9 +117,9 @@ class TestRateLimitError:
         err = RateLimitError(
             "slow down",
             retry_after=5.0,
-            context={"provider": "openai"},
+            context={"provider": "test-provider"},
         )
-        assert err.context == {"provider": "openai"}
+        assert err.context == {"provider": "test-provider"}
         assert err.retry_after == 5.0
 
 
@@ -138,20 +138,20 @@ class TestErrorFormatting:
             ProviderConnectionError,
             ProviderInternalError,
         ):
-            err = cls("test msg", context={"model": "gpt-4"})
+            err = cls("test msg", context={"model": "test-model"})
             result = str(err)
             assert "test msg" in result
-            assert "model='gpt-4'" in result
+            assert "model='test-model'" in result
 
     def test_sensitive_key_redacted(self) -> None:
         err = ProviderError(
             "auth failed",
-            context={"api_key": "sk-secret-123", "model": "gpt-4"},
+            context={"api_key": "sk-secret-123", "model": "test-model"},
         )
         result = str(err)
         assert "sk-secret-123" not in result
         assert "api_key='***'" in result
-        assert "model='gpt-4'" in result
+        assert "model='test-model'" in result
 
     @pytest.mark.parametrize(
         "key",
@@ -185,7 +185,7 @@ class TestContextImmutability:
             err.context["new_key"] = "new_val"  # type: ignore[index]
 
     def test_original_dict_mutation_does_not_affect_error(self) -> None:
-        ctx = {"provider": "openai"}
+        ctx = {"provider": "test-provider"}
         err = ProviderError("oops", context=ctx)
         ctx["api_key"] = "sk-secret"
         assert "api_key" not in err.context

@@ -99,8 +99,8 @@ class AutoDowngradeConfig(BaseModel):
     def _normalize_downgrade_map(cls, data: Any) -> Any:
         """Normalize downgrade_map aliases by stripping leading/trailing whitespace.
 
-        Runs before NotBlankStr validation so that ``" gpt-4 "`` becomes
-        ``"gpt-4"`` rather than being kept with surrounding spaces.
+        Runs before NotBlankStr validation so that ``" large "`` becomes
+        ``"large"`` rather than being kept with surrounding spaces.
         Non-string or malformed entries are passed through unchanged so
         that Pydantic can surface a proper field-level ``ValidationError``.
         """

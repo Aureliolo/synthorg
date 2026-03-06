@@ -1,7 +1,7 @@
 """LiteLLM-backed completion driver.
 
 Wraps ``litellm.acompletion`` behind the ``BaseCompletionProvider``
-contract, mapping between domain models and LiteLLM's OpenAI-compatible
+contract, mapping between domain models and LiteLLM's chat-completion
 API.
 """
 
@@ -108,11 +108,11 @@ class LiteLLMDriver(BaseCompletionProvider):
 
     Uses ``litellm.acompletion`` for both streaming and non-streaming
     calls.  Model identifiers are prefixed with the provider name
-    (e.g. ``anthropic/claude-sonnet-4-6``) so LiteLLM routes to the
-    correct backend.
+    (e.g. ``example-provider/example-medium-001``) so LiteLLM routes to
+    the correct backend.
 
     Args:
-        provider_name: Provider key from config (e.g. ``"anthropic"``).
+        provider_name: Provider key from config (e.g. ``"example-provider"``).
         config: Provider configuration including API key, base URL,
             and model definitions.
 

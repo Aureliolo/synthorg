@@ -16,6 +16,7 @@ class ResolvedModel(BaseModel):
         cost_per_1k_input: Cost per 1 000 input tokens in USD.
         cost_per_1k_output: Cost per 1 000 output tokens in USD.
         max_context: Maximum context window size in tokens.
+        estimated_latency_ms: Estimated median latency in milliseconds.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -38,6 +39,12 @@ class ResolvedModel(BaseModel):
         gt=0,
         description="Maximum context window size in tokens",
     )
+    estimated_latency_ms: int | None = Field(
+        default=None,
+        gt=0,
+        le=300_000,
+        description="Estimated median latency in milliseconds",
+    )
 
     @property
     def total_cost_per_1k(self) -> float:
@@ -53,6 +60,7 @@ class RoutingRequest(BaseModel):
     - **ManualStrategy** requires ``model_override``.
     - **RoleBasedStrategy** requires ``agent_level``.
     - **CostAwareStrategy** uses ``task_type`` and ``remaining_budget``.
+    - **FastestStrategy** uses ``task_type`` and ``remaining_budget``.
     - **SmartStrategy** uses all fields in priority order.
 
     Attributes:

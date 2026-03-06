@@ -107,6 +107,7 @@ class ModelResolver:
                     cost_per_1k_input=model_config.cost_per_1k_input,
                     cost_per_1k_output=model_config.cost_per_1k_output,
                     max_context=model_config.max_context,
+                    estimated_latency_ms=model_config.estimated_latency_ms,
                 )
                 for ref in (model_config.id, model_config.alias):
                     if ref is None:
@@ -184,5 +185,21 @@ class ModelResolver:
             sorted(
                 self.all_models(),
                 key=lambda m: m.total_cost_per_1k,
+            ),
+        )
+
+    def all_models_sorted_by_latency(self) -> tuple[ResolvedModel, ...]:
+        """Return models sorted by estimated latency (ascending).
+
+        Models with ``None`` latency sort last.
+        """
+        return tuple(
+            sorted(
+                self.all_models(),
+                key=lambda m: (
+                    m.estimated_latency_ms
+                    if m.estimated_latency_ms is not None
+                    else float("inf")
+                ),
             ),
         )

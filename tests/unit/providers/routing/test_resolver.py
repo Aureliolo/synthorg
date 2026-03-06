@@ -15,8 +15,8 @@ class TestResolverFromConfig:
         three_model_provider: dict[str, ProviderConfig],
     ) -> None:
         resolver = ModelResolver.from_config(three_model_provider)
-        model = resolver.resolve("test-sonnet-001")
-        assert model.model_id == "test-sonnet-001"
+        model = resolver.resolve("test-medium-001")
+        assert model.model_id == "test-medium-001"
         assert model.provider_name == "test-provider"
 
     def test_indexes_aliases(
@@ -25,7 +25,7 @@ class TestResolverFromConfig:
     ) -> None:
         resolver = ModelResolver.from_config(three_model_provider)
         model = resolver.resolve("medium")
-        assert model.model_id == "test-sonnet-001"
+        assert model.model_id == "test-medium-001"
 
     def test_empty_providers(self) -> None:
         resolver = ModelResolver.from_config({})
@@ -36,7 +36,7 @@ class TestResolverFromConfig:
             "test-provider": ProviderConfig(
                 models=(
                     ProviderModelConfig(
-                        id="test-sonnet-001",
+                        id="test-medium-001",
                         alias="medium",
                         cost_per_1k_input=0.003,
                         cost_per_1k_output=0.015,
@@ -60,12 +60,12 @@ class TestResolverFromConfig:
 
 class TestResolverResolve:
     def test_resolve_by_id(self, resolver: ModelResolver) -> None:
-        model = resolver.resolve("test-haiku-001")
-        assert model.model_id == "test-haiku-001"
+        model = resolver.resolve("test-small-001")
+        assert model.model_id == "test-small-001"
 
     def test_resolve_by_alias(self, resolver: ModelResolver) -> None:
         model = resolver.resolve("large")
-        assert model.model_id == "test-opus-001"
+        assert model.model_id == "test-large-001"
 
     def test_resolve_unknown_raises(self, resolver: ModelResolver) -> None:
         with pytest.raises(ModelResolutionError, match="not found"):
@@ -81,7 +81,7 @@ class TestResolverResolveSafe:
     def test_resolve_safe_found(self, resolver: ModelResolver) -> None:
         model = resolver.resolve_safe("medium")
         assert model is not None
-        assert model.model_id == "test-sonnet-001"
+        assert model.model_id == "test-medium-001"
 
     def test_resolve_safe_not_found(self, resolver: ModelResolver) -> None:
         assert resolver.resolve_safe("nonexistent") is None
@@ -99,13 +99,73 @@ class TestResolverAllModels:
         costs = [m.cost_per_1k_input + m.cost_per_1k_output for m in models]
         assert costs == sorted(costs)
 
-    def test_cheapest_is_haiku(self, resolver: ModelResolver) -> None:
+    def test_cheapest_is_small(self, resolver: ModelResolver) -> None:
         models = resolver.all_models_sorted_by_cost()
         assert models[0].alias == "small"
 
-    def test_most_expensive_is_opus(self, resolver: ModelResolver) -> None:
+    def test_most_expensive_is_large(self, resolver: ModelResolver) -> None:
         models = resolver.all_models_sorted_by_cost()
         assert models[-1].alias == "large"
+
+
+class TestResolverSortByLatency:
+    def test_sorted_ascending(self, resolver: ModelResolver) -> None:
+        models = resolver.all_models_sorted_by_latency()
+        latencies = [m.estimated_latency_ms for m in models]
+        # All have latency: 200, 500, 1500
+        assert latencies == [200, 500, 1500]
+
+    def test_none_sorted_last(self) -> None:
+        providers = {
+            "test-provider": ProviderConfig(
+                models=(
+                    ProviderModelConfig(
+                        id="test-fast",
+                        alias="fast",
+                        estimated_latency_ms=100,
+                    ),
+                    ProviderModelConfig(
+                        id="test-no-latency",
+                        alias="unknown",
+                    ),
+                    ProviderModelConfig(
+                        id="test-slow",
+                        alias="slow",
+                        estimated_latency_ms=500,
+                    ),
+                ),
+            ),
+        }
+        resolver = ModelResolver.from_config(providers)
+        models = resolver.all_models_sorted_by_latency()
+        assert models[0].model_id == "test-fast"
+        assert models[1].model_id == "test-slow"
+        assert models[2].model_id == "test-no-latency"
+        assert models[2].estimated_latency_ms is None
+
+    def test_all_none_returns_all(self) -> None:
+        providers = {
+            "test-provider": ProviderConfig(
+                models=(
+                    ProviderModelConfig(id="test-a", alias="a"),
+                    ProviderModelConfig(id="test-b", alias="b"),
+                ),
+            ),
+        }
+        resolver = ModelResolver.from_config(providers)
+        models = resolver.all_models_sorted_by_latency()
+        assert len(models) == 2
+        assert all(m.estimated_latency_ms is None for m in models)
+
+    def test_wired_from_config(
+        self,
+        three_model_provider: dict[str, ProviderConfig],
+    ) -> None:
+        resolver = ModelResolver.from_config(three_model_provider)
+        models = resolver.all_models_sorted_by_latency()
+        # small=200, medium=500, large=1500
+        assert models[0].estimated_latency_ms == 200
+        assert models[0].alias == "small"
 
 
 class TestResolverCollisionDetection:

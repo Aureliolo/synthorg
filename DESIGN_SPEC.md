@@ -38,7 +38,7 @@ Build a **configurable AI company framework** where AI agents operate within a v
 | Principle | Description |
 |-----------|-------------|
 | **Configuration over Code** | Company structures, roles, and workflows defined via config, not hardcoded |
-| **Provider Agnostic** | Any LLM backend: Claude API, OpenRouter, Ollama, custom endpoints |
+| **Provider Agnostic** | Any LLM backend: cloud APIs, OpenRouter, Ollama, custom endpoints |
 | **Composable** | Mix and match roles, teams, workflows. Build any type of company |
 | **Observable** | Every agent action, communication, and decision is logged and visible |
 | **Autonomy Spectrum** | From full human oversight to fully autonomous operation |
@@ -184,11 +184,11 @@ agent:
       - redis
       - testing
   model:
-    provider: "anthropic"            # example provider
-    model_id: "claude-sonnet-4-6"    # example model — actual models TBD per agent/role
+    provider: "example-provider"     # example provider
+    model_id: "example-medium-001"   # example model — actual models TBD per agent/role
     temperature: 0.3
     max_tokens: 8192
-    fallback_model: "openrouter/anthropic/claude-haiku"  # example fallback
+    fallback_model: "openrouter/example-medium-001"  # example fallback
   memory:
     type: "persistent"           # persistent, project, session, none
     retention_days: null         # null = forever
@@ -231,14 +231,14 @@ agent:
 
 | Level | Authority | Typical Model | Cost Tier |
 |-------|----------|---------------|-----------|
-| Intern/Junior | Execute assigned tasks only | Haiku / small local | $ |
-| Mid | Execute + suggest improvements | Sonnet / medium local | $$ |
-| Senior | Execute + design + review others | Sonnet / Opus | $$$ |
-| Lead | All above + approve + delegate | Opus / Sonnet | $$$ |
-| Principal/Staff | All above + architectural decisions | Opus | $$$$ |
-| Director | Strategic decisions + budget authority | Opus | $$$$ |
-| VP | Department-wide authority | Opus | $$$$ |
-| C-Suite (CEO/CTO/CFO) | Company-wide authority + final approvals | Opus | $$$$ |
+| Intern/Junior | Execute assigned tasks only | small / local | $ |
+| Mid | Execute + suggest improvements | medium / local | $$ |
+| Senior | Execute + design + review others | medium / large | $$$ |
+| Lead | All above + approve + delegate | large / medium | $$$ |
+| Principal/Staff | All above + architectural decisions | large | $$$$ |
+| Director | Strategic decisions + budget authority | large | $$$$ |
+| VP | Department-wide authority | large | $$$$ |
+| C-Suite (CEO/CTO/CFO) | Company-wide authority + final approvals | large | $$$$ |
 
 ### 3.3 Role Catalog (Extensible)
 
@@ -305,7 +305,7 @@ custom_roles:
     skills: ["solidity", "web3", "smart-contracts"]
     system_prompt_template: "blockchain_dev.md"
     authority_level: "senior"
-    suggested_model: "opus"
+    suggested_model: "large"
 ```
 
 ---
@@ -828,7 +828,7 @@ execution_loop: "react"              # react, plan_execute, hybrid, auto
 
 #### Loop 2: Plan-and-Execute
 
-A two-phase approach: the agent first generates a step-by-step plan, then executes each step sequentially. On failure, the agent can replan. Different models can be used for planning vs execution (e.g., Opus for planning, Haiku for execution steps).
+A two-phase approach: the agent first generates a step-by-step plan, then executes each step sequentially. On failure, the agent can replan. Different models can be used for planning vs execution (e.g., large for planning, small for execution steps).
 
 ```text
 ┌──────────────────────────────────────────┐
@@ -1218,11 +1218,11 @@ Agents can move between seniority levels based on performance:
 │            Unified Model Interface            │
 │   completion(messages, tools, config) → resp  │
 ├───────────┬───────────┬───────────┬─────────┤
-│ Anthropic │OpenRouter │  Ollama   │ Custom  │
+│ Cloud API │OpenRouter │  Ollama   │ Custom  │
 │  Adapter  │  Adapter  │  Adapter  │ Adapter │
 ├───────────┼───────────┼───────────┼─────────┤
-│Claude API │ 400+ LLMs│ Local LLMs│ Any API │
-│ Direct    │ via OR    │ Self-host │         │
+│ Direct    │ 400+ LLMs│ Local LLMs│ Any API │
+│ API call  │ via OR    │ Self-host │         │
 └───────────┴───────────┴───────────┴─────────┘
 ```
 
@@ -1232,35 +1232,38 @@ Agents can move between seniority levels based on performance:
 
 ```yaml
 providers:
-  anthropic:
-    api_key: "${ANTHROPIC_API_KEY}"
+  example-provider:
+    api_key: "${PROVIDER_API_KEY}"
     models:                        # example entries — real list loaded from provider
-      - id: "claude-opus-4-6"
-        alias: "opus"
+      - id: "example-large-001"
+        alias: "large"
         cost_per_1k_input: 0.015   # illustrative, verify at implementation time
         cost_per_1k_output: 0.075
         max_context: 200000
-      - id: "claude-sonnet-4-6"
-        alias: "sonnet"
+        estimated_latency_ms: 1500 # optional, used by fastest strategy
+      - id: "example-medium-001"
+        alias: "medium"
         cost_per_1k_input: 0.003
         cost_per_1k_output: 0.015
         max_context: 200000
-      - id: "claude-haiku-4-5"
-        alias: "haiku"
+        estimated_latency_ms: 500
+      - id: "example-small-001"
+        alias: "small"
         cost_per_1k_input: 0.0008
         cost_per_1k_output: 0.004
         max_context: 200000
+        estimated_latency_ms: 200
 
   openrouter:
     api_key: "${OPENROUTER_API_KEY}"
     base_url: "https://openrouter.ai/api/v1"
     models:                        # example entries
-      - id: "anthropic/claude-sonnet-4-6"
-        alias: "or-sonnet"
-      - id: "google/gemini-2.5-pro"
-        alias: "or-gemini-pro"
-      - id: "deepseek/deepseek-r1"
-        alias: "or-deepseek"
+      - id: "vendor-a/model-medium"
+        alias: "or-medium"
+      - id: "vendor-b/model-pro"
+        alias: "or-pro"
+      - id: "vendor-c/model-reasoning"
+        alias: "or-reasoning"
 
   ollama:
     base_url: "http://localhost:11434"
@@ -1288,25 +1291,33 @@ Use **LiteLLM** as the provider abstraction layer:
 
 ```yaml
 routing:
-  strategy: "smart"              # smart, cheapest, fastest, manual
+  strategy: "smart"              # smart, cheapest, fastest, role_based, cost_aware, manual
+  # Strategy behaviors:
+  #   manual      — resolve an explicit model override; fails if not set
+  #   role_based  — match agent seniority level to routing rules, then catalog default
+  #   cost_aware  — match task-type rules, then pick cheapest model within budget
+  #   cheapest    — alias for cost_aware
+  #   fastest     — match task-type rules, then pick fastest model (by estimated_latency_ms)
+  #                 within budget; falls back to cheapest when no latency data is available
+  #   smart       — priority cascade: override > task-type > role > seniority > cheapest > fallback chain
   rules:
     - role_level: "C-Suite"
-      preferred_model: "opus"
-      fallback: "sonnet"
+      preferred_model: "large"
+      fallback: "medium"
     - role_level: "Senior"
-      preferred_model: "sonnet"
-      fallback: "haiku"
+      preferred_model: "medium"
+      fallback: "small"
     - role_level: "Junior"
-      preferred_model: "haiku"
+      preferred_model: "small"
       fallback: "local-small"
     - task_type: "code_review"
-      preferred_model: "sonnet"
+      preferred_model: "medium"
     - task_type: "documentation"
-      preferred_model: "haiku"
+      preferred_model: "small"
     - task_type: "architecture"
-      preferred_model: "opus"
+      preferred_model: "large"
   fallback_chain:
-    - "anthropic"
+    - "example-provider"
     - "openrouter"
     - "ollama"
 ```
@@ -1339,8 +1350,8 @@ Every API call is tracked (illustrative schema):
 {
   "agent_id": "sarah_chen",
   "task_id": "task-123",
-  "provider": "anthropic",
-  "model": "claude-sonnet-4-6",
+  "provider": "example-provider",
+  "model": "example-medium-001",
   "input_tokens": 4500,
   "output_tokens": 1200,
   "cost_usd": 0.0315,
@@ -1388,10 +1399,10 @@ budget:
     enabled: true
     threshold: 85              # percent of budget used
     boundary: "task_assignment" # task_assignment only — NEVER mid-execution
-    downgrade_map:             # example — aliases reference configured models
-      opus: "sonnet"
-      sonnet: "haiku"
-      haiku: "local-small"
+    downgrade_map:             # ordered pairs — aliases reference configured models
+      - ["large", "medium"]
+      - ["medium", "small"]
+      - ["small", "local-small"]
 ```
 
 > **Auto-downgrade boundary:** Model downgrades apply only at **task assignment time**, never mid-execution. An agent halfway through an architecture review cannot be switched to a cheaper model — the task completes on its assigned model. The next task assignment respects the downgrade threshold. This prevents quality degradation from mid-thought model switches.
@@ -1435,7 +1446,7 @@ call_analytics:
     - success                          # true/false
     - retry_count                      # 0 = first attempt succeeded
     - retry_reason                     # rate_limit, timeout, internal_error
-    - latency_ms                       # wall-clock time for the call
+    - latency_ms                       # wall-clock time for the call (not estimated_latency_ms from config)
     - finish_reason                    # stop, tool_use, max_tokens, error
     - cache_hit                        # prompt caching hit/miss (provider-dependent)
   aggregation:
@@ -1930,24 +1941,24 @@ template:
   agents:
     - role: "ceo"
       name: "{{ ceo_name | auto }}"
-      model: "opus"
+      model: "large"
       personality_preset: "visionary_leader"
 
     - role: "full_stack_developer"
       name: "{{ dev1_name | auto }}"
       level: "senior"
-      model: "sonnet"
+      model: "medium"
       personality_preset: "pragmatic_builder"
 
     - role: "full_stack_developer"
       name: "{{ dev2_name | auto }}"
       level: "mid"
-      model: "haiku"
+      model: "small"
       personality_preset: "eager_learner"
 
     - role: "product_manager"
       name: "{{ pm_name | auto }}"
-      model: "sonnet"
+      model: "medium"
       personality_preset: "user_advocate"
 
   workflow: "agile_kanban"
@@ -1974,16 +1985,16 @@ $ ai-company create
   [ ] Operations
 
 ? Engineering team size: 5
-  - 1x Lead (Opus)
-  - 2x Senior Dev (Sonnet)
-  - 2x Junior Dev (Haiku)
+  - 1x Lead (large)
+  - 2x Senior Dev (medium)
+  - 2x Junior Dev (small)
 
 ? Add QA? yes
-  - 1x QA Lead (Sonnet)
-  - 1x QA Engineer (Haiku)
+  - 1x QA Lead (medium)
+  - 1x QA Engineer (small)
 
 ? Model providers:
-  [x] Anthropic Claude
+  [x] Cloud API
   [x] Local Ollama
   [ ] OpenRouter
 
@@ -2142,7 +2153,8 @@ ai-company/
 │       │   ├── drivers/            # Provider driver implementations
 │       │   │   ├── litellm_driver.py  # LiteLLM adapter
 │       │   │   └── mappers.py     # Request/response mappers
-│       │   ├── routing/            # Model routing (5 strategies)
+│       │   ├── routing/            # Model routing (6 strategies)
+│       │   │   ├── _strategy_helpers.py  # Shared routing helper functions
 │       │   │   ├── errors.py      # Routing errors
 │       │   │   ├── models.py      # Routing models (candidates, results)
 │       │   │   ├── resolver.py    # Model resolver

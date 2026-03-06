@@ -54,7 +54,7 @@ _PATCH_MODEL_INFO = (
 
 
 def _make_driver(
-    provider_name: str = "anthropic",
+    provider_name: str = "example-provider",
     config: ProviderConfig | None = None,
 ) -> LiteLLMDriver:
     return LiteLLMDriver(
@@ -73,7 +73,7 @@ async def _collect_stream(
     driver: LiteLLMDriver,
     mock_call: AsyncMock,
     chunks: list[MagicMock],
-    model: str = "sonnet",
+    model: str = "medium",
 ) -> list[StreamChunk]:
     mock_call.return_value = mock_stream_response(chunks)
     stream = await driver.stream(_user_message(), model)
@@ -91,7 +91,7 @@ class TestDoComplete:
 
         with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:
             m.return_value = mock_resp
-            result = await driver.complete(_user_message(), "sonnet")
+            result = await driver.complete(_user_message(), "medium")
 
         assert result.content == "Hello! How can I help?"
         assert result.finish_reason == FinishReason.STOP
@@ -110,7 +110,7 @@ class TestDoComplete:
 
         with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:
             m.return_value = mock_resp
-            result = await driver.complete(_user_message(), "sonnet")
+            result = await driver.complete(_user_message(), "medium")
 
         assert result.content is None
         assert len(result.tool_calls) == 1
@@ -124,10 +124,10 @@ class TestDoComplete:
 
         with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:
             m.return_value = mock_resp
-            await driver.complete(_user_message(), "haiku")
+            await driver.complete(_user_message(), "small")
 
         kw = m.call_args.kwargs
-        assert kw["model"] == "anthropic/test-model-002"
+        assert kw["model"] == "example-provider/test-model-002"
 
     async def test_model_id_resolution(self) -> None:
         driver = _make_driver()
@@ -141,7 +141,7 @@ class TestDoComplete:
             )
 
         kw = m.call_args.kwargs
-        assert kw["model"] == "anthropic/test-model-001"
+        assert kw["model"] == "example-provider/test-model-001"
 
     async def test_unknown_model_raises(self) -> None:
         driver = _make_driver()
@@ -155,7 +155,7 @@ class TestDoComplete:
 
         with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:
             m.return_value = mock_resp
-            await driver.complete(_user_message(), "sonnet")
+            await driver.complete(_user_message(), "medium")
 
         assert m.call_args.kwargs["api_key"] == "sk-test-key"
 
@@ -168,7 +168,7 @@ class TestDoComplete:
 
         with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:
             m.return_value = mock_resp
-            await driver.complete(_user_message(), "sonnet")
+            await driver.complete(_user_message(), "medium")
 
         kw = m.call_args.kwargs
         assert kw["api_base"] == "https://custom.api.example.com"
@@ -188,7 +188,7 @@ class TestDoComplete:
             m.return_value = mock_resp
             await driver.complete(
                 _user_message(),
-                "sonnet",
+                "medium",
                 config=comp_config,
             )
 
@@ -214,7 +214,7 @@ class TestDoComplete:
             m.return_value = mock_resp
             await driver.complete(
                 _user_message(),
-                "sonnet",
+                "medium",
                 tools=tools,
             )
 
@@ -228,7 +228,7 @@ class TestDoComplete:
 
         with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:
             m.return_value = mock_resp
-            result = await driver.complete(_user_message(), "sonnet")
+            result = await driver.complete(_user_message(), "medium")
 
         assert result.provider_request_id == "req_xyz789"
 
@@ -241,9 +241,9 @@ class TestDoComplete:
 
         with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:
             m.return_value = mock_resp
-            result = await driver.complete(_user_message(), "sonnet")
+            result = await driver.complete(_user_message(), "medium")
 
-        # sonnet: 0.003/1k in + 0.015/1k out = 0.0105
+        # medium: 0.003/1k in + 0.015/1k out = 0.0105
         assert result.usage.cost_usd == 0.0105
 
 
@@ -515,10 +515,10 @@ class TestExceptionMapping:
         ) as m:
             m.side_effect = litellm_exc
             with pytest.raises(expected_type) as exc_info:
-                await driver.complete(_user_message(), "sonnet")
+                await driver.complete(_user_message(), "medium")
 
         assert isinstance(exc_info.value, ProviderError)
-        assert exc_info.value.context["provider"] == "anthropic"
+        assert exc_info.value.context["provider"] == "example-provider"
 
     async def test_rate_limit_retry_after_extracted(self) -> None:
         import litellm as _litellm
@@ -527,7 +527,7 @@ class TestExceptionMapping:
         exc = _litellm.RateLimitError(  # type: ignore[attr-defined]
             message="Rate limited",
             model="test",
-            llm_provider="anthropic",
+            llm_provider="example-provider",
         )
         exc.headers = {"retry-after": "30"}  # type: ignore[attr-defined]
 
@@ -537,7 +537,7 @@ class TestExceptionMapping:
         ) as m:
             m.side_effect = exc
             with pytest.raises(RateLimitError) as exc_info:
-                await driver.complete(_user_message(), "sonnet")
+                await driver.complete(_user_message(), "medium")
 
         assert exc_info.value.retry_after == 30.0
 
@@ -549,7 +549,7 @@ class TestExceptionMapping:
         exc = _litellm.RateLimitError(  # type: ignore[attr-defined]
             message="Rate limited",
             model="test",
-            llm_provider="anthropic",
+            llm_provider="example-provider",
         )
         exc.headers = {"Retry-After": "15"}  # type: ignore[attr-defined]
 
@@ -559,7 +559,7 @@ class TestExceptionMapping:
         ) as m:
             m.side_effect = exc
             with pytest.raises(RateLimitError) as exc_info:
-                await driver.complete(_user_message(), "sonnet")
+                await driver.complete(_user_message(), "medium")
 
         assert exc_info.value.retry_after == 15.0
 
@@ -571,7 +571,7 @@ class TestExceptionMapping:
         exc = _litellm.RateLimitError(  # type: ignore[attr-defined]
             message="Rate limited",
             model="test",
-            llm_provider="anthropic",
+            llm_provider="example-provider",
         )
 
         with patch(
@@ -580,7 +580,7 @@ class TestExceptionMapping:
         ) as m:
             m.side_effect = exc
             with pytest.raises(RateLimitError) as exc_info:
-                await driver.complete(_user_message(), "sonnet")
+                await driver.complete(_user_message(), "medium")
 
         assert exc_info.value.retry_after is None
 
@@ -592,7 +592,7 @@ class TestExceptionMapping:
         exc = _litellm.RateLimitError(  # type: ignore[attr-defined]
             message="Rate limited",
             model="test",
-            llm_provider="anthropic",
+            llm_provider="example-provider",
         )
         exc.headers = {  # type: ignore[attr-defined]
             "retry-after": "Wed, 21 Oct 2025 07:28:00 GMT",
@@ -604,7 +604,7 @@ class TestExceptionMapping:
         ) as m:
             m.side_effect = exc
             with pytest.raises(RateLimitError) as exc_info:
-                await driver.complete(_user_message(), "sonnet")
+                await driver.complete(_user_message(), "medium")
 
         assert exc_info.value.retry_after is None
 
@@ -622,7 +622,7 @@ class TestExceptionMapping:
             ):
                 await driver.complete(
                     _user_message(),
-                    "sonnet",
+                    "medium",
                 )
 
     async def test_stream_exception_during_iteration(self) -> None:
@@ -635,7 +635,7 @@ class TestExceptionMapping:
             raise _litellm.Timeout(  # type: ignore[attr-defined]
                 message="Stream timed out",
                 model="test",
-                llm_provider="anthropic",
+                llm_provider="example-provider",
             )
 
         with patch(
@@ -645,7 +645,7 @@ class TestExceptionMapping:
             m.return_value = _failing_stream()
             stream = await driver.stream(
                 _user_message(),
-                "sonnet",
+                "medium",
             )
             with pytest.raises(ProviderTimeoutError):
                 async for _ in stream:
@@ -663,10 +663,10 @@ class TestExceptionMapping:
             m.side_effect = _litellm.AuthenticationError(  # type: ignore[attr-defined]
                 message="Invalid key",
                 model="test",
-                llm_provider="anthropic",
+                llm_provider="example-provider",
             )
             with pytest.raises(AuthenticationError):
-                await driver.stream(_user_message(), "sonnet")
+                await driver.stream(_user_message(), "medium")
 
     async def test_response_mapping_error_wrapped_as_provider_error(self) -> None:
         """Errors during response mapping are caught, not leaked raw."""
@@ -682,7 +682,7 @@ class TestExceptionMapping:
         ) as m:
             m.return_value = response
             with pytest.raises(ProviderError):
-                await driver.complete(_user_message(), "sonnet")
+                await driver.complete(_user_message(), "medium")
 
 
 # ── Model capabilities ───────────────────────────────────────────
@@ -703,10 +703,10 @@ class TestGetModelCapabilities:
             _PATCH_MODEL_INFO,
             return_value=model_info,
         ):
-            caps = await driver.get_model_capabilities("sonnet")
+            caps = await driver.get_model_capabilities("medium")
 
         assert caps.model_id == "test-model-001"
-        assert caps.provider == "anthropic"
+        assert caps.provider == "example-provider"
         assert caps.max_context_tokens == 200_000
         assert caps.max_output_tokens == 8192
         assert caps.supports_tools is True
@@ -721,7 +721,7 @@ class TestGetModelCapabilities:
             _PATCH_MODEL_INFO,
             side_effect=Exception("Unknown model"),
         ):
-            caps = await driver.get_model_capabilities("sonnet")
+            caps = await driver.get_model_capabilities("medium")
 
         assert caps.model_id == "test-model-001"
         assert caps.max_output_tokens == 4096
@@ -738,7 +738,7 @@ class TestGetModelCapabilities:
             _PATCH_MODEL_INFO,
             return_value=model_info,
         ):
-            caps = await driver.get_model_capabilities("sonnet")
+            caps = await driver.get_model_capabilities("medium")
 
         assert caps.supports_streaming is False
         assert caps.supports_streaming_tool_calls is False
@@ -755,7 +755,7 @@ class TestGetModelCapabilities:
             _PATCH_MODEL_INFO,
             return_value=model_info,
         ):
-            caps = await driver.get_model_capabilities("sonnet")
+            caps = await driver.get_model_capabilities("medium")
 
         assert caps.supports_streaming is True
         assert caps.supports_streaming_tool_calls is False

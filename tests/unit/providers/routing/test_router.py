@@ -89,7 +89,7 @@ class TestModelRouterRoute:
             RoutingRequest(model_override="large"),
         )
 
-        assert decision.resolved_model.model_id == "test-opus-001"
+        assert decision.resolved_model.model_id == "test-large-001"
 
     def test_routes_role_based(
         self,
@@ -116,6 +116,19 @@ class TestModelRouterRoute:
         )
 
         assert decision.resolved_model.alias == "large"
+
+    def test_routes_fastest(
+        self,
+        three_model_provider: dict[str, ProviderConfig],
+    ) -> None:
+        config = RoutingConfig(strategy="fastest")
+        router = ModelRouter(config, three_model_provider)
+
+        decision = router.route(RoutingRequest())
+
+        # small has lowest latency (200ms)
+        assert decision.resolved_model.alias == "small"
+        assert decision.strategy_used == "fastest"
 
     def test_logs_decision(
         self,
