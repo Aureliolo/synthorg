@@ -89,6 +89,36 @@ class TestTurnRecord:
         )
         assert record.total_tokens == 0
 
+    def test_turn_number_zero_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            TurnRecord(
+                turn_number=0,
+                input_tokens=10,
+                output_tokens=5,
+                cost_usd=0.01,
+                finish_reason=FinishReason.STOP,
+            )
+
+    def test_negative_input_tokens_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            TurnRecord(
+                turn_number=1,
+                input_tokens=-1,
+                output_tokens=5,
+                cost_usd=0.01,
+                finish_reason=FinishReason.STOP,
+            )
+
+    def test_negative_cost_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            TurnRecord(
+                turn_number=1,
+                input_tokens=10,
+                output_tokens=5,
+                cost_usd=-0.01,
+                finish_reason=FinishReason.STOP,
+            )
+
 
 @pytest.mark.unit
 class TestExecutionResult:

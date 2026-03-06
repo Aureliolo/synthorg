@@ -1,6 +1,7 @@
 """Tests for the ReAct execution loop."""
 
 from typing import TYPE_CHECKING, Any
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -568,6 +569,8 @@ class TestReactLoopCompletionConfig:
         )
 
         assert result.termination_reason == TerminationReason.COMPLETED
+        assert len(provider.recorded_configs) == 1
+        assert provider.recorded_configs[0] is custom_config
 
 
 @pytest.mark.unit
@@ -615,7 +618,7 @@ class TestReactLoopProviderException:
 
 @pytest.mark.unit
 class TestReactLoopToolExecutionException:
-    """Tool invoker raising fatal error during invoke_all()."""
+    """Tool execution errors are captured by ToolInvoker and do not crash the loop."""
 
     async def test_tool_exception_returns_error_result(
         self,
@@ -652,12 +655,9 @@ class TestReactLoopToolExecutionException:
 
         # The tool error is caught by ToolInvoker.invoke and returned
         # as ToolResult(is_error=True), so the loop continues normally.
-        # It terminates because the mock has no more responses.
-        # This validates the loop doesn't crash on tool errors.
-        assert result.termination_reason in (
-            TerminationReason.ERROR,
-            TerminationReason.COMPLETED,
-        )
+        # It terminates with ERROR because the mock has no more
+        # responses, causing an IndexError in the next provider call.
+        assert result.termination_reason == TerminationReason.ERROR
 
 
 @pytest.mark.unit
@@ -739,3 +739,138 @@ class TestReactLoopBudgetCheckerException:
         assert result.termination_reason == TerminationReason.ERROR
         assert result.error_message is not None
         assert "Budget checker failed" in result.error_message
+
+
+@pytest.mark.unit
+class TestReactLoopRecursionErrorPropagation:
+    """RecursionError propagates from provider and tool execution."""
+
+    async def test_provider_recursion_error_propagates(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+
+        class _RecursionProvider:
+            async def complete(self, *_args: Any, **_kwargs: Any) -> None:
+                raise RecursionError
+
+        loop = ReactLoop()
+        with pytest.raises(RecursionError):
+            await loop.execute(
+                context=ctx,
+                provider=_RecursionProvider(),  # type: ignore[arg-type]
+            )
+
+    async def test_tool_invoke_all_recursion_error_propagates(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory([_tool_use_response("echo", "tc-1")])
+        mock_invoker = MagicMock()
+        mock_invoker.registry.to_definitions.return_value = ()
+        mock_invoker.invoke_all = AsyncMock(side_effect=RecursionError)
+        loop = ReactLoop()
+
+        with pytest.raises(RecursionError):
+            await loop.execute(
+                context=ctx,
+                provider=provider,
+                tool_invoker=mock_invoker,
+            )
+
+    async def test_tool_invoke_all_memory_error_propagates(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory([_tool_use_response("echo", "tc-1")])
+        mock_invoker = MagicMock()
+        mock_invoker.registry.to_definitions.return_value = ()
+        mock_invoker.invoke_all = AsyncMock(side_effect=MemoryError)
+        loop = ReactLoop()
+
+        with pytest.raises(MemoryError):
+            await loop.execute(
+                context=ctx,
+                provider=provider,
+                tool_invoker=mock_invoker,
+            )
+
+
+@pytest.mark.unit
+class TestReactLoopInvokeAllException:
+    """invoke_all raising an exception is caught and returned as error."""
+
+    async def test_invoke_all_exception_returns_error_result(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory([_tool_use_response("echo", "tc-1")])
+        mock_invoker = MagicMock()
+        mock_invoker.registry.to_definitions.return_value = ()
+        mock_invoker.invoke_all = AsyncMock(
+            side_effect=RuntimeError("TaskGroup crashed"),
+        )
+        loop = ReactLoop()
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=mock_invoker,
+        )
+
+        assert result.termination_reason == TerminationReason.ERROR
+        assert result.error_message is not None
+        assert "Tool execution failed" in result.error_message
+        assert "RuntimeError" in result.error_message
+
+
+@pytest.mark.unit
+class TestReactLoopEmptyToolRegistry:
+    """Empty ToolRegistry causes tool_defs to be None."""
+
+    async def test_empty_registry_passes_no_tools(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory([_stop_response("Done.")])
+        registry = ToolRegistry([])
+        invoker = ToolInvoker(registry)
+        loop = ReactLoop()
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=invoker,
+        )
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+
+
+@pytest.mark.unit
+class TestReactLoopCostAccounting:
+    """Error responses include the failing turn's cost in context."""
+
+    async def test_content_filter_response_cost_in_context(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory([_content_filter_response()])
+        loop = ReactLoop()
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.ERROR
+        # The failing turn's cost should be in the context
+        assert result.context.accumulated_cost.cost_usd > ctx.accumulated_cost.cost_usd
+        assert result.context.turn_count == 1

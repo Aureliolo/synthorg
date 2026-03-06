@@ -184,11 +184,17 @@ class MockCompletionProvider:
     def __init__(self, responses: list[CompletionResponse]) -> None:
         self._responses = list(responses)
         self._call_count = 0
+        self._recorded_configs: list[CompletionConfig | None] = []
 
     @property
     def call_count(self) -> int:
         """Number of ``complete()`` calls made."""
         return self._call_count
+
+    @property
+    def recorded_configs(self) -> list[CompletionConfig | None]:
+        """Configs passed to each ``complete()`` call."""
+        return list(self._recorded_configs)
 
     async def complete(
         self,
@@ -203,6 +209,7 @@ class MockCompletionProvider:
             msg = "MockCompletionProvider: no more responses"
             raise IndexError(msg)
         self._call_count += 1
+        self._recorded_configs.append(config)
         return self._responses.pop(0)
 
     async def stream(

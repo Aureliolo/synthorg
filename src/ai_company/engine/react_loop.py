@@ -1,8 +1,8 @@
 """ReAct execution loop — think, act, observe.
 
 Implements the ``ExecutionLoop`` protocol using the ReAct pattern:
-check budget -> call LLM -> check termination -> execute tools ->
-feed results -> repeat.
+check budget -> call LLM -> record turn -> check for LLM errors ->
+update context -> handle completion or execute tools -> repeat.
 """
 
 from typing import TYPE_CHECKING
@@ -23,6 +23,7 @@ from ai_company.providers.models import (
     CompletionConfig,
     CompletionResponse,
     ToolDefinition,
+    add_token_usage,
 )
 
 from .loop_protocol import (
@@ -67,7 +68,9 @@ class ReactLoop:
         Normal failure modes (budget exhaustion, LLM errors, provider
         failures, missing tool invoker) are returned as
         ``ExecutionResult`` with the appropriate ``TerminationReason``
-        rather than raised as exceptions.
+        rather than raised as exceptions.  Non-recoverable errors
+        (``MemoryError``, ``RecursionError``) are re-raised rather
+        than captured in the result.
 
         Args:
             context: Initial agent context with conversation.
@@ -173,11 +176,13 @@ class ReactLoop:
         budget_checker: BudgetChecker | None,
         turns: list[TurnRecord],
     ) -> ExecutionResult | None:
-        """Return an exhaustion result if budget is spent or checker fails."""
+        """Return a termination result if budget is exhausted or checker raises."""
         if budget_checker is None:
             return None
         try:
             exhausted = budget_checker(ctx)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             error_msg = f"Budget checker failed: {type(exc).__name__}: {exc}"
             logger.exception(
@@ -254,7 +259,11 @@ class ReactLoop:
         turn_number: int,
         turns: list[TurnRecord],
     ) -> ExecutionResult | None:
-        """Return an error result for CONTENT_FILTER or ERROR responses."""
+        """Return an error result for CONTENT_FILTER or ERROR responses.
+
+        The context's accumulated cost is updated to include the failing
+        turn's token usage so callers see accurate totals.
+        """
         if response.finish_reason not in (
             FinishReason.CONTENT_FILTER,
             FinishReason.ERROR,
@@ -267,8 +276,16 @@ class ReactLoop:
             turn=turn_number,
             error=error_msg,
         )
+        updated_ctx = ctx.model_copy(
+            update={
+                "turn_count": ctx.turn_count + 1,
+                "accumulated_cost": add_token_usage(
+                    ctx.accumulated_cost, response.usage
+                ),
+            },
+        )
         return _build_result(
-            ctx,
+            updated_ctx,
             TerminationReason.ERROR,
             turns,
             error_message=error_msg,
@@ -280,7 +297,7 @@ class ReactLoop:
         response: CompletionResponse,
         turns: list[TurnRecord],
     ) -> ExecutionResult:
-        """Handle termination when LLM returns no tool calls."""
+        """Handle no-tool-call responses: normal completion or TOOL_USE error."""
         if response.finish_reason == FinishReason.TOOL_USE:
             error_msg = (
                 "Provider returned TOOL_USE with no tool calls "
@@ -327,7 +344,7 @@ class ReactLoop:
         turn_number: int,
         turns: list[TurnRecord],
     ) -> AgentContext | ExecutionResult:
-        """Execute tool calls and append results to context."""
+        """Execute tool calls and append results to context, or error if no invoker."""
         if tool_invoker is None:
             error_msg = (
                 f"LLM requested {len(response.tool_calls)} tool "

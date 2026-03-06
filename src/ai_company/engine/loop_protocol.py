@@ -2,7 +2,7 @@
 
 Defines the ``ExecutionLoop`` protocol that the agent engine calls to
 run a task, along with ``ExecutionResult``, ``TurnRecord``,
-``TerminationReason``, and ``BudgetChecker``.
+``TerminationReason``, and the ``BudgetChecker`` type alias.
 """
 
 from collections.abc import Callable
@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.engine.context import AgentContext
 from ai_company.providers.enums import FinishReason  # noqa: TC001
 
@@ -48,7 +49,7 @@ class TurnRecord(BaseModel):
     input_tokens: int = Field(ge=0, description="Input tokens this turn")
     output_tokens: int = Field(ge=0, description="Output tokens this turn")
     cost_usd: float = Field(ge=0.0, description="Cost in USD this turn")
-    tool_calls_made: tuple[str, ...] = Field(
+    tool_calls_made: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Tool names invoked this turn",
     )
