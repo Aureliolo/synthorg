@@ -22,6 +22,7 @@
 - Every implementation plan must be **presented to the user** for accept/deny before coding starts
 - At **every phase** of planning and implementation, be critical — actively look for ways to improve the design in the spirit of what we're building (robustness, correctness, simplicity, future-proofing where it's free)
 - Surface improvements as suggestions, not silent changes — user decides
+- **Prioritize issues by dependency order**, not priority labels — unblocked dependencies come first
 
 ## Quick Commands
 
@@ -112,6 +113,8 @@ src/ai_company/
 - **Enforced by**: commitizen (commit-msg hook)
 - **Branches**: `<type>/<slug>` from main
 - **Pre-commit hooks**: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-json, check-merge-conflict, check-added-large-files, no-commit-to-branch (main), ruff check+format, gitleaks
+- **GitHub issue queries**: use `gh issue list` via Bash (not MCP tools) — MCP `list_issues` returns `null` for milestone data
+- **PR issue references**: preserve existing `Closes #NNN` references — never remove unless explicitly asked
 
 ## Post-Implementation (MANDATORY)
 

@@ -1,7 +1,11 @@
 """Unit test configuration and fixtures for engine modules."""
 
 from datetime import date
+from typing import TYPE_CHECKING
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 import pytest
 
@@ -26,7 +30,15 @@ from ai_company.core.role import Authority, Role
 from ai_company.core.task import AcceptanceCriterion, Task
 from ai_company.engine.context import AgentContext
 from ai_company.engine.task_execution import TaskExecution
-from ai_company.providers.models import TokenUsage, ToolDefinition
+from ai_company.providers.capabilities import ModelCapabilities
+from ai_company.providers.models import (
+    ChatMessage,
+    CompletionConfig,
+    CompletionResponse,
+    StreamChunk,
+    TokenUsage,
+    ToolDefinition,
+)
 
 
 @pytest.fixture
@@ -159,3 +171,66 @@ def sample_company() -> Company:
         ),
         config=CompanyConfig(budget_monthly=500.0),
     )
+
+
+class MockCompletionProvider:
+    """Test double for ``CompletionProvider``.
+
+    Pops the next response from a pre-configured list on each
+    ``complete()`` call.  Raises ``IndexError`` if called more times
+    than there are responses.
+    """
+
+    def __init__(self, responses: list[CompletionResponse]) -> None:
+        self._responses = list(responses)
+        self._call_count = 0
+
+    @property
+    def call_count(self) -> int:
+        """Number of ``complete()`` calls made."""
+        return self._call_count
+
+    async def complete(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> CompletionResponse:
+        """Return the next pre-configured response."""
+        if not self._responses:
+            msg = "MockCompletionProvider: no more responses"
+            raise IndexError(msg)
+        self._call_count += 1
+        return self._responses.pop(0)
+
+    async def stream(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        msg = "MockCompletionProvider.stream() is not implemented"
+        raise NotImplementedError(msg)
+
+    async def get_model_capabilities(self, model: str) -> ModelCapabilities:
+        """Return minimal capabilities."""
+        return ModelCapabilities(
+            model_id=model,
+            provider="test-provider",
+            supports_tools=True,
+            supports_streaming=False,
+            max_context_tokens=8192,
+            max_output_tokens=4096,
+            cost_per_1k_input=0.01,
+            cost_per_1k_output=0.03,
+        )
+
+
+@pytest.fixture
+def mock_provider_factory() -> type[MockCompletionProvider]:
+    """Expose MockCompletionProvider class for test construction."""
+    return MockCompletionProvider

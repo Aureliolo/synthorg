@@ -84,6 +84,11 @@ class ToolInvoker:
         """
         self._registry = registry
 
+    @property
+    def registry(self) -> ToolRegistry:
+        """Read-only access to the underlying tool registry."""
+        return self._registry
+
     async def invoke(self, tool_call: ToolCall) -> ToolResult:
         """Execute a single tool call.
 
