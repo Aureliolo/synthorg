@@ -124,6 +124,5 @@ class TestValidateUniqueStrings:
             validate_unique_strings(("a", "b", "a"), "test_field")
 
     def test_reports_all_duplicates(self) -> None:
-        with pytest.raises(ValueError, match="'a'") as exc_info:
+        with pytest.raises(ValueError, match=r"'a'.*'b'|'b'.*'a'"):
             validate_unique_strings(("a", "b", "a", "b"), "test_field")
-        assert "'b'" in str(exc_info.value)

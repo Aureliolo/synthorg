@@ -168,6 +168,12 @@ class TestTaskStringValidation:
                 status=TaskStatus.ASSIGNED,
             )
 
+    def test_empty_deadline_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError, match="deadline must not be whitespace-only"
+        ):
+            _make_task(deadline="")
+
     def test_whitespace_deadline_rejected(self) -> None:
         with pytest.raises(
             ValidationError, match="deadline must not be whitespace-only"

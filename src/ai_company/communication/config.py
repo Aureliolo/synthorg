@@ -49,7 +49,7 @@ class MessageBusConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_channels(self) -> Self:
-        """Ensure channel names are non-blank and unique."""
+        """Ensure channel names are unique."""
         validate_unique_strings(self.channels, "channels")
         return self
 
@@ -102,7 +102,7 @@ class MeetingTypeConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_participants(self) -> Self:
-        """Ensure participant entries are non-blank and unique."""
+        """Ensure participant entries are unique."""
         validate_unique_strings(self.participants, "participants")
         return self
 

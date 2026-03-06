@@ -34,6 +34,6 @@ class Channel(BaseModel):
 
     @model_validator(mode="after")
     def _validate_subscribers(self) -> Self:
-        """Ensure subscriber entries are non-blank and unique."""
+        """Ensure subscriber entries are unique."""
         validate_unique_strings(self.subscribers, "subscribers")
         return self
