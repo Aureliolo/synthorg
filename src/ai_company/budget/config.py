@@ -9,6 +9,8 @@ from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from ai_company.core.types import NotBlankStr  # noqa: TC001
+
 
 class BudgetAlertConfig(BaseModel):
     """Alert threshold configuration for budget monitoring.
@@ -87,7 +89,7 @@ class AutoDowngradeConfig(BaseModel):
         strict=True,
         description="Budget percent triggering downgrade",
     )
-    downgrade_map: tuple[tuple[str, str], ...] = Field(
+    downgrade_map: tuple[tuple[NotBlankStr, NotBlankStr], ...] = Field(
         default=(),
         description="Ordered pairs of (from_alias, to_alias)",
     )
@@ -110,12 +112,6 @@ class AutoDowngradeConfig(BaseModel):
         """Validate downgrade_map for correctness."""
         sources: list[str] = []
         for source, target in self.downgrade_map:
-            if not source:
-                msg = "Empty or whitespace-only source alias in downgrade_map"
-                raise ValueError(msg)
-            if not target:
-                msg = "Empty or whitespace-only target alias in downgrade_map"
-                raise ValueError(msg)
             if source == target:
                 msg = f"Self-downgrade in downgrade_map: {source!r} -> {target!r}"
                 raise ValueError(msg)

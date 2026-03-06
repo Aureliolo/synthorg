@@ -13,6 +13,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.budget.enums import BudgetAlertLevel
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
 class PeriodSpending(BaseModel):
@@ -77,7 +78,7 @@ class AgentSpending(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    agent_id: str = Field(min_length=1, description="Agent identifier")
+    agent_id: NotBlankStr = Field(description="Agent identifier")
     total_cost_usd: float = Field(
         default=0.0,
         ge=0.0,
@@ -99,14 +100,6 @@ class AgentSpending(BaseModel):
         description="Number of cost records",
     )
 
-    @model_validator(mode="after")
-    def _validate_agent_id_not_blank(self) -> Self:
-        """Ensure agent_id is not whitespace-only."""
-        if not self.agent_id.strip():
-            msg = "agent_id must not be whitespace-only"
-            raise ValueError(msg)
-        return self
-
 
 class DepartmentSpending(BaseModel):
     """Spending aggregation for a department.
@@ -121,8 +114,7 @@ class DepartmentSpending(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    department_name: str = Field(
-        min_length=1,
+    department_name: NotBlankStr = Field(
         description="Department name",
     )
     total_cost_usd: float = Field(
@@ -145,14 +137,6 @@ class DepartmentSpending(BaseModel):
         ge=0,
         description="Number of cost records",
     )
-
-    @model_validator(mode="after")
-    def _validate_department_name_not_blank(self) -> Self:
-        """Ensure department_name is not whitespace-only."""
-        if not self.department_name.strip():
-            msg = "department_name must not be whitespace-only"
-            raise ValueError(msg)
-        return self
 
 
 class SpendingSummary(BaseModel):

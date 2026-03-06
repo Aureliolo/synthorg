@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from ai_company.core.artifact import ExpectedArtifact  # noqa: TC001
 from ai_company.core.enums import Complexity, Priority, TaskStatus, TaskType
 from ai_company.core.task_transitions import validate_transition
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events import TASK_STATUS_CHANGED
 
@@ -25,22 +26,13 @@ class AcceptanceCriterion(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    description: str = Field(
-        min_length=1,
+    description: NotBlankStr = Field(
         description="Criterion text",
     )
     met: bool = Field(
         default=False,
         description="Whether this criterion has been satisfied",
     )
-
-    @model_validator(mode="after")
-    def _validate_description_not_blank(self) -> Self:
-        """Ensure description is not whitespace-only."""
-        if not self.description.strip():
-            msg = "description must not be whitespace-only"
-            raise ValueError(msg)
-        return self
 
 
 class Task(BaseModel):
@@ -71,10 +63,9 @@ class Task(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    id: str = Field(min_length=1, description="Unique task identifier")
-    title: str = Field(min_length=1, description="Short task title")
-    description: str = Field(
-        min_length=1,
+    id: NotBlankStr = Field(description="Unique task identifier")
+    title: NotBlankStr = Field(description="Short task title")
+    description: NotBlankStr = Field(
         description="Detailed task description",
     )
     type: TaskType = Field(description="Task work type")
@@ -82,24 +73,21 @@ class Task(BaseModel):
         default=Priority.MEDIUM,
         description="Task priority",
     )
-    project: str = Field(
-        min_length=1,
+    project: NotBlankStr = Field(
         description="Project ID this task belongs to",
     )
-    created_by: str = Field(
-        min_length=1,
+    created_by: NotBlankStr = Field(
         description="Agent ID of the task creator",
     )
-    assigned_to: str | None = Field(
+    assigned_to: NotBlankStr | None = Field(
         default=None,
-        min_length=1,
         description="Agent ID of the assignee",
     )
-    reviewers: tuple[str, ...] = Field(
+    reviewers: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Agent IDs of designated reviewers",
     )
-    dependencies: tuple[str, ...] = Field(
+    dependencies: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="IDs of tasks this task depends on",
     )
@@ -130,15 +118,8 @@ class Task(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_fields(self) -> Self:
-        """Validate string fields and deadline format."""
-        for field_name in ("id", "title", "description", "project", "created_by"):
-            if not getattr(self, field_name).strip():
-                msg = f"{field_name} must not be whitespace-only"
-                raise ValueError(msg)
-        if self.assigned_to is not None and not self.assigned_to.strip():
-            msg = "assigned_to must not be whitespace-only"
-            raise ValueError(msg)
+    def _validate_deadline_format(self) -> Self:
+        """Validate deadline format if present."""
         if self.deadline is not None:
             if not self.deadline.strip():
                 msg = "deadline must not be whitespace-only"
@@ -152,12 +133,7 @@ class Task(BaseModel):
 
     @model_validator(mode="after")
     def _validate_collections(self) -> Self:
-        """Validate collection entries, self-dependency, and uniqueness."""
-        for field_name in ("reviewers", "dependencies"):
-            for value in getattr(self, field_name):
-                if not value.strip():
-                    msg = f"Empty or whitespace-only entry in {field_name}"
-                    raise ValueError(msg)
+        """Validate self-dependency and uniqueness."""
         if self.id in self.dependencies:
             msg = f"Task {self.id!r} cannot depend on itself"
             raise ValueError(msg)

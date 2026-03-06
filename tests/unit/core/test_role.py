@@ -84,11 +84,11 @@ class TestAuthority:
             Authority(reports_to="")
 
     def test_empty_can_approve_entry_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+        with pytest.raises(ValidationError, match="at least 1 character"):
             Authority(can_approve=("code_review", ""))
 
     def test_whitespace_can_delegate_to_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             Authority(can_delegate_to=("  ",))
 
     def test_whitespace_reports_to_rejected(self) -> None:
@@ -238,7 +238,7 @@ class TestRole:
             Role(name="Test", department="not_a_department")  # type: ignore[arg-type]
 
     def test_empty_required_skill_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+        with pytest.raises(ValidationError, match="at least 1 character"):
             Role(
                 name="Dev",
                 department=DepartmentName.ENGINEERING,
@@ -246,7 +246,7 @@ class TestRole:
             )
 
     def test_whitespace_tool_access_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             Role(
                 name="Dev",
                 department=DepartmentName.ENGINEERING,
@@ -341,7 +341,7 @@ class TestCustomRole:
         assert role.department == "blockchain"
 
     def test_empty_required_skill_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+        with pytest.raises(ValidationError, match="at least 1 character"):
             CustomRole(
                 name="Dev",
                 department="custom",

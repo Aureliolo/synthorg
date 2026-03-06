@@ -44,15 +44,11 @@ class TestMessageBusConfigDefaults:
 @pytest.mark.unit
 class TestMessageBusConfigValidation:
     def test_empty_channel_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError, match="Empty or whitespace-only entry in channels"
-        ):
+        with pytest.raises(ValidationError, match="at least 1 character"):
             MessageBusConfig(channels=("#valid", ""))
 
     def test_whitespace_channel_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError, match="Empty or whitespace-only entry in channels"
-        ):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             MessageBusConfig(channels=("#valid", "  "))
 
     def test_duplicate_channels_rejected(self) -> None:
@@ -159,7 +155,7 @@ class TestMeetingTypeConfigValidation:
     def test_whitespace_participant_rejected(self) -> None:
         with pytest.raises(
             ValidationError,
-            match="Empty or whitespace-only entry in participants",
+            match="whitespace-only",
         ):
             MeetingTypeConfig(
                 name="standup", frequency="daily", participants=("eng", "  ")
@@ -168,7 +164,7 @@ class TestMeetingTypeConfigValidation:
     def test_empty_participant_rejected(self) -> None:
         with pytest.raises(
             ValidationError,
-            match="Empty or whitespace-only entry in participants",
+            match="at least 1 character",
         ):
             MeetingTypeConfig(
                 name="standup", frequency="daily", participants=("eng", "")

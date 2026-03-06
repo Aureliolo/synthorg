@@ -30,7 +30,7 @@ class TestExpectedArtifact:
             ExpectedArtifact(type=ArtifactType.CODE, path="")
 
     def test_whitespace_path_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="path must not be whitespace-only"):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             ExpectedArtifact(type=ArtifactType.CODE, path="   ")
 
     def test_frozen(self) -> None:
@@ -89,7 +89,7 @@ class TestArtifact:
         assert artifact.created_at is None
 
     def test_whitespace_id_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="id must not be whitespace-only"):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             Artifact(
                 id="   ",
                 type=ArtifactType.CODE,
@@ -109,7 +109,7 @@ class TestArtifact:
             )
 
     def test_whitespace_path_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="path must not be whitespace-only"):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             Artifact(
                 id="artifact-1",
                 type=ArtifactType.CODE,
@@ -119,9 +119,7 @@ class TestArtifact:
             )
 
     def test_whitespace_task_id_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError, match="task_id must not be whitespace-only"
-        ):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             Artifact(
                 id="artifact-1",
                 type=ArtifactType.CODE,
@@ -131,9 +129,7 @@ class TestArtifact:
             )
 
     def test_whitespace_created_by_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError, match="created_by must not be whitespace-only"
-        ):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             Artifact(
                 id="artifact-1",
                 type=ArtifactType.CODE,

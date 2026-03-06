@@ -1,13 +1,13 @@
 """Artifact domain models for task outputs and expected deliverables."""
 
 from datetime import datetime  # noqa: TC003 — required at runtime by Pydantic
-from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from ai_company.core.enums import (
     ArtifactType,  # noqa: TC001 — required at runtime by Pydantic
 )
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
 class ExpectedArtifact(BaseModel):
@@ -23,18 +23,9 @@ class ExpectedArtifact(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     type: ArtifactType = Field(description="Type of artifact expected")
-    path: str = Field(
-        min_length=1,
+    path: NotBlankStr = Field(
         description="File or directory path for the artifact",
     )
-
-    @model_validator(mode="after")
-    def _validate_path_not_blank(self) -> Self:
-        """Ensure path is not whitespace-only."""
-        if not self.path.strip():
-            msg = "path must not be whitespace-only"
-            raise ValueError(msg)
-        return self
 
 
 class Artifact(BaseModel):
@@ -55,18 +46,15 @@ class Artifact(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    id: str = Field(min_length=1, description="Unique artifact identifier")
+    id: NotBlankStr = Field(description="Unique artifact identifier")
     type: ArtifactType = Field(description="Artifact type")
-    path: str = Field(
-        min_length=1,
+    path: NotBlankStr = Field(
         description="File or directory path of the artifact",
     )
-    task_id: str = Field(
-        min_length=1,
+    task_id: NotBlankStr = Field(
         description="ID of the task that produced this artifact",
     )
-    created_by: str = Field(
-        min_length=1,
+    created_by: NotBlankStr = Field(
         description="Agent ID of the creator",
     )
     description: str = Field(
@@ -77,12 +65,3 @@ class Artifact(BaseModel):
         default=None,
         description="Timestamp when the artifact was created",
     )
-
-    @model_validator(mode="after")
-    def _validate_non_blank_strings(self) -> Self:
-        """Ensure string identifier fields are not whitespace-only."""
-        for field_name in ("id", "path", "task_id", "created_by"):
-            if not getattr(self, field_name).strip():
-                msg = f"{field_name} must not be whitespace-only"
-                raise ValueError(msg)
-        return self

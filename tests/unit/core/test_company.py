@@ -67,12 +67,12 @@ class TestTeam:
 
     def test_empty_member_name_rejected(self) -> None:
         """Reject empty string in members tuple."""
-        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+        with pytest.raises(ValidationError, match="at least 1 character"):
             Team(name="test", lead="lead", members=("dev", ""))
 
     def test_whitespace_member_name_rejected(self) -> None:
         """Reject whitespace-only member name."""
-        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             Team(name="test", lead="lead", members=("  ",))
 
     def test_duplicate_members_rejected(self) -> None:
@@ -232,7 +232,7 @@ class TestCompanyConfig:
 
     def test_empty_tool_access_entry_rejected(self) -> None:
         """Reject empty string in tool_access_default tuple."""
-        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+        with pytest.raises(ValidationError, match="at least 1 character"):
             CompanyConfig(tool_access_default=("git", ""))
 
     def test_frozen(self) -> None:
@@ -278,17 +278,17 @@ class TestHRRegistry:
 
     def test_empty_active_agent_rejected(self) -> None:
         """Reject empty string in active_agents."""
-        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+        with pytest.raises(ValidationError, match="at least 1 character"):
             HRRegistry(active_agents=("",))
 
     def test_empty_available_role_rejected(self) -> None:
         """Reject whitespace-only entry in available_roles."""
-        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             HRRegistry(available_roles=("  ",))
 
     def test_empty_hiring_queue_entry_rejected(self) -> None:
         """Reject empty string in hiring_queue."""
-        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+        with pytest.raises(ValidationError, match="at least 1 character"):
             HRRegistry(hiring_queue=("",))
 
     def test_duplicate_available_roles_accepted(self) -> None:

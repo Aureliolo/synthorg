@@ -74,12 +74,12 @@ class TestPersonalityConfig:
 
     def test_empty_trait_rejected(self) -> None:
         """Reject empty string in traits tuple."""
-        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+        with pytest.raises(ValidationError, match="at least 1 character"):
             PersonalityConfig(traits=("analytical", ""))
 
     def test_whitespace_trait_rejected(self) -> None:
         """Reject whitespace-only trait entry."""
-        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             PersonalityConfig(traits=("  ",))
 
     def test_frozen(self) -> None:
@@ -118,12 +118,12 @@ class TestSkillSet:
 
     def test_empty_skill_name_rejected(self) -> None:
         """Reject empty string in primary skills."""
-        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+        with pytest.raises(ValidationError, match="at least 1 character"):
             SkillSet(primary=("python", ""))
 
     def test_whitespace_skill_name_rejected(self) -> None:
         """Reject whitespace-only skill name in secondary."""
-        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             SkillSet(secondary=("  ",))
 
     def test_empty_primary_error_mentions_primary(self) -> None:
@@ -343,12 +343,12 @@ class TestToolPermissions:
 
     def test_empty_tool_name_rejected(self) -> None:
         """Reject empty string in allowed tools."""
-        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+        with pytest.raises(ValidationError, match="at least 1 character"):
             ToolPermissions(allowed=("git", ""))
 
     def test_whitespace_tool_name_rejected(self) -> None:
         """Reject whitespace-only tool name in denied."""
-        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             ToolPermissions(denied=("  ",))
 
     def test_frozen(self) -> None:

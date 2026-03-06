@@ -54,9 +54,7 @@ class TestAcceptanceCriterion:
             AcceptanceCriterion(description="")
 
     def test_whitespace_description_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError, match="description must not be whitespace-only"
-        ):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             AcceptanceCriterion(description="   ")
 
     def test_frozen(self) -> None:
@@ -144,35 +142,27 @@ class TestTaskStringValidation:
             _make_task(id="")
 
     def test_whitespace_id_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="id must not be whitespace-only"):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             _make_task(id="   ")
 
     def test_whitespace_title_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="title must not be whitespace-only"):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             _make_task(title="   ")
 
     def test_whitespace_description_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError, match="description must not be whitespace-only"
-        ):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             _make_task(description="   ")
 
     def test_whitespace_project_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError, match="project must not be whitespace-only"
-        ):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             _make_task(project="   ")
 
     def test_whitespace_created_by_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError, match="created_by must not be whitespace-only"
-        ):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             _make_task(created_by="   ")
 
     def test_whitespace_assigned_to_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError, match="assigned_to must not be whitespace-only"
-        ):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             _make_task(
                 assigned_to="   ",
                 status=TaskStatus.ASSIGNED,
@@ -197,11 +187,11 @@ class TestTaskStringValidation:
         assert task.deadline == "2026-12-31T23:59:59"
 
     def test_empty_reviewer_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             _make_task(reviewers=("valid", "   "))
 
     def test_empty_dependency_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+        with pytest.raises(ValidationError, match="at least 1 character"):
             _make_task(dependencies=("task-1", ""))
 
 

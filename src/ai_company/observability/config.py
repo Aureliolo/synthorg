@@ -15,6 +15,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.observability.enums import LogLevel, RotationStrategy, SinkType
 
 
@@ -140,7 +141,7 @@ class LogConfig(BaseModel):
         default=True,
         description="Whether to enable correlation ID tracking",
     )
-    log_dir: str = Field(
+    log_dir: NotBlankStr = Field(
         default="logs",
         description="Directory for log files",
     )
@@ -181,10 +182,7 @@ class LogConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_log_dir_safe(self) -> Self:
-        """Ensure ``log_dir`` is not blank and has no path traversal."""
-        if not self.log_dir.strip():
-            msg = "log_dir must not be blank"
-            raise ValueError(msg)
+        """Ensure ``log_dir`` has no path traversal."""
         path = PurePath(self.log_dir)
         if ".." in path.parts:
             msg = f"log_dir must not contain '..' components: {self.log_dir}"

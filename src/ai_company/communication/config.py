@@ -11,7 +11,7 @@ from ai_company.communication.enums import (
 )
 from ai_company.core.types import (
     NotBlankStr,
-    validate_non_blank_unique_strings,
+    validate_unique_strings,
 )
 
 # Default channels from DESIGN_SPEC Section 5.4.
@@ -42,7 +42,7 @@ class MessageBusConfig(BaseModel):
         default=MessageBusBackend.INTERNAL,
         description="Transport backend",
     )
-    channels: tuple[str, ...] = Field(
+    channels: tuple[NotBlankStr, ...] = Field(
         default=_DEFAULT_CHANNELS,
         description="Pre-defined channel names",
     )
@@ -50,7 +50,7 @@ class MessageBusConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_channels(self) -> Self:
         """Ensure channel names are non-blank and unique."""
-        validate_non_blank_unique_strings(self.channels, "channels")
+        validate_unique_strings(self.channels, "channels")
         return self
 
 
@@ -79,7 +79,7 @@ class MeetingTypeConfig(BaseModel):
         default=None,
         description="Event trigger",
     )
-    participants: tuple[str, ...] = Field(
+    participants: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Participant role or agent identifiers",
     )
@@ -103,7 +103,7 @@ class MeetingTypeConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_participants(self) -> Self:
         """Ensure participant entries are non-blank and unique."""
-        validate_non_blank_unique_strings(self.participants, "participants")
+        validate_unique_strings(self.participants, "participants")
         return self
 
 

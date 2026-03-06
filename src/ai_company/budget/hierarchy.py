@@ -11,6 +11,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.constants import BUDGET_ROUNDING_PRECISION
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
 class TeamBudget(BaseModel):
@@ -23,8 +24,7 @@ class TeamBudget(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    team_name: str = Field(
-        min_length=1,
+    team_name: NotBlankStr = Field(
         description="Team name",
     )
     budget_percent: float = Field(
@@ -33,14 +33,6 @@ class TeamBudget(BaseModel):
         le=100.0,
         description="Percent of department budget",
     )
-
-    @model_validator(mode="after")
-    def _validate_team_name_not_blank(self) -> Self:
-        """Ensure team_name is not whitespace-only."""
-        if not self.team_name.strip():
-            msg = "team_name must not be whitespace-only"
-            raise ValueError(msg)
-        return self
 
 
 class DepartmentBudget(BaseModel):
@@ -57,8 +49,7 @@ class DepartmentBudget(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    department_name: str = Field(
-        min_length=1,
+    department_name: NotBlankStr = Field(
         description="Department name",
     )
     budget_percent: float = Field(
@@ -71,14 +62,6 @@ class DepartmentBudget(BaseModel):
         default=(),
         description="Team budget allocations",
     )
-
-    @model_validator(mode="after")
-    def _validate_department_name_not_blank(self) -> Self:
-        """Ensure department_name is not whitespace-only."""
-        if not self.department_name.strip():
-            msg = "department_name must not be whitespace-only"
-            raise ValueError(msg)
-        return self
 
     @model_validator(mode="after")
     def _validate_unique_team_names(self) -> Self:

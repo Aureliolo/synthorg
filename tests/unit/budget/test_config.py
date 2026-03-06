@@ -117,7 +117,7 @@ class TestAutoDowngradeConfig:
 
     def test_empty_source_alias_rejected(self) -> None:
         """Reject whitespace-only source alias in downgrade_map."""
-        with pytest.raises(ValidationError, match="source alias"):
+        with pytest.raises(ValidationError, match="at least 1 character"):
             AutoDowngradeConfig(
                 enabled=True,
                 downgrade_map=(("  ", "sonnet"),),
@@ -125,7 +125,7 @@ class TestAutoDowngradeConfig:
 
     def test_empty_target_alias_rejected(self) -> None:
         """Reject whitespace-only target alias in downgrade_map."""
-        with pytest.raises(ValidationError, match="target alias"):
+        with pytest.raises(ValidationError, match="at least 1 character"):
             AutoDowngradeConfig(
                 enabled=True,
                 downgrade_map=(("opus", "  "),),

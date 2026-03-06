@@ -7,6 +7,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.enums import ProjectStatus
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
 class Project(BaseModel):
@@ -30,22 +31,21 @@ class Project(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    id: str = Field(min_length=1, description="Unique project identifier")
-    name: str = Field(min_length=1, description="Project display name")
+    id: NotBlankStr = Field(description="Unique project identifier")
+    name: NotBlankStr = Field(description="Project display name")
     description: str = Field(
         default="",
         description="Detailed project description",
     )
-    team: tuple[str, ...] = Field(
+    team: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Agent IDs assigned to this project",
     )
-    lead: str | None = Field(
+    lead: NotBlankStr | None = Field(
         default=None,
-        min_length=1,
         description="Agent ID of the project lead",
     )
-    task_ids: tuple[str, ...] = Field(
+    task_ids: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="IDs of tasks belonging to this project",
     )
@@ -64,15 +64,8 @@ class Project(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_fields(self) -> Self:
-        """Validate string fields and deadline format."""
-        for field_name in ("id", "name"):
-            if not getattr(self, field_name).strip():
-                msg = f"{field_name} must not be whitespace-only"
-                raise ValueError(msg)
-        if self.lead is not None and not self.lead.strip():
-            msg = "lead must not be whitespace-only"
-            raise ValueError(msg)
+    def _validate_deadline_format(self) -> Self:
+        """Validate deadline format if present."""
         if self.deadline is not None:
             if not self.deadline.strip():
                 msg = "deadline must not be whitespace-only"
@@ -86,12 +79,7 @@ class Project(BaseModel):
 
     @model_validator(mode="after")
     def _validate_collections(self) -> Self:
-        """Validate collection entries and uniqueness."""
-        for field_name in ("team", "task_ids"):
-            for value in getattr(self, field_name):
-                if not value.strip():
-                    msg = f"Empty or whitespace-only entry in {field_name}"
-                    raise ValueError(msg)
+        """Validate collection uniqueness."""
         if len(self.team) != len(set(self.team)):
             dupes = sorted(m for m, c in Counter(self.team).items() if c > 1)
             msg = f"Duplicate entries in team: {dupes}"

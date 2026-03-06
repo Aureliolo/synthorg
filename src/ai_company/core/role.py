@@ -1,8 +1,6 @@
 """Role and skill domain models."""
 
-from typing import Self
-
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ai_company.core.enums import (
     DepartmentName,
@@ -10,6 +8,7 @@ from ai_company.core.enums import (
     SeniorityLevel,
     SkillCategory,
 )
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
 class Skill(BaseModel):
@@ -23,20 +22,12 @@ class Skill(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    name: str = Field(min_length=1, description="Skill name")
+    name: NotBlankStr = Field(description="Skill name")
     category: SkillCategory = Field(description="Skill category")
     proficiency: ProficiencyLevel = Field(
         default=ProficiencyLevel.INTERMEDIATE,
         description="Proficiency level",
     )
-
-    @model_validator(mode="after")
-    def _validate_name_not_blank(self) -> Self:
-        """Ensure skill name is not whitespace-only."""
-        if not self.name.strip():
-            msg = "Skill name must not be whitespace-only"
-            raise ValueError(msg)
-        return self
 
 
 class Authority(BaseModel):
@@ -51,16 +42,15 @@ class Authority(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    can_approve: tuple[str, ...] = Field(
+    can_approve: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Task types this role can approve",
     )
-    reports_to: str | None = Field(
+    reports_to: NotBlankStr | None = Field(
         default=None,
-        min_length=1,
         description="Role this position reports to",
     )
-    can_delegate_to: tuple[str, ...] = Field(
+    can_delegate_to: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Roles this position can delegate tasks to",
     )
@@ -69,19 +59,6 @@ class Authority(BaseModel):
         ge=0.0,
         description="Maximum USD per task",
     )
-
-    @model_validator(mode="after")
-    def _validate_no_empty_strings(self) -> Self:
-        """Ensure no whitespace-only entries in string tuples or reports_to."""
-        for field_name in ("can_approve", "can_delegate_to"):
-            for value in getattr(self, field_name):
-                if not value.strip():
-                    msg = f"Empty or whitespace-only entry in {field_name}"
-                    raise ValueError(msg)
-        if self.reports_to is not None and not self.reports_to.strip():
-            msg = "reports_to must not be whitespace-only"
-            raise ValueError(msg)
-        return self
 
 
 class SeniorityInfo(BaseModel):
@@ -97,27 +74,15 @@ class SeniorityInfo(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     level: SeniorityLevel = Field(description="Seniority level")
-    authority_scope: str = Field(
-        min_length=1,
+    authority_scope: NotBlankStr = Field(
         description="Description of authority at this level",
     )
-    typical_model_tier: str = Field(
-        min_length=1,
+    typical_model_tier: NotBlankStr = Field(
         description="Recommended model tier",
     )
-    cost_tier: str = Field(
-        min_length=1,
+    cost_tier: NotBlankStr = Field(
         description="Cost tier identifier (built-in or user-defined)",
     )
-
-    @model_validator(mode="after")
-    def _validate_non_blank_strings(self) -> Self:
-        """Ensure string fields are not whitespace-only."""
-        for field_name in ("authority_scope", "typical_model_tier", "cost_tier"):
-            if not getattr(self, field_name).strip():
-                msg = f"{field_name} must not be whitespace-only"
-                raise ValueError(msg)
-        return self
 
 
 class Role(BaseModel):
@@ -135,11 +100,11 @@ class Role(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    name: str = Field(min_length=1, description="Role name")
+    name: NotBlankStr = Field(description="Role name")
     department: DepartmentName = Field(
         description="Department this role belongs to",
     )
-    required_skills: tuple[str, ...] = Field(
+    required_skills: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Skills required for this role",
     )
@@ -147,11 +112,11 @@ class Role(BaseModel):
         default=SeniorityLevel.MID,
         description="Default seniority level for this role",
     )
-    tool_access: tuple[str, ...] = Field(
+    tool_access: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Tools available to this role",
     )
-    system_prompt_template: str | None = Field(
+    system_prompt_template: NotBlankStr | None = Field(
         default=None,
         description="Template file for system prompt",
     )
@@ -159,25 +124,6 @@ class Role(BaseModel):
         default="",
         description="Human-readable description",
     )
-
-    @model_validator(mode="after")
-    def _validate_no_empty_strings(self) -> Self:
-        """Ensure no empty or whitespace-only entries in name and string tuples."""
-        if not self.name.strip():
-            msg = "name must not be whitespace-only"
-            raise ValueError(msg)
-        if (
-            self.system_prompt_template is not None
-            and not self.system_prompt_template.strip()
-        ):
-            msg = "system_prompt_template must not be whitespace-only"
-            raise ValueError(msg)
-        for field_name in ("required_skills", "tool_access"):
-            for value in getattr(self, field_name):
-                if not value.strip():
-                    msg = f"Empty or whitespace-only entry in {field_name}"
-                    raise ValueError(msg)
-        return self
 
 
 class CustomRole(BaseModel):
@@ -198,15 +144,15 @@ class CustomRole(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    name: str = Field(min_length=1, description="Custom role name")
+    name: NotBlankStr = Field(description="Custom role name")
     department: DepartmentName | str = Field(
         description="Department (standard or custom name)",
     )
-    required_skills: tuple[str, ...] = Field(
+    required_skills: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Required skills for this role",
     )
-    system_prompt_template: str | None = Field(
+    system_prompt_template: NotBlankStr | None = Field(
         default=None,
         description="Template file for system prompt",
     )
@@ -214,7 +160,7 @@ class CustomRole(BaseModel):
         default=SeniorityLevel.MID,
         description="Default seniority level",
     )
-    suggested_model: str | None = Field(
+    suggested_model: NotBlankStr | None = Field(
         default=None,
         description="Suggested model tier",
     )
@@ -230,20 +176,3 @@ class CustomRole(BaseModel):
             msg = "Department name must not be empty"
             raise ValueError(msg)
         return stripped
-
-    @model_validator(mode="after")
-    def _validate_no_empty_required_skills(self) -> Self:
-        """Ensure no whitespace-only name, optional fields, or skills."""
-        if not self.name.strip():
-            msg = "name must not be whitespace-only"
-            raise ValueError(msg)
-        for field_name in ("system_prompt_template", "suggested_model"):
-            value = getattr(self, field_name)
-            if value is not None and not value.strip():
-                msg = f"{field_name} must not be whitespace-only"
-                raise ValueError(msg)
-        for value in self.required_skills:
-            if not value.strip():
-                msg = "Empty or whitespace-only entry in required_skills"
-                raise ValueError(msg)
-        return self

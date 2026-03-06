@@ -14,6 +14,7 @@ from ai_company.core.enums import (
     SeniorityLevel,
 )
 from ai_company.core.role import Authority
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
 class PersonalityConfig(BaseModel):
@@ -29,13 +30,12 @@ class PersonalityConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    traits: tuple[str, ...] = Field(
+    traits: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Personality traits",
     )
-    communication_style: str = Field(
+    communication_style: NotBlankStr = Field(
         default="neutral",
-        min_length=1,
         description="Communication style description",
     )
     risk_tolerance: RiskTolerance = Field(
@@ -51,18 +51,6 @@ class PersonalityConfig(BaseModel):
         description="Extended personality description",
     )
 
-    @model_validator(mode="after")
-    def _validate_no_empty_traits(self) -> Self:
-        """Ensure no empty or whitespace-only traits or communication_style."""
-        if not self.communication_style.strip():
-            msg = "communication_style must not be whitespace-only"
-            raise ValueError(msg)
-        for trait in self.traits:
-            if not trait.strip():
-                msg = "Empty or whitespace-only entry in traits"
-                raise ValueError(msg)
-        return self
-
 
 class SkillSet(BaseModel):
     """Primary and secondary skills for an agent.
@@ -74,24 +62,14 @@ class SkillSet(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    primary: tuple[str, ...] = Field(
+    primary: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Primary skills",
     )
-    secondary: tuple[str, ...] = Field(
+    secondary: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Secondary skills",
     )
-
-    @model_validator(mode="after")
-    def _validate_no_empty_skills(self) -> Self:
-        """Ensure no empty or whitespace-only skill names."""
-        for field_name in ("primary", "secondary"):
-            for skill in getattr(self, field_name):
-                if not skill.strip():
-                    msg = f"Empty or whitespace-only skill name in {field_name}"
-                    raise ValueError(msg)
-        return self
 
 
 class ModelConfig(BaseModel):
@@ -107,8 +85,8 @@ class ModelConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    provider: str = Field(min_length=1, description="LLM provider name")
-    model_id: str = Field(min_length=1, description="Model identifier")
+    provider: NotBlankStr = Field(description="LLM provider name")
+    model_id: NotBlankStr = Field(description="Model identifier")
     temperature: float = Field(
         default=0.7,
         ge=0.0,
@@ -120,21 +98,10 @@ class ModelConfig(BaseModel):
         gt=0,
         description="Maximum output tokens",
     )
-    fallback_model: str | None = Field(
+    fallback_model: NotBlankStr | None = Field(
         default=None,
-        min_length=1,
         description="Fallback model identifier",
     )
-
-    @model_validator(mode="after")
-    def _validate_non_blank_identifiers(self) -> Self:
-        """Ensure identifier fields are not whitespace-only."""
-        for field_name in ("provider", "model_id", "fallback_model"):
-            value = getattr(self, field_name)
-            if value is not None and not value.strip():
-                msg = f"{field_name} must not be whitespace-only"
-                raise ValueError(msg)
-        return self
 
 
 class MemoryConfig(BaseModel):
@@ -176,24 +143,14 @@ class ToolPermissions(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    allowed: tuple[str, ...] = Field(
+    allowed: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Explicitly allowed tools",
     )
-    denied: tuple[str, ...] = Field(
+    denied: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Explicitly denied tools",
     )
-
-    @model_validator(mode="after")
-    def _validate_no_empty_tools(self) -> Self:
-        """Ensure no empty or whitespace-only tool names."""
-        for field_name in ("allowed", "denied"):
-            for tool in getattr(self, field_name):
-                if not tool.strip():
-                    msg = f"Empty or whitespace-only tool name in {field_name}"
-                    raise ValueError(msg)
-        return self
 
     @model_validator(mode="after")
     def _validate_no_overlap(self) -> Self:
@@ -236,9 +193,9 @@ class AgentIdentity(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: UUID = Field(default_factory=uuid4, description="Unique agent identifier")
-    name: str = Field(min_length=1, description="Agent display name")
-    role: str = Field(min_length=1, description="Role name")
-    department: str = Field(min_length=1, description="Department name")
+    name: NotBlankStr = Field(description="Agent display name")
+    role: NotBlankStr = Field(description="Role name")
+    department: NotBlankStr = Field(description="Department name")
     level: SeniorityLevel = Field(
         default=SeniorityLevel.MID,
         description="Seniority level",
@@ -269,12 +226,3 @@ class AgentIdentity(BaseModel):
         default=AgentStatus.ACTIVE,
         description="Current lifecycle status",
     )
-
-    @model_validator(mode="after")
-    def _validate_non_blank_identifiers(self) -> Self:
-        """Ensure name, role, and department are not whitespace-only."""
-        for field_name in ("name", "role", "department"):
-            if not getattr(self, field_name).strip():
-                msg = f"{field_name} must not be whitespace-only"
-                raise ValueError(msg)
-        return self

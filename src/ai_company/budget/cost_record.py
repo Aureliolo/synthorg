@@ -8,6 +8,8 @@ from typing import Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from ai_company.core.types import NotBlankStr  # noqa: TC001
+
 
 class CostRecord(BaseModel):
     """Immutable record of a single API call's cost.
@@ -29,23 +31,14 @@ class CostRecord(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    agent_id: str = Field(min_length=1, description="Agent identifier")
-    task_id: str = Field(min_length=1, description="Task identifier")
-    provider: str = Field(min_length=1, description="LLM provider name")
-    model: str = Field(min_length=1, description="Model identifier")
+    agent_id: NotBlankStr = Field(description="Agent identifier")
+    task_id: NotBlankStr = Field(description="Task identifier")
+    provider: NotBlankStr = Field(description="LLM provider name")
+    model: NotBlankStr = Field(description="Model identifier")
     input_tokens: int = Field(ge=0, description="Input token count")
     output_tokens: int = Field(ge=0, description="Output token count")
     cost_usd: float = Field(ge=0.0, description="Cost in USD")
     timestamp: AwareDatetime = Field(description="Timestamp of the API call")
-
-    @model_validator(mode="after")
-    def _validate_no_blank_strings(self) -> Self:
-        """Ensure string identifier fields are not whitespace-only."""
-        for field_name in ("agent_id", "task_id", "provider", "model"):
-            if not getattr(self, field_name).strip():
-                msg = f"{field_name} must not be whitespace-only"
-                raise ValueError(msg)
-        return self
 
     @model_validator(mode="after")
     def _validate_token_consistency(self) -> Self:

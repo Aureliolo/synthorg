@@ -231,7 +231,7 @@ class TestLogConfig:
             )
 
     def test_blank_log_dir_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="log_dir must not be blank"):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             LogConfig(sinks=(_console_sink(),), log_dir="   ")
 
     def test_log_dir_traversal_rejected(self) -> None:
