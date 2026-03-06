@@ -512,6 +512,126 @@ When a loop is detected, the framework:
 3. Escalates to the sender's manager (or human if at top of hierarchy)
 4. Logs the loop for analytics and process improvement
 
+### 5.6 Conflict Resolution Protocol
+
+When two or more agents disagree on an approach (architecture, implementation, priority, etc.), the framework provides multiple configurable resolution strategies behind a `ConflictResolver` protocol. New strategies can be added without modifying existing ones. The strategy is configurable per company, per department, or per conflict type.
+
+#### Strategy 1: Authority + Dissent Log (Default)
+
+The agent with higher authority level decides. Cross-department conflicts (incomparable authority) escalate to the lowest common manager in the hierarchy. The losing agent's reasoning is preserved as a **dissent record** — a structured log entry containing the conflict context, both positions, and the resolution. Dissent records feed into organizational learning and can be reviewed during retrospectives.
+
+```yaml
+conflict_resolution:
+  strategy: "authority"            # authority, debate, human, hybrid
+```
+
+- Deterministic, zero extra tokens, fast resolution
+- Dissent records create institutional memory of alternative approaches
+
+#### Strategy 2: Structured Debate + Judge
+
+Both agents present arguments (1 round each, capped at `max_tokens_per_argument`). A judge — their shared manager, or a configurable arbitrator agent — evaluates both positions and decides. The judge's reasoning and both arguments are logged as a dissent record.
+
+```yaml
+conflict_resolution:
+  strategy: "debate"
+  debate:
+    max_tokens_per_argument: 500
+    judge: "shared_manager"        # shared_manager, ceo, designated_agent
+```
+
+- Better decisions — forces agents to articulate reasoning
+- Higher token cost, adds latency proportional to argument length
+
+#### Strategy 3: Human Escalation
+
+All genuine conflicts go to the human approval queue with both positions summarized. The agent(s) park the conflicting task and work on other tasks while waiting (see §12.4 Approval Timeout).
+
+```yaml
+conflict_resolution:
+  strategy: "human"
+```
+
+- Safest — human always makes the call
+- Bottleneck at scale, depends on human availability
+
+#### Strategy 4: Hybrid (Recommended for Production)
+
+Combines strategies with an intelligent review layer:
+
+1. Both agents present arguments (1 round, capped tokens) — preserving dissent
+2. A **conflict review agent** evaluates the result:
+   - If the resolution is **clear** (one position is objectively better, or authority applies cleanly) → resolve automatically, log dissent record
+   - If the resolution is **ambiguous** (genuine trade-offs, no clear winner) → escalate to human queue with both positions + the review agent's analysis
+
+```yaml
+conflict_resolution:
+  strategy: "hybrid"
+  hybrid:
+    max_tokens_per_argument: 500
+    review_agent: "conflict_reviewer"  # dedicated agent or role
+    escalate_on_ambiguity: true
+```
+
+- Best balance: most conflicts resolve fast, humans only see genuinely hard calls
+- Most complex to implement; review agent itself needs careful prompt design
+
+### 5.7 Meeting Protocol
+
+Meetings (§5.1 Pattern 3) follow configurable protocols that determine how agents interact during structured multi-agent conversations. Different meeting types naturally suit different protocols. All protocols implement a `MeetingProtocol` protocol, making the system extensible — new protocols can be registered and selected per meeting type. Cost bounds are enforced by `duration_tokens` in meeting config (§5.4).
+
+#### Protocol 1: Round-Robin Transcript
+
+The meeting leader calls each participant in turn. A shared transcript grows as each agent responds, seeing all prior contributions. The leader summarizes and extracts action items at the end.
+
+```yaml
+meeting_protocol: "round_robin"
+round_robin:
+  max_turns_per_agent: 2
+  max_total_turns: 16
+  leader_summarizes: true
+```
+
+- Simple, natural conversation feel, each agent sees full context
+- Token cost grows quadratically; last speaker has more context (ordering bias)
+- **Best for**: Daily standups, status updates, small groups (3-5 agents)
+
+#### Protocol 2: Async Position Papers + Synthesizer
+
+Each agent independently writes a short position paper (parallel execution, no shared context). A synthesizer agent reads all positions, identifies agreements and conflicts, and produces decisions + action items.
+
+```yaml
+meeting_protocol: "position_papers"
+position_papers:
+  max_tokens_per_position: 300
+  synthesizer: "meeting_leader"    # who synthesizes
+```
+
+- Cheapest — parallel calls, no quadratic growth, no ordering bias, no groupthink
+- Loses back-and-forth dialogue; agents can't challenge each other's ideas
+- **Best for**: Brainstorming, architecture proposals, large groups, cost-sensitive meetings
+
+#### Protocol 3: Structured Phases
+
+Meeting split into phases with targeted participation:
+
+1. **Agenda broadcast** — leader shares agenda and context to all participants
+2. **Input gathering** — each agent submits input independently (parallel)
+3. **Discussion round** — only triggered if conflicts are detected between inputs; relevant agents debate (1 round, capped tokens)
+4. **Decision + action items** — leader synthesizes, creates tasks from action items
+
+```yaml
+meeting_protocol: "structured_phases"
+structured_phases:
+  skip_discussion_if_no_conflicts: true
+  max_discussion_tokens: 1000
+  auto_create_tasks: true          # action items become tasks
+```
+
+- Cost-efficient — parallel input, discussion only when needed
+- More complex orchestration; conflict detection between inputs needs design
+- **Best for**: Sprint planning, design reviews, architecture decisions
+
 ---
 
 ## 6. Task & Workflow Engine
@@ -624,6 +744,108 @@ Tasks can be assigned through multiple strategies:
 | **Hierarchical** | Flow down through management chain |
 | **Cost-optimized** | Assign to cheapest capable agent |
 
+### 6.5 Agent Execution Loop
+
+The agent execution loop defines how an agent processes a task from start to finish. The framework provides multiple configurable loop architectures behind an `ExecutionLoop` protocol, making the system extensible. The default can vary by task complexity, and is configurable per agent or role.
+
+#### Loop 1: ReAct (Default for Simple Tasks)
+
+A single interleaved loop: the agent reasons about the current state, selects an action (tool call or response), observes the result, and repeats until done or `max_turns` is reached.
+
+```text
+┌──────────────────────────────────────────┐
+│              ReAct Loop                  │
+│                                          │
+│  ┌─────────┐   ┌──────┐   ┌──────────┐ │
+│  │  Think   │──▶│  Act  │──▶│ Observe  │ │
+│  └─────────┘   └──────┘   └────┬─────┘ │
+│       ▲                         │        │
+│       └─────────────────────────┘        │
+│                                          │
+│  Terminate when: task complete, max      │
+│  turns, budget exhausted, or blocked     │
+└──────────────────────────────────────────┘
+```
+
+```yaml
+execution_loop: "react"              # react, plan_execute, hybrid
+```
+
+- Simple, proven, flexible. Easy to implement. Works well for short tasks
+- Token-heavy on long tasks (re-reads full context every turn). No long-term planning — greedy step-by-step
+- **Best for**: Simple tasks, quick fixes, single-file changes, M3 MVP
+
+#### Loop 2: Plan-and-Execute
+
+A two-phase approach: the agent first generates a step-by-step plan, then executes each step sequentially. On failure, the agent can replan. Different models can be used for planning vs execution (e.g., Opus for planning, Haiku for execution steps).
+
+```text
+┌──────────────────────────────────────────┐
+│           Plan-and-Execute               │
+│                                          │
+│  ┌──────────┐    ┌───────────────────┐  │
+│  │  Plan     │───▶│  Execute Steps    │  │
+│  │  (1 call) │    │  (N calls)        │  │
+│  └──────────┘    └────────┬──────────┘  │
+│       ▲                    │             │
+│       └────── replan ──────┘             │
+│         (on step failure)                │
+└──────────────────────────────────────────┘
+```
+
+```yaml
+execution_loop: "plan_execute"
+plan_execute:
+  planner_model: null              # null = use agent's model; override for cost optimization
+  executor_model: null
+  max_replans: 3
+```
+
+- Token-efficient for long tasks. Auditable plan artifact. Supports model tiering
+- Rigid — plan may be wrong, replanning is expensive. Over-plans simple tasks
+- **Best for**: Complex multi-step tasks, epic-level work, tasks spanning multiple files
+
+#### Loop 3: Hybrid Plan + ReAct Steps (Recommended for Complex Tasks)
+
+The agent creates a high-level plan (3-7 steps). Each step is executed as a mini-ReAct loop with its own turn limit. After each step, the agent checkpoints — summarizing progress and optionally replanning remaining steps. Checkpoints are natural points for human inspection or task suspension.
+
+```text
+┌──────────────────────────────────────────────┐
+│         Hybrid: Plan + ReAct Steps           │
+│                                              │
+│  ┌──────────┐                                │
+│  │  Plan     │                               │
+│  └────┬─────┘                                │
+│       │                                      │
+│  ┌────▼────────────────────────────────────┐ │
+│  │  Step 1: mini-ReAct (think→act→observe) │ │
+│  └────┬────────────────────────────────────┘ │
+│       │ checkpoint: summarize progress       │
+│  ┌────▼────────────────────────────────────┐ │
+│  │  Step 2: mini-ReAct                     │ │
+│  └────┬────────────────────────────────────┘ │
+│       │ checkpoint: replan if needed         │
+│  ┌────▼────────────────────────────────────┐ │
+│  │  Step N: mini-ReAct                     │ │
+│  └─────────────────────────────────────────┘ │
+└──────────────────────────────────────────────┘
+```
+
+```yaml
+execution_loop: "hybrid"
+hybrid:
+  max_plan_steps: 7
+  max_turns_per_step: 5
+  checkpoint_after_each_step: true
+  allow_replan: true
+```
+
+- Strategic planning + tactical flexibility. Natural checkpoints for suspension/inspection
+- Most complex to implement. Plan granularity needs tuning per task type
+- **Best for**: Complex tasks, multi-file refactoring, tasks requiring both planning and adaptivity
+
+> **Auto-selection (optional):** When `execution_loop: "auto"`, the framework selects the loop based on `estimated_complexity`: simple → ReAct, medium → Plan-and-Execute, complex/epic → Hybrid. Configurable via `auto_loop_rules`.
+
 ---
 
 ## 7. Memory & Persistence
@@ -642,7 +864,8 @@ Tasks can be assigned through multiple strategies:
 │ context  │ decisions│ learned   │           │
 ├──────────┴──────────┴───────────┴───────────┤
 │            Storage Backend                   │
-│   SQLite / PostgreSQL / File-based / Mem0    │
+│   SQLite / PostgreSQL / File-based           │
+│   + Memory Layer (TBD — see §15.2)           │
 └─────────────────────────────────────────────┘
 ```
 
@@ -661,13 +884,76 @@ Tasks can be assigned through multiple strategies:
 ```yaml
 memory:
   level: "full"                 # none, session, project, full
-  backend: "sqlite"             # sqlite, postgresql, file (Mem0 is a memory layer on top, not a backend itself — see 15.2)
+  backend: "sqlite"             # sqlite, postgresql, file (memory layer library is on top, not a backend itself — see §15.2)
   options:
     retention_days: null         # null = forever
     max_memories_per_agent: 10000
     consolidation_interval: "daily"  # compress old memories
-    shared_knowledge_base: true      # agents can access shared facts
+    shared_knowledge_base: true      # agents can access shared facts (see §7.4)
 ```
+
+### 7.4 Shared Organizational Memory
+
+Beyond individual agent memory (§7.1–7.3), the framework needs **organizational memory** — company-wide knowledge that all agents can access: policies, conventions, architecture decision records (ADRs), coding standards, and operational procedures. This is not personal episodic memory ("what I did last Tuesday") but institutional knowledge ("we always use FastAPI, not Flask").
+
+Shared organizational memory is implemented behind an `OrgMemoryBackend` protocol, making the system highly modular and extensible. New backends can be added without modifying existing ones.
+
+#### Backend 1: Hybrid Prompt + Retrieval (Default / MVP)
+
+Critical rules (5-10 items, e.g., "no commits to main," "all PRs need 2 approvals") are injected into every agent's system prompt. Extended knowledge (ADRs, detailed procedures, style guides) is stored in a queryable store and retrieved on demand at task start.
+
+```yaml
+org_memory:
+  backend: "hybrid_prompt_retrieval"    # hybrid_prompt_retrieval, graph_rag, temporal_kg
+  core_policies:                        # always in system prompt
+    - "All code must have 80%+ test coverage"
+    - "Use FastAPI, not Flask"
+    - "PRs require 2 approvals"
+  extended_store:
+    backend: "sqlite"                   # sqlite, postgresql
+    max_retrieved_per_query: 5
+  write_access:
+    policies: ["human"]                 # only humans write core policies
+    adrs: ["human", "senior", "lead", "c_suite"]
+    procedures: ["human", "senior", "lead", "c_suite"]
+```
+
+- Simple to implement. Core rules always present. Extended knowledge scales
+- Basic retrieval may miss relational connections between policies
+
+#### Backend 2: GraphRAG Knowledge Graph (Future)
+
+Organizational knowledge stored as entities + relationships in a knowledge graph. Agents query via graph traversal, enabling multi-hop reasoning: "FastAPI is our standard" → linked to → "don't use Flask" → linked to → "exception: data team uses Django for admin."
+
+```yaml
+org_memory:
+  backend: "graph_rag"
+  graph:
+    store: "sqlite"                     # graph stored in relational DB, or dedicated graph DB
+    entity_extraction: "auto"           # auto-extract entities from ADRs and policies
+```
+
+- 3.4x accuracy improvement over vector-only retrieval. Multi-hop reasoning captures policy relationships
+- More complex infrastructure. Entity extraction can be noisy. Heavier setup
+
+#### Backend 3: Temporal Knowledge Graph (Future)
+
+Like GraphRAG but tracks how facts change over time. "We used Flask until March 2026, then switched to FastAPI." Agents see current truth but can query history for context.
+
+```yaml
+org_memory:
+  backend: "temporal_kg"
+  temporal:
+    track_changes: true
+    history_retention_days: null        # null = forever
+```
+
+- Handles policy evolution naturally. Agents understand when and why things changed
+- Most complex. Potentially overkill for small companies or local-first use
+
+> **Extensibility:** All backends implement the `OrgMemoryBackend` protocol (`query(context) → list[OrgFact]`, `write(fact, author)`, `list_policies()`). The MVP ships with Backend 1; Backends 2 and 3 are planned extensions. The memory layer candidate (currently evaluating Mem0 and alternatives — see §15.2) may provide graph memory capabilities natively, reducing implementation effort for Backends 2-3.
+
+> **Write access control:** Core policies are human-only. ADRs and procedures can be written by senior+ agents. All writes are versioned and auditable. This prevents agents from corrupting shared organizational knowledge while allowing senior agents to document decisions.
 
 ---
 
@@ -884,11 +1170,14 @@ budget:
   auto_downgrade:
     enabled: true
     threshold: 85              # percent of budget used
+    boundary: "task_assignment" # task_assignment only — NEVER mid-execution
     downgrade_map:             # example — aliases reference configured models
       opus: "sonnet"
       sonnet: "haiku"
       haiku: "local-small"
 ```
+
+> **Auto-downgrade boundary:** Model downgrades apply only at **task assignment time**, never mid-execution. An agent halfway through an architecture review cannot be switched to a cheaper model — the task completes on its assigned model. The next task assignment respects the downgrade threshold. This prevents quality degradation from mid-thought model switches.
 
 ---
 
@@ -959,23 +1248,99 @@ tool_access:
 
 ### 11.3 Progressive Trust
 
-Agents can earn higher tool access over time:
+Agents can earn higher tool access over time through configurable trust strategies. The trust system implements a `TrustStrategy` protocol, making it extensible. Multiple strategies are available, selectable via config.
+
+#### Strategy: Disabled (Static Access)
+
+Trust is disabled. Agents receive their configured access level at hire time and it never changes. Simplest option — useful when the human manages permissions manually.
 
 ```yaml
 trust:
-  enabled: true
+  strategy: "disabled"               # disabled, weighted, per_category, milestone
+  initial_level: "standard"          # fixed access level for all agents
+```
+
+#### Strategy: Weighted Score (Single Track)
+
+A single trust score computed from weighted factors: task difficulty completed, error rate, time active, and human feedback. One global trust level per agent, applied to all tool categories.
+
+```yaml
+trust:
+  strategy: "weighted"
   initial_level: "sandboxed"
+  weights:
+    task_difficulty: 0.3             # harder tasks completed = more trust
+    completion_rate: 0.25
+    error_rate: 0.25                 # inverse — fewer errors = more trust
+    human_feedback: 0.2
+  promotion_thresholds:
+    sandboxed_to_restricted: 0.4
+    restricted_to_standard: 0.6
+    standard_to_elevated: 0.8       # requires human approval regardless of score
+```
+
+- Simple model, easy to understand. One number to track
+- Too coarse — an agent trusted for file edits shouldn't auto-get deployment access
+
+#### Strategy: Per-Category Trust Tracks
+
+Separate trust tracks per tool category (filesystem, git, deployment, database, network). An agent can be "standard" for files but "sandboxed" for deployment. Promotion criteria differ per category. Human approval gate required for any production-touching category.
+
+```yaml
+trust:
+  strategy: "per_category"
+  initial_levels:
+    file_system: "restricted"
+    git: "restricted"
+    code_execution: "sandboxed"
+    deployment: "sandboxed"
+    database: "sandboxed"
+    terminal: "sandboxed"
   promotion_criteria:
+    file_system:
+      restricted_to_standard:
+        tasks_completed: 10
+        quality_score_min: 7.0
+    deployment:
+      sandboxed_to_restricted:
+        tasks_completed: 20
+        quality_score_min: 8.5
+        requires_human_approval: true  # always human-gated for deployment
+```
+
+- Granular. Matches real security models (IAM roles). Prevents gaming via easy tasks
+- More complex data model. Trust state is a matrix per agent, not a scalar
+
+#### Strategy: Milestone Gates (ATF-Inspired)
+
+Explicit capability milestones aligned with the Cloud Security Alliance Agentic Trust Framework. Automated promotion for low-risk levels. Human approval gates for elevated access. Trust is time-bound and subject to periodic re-verification — trust decays if the agent is idle for extended periods or error rate increases.
+
+```yaml
+trust:
+  strategy: "milestone"
+  initial_level: "sandboxed"
+  milestones:
     sandboxed_to_restricted:
       tasks_completed: 5
       quality_score_min: 7.0
+      auto_promote: true             # no human needed
     restricted_to_standard:
       tasks_completed: 20
       quality_score_min: 8.0
       time_active_days: 7
+      auto_promote: true
     standard_to_elevated:
-      requires_human_approval: true
+      requires_human_approval: true  # always human-gated
+      clean_history_days: 14         # no errors in last 14 days
+  re_verification:
+    enabled: true
+    interval_days: 90                # re-verify every 90 days
+    decay_on_idle_days: 30           # demote one level if idle 30+ days
+    decay_on_error_rate: 0.15        # demote if error rate exceeds 15%
 ```
+
+- Industry-aligned. Re-verification prevents stale trust. Human gates where it matters
+- Most complex. Trust decay may need tuning to avoid frustrating users
 
 ---
 
@@ -1049,6 +1414,84 @@ A special meta-agent that reviews all actions before execution:
 - Maintains an audit log of all approvals/denials
 - Escalates uncertain cases to human queue with explanation
 - **Cannot be overridden by other agents** (only human can override)
+
+### 12.4 Approval Timeout Policy
+
+When an action requires human approval (per autonomy level in §12.2), the agent must wait. The framework provides configurable timeout policies that determine what happens when a human doesn't respond. All policies implement a `TimeoutPolicy` protocol. The policy is configurable per autonomy level and per action risk tier.
+
+During any wait — regardless of policy — the agent **parks** the blocked task (saving its full `AgentContext` snapshot: conversation, progress, accumulated cost, turn count) and picks up other available tasks from its queue. When approval eventually arrives, the agent **resumes** the original context exactly where it left off. This mirrors real company behavior: a junior developer starts another task while waiting for a code review, then returns to the original work when feedback arrives.
+
+#### Policy 1: Wait Forever (Default for Critical Actions)
+
+The action stays in the human queue indefinitely. No timeout, no auto-resolution. The agent is aware the task is parked awaiting approval and works on other tasks in the meantime.
+
+```yaml
+approval_timeout:
+  policy: "wait"                     # wait, deny, tiered, escalation
+```
+
+- Safest — no risk of unauthorized actions. Mirrors "awaiting review" in real workflows
+- Can stall tasks indefinitely if human is unavailable. Queue can grow unbounded
+
+#### Policy 2: Deny on Timeout
+
+All unapproved actions auto-deny after a configurable timeout. The agent receives a denial reason ("approval timeout — human did not respond within window") and can retry with a different approach or escalate explicitly.
+
+```yaml
+approval_timeout:
+  policy: "deny"
+  timeout_minutes: 240               # 4 hours
+```
+
+- Industry consensus default ("fail closed"). Agent learns to prefer auto-approvable paths
+- May stall legitimate work if human is consistently slow
+
+#### Policy 3: Tiered Timeout
+
+Different timeout behavior based on action risk level. Low-risk actions auto-approve after a short wait. Medium-risk actions auto-deny. High-risk/security-critical actions wait forever.
+
+```yaml
+approval_timeout:
+  policy: "tiered"
+  tiers:
+    low_risk:
+      timeout_minutes: 60
+      on_timeout: "approve"          # auto-approve low-risk after 1 hour
+      actions: ["file_edits", "internal_comms", "tests"]
+    medium_risk:
+      timeout_minutes: 240
+      on_timeout: "deny"             # auto-deny medium-risk after 4 hours
+      actions: ["new_files", "git_push", "architecture"]
+    high_risk:
+      timeout_minutes: null          # wait forever
+      on_timeout: "wait"
+      actions: ["deployment", "database_admin", "external_comms", "hiring"]
+```
+
+- Pragmatic — low-risk stuff doesn't stall, critical stuff stays safe
+- Auto-approve on timeout carries risk. Tuning tier boundaries requires experience
+
+#### Policy 4: Escalation Chain
+
+On timeout, the approval request escalates to the next human in a configured chain (e.g., primary reviewer → manager → VP → board). If the entire chain times out, the action is denied.
+
+```yaml
+approval_timeout:
+  policy: "escalation"
+  chain:
+    - role: "direct_manager"
+      timeout_minutes: 120
+    - role: "department_head"
+      timeout_minutes: 240
+    - role: "ceo_or_board"
+      timeout_minutes: 480
+  on_chain_exhausted: "deny"         # deny if entire chain times out
+```
+
+- Mirrors real orgs — if your boss is out, their boss covers. Multiple chances for approval
+- Requires configuring an escalation chain. More humans involved. Complex to implement
+
+> **Task Suspension and Resumption:** The park/resume mechanism relies on `AgentContext` snapshots (frozen Pydantic models). When a task is parked, the full context is persisted. When approval arrives, the framework loads the snapshot, restores the agent's conversation and state, and resumes execution from the exact point of suspension. This works naturally with the `model_copy(update=...)` immutability pattern — the snapshot is a complete, self-contained state.
 
 ---
 
@@ -1257,10 +1700,10 @@ Run: ai-company start acme-corp
 
 | Component | Technology | Rationale |
 |-----------|-----------|-----------|
-| **Language** | Python 3.14+ | Best AI/ML ecosystem, all major frameworks use it, LiteLLM/Mem0/MCP all Python-native. PEP 649 native lazy annotations, PEP 758 except syntax. |
+| **Language** | Python 3.14+ | Best AI/ML ecosystem, all major frameworks use it, LiteLLM/MCP and memory layer candidates all Python-native. PEP 649 native lazy annotations, PEP 758 except syntax. |
 | **API Framework** | FastAPI | Async-native, WebSocket support, auto OpenAPI docs, high performance, type-safe with Pydantic |
 | **LLM Abstraction** | LiteLLM | 100+ providers, unified API, built-in cost tracking, retries/fallbacks |
-| **Agent Memory** | Mem0 + SQLite | Mem0 for semantic/episodic memory, SQLite for structured data. Upgrade to Postgres later |
+| **Agent Memory** | TBD (candidates: Mem0, Zep, Letta, custom) + SQLite | Memory layer library TBD after evaluation. SQLite for structured data. Upgrade to Postgres later |
 | **Message Bus** | Internal (async queues) → Redis | Start with Python asyncio queues, upgrade to Redis for multi-process/distributed |
 | **Task Queue** | Internal → Celery/Redis | Start simple, scale with Celery when needed |
 | **Database** | SQLite → PostgreSQL | Start lightweight, migrate to Postgres for production/multi-user |
@@ -1420,10 +1863,10 @@ ai-company/
 
 | Decision | Choice | Alternatives Considered | Rationale |
 |----------|--------|------------------------|-----------|
-| Language | Python 3.14+ | TypeScript, Go, Rust | AI ecosystem, LiteLLM/Mem0 are Python, PEP 649 lazy annotations, PEP 758 except syntax |
+| Language | Python 3.14+ | TypeScript, Go, Rust | AI ecosystem, LiteLLM/MCP and memory layer candidates are Python-native, PEP 649 lazy annotations, PEP 758 except syntax |
 | API | FastAPI | Flask, Django, aiohttp | Async native, Pydantic integration, auto docs, WebSocket support |
 | LLM Layer | LiteLLM | Direct APIs, OpenRouter only | 100+ providers, cost tracking, fallbacks, load balancing built-in |
-| Memory | Mem0 + SQLite | Custom, ChromaDB, Pinecone | Production-proven (26% accuracy boost), supports all memory types, open-source |
+| Memory | TBD + SQLite | Mem0, Zep, Letta, Cognee, ChromaDB, custom | Memory layer library TBD — all candidates under evaluation. Must support episodic, semantic, procedural types behind `OrgMemoryBackend` protocol |
 | Message Bus | asyncio queues → Redis | Kafka, RabbitMQ, NATS | Start simple, Redis well-supported, Kafka overkill for local |
 | Config | YAML + Pydantic | JSON, TOML, Python dicts | Human-friendly, strict validation, good IDE support |
 | CLI | Typer | Click, argparse, Fire | Built on Click, auto-completion, type hints |
@@ -1465,7 +1908,7 @@ These conventions were established during the M0–M2 review cycle. **Adopted** 
 | Full company simulation | Partial | Partial | No | **Yes - complete** |
 | HR (hiring/firing) | No | No | No | **Yes** |
 | Budget management (CFO) | No | No | No | **Yes** |
-| Persistent agent memory | No | No | Basic | **Yes (Mem0 candidate)** |
+| Persistent agent memory | No | No | Basic | **Yes (memory layer TBD — candidates under evaluation)** |
 | Agent personalities | Basic | Basic | Basic | **Deep - traits, styles, evolution** |
 | Dynamic team scaling | No | No | Manual | **Yes - auto + manual** |
 | Multiple company types | No | No | Manual | **Yes - templates + builder** |
@@ -1487,12 +1930,12 @@ Rationale:
 - No existing framework covers even 50% of our requirements
 - Our core differentiators (HR, budget, security ops, deep personalities, progressive trust) don't exist in any framework
 - Forking MetaGPT or CrewAI would mean fighting their architecture while adding our features
-- **LiteLLM**, **Mem0**, **FastAPI**, and **MCP** give us battle-tested components for the hard parts
+- **LiteLLM**, **FastAPI**, **MCP**, and a memory layer library (TBD) give us battle-tested components for the hard parts
 - The "company simulation" layer on top is our unique value and must be purpose-built
 
 What we **plan to leverage** (not fork) — subject to evaluation:
 - **LiteLLM** (candidate) - Provider abstraction
-- **Mem0** (candidate) - Agent memory
+- **Memory layer** (candidates: Mem0, Zep, Letta, Cognee, custom) - Agent memory
 - **FastAPI** (candidate) - API layer
 - **MCP** - Tool integration standard (strong candidate, emerging industry standard)
 - **Pydantic** (candidate) - Config validation and data models
@@ -1505,18 +1948,22 @@ What we **plan to leverage** (not fork) — subject to evaluation:
 
 ### 17.1 Open Questions
 
-| # | Question | Impact | Notes |
-|---|----------|--------|-------|
-| 1 | How deep should agent personality affect output? | Medium | Too deep = inconsistent, too shallow = all agents feel the same |
-| 2 | What is the optimal meeting format for multi-agent? | High | Determines quality of collaborative decisions |
-| 3 | How to handle context window limits for long tasks? | High | Agents may lose track of complex multi-file changes |
-| 4 | Should agents be able to create/modify other agents? | Medium | CTO "hires" a dev by creating a new agent config |
-| 5 | How to handle conflicting agent opinions? | High | Two agents disagree on architecture - who wins? |
-| 6 | What metrics define "good" agent performance? | Medium | Needed for HR/hiring/firing decisions |
-| 7 | How to prevent agent communication loops? | High | Agent A asks Agent B who asks Agent A... |
-| 8 | Optimal message bus for local-first architecture? | Medium | asyncio queues vs Redis vs embedded broker |
-| 9 | How to handle code execution safely? | High | Sandboxing strategy, Docker vs WASM vs subprocess |
-| 10 | What's the minimum viable meeting set? | Low | Standup + planning + review as minimum? |
+| # | Question | Impact | Status | Notes |
+|---|----------|--------|--------|-------|
+| 1 | How deep should agent personality affect output? | Medium | Open | Too deep = inconsistent, too shallow = all agents feel the same |
+| 2 | What is the optimal meeting format for multi-agent? | High | **Resolved** | Multiple configurable protocols — see §5.7 Meeting Protocol |
+| 3 | How to handle context window limits for long tasks? | High | Open | Agents may lose track of complex multi-file changes |
+| 4 | Should agents be able to create/modify other agents? | Medium | Open | CTO "hires" a dev by creating a new agent config |
+| 5 | How to handle conflicting agent opinions? | High | **Resolved** | Multiple configurable strategies — see §5.6 Conflict Resolution Protocol |
+| 6 | What metrics define "good" agent performance? | Medium | Open | Needed for HR/hiring/firing decisions |
+| 7 | How to prevent agent communication loops? | High | **Resolved** | Implemented in §5.5 Loop Prevention |
+| 8 | Optimal message bus for local-first architecture? | Medium | Open | asyncio queues vs Redis vs embedded broker |
+| 9 | How to handle code execution safely? | High | Open | Sandboxing strategy, Docker vs WASM vs subprocess |
+| 10 | What's the minimum viable meeting set? | Low | Open | Standup + planning + review as minimum? |
+| 11 | What is the agent execution loop architecture? | High | **Resolved** | Multiple configurable loops — see §6.5 Agent Execution Loop |
+| 12 | How should shared organizational memory work? | High | **Resolved** | Modular backends behind protocol — see §7.4 Shared Organizational Memory |
+| 13 | What happens when humans don't respond to approvals? | High | **Resolved** | Configurable timeout policies with task suspension — see §12.4 Approval Timeout |
+| 14 | Which memory layer library to use? | Medium | Open | Mem0, Zep, Letta, Cognee, custom — all candidates, TBD after evaluation (see §15.2) |
 
 ### 17.2 Technical Risks
 
@@ -1559,7 +2006,7 @@ What we **plan to leverage** (not fork) — subject to evaluation:
 | Multi-project support | High | Company handles multiple projects simultaneously |
 | Client simulation | Low | AI "clients" that give requirements and review output |
 | Training mode | Medium | New agents learn from senior agents' past work |
-| Conflict resolution protocol | High | Structured process when agents disagree |
+| ~~Conflict resolution protocol~~ | ~~High~~ | ~~Moved to core — see §5.6~~ |
 | Agent promotions | Medium | Junior → Mid → Senior based on performance |
 | Shift system | Low | Agents "work" in shifts, different agents for different hours |
 | Reporting system | Medium | Weekly/monthly automated company reports |
