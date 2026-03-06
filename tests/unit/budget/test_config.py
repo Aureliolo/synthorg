@@ -109,7 +109,7 @@ class TestAutoDowngradeConfig:
         cfg = AutoDowngradeConfig(
             enabled=True,
             threshold=80,
-            downgrade_map=(("opus", "sonnet"), ("sonnet", "haiku")),
+            downgrade_map=(("large", "medium"), ("medium", "small")),
         )
         assert cfg.enabled is True
         assert cfg.threshold == 80
@@ -120,7 +120,7 @@ class TestAutoDowngradeConfig:
         with pytest.raises(ValidationError, match="at least 1 character"):
             AutoDowngradeConfig(
                 enabled=True,
-                downgrade_map=(("  ", "sonnet"),),
+                downgrade_map=(("  ", "medium"),),
             )
 
     def test_empty_target_alias_rejected(self) -> None:
@@ -128,7 +128,7 @@ class TestAutoDowngradeConfig:
         with pytest.raises(ValidationError, match="at least 1 character"):
             AutoDowngradeConfig(
                 enabled=True,
-                downgrade_map=(("opus", "  "),),
+                downgrade_map=(("large", "  "),),
             )
 
     def test_self_downgrade_rejected(self) -> None:
@@ -136,7 +136,7 @@ class TestAutoDowngradeConfig:
         with pytest.raises(ValidationError, match="Self-downgrade"):
             AutoDowngradeConfig(
                 enabled=True,
-                downgrade_map=(("opus", "opus"),),
+                downgrade_map=(("large", "large"),),
             )
 
     def test_duplicate_source_alias_rejected(self) -> None:
@@ -145,8 +145,8 @@ class TestAutoDowngradeConfig:
             AutoDowngradeConfig(
                 enabled=True,
                 downgrade_map=(
-                    ("opus", "sonnet"),
-                    ("opus", "haiku"),
+                    ("large", "medium"),
+                    ("large", "small"),
                 ),
             )
 
@@ -179,9 +179,9 @@ class TestAutoDowngradeConfig:
         """Verify whitespace is stripped from aliases."""
         cfg = AutoDowngradeConfig(
             enabled=True,
-            downgrade_map=(("  opus  ", "  sonnet  "),),
+            downgrade_map=(("  large  ", "  medium  "),),
         )
-        assert cfg.downgrade_map == (("opus", "sonnet"),)
+        assert cfg.downgrade_map == (("large", "medium"),)
 
     def test_frozen(self) -> None:
         """Ensure AutoDowngradeConfig is immutable."""

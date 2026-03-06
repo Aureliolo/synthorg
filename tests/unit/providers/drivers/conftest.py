@@ -36,14 +36,14 @@ def make_provider_config(  # noqa: PLR0913
         models = (
             ProviderModelConfig(
                 id="test-model-001",
-                alias="sonnet",
+                alias="medium",
                 cost_per_1k_input=0.003,
                 cost_per_1k_output=0.015,
                 max_context=200_000,
             ),
             ProviderModelConfig(
                 id="test-model-002",
-                alias="haiku",
+                alias="small",
                 cost_per_1k_input=0.001,
                 cost_per_1k_output=0.005,
                 max_context=200_000,

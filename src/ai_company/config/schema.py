@@ -102,11 +102,12 @@ class ProviderModelConfig(BaseModel):
     """Configuration for a single LLM model within a provider.
 
     Attributes:
-        id: Model identifier (e.g. ``"claude-sonnet-4-6"``).
+        id: Model identifier (e.g. ``"example-medium-001"``).
         alias: Short alias for referencing this model in routing rules.
         cost_per_1k_input: Cost per 1 000 input tokens in USD.
         cost_per_1k_output: Cost per 1 000 output tokens in USD.
         max_context: Maximum context window size in tokens.
+        estimated_latency_ms: Estimated median latency in milliseconds.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -130,6 +131,11 @@ class ProviderModelConfig(BaseModel):
         default=200_000,
         gt=0,
         description="Maximum context window size in tokens",
+    )
+    estimated_latency_ms: int | None = Field(
+        default=None,
+        gt=0,
+        description="Estimated median latency in milliseconds",
     )
 
 

@@ -12,7 +12,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 
 - **Any Company Structure** - From a 2-person startup to a 50+ enterprise, defined via config/templates
 - **Deep Agent Identity** - Names, personalities, skills, seniority levels, performance tracking
-- **Multi-Provider** - Anthropic Claude, OpenRouter (400+ models), local Ollama, and more via LiteLLM
+- **Multi-Provider** - Any LLM via LiteLLM — cloud APIs, OpenRouter (400+ models), local Ollama, and more
 - **Smart Cost Management** - Per-agent budget tracking, auto model routing, CFO agent optimization
 - **Configurable Autonomy** - From fully autonomous to human-approves-everything, with a Security Ops agent in between
 - **Persistent Memory** - Agents remember past decisions, code, relationships (memory layer TBD)

@@ -91,10 +91,10 @@ class _StubDriver(BaseCompletionProvider):
 @pytest.mark.unit
 class TestRegistryGet:
     def test_get_returns_registered_driver(self) -> None:
-        driver: BaseCompletionProvider = _StubDriver("anthropic", _make_config())
-        registry = ProviderRegistry({"anthropic": driver})
+        driver: BaseCompletionProvider = _StubDriver("example-provider", _make_config())
+        registry = ProviderRegistry({"example-provider": driver})
 
-        result = registry.get("anthropic")
+        result = registry.get("example-provider")
 
         assert result is driver
 
@@ -105,11 +105,11 @@ class TestRegistryGet:
             registry.get("nonexistent")
 
     def test_get_error_lists_available_providers(self) -> None:
-        driver: BaseCompletionProvider = _StubDriver("anthropic", _make_config())
-        registry = ProviderRegistry({"anthropic": driver})
+        driver: BaseCompletionProvider = _StubDriver("example-provider", _make_config())
+        registry = ProviderRegistry({"example-provider": driver})
 
-        with pytest.raises(DriverNotRegisteredError, match="anthropic"):
-            registry.get("openai")
+        with pytest.raises(DriverNotRegisteredError, match="example-provider"):
+            registry.get("other-provider")
 
 
 # ── list_providers() ─────────────────────────────────────────────
@@ -119,15 +119,15 @@ class TestRegistryGet:
 class TestRegistryListProviders:
     def test_list_providers_returns_sorted_names(self) -> None:
         drivers: dict[str, BaseCompletionProvider] = {
-            "openrouter": _StubDriver("openrouter", _make_config()),
-            "anthropic": _StubDriver("anthropic", _make_config()),
-            "ollama": _StubDriver("ollama", _make_config()),
+            "provider-c": _StubDriver("provider-c", _make_config()),
+            "example-provider": _StubDriver("example-provider", _make_config()),
+            "provider-b": _StubDriver("provider-b", _make_config()),
         }
         registry = ProviderRegistry(drivers)
 
         result = registry.list_providers()
 
-        assert result == ("anthropic", "ollama", "openrouter")
+        assert result == ("example-provider", "provider-b", "provider-c")
 
     def test_list_providers_empty_registry(self) -> None:
         registry = ProviderRegistry({})
@@ -141,10 +141,10 @@ class TestRegistryListProviders:
 @pytest.mark.unit
 class TestRegistryContainsAndLen:
     def test_contains_registered_provider(self) -> None:
-        driver: BaseCompletionProvider = _StubDriver("anthropic", _make_config())
-        registry = ProviderRegistry({"anthropic": driver})
+        driver: BaseCompletionProvider = _StubDriver("example-provider", _make_config())
+        registry = ProviderRegistry({"example-provider": driver})
 
-        assert "anthropic" in registry
+        assert "example-provider" in registry
         assert "unknown" not in registry
 
     def test_contains_unhashable_returns_false(self) -> None:
@@ -258,11 +258,11 @@ class TestRegistryFromConfig:
         from ai_company.providers.drivers.litellm_driver import LiteLLMDriver
 
         config = _make_config(driver="litellm")
-        providers = {"anthropic": config}
+        providers = {"example-provider": config}
 
         registry = ProviderRegistry.from_config(providers)
 
-        driver = registry.get("anthropic")
+        driver = registry.get("example-provider")
         assert isinstance(driver, LiteLLMDriver)
 
 

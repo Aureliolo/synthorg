@@ -158,7 +158,7 @@ class TestModelConfig:
     def test_valid_config(self, sample_model_config: ModelConfig) -> None:
         """Verify fixture-provided ModelConfig fields are correct."""
         assert sample_model_config.provider == "test-provider"
-        assert sample_model_config.model_id == "test-model-sonnet-4-6"
+        assert sample_model_config.model_id == "test-model-medium-001"
         assert sample_model_config.temperature == 0.3
         assert sample_model_config.max_tokens == 8192
 

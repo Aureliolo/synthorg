@@ -22,7 +22,7 @@ class TestResolvedModel:
     def test_build_from_factory(self) -> None:
         model = ResolvedModelFactory.build()
         assert model.provider_name == "test-provider"
-        assert model.model_id == "test-sonnet-001"
+        assert model.model_id == "test-medium-001"
 
     def test_frozen(self) -> None:
         model = ResolvedModelFactory.build()
@@ -79,6 +79,37 @@ class TestResolvedModel:
             cost_per_1k_output=0.015,
         )
         assert model.total_cost_per_1k == pytest.approx(0.018)
+
+    def test_estimated_latency_ms_default_none(self) -> None:
+        model = ResolvedModel(
+            provider_name="test",
+            model_id="test-model",
+        )
+        assert model.estimated_latency_ms is None
+
+    def test_estimated_latency_ms_valid(self) -> None:
+        model = ResolvedModel(
+            provider_name="test",
+            model_id="test-model",
+            estimated_latency_ms=200,
+        )
+        assert model.estimated_latency_ms == 200
+
+    def test_estimated_latency_ms_zero_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="greater than"):
+            ResolvedModel(
+                provider_name="test",
+                model_id="test-model",
+                estimated_latency_ms=0,
+            )
+
+    def test_estimated_latency_ms_negative_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="greater than"):
+            ResolvedModel(
+                provider_name="test",
+                model_id="test-model",
+                estimated_latency_ms=-100,
+            )
 
     def test_inf_cost_rejected(self) -> None:
         with pytest.raises(ValidationError):
@@ -145,12 +176,12 @@ class TestRoutingRequest:
         request = RoutingRequest(
             agent_level=SeniorityLevel.SENIOR,
             task_type="development",
-            model_override="sonnet",
+            model_override="medium",
             remaining_budget=10.0,
         )
         assert request.agent_level == SeniorityLevel.SENIOR
         assert request.task_type == "development"
-        assert request.model_override == "sonnet"
+        assert request.model_override == "medium"
         assert request.remaining_budget == 10.0
 
 

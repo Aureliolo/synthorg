@@ -29,7 +29,7 @@ from .conftest import (
     build_model_response,
     build_tool_call_delta_chunk,
     build_tool_call_dict,
-    make_anthropic_config,
+    make_provider_config,
 )
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
@@ -38,10 +38,10 @@ _PATCH_TARGET = "ai_company.providers.drivers.litellm_driver._litellm.acompletio
 
 
 def _make_driver() -> BaseCompletionProvider:
-    """Build an Anthropic driver from config."""
-    config = make_anthropic_config()
+    """Build a provider driver from config."""
+    config = make_provider_config()
     registry = ProviderRegistry.from_config(config)
-    return registry.get("anthropic")
+    return registry.get("example-provider")
 
 
 # ── Non-streaming tool calls ──────────────────────────────────────
@@ -65,7 +65,7 @@ async def test_single_tool_call(
     )
     with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mock_resp):
         result = await driver.complete(
-            user_messages, "sonnet", tools=sample_tool_definitions
+            user_messages, "medium", tools=sample_tool_definitions
         )
 
     assert result.finish_reason == FinishReason.TOOL_USE
@@ -99,7 +99,7 @@ async def test_multiple_tool_calls(
     )
     with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mock_resp):
         result = await driver.complete(
-            user_messages, "sonnet", tools=sample_tool_definitions
+            user_messages, "medium", tools=sample_tool_definitions
         )
 
     assert len(result.tool_calls) == 2
@@ -117,7 +117,7 @@ async def test_tool_definitions_forwarded(
     with patch(
         _PATCH_TARGET, new_callable=AsyncMock, return_value=mock_resp
     ) as mock_call:
-        await driver.complete(user_messages, "sonnet", tools=sample_tool_definitions)
+        await driver.complete(user_messages, "medium", tools=sample_tool_definitions)
 
     kwargs = mock_call.call_args.kwargs
     tools = kwargs["tools"]
@@ -141,7 +141,7 @@ async def test_tool_use_finish_reason(
     )
     with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mock_resp):
         result = await driver.complete(
-            user_messages, "sonnet", tools=sample_tool_definitions
+            user_messages, "medium", tools=sample_tool_definitions
         )
 
     assert result.finish_reason == FinishReason.TOOL_USE
@@ -166,7 +166,7 @@ async def test_streaming_single_tool_call(
     mock_stream = async_iter_chunks(chunks)
     with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mock_stream):
         stream = await driver.stream(
-            user_messages, "sonnet", tools=sample_tool_definitions
+            user_messages, "medium", tools=sample_tool_definitions
         )
         result = [sc async for sc in stream]
 
@@ -210,7 +210,7 @@ async def test_streaming_multiple_concurrent_tool_calls(
     mock_stream = async_iter_chunks(chunks)
     with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mock_stream):
         stream = await driver.stream(
-            user_messages, "sonnet", tools=sample_tool_definitions
+            user_messages, "medium", tools=sample_tool_definitions
         )
         result = [sc async for sc in stream]
 
@@ -239,7 +239,7 @@ async def test_streaming_mixed_text_and_tool_calls(
     mock_stream = async_iter_chunks(chunks)
     with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mock_stream):
         stream = await driver.stream(
-            user_messages, "sonnet", tools=sample_tool_definitions
+            user_messages, "medium", tools=sample_tool_definitions
         )
         result = [sc async for sc in stream]
 
@@ -272,7 +272,7 @@ async def test_streaming_malformed_json_tool_call(
     mock_stream = async_iter_chunks(chunks)
     with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mock_stream):
         stream = await driver.stream(
-            user_messages, "sonnet", tools=sample_tool_definitions
+            user_messages, "medium", tools=sample_tool_definitions
         )
         result = [sc async for sc in stream]
 
@@ -302,7 +302,7 @@ async def test_multi_turn_tool_conversation(
     )
     with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mock_resp_t1):
         result_t1 = await driver.complete(
-            messages_t1, "sonnet", tools=sample_tool_definitions
+            messages_t1, "medium", tools=sample_tool_definitions
         )
 
     assert result_t1.finish_reason == FinishReason.TOOL_USE
@@ -338,7 +338,7 @@ async def test_multi_turn_tool_conversation(
         _PATCH_TARGET, new_callable=AsyncMock, return_value=mock_resp_t2
     ) as mock_call_t2:
         result_t2 = await driver.complete(
-            messages_t2, "sonnet", tools=sample_tool_definitions
+            messages_t2, "medium", tools=sample_tool_definitions
         )
 
     assert result_t2.content == "It's sunny and 25°C in Tokyo!"

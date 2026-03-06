@@ -89,7 +89,7 @@ class TestModelRouterRoute:
             RoutingRequest(model_override="large"),
         )
 
-        assert decision.resolved_model.model_id == "test-opus-001"
+        assert decision.resolved_model.model_id == "test-large-001"
 
     def test_routes_role_based(
         self,

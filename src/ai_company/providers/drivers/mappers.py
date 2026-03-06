@@ -90,8 +90,7 @@ def _tool_to_dict(tool: ToolDefinition) -> dict[str, object]:
     }
 
 
-# OpenAI uses "function_call" (legacy) and "tool_calls" (current);
-# Anthropic uses "end_turn", "stop_sequence", and "tool_use" natively.
+# Different providers use varying finish-reason strings natively.
 # LiteLLM normalises most responses but some pass through raw.
 _FINISH_REASON_MAP: dict[str | None, FinishReason] = {
     "stop": FinishReason.STOP,

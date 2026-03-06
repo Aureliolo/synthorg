@@ -27,11 +27,12 @@ class ResolvedModelFactory(ModelFactory[ResolvedModel]):
 
     __model__ = ResolvedModel
     provider_name = "test-provider"
-    model_id = "test-sonnet-001"
+    model_id = "test-medium-001"
     alias = "medium"
     cost_per_1k_input = 0.003
     cost_per_1k_output = 0.015
     max_context = 200_000
+    estimated_latency_ms = 500
 
 
 class RoutingRequestFactory(ModelFactory[RoutingRequest]):
@@ -56,39 +57,42 @@ class RoutingDecisionFactory(ModelFactory[RoutingDecision]):
 
 # ── Standard 3-model provider config ─────────────────────────────
 
-HAIKU_MODEL = ProviderModelConfig(
-    id="test-haiku-001",
+SMALL_MODEL = ProviderModelConfig(
+    id="test-small-001",
     alias="small",
     cost_per_1k_input=0.001,
     cost_per_1k_output=0.005,
     max_context=200_000,
+    estimated_latency_ms=200,
 )
 
-SONNET_MODEL = ProviderModelConfig(
-    id="test-sonnet-001",
+MEDIUM_MODEL = ProviderModelConfig(
+    id="test-medium-001",
     alias="medium",
     cost_per_1k_input=0.003,
     cost_per_1k_output=0.015,
     max_context=200_000,
+    estimated_latency_ms=500,
 )
 
-OPUS_MODEL = ProviderModelConfig(
-    id="test-opus-001",
+LARGE_MODEL = ProviderModelConfig(
+    id="test-large-001",
     alias="large",
     cost_per_1k_input=0.015,
     cost_per_1k_output=0.075,
     max_context=200_000,
+    estimated_latency_ms=1500,
 )
 
 
 @pytest.fixture
 def three_model_provider() -> dict[str, ProviderConfig]:
-    """Provider config with haiku, sonnet, opus."""
+    """Provider config with small, medium, large."""
     return {
         "test-provider": ProviderConfig(
             driver="litellm",
             api_key="sk-test",
-            models=(HAIKU_MODEL, SONNET_MODEL, OPUS_MODEL),
+            models=(SMALL_MODEL, MEDIUM_MODEL, LARGE_MODEL),
         ),
     }
 

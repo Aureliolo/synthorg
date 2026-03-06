@@ -33,6 +33,7 @@ STRATEGY_NAME_MANUAL: Final[str] = "manual"
 STRATEGY_NAME_ROLE_BASED: Final[str] = "role_based"
 STRATEGY_NAME_COST_AWARE: Final[str] = "cost_aware"
 STRATEGY_NAME_SMART: Final[str] = "smart"
+STRATEGY_NAME_FASTEST: Final[str] = "fastest"
 STRATEGY_NAME_CHEAPEST: Final[str] = "cheapest"
 
 
@@ -246,6 +247,54 @@ def _cheapest_within_budget(
         cheapest_cost=cheapest_cost,
     )
     return cheapest, True
+
+
+def _fastest_within_budget(
+    resolver: ModelResolver,
+    remaining_budget: float | None,
+) -> tuple[ResolvedModel, bool]:
+    """Pick the fastest model within budget, falling back to cheapest.
+
+    When no models have latency data, delegates to
+    ``_cheapest_within_budget`` (cost as proxy for speed).
+
+    Returns:
+        Tuple of (model, budget_exceeded).  If budget is exceeded by
+        all models, returns fastest anyway with ``budget_exceeded=True``.
+
+    Raises:
+        NoAvailableModelError: If no models are registered at all.
+    """
+    all_models = resolver.all_models_sorted_by_latency()
+    if not all_models:
+        logger.warning(
+            ROUTING_FALLBACK_EXHAUSTED,
+            source="fastest_within_budget",
+            reason="no models registered",
+        )
+        msg = "No models registered in resolver"
+        raise NoAvailableModelError(msg)
+
+    # If no model has latency data, fall back to cheapest
+    models_with_latency = [m for m in all_models if m.estimated_latency_ms is not None]
+    if not models_with_latency:
+        return _cheapest_within_budget(resolver, remaining_budget)
+
+    if remaining_budget is None:
+        return models_with_latency[0], False
+
+    for model in models_with_latency:
+        if model.total_cost_per_1k <= remaining_budget:
+            return model, False
+
+    fastest = models_with_latency[0]
+    fastest_cost = fastest.total_cost_per_1k
+    logger.warning(
+        ROUTING_BUDGET_EXCEEDED,
+        remaining_budget=remaining_budget,
+        fastest_cost=fastest_cost,
+    )
+    return fastest, True
 
 
 def _try_task_type_rules(
@@ -601,7 +650,66 @@ class CostAwareStrategy:
         )
 
 
-# ── Strategy 4: Smart ────────────────────────────────────────────
+# ── Strategy 4: Fastest ──────────────────────────────────────────
+
+
+class FastestStrategy:
+    """Select the fastest model, optionally respecting a budget.
+
+    Matches ``task_type`` rules first, then falls back to the fastest
+    model from the resolver.  When no models have latency data,
+    delegates to cheapest (cost as proxy for speed).
+    """
+
+    @property
+    def name(self) -> str:
+        """Return strategy name."""
+        return STRATEGY_NAME_FASTEST
+
+    def select(
+        self,
+        request: RoutingRequest,
+        config: RoutingConfig,
+        resolver: ModelResolver,
+    ) -> RoutingDecision:
+        """Select the fastest available model.
+
+        Raises:
+            NoAvailableModelError: If no models are registered.
+        """
+        decision = _try_task_type_rules(
+            request,
+            config,
+            resolver,
+            self.name,
+        )
+        if decision is not None:
+            if _within_budget(decision.resolved_model, request.remaining_budget):
+                return decision
+            logger.info(
+                ROUTING_BUDGET_EXCEEDED,
+                model=decision.resolved_model.model_id,
+                cost=decision.resolved_model.total_cost_per_1k,
+                remaining_budget=request.remaining_budget,
+                source="task_type_rule_budget_check",
+            )
+
+        # Pick fastest
+        model, budget_exceeded = _fastest_within_budget(
+            resolver,
+            request.remaining_budget,
+        )
+        reason = f"Fastest available: {model.model_id}"
+        if budget_exceeded:
+            reason += " (all models exceed remaining budget)"
+        return RoutingDecision(
+            resolved_model=model,
+            strategy_used=self.name,
+            reason=reason,
+        )
+
+
+# ── Strategy 5: Smart ────────────────────────────────────────────
 
 
 class SmartStrategy:
@@ -736,6 +844,7 @@ class SmartStrategy:
 _MANUAL = ManualStrategy()
 _ROLE_BASED = RoleBasedStrategy()
 _COST_AWARE = CostAwareStrategy()
+_FASTEST = FastestStrategy()
 _SMART = SmartStrategy()
 
 STRATEGY_MAP: Mapping[str, RoutingStrategy] = MappingProxyType(
@@ -743,6 +852,7 @@ STRATEGY_MAP: Mapping[str, RoutingStrategy] = MappingProxyType(
         STRATEGY_NAME_MANUAL: _MANUAL,
         STRATEGY_NAME_ROLE_BASED: _ROLE_BASED,
         STRATEGY_NAME_COST_AWARE: _COST_AWARE,
+        STRATEGY_NAME_FASTEST: _FASTEST,
         STRATEGY_NAME_SMART: _SMART,
         STRATEGY_NAME_CHEAPEST: _COST_AWARE,  # Alias for cost_aware
     },

@@ -94,14 +94,14 @@ budget:
     critical_at: 90
     hard_stop_at: 100
 providers:
-  anthropic:
+  example-provider:
     models:
       - id: test-model-001
-        alias: sonnet
+        alias: medium
 routing:
   strategy: cost_aware
   fallback_chain:
-    - sonnet
+    - medium
 """
 
 INVALID_SYNTAX_YAML = """\
@@ -132,8 +132,8 @@ budget:
     critical_at: 90
     hard_stop_at: 100
 providers:
-  anthropic:
-    base_url: ${ANTHROPIC_BASE_URL:-https://api.anthropic.com}
+  example-provider:
+    base_url: ${EXAMPLE_PROVIDER_BASE_URL:-https://api.example.com}
 """
 
 ENV_VAR_MISSING_YAML = """\
