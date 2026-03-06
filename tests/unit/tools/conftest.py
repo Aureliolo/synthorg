@@ -1,5 +1,6 @@
 """Unit test fixtures for the tool system."""
 
+import asyncio
 from typing import Any
 
 import pytest
@@ -297,7 +298,9 @@ def sample_tool_call() -> ToolCall:
 
 @pytest.fixture
 def extended_invoker() -> ToolInvoker:
-    """Invoker with additional edge-case tools for advanced tests."""
+    """Invoker with echo, recursion, invalid-schema, empty-error,
+    remote-ref, and mutating tools for edge-case tests.
+    """
     tools = [
         _EchoTestTool(),
         _RecursionTool(),
@@ -305,5 +308,95 @@ def extended_invoker() -> ToolInvoker:
         _EmptyErrorTool(),
         _RemoteRefTool(),
         _MutatingTool(),
+    ]
+    return ToolInvoker(ToolRegistry(tools))
+
+
+# ── Concurrency test tools ───────────────────────────────────────
+
+
+class _DelayTool(BaseTool):
+    """Sleeps for ``delay`` seconds, then returns ``value``."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="delay",
+            description="Sleeps then returns value",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "delay": {"type": "number"},
+                    "value": {"type": "string"},
+                },
+                "required": ["delay", "value"],
+                "additionalProperties": False,
+            },
+        )
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        await asyncio.sleep(arguments["delay"])
+        return ToolExecutionResult(content=arguments["value"])
+
+
+class _ConcurrencyTrackingTool(BaseTool):
+    """Tracks peak concurrent executions via a lock-guarded counter."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="tracking",
+            description="Tracks concurrency",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "duration": {"type": "number"},
+                },
+                "required": ["duration"],
+                "additionalProperties": False,
+            },
+        )
+        self._lock = asyncio.Lock()
+        self._current = 0
+        self._peak = 0
+
+    @property
+    def peak(self) -> int:
+        """Return the peak concurrent execution count."""
+        return self._peak
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        async with self._lock:
+            self._current += 1
+            self._peak = max(self._peak, self._current)
+        await asyncio.sleep(arguments["duration"])
+        async with self._lock:
+            self._current -= 1
+        return ToolExecutionResult(content=str(self._peak))
+
+
+@pytest.fixture
+def concurrency_tracking_tool() -> _ConcurrencyTrackingTool:
+    """Standalone tracking tool for direct peak inspection."""
+    return _ConcurrencyTrackingTool()
+
+
+@pytest.fixture
+def concurrency_invoker(
+    concurrency_tracking_tool: _ConcurrencyTrackingTool,
+) -> ToolInvoker:
+    """Invoker with echo, failing, delay, tracking, and recursion tools."""
+    tools: list[BaseTool] = [
+        _EchoTestTool(),
+        _FailingTool(),
+        _DelayTool(),
+        concurrency_tracking_tool,
+        _RecursionTool(),
     ]
     return ToolInvoker(ToolRegistry(tools))

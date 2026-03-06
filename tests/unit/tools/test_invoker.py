@@ -1,5 +1,6 @@
 """Tests for ToolInvoker."""
 
+import time
 from typing import TYPE_CHECKING
 
 import pytest
@@ -7,7 +8,11 @@ import pytest
 from ai_company.providers.models import ToolCall, ToolResult
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from ai_company.tools.invoker import ToolInvoker
+
+    from .conftest import _ConcurrencyTrackingTool
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -112,7 +117,7 @@ class TestInvokeParameterValidation:
         result = await sample_invoker.invoke(call)
         assert result.is_error is True
 
-    async def test_empty_schema_skips_validation(
+    async def test_no_schema_skips_validation(
         self,
         sample_invoker: ToolInvoker,
     ) -> None:
@@ -369,9 +374,9 @@ class TestInvokeDeepcopyFailure:
         def _fail_on_execute(obj: object, memo: object = None) -> object:
             nonlocal call_count
             call_count += 1
-            # First deepcopy call is in _validate_params via
-            # parameters_schema; let it pass. Fail on the second
-            # call in _execute_tool.
+            # First deepcopy call is BaseTool.parameters_schema
+            # (called from _validate_params); let it pass. Fail on
+            # the second call (argument copying in _execute_tool).
             if call_count > 1:
                 msg = "cannot copy"
                 raise TypeError(msg)
@@ -431,3 +436,232 @@ class TestInvokeEmptyErrorMessage:
         result = await extended_invoker.invoke(call)
         assert result.is_error is True
         assert "ValueError (no message)" in result.content
+
+
+@pytest.mark.unit
+class TestInvokeAllConcurrency:
+    """Tests for concurrent execution in invoke_all."""
+
+    async def test_concurrent_faster_than_sequential(
+        self,
+        concurrency_invoker: ToolInvoker,
+    ) -> None:
+        """Three 0.1s delay tools complete in less than 0.3s total."""
+        calls = [
+            ToolCall(
+                id=f"d{i}",
+                name="delay",
+                arguments={"delay": 0.1, "value": f"v{i}"},
+            )
+            for i in range(3)
+        ]
+        start = time.monotonic()
+        results = await concurrency_invoker.invoke_all(calls)
+        elapsed = time.monotonic() - start
+        assert len(results) == 3
+        assert all(r.content == f"v{i}" for i, r in enumerate(results))
+        # Sequential would take >= 0.3s; proves parallel execution
+        assert elapsed < 0.5
+
+    async def test_concurrent_results_in_input_order(
+        self,
+        concurrency_invoker: ToolInvoker,
+    ) -> None:
+        """Results match input order regardless of completion order."""
+        calls = [
+            ToolCall(
+                id="slow",
+                name="delay",
+                arguments={"delay": 0.1, "value": "first"},
+            ),
+            ToolCall(
+                id="fast",
+                name="delay",
+                arguments={"delay": 0.01, "value": "second"},
+            ),
+        ]
+        results = await concurrency_invoker.invoke_all(calls)
+        assert results[0].tool_call_id == "slow"
+        assert results[0].content == "first"
+        assert results[1].tool_call_id == "fast"
+        assert results[1].content == "second"
+
+    async def test_recoverable_error_does_not_cancel_siblings(
+        self,
+        concurrency_invoker: ToolInvoker,
+    ) -> None:
+        """A failing tool doesn't prevent siblings from completing."""
+        calls = [
+            ToolCall(id="c1", name="echo_test", arguments={"message": "a"}),
+            ToolCall(id="c2", name="failing", arguments={"input": "x"}),
+            ToolCall(id="c3", name="echo_test", arguments={"message": "b"}),
+        ]
+        results = await concurrency_invoker.invoke_all(calls)
+        assert len(results) == 3
+        assert results[0].is_error is False
+        assert results[1].is_error is True
+        assert results[2].is_error is False
+
+    async def test_single_non_recoverable_raises_bare(
+        self,
+        concurrency_invoker: ToolInvoker,
+    ) -> None:
+        """Single fatal error re-raises as bare exception."""
+        calls = [
+            ToolCall(
+                id="r1",
+                name="recursion",
+                arguments={"input": "boom"},
+            ),
+        ]
+        with pytest.raises(RecursionError, match="maximum recursion depth"):
+            await concurrency_invoker.invoke_all(calls)
+
+    async def test_mixed_fatal_and_success_raises_fatal(
+        self,
+        concurrency_invoker: ToolInvoker,
+    ) -> None:
+        """Fatal error is raised even when siblings succeed."""
+        calls = [
+            ToolCall(id="ok1", name="echo_test", arguments={"message": "a"}),
+            ToolCall(
+                id="fatal",
+                name="recursion",
+                arguments={"input": "boom"},
+            ),
+            ToolCall(id="ok2", name="echo_test", arguments={"message": "b"}),
+        ]
+        with pytest.raises(RecursionError, match="maximum recursion depth"):
+            await concurrency_invoker.invoke_all(calls)
+
+    async def test_multiple_non_recoverable_raises_exception_group(
+        self,
+        concurrency_invoker: ToolInvoker,
+    ) -> None:
+        """Multiple fatal errors raise ExceptionGroup."""
+        calls = [
+            ToolCall(
+                id="r1",
+                name="recursion",
+                arguments={"input": "boom1"},
+            ),
+            ToolCall(
+                id="r2",
+                name="recursion",
+                arguments={"input": "boom2"},
+            ),
+        ]
+        with pytest.raises(ExceptionGroup) as exc_info:
+            await concurrency_invoker.invoke_all(calls)
+        assert len(exc_info.value.exceptions) == 2
+        assert all(isinstance(e, RecursionError) for e in exc_info.value.exceptions)
+
+
+@pytest.mark.unit
+class TestInvokeAllBounded:
+    """Tests for max_concurrency parameter."""
+
+    async def test_max_concurrency_one_sequential(
+        self,
+        concurrency_invoker: ToolInvoker,
+        concurrency_tracking_tool: _ConcurrencyTrackingTool,
+    ) -> None:
+        """max_concurrency=1 enforces sequential execution (peak=1)."""
+        calls = [
+            ToolCall(
+                id=f"t{i}",
+                name="tracking",
+                arguments={"duration": 0.02},
+            )
+            for i in range(3)
+        ]
+        results = await concurrency_invoker.invoke_all(calls, max_concurrency=1)
+        assert len(results) == 3
+        assert concurrency_tracking_tool.peak == 1
+
+    async def test_max_concurrency_bounds_parallelism(
+        self,
+        concurrency_invoker: ToolInvoker,
+        concurrency_tracking_tool: _ConcurrencyTrackingTool,
+    ) -> None:
+        """With max_concurrency=2, peak never exceeds 2."""
+        calls = [
+            ToolCall(
+                id=f"t{i}",
+                name="tracking",
+                arguments={"duration": 0.05},
+            )
+            for i in range(5)
+        ]
+        await concurrency_invoker.invoke_all(calls, max_concurrency=2)
+        assert concurrency_tracking_tool.peak <= 2
+
+    async def test_max_concurrency_none_unbounded(
+        self,
+        concurrency_invoker: ToolInvoker,
+        concurrency_tracking_tool: _ConcurrencyTrackingTool,
+    ) -> None:
+        """Without max_concurrency, parallelism exceeds 1."""
+        calls = [
+            ToolCall(
+                id=f"t{i}",
+                name="tracking",
+                arguments={"duration": 0.05},
+            )
+            for i in range(5)
+        ]
+        await concurrency_invoker.invoke_all(calls)
+        assert concurrency_tracking_tool.peak >= 3
+
+    async def test_max_concurrency_validation(
+        self,
+        concurrency_invoker: ToolInvoker,
+    ) -> None:
+        """max_concurrency=0 and negative values raise ValueError."""
+        calls = [
+            ToolCall(id="c1", name="echo_test", arguments={"message": "a"}),
+        ]
+        with pytest.raises(ValueError, match="max_concurrency"):
+            await concurrency_invoker.invoke_all(calls, max_concurrency=0)
+        with pytest.raises(ValueError, match="max_concurrency"):
+            await concurrency_invoker.invoke_all(calls, max_concurrency=-1)
+
+
+@pytest.mark.unit
+class TestInvokeAllEdgeCases:
+    """Edge case tests for invoke_all."""
+
+    async def test_single_call(
+        self,
+        concurrency_invoker: ToolInvoker,
+    ) -> None:
+        """Single-element input works correctly."""
+        calls = [
+            ToolCall(id="c1", name="echo_test", arguments={"message": "solo"}),
+        ]
+        results = await concurrency_invoker.invoke_all(calls)
+        assert len(results) == 1
+        assert results[0].content == "solo"
+
+    async def test_generator_input(
+        self,
+        concurrency_invoker: ToolInvoker,
+    ) -> None:
+        """Non-list iterable (generator) works correctly."""
+
+        def _gen() -> Iterator[ToolCall]:
+            yield ToolCall(id="g1", name="echo_test", arguments={"message": "gen1"})
+            yield ToolCall(id="g2", name="echo_test", arguments={"message": "gen2"})
+
+        results = await concurrency_invoker.invoke_all(_gen())
+        assert len(results) == 2
+        assert results[0].content == "gen1"
+        assert results[1].content == "gen2"
+
+    async def test_empty_with_max_concurrency(
+        self,
+        concurrency_invoker: ToolInvoker,
+    ) -> None:
+        """Empty input with max_concurrency returns empty tuple."""
+        results = await concurrency_invoker.invoke_all([], max_concurrency=3)
+        assert results == ()
