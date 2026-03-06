@@ -25,7 +25,6 @@ class TokenUsageFactory(ModelFactory[TokenUsage]):
     __model__ = TokenUsage
     input_tokens = 100
     output_tokens = 50
-    total_tokens = 150
     cost_usd = 0.001
 
 
@@ -174,7 +173,6 @@ def sample_token_usage() -> TokenUsage:
     return TokenUsage(
         input_tokens=4500,
         output_tokens=1200,
-        total_tokens=5700,
         cost_usd=0.0315,
     )
 

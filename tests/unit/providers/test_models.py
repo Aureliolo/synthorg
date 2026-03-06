@@ -42,21 +42,11 @@ class TestTokenUsage:
         assert sample_token_usage.total_tokens == 5700
         assert sample_token_usage.cost_usd == 0.0315
 
-    def test_total_must_equal_sum(self) -> None:
-        with pytest.raises(ValidationError, match="total_tokens"):
-            TokenUsage(
-                input_tokens=100,
-                output_tokens=50,
-                total_tokens=200,
-                cost_usd=0.001,
-            )
-
     def test_negative_input_rejected(self) -> None:
         with pytest.raises(ValidationError):
             TokenUsage(
                 input_tokens=-1,
                 output_tokens=0,
-                total_tokens=-1,
                 cost_usd=0.0,
             )
 
@@ -65,7 +55,6 @@ class TestTokenUsage:
             TokenUsage(
                 input_tokens=100,
                 output_tokens=0,
-                total_tokens=100,
                 cost_usd=-0.01,
             )
 
@@ -73,7 +62,6 @@ class TestTokenUsage:
         usage = TokenUsage(
             input_tokens=0,
             output_tokens=0,
-            total_tokens=0,
             cost_usd=0.0,
         )
         assert usage.total_tokens == 0

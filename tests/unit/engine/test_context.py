@@ -157,7 +157,6 @@ class TestAgentContextTurns:
         usage = TokenUsage(
             input_tokens=1,
             output_tokens=1,
-            total_tokens=2,
             cost_usd=0.0,
         )
         msg = _make_assistant_msg()
@@ -174,7 +173,6 @@ class TestAgentContextTurns:
         usage = TokenUsage(
             input_tokens=1,
             output_tokens=1,
-            total_tokens=2,
             cost_usd=0.0,
         )
         msg = _make_assistant_msg()
@@ -267,7 +265,6 @@ class TestAgentContextSnapshot:
                 accumulated_cost=TokenUsage(
                     input_tokens=0,
                     output_tokens=0,
-                    total_tokens=0,
                     cost_usd=0.0,
                 ),
                 started_at=datetime.now(UTC),
@@ -286,7 +283,6 @@ class TestAgentContextSnapshot:
                 accumulated_cost=TokenUsage(
                     input_tokens=0,
                     output_tokens=0,
-                    total_tokens=0,
                     cost_usd=0.0,
                 ),
                 started_at=datetime.now(UTC),
@@ -370,7 +366,6 @@ class TestAgentContextLogging:
         usage = TokenUsage(
             input_tokens=1,
             output_tokens=1,
-            total_tokens=2,
             cost_usd=0.0,
         )
         msg = _make_assistant_msg()

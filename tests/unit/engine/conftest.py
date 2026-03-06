@@ -126,7 +126,6 @@ def sample_token_usage() -> TokenUsage:
     return TokenUsage(
         input_tokens=100,
         output_tokens=50,
-        total_tokens=150,
         cost_usd=0.01,
     )
 

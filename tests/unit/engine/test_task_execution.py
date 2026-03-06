@@ -252,13 +252,11 @@ class TestAddTokenUsage:
         a = TokenUsage(
             input_tokens=10,
             output_tokens=5,
-            total_tokens=15,
             cost_usd=0.01,
         )
         b = TokenUsage(
             input_tokens=20,
             output_tokens=10,
-            total_tokens=30,
             cost_usd=0.02,
         )
         result = add_token_usage(a, b)
@@ -271,13 +269,11 @@ class TestAddTokenUsage:
         a = TokenUsage(
             input_tokens=7,
             output_tokens=3,
-            total_tokens=10,
             cost_usd=0.0,
         )
         b = TokenUsage(
             input_tokens=13,
             output_tokens=7,
-            total_tokens=20,
             cost_usd=0.0,
         )
         result = add_token_usage(a, b)
@@ -287,7 +283,6 @@ class TestAddTokenUsage:
         usage = TokenUsage(
             input_tokens=50,
             output_tokens=25,
-            total_tokens=75,
             cost_usd=0.05,
         )
         result = add_token_usage(ZERO_TOKEN_USAGE, usage)

@@ -2,7 +2,7 @@
 
 from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 
@@ -18,7 +18,7 @@ class TokenUsage(BaseModel):
     Attributes:
         input_tokens: Number of input (prompt) tokens.
         output_tokens: Number of output (completion) tokens.
-        total_tokens: Sum of input and output tokens.
+        total_tokens: Sum of input and output tokens (computed).
         cost_usd: Estimated cost in USD for this call.
     """
 
@@ -26,26 +26,18 @@ class TokenUsage(BaseModel):
 
     input_tokens: int = Field(ge=0, description="Input token count")
     output_tokens: int = Field(ge=0, description="Output token count")
-    total_tokens: int = Field(ge=0, description="Total token count")
     cost_usd: float = Field(ge=0.0, description="Estimated cost in USD")
 
-    @model_validator(mode="after")
-    def _validate_total(self) -> Self:
-        """Ensure total_tokens equals the sum of input and output tokens."""
-        expected = self.input_tokens + self.output_tokens
-        if self.total_tokens != expected:
-            msg = (
-                f"total_tokens ({self.total_tokens}) must equal "
-                f"input_tokens + output_tokens ({expected})"
-            )
-            raise ValueError(msg)
-        return self
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def total_tokens(self) -> int:
+        """Sum of input and output tokens."""
+        return self.input_tokens + self.output_tokens
 
 
 ZERO_TOKEN_USAGE = TokenUsage(
     input_tokens=0,
     output_tokens=0,
-    total_tokens=0,
     cost_usd=0.0,
 )
 """Additive identity for ``TokenUsage``."""
@@ -54,9 +46,6 @@ ZERO_TOKEN_USAGE = TokenUsage(
 def add_token_usage(a: TokenUsage, b: TokenUsage) -> TokenUsage:
     """Create a new ``TokenUsage`` with summed token counts and cost.
 
-    Computes ``total_tokens`` from the summed parts to maintain the
-    ``total_tokens == input_tokens + output_tokens`` invariant.
-
     Args:
         a: First usage record.
         b: Second usage record.
@@ -64,12 +53,9 @@ def add_token_usage(a: TokenUsage, b: TokenUsage) -> TokenUsage:
     Returns:
         New ``TokenUsage`` with summed token counts and cost.
     """
-    input_tokens = a.input_tokens + b.input_tokens
-    output_tokens = a.output_tokens + b.output_tokens
     return TokenUsage(
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        total_tokens=input_tokens + output_tokens,
+        input_tokens=a.input_tokens + b.input_tokens,
+        output_tokens=a.output_tokens + b.output_tokens,
         cost_usd=a.cost_usd + b.cost_usd,
     )
 
