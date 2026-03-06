@@ -51,9 +51,9 @@ src/ai_company/
   memory/         # Persistent agent memory (memory layer TBD)
   observability/  # Structured logging, correlation tracking, log sinks
   providers/      # LLM provider abstraction (LiteLLM adapter)
-  security/       # SecOps agent, approval gates, sandboxing
+  security/       # SecOps agent, approval gates, audit
   templates/      # Pre-built company templates and builder
-  tools/          # Tool registry, MCP integration, role-based access
+  tools/          # Tool registry, MCP integration, role-based access, sandboxing
 ```
 
 ## Shell Usage
