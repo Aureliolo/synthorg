@@ -7,6 +7,7 @@ non-recoverable errors (``MemoryError``, ``RecursionError``) and
 ``asyncio.CancelledError``) propagate after logging.
 """
 
+import asyncio
 import copy
 from typing import TYPE_CHECKING
 
@@ -17,6 +18,8 @@ from referencing.exceptions import NoSuchResource
 
 from ai_company.observability import get_logger
 from ai_company.observability.events.tool import (
+    TOOL_INVOKE_ALL_COMPLETE,
+    TOOL_INVOKE_ALL_START,
     TOOL_INVOKE_DEEPCOPY_ERROR,
     TOOL_INVOKE_EXECUTION_ERROR,
     TOOL_INVOKE_NON_RECOVERABLE,
@@ -64,9 +67,13 @@ class ToolInvoker:
             invoker = ToolInvoker(registry)
             result = await invoker.invoke(tool_call)
 
-        Invoke multiple tool calls sequentially::
+        Invoke multiple tool calls concurrently::
 
             results = await invoker.invoke_all(tool_calls)
+
+        Limit concurrency::
+
+            results = await invoker.invoke_all(tool_calls, max_concurrency=3)
     """
 
     def __init__(self, registry: ToolRegistry) -> None:
@@ -318,19 +325,91 @@ class ToolInvoker:
             is_error=result.is_error,
         )
 
+    async def _run_guarded(
+        self,
+        index: int,
+        tool_call: ToolCall,
+        results: list[ToolResult | None],
+        fatal_errors: list[Exception],
+        semaphore: asyncio.Semaphore | None,
+    ) -> None:
+        """Execute a single tool call, storing fatal errors instead of raising.
+
+        This wrapper ensures that ``MemoryError`` / ``RecursionError`` do not
+        cancel sibling tasks inside a ``TaskGroup``.
+        """
+        try:
+            if semaphore is not None:
+                async with semaphore:
+                    results[index] = await self.invoke(tool_call)
+            else:
+                results[index] = await self.invoke(tool_call)
+        except (MemoryError, RecursionError) as exc:
+            fatal_errors.append(exc)
+
     async def invoke_all(
         self,
         tool_calls: Iterable[ToolCall],
+        *,
+        max_concurrency: int | None = None,
     ) -> tuple[ToolResult, ...]:
-        """Execute multiple tool calls sequentially.
+        """Execute multiple tool calls concurrently.
 
         Calls continue through recoverable failures; non-recoverable
-        errors propagate immediately.
+        errors (``MemoryError``, ``RecursionError``) are collected and
+        re-raised after all tasks complete.
 
         Args:
-            tool_calls: Tool calls to execute in order.
+            tool_calls: Tool calls to execute.
+            max_concurrency: Maximum number of concurrent invocations.
+                ``None`` (default) means unbounded.  Must be ``>= 1``
+                if provided.
 
         Returns:
             Tuple of results in the same order as the input.
+
+        Raises:
+            ValueError: If ``max_concurrency`` is less than 1.
+            RecursionError: If exactly one fatal error occurred.
+            MemoryError: If exactly one fatal error occurred.
+            ExceptionGroup: If multiple fatal errors occurred.
         """
-        return tuple([await self.invoke(call) for call in tool_calls])
+        if max_concurrency is not None and max_concurrency < 1:
+            msg = f"max_concurrency must be >= 1, got {max_concurrency}"
+            raise ValueError(msg)
+
+        calls = list(tool_calls)
+        if not calls:
+            return ()
+
+        logger.info(
+            TOOL_INVOKE_ALL_START,
+            count=len(calls),
+            max_concurrency=max_concurrency,
+        )
+
+        results: list[ToolResult | None] = [None] * len(calls)
+        fatal_errors: list[Exception] = []
+        semaphore = (
+            asyncio.Semaphore(max_concurrency) if max_concurrency is not None else None
+        )
+
+        async with asyncio.TaskGroup() as tg:
+            for idx, call in enumerate(calls):
+                tg.create_task(
+                    self._run_guarded(idx, call, results, fatal_errors, semaphore),
+                )
+
+        logger.info(
+            TOOL_INVOKE_ALL_COMPLETE,
+            count=len(calls),
+            fatal_count=len(fatal_errors),
+        )
+
+        if fatal_errors:
+            if len(fatal_errors) == 1:
+                raise fatal_errors[0]
+            msg = "multiple non-recoverable tool errors"
+            raise ExceptionGroup(msg, fatal_errors)
+
+        return tuple(results)  # type: ignore[arg-type]
