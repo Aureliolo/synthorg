@@ -189,7 +189,16 @@ class _MutatingTool(BaseTool):
     """Tool that mutates its arguments to test boundary isolation."""
 
     def __init__(self) -> None:
-        super().__init__(name="mutating", description="Mutates args")
+        super().__init__(
+            name="mutating",
+            description="Mutates args",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "nested": {"type": "object"},
+                },
+            },
+        )
 
     async def execute(
         self,

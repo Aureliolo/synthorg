@@ -106,6 +106,16 @@ class TestBaseTool:
         assert tool.parameters_schema is not None
         assert "injected" not in tool.parameters_schema
 
+    def test_schema_nested_isolated_on_construction(self) -> None:
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {"x": {"type": "string"}},
+        }
+        tool = _ConcreteTool(name="t", parameters_schema=schema)
+        schema["properties"]["x"]["type"] = "integer"
+        assert tool.parameters_schema is not None
+        assert tool.parameters_schema["properties"]["x"]["type"] == "string"
+
     def test_schema_internal_is_read_only(self) -> None:
         schema = {"type": "object", "properties": {"x": {"type": "string"}}}
         tool = _ConcreteTool(name="t", parameters_schema=schema)
@@ -123,6 +133,19 @@ class TestBaseTool:
         returned["injected"] = True
         assert tool.parameters_schema is not None
         assert "injected" not in tool.parameters_schema
+
+    def test_schema_property_nested_mutation_isolated(self) -> None:
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {"x": {"type": "string"}},
+        }
+        tool = _ConcreteTool(name="t", parameters_schema=schema)
+        returned = tool.parameters_schema
+        assert returned is not None
+        returned["properties"]["x"]["type"] = "integer"
+        fresh = tool.parameters_schema
+        assert fresh is not None
+        assert fresh["properties"]["x"]["type"] == "string"
 
     def test_to_definition(self) -> None:
         schema = {"type": "object", "properties": {"x": {"type": "string"}}}

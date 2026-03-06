@@ -237,9 +237,33 @@ class ToolInvoker:
     ) -> ToolExecutionResult | ToolResult:
         """Execute the tool, catching errors as ``ToolResult``."""
         try:
-            return await tool.execute(
-                arguments=copy.deepcopy(tool_call.arguments),
+            safe_args = copy.deepcopy(tool_call.arguments)
+        except (MemoryError, RecursionError) as exc:
+            logger.exception(
+                TOOL_INVOKE_NON_RECOVERABLE,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                error=f"{type(exc).__name__}: {exc}",
             )
+            raise
+        except Exception as exc:
+            error_msg = str(exc) or f"{type(exc).__name__} (no message)"
+            logger.exception(
+                TOOL_INVOKE_PARAMETER_ERROR,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                error=f"Failed to deep-copy arguments: {error_msg}",
+            )
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                content=(
+                    f"Tool {tool_call.name!r} arguments could not be "
+                    f"safely copied: {error_msg}"
+                ),
+                is_error=True,
+            )
+        try:
+            return await tool.execute(arguments=safe_args)
         except (MemoryError, RecursionError) as exc:
             logger.exception(
                 TOOL_INVOKE_NON_RECOVERABLE,
