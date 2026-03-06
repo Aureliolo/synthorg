@@ -26,6 +26,7 @@ from ai_company.engine.loop_protocol import (
     TerminationReason,
     TurnRecord,
 )
+from ai_company.engine.metrics import TaskCompletionMetrics
 from ai_company.engine.prompt import (
     DefaultTokenEstimator,
     PromptTokenEstimator,
@@ -58,6 +59,7 @@ __all__ = [
     "ReactLoop",
     "StatusTransition",
     "SystemPrompt",
+    "TaskCompletionMetrics",
     "TaskExecution",
     "TerminationReason",
     "TurnRecord",

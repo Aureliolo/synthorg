@@ -21,8 +21,8 @@ from ai_company.engine.loop_protocol import (
 )
 from ai_company.engine.prompt import SystemPrompt
 from ai_company.engine.run_result import AgentRunResult
-from ai_company.providers.enums import FinishReason
-from ai_company.providers.models import TokenUsage
+from ai_company.providers.enums import FinishReason, MessageRole
+from ai_company.providers.models import ChatMessage, TokenUsage, ToolCall
 
 
 def _test_identity() -> AgentIdentity:
@@ -423,3 +423,73 @@ class TestMakeBudgetChecker:
             },
         )
         assert checker(ctx) is True
+
+
+def _make_result_with_messages(
+    *messages: ChatMessage,
+) -> AgentRunResult:
+    """Build an AgentRunResult with specific messages in conversation."""
+    identity = _test_identity()
+    ctx = AgentContext.from_identity(identity)
+    for msg in messages:
+        ctx = ctx.with_message(msg)
+    execution = ExecutionResult(
+        context=ctx,
+        termination_reason=TerminationReason.COMPLETED,
+    )
+    prompt = SystemPrompt(
+        content="",
+        template_version="1.0",
+        estimated_tokens=0,
+        sections=(),
+        metadata={},
+    )
+    return AgentRunResult(
+        execution_result=execution,
+        system_prompt=prompt,
+        duration_seconds=1.0,
+        agent_id="agent-001",
+    )
+
+
+@pytest.mark.unit
+class TestCompletionSummary:
+    """completion_summary returns last assistant message content."""
+
+    def test_returns_last_assistant_content(self) -> None:
+        result = _make_result_with_messages(
+            ChatMessage(role=MessageRole.ASSISTANT, content="First"),
+            ChatMessage(role=MessageRole.USER, content="Follow up"),
+            ChatMessage(role=MessageRole.ASSISTANT, content="Final answer"),
+        )
+        assert result.completion_summary == "Final answer"
+
+    def test_returns_none_when_no_assistant_messages(self) -> None:
+        result = _make_result_with_messages(
+            ChatMessage(role=MessageRole.USER, content="Hello"),
+        )
+        assert result.completion_summary is None
+
+    def test_returns_none_for_empty_conversation(self) -> None:
+        result = _make_result_with_messages()
+        assert result.completion_summary is None
+
+    def test_skips_tool_call_only_messages(self) -> None:
+        """Assistant message with tool_calls but no content is skipped."""
+        result = _make_result_with_messages(
+            ChatMessage(role=MessageRole.ASSISTANT, content="Before tool"),
+            ChatMessage(
+                role=MessageRole.ASSISTANT,
+                content=None,
+                tool_calls=(ToolCall(id="call-1", name="test_tool", arguments={}),),
+            ),
+        )
+        assert result.completion_summary == "Before tool"
+
+    def test_skips_empty_string_content(self) -> None:
+        """Assistant message with empty string content is skipped."""
+        result = _make_result_with_messages(
+            ChatMessage(role=MessageRole.ASSISTANT, content="Real content"),
+            ChatMessage(role=MessageRole.ASSISTANT, content=""),
+        )
+        assert result.completion_summary == "Real content"

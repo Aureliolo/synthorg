@@ -32,3 +32,5 @@ EXECUTION_ENGINE_TASK_TRANSITION: Final[str] = "execution.engine.task_transition
 EXECUTION_ENGINE_COST_RECORDED: Final[str] = "execution.engine.cost_recorded"
 EXECUTION_ENGINE_COST_SKIPPED: Final[str] = "execution.engine.cost_skipped"
 EXECUTION_ENGINE_COST_FAILED: Final[str] = "execution.engine.cost_failed"
+EXECUTION_ENGINE_TASK_METRICS: Final[str] = "execution.engine.task_metrics"
+EXECUTION_ENGINE_TIMEOUT: Final[str] = "execution.engine.timeout"

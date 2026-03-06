@@ -115,10 +115,10 @@ class TestAgentEngineTaskTransition:
             task=sample_task_with_criteria,
         )
 
-        # The context inside the result should show IN_PROGRESS
+        # Successful run auto-completes: ASSIGNED → IP → IR → COMPLETED
         te = result.execution_result.context.task_execution
         assert te is not None
-        assert te.status == TaskStatus.IN_PROGRESS
+        assert te.status == TaskStatus.COMPLETED
 
 
 @pytest.mark.unit
@@ -142,9 +142,10 @@ class TestAgentEngineAlreadyInProgress:
         )
 
         assert result.is_success is True
+        # Successful run auto-completes: IP → IR → COMPLETED
         te = result.execution_result.context.task_execution
         assert te is not None
-        assert te.status == TaskStatus.IN_PROGRESS
+        assert te.status == TaskStatus.COMPLETED
 
 
 @pytest.mark.unit
@@ -195,7 +196,7 @@ class TestAgentEngineInvalidInput:
             priority=Priority.MEDIUM,
             project="proj-001",
             created_by="manager",
-            assigned_to="someone",
+            assigned_to=str(sample_agent_with_personality.id),
             status=TaskStatus.COMPLETED,
         )
         provider = mock_provider_factory([])
@@ -244,7 +245,7 @@ class TestAgentEngineInvalidInput:
             type=TaskType.DEVELOPMENT,
             project="proj-001",
             created_by="manager",
-            assigned_to="someone",
+            assigned_to=str(sample_agent_with_personality.id),
             status=TaskStatus.BLOCKED,
         )
         provider = mock_provider_factory([])
@@ -374,7 +375,7 @@ class TestAgentEngineBudgetChecker:
             type=TaskType.DEVELOPMENT,
             project="proj-001",
             created_by="manager",
-            assigned_to="someone",
+            assigned_to=str(sample_agent_with_personality.id),
             budget_limit=0.0,
             status=TaskStatus.ASSIGNED,
         )
@@ -451,7 +452,7 @@ class TestAgentEngineCostRecording:
             type=TaskType.DEVELOPMENT,
             project="proj-001",
             created_by="manager",
-            assigned_to="someone",
+            assigned_to=str(sample_agent_with_personality.id),
             status=TaskStatus.ASSIGNED,
         )
         response = _make_completion_response(
@@ -481,7 +482,7 @@ class TestAgentEngineCostRecording:
             type=TaskType.DEVELOPMENT,
             project="proj-001",
             created_by="manager",
-            assigned_to="someone",
+            assigned_to=str(sample_agent_with_personality.id),
             status=TaskStatus.ASSIGNED,
         )
         response = _make_completion_response(
@@ -533,6 +534,10 @@ class TestAgentEngineCompletionConfig:
         ctx = AgentContext.from_identity(
             sample_agent_with_personality,
             task=sample_task_with_criteria,
+        )
+        ctx = ctx.with_task_transition(
+            TaskStatus.IN_PROGRESS,
+            reason="Engine starting execution",
         )
         mock_result = ExecutionResult(
             context=ctx,
@@ -646,6 +651,12 @@ class TestAgentEngineDefaultLoop:
         ctx = AgentContext.from_identity(
             sample_agent_with_personality,
             task=sample_task_with_criteria,
+        )
+        # Mock must return context at IN_PROGRESS (as _prepare_context
+        # transitions ASSIGNED → IP before handing to the loop).
+        ctx = ctx.with_task_transition(
+            TaskStatus.IN_PROGRESS,
+            reason="Engine starting execution",
         )
         mock_result = ExecutionResult(
             context=ctx,

@@ -202,7 +202,95 @@ class TestAgentEngineToolCallIntegration:
         assert tool_results[0].tool_result is not None
         assert tool_results[0].tool_result.content == "HELLO WORLD"
 
-        # Verify task transitioned to IN_PROGRESS
+        # Verify task auto-completed: ASSIGNED → IP → IR → COMPLETED
         te = result.execution_result.context.task_execution
         assert te is not None
-        assert te.status == TaskStatus.IN_PROGRESS
+        assert te.status == TaskStatus.COMPLETED
+
+
+class TestAgentEngineFullLifecycle:
+    """Full task lifecycle: ASSIGNED → IN_PROGRESS → IN_REVIEW → COMPLETED."""
+
+    async def test_full_lifecycle_assigned_to_completed(self) -> None:
+        """Verify complete lifecycle with transitions, summary, and metrics."""
+        identity = AgentIdentity(
+            id=uuid4(),
+            name="Lifecycle Agent",
+            role="Developer",
+            department="Engineering",
+            level=SeniorityLevel.MID,
+            hiring_date=date(2026, 1, 15),
+            personality=PersonalityConfig(traits=("analytical",)),
+            model=ModelConfig(
+                provider="test-provider",
+                model_id="test-model-001",
+            ),
+        )
+        task = Task(
+            id="task-lifecycle",
+            title="Full lifecycle test",
+            description="Test the complete task lifecycle.",
+            type=TaskType.DEVELOPMENT,
+            priority=Priority.MEDIUM,
+            project="proj-001",
+            created_by="manager",
+            assigned_to=str(identity.id),
+            status=TaskStatus.ASSIGNED,
+        )
+
+        tool = UppercaseTool(
+            name="uppercase",
+            description="Converts text to uppercase.",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "Text to uppercase",
+                    },
+                },
+                "required": ["text"],
+            },
+        )
+        registry = ToolRegistry([tool])
+        provider = _ToolCallingProvider()
+
+        engine = AgentEngine(
+            provider=provider,
+            tool_registry=registry,
+        )
+
+        result = await engine.run(
+            identity=identity,
+            task=task,
+            max_turns=5,
+        )
+
+        # Verify successful completion
+        assert result.is_success is True
+        assert result.termination_reason == TerminationReason.COMPLETED
+
+        # Verify transition log: ASSIGNED→IP, IP→IR, IR→COMPLETED
+        te = result.execution_result.context.task_execution
+        assert te is not None
+        assert te.status == TaskStatus.COMPLETED
+        assert len(te.transition_log) == 3
+        assert te.transition_log[0].to_status == TaskStatus.IN_PROGRESS
+        assert te.transition_log[1].to_status == TaskStatus.IN_REVIEW
+        assert te.transition_log[2].to_status == TaskStatus.COMPLETED
+
+        # Verify completed_at is set
+        assert te.completed_at is not None
+
+        # Verify completion_summary is non-empty
+        assert result.completion_summary is not None
+        assert len(result.completion_summary) > 0
+
+        # Verify TaskCompletionMetrics computable
+        from ai_company.engine.metrics import TaskCompletionMetrics
+
+        metrics = TaskCompletionMetrics.from_run_result(result)
+        assert metrics.turns_per_task > 0
+        assert metrics.tokens_per_task > 0
+        assert metrics.cost_per_task > 0
+        assert metrics.duration_seconds > 0

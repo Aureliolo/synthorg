@@ -92,7 +92,9 @@ def sample_role_with_description() -> Role:
 
 
 @pytest.fixture
-def sample_task_with_criteria() -> Task:
+def sample_task_with_criteria(
+    sample_agent_with_personality: AgentIdentity,
+) -> Task:
     """Task with acceptance criteria and budget for prompt testing."""
     return Task(
         id="task-prompt-001",
@@ -109,7 +111,7 @@ def sample_task_with_criteria() -> Task:
         estimated_complexity=Complexity.MEDIUM,
         budget_limit=5.0,
         deadline="2026-04-01T00:00:00",
-        assigned_to="ada_lovelace",
+        assigned_to=str(sample_agent_with_personality.id),
         status=TaskStatus.ASSIGNED,
     )
 

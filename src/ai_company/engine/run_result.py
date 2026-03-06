@@ -6,12 +6,14 @@ from the engine layer (system prompt, wall-clock duration, agent/task IDs).
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from ai_company.core.artifact import Artifact  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
 from ai_company.engine.prompt import SystemPrompt  # noqa: TC001
+from ai_company.providers.enums import MessageRole
 
 
 class AgentRunResult(BaseModel):
@@ -45,6 +47,10 @@ class AgentRunResult(BaseModel):
     task_id: NotBlankStr | None = Field(
         default=None,
         description="Task identifier, or None for future taskless runs",
+    )
+    produced_artifacts: tuple[Artifact, ...] = Field(
+        default=(),
+        description="Artifacts produced during execution",
     )
 
     # mypy does not yet model Pydantic's @computed_field + @property
@@ -82,3 +88,22 @@ class AgentRunResult(BaseModel):
     def is_success(self) -> bool:
         """True when termination reason is COMPLETED."""
         return self.termination_reason == TerminationReason.COMPLETED
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Last assistant message content as work summary",
+    )
+    @property
+    def completion_summary(self) -> str | None:
+        """Extract the last assistant message content as a work summary.
+
+        Walks the conversation in reverse to find the most recent
+        assistant message with non-empty text content. Tool-call-only
+        assistant messages (content is ``None`` or empty) are skipped.
+
+        Returns:
+            The content string, or ``None`` if no qualifying message exists.
+        """
+        for msg in reversed(self.execution_result.context.conversation):
+            if msg.role == MessageRole.ASSISTANT and msg.content:
+                return msg.content
+        return None

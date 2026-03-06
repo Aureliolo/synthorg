@@ -4,6 +4,8 @@ Ties together prompt construction, execution context, execution loop,
 tool invocation, and budget tracking into a single ``run()`` entry point.
 """
 
+import asyncio
+import contextlib
 import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -17,6 +19,7 @@ from ai_company.engine.loop_protocol import (
     TerminationReason,
     TurnRecord,
 )
+from ai_company.engine.metrics import TaskCompletionMetrics
 from ai_company.engine.prompt import SystemPrompt, build_system_prompt
 from ai_company.engine.react_loop import ReactLoop
 from ai_company.engine.run_result import AgentRunResult
@@ -31,7 +34,9 @@ from ai_company.observability.events.execution import (
     EXECUTION_ENGINE_INVALID_INPUT,
     EXECUTION_ENGINE_PROMPT_BUILT,
     EXECUTION_ENGINE_START,
+    EXECUTION_ENGINE_TASK_METRICS,
     EXECUTION_ENGINE_TASK_TRANSITION,
+    EXECUTION_ENGINE_TIMEOUT,
 )
 from ai_company.providers.enums import MessageRole
 from ai_company.providers.models import ChatMessage
@@ -90,7 +95,7 @@ class AgentEngine:
             has_cost_tracker=self._cost_tracker is not None,
         )
 
-    async def run(
+    async def run(  # noqa: PLR0913
         self,
         *,
         identity: AgentIdentity,
@@ -98,6 +103,7 @@ class AgentEngine:
         completion_config: CompletionConfig | None = None,
         max_turns: int = DEFAULT_MAX_TURNS,
         memory_messages: tuple[ChatMessage, ...] = (),
+        timeout_seconds: float | None = None,
     ) -> AgentRunResult:
         """Execute an agent on a task.
 
@@ -108,6 +114,10 @@ class AgentEngine:
             max_turns: Maximum LLM turns allowed (must be >= 1).
             memory_messages: Optional working memory messages to inject
                 between the system prompt and task instruction.
+            timeout_seconds: Optional wall-clock timeout in seconds.
+                When exceeded, the execution loop is cancelled and the
+                run returns with ``TerminationReason.ERROR``. Cost
+                recording and post-execution processing still occur.
 
         Returns:
             ``AgentRunResult`` with execution outcome and metadata.
@@ -118,23 +128,20 @@ class AgentEngine:
         Raises:
             ExecutionStateError: If pre-flight validation fails (agent
                 not ACTIVE or task not ASSIGNED/IN_PROGRESS).
-            ValueError: If ``max_turns`` is less than 1.
+            ValueError: If ``max_turns`` is less than 1, or if
+                ``timeout_seconds`` is not positive.
             MemoryError: Re-raised unconditionally (non-recoverable).
             RecursionError: Re-raised unconditionally (non-recoverable).
         """
         agent_id = str(identity.id)
         task_id = task.id
 
-        if max_turns < 1:
-            msg = f"max_turns must be >= 1, got {max_turns}"
-            logger.warning(
-                EXECUTION_ENGINE_INVALID_INPUT,
-                agent_id=agent_id,
-                task_id=task_id,
-                reason=msg,
-            )
-            raise ValueError(msg)
-
+        self._validate_run_inputs(
+            agent_id=agent_id,
+            task_id=task_id,
+            max_turns=max_turns,
+            timeout_seconds=timeout_seconds,
+        )
         self._validate_agent(identity, agent_id)
         self._validate_task(task, agent_id, task_id)
 
@@ -167,6 +174,7 @@ class AgentEngine:
                 ctx=ctx,
                 system_prompt=system_prompt,
                 start=start,
+                timeout_seconds=timeout_seconds,
             )
         except MemoryError, RecursionError:
             logger.error(
@@ -200,8 +208,14 @@ class AgentEngine:
         ctx: AgentContext,
         system_prompt: SystemPrompt,
         start: float,
+        timeout_seconds: float | None = None,
     ) -> AgentRunResult:
-        """Run the execution loop, record costs, and build result."""
+        """Run execution loop, record costs, apply transitions, and build result.
+
+        Orchestrates the full execution pipeline: loop execution (with
+        optional wall-clock timeout via ``asyncio.wait``), per-turn cost
+        recording, post-execution task transitions, and metrics logging.
+        """
         budget_checker = _make_budget_checker(task)
         tool_invoker = self._make_tool_invoker()
 
@@ -212,17 +226,25 @@ class AgentEngine:
             estimated_tokens=system_prompt.estimated_tokens,
         )
 
-        execution_result = await self._loop.execute(
-            context=ctx,
-            provider=self._provider,
-            tool_invoker=tool_invoker,
-            budget_checker=budget_checker,
+        execution_result = await self._run_loop_with_timeout(
+            ctx=ctx,
+            agent_id=agent_id,
+            task_id=task_id,
             completion_config=completion_config,
+            budget_checker=budget_checker,
+            tool_invoker=tool_invoker,
+            start=start,
+            timeout_seconds=timeout_seconds,
         )
-        duration = time.monotonic() - start
 
         await self._record_costs(execution_result, identity, agent_id, task_id)
+        execution_result = self._apply_post_execution_transitions(
+            execution_result,
+            agent_id,
+            task_id,
+        )
 
+        duration = time.monotonic() - start
         result = AgentRunResult(
             execution_result=execution_result,
             system_prompt=system_prompt,
@@ -230,8 +252,72 @@ class AgentEngine:
             agent_id=agent_id,
             task_id=task_id,
         )
-        self._log_completion(result, execution_result, agent_id, task_id, duration)
+        try:
+            self._log_completion(result, agent_id, task_id, duration)
+        except Exception:
+            logger.exception(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error="Completion logging failed",
+            )
         return result
+
+    async def _run_loop_with_timeout(  # noqa: PLR0913
+        self,
+        *,
+        ctx: AgentContext,
+        agent_id: str,
+        task_id: str,
+        completion_config: CompletionConfig | None,
+        budget_checker: BudgetChecker | None,
+        tool_invoker: ToolInvoker | None,
+        start: float,
+        timeout_seconds: float | None,
+    ) -> ExecutionResult:
+        """Execute the loop, using ``asyncio.wait`` for timeout control.
+
+        Uses ``asyncio.wait`` instead of ``asyncio.wait_for`` so that
+        ``TimeoutError`` raised inside the loop propagates normally
+        and is not conflated with the engine's wall-clock deadline.
+        """
+        coro = self._loop.execute(
+            context=ctx,
+            provider=self._provider,
+            tool_invoker=tool_invoker,
+            budget_checker=budget_checker,
+            completion_config=completion_config,
+        )
+        if timeout_seconds is None:
+            return await coro
+
+        loop_task = asyncio.create_task(coro)
+        _done, pending = await asyncio.wait(
+            {loop_task},
+            timeout=timeout_seconds,
+        )
+        if not pending:
+            return loop_task.result()
+
+        duration = time.monotonic() - start
+        error_msg = (
+            f"Wall-clock timeout after {duration:.1f}s (limit: {timeout_seconds}s)"
+        )
+        logger.warning(
+            EXECUTION_ENGINE_TIMEOUT,
+            agent_id=agent_id,
+            task_id=task_id,
+            duration_seconds=duration,
+            timeout_seconds=timeout_seconds,
+        )
+        loop_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await loop_task
+        return ExecutionResult(
+            context=ctx,
+            termination_reason=TerminationReason.ERROR,
+            error_message=error_msg,
+        )
 
     # ── Setup ────────────────────────────────────────────────────
 
@@ -275,6 +361,34 @@ class AgentEngine:
 
     # ── Validation ───────────────────────────────────────────────
 
+    def _validate_run_inputs(
+        self,
+        *,
+        agent_id: str,
+        task_id: str,
+        max_turns: int,
+        timeout_seconds: float | None,
+    ) -> None:
+        """Validate scalar ``run()`` arguments before execution."""
+        if max_turns < 1:
+            msg = f"max_turns must be >= 1, got {max_turns}"
+            logger.warning(
+                EXECUTION_ENGINE_INVALID_INPUT,
+                agent_id=agent_id,
+                task_id=task_id,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        if timeout_seconds is not None and timeout_seconds <= 0:
+            msg = f"timeout_seconds must be > 0, got {timeout_seconds}"
+            logger.warning(
+                EXECUTION_ENGINE_INVALID_INPUT,
+                agent_id=agent_id,
+                task_id=task_id,
+                reason=msg,
+            )
+            raise ValueError(msg)
+
     def _validate_agent(self, identity: AgentIdentity, agent_id: str) -> None:
         """Raise if agent is not ACTIVE."""
         if identity.status != AgentStatus.ACTIVE:
@@ -295,11 +409,23 @@ class AgentEngine:
         agent_id: str,
         task_id: str,
     ) -> None:
-        """Raise if task is not in an executable status."""
+        """Raise if task is not executable or not assigned to this agent."""
         if task.status not in _EXECUTABLE_STATUSES:
             msg = (
                 f"Task {task_id!r} has status {task.status.value!r}; "
                 f"only 'assigned' or 'in_progress' tasks can be executed"
+            )
+            logger.warning(
+                EXECUTION_ENGINE_INVALID_INPUT,
+                agent_id=agent_id,
+                task_id=task_id,
+                reason=msg,
+            )
+            raise ExecutionStateError(msg)
+        if task.assigned_to is not None and task.assigned_to != agent_id:
+            msg = (
+                f"Task {task_id!r} is assigned to {task.assigned_to!r}, "
+                f"not to agent {agent_id!r}"
             )
             logger.warning(
                 EXECUTION_ENGINE_INVALID_INPUT,
@@ -341,6 +467,80 @@ class AgentEngine:
             )
         return ctx
 
+    def _apply_post_execution_transitions(
+        self,
+        execution_result: ExecutionResult,
+        agent_id: str,
+        task_id: str,
+    ) -> ExecutionResult:
+        """Apply post-execution task transitions based on termination reason.
+
+        Only ``TerminationReason.COMPLETED`` triggers transitions:
+        IN_PROGRESS → IN_REVIEW → COMPLETED (two-hop auto-complete).
+        All other reasons leave the task in its current state.
+
+        Note:
+            The IN_REVIEW → COMPLETED auto-complete is M3 scaffolding
+            (no reviewers yet). Later milestones will gate COMPLETED
+            on reviewer approval.
+
+        Transition failures are logged but do not discard the
+        successful execution result — a bookkeeping error must never
+        destroy the agent's work.
+
+        Args:
+            execution_result: Result from the execution loop.
+            agent_id: Agent identifier for logging.
+            task_id: Task identifier for logging.
+
+        Returns:
+            New ``ExecutionResult`` with updated context if transitions
+            were applied, or the original result unchanged.
+        """
+        ctx = execution_result.context
+        if ctx.task_execution is None:
+            return execution_result
+
+        if execution_result.termination_reason != TerminationReason.COMPLETED:
+            return execution_result
+
+        try:
+            prev_status = ctx.task_execution.status
+            ctx = ctx.with_task_transition(
+                TaskStatus.IN_REVIEW,
+                reason="Agent completed execution",
+            )
+            logger.info(
+                EXECUTION_ENGINE_TASK_TRANSITION,
+                agent_id=agent_id,
+                task_id=task_id,
+                from_status=prev_status.value,
+                to_status=TaskStatus.IN_REVIEW.value,
+            )
+            # TODO(M4): Replace auto-complete with review gate
+            prev_status = ctx.task_execution.status  # type: ignore[union-attr]
+            ctx = ctx.with_task_transition(
+                TaskStatus.COMPLETED,
+                reason="Auto-completed (no reviewers in M3)",
+            )
+            logger.info(
+                EXECUTION_ENGINE_TASK_TRANSITION,
+                agent_id=agent_id,
+                task_id=task_id,
+                from_status=prev_status.value,
+                to_status=TaskStatus.COMPLETED.value,
+            )
+        except (ValueError, ExecutionStateError) as exc:
+            logger.exception(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error=f"Post-execution transition failed: {exc}",
+            )
+            return execution_result
+
+        return execution_result.model_copy(update={"context": ctx})
+
     def _make_tool_invoker(self) -> ToolInvoker | None:
         """Create a ToolInvoker from the registry, or None."""
         if self._tool_registry is None:
@@ -350,21 +550,33 @@ class AgentEngine:
     def _log_completion(
         self,
         result: AgentRunResult,
-        execution_result: ExecutionResult,
         agent_id: str,
         task_id: str,
         duration: float,
     ) -> None:
-        """Log structured completion event for the finished run."""
+        """Log structured completion event and proxy overhead metrics."""
+        accumulated = result.execution_result.context.accumulated_cost
         logger.info(
             EXECUTION_ENGINE_COMPLETE,
             agent_id=agent_id,
             task_id=task_id,
             termination_reason=result.termination_reason.value,
             total_turns=result.total_turns,
-            total_tokens=execution_result.context.accumulated_cost.total_tokens,
+            total_tokens=accumulated.total_tokens,
             duration_seconds=duration,
             cost_usd=result.total_cost_usd,
+        )
+
+        metrics = TaskCompletionMetrics.from_run_result(result)
+        logger.info(
+            EXECUTION_ENGINE_TASK_METRICS,
+            agent_id=agent_id,
+            task_id=task_id,
+            termination_reason=result.termination_reason.value,
+            turns_per_task=metrics.turns_per_task,
+            tokens_per_task=metrics.tokens_per_task,
+            cost_per_task=metrics.cost_per_task,
+            duration_seconds=metrics.duration_seconds,
         )
 
     async def _record_costs(
