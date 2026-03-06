@@ -250,37 +250,46 @@ Collect all findings with their severity/confidence scores.
 
 ## Phase 4: Fetch external reviewer feedback
 
-Fetch from three GitHub API sources **in parallel** using `gh api`:
+**CRITICAL: Fetch ALL reviewers — do NOT filter by known bot names.** The set of external reviewers varies per repo and can include any combination of bots (CodeRabbit, Gemini, Copilot, Greptile, etc.) and human reviewers. Always fetch unfiltered results and categorize by author from the response.
+
+**CRITICAL: Wait for all bots to finish processing.** Before triaging, check if any bot reviewer is still processing (e.g. CodeRabbit's "Currently processing" placeholder, or a review with an empty body). If a bot appears to still be processing:
+1. Poll every 30 seconds for up to 3 minutes (6 checks)
+2. If still not ready after 3 minutes, proceed without it and mark its coverage as "pending" in the triage table
+3. After implementing fixes and pushing, re-check for the bot's feedback in Phase 9
+
+Fetch from three GitHub API sources **in parallel** using `gh api` — **always unfiltered** (no `select(.user.login == ...)` filtering):
 
 1. **Review submissions** (top-level review bodies):
 
    ```bash
-   gh api repos/OWNER/REPO/pulls/NUMBER/reviews --paginate
+   gh api repos/OWNER/REPO/pulls/NUMBER/reviews --paginate --jq '.[] | {author: .user.login, state: .state, body: (.body // "")}'
    ```
 
-   Extract: author, state, body.
+   Extract: author, state, body. List ALL unique authors to identify every reviewer.
 
    **CRITICAL: Parse review bodies for outside-diff-range comments.** Some reviewers (e.g. CodeRabbit) embed actionable comments inside `<details>` blocks in the review body when the affected lines are outside the PR's diff range. Look for patterns like "Outside diff range comments (N)" and extract each embedded comment's file path, line range, severity, and description. These are just as important as inline comments — do NOT skip them.
 
 2. **Inline review comments** (comments on specific lines):
 
    ```bash
-   gh api repos/OWNER/REPO/pulls/NUMBER/comments --paginate
+   gh api repos/OWNER/REPO/pulls/NUMBER/comments --paginate --jq '.[] | {author: .user.login, path: .path, line: .line, body: (.body // "")}'
    ```
 
-   Extract: author, file path, line number, body.
+   Extract: author, file path, line number, body. **Include ALL authors.**
 
 3. **Issue-level comments** (general PR comments, e.g. CodeRabbit walkthrough):
 
    ```bash
-   gh api repos/OWNER/REPO/issues/NUMBER/comments --paginate
+   gh api repos/OWNER/REPO/issues/NUMBER/comments --paginate --jq '.[] | {author: .user.login, body: (.body // "")}'
    ```
 
-   Extract: author, body (look for actionable items, not just summaries).
+   Extract: author, body (look for actionable items, not just summaries). **Include ALL authors.**
 
-**Important:** Use `gh api` with `--jq` for filtering. Keep it simple and robust — no complex Python scripts to parse JSON.
+After fetching, **enumerate all unique external reviewers** found across all three sources and report the list to the user before triaging. This ensures no reviewer is accidentally missed.
 
-**Important:** When review bodies are large (e.g. CodeRabbit's review with embedded outside-diff comments), fetch the **full body** without truncation. Use `head -c` with a generous limit (e.g. 15000 chars) rather than `--jq '.body[0:500]'` truncation. Outside-diff comments are typically at the top of the review body.
+**Important:** Use `gh api` with `--jq` for filtering fields only (not filtering authors). Keep it simple and robust — no complex Python scripts to parse JSON.
+
+**Important:** When review bodies are large (e.g. CodeRabbit's review with embedded outside-diff comments), fetch the **full body** without truncation. Outside-diff comments are typically at the top of the review body.
 
 ## Phase 5: Consolidate and triage
 

@@ -28,6 +28,7 @@ from ai_company.core.task import AcceptanceCriterion, Task
 from ai_company.engine.context import AgentContext
 from ai_company.engine.task_execution import TaskExecution
 from ai_company.providers.capabilities import ModelCapabilities
+from ai_company.providers.enums import FinishReason
 from ai_company.providers.models import (
     ChatMessage,
     CompletionConfig,
@@ -235,6 +236,27 @@ class MockCompletionProvider:
             cost_per_1k_input=0.01,
             cost_per_1k_output=0.03,
         )
+
+
+def make_completion_response(
+    *,
+    content: str = "Done.",
+    finish_reason: FinishReason = FinishReason.STOP,
+    input_tokens: int = 100,
+    output_tokens: int = 50,
+    cost_usd: float = 0.01,
+) -> CompletionResponse:
+    """Build a simple CompletionResponse for tests."""
+    return CompletionResponse(
+        content=content,
+        finish_reason=finish_reason,
+        usage=TokenUsage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost_usd,
+        ),
+        model="test-model-001",
+    )
 
 
 @pytest.fixture

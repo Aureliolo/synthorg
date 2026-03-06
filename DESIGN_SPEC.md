@@ -151,7 +151,7 @@ Every agent has a comprehensive identity. At the design level, agent data splits
 - **Config (immutable)**: identity, personality, skills, model preferences, tool permissions, authority. Defined at hire time, changed only by explicit reconfiguration. Represented as frozen Pydantic models.
 - **Runtime state (mutable-via-copy)**: current status, active task, conversation history, execution metrics. Evolves during agent operation. Represented as Pydantic models using `model_copy(update=...)` for state transitions — never mutated in place.
 
-> **Current state (M2):** Only the config layer exists as `AgentIdentity` (frozen Pydantic model in `core/agent.py`). The runtime state layer will be introduced in M3 when the agent execution engine is implemented. All identifier/name fields use `NotBlankStr` (from `core.types`) for automatic whitespace rejection; optional identifier fields use `NotBlankStr | None`; tuple fields use `tuple[NotBlankStr, ...]` for per-element validation.
+> **Current state (M3):** Both layers are implemented. Config layer: `AgentIdentity` (frozen, in `core/agent.py`). Runtime state layer: `TaskExecution`, `AgentContext`, `AgentContextSnapshot` (frozen + `model_copy`, in `engine/`). `AgentEngine` orchestrates execution via `run()`. All identifier/name fields use `NotBlankStr` (from `core.types`) for automatic whitespace rejection; optional identifier fields use `NotBlankStr | None`; tuple fields use `tuple[NotBlankStr, ...]` for per-element validation.
 
 ```yaml
 # --- Current (M2): Config layer — AgentIdentity (frozen) ---
@@ -910,6 +910,38 @@ hybrid:
 - **Best for**: Complex tasks, multi-file refactoring, tasks requiring both planning and adaptivity
 
 > **Auto-selection (optional):** When `execution_loop: "auto"`, the framework selects the loop based on `estimated_complexity`: simple → ReAct, medium → Plan-and-Execute, complex/epic → Hybrid. Configurable via `auto_loop_rules` — a mapping of complexity thresholds to loop implementations (e.g., `{simple_max_tokens: 500, medium_max_tokens: 3000}` with corresponding loop assignments).
+
+#### AgentEngine Orchestrator
+
+`AgentEngine` (in `engine/agent_engine.py`) is the top-level entry point for running an agent on a task. It composes the execution loop with prompt construction, context management, tool invocation, and cost tracking into a single `run()` call.
+
+**`async run(identity, task, completion_config?, max_turns?, memory_messages?) -> AgentRunResult`**
+
+Pipeline steps:
+
+1. **Validate inputs** — agent must be `ACTIVE`, task must be `ASSIGNED` or `IN_PROGRESS`. Raises `ExecutionStateError` on violation.
+2. **Build system prompt** — calls `build_system_prompt()` with agent identity, task, and available tool definitions.
+3. **Create context** — `AgentContext.from_identity()` with the configured `max_turns`.
+4. **Seed conversation** — injects system prompt, optional memory messages, and formatted task instruction as initial messages.
+5. **Transition task** — `ASSIGNED` → `IN_PROGRESS` (pass-through if already `IN_PROGRESS`).
+6. **Prepare tools and budget** — creates `ToolInvoker` from registry and `BudgetChecker` from task budget limit.
+7. **Delegate to loop** — calls `ExecutionLoop.execute()` with context, provider, tool invoker, budget checker, and completion config.
+8. **Record costs** — records accumulated `TokenUsage` to `CostTracker` (if available). Cost recording failures are logged but do not affect the result.
+9. **Return result** — wraps `ExecutionResult` in `AgentRunResult` with engine-level metadata.
+
+Error handling: `MemoryError` and `RecursionError` propagate unconditionally. All other exceptions are caught and wrapped in an `AgentRunResult` with `TerminationReason.ERROR`.
+
+Constructor accepts: `provider` (required), `execution_loop` (defaults to `ReactLoop`), `tool_registry`, `cost_tracker`. The `run()` method also accepts `memory_messages` — optional working memory to inject between the system prompt and task instruction (memory retrieval is M5; the engine provides the injection hook).
+
+Logs structured events under the `execution.engine.*` namespace (10 constants in `events/execution.py`): creation, start, prompt built, completion, errors, invalid input, task transitions, and cost recording outcomes.
+
+**`AgentRunResult`** — frozen Pydantic model wrapping `ExecutionResult` with engine metadata:
+
+- `execution_result` — outcome from the execution loop
+- `system_prompt` — the `SystemPrompt` used for this run
+- `duration_seconds` — wall-clock run time
+- `agent_id`, `task_id` — identifiers
+- Computed fields: `termination_reason`, `total_turns`, `total_cost_usd`, `is_success`
 
 ### 6.6 Agent Crash Recovery
 
@@ -2114,7 +2146,7 @@ ai-company/
 │       │   ├── artifact.py         # Produced work items
 │       │   ├── role.py             # Role model
 │       │   └── role_catalog.py     # Role catalog
-│       ├── engine/                  # Core engines (M3+)
+│       ├── engine/                  # Agent orchestration, execution loops, and task lifecycle
 │       │   ├── errors.py           # Engine error hierarchy
 │       │   ├── prompt.py           # System prompt builder
 │       │   ├── prompt_template.py  # System prompt Jinja2 templates
@@ -2122,7 +2154,8 @@ ai-company/
 │       │   ├── context.py          # AgentContext + AgentContextSnapshot
 │       │   ├── loop_protocol.py    # ExecutionLoop protocol + result models
 │       │   ├── react_loop.py       # ReAct loop implementation
-│       │   ├── agent_engine.py     # Agent execution engine (M3)
+│       │   ├── run_result.py       # AgentRunResult outcome model
+│       │   ├── agent_engine.py     # Agent execution engine
 │       │   ├── task_engine.py      # Task routing & scheduling (M3-M4)
 │       │   ├── workflow_engine.py  # Workflow orchestration (M4)
 │       │   ├── meeting_engine.py   # Meeting coordination (M4)

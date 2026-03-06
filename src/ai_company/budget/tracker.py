@@ -301,6 +301,8 @@ class CostTracker:
             return None
         try:
             return self._department_resolver(agent_id)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 BUDGET_DEPARTMENT_RESOLVE_FAILED,

@@ -1,9 +1,11 @@
 """Agent execution engine.
 
-Re-exports the public API for system prompt construction,
-runtime execution state, execution loops, and engine errors.
+Re-exports the public API for the agent orchestrator, run results,
+system prompt construction, runtime execution state, execution loops,
+and engine errors.
 """
 
+from ai_company.engine.agent_engine import AgentEngine
 from ai_company.engine.context import (
     DEFAULT_MAX_TURNS,
     AgentContext,
@@ -31,6 +33,7 @@ from ai_company.engine.prompt import (
     build_system_prompt,
 )
 from ai_company.engine.react_loop import ReactLoop
+from ai_company.engine.run_result import AgentRunResult
 from ai_company.engine.task_execution import StatusTransition, TaskExecution
 from ai_company.providers.models import ZERO_TOKEN_USAGE, add_token_usage
 
@@ -39,6 +42,8 @@ __all__ = [
     "ZERO_TOKEN_USAGE",
     "AgentContext",
     "AgentContextSnapshot",
+    "AgentEngine",
+    "AgentRunResult",
     "BudgetChecker",
     "BudgetExhaustedError",
     "DefaultTokenEstimator",

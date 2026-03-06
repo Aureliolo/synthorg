@@ -1,0 +1,208 @@
+"""Integration test: AgentEngine -> ReactLoop -> tool calls -> result.
+
+Demonstrates the full execution pipeline with a real ToolRegistry,
+real ReactLoop, and a mock provider that returns tool calls.
+"""
+
+from datetime import date
+from typing import TYPE_CHECKING, Any
+from uuid import uuid4
+
+import pytest
+
+from ai_company.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
+from ai_company.core.enums import (
+    Priority,
+    SeniorityLevel,
+    TaskStatus,
+    TaskType,
+)
+from ai_company.core.task import Task
+from ai_company.engine.agent_engine import AgentEngine
+from ai_company.engine.loop_protocol import TerminationReason
+from ai_company.providers.enums import FinishReason
+from ai_company.providers.models import (
+    ChatMessage,
+    CompletionConfig,
+    CompletionResponse,
+    StreamChunk,
+    TokenUsage,
+    ToolCall,
+    ToolDefinition,
+)
+from ai_company.tools.base import BaseTool, ToolExecutionResult
+from ai_company.tools.registry import ToolRegistry
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from ai_company.providers.capabilities import ModelCapabilities
+
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
+
+
+class UppercaseTool(BaseTool):
+    """Test tool that uppercases input text."""
+
+    async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
+        """Uppercase the 'text' argument."""
+        text = arguments.get("text", "")
+        return ToolExecutionResult(content=text.upper())
+
+
+class _ToolCallingProvider:
+    """Mock provider that issues a tool call on the first turn.
+
+    Turn 1: Returns a tool call for the 'uppercase' tool.
+    Turn 2: Returns a final text response incorporating the tool result.
+    """
+
+    def __init__(self) -> None:
+        self._call_count = 0
+
+    async def complete(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> CompletionResponse:
+        """Return tool call on turn 1, text response on turn 2."""
+        self._call_count += 1
+
+        if self._call_count == 1:
+            return CompletionResponse(
+                content="",
+                finish_reason=FinishReason.TOOL_USE,
+                usage=TokenUsage(
+                    input_tokens=50,
+                    output_tokens=20,
+                    cost_usd=0.005,
+                ),
+                model="test-model-001",
+                tool_calls=(
+                    ToolCall(
+                        id="call-001",
+                        name="uppercase",
+                        arguments={"text": "hello world"},
+                    ),
+                ),
+            )
+
+        return CompletionResponse(
+            content="The uppercased text is: HELLO WORLD",
+            finish_reason=FinishReason.STOP,
+            usage=TokenUsage(
+                input_tokens=80,
+                output_tokens=30,
+                cost_usd=0.008,
+            ),
+            model="test-model-001",
+        )
+
+    async def stream(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        """Not implemented for this test."""
+        msg = "stream not supported"
+        raise NotImplementedError(msg)
+
+    async def get_model_capabilities(self, model: str) -> ModelCapabilities:
+        """Return minimal capabilities."""
+        from ai_company.providers.capabilities import ModelCapabilities
+
+        return ModelCapabilities(
+            model_id=model,
+            provider="test-provider",
+            supports_tools=True,
+            supports_streaming=False,
+            max_context_tokens=8192,
+            max_output_tokens=4096,
+            cost_per_1k_input=0.01,
+            cost_per_1k_output=0.03,
+        )
+
+
+class TestAgentEngineToolCallIntegration:
+    """Full pipeline: AgentEngine -> ReactLoop -> tool execution -> result."""
+
+    async def test_full_tool_call_loop(self) -> None:
+        """Agent makes a tool call, gets result, produces final answer."""
+        identity = AgentIdentity(
+            id=uuid4(),
+            name="Test Agent",
+            role="Developer",
+            department="Engineering",
+            level=SeniorityLevel.MID,
+            hiring_date=date(2026, 1, 15),
+            personality=PersonalityConfig(
+                traits=("analytical",),
+            ),
+            model=ModelConfig(
+                provider="test-provider",
+                model_id="test-model-001",
+            ),
+        )
+        task = Task(
+            id="task-integration",
+            title="Uppercase a string",
+            description="Use the uppercase tool to convert text.",
+            type=TaskType.DEVELOPMENT,
+            priority=Priority.MEDIUM,
+            project="proj-001",
+            created_by="manager",
+            assigned_to=str(identity.id),
+            status=TaskStatus.ASSIGNED,
+        )
+
+        tool = UppercaseTool(
+            name="uppercase",
+            description="Converts text to uppercase.",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "Text to uppercase"},
+                },
+                "required": ["text"],
+            },
+        )
+        registry = ToolRegistry([tool])
+        provider = _ToolCallingProvider()
+
+        engine = AgentEngine(
+            provider=provider,
+            tool_registry=registry,
+        )
+
+        result = await engine.run(
+            identity=identity,
+            task=task,
+            max_turns=5,
+        )
+
+        # Verify successful completion
+        assert result.is_success is True
+        assert result.termination_reason == TerminationReason.COMPLETED
+        assert result.total_turns == 2  # tool call turn + final answer turn
+
+        # Verify cost was accumulated across turns
+        assert result.total_cost_usd > 0
+        assert result.duration_seconds > 0
+
+        # Verify the tool was actually called (result in conversation)
+        conversation = result.execution_result.context.conversation
+        tool_results = [m for m in conversation if m.tool_result is not None]
+        assert len(tool_results) == 1
+        assert tool_results[0].tool_result is not None
+        assert tool_results[0].tool_result.content == "HELLO WORLD"
+
+        # Verify task transitioned to IN_PROGRESS
+        te = result.execution_result.context.task_execution
+        assert te is not None
+        assert te.status == TaskStatus.IN_PROGRESS

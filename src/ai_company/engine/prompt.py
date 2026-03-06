@@ -7,8 +7,8 @@ Example::
 
     from ai_company.engine.prompt import build_system_prompt
 
-    prompt = build_system_prompt(agent=agent_identity)
-    print(prompt.content)
+    prompt = build_system_prompt(agent=agent_identity, task=task)
+    prompt.content  # rendered system prompt string
 """
 
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
@@ -217,6 +217,15 @@ def build_system_prompt(  # noqa: PLR0913
         )
     except PromptBuildError:
         raise  # Already logged by inner functions.
+    except MemoryError, RecursionError:
+        logger.error(
+            PROMPT_BUILD_ERROR,
+            agent_id=str(agent.id),
+            agent_name=agent.name,
+            error="non-recoverable error building prompt",
+            exc_info=True,
+        )
+        raise
     except Exception as exc:
         logger.exception(
             PROMPT_BUILD_ERROR,
