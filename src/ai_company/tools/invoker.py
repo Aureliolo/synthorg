@@ -16,7 +16,7 @@ from referencing import Resource
 from referencing.exceptions import NoSuchResource
 
 from ai_company.observability import get_logger
-from ai_company.observability.events import (
+from ai_company.observability.events.tool import (
     TOOL_INVOKE_DEEPCOPY_ERROR,
     TOOL_INVOKE_EXECUTION_ERROR,
     TOOL_INVOKE_NON_RECOVERABLE,

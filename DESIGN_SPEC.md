@@ -2116,7 +2116,18 @@ ai-company/
 │       │   ├── config.py           # Observability config
 │       │   ├── correlation.py      # Correlation ID tracking
 │       │   ├── enums.py            # Log-related enums
-│       │   ├── events.py           # All event constants (domain-scoped via naming)
+│       │   ├── events/             # Per-domain event constants
+│       │   │   ├── __init__.py    # Package marker
+│       │   │   ├── budget.py      # BUDGET_* constants
+│       │   │   ├── config.py      # CONFIG_* constants
+│       │   │   ├── execution.py   # EXECUTION_* constants
+│       │   │   ├── prompt.py      # PROMPT_* constants
+│       │   │   ├── provider.py    # PROVIDER_* constants
+│       │   │   ├── role.py        # ROLE_* constants
+│       │   │   ├── routing.py     # ROUTING_* constants
+│       │   │   ├── task.py        # TASK_* constants
+│       │   │   ├── template.py    # TEMPLATE_* constants
+│       │   │   └── tool.py        # TOOL_* constants
 │       │   ├── processors.py       # Log processors
 │       │   ├── setup.py            # Logging setup
 │       │   └── sinks.py            # Log output backends

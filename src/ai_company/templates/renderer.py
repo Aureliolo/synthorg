@@ -20,7 +20,7 @@ from ai_company.config.errors import ConfigLocation
 from ai_company.config.schema import RootConfig
 from ai_company.config.utils import deep_merge, to_float
 from ai_company.observability import get_logger
-from ai_company.observability.events import (
+from ai_company.observability.events.template import (
     TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
     TEMPLATE_RENDER_JINJA2_ERROR,
     TEMPLATE_RENDER_START,

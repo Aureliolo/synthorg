@@ -17,7 +17,7 @@ from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.engine.errors import ExecutionStateError, MaxTurnsExceededError
 from ai_company.engine.task_execution import TaskExecution
 from ai_company.observability import get_logger
-from ai_company.observability.events import (
+from ai_company.observability.events.execution import (
     EXECUTION_CONTEXT_CREATED,
     EXECUTION_CONTEXT_NO_TASK,
     EXECUTION_CONTEXT_SNAPSHOT,

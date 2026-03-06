@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 import structlog
 
-from ai_company.observability.events import (
+from ai_company.observability.events.provider import (
     PROVIDER_CALL_ERROR,
     PROVIDER_RETRY_ATTEMPT,
     PROVIDER_RETRY_EXHAUSTED,

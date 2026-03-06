@@ -12,7 +12,7 @@ from ai_company.core.enums import (
 )
 from ai_company.core.role import Role, SeniorityInfo
 from ai_company.observability import get_logger
-from ai_company.observability.events import ROLE_LOOKUP_MISS
+from ai_company.observability.events.role import ROLE_LOOKUP_MISS
 
 logger = get_logger(__name__)
 

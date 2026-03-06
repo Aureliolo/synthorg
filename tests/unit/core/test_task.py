@@ -13,7 +13,7 @@ from ai_company.core.enums import (
     TaskType,
 )
 from ai_company.core.task import AcceptanceCriterion, Task
-from ai_company.observability.events import TASK_STATUS_CHANGED
+from ai_company.observability.events.task import TASK_STATUS_CHANGED
 
 pytestmark = pytest.mark.timeout(30)
 

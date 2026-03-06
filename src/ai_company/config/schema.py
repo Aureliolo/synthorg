@@ -13,7 +13,7 @@ from ai_company.core.role import CustomRole  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.config import LogConfig  # noqa: TC001
-from ai_company.observability.events import CONFIG_VALIDATION_FAILED
+from ai_company.observability.events.config import CONFIG_VALIDATION_FAILED
 
 logger = get_logger(__name__)
 

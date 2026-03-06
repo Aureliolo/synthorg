@@ -7,7 +7,7 @@ import structlog
 from pydantic import ValidationError
 
 from ai_company.config.schema import RootConfig
-from ai_company.observability.events import (
+from ai_company.observability.events.template import (
     TEMPLATE_RENDER_START,
     TEMPLATE_RENDER_SUCCESS,
 )

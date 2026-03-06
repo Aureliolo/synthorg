@@ -18,7 +18,7 @@ from ai_company.config.errors import (
 from ai_company.config.schema import RootConfig
 from ai_company.config.utils import deep_merge
 from ai_company.observability import get_logger
-from ai_company.observability.events import (
+from ai_company.observability.events.config import (
     CONFIG_DISCOVERY_FOUND,
     CONFIG_DISCOVERY_STARTED,
     CONFIG_ENV_VAR_RESOLVED,

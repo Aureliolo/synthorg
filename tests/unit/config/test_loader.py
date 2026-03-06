@@ -26,7 +26,7 @@ from ai_company.config.loader import (
     load_config_from_string,
 )
 from ai_company.config.schema import RootConfig
-from ai_company.observability.events import (
+from ai_company.observability.events.config import (
     CONFIG_LOADED,
     CONFIG_PARSE_FAILED,
     CONFIG_VALIDATION_FAILED,

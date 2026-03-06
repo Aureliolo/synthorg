@@ -10,7 +10,7 @@ import json
 from typing import Any
 
 from ai_company.observability import get_logger
-from ai_company.observability.events import (
+from ai_company.observability.events.provider import (
     PROVIDER_FINISH_REASON_UNKNOWN,
     PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
     PROVIDER_TOOL_CALL_INCOMPLETE,
