@@ -6,21 +6,21 @@
 
 ## Table of Contents
 
-1. [Vision & Philosophy](#1-vision--philosophy)
+1. [Vision & Philosophy](#1-vision--philosophy) — 1.4 MVP Definition, 1.5 Configuration Philosophy
 2. [Core Concepts](#2-core-concepts)
 3. [Agent System](#3-agent-system)
 4. [Company Structure](#4-company-structure)
-5. [Communication Architecture](#5-communication-architecture)
-6. [Task & Workflow Engine](#6-task--workflow-engine)
-7. [Memory & Persistence](#7-memory--persistence)
+5. [Communication Architecture](#5-communication-architecture) — 5.6 Conflict Resolution, 5.7 Meeting Protocol
+6. [Task & Workflow Engine](#6-task--workflow-engine) — 6.5 Execution Loop, 6.6 Crash Recovery, **6.7 Graceful Shutdown**, **6.8 Workspace Isolation**
+7. [Memory & Persistence](#7-memory--persistence) — 7.4 Shared Org Memory (Research Directions)
 8. [HR & Workforce Management](#8-hr--workforce-management)
 9. [Model Provider Layer](#9-model-provider-layer)
 10. [Cost & Budget Management](#10-cost--budget-management)
-11. [Tool & Capability System](#11-tool--capability-system)
-12. [Security & Approval System](#12-security--approval-system)
+11. [Tool & Capability System](#11-tool--capability-system) — 11.3 Progressive Trust
+12. [Security & Approval System](#12-security--approval-system) — 12.4 Approval Timeout
 13. [Human Interaction Layer](#13-human-interaction-layer)
 14. [Templates & Builder](#14-templates--builder)
-15. [Technical Architecture](#15-technical-architecture)
+15. [Technical Architecture](#15-technical-architecture) — 15.5 Engineering Conventions
 16. [Research & Prior Art](#16-research--prior-art)
 17. [Open Questions & Risks](#17-open-questions--risks)
 18. [Backlog & Future Vision](#18-backlog--future-vision)
@@ -52,6 +52,51 @@ Build a **configurable AI company framework** where AI agents operate within a v
 - Not locked to software development only (though that is a primary use case)
 - Not a wrapper around a single model or provider
 - Not a toy/demo - designed for real, production-quality output
+
+### 1.4 MVP Definition (M3)
+
+The MVP validates the core hypothesis: **a single agent can complete a real task end-to-end** within the framework's architecture. It builds on M0–M2 (already complete: config models, provider layer, budget tracking, tool system, observability).
+
+**M3 scope (what the MVP builds):**
+
+- Single agent executing tasks via the **ReAct** execution loop
+- **Subprocess sandbox** for file system and git tools (Docker optional for code execution)
+- **Fail-and-reassign** crash recovery
+- **Cooperative graceful shutdown** with configurable timeout
+- **Proxy metrics**: turns/tokens/cost per task
+- System prompt builder with agent personality injection
+
+**NOT in MVP (deferred to later milestones):**
+
+- Multi-agent coordination, delegation, message bus (M4)
+- Meetings, conflict resolution, meeting protocols (M4)
+- Progressive trust — disabled by default, static access levels (M7)
+- HR/CFO agents, hiring/firing, performance tracking (M5–M7)
+- Memory layer integration, org memory backends (M5)
+- Web UI, WebSocket real-time updates (M6)
+- CLI commands beyond basic `start` (M6)
+- Security ops agent, approval workflows (M7)
+
+> **How to read this spec:** Sections describe the full vision. Each section with deferred features includes an **MVP** callout box indicating what ships in M3 and what is deferred. The full design is documented upfront to inform architecture decisions — protocol interfaces are designed even for features that won't be built until later milestones.
+
+### 1.5 Configuration Philosophy
+
+The framework follows **progressive disclosure** — users only configure what they need:
+
+1. **Templates** handle 90% of users — pick a template, override 2–3 values, go
+2. **Minimal config** for custom setups — everything has sensible defaults
+3. **Full config** for power users — every knob exposed but none required
+
+**Minimal custom company** (all other settings use defaults):
+
+```yaml
+company:
+  name: "Acme Corp"
+  template: "startup"
+  budget_monthly: 50.00
+```
+
+All configuration systems in the framework are **pluggable** — strategies, backends, and policies are swappable via protocol interfaces without modifying existing code. Sensible defaults are chosen for each, documented in the relevant section alongside the full configuration reference.
 
 ---
 
@@ -516,6 +561,8 @@ When a loop is detected, the framework:
 
 When two or more agents disagree on an approach (architecture, implementation, priority, etc.), the framework provides multiple configurable resolution strategies behind a `ConflictResolver` protocol. New strategies can be added without modifying existing ones. The strategy is configurable per company, per department, or per conflict type.
 
+> **MVP: Authority + Dissent Log only (Strategy 1).** Other strategies are M4+.
+
 #### Strategy 1: Authority + Dissent Log (Default)
 
 The agent with higher authority level decides. Cross-department conflicts (incomparable authority) escalate to the lowest common manager in the hierarchy. The losing agent's reasoning is preserved as a **dissent record** — a structured log entry containing the conflict context, both positions, and the resolution. Dissent records feed into organizational learning and can be reviewed during retrospectives.
@@ -579,6 +626,8 @@ conflict_resolution:
 ### 5.7 Meeting Protocol
 
 Meetings (§5.1 Pattern 3) follow configurable protocols that determine how agents interact during structured multi-agent conversations. Different meeting types naturally suit different protocols. All protocols implement a `MeetingProtocol` protocol, making the system extensible — new protocols can be registered and selected per meeting type. Cost bounds are enforced by `duration_tokens` in meeting config (§5.4).
+
+> **MVP: Not in M3.** Meetings are an M4 feature. Round-Robin (Protocol 1) is the initial default.
 
 #### Protocol 1: Round-Robin Transcript
 
@@ -748,6 +797,8 @@ Tasks can be assigned through multiple strategies:
 
 The agent execution loop defines how an agent processes a task from start to finish. The framework provides multiple configurable loop architectures behind an `ExecutionLoop` protocol, making the system extensible. The default can vary by task complexity, and is configurable per agent or role.
 
+> **MVP: ReAct only (Loop 1).** Plan-and-Execute and Hybrid are M4+. Auto-selection is M4+.
+
 #### Loop 1: ReAct (Default for Simple Tasks)
 
 A single interleaved loop: the agent reasons about the current state, selects an action (tool call or response), observes the result, and repeats until done or `max_turns` is reached.
@@ -850,6 +901,8 @@ hybrid:
 
 When an agent execution fails unexpectedly (unhandled exception, OOM, process kill), the framework needs a recovery mechanism. Recovery strategies are implemented behind a `RecoveryStrategy` protocol, making the system pluggable — new strategies can be added without modifying existing ones.
 
+> **MVP: Fail-and-Reassign only (Strategy 1).** Checkpoint Recovery is M4/M5.
+
 #### Strategy 1: Fail-and-Reassign (Default / MVP)
 
 The engine catches the failure at its outermost boundary, logs a redacted `AgentContext` snapshot (turn count, accumulated cost — excluding message contents to avoid leaking sensitive prompts/tool outputs), transitions the task to `FAILED`, and makes it available for reassignment (manual or automatic via the task router).
@@ -889,6 +942,108 @@ crash_recovery:
 - Natural fit with the existing immutable state model
 
 > **Environment reconciliation:** When resuming from a checkpoint, the agent's tools and workspace may have changed (other agents modified files, external state drifted). The checkpoint strategy includes a reconciliation step: the resumed agent receives a summary of changes since the checkpoint timestamp and can adapt its plan accordingly. This is analogous to a developer returning to a branch after colleagues have pushed changes.
+
+### 6.7 Graceful Shutdown Protocol
+
+When the process receives SIGTERM/SIGINT (user Ctrl+C, Docker stop, systemd shutdown), the framework needs to stop cleanly without losing work or leaking costs. Shutdown strategies are implemented behind a `ShutdownStrategy` protocol, making the system pluggable — new strategies can be added without modifying existing ones.
+
+> **MVP: Cooperative with Timeout only (Strategy 1).** Other strategies are future options enabled by the protocol interface.
+
+#### Strategy 1: Cooperative with Timeout (Default / MVP)
+
+The engine sets a shutdown event, stops accepting new tasks, and gives in-flight agents a grace period to finish their current turn. Agents check the shutdown event at turn boundaries (between LLM calls, before tool invocations) and exit cooperatively. After the grace period, remaining agents are force-cancelled and their tasks marked `INTERRUPTED`.
+
+```yaml
+graceful_shutdown:
+  strategy: "cooperative_timeout"    # cooperative_timeout, immediate, finish_tool, checkpoint
+  cooperative_timeout:
+    grace_seconds: 30                # time for agents to finish cooperatively
+    cleanup_seconds: 5               # time for final cleanup (persist cost records, close connections)
+```
+
+On shutdown signal:
+1. Set `shutdown_event` (`asyncio.Event`) — agents check this at turn boundaries
+2. Stop accepting new tasks (drain gate closes)
+3. Wait up to `grace_seconds` for agents to exit cooperatively
+4. Force-cancel remaining agents (`task.cancel()`) — tasks transition to `INTERRUPTED`
+5. Cleanup phase (`cleanup_seconds`): persist cost records, close provider connections, flush logs
+
+> **New non-terminal status:** `INTERRUPTED` is a new `TaskStatus` variant. Unlike `FAILED` (eligible for automatic reassignment) or `CANCELLED` (terminal), `INTERRUPTED` indicates the task was stopped due to process shutdown and is eligible for manual or automatic reassignment on restart.
+
+> **Windows compatibility:** `loop.add_signal_handler()` is not supported on Windows. The implementation uses `signal.signal()` as a fallback. SIGINT (Ctrl+C) works cross-platform; SIGTERM on Windows requires `os.kill()`.
+
+> **In-flight LLM calls:** Non-streaming API calls that are interrupted result in tokens billed but no response received (silent cost leak). The engine logs request start (with input token count) before each provider call, so interrupted calls have at minimum an input-cost audit record. Streaming calls are charged only for tokens sent before disconnect.
+
+#### Strategy 2: Immediate Cancel (Future Option)
+
+All agent tasks are cancelled immediately via `task.cancel()`. Fastest shutdown but highest data loss — partial tool side effects, billed-but-lost LLM responses.
+
+#### Strategy 3: Finish Current Tool (Future Option)
+
+Like cooperative timeout, but waits for the current tool invocation to complete even if it exceeds the grace period. Needs per-tool timeout as a backstop for long-running sandboxed execution.
+
+#### Strategy 4: Checkpoint and Stop (Planned — M4/M5)
+
+On shutdown signal, each agent persists its full `AgentContext` snapshot and transitions to `SUSPENDED`. On restart, the engine loads checkpoints and resumes execution. This naturally extends the `CheckpointStrategy` from §6.6 — the only difference is whether the checkpoint was written proactively (graceful shutdown) or loaded from the last turn (crash recovery).
+
+### 6.8 Concurrent Workspace Isolation (M4+)
+
+> **MVP: Not applicable.** M3 is single-agent — no concurrent file edits are possible. This section defines the M4+ strategy for multi-agent workspace coordination.
+
+When multiple agents work on the same codebase concurrently, they may need to edit overlapping files. The framework provides a pluggable `WorkspaceIsolationStrategy` protocol for managing concurrent file access. The default strategy combines intelligent task decomposition with git worktree isolation — the dominant industry pattern (used by OpenAI Codex, Cursor, Claude Code, VS Code background agents).
+
+#### Strategy 1: Planner + Git Worktrees (Default)
+
+The task planner decomposes work to minimize file overlap across agents. Each agent operates in its own git worktree (shared `.git` object database, independent working tree). On completion, branches are merged sequentially.
+
+```text
+Planner decomposes task:
+├─ Agent A: src/auth/     (worktree-A)
+├─ Agent B: src/api/      (worktree-B)
+└─ Agent C: tests/        (worktree-C)
+
+Each in isolated git worktree
+        │
+On completion: sequential merge
+├─ Merge A → main
+├─ Rebase B on main, merge
+└─ Rebase C on main, merge
+        │
+Textual conflicts: git detects, escalate to human or review agent
+Semantic conflicts: review agent evaluates merged result
+```
+
+```yaml
+workspace_isolation:
+  strategy: "planner_worktrees"      # planner_worktrees, sequential, file_locking
+  planner_worktrees:
+    max_concurrent_worktrees: 8
+    merge_order: "completion"        # completion (first done merges first), priority, manual
+    conflict_escalation: "human"     # human, review_agent
+```
+
+- True filesystem isolation — agents cannot overwrite each other's work
+- Maximum parallelism during execution; conflicts deferred to merge time
+- Leverages mature git infrastructure for merge, diff, and history
+
+#### Strategy 2: Sequential Dependencies (Future Option)
+
+Tasks with overlapping file scopes are ordered sequentially via a dependency graph. Prevents conflicts by construction but limits parallelism. Requires upfront knowledge of which files a task will touch.
+
+#### Strategy 3: File-Level Locking (Future Option)
+
+Files are locked at task assignment time. Eliminates conflicts at the source but requires predicting file access — difficult for LLM agents that discover what to edit as they go. Risk of deadlock if multiple agents need overlapping file sets.
+
+#### State Coordination vs Workspace Isolation
+
+These are complementary systems handling different types of shared state:
+
+| State Type | Coordination | Mechanism |
+|-----------|-------------|-----------|
+| Framework state (tasks, assignments, budget) | Centralized single-writer (`TaskEngine`) | `model_copy(update=...)` via async queue |
+| Code and files (agent work output) | Workspace isolation (`WorkspaceIsolationStrategy`) | Git worktrees / branches |
+| Agent memory (personal) | Per-agent ownership | Each agent owns its memory exclusively |
+| Org memory (shared knowledge) | Single-writer (`OrgMemoryBackend`) | Write-access controlled by role level |
 
 ---
 
@@ -965,7 +1120,13 @@ org_memory:
 - Simple to implement. Core rules always present. Extended knowledge scales
 - Basic retrieval may miss relational connections between policies
 
-#### Backend 2: GraphRAG Knowledge Graph (Future)
+---
+
+### Research Directions (M5+)
+
+The following backends illustrate why `OrgMemoryBackend` is a protocol — the architecture supports future upgrades without modifying existing code. These are **not planned implementations**; they are research directions that may inform future work if/when organizational memory needs outgrow the Hybrid Prompt + Retrieval approach.
+
+#### Backend 2: GraphRAG Knowledge Graph (Research)
 
 Organizational knowledge stored as entities + relationships in a knowledge graph. Agents query via graph traversal, enabling multi-hop reasoning: "FastAPI is our standard" → linked to → "don't use Flask" → linked to → "exception: data team uses Django for admin."
 
@@ -980,7 +1141,7 @@ org_memory:
 - Significant accuracy improvement over vector-only retrieval (some benchmarks report 3–4x gains). Multi-hop reasoning captures policy relationships
 - More complex infrastructure. Entity extraction can be noisy. Heavier setup
 
-#### Backend 3: Temporal Knowledge Graph (Future)
+#### Backend 3: Temporal Knowledge Graph (Research)
 
 Like GraphRAG but tracks how facts change over time. "We used Flask until March 2026, then switched to FastAPI." Agents see current truth but can query history for context.
 
@@ -1001,6 +1162,8 @@ org_memory:
 ---
 
 ## 8. HR & Workforce Management
+
+> **MVP: Not in M3–M4.** HR features (hiring, firing, performance tracking, promotions) are M5–M7. Agent workforce is configured manually via YAML in early milestones.
 
 ### 8.1 Hiring Process
 
@@ -1189,6 +1352,8 @@ Every API call is tracked (illustrative schema):
 
 ### 10.3 CFO Agent Responsibilities
 
+> **MVP: Not in M3.** Budget tracking and per-task cost recording exist (M2), but the CFO agent is M5+. Cost controls (§10.4) are enforced by the engine, not by an agent.
+
 The CFO agent (when enabled) acts as a cost management system:
 
 - Monitors real-time spending across all agents
@@ -1200,6 +1365,13 @@ The CFO agent (when enabled) acts as a cost management system:
 - Optimizes model routing for cost/quality balance
 
 ### 10.4 Cost Controls
+
+> **Minimal config:**
+> ```yaml
+> budget:
+>   total_monthly: 100.00
+> ```
+> All other fields below have sensible defaults.
 
 ```yaml
 budget:
@@ -1223,6 +1395,8 @@ budget:
 > **Auto-downgrade boundary:** Model downgrades apply only at **task assignment time**, never mid-execution. An agent halfway through an architecture review cannot be switched to a cheaper model — the task completes on its assigned model. The next task assignment respects the downgrade threshold. This prevents quality degradation from mid-thought model switches.
 
 ### 10.5 LLM Call Analytics
+
+> **MVP: Proxy metrics only (M3).** Call categorization is M4. Full analytics layer is M5+.
 
 Every LLM provider call is tracked with comprehensive metadata for financial reporting, debugging, and orchestration overhead analysis. The analytics system builds incrementally across milestones.
 
@@ -1304,6 +1478,8 @@ When the LLM requests multiple tool calls in a single turn, `ToolInvoker.invoke_
 ### 11.1.2 Tool Sandboxing
 
 Tool execution requires safety boundaries proportional to the risk of each tool category. The framework uses a **layered sandboxing strategy** with a pluggable `SandboxBackend` protocol — new backends can be added without modifying existing ones. The default configuration uses lighter isolation for low-risk tools and stronger isolation for high-risk tools.
+
+> **MVP: Subprocess sandbox for file/git tools. Docker optional for code execution.** K8s is future.
 
 #### Sandbox Backends
 
@@ -1401,7 +1577,11 @@ tool_access:
 
 Agents can earn higher tool access over time through configurable trust strategies. The trust system implements a `TrustStrategy` protocol, making it extensible. Multiple strategies are available, selectable via config.
 
-#### Strategy: Disabled (Static Access)
+> **MVP: Disabled (static access).** Agents receive their configured access level at hire time — no automated trust evolution until M7. The `TrustStrategy` protocol ensures all strategies are pluggable.
+>
+> **Security invariant (all strategies):** The `standard_to_elevated` promotion **always** requires human approval. No agent can auto-gain production access regardless of trust strategy.
+
+#### Strategy: Disabled (Static Access) — Default
 
 Trust is disabled. Agents receive their configured access level at hire time and it never changes. Simplest option — useful when the human manages permissions manually.
 
@@ -1529,6 +1709,13 @@ trust:
 
 ### 12.2 Autonomy Levels
 
+> **Minimal config:**
+> ```yaml
+> autonomy:
+>   level: "semi"
+> ```
+> All presets below are built-in. Most users only set the level.
+
 ```yaml
 autonomy:
   level: "semi"                  # full, semi, supervised, locked
@@ -1571,6 +1758,8 @@ A special meta-agent that reviews all actions before execution:
 ### 12.4 Approval Timeout Policy
 
 When an action requires human approval (per autonomy level in §12.2), the agent must wait. The framework provides configurable timeout policies that determine what happens when a human doesn't respond. All policies implement a `TimeoutPolicy` protocol. The policy is configurable per autonomy level and per action risk tier.
+
+> **MVP: Wait Forever only (Policy 1).** Other timeout policies are M5+.
 
 During any wait — regardless of policy — the agent **parks** the blocked task (saving its full serialized `AgentContext` state: conversation, progress, accumulated cost, turn count — i.e., the complete persisted context, distinct from the compact `AgentContextSnapshot` used for telemetry) and picks up other available tasks from its queue. When approval eventually arrives, the agent **resumes** the original context exactly where it left off. This mirrors real company behavior: a junior developer starts another task while waiting for a code review, then returns to the original work when feedback arrives.
 
@@ -2046,6 +2235,9 @@ These conventions were established during the M0–M2+ review cycle. **Adopted**
 | **Crash recovery** | Planned (M3) | Pluggable `RecoveryStrategy` protocol. M3: `FailAndReassignStrategy` (catch at engine boundary, log snapshot, mark FAILED, reassign). M4/M5: `CheckpointStrategy` (persist `AgentContext` per turn, resume from last checkpoint). | Immutable `model_copy` pattern makes checkpoint serialization trivial to add later. Fail-and-reassign is sufficient for short MVP tasks. See §6.6. |
 | **Agent behavior testing** | Planned (M3) | Scripted `FakeProvider` for unit tests (deterministic turn sequences); behavioral outcome assertions for integration tests (task completed, tools called, cost within budget). | Leverages existing `FakeProvider` and `CompletionResponseFactory` fixtures. Precise engine testing without brittle response-matching at integration level. |
 | **LLM call analytics** | Planned (incremental) | M3: proxy metrics (`turns_per_task`, `tokens_per_task`). M4: call categorization (`productive`, `coordination`, `system`) + orchestration ratio. M5+: full analytics (retry tracking, latency, cache hits, per-provider comparison). | Append-only, never blocks execution. Builds on existing `CostRecord` infrastructure. Detects orchestration overhead early. See §10.5. |
+| **State coordination** | Planned (M4) | Centralized single-writer: `TaskEngine` owns all task/project mutations via `asyncio.Queue`. Agents submit requests, engine applies `model_copy(update=...)` sequentially and publishes snapshots. `version: int` field on state models for future optimistic concurrency if multi-process scaling is needed. | Prevents lost updates by design. Trivial in single-threaded asyncio (no locks). Perfect audit trail. Industry consensus: MetaGPT, CrewAI, AutoGen all use prevention-by-design, not conflict resolution. See §6.8 State Coordination table. |
+| **Workspace isolation** | Planned (M4) | Pluggable `WorkspaceIsolationStrategy` protocol. Default: planner + git worktrees. Each agent works in an isolated worktree; sequential merge on completion. Textual conflicts detected by git; semantic conflicts reviewed by agent or human. | Industry standard (Codex, Cursor, Claude Code, VS Code). Maximum parallelism. Leverages mature git infrastructure. See §6.8. |
+| **Graceful shutdown** | Planned (M3) | Pluggable `ShutdownStrategy` protocol. Default: cooperative with 30s timeout. Agents check shutdown event at turn boundaries. Force-cancel after timeout. `INTERRUPTED` status for force-cancelled tasks. M4/M5: upgrade to checkpoint-and-stop. | Cross-platform (Windows `signal.signal()` fallback). Bounded shutdown time. Mirrors cooperative shutdown in §6.7. |
 
 ---
 
