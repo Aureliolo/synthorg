@@ -312,7 +312,7 @@ class TestInlinePersonality:
                 "communication_style": "custom",
             },
         }
-        result = _expand_single_agent(agent, 0, set())
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
         assert result["personality"]["communication_style"] == "custom"
         assert "custom-trait" in result["personality"]["traits"]
 
@@ -395,7 +395,7 @@ class TestInlinePersonalityRejection:
             "personality": {"openness": 99.0},
         }
         with pytest.raises(TemplateRenderError, match="Invalid inline personality"):
-            _expand_single_agent(agent, 0, set())
+            _expand_single_agent(agent, 0, set(), has_extends=False)
 
     def test_non_dict_personality_raises_template_render_error(self) -> None:
         """Non-dict personality value raises TemplateRenderError."""
@@ -406,7 +406,7 @@ class TestInlinePersonalityRejection:
             "personality": "not-a-dict",
         }
         with pytest.raises(TemplateRenderError, match="must be a mapping"):
-            _expand_single_agent(agent, 0, set())
+            _expand_single_agent(agent, 0, set(), has_extends=False)
 
 
 @pytest.mark.unit
@@ -416,7 +416,7 @@ class TestMissingRoleError:
         from ai_company.templates.renderer import _expand_single_agent
 
         with pytest.raises(TemplateRenderError, match="missing required 'role'"):
-            _expand_single_agent({}, 0, set())
+            _expand_single_agent({}, 0, set(), has_extends=False)
 
 
 @pytest.mark.unit
@@ -488,7 +488,7 @@ class TestUnknownPresetError:
             "personality_preset": "does_not_exist",
         }
         with pytest.raises(TemplateRenderError, match="Unknown personality preset"):
-            _expand_single_agent(agent, 0, set())
+            _expand_single_agent(agent, 0, set(), has_extends=False)
 
 
 @pytest.mark.unit
@@ -535,4 +535,13 @@ class TestRosterCounts:
             loaded,
             variables={"num_backend_devs": 5},
         )
-        assert len(override_config.agents) == len(default_config.agents) + 2
+        # Default is 3 backend devs, override is 5 → +2 agents.
+        default_backend = sum(
+            1 for a in default_config.agents if a.role == "Backend Developer"
+        )
+        override_backend = sum(
+            1 for a in override_config.agents if a.role == "Backend Developer"
+        )
+        assert default_backend == 3
+        assert override_backend == 5
+        assert override_backend - default_backend == 2

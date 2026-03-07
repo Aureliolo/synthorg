@@ -196,8 +196,9 @@ def _collect_merged_agents(
         (entry for entries in parent_entries.values() for entry in entries),
         key=lambda e: e.index,
     )
+    _strip_keys = {"merge_id", "_remove"}
     result: list[dict[str, Any]] = [
-        {k: v for k, v in entry.agent.items() if k != "merge_id"}
+        {k: v for k, v in entry.agent.items() if k not in _strip_keys}
         for entry in all_entries
         if entry.agent is not None
     ]

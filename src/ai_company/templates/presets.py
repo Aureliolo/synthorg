@@ -434,7 +434,8 @@ for _preset_name, _preset_dict in PERSONALITY_PRESETS.items():
     except (ValidationError, TypeError) as _exc:
         msg = f"Invalid personality preset {_preset_name!r}: {_exc}"
         raise ValueError(msg) from _exc
-del _preset_name, _preset_dict
+if PERSONALITY_PRESETS:
+    del _preset_name, _preset_dict
 
 
 def generate_auto_name(role: str, *, seed: int | None = None) -> str:

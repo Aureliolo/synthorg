@@ -451,7 +451,11 @@ def _build_config_dict(
         template.metadata.name,
     )
 
-    agents = _expand_agents(_validate_list(rendered_data, "agents"))
+    has_extends = template.extends is not None
+    agents = _expand_agents(
+        _validate_list(rendered_data, "agents"),
+        has_extends=has_extends,
+    )
     departments = _build_departments(_validate_list(rendered_data, "departments"))
 
     autonomy, budget_monthly = _extract_numeric_config(company, template)
@@ -471,11 +475,19 @@ def _build_config_dict(
         },
     }
 
+    _attach_optional_lists(rendered_data, result)
+
+    return result
+
+
+def _attach_optional_lists(
+    rendered_data: dict[str, Any],
+    result: dict[str, Any],
+) -> None:
+    """Extract optional list fields from rendered data into result."""
     for key in ("workflow_handoffs", "escalation_paths"):
         if key in rendered_data and rendered_data[key] is not None:
             result[key] = _validate_list(rendered_data, key)
-
-    return result
 
 
 def _validate_list(
@@ -539,11 +551,14 @@ def _extract_numeric_config(
 
 def _expand_agents(
     raw_agents: list[dict[str, Any]],
+    *,
+    has_extends: bool,
 ) -> list[dict[str, Any]]:
     """Expand template agent dicts into AgentConfig-compatible dicts.
 
     Args:
         raw_agents: List of agent dicts from rendered YAML.
+        has_extends: Whether the template uses inheritance.
 
     Returns:
         List of dicts suitable for ``AgentConfig`` construction.
@@ -551,7 +566,14 @@ def _expand_agents(
     used_names: set[str] = set()
     expanded: list[dict[str, Any]] = []
     for idx, agent in enumerate(raw_agents):
-        expanded.append(_expand_single_agent(agent, idx, used_names))
+        expanded.append(
+            _expand_single_agent(
+                agent,
+                idx,
+                used_names,
+                has_extends=has_extends,
+            ),
+        )
     return expanded
 
 
@@ -559,6 +581,8 @@ def _expand_single_agent(
     agent: dict[str, Any],
     idx: int,
     used_names: set[str],
+    *,
+    has_extends: bool,
 ) -> dict[str, Any]:
     """Expand a single template agent dict.
 
@@ -596,6 +620,17 @@ def _expand_single_agent(
 
     # Preserve _remove merge directive for inheritance.
     if agent.get("_remove"):
+        if not has_extends:
+            msg = (
+                f"Agent {name!r} uses '_remove' but the template "
+                "has no 'extends' — directive has no effect"
+            )
+            logger.warning(
+                TEMPLATE_RENDER_VARIABLE_ERROR,
+                agent=name,
+                field="_remove",
+            )
+            raise TemplateRenderError(msg)
         agent_dict["_remove"] = True
 
     return agent_dict

@@ -26,6 +26,7 @@ from ai_company.observability.events.template import (
     TEMPLATE_BUILTIN_DEFECT,
     TEMPLATE_LIST_SKIP_INVALID,
     TEMPLATE_LOAD_ERROR,
+    TEMPLATE_LOAD_INVALID_NAME,
     TEMPLATE_LOAD_NOT_FOUND,
     TEMPLATE_LOAD_PARSE_ERROR,
     TEMPLATE_LOAD_READ_ERROR,
@@ -175,7 +176,7 @@ def load_template(name: str) -> LoadedTemplate:
     # Sanitize to prevent path traversal (OS-independent).
     if "/" in name_clean or "\\" in name_clean or ".." in name_clean:
         msg = f"Invalid template name {name!r}: must not contain path separators"
-        logger.warning(TEMPLATE_LOAD_NOT_FOUND, template_name=name)
+        logger.warning(TEMPLATE_LOAD_INVALID_NAME, template_name=name)
         raise TemplateNotFoundError(
             msg,
             locations=(ConfigLocation(file_path=f"<template:{name}>"),),

@@ -2218,7 +2218,7 @@ template:
 Inheritance resolves parent→child chains up to 10 levels deep. Merge semantics:
 - **Scalars** (`company_name`, `company_type`): child wins if present.
 - **`config`** dict: deep-merged (child keys override parent).
-- **`agents`** list: merged by `(role, department, merge_id)` key. When `merge_id` is omitted the key is `(role, department, "")`. Child can override, append, or remove (`_remove: true`) parent agents.
+- **`agents`** list: merged by `(role, department, merge_id)` key. When `merge_id` is omitted, it defaults to an empty string, making the key `(role, department, "")`. Child can override, append, or remove (`_remove: true`) parent agents.
 - **`departments`** list: merged by name (case-insensitive). Child dept replaces parent entirely.
 - **`workflow_handoffs`**, **`escalation_paths`**: child replaces entirely if present.
 

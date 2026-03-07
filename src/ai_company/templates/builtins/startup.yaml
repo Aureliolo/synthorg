@@ -3,7 +3,7 @@ template:
   description: "Small team for building MVPs and prototypes"
   version: "1.0.0"
   min_agents: 3
-  max_agents: 7
+  max_agents: 5
   tags:
     - "startup"
     - "mvp"
