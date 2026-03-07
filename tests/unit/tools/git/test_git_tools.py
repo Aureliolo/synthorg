@@ -726,6 +726,65 @@ class TestRunGitErrorPaths:
         assert "timed out" in result.content
         mock_proc.kill.assert_called_once()
 
+    async def test_timeout_includes_stderr_fragment(
+        self,
+        status_tool: GitStatusTool,
+    ) -> None:
+        """Timeout message includes stderr when available."""
+        calls = 0
+
+        async def slow_then_stderr() -> tuple[bytes, bytes]:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                await asyncio.sleep(999)
+            return b"", b"fatal: could not access repository"
+
+        mock_proc = MagicMock()
+        mock_proc.communicate = slow_then_stderr
+        mock_proc.kill = MagicMock()
+        mock_proc._transport = None  # no transport to close
+
+        with patch(
+            "asyncio.create_subprocess_exec",
+            return_value=mock_proc,
+        ):
+            result = await status_tool._run_git(["status"], deadline=0.01)
+
+        assert result.is_error
+        assert "timed out" in result.content
+        assert "fatal: could not access repository" in result.content
+
+    async def test_timeout_sanitizes_stderr_control_chars(
+        self,
+        status_tool: GitStatusTool,
+    ) -> None:
+        """Control characters in stderr are stripped."""
+        calls = 0
+
+        async def slow_then_dirty_stderr() -> tuple[bytes, bytes]:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                await asyncio.sleep(999)
+            return b"", b"error\x00with\x07control\x1fchars"
+
+        mock_proc = MagicMock()
+        mock_proc.communicate = slow_then_dirty_stderr
+        mock_proc.kill = MagicMock()
+        mock_proc._transport = None
+
+        with patch(
+            "asyncio.create_subprocess_exec",
+            return_value=mock_proc,
+        ):
+            result = await status_tool._run_git(["status"], deadline=0.01)
+
+        assert result.is_error
+        assert "\x00" not in result.content
+        assert "\x07" not in result.content
+        assert "errorwithcontrolchars" in result.content
+
     async def test_oserror_returns_error(self, status_tool: GitStatusTool) -> None:
         """OSError when git binary not found returns error result."""
         with patch(

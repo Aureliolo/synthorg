@@ -39,3 +39,8 @@ TOOL_FS_WORKSPACE_INVALID: Final[str] = "tool.fs.workspace_invalid"
 TOOL_FS_PARENT_NOT_FOUND: Final[str] = "tool.fs.parent_not_found"
 TOOL_FS_GLOB_REJECTED: Final[str] = "tool.fs.glob_rejected"
 TOOL_FS_NOOP: Final[str] = "tool.fs.noop"
+
+# ── Subprocess utility events ───────────────────────────────────
+TOOL_SUBPROCESS_TRANSPORT_CLOSE_FAILED: Final[str] = (
+    "tool.subprocess.transport_close_failed"
+)

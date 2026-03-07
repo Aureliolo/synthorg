@@ -24,10 +24,12 @@ from ai_company.observability.events.sandbox import (
     SANDBOX_EXECUTE_TIMEOUT,
     SANDBOX_HEALTH_CHECK,
     SANDBOX_KILL_FAILED,
+    SANDBOX_KILL_FALLBACK,
     SANDBOX_PATH_FALLBACK,
     SANDBOX_SPAWN_FAILED,
     SANDBOX_WORKSPACE_VIOLATION,
 )
+from ai_company.tools._process_cleanup import close_subprocess_transport
 from ai_company.tools.sandbox.config import SubprocessSandboxConfig
 from ai_company.tools.sandbox.errors import (
     SandboxError,
@@ -289,7 +291,12 @@ class SubprocessSandbox:
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)  # type: ignore[attr-defined,unused-ignore]
             except ProcessLookupError:
                 return
-            except OSError:
+            except OSError as kill_exc:
+                logger.warning(
+                    SANDBOX_KILL_FALLBACK,
+                    pid=proc.pid,
+                    error=str(kill_exc),
+                )
                 with contextlib.suppress(ProcessLookupError):
                     proc.kill()
                 return
@@ -302,13 +309,11 @@ class SubprocessSandbox:
     def _close_process(proc: asyncio.subprocess.Process) -> None:
         """Close subprocess transport to prevent ResourceWarning on Windows.
 
-        On Windows with ProactorEventLoop, pipe transports may not be
-        closed promptly after kill+communicate, causing ResourceWarning
-        at GC time.  Explicitly closing the transport avoids this.
+        Delegates to :func:`close_subprocess_transport` — see its
+        docstring for details on the CPython-internal ``_transport``
+        access and error handling.
         """
-        transport = getattr(proc, "_transport", None)
-        if transport is not None and not transport.is_closing():
-            transport.close()
+        close_subprocess_transport(proc)
 
     async def _spawn_process(
         self,

@@ -290,10 +290,11 @@ Sort by severity (Critical first, Minor last).
 Show the consolidated table with:
 - Total count of items
 - Count by source agent
-- Any items recommended to skip (with reasoning)
+
+**Default behavior: implement ALL valid findings** — including pre-existing issues found in surrounding code, suggestions, and anything the agents correctly identified. Do NOT skip items just because they are "pre-existing" or "out of scope" — if an agent found a valid issue in code touched by (or adjacent to) this PR, fix it now.
 
 Ask the user via AskUserQuestion:
-- "Implement all" (Recommended)
+- "Implement all (Recommended)" — this is the default
 - "Let me review the list first"
 - "Skip some items"
 
@@ -395,4 +396,4 @@ Report:
 - If two agents contradict each other, flag it and ask the user.
 - Do NOT use `--no-verify` or `--amend` for commits.
 - Agent failures are non-fatal — proceed with available findings, report failed agents.
-- **Fix everything that's approved — never defer.** Every valid recommendation must be implemented. No creating GitHub issues for "too large" items, no deferring to future PRs.
+- **Fix everything valid — never defer, never skip.** Every valid recommendation must be implemented — including pre-existing issues, suggestions, and findings in surrounding code. No creating GitHub issues for "too large" items, no deferring to future PRs, no marking things as "out of scope".

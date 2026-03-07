@@ -10,7 +10,6 @@ The ``ShutdownStrategy`` protocol is pluggable for future strategies.
 """
 
 import asyncio
-import contextlib
 import signal
 import sys
 import time
@@ -244,12 +243,33 @@ class CooperativeTimeoutStrategy:
                 pending,
                 timeout=self._CANCEL_PROPAGATION_TIMEOUT,
             )
-            for task in cancel_done:
-                if not task.cancelled():
-                    with contextlib.suppress(Exception):
-                        task.exception()
+            self._log_post_cancel_exceptions(cancel_done)
 
         return tasks_completed, len(pending)
+
+    @staticmethod
+    def _log_post_cancel_exceptions(
+        tasks: set[asyncio.Task[Any]],
+    ) -> None:
+        """Retrieve and log exceptions from post-cancel tasks.
+
+        Retrieving the exception prevents asyncio's "Task exception was
+        never retrieved" warning.  Non-cancelled tasks with exceptions
+        are logged at DEBUG.
+        """
+        for task in tasks:
+            if task.cancelled():
+                continue
+            try:
+                exc = task.exception()
+            except Exception:  # noqa: S110
+                pass
+            else:
+                if exc is not None:
+                    logger.debug(
+                        EXECUTION_SHUTDOWN_TASK_ERROR,
+                        error=(f"Post-cancel task exception: {type(exc).__name__}"),
+                    )
 
     async def _run_cleanup(
         self,
@@ -395,9 +415,18 @@ class ShutdownManager:
             loop.call_soon_threadsafe(_on_loop)
         except RuntimeError:
             # No running event loop — call directly (best-effort).
-            # Cannot log safely without a loop, so suppress all errors.
-            with contextlib.suppress(Exception):
+            # Cannot use structlog (acquires locks) so fall back to
+            # stderr for last-resort visibility.
+            try:
                 self._strategy.request_shutdown()
+            except Exception:
+                try:
+                    sys.stderr.write(
+                        f"[shutdown] request_shutdown() failed for signal {sig_name}\n"
+                    )
+                    sys.stderr.flush()
+                except Exception:  # noqa: S110
+                    pass
 
     def register_task(
         self,

@@ -129,6 +129,7 @@ src/ai_company/
 - For trivial/docs-only changes: `/pre-pr-review quick` skips agents but still runs automated checks
 - After the PR exists, use `/aurelio-review-pr` to handle external reviewer feedback
 - The `/commit-push-pr` command is effectively blocked (it calls `gh pr create` internally)
+- **Fix everything valid — never skip**: When review agents find valid issues (including pre-existing issues in surrounding code, suggestions, and findings adjacent to the PR's changes), fix them all. No deferring, no "out of scope" skipping.
 
 ## CI
 

@@ -1,6 +1,8 @@
 """Subprocess sandbox configuration model."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from pathlib import PurePath
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class SubprocessSandboxConfig(BaseModel):
@@ -17,6 +19,8 @@ class SubprocessSandboxConfig(BaseModel):
         env_denylist_patterns: fnmatch patterns to strip even if in
             the allowlist (e.g. ``*KEY*`` catches ``API_KEY``).
             Includes secret-name heuristics and library injection vars.
+        extra_safe_path_prefixes: Additional non-empty absolute PATH
+            prefixes appended to platform defaults for the PATH filter.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -65,3 +69,15 @@ class SubprocessSandboxConfig(BaseModel):
     install location) through the PATH filter without modifying the
     built-in platform defaults.
     """
+
+    @field_validator("extra_safe_path_prefixes")
+    @classmethod
+    def _validate_prefixes(cls, v: tuple[str, ...]) -> tuple[str, ...]:
+        for prefix in v:
+            if not prefix or not PurePath(prefix).is_absolute():
+                msg = (
+                    "extra_safe_path_prefixes entries must be "
+                    f"non-empty absolute paths, got: {prefix!r}"
+                )
+                raise ValueError(msg)
+        return v

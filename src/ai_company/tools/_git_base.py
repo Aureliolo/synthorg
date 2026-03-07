@@ -37,6 +37,7 @@ from ai_company.observability.events.git import (
     GIT_REF_INJECTION_BLOCKED,
     GIT_WORKSPACE_VIOLATION,
 )
+from ai_company.tools._process_cleanup import close_subprocess_transport
 from ai_company.tools.base import BaseTool, ToolExecutionResult
 from ai_company.tools.sandbox.errors import SandboxError
 
@@ -71,9 +72,18 @@ _SECRET_SUBSTRINGS: Final[tuple[str, ...]] = (
 )
 
 
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+_MAX_STDERR_FRAGMENT: Final[int] = 500
+
+
 def _sanitize_command(args: list[str]) -> list[str]:
     """Redact embedded credentials from git command args for logging."""
     return [_CREDENTIAL_RE.sub(r"\1***@", a) for a in args]
+
+
+def _sanitize_stderr(raw: str) -> str:
+    """Strip control characters and truncate stderr for safe inclusion."""
+    return _CONTROL_CHAR_RE.sub("", raw)[:_MAX_STDERR_FRAGMENT]
 
 
 class _BaseGitTool(BaseTool, ABC):
@@ -314,10 +324,9 @@ class _BaseGitTool(BaseTool, ABC):
                     proc.communicate(),
                     timeout=5.0,
                 )
-                stderr_fragment = raw_stderr.decode(
-                    "utf-8",
-                    errors="replace",
-                ).strip()
+                raw = raw_stderr.decode("utf-8", errors="replace").strip()
+                # Sanitize: strip control chars and truncate for safety.
+                stderr_fragment = _sanitize_stderr(raw)
             except TimeoutError:
                 logger.warning(
                     GIT_COMMAND_FAILED,
@@ -328,6 +337,7 @@ class _BaseGitTool(BaseTool, ABC):
                 GIT_COMMAND_TIMEOUT,
                 command=_sanitize_command(["git", *args]),
                 deadline=deadline,
+                stderr_fragment=stderr_fragment,
             )
             msg = f"Git command timed out after {deadline}s"
             if stderr_fragment:
@@ -529,6 +539,4 @@ class _BaseGitTool(BaseTool, ABC):
                 stderr_bytes,
             )
         finally:
-            transport = getattr(proc_or_err, "_transport", None)
-            if transport is not None and not transport.is_closing():
-                transport.close()
+            close_subprocess_transport(proc_or_err)

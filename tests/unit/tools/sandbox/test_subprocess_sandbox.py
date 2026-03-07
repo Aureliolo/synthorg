@@ -439,3 +439,83 @@ class TestHealthCheckAndCleanup:
         subprocess_sandbox: SubprocessSandbox,
     ) -> None:
         assert subprocess_sandbox.get_backend_type() == "subprocess"
+
+
+# ── extra_safe_path_prefixes ─────────────────────────────────────
+
+
+class TestExtraSafePathPrefixes:
+    """Tests for configurable safe PATH prefixes."""
+
+    def test_extra_prefixes_included(
+        self,
+        sandbox_workspace: Path,
+    ) -> None:
+        extra = (r"C:\CustomTools",) if os.name == "nt" else ("/opt/custom/bin",)
+        config = SubprocessSandboxConfig(
+            extra_safe_path_prefixes=extra,
+        )
+        sandbox = SubprocessSandbox(
+            config=config,
+            workspace=sandbox_workspace,
+        )
+        prefixes = sandbox._get_safe_path_prefixes()
+        assert extra[0] in prefixes
+
+    def test_extra_prefix_survives_path_filter(
+        self,
+        sandbox_workspace: Path,
+    ) -> None:
+        extra, fake_path = (
+            (
+                (r"C:\CustomTools",),
+                r"C:\CustomTools\bin;C:\suspicious\dir",
+            )
+            if os.name == "nt"
+            else (
+                ("/opt/custom",),
+                "/opt/custom/bin:/suspicious/dir",
+            )
+        )
+        config = SubprocessSandboxConfig(
+            restricted_path=True,
+            extra_safe_path_prefixes=extra,
+        )
+        sandbox = SubprocessSandbox(
+            config=config,
+            workspace=sandbox_workspace,
+        )
+        with patch.dict(
+            os.environ,
+            {"PATH": fake_path},
+            clear=True,
+        ):
+            env = sandbox._build_filtered_env()
+            assert "suspicious" not in env.get("PATH", "").lower()
+            assert "custom" in env.get("PATH", "").lower()
+
+    def test_default_empty_no_change(
+        self,
+        sandbox_workspace: Path,
+    ) -> None:
+        config = SubprocessSandboxConfig()
+        sandbox = SubprocessSandbox(
+            config=config,
+            workspace=sandbox_workspace,
+        )
+        defaults_only = SubprocessSandbox(
+            workspace=sandbox_workspace,
+        )
+        assert (
+            sandbox._get_safe_path_prefixes() == defaults_only._get_safe_path_prefixes()
+        )
+
+    def test_rejects_empty_string(self) -> None:
+        with pytest.raises(ValueError, match="non-empty absolute"):
+            SubprocessSandboxConfig(extra_safe_path_prefixes=("",))
+
+    def test_rejects_relative_path(self) -> None:
+        with pytest.raises(ValueError, match="non-empty absolute"):
+            SubprocessSandboxConfig(
+                extra_safe_path_prefixes=("relative/path",),
+            )

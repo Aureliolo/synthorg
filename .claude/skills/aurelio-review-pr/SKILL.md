@@ -317,11 +317,11 @@ Show the user the complete table, organized by severity (Critical first, Minor l
 
 - Total count of items
 - Count by source (each agent + each external reviewer)
-- Any items you recommend skipping (with reasoning)
+**Default behavior: implement ALL valid findings** — including pre-existing issues found in surrounding code, suggestions, and anything correctly identified by agents or external reviewers. Do NOT skip items just because they are "pre-existing" or "out of scope" — if a reviewer found a valid issue in code touched by (or adjacent to) this PR, fix it now.
 
 Then ask the user using AskUserQuestion with options like:
 
-- "Implement all" (Recommended)
+- "Implement all (Recommended)" — this is the default
 - "Let me review the list first"
 - "Skip some items"
 
@@ -411,4 +411,4 @@ Report what was done:
 - If two sources contradict each other, flag it and ask the user.
 - Do NOT use `--no-verify` or `--amend` for commits.
 - External feedback fetch failures are non-fatal — retry once, then proceed with local findings if still failing. Mark external coverage as partial in the triage table.
-- **Fix everything in the current PR — never defer.** Every valid recommendation must be implemented in this PR regardless of size. No creating GitHub issues for "too large" items, no deferring to future PRs, no marking things as out of scope. If a reviewer flags it and it's valid, fix it now — docstrings, type hints, refactors, all of it.
+- **Fix everything valid — never defer, never skip.** Every valid recommendation must be implemented — including pre-existing issues, suggestions, and findings in surrounding code. No creating GitHub issues for "too large" items, no deferring to future PRs, no marking things as "out of scope". If a reviewer flags it and it's valid, fix it now.
