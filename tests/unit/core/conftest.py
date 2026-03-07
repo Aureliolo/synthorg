@@ -151,6 +151,8 @@ class EscalationPathFactory(ModelFactory[EscalationPath]):
 class CompanyFactory(ModelFactory[Company]):
     __model__ = Company
     departments = ()
+    workflow_handoffs = ()
+    escalation_paths = ()
 
 
 class ExpectedArtifactFactory(ModelFactory[ExpectedArtifact]):

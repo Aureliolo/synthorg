@@ -435,25 +435,55 @@ class TestCompany:
         assert isinstance(co, Company)
 
     def test_with_workflow_handoffs(self) -> None:
-        """Accept a company with workflow handoffs."""
+        """Accept a company with workflow handoffs referencing declared departments."""
+        depts = (
+            Department(name="engineering", head="cto"),
+            Department(name="qa", head="qa_lead"),
+        )
         handoff = WorkflowHandoff(
             from_department="engineering",
             to_department="qa",
             trigger="code_complete",
         )
-        co = Company(name="Test", workflow_handoffs=(handoff,))
+        co = Company(name="Test", departments=depts, workflow_handoffs=(handoff,))
         assert len(co.workflow_handoffs) == 1
 
     def test_with_escalation_paths(self) -> None:
-        """Accept a company with escalation paths."""
+        """Accept a company with escalation paths referencing declared departments."""
+        depts = (
+            Department(name="engineering", head="cto"),
+            Department(name="executive", head="ceo"),
+        )
         esc = EscalationPath(
             from_department="engineering",
             to_department="executive",
             condition="critical_failure",
             priority_boost=2,
         )
-        co = Company(name="Test", escalation_paths=(esc,))
+        co = Company(name="Test", departments=depts, escalation_paths=(esc,))
         assert len(co.escalation_paths) == 1
+
+    def test_workflow_handoff_unknown_department_rejected(self) -> None:
+        """Reject workflow handoffs referencing unknown departments."""
+        depts = (Department(name="engineering", head="cto"),)
+        handoff = WorkflowHandoff(
+            from_department="engineering",
+            to_department="qa",
+            trigger="code_complete",
+        )
+        with pytest.raises(ValidationError, match="unknown department"):
+            Company(name="Test", departments=depts, workflow_handoffs=(handoff,))
+
+    def test_escalation_path_unknown_department_rejected(self) -> None:
+        """Reject escalation paths referencing unknown departments."""
+        depts = (Department(name="engineering", head="cto"),)
+        esc = EscalationPath(
+            from_department="engineering",
+            to_department="executive",
+            condition="critical_failure",
+        )
+        with pytest.raises(ValidationError, match="unknown department"):
+            Company(name="Test", departments=depts, escalation_paths=(esc,))
 
 
 # ── ReportingLine ─────────────────────────────────────────────────
@@ -734,5 +764,17 @@ class TestDepartmentExtended:
                 reporting_lines=(
                     ReportingLine(subordinate="dev", supervisor="lead"),
                     ReportingLine(subordinate="dev", supervisor="manager"),
+                ),
+            )
+
+    def test_duplicate_subordinates_case_insensitive(self) -> None:
+        """Reject subordinates that differ only by case or whitespace."""
+        with pytest.raises(ValidationError, match="Duplicate subordinates"):
+            Department(
+                name="eng",
+                head="cto",
+                reporting_lines=(
+                    ReportingLine(subordinate="Alice", supervisor="lead"),
+                    ReportingLine(subordinate="alice", supervisor="manager"),
                 ),
             )

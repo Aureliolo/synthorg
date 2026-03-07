@@ -288,7 +288,7 @@ class Department(BaseModel):
     @model_validator(mode="after")
     def _validate_unique_subordinates(self) -> Self:
         """Ensure no duplicate subordinates in reporting lines."""
-        subs = [r.subordinate for r in self.reporting_lines]
+        subs = [r.subordinate.strip().casefold() for r in self.reporting_lines]
         if len(subs) != len(set(subs)):
             dupes = sorted(s for s, c in Counter(subs).items() if c > 1)
             msg = (
@@ -420,12 +420,25 @@ class Company(BaseModel):
     @model_validator(mode="after")
     def _validate_departments(self) -> Self:
         """Validate department names are unique and budgets do not exceed 100%."""
-        # Unique department names
-        names = [d.name for d in self.departments]
+        # Unique department names (normalized for case-insensitive comparison)
+        names = [d.name.strip().casefold() for d in self.departments]
         if len(names) != len(set(names)):
             dupes = sorted(n for n, c in Counter(names).items() if c > 1)
             msg = f"Duplicate department names: {dupes}"
             raise ValueError(msg)
+
+        # Validate handoff/escalation references against declared departments
+        known = set(names)
+        for handoff in self.workflow_handoffs:
+            for dept in (handoff.from_department, handoff.to_department):
+                if dept.strip().casefold() not in known:
+                    msg = f"Workflow handoff references unknown department: {dept!r}"
+                    raise ValueError(msg)
+        for escalation in self.escalation_paths:
+            for dept in (escalation.from_department, escalation.to_department):
+                if dept.strip().casefold() not in known:
+                    msg = f"Escalation path references unknown department: {dept!r}"
+                    raise ValueError(msg)
 
         # Budget sum
         max_budget_percent = 100.0
