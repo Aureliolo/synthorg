@@ -96,6 +96,18 @@ class TestTemplateAgentConfig:
         with pytest.raises(ValidationError):
             TemplateAgentConfig(role="")
 
+    def test_inline_personality(self) -> None:
+        a = TemplateAgentConfig(
+            role="Dev",
+            personality={"openness": 0.9, "traits": ("bold",)},
+        )
+        assert a.personality is not None
+        assert a.personality["openness"] == 0.9
+
+    def test_personality_none_by_default(self) -> None:
+        a = TemplateAgentConfig(role="Dev")
+        assert a.personality is None
+
     def test_blank_model_rejected(self) -> None:
         with pytest.raises(ValidationError):
             TemplateAgentConfig(role="dev", model="")
@@ -103,6 +115,14 @@ class TestTemplateAgentConfig:
     def test_whitespace_model_rejected(self) -> None:
         with pytest.raises(ValidationError):
             TemplateAgentConfig(role="dev", model="   ")
+
+    def test_both_personality_and_preset_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Cannot specify both"):
+            TemplateAgentConfig(
+                role="Dev",
+                personality_preset="visionary_leader",
+                personality={"openness": 0.9},
+            )
 
 
 # ── TemplateDepartmentConfig ─────────────────────────────────────
@@ -132,6 +152,28 @@ class TestTemplateDepartmentConfig:
     def test_budget_percent_over_100_rejected(self) -> None:
         with pytest.raises(ValidationError):
             TemplateDepartmentConfig(name="eng", budget_percent=101.0)
+
+    def test_reporting_lines_default_empty(self) -> None:
+        d = TemplateDepartmentConfig(name="eng")
+        assert d.reporting_lines == ()
+
+    def test_reporting_lines_accepted(self) -> None:
+        d = TemplateDepartmentConfig(
+            name="eng",
+            reporting_lines=({"subordinate": "dev", "supervisor": "lead"},),
+        )
+        assert len(d.reporting_lines) == 1
+
+    def test_policies_none_by_default(self) -> None:
+        d = TemplateDepartmentConfig(name="eng")
+        assert d.policies is None
+
+    def test_policies_accepted(self) -> None:
+        d = TemplateDepartmentConfig(
+            name="eng",
+            policies={"review_requirements": {"min_reviewers": 2}},
+        )
+        assert d.policies is not None
 
     def test_blank_name_rejected(self) -> None:
         with pytest.raises(ValidationError):
@@ -315,6 +357,54 @@ class TestCompanyTemplate:
     ) -> None:
         with pytest.raises(ValidationError):
             CompanyTemplate(**make_template_dict(communication="   "))
+
+    def test_workflow_handoffs_default_empty(
+        self,
+        make_template_dict: Callable[..., dict[str, Any]],
+    ) -> None:
+        t = CompanyTemplate(**make_template_dict())
+        assert t.workflow_handoffs == ()
+
+    def test_escalation_paths_default_empty(
+        self,
+        make_template_dict: Callable[..., dict[str, Any]],
+    ) -> None:
+        t = CompanyTemplate(**make_template_dict())
+        assert t.escalation_paths == ()
+
+    def test_workflow_handoffs_accepted(
+        self,
+        make_template_dict: Callable[..., dict[str, Any]],
+    ) -> None:
+        t = CompanyTemplate(
+            **make_template_dict(
+                workflow_handoffs=(
+                    {
+                        "from_department": "eng",
+                        "to_department": "qa",
+                        "trigger": "done",
+                    },
+                ),
+            )
+        )
+        assert len(t.workflow_handoffs) == 1
+
+    def test_escalation_paths_accepted(
+        self,
+        make_template_dict: Callable[..., dict[str, Any]],
+    ) -> None:
+        t = CompanyTemplate(
+            **make_template_dict(
+                escalation_paths=(
+                    {
+                        "from_department": "eng",
+                        "to_department": "security",
+                        "condition": "vulnerability found",
+                    },
+                ),
+            )
+        )
+        assert len(t.escalation_paths) == 1
 
     def test_frozen(
         self,

@@ -9,7 +9,11 @@ from pydantic import ValidationError
 
 from ai_company.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
 from ai_company.core.enums import (
+    CollaborationPreference,
+    CommunicationVerbosity,
+    ConflictApproach,
     CreativityLevel,
+    DecisionMakingStyle,
     RiskTolerance,
     SeniorityLevel,
 )
@@ -17,6 +21,7 @@ from ai_company.engine.errors import PromptBuildError
 from ai_company.engine.prompt import (
     DefaultTokenEstimator,
     SystemPrompt,
+    build_error_prompt,
     build_system_prompt,
 )
 from ai_company.engine.prompt_template import (
@@ -224,6 +229,43 @@ class TestBuildSystemPrompt:
         assert f"{sample_task_with_criteria.budget_limit:.2f}" in result.content
 
     @pytest.mark.unit
+    def test_new_personality_dimensions_in_prompt(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """New personality dimensions (verbosity, decision_making, etc.) appear."""
+        result = build_system_prompt(agent=sample_agent_with_personality)
+        p = sample_agent_with_personality.personality
+
+        assert p.verbosity.value in result.content
+        assert p.decision_making.value in result.content
+        assert p.collaboration.value in result.content
+        assert p.conflict_approach.value in result.content
+
+    @pytest.mark.unit
+    def test_new_personality_dimensions_with_custom_values(self) -> None:
+        """Prompt reflects explicitly set personality dimensions."""
+        model_cfg = ModelConfig(provider="test", model_id="test-001")
+        agent = AgentIdentity(
+            name="Custom Agent",
+            role="Dev",
+            department="Eng",
+            model=model_cfg,
+            hiring_date=date(2026, 1, 1),
+            personality=PersonalityConfig(
+                verbosity=CommunicationVerbosity.TERSE,
+                decision_making=DecisionMakingStyle.DIRECTIVE,
+                collaboration=CollaborationPreference.INDEPENDENT,
+                conflict_approach=ConflictApproach.COMPETE,
+            ),
+        )
+        result = build_system_prompt(agent=agent)
+        assert "terse" in result.content
+        assert "directive" in result.content
+        assert "independent" in result.content
+        assert "compete" in result.content
+
+    @pytest.mark.unit
     def test_no_task_section_when_task_is_none(
         self,
         sample_agent_with_personality: AgentIdentity,
@@ -420,6 +462,11 @@ class TestTokenEstimation:
 
 class TestPromptVersioning:
     """Tests for prompt versioning and section tracking."""
+
+    @pytest.mark.unit
+    def test_template_version_is_1_1_0(self) -> None:
+        """PROMPT_TEMPLATE_VERSION is '1.1.0'."""
+        assert PROMPT_TEMPLATE_VERSION == "1.1.0"
 
     @pytest.mark.unit
     def test_template_version_in_result(
@@ -763,6 +810,43 @@ class TestBudgetExceeded:
                 agent=sample_agent_with_personality,
                 max_tokens=-1,
             )
+
+
+# ── TestBuildErrorPrompt ──────────────────────────────────────
+
+
+class TestBuildErrorPrompt:
+    """Tests for the build_error_prompt() fallback function."""
+
+    @pytest.mark.unit
+    def test_returns_existing_prompt_when_provided(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """When system_prompt is not None, it is returned as-is."""
+        existing = build_system_prompt(agent=sample_agent_with_personality)
+        result = build_error_prompt(
+            sample_agent_with_personality,
+            "override-id",
+            existing,
+        )
+        assert result is existing
+
+    @pytest.mark.unit
+    def test_returns_placeholder_when_no_prompt(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """When system_prompt is None, a placeholder is returned."""
+        result = build_error_prompt(
+            sample_agent_with_personality,
+            "custom-agent-id",
+            None,
+        )
+        assert result.content == ""
+        assert result.template_version == "error"
+        assert result.metadata["agent_id"] == "custom-agent-id"
+        assert result.metadata["name"] == sample_agent_with_personality.name
 
 
 # ── TestCatchAllExceptionWrapping ──────────────────────────────

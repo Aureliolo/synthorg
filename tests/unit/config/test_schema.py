@@ -366,6 +366,32 @@ class TestRootConfig:
                 ),
             )
 
+    def test_workflow_handoffs_accepted(self) -> None:
+        cfg = RootConfig(
+            company_name="X",
+            workflow_handoffs=(  # type: ignore[arg-type]
+                {
+                    "from_department": "eng",
+                    "to_department": "qa",
+                    "trigger": "code complete",
+                },
+            ),
+        )
+        assert len(cfg.workflow_handoffs) == 1
+
+    def test_escalation_paths_accepted(self) -> None:
+        cfg = RootConfig(
+            company_name="X",
+            escalation_paths=(  # type: ignore[arg-type]
+                {
+                    "from_department": "eng",
+                    "to_department": "security",
+                    "condition": "vulnerability found",
+                },
+            ),
+        )
+        assert len(cfg.escalation_paths) == 1
+
     def test_routing_references_unknown_model(self) -> None:
         with pytest.raises(
             ValidationError,

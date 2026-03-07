@@ -45,7 +45,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # Sandboxed to prevent arbitrary code execution in user-provided custom templates.
-# Thread-safe for parse/render (read-only ops); do NOT mutate at runtime.
+# Thread-safe for concurrent parse/render calls. Do NOT add filters, globals,
+# or extensions after module initialization.
 _SANDBOX_ENV = SandboxedEnvironment()
 
 
@@ -117,7 +118,7 @@ class DefaultTokenEstimator:
             text: The text to estimate tokens for.
 
         Returns:
-            Estimated token count (0 for text shorter than 4 characters).
+            Estimated token count (minimum 0).
         """
         return len(text) // 4
 
@@ -155,6 +156,19 @@ def build_system_prompt(  # noqa: PLR0913
 
     When ``max_tokens`` is provided and the prompt exceeds it, optional
     sections are progressively trimmed (company, tools, task).
+
+    Args:
+        agent: Agent identity containing personality, skills, authority.
+        role: Optional role with description and responsibilities.
+        task: Optional task context injected into the prompt.
+        available_tools: Tool definitions available to the agent.
+        company: Optional company context (name, departments).
+        max_tokens: Token budget; sections are trimmed if exceeded.
+        custom_template: Optional Jinja2 template string override.
+        token_estimator: Custom token estimator (defaults to char/4).
+
+    Returns:
+        Immutable :class:`SystemPrompt` with rendered content and metadata.
 
     Raises:
         PromptBuildError: If prompt construction fails.
@@ -301,6 +315,10 @@ def _build_core_context(
         "communication_style": personality.communication_style,
         "risk_tolerance": personality.risk_tolerance.value,
         "creativity": personality.creativity.value,
+        "verbosity": personality.verbosity.value,
+        "decision_making": personality.decision_making.value,
+        "collaboration": personality.collaboration.value,
+        "conflict_approach": personality.conflict_approach.value,
         "personality_traits": personality.traits,
         "primary_skills": agent.skills.primary,
         "secondary_skills": agent.skills.secondary,
@@ -645,18 +663,13 @@ def build_error_prompt(
     """
     if system_prompt is not None:
         return system_prompt
+    metadata = {**_build_metadata(identity), "agent_id": agent_id}
     return SystemPrompt(
         content="",
         template_version="error",
         estimated_tokens=0,
         sections=(),
-        metadata={
-            "agent_id": agent_id,
-            "name": identity.name,
-            "role": identity.role,
-            "department": identity.department,
-            "level": identity.level.value,
-        },
+        metadata=metadata,
     )
 
 

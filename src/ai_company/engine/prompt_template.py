@@ -10,7 +10,7 @@ from typing import Final
 
 from ai_company.core.enums import SeniorityLevel
 
-PROMPT_TEMPLATE_VERSION: Final[str] = "1.0.0"
+PROMPT_TEMPLATE_VERSION: Final[str] = "1.1.0"
 
 # ── Autonomy instructions by seniority level ─────────────────────
 
@@ -87,8 +87,12 @@ in the {{ agent_department }} department.
 {{ personality_description }}
 {% endif %}
 - **Communication style**: {{ communication_style }}
+- **Verbosity**: {{ verbosity }}
 - **Risk tolerance**: {{ risk_tolerance }}
 - **Creativity**: {{ creativity }}
+- **Decision-making**: {{ decision_making }}
+- **Collaboration preference**: {{ collaboration }}
+- **Conflict approach**: {{ conflict_approach }}
 {% if personality_traits %}
 - **Traits**: {{ personality_traits | join(', ') }}
 {% endif %}

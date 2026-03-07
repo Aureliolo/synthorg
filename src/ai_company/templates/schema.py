@@ -87,6 +87,8 @@ class TemplateAgentConfig(BaseModel):
         level: Seniority level override.
         model: Model tier alias (e.g. ``"large"``, ``"medium"``, ``"small"``).
         personality_preset: Named personality preset from the presets registry.
+        personality: Inline personality config dict (alternative to
+            ``personality_preset``).
         department: Department override (``None`` defaults to
             ``"engineering"`` during rendering).
     """
@@ -104,23 +106,39 @@ class TemplateAgentConfig(BaseModel):
         default=None,
         description="Named personality preset",
     )
+    personality: dict[str, Any] | None = Field(
+        default=None,
+        description="Inline personality override (alternative to preset)",
+    )
     department: NotBlankStr | None = Field(
         default=None,
         description="Department override",
     )
 
+    @model_validator(mode="after")
+    def _validate_personality_mutual_exclusion(self) -> Self:
+        """Reject specifying both personality_preset and inline personality."""
+        if self.personality_preset is not None and self.personality is not None:
+            msg = (
+                "Cannot specify both 'personality_preset' and 'personality'. "
+                "Use one or the other."
+            )
+            raise ValueError(msg)
+        return self
+
 
 class TemplateDepartmentConfig(BaseModel):
     """Department definition within a template.
 
-    Provides structural information only — department names, budget
-    allocations, and the head role.  Internal team composition and
-    reporting lines are defined separately (see follow-up issues).
+    Provides structural information — department names, budget
+    allocations, the head role, reporting lines, and operational policies.
 
     Attributes:
         name: Department name (standard or custom).
         budget_percent: Percentage of company budget (0-100).
         head_role: Role name of the department head.
+        reporting_lines: Reporting line definitions within this department.
+        policies: Department operational policies.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -135,6 +153,14 @@ class TemplateDepartmentConfig(BaseModel):
     head_role: NotBlankStr | None = Field(
         default=None,
         description="Role name of department head",
+    )
+    reporting_lines: tuple[dict[str, str], ...] = Field(
+        default=(),
+        description="Reporting line definitions",
+    )
+    policies: dict[str, Any] | None = Field(
+        default=None,
+        description="Department operational policies",
     )
 
 
@@ -193,6 +219,8 @@ class CompanyTemplate(BaseModel):
         budget_monthly: Default monthly budget in USD.
         autonomy: Autonomy level (0.0 = full human oversight,
             1.0 = fully autonomous).
+        workflow_handoffs: Cross-department workflow handoff definitions.
+        escalation_paths: Cross-department escalation path definitions.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -227,6 +255,14 @@ class CompanyTemplate(BaseModel):
         ge=0.0,
         le=1.0,
         description="Autonomy level",
+    )
+    workflow_handoffs: tuple[dict[str, Any], ...] = Field(
+        default=(),
+        description="Cross-department workflow handoffs",
+    )
+    escalation_paths: tuple[dict[str, Any], ...] = Field(
+        default=(),
+        description="Cross-department escalation paths",
     )
 
     @model_validator(mode="after")

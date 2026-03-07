@@ -10,7 +10,7 @@ class SeniorityLevel(StrEnum):
     cost tier defined in ``ai_company.core.role_catalog.SENIORITY_INFO``.
     """
 
-    # DESIGN_SPEC Section 3.2 says "Intern/Junior" — collapsed to a single JUNIOR level.
+    # DESIGN_SPEC §3.2 lists "Intern/Junior" — collapsed to JUNIOR (approved deviation).
     JUNIOR = "junior"
     MID = "mid"
     SENIOR = "senior"
@@ -230,3 +230,53 @@ class ToolCategory(StrEnum):
     DEPLOYMENT = "deployment"
     MCP = "mcp"
     OTHER = "other"
+
+
+class DecisionMakingStyle(StrEnum):
+    """Decision-making approach used by an agent."""
+
+    ANALYTICAL = "analytical"
+    INTUITIVE = "intuitive"
+    CONSULTATIVE = "consultative"
+    DIRECTIVE = "directive"
+
+
+class CollaborationPreference(StrEnum):
+    """Preferred collaboration mode for an agent."""
+
+    INDEPENDENT = "independent"
+    PAIR = "pair"
+    TEAM = "team"
+
+
+class CommunicationVerbosity(StrEnum):
+    """Communication verbosity level for an agent."""
+
+    TERSE = "terse"
+    BALANCED = "balanced"
+    VERBOSE = "verbose"
+
+
+class ConflictApproach(StrEnum):
+    """Conflict resolution approach used by an agent."""
+
+    AVOID = "avoid"
+    ACCOMMODATE = "accommodate"
+    COMPETE = "compete"
+    COMPROMISE = "compromise"
+    COLLABORATE = "collaborate"
+
+
+class ActionType(StrEnum):
+    """Convenience constants for common approval action types.
+
+    Models typically use ``NotBlankStr`` for ``action_type`` fields, so these
+    are optional helper constants and custom string values remain valid.
+    """
+
+    CODE_MERGE = "code_merge"
+    DEPLOYMENT = "deployment"
+    BUDGET_SPEND = "budget_spend"
+    EXTERNAL_COMMUNICATION = "external_communication"
+    HIRING = "hiring"
+    ARCHITECTURE_CHANGE = "architecture_change"

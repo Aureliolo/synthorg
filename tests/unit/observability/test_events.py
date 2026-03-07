@@ -103,10 +103,12 @@ class TestEventConstants:
         expected = {
             "budget",
             "communication",
+            "company",
             "config",
             "correlation",
             "execution",
             "git",
+            "personality",
             "prompt",
             "provider",
             "role",

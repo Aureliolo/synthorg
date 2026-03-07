@@ -4,11 +4,17 @@ import pytest
 from pydantic import ValidationError
 
 from ai_company.core.company import (
+    ApprovalChain,
     Company,
     CompanyConfig,
     Department,
+    DepartmentPolicies,
+    EscalationPath,
     HRRegistry,
+    ReportingLine,
+    ReviewRequirements,
     Team,
+    WorkflowHandoff,
 )
 from ai_company.core.enums import CompanyType
 
@@ -427,3 +433,376 @@ class TestCompany:
         """Verify factory produces a valid Company."""
         co = CompanyFactory.build()
         assert isinstance(co, Company)
+
+    def test_with_workflow_handoffs(self) -> None:
+        """Accept a company with workflow handoffs referencing declared departments."""
+        depts = (
+            Department(name="engineering", head="cto"),
+            Department(name="qa", head="qa_lead"),
+        )
+        handoff = WorkflowHandoff(
+            from_department="engineering",
+            to_department="qa",
+            trigger="code_complete",
+        )
+        co = Company(name="Test", departments=depts, workflow_handoffs=(handoff,))
+        assert len(co.workflow_handoffs) == 1
+
+    def test_with_escalation_paths(self) -> None:
+        """Accept a company with escalation paths referencing declared departments."""
+        depts = (
+            Department(name="engineering", head="cto"),
+            Department(name="executive", head="ceo"),
+        )
+        esc = EscalationPath(
+            from_department="engineering",
+            to_department="executive",
+            condition="critical_failure",
+            priority_boost=2,
+        )
+        co = Company(name="Test", departments=depts, escalation_paths=(esc,))
+        assert len(co.escalation_paths) == 1
+
+    def test_workflow_handoff_unknown_department_rejected(self) -> None:
+        """Reject workflow handoffs referencing unknown departments."""
+        depts = (Department(name="engineering", head="cto"),)
+        handoff = WorkflowHandoff(
+            from_department="engineering",
+            to_department="qa",
+            trigger="code_complete",
+        )
+        with pytest.raises(ValidationError, match="unknown department"):
+            Company(name="Test", departments=depts, workflow_handoffs=(handoff,))
+
+    def test_escalation_path_unknown_department_rejected(self) -> None:
+        """Reject escalation paths referencing unknown departments."""
+        depts = (Department(name="engineering", head="cto"),)
+        esc = EscalationPath(
+            from_department="engineering",
+            to_department="executive",
+            condition="critical_failure",
+        )
+        with pytest.raises(ValidationError, match="unknown department"):
+            Company(name="Test", departments=depts, escalation_paths=(esc,))
+
+
+# ── ReportingLine ─────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestReportingLine:
+    """Tests for ReportingLine validation and immutability."""
+
+    def test_valid(self) -> None:
+        """Accept a valid reporting line."""
+        r = ReportingLine(subordinate="dev", supervisor="lead")
+        assert r.subordinate == "dev"
+        assert r.supervisor == "lead"
+
+    def test_self_report_rejected(self) -> None:
+        """Reject self-reporting relationships."""
+        with pytest.raises(ValidationError, match="cannot report to themselves"):
+            ReportingLine(subordinate="dev", supervisor="dev")
+
+    def test_self_report_case_insensitive(self) -> None:
+        """Self-report check is case-insensitive."""
+        with pytest.raises(ValidationError, match="cannot report to themselves"):
+            ReportingLine(subordinate="Dev", supervisor="dev")
+
+    def test_frozen(self) -> None:
+        """Ensure ReportingLine is immutable."""
+        r = ReportingLine(subordinate="dev", supervisor="lead")
+        with pytest.raises(ValidationError):
+            r.subordinate = "other"  # type: ignore[misc]
+
+
+# ── ReviewRequirements ────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestReviewRequirements:
+    """Tests for ReviewRequirements defaults and validation."""
+
+    def test_defaults(self) -> None:
+        """Verify default values."""
+        r = ReviewRequirements()
+        assert r.min_reviewers == 1
+        assert r.required_reviewer_roles == ()
+        assert r.self_review_allowed is False
+
+    def test_custom_values(self) -> None:
+        """Accept custom configuration."""
+        r = ReviewRequirements(
+            min_reviewers=2,
+            required_reviewer_roles=("senior",),
+            self_review_allowed=True,
+        )
+        assert r.min_reviewers == 2
+        assert r.self_review_allowed is True
+
+
+# ── ApprovalChain ─────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestApprovalChain:
+    """Tests for ApprovalChain validation."""
+
+    def test_valid(self) -> None:
+        """Accept a valid approval chain."""
+        c = ApprovalChain(
+            action_type="code_merge",
+            approvers=("lead", "director"),
+            min_approvals=1,
+        )
+        assert c.action_type == "code_merge"
+        assert len(c.approvers) == 2
+
+    def test_empty_approvers_rejected(self) -> None:
+        """Reject approval chain with no approvers."""
+        with pytest.raises(ValidationError, match="at least one approver"):
+            ApprovalChain(action_type="deploy", approvers=())
+
+    def test_min_approvals_exceeds_approvers_rejected(self) -> None:
+        """Reject min_approvals greater than number of approvers."""
+        with pytest.raises(ValidationError, match="exceeds"):
+            ApprovalChain(
+                action_type="deploy",
+                approvers=("lead",),
+                min_approvals=2,
+            )
+
+    def test_min_approvals_zero_means_all(self) -> None:
+        """min_approvals=0 means all approvers required."""
+        c = ApprovalChain(
+            action_type="deploy",
+            approvers=("lead", "director"),
+            min_approvals=0,
+        )
+        assert c.min_approvals == 0
+
+    def test_duplicate_approvers_rejected(self) -> None:
+        """Reject approval chain with duplicate approvers."""
+        with pytest.raises(ValidationError, match="Duplicate approvers"):
+            ApprovalChain(
+                action_type="deploy",
+                approvers=("lead", "lead"),
+            )
+
+    def test_duplicate_approvers_case_insensitive(self) -> None:
+        """Reject approvers that differ only by case."""
+        with pytest.raises(ValidationError, match="Duplicate approvers"):
+            ApprovalChain(
+                action_type="deploy",
+                approvers=("Lead", "lead"),
+            )
+
+    def test_frozen(self) -> None:
+        """Ensure ApprovalChain is immutable."""
+        c = ApprovalChain(action_type="deploy", approvers=("lead",))
+        with pytest.raises(ValidationError):
+            c.action_type = "other"  # type: ignore[misc]
+
+
+# ── DepartmentPolicies ────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestDepartmentPolicies:
+    """Tests for DepartmentPolicies validation."""
+
+    def test_defaults(self) -> None:
+        """Verify default values."""
+        p = DepartmentPolicies()
+        assert isinstance(p.review_requirements, ReviewRequirements)
+        assert p.approval_chains == ()
+
+    def test_unique_action_types_validated(self) -> None:
+        """Reject duplicate action_types across approval chains."""
+        with pytest.raises(ValidationError, match="Duplicate action types"):
+            DepartmentPolicies(
+                approval_chains=(
+                    ApprovalChain(action_type="deploy", approvers=("lead",)),
+                    ApprovalChain(action_type="deploy", approvers=("dir",)),
+                ),
+            )
+
+
+# ── WorkflowHandoff ──────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestWorkflowHandoff:
+    """Tests for WorkflowHandoff validation."""
+
+    def test_valid(self) -> None:
+        """Accept a valid handoff."""
+        h = WorkflowHandoff(
+            from_department="eng",
+            to_department="qa",
+            trigger="code_complete",
+            artifacts=("build_artifact",),
+        )
+        assert h.from_department == "eng"
+        assert len(h.artifacts) == 1
+
+    def test_same_department_rejected(self) -> None:
+        """Reject handoff within the same department."""
+        with pytest.raises(ValidationError, match="different departments"):
+            WorkflowHandoff(
+                from_department="eng",
+                to_department="eng",
+                trigger="test",
+            )
+
+    def test_same_department_case_insensitive(self) -> None:
+        """Same-department check is case-insensitive."""
+        with pytest.raises(ValidationError, match="different departments"):
+            WorkflowHandoff(
+                from_department="Eng",
+                to_department="eng",
+                trigger="test",
+            )
+
+
+# ── EscalationPath ───────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestEscalationPath:
+    """Tests for EscalationPath validation."""
+
+    def test_valid(self) -> None:
+        """Accept a valid escalation path."""
+        e = EscalationPath(
+            from_department="eng",
+            to_department="exec",
+            condition="critical",
+            priority_boost=2,
+        )
+        assert e.priority_boost == 2
+
+    def test_priority_boost_boundaries(self) -> None:
+        """Accept boundary values for priority_boost."""
+        low = EscalationPath(
+            from_department="a",
+            to_department="b",
+            condition="c",
+            priority_boost=0,
+        )
+        high = EscalationPath(
+            from_department="a",
+            to_department="b",
+            condition="c",
+            priority_boost=3,
+        )
+        assert low.priority_boost == 0
+        assert high.priority_boost == 3
+
+    def test_priority_boost_above_3_rejected(self) -> None:
+        """Reject priority_boost above 3."""
+        with pytest.raises(ValidationError):
+            EscalationPath(
+                from_department="a",
+                to_department="b",
+                condition="c",
+                priority_boost=4,
+            )
+
+    def test_priority_boost_negative_rejected(self) -> None:
+        """Reject negative priority_boost."""
+        with pytest.raises(ValidationError):
+            EscalationPath(
+                from_department="a",
+                to_department="b",
+                condition="c",
+                priority_boost=-1,
+            )
+
+    def test_same_department_rejected(self) -> None:
+        """Reject escalation within the same department."""
+        with pytest.raises(ValidationError, match="different departments"):
+            EscalationPath(
+                from_department="eng",
+                to_department="eng",
+                condition="test",
+            )
+
+    def test_same_department_case_insensitive(self) -> None:
+        """Same-department check is case-insensitive."""
+        with pytest.raises(ValidationError, match="different departments"):
+            EscalationPath(
+                from_department="Eng",
+                to_department="eng",
+                condition="test",
+            )
+
+
+# ── Department additions ──────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestDepartmentExtended:
+    """Tests for Department with reporting_lines and policies."""
+
+    def test_with_reporting_lines(self) -> None:
+        """Accept department with reporting lines."""
+        dept = Department(
+            name="eng",
+            head="cto",
+            reporting_lines=(ReportingLine(subordinate="dev", supervisor="lead"),),
+        )
+        assert len(dept.reporting_lines) == 1
+
+    def test_with_policies(self) -> None:
+        """Accept department with custom policies."""
+        dept = Department(
+            name="eng",
+            head="cto",
+            policies=DepartmentPolicies(
+                review_requirements=ReviewRequirements(min_reviewers=2),
+            ),
+        )
+        assert dept.policies.review_requirements.min_reviewers == 2
+
+    def test_backward_compatible_defaults(self) -> None:
+        """Default reporting_lines and policies for backward compatibility."""
+        dept = Department(name="eng", head="cto")
+        assert dept.reporting_lines == ()
+        assert isinstance(dept.policies, DepartmentPolicies)
+
+    def test_duplicate_subordinates_rejected(self) -> None:
+        """Reject duplicate subordinates in reporting lines."""
+        with pytest.raises(ValidationError, match="Duplicate subordinates"):
+            Department(
+                name="eng",
+                head="cto",
+                reporting_lines=(
+                    ReportingLine(subordinate="dev", supervisor="lead"),
+                    ReportingLine(subordinate="dev", supervisor="manager"),
+                ),
+            )
+
+    def test_duplicate_subordinates_case_insensitive(self) -> None:
+        """Reject subordinates that differ only by case."""
+        with pytest.raises(ValidationError, match="Duplicate subordinates"):
+            Department(
+                name="eng",
+                head="cto",
+                reporting_lines=(
+                    ReportingLine(subordinate="Alice", supervisor="lead"),
+                    ReportingLine(subordinate="alice", supervisor="manager"),
+                ),
+            )
+
+    def test_duplicate_subordinates_whitespace_insensitive(self) -> None:
+        """Reject subordinates that differ only by surrounding whitespace."""
+        with pytest.raises(ValidationError, match="Duplicate subordinates"):
+            Department(
+                name="eng",
+                head="cto",
+                reporting_lines=(
+                    ReportingLine(subordinate="Alice", supervisor="lead"),
+                    ReportingLine(subordinate=" Alice ", supervisor="manager"),
+                ),
+            )

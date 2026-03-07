@@ -8,7 +8,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.enums import (
     AgentStatus,
+    CollaborationPreference,
+    CommunicationVerbosity,
+    ConflictApproach,
     CreativityLevel,
+    DecisionMakingStyle,
     MemoryType,
     RiskTolerance,
     SeniorityLevel,
@@ -21,15 +25,28 @@ from ai_company.core.types import NotBlankStr  # noqa: TC001
 class PersonalityConfig(BaseModel):
     """Personality traits and communication style for an agent.
 
+    Big Five (OCEAN) floats (0.0-1.0) are internal scoring dimensions used
+    for compatibility calculations. Behavioral enums produce natural-language
+    labels injected into system prompts that LLMs respond to effectively.
+
     Attributes:
         traits: Personality trait keywords.
         communication_style: Free-text style description.
         risk_tolerance: Risk tolerance level.
         creativity: Creativity level.
         description: Extended personality description.
+        openness: Big Five openness (curiosity, creativity). 0.0-1.0.
+        conscientiousness: Big Five conscientiousness (thoroughness). 0.0-1.0.
+        extraversion: Big Five extraversion (assertiveness). 0.0-1.0.
+        agreeableness: Big Five agreeableness (cooperation). 0.0-1.0.
+        stress_response: Emotional stability (1.0 = very calm). 0.0-1.0.
+        decision_making: Decision-making approach.
+        collaboration: Preferred collaboration mode.
+        verbosity: Communication verbosity level.
+        conflict_approach: Conflict resolution approach.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     traits: tuple[NotBlankStr, ...] = Field(
         default=(),
@@ -37,6 +54,7 @@ class PersonalityConfig(BaseModel):
     )
     communication_style: NotBlankStr = Field(
         default="neutral",
+        max_length=100,
         description="Communication style description",
     )
     risk_tolerance: RiskTolerance = Field(
@@ -49,7 +67,58 @@ class PersonalityConfig(BaseModel):
     )
     description: str = Field(
         default="",
+        max_length=500,
         description="Extended personality description",
+    )
+
+    # Big Five (OCEAN) dimensions — internal scoring only, not prompt-injected.
+    openness: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Big Five openness (curiosity, creativity)",
+    )
+    conscientiousness: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Big Five conscientiousness (thoroughness, reliability)",
+    )
+    extraversion: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Big Five extraversion (assertiveness, sociability)",
+    )
+    agreeableness: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Big Five agreeableness (cooperation, empathy)",
+    )
+    stress_response: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Emotional stability (1.0 = very calm)",
+    )
+
+    # Behavioral enums — injected into system prompts as natural-language labels.
+    decision_making: DecisionMakingStyle = Field(
+        default=DecisionMakingStyle.CONSULTATIVE,
+        description="Decision-making approach",
+    )
+    collaboration: CollaborationPreference = Field(
+        default=CollaborationPreference.TEAM,
+        description="Preferred collaboration mode",
+    )
+    verbosity: CommunicationVerbosity = Field(
+        default=CommunicationVerbosity.BALANCED,
+        description="Communication verbosity level",
+    )
+    conflict_approach: ConflictApproach = Field(
+        default=ConflictApproach.COLLABORATE,
+        description="Conflict resolution approach",
     )
 
 

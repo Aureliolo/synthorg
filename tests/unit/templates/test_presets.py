@@ -41,6 +41,31 @@ class TestGetPersonalityPreset:
             preset = get_personality_preset(name)
             assert required_keys.issubset(preset.keys()), f"{name} missing keys"
 
+    def test_preset_count_at_least_15(self) -> None:
+        assert len(PERSONALITY_PRESETS) >= 15
+
+    def test_all_presets_produce_valid_personality_config(self) -> None:
+        from ai_company.core.agent import PersonalityConfig
+
+        for name in PERSONALITY_PRESETS:
+            preset = get_personality_preset(name)
+            config = PersonalityConfig(**preset)
+            assert isinstance(config, PersonalityConfig), f"{name} invalid"
+
+    def test_presets_include_big_five(self) -> None:
+        big_five_keys = {
+            "openness",
+            "conscientiousness",
+            "extraversion",
+            "agreeableness",
+            "stress_response",
+        }
+        for name in PERSONALITY_PRESETS:
+            preset = get_personality_preset(name)
+            assert big_five_keys.issubset(preset.keys()), (
+                f"{name} missing Big Five keys"
+            )
+
 
 @pytest.mark.unit
 class TestGenerateAutoName:
