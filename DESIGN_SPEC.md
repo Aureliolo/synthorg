@@ -11,7 +11,7 @@
 3. [Agent System](#3-agent-system)
 4. [Company Structure](#4-company-structure)
 5. [Communication Architecture](#5-communication-architecture) — 5.6 Conflict Resolution, 5.7 Meeting Protocol
-6. [Task & Workflow Engine](#6-task--workflow-engine) — 6.5 Execution Loop, 6.6 Crash Recovery, **6.7 Graceful Shutdown**, **6.8 Workspace Isolation**, **6.9 Task Decomposability & Topology**
+6. [Task & Workflow Engine](#6-task--workflow-engine) — 6.5 Execution Loop, 6.6 Crash Recovery, **6.7 Graceful Shutdown**, **6.8 Workspace Isolation**, **6.9 Task Decomposability & Coordination Topology**
 7. [Memory & Persistence](#7-memory--persistence) — 7.4 Shared Org Memory (Research Directions)
 8. [HR & Workforce Management](#8-hr--workforce-management)
 9. [Model Provider Layer](#9-model-provider-layer)
@@ -21,7 +21,7 @@
 13. [Human Interaction Layer](#13-human-interaction-layer)
 14. [Templates & Builder](#14-templates--builder)
 15. [Technical Architecture](#15-technical-architecture) — 15.5 Engineering Conventions
-16. [Research & Prior Art](#16-research--prior-art)
+16. [Research & Prior Art](#16-research--prior-art) — **16.3 Agent Scaling Research**, 16.4 Build vs Fork Decision
 17. [Open Questions & Risks](#17-open-questions--risks)
 18. [Backlog & Future Vision](#18-backlog--future-vision)
 
@@ -1103,7 +1103,7 @@ Empirical research on agent scaling ([Kim et al., 2025](https://arxiv.org/abs/25
 
 #### Task Structure Classification
 
-Each task carries a `task_structure` field (added to §6.2 Task Definition) classifying its decomposability:
+Each task will carry a `task_structure` field (to be added to §6.2 Task Definition at M4) classifying its decomposability:
 
 | Structure | Description | MAS Effect | Example |
 |-----------|-------------|------------|---------|
@@ -1132,14 +1132,14 @@ When topology is set to `"auto"`, the engine selects coordination topology based
 
 ```yaml
 coordination:
-  topology: "auto"                    # auto, sas, centralized, decentralized
+  topology: "auto"                    # auto, sas, centralized, decentralized, context_dependent
   auto_topology_rules:
     # sequential tasks → always single-agent
     sequential_override: "sas"
     # parallel tasks → select based on domain structure
     parallel_default: "centralized"
-    # mixed tasks → hybrid approach (SAS backbone + delegation)
-    mixed_default: "context_dependent"
+    # mixed tasks → SAS backbone for sequential phases, delegates parallel sub-tasks
+    mixed_default: "context_dependent"  # hybrid: not a single topology — engine selects per-phase
 ```
 
 The auto-selector uses task structure, tool count, and (when available from M5 memory) historical single-agent success rate as inputs. The exact selection logic is an M4 implementation detail — the spec defines the interface and the empirically-grounded heuristics above.
@@ -1561,6 +1561,13 @@ coordination_metrics:
     - message_density                  # requires message counting infrastructure
     - redundancy                       # requires embedding computation on outputs
   baseline_window: 50                  # number of SAS runs to establish baseline for Ae
+  error_taxonomy:
+    enabled: false                     # opt-in — enable for targeted diagnosis
+    categories:
+      - logical_contradiction
+      - numerical_drift
+      - context_omission
+      - coordination_failure
 ```
 
 #### M5+: Full Analytics Layer
@@ -1604,18 +1611,7 @@ When coordination metrics collection is enabled, the system can optionally class
 | **Context omission** | Failure to reference previously established entities, relationships, or state required for current reasoning | Missing-reference detection across agent conversation history |
 | **Coordination failure** | MAS-specific: message misinterpretation, task allocation conflicts, state synchronization errors between agents | Protocol-level error detection in orchestration layer |
 
-> **Configurable and opt-in:** Error taxonomy classification requires semantic analysis of agent outputs and is expensive. Enable via `coordination_metrics.error_taxonomy: true` only when actively gathering data for system tuning. The classification pipeline runs post-execution (never blocks agent work) and logs structured events to the observability layer.
-
-```yaml
-coordination_metrics:
-  error_taxonomy:
-    enabled: false                     # opt-in — enable for targeted diagnosis
-    categories:
-      - logical_contradiction
-      - numerical_drift
-      - context_omission
-      - coordination_failure
-```
+> **Configurable and opt-in:** Error taxonomy classification requires semantic analysis of agent outputs and is expensive. Enable via `coordination_metrics.error_taxonomy.enabled: true` only when actively gathering data for system tuning. The classification pipeline runs post-execution (never blocks agent work) and logs structured events to the observability layer. This configuration is part of the main `coordination_metrics` block defined in the Coordination Metrics Suite section above.
 
 > **Reference:** Error categories derived from [Kim et al., 2025](https://arxiv.org/abs/2512.08296) and the Multi-Agent System Failure Taxonomy (MAST) by Cemri et al. (2025). Architecture-specific patterns: centralized coordination reduces logical contradictions by 36.4% and context omissions by 66.8% via orchestrator synthesis; hybrid topology introduces 12.4% coordination failures due to protocol complexity.
 
@@ -2469,10 +2465,10 @@ These conventions were established during the M0–M2+ review cycle. **Adopted**
 
 - **Task decomposability is the #1 predictor** of multi-agent success. Parallelizable tasks gain up to +81%, sequential tasks degrade -39% to -70% under all MAS variants. Informs §6.9.
 - **Coordination metrics suite** (efficiency, overhead, error amplification, message density, redundancy) explains 52.4% of performance variance (R²=0.524). Adopted in §10.5.
-- **Tiered coordination overhead**: optimal band 200–300%, over-coordination above 400%. Informs §10.5 tiered alerts.
+- **Tiered coordination overhead** (`O%`): optimal band 200–300%, over-coordination above 400%. Informs §10.5 interpretation of the `O%` metric. Note: the `orchestration_ratio` tiered alerts (info/warn/critical) measure a different ratio (coordination tokens / total tokens).
 - **Error taxonomy** (logical contradiction, numerical drift, context omission, coordination failure) with architecture-specific patterns. Adopted as opt-in classification in §10.5.
 - **Auto topology selection** achieves 87% accuracy from measurable task properties. Informs §6.9 auto topology selector.
-- **Centralized verification** contains error amplification to 4.4× vs 17.2× for independent agents. Validates §5.6 authority + dissent strategy.
+- **Centralized verification** contains error amplification to 4.4× vs 17.2× for independent agents. Supports §6.9's centralized-topology guidance and §10.5's `Ae` metric interpretation.
 - **Context:** Paper tested identical agents on individual tasks; our architecture uses role-differentiated agents in an organizational structure. Thresholds (e.g., 45% capability ceiling, 3–4 agent sweet spot) are directional — to be validated empirically in our context.
 
 ### 16.4 Build vs Fork Decision
@@ -2610,3 +2606,5 @@ Phase 4: Cloud/Hosted
 - [Confluent Event-Driven Patterns](https://www.confluent.io/blog/event-driven-multi-agent-systems/) - Multi-agent architecture patterns
 - [Microsoft Multi-Agent Reference Architecture](https://microsoft.github.io/multi-agent-reference-architecture/) - Enterprise patterns
 - [OpenRouter](https://openrouter.ai/) - Multi-model API gateway
+- [Kim et al., "Towards a Science of Scaling Agent Systems" (2025)](https://arxiv.org/abs/2512.08296) - Empirical agent scaling research (180 experiments, 3 LLM families)
+- [Cemri et al., "Multi-Agent System Failure Taxonomy (MAST)" (2025)] - MAS coordination error classification
