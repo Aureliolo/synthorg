@@ -18,11 +18,14 @@ from ai_company.budget.coordination_config import (
     OrchestrationAlertThresholds,
 )
 from ai_company.constants import BUDGET_ROUNDING_PRECISION
+from ai_company.observability import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from ai_company.budget.cost_record import CostRecord
+
+logger = get_logger(__name__)
 
 
 class CategoryBreakdown(BaseModel):

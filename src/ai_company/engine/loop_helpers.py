@@ -266,6 +266,8 @@ async def execute_tool_calls(
             turn=turn_number,
             error=error_msg,
         )
+        # Clear tool_calls on the turn record — tools were never executed
+        clear_last_turn_tool_calls(turns)
         return build_result(
             ctx,
             TerminationReason.ERROR,

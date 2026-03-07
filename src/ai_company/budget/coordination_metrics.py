@@ -10,8 +10,12 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from ai_company.observability import get_logger
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+logger = get_logger(__name__)
 
 
 class CoordinationEfficiency(BaseModel):
