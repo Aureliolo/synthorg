@@ -26,6 +26,22 @@ _DEFAULT_CHANNELS: tuple[str, ...] = (
 )
 
 
+class MessageRetentionConfig(BaseModel):
+    """Retention settings for channel message history.
+
+    Attributes:
+        max_messages_per_channel: Maximum messages kept per channel.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    max_messages_per_channel: int = Field(
+        default=1000,
+        gt=0,
+        description="Maximum messages kept per channel",
+    )
+
+
 class MessageBusConfig(BaseModel):
     """Message bus backend configuration.
 
@@ -34,6 +50,7 @@ class MessageBusConfig(BaseModel):
     Attributes:
         backend: Transport backend to use.
         channels: Pre-defined channel names.
+        retention: Message retention settings.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -45,6 +62,10 @@ class MessageBusConfig(BaseModel):
     channels: tuple[NotBlankStr, ...] = Field(
         default=_DEFAULT_CHANNELS,
         description="Pre-defined channel names",
+    )
+    retention: MessageRetentionConfig = Field(
+        default_factory=MessageRetentionConfig,
+        description="Message retention settings",
     )
 
     @model_validator(mode="after")
