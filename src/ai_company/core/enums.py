@@ -194,7 +194,10 @@ class ToolAccessLevel(StrEnum):
     """Access level for tool permissions.
 
     Determines which tool categories an agent can use.
-    Higher levels include all categories from lower levels.
+    Levels ``SANDBOXED`` through ``ELEVATED`` form a hierarchy
+    where each includes all categories from lower levels.
+    ``CUSTOM`` uses only explicit allow/deny lists, ignoring
+    the hierarchy.
     """
 
     SANDBOXED = "sandboxed"

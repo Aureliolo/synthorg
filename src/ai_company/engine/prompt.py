@@ -636,3 +636,30 @@ def _render_and_estimate(  # noqa: PLR0913
     )
     content = _render_template(template_str, context)
     return content, estimator.estimate_tokens(content)
+
+
+def format_task_instruction(task: Task) -> str:
+    """Format a task into a user message for the initial conversation.
+
+    Args:
+        task: Task to format.
+
+    Returns:
+        Markdown-formatted task instruction string.
+    """
+    parts = [f"# Task: {task.title}", "", task.description]
+
+    if task.acceptance_criteria:
+        parts.append("")
+        parts.append("## Acceptance Criteria")
+        parts.extend(f"- {c.description}" for c in task.acceptance_criteria)
+
+    if task.budget_limit > 0:
+        parts.append("")
+        parts.append(f"**Budget limit:** ${task.budget_limit:.2f} USD")
+
+    if task.deadline:
+        parts.append("")
+        parts.append(f"**Deadline:** {task.deadline}")
+
+    return "\n".join(parts)

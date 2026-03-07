@@ -1,4 +1,4 @@
-"""Unit tests for AgentRunResult model and _format_task_instruction helper."""
+"""Unit tests for AgentRunResult model and format_task_instruction helper."""
 
 from datetime import date
 from uuid import uuid4
@@ -9,17 +9,14 @@ from pydantic import ValidationError
 from ai_company.core.agent import AgentIdentity, ModelConfig
 from ai_company.core.enums import Priority, SeniorityLevel, TaskStatus, TaskType
 from ai_company.core.task import Task
-from ai_company.engine.agent_engine import (
-    _format_task_instruction,
-    _make_budget_checker,
-)
+from ai_company.engine.agent_engine import _make_budget_checker
 from ai_company.engine.context import AgentContext
 from ai_company.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
     TurnRecord,
 )
-from ai_company.engine.prompt import SystemPrompt
+from ai_company.engine.prompt import SystemPrompt, format_task_instruction
 from ai_company.engine.run_result import AgentRunResult
 from ai_company.providers.enums import FinishReason, MessageRole
 from ai_company.providers.models import ChatMessage, TokenUsage, ToolCall
@@ -201,10 +198,10 @@ class TestAgentRunResultValidation:
 
 @pytest.mark.unit
 class TestFormatTaskInstruction:
-    """Test _format_task_instruction helper."""
+    """Test format_task_instruction helper."""
 
     def test_basic_format(self, sample_task_with_criteria: Task) -> None:
-        result = _format_task_instruction(sample_task_with_criteria)
+        result = format_task_instruction(sample_task_with_criteria)
 
         assert "# Task: Implement authentication module" in result
         assert "JWT-based authentication" in result
@@ -213,7 +210,7 @@ class TestFormatTaskInstruction:
         assert "$5.00 USD" in result
 
     def test_deadline_included(self, sample_task_with_criteria: Task) -> None:
-        result = _format_task_instruction(sample_task_with_criteria)
+        result = format_task_instruction(sample_task_with_criteria)
         assert "**Deadline:** 2026-04-01T00:00:00" in result
 
     def test_deadline_has_blank_line_separator(
@@ -221,7 +218,7 @@ class TestFormatTaskInstruction:
         sample_task_with_criteria: Task,
     ) -> None:
         """Deadline block has a blank line before it (consistent with budget)."""
-        result = _format_task_instruction(sample_task_with_criteria)
+        result = format_task_instruction(sample_task_with_criteria)
         lines = result.split("\n")
         for i, line in enumerate(lines):
             if line.startswith("**Deadline:**"):
@@ -241,7 +238,7 @@ class TestFormatTaskInstruction:
             assigned_to="someone",
             status=TaskStatus.ASSIGNED,
         )
-        result = _format_task_instruction(task)
+        result = format_task_instruction(task)
 
         assert "# Task: Simple task" in result
         assert "Do the thing." in result
@@ -262,7 +259,7 @@ class TestFormatTaskInstruction:
             budget_limit=0.0,
             deadline="2026-06-01T00:00:00+00:00",
         )
-        result = _format_task_instruction(task)
+        result = format_task_instruction(task)
 
         assert "**Deadline:**" in result
         assert "Budget" not in result
@@ -285,7 +282,7 @@ class TestFormatTaskInstruction:
             status=TaskStatus.ASSIGNED,
             budget_limit=10.0,
         )
-        result = _format_task_instruction(task)
+        result = format_task_instruction(task)
 
         assert "$10.00 USD" in result
         assert "Deadline" not in result

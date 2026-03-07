@@ -20,7 +20,11 @@ from ai_company.engine.loop_protocol import (
     TurnRecord,
 )
 from ai_company.engine.metrics import TaskCompletionMetrics
-from ai_company.engine.prompt import SystemPrompt, build_system_prompt
+from ai_company.engine.prompt import (
+    SystemPrompt,
+    build_system_prompt,
+    format_task_instruction,
+)
 from ai_company.engine.react_loop import ReactLoop
 from ai_company.engine.run_result import AgentRunResult
 from ai_company.observability import get_logger
@@ -357,7 +361,7 @@ class AgentEngine:
         ctx = ctx.with_message(
             ChatMessage(
                 role=MessageRole.USER,
-                content=_format_task_instruction(task),
+                content=format_task_instruction(task),
             ),
         )
 
@@ -770,26 +774,6 @@ class AgentEngine:
                 original_error=error_msg,
             )
             raise exc from None
-
-
-def _format_task_instruction(task: Task) -> str:
-    """Format a task into a user message for the initial conversation."""
-    parts = [f"# Task: {task.title}", "", task.description]
-
-    if task.acceptance_criteria:
-        parts.append("")
-        parts.append("## Acceptance Criteria")
-        parts.extend(f"- {c.description}" for c in task.acceptance_criteria)
-
-    if task.budget_limit > 0:
-        parts.append("")
-        parts.append(f"**Budget limit:** ${task.budget_limit:.2f} USD")
-
-    if task.deadline:
-        parts.append("")
-        parts.append(f"**Deadline:** {task.deadline}")
-
-    return "\n".join(parts)
 
 
 def _make_budget_checker(task: Task) -> BudgetChecker | None:

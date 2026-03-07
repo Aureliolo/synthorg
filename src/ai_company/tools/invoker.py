@@ -118,7 +118,11 @@ class ToolInvoker:
         tool: BaseTool,
         tool_call: ToolCall,
     ) -> ToolResult | None:
-        """Check tool permission, returning an error result if denied."""
+        """Check tool permission.
+
+        Returns ``None`` if permitted, or a ``ToolResult(is_error=True)``
+        if denied.
+        """
         if self._permission_checker is None:
             return None
         if self._permission_checker.is_permitted(tool.name, tool.category):
@@ -141,9 +145,10 @@ class ToolInvoker:
 
         Steps:
             1. Look up the tool in the registry.
-            2. Validate arguments against the tool's JSON Schema (if any).
-            3. Call ``tool.execute(arguments=...)``.
-            4. Return a ``ToolResult`` with the output.
+            2. Check permissions against the permission checker (if any).
+            3. Validate arguments against the tool's JSON Schema (if any).
+            4. Call ``tool.execute(arguments=...)``.
+            5. Return a ``ToolResult`` with the output.
 
         Recoverable errors produce ``ToolResult(is_error=True)``.
         Non-recoverable errors are re-raised.

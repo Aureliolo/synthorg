@@ -15,6 +15,7 @@ from ai_company.observability import get_logger
 from ai_company.observability.events.tool import (
     TOOL_PERMISSION_CHECKER_CREATED,
     TOOL_PERMISSION_DENIED,
+    TOOL_PERMISSION_FILTERED,
 )
 
 from .errors import ToolPermissionDeniedError
@@ -134,7 +135,7 @@ class ToolPermissionChecker:
             return True
         if self._access_level == ToolAccessLevel.CUSTOM:
             return False
-        allowed_cats = self._LEVEL_CATEGORIES.get(self._access_level, frozenset())
+        allowed_cats = self._LEVEL_CATEGORIES[self._access_level]
         return category in allowed_cats
 
     def check(self, tool_name: str, category: ToolCategory) -> None:
@@ -161,10 +162,11 @@ class ToolPermissionChecker:
             )
 
     def denial_reason(self, tool_name: str, category: ToolCategory) -> str:
-        """Return a human-readable reason why a tool is denied.
+        """Return a human-readable reason why a tool would be denied.
 
-        Assumes the tool IS denied — callers should check
-        ``is_permitted`` first or use ``check`` for combined logic.
+        Intended for use after confirming the tool is denied via
+        ``is_permitted`` or via ``check``.  If called on a permitted
+        tool the returned message is meaningless.
 
         Args:
             tool_name: Name of the tool.
@@ -192,11 +194,22 @@ class ToolPermissionChecker:
             registry: Tool registry to filter.
 
         Returns:
-            Sorted tuple of permitted tool definitions.
+            Tuple of permitted tool definitions, sorted by tool name.
         """
+        tool_names = registry.list_tools()
         result: list[ToolDefinition] = []
-        for name in registry.list_tools():
+        for name in tool_names:
             tool = registry.get(name)
             if self.is_permitted(name, tool.category):
                 result.append(tool.to_definition())
+        result.sort(key=lambda d: d.name)
+        excluded = len(tool_names) - len(result)
+        if excluded:
+            logger.debug(
+                TOOL_PERMISSION_FILTERED,
+                access_level=self._access_level.value,
+                total=len(tool_names),
+                permitted=len(result),
+                excluded=excluded,
+            )
         return tuple(result)

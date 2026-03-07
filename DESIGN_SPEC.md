@@ -193,6 +193,7 @@ agent:
     type: "persistent"           # persistent, project, session, none
     retention_days: null         # null = forever
   tools:
+    access_level: "standard"  # sandboxed | restricted | standard | elevated | custom
     allowed:
       - file_system
       - git
@@ -1641,6 +1642,13 @@ When the LLM requests multiple tool calls in a single turn, `ToolInvoker.invoke_
 
 `BaseTool.parameters_schema` deep-copies the caller-supplied schema at construction and wraps it in `MappingProxyType` for read-only enforcement; the property returns a deep copy on access to prevent mutation of internal state. `ToolInvoker` deep-copies arguments at the tool execution boundary before passing them to `tool.execute()`. `MappingProxyType` wrapping is also used in `ToolRegistry` for its internal collections.
 
+**Permission checking (M3):** Each `BaseTool` carries a `category: ToolCategory` attribute used for access-level gating. `ToolInvoker` accepts an optional `ToolPermissionChecker` which enforces the agent's `ToolPermissions.access_level` (see §11.2). Permission checking occurs after tool lookup but before parameter validation:
+
+1. `get_permitted_definitions()` filters tool definitions sent to the LLM — the agent only sees tools it is permitted to use.
+2. At invocation time, denied tools return `ToolResult(is_error=True)` with a descriptive denial reason (defense-in-depth against LLM hallucinating unpresented tools).
+
+The `ToolPermissionChecker` resolves permissions using a priority-based system: denied list (highest) → allowed list → access-level categories → deny (default). `AgentEngine._make_tool_invoker()` creates a permission-aware invoker from the agent's `ToolPermissions` at the start of each `run()` call. Note: M3 implements category-level gating only; the granular sub-constraints described in §11.2 (workspace scope, network mode) are planned for when sandboxing is implemented.
+
 ### 11.1.2 Tool Sandboxing
 
 Tool execution requires safety boundaries proportional to the risk of each tool category. The framework uses a **layered sandboxing strategy** with a pluggable `SandboxBackend` protocol — new backends can be added without modifying existing ones. The default configuration uses lighter isolation for low-risk tools and stronger isolation for high-risk tools.
@@ -1738,6 +1746,8 @@ tool_access:
     custom:
       description: "Per-agent custom configuration."
 ```
+
+> **M3 implementation note:** The current `ToolPermissionChecker` implements **category-level gating only** — each access level maps to a set of permitted `ToolCategory` values (e.g., `STANDARD` permits `file_system`, `code_execution`, `version_control`, `web`, `terminal`, `analytics`). The granular sub-constraints shown above (workspace scope, network mode, containerization) are planned for when sandboxing backends (§11.1.2) are implemented.
 
 ### 11.3 Progressive Trust
 
@@ -2323,10 +2333,11 @@ ai-company/
 │       │       ├── rate_limiter.py # Token bucket rate limiter
 │       │       └── retry.py       # RetryHandler with backoff
 │       ├── tools/                   # Tool/capability system
-│       │   ├── base.py             # BaseTool ABC, ToolExecutionResult
+│       │   ├── base.py             # BaseTool ABC, ToolExecutionResult, ToolCategory
 │       │   ├── registry.py         # Immutable tool registry (MappingProxyType)
 │       │   ├── invoker.py          # Tool invocation (concurrent via TaskGroup)
-│       │   ├── errors.py           # Tool error hierarchy
+│       │   ├── permissions.py      # ToolPermissionChecker (access-level gating)
+│       │   ├── errors.py           # Tool error hierarchy (incl. ToolPermissionDeniedError)
 │       │   ├── examples/           # Example tool implementations
 │       │   │   └── echo.py        # Echo tool (for testing)
 │       │   ├── sandbox/            # Sandboxing backends (M3)
@@ -2415,6 +2426,7 @@ These conventions were established during the M0–M2+ review cycle. **Adopted**
 | **Shared field groups** | Adopted (M2.5) | Extracted common field sets into base models (e.g. `_SpendingTotals`) | Prevents field duplication across spending summary models. `_SpendingTotals` provides shared aggregation fields; `AgentSpending`, `DepartmentSpending`, `PeriodSpending` extend it. |
 | **Event constants** | Adopted (per-domain) | Per-domain submodules under `events/` package (e.g. `events.provider`, `events.budget`). Import directly: `from ai_company.observability.events.<domain> import CONSTANT` | Split by domain for discoverability, co-location with domain logic, and reduced merge conflicts as constants grow. `__init__.py` serves as package marker with usage documentation; no re-exports. |
 | **Parallel tool execution** | Adopted (M2.5) | `asyncio.TaskGroup` in `ToolInvoker.invoke_all` with optional `max_concurrency` semaphore | Structured concurrency with proper cancellation semantics. Fatal errors collected via guarded wrapper and re-raised after all tasks complete. |
+| **Tool permission checking** | Adopted (M3) | `ToolPermissionChecker` enforces category-level gating based on `ToolAccessLevel` (sandboxed → restricted → standard → elevated, plus custom). Priority-based resolution: denied list → allowed list → level categories → deny. Case-insensitive name matching. `ToolInvoker` filters definitions for prompt and checks at invocation time. | Defense-in-depth: agents only see permitted tools in the LLM prompt, and invocations are re-checked at execution time. Explicit allow/deny lists provide per-agent overrides. See §11.1.1. |
 | **Tool sandboxing** | Planned (M3) | Layered `SandboxBackend` protocol: `SubprocessSandbox` for low-risk tools (file, git), `DockerSandbox` for high-risk tools (code_runner, terminal, web, database). `K8sSandbox` planned for future container deployments. | Risk-proportionate isolation. Docker optional — only needed for code execution and network-sensitive tools. Pluggable protocol enables seamless migration to K8s per-agent pods in Phase 3-4. See §11.1.2. |
 | **Crash recovery** | Planned (M3) | Pluggable `RecoveryStrategy` protocol. M3: `FailAndReassignStrategy` (catch at engine boundary, log snapshot, mark FAILED, reassign). M4/M5: `CheckpointStrategy` (persist `AgentContext` per turn, resume from last checkpoint). | Immutable `model_copy` pattern makes checkpoint serialization trivial to add later. Fail-and-reassign is sufficient for short MVP tasks. See §6.6. |
 | **Agent behavior testing** | Planned (M3) | Scripted `FakeProvider` for unit tests (deterministic turn sequences); behavioral outcome assertions for integration tests (task completed, tools called, cost within budget). | Leverages existing `FakeProvider` and `CompletionResponseFactory` fixtures. Precise engine testing without brittle response-matching at integration level. |

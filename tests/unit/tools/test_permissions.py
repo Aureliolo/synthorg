@@ -320,6 +320,37 @@ class TestFilterDefinitions:
         assert "special" in names
         assert "normal" not in names
 
+    def test_filter_respects_denied_list(self) -> None:
+        """Explicitly denied tool is excluded even if its category is permitted."""
+        tools = [
+            _SimpleTool(name="fs_tool", category=ToolCategory.FILE_SYSTEM),
+            _SimpleTool(name="blocked_fs", category=ToolCategory.FILE_SYSTEM),
+        ]
+        registry = ToolRegistry(tools)
+        checker = ToolPermissionChecker(
+            access_level=ToolAccessLevel.ELEVATED,
+            denied=frozenset({"blocked_fs"}),
+        )
+        filtered = checker.filter_definitions(registry)
+        names = {d.name for d in filtered}
+        assert "fs_tool" in names
+        assert "blocked_fs" not in names
+
+    def test_filter_returns_sorted_by_name(self) -> None:
+        """Filtered definitions are sorted by tool name."""
+        tools = [
+            _SimpleTool(name="zeta", category=ToolCategory.FILE_SYSTEM),
+            _SimpleTool(name="alpha", category=ToolCategory.FILE_SYSTEM),
+            _SimpleTool(name="mid", category=ToolCategory.FILE_SYSTEM),
+        ]
+        registry = ToolRegistry(tools)
+        checker = ToolPermissionChecker(
+            access_level=ToolAccessLevel.ELEVATED,
+        )
+        filtered = checker.filter_definitions(registry)
+        names = [d.name for d in filtered]
+        assert names == sorted(names)
+
 
 # ── Edge cases ───────────────────────────────────────────────────
 

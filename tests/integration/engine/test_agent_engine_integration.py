@@ -10,12 +10,19 @@ from uuid import uuid4
 
 import pytest
 
-from ai_company.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
+from ai_company.core.agent import (
+    AgentIdentity,
+    ModelConfig,
+    PersonalityConfig,
+    ToolPermissions,
+)
 from ai_company.core.enums import (
     Priority,
     SeniorityLevel,
     TaskStatus,
     TaskType,
+    ToolAccessLevel,
+    ToolCategory,
 )
 from ai_company.core.task import Task
 from ai_company.engine.agent_engine import AgentEngine
@@ -171,6 +178,7 @@ class TestAgentEngineToolCallIntegration:
                 },
                 "required": ["text"],
             },
+            category=ToolCategory.CODE_EXECUTION,
         )
         registry = ToolRegistry([tool])
         provider = _ToolCallingProvider()
@@ -251,6 +259,7 @@ class TestAgentEngineFullLifecycle:
                 },
                 "required": ["text"],
             },
+            category=ToolCategory.CODE_EXECUTION,
         )
         registry = ToolRegistry([tool])
         provider = _ToolCallingProvider()
@@ -294,3 +303,77 @@ class TestAgentEngineFullLifecycle:
         assert metrics.tokens_per_task > 0
         assert metrics.cost_per_task > 0
         assert metrics.duration_seconds > 0
+
+
+class TestPermissionDeniedToolCall:
+    """Integration: tool call denied by permission checker returns error result."""
+
+    async def test_denied_tool_returns_permission_error(self) -> None:
+        """Agent with SANDBOXED access gets denied for a DEPLOYMENT tool."""
+        identity = AgentIdentity(
+            id=uuid4(),
+            name="Sandboxed Agent",
+            role="Intern",
+            department="Engineering",
+            level=SeniorityLevel.JUNIOR,
+            hiring_date=date(2026, 1, 15),
+            personality=PersonalityConfig(traits=("cautious",)),
+            model=ModelConfig(
+                provider="test-provider",
+                model_id="test-model-001",
+            ),
+            tools=ToolPermissions(
+                access_level=ToolAccessLevel.SANDBOXED,
+            ),
+        )
+        task = Task(
+            id="task-denied",
+            title="Try deploying",
+            description="Attempt to use a deployment tool.",
+            type=TaskType.DEVELOPMENT,
+            priority=Priority.LOW,
+            project="proj-001",
+            created_by="manager",
+            assigned_to=str(identity.id),
+            status=TaskStatus.ASSIGNED,
+        )
+
+        # Tool category is DEPLOYMENT — not allowed at SANDBOXED level
+        tool = UppercaseTool(
+            name="uppercase",
+            description="Converts text to uppercase.",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "Text to uppercase",
+                    },
+                },
+                "required": ["text"],
+            },
+            category=ToolCategory.DEPLOYMENT,
+        )
+        registry = ToolRegistry([tool])
+        provider = _ToolCallingProvider()
+
+        engine = AgentEngine(
+            provider=provider,
+            tool_registry=registry,
+        )
+
+        result = await engine.run(
+            identity=identity,
+            task=task,
+            max_turns=5,
+        )
+
+        assert result.is_success is True
+
+        # The tool call should produce a Permission denied error result
+        conversation = result.execution_result.context.conversation
+        tool_results = [m for m in conversation if m.tool_result is not None]
+        assert len(tool_results) == 1
+        assert tool_results[0].tool_result is not None
+        assert tool_results[0].tool_result.is_error is True
+        assert "Permission denied" in tool_results[0].tool_result.content
