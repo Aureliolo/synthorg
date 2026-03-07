@@ -28,6 +28,7 @@ from ai_company.observability import get_logger
 from ai_company.observability.events.communication import (
     COMM_BUS_ALREADY_RUNNING,
     COMM_BUS_NOT_RUNNING,
+    COMM_BUS_SHUTDOWN_SIGNAL,
     COMM_BUS_STARTED,
     COMM_BUS_STOPPED,
     COMM_CHANNEL_ALREADY_EXISTS,
@@ -37,12 +38,16 @@ from ai_company.observability.events.communication import (
     COMM_HISTORY_QUERIED,
     COMM_MESSAGE_DELIVERED,
     COMM_MESSAGE_PUBLISHED,
+    COMM_RECEIVE_TIMEOUT,
     COMM_SUBSCRIPTION_CREATED,
     COMM_SUBSCRIPTION_NOT_FOUND,
     COMM_SUBSCRIPTION_REMOVED,
 )
 
 logger = get_logger(__name__)
+
+_DM_SEPARATOR = ":"
+"""Separator used in deterministic direct-channel names."""
 
 
 def _raise_channel_not_found(channel_name: str) -> NoReturn:
@@ -91,6 +96,7 @@ class InMemoryMessageBus:
         self._history: dict[str, deque[Message]] = {}
         self._known_agents: set[str] = set()
         self._running = False
+        self._shutdown_event = asyncio.Event()
 
     @property
     def is_running(self) -> bool:
@@ -109,6 +115,7 @@ class InMemoryMessageBus:
                 logger.warning(COMM_BUS_ALREADY_RUNNING)
                 raise MessageBusAlreadyRunningError(msg)
             self._running = True
+            self._shutdown_event.clear()
             maxlen = self._config.retention.max_messages_per_channel
             for name in self._config.channels:
                 ch = Channel(name=name, type=ChannelType.TOPIC)
@@ -120,12 +127,20 @@ class InMemoryMessageBus:
         )
 
     async def stop(self) -> None:
-        """Stop the bus gracefully.  Idempotent."""
+        """Stop the bus gracefully.  Idempotent.
+
+        Signals all pending :meth:`receive` calls to return ``None``.
+        """
         async with self._lock:
             if not self._running:
                 return
             self._running = False
+        self._shutdown_event.set()
         logger.info(COMM_BUS_STOPPED)
+        logger.debug(
+            COMM_BUS_SHUTDOWN_SIGNAL,
+            queues_signalled=len(self._queues),
+        )
 
     def _require_running(self) -> None:
         """Raise if the bus is not running."""
@@ -205,9 +220,30 @@ class InMemoryMessageBus:
 
         Raises:
             MessageBusNotRunningError: If not running.
+            ValueError: If *recipient* does not match ``message.to``,
+                or if agent IDs contain the separator character.
         """
         sender = message.sender
-        pair = sorted([sender, recipient])
+        if message.to != recipient:
+            msg = f"recipient={recipient!r} does not match message.to={message.to!r}"
+            logger.warning(
+                COMM_BUS_NOT_RUNNING,
+                error=msg,
+            )
+            raise ValueError(msg)
+        for agent_id in (sender, recipient):
+            if _DM_SEPARATOR in agent_id:
+                msg = (
+                    f"Agent ID {agent_id!r} contains the reserved "
+                    f"separator character {_DM_SEPARATOR!r}"
+                )
+                logger.warning(
+                    COMM_BUS_NOT_RUNNING,
+                    error=msg,
+                )
+                raise ValueError(msg)
+        a, b = sorted([sender, recipient])
+        pair = (a, b)
         channel_name = f"@{pair[0]}:{pair[1]}"
         async with self._lock:
             self._require_running()
@@ -224,7 +260,7 @@ class InMemoryMessageBus:
     def _ensure_direct_channel(
         self,
         channel_name: str,
-        pair: list[str],
+        pair: tuple[str, str],
     ) -> None:
         """Create DIRECT channel and register agents if needed.
 
@@ -234,7 +270,7 @@ class InMemoryMessageBus:
             ch = Channel(
                 name=channel_name,
                 type=ChannelType.DIRECT,
-                subscribers=tuple(pair),
+                subscribers=pair,
             )
             self._channels[channel_name] = ch
             maxlen = self._config.retention.max_messages_per_channel
@@ -259,7 +295,7 @@ class InMemoryMessageBus:
     def _deliver_to_pair(
         self,
         channel_name: str,
-        pair: list[str],
+        pair: tuple[str, str],
         message: Message,
     ) -> None:
         """Append to history and enqueue for both agents.
@@ -374,8 +410,9 @@ class InMemoryMessageBus:
     ) -> DeliveryEnvelope | None:
         """Receive the next message from a channel.
 
-        Awaits until a message is available or the timeout expires.
-        When ``timeout`` is ``None``, awaits indefinitely.
+        Awaits until a message is available, the timeout expires, or
+        the bus is stopped.  When ``timeout`` is ``None``, awaits
+        indefinitely (or until shutdown).
 
         Args:
             channel_name: Channel to receive from.
@@ -383,19 +420,70 @@ class InMemoryMessageBus:
             timeout: Seconds to wait before returning ``None``.
 
         Returns:
-            A delivery envelope, or ``None`` on timeout.
+            A delivery envelope, or ``None`` on timeout or shutdown.
+
+        Raises:
+            MessageBusNotRunningError: If the bus is not running.
+            ChannelNotFoundError: If the channel does not exist.
+            NotSubscribedError: If the subscriber is not subscribed
+                (for TOPIC and DIRECT channels).
         """
         async with self._lock:
+            self._require_running()
+            if channel_name not in self._channels:
+                _raise_channel_not_found(channel_name)
+            channel = self._channels[channel_name]
+            if (
+                channel.type != ChannelType.BROADCAST
+                and subscriber_id not in channel.subscribers
+            ):
+                _raise_not_subscribed(channel_name, subscriber_id)
             queue = self._ensure_queue(channel_name, subscriber_id)
+        result = await self._await_with_shutdown(queue, timeout)
+        if result is None:
+            logger.debug(
+                COMM_RECEIVE_TIMEOUT,
+                channel=channel_name,
+                subscriber=subscriber_id,
+                timeout=timeout,
+            )
+        return result
+
+    async def _await_with_shutdown(
+        self,
+        queue: asyncio.Queue[DeliveryEnvelope],
+        timeout: float | None,  # noqa: ASYNC109
+    ) -> DeliveryEnvelope | None:
+        """Await next envelope, returning ``None`` on timeout or shutdown.
+
+        Args:
+            queue: The subscriber's delivery queue.
+            timeout: Seconds to wait (``None`` = indefinitely).
+
+        Returns:
+            The next envelope, or ``None``.
+        """
+        get_task = asyncio.ensure_future(queue.get())
+        shutdown_task = asyncio.ensure_future(
+            self._shutdown_event.wait(),
+        )
         try:
-            if timeout is not None:
-                return await asyncio.wait_for(
-                    queue.get(),
-                    timeout=timeout,
-                )
-            return await queue.get()
-        except TimeoutError:
-            return None
+            done, _ = await asyncio.wait(
+                {get_task, shutdown_task},
+                timeout=timeout,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        except BaseException:
+            get_task.cancel()
+            shutdown_task.cancel()
+            raise
+        if not get_task.done():
+            get_task.cancel()
+        if not shutdown_task.done():
+            shutdown_task.cancel()
+        if get_task in done and not get_task.cancelled():
+            return get_task.result()
+        return None
 
     async def create_channel(self, channel: Channel) -> Channel:
         """Create a new channel.
@@ -469,6 +557,7 @@ class InMemoryMessageBus:
         Args:
             channel_name: Channel to query.
             limit: Maximum number of most recent messages to return.
+                Values ``<= 0`` return an empty tuple.
 
         Returns:
             Messages in chronological order.
@@ -480,8 +569,11 @@ class InMemoryMessageBus:
             if channel_name not in self._channels:
                 _raise_channel_not_found(channel_name)
             messages = list(self._history[channel_name])
-        if limit is not None and limit < len(messages):
-            messages = messages[-limit:]
+        if limit is not None:
+            if limit <= 0:
+                messages = []
+            elif limit < len(messages):
+                messages = messages[-limit:]
         logger.debug(
             COMM_HISTORY_QUERIED,
             channel=channel_name,

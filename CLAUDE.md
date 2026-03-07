@@ -46,7 +46,7 @@ src/ai_company/
   api/            # FastAPI REST + WebSocket routes
   budget/         # Per-agent cost tracking and spending controls
   cli/            # Typer CLI commands
-  communication/  # Inter-agent message bus and channels
+  communication/  # Message bus (protocol + in-memory backend), dispatcher, messenger facade, channels
   config/         # YAML company config loading and validation
   core/           # Shared domain models and base classes
   engine/         # Agent orchestration, execution loops, task lifecycle, recovery, and shutdown

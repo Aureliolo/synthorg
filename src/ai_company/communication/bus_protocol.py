@@ -13,6 +13,7 @@ from ai_company.communication.subscription import (
     DeliveryEnvelope,  # noqa: TC001
     Subscription,  # noqa: TC001
 )
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
 @runtime_checkable
@@ -62,7 +63,7 @@ class MessageBus(Protocol):
         self,
         message: Message,
         *,
-        recipient: str,
+        recipient: NotBlankStr,
     ) -> None:
         """Send a direct message between two agents.
 
@@ -81,13 +82,13 @@ class MessageBus(Protocol):
 
     async def subscribe(
         self,
-        channel_name: str,
-        subscriber_id: str,
+        channel_name: NotBlankStr,
+        subscriber_id: NotBlankStr,
     ) -> Subscription:
         """Subscribe an agent to a channel.
 
-        Idempotent — returns the existing subscription if already
-        subscribed.
+        Idempotent — returns a fresh subscription record if already
+        subscribed (the channel's subscriber list is not duplicated).
 
         Args:
             channel_name: Channel to subscribe to.
@@ -104,8 +105,8 @@ class MessageBus(Protocol):
 
     async def unsubscribe(
         self,
-        channel_name: str,
-        subscriber_id: str,
+        channel_name: NotBlankStr,
+        subscriber_id: NotBlankStr,
     ) -> None:
         """Remove an agent's subscription from a channel.
 
@@ -121,15 +122,16 @@ class MessageBus(Protocol):
 
     async def receive(
         self,
-        channel_name: str,
-        subscriber_id: str,
+        channel_name: NotBlankStr,
+        subscriber_id: NotBlankStr,
         *,
         timeout: float | None = None,  # noqa: ASYNC109
     ) -> DeliveryEnvelope | None:
         """Receive the next message from a channel.
 
-        Awaits until a message is available or the timeout expires.
-        When ``timeout`` is ``None``, awaits indefinitely.
+        Awaits until a message is available, the timeout expires, or
+        the bus is stopped.  When ``timeout`` is ``None``, awaits
+        indefinitely (or until shutdown).
 
         Args:
             channel_name: Channel to receive from.
@@ -137,7 +139,13 @@ class MessageBus(Protocol):
             timeout: Seconds to wait before returning ``None``.
 
         Returns:
-            A delivery envelope, or ``None`` on timeout.
+            A delivery envelope, or ``None`` on timeout or shutdown.
+
+        Raises:
+            MessageBusNotRunningError: If the bus is not running.
+            ChannelNotFoundError: If the channel does not exist.
+            NotSubscribedError: If the subscriber is not subscribed
+                (for TOPIC and DIRECT channels).
         """
         ...
 
@@ -157,7 +165,7 @@ class MessageBus(Protocol):
         """
         ...
 
-    async def get_channel(self, channel_name: str) -> Channel:
+    async def get_channel(self, channel_name: NotBlankStr) -> Channel:
         """Get a channel by name.
 
         Args:
@@ -181,7 +189,7 @@ class MessageBus(Protocol):
 
     async def get_channel_history(
         self,
-        channel_name: str,
+        channel_name: NotBlankStr,
         *,
         limit: int | None = None,
     ) -> tuple[Message, ...]:
@@ -190,6 +198,7 @@ class MessageBus(Protocol):
         Args:
             channel_name: Channel to query.
             limit: Maximum number of most recent messages to return.
+                Values ``<= 0`` return an empty tuple.
 
         Returns:
             Messages in chronological order.

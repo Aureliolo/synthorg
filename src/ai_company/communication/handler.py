@@ -1,4 +1,4 @@
-"""Message handler protocol, adapter, and registration model (DESIGN_SPEC Section 5)."""
+"""Handler protocol, adapter, and registration (DESIGN_SPEC Section 5.4)."""
 
 import inspect
 from collections.abc import Awaitable, Callable
@@ -11,6 +11,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from ai_company.communication.enums import MessagePriority, MessageType
 from ai_company.communication.message import Message
 from ai_company.core.types import NotBlankStr  # noqa: TC001
+from ai_company.observability import get_logger
+from ai_company.observability.events.communication import COMM_HANDLER_INVALID
+
+logger = get_logger(__name__)
 
 
 @runtime_checkable
@@ -47,6 +51,11 @@ class FunctionHandler:
             msg = (
                 "Handler function must be async (coroutine function), "
                 f"got {type(func).__name__}"
+            )
+            logger.warning(
+                COMM_HANDLER_INVALID,
+                func_type=type(func).__name__,
+                func_name=getattr(func, "__name__", "<unknown>"),
             )
             raise TypeError(msg)
         self._func = func

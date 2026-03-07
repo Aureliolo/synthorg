@@ -45,3 +45,13 @@ COMM_DISPATCH_NO_HANDLERS: Final[str] = "communication.dispatch.no_handlers"
 # Handler registration
 COMM_HANDLER_REGISTERED: Final[str] = "communication.handler.registered"
 COMM_HANDLER_DEREGISTERED: Final[str] = "communication.handler.deregistered"
+COMM_HANDLER_INVALID: Final[str] = "communication.handler.invalid"
+
+# Receive
+COMM_RECEIVE_TIMEOUT: Final[str] = "communication.receive.timeout"
+
+# Validation
+COMM_MESSENGER_INVALID_AGENT: Final[str] = "communication.messenger.invalid_agent"
+
+# Shutdown
+COMM_BUS_SHUTDOWN_SIGNAL: Final[str] = "communication.bus.shutdown_signal"

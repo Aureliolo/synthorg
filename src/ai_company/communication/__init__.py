@@ -1,4 +1,4 @@
-"""Communication domain models for the AI company framework."""
+"""Communication subsystem for the AI company framework."""
 
 from ai_company.communication.bus_memory import InMemoryMessageBus
 from ai_company.communication.bus_protocol import MessageBus

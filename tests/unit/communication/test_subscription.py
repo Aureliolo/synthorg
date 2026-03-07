@@ -12,11 +12,12 @@ from ai_company.communication.enums import (
 from ai_company.communication.message import Message
 from ai_company.communication.subscription import DeliveryEnvelope, Subscription
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 class TestSubscription:
     """Tests for the Subscription model."""
 
-    @pytest.mark.unit
     def test_create_subscription(self) -> None:
         sub = Subscription(
             channel_name="#engineering",
@@ -27,7 +28,6 @@ class TestSubscription:
         assert sub.subscriber_id == "agent-1"
         assert sub.subscribed_at.tzinfo is not None
 
-    @pytest.mark.unit
     def test_frozen(self) -> None:
         sub = Subscription(
             channel_name="#eng",
@@ -37,7 +37,6 @@ class TestSubscription:
         with pytest.raises(ValidationError):
             sub.channel_name = "new"  # type: ignore[misc]
 
-    @pytest.mark.unit
     def test_blank_channel_rejected(self) -> None:
         with pytest.raises(ValidationError):
             Subscription(
@@ -46,7 +45,6 @@ class TestSubscription:
                 subscribed_at=datetime(2026, 3, 7, tzinfo=UTC),
             )
 
-    @pytest.mark.unit
     def test_blank_subscriber_rejected(self) -> None:
         with pytest.raises(ValidationError):
             Subscription(
@@ -59,7 +57,6 @@ class TestSubscription:
 class TestDeliveryEnvelope:
     """Tests for the DeliveryEnvelope model."""
 
-    @pytest.mark.unit
     def test_create_envelope(self) -> None:
         msg = Message(
             timestamp=datetime(2026, 3, 7, 10, 0, tzinfo=UTC),
@@ -78,7 +75,6 @@ class TestDeliveryEnvelope:
         assert envelope.message.sender == "alice"
         assert envelope.channel_name == "#eng"
 
-    @pytest.mark.unit
     def test_frozen(self) -> None:
         msg = Message(
             timestamp=datetime(2026, 3, 7, 10, 0, tzinfo=UTC),
@@ -96,7 +92,6 @@ class TestDeliveryEnvelope:
         with pytest.raises(ValidationError):
             envelope.channel_name = "new"  # type: ignore[misc]
 
-    @pytest.mark.unit
     def test_blank_channel_rejected(self) -> None:
         msg = Message(
             timestamp=datetime(2026, 3, 7, 10, 0, tzinfo=UTC),

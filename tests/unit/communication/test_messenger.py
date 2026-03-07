@@ -16,6 +16,8 @@ from ai_company.communication.message import Message
 from ai_company.communication.messenger import AgentMessenger
 from ai_company.communication.subscription import Subscription
 
+pytestmark = pytest.mark.timeout(30)
+
 
 def _make_mock_bus() -> MagicMock:
     """Create a mock MessageBus with all async methods."""
@@ -31,6 +33,50 @@ def _make_mock_bus() -> MagicMock:
     )
     bus.unsubscribe = AsyncMock()
     return bus
+
+
+class TestAgentMessengerInit:
+    """Tests for AgentMessenger.__init__ validation."""
+
+    @pytest.mark.unit
+    def test_blank_agent_id_rejected(self) -> None:
+        bus = _make_mock_bus()
+        with pytest.raises(ValueError, match="agent_id must not be blank"):
+            AgentMessenger(
+                agent_id="  ",
+                agent_name="Agent A",
+                bus=bus,
+            )
+
+    @pytest.mark.unit
+    def test_blank_agent_name_rejected(self) -> None:
+        bus = _make_mock_bus()
+        with pytest.raises(ValueError, match="agent_name must not be blank"):
+            AgentMessenger(
+                agent_id="agent-a",
+                agent_name="  ",
+                bus=bus,
+            )
+
+    @pytest.mark.unit
+    def test_empty_agent_id_rejected(self) -> None:
+        bus = _make_mock_bus()
+        with pytest.raises(ValueError, match="agent_id must not be blank"):
+            AgentMessenger(
+                agent_id="",
+                agent_name="Agent A",
+                bus=bus,
+            )
+
+    @pytest.mark.unit
+    def test_empty_agent_name_rejected(self) -> None:
+        bus = _make_mock_bus()
+        with pytest.raises(ValueError, match="agent_name must not be blank"):
+            AgentMessenger(
+                agent_id="agent-a",
+                agent_name="",
+                bus=bus,
+            )
 
 
 class TestSendMessage:
@@ -192,9 +238,8 @@ class TestSendDirect:
             message_type=MessageType.TASK_UPDATE,
         )
 
-        # Channel is set to a direct marker; actual routing is
-        # handled by bus.send_direct
-        assert msg.channel == "@direct"
+        # Channel is set to the deterministic direct channel name
+        assert msg.channel == "@agent-a:agent-b"
 
 
 class TestBroadcast:

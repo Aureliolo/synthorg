@@ -1,9 +1,10 @@
-"""Communication error hierarchy (DESIGN_SPEC Section 5).
+"""Communication error hierarchy (DESIGN_SPEC Sections 5.4, 5.5).
 
 All communication errors carry an immutable context mapping for
 structured metadata, following the same pattern as ``ToolError``.
 """
 
+import copy
 from types import MappingProxyType
 from typing import Any
 
@@ -31,7 +32,7 @@ class CommunicationError(Exception):
         """
         self.message = message
         self.context: MappingProxyType[str, Any] = MappingProxyType(
-            dict(context) if context else {},
+            copy.deepcopy(context) if context else {},
         )
         super().__init__(message)
 

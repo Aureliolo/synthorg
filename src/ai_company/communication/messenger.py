@@ -18,11 +18,29 @@ from ai_company.observability.events.communication import (
     COMM_MESSAGE_BROADCAST,
     COMM_MESSAGE_SENT,
     COMM_MESSENGER_CREATED,
+    COMM_MESSENGER_INVALID_AGENT,
     COMM_MESSENGER_SUBSCRIBED,
     COMM_MESSENGER_UNSUBSCRIBED,
 )
 
 logger = get_logger(__name__)
+
+_DIRECT_CHANNEL_PREFIX = "@"
+"""Prefix for direct message channel names."""
+
+
+def _direct_channel_name(agent_a: str, agent_b: str) -> str:
+    """Compute the deterministic direct channel name for a pair.
+
+    Args:
+        agent_a: First agent ID.
+        agent_b: Second agent ID.
+
+    Returns:
+        Channel name in ``@{sorted_a}:{sorted_b}`` format.
+    """
+    pair = sorted([agent_a, agent_b])
+    return f"{_DIRECT_CHANNEL_PREFIX}{pair[0]}:{pair[1]}"
 
 
 class AgentMessenger:
@@ -52,9 +70,19 @@ class AgentMessenger:
         dispatcher: MessageDispatcher | None = None,
     ) -> None:
         if not agent_id.strip():
+            logger.warning(
+                COMM_MESSENGER_INVALID_AGENT,
+                field="agent_id",
+                value=repr(agent_id),
+            )
             msg = "agent_id must not be blank"
             raise ValueError(msg)
         if not agent_name.strip():
+            logger.warning(
+                COMM_MESSENGER_INVALID_AGENT,
+                field="agent_name",
+                value=repr(agent_name),
+            )
             msg = "agent_name must not be blank"
             raise ValueError(msg)
         self._agent_id = agent_id
@@ -123,10 +151,9 @@ class AgentMessenger:
     ) -> Message:
         """Send a direct message to another agent.
 
-        Auto-fills sender, timestamp, and message ID. The bus handles
-        lazy creation of the direct channel.  The message's ``channel``
-        field is set to a placeholder (``"@direct"``); the bus stores
-        it under the deterministic ``@{a}:{b}`` channel name.
+        Auto-fills sender, timestamp, and message ID. The message's
+        ``channel`` field is set to the deterministic ``@{a}:{b}``
+        channel name computed from the sorted agent ID pair.
 
         Args:
             to: Recipient agent ID.
@@ -140,13 +167,14 @@ class AgentMessenger:
         Raises:
             MessageBusNotRunningError: If the bus is not running.
         """
+        channel = _direct_channel_name(self._agent_id, to)
         msg = Message(
             timestamp=datetime.now(UTC),
             sender=self._agent_id,
             to=to,
             type=message_type,
             priority=priority,
-            channel="@direct",
+            channel=channel,
             content=content,
         )
         await self._bus.send_direct(msg, recipient=to)
@@ -154,7 +182,7 @@ class AgentMessenger:
             COMM_MESSAGE_SENT,
             agent_id=self._agent_id,
             to=to,
-            channel="@direct",
+            channel=channel,
             message_id=str(msg.id),
         )
         return msg

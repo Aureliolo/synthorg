@@ -25,6 +25,8 @@ from ai_company.communication.errors import (
 )
 from ai_company.communication.message import Message
 
+pytestmark = pytest.mark.timeout(30)
+
 
 def _make_message(
     *,
@@ -587,3 +589,98 @@ class TestConcurrency:
 
         result = consumer_task.result()
         assert len(result) == msgs_per_publisher * num_publishers
+
+
+# ── Receive Validation ─────────────────────────────────────────────
+
+
+class TestReceiveValidation:
+    """Tests for receive() running, channel, and subscription checks."""
+
+    @pytest.mark.unit
+    async def test_receive_on_stopped_bus_raises(self) -> None:
+        bus = InMemoryMessageBus(config=_make_config())
+        with pytest.raises(MessageBusNotRunningError):
+            await bus.receive("#general", "agent-a", timeout=0.1)
+
+    @pytest.mark.unit
+    async def test_receive_nonexistent_channel_raises(self) -> None:
+        bus = InMemoryMessageBus(config=_make_config())
+        await bus.start()
+        with pytest.raises(ChannelNotFoundError):
+            await bus.receive("#nonexistent", "agent-a", timeout=0.1)
+
+    @pytest.mark.unit
+    async def test_receive_not_subscribed_raises(self) -> None:
+        bus = InMemoryMessageBus(config=_make_config())
+        await bus.start()
+        with pytest.raises(NotSubscribedError):
+            await bus.receive("#general", "agent-a", timeout=0.1)
+
+    @pytest.mark.unit
+    async def test_receive_returns_none_on_shutdown(self) -> None:
+        bus = InMemoryMessageBus(config=_make_config())
+        await bus.start()
+        await bus.subscribe("#general", "agent-a")
+
+        async def stop_after_delay() -> None:
+            await asyncio.sleep(0.05)
+            await bus.stop()
+
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(stop_after_delay())
+            result = await bus.receive("#general", "agent-a", timeout=5.0)
+
+        assert result is None
+
+
+# ── send_direct Validation ─────────────────────────────────────────
+
+
+class TestSendDirectValidation:
+    """Tests for send_direct() recipient and agent ID validation."""
+
+    @pytest.mark.unit
+    async def test_send_direct_recipient_mismatch_raises(self) -> None:
+        bus = InMemoryMessageBus(config=_make_config())
+        await bus.start()
+        msg = _make_message(sender="agent-a", to="agent-b")
+        with pytest.raises(ValueError, match="does not match"):
+            await bus.send_direct(msg, recipient="agent-c")
+
+    @pytest.mark.unit
+    async def test_send_direct_colon_in_agent_id_raises(self) -> None:
+        bus = InMemoryMessageBus(config=_make_config())
+        await bus.start()
+        msg = _make_message(sender="agent:a", to="agent-b")
+        with pytest.raises(ValueError, match="separator character"):
+            await bus.send_direct(msg, recipient="agent-b")
+
+
+# ── History Edge Cases ─────────────────────────────────────────────
+
+
+class TestHistoryEdgeCases:
+    """Tests for get_channel_history limit edge cases."""
+
+    @pytest.mark.unit
+    async def test_history_limit_zero_returns_empty(self) -> None:
+        bus = InMemoryMessageBus(config=_make_config())
+        await bus.start()
+        await bus.subscribe("#general", "agent-a")
+        await bus.publish(
+            _make_message(channel="#general", content="msg-1"),
+        )
+        history = await bus.get_channel_history("#general", limit=0)
+        assert history == ()
+
+    @pytest.mark.unit
+    async def test_history_limit_negative_returns_empty(self) -> None:
+        bus = InMemoryMessageBus(config=_make_config())
+        await bus.start()
+        await bus.subscribe("#general", "agent-a")
+        await bus.publish(
+            _make_message(channel="#general", content="msg-1"),
+        )
+        history = await bus.get_channel_history("#general", limit=-5)
+        assert history == ()

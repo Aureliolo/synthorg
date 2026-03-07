@@ -1,6 +1,6 @@
 """Message dispatcher — routes incoming messages to registered handlers.
 
-See DESIGN_SPEC Section 5.
+See DESIGN_SPEC Section 5.4.
 """
 
 import asyncio
@@ -143,8 +143,8 @@ class MessageDispatcher:
         Handlers that raise ``Exception`` subclasses are isolated —
         their errors are captured without affecting other handlers.
         ``BaseException`` subclasses (e.g. ``KeyboardInterrupt``,
-        ``CancelledError``) will still propagate and may cancel
-        remaining handlers.
+        ``CancelledError``) propagate through the ``TaskGroup``,
+        cancelling all remaining handlers.
 
         Args:
             message: The message to dispatch.
@@ -182,29 +182,16 @@ class MessageDispatcher:
             count=len(matched),
         )
 
-        errors: list[str] = []
-
-        async def _guarded_handle(
-            registration: HandlerRegistration,
-        ) -> None:
-            try:
-                await registration.handler.handle(message)
-            except Exception as exc:
-                errors.append(str(exc))
-                logger.exception(
-                    COMM_DISPATCH_HANDLER_ERROR,
-                    agent_id=self._agent_id,
-                    message_id=str(message.id),
-                    handler_id=registration.handler_id,
-                    handler_name=registration.name,
-                    error=str(exc),
-                )
+        errors: list[str | None] = [None] * len(matched)
 
         async with asyncio.TaskGroup() as tg:
-            for reg in matched:
-                tg.create_task(_guarded_handle(reg))
+            for idx, reg in enumerate(matched):
+                tg.create_task(
+                    self._guarded_handle(reg, message, errors, idx),
+                )
 
-        succeeded = len(matched) - len(errors)
+        error_msgs = tuple(e for e in errors if e is not None)
+        succeeded = len(matched) - len(error_msgs)
 
         logger.info(
             COMM_DISPATCH_COMPLETE,
@@ -212,15 +199,43 @@ class MessageDispatcher:
             message_id=str(message.id),
             matched=len(matched),
             succeeded=succeeded,
-            failed=len(errors),
+            failed=len(error_msgs),
         )
 
         return DispatchResult(
             message_id=message.id,
             handlers_succeeded=succeeded,
-            handlers_failed=len(errors),
-            errors=tuple(errors),
+            handlers_failed=len(error_msgs),
+            errors=error_msgs,
         )
+
+    async def _guarded_handle(
+        self,
+        registration: HandlerRegistration,
+        message: Message,
+        errors: list[str | None],
+        index: int,
+    ) -> None:
+        """Execute a single handler, capturing Exception errors.
+
+        Args:
+            registration: The handler registration to invoke.
+            message: The message to pass to the handler.
+            errors: Pre-allocated error list (indexed by handler).
+            index: Position in the error list for this handler.
+        """
+        try:
+            await registration.handler.handle(message)
+        except Exception as exc:
+            errors[index] = str(exc)
+            logger.exception(
+                COMM_DISPATCH_HANDLER_ERROR,
+                agent_id=self._agent_id,
+                message_id=str(message.id),
+                handler_id=registration.handler_id,
+                handler_name=registration.name,
+                error=str(exc),
+            )
 
     @staticmethod
     def _matches(
