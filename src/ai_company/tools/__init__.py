@@ -2,7 +2,6 @@
 
 from .base import BaseTool, ToolExecutionResult
 from .errors import (
-    GitToolError,
     ToolError,
     ToolExecutionError,
     ToolNotFoundError,
@@ -31,7 +30,6 @@ __all__ = [
     "GitDiffTool",
     "GitLogTool",
     "GitStatusTool",
-    "GitToolError",
     "ToolError",
     "ToolExecutionError",
     "ToolExecutionResult",

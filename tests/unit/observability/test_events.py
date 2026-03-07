@@ -74,6 +74,7 @@ class TestEventConstants:
             "budget",
             "config",
             "execution",
+            "git",
             "prompt",
             "provider",
             "role",

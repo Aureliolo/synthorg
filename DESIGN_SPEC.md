@@ -1649,6 +1649,8 @@ When the LLM requests multiple tool calls in a single turn, `ToolInvoker.invoke_
 
 The `ToolPermissionChecker` resolves permissions using a priority-based system: denied list (highest) → allowed list → access-level categories → deny (default). `AgentEngine._make_tool_invoker()` creates a permission-aware invoker from the agent's `ToolPermissions` at the start of each `run()` call. Note: M3 implements category-level gating only; the granular sub-constraints described in §11.2 (workspace scope, network mode) are planned for when sandboxing is implemented.
 
+> **M3 implementation note — Built-in git tools:** Six workspace-scoped git tools are implemented in `tools/git_tools.py`: `GitStatusTool`, `GitLogTool`, `GitDiffTool`, `GitBranchTool`, `GitCommitTool`, and `GitCloneTool`. All share a `_BaseGitTool` base class that enforces workspace boundary security (path traversal prevention via `resolve()` + `relative_to()`) and provides a common `_run_git()` helper using `asyncio.create_subprocess_exec` (never `shell=True`). Security hardening includes: `GIT_TERMINAL_PROMPT=0` to prevent credential prompts, `GIT_CONFIG_NOSYSTEM=1` and `GIT_PROTOCOL_FROM_USER=0` to restrict config/protocol attack surfaces, rejection of flag-like ref/branch values (starting with `-`), and URL scheme validation on clone (only `https://`, `http://`, `ssh://`, `git://`, and SCP-like syntax). All tools return `ToolExecutionResult` for errors rather than raising exceptions.
+
 ### 11.1.2 Tool Sandboxing
 
 Tool execution requires safety boundaries proportional to the risk of each tool category. The framework uses a **layered sandboxing strategy** with a pluggable `SandboxBackend` protocol — new backends can be added without modifying existing ones. The default configuration uses lighter isolation for low-risk tools and stronger isolation for high-risk tools.
@@ -2299,6 +2301,7 @@ ai-company/
 │       │   │   ├── budget.py      # BUDGET_* constants
 │       │   │   ├── config.py      # CONFIG_* constants
 │       │   │   ├── execution.py   # EXECUTION_* constants
+│       │   │   ├── git.py         # GIT_* constants
 │       │   │   ├── prompt.py      # PROMPT_* constants
 │       │   │   ├── provider.py    # PROVIDER_* constants
 │       │   │   ├── role.py        # ROLE_* constants
@@ -2345,7 +2348,7 @@ ai-company/
 │       │   │   ├── subprocess.py  # SubprocessSandbox (default for low-risk)
 │       │   │   └── docker.py      # DockerSandbox (for code_runner, terminal)
 │       │   ├── file_system.py      # File operations (M3)
-│       │   ├── git_tools.py        # Git operations (M3)
+│       │   ├── git_tools.py        # Git operations — 6 built-in tools
 │       │   ├── code_runner.py      # Code execution (M3)
 │       │   ├── web_tools.py        # HTTP, search (M3)
 │       │   └── mcp_bridge.py       # MCP server integration (M7)

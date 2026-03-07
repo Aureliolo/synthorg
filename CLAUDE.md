@@ -54,7 +54,7 @@ src/ai_company/
   providers/      # LLM provider abstraction (LiteLLM adapter)
   security/       # SecOps agent, approval gates, audit
   templates/      # Pre-built company templates and builder
-  tools/          # Tool registry, MCP integration, role-based access, sandboxing
+  tools/          # Tool registry, built-in git tools, MCP integration, role-based access, sandboxing
 ```
 
 ## Shell Usage

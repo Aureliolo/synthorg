@@ -6,6 +6,7 @@ from pathlib import Path  # noqa: TC003 — used at runtime
 
 import pytest
 
+import ai_company.tools.git_tools as git_tools_module
 from ai_company.tools.git_tools import (
     GitBranchTool,
     GitCloneTool,
@@ -22,6 +23,7 @@ _GIT_ENV = {
     "GIT_COMMITTER_NAME": "Test",
     "GIT_COMMITTER_EMAIL": "test@test.local",
     "GIT_TERMINAL_PROMPT": "0",
+    "GIT_CONFIG_NOSYSTEM": "1",
 }
 
 
@@ -105,3 +107,13 @@ def commit_tool(git_repo: Path) -> GitCommitTool:
 def clone_tool(workspace: Path) -> GitCloneTool:
     """GitCloneTool bound to a bare workspace."""
     return GitCloneTool(workspace=workspace)
+
+
+@pytest.fixture
+def allow_local_clone(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Allow local file paths in clone URL validation for testing."""
+    monkeypatch.setattr(
+        git_tools_module,
+        "_is_allowed_clone_url",
+        lambda url: True,
+    )

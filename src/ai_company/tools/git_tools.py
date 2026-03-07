@@ -28,6 +28,25 @@ logger = get_logger(__name__)
 
 _DEFAULT_TIMEOUT: float = 30.0
 _CLONE_TIMEOUT: float = 120.0
+_ALLOWED_CLONE_SCHEMES = ("https://", "http://", "ssh://", "git://")
+
+
+def _is_allowed_clone_url(url: str) -> bool:
+    """Check if a clone URL uses an allowed remote scheme.
+
+    Allows standard remote schemes and SCP-like syntax.  Rejects
+    ``file://``, ``ext::``, and bare local paths.
+
+    Args:
+        url: Repository URL string to validate.
+
+    Returns:
+        ``True`` if the URL scheme is allowed.
+    """
+    if any(url.startswith(scheme) for scheme in _ALLOWED_CLONE_SCHEMES):
+        return True
+    # SCP-like: user@host:path (e.g. git@github.com:user/repo.git)
+    return "@" in url and ":" in url and "::" not in url and "://" not in url
 
 
 # ── Base class ────────────────────────────────────────────────────
@@ -118,6 +137,29 @@ class _BaseGitTool(BaseTool, ABC):
                 )
         return None
 
+    def _check_ref(
+        self,
+        value: str,
+        *,
+        param: str,
+    ) -> ToolExecutionResult | None:
+        """Reject ref-like values starting with ``-`` to prevent flag injection.
+
+        Args:
+            value: The ref or branch name string to validate.
+            param: Parameter name for the error message.
+
+        Returns:
+            A ``ToolExecutionResult`` with ``is_error=True`` if the value
+            starts with ``-``, or ``None`` if valid.
+        """
+        if value.startswith("-"):
+            return ToolExecutionResult(
+                content=f"Invalid {param}: must not start with '-'",
+                is_error=True,
+            )
+        return None
+
     async def _run_git(
         self,
         args: list[str],
@@ -137,7 +179,11 @@ class _BaseGitTool(BaseTool, ABC):
             or stderr/error message with ``is_error=True`` on failure.
         """
         work_dir = cwd or self._workspace
-        env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+        env = {
+            **os.environ,
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_CONFIG_NOSYSTEM": "1",
+        }
 
         logger.debug(
             GIT_COMMAND_START,
@@ -154,14 +200,15 @@ class _BaseGitTool(BaseTool, ABC):
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
             )
-        except FileNotFoundError:
-            logger.exception(
+        except OSError:
+            logger.warning(
                 GIT_COMMAND_FAILED,
                 command=["git", *args],
-                error="git not found",
+                error="subprocess start failed",
+                exc_info=True,
             )
             return ToolExecutionResult(
-                content="Git is not installed or not in PATH",
+                content="Failed to start git process",
                 is_error=True,
             )
 
@@ -187,7 +234,7 @@ class _BaseGitTool(BaseTool, ABC):
         stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
 
         if proc.returncode != 0:
-            logger.info(
+            logger.warning(
                 GIT_COMMAND_FAILED,
                 command=["git", *args],
                 returncode=proc.returncode,
@@ -297,7 +344,7 @@ class GitLogTool(_BaseGitTool):
                 "properties": {
                     "max_count": {
                         "type": "integer",
-                        "description": ("Max commits (default 10, max 100)."),
+                        "description": "Max commits (default 10, max 100).",
                         "default": 10,
                         "minimum": 1,
                         "maximum": 100,
@@ -317,7 +364,7 @@ class GitLogTool(_BaseGitTool):
                     },
                     "since": {
                         "type": "string",
-                        "description": ("Show commits after date (e.g. '2024-01-01')."),
+                        "description": "Show commits after date (e.g. '2024-01-01').",
                     },
                     "until": {
                         "type": "string",
@@ -367,6 +414,8 @@ class GitLogTool(_BaseGitTool):
             args.append(f"--until={until}")
 
         if ref := arguments.get("ref"):
+            if err := self._check_ref(ref, param="ref"):
+                return err
             args.append(ref)
 
         paths: list[str] = arguments.get("paths", [])
@@ -459,8 +508,12 @@ class GitDiffTool(_BaseGitTool):
             args.append("--stat")
 
         if ref1 := arguments.get("ref1"):
+            if err := self._check_ref(ref1, param="ref1"):
+                return err
             args.append(ref1)
         if ref2 := arguments.get("ref2"):
+            if err := self._check_ref(ref2, param="ref2"):
+                return err
             args.append(ref2)
 
         paths: list[str] = arguments.get("paths", [])
@@ -532,6 +585,26 @@ class GitBranchTool(_BaseGitTool):
             workspace=workspace,
         )
 
+    async def _list_branches(self) -> ToolExecutionResult:
+        """List all branches."""
+        result = await self._run_git(["branch", "-a"])
+        if not result.is_error and not result.content:
+            return ToolExecutionResult(content="No branches found")
+        return result
+
+    async def _create_branch(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """Create a branch, optionally from a start point."""
+        args = ["branch", name]
+        if start_point := arguments.get("start_point"):
+            if err := self._check_ref(start_point, param="start_point"):
+                return err
+            args.append(start_point)
+        return await self._run_git(args)
+
     async def execute(
         self,
         *,
@@ -555,26 +628,23 @@ class GitBranchTool(_BaseGitTool):
             )
 
         if action == "list":
-            args = ["branch", "-a"]
-            result = await self._run_git(args)
-            if not result.is_error and not result.content:
-                return ToolExecutionResult(content="No branches found")
-            return result
+            return await self._list_branches()
+
+        # Narrow name to str — guaranteed by _ACTIONS_REQUIRING_NAME guard
+        branch_name: str = name  # type: ignore[assignment]
+
+        if err := self._check_ref(branch_name, param="name"):
+            return err
 
         if action == "create":
-            args = ["branch", name]  # type: ignore[list-item]
-            if start_point := arguments.get("start_point"):
-                args.append(start_point)
-            return await self._run_git(args)
+            return await self._create_branch(branch_name, arguments)
 
         if action == "switch":
-            args = ["switch", name]  # type: ignore[list-item]
-            return await self._run_git(args)
+            return await self._run_git(["switch", branch_name])
 
-        # action == "delete"
+        # action == "delete" (per schema enum constraint)
         flag = "-D" if arguments.get("force") else "-d"
-        args = ["branch", flag, name]  # type: ignore[list-item]
-        return await self._run_git(args)
+        return await self._run_git(["branch", flag, branch_name])
 
 
 # ── GitCommitTool ─────────────────────────────────────────────────
@@ -721,6 +791,16 @@ class GitCloneTool(_BaseGitTool):
             A ``ToolExecutionResult`` with the clone output.
         """
         url: str = arguments["url"]
+
+        if not _is_allowed_clone_url(url):
+            return ToolExecutionResult(
+                content=(
+                    "Invalid clone URL. Only https://, http://, ssh://, "
+                    "git://, and SCP-like (user@host:path) URLs are allowed"
+                ),
+                is_error=True,
+            )
+
         args = ["clone"]
 
         if branch := arguments.get("branch"):

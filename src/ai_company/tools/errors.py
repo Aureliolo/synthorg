@@ -58,7 +58,3 @@ class ToolExecutionError(ToolError):
 
 class ToolPermissionDeniedError(ToolError):
     """Tool invocation blocked by the permission checker."""
-
-
-class GitToolError(ToolError):
-    """Git tool error — workspace violations, command failures."""

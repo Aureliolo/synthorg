@@ -18,6 +18,15 @@ from .conftest import _run_git
 
 pytestmark = pytest.mark.timeout(30)
 
+_ALL_GIT_TOOL_CLASSES = [
+    GitStatusTool,
+    GitLogTool,
+    GitDiffTool,
+    GitBranchTool,
+    GitCommitTool,
+    GitCloneTool,
+]
+
 
 # ── Workspace validation (shared across tools) ───────────────────
 
@@ -91,49 +100,19 @@ class TestToolProperties:
         tool = tool_cls(workspace=tmp_path)
         assert tool.name == expected_name
 
-    @pytest.mark.parametrize(
-        "tool_cls",
-        [
-            GitStatusTool,
-            GitLogTool,
-            GitDiffTool,
-            GitBranchTool,
-            GitCommitTool,
-            GitCloneTool,
-        ],
-    )
+    @pytest.mark.parametrize("tool_cls", _ALL_GIT_TOOL_CLASSES)
     def test_category_is_version_control(self, tool_cls: type, tmp_path: Path) -> None:
         tool = tool_cls(workspace=tmp_path)
         assert tool.category == ToolCategory.VERSION_CONTROL
 
-    @pytest.mark.parametrize(
-        "tool_cls",
-        [
-            GitStatusTool,
-            GitLogTool,
-            GitDiffTool,
-            GitBranchTool,
-            GitCommitTool,
-            GitCloneTool,
-        ],
-    )
+    @pytest.mark.parametrize("tool_cls", _ALL_GIT_TOOL_CLASSES)
     def test_has_schema(self, tool_cls: type, tmp_path: Path) -> None:
         tool = tool_cls(workspace=tmp_path)
         schema = tool.parameters_schema
         assert schema is not None
         assert schema["type"] == "object"
 
-    @pytest.mark.parametrize(
-        "tool_cls",
-        [
-            GitStatusTool,
-            GitLogTool,
-            GitDiffTool,
-            GitBranchTool,
-            GitCommitTool,
-            GitCloneTool,
-        ],
-    )
+    @pytest.mark.parametrize("tool_cls", _ALL_GIT_TOOL_CLASSES)
     def test_description_not_empty(self, tool_cls: type, tmp_path: Path) -> None:
         tool = tool_cls(workspace=tmp_path)
         assert tool.description
@@ -209,7 +188,7 @@ class TestGitLogTool:
     async def test_empty_repo_no_commits(self, empty_git_repo: Path) -> None:
         tool = GitLogTool(workspace=empty_git_repo)
         result = await tool.execute(arguments={})
-        assert result.is_error or "no commits" in result.content.lower()
+        assert result.is_error
 
     async def test_author_filter(self, log_tool: GitLogTool) -> None:
         result = await log_tool.execute(
@@ -432,7 +411,12 @@ class TestGitCommitTool:
 class TestGitCloneTool:
     """Tests for git_clone."""
 
-    async def test_clone_local_repo(self, git_repo: Path, workspace: Path) -> None:
+    async def test_clone_local_repo(
+        self,
+        git_repo: Path,
+        workspace: Path,
+        allow_local_clone: None,
+    ) -> None:
         tool = GitCloneTool(workspace=workspace)
         result = await tool.execute(
             arguments={
@@ -443,7 +427,12 @@ class TestGitCloneTool:
         assert not result.is_error
         assert (workspace / "cloned" / "README.md").exists()
 
-    async def test_clone_with_depth(self, git_repo: Path, workspace: Path) -> None:
+    async def test_clone_with_depth(
+        self,
+        git_repo: Path,
+        workspace: Path,
+        allow_local_clone: None,
+    ) -> None:
         tool = GitCloneTool(workspace=workspace)
         result = await tool.execute(
             arguments={
@@ -455,7 +444,10 @@ class TestGitCloneTool:
         assert not result.is_error
 
     async def test_clone_directory_outside_workspace(
-        self, git_repo: Path, workspace: Path
+        self,
+        git_repo: Path,
+        workspace: Path,
+        allow_local_clone: None,
     ) -> None:
         tool = GitCloneTool(workspace=workspace)
         result = await tool.execute(
@@ -472,7 +464,12 @@ class TestGitCloneTool:
         )
         assert result.is_error
 
-    async def test_clone_with_branch(self, git_repo: Path, workspace: Path) -> None:
+    async def test_clone_with_branch(
+        self,
+        git_repo: Path,
+        workspace: Path,
+        allow_local_clone: None,
+    ) -> None:
         _run_git(["branch", "test-branch"], git_repo)
         tool = GitCloneTool(workspace=workspace)
         result = await tool.execute(
@@ -483,6 +480,103 @@ class TestGitCloneTool:
             },
         )
         assert not result.is_error
+
+
+# ── Security: flag injection prevention ───────────────────────────
+
+
+@pytest.mark.unit
+class TestFlagInjectionPrevention:
+    """Refs and branch names starting with ``-`` must be rejected."""
+
+    async def test_log_ref_flag_blocked(self, log_tool: GitLogTool) -> None:
+        result = await log_tool.execute(
+            arguments={"ref": "--exec=malicious"},
+        )
+        assert result.is_error
+        assert "must not start with '-'" in result.content
+
+    async def test_diff_ref1_flag_blocked(self, diff_tool: GitDiffTool) -> None:
+        result = await diff_tool.execute(
+            arguments={"ref1": "--upload-pack=evil"},
+        )
+        assert result.is_error
+
+    async def test_diff_ref2_flag_blocked(self, diff_tool: GitDiffTool) -> None:
+        result = await diff_tool.execute(
+            arguments={"ref1": "HEAD", "ref2": "-c core.sshCommand=evil"},
+        )
+        assert result.is_error
+
+    async def test_branch_name_flag_blocked(self, branch_tool: GitBranchTool) -> None:
+        result = await branch_tool.execute(
+            arguments={"action": "create", "name": "--set-upstream-to=evil"},
+        )
+        assert result.is_error
+
+    async def test_branch_start_point_flag_blocked(
+        self, branch_tool: GitBranchTool
+    ) -> None:
+        result = await branch_tool.execute(
+            arguments={
+                "action": "create",
+                "name": "ok-branch",
+                "start_point": "--exec=evil",
+            },
+        )
+        assert result.is_error
+
+    async def test_switch_name_flag_blocked(self, branch_tool: GitBranchTool) -> None:
+        result = await branch_tool.execute(
+            arguments={"action": "switch", "name": "-c evil"},
+        )
+        assert result.is_error
+
+
+# ── Security: clone URL validation ───────────────────────────────
+
+
+@pytest.mark.unit
+class TestCloneUrlValidation:
+    """Only remote URL schemes should be allowed for clone."""
+
+    async def test_local_path_blocked(self, clone_tool: GitCloneTool) -> None:
+        result = await clone_tool.execute(
+            arguments={"url": "/etc/passwd"},
+        )
+        assert result.is_error
+        assert "Invalid clone URL" in result.content
+
+    async def test_file_scheme_blocked(self, clone_tool: GitCloneTool) -> None:
+        result = await clone_tool.execute(
+            arguments={"url": "file:///etc"},
+        )
+        assert result.is_error
+
+    async def test_ext_protocol_blocked(self, clone_tool: GitCloneTool) -> None:
+        result = await clone_tool.execute(
+            arguments={"url": "ext::sh -c 'evil'"},
+        )
+        assert result.is_error
+
+    async def test_https_allowed(self, clone_tool: GitCloneTool) -> None:
+        result = await clone_tool.execute(
+            arguments={"url": "https://example.com/repo.git"},
+        )
+        # URL is valid, clone will fail (no such host) but not from validation
+        assert "Invalid clone URL" not in result.content
+
+    async def test_scp_syntax_allowed(self, clone_tool: GitCloneTool) -> None:
+        result = await clone_tool.execute(
+            arguments={"url": "git@github.com:user/repo.git"},
+        )
+        assert "Invalid clone URL" not in result.content
+
+    async def test_relative_path_blocked(self, clone_tool: GitCloneTool) -> None:
+        result = await clone_tool.execute(
+            arguments={"url": "../outside-repo"},
+        )
+        assert result.is_error
 
 
 # ── Error handling edge cases ─────────────────────────────────────
