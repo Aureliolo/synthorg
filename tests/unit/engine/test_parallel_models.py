@@ -151,6 +151,32 @@ class TestAgentAssignment:
         with pytest.raises(ValidationError):
             assignment.max_turns = 10  # type: ignore[misc]
 
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("max_turns", 0),
+            ("max_turns", -1),
+            ("timeout_seconds", 0),
+            ("timeout_seconds", -5.0),
+        ],
+    )
+    def test_invalid_numeric_constraints(
+        self,
+        field: str,
+        value: object,
+    ) -> None:
+        with pytest.raises(ValidationError):
+            _make_assignment(**{field: value})
+
+    def test_duplicate_resource_claims_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match=r"[Dd]uplicate.*resource",
+        ):
+            _make_assignment(
+                resource_claims=("src/a.py", "src/a.py"),
+            )
+
     def test_agent_id_property(self) -> None:
         assignment = _make_assignment()
         assert assignment.agent_id == str(assignment.identity.id)
@@ -295,8 +321,24 @@ class TestAgentOutcome:
         assert outcome.is_success is False
 
     def test_both_none_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="result or error"):
+        with pytest.raises(
+            ValidationError,
+            match="Exactly one of result or error",
+        ):
             AgentOutcome(task_id="t1", agent_id="a1")
+
+    def test_both_set_rejected(self) -> None:
+        result = _make_run_result()
+        with pytest.raises(
+            ValidationError,
+            match="Exactly one of result or error",
+        ):
+            AgentOutcome(
+                task_id="t1",
+                agent_id="a1",
+                result=result,
+                error="also has error",
+            )
 
     def test_frozen(self) -> None:
         outcome = AgentOutcome(
@@ -417,16 +459,54 @@ class TestParallelProgress:
         )
         assert progress.pending == 2  # 5 - 1 - 2
 
-    def test_pending_clamped_to_zero(self) -> None:
-        progress = ParallelProgress(
-            group_id="grp",
-            total=1,
-            completed=1,
-            in_progress=1,
-            succeeded=1,
-            failed=0,
-        )
-        assert progress.pending == 0  # max(0, 1 - 1 - 1)
+    def test_completed_plus_in_progress_exceeds_total_rejected(
+        self,
+    ) -> None:
+        with pytest.raises(
+            ValidationError,
+            match=r"completed.*in_progress.*must not exceed total",
+        ):
+            ParallelProgress(
+                group_id="grp",
+                total=1,
+                completed=1,
+                in_progress=1,
+                succeeded=1,
+                failed=0,
+            )
+
+    def test_succeeded_plus_failed_exceeds_completed_rejected(
+        self,
+    ) -> None:
+        with pytest.raises(
+            ValidationError,
+            match=r"succeeded.*failed.*must not exceed completed",
+        ):
+            ParallelProgress(
+                group_id="grp",
+                total=5,
+                completed=1,
+                in_progress=0,
+                succeeded=1,
+                failed=1,
+            )
+
+    @pytest.mark.parametrize(
+        "field",
+        ["total", "completed", "in_progress", "succeeded", "failed"],
+    )
+    def test_negative_values_rejected(self, field: str) -> None:
+        kwargs: dict[str, object] = {
+            "group_id": "grp",
+            "total": 1,
+            "completed": 0,
+            "in_progress": 0,
+            "succeeded": 0,
+            "failed": 0,
+        }
+        kwargs[field] = -1
+        with pytest.raises(ValidationError):
+            ParallelProgress(**kwargs)  # type: ignore[arg-type]
 
     def test_frozen(self) -> None:
         progress = ParallelProgress(

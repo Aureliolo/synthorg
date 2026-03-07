@@ -47,7 +47,7 @@ ProgressCallback = Callable[[ParallelProgress], None]
 """Synchronous callback invoked on progress updates.
 
 Called directly (not awaited) from the executor's event loop;
-must not block.
+must not block.  Async functions will produce un-awaited coroutines.
 """
 
 
@@ -137,12 +137,6 @@ class ParallelExecutor:
         if lock is not None:
             await self._acquire_all_locks(group, lock)
 
-        semaphore = (
-            asyncio.Semaphore(group.max_concurrency)
-            if group.max_concurrency is not None
-            else None
-        )
-
         outcomes: dict[str, AgentOutcome] = {}
         fatal_errors: list[Exception] = []
         progress = _ProgressState(
@@ -150,6 +144,66 @@ class ParallelExecutor:
             total=len(group.assignments),
         )
 
+        try:
+            await self._run_task_group(
+                group,
+                outcomes,
+                fatal_errors,
+                progress,
+            )
+        finally:
+            if lock is not None:
+                try:
+                    await self._release_all_locks(group, lock)
+                except Exception:
+                    logger.exception(
+                        PARALLEL_GROUP_COMPLETE,
+                        error="Failed to release resource locks",
+                        group_id=group.group_id,
+                    )
+
+        result = self._build_result(
+            group,
+            outcomes,
+            time.monotonic() - start,
+        )
+
+        logger.info(
+            PARALLEL_GROUP_COMPLETE,
+            group_id=group.group_id,
+            succeeded=result.agents_succeeded,
+            failed=result.agents_failed,
+            duration_seconds=result.total_duration_seconds,
+        )
+
+        if fatal_errors:
+            msg = (
+                f"Parallel group {group.group_id!r} had "
+                f"{len(fatal_errors)} fatal error(s)"
+            )
+            logger.error(
+                PARALLEL_AGENT_ERROR,
+                group_id=group.group_id,
+                fatal_error_count=len(fatal_errors),
+                error=msg,
+            )
+            raise ParallelExecutionError(msg) from fatal_errors[0]
+
+        return result
+
+    async def _run_task_group(
+        self,
+        group: ParallelExecutionGroup,
+        outcomes: dict[str, AgentOutcome],
+        fatal_errors: list[Exception],
+        progress: _ProgressState,
+    ) -> None:
+        """Run all assignments via TaskGroup."""
+        semaphore = (
+            asyncio.Semaphore(group.max_concurrency)
+            if group.max_concurrency is not None
+            else None
+        )
         try:
             async with asyncio.TaskGroup() as tg:
                 for assignment in group.assignments:
@@ -163,63 +217,12 @@ class ParallelExecutor:
                             semaphore=semaphore,
                         ),
                     )
-        except* Exception as eg:
+        except* Exception:  # noqa: S110
             # TaskGroup wraps exceptions in ExceptionGroup when
             # fail_fast re-raises inside _run_guarded.
-            # Outcomes from completed tasks are already collected.
-            exc_summaries = [f"{type(e).__name__}: {e}" for e in eg.exceptions]
-            logger.info(
-                PARALLEL_GROUP_COMPLETE,
-                group_id=group.group_id,
-                note="TaskGroup exited with exceptions",
-                exception_count=len(eg.exceptions),
-                exceptions=exc_summaries,
-            )
-
-        if lock is not None:
-            try:
-                await self._release_all_locks(group, lock)
-            except Exception:
-                logger.exception(
-                    PARALLEL_GROUP_COMPLETE,
-                    error="Failed to release resource locks",
-                    group_id=group.group_id,
-                )
-
-        duration = time.monotonic() - start
-
-        result = ParallelExecutionResult(
-            group_id=group.group_id,
-            outcomes=tuple(
-                outcomes.get(
-                    a.task_id,
-                    AgentOutcome(
-                        task_id=a.task_id,
-                        agent_id=a.agent_id,
-                        error="Cancelled due to fail_fast",
-                    ),
-                )
-                for a in group.assignments
-            ),
-            total_duration_seconds=duration,
-        )
-
-        logger.info(
-            PARALLEL_GROUP_COMPLETE,
-            group_id=group.group_id,
-            succeeded=result.agents_succeeded,
-            failed=result.agents_failed,
-            duration_seconds=duration,
-        )
-
-        if fatal_errors:
-            msg = (
-                f"Parallel group {group.group_id!r} had "
-                f"{len(fatal_errors)} fatal error(s)"
-            )
-            raise ParallelExecutionError(msg) from fatal_errors[0]
-
-        return result
+            # Outcomes from completed tasks are already collected;
+            # individual errors logged in _record_error_outcome.
+            pass
 
     async def _run_guarded(  # noqa: PLR0913
         self,
@@ -237,12 +240,16 @@ class ParallelExecutor:
         - ``MemoryError``/``RecursionError`` → collected in fatal_errors
         - Regular ``Exception`` → stored as error outcome;
           re-raised when ``fail_fast`` is enabled
+        - ``CancelledError`` → stored as cancelled outcome, re-raised
         - ``BaseException`` → propagates through TaskGroup
         """
         task_id = assignment.task_id
         agent_id = assignment.agent_id
 
         if not self._register_with_shutdown(task_id, agent_id, outcomes):
+            progress.completed += 1
+            progress.failed += 1
+            self._emit_progress(progress)
             return
 
         try:
@@ -256,21 +263,14 @@ class ParallelExecutor:
                 semaphore=semaphore,
             )
         except (MemoryError, RecursionError) as exc:
-            error_msg = f"Fatal: {type(exc).__name__}: {exc}"
-            logger.exception(
-                PARALLEL_AGENT_ERROR,
-                group_id=group.group_id,
-                agent_id=agent_id,
-                task_id=task_id,
-                error=error_msg,
+            self._record_fatal_outcome(
+                exc,
+                assignment,
+                group,
+                outcomes,
+                fatal_errors,
+                progress,
             )
-            fatal_errors.append(exc)
-            outcomes[task_id] = AgentOutcome(
-                task_id=task_id,
-                agent_id=agent_id,
-                error=error_msg,
-            )
-            progress.failed += 1
         except Exception as exc:
             self._record_error_outcome(
                 exc,
@@ -281,13 +281,22 @@ class ParallelExecutor:
             )
             if group.fail_fast:
                 raise
+        except asyncio.CancelledError:
+            outcomes[task_id] = AgentOutcome(
+                task_id=task_id,
+                agent_id=agent_id,
+                error="Cancelled",
+            )
+            progress.failed += 1
+            raise
         finally:
             progress.in_progress = max(0, progress.in_progress - 1)
             progress.completed += 1
-            self._emit_progress(progress)
 
             if self._shutdown_manager is not None:
                 self._shutdown_manager.unregister_task(task_id)
+
+            self._emit_progress(progress)
 
     def _register_with_shutdown(
         self,
@@ -295,7 +304,11 @@ class ParallelExecutor:
         agent_id: str,
         outcomes: dict[str, AgentOutcome],
     ) -> bool:
-        """Register with shutdown manager. Returns False if shutdown."""
+        """Register with shutdown manager.
+
+        Returns ``False`` and records an error outcome if shutdown
+        is already in progress.
+        """
         if self._shutdown_manager is None:
             return True
         asyncio_task = asyncio.current_task()
@@ -327,7 +340,7 @@ class ParallelExecutor:
         progress: _ProgressState,
         semaphore: asyncio.Semaphore | None,
     ) -> None:
-        """Run engine.run() with optional semaphore."""
+        """Run ``engine.run()`` under optional semaphore and record outcome."""
         task_id = assignment.task_id
         agent_id = assignment.agent_id
 
@@ -386,6 +399,55 @@ class ParallelExecutor:
             error=error_msg,
         )
 
+    def _record_fatal_outcome(  # noqa: PLR0913
+        self,
+        exc: BaseException,
+        assignment: AgentAssignment,
+        group: ParallelExecutionGroup,
+        outcomes: dict[str, AgentOutcome],
+        fatal_errors: list[Exception],
+        progress: _ProgressState,
+    ) -> None:
+        """Record a fatal error outcome (MemoryError/RecursionError)."""
+        error_msg = f"Fatal: {type(exc).__name__}: {exc}"
+        logger.exception(
+            PARALLEL_AGENT_ERROR,
+            group_id=group.group_id,
+            agent_id=assignment.agent_id,
+            task_id=assignment.task_id,
+            error=error_msg,
+        )
+        fatal_errors.append(exc)  # type: ignore[arg-type]
+        outcomes[assignment.task_id] = AgentOutcome(
+            task_id=assignment.task_id,
+            agent_id=assignment.agent_id,
+            error=error_msg,
+        )
+        progress.failed += 1
+
+    def _build_result(
+        self,
+        group: ParallelExecutionGroup,
+        outcomes: dict[str, AgentOutcome],
+        duration: float,
+    ) -> ParallelExecutionResult:
+        """Build execution result, filling cancelled outcomes."""
+        return ParallelExecutionResult(
+            group_id=group.group_id,
+            outcomes=tuple(
+                outcomes.get(
+                    a.task_id,
+                    AgentOutcome(
+                        task_id=a.task_id,
+                        agent_id=a.agent_id,
+                        error="Cancelled due to fail_fast",
+                    ),
+                )
+                for a in group.assignments
+            ),
+            total_duration_seconds=duration,
+        )
+
     def _resolve_lock(
         self,
         group: ParallelExecutionGroup,
@@ -394,14 +456,15 @@ class ParallelExecutor:
 
         When no assignments declare resource claims, returns ``None``
         (no locking needed).  When claims exist, falls back to
-        ``InMemoryResourceLock()`` if no lock was injected.
+        a shared ``InMemoryResourceLock()`` if no lock was injected.
         """
         has_claims = any(a.resource_claims for a in group.assignments)
         if not has_claims:
             return None
         if self._resource_lock is not None:
             return self._resource_lock
-        return InMemoryResourceLock()
+        self._resource_lock = InMemoryResourceLock()
+        return self._resource_lock
 
     def _validate_resource_claims(
         self,
@@ -450,7 +513,6 @@ class ParallelExecutor:
                         group_id=group.group_id,
                         error=msg,
                     )
-                    # Release any locks already acquired for this group
                     await self._release_all_locks(group, lock)
                     raise ResourceConflictError(msg)
 

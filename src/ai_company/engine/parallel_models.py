@@ -30,7 +30,7 @@ class AgentAssignment(BaseModel):
         max_turns: Maximum execution turns.
         timeout_seconds: Optional wall-clock timeout for this agent.
         memory_messages: Pre-loaded memory messages for the agent.
-        resource_claims: File paths requiring exclusive access.
+        resource_claims: File paths requiring exclusive access (unique).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -57,8 +57,20 @@ class AgentAssignment(BaseModel):
     )
     resource_claims: tuple[NotBlankStr, ...] = Field(
         default=(),
-        description="File paths requiring exclusive access",
+        description="File paths requiring exclusive access (unique)",
     )
+
+    @model_validator(mode="after")
+    def _validate_resource_claims_unique(self) -> Self:
+        if len(self.resource_claims) != len(set(self.resource_claims)):
+            dupes = sorted(
+                r
+                for r in set(self.resource_claims)
+                if self.resource_claims.count(r) > 1
+            )
+            msg = f"Duplicate resource claims: {dupes}"
+            raise ValueError(msg)
+        return self
 
     @computed_field(  # type: ignore[prop-decorator]
         description="Agent identifier string",
@@ -134,8 +146,9 @@ class AgentOutcome(BaseModel):
     Attributes:
         task_id: Task identifier.
         agent_id: Agent identifier.
-        result: Present if execution produced a result.
-        error: Present if the agent crashed before producing a result.
+        result: Present if execution completed (success or failure).
+        error: Present if the agent failed, was cancelled, or could
+            not execute. Mutually exclusive with ``result``.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -144,17 +157,17 @@ class AgentOutcome(BaseModel):
     agent_id: NotBlankStr = Field(description="Agent identifier")
     result: AgentRunResult | None = Field(
         default=None,
-        description="Present if execution produced a result",
+        description="Present if execution completed",
     )
     error: str | None = Field(
         default=None,
-        description="Present if agent crashed before producing result",
+        description="Present if agent failed, was cancelled, or could not execute",
     )
 
     @model_validator(mode="after")
     def _validate_result_or_error(self) -> Self:
-        if self.result is None and self.error is None:
-            msg = "Either result or error must be set"
+        if (self.result is None) == (self.error is None):
+            msg = "Exactly one of result or error must be set"
             raise ValueError(msg)
         return self
 
@@ -243,6 +256,16 @@ class ParallelProgress(BaseModel):
     in_progress: int = Field(ge=0, description="Currently running")
     succeeded: int = Field(ge=0, description="Successful completions")
     failed: int = Field(ge=0, description="Failed completions")
+
+    @model_validator(mode="after")
+    def _validate_counts(self) -> Self:
+        if self.completed + self.in_progress > self.total:
+            msg = "completed + in_progress must not exceed total"
+            raise ValueError(msg)
+        if self.succeeded + self.failed > self.completed:
+            msg = "succeeded + failed must not exceed completed"
+            raise ValueError(msg)
+        return self
 
     @computed_field(  # type: ignore[prop-decorator]
         description="Not yet started",

@@ -201,6 +201,10 @@ class TestParallelExecutorMultipleAgents:
         assert result.agents_failed == 0
         assert result.all_succeeded is True
         assert engine.run.await_count == 2
+        # Verify outcome pairing
+        outcome_pairs = sorted((o.agent_id, o.task_id) for o in result.outcomes)
+        expected_pairs = sorted((str(a.identity.id), a.task.id) for a in (a1, a2))
+        assert outcome_pairs == expected_pairs
 
     async def test_one_fails_one_succeeds(self) -> None:
         a1 = _make_assignment("a1", "t1")
@@ -300,7 +304,7 @@ class TestParallelExecutorFailFast:
         assert result.agents_failed >= 1
         # Some outcomes should be cancellation errors
         cancel_outcomes = [
-            o for o in result.outcomes if o.error and "fail_fast" in o.error
+            o for o in result.outcomes if o.error and "cancel" in o.error.lower()
         ]
         assert len(cancel_outcomes) >= 1
 
@@ -537,9 +541,11 @@ class TestParallelExecutorShutdown:
         sm.register_task = MagicMock(  # type: ignore[method-assign]
             side_effect=RuntimeError("Shutdown in progress"),
         )
+        progress_updates: list[ParallelProgress] = []
         executor = ParallelExecutor(
             engine=engine,
             shutdown_manager=sm,
+            progress_callback=progress_updates.append,
         )
         group = _make_group(a1)
 
@@ -548,6 +554,12 @@ class TestParallelExecutorShutdown:
         assert result.all_succeeded is False
         assert result.outcomes[0].error == "Shutdown in progress"
         engine.run.assert_not_awaited()
+        # Progress must be tracked even for rejected tasks
+        assert len(progress_updates) >= 1
+        final = progress_updates[-1]
+        assert final.completed == 1
+        assert final.failed == 1
+        assert final.pending == 0
 
     async def test_shutdown_manager_integration(self) -> None:
         a1 = _make_assignment("a1", "t1")
