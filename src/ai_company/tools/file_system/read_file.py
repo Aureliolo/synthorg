@@ -1,7 +1,7 @@
 """Read file tool — reads file content from the workspace.
 
 Supports optional line-range selection and enforces a maximum
-file-size guard to prevent loading excessively large files.
+file-size guard to prevent loading excessively large files into memory.
 """
 
 import asyncio
@@ -15,7 +15,10 @@ from ai_company.observability.events.tool import (
     TOOL_FS_SIZE_EXCEEDED,
 )
 from ai_company.tools.base import ToolExecutionResult
-from ai_company.tools.file_system._base_fs_tool import BaseFileSystemTool
+from ai_company.tools.file_system._base_fs_tool import (
+    BaseFileSystemTool,
+    _map_os_error,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -25,23 +28,40 @@ logger = get_logger(__name__)
 MAX_FILE_SIZE_BYTES: Final[int] = 1_048_576  # 1 MB
 
 
-def _read_sync(resolved: Path, start: int | None, end: int | None) -> str:
-    """Read file content synchronously, with optional line slicing."""
-    raw = resolved.read_text(encoding="utf-8")
+def _read_sync(
+    resolved: Path,
+    start: int | None,
+    end: int | None,
+    *,
+    max_bytes: int | None = None,
+) -> str:
+    """Read file content synchronously, with optional line slicing.
+
+    When *max_bytes* is set and no line range is requested, only the
+    first *max_bytes* bytes are read from disk (avoiding full-file
+    materialisation for oversized files).
+    """
     if start is not None or end is not None:
+        raw = resolved.read_text(encoding="utf-8")
         lines = raw.splitlines(keepends=True)
         s = (start - 1) if start is not None else 0
         e = end if end is not None else len(lines)
-        raw = "".join(lines[s:e])
-    return raw
+        return "".join(lines[s:e])
+
+    if max_bytes is not None:
+        with resolved.open(encoding="utf-8") as fh:
+            return fh.read(max_bytes)
+
+    return resolved.read_text(encoding="utf-8")
 
 
 class ReadFileTool(BaseFileSystemTool):
     """Reads the content of a file within the workspace.
 
     Supports optional ``start_line`` / ``end_line`` for partial reads.
-    Files exceeding 1 MB are truncated with a warning.  Binary files
-    (non-UTF-8) produce an error result.
+    Files exceeding 1 MB are read in bounded fashion: when no line
+    range is specified only the first 1 MB is returned (with a
+    truncation notice).  Binary (non-UTF-8) files produce an error.
 
     Examples:
         Read an entire file::
@@ -109,47 +129,45 @@ class ReadFileTool(BaseFileSystemTool):
         except ValueError as exc:
             return ToolExecutionResult(content=str(exc), is_error=True)
 
+        # Explicit is_dir() check: on Windows, stat() succeeds on dirs
+        # and read_text() raises PermissionError (not IsADirectoryError).
+        if resolved.is_dir():
+            logger.warning(TOOL_FS_ERROR, path=user_path, error="is_directory")
+            return ToolExecutionResult(
+                content=f"Path is a directory, not a file: {user_path}",
+                is_error=True,
+            )
+
         try:
-            size = await asyncio.to_thread(resolved.stat)
-            size_bytes = size.st_size
+            stat_result = await asyncio.to_thread(resolved.stat)
+            size_bytes = stat_result.st_size
+        except (FileNotFoundError, IsADirectoryError, PermissionError, OSError) as exc:
+            log_key, msg = _map_os_error(exc, user_path, "reading")
+            logger.warning(TOOL_FS_ERROR, path=user_path, error=log_key)
+            return ToolExecutionResult(content=msg, is_error=True)
 
-            if size_bytes > MAX_FILE_SIZE_BYTES:
-                logger.warning(
-                    TOOL_FS_SIZE_EXCEEDED,
-                    path=user_path,
-                    size_bytes=size_bytes,
-                    max_bytes=MAX_FILE_SIZE_BYTES,
-                )
+        oversized = size_bytes > MAX_FILE_SIZE_BYTES
+        has_line_range = start_line is not None or end_line is not None
 
-            content = await asyncio.to_thread(
-                _read_sync, resolved, start_line, end_line
-            )
-
-            if size_bytes > MAX_FILE_SIZE_BYTES and not (start_line or end_line):
-                content = content[:MAX_FILE_SIZE_BYTES]
-                content += (
-                    f"\n\n[Truncated: file is {size_bytes:,} bytes, "
-                    f"showing first {MAX_FILE_SIZE_BYTES:,}]"
-                )
-
-            line_count = content.count("\n") + (
-                1 if content and not content.endswith("\n") else 0
-            )
-
-            logger.info(
-                TOOL_FS_READ,
+        if oversized:
+            logger.warning(
+                TOOL_FS_SIZE_EXCEEDED,
                 path=user_path,
                 size_bytes=size_bytes,
-                line_count=line_count,
+                max_bytes=MAX_FILE_SIZE_BYTES,
             )
 
-            return ToolExecutionResult(
-                content=content,
-                metadata={
-                    "path": user_path,
-                    "size_bytes": size_bytes,
-                    "line_count": line_count,
-                },
+        # When oversized and no line range, read only MAX_FILE_SIZE_BYTES
+        # to avoid loading the whole file into memory.
+        max_bytes = MAX_FILE_SIZE_BYTES if oversized and not has_line_range else None
+
+        try:
+            content = await asyncio.to_thread(
+                _read_sync,
+                resolved,
+                start_line,
+                end_line,
+                max_bytes=max_bytes,
             )
         except UnicodeDecodeError:
             logger.warning(TOOL_FS_BINARY_DETECTED, path=user_path)
@@ -158,23 +176,32 @@ class ReadFileTool(BaseFileSystemTool):
                 is_error=True,
             )
         except (FileNotFoundError, IsADirectoryError, PermissionError, OSError) as exc:
-            _err_msgs: dict[type, tuple[str, str]] = {
-                FileNotFoundError: (
-                    "not_found",
-                    f"File not found: {user_path}",
-                ),
-                IsADirectoryError: (
-                    "is_directory",
-                    f"Path is a directory, not a file: {user_path}",
-                ),
-                PermissionError: (
-                    "permission_denied",
-                    f"Permission denied: {user_path}",
-                ),
-            }
-            log_key, msg = _err_msgs.get(
-                type(exc),
-                (str(exc), f"OS error reading file: {user_path}"),
-            )
+            log_key, msg = _map_os_error(exc, user_path, "reading")
             logger.warning(TOOL_FS_ERROR, path=user_path, error=log_key)
             return ToolExecutionResult(content=msg, is_error=True)
+
+        if oversized and not has_line_range:
+            content += (
+                f"\n\n[Truncated: file is {size_bytes:,} bytes, "
+                f"showing first {MAX_FILE_SIZE_BYTES:,}]"
+            )
+
+        line_count = content.count("\n") + (
+            1 if content and not content.endswith("\n") else 0
+        )
+
+        logger.info(
+            TOOL_FS_READ,
+            path=user_path,
+            size_bytes=size_bytes,
+            line_count=line_count,
+        )
+
+        return ToolExecutionResult(
+            content=content,
+            metadata={
+                "path": user_path,
+                "size_bytes": size_bytes,
+                "line_count": line_count,
+            },
+        )

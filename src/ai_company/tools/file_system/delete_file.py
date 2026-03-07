@@ -15,7 +15,17 @@ logger = get_logger(__name__)
 
 
 def _delete_sync(resolved: Path) -> int:
-    """Delete file synchronously, returning its size before deletion."""
+    """Delete file synchronously, returning its size before deletion.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        IsADirectoryError: If the path is a directory.
+        PermissionError: If the process lacks delete permission.
+        OSError: For other OS-level errors.
+    """
+    if resolved.is_dir():
+        msg = f"Is a directory: '{resolved}'"
+        raise IsADirectoryError(msg)
     size = resolved.stat().st_size
     resolved.unlink()
     return size
@@ -25,8 +35,8 @@ class DeleteFileTool(BaseFileSystemTool):
     """Deletes a single file within the workspace.
 
     Directories cannot be deleted with this tool — only regular files.
-    This tool has ``require_elevated = True``, signalling to the engine
-    that elevated permissions are needed.
+    The ``require_elevated`` property is defined for future use by the
+    engine's permission system (not yet enforced).
 
     Examples:
         Delete a file::
@@ -60,7 +70,12 @@ class DeleteFileTool(BaseFileSystemTool):
 
     @property
     def require_elevated(self) -> bool:
-        """Whether this tool requires elevated permissions."""
+        """Whether this tool requires elevated permissions.
+
+        Indicates this tool requires explicit approval before execution
+        due to its destructive nature.  Not yet consumed by the engine;
+        defined for forward-compatibility.
+        """
         return True
 
     async def execute(
@@ -83,22 +98,22 @@ class DeleteFileTool(BaseFileSystemTool):
         except ValueError as exc:
             return ToolExecutionResult(content=str(exc), is_error=True)
 
-        if not resolved.exists():
+        # Let _delete_sync handle all filesystem checks atomically
+        # rather than pre-checking exists()/is_dir() — avoids TOCTOU.
+        try:
+            size_bytes = await asyncio.to_thread(_delete_sync, resolved)
+        except FileNotFoundError:
             logger.warning(TOOL_FS_ERROR, path=user_path, error="not_found")
             return ToolExecutionResult(
                 content=f"File not found: {user_path}",
                 is_error=True,
             )
-
-        if resolved.is_dir():
+        except IsADirectoryError:
             logger.warning(TOOL_FS_ERROR, path=user_path, error="is_directory")
             return ToolExecutionResult(
                 content=f"Cannot delete directory (use a dedicated tool): {user_path}",
                 is_error=True,
             )
-
-        try:
-            size_bytes = await asyncio.to_thread(_delete_sync, resolved)
         except PermissionError:
             logger.warning(TOOL_FS_ERROR, path=user_path, error="permission_denied")
             return ToolExecutionResult(

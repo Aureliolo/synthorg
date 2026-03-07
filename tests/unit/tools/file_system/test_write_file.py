@@ -83,3 +83,22 @@ class TestWriteFileExecution:
         )
         assert not result.is_error
         assert result.metadata["bytes_written"] > 0
+
+    async def test_write_to_directory_errors(self, write_tool: WriteFileTool) -> None:
+        """Writing to a path that is a directory returns an error."""
+        result = await write_tool.execute(arguments={"path": "subdir", "content": "x"})
+        assert result.is_error
+        assert "directory" in result.content.lower()
+
+    async def test_write_too_large_content_rejected(
+        self, write_tool: WriteFileTool
+    ) -> None:
+        """Content exceeding MAX_WRITE_SIZE_BYTES is rejected."""
+        from ai_company.tools.file_system.write_file import MAX_WRITE_SIZE_BYTES
+
+        big = "x" * (MAX_WRITE_SIZE_BYTES + 100)
+        result = await write_tool.execute(
+            arguments={"path": "huge.txt", "content": big}
+        )
+        assert result.is_error
+        assert "too large" in result.content.lower()

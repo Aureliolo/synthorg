@@ -1,5 +1,7 @@
 """Tests for PathValidator."""
 
+import os
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -8,6 +10,8 @@ from ai_company.tools.file_system._path_validator import PathValidator
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+_SYMLINK_SUPPORTED = not (sys.platform == "win32" and not os.environ.get("CI"))
 
 
 @pytest.mark.unit
@@ -81,3 +85,44 @@ class TestValidateParentExists:
         pv = PathValidator(tmp_path)
         with pytest.raises(ValueError, match="escapes workspace"):
             pv.validate_parent_exists("../../escape.txt")
+
+
+@pytest.mark.unit
+class TestSymlinkHandling:
+    """Symlink-specific validation tests."""
+
+    @pytest.mark.skipif(
+        not _SYMLINK_SUPPORTED,
+        reason="Symlinks require privileges on Windows outside CI",
+    )
+    def test_symlink_outside_workspace_rejected(self, tmp_path: Path) -> None:
+        """A symlink pointing outside the workspace must be rejected."""
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "secret.txt").write_text("secret", encoding="utf-8")
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        link = workspace / "escape_link"
+        link.symlink_to(outside / "secret.txt")
+
+        pv = PathValidator(workspace)
+        with pytest.raises(ValueError, match="escapes workspace"):
+            pv.validate("escape_link")
+
+    @pytest.mark.skipif(
+        not _SYMLINK_SUPPORTED,
+        reason="Symlinks require privileges on Windows outside CI",
+    )
+    def test_symlink_inside_workspace_allowed(self, tmp_path: Path) -> None:
+        """A symlink pointing within the workspace should be allowed."""
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        real_file = workspace / "real.txt"
+        real_file.write_text("ok", encoding="utf-8")
+        link = workspace / "link.txt"
+        link.symlink_to(real_file)
+
+        pv = PathValidator(workspace)
+        result = pv.validate("link.txt")
+        assert result == real_file.resolve()

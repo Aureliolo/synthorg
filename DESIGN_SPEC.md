@@ -2344,7 +2344,15 @@ ai-company/
 │       │   │   ├── protocol.py    # SandboxBackend protocol
 │       │   │   ├── subprocess.py  # SubprocessSandbox (default for low-risk)
 │       │   │   └── docker.py      # DockerSandbox (for code_runner, terminal)
-│       │   ├── file_system.py      # File operations (M3)
+│       │   ├── file_system/        # Built-in file system tools
+│       │   │   ├── __init__.py    # Package exports
+│       │   │   ├── _base_fs_tool.py  # BaseFileSystemTool ABC
+│       │   │   ├── _path_validator.py # Workspace path validation
+│       │   │   ├── delete_file.py # DeleteFileTool
+│       │   │   ├── edit_file.py   # EditFileTool
+│       │   │   ├── list_directory.py # ListDirectoryTool
+│       │   │   ├── read_file.py   # ReadFileTool
+│       │   │   └── write_file.py  # WriteFileTool
 │       │   ├── git_tools.py        # Git operations (M3)
 │       │   ├── code_runner.py      # Code execution (M3)
 │       │   ├── web_tools.py        # HTTP, search (M3)
@@ -2427,7 +2435,7 @@ These conventions were established during the M0–M2+ review cycle. **Adopted**
 | **Event constants** | Adopted (per-domain) | Per-domain submodules under `events/` package (e.g. `events.provider`, `events.budget`). Import directly: `from ai_company.observability.events.<domain> import CONSTANT` | Split by domain for discoverability, co-location with domain logic, and reduced merge conflicts as constants grow. `__init__.py` serves as package marker with usage documentation; no re-exports. |
 | **Parallel tool execution** | Adopted (M2.5) | `asyncio.TaskGroup` in `ToolInvoker.invoke_all` with optional `max_concurrency` semaphore | Structured concurrency with proper cancellation semantics. Fatal errors collected via guarded wrapper and re-raised after all tasks complete. |
 | **Tool permission checking** | Adopted (M3) | `ToolPermissionChecker` enforces category-level gating based on `ToolAccessLevel` (sandboxed → restricted → standard → elevated, plus custom). Priority-based resolution: denied list → allowed list → level categories → deny. Case-insensitive name matching. `ToolInvoker` filters definitions for prompt and checks at invocation time. | Defense-in-depth: agents only see permitted tools in the LLM prompt, and invocations are re-checked at execution time. Explicit allow/deny lists provide per-agent overrides. See §11.1.1. |
-| **Tool sandboxing** | Planned (M3) | Layered `SandboxBackend` protocol: `SubprocessSandbox` for low-risk tools (file, git), `DockerSandbox` for high-risk tools (code_runner, terminal, web, database). `K8sSandbox` planned for future container deployments. | Risk-proportionate isolation. Docker optional — only needed for code execution and network-sensitive tools. Pluggable protocol enables seamless migration to K8s per-agent pods in Phase 3-4. See §11.1.2. |
+| **Tool sandboxing** | Partial (M3) | File system tools use in-process `PathValidator` for workspace-scoped path validation (symlink resolution + containment check). `BaseFileSystemTool` ABC provides shared `ToolCategory.FILE_SYSTEM` and `PathValidator` integration — all file system tools extend this base. `SandboxBackend` protocol with `SubprocessSandbox` / `DockerSandbox` remains planned for git, code_runner, terminal, web, and database tools. `K8sSandbox` planned for future container deployments. | File system tools use defence-in-depth path validation; heavier sandbox isolation reserved for higher-risk tool categories (code execution, network). See §11.1.2. |
 | **Crash recovery** | Planned (M3) | Pluggable `RecoveryStrategy` protocol. M3: `FailAndReassignStrategy` (catch at engine boundary, log snapshot, mark FAILED, reassign). M4/M5: `CheckpointStrategy` (persist `AgentContext` per turn, resume from last checkpoint). | Immutable `model_copy` pattern makes checkpoint serialization trivial to add later. Fail-and-reassign is sufficient for short MVP tasks. See §6.6. |
 | **Agent behavior testing** | Planned (M3) | Scripted `FakeProvider` for unit tests (deterministic turn sequences); behavioral outcome assertions for integration tests (task completed, tools called, cost within budget). | Leverages existing `FakeProvider` and `CompletionResponseFactory` fixtures. Precise engine testing without brittle response-matching at integration level. |
 | **LLM call analytics** | Planned (incremental) | M3: proxy metrics (`turns_per_task`, `tokens_per_task`). M4: call categorization (`productive`, `coordination`, `system`) + orchestration ratio. M5+: full analytics (retry tracking, latency, cache hits, per-provider comparison). | Append-only, never blocks execution. Builds on existing `CostRecord` infrastructure. Detects orchestration overhead early. See §10.5. |

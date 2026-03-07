@@ -9,7 +9,11 @@ symlinks, or absolute paths outside the workspace.
 from typing import TYPE_CHECKING
 
 from ai_company.observability import get_logger
-from ai_company.observability.events.tool import TOOL_FS_PATH_VIOLATION
+from ai_company.observability.events.tool import (
+    TOOL_FS_PARENT_NOT_FOUND,
+    TOOL_FS_PATH_VIOLATION,
+    TOOL_FS_WORKSPACE_INVALID,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -40,6 +44,10 @@ class PathValidator:
         """
         resolved = workspace_root.resolve()
         if not resolved.is_dir():
+            logger.warning(
+                TOOL_FS_WORKSPACE_INVALID,
+                workspace_root=str(workspace_root),
+            )
             msg = f"Workspace root is not an existing directory: {workspace_root}"
             raise ValueError(msg)
         self._workspace_root = resolved
@@ -61,6 +69,12 @@ class PathValidator:
         Raises:
             ValueError: If the resolved path escapes the workspace.
         """
+        # NOTE: There is an inherent TOCTOU gap between this validation
+        # and the actual file operation (which runs in asyncio.to_thread).
+        # A concurrent process could swap in a symlink between validation
+        # and use.  Full mitigation requires OS-level sandboxing (e.g.
+        # openat2 RESOLVE_BENEATH on Linux).  User-space path validation
+        # is a best-effort defence-in-depth layer.
         resolved = (self._workspace_root / path).resolve()
         if not resolved.is_relative_to(self._workspace_root):
             logger.warning(
@@ -86,6 +100,10 @@ class PathValidator:
         """
         resolved = self.validate(path)
         if not resolved.parent.exists():
+            logger.warning(
+                TOOL_FS_PARENT_NOT_FOUND,
+                path=path,
+            )
             msg = f"Parent directory does not exist: {path}"
             raise ValueError(msg)
         return resolved

@@ -53,6 +53,8 @@ class TestEditFileExecution:
         assert result.is_error
         assert "Text not found" in result.content
         assert result.metadata["occurrences_found"] == 0
+        # Verify no file content snippet is leaked (#16)
+        assert "Hello" not in result.content
 
     async def test_multiple_occurrences_replaces_first(
         self, workspace: Path, edit_tool: EditFileTool
@@ -133,3 +135,32 @@ class TestEditFileExecution:
         assert not result.is_error
         content = (workspace / "multi.txt").read_text(encoding="utf-8")
         assert content == "line1\nLINE_TWO\nline3\n"
+
+    async def test_edit_directory_errors(self, edit_tool: EditFileTool) -> None:
+        result = await edit_tool.execute(
+            arguments={
+                "path": "subdir",
+                "old_text": "a",
+                "new_text": "b",
+            }
+        )
+        assert result.is_error
+        assert "directory" in result.content.lower()
+
+    async def test_edit_large_file_rejected(
+        self, workspace: Path, edit_tool: EditFileTool
+    ) -> None:
+        """Files exceeding the size guard are rejected."""
+        from ai_company.tools.file_system.edit_file import MAX_EDIT_FILE_SIZE_BYTES
+
+        big = "x" * (MAX_EDIT_FILE_SIZE_BYTES + 100)
+        (workspace / "huge.txt").write_text(big, encoding="utf-8")
+        result = await edit_tool.execute(
+            arguments={
+                "path": "huge.txt",
+                "old_text": "x",
+                "new_text": "y",
+            }
+        )
+        assert result.is_error
+        assert "too large" in result.content.lower()

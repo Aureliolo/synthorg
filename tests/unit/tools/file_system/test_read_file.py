@@ -82,6 +82,7 @@ class TestReadFileExecution:
         assert not result.is_error
         assert "a" in result.content
         assert "b" in result.content
+        assert "c" not in result.content
 
     async def test_file_not_found(self, read_tool: ReadFileTool) -> None:
         result = await read_tool.execute(arguments={"path": "nonexistent.txt"})
@@ -96,6 +97,7 @@ class TestReadFileExecution:
     async def test_read_directory_errors(self, read_tool: ReadFileTool) -> None:
         result = await read_tool.execute(arguments={"path": "subdir"})
         assert result.is_error
+        assert "directory" in result.content.lower()
 
     async def test_binary_file_errors(
         self, workspace: Path, read_tool: ReadFileTool
@@ -114,3 +116,17 @@ class TestReadFileExecution:
         assert not result.is_error
         assert "Truncated" in result.content
         assert len(result.content) < len(big_content)
+
+    async def test_large_file_not_truncated_with_line_range(
+        self, workspace: Path, read_tool: ReadFileTool
+    ) -> None:
+        """When start_line/end_line is given, truncation is bypassed."""
+        lines = ["line\n"] * (MAX_FILE_SIZE_BYTES // 4)
+        big_content = "".join(lines)
+        (workspace / "big_lines.txt").write_text(big_content, encoding="utf-8")
+        result = await read_tool.execute(
+            arguments={"path": "big_lines.txt", "start_line": 1, "end_line": 5}
+        )
+        assert not result.is_error
+        assert "Truncated" not in result.content
+        assert "line" in result.content

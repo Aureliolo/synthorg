@@ -63,3 +63,41 @@ class TestDeleteFileExecution:
         assert not result.is_error
         assert not (workspace / "empty.txt").exists()
         assert result.metadata["size_bytes"] == 0
+
+    async def test_delete_permission_error(
+        self,
+        workspace: Path,
+        delete_tool: DeleteFileTool,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """PermissionError during deletion is handled gracefully."""
+        from ai_company.tools.file_system import delete_file as mod
+
+        def _fake_delete_sync(resolved: Path) -> int:
+            raise PermissionError
+
+        monkeypatch.setattr(mod, "_delete_sync", _fake_delete_sync)
+        result = await delete_tool.execute(
+            arguments={"path": "hello.txt"},
+        )
+        assert result.is_error
+        assert "Permission denied" in result.content
+
+    async def test_delete_os_error(
+        self,
+        workspace: Path,
+        delete_tool: DeleteFileTool,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Generic OSError during deletion is handled gracefully."""
+        from ai_company.tools.file_system import delete_file as mod
+
+        def _fake_delete_sync(resolved: Path) -> int:
+            raise OSError
+
+        monkeypatch.setattr(mod, "_delete_sync", _fake_delete_sync)
+        result = await delete_tool.execute(
+            arguments={"path": "hello.txt"},
+        )
+        assert result.is_error
+        assert "OS error" in result.content
