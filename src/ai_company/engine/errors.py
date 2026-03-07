@@ -37,3 +37,11 @@ class LoopExecutionError(EngineError):
     This exception is available for the engine layer above the loop to
     convert that result into a raised error when appropriate.
     """
+
+
+class ParallelExecutionError(EngineError):
+    """Raised when a parallel execution group encounters a fatal error."""
+
+
+class ResourceConflictError(EngineError):
+    """Raised when resource claims conflict between assignments."""

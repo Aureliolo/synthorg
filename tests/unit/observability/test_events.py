@@ -108,6 +108,7 @@ class TestEventConstants:
             "correlation",
             "execution",
             "git",
+            "parallel",
             "personality",
             "prompt",
             "provider",

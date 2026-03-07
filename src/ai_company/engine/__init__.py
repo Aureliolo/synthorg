@@ -17,7 +17,9 @@ from ai_company.engine.errors import (
     ExecutionStateError,
     LoopExecutionError,
     MaxTurnsExceededError,
+    ParallelExecutionError,
     PromptBuildError,
+    ResourceConflictError,
 )
 from ai_company.engine.loop_protocol import (
     BudgetChecker,
@@ -28,6 +30,14 @@ from ai_company.engine.loop_protocol import (
     TurnRecord,
 )
 from ai_company.engine.metrics import TaskCompletionMetrics
+from ai_company.engine.parallel import ParallelExecutor, ProgressCallback
+from ai_company.engine.parallel_models import (
+    AgentAssignment,
+    AgentOutcome,
+    ParallelExecutionGroup,
+    ParallelExecutionResult,
+    ParallelProgress,
+)
 from ai_company.engine.plan_execute_loop import PlanExecuteLoop
 from ai_company.engine.plan_models import (
     ExecutionPlan,
@@ -47,6 +57,7 @@ from ai_company.engine.recovery import (
     RecoveryResult,
     RecoveryStrategy,
 )
+from ai_company.engine.resource_lock import InMemoryResourceLock, ResourceLock
 from ai_company.engine.run_result import AgentRunResult
 from ai_company.engine.shutdown import (
     CleanupCallback,
@@ -61,9 +72,11 @@ from ai_company.providers.models import ZERO_TOKEN_USAGE, add_token_usage
 __all__ = [
     "DEFAULT_MAX_TURNS",
     "ZERO_TOKEN_USAGE",
+    "AgentAssignment",
     "AgentContext",
     "AgentContextSnapshot",
     "AgentEngine",
+    "AgentOutcome",
     "AgentRunResult",
     "BudgetChecker",
     "BudgetExhaustedError",
@@ -76,16 +89,25 @@ __all__ = [
     "ExecutionResult",
     "ExecutionStateError",
     "FailAndReassignStrategy",
+    "InMemoryResourceLock",
     "LoopExecutionError",
     "MaxTurnsExceededError",
+    "ParallelExecutionError",
+    "ParallelExecutionGroup",
+    "ParallelExecutionResult",
+    "ParallelExecutor",
+    "ParallelProgress",
     "PlanExecuteConfig",
     "PlanExecuteLoop",
     "PlanStep",
+    "ProgressCallback",
     "PromptBuildError",
     "PromptTokenEstimator",
     "ReactLoop",
     "RecoveryResult",
     "RecoveryStrategy",
+    "ResourceConflictError",
+    "ResourceLock",
     "ShutdownChecker",
     "ShutdownManager",
     "ShutdownResult",
