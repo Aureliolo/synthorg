@@ -147,7 +147,7 @@ class PlanExecuteLoop:
             budget_checker,
         )
         if isinstance(plan_result, ExecutionResult):
-            return plan_result
+            return self._finalize(plan_result, all_plans, replans_used)
         ctx, plan = plan_result
         all_plans.append(plan)
 
@@ -736,7 +736,10 @@ class PlanExecuteLoop:
         shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
         if shutdown_result is not None:
             clear_last_turn_tool_calls(turns)
-            return shutdown_result
+            # Rebuild with cleaned turns (shutdown_result snapshot'd old turns)
+            return shutdown_result.model_copy(
+                update={"turns": tuple(turns)},
+            )
 
         return await execute_tool_calls(
             ctx,

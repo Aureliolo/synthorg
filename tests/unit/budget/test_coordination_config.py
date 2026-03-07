@@ -11,6 +11,8 @@ from ai_company.budget.coordination_config import (
     OrchestrationAlertThresholds,
 )
 
+pytestmark = pytest.mark.timeout(30)
+
 
 @pytest.mark.unit
 class TestCoordinationMetricName:

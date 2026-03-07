@@ -201,7 +201,10 @@ class ReactLoop:
         shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
         if shutdown_result is not None:
             clear_last_turn_tool_calls(turns)
-            return shutdown_result
+            # Rebuild with cleaned turns (shutdown_result snapshot'd old turns)
+            return shutdown_result.model_copy(
+                update={"turns": tuple(turns)},
+            )
 
         return await execute_tool_calls(
             ctx,

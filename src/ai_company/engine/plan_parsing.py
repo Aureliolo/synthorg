@@ -96,7 +96,6 @@ def parse_plan(
         EXECUTION_PLAN_PARSE_ERROR,
         execution_id=execution_id,
         content_length=len(content),
-        content_snippet=content[:200],
     )
     return None
 

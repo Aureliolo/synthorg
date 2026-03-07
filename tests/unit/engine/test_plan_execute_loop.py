@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
+from ai_company.budget.call_category import LLMCallCategory
 from ai_company.core.agent import AgentIdentity  # noqa: TC001
 from ai_company.core.enums import ToolCategory
 from ai_company.engine.context import AgentContext
@@ -196,6 +197,9 @@ class TestPlanExecuteLoopBasic:
         plans = result.metadata["plans"]
         assert isinstance(plans, list)
         assert len(plans) == 1
+        # Verify call categories: planning = SYSTEM, execution = PRODUCTIVE
+        assert result.turns[0].call_category == LLMCallCategory.SYSTEM
+        assert result.turns[1].call_category == LLMCallCategory.PRODUCTIVE
 
     async def test_multi_step_completion(
         self,

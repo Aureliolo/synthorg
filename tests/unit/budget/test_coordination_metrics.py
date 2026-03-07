@@ -16,6 +16,8 @@ from ai_company.budget.coordination_metrics import (
     compute_redundancy_rate,
 )
 
+pytestmark = pytest.mark.timeout(30)
+
 
 @pytest.mark.unit
 class TestComputeEfficiency:

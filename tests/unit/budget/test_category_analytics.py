@@ -14,6 +14,8 @@ from ai_company.budget.coordination_config import OrchestrationAlertThresholds
 from ai_company.budget.cost_record import CostRecord
 from ai_company.budget.tracker import CostTracker  # noqa: TC001
 
+pytestmark = pytest.mark.timeout(30)
+
 
 def _record(  # noqa: PLR0913
     *,
