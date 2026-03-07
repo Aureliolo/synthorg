@@ -114,6 +114,11 @@ class TemplateAgentConfig(BaseModel):
         default=None,
         description="Department override",
     )
+    remove: bool = Field(
+        default=False,
+        alias="_remove",
+        description="Merge directive: remove matching parent agent",
+    )
 
     @model_validator(mode="after")
     def _validate_personality_mutual_exclusion(self) -> Self:
@@ -264,10 +269,21 @@ class CompanyTemplate(BaseModel):
         default=(),
         description="Cross-department escalation paths",
     )
+    extends: NotBlankStr | None = Field(
+        default=None,
+        description="Parent template name for inheritance",
+    )
 
     @model_validator(mode="after")
     def _validate_agent_count_in_range(self) -> Self:
-        """Agent count must be within metadata min/max."""
+        """Agent count must be within metadata min/max.
+
+        Skipped when ``extends`` is set because the child may define
+        zero agents (inheriting all from parent).  The final merged
+        result is validated separately.
+        """
+        if self.extends is not None:
+            return self
         count = len(self.agents)
         if count < self.metadata.min_agents:
             msg = (

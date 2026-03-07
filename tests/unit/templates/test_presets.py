@@ -2,7 +2,9 @@
 
 import pytest
 
+from ai_company.core.agent import PersonalityConfig
 from ai_company.templates.presets import (
+    _AUTO_NAMES,
     PERSONALITY_PRESETS,
     generate_auto_name,
     get_personality_preset,
@@ -41,12 +43,28 @@ class TestGetPersonalityPreset:
             preset = get_personality_preset(name)
             assert required_keys.issubset(preset.keys()), f"{name} missing keys"
 
-    def test_preset_count_at_least_15(self) -> None:
-        assert len(PERSONALITY_PRESETS) >= 15
+    def test_preset_count_at_least_20(self) -> None:
+        assert len(PERSONALITY_PRESETS) >= 20
+
+    @pytest.mark.parametrize(
+        "preset_name",
+        [
+            "user_advocate",
+            "process_optimizer",
+            "growth_hacker",
+            "technical_communicator",
+            "systems_thinker",
+        ],
+    )
+    def test_new_presets_produce_valid_personality_config(
+        self,
+        preset_name: str,
+    ) -> None:
+        preset = get_personality_preset(preset_name)
+        config = PersonalityConfig(**preset)
+        assert isinstance(config, PersonalityConfig)
 
     def test_all_presets_produce_valid_personality_config(self) -> None:
-        from ai_company.core.agent import PersonalityConfig
-
         for name in PERSONALITY_PRESETS:
             preset = get_personality_preset(name)
             config = PersonalityConfig(**preset)
@@ -97,3 +115,15 @@ class TestGenerateAutoName:
         a = generate_auto_name("  CEO  ", seed=0)
         b = generate_auto_name("CEO", seed=0)
         assert a == b
+
+
+@pytest.mark.unit
+class TestAutoNameCoverage:
+    def test_auto_names_cover_all_builtin_roles(self) -> None:
+        """Every role in BUILTIN_ROLES has an auto-name pool."""
+        from ai_company.core.role_catalog import BUILTIN_ROLES
+
+        pool_keys = {k for k in _AUTO_NAMES if k != "_default"}
+        role_keys = {r.name.lower() for r in BUILTIN_ROLES}
+        missing = role_keys - pool_keys
+        assert not missing, f"Roles missing auto-name pools: {sorted(missing)}"

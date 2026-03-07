@@ -97,6 +97,108 @@ name: "No Template Key"
 agents: []
 """
 
+CHILD_EXTENDS_STARTUP_YAML = """\
+template:
+  name: "Child of Startup"
+  description: "Extends startup with extra agents"
+  version: "1.0.0"
+  min_agents: 1
+  max_agents: 20
+  extends: "startup"
+
+  company:
+    type: "startup"
+
+  agents:
+    - role: "QA Engineer"
+      level: "mid"
+      model: "small"
+      personality_preset: "quality_guardian"
+      department: "engineering"
+"""
+
+CHILD_OVERRIDE_AGENT_YAML = """\
+template:
+  name: "Override Child"
+  description: "Overrides a parent agent"
+  version: "1.0.0"
+  min_agents: 1
+  max_agents: 20
+  extends: "solo_founder"
+
+  company:
+    type: "solo_founder"
+
+  agents:
+    - role: "Full-Stack Developer"
+      level: "lead"
+      model: "large"
+      personality_preset: "visionary_leader"
+      department: "engineering"
+"""
+
+CHILD_REMOVE_AGENT_YAML = """\
+template:
+  name: "Remove Child"
+  description: "Removes a parent agent"
+  version: "1.0.0"
+  min_agents: 1
+  max_agents: 20
+  extends: "solo_founder"
+
+  company:
+    type: "solo_founder"
+
+  agents:
+    - role: "Full-Stack Developer"
+      department: "engineering"
+      _remove: true
+    - role: "Backend Developer"
+      level: "senior"
+      model: "medium"
+      personality_preset: "pragmatic_builder"
+      department: "engineering"
+"""
+
+CIRCULAR_SELF_YAML = """\
+template:
+  name: "Self Loop"
+  description: "Extends itself"
+  version: "1.0.0"
+  min_agents: 1
+  max_agents: 10
+  extends: "self_loop"
+
+  company:
+    type: "custom"
+
+  agents:
+    - role: "Backend Developer"
+      level: "mid"
+      model: "medium"
+      department: "engineering"
+"""
+
+MULTI_LEVEL_CHILD_YAML = """\
+template:
+  name: "Grandchild"
+  description: "Two levels deep"
+  version: "1.0.0"
+  min_agents: 1
+  max_agents: 30
+  extends: "{parent_name}"
+
+  company:
+    type: "startup"
+
+  agents:
+    - role: "Data Analyst"
+      level: "mid"
+      model: "medium"
+      personality_preset: "data_driven_optimizer"
+      department: "engineering"
+"""
+
 
 def _make_template_dict(**overrides: Any) -> dict[str, Any]:
     """Build a minimal valid CompanyTemplate kwargs dict with overrides."""

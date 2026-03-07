@@ -2,6 +2,8 @@ template:
   name: "Research Lab"
   description: "Research and analysis focused team"
   version: "1.0.0"
+  min_agents: 5
+  max_agents: 10
   tags:
     - "research"
     - "analysis"
@@ -23,17 +25,25 @@ template:
 
   departments:
     - name: "engineering"
-      budget_percent: 40
+      budget_percent: 30
       head_role: "Software Architect"
     - name: "data_analytics"
-      budget_percent: 60
+      budget_percent: 50
       head_role: "Data Analyst"
+    - name: "product"
+      budget_percent: 20
+      head_role: "Technical Writer"
 
   agents:
     - role: "Software Architect"
       level: "principal"
       model: "large"
-      personality_preset: "methodical_analyst"
+      personality_preset: "systems_thinker"
+      department: "engineering"
+    - role: "Backend Developer"
+      level: "mid"
+      model: "medium"
+      personality_preset: "pragmatic_builder"
       department: "engineering"
     - role: "Data Engineer"
       level: "senior"
@@ -43,8 +53,23 @@ template:
     - role: "Data Analyst"
       level: "mid"
       model: "medium"
+      personality_preset: "data_driven_optimizer"
+      department: "data_analytics"
+    - role: "ML Engineer"
+      level: "senior"
+      model: "medium"
+      personality_preset: "independent_researcher"
+      department: "data_analytics"
+    - role: "Data Analyst"
+      level: "mid"
+      model: "small"
       personality_preset: "methodical_analyst"
       department: "data_analytics"
+    - role: "Technical Writer"
+      level: "mid"
+      model: "small"
+      personality_preset: "technical_communicator"
+      department: "product"
 
   workflow: "kanban"
   communication: "hybrid"

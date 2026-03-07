@@ -2,6 +2,8 @@ template:
   name: "Tech Startup"
   description: "Small team for building MVPs and prototypes"
   version: "1.0.0"
+  min_agents: 4
+  max_agents: 7
   tags:
     - "startup"
     - "mvp"
@@ -57,6 +59,7 @@ template:
     - role: "Product Manager"
       level: "senior"
       model: "medium"
+      personality_preset: "strategic_planner"
       department: "product"
 
   workflow: "agile_kanban"

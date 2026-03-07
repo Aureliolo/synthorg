@@ -16,6 +16,7 @@ Public API
     TemplateAgentConfig
     TemplateDepartmentConfig
     TemplateError
+    TemplateInheritanceError
     TemplateNotFoundError
     TemplateRenderError
     TemplateValidationError
@@ -23,6 +24,7 @@ Public API
 
 from ai_company.templates.errors import (
     TemplateError,
+    TemplateInheritanceError,
     TemplateNotFoundError,
     TemplateRenderError,
     TemplateValidationError,
@@ -51,6 +53,7 @@ __all__ = [
     "TemplateDepartmentConfig",
     "TemplateError",
     "TemplateInfo",
+    "TemplateInheritanceError",
     "TemplateMetadata",
     "TemplateNotFoundError",
     "TemplateRenderError",

@@ -6,6 +6,10 @@ Implements the second pass of the two-pass rendering pipeline:
 2. Render the raw YAML text through a Jinja2 ``SandboxedEnvironment``.
 3. YAML-parse the rendered text.
 4. Build a ``RootConfig``-compatible dict and validate.
+
+Template inheritance (``extends``) is resolved at the renderer level:
+each template's Jinja2 is rendered independently, then configs are
+merged via :func:`~ai_company.templates.merge.merge_template_configs`.
 """
 
 from typing import TYPE_CHECKING, Any
@@ -22,6 +26,10 @@ from ai_company.config.utils import deep_merge, to_float
 from ai_company.core.agent import PersonalityConfig
 from ai_company.observability import get_logger
 from ai_company.observability.events.template import (
+    TEMPLATE_INHERIT_CIRCULAR,
+    TEMPLATE_INHERIT_DEPTH_EXCEEDED,
+    TEMPLATE_INHERIT_RESOLVE_START,
+    TEMPLATE_INHERIT_RESOLVE_SUCCESS,
     TEMPLATE_RENDER_JINJA2_ERROR,
     TEMPLATE_RENDER_START,
     TEMPLATE_RENDER_SUCCESS,
@@ -30,9 +38,11 @@ from ai_company.observability.events.template import (
     TEMPLATE_RENDER_YAML_ERROR,
 )
 from ai_company.templates.errors import (
+    TemplateInheritanceError,
     TemplateRenderError,
     TemplateValidationError,
 )
+from ai_company.templates.merge import merge_template_configs
 from ai_company.templates.presets import (
     generate_auto_name,
     get_personality_preset,
@@ -43,6 +53,9 @@ _DEFAULT_PROVIDER = "default"
 
 # Default department when not specified in template agent config.
 _DEFAULT_DEPARTMENT = "engineering"
+
+# Maximum inheritance chain depth.
+_MAX_INHERITANCE_DEPTH = 10
 
 if TYPE_CHECKING:
     from ai_company.templates.loader import LoadedTemplate
@@ -57,6 +70,8 @@ def render_template(
 ) -> RootConfig:
     """Render a loaded template into a validated RootConfig.
 
+    Resolves template inheritance (``extends``) before validation.
+
     Args:
         loaded: :class:`LoadedTemplate` from the loader.
         variables: User-supplied variable values (overrides defaults).
@@ -67,11 +82,41 @@ def render_template(
     Raises:
         TemplateRenderError: If rendering fails.
         TemplateValidationError: If validation fails.
+        TemplateInheritanceError: If inheritance resolution fails.
     """
     logger.info(
         TEMPLATE_RENDER_START,
         source_name=loaded.source_name,
     )
+    config_dict = _render_to_dict(loaded, variables)
+
+    # Merge with defaults and validate.
+    merged = deep_merge(default_config_dict(), config_dict)
+    result = _validate_as_root_config(merged, loaded.source_name)
+    logger.info(
+        TEMPLATE_RENDER_SUCCESS,
+        source_name=loaded.source_name,
+    )
+    return result
+
+
+def _render_to_dict(
+    loaded: LoadedTemplate,
+    variables: dict[str, Any] | None = None,
+    *,
+    _chain: frozenset[str] = frozenset(),
+) -> dict[str, Any]:
+    """Render a template to a config dict, resolving inheritance.
+
+    Args:
+        loaded: Loaded template.
+        variables: User-supplied variables.
+        _chain: Set of already-seen template identifiers for circular
+            detection (internal use).
+
+    Returns:
+        Config dict suitable for merging with defaults.
+    """
     template = loaded.template
     vars_dict = _collect_variables(template, variables or {})
 
@@ -85,16 +130,93 @@ def render_template(
     # Parse the rendered YAML.
     rendered_data = _parse_rendered_yaml(rendered_text, loaded.source_name)
 
-    # Build RootConfig dict from the rendered data.
-    config_dict = _build_config_dict(rendered_data, template, vars_dict)
+    # Build config dict from the rendered data.
+    child_config = _build_config_dict(rendered_data, template, vars_dict)
 
-    # Merge with defaults and validate.
-    merged = deep_merge(default_config_dict(), config_dict)
-    result = _validate_as_root_config(merged, loaded.source_name)
+    # If no inheritance, return child config directly.
+    if template.extends is None:
+        return child_config
+
+    # Resolve inheritance.
+    parent_name = template.extends.strip().lower()
+    child_id = loaded.source_name
+
     logger.info(
-        TEMPLATE_RENDER_SUCCESS,
-        source_name=loaded.source_name,
+        TEMPLATE_INHERIT_RESOLVE_START,
+        child=child_id,
+        parent=parent_name,
     )
+
+    # Circular detection: _chain tracks normalized parent names that
+    # are being resolved up the chain.  If this parent is already in
+    # the chain, we have a cycle.
+    if parent_name in _chain:
+        logger.error(
+            TEMPLATE_INHERIT_CIRCULAR,
+            child=child_id,
+            parent=parent_name,
+            chain=sorted(_chain),
+        )
+        msg = (
+            f"Circular template inheritance: {child_id!r} extends "
+            f"{parent_name!r}, which is already in the inheritance chain"
+        )
+        raise TemplateInheritanceError(msg)
+
+    # Depth limit.
+    if len(_chain) >= _MAX_INHERITANCE_DEPTH:
+        logger.error(
+            TEMPLATE_INHERIT_DEPTH_EXCEEDED,
+            child=child_id,
+            depth=len(_chain),
+            max_depth=_MAX_INHERITANCE_DEPTH,
+        )
+        msg = (
+            f"Template inheritance depth exceeded ({len(_chain)} >= "
+            f"{_MAX_INHERITANCE_DEPTH}): {child_id!r}"
+        )
+        raise TemplateInheritanceError(msg)
+
+    # Load and render parent.  Add parent_name to chain before recursing.
+    from ai_company.templates.loader import load_template  # noqa: PLC0415
+
+    parent_loaded = load_template(parent_name)
+    parent_vars = _collect_parent_variables(parent_loaded.template, vars_dict)
+    parent_config = _render_to_dict(
+        parent_loaded,
+        parent_vars,
+        _chain=_chain | {parent_name},
+    )
+
+    merged = merge_template_configs(parent_config, child_config)
+    logger.info(
+        TEMPLATE_INHERIT_RESOLVE_SUCCESS,
+        child=child_id,
+        parent=parent_name,
+    )
+    return merged
+
+
+def _collect_parent_variables(
+    parent_template: CompanyTemplate,
+    child_vars: dict[str, Any],
+) -> dict[str, Any]:
+    """Collect variables for a parent template.
+
+    Child's resolved variables serve as defaults for the parent.
+    Parent's own defaults fill gaps.
+
+    Args:
+        parent_template: The parent template.
+        child_vars: Child's resolved variables.
+
+    Returns:
+        Variable dict for parent rendering.
+    """
+    result: dict[str, Any] = dict(child_vars)
+    for var in parent_template.variables:
+        if var.name not in result and var.default is not None:
+            result[var.name] = var.default
     return result
 
 
@@ -414,6 +536,11 @@ def _expand_single_agent(
 
     model_tier = agent.get("model", "medium")
     agent_dict["model"] = {"provider": _DEFAULT_PROVIDER, "model_id": model_tier}
+
+    # Preserve _remove merge directive for inheritance.
+    if agent.get("_remove"):
+        agent_dict["_remove"] = True
+
     return agent_dict
 
 

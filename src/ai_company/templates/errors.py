@@ -20,6 +20,10 @@ class TemplateRenderError(TemplateError):
     """
 
 
+class TemplateInheritanceError(TemplateRenderError):
+    """Circular inheritance, excessive depth, or merge failures."""
+
+
 class TemplateValidationError(TemplateError):
     """Raised when a rendered template fails validation.
 

@@ -12,7 +12,11 @@ from ai_company.observability.events.template import (
     TEMPLATE_RENDER_SUCCESS,
 )
 from ai_company.templates.errors import TemplateRenderError
-from ai_company.templates.loader import load_template, load_template_file
+from ai_company.templates.loader import (
+    BUILTIN_TEMPLATES,
+    load_template,
+    load_template_file,
+)
 from ai_company.templates.renderer import render_template
 
 from .conftest import TEMPLATE_REQUIRED_VAR_YAML, TEMPLATE_WITH_VARIABLES_YAML
@@ -42,8 +46,6 @@ class TestRenderTemplateBasic:
         assert len(config.agents) == 5
 
     def test_render_all_builtins_produce_valid_root_config(self) -> None:
-        from ai_company.templates.loader import BUILTIN_TEMPLATES
-
         for name in BUILTIN_TEMPLATES:
             loaded = load_template(name)
             config = render_template(loaded)
@@ -506,3 +508,47 @@ class TestValidateListErrors:
 
         with pytest.raises(TemplateRenderError, match="must be a mapping"):
             _validate_list({"agents": [{"role": "Dev"}, "bad"]}, "agents")
+
+
+# ── Roster count tests ──────────────────────────────────────────
+
+
+_EXPECTED_AGENT_COUNTS: dict[str, tuple[int, int]] = {
+    "solo_founder": (2, 3),
+    "startup": (4, 7),
+    "dev_shop": (6, 10),
+    "product_team": (8, 12),
+    "agency": (10, 15),
+    "full_company": (20, 50),
+    "research_lab": (5, 10),
+}
+
+
+@pytest.mark.unit
+class TestRosterCounts:
+    @pytest.mark.parametrize("name", sorted(BUILTIN_TEMPLATES))
+    def test_template_agent_count_in_range(self, name: str) -> None:
+        """Each template renders agents within its expected range."""
+        loaded = load_template(name)
+        config = render_template(loaded)
+        lo, hi = _EXPECTED_AGENT_COUNTS[name]
+        assert lo <= len(config.agents) <= hi, (
+            f"{name}: expected {lo}-{hi} agents, got {len(config.agents)}"
+        )
+
+    def test_full_company_variable_override(self) -> None:
+        """full_company num_backend_devs override changes agent count."""
+        loaded = load_template("full_company")
+        default_config = render_template(loaded)
+        override_config = render_template(
+            loaded,
+            variables={"num_backend_devs": 5},
+        )
+        assert len(override_config.agents) == len(default_config.agents) + 2
+
+    def test_all_templates_render_to_valid_root_config(self) -> None:
+        """Every built-in template renders to a valid RootConfig."""
+        for name in BUILTIN_TEMPLATES:
+            loaded = load_template(name)
+            config = render_template(loaded)
+            assert isinstance(config, RootConfig), f"{name} failed"

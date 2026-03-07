@@ -2,6 +2,8 @@ template:
   name: "Product Team"
   description: "Product-focused development with design and QA"
   version: "1.0.0"
+  min_agents: 8
+  max_agents: 12
   tags:
     - "product"
     - "design"
@@ -23,25 +25,52 @@ template:
 
   departments:
     - name: "product"
-      budget_percent: 30
+      budget_percent: 25
       head_role: "Product Manager"
     - name: "engineering"
-      budget_percent: 50
+      budget_percent: 35
       head_role: "Backend Developer"
+    - name: "design"
+      budget_percent: 15
+      head_role: "UX Designer"
     - name: "quality_assurance"
-      budget_percent: 20
+      budget_percent: 15
       head_role: "QA Engineer"
+    - name: "data_analytics"
+      budget_percent: 10
+      head_role: "Data Analyst"
 
   agents:
     - role: "Product Manager"
       level: "senior"
       model: "medium"
-      personality_preset: "visionary_leader"
+      personality_preset: "strategic_planner"
       department: "product"
     - role: "UX Designer"
       level: "mid"
       model: "medium"
-      department: "product"
+      personality_preset: "user_advocate"
+      department: "design"
+    - role: "UX Researcher"
+      level: "mid"
+      model: "medium"
+      personality_preset: "user_advocate"
+      department: "design"
+    - role: "Backend Developer"
+      level: "senior"
+      model: "medium"
+      personality_preset: "pragmatic_builder"
+      department: "engineering"
+    - role: "Backend Developer"
+      level: "mid"
+      model: "small"
+      personality_preset: "eager_learner"
+      department: "engineering"
+    - role: "Frontend Developer"
+      level: "mid"
+      model: "small"
+      personality_preset: "creative_innovator"
+      department: "engineering"
     - role: "Full-Stack Developer"
       level: "senior"
       model: "medium"
@@ -50,8 +79,18 @@ template:
     - role: "QA Engineer"
       level: "mid"
       model: "small"
-      personality_preset: "methodical_analyst"
+      personality_preset: "quality_guardian"
       department: "quality_assurance"
+    - role: "Automation Engineer"
+      level: "mid"
+      model: "small"
+      personality_preset: "disciplined_executor"
+      department: "quality_assurance"
+    - role: "Data Analyst"
+      level: "mid"
+      model: "medium"
+      personality_preset: "data_driven_optimizer"
+      department: "data_analytics"
 
   workflow: "agile_kanban"
   communication: "hybrid"

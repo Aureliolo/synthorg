@@ -410,8 +410,12 @@ def _normalize_template_data(data: dict[str, Any]) -> dict[str, Any]:
     }
     if "name" in data:
         metadata["name"] = data["name"]
+    if "min_agents" in data:
+        metadata["min_agents"] = data["min_agents"]
+    if "max_agents" in data:
+        metadata["max_agents"] = data["max_agents"]
 
-    return {
+    result: dict[str, Any] = {
         "metadata": metadata,
         "variables": data.get("variables", ()),
         "agents": data.get("agents", ()),
@@ -421,6 +425,9 @@ def _normalize_template_data(data: dict[str, Any]) -> dict[str, Any]:
         "budget_monthly": _to_float(company.get("budget_monthly", 50.0)),
         "autonomy": _to_float(company.get("autonomy", 0.5)),
     }
+    if "extends" in data:
+        result["extends"] = data["extends"]
+    return result
 
 
 def _to_float(value: Any) -> float:

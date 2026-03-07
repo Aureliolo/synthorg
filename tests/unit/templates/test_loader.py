@@ -53,6 +53,54 @@ class TestListBuiltinTemplates:
         assert len(list_builtin_templates()) == len(BUILTIN_TEMPLATES)
 
 
+@pytest.mark.unit
+class TestMinMaxPassthrough:
+    def test_min_max_agents_from_yaml(
+        self,
+        tmp_template_file: TemplateFileFactory,
+    ) -> None:
+        """min_agents/max_agents pass through from YAML to TemplateMetadata."""
+        yaml_with_minmax = """\
+template:
+  name: "MinMax Test"
+  description: "test"
+  version: "1.0.0"
+  min_agents: 3
+  max_agents: 10
+
+  company:
+    type: "custom"
+
+  agents:
+    - role: "Backend Developer"
+      level: "mid"
+      model: "medium"
+      department: "engineering"
+    - role: "Frontend Developer"
+      level: "mid"
+      model: "medium"
+      department: "engineering"
+    - role: "QA Engineer"
+      level: "mid"
+      model: "small"
+      department: "engineering"
+"""
+        path = tmp_template_file(yaml_with_minmax)
+        loaded = load_template_file(path)
+        assert loaded.template.metadata.min_agents == 3
+        assert loaded.template.metadata.max_agents == 10
+
+    def test_defaults_when_not_specified(
+        self,
+        tmp_template_file: TemplateFileFactory,
+    ) -> None:
+        """Without min/max in YAML, defaults apply (1, 100)."""
+        path = tmp_template_file(MINIMAL_TEMPLATE_YAML)
+        loaded = load_template_file(path)
+        assert loaded.template.metadata.min_agents == 1
+        assert loaded.template.metadata.max_agents == 100
+
+
 # ── list_templates ───────────────────────────────────────────────
 
 

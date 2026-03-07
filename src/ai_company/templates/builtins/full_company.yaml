@@ -2,6 +2,8 @@ template:
   name: "Full Company"
   description: "Enterprise simulation with all departments and full hierarchy"
   version: "1.0.0"
+  min_agents: 1
+  max_agents: 50
   tags:
     - "enterprise"
     - "full-hierarchy"
@@ -15,6 +17,14 @@ template:
       description: "Monthly budget in USD"
       var_type: "float"
       default: 200.0
+    - name: "num_backend_devs"
+      description: "Number of backend developers"
+      var_type: "int"
+      default: 3
+    - name: "num_frontend_devs"
+      description: "Number of frontend developers"
+      var_type: "int"
+      default: 2
 
   company:
     type: "full_company"
@@ -23,22 +33,35 @@ template:
 
   departments:
     - name: "executive"
-      budget_percent: 15
+      budget_percent: 10
       head_role: "CEO"
     - name: "engineering"
-      budget_percent: 50
+      budget_percent: 30
       head_role: "CTO"
     - name: "product"
-      budget_percent: 15
+      budget_percent: 10
       head_role: "Product Manager"
+    - name: "design"
+      budget_percent: 8
+      head_role: "UX Designer"
     - name: "quality_assurance"
       budget_percent: 10
-      head_role: "QA Engineer"
+      head_role: "QA Lead"
+    - name: "data_analytics"
+      budget_percent: 8
+      head_role: "Data Analyst"
     - name: "operations"
-      budget_percent: 10
-      head_role: "CFO"
+      budget_percent: 8
+      head_role: "COO"
+    - name: "security"
+      budget_percent: 8
+      head_role: "Security Engineer"
+    - name: "creative_marketing"
+      budget_percent: 8
+      head_role: "Brand Strategist"
 
   agents:
+    # C-Suite (5)
     - role: "CEO"
       level: "c_suite"
       model: "large"
@@ -47,22 +70,149 @@ template:
     - role: "CTO"
       level: "c_suite"
       model: "large"
-      personality_preset: "methodical_analyst"
+      personality_preset: "systems_thinker"
       department: "executive"
     - role: "CFO"
       level: "c_suite"
       model: "large"
+      personality_preset: "data_driven_optimizer"
+      department: "executive"
+    - role: "COO"
+      level: "c_suite"
+      model: "large"
+      personality_preset: "process_optimizer"
       department: "operations"
+    - role: "CPO"
+      level: "c_suite"
+      model: "large"
+      personality_preset: "user_advocate"
+      department: "product"
+    # Product (2)
+    - role: "Product Manager"
+      level: "senior"
+      model: "medium"
+      personality_preset: "strategic_planner"
+      department: "product"
+    - role: "Technical Writer"
+      level: "mid"
+      model: "small"
+      personality_preset: "technical_communicator"
+      department: "product"
+    # Design (2)
+    - role: "UX Designer"
+      level: "mid"
+      model: "medium"
+      personality_preset: "user_advocate"
+      department: "design"
+    - role: "UX Researcher"
+      level: "mid"
+      model: "medium"
+      personality_preset: "user_advocate"
+      department: "design"
+    # Engineering — static (3)
+    - role: "Software Architect"
+      level: "principal"
+      model: "large"
+      personality_preset: "systems_thinker"
+      department: "engineering"
+    - role: "DevOps/SRE Engineer"
+      level: "mid"
+      model: "medium"
+      personality_preset: "process_optimizer"
+      department: "engineering"
+    - role: "Database Engineer"
+      level: "mid"
+      model: "medium"
+      personality_preset: "systems_thinker"
+      department: "engineering"
+    # Engineering — dynamic backend devs
+{% for i in range(num_backend_devs | default(3) | int) %}
     - role: "Backend Developer"
+{% if i == 0 %}
       level: "senior"
       model: "medium"
       personality_preset: "pragmatic_builder"
+{% else %}
+      level: "mid"
+      model: "small"
+      personality_preset: "eager_learner"
+{% endif %}
       department: "engineering"
+{% endfor %}
+    # Engineering — dynamic frontend devs
+{% for i in range(num_frontend_devs | default(2) | int) %}
+    - role: "Frontend Developer"
+{% if i == 0 %}
+      level: "senior"
+      model: "medium"
+      personality_preset: "creative_innovator"
+{% else %}
+      level: "mid"
+      model: "small"
+      personality_preset: "eager_learner"
+{% endif %}
+      department: "engineering"
+{% endfor %}
+    # Quality Assurance (3)
+    - role: "QA Lead"
+      level: "lead"
+      model: "medium"
+      personality_preset: "quality_guardian"
+      department: "quality_assurance"
     - role: "QA Engineer"
       level: "mid"
       model: "small"
       personality_preset: "methodical_analyst"
       department: "quality_assurance"
+    - role: "Automation Engineer"
+      level: "mid"
+      model: "small"
+      personality_preset: "disciplined_executor"
+      department: "quality_assurance"
+    # Data & Analytics (2)
+    - role: "Data Analyst"
+      level: "mid"
+      model: "medium"
+      personality_preset: "data_driven_optimizer"
+      department: "data_analytics"
+    - role: "Data Engineer"
+      level: "mid"
+      model: "medium"
+      personality_preset: "pragmatic_builder"
+      department: "data_analytics"
+    # Operations (2)
+    - role: "Project Manager"
+      level: "senior"
+      model: "medium"
+      personality_preset: "process_optimizer"
+      department: "operations"
+    - role: "Scrum Master"
+      level: "senior"
+      model: "medium"
+      personality_preset: "process_optimizer"
+      department: "operations"
+    # Security (2)
+    - role: "Security Engineer"
+      level: "senior"
+      model: "medium"
+      personality_preset: "security_sentinel"
+      department: "security"
+    - role: "Security Operations"
+      level: "senior"
+      model: "medium"
+      personality_preset: "security_sentinel"
+      department: "security"
+    # Creative & Marketing (2)
+    - role: "Content Writer"
+      level: "mid"
+      model: "small"
+      personality_preset: "technical_communicator"
+      department: "creative_marketing"
+    - role: "Brand Strategist"
+      level: "senior"
+      model: "medium"
+      personality_preset: "growth_hacker"
+      department: "creative_marketing"
 
   workflow: "agile_kanban"
   communication: "hybrid"
