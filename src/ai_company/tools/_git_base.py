@@ -82,13 +82,15 @@ def _sanitize_command(args: list[str]) -> list[str]:
 
 
 def _sanitize_stderr(raw: str) -> str:
-    """Replace control characters with spaces and truncate for safe inclusion.
+    """Replace control characters, redact credentials, and truncate.
 
     All control characters (including newlines, tabs, and carriage
     returns) are collapsed into single spaces to prevent log injection
-    and LLM prompt injection via stderr content.
+    and LLM prompt injection via stderr content.  Embedded credentials
+    (``https://user:token@host``) are redacted before truncation.
     """
-    return _CONTROL_CHAR_RE.sub(" ", raw).strip()[:_MAX_STDERR_FRAGMENT]
+    sanitized = _CONTROL_CHAR_RE.sub(" ", raw).strip()
+    return _CREDENTIAL_RE.sub(r"\1***@", sanitized)[:_MAX_STDERR_FRAGMENT]
 
 
 class _BaseGitTool(BaseTool, ABC):
