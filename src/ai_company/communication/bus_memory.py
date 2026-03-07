@@ -39,6 +39,7 @@ from ai_company.observability.events.communication import (
     COMM_MESSAGE_DELIVERED,
     COMM_MESSAGE_PUBLISHED,
     COMM_RECEIVE_TIMEOUT,
+    COMM_SEND_DIRECT_INVALID,
     COMM_SUBSCRIPTION_CREATED,
     COMM_SUBSCRIPTION_NOT_FOUND,
     COMM_SUBSCRIPTION_REMOVED,
@@ -227,7 +228,7 @@ class InMemoryMessageBus:
         if message.to != recipient:
             msg = f"recipient={recipient!r} does not match message.to={message.to!r}"
             logger.warning(
-                COMM_BUS_NOT_RUNNING,
+                COMM_SEND_DIRECT_INVALID,
                 error=msg,
             )
             raise ValueError(msg)
@@ -238,7 +239,7 @@ class InMemoryMessageBus:
                     f"separator character {_DM_SEPARATOR!r}"
                 )
                 logger.warning(
-                    COMM_BUS_NOT_RUNNING,
+                    COMM_SEND_DIRECT_INVALID,
                     error=msg,
                 )
                 raise ValueError(msg)

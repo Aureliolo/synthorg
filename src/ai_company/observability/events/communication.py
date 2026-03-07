@@ -52,6 +52,7 @@ COMM_RECEIVE_TIMEOUT: Final[str] = "communication.receive.timeout"
 
 # Validation
 COMM_MESSENGER_INVALID_AGENT: Final[str] = "communication.messenger.invalid_agent"
+COMM_SEND_DIRECT_INVALID: Final[str] = "communication.message.send_direct_invalid"
 
 # Shutdown
 COMM_BUS_SHUTDOWN_SIGNAL: Final[str] = "communication.bus.shutdown_signal"
