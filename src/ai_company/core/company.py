@@ -38,6 +38,7 @@ class ReportingLine(BaseModel):
                 f"Agent cannot report to themselves: "
                 f"{self.subordinate!r} == {self.supervisor!r}"
             )
+            logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
         return self
 
@@ -246,6 +247,7 @@ class Team(BaseModel):
         if len(self.members) != len(set(self.members)):
             dupes = sorted(m for m, c in Counter(self.members).items() if c > 1)
             msg = f"Duplicate members in team {self.name!r}: {dupes}"
+            logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
         return self
 
@@ -296,6 +298,7 @@ class Department(BaseModel):
         if len(names) != len(set(names)):
             dupes = sorted(n for n, c in Counter(names).items() if c > 1)
             msg = f"Duplicate team names in department {self.name!r}: {dupes}"
+            logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
         return self
 
@@ -309,6 +312,7 @@ class Department(BaseModel):
                 f"Duplicate subordinates in reporting lines "
                 f"for department {self.name!r}: {dupes}"
             )
+            logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
         return self
 
@@ -380,6 +384,7 @@ class HRRegistry(BaseModel):
         if len(agents) != len(set(agents)):
             dupes = sorted(a for a, c in Counter(agents).items() if c > 1)
             msg = f"Duplicate entries in active_agents: {dupes}"
+            logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
         return self
 

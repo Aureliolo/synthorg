@@ -88,6 +88,17 @@ class TestRegisterDeregister:
         ids = [dispatcher.register(_RecordingHandler()) for _ in range(5)]
         assert len(set(ids)) == 5
 
+    def test_register_sync_handler_raises(self) -> None:
+        """Registering a handler with sync handle() raises TypeError."""
+        dispatcher = MessageDispatcher()
+
+        class _SyncHandler:
+            def handle(self, message: Message) -> None:
+                pass
+
+        with pytest.raises(TypeError, match="synchronous handle"):
+            dispatcher.register(_SyncHandler(), name="sync")  # type: ignore[arg-type]
+
 
 # ── Dispatch Routing ──────────────────────────────────────────
 

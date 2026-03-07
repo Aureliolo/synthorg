@@ -326,6 +326,21 @@ class TestSubscription:
 
         bus.unsubscribe.assert_awaited_once_with("#eng", "agent-a")
 
+    @pytest.mark.unit
+    async def test_receive_delegates_to_bus(self) -> None:
+        bus = _make_mock_bus()
+        bus.receive = AsyncMock(return_value=None)
+        messenger = AgentMessenger(
+            agent_id="agent-a",
+            agent_name="Agent A",
+            bus=bus,
+        )
+
+        result = await messenger.receive("#eng", timeout=5.0)
+
+        bus.receive.assert_awaited_once_with("#eng", "agent-a", timeout=5.0)
+        assert result is None
+
 
 class TestHandlerDelegation:
     """Tests for handler registration/dispatch delegation."""

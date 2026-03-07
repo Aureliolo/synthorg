@@ -7,6 +7,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from ai_company.core.enums import CompanyType, SeniorityLevel
 from ai_company.core.types import NotBlankStr  # noqa: TC001
+from ai_company.observability import get_logger
+from ai_company.observability.events.template import TEMPLATE_SCHEMA_VALIDATION_ERROR
+
+logger = get_logger(__name__)
 
 
 class TemplateVariable(BaseModel):
@@ -44,6 +48,7 @@ class TemplateVariable(BaseModel):
         """Required variables must not define a default."""
         if self.required and self.default is not None:
             msg = f"Variable {self.name!r} is required but defines a default"
+            logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
         return self
 
@@ -59,6 +64,7 @@ class TemplateVariable(BaseModel):
                 f"Variable {self.name!r}: default {self.default!r} "
                 f"is not compatible with var_type {self.var_type!r}"
             )
+            logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
         type_map: dict[str, type | tuple[type, ...]] = {
             "str": str,
@@ -72,6 +78,7 @@ class TemplateVariable(BaseModel):
                 f"Variable {self.name!r}: default {self.default!r} "
                 f"is not compatible with var_type {self.var_type!r}"
             )
+            logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)  # noqa: TRY004
         return self
 
@@ -140,6 +147,7 @@ class TemplateAgentConfig(BaseModel):
                 "Cannot specify both 'personality_preset' and 'personality'. "
                 "Use one or the other."
             )
+            logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
         return self
 
@@ -211,6 +219,7 @@ class TemplateMetadata(BaseModel):
         """Ensure min_agents <= max_agents."""
         if self.min_agents > self.max_agents:
             msg = f"min_agents ({self.min_agents}) > max_agents ({self.max_agents})"
+            logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
         return self
 
@@ -314,12 +323,14 @@ class CompanyTemplate(BaseModel):
                 f"Template defines {count} agent(s), "
                 f"minimum is {self.metadata.min_agents}"
             )
+            logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
         if count > self.metadata.max_agents:
             msg = (
                 f"Template defines {count} agent(s), "
                 f"maximum is {self.metadata.max_agents}"
             )
+            logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
         return self
 
@@ -330,6 +341,7 @@ class CompanyTemplate(BaseModel):
         if len(names) != len(set(names)):
             dupes = sorted(n for n, c in Counter(names).items() if c > 1)
             msg = f"Duplicate variable names: {dupes}"
+            logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
         return self
 
@@ -340,5 +352,6 @@ class CompanyTemplate(BaseModel):
         if len(names) != len(set(names)):
             dupes = sorted(n for n, c in Counter(names).items() if c > 1)
             msg = f"Duplicate department names: {dupes}"
+            logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
         return self

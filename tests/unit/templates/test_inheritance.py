@@ -497,6 +497,52 @@ template:
 
 
 @pytest.mark.unit
+class TestMergeIdTargeting:
+    def test_child_targets_specific_agent_by_merge_id(self) -> None:
+        """Child can override a specific agent among same-role duplicates."""
+        parent = [
+            {
+                "role": "Full-Stack Developer",
+                "department": "engineering",
+                "merge_id": "frontend",
+                "level": "mid",
+            },
+            {
+                "role": "Full-Stack Developer",
+                "department": "engineering",
+                "merge_id": "backend",
+                "level": "mid",
+            },
+        ]
+        child = [
+            {
+                "role": "Full-Stack Developer",
+                "department": "engineering",
+                "merge_id": "frontend",
+                "level": "senior",
+            },
+        ]
+        result = _merge_agents(parent, child)
+        assert len(result) == 2
+        # The frontend agent should be overridden to senior
+        assert result[0]["level"] == "senior"
+        # The backend agent should remain unchanged
+        assert result[1]["level"] == "mid"
+
+    def test_merge_id_stripped_from_output(self) -> None:
+        """merge_id is stripped from the final output."""
+        parent = [
+            {
+                "role": "Dev",
+                "department": "eng",
+                "merge_id": "alpha",
+            },
+        ]
+        result = _merge_agents(parent, [])
+        assert "merge_id" not in result[0]
+
+
+@pytest.mark.unit
 class TestInheritanceIntegration:
     def test_child_extends_builtin_renders_to_valid_root_config(
         self,

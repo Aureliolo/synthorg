@@ -158,9 +158,6 @@ def _apply_child_agent(
     entries = parent_entries.get(key, [])
 
     matched_entry = _find_unmatched(entries)
-    clean = copy.deepcopy(
-        {k: v for k, v in child_agent.items() if k not in ("_remove", "merge_id")}
-    )
 
     if is_remove:
         if matched_entry is None:
@@ -173,7 +170,13 @@ def _apply_child_agent(
             raise TemplateInheritanceError(msg)
         matched_entry.matched = True
         matched_entry.agent = None  # mark for removal
-    elif matched_entry is not None:
+        return
+
+    clean = copy.deepcopy(
+        {k: v for k, v in child_agent.items() if k not in ("_remove", "merge_id")}
+    )
+
+    if matched_entry is not None:
         matched_entry.matched = True
         matched_entry.agent = clean
     else:

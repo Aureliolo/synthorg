@@ -27,11 +27,13 @@ from ai_company.engine.parallel_models import (
 from ai_company.engine.resource_lock import InMemoryResourceLock, ResourceLock
 from ai_company.observability import get_logger
 from ai_company.observability.events.parallel import (
+    PARALLEL_AGENT_CANCELLED,
     PARALLEL_AGENT_COMPLETE,
     PARALLEL_AGENT_ERROR,
     PARALLEL_AGENT_START,
     PARALLEL_GROUP_COMPLETE,
     PARALLEL_GROUP_START,
+    PARALLEL_LOCK_RELEASE_ERROR,
     PARALLEL_PROGRESS_UPDATE,
     PARALLEL_VALIDATION_ERROR,
 )
@@ -156,7 +158,7 @@ class ParallelExecutor:
                     await self._release_all_locks(group, lock)
                 except Exception:
                     logger.exception(
-                        PARALLEL_VALIDATION_ERROR,
+                        PARALLEL_LOCK_RELEASE_ERROR,
                         error="Failed to release resource locks",
                         group_id=group.group_id,
                     )
@@ -216,12 +218,16 @@ class ParallelExecutor:
                             semaphore=semaphore,
                         ),
                     )
-        except* Exception:  # noqa: S110
+        except* Exception as eg:
             # TaskGroup wraps exceptions in ExceptionGroup when
             # fail_fast re-raises inside _run_guarded.
             # Outcomes from completed tasks are already collected;
             # individual errors logged in _record_error_outcome.
-            pass
+            logger.warning(
+                PARALLEL_AGENT_ERROR,
+                error=f"ExceptionGroup suppressed: {eg!r}",
+                group_id=group.group_id,
+            )
 
     async def _run_guarded(  # noqa: PLR0913
         self,
@@ -252,8 +258,6 @@ class ParallelExecutor:
             return
 
         try:
-            progress.in_progress += 1
-            self._emit_progress(progress)
             await self._execute_assignment(
                 assignment=assignment,
                 group_id=group.group_id,
@@ -287,6 +291,11 @@ class ParallelExecutor:
                 error="Cancelled",
             )
             progress.failed += 1
+            logger.warning(
+                PARALLEL_AGENT_CANCELLED,
+                agent_id=agent_id,
+                task_id=task_id,
+            )
             raise
         finally:
             progress.in_progress = max(0, progress.in_progress - 1)
@@ -352,6 +361,8 @@ class ParallelExecutor:
 
         ctx = semaphore if semaphore is not None else nullcontext()
         async with ctx:
+            progress.in_progress += 1
+            self._emit_progress(progress)
             run_result: AgentRunResult = await self._engine.run(
                 identity=assignment.identity,
                 task=assignment.task,

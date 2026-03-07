@@ -598,3 +598,80 @@ class TestParallelExecutorFatalErrors:
 
         with pytest.raises(ParallelExecutionError, match="fatal"):
             await executor.execute_group(group)
+
+
+@pytest.mark.unit
+class TestParallelExecutorCancellation:
+    """Cancellation logging."""
+
+    async def test_cancelled_agent_is_logged(self) -> None:
+        """CancelledError emits PARALLEL_AGENT_CANCELLED event."""
+        import structlog
+
+        a1 = _make_assignment("a1", "t1")
+        a2 = _make_assignment("a2", "t2")
+
+        call_count = 0
+
+        async def side_effect(**kwargs: object) -> AgentRunResult:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                msg = "fail fast"
+                raise RuntimeError(msg)
+            await asyncio.sleep(10)
+            identity = kwargs.get("identity")
+            task = kwargs.get("task")
+            return _make_run_result(identity, task)  # type: ignore[arg-type]
+
+        engine = _mock_engine()
+        engine.run = AsyncMock(side_effect=side_effect)
+        executor = ParallelExecutor(engine=engine)
+        group = _make_group(a1, a2, fail_fast=True)
+
+        with structlog.testing.capture_logs() as cap:
+            await executor.execute_group(group)
+
+        cancelled_events = [
+            e for e in cap if e.get("event") == "execution.parallel.agent_cancelled"
+        ]
+        assert len(cancelled_events) >= 1
+
+
+@pytest.mark.unit
+class TestParallelExecutorInProgressSemantics:
+    """in_progress respects concurrency limit."""
+
+    async def test_in_progress_respects_concurrency_limit(self) -> None:
+        """in_progress never exceeds max_concurrency in progress callbacks."""
+        max_in_progress = 0
+
+        async def track_concurrency(**kwargs: object) -> AgentRunResult:
+            await asyncio.sleep(0.05)
+            identity = kwargs.get("identity")
+            task = kwargs.get("task")
+            return _make_run_result(identity, task)  # type: ignore[arg-type]
+
+        assignments = [_make_assignment(f"a{i}", f"t{i}") for i in range(4)]
+        engine = _mock_engine()
+        engine.run = AsyncMock(side_effect=track_concurrency)
+        progress_updates: list[ParallelProgress] = []
+
+        def on_progress(p: ParallelProgress) -> None:
+            nonlocal max_in_progress
+            progress_updates.append(p)
+            max_in_progress = max(max_in_progress, p.in_progress)
+
+        executor = ParallelExecutor(
+            engine=engine,
+            progress_callback=on_progress,
+        )
+        group = _make_group(
+            *assignments,
+            max_concurrency=2,
+        )
+
+        result = await executor.execute_group(group)
+
+        assert result.all_succeeded is True
+        assert max_in_progress <= 2

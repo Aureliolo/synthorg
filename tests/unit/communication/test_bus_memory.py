@@ -265,6 +265,29 @@ class TestSubscription:
         with pytest.raises(NotSubscribedError):
             await bus.unsubscribe("#nonexistent", "agent-a")
 
+    @pytest.mark.unit
+    async def test_unsubscribe_wakes_blocked_receive(self) -> None:
+        """Unsubscribing wakes a blocked receive(), which returns None."""
+        bus = InMemoryMessageBus(config=_make_config())
+        await bus.start()
+        await bus.subscribe("#general", "agent-a")
+
+        received: list[object] = []
+
+        async def receiver() -> None:
+            result = await bus.receive("#general", "agent-a")
+            received.append(result)
+
+        async def unsubscriber() -> None:
+            await asyncio.sleep(0.05)
+            await bus.unsubscribe("#general", "agent-a")
+
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(receiver())
+            tg.create_task(unsubscriber())
+
+        assert received == [None]
+
 
 # ── Publish & Receive ────────────────────────────────────────────
 

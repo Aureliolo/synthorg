@@ -5,6 +5,7 @@ deployments and testing.
 """
 
 import asyncio
+import contextlib
 from collections import deque
 from datetime import UTC, datetime
 from typing import NoReturn
@@ -38,6 +39,7 @@ from ai_company.observability.events.communication import (
     COMM_HISTORY_QUERIED,
     COMM_MESSAGE_DELIVERED,
     COMM_MESSAGE_PUBLISHED,
+    COMM_RECEIVE_SHUTDOWN,
     COMM_RECEIVE_TIMEOUT,
     COMM_SEND_DIRECT_INVALID,
     COMM_SUBSCRIPTION_CREATED,
@@ -395,7 +397,10 @@ class InMemoryMessageBus:
             self._channels[channel_name] = channel.model_copy(
                 update={"subscribers": new_subs},
             )
-            self._queues.pop((channel_name, subscriber_id), None)
+            queue = self._queues.pop((channel_name, subscriber_id), None)
+            if queue is not None:
+                with contextlib.suppress(asyncio.QueueFull):
+                    queue.put_nowait(None)  # type: ignore[arg-type]
         logger.info(
             COMM_SUBSCRIPTION_REMOVED,
             channel=channel_name,
@@ -442,12 +447,19 @@ class InMemoryMessageBus:
             queue = self._ensure_queue(channel_name, subscriber_id)
         result = await self._await_with_shutdown(queue, timeout)
         if result is None:
-            logger.debug(
-                COMM_RECEIVE_TIMEOUT,
-                channel=channel_name,
-                subscriber=subscriber_id,
-                timeout=timeout,
-            )
+            if self._shutdown_event.is_set():
+                logger.debug(
+                    COMM_RECEIVE_SHUTDOWN,
+                    channel=channel_name,
+                    subscriber=subscriber_id,
+                )
+            else:
+                logger.debug(
+                    COMM_RECEIVE_TIMEOUT,
+                    channel=channel_name,
+                    subscriber=subscriber_id,
+                    timeout=timeout,
+                )
         return result
 
     async def _await_with_shutdown(
@@ -480,8 +492,12 @@ class InMemoryMessageBus:
             raise
         if not get_task.done():
             get_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await get_task
         if not shutdown_task.done():
             shutdown_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await shutdown_task
         if get_task in done and not get_task.cancelled():
             return get_task.result()
         return None

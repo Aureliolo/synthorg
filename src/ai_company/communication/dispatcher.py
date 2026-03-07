@@ -4,6 +4,7 @@ See DESIGN_SPEC Section 5.4.
 """
 
 import asyncio
+import inspect
 from uuid import UUID  # noqa: TC003 -- required at runtime by Pydantic
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
@@ -28,6 +29,7 @@ from ai_company.observability.events.communication import (
     COMM_DISPATCH_START,
     COMM_HANDLER_DEREGISTER_MISS,
     COMM_HANDLER_DEREGISTERED,
+    COMM_HANDLER_INVALID,
     COMM_HANDLER_REGISTERED,
 )
 
@@ -96,6 +98,13 @@ class MessageDispatcher:
         """
         if not isinstance(handler, MessageHandler):
             handler = FunctionHandler(handler)
+        elif not inspect.iscoroutinefunction(handler.handle):
+            msg = (
+                f"MessageHandler {type(handler).__name__!r} has a "
+                f"synchronous handle() — must be async"
+            )
+            logger.warning(COMM_HANDLER_INVALID, error=msg)
+            raise TypeError(msg)
 
         registration = HandlerRegistration(
             handler=handler,
