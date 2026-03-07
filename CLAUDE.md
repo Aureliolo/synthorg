@@ -105,6 +105,7 @@ src/ai_company/
 - **Async**: `asyncio_mode = "auto"` — no manual `@pytest.mark.asyncio` needed
 - **Timeout**: 30 seconds per test
 - **Parallelism**: `pytest-xdist` via `-n auto`
+- **Parametrize**: Prefer `@pytest.mark.parametrize` for testing similar cases
 - **Vendor-agnostic everywhere**: NEVER use real vendor names (Anthropic, OpenAI, Claude, GPT, etc.) in project-owned code, docstrings, comments, tests, or config examples. Use generic names: `example-provider`, `example-large-001`, `example-medium-001`, `example-small-001`, `large`/`medium`/`small` as aliases. Vendor names may only appear in: (1) DESIGN_SPEC.md provider list (listing supported providers), (2) `.claude/` skill/agent files, (3) third-party import paths/module names (e.g. `litellm.types.llms.openai`). Tests must use `test-provider`, `test-small-001`, etc.
 
 ## Git

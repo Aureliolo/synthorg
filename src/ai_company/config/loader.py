@@ -403,23 +403,8 @@ def load_config(
 ) -> RootConfig:
     """Load and validate company configuration from YAML file(s).
 
-    Loading order (each layer deep-merges onto the previous):
-
-    1. Built-in defaults (from :func:`default_config_dict`).
-    2. Primary config file at *config_path*.
-    3. Override files in order.
-    4. Environment variable substitution (``${VAR}`` /
-       ``${VAR:-default}``).
-
-    When *config_path* is ``None``, :func:`discover_config` is called
-    to auto-discover the configuration file.
-
-    .. note::
-
-        The YAML line map used for error enrichment is built from the
-        primary config file only.  When override files introduce or
-        replace values, validation errors may reference the primary
-        file's line numbers or lack location information entirely.
+    Each layer deep-merges onto the previous: built-in defaults,
+    primary config, overrides, then env-var substitution.
 
     Args:
         config_path: Path to the primary config file, or ``None``
@@ -430,27 +415,32 @@ def load_config(
         Validated, frozen :class:`RootConfig`.
 
     Raises:
-        ConfigFileNotFoundError: If any config file does not exist
-            (or discovery finds nothing).
-        ConfigParseError: If any file contains invalid YAML or cannot
-            be read.
-        ConfigValidationError: If the merged config fails validation
-            or an env var is missing.
+        ConfigFileNotFoundError: If any config file does not exist.
+        ConfigParseError: If any file contains invalid YAML.
+        ConfigValidationError: If the merged config fails validation.
     """
     if config_path is None:
         config_path = discover_config()
     config_path = Path(config_path)
 
-    # 1. Start with built-in defaults
+    # Start with defaults, merge primary config
     merged = default_config_dict()
-
-    # 2. Read and parse primary config (single read for both parsing
-    #    and line-map construction)
     yaml_text = _read_config_text(config_path)
     primary = _parse_yaml_string(yaml_text, str(config_path))
     merged = deep_merge(merged, primary)
 
-    # 3. Apply override layers
+    # Apply overrides and env-var substitution
+    merged = _load_and_merge_overrides(merged, override_paths)
+    merged = _substitute_env_vars(merged, source_file="<merged config>")
+
+    return _finalize_config(merged, yaml_text, config_path, override_paths)
+
+
+def _load_and_merge_overrides(
+    merged: dict[str, Any],
+    override_paths: tuple[Path | str, ...],
+) -> dict[str, Any]:
+    """Apply override config files onto the merged dict."""
     for override_path in override_paths:
         override = _parse_yaml_file(Path(override_path))
         merged = deep_merge(merged, override)
@@ -458,16 +448,17 @@ def load_config(
             CONFIG_OVERRIDE_APPLIED,
             override_path=str(override_path),
         )
+    return merged
 
-    # 4. Substitute environment variables on the fully merged config.
-    # Use a neutral label so env-var errors aren't misattributed solely
-    # to the primary config file when they may originate from overrides.
-    merged = _substitute_env_vars(merged, source_file="<merged config>")
 
-    # Build line map from primary file for error enrichment
+def _finalize_config(
+    merged: dict[str, Any],
+    yaml_text: str,
+    config_path: Path,
+    override_paths: tuple[Path | str, ...],
+) -> RootConfig:
+    """Validate merged config and log success."""
     line_map = _build_line_map(yaml_text)
-
-    # Validate merged config
     result = _validate_config_dict(
         merged,
         source_file=str(config_path),

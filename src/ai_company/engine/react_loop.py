@@ -65,46 +65,23 @@ class ReactLoop:
     ) -> ExecutionResult:
         """Run the ReAct loop until termination.
 
-        Normal failure modes (budget exhaustion, LLM errors, provider
-        failures, missing tool invoker) are returned as
-        ``ExecutionResult`` with the appropriate ``TerminationReason``
-        rather than raised as exceptions.  Non-recoverable errors
-        (``MemoryError``, ``RecursionError``) are re-raised rather
-        than captured in the result.
-
         Args:
             context: Initial agent context with conversation.
             provider: LLM completion provider.
             tool_invoker: Optional tool invoker for tool execution.
             budget_checker: Optional budget exhaustion callback.
             completion_config: Optional per-execution config override.
-                Implementations may fall back to the identity's model
-                config when not provided.
 
         Returns:
             Execution result with final context and termination info.
         """
-        logger.info(
-            EXECUTION_LOOP_START,
-            execution_id=context.execution_id,
-            loop_type=self.get_loop_type(),
-            max_turns=context.max_turns,
+        model_id, config, tool_defs, turns = self._prepare_loop(
+            context, completion_config, tool_invoker
         )
-        model_id = context.identity.model.model_id
-        config = completion_config or CompletionConfig(
-            temperature=context.identity.model.temperature,
-            max_tokens=context.identity.model.max_tokens,
-        )
-        tool_defs = _get_tool_definitions(tool_invoker)
-        turns: list[TurnRecord] = []
         ctx = context
 
         while ctx.has_turns_remaining:
-            budget_result = self._check_budget(
-                ctx,
-                budget_checker,
-                turns,
-            )
+            budget_result = self._check_budget(ctx, budget_checker, turns)
             if budget_result is not None:
                 return budget_result
 
@@ -123,44 +100,16 @@ class ReactLoop:
 
             turns.append(_make_turn_record(turn_number, response))
 
-            error = self._check_response_errors(
+            result = await self._process_turn_response(
                 ctx,
                 response,
                 turn_number,
                 turns,
-            )
-            if error is not None:
-                return error
-
-            ctx = ctx.with_turn_completed(
-                response.usage,
-                _response_to_message(response),
-            )
-            logger.info(
-                EXECUTION_LOOP_TURN_COMPLETE,
-                execution_id=ctx.execution_id,
-                turn=turn_number,
-                finish_reason=response.finish_reason.value,
-                tool_call_count=len(response.tool_calls),
-            )
-
-            if not response.tool_calls:
-                return self._handle_completion(
-                    ctx,
-                    response,
-                    turns,
-                )
-
-            ctx_or_err = await self._execute_tool_calls(
-                ctx,
                 tool_invoker,
-                response,
-                turn_number,
-                turns,
             )
-            if isinstance(ctx_or_err, ExecutionResult):
-                return ctx_or_err
-            ctx = ctx_or_err
+            if isinstance(result, ExecutionResult):
+                return result
+            ctx = result
 
         logger.info(
             EXECUTION_LOOP_TERMINATED,
@@ -169,6 +118,65 @@ class ReactLoop:
             turns=len(turns),
         )
         return _build_result(ctx, TerminationReason.MAX_TURNS, turns)
+
+    def _prepare_loop(
+        self,
+        context: AgentContext,
+        completion_config: CompletionConfig | None,
+        tool_invoker: ToolInvoker | None,
+    ) -> tuple[str, CompletionConfig, list[ToolDefinition] | None, list[TurnRecord]]:
+        """Log loop start and resolve config, model ID, and tool defs."""
+        logger.info(
+            EXECUTION_LOOP_START,
+            execution_id=context.execution_id,
+            loop_type=self.get_loop_type(),
+            max_turns=context.max_turns,
+        )
+        model_id = context.identity.model.model_id
+        config = completion_config or CompletionConfig(
+            temperature=context.identity.model.temperature,
+            max_tokens=context.identity.model.max_tokens,
+        )
+        return model_id, config, _get_tool_definitions(tool_invoker), []
+
+    async def _process_turn_response(
+        self,
+        ctx: AgentContext,
+        response: CompletionResponse,
+        turn_number: int,
+        turns: list[TurnRecord],
+        tool_invoker: ToolInvoker | None,
+    ) -> AgentContext | ExecutionResult:
+        """Check errors, update context, handle completion or tool calls."""
+        error = self._check_response_errors(ctx, response, turn_number, turns)
+        if error is not None:
+            return error
+
+        ctx = ctx.with_turn_completed(
+            response.usage,
+            _response_to_message(response),
+        )
+        logger.info(
+            EXECUTION_LOOP_TURN_COMPLETE,
+            execution_id=ctx.execution_id,
+            turn=turn_number,
+            finish_reason=response.finish_reason.value,
+            tool_call_count=len(response.tool_calls),
+        )
+
+        if not response.tool_calls:
+            return self._handle_completion(ctx, response, turns)
+
+        ctx_or_err = await self._execute_tool_calls(
+            ctx,
+            tool_invoker,
+            response,
+            turn_number,
+            turns,
+        )
+        if isinstance(ctx_or_err, ExecutionResult):
+            return ctx_or_err
+        return ctx_or_err
 
     def _check_budget(
         self,
@@ -346,21 +354,11 @@ class ReactLoop:
     ) -> AgentContext | ExecutionResult:
         """Execute tool calls and append results to context, or error if no invoker."""
         if tool_invoker is None:
-            error_msg = (
-                f"LLM requested {len(response.tool_calls)} tool "
-                f"call(s) but no tool invoker is available"
-            )
-            logger.error(
-                EXECUTION_LOOP_ERROR,
-                execution_id=ctx.execution_id,
-                turn=turn_number,
-                error=error_msg,
-            )
-            return _build_result(
+            return self._missing_invoker_error(
                 ctx,
-                TerminationReason.ERROR,
+                response,
+                turn_number,
                 turns,
-                error_message=error_msg,
             )
 
         tool_names = [tc.name for tc in response.tool_calls]
@@ -404,6 +402,31 @@ class ReactLoop:
             ctx = ctx.with_message(tool_msg)
 
         return ctx
+
+    def _missing_invoker_error(
+        self,
+        ctx: AgentContext,
+        response: CompletionResponse,
+        turn_number: int,
+        turns: list[TurnRecord],
+    ) -> ExecutionResult:
+        """Build an error result when the LLM requests tools but no invoker exists."""
+        error_msg = (
+            f"LLM requested {len(response.tool_calls)} tool "
+            f"call(s) but no tool invoker is available"
+        )
+        logger.error(
+            EXECUTION_LOOP_ERROR,
+            execution_id=ctx.execution_id,
+            turn=turn_number,
+            error=error_msg,
+        )
+        return _build_result(
+            ctx,
+            TerminationReason.ERROR,
+            turns,
+            error_message=error_msg,
+        )
 
 
 def _get_tool_definitions(

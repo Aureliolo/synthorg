@@ -116,7 +116,116 @@ class WriteFileTool(BaseFileSystemTool):
             },
         )
 
-    async def execute(  # noqa: PLR0911
+    def _validate_write_args(
+        self,
+        user_path: str,
+        content: str,
+    ) -> ToolExecutionResult | None:
+        """Return an error if content exceeds the size limit."""
+        content_size = len(content.encode("utf-8"))
+        if content_size > MAX_WRITE_SIZE_BYTES:
+            logger.warning(
+                TOOL_FS_SIZE_EXCEEDED,
+                path=user_path,
+                size_bytes=content_size,
+                max_bytes=MAX_WRITE_SIZE_BYTES,
+            )
+            return ToolExecutionResult(
+                content=(
+                    f"Content too large to write: {content_size:,} bytes "
+                    f"(max {MAX_WRITE_SIZE_BYTES:,})"
+                ),
+                is_error=True,
+            )
+        return None
+
+    def _resolve_write_path(
+        self,
+        user_path: str,
+        *,
+        create_dirs: bool,
+    ) -> Path | ToolExecutionResult:
+        """Resolve and validate the write target path."""
+        try:
+            if create_dirs:
+                resolved = self.path_validator.validate(user_path)
+            else:
+                resolved = self.path_validator.validate_parent_exists(
+                    user_path,
+                )
+        except ValueError as exc:
+            return ToolExecutionResult(content=str(exc), is_error=True)
+        if resolved.is_dir():
+            logger.warning(
+                TOOL_FS_ERROR,
+                path=user_path,
+                error="is_directory",
+            )
+            return ToolExecutionResult(
+                content=f"Path is a directory, not a file: {user_path}",
+                is_error=True,
+            )
+        return resolved
+
+    async def _perform_write(
+        self,
+        user_path: str,
+        resolved: Path,
+        content: str,
+        *,
+        create_dirs: bool,
+    ) -> ToolExecutionResult:
+        """Execute the write and build the result."""
+        try:
+            bytes_written, created = await asyncio.to_thread(
+                _write_sync,
+                resolved,
+                content,
+                create_dirs=create_dirs,
+            )
+        except IsADirectoryError:
+            logger.warning(
+                TOOL_FS_ERROR,
+                path=user_path,
+                error="is_directory",
+            )
+            return ToolExecutionResult(
+                content=f"Path is a directory, not a file: {user_path}",
+                is_error=True,
+            )
+        except PermissionError:
+            logger.warning(
+                TOOL_FS_ERROR,
+                path=user_path,
+                error="permission_denied",
+            )
+            return ToolExecutionResult(
+                content=f"Permission denied: {user_path}",
+                is_error=True,
+            )
+        except OSError as exc:
+            logger.warning(TOOL_FS_ERROR, path=user_path, error=str(exc))
+            return ToolExecutionResult(
+                content=f"OS error writing file: {user_path}",
+                is_error=True,
+            )
+        action = "Created" if created else "Updated"
+        logger.info(
+            TOOL_FS_WRITE,
+            path=user_path,
+            bytes_written=bytes_written,
+            created=created,
+        )
+        return ToolExecutionResult(
+            content=f"{action} {user_path} ({bytes_written} bytes)",
+            metadata={
+                "path": user_path,
+                "bytes_written": bytes_written,
+                "created": created,
+            },
+        )
+
+    async def execute(
         self,
         *,
         arguments: dict[str, Any],
@@ -134,75 +243,19 @@ class WriteFileTool(BaseFileSystemTool):
         content: str = arguments["content"]
         create_dirs: bool = arguments.get("create_directories", False)
 
-        content_size = len(content.encode("utf-8"))
-        if content_size > MAX_WRITE_SIZE_BYTES:
-            logger.warning(
-                TOOL_FS_SIZE_EXCEEDED,
-                path=user_path,
-                size_bytes=content_size,
-                max_bytes=MAX_WRITE_SIZE_BYTES,
-            )
-            return ToolExecutionResult(
-                content=(
-                    f"Content too large to write: {content_size:,} bytes "
-                    f"(max {MAX_WRITE_SIZE_BYTES:,})"
-                ),
-                is_error=True,
-            )
+        if err := self._validate_write_args(user_path, content):
+            return err
 
-        try:
-            if create_dirs:
-                resolved = self.path_validator.validate(user_path)
-            else:
-                resolved = self.path_validator.validate_parent_exists(user_path)
-        except ValueError as exc:
-            return ToolExecutionResult(content=str(exc), is_error=True)
-
-        # Explicit is_dir() check: on Windows, write_text() on a directory
-        # raises PermissionError (not IsADirectoryError).
-        if resolved.is_dir():
-            logger.warning(TOOL_FS_ERROR, path=user_path, error="is_directory")
-            return ToolExecutionResult(
-                content=f"Path is a directory, not a file: {user_path}",
-                is_error=True,
-            )
-
-        try:
-            bytes_written, created = await asyncio.to_thread(
-                _write_sync, resolved, content, create_dirs=create_dirs
-            )
-        except IsADirectoryError:
-            logger.warning(TOOL_FS_ERROR, path=user_path, error="is_directory")
-            return ToolExecutionResult(
-                content=f"Path is a directory, not a file: {user_path}",
-                is_error=True,
-            )
-        except PermissionError:
-            logger.warning(TOOL_FS_ERROR, path=user_path, error="permission_denied")
-            return ToolExecutionResult(
-                content=f"Permission denied: {user_path}",
-                is_error=True,
-            )
-        except OSError as exc:
-            logger.warning(TOOL_FS_ERROR, path=user_path, error=str(exc))
-            return ToolExecutionResult(
-                content=f"OS error writing file: {user_path}",
-                is_error=True,
-            )
-
-        action = "Created" if created else "Updated"
-        logger.info(
-            TOOL_FS_WRITE,
-            path=user_path,
-            bytes_written=bytes_written,
-            created=created,
+        resolved_or_err = self._resolve_write_path(
+            user_path,
+            create_dirs=create_dirs,
         )
+        if isinstance(resolved_or_err, ToolExecutionResult):
+            return resolved_or_err
 
-        return ToolExecutionResult(
-            content=f"{action} {user_path} ({bytes_written} bytes)",
-            metadata={
-                "path": user_path,
-                "bytes_written": bytes_written,
-                "created": created,
-            },
+        return await self._perform_write(
+            user_path,
+            resolved_or_err,
+            content,
+            create_dirs=create_dirs,
         )

@@ -140,18 +140,6 @@ class TaskExecution(BaseModel):
     ) -> TaskExecution:
         """Validate and apply a status transition.
 
-        Calls :func:`~ai_company.core.task_transitions.validate_transition`
-        then returns a new ``TaskExecution`` via ``model_copy``.  Sets
-        ``started_at`` on first entry to ``IN_PROGRESS`` and
-        ``completed_at`` on terminal states.
-
-        Args:
-            target: The desired target status.
-            reason: Optional reason for the transition.
-
-        Returns:
-            New ``TaskExecution`` with updated status and transition log.
-
         Raises:
             ValueError: If the transition is invalid.
         """
@@ -173,15 +161,12 @@ class TaskExecution(BaseModel):
             timestamp=now,
             reason=reason,
         )
-        updates: dict[str, object] = {
-            "status": target,
-            "transition_log": (*self.transition_log, transition),
-        }
-        if target is TaskStatus.IN_PROGRESS and self.started_at is None:
-            updates["started_at"] = now
-        if target in _TERMINAL_STATUSES:
-            updates["completed_at"] = now
-
+        updates = _build_transition_updates(
+            self,
+            target,
+            transition,
+            now,
+        )
         result = self.model_copy(update=updates)
         logger.info(
             EXECUTION_TASK_TRANSITION,
@@ -244,3 +229,21 @@ class TaskExecution(BaseModel):
     def is_terminal(self) -> bool:
         """Whether execution is in a terminal state."""
         return self.status in _TERMINAL_STATUSES
+
+
+def _build_transition_updates(
+    execution: TaskExecution,
+    target: TaskStatus,
+    transition: StatusTransition,
+    now: datetime,
+) -> dict[str, object]:
+    """Assemble the ``model_copy`` update dict for a status transition."""
+    updates: dict[str, object] = {
+        "status": target,
+        "transition_log": (*execution.transition_log, transition),
+    }
+    if target is TaskStatus.IN_PROGRESS and execution.started_at is None:
+        updates["started_at"] = now
+    if target in _TERMINAL_STATUSES:
+        updates["completed_at"] = now
+    return updates

@@ -3,6 +3,7 @@
 import os
 import sys
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 import pytest
 
@@ -130,6 +131,35 @@ class TestListDirectoryExecution:
         assert result.is_error
         assert "Unsafe glob pattern" in result.content
 
+    @pytest.mark.parametrize("pattern", ["subdir/..", "subdir\\.."])
+    async def test_unsafe_glob_trailing_dotdot_rejected(
+        self,
+        list_tool: ListDirectoryTool,
+        pattern: str,
+    ) -> None:
+        result = await list_tool.execute(
+            arguments={"path": ".", "pattern": pattern},
+        )
+        assert result.is_error
+        assert "Unsafe glob pattern" in result.content
+
+    async def test_doublestar_without_recursive_rejected(
+        self, list_tool: ListDirectoryTool
+    ) -> None:
+        result = await list_tool.execute(
+            arguments={"path": ".", "pattern": "**/*.py", "recursive": False},
+        )
+        assert result.is_error
+        assert "recursive" in result.content.lower()
+
+    async def test_doublestar_with_recursive_accepted(
+        self, list_tool: ListDirectoryTool
+    ) -> None:
+        result = await list_tool.execute(
+            arguments={"path": ".", "pattern": "**/*.txt", "recursive": True},
+        )
+        assert not result.is_error
+
 
 @pytest.mark.unit
 class TestListDirectorySymlinks:
@@ -153,3 +183,61 @@ class TestListDirectorySymlinks:
         assert not result.is_error
         assert "[SYMLINK]" in result.content
         assert "outside workspace" in result.content
+
+
+# ── Additional edge cases ────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestListDirectoryEdgeCases:
+    async def test_oserror_during_iteration(self, list_tool: ListDirectoryTool) -> None:
+        """OSError from asyncio.to_thread is caught and reported."""
+        with patch(
+            "ai_company.tools.file_system.list_directory.asyncio.to_thread",
+            side_effect=OSError("disk error"),
+        ):
+            result = await list_tool.execute(arguments={"path": "."})
+        assert result.is_error
+        assert "OS error" in result.content
+
+    async def test_absolute_posix_glob_rejected(
+        self, list_tool: ListDirectoryTool
+    ) -> None:
+        """Absolute POSIX glob patterns are rejected."""
+        result = await list_tool.execute(
+            arguments={"path": ".", "pattern": "/etc/*.py"},
+        )
+        assert result.is_error
+        assert "Unsafe glob pattern" in result.content
+
+    async def test_absolute_windows_glob_rejected(
+        self, list_tool: ListDirectoryTool
+    ) -> None:
+        """Absolute Windows glob patterns are rejected."""
+        result = await list_tool.execute(
+            arguments={"path": ".", "pattern": "C:\\*.py"},
+        )
+        assert result.is_error
+        assert "Unsafe glob pattern" in result.content
+
+    async def test_non_symlink_outside_workspace_excluded(
+        self, workspace: Path
+    ) -> None:
+        """Non-symlink entries resolving outside workspace are excluded."""
+
+        from ai_company.tools.file_system.list_directory import _classify_entry
+
+        # Create a mock entry that resolves outside workspace
+        # but is not a symlink
+        entry = workspace / "inside.txt"
+        entry.write_text("x", encoding="utf-8")
+
+        outside = workspace.parent / "outside_dir"
+        outside.mkdir(exist_ok=True)
+
+        with (
+            patch.object(type(entry), "resolve", return_value=outside / "fake"),
+            patch.object(type(entry), "is_symlink", return_value=False),
+        ):
+            line = _classify_entry(entry, workspace, workspace, recursive=False)
+        assert line is None

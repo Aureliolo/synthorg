@@ -1,6 +1,8 @@
 """Tests for WriteFileTool."""
 
+import os
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 import pytest
 
@@ -104,3 +106,58 @@ class TestWriteFileExecution:
         )
         assert result.is_error
         assert "too large" in result.content.lower()
+
+
+# ── _perform_write error handling ────────────────────────────────
+
+
+@pytest.mark.unit
+class TestWriteFileErrors:
+    async def test_is_a_directory_error_from_write_sync(
+        self, write_tool: WriteFileTool
+    ) -> None:
+        """IsADirectoryError from _write_sync is caught."""
+        with patch(
+            "ai_company.tools.file_system.write_file._write_sync",
+            side_effect=IsADirectoryError("is a directory"),
+        ):
+            result = await write_tool.execute(
+                arguments={"path": "hello.txt", "content": "x"},
+            )
+        assert result.is_error
+        assert "directory" in result.content.lower()
+
+    async def test_oserror_from_write_sync(self, write_tool: WriteFileTool) -> None:
+        """Generic OSError from _write_sync is caught."""
+        with patch(
+            "ai_company.tools.file_system.write_file._write_sync",
+            side_effect=OSError("disk full"),
+        ):
+            result = await write_tool.execute(
+                arguments={"path": "hello.txt", "content": "x"},
+            )
+        assert result.is_error
+        assert "OS error" in result.content
+
+    async def test_temp_file_cleanup_on_failure(
+        self, workspace: Path, write_tool: WriteFileTool
+    ) -> None:
+        """Temp file is removed when _write_sync raises."""
+        target = workspace / "fail_target.txt"
+        target.write_text("original", encoding="utf-8")
+
+        with patch(
+            "ai_company.tools.file_system.write_file._write_sync",
+            side_effect=OSError("boom"),
+        ):
+            await write_tool.execute(
+                arguments={"path": "fail_target.txt", "content": "new"},
+            )
+
+        # No leftover .tmp files in the workspace
+        assert not any(
+            name.endswith(".tmp")
+            for name in os.listdir(str(workspace))  # noqa: PTH208
+        )
+        # Original file unchanged (write never completed)
+        assert target.read_text(encoding="utf-8") == "original"

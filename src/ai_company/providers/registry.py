@@ -173,6 +173,44 @@ def _build_driver(
             non-callable / non-conforming factory.
     """
     driver_type = config.driver
+    factory = _resolve_factory(name, driver_type, defaults, overrides)
+
+    try:
+        driver = factory(name, config)  # type: ignore[operator]
+    except Exception as exc:
+        msg = f"Failed to instantiate driver {driver_type!r} for provider {name!r}"
+        raise DriverFactoryNotFoundError(
+            msg,
+            context={"provider": name, "driver": driver_type, "detail": str(exc)},
+        ) from exc
+    if not isinstance(driver, BaseCompletionProvider):
+        msg = (
+            f"Factory for {driver_type!r} did not produce a "
+            f"BaseCompletionProvider instance"
+        )
+        raise DriverFactoryNotFoundError(
+            msg,
+            context={"provider": name, "driver": driver_type},
+        )
+    logger.debug(
+        PROVIDER_DRIVER_INSTANTIATED,
+        provider=name,
+        driver=driver_type,
+    )
+    return driver
+
+
+def _resolve_factory(
+    name: str,
+    driver_type: str,
+    defaults: dict[str, type[BaseCompletionProvider]],
+    overrides: dict[str, object],
+) -> object:
+    """Look up and validate a callable factory for the driver type.
+
+    Raises:
+        DriverFactoryNotFoundError: If no factory found or not callable.
+    """
     factory: object | None = overrides.get(driver_type)
     if factory is None:
         factory = defaults.get(driver_type)
@@ -200,27 +238,4 @@ def _build_driver(
             msg,
             context={"provider": name, "driver": driver_type},
         )
-
-    try:
-        driver = factory(name, config)
-    except Exception as exc:
-        msg = f"Failed to instantiate driver {driver_type!r} for provider {name!r}"
-        raise DriverFactoryNotFoundError(
-            msg,
-            context={"provider": name, "driver": driver_type, "detail": str(exc)},
-        ) from exc
-    if not isinstance(driver, BaseCompletionProvider):
-        msg = (
-            f"Factory for {driver_type!r} did not produce a "
-            f"BaseCompletionProvider instance"
-        )
-        raise DriverFactoryNotFoundError(
-            msg,
-            context={"provider": name, "driver": driver_type},
-        )
-    logger.debug(
-        PROVIDER_DRIVER_INSTANTIATED,
-        provider=name,
-        driver=driver_type,
-    )
-    return driver
+    return factory

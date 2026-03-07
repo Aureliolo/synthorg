@@ -126,30 +126,18 @@ class EditFileTool(BaseFileSystemTool):
             },
         )
 
-    async def execute(  # noqa: C901, PLR0911
+    def _validate_edit_args(
         self,
-        *,
-        arguments: dict[str, Any],
-    ) -> ToolExecutionResult:
-        """Edit a file by replacing text.
-
-        Args:
-            arguments: Must contain ``path``, ``old_text``, and
-                ``new_text``.
-
-        Returns:
-            A ``ToolExecutionResult`` confirming the edit or an error.
-        """
-        user_path: str = arguments["path"]
-        old_text: str = arguments["old_text"]
-        new_text: str = arguments["new_text"]
-
+        user_path: str,
+        old_text: str,
+        new_text: str,
+    ) -> ToolExecutionResult | None:
+        """Return an early error result if args are invalid, else None."""
         if not old_text:
             return ToolExecutionResult(
                 content="old_text cannot be empty",
                 is_error=True,
             )
-
         if old_text == new_text:
             logger.debug(
                 TOOL_FS_NOOP,
@@ -165,29 +153,26 @@ class EditFileTool(BaseFileSystemTool):
                     "occurrences_replaced": 0,
                 },
             )
+        return None
 
-        try:
-            resolved = self.path_validator.validate(user_path)
-        except ValueError as exc:
-            return ToolExecutionResult(content=str(exc), is_error=True)
-
-        # Explicit is_dir() check: on Windows, stat() succeeds on dirs
-        # and read_text() raises PermissionError (not IsADirectoryError).
-        if resolved.is_dir():
+    async def _preflight_check_file(
+        self,
+        user_path: str,
+        resolved: Path,
+    ) -> ToolExecutionResult | None:
+        """Verify the file is editable (exists, not a dir, not too large)."""
+        if resolved.is_dir():  # noqa: ASYNC240
             logger.warning(TOOL_FS_ERROR, path=user_path, error="is_directory")
             return ToolExecutionResult(
                 content=f"Path is a directory, not a file: {user_path}",
                 is_error=True,
             )
-
-        # Guard against loading excessively large files.
         try:
             stat_result = await asyncio.to_thread(resolved.stat)
         except (FileNotFoundError, IsADirectoryError, PermissionError, OSError) as exc:
             log_key, msg = _map_os_error(exc, user_path, "editing")
             logger.warning(TOOL_FS_ERROR, path=user_path, error=log_key)
             return ToolExecutionResult(content=msg, is_error=True)
-
         if stat_result.st_size > MAX_EDIT_FILE_SIZE_BYTES:
             logger.warning(
                 TOOL_FS_SIZE_EXCEEDED,
@@ -203,7 +188,16 @@ class EditFileTool(BaseFileSystemTool):
                 ),
                 is_error=True,
             )
+        return None
 
+    async def _perform_edit(
+        self,
+        user_path: str,
+        resolved: Path,
+        old_text: str,
+        new_text: str,
+    ) -> ToolExecutionResult:
+        """Run the edit and return the result."""
         try:
             count = await asyncio.to_thread(
                 _edit_sync,
@@ -221,7 +215,6 @@ class EditFileTool(BaseFileSystemTool):
             log_key, msg = _map_os_error(exc, user_path, "editing")
             logger.warning(TOOL_FS_ERROR, path=user_path, error=log_key)
             return ToolExecutionResult(content=msg, is_error=True)
-
         if count == 0:
             logger.warning(
                 TOOL_FS_EDIT_NOT_FOUND,
@@ -237,18 +230,15 @@ class EditFileTool(BaseFileSystemTool):
                     "occurrences_replaced": 0,
                 },
             )
-
         msg = f"Replaced 1 occurrence in {user_path}"
         if count > 1:
             msg += f" (warning: {count} total occurrences found, only first replaced)"
-
         logger.info(
             TOOL_FS_EDIT,
             path=user_path,
             occurrences_found=count,
             occurrences_replaced=1,
         )
-
         return ToolExecutionResult(
             content=msg,
             metadata={
@@ -256,4 +246,39 @@ class EditFileTool(BaseFileSystemTool):
                 "occurrences_found": count,
                 "occurrences_replaced": 1,
             },
+        )
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """Edit a file by replacing text.
+
+        Args:
+            arguments: Must contain ``path``, ``old_text``, ``new_text``.
+
+        Returns:
+            A ``ToolExecutionResult`` confirming the edit or an error.
+        """
+        user_path: str = arguments["path"]
+        old_text: str = arguments["old_text"]
+        new_text: str = arguments["new_text"]
+
+        if err := self._validate_edit_args(user_path, old_text, new_text):
+            return err
+
+        try:
+            resolved = self.path_validator.validate(user_path)
+        except ValueError as exc:
+            return ToolExecutionResult(content=str(exc), is_error=True)
+
+        if err := await self._preflight_check_file(user_path, resolved):
+            return err
+
+        return await self._perform_edit(
+            user_path,
+            resolved,
+            old_text,
+            new_text,
         )

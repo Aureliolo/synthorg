@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from ai_company.core.enums import ToolCategory
+from ai_company.tools._git_base import _sanitize_command
 from ai_company.tools.git_tools import (
     GitBranchTool,
     GitCloneTool,
@@ -262,6 +263,16 @@ class TestGitDiffTool:
         )
         assert not result.is_error
 
+    async def test_ref2_without_ref1_returns_error(
+        self,
+        diff_tool: GitDiffTool,
+    ) -> None:
+        result = await diff_tool.execute(
+            arguments={"ref2": "HEAD"},
+        )
+        assert result.is_error
+        assert "ref2 requires ref1" in result.content
+
 
 # ── GitBranchTool ─────────────────────────────────────────────────
 
@@ -368,6 +379,16 @@ class TestGitBranchTool:
             },
         )
         assert result.is_error
+
+    async def test_unknown_branch_action_returns_error(
+        self,
+        branch_tool: GitBranchTool,
+    ) -> None:
+        result = await branch_tool.execute(
+            arguments={"action": "unknown", "name": "x"},
+        )
+        assert result.is_error
+        assert "Unknown branch action" in result.content
 
 
 # ── GitCommitTool ─────────────────────────────────────────────────
@@ -702,6 +723,34 @@ class TestRunGitErrorPaths:
 
         assert result.is_error
         assert "Failed to start git" in result.content
+
+
+# ── Credential sanitization ───────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestCredentialSanitization:
+    """Tests for _sanitize_command credential redaction."""
+
+    def test_credentials_redacted(self) -> None:
+        args = ["git", "clone", "https://user:token@github.com/repo.git"]
+        result = _sanitize_command(args)
+        assert result == ["git", "clone", "https://***@github.com/repo.git"]
+
+    def test_no_credentials_unchanged(self) -> None:
+        args = ["git", "clone", "https://github.com/repo.git"]
+        result = _sanitize_command(args)
+        assert result == args
+
+    def test_scp_like_unchanged(self) -> None:
+        args = ["git", "clone", "git@github.com:user/repo.git"]
+        result = _sanitize_command(args)
+        assert result == args
+
+    def test_non_url_unchanged(self) -> None:
+        args = ["git", "status", "--short"]
+        result = _sanitize_command(args)
+        assert result == args
 
 
 # ── Error handling edge cases ─────────────────────────────────────

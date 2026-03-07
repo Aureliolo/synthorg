@@ -44,89 +44,46 @@ class _SimpleTool(BaseTool):
 
 
 @pytest.mark.unit
-class TestSandboxedLevel:
-    """Sandboxed allows file_system, code_execution, version_control only."""
+class TestAccessLevelCategories:
+    """Parametrized tests for Sandboxed, Restricted, and Standard levels."""
 
-    def test_allows_file_system(self) -> None:
-        checker = ToolPermissionChecker(access_level=ToolAccessLevel.SANDBOXED)
-        assert checker.is_permitted("t", ToolCategory.FILE_SYSTEM) is True
-
-    def test_allows_code_execution(self) -> None:
-        checker = ToolPermissionChecker(access_level=ToolAccessLevel.SANDBOXED)
-        assert checker.is_permitted("t", ToolCategory.CODE_EXECUTION) is True
-
-    def test_allows_version_control(self) -> None:
-        checker = ToolPermissionChecker(access_level=ToolAccessLevel.SANDBOXED)
-        assert checker.is_permitted("t", ToolCategory.VERSION_CONTROL) is True
-
-    def test_denies_web(self) -> None:
-        checker = ToolPermissionChecker(access_level=ToolAccessLevel.SANDBOXED)
-        assert checker.is_permitted("t", ToolCategory.WEB) is False
-
-    def test_denies_terminal(self) -> None:
-        checker = ToolPermissionChecker(access_level=ToolAccessLevel.SANDBOXED)
-        assert checker.is_permitted("t", ToolCategory.TERMINAL) is False
-
-    def test_denies_deployment(self) -> None:
-        checker = ToolPermissionChecker(access_level=ToolAccessLevel.SANDBOXED)
-        assert checker.is_permitted("t", ToolCategory.DEPLOYMENT) is False
-
-    def test_denies_database(self) -> None:
-        checker = ToolPermissionChecker(access_level=ToolAccessLevel.SANDBOXED)
-        assert checker.is_permitted("t", ToolCategory.DATABASE) is False
-
-
-@pytest.mark.unit
-class TestRestrictedLevel:
-    """Restricted adds web to sandboxed categories."""
-
-    def test_allows_sandboxed_categories(self) -> None:
-        checker = ToolPermissionChecker(access_level=ToolAccessLevel.RESTRICTED)
-        assert checker.is_permitted("t", ToolCategory.FILE_SYSTEM) is True
-        assert checker.is_permitted("t", ToolCategory.CODE_EXECUTION) is True
-        assert checker.is_permitted("t", ToolCategory.VERSION_CONTROL) is True
-
-    def test_allows_web(self) -> None:
-        checker = ToolPermissionChecker(access_level=ToolAccessLevel.RESTRICTED)
-        assert checker.is_permitted("t", ToolCategory.WEB) is True
-
-    def test_denies_terminal(self) -> None:
-        checker = ToolPermissionChecker(access_level=ToolAccessLevel.RESTRICTED)
-        assert checker.is_permitted("t", ToolCategory.TERMINAL) is False
-
-    def test_denies_analytics(self) -> None:
-        checker = ToolPermissionChecker(access_level=ToolAccessLevel.RESTRICTED)
-        assert checker.is_permitted("t", ToolCategory.ANALYTICS) is False
-
-
-@pytest.mark.unit
-class TestStandardLevel:
-    """Standard adds terminal and analytics to restricted categories."""
-
-    def test_allows_restricted_categories(self) -> None:
-        checker = ToolPermissionChecker(access_level=ToolAccessLevel.STANDARD)
-        assert checker.is_permitted("t", ToolCategory.FILE_SYSTEM) is True
-        assert checker.is_permitted("t", ToolCategory.WEB) is True
-
-    def test_allows_terminal(self) -> None:
-        checker = ToolPermissionChecker(access_level=ToolAccessLevel.STANDARD)
-        assert checker.is_permitted("t", ToolCategory.TERMINAL) is True
-
-    def test_allows_analytics(self) -> None:
-        checker = ToolPermissionChecker(access_level=ToolAccessLevel.STANDARD)
-        assert checker.is_permitted("t", ToolCategory.ANALYTICS) is True
-
-    def test_denies_deployment(self) -> None:
-        checker = ToolPermissionChecker(access_level=ToolAccessLevel.STANDARD)
-        assert checker.is_permitted("t", ToolCategory.DEPLOYMENT) is False
-
-    def test_denies_database(self) -> None:
-        checker = ToolPermissionChecker(access_level=ToolAccessLevel.STANDARD)
-        assert checker.is_permitted("t", ToolCategory.DATABASE) is False
-
-    def test_denies_other(self) -> None:
-        checker = ToolPermissionChecker(access_level=ToolAccessLevel.STANDARD)
-        assert checker.is_permitted("t", ToolCategory.OTHER) is False
+    @pytest.mark.parametrize(
+        ("access_level", "category", "expected"),
+        [
+            # Sandboxed: allows file_system, code_execution, version_control
+            (ToolAccessLevel.SANDBOXED, ToolCategory.FILE_SYSTEM, True),
+            (ToolAccessLevel.SANDBOXED, ToolCategory.CODE_EXECUTION, True),
+            (ToolAccessLevel.SANDBOXED, ToolCategory.VERSION_CONTROL, True),
+            (ToolAccessLevel.SANDBOXED, ToolCategory.WEB, False),
+            (ToolAccessLevel.SANDBOXED, ToolCategory.TERMINAL, False),
+            (ToolAccessLevel.SANDBOXED, ToolCategory.DEPLOYMENT, False),
+            (ToolAccessLevel.SANDBOXED, ToolCategory.DATABASE, False),
+            # Restricted: adds web
+            (ToolAccessLevel.RESTRICTED, ToolCategory.FILE_SYSTEM, True),
+            (ToolAccessLevel.RESTRICTED, ToolCategory.CODE_EXECUTION, True),
+            (ToolAccessLevel.RESTRICTED, ToolCategory.VERSION_CONTROL, True),
+            (ToolAccessLevel.RESTRICTED, ToolCategory.WEB, True),
+            (ToolAccessLevel.RESTRICTED, ToolCategory.TERMINAL, False),
+            (ToolAccessLevel.RESTRICTED, ToolCategory.ANALYTICS, False),
+            # Standard: adds terminal and analytics
+            (ToolAccessLevel.STANDARD, ToolCategory.FILE_SYSTEM, True),
+            (ToolAccessLevel.STANDARD, ToolCategory.WEB, True),
+            (ToolAccessLevel.STANDARD, ToolCategory.TERMINAL, True),
+            (ToolAccessLevel.STANDARD, ToolCategory.ANALYTICS, True),
+            (ToolAccessLevel.STANDARD, ToolCategory.DEPLOYMENT, False),
+            (ToolAccessLevel.STANDARD, ToolCategory.DATABASE, False),
+            (ToolAccessLevel.STANDARD, ToolCategory.OTHER, False),
+        ],
+        ids=lambda p: p.value if hasattr(p, "value") else str(p),
+    )
+    def test_category_permission(
+        self,
+        access_level: ToolAccessLevel,
+        category: ToolCategory,
+        expected: bool,
+    ) -> None:
+        checker = ToolPermissionChecker(access_level=access_level)
+        assert checker.is_permitted("t", category) is expected
 
 
 @pytest.mark.unit

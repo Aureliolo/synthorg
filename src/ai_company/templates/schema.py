@@ -209,11 +209,11 @@ class CompanyTemplate(BaseModel):
         default=(),
         description="Template department definitions",
     )
-    workflow: str = Field(
+    workflow: NotBlankStr = Field(
         default="agile_kanban",
         description="Workflow name",
     )
-    communication: str = Field(
+    communication: NotBlankStr = Field(
         default="hybrid",
         description="Communication pattern",
     )

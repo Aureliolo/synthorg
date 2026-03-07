@@ -52,15 +52,6 @@ def render_template(
 ) -> RootConfig:
     """Render a loaded template into a validated RootConfig.
 
-    Pipeline:
-
-    1. Collect variables (user-supplied + defaults from template).
-    2. Jinja2-render the raw YAML text with collected variables.
-    3. YAML-parse the rendered text.
-    4. Normalize into ``RootConfig`` shape.
-    5. Deep-merge template output onto ``default_config_dict()`` base.
-    6. Validate as ``RootConfig``.
-
     Args:
         loaded: :class:`LoadedTemplate` from the loader.
         variables: User-supplied variable values (overrides defaults).
@@ -69,10 +60,8 @@ def render_template(
         Validated, frozen :class:`RootConfig`.
 
     Raises:
-        TemplateRenderError: If variable collection or Jinja2 rendering
-            fails.
-        TemplateValidationError: If the rendered result fails
-            ``RootConfig`` validation.
+        TemplateRenderError: If rendering fails.
+        TemplateValidationError: If validation fails.
     """
     logger.info(
         TEMPLATE_RENDER_START,
@@ -275,37 +264,10 @@ def _build_config_dict(
         template.metadata.name,
     )
 
-    # Expand agents.
-    raw_agents = rendered_data.get("agents", [])
-    if raw_agents is None:
-        raw_agents = []
-    if not isinstance(raw_agents, list):
-        msg = "Rendered template 'agents' must be a list"
-        raise TemplateRenderError(msg)
-    agents = _expand_agents(raw_agents)
+    agents = _expand_agents(_validate_list(rendered_data, "agents"))
+    departments = _build_departments(_validate_list(rendered_data, "departments"))
 
-    # Build departments for RootConfig.
-    raw_depts = rendered_data.get("departments", [])
-    if raw_depts is None:
-        raw_depts = []
-    if not isinstance(raw_depts, list):
-        msg = "Rendered template 'departments' must be a list"
-        raise TemplateRenderError(msg)
-    departments = _build_departments(raw_depts)
-
-    source_name = template.metadata.name
-    try:
-        autonomy = to_float(
-            company.get("autonomy", template.autonomy),
-            field_name="autonomy",
-        )
-        budget_monthly = to_float(
-            company.get("budget_monthly", template.budget_monthly),
-            field_name="budget_monthly",
-        )
-    except ValueError as exc:
-        msg = f"Invalid numeric value in rendered template {source_name!r}: {exc}"
-        raise TemplateRenderError(msg) from exc
+    autonomy, budget_monthly = _extract_numeric_config(company, template)
 
     return {
         "company_name": company_name,
@@ -323,12 +285,45 @@ def _build_config_dict(
     }
 
 
+def _validate_list(
+    rendered_data: dict[str, Any],
+    key: str,
+) -> list[dict[str, Any]]:
+    """Extract and validate a list field from rendered data."""
+    raw = rendered_data.get(key, [])
+    if raw is None:
+        raw = []
+    if not isinstance(raw, list):
+        msg = f"Rendered template {key!r} must be a list"
+        raise TemplateRenderError(msg)
+    return raw
+
+
+def _extract_numeric_config(
+    company: dict[str, Any],
+    template: CompanyTemplate,
+) -> tuple[float, float]:
+    """Extract autonomy and budget_monthly as floats."""
+    source_name = template.metadata.name
+    try:
+        autonomy = to_float(
+            company.get("autonomy", template.autonomy),
+            field_name="autonomy",
+        )
+        budget_monthly = to_float(
+            company.get("budget_monthly", template.budget_monthly),
+            field_name="budget_monthly",
+        )
+    except ValueError as exc:
+        msg = f"Invalid numeric value in rendered template {source_name!r}: {exc}"
+        raise TemplateRenderError(msg) from exc
+    return autonomy, budget_monthly
+
+
 def _expand_agents(
     raw_agents: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """Expand template agent dicts into AgentConfig-compatible dicts.
-
-    Handles auto-name generation and personality preset expansion.
 
     Args:
         raw_agents: List of agent dicts from rendered YAML.
@@ -340,48 +335,52 @@ def _expand_agents(
     used_names: set[str] = set()
 
     for idx, agent in enumerate(raw_agents):
-        role = agent.get("role", "Agent")
-        name = str(agent.get("name", "")).strip()
-
-        # Auto-generate name if empty or still a Jinja2 expression.
-        if not name or name.startswith("{{"):
-            name = generate_auto_name(role, seed=idx)
-
-        # Ensure uniqueness by appending a suffix if needed.
-        base_name = name
-        counter = 2
-        while name in used_names:
-            name = f"{base_name} {counter}"
-            counter += 1
-        used_names.add(name)
-
-        agent_dict: dict[str, Any] = {
-            "name": name,
-            "role": role,
-            "department": agent.get("department", "engineering"),
-            "level": agent.get("level", "mid"),
-        }
-
-        # Expand personality preset.
-        preset_name = agent.get("personality_preset")
-        if preset_name:
-            try:
-                agent_dict["personality"] = get_personality_preset(preset_name)
-            except KeyError:
-                logger.warning(
-                    TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
-                    preset_name=preset_name,
-                    agent_name=name,
-                    available=sorted(PERSONALITY_PRESETS),
-                )
-
-        # Model config (raw dict for AgentConfig).
-        model_tier = agent.get("model", "medium")
-        agent_dict["model"] = {"provider": "default", "model_id": model_tier}
-
-        expanded.append(agent_dict)
+        expanded.append(_expand_single_agent(agent, idx, used_names))
 
     return expanded
+
+
+def _expand_single_agent(
+    agent: dict[str, Any],
+    idx: int,
+    used_names: set[str],
+) -> dict[str, Any]:
+    """Expand a single template agent dict."""
+    role = agent.get("role", "Agent")
+    name = str(agent.get("name", "")).strip()
+
+    if not name or name.startswith("{{"):
+        name = generate_auto_name(role, seed=idx)
+
+    base_name = name
+    counter = 2
+    while name in used_names:
+        name = f"{base_name} {counter}"
+        counter += 1
+    used_names.add(name)
+
+    agent_dict: dict[str, Any] = {
+        "name": name,
+        "role": role,
+        "department": agent.get("department", "engineering"),
+        "level": agent.get("level", "mid"),
+    }
+
+    preset_name = agent.get("personality_preset")
+    if preset_name:
+        try:
+            agent_dict["personality"] = get_personality_preset(preset_name)
+        except KeyError:
+            logger.warning(
+                TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
+                preset_name=preset_name,
+                agent_name=name,
+                available=sorted(PERSONALITY_PRESETS),
+            )
+
+    model_tier = agent.get("model", "medium")
+    agent_dict["model"] = {"provider": "default", "model_id": model_tier}
+    return agent_dict
 
 
 def _build_departments(

@@ -119,24 +119,12 @@ class ReadFileTool(BaseFileSystemTool):
             },
         )
 
-    async def execute(  # noqa: PLR0911
-        self,
-        *,
-        arguments: dict[str, Any],
-    ) -> ToolExecutionResult:
-        """Read a file and return its content.
-
-        Args:
-            arguments: Must contain ``path``; optionally ``start_line``
-                and ``end_line``.
-
-        Returns:
-            A ``ToolExecutionResult`` with the file content or an error.
-        """
-        user_path: str = arguments["path"]
-        start_line: int | None = arguments.get("start_line")
-        end_line: int | None = arguments.get("end_line")
-
+    @staticmethod
+    def _validate_read_args(
+        start_line: int | None,
+        end_line: int | None,
+    ) -> ToolExecutionResult | None:
+        """Return an error if the line range is invalid."""
         if start_line is not None and end_line is not None and start_line > end_line:
             return ToolExecutionResult(
                 content=(
@@ -145,53 +133,45 @@ class ReadFileTool(BaseFileSystemTool):
                 ),
                 is_error=True,
             )
+        return None
 
-        try:
-            resolved = self.path_validator.validate(user_path)
-        except ValueError as exc:
-            return ToolExecutionResult(content=str(exc), is_error=True)
+    async def _preflight_check_file(
+        self,
+        user_path: str,
+        resolved: Path,
+    ) -> tuple[int, ToolExecutionResult | None]:
+        """Verify the file is readable and return its size.
 
-        # Explicit is_dir() check: on Windows, stat() succeeds on dirs
-        # and read_text() raises PermissionError (not IsADirectoryError).
-        if resolved.is_dir():
+        Returns:
+            ``(size_bytes, None)`` on success, or ``(0, error)`` on
+            failure.
+        """
+        if resolved.is_dir():  # noqa: ASYNC240
             logger.warning(TOOL_FS_ERROR, path=user_path, error="is_directory")
-            return ToolExecutionResult(
+            return 0, ToolExecutionResult(
                 content=f"Path is a directory, not a file: {user_path}",
                 is_error=True,
             )
-
         try:
             stat_result = await asyncio.to_thread(resolved.stat)
-            size_bytes = stat_result.st_size
         except (FileNotFoundError, IsADirectoryError, PermissionError, OSError) as exc:
             log_key, msg = _map_os_error(exc, user_path, "reading")
             logger.warning(TOOL_FS_ERROR, path=user_path, error=log_key)
-            return ToolExecutionResult(content=msg, is_error=True)
+            return 0, ToolExecutionResult(content=msg, is_error=True)
+        return stat_result.st_size, None
 
-        oversized = size_bytes > MAX_FILE_SIZE_BYTES
-        has_line_range = start_line is not None or end_line is not None
-
-        if oversized:
-            logger.warning(
-                TOOL_FS_SIZE_EXCEEDED,
-                path=user_path,
-                size_bytes=size_bytes,
-                max_bytes=MAX_FILE_SIZE_BYTES,
-            )
-            if has_line_range:
-                return ToolExecutionResult(
-                    content=(
-                        f"File too large for line-range read: "
-                        f"{user_path} ({size_bytes:,} bytes, "
-                        f"max {MAX_FILE_SIZE_BYTES:,})"
-                    ),
-                    is_error=True,
-                )
-
-        # When oversized, read only MAX_FILE_SIZE_BYTES to avoid
-        # loading the whole file into memory.
+    async def _perform_read(  # noqa: PLR0913
+        self,
+        user_path: str,
+        resolved: Path,
+        start_line: int | None,
+        end_line: int | None,
+        *,
+        size_bytes: int,
+        oversized: bool,
+    ) -> ToolExecutionResult:
+        """Execute the read and build the result."""
         max_bytes = MAX_FILE_SIZE_BYTES if oversized else None
-
         try:
             content = await asyncio.to_thread(
                 _read_sync,
@@ -210,24 +190,20 @@ class ReadFileTool(BaseFileSystemTool):
             log_key, msg = _map_os_error(exc, user_path, "reading")
             logger.warning(TOOL_FS_ERROR, path=user_path, error=log_key)
             return ToolExecutionResult(content=msg, is_error=True)
-
         line_count = content.count("\n") + (
             1 if content and not content.endswith("\n") else 0
         )
-
         if oversized:
             content += (
                 f"\n\n[Truncated: file is {size_bytes:,} bytes, "
                 f"showing first {MAX_FILE_SIZE_BYTES:,}]"
             )
-
         logger.info(
             TOOL_FS_READ,
             path=user_path,
             size_bytes=size_bytes,
             line_count=line_count,
         )
-
         return ToolExecutionResult(
             content=content,
             metadata={
@@ -235,4 +211,64 @@ class ReadFileTool(BaseFileSystemTool):
                 "size_bytes": size_bytes,
                 "line_count": line_count,
             },
+        )
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """Read a file and return its content.
+
+        Args:
+            arguments: Must contain ``path``; optionally ``start_line``
+                and ``end_line``.
+
+        Returns:
+            A ``ToolExecutionResult`` with the file content or an error.
+        """
+        user_path: str = arguments["path"]
+        start_line: int | None = arguments.get("start_line")
+        end_line: int | None = arguments.get("end_line")
+
+        if err := self._validate_read_args(start_line, end_line):
+            return err
+
+        try:
+            resolved = self.path_validator.validate(user_path)
+        except ValueError as exc:
+            return ToolExecutionResult(content=str(exc), is_error=True)
+
+        size_bytes, preflight_err = await self._preflight_check_file(
+            user_path,
+            resolved,
+        )
+        if preflight_err is not None:
+            return preflight_err
+
+        oversized = size_bytes > MAX_FILE_SIZE_BYTES
+        if oversized:
+            logger.warning(
+                TOOL_FS_SIZE_EXCEEDED,
+                path=user_path,
+                size_bytes=size_bytes,
+                max_bytes=MAX_FILE_SIZE_BYTES,
+            )
+            if start_line is not None or end_line is not None:
+                return ToolExecutionResult(
+                    content=(
+                        f"File too large for line-range read: "
+                        f"{user_path} ({size_bytes:,} bytes, "
+                        f"max {MAX_FILE_SIZE_BYTES:,})"
+                    ),
+                    is_error=True,
+                )
+
+        return await self._perform_read(
+            user_path,
+            resolved,
+            start_line,
+            end_line,
+            size_bytes=size_bytes,
+            oversized=oversized,
         )

@@ -24,7 +24,45 @@ logger = get_logger(__name__)
 MAX_ENTRIES: Final[int] = 1000
 
 # Reject glob patterns that could traverse above the workspace.
-_UNSAFE_GLOB_RE = re.compile(r"(^|[/\\])\.\.[/\\]|^\.\.$")
+_UNSAFE_GLOB_RE = re.compile(r"(^|[/\\])\.\.([/\\]|$)|^\.\.$")
+
+
+def _classify_entry(
+    entry: Path,
+    resolved: Path,
+    workspace_root: Path,
+    *,
+    recursive: bool,
+) -> str | None:
+    """Classify a single directory entry into a display line.
+
+    Returns a formatted string (e.g. ``[DIR]  name/``) or ``None``
+    if the entry should be skipped (outside workspace, non-symlink).
+    """
+    display = str(entry.relative_to(resolved)) if recursive else entry.name
+
+    entry_resolved = entry.resolve()
+    if not entry_resolved.is_relative_to(workspace_root):
+        if entry.is_symlink():
+            return f"[SYMLINK] {display} -> (outside workspace)"
+        return None
+
+    if entry.is_symlink():
+        return f"[SYMLINK] {display}"
+
+    if entry.is_dir():
+        return f"[DIR]  {display}/"
+
+    try:
+        size = entry.stat().st_size
+    except OSError as stat_exc:
+        logger.warning(
+            TOOL_FS_STAT_FAILED,
+            path=str(entry),
+            error=str(stat_exc),
+        )
+        return f"[FILE] {display} (unknown bytes)"
+    return f"[FILE] {display} ({size} bytes)"
 
 
 def _list_sync(
@@ -36,20 +74,9 @@ def _list_sync(
 ) -> list[str]:
     """Collect directory entries synchronously.
 
-    Args:
-        resolved: Resolved directory path within the workspace.
-        workspace_root: Workspace root for containment checks.
-        pattern: Optional glob filter (e.g. ``"*.py"``).
-        recursive: Whether to recurse into subdirectories.
-
     Returns:
-        A list of formatted strings with type prefixes
-        (``[DIR]``, ``[FILE]``, ``[SYMLINK]``, ``[ERROR]``).
-        Capped at ``MAX_ENTRIES + 1`` to allow truncation detection.
-
-    Raises:
-        PermissionError: If the process lacks read permission.
-        OSError: For other OS-level I/O failures.
+        Formatted strings with type prefixes, capped at
+        ``MAX_ENTRIES + 1`` to allow truncation detection.
     """
     glob_pattern = pattern or "*"
     if recursive:
@@ -59,43 +86,19 @@ def _list_sync(
     else:
         raw_iter = resolved.iterdir()
 
-    # Cap at MAX_ENTRIES + 1 to detect truncation without
-    # materialising the entire iterator.
     entries = sorted(itertools.islice(raw_iter, MAX_ENTRIES + 1))
 
     lines: list[str] = []
     for entry in entries:
         try:
-            display = str(entry.relative_to(resolved)) if recursive else entry.name
-
-            # Check containment for ALL entries (not just symlinks)
-            # to prevent leaking files via symlinked directories.
-            entry_resolved = entry.resolve()
-            if not entry_resolved.is_relative_to(workspace_root):
-                if entry.is_symlink():
-                    lines.append(
-                        f"[SYMLINK] {display} -> (outside workspace)",
-                    )
-                continue
-
-            if entry.is_symlink():
-                lines.append(f"[SYMLINK] {display}")
-                continue
-
-            if entry.is_dir():
-                lines.append(f"[DIR]  {display}/")
-            else:
-                try:
-                    size = entry.stat().st_size
-                except OSError as stat_exc:
-                    logger.warning(
-                        TOOL_FS_STAT_FAILED,
-                        path=str(entry),
-                        error=str(stat_exc),
-                    )
-                    lines.append(f"[FILE] {display} (unknown bytes)")
-                    continue
-                lines.append(f"[FILE] {display} ({size} bytes)")
+            line = _classify_entry(
+                entry,
+                resolved,
+                workspace_root,
+                recursive=recursive,
+            )
+            if line is not None:
+                lines.append(line)
         except OSError as exc:
             logger.warning(
                 TOOL_FS_ERROR,
@@ -160,7 +163,96 @@ class ListDirectoryTool(BaseFileSystemTool):
             },
         )
 
-    async def execute(  # noqa: C901, PLR0911
+    def _validate_list_args(
+        self,
+        pattern: str | None,
+        *,
+        recursive: bool,
+    ) -> ToolExecutionResult | None:
+        """Return an error result if the glob pattern is invalid."""
+        if not pattern:
+            return None
+        if _UNSAFE_GLOB_RE.search(pattern):
+            logger.warning(TOOL_FS_GLOB_REJECTED, pattern=pattern)
+            return ToolExecutionResult(
+                content=f"Unsafe glob pattern rejected: {pattern}",
+                is_error=True,
+            )
+        if (
+            PurePosixPath(pattern).is_absolute()
+            or PureWindowsPath(pattern).is_absolute()
+        ):
+            logger.warning(TOOL_FS_GLOB_REJECTED, pattern=pattern)
+            return ToolExecutionResult(
+                content=f"Unsafe glob pattern rejected: {pattern}",
+                is_error=True,
+            )
+        if "**" in pattern and not recursive:
+            logger.warning(TOOL_FS_GLOB_REJECTED, pattern=pattern)
+            return ToolExecutionResult(
+                content=(
+                    f"Pattern {pattern!r} uses '**' but recursive=False; "
+                    "set recursive=True to use recursive globs"
+                ),
+                is_error=True,
+            )
+        return None
+
+    def _resolve_and_check_dir(
+        self,
+        user_path: str,
+    ) -> Path | ToolExecutionResult:
+        """Resolve the path and verify it is an existing directory."""
+        try:
+            resolved = self.path_validator.validate(user_path)
+        except ValueError as exc:
+            return ToolExecutionResult(content=str(exc), is_error=True)
+        if not resolved.exists():
+            logger.warning(TOOL_FS_ERROR, path=user_path, error="not_found")
+            return ToolExecutionResult(
+                content=f"Path not found: {user_path}",
+                is_error=True,
+            )
+        if not resolved.is_dir():
+            logger.warning(
+                TOOL_FS_ERROR,
+                path=user_path,
+                error="not_a_directory",
+            )
+            return ToolExecutionResult(
+                content=f"Not a directory: {user_path}",
+                is_error=True,
+            )
+        return resolved
+
+    @staticmethod
+    def _format_listing_result(
+        user_path: str,
+        lines: list[str],
+    ) -> tuple[str, dict[str, Any]]:
+        """Build output text and metadata from listing lines."""
+        truncated = len(lines) > MAX_ENTRIES
+        if truncated:
+            lines = lines[:MAX_ENTRIES]
+        dir_count = sum(1 for ln in lines if ln.startswith("[DIR]"))
+        file_count = sum(1 for ln in lines if ln.startswith("[FILE]"))
+        if not lines:
+            output = f"Directory is empty: {user_path}"
+        else:
+            output = "\n".join(lines)
+            if truncated:
+                output += (
+                    f"\n\n[Truncated: showing first {MAX_ENTRIES} of more entries]"
+                )
+        metadata = {
+            "path": user_path,
+            "total_entries": len(lines),
+            "directories": dir_count,
+            "files": file_count,
+        }
+        return output, metadata
+
+    async def execute(
         self,
         *,
         arguments: dict[str, Any],
@@ -168,8 +260,8 @@ class ListDirectoryTool(BaseFileSystemTool):
         """List directory contents.
 
         Args:
-            arguments: Optionally contains ``path``, ``pattern``, and
-                ``recursive``.
+            arguments: Optionally contains ``path``, ``pattern``,
+                and ``recursive``.
 
         Returns:
             A ``ToolExecutionResult`` with the listing or an error.
@@ -178,61 +270,27 @@ class ListDirectoryTool(BaseFileSystemTool):
         pattern: str | None = arguments.get("pattern")
         recursive: bool = arguments.get("recursive", False)
 
-        # Reject glob patterns that could traverse above the workspace.
-        if pattern and _UNSAFE_GLOB_RE.search(pattern):
-            logger.warning(
-                TOOL_FS_GLOB_REJECTED,
-                pattern=pattern,
-            )
-            return ToolExecutionResult(
-                content=f"Unsafe glob pattern rejected: {pattern}",
-                is_error=True,
-            )
+        if err := self._validate_list_args(pattern, recursive=recursive):
+            return err
 
-        # Reject absolute glob patterns — they cause
-        # NotImplementedError in pathlib.
-        if pattern and (
-            PurePosixPath(pattern).is_absolute()
-            or PureWindowsPath(pattern).is_absolute()
-        ):
-            logger.warning(
-                TOOL_FS_GLOB_REJECTED,
-                pattern=pattern,
-            )
-            return ToolExecutionResult(
-                content=f"Unsafe glob pattern rejected: {pattern}",
-                is_error=True,
-            )
-
-        try:
-            resolved = self.path_validator.validate(user_path)
-        except ValueError as exc:
-            return ToolExecutionResult(content=str(exc), is_error=True)
-
-        if not resolved.exists():
-            logger.warning(TOOL_FS_ERROR, path=user_path, error="not_found")
-            return ToolExecutionResult(
-                content=f"Path not found: {user_path}",
-                is_error=True,
-            )
-
-        if not resolved.is_dir():
-            logger.warning(TOOL_FS_ERROR, path=user_path, error="not_a_directory")
-            return ToolExecutionResult(
-                content=f"Not a directory: {user_path}",
-                is_error=True,
-            )
+        resolved_or_err = self._resolve_and_check_dir(user_path)
+        if isinstance(resolved_or_err, ToolExecutionResult):
+            return resolved_or_err
 
         try:
             lines = await asyncio.to_thread(
                 _list_sync,
-                resolved,
+                resolved_or_err,
                 self.workspace_root,
                 pattern,
                 recursive=recursive,
             )
         except PermissionError:
-            logger.warning(TOOL_FS_ERROR, path=user_path, error="permission_denied")
+            logger.warning(
+                TOOL_FS_ERROR,
+                path=user_path,
+                error="permission_denied",
+            )
             return ToolExecutionResult(
                 content=f"Permission denied: {user_path}",
                 is_error=True,
@@ -244,36 +302,12 @@ class ListDirectoryTool(BaseFileSystemTool):
                 is_error=True,
             )
 
-        truncated = len(lines) > MAX_ENTRIES
-        if truncated:
-            lines = lines[:MAX_ENTRIES]
-
-        dir_count = sum(1 for ln in lines if ln.startswith("[DIR]"))
-        file_count = sum(1 for ln in lines if ln.startswith("[FILE]"))
-
-        if not lines:
-            output = f"Directory is empty: {user_path}"
-        else:
-            output = "\n".join(lines)
-            if truncated:
-                output += (
-                    f"\n\n[Truncated: showing first {MAX_ENTRIES} of more entries]"
-                )
-
+        output, metadata = self._format_listing_result(user_path, lines)
         logger.info(
             TOOL_FS_LIST,
             path=user_path,
-            total_entries=len(lines),
-            directories=dir_count,
-            files=file_count,
+            total_entries=metadata["total_entries"],
+            directories=metadata["directories"],
+            files=metadata["files"],
         )
-
-        return ToolExecutionResult(
-            content=output,
-            metadata={
-                "path": user_path,
-                "total_entries": len(lines),
-                "directories": dir_count,
-                "files": file_count,
-            },
-        )
+        return ToolExecutionResult(content=output, metadata=metadata)

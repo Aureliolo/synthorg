@@ -174,19 +174,14 @@ class CostTracker:
         start: datetime,
         end: datetime,
     ) -> SpendingSummary:
-        """Build a full spending summary for the given period.
-
-        The alert level is computed against the *period* cost — callers
-        should pass the full billing-month window for accurate budget
-        monitoring.
+        """Build a spending summary for the given period.
 
         Args:
             start: Inclusive period start.
             end: Exclusive period end.
 
         Returns:
-            Aggregated spending summary with per-agent and per-department
-            breakdowns, budget utilisation, and alert level.
+            Aggregated spending summary with breakdowns and alert level.
 
         Raises:
             ValueError: If ``start >= end``.

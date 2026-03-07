@@ -296,19 +296,17 @@ class ToolInvoker:
             is_error=True,
         )
 
-    async def _execute_tool(
+    def _safe_deepcopy_args(
         self,
-        tool: BaseTool,
         tool_call: ToolCall,
-    ) -> ToolExecutionResult | ToolResult:
-        """Deep-copy arguments for isolation, then execute the tool.
+    ) -> dict[str, object] | ToolResult:
+        """Deep-copy tool call arguments for isolation.
 
-        Copy failures and execution errors are caught and returned as
-        ``ToolResult(is_error=True)``.  Non-recoverable errors
-        (``MemoryError``, ``RecursionError``) propagate after logging.
+        Returns the copied dict on success, or a ``ToolResult`` on
+        failure.  Non-recoverable errors propagate after logging.
         """
         try:
-            safe_args = copy.deepcopy(tool_call.arguments)
+            return copy.deepcopy(tool_call.arguments)
         except (MemoryError, RecursionError) as exc:
             logger.exception(
                 TOOL_INVOKE_NON_RECOVERABLE,
@@ -333,6 +331,16 @@ class ToolInvoker:
                 ),
                 is_error=True,
             )
+
+    async def _execute_tool(
+        self,
+        tool: BaseTool,
+        tool_call: ToolCall,
+    ) -> ToolExecutionResult | ToolResult:
+        """Deep-copy arguments for isolation, then execute the tool."""
+        safe_args = self._safe_deepcopy_args(tool_call)
+        if isinstance(safe_args, ToolResult):
+            return safe_args
         try:
             return await tool.execute(arguments=safe_args)
         except (MemoryError, RecursionError) as exc:
@@ -408,6 +416,16 @@ class ToolInvoker:
         except (MemoryError, RecursionError) as exc:
             fatal_errors.append(exc)
 
+    @staticmethod
+    def _raise_fatal_errors(fatal_errors: list[Exception]) -> None:
+        """Re-raise collected fatal errors after all tasks complete."""
+        if not fatal_errors:
+            return
+        if len(fatal_errors) == 1:
+            raise fatal_errors[0]
+        msg = "multiple non-recoverable tool errors"
+        raise ExceptionGroup(msg, fatal_errors)
+
     async def invoke_all(
         self,
         tool_calls: Iterable[ToolCall],
@@ -416,23 +434,15 @@ class ToolInvoker:
     ) -> tuple[ToolResult, ...]:
         """Execute multiple tool calls concurrently.
 
-        Calls continue through recoverable failures; non-recoverable
-        errors (``MemoryError``, ``RecursionError``) are collected and
-        re-raised after all tasks complete.
-
         Args:
             tool_calls: Tool calls to execute.
-            max_concurrency: Maximum number of concurrent invocations.
-                ``None`` (default) means unbounded.  Must be ``>= 1``
-                if provided.
+            max_concurrency: Max concurrent invocations (``>= 1``).
 
         Returns:
             Tuple of results in the same order as the input.
 
         Raises:
-            ValueError: If ``max_concurrency`` is less than 1.
-            MemoryError: Re-raised if it was the sole fatal error.
-            RecursionError: Re-raised if it was the sole fatal error.
+            ValueError: If *max_concurrency* < 1.
             ExceptionGroup: If multiple fatal errors occurred.
         """
         if max_concurrency is not None and max_concurrency < 1:
@@ -449,9 +459,6 @@ class ToolInvoker:
             max_concurrency=max_concurrency,
         )
 
-        # SAFETY: Both ``results`` and ``fatal_errors`` are mutated by
-        # concurrent tasks.  This is safe because asyncio runs tasks on
-        # a single thread — dict assignment and list.append() never race.
         results: dict[int, ToolResult] = {}
         fatal_errors: list[Exception] = []
         semaphore = (
@@ -461,7 +468,13 @@ class ToolInvoker:
         async with asyncio.TaskGroup() as tg:
             for idx, call in enumerate(calls):
                 tg.create_task(
-                    self._run_guarded(idx, call, results, fatal_errors, semaphore),
+                    self._run_guarded(
+                        idx,
+                        call,
+                        results,
+                        fatal_errors,
+                        semaphore,
+                    ),
                 )
 
         logger.info(
@@ -470,10 +483,5 @@ class ToolInvoker:
             fatal_count=len(fatal_errors),
         )
 
-        if fatal_errors:
-            if len(fatal_errors) == 1:
-                raise fatal_errors[0]
-            msg = "multiple non-recoverable tool errors"
-            raise ExceptionGroup(msg, fatal_errors)
-
+        self._raise_fatal_errors(fatal_errors)
         return tuple(results[i] for i in range(len(calls)))

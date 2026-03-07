@@ -280,6 +280,34 @@ class TestCompanyTemplate:
         with pytest.raises(ValidationError):
             CompanyTemplate(**make_template_dict(budget_monthly=-10.0))
 
+    def test_blank_workflow_rejected(
+        self,
+        make_template_dict: Callable[..., dict[str, Any]],
+    ) -> None:
+        with pytest.raises(ValidationError):
+            CompanyTemplate(**make_template_dict(workflow=""))
+
+    def test_whitespace_workflow_rejected(
+        self,
+        make_template_dict: Callable[..., dict[str, Any]],
+    ) -> None:
+        with pytest.raises(ValidationError):
+            CompanyTemplate(**make_template_dict(workflow="   "))
+
+    def test_blank_communication_rejected(
+        self,
+        make_template_dict: Callable[..., dict[str, Any]],
+    ) -> None:
+        with pytest.raises(ValidationError):
+            CompanyTemplate(**make_template_dict(communication=""))
+
+    def test_whitespace_communication_rejected(
+        self,
+        make_template_dict: Callable[..., dict[str, Any]],
+    ) -> None:
+        with pytest.raises(ValidationError):
+            CompanyTemplate(**make_template_dict(communication="   "))
+
     def test_frozen(
         self,
         make_template_dict: Callable[..., dict[str, Any]],

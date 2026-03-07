@@ -257,6 +257,31 @@ class TestAgentEngineInvalidInput:
                 task=blocked_task,
             )
 
+    async def test_task_assigned_to_different_agent_raises(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A task assigned to another agent cannot be executed."""
+        other_task = Task(
+            id="task-other",
+            title="Other agent task",
+            description="Assigned to someone else.",
+            type=TaskType.DEVELOPMENT,
+            project="proj-001",
+            created_by="manager",
+            assigned_to="completely-different-agent-id",
+            status=TaskStatus.ASSIGNED,
+        )
+        provider = mock_provider_factory([])
+        engine = AgentEngine(provider=provider)
+
+        with pytest.raises(ExecutionStateError, match="not to agent"):
+            await engine.run(
+                identity=sample_agent_with_personality,
+                task=other_task,
+            )
+
 
 @pytest.mark.unit
 class TestAgentEngineMaxTurnsBoundary:

@@ -3,6 +3,11 @@
 import copy
 from typing import Any
 
+from ai_company.observability import get_logger
+from ai_company.observability.events.config import CONFIG_CONVERSION_ERROR
+
+logger = get_logger(__name__)
+
 
 def to_float(value: Any, *, field_name: str = "value") -> float:
     """Coerce a value to float with clear error reporting.
@@ -19,11 +24,13 @@ def to_float(value: Any, *, field_name: str = "value") -> float:
     """
     if value is None:
         msg = f"Expected numeric value for {field_name}, got None"
+        logger.warning(CONFIG_CONVERSION_ERROR, field=field_name, error=msg)
         raise ValueError(msg)
     try:
         return float(value)
     except (TypeError, ValueError) as exc:
         msg = f"Invalid numeric value for {field_name}: {value!r}"
+        logger.warning(CONFIG_CONVERSION_ERROR, field=field_name, error=msg)
         raise ValueError(msg) from exc
 
 

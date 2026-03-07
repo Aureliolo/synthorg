@@ -12,6 +12,7 @@ interactive prompts and restrict config/protocol attack surfaces.
 
 import asyncio
 import os
+import re
 from abc import ABC
 from pathlib import Path  # noqa: TC003 — used at runtime
 from typing import Any, Final
@@ -31,6 +32,13 @@ from ai_company.tools.base import BaseTool, ToolExecutionResult
 logger = get_logger(__name__)
 
 _DEFAULT_TIMEOUT: Final[float] = 30.0
+
+_CREDENTIAL_RE = re.compile(r"(https?://)[^@/:]+:[^@/:]+@")
+
+
+def _sanitize_command(args: list[str]) -> list[str]:
+    """Redact embedded credentials from git command args for logging."""
+    return [_CREDENTIAL_RE.sub(r"\1***@", a) for a in args]
 
 
 class _BaseGitTool(BaseTool, ABC):
@@ -163,6 +171,107 @@ class _BaseGitTool(BaseTool, ABC):
             )
         return None
 
+    @staticmethod
+    def _build_git_env() -> dict[str, str]:
+        """Build a hardened environment for git subprocesses."""
+        return {
+            **os.environ,
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_PROTOCOL_FROM_USER": "0",
+        }
+
+    async def _start_git_process(
+        self,
+        args: list[str],
+        *,
+        work_dir: Path,
+        env: dict[str, str],
+    ) -> asyncio.subprocess.Process | ToolExecutionResult:
+        """Start the git subprocess, returning an error on failure."""
+        try:
+            return await asyncio.create_subprocess_exec(
+                "git",
+                *args,
+                cwd=work_dir,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
+            )
+        except OSError:
+            logger.warning(
+                GIT_COMMAND_FAILED,
+                command=_sanitize_command(["git", *args]),
+                error="subprocess start failed",
+                exc_info=True,
+            )
+            return ToolExecutionResult(
+                content="Failed to start git process",
+                is_error=True,
+            )
+
+    async def _await_git_process(
+        self,
+        proc: asyncio.subprocess.Process,
+        args: list[str],
+        *,
+        deadline: float,
+    ) -> tuple[bytes, bytes] | ToolExecutionResult:
+        """Wait for the process with a timeout, returning output or error."""
+        try:
+            return await asyncio.wait_for(
+                proc.communicate(),
+                timeout=deadline,
+            )
+        except TimeoutError:
+            proc.kill()
+            try:
+                await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            except TimeoutError:
+                logger.warning(
+                    GIT_COMMAND_FAILED,
+                    command=_sanitize_command(["git", *args]),
+                    error="process did not terminate after kill",
+                )
+            logger.warning(
+                GIT_COMMAND_TIMEOUT,
+                command=_sanitize_command(["git", *args]),
+                deadline=deadline,
+            )
+            return ToolExecutionResult(
+                content=f"Git command timed out after {deadline}s",
+                is_error=True,
+            )
+
+    @staticmethod
+    def _process_git_output(
+        args: list[str],
+        returncode: int | None,
+        stdout_bytes: bytes,
+        stderr_bytes: bytes,
+    ) -> ToolExecutionResult:
+        """Decode output and build the result."""
+        stdout = stdout_bytes.decode("utf-8", errors="replace").strip()
+        stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
+        if returncode != 0:
+            logger.warning(
+                GIT_COMMAND_FAILED,
+                command=_sanitize_command(["git", *args]),
+                returncode=returncode,
+                stderr=stderr,
+                stdout=stdout,
+            )
+            return ToolExecutionResult(
+                content=stderr or stdout or "Unknown git error",
+                is_error=True,
+            )
+        logger.debug(
+            GIT_COMMAND_SUCCESS,
+            command=_sanitize_command(["git", *args]),
+        )
+        return ToolExecutionResult(content=stdout)
+
     async def _run_git(
         self,
         args: list[str],
@@ -178,89 +287,38 @@ class _BaseGitTool(BaseTool, ABC):
             deadline: Seconds before the process is killed.
 
         Returns:
-            A ``ToolExecutionResult`` with stdout as content on success,
-            or stderr/error message with ``is_error=True`` on failure.
+            A ``ToolExecutionResult`` with stdout on success, or an
+            error message with ``is_error=True`` on failure.
         """
         work_dir = cwd or self._workspace
-        env = {
-            **os.environ,
-            "GIT_TERMINAL_PROMPT": "0",
-            "GIT_CONFIG_NOSYSTEM": "1",
-            "GIT_CONFIG_GLOBAL": os.devnull,
-            "GIT_PROTOCOL_FROM_USER": "0",
-        }
+        env = self._build_git_env()
 
         logger.debug(
             GIT_COMMAND_START,
-            command=["git", *args],
+            command=_sanitize_command(["git", *args]),
             cwd=str(work_dir),
         )
 
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "git",
-                *args,
-                cwd=work_dir,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=env,
-            )
-        except OSError:
-            logger.warning(
-                GIT_COMMAND_FAILED,
-                command=["git", *args],
-                error="subprocess start failed",
-                exc_info=True,
-            )
-            return ToolExecutionResult(
-                content="Failed to start git process",
-                is_error=True,
-            )
-
-        try:
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                proc.communicate(),
-                timeout=deadline,
-            )
-        except TimeoutError:
-            proc.kill()
-            try:
-                await asyncio.wait_for(proc.communicate(), timeout=5.0)
-            except TimeoutError:
-                logger.warning(
-                    GIT_COMMAND_FAILED,
-                    command=["git", *args],
-                    error="process did not terminate after kill",
-                )
-            logger.warning(
-                GIT_COMMAND_TIMEOUT,
-                command=["git", *args],
-                deadline=deadline,
-            )
-            return ToolExecutionResult(
-                content=f"Git command timed out after {deadline}s",
-                is_error=True,
-            )
-
-        stdout = stdout_bytes.decode("utf-8", errors="replace").strip()
-        stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
-
-        if proc.returncode != 0:
-            logger.warning(
-                GIT_COMMAND_FAILED,
-                command=["git", *args],
-                returncode=proc.returncode,
-                stderr=stderr,
-                stdout=stdout,
-            )
-            error_output = stderr or stdout or "Unknown git error"
-            return ToolExecutionResult(
-                content=error_output,
-                is_error=True,
-            )
-
-        logger.debug(
-            GIT_COMMAND_SUCCESS,
-            command=["git", *args],
+        proc_or_err = await self._start_git_process(
+            args,
+            work_dir=work_dir,
+            env=env,
         )
-        return ToolExecutionResult(content=stdout)
+        if isinstance(proc_or_err, ToolExecutionResult):
+            return proc_or_err
+
+        output_or_err = await self._await_git_process(
+            proc_or_err,
+            args,
+            deadline=deadline,
+        )
+        if isinstance(output_or_err, ToolExecutionResult):
+            return output_or_err
+
+        stdout_bytes, stderr_bytes = output_or_err
+        return self._process_git_output(
+            args,
+            proc_or_err.returncode,
+            stdout_bytes,
+            stderr_bytes,
+        )

@@ -15,6 +15,7 @@ from ai_company.templates.loader import (
     BUILTIN_TEMPLATES,
     LoadedTemplate,
     TemplateInfo,
+    _to_float,
     list_builtin_templates,
     list_templates,
     load_template,
@@ -199,3 +200,98 @@ class TestLoadedTemplate:
         loaded = load_template("startup")
         assert isinstance(loaded.raw_yaml, str)
         assert "template:" in loaded.raw_yaml
+
+
+# ── list_templates edge cases ────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestListTemplatesEdgeCases:
+    def test_skip_unreadable_user_template(self, tmp_path: Path) -> None:
+        """User templates that raise OSError are skipped."""
+        user_dir = tmp_path / "user_templates"
+        user_dir.mkdir()
+        tpl = user_dir / "broken.yaml"
+        tpl.write_text("template:\n  name: x\n", encoding="utf-8")
+
+        with (
+            patch(
+                "ai_company.templates.loader._USER_TEMPLATES_DIR",
+                user_dir,
+            ),
+            patch(
+                "ai_company.templates.loader._load_from_file",
+                side_effect=OSError("disk error"),
+            ),
+        ):
+            templates = list_templates()
+            names = {t.name for t in templates}
+            assert "broken" not in names
+
+    def test_skip_invalid_user_template(self, tmp_path: Path) -> None:
+        """User templates that raise TemplateRenderError are skipped."""
+        user_dir = tmp_path / "user_templates"
+        user_dir.mkdir()
+        tpl = user_dir / "invalid.yaml"
+        tpl.write_text("template:\n  name: x\n", encoding="utf-8")
+
+        with (
+            patch(
+                "ai_company.templates.loader._USER_TEMPLATES_DIR",
+                user_dir,
+            ),
+            patch(
+                "ai_company.templates.loader._load_from_file",
+                side_effect=TemplateRenderError("bad template"),
+            ),
+        ):
+            templates = list_templates()
+            names = {t.name for t in templates}
+            assert "invalid" not in names
+
+    def test_defective_builtin_skipped(self) -> None:
+        """A defective built-in template is skipped without crashing."""
+        with patch(
+            "ai_company.templates.loader._load_builtin",
+            side_effect=TemplateRenderError("broken builtin"),
+        ):
+            templates = list_templates()
+            # All builtins failed, so only user templates (none) remain.
+            assert isinstance(templates, tuple)
+
+
+# ── load_template path traversal ─────────────────────────────────
+
+
+@pytest.mark.unit
+class TestLoadTemplatePathTraversal:
+    def test_posix_path_traversal_rejected(self) -> None:
+        with pytest.raises(
+            TemplateNotFoundError, match="must not contain path separators"
+        ):
+            load_template("../etc/passwd")
+
+    def test_windows_path_traversal_rejected(self) -> None:
+        with pytest.raises(
+            TemplateNotFoundError, match="must not contain path separators"
+        ):
+            load_template("..\\etc\\passwd")
+
+
+# ── _to_float ────────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestToFloat:
+    @pytest.mark.parametrize(
+        ("input_val", "expected"),
+        [
+            (None, 0.0),
+            ("3.14", 3.14),
+            ("not-a-number", 0.0),
+            ([1, 2, 3], 0.0),
+        ],
+        ids=["none", "valid-string", "invalid-string", "list"],
+    )
+    def test_to_float_coercion(self, input_val: object, expected: float) -> None:
+        assert _to_float(input_val) == expected

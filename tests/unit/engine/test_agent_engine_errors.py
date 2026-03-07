@@ -255,12 +255,13 @@ class TestAgentEngineFatalErrorResult:
                 "ai_company.engine.agent_engine.AgentContext.from_identity",
                 side_effect=ValueError("secondary failure"),
             ),
-            pytest.raises(RuntimeError, match="original error"),
+            pytest.raises(RuntimeError, match="original error") as exc_info,
         ):
             await engine.run(
                 identity=sample_agent_with_personality,
                 task=sample_task_with_criteria,
             )
+        assert exc_info.value.__cause__ is None
 
 
 @pytest.mark.unit

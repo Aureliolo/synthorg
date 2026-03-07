@@ -196,16 +196,8 @@ def _fastest_within_budget(
 ) -> tuple[ResolvedModel, bool]:
     """Pick the fastest model within budget, falling back to cheapest.
 
-    When no models have latency data, delegates to
-    ``_cheapest_within_budget`` (lower-cost models are typically smaller
-    and faster, making cost a reasonable proxy when latency data is
-    unavailable).
-
     Returns:
-        Tuple of (model, budget_exceeded).  If budget is exceeded by
-        all models with latency data, returns the fastest anyway with
-        ``budget_exceeded=True``.  Models without latency data are
-        excluded from this path.
+        Tuple of ``(model, budget_exceeded)``.
 
     Raises:
         NoAvailableModelError: If no models are registered at all.

@@ -78,6 +78,44 @@ class DeleteFileTool(BaseFileSystemTool):
         """
         return True
 
+    @staticmethod
+    def _handle_delete_error(
+        exc: OSError,
+        user_path: str,
+    ) -> ToolExecutionResult:
+        """Map a delete OS error to a ``ToolExecutionResult``."""
+        if isinstance(exc, FileNotFoundError):
+            logger.warning(TOOL_FS_ERROR, path=user_path, error="not_found")
+            return ToolExecutionResult(
+                content=f"File not found: {user_path}",
+                is_error=True,
+            )
+        if isinstance(exc, IsADirectoryError):
+            logger.warning(
+                TOOL_FS_ERROR,
+                path=user_path,
+                error="is_directory",
+            )
+            return ToolExecutionResult(
+                content=f"Cannot delete directory (use a dedicated tool): {user_path}",
+                is_error=True,
+            )
+        if isinstance(exc, PermissionError):
+            logger.warning(
+                TOOL_FS_ERROR,
+                path=user_path,
+                error="permission_denied",
+            )
+            return ToolExecutionResult(
+                content=f"Permission denied: {user_path}",
+                is_error=True,
+            )
+        logger.warning(TOOL_FS_ERROR, path=user_path, error=str(exc))
+        return ToolExecutionResult(
+            content=f"OS error deleting file: {user_path}",
+            is_error=True,
+        )
+
     async def execute(
         self,
         *,
@@ -98,41 +136,16 @@ class DeleteFileTool(BaseFileSystemTool):
         except ValueError as exc:
             return ToolExecutionResult(content=str(exc), is_error=True)
 
-        # Let _delete_sync handle all filesystem checks atomically
-        # rather than pre-checking exists()/is_dir() — avoids TOCTOU.
         try:
             size_bytes = await asyncio.to_thread(_delete_sync, resolved)
-        except FileNotFoundError:
-            logger.warning(TOOL_FS_ERROR, path=user_path, error="not_found")
-            return ToolExecutionResult(
-                content=f"File not found: {user_path}",
-                is_error=True,
-            )
-        except IsADirectoryError:
-            logger.warning(TOOL_FS_ERROR, path=user_path, error="is_directory")
-            return ToolExecutionResult(
-                content=f"Cannot delete directory (use a dedicated tool): {user_path}",
-                is_error=True,
-            )
-        except PermissionError:
-            logger.warning(TOOL_FS_ERROR, path=user_path, error="permission_denied")
-            return ToolExecutionResult(
-                content=f"Permission denied: {user_path}",
-                is_error=True,
-            )
         except OSError as exc:
-            logger.warning(TOOL_FS_ERROR, path=user_path, error=str(exc))
-            return ToolExecutionResult(
-                content=f"OS error deleting file: {user_path}",
-                is_error=True,
-            )
+            return self._handle_delete_error(exc, user_path)
 
         logger.info(
             TOOL_FS_DELETE,
             path=user_path,
             size_bytes=size_bytes,
         )
-
         return ToolExecutionResult(
             content=f"Deleted {user_path} ({size_bytes} bytes)",
             metadata={

@@ -153,43 +153,13 @@ def build_system_prompt(  # noqa: PLR0913
 ) -> SystemPrompt:
     """Build a system prompt from agent identity and optional context.
 
-    Renders the agent's personality, skills, authority, and autonomy into
-    a structured system prompt. Optional context (task, tools, company)
-    adds additional sections.
-
     When ``max_tokens`` is provided and the prompt exceeds it, optional
-    sections are progressively trimmed in order: company context, tool
-    descriptions, task details.
-
-    Args:
-        agent: The agent identity to build the prompt for.
-        role: Optional role with description to include.
-        task: Optional current task context.
-        available_tools: Tool definitions to include in the prompt.
-        company: Optional company context.
-        max_tokens: Maximum token budget for the prompt. ``None`` means
-            no limit.
-        custom_template: Optional Jinja2 template string. When provided,
-            overrides the default template.
-        token_estimator: Custom token estimator. Defaults to
-            :class:`DefaultTokenEstimator`.
-
-    Returns:
-        Frozen :class:`SystemPrompt` with rendered content and metadata.
+    sections are progressively trimmed (company, tools, task).
 
     Raises:
-        PromptBuildError: If prompt construction fails (invalid template,
-            rendering error, or unexpected error).
+        PromptBuildError: If prompt construction fails.
     """
-    if max_tokens is not None and max_tokens <= 0:
-        msg = f"max_tokens must be > 0, got {max_tokens}"
-        logger.error(
-            PROMPT_BUILD_ERROR,
-            agent_id=str(agent.id),
-            agent_name=agent.name,
-            max_tokens=max_tokens,
-        )
-        raise PromptBuildError(msg)
+    _validate_max_tokens(agent, max_tokens)
 
     logger.info(
         PROMPT_BUILD_START,
@@ -236,6 +206,30 @@ def build_system_prompt(  # noqa: PLR0913
         msg = f"Unexpected error building prompt for agent '{agent.name}': {exc}"
         raise PromptBuildError(msg) from exc
 
+    return _log_and_return(agent, result)
+
+
+def _validate_max_tokens(
+    agent: AgentIdentity,
+    max_tokens: int | None,
+) -> None:
+    """Raise ``PromptBuildError`` if ``max_tokens`` is non-positive."""
+    if max_tokens is not None and max_tokens <= 0:
+        msg = f"max_tokens must be > 0, got {max_tokens}"
+        logger.error(
+            PROMPT_BUILD_ERROR,
+            agent_id=str(agent.id),
+            agent_name=agent.name,
+            max_tokens=max_tokens,
+        )
+        raise PromptBuildError(msg)
+
+
+def _log_and_return(
+    agent: AgentIdentity,
+    result: SystemPrompt,
+) -> SystemPrompt:
+    """Log prompt build success and return the result."""
     logger.info(
         PROMPT_BUILD_SUCCESS,
         agent_id=str(agent.id),
@@ -243,7 +237,6 @@ def build_system_prompt(  # noqa: PLR0913
         estimated_tokens=result.estimated_tokens,
         template_version=result.template_version,
     )
-
     return result
 
 
@@ -456,21 +449,7 @@ def _trim_sections(  # noqa: PLR0913
 ) -> tuple[Task | None, tuple[ToolDefinition, ...], Company | None]:
     """Progressively remove optional sections until under token budget.
 
-    Returns the (possibly cleared) task, available_tools, and company after
-    trimming. Logs warnings for trimmed sections and budget-exceeded state.
-
-    Args:
-        template_str: Jinja2 template text.
-        agent: Agent identity.
-        role: Optional role.
-        task: Optional task context.
-        available_tools: Tool definitions.
-        company: Optional company context.
-        max_tokens: Token budget.
-        estimator: Token estimator.
-
-    Returns:
-        Tuple of (task, available_tools, company) after trimming.
+    Returns the (possibly cleared) task, available_tools, and company.
     """
     trimmed_sections: list[str] = []
 
@@ -507,7 +486,18 @@ def _trim_sections(  # noqa: PLR0913
         company,
         estimator,
     )
+    _log_trim_results(agent, max_tokens, estimated, trimmed_sections)
 
+    return task, available_tools, company
+
+
+def _log_trim_results(
+    agent: AgentIdentity,
+    max_tokens: int,
+    estimated: int,
+    trimmed_sections: list[str],
+) -> None:
+    """Log warnings for trimmed sections and/or budget-exceeded state."""
     if trimmed_sections:
         logger.warning(
             PROMPT_BUILD_TOKEN_TRIMMED,
@@ -516,7 +506,6 @@ def _trim_sections(  # noqa: PLR0913
             estimated_tokens=estimated,
             trimmed_sections=trimmed_sections,
         )
-
     if estimated > max_tokens:
         logger.warning(
             PROMPT_BUILD_BUDGET_EXCEEDED,
@@ -524,8 +513,6 @@ def _trim_sections(  # noqa: PLR0913
             max_tokens=max_tokens,
             estimated_tokens=estimated,
         )
-
-    return task, available_tools, company
 
 
 def _render_with_trimming(  # noqa: PLR0913
@@ -539,25 +526,7 @@ def _render_with_trimming(  # noqa: PLR0913
     max_tokens: int | None,
     estimator: PromptTokenEstimator,
 ) -> SystemPrompt:
-    """Render the prompt, trimming optional sections if over token budget.
-
-    Progressively removes optional sections (company, tools, task) until
-    the prompt fits within ``max_tokens``, or all optional sections are
-    exhausted.
-
-    Args:
-        template_str: Jinja2 template text.
-        agent: Agent identity.
-        role: Optional role.
-        task: Optional task context.
-        available_tools: Tool definitions.
-        company: Optional company context.
-        max_tokens: Token budget (``None`` = unlimited).
-        estimator: Token estimator.
-
-    Returns:
-        Rendered :class:`SystemPrompt`.
-    """
+    """Render the prompt, trimming optional sections if over token budget."""
     content, estimated = _render_and_estimate(
         template_str,
         agent,
@@ -589,12 +558,30 @@ def _render_with_trimming(  # noqa: PLR0913
             estimator,
         )
 
+    return _build_prompt_result(
+        content,
+        estimated,
+        task,
+        available_tools,
+        company,
+        agent,
+    )
+
+
+def _build_prompt_result(  # noqa: PLR0913
+    content: str,
+    estimated: int,
+    task: Task | None,
+    available_tools: tuple[ToolDefinition, ...],
+    company: Company | None,
+    agent: AgentIdentity,
+) -> SystemPrompt:
+    """Assemble the final ``SystemPrompt`` from rendered content."""
     sections = _compute_sections(
         task=task,
         available_tools=available_tools,
         company=company,
     )
-
     return SystemPrompt(
         content=content,
         template_version=PROMPT_TEMPLATE_VERSION,

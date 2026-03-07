@@ -16,6 +16,14 @@ from typing import TYPE_CHECKING, ParamSpec, TypeVar
 
 import structlog
 
+from ai_company.observability._logger import get_logger
+from ai_company.observability.events.correlation import (
+    CORRELATION_ASYNC_DECORATOR_MISUSE,
+    CORRELATION_SYNC_DECORATOR_MISUSE,
+)
+
+logger = get_logger(__name__)
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
 
@@ -146,6 +154,10 @@ def with_correlation(
                 "with_correlation() does not support async functions. "
                 "Use with_correlation_async() instead."
             )
+            logger.warning(
+                CORRELATION_SYNC_DECORATOR_MISUSE,
+                function=func.__qualname__,
+            )
             raise TypeError(msg)
 
         @functools.wraps(func)
@@ -198,6 +210,10 @@ def with_correlation_async(
             msg = (
                 "with_correlation_async() requires an async function. "
                 "Use with_correlation() for synchronous functions."
+            )
+            logger.warning(
+                CORRELATION_ASYNC_DECORATOR_MISUSE,
+                function=func.__qualname__,
             )
             raise TypeError(msg)
 

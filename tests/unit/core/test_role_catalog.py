@@ -233,3 +233,33 @@ class TestGetSeniorityInfo:
             pytest.raises(LookupError, match="catalog may be incomplete"),
         ):
             get_seniority_info(SeniorityLevel.JUNIOR)
+
+
+# ── Import-time Guard Tests ──────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestCatalogGuards:
+    """Tests for the import-time guard logic in role_catalog.py."""
+
+    def test_no_duplicate_role_names_after_case_normalization(self) -> None:
+        """Verify _BUILTIN_ROLES_BY_NAME guard: all names are unique after casefold."""
+        casefolded = [r.name.casefold() for r in BUILTIN_ROLES]
+        assert len(casefolded) == len(set(casefolded)), (
+            "Duplicate built-in role names after case-normalization"
+        )
+
+    def test_no_duplicate_seniority_levels(self) -> None:
+        """Verify _SENIORITY_INFO_BY_LEVEL guard: all levels are unique."""
+        levels = [info.level for info in SENIORITY_INFO]
+        assert len(levels) == len(set(levels)), (
+            "Duplicate seniority levels found in SENIORITY_INFO"
+        )
+
+    def test_no_missing_seniority_levels(self) -> None:
+        """Verify every SeniorityLevel enum value has a mapping in SENIORITY_INFO."""
+        mapped_levels = {info.level for info in SENIORITY_INFO}
+        missing = set(SeniorityLevel) - mapped_levels
+        assert not missing, (
+            f"Missing seniority mappings: {sorted(lv.value for lv in missing)}"
+        )

@@ -82,6 +82,7 @@ class TestEventConstants:
         expected = {
             "budget",
             "config",
+            "correlation",
             "execution",
             "git",
             "prompt",

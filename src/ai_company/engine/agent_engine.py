@@ -118,31 +118,9 @@ class AgentEngine:
     ) -> AgentRunResult:
         """Execute an agent on a task.
 
-        Args:
-            identity: Frozen agent identity card.
-            task: Task to execute (must be ASSIGNED or IN_PROGRESS).
-            completion_config: Optional per-run LLM config override.
-            max_turns: Maximum LLM turns allowed (must be >= 1).
-            memory_messages: Optional working memory messages to inject
-                between the system prompt and task instruction.
-            timeout_seconds: Optional wall-clock timeout in seconds.
-                When exceeded, the execution loop is cancelled and the
-                run returns with ``TerminationReason.ERROR``. Cost
-                recording and post-execution processing still occur.
-
-        Returns:
-            ``AgentRunResult`` with execution outcome and metadata.
-            All exceptions during execution (other than those listed
-            below) are caught and returned as an error result rather
-            than propagated.
-
         Raises:
-            ExecutionStateError: If pre-flight validation fails (agent
-                not ACTIVE or task not ASSIGNED/IN_PROGRESS).
-            ValueError: If ``max_turns`` is less than 1, or if
-                ``timeout_seconds`` is not positive.
-            MemoryError: Re-raised unconditionally (non-recoverable).
-            RecursionError: Re-raised unconditionally (non-recoverable).
+            ExecutionStateError: If pre-flight validation fails.
+            ValueError: If ``max_turns < 1`` or ``timeout_seconds <= 0``.
         """
         agent_id = str(identity.id)
         task_id = task.id
@@ -225,12 +203,7 @@ class AgentEngine:
         timeout_seconds: float | None = None,
         tool_invoker: ToolInvoker | None = None,
     ) -> AgentRunResult:
-        """Run execution loop, record costs, apply transitions, and build result.
-
-        Orchestrates the full execution pipeline: loop execution (with
-        optional wall-clock timeout via ``asyncio.wait``), per-turn cost
-        recording, post-execution task transitions, and metrics logging.
-        """
+        """Run execution loop, record costs, apply transitions, and build result."""
         budget_checker = _make_budget_checker(task)
 
         logger.debug(
@@ -251,6 +224,29 @@ class AgentEngine:
             timeout_seconds=timeout_seconds,
         )
 
+        execution_result = await self._post_execution_pipeline(
+            execution_result,
+            identity,
+            agent_id,
+            task_id,
+        )
+
+        return self._build_and_log_result(
+            execution_result,
+            system_prompt,
+            start,
+            agent_id,
+            task_id,
+        )
+
+    async def _post_execution_pipeline(
+        self,
+        execution_result: ExecutionResult,
+        identity: AgentIdentity,
+        agent_id: str,
+        task_id: str,
+    ) -> ExecutionResult:
+        """Record costs, apply transitions, and run recovery if needed."""
         await record_execution_costs(
             execution_result,
             identity,
@@ -263,14 +259,23 @@ class AgentEngine:
             agent_id,
             task_id,
         )
-
         if execution_result.termination_reason == TerminationReason.ERROR:
             execution_result = await self._apply_recovery(
                 execution_result,
                 agent_id,
                 task_id,
             )
+        return execution_result
 
+    def _build_and_log_result(
+        self,
+        execution_result: ExecutionResult,
+        system_prompt: SystemPrompt,
+        start: float,
+        agent_id: str,
+        task_id: str,
+    ) -> AgentRunResult:
+        """Build ``AgentRunResult`` and log completion metrics."""
         duration = time.monotonic() - start
         result = AgentRunResult(
             execution_result=execution_result,
@@ -508,27 +513,8 @@ class AgentEngine:
     ) -> ExecutionResult:
         """Apply post-execution task transitions based on termination reason.
 
-        Only ``TerminationReason.COMPLETED`` triggers transitions:
-        IN_PROGRESS → IN_REVIEW → COMPLETED (two-hop auto-complete).
-        All other reasons leave the task in its current state.
-
-        Note:
-            The IN_REVIEW → COMPLETED auto-complete is M3 scaffolding
-            (no reviewers yet). Later milestones will gate COMPLETED
-            on reviewer approval.
-
-        Transition failures are logged but do not discard the
-        successful execution result — a bookkeeping error must never
-        destroy the agent's work.
-
-        Args:
-            execution_result: Result from the execution loop.
-            agent_id: Agent identifier for logging.
-            task_id: Task identifier for logging.
-
-        Returns:
-            New ``ExecutionResult`` with updated context if transitions
-            were applied, or the original result unchanged.
+        Only COMPLETED triggers IN_PROGRESS -> IN_REVIEW -> COMPLETED.
+        Transition failures are logged but never discard the result.
         """
         ctx = execution_result.context
         if ctx.task_execution is None:
@@ -538,31 +524,7 @@ class AgentEngine:
             return execution_result
 
         try:
-            prev_status = ctx.task_execution.status
-            ctx = ctx.with_task_transition(
-                TaskStatus.IN_REVIEW,
-                reason="Agent completed execution",
-            )
-            logger.info(
-                EXECUTION_ENGINE_TASK_TRANSITION,
-                agent_id=agent_id,
-                task_id=task_id,
-                from_status=prev_status.value,
-                to_status=TaskStatus.IN_REVIEW.value,
-            )
-            # TODO(M4): Replace auto-complete with review gate (§6.5)
-            prev_status = ctx.task_execution.status  # type: ignore[union-attr]
-            ctx = ctx.with_task_transition(
-                TaskStatus.COMPLETED,
-                reason="Auto-completed (no reviewers in M3)",
-            )
-            logger.info(
-                EXECUTION_ENGINE_TASK_TRANSITION,
-                agent_id=agent_id,
-                task_id=task_id,
-                from_status=prev_status.value,
-                to_status=TaskStatus.COMPLETED.value,
-            )
+            ctx = self._transition_to_complete(ctx, agent_id, task_id)
         except (ValueError, ExecutionStateError) as exc:
             logger.exception(
                 EXECUTION_ENGINE_ERROR,
@@ -573,6 +535,40 @@ class AgentEngine:
             return execution_result
 
         return execution_result.model_copy(update={"context": ctx})
+
+    def _transition_to_complete(
+        self,
+        ctx: AgentContext,
+        agent_id: str,
+        task_id: str,
+    ) -> AgentContext:
+        """Transition IN_PROGRESS -> IN_REVIEW -> COMPLETED with logging."""
+        prev_status = ctx.task_execution.status  # type: ignore[union-attr]
+        ctx = ctx.with_task_transition(
+            TaskStatus.IN_REVIEW,
+            reason="Agent completed execution",
+        )
+        logger.info(
+            EXECUTION_ENGINE_TASK_TRANSITION,
+            agent_id=agent_id,
+            task_id=task_id,
+            from_status=prev_status.value,
+            to_status=TaskStatus.IN_REVIEW.value,
+        )
+        # TODO(M4): Replace auto-complete with review gate (§6.5)
+        prev_status = ctx.task_execution.status  # type: ignore[union-attr]
+        ctx = ctx.with_task_transition(
+            TaskStatus.COMPLETED,
+            reason="Auto-completed (no reviewers in M3)",
+        )
+        logger.info(
+            EXECUTION_ENGINE_TASK_TRANSITION,
+            agent_id=agent_id,
+            task_id=task_id,
+            from_status=prev_status.value,
+            to_status=TaskStatus.COMPLETED.value,
+        )
+        return ctx
 
     async def _apply_recovery(
         self,
@@ -673,11 +669,6 @@ class AgentEngine:
     ) -> AgentRunResult:
         """Build an error ``AgentRunResult`` when the execution pipeline fails.
 
-        When ``ctx`` and ``system_prompt`` are provided (i.e. context
-        preparation succeeded before the failure), they are preserved in
-        the error result so that accumulated state (conversation, task
-        transition) is not lost.
-
         If constructing the error result itself fails, the original
         exception is re-raised so it is never silently lost.
         """
@@ -690,29 +681,18 @@ class AgentEngine:
         )
 
         try:
-            error_ctx = ctx or AgentContext.from_identity(identity, task=task)
-            error_execution = ExecutionResult(
-                context=error_ctx,
-                termination_reason=TerminationReason.ERROR,
-                error_message=error_msg,
-            )
-            error_execution = await self._apply_recovery(
-                error_execution,
+            error_execution = await self._build_error_execution(
+                identity,
+                task,
                 agent_id,
                 task_id,
+                error_msg,
+                ctx,
             )
-            error_prompt = system_prompt or SystemPrompt(
-                content="",
-                template_version="error",
-                estimated_tokens=0,
-                sections=(),
-                metadata={
-                    "agent_id": agent_id,
-                    "name": identity.name,
-                    "role": identity.role,
-                    "department": identity.department,
-                    "level": identity.level.value,
-                },
+            error_prompt = _build_error_prompt(
+                identity,
+                agent_id,
+                system_prompt,
             )
             return AgentRunResult(
                 execution_result=error_execution,
@@ -738,7 +718,52 @@ class AgentEngine:
                 error=f"Failed to build error result: {build_exc}",
                 original_error=error_msg,
             )
-            raise exc from build_exc
+            raise exc from None
+
+    async def _build_error_execution(  # noqa: PLR0913
+        self,
+        identity: AgentIdentity,
+        task: Task,
+        agent_id: str,
+        task_id: str,
+        error_msg: str,
+        ctx: AgentContext | None,
+    ) -> ExecutionResult:
+        """Create an error ``ExecutionResult`` and apply recovery."""
+        error_ctx = ctx or AgentContext.from_identity(identity, task=task)
+        error_execution = ExecutionResult(
+            context=error_ctx,
+            termination_reason=TerminationReason.ERROR,
+            error_message=error_msg,
+        )
+        return await self._apply_recovery(
+            error_execution,
+            agent_id,
+            task_id,
+        )
+
+
+def _build_error_prompt(
+    identity: AgentIdentity,
+    agent_id: str,
+    system_prompt: SystemPrompt | None,
+) -> SystemPrompt:
+    """Return the existing system prompt or a minimal error placeholder."""
+    if system_prompt is not None:
+        return system_prompt
+    return SystemPrompt(
+        content="",
+        template_version="error",
+        estimated_tokens=0,
+        sections=(),
+        metadata={
+            "agent_id": agent_id,
+            "name": identity.name,
+            "role": identity.role,
+            "department": identity.department,
+            "level": identity.level.value,
+        },
+    )
 
 
 def _make_budget_checker(task: Task) -> BudgetChecker | None:

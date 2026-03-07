@@ -87,9 +87,7 @@ class LoadedTemplate:
 def list_templates() -> tuple[TemplateInfo, ...]:
     """Return all available templates (user directory + built-in).
 
-    User templates override built-in templates of the same name.
-    The result is sorted alphabetically by template name.  Templates
-    that fail to load are silently skipped with a warning log.
+    User templates override built-in ones. Sorted by name.
 
     Returns:
         Sorted tuple of :class:`TemplateInfo` objects.
@@ -97,26 +95,7 @@ def list_templates() -> tuple[TemplateInfo, ...]:
     seen: dict[str, TemplateInfo] = {}
 
     # User templates (higher priority).
-    if _USER_TEMPLATES_DIR.is_dir():
-        for path in sorted(
-            p for p in _USER_TEMPLATES_DIR.glob("*.yaml") if p.is_file()
-        ):
-            name = path.stem
-            try:
-                loaded = _load_from_file(path)
-                meta = loaded.template.metadata
-                seen[name] = TemplateInfo(
-                    name=name,
-                    display_name=meta.name,
-                    description=meta.description,
-                    source="user",
-                )
-            except (TemplateRenderError, TemplateValidationError, OSError) as exc:
-                logger.warning(
-                    TEMPLATE_LIST_SKIP_INVALID,
-                    template_path=str(path),
-                    error=str(exc),
-                )
+    _collect_user_templates(seen)
 
     # Built-in templates (lower priority).
     for name in sorted(BUILTIN_TEMPLATES):
@@ -137,6 +116,29 @@ def list_templates() -> tuple[TemplateInfo, ...]:
                 )
 
     return tuple(info for _, info in sorted(seen.items()))
+
+
+def _collect_user_templates(seen: dict[str, TemplateInfo]) -> None:
+    """Scan user templates directory and populate *seen*."""
+    if not _USER_TEMPLATES_DIR.is_dir():
+        return
+    for path in sorted(p for p in _USER_TEMPLATES_DIR.glob("*.yaml") if p.is_file()):
+        name = path.stem
+        try:
+            loaded = _load_from_file(path)
+            meta = loaded.template.metadata
+            seen[name] = TemplateInfo(
+                name=name,
+                display_name=meta.name,
+                description=meta.description,
+                source="user",
+            )
+        except (TemplateRenderError, TemplateValidationError, OSError) as exc:
+            logger.warning(
+                TEMPLATE_LIST_SKIP_INVALID,
+                template_path=str(path),
+                error=str(exc),
+            )
 
 
 def list_builtin_templates() -> tuple[str, ...]:
@@ -316,11 +318,6 @@ def _parse_template_yaml(
 ) -> CompanyTemplate:
     """Parse a template YAML string into a CompanyTemplate (Pass 1).
 
-    Jinja2 expressions are stripped before YAML parsing so that
-    unquoted ``{{ }}`` syntax does not cause parse errors.  Only
-    metadata and the ``variables`` section (which must be plain YAML)
-    are needed from this pass.
-
     Args:
         yaml_text: Raw YAML content.
         source_name: Label for error messages.
@@ -342,18 +339,8 @@ def _parse_template_yaml(
             locations=(ConfigLocation(file_path=source_name),),
         ) from exc
 
-    if not isinstance(data, dict) or "template" not in data:
-        msg = f"Template YAML must have a top-level 'template' key in {source_name}"
-        raise TemplateValidationError(
-            msg,
-            locations=(ConfigLocation(file_path=source_name),),
-        )
-
-    template_data = data["template"]
+    template_data = _validate_template_structure(data, source_name)
     try:
-        if not isinstance(template_data, dict):
-            msg = f"Template 'template' key must map to an object in {source_name}"
-            raise TypeError(msg)  # noqa: TRY301
         normalized = _normalize_template_data(template_data)
         return CompanyTemplate(**normalized)
     except ValidationError as exc:
@@ -368,6 +355,31 @@ def _parse_template_yaml(
             msg,
             locations=(ConfigLocation(file_path=source_name),),
         ) from exc
+
+
+def _validate_template_structure(
+    data: Any,
+    source_name: str,
+) -> dict[str, Any]:
+    """Validate top-level YAML structure has a dict 'template' key.
+
+    Raises:
+        TemplateValidationError: If structure is invalid.
+    """
+    if not isinstance(data, dict) or "template" not in data:
+        msg = f"Template YAML must have a top-level 'template' key in {source_name}"
+        raise TemplateValidationError(
+            msg,
+            locations=(ConfigLocation(file_path=source_name),),
+        )
+    template_data = data["template"]
+    if not isinstance(template_data, dict):
+        msg = f"Template 'template' key must map to an object in {source_name}"
+        raise TemplateValidationError(
+            msg,
+            locations=(ConfigLocation(file_path=source_name),),
+        )
+    return template_data
 
 
 def _normalize_template_data(data: dict[str, Any]) -> dict[str, Any]:

@@ -210,3 +210,85 @@ class TestRendererLogging:
         successes = [e for e in cap if e.get("event") == TEMPLATE_RENDER_SUCCESS]
         assert len(starts) == 1
         assert len(successes) == 1
+
+
+# ── _parse_rendered_yaml edge cases ──────────────────────────────
+
+
+@pytest.mark.unit
+class TestParseRenderedYaml:
+    def test_non_dict_top_level_raises(self) -> None:
+        from ai_company.templates.renderer import _parse_rendered_yaml
+
+        with pytest.raises(TemplateRenderError, match="missing 'template' key"):
+            _parse_rendered_yaml("- item1\n- item2\n", "test-source")
+
+    def test_missing_template_key_raises(self) -> None:
+        from ai_company.templates.renderer import _parse_rendered_yaml
+
+        with pytest.raises(TemplateRenderError, match="missing 'template' key"):
+            _parse_rendered_yaml("foo: bar\n", "test-source")
+
+    def test_template_value_not_dict_raises(self) -> None:
+        from ai_company.templates.renderer import _parse_rendered_yaml
+
+        with pytest.raises(
+            TemplateRenderError, match="'template' key must be a mapping"
+        ):
+            _parse_rendered_yaml("template: just-a-string\n", "test-source")
+
+
+# ── _build_departments edge cases ────────────────────────────────
+
+
+@pytest.mark.unit
+class TestBuildDepartments:
+    def test_invalid_budget_percent_raises(self) -> None:
+        from ai_company.templates.renderer import _build_departments
+
+        with pytest.raises(TemplateRenderError, match="Invalid department budget"):
+            _build_departments(
+                [{"name": "eng", "budget_percent": "not-a-number"}],
+            )
+
+
+# ── _validate_as_root_config edge cases ──────────────────────────
+
+
+@pytest.mark.unit
+class TestValidateAsRootConfig:
+    def test_validation_error_raises_template_validation_error(self) -> None:
+        from ai_company.templates.errors import TemplateValidationError
+        from ai_company.templates.renderer import _validate_as_root_config
+
+        with pytest.raises(
+            TemplateValidationError, match="failed RootConfig validation"
+        ):
+            _validate_as_root_config({"company_name": 123}, "test-source")
+
+
+# ── _collect_variables edge cases ────────────────────────────────
+
+
+@pytest.mark.unit
+class TestCollectVariables:
+    def test_extra_user_vars_passed_through(self) -> None:
+        from ai_company.core.enums import CompanyType
+        from ai_company.templates.renderer import _collect_variables
+        from ai_company.templates.schema import (
+            CompanyTemplate,
+            TemplateAgentConfig,
+            TemplateMetadata,
+        )
+
+        template = CompanyTemplate(
+            metadata=TemplateMetadata(
+                name="Test",
+                description="desc",
+                version="1.0.0",
+                company_type=CompanyType.CUSTOM,
+            ),
+            agents=(TemplateAgentConfig(role="Dev"),),
+        )
+        result = _collect_variables(template, {"undeclared_key": "value123"})
+        assert result["undeclared_key"] == "value123"

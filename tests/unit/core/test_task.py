@@ -141,32 +141,23 @@ class TestTaskStringValidation:
         with pytest.raises(ValidationError):
             _make_task(id="")
 
-    def test_whitespace_id_rejected(self) -> None:
+    @pytest.mark.parametrize(
+        ("field", "extra_kwargs"),
+        [
+            ("id", {}),
+            ("title", {}),
+            ("description", {}),
+            ("project", {}),
+            ("created_by", {}),
+            ("assigned_to", {"status": TaskStatus.ASSIGNED}),
+        ],
+        ids=["id", "title", "description", "project", "created_by", "assigned_to"],
+    )
+    def test_whitespace_field_rejected(
+        self, field: str, extra_kwargs: dict[str, object]
+    ) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
-            _make_task(id="   ")
-
-    def test_whitespace_title_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="whitespace-only"):
-            _make_task(title="   ")
-
-    def test_whitespace_description_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="whitespace-only"):
-            _make_task(description="   ")
-
-    def test_whitespace_project_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="whitespace-only"):
-            _make_task(project="   ")
-
-    def test_whitespace_created_by_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="whitespace-only"):
-            _make_task(created_by="   ")
-
-    def test_whitespace_assigned_to_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="whitespace-only"):
-            _make_task(
-                assigned_to="   ",
-                status=TaskStatus.ASSIGNED,
-            )
+            _make_task(**{field: "   "}, **extra_kwargs)
 
     def test_empty_deadline_rejected(self) -> None:
         with pytest.raises(
@@ -245,59 +236,40 @@ class TestTaskAssignmentConsistency:
         ):
             _make_task(assigned_to="agent-1", status=TaskStatus.CREATED)
 
-    def test_assigned_without_assigned_to_rejected(self) -> None:
+    @pytest.mark.parametrize(
+        "status",
+        [
+            TaskStatus.ASSIGNED,
+            TaskStatus.IN_PROGRESS,
+            TaskStatus.IN_REVIEW,
+            TaskStatus.COMPLETED,
+        ],
+        ids=lambda s: s.value,
+    )
+    def test_active_status_requires_assigned_to(self, status: TaskStatus) -> None:
         with pytest.raises(
             ValidationError,
-            match="assigned_to is required when status is 'assigned'",
+            match=f"assigned_to is required when status is '{status.value}'",
         ):
-            _make_task(status=TaskStatus.ASSIGNED)
+            _make_task(status=status)
 
-    def test_in_progress_without_assigned_to_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError,
-            match="assigned_to is required when status is 'in_progress'",
-        ):
-            _make_task(status=TaskStatus.IN_PROGRESS)
-
-    def test_in_review_without_assigned_to_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError,
-            match="assigned_to is required when status is 'in_review'",
-        ):
-            _make_task(status=TaskStatus.IN_REVIEW)
-
-    def test_completed_without_assigned_to_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError,
-            match="assigned_to is required when status is 'completed'",
-        ):
-            _make_task(status=TaskStatus.COMPLETED)
-
-    def test_blocked_without_assigned_to_allowed(self) -> None:
-        task = _make_task(status=TaskStatus.BLOCKED)
+    @pytest.mark.parametrize(
+        "status",
+        [TaskStatus.BLOCKED, TaskStatus.CANCELLED, TaskStatus.FAILED],
+        ids=lambda s: s.value,
+    )
+    def test_non_active_allows_no_assigned_to(self, status: TaskStatus) -> None:
+        task = _make_task(status=status)
         assert task.assigned_to is None
-        assert task.status is TaskStatus.BLOCKED
+        assert task.status is status
 
-    def test_blocked_with_assigned_to_allowed(self) -> None:
-        task = _make_task(assigned_to="agent-1", status=TaskStatus.BLOCKED)
-        assert task.assigned_to == "agent-1"
-
-    def test_cancelled_without_assigned_to_allowed(self) -> None:
-        task = _make_task(status=TaskStatus.CANCELLED)
-        assert task.assigned_to is None
-        assert task.status is TaskStatus.CANCELLED
-
-    def test_cancelled_with_assigned_to_allowed(self) -> None:
-        task = _make_task(assigned_to="agent-1", status=TaskStatus.CANCELLED)
-        assert task.assigned_to == "agent-1"
-
-    def test_failed_without_assigned_to_allowed(self) -> None:
-        task = _make_task(status=TaskStatus.FAILED)
-        assert task.assigned_to is None
-        assert task.status is TaskStatus.FAILED
-
-    def test_failed_with_assigned_to_allowed(self) -> None:
-        task = _make_task(assigned_to="agent-1", status=TaskStatus.FAILED)
+    @pytest.mark.parametrize(
+        "status",
+        [TaskStatus.BLOCKED, TaskStatus.CANCELLED, TaskStatus.FAILED],
+        ids=lambda s: s.value,
+    )
+    def test_non_active_allows_assigned_to(self, status: TaskStatus) -> None:
+        task = _make_task(assigned_to="agent-1", status=status)
         assert task.assigned_to == "agent-1"
 
 

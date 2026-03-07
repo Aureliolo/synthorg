@@ -282,23 +282,10 @@ class BaseCompletionProvider(ABC):
         *args: Any,
         **kwargs: Any,
     ) -> _T:
-        """Wrap a single call with rate limiter acquire/release.
+        """Wrap a call with rate limiter acquire/release.
 
-        On ``RateLimitError`` with ``retry_after``, pauses the rate
-        limiter before re-raising so subsequent attempts respect the
-        provider's backoff hint.
-
-        For streaming results (``AsyncIterator``), the rate-limiter slot
-        is held for the full lifetime of the iterator, not just the
-        connection setup phase.
-
-        Args:
-            func: Async callable to invoke.
-            *args: Positional arguments for *func*.
-            **kwargs: Keyword arguments for *func*.
-
-        Returns:
-            The return value of *func*.
+        Holds the slot for the full stream lifetime. Pauses the limiter
+        on ``RateLimitError`` with ``retry_after`` before re-raising.
         """
         acquired = False
         if self._rate_limiter is not None:
