@@ -21,7 +21,11 @@ class TemplateRenderError(TemplateError):
 
 
 class TemplateInheritanceError(TemplateRenderError):
-    """Circular inheritance, excessive depth, or merge failures."""
+    """Raised when template inheritance fails.
+
+    Covers circular inheritance chains, excessive depth,
+    and merge conflicts.
+    """
 
 
 class TemplateValidationError(TemplateError):

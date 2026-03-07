@@ -30,9 +30,11 @@ from ai_company.observability.events.template import (
     TEMPLATE_INHERIT_DEPTH_EXCEEDED,
     TEMPLATE_INHERIT_RESOLVE_START,
     TEMPLATE_INHERIT_RESOLVE_SUCCESS,
+    TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
     TEMPLATE_RENDER_JINJA2_ERROR,
     TEMPLATE_RENDER_START,
     TEMPLATE_RENDER_SUCCESS,
+    TEMPLATE_RENDER_TYPE_ERROR,
     TEMPLATE_RENDER_VALIDATION_ERROR,
     TEMPLATE_RENDER_VARIABLE_ERROR,
     TEMPLATE_RENDER_YAML_ERROR,
@@ -42,7 +44,7 @@ from ai_company.templates.errors import (
     TemplateRenderError,
     TemplateValidationError,
 )
-from ai_company.templates.merge import merge_template_configs
+from ai_company.templates.merge import DEFAULT_MERGE_DEPARTMENT, merge_template_configs
 from ai_company.templates.presets import (
     generate_auto_name,
     get_personality_preset,
@@ -52,7 +54,7 @@ from ai_company.templates.presets import (
 _DEFAULT_PROVIDER = "default"
 
 # Default department when not specified in template agent config.
-_DEFAULT_DEPARTMENT = "engineering"
+_DEFAULT_DEPARTMENT = DEFAULT_MERGE_DEPARTMENT
 
 # Maximum inheritance chain depth.
 _MAX_INHERITANCE_DEPTH = 10
@@ -137,8 +139,41 @@ def _render_to_dict(
     if template.extends is None:
         return child_config
 
-    # Resolve inheritance.
-    parent_name = template.extends.strip().lower()
+    # Resolve inheritance chain.
+    return _resolve_inheritance(
+        child_config=child_config,
+        loaded=loaded,
+        vars_dict=vars_dict,
+        _chain=_chain,
+    )
+
+
+def _resolve_inheritance(
+    *,
+    child_config: dict[str, Any],
+    loaded: LoadedTemplate,
+    vars_dict: dict[str, Any],
+    _chain: frozenset[str],
+) -> dict[str, Any]:
+    """Resolve template inheritance for a child config.
+
+    Loads and renders the parent, detects circular dependencies and
+    depth violations, then merges parent + child.
+
+    Args:
+        child_config: Already-rendered child config dict.
+        loaded: The child's :class:`LoadedTemplate`.
+        vars_dict: Child's resolved variables.
+        _chain: Already-visited parent names for circular detection.
+
+    Returns:
+        Merged config dict (parent + child).
+
+    Raises:
+        TemplateInheritanceError: On circular chains or depth overflow.
+    """
+    # extends is already normalized (lowercase/stripped) by the schema.
+    parent_name: str = loaded.template.extends  # type: ignore[assignment]
     child_id = loaded.source_name
 
     logger.info(
@@ -147,9 +182,6 @@ def _render_to_dict(
         parent=parent_name,
     )
 
-    # Circular detection: _chain tracks normalized parent names that
-    # are being resolved up the chain.  If this parent is already in
-    # the chain, we have a cycle.
     if parent_name in _chain:
         logger.error(
             TEMPLATE_INHERIT_CIRCULAR,
@@ -163,7 +195,6 @@ def _render_to_dict(
         )
         raise TemplateInheritanceError(msg)
 
-    # Depth limit.
     if len(_chain) >= _MAX_INHERITANCE_DEPTH:
         logger.error(
             TEMPLATE_INHERIT_DEPTH_EXCEEDED,
@@ -177,11 +208,13 @@ def _render_to_dict(
         )
         raise TemplateInheritanceError(msg)
 
-    # Load and render parent.  Add parent_name to chain before recursing.
     from ai_company.templates.loader import load_template  # noqa: PLC0415
 
     parent_loaded = load_template(parent_name)
-    parent_vars = _collect_parent_variables(parent_loaded.template, vars_dict)
+    parent_vars = _collect_parent_variables(
+        parent_loaded.template,
+        vars_dict,
+    )
     parent_config = _render_to_dict(
         parent_loaded,
         parent_vars,
@@ -381,9 +414,7 @@ def _build_config_dict(
     Returns:
         Dict suitable for ``RootConfig(**deep_merge(defaults, result))``.
     """
-    company = rendered_data.get("company", {})
-    if company is None:
-        company = {}
+    company = rendered_data.get("company") or {}
     if not isinstance(company, dict):
         msg = "Rendered template 'company' must be a mapping"
         logger.error(TEMPLATE_RENDER_YAML_ERROR, error=msg)
@@ -431,12 +462,24 @@ def _validate_list(
         raw = []
     if not isinstance(raw, list):
         msg = f"Rendered template {key!r} must be a list"
+        logger.warning(
+            TEMPLATE_RENDER_TYPE_ERROR,
+            field=key,
+            expected="list",
+            got=type(raw).__name__,
+        )
         raise TemplateRenderError(msg)
     for i, item in enumerate(raw):
         if not isinstance(item, dict):
             msg = (
                 f"Rendered template {key!r}[{i}] must be a "
                 f"mapping, got {type(item).__name__}"
+            )
+            logger.warning(
+                TEMPLATE_RENDER_TYPE_ERROR,
+                field=f"{key}[{i}]",
+                expected="mapping",
+                got=type(item).__name__,
             )
             raise TemplateRenderError(msg)
     return raw
@@ -459,6 +502,11 @@ def _extract_numeric_config(
         )
     except ValueError as exc:
         msg = f"Invalid numeric value in rendered template {source_name!r}: {exc}"
+        logger.warning(
+            TEMPLATE_RENDER_TYPE_ERROR,
+            source=source_name,
+            error=str(exc),
+        )
         raise TemplateRenderError(msg) from exc
     return autonomy, budget_monthly
 
@@ -474,13 +522,11 @@ def _expand_agents(
     Returns:
         List of dicts suitable for ``AgentConfig`` construction.
     """
-    expanded: list[dict[str, Any]] = []
     used_names: set[str] = set()
-
-    for idx, agent in enumerate(raw_agents):
-        expanded.append(_expand_single_agent(agent, idx, used_names))
-
-    return expanded
+    return [
+        _expand_single_agent(agent, idx, used_names)
+        for idx, agent in enumerate(raw_agents)
+    ]
 
 
 def _expand_single_agent(
@@ -496,6 +542,7 @@ def _expand_single_agent(
     role = agent.get("role")
     if not role:
         msg = f"Agent at index {idx} is missing required 'role' field"
+        logger.warning(TEMPLATE_RENDER_VARIABLE_ERROR, index=idx, field="role")
         raise TemplateRenderError(msg)
     name = str(agent.get("name", "")).strip()
 
@@ -516,23 +563,7 @@ def _expand_single_agent(
         "level": agent.get("level", "mid"),
     }
 
-    inline_personality = agent.get("personality")
-    preset_name = agent.get("personality_preset")
-    if inline_personality is not None:
-        if not isinstance(inline_personality, dict):
-            msg = (
-                f"Personality for agent {name!r} must be a mapping, "
-                f"got {type(inline_personality).__name__}"
-            )
-            raise TemplateRenderError(msg)
-        _validate_inline_personality(inline_personality, name)
-        agent_dict["personality"] = inline_personality
-    elif preset_name:
-        try:
-            agent_dict["personality"] = get_personality_preset(preset_name)
-        except KeyError as exc:
-            msg = f"Unknown personality preset {preset_name!r} for agent {name!r}"
-            raise TemplateRenderError(msg) from exc
+    _resolve_agent_personality(agent, name, agent_dict)
 
     model_tier = agent.get("model", "medium")
     agent_dict["model"] = {"provider": _DEFAULT_PROVIDER, "model_id": model_tier}
@@ -542,6 +573,54 @@ def _expand_single_agent(
         agent_dict["_remove"] = True
 
     return agent_dict
+
+
+def _resolve_agent_personality(
+    agent: dict[str, Any],
+    name: str,
+    agent_dict: dict[str, Any],
+) -> None:
+    """Resolve personality from inline config or named preset.
+
+    Mutates *agent_dict* to add the ``personality`` key when resolved.
+
+    Args:
+        agent: Raw agent dict from rendered YAML.
+        name: Resolved agent name for error context.
+        agent_dict: Partially-built agent dict (mutated in place).
+
+    Raises:
+        TemplateRenderError: If personality config is invalid or preset
+            is unknown.
+    """
+    inline_personality = agent.get("personality")
+    preset_name = agent.get("personality_preset")
+    if inline_personality is not None:
+        if not isinstance(inline_personality, dict):
+            msg = (
+                f"Personality for agent {name!r} must be a mapping, "
+                f"got {type(inline_personality).__name__}"
+            )
+            logger.warning(
+                TEMPLATE_RENDER_TYPE_ERROR,
+                agent=name,
+                field="personality",
+                got=type(inline_personality).__name__,
+            )
+            raise TemplateRenderError(msg)
+        _validate_inline_personality(inline_personality, name)
+        agent_dict["personality"] = inline_personality
+    elif preset_name:
+        try:
+            agent_dict["personality"] = get_personality_preset(preset_name)
+        except KeyError as exc:
+            msg = f"Unknown personality preset {preset_name!r} for agent {name!r}"
+            logger.warning(
+                TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
+                agent=name,
+                preset=preset_name,
+            )
+            raise TemplateRenderError(msg) from exc
 
 
 def _validate_inline_personality(
@@ -589,6 +668,12 @@ def _build_departments(
             )
         except ValueError as exc:
             msg = f"Invalid department budget value: {exc}"
+            logger.warning(
+                TEMPLATE_RENDER_TYPE_ERROR,
+                department=dept.get("name", ""),
+                field="budget_percent",
+                error=str(exc),
+            )
             raise TemplateRenderError(msg) from exc
         dept_name = dept.get("name", "")
         head_role = dept.get("head_role")
@@ -609,12 +694,26 @@ def _build_departments(
         if reporting_lines is not None:
             if not isinstance(reporting_lines, list):
                 msg = f"Department {dept_name!r} 'reporting_lines' must be a list"
+                logger.warning(
+                    TEMPLATE_RENDER_TYPE_ERROR,
+                    department=dept_name,
+                    field="reporting_lines",
+                    expected="list",
+                    got=type(reporting_lines).__name__,
+                )
                 raise TemplateRenderError(msg)
             dept_dict["reporting_lines"] = reporting_lines
         policies = dept.get("policies")
         if policies is not None:
             if not isinstance(policies, dict):
                 msg = f"Department {dept_name!r} 'policies' must be a mapping"
+                logger.warning(
+                    TEMPLATE_RENDER_TYPE_ERROR,
+                    department=dept_name,
+                    field="policies",
+                    expected="mapping",
+                    got=type(policies).__name__,
+                )
                 raise TemplateRenderError(msg)
             dept_dict["policies"] = policies
         departments.append(dept_dict)

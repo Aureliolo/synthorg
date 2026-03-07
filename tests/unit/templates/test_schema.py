@@ -124,6 +124,14 @@ class TestTemplateAgentConfig:
                 personality={"openness": 0.9},
             )
 
+    def test_remove_alias(self) -> None:
+        a = TemplateAgentConfig(role="Dev", _remove=True)
+        assert a.remove is True
+
+    def test_remove_default_false(self) -> None:
+        a = TemplateAgentConfig(role="Dev")
+        assert a.remove is False
+
 
 # ── TemplateDepartmentConfig ─────────────────────────────────────
 
@@ -405,6 +413,27 @@ class TestCompanyTemplate:
             )
         )
         assert len(t.escalation_paths) == 1
+
+    def test_extends_field_accepted(
+        self,
+        make_template_dict: Callable[..., dict[str, Any]],
+    ) -> None:
+        t = CompanyTemplate(**make_template_dict(extends="startup", agents=()))
+        assert t.extends == "startup"
+
+    def test_extends_normalizes_case(
+        self,
+        make_template_dict: Callable[..., dict[str, Any]],
+    ) -> None:
+        t = CompanyTemplate(**make_template_dict(extends="  StartUp  ", agents=()))
+        assert t.extends == "startup"
+
+    def test_extends_skips_agent_count_validation(
+        self,
+        make_template_dict: Callable[..., dict[str, Any]],
+    ) -> None:
+        t = CompanyTemplate(**make_template_dict(extends="startup", agents=()))
+        assert len(t.agents) == 0
 
     def test_frozen(
         self,

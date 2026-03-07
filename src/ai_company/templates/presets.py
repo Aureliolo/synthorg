@@ -8,6 +8,8 @@ import random
 from types import MappingProxyType
 from typing import Any
 
+from pydantic import ValidationError
+
 from ai_company.core.agent import PersonalityConfig
 from ai_company.observability import get_logger
 from ai_company.observability.events.template import (
@@ -429,12 +431,10 @@ def get_personality_preset(name: str) -> dict[str, Any]:
 for _preset_name, _preset_dict in PERSONALITY_PRESETS.items():
     try:
         PersonalityConfig(**_preset_dict)
-    except Exception as _exc:
+    except (ValidationError, TypeError) as _exc:
         msg = f"Invalid personality preset {_preset_name!r}: {_exc}"
         raise ValueError(msg) from _exc
-# Clean up loop variables only if the loop body executed (non-empty dict).
-if PERSONALITY_PRESETS:
-    del _preset_name, _preset_dict
+del _preset_name, _preset_dict
 
 
 def generate_auto_name(role: str, *, seed: int | None = None) -> str:

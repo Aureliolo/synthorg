@@ -179,26 +179,6 @@ template:
       department: "engineering"
 """
 
-MULTI_LEVEL_CHILD_YAML = """\
-template:
-  name: "Grandchild"
-  description: "Two levels deep"
-  version: "1.0.0"
-  min_agents: 1
-  max_agents: 30
-  extends: "{parent_name}"
-
-  company:
-    type: "startup"
-
-  agents:
-    - role: "Data Analyst"
-      level: "mid"
-      model: "medium"
-      personality_preset: "data_driven_optimizer"
-      department: "engineering"
-"""
-
 
 def _make_template_dict(**overrides: Any) -> dict[str, Any]:
     """Build a minimal valid CompanyTemplate kwargs dict with overrides."""

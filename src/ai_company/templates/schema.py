@@ -3,7 +3,7 @@
 from collections import Counter
 from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ai_company.core.enums import CompanyType, SeniorityLevel
 from ai_company.core.types import NotBlankStr  # noqa: TC001
@@ -273,6 +273,14 @@ class CompanyTemplate(BaseModel):
         default=None,
         description="Parent template name for inheritance",
     )
+
+    @field_validator("extends", mode="before")
+    @classmethod
+    def _normalize_extends(cls, value: str | None) -> str | None:
+        """Normalize extends to lowercase stripped form."""
+        if value is None:
+            return None
+        return value.strip().lower()
 
     @model_validator(mode="after")
     def _validate_agent_count_in_range(self) -> Self:

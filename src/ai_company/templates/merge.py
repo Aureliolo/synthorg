@@ -5,14 +5,31 @@ with a child config dict, implementing the merge semantics described in
 the template inheritance design.
 """
 
+from dataclasses import dataclass, field
 from typing import Any
 
 from ai_company.config.utils import deep_merge
 from ai_company.observability import get_logger
-from ai_company.observability.events.template import TEMPLATE_INHERIT_MERGE
+from ai_company.observability.events.template import (
+    TEMPLATE_INHERIT_MERGE,
+    TEMPLATE_INHERIT_MERGE_ERROR,
+)
 from ai_company.templates.errors import TemplateInheritanceError
 
 logger = get_logger(__name__)
+
+# Default department when not specified in template agent config.
+# Shared with ``renderer._DEFAULT_DEPARTMENT``; authoritative source.
+DEFAULT_MERGE_DEPARTMENT = "engineering"
+
+
+@dataclass
+class _ParentEntry:
+    """Tracking record for a parent agent during merge."""
+
+    index: int
+    agent: dict[str, Any] | None
+    matched: bool = field(default=False)
 
 
 def merge_template_configs(
@@ -31,8 +48,8 @@ def merge_template_configs(
       entirely if present.
 
     Args:
-        parent: Fully-resolved parent config dict.
-        child: Fully-resolved child config dict.
+        parent: Rendered parent config dict (post-Jinja2, pre-defaults).
+        child: Rendered child config dict (post-Jinja2, pre-defaults).
 
     Returns:
         New merged config dict.
@@ -93,13 +110,16 @@ def _merge_agents(
        - ``_remove: true``: find first unmatched parent with same key,
          remove it. Child entry is discarded.
        - Otherwise: match against first unmatched parent with same key,
-         replace. No match → append.
-    3. Strip ``_remove`` markers from output.
+         replace. No match -> append.
+    3. Discard ``_remove`` entries; strip ``_remove`` key from
+       replacement/appended dicts.
     4. Result: parent agents (with replacements/removals) + appended.
 
     Args:
-        parent_agents: Parent agent dicts.
-        child_agents: Child agent dicts.
+        parent_agents: Parent agent dicts, each expected to have at
+            least ``role`` and optionally ``department`` keys.
+        child_agents: Child agent dicts; may include ``_remove: True``
+            to remove a matching parent agent.
 
     Returns:
         Merged agent list.
@@ -107,27 +127,29 @@ def _merge_agents(
     Raises:
         TemplateInheritanceError: If ``_remove`` has no matching parent.
     """
-    # Build indexed list: key -> list of [index, agent_dict, matched].
-    parent_entries: dict[tuple[str, str], list[list[Any]]] = {}
+    parent_entries: dict[tuple[str, str], list[_ParentEntry]] = {}
     for idx, agent in enumerate(parent_agents):
         key = _agent_key(agent)
-        parent_entries.setdefault(key, []).append([idx, agent, False])
+        parent_entries.setdefault(key, []).append(
+            _ParentEntry(index=idx, agent=agent),
+        )
 
     appended: list[dict[str, Any]] = []
     for child_agent in child_agents:
         _apply_child_agent(child_agent, parent_entries, appended)
 
-    return _collect_merged_agents(parent_agents, parent_entries, appended)
+    return _collect_merged_agents(parent_entries, appended)
 
 
 def _apply_child_agent(
     child_agent: dict[str, Any],
-    parent_entries: dict[tuple[str, str], list[list[Any]]],
+    parent_entries: dict[tuple[str, str], list[_ParentEntry]],
     appended: list[dict[str, Any]],
 ) -> None:
     """Apply a single child agent against parent entries.
 
-    Mutates *parent_entries* and *appended* in place.
+    Updates *parent_entries* and *appended* as a local mutation
+    scoped to the enclosing ``_merge_agents`` call.
     """
     key = _agent_key(child_agent)
     is_remove = child_agent.get("_remove", False)
@@ -139,47 +161,40 @@ def _apply_child_agent(
     if is_remove:
         if matched_entry is None:
             msg = f"Cannot remove agent with key {key}: no matching parent agent found"
+            logger.error(
+                TEMPLATE_INHERIT_MERGE_ERROR,
+                action="remove_failed",
+                key=key,
+            )
             raise TemplateInheritanceError(msg)
-        matched_entry[2] = True  # mark matched
-        matched_entry[1] = None  # mark for removal
+        matched_entry.matched = True
+        matched_entry.agent = None  # mark for removal
     elif matched_entry is not None:
-        matched_entry[2] = True
-        matched_entry[1] = clean
+        matched_entry.matched = True
+        matched_entry.agent = clean
     else:
         appended.append(clean)
 
 
 def _find_unmatched(
-    entries: list[list[Any]],
-) -> list[Any] | None:
+    entries: list[_ParentEntry],
+) -> _ParentEntry | None:
     """Find first unmatched entry in a parent entries list."""
-    for entry in entries:
-        if not entry[2]:
-            return entry
-    return None
+    return next((e for e in entries if not e.matched), None)
 
 
 def _collect_merged_agents(
-    parent_agents: list[dict[str, Any]],
-    parent_entries: dict[tuple[str, str], list[list[Any]]],
+    parent_entries: dict[tuple[str, str], list[_ParentEntry]],
     appended: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """Collect surviving parent agents (in order) + appended."""
-    result: list[dict[str, Any]] = []
     all_entries = sorted(
         (entry for entries in parent_entries.values() for entry in entries),
-        key=lambda e: e[0],
+        key=lambda e: e.index,
     )
-    for _idx, agent, _matched in all_entries:
-        if agent is not None:
-            result.append(agent)
-
-    # Include parent agents not indexed (safety net).
-    indexed_indices = {e[0] for entries in parent_entries.values() for e in entries}
-    for idx, agent in enumerate(parent_agents):
-        if idx not in indexed_indices:
-            result.append(agent)
-
+    result: list[dict[str, Any]] = [
+        entry.agent for entry in all_entries if entry.agent is not None
+    ]
     result.extend(appended)
     return result
 
@@ -200,20 +215,38 @@ def _merge_departments(
     Returns:
         Merged department list.
     """
-    # Index parent depts by lowercase name.
-    result: list[dict[str, Any]] = list(parent_depts)
-    parent_index: dict[str, int] = {}
-    for idx, dept in enumerate(result):
-        name = str(dept.get("name", "")).lower()
-        if name:
-            parent_index[name] = idx
-
+    # Build child overrides index.
+    child_by_name: dict[str, dict[str, Any]] = {}
     for child_dept in child_depts:
         name = str(child_dept.get("name", "")).lower()
-        if name in parent_index:
-            result[parent_index[name]] = child_dept
+        if not name:
+            logger.warning(
+                TEMPLATE_INHERIT_MERGE,
+                action="department_no_name",
+            )
+        child_by_name[name] = child_dept
+
+    # Walk parent depts: apply child override if it exists.
+    result: list[dict[str, Any]] = []
+    seen_names: set[str] = set()
+    for dept in parent_depts:
+        name = str(dept.get("name", "")).lower()
+        if not name:
+            logger.warning(
+                TEMPLATE_INHERIT_MERGE,
+                action="department_no_name",
+            )
+        if name and name in child_by_name:
+            result.append(child_by_name[name])
+            seen_names.add(name)
         else:
-            parent_index[name] = len(result)
+            result.append(dept)
+            if name:
+                seen_names.add(name)
+
+    # Append unmatched child depts.
+    for name, child_dept in child_by_name.items():
+        if name not in seen_names:
             result.append(child_dept)
 
     return result
@@ -222,5 +255,7 @@ def _merge_departments(
 def _agent_key(agent: dict[str, Any]) -> tuple[str, str]:
     """Compute the merge key for an agent dict."""
     role = str(agent.get("role", "")).lower()
-    department = str(agent.get("department", "engineering")).lower()
-    return (role, department)
+    dept = agent.get("department")
+    if not dept:
+        dept = DEFAULT_MERGE_DEPARTMENT
+    return (role, str(dept).lower())

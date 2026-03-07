@@ -2186,7 +2186,40 @@ template:
 
   workflow: "agile_kanban"
   communication: "hybrid"
+
+  workflow_handoffs:
+    - from_department: "engineering"
+      to_department: "qa"
+      trigger: "pr_ready"
+
+  escalation_paths:
+    - from_department: "engineering"
+      to_department: "security"
+      condition: "vulnerability_found"
 ```
+
+**Template Inheritance** — Templates can extend other templates using `extends`:
+
+```yaml
+template:
+  name: "Extended Startup"
+  extends: "startup"         # inherits all agents, departments, config
+  agents:
+    - role: "QA Engineer"    # appended to parent agents
+      level: "mid"
+    - role: "full_stack_developer"
+      department: "engineering"
+      _remove: true          # removes matching parent agent by (role, department)
+```
+
+Inheritance resolves parent→child chains up to 10 levels deep. Merge semantics:
+- **Scalars** (`company_name`, `company_type`): child wins if present.
+- **`config`** dict: deep-merged (child keys override parent).
+- **`agents`** list: merged by `(role, department)` key. Child can override, append, or remove (`_remove: true`) parent agents.
+- **`departments`** list: merged by name (case-insensitive). Child dept replaces parent entirely.
+- **`workflow_handoffs`**, **`escalation_paths`**: child replaces entirely if present.
+
+Circular inheritance is detected via chain tracking and raises `TemplateInheritanceError`.
 
 ### 14.2 Company Builder
 
@@ -2473,6 +2506,7 @@ ai-company/
 │           ├── schema.py           # Template schema models
 │           ├── loader.py           # Template loader
 │           ├── renderer.py         # Template renderer
+│           ├── merge.py            # Template config merging for inheritance
 │           ├── presets.py          # Personality presets + auto-name generation
 │           ├── errors.py           # Template errors
 │           └── builtins/           # Pre-built company templates
@@ -2531,6 +2565,8 @@ These conventions were established during the M0–M2+ review cycle. **Adopted**
 | **State coordination** | Planned (M4) | Centralized single-writer: `TaskEngine` owns all task/project mutations via `asyncio.Queue`. Agents submit requests, engine applies `model_copy(update=...)` sequentially and publishes snapshots. `version: int` field on state models for future optimistic concurrency if multi-process scaling is needed. | Prevents lost updates by design. Trivial in single-threaded asyncio (no locks). Perfect audit trail. Industry consensus: MetaGPT, CrewAI, AutoGen all use prevention-by-design, not conflict resolution. See §6.8 State Coordination table. |
 | **Workspace isolation** | Planned (M4) | Pluggable `WorkspaceIsolationStrategy` protocol. Default: planner + git worktrees. Each agent works in an isolated worktree; sequential merge on completion. Textual conflicts detected by git; semantic conflicts reviewed by agent or human. | Industry standard (Codex, Cursor, Claude Code, VS Code). Maximum parallelism. Leverages mature git infrastructure. See §6.8. |
 | **Graceful shutdown** | Adopted (M3) | Pluggable `ShutdownStrategy` protocol. Default: cooperative with 30s timeout. Agents check shutdown event at turn boundaries. Force-cancel after timeout. `INTERRUPTED` status for force-cancelled tasks. M4/M5: upgrade to checkpoint-and-stop. | Cross-platform (Windows `signal.signal()` fallback). Bounded shutdown time. Mirrors cooperative shutdown in §6.7. |
+| **Template inheritance** | Adopted (M2.5) | `extends` field on `CompanyTemplate` triggers parent resolution at render time. `merge.py` merges configs by field type: scalars (child wins), config dicts (deep merge), agents (by `(role, department)` key with `_remove` support), departments (by name). `_ParentEntry` dataclass tracks merge state. `DEFAULT_MERGE_DEPARTMENT = "engineering"` shared between merge and renderer. Circular chains detected via `frozenset` tracking; max depth = 10. | Enables template composition without copy-paste. Merge-by-key preserves parent order. `_remove` directive enables clean agent removal without workarounds. |
+| **Pydantic alias for YAML directives** | Adopted (M2.5) | `Field(alias="_remove")` in `TemplateAgentConfig` — YAML uses `_remove: true`, Python accesses `agent.remove`. Keeps the YAML-facing name (underscore prefix signals internal directive) separate from the Python attribute name. | Underscore-prefixed YAML keys signal merge directives vs regular fields. Pydantic alias bridges the naming convention gap cleanly. |
 | **Communication foundation** | Adopted (M4) | `MessageBus` protocol with `InMemoryMessageBus` backend (asyncio queues, pull-model `receive()` with shutdown signaling via `asyncio.Event`). `MessageDispatcher` routes to concurrent handlers via `asyncio.TaskGroup` with pre-allocated error collection. `AgentMessenger` per-agent facade auto-fills sender/timestamp/ID; deterministic direct-channel naming `@{sorted_a}:{sorted_b}`. `DeliveryEnvelope` for delivery tracking. `NotBlankStr` validation on all protocol boundary identifiers. | Pull-model avoids callback complexity and enables agents to consume at their own pace. Protocol + backend split enables future persistent/distributed bus implementations. Deterministic DM channel names prevent duplicates. See §5. |
 
 ---

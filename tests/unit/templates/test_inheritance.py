@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 import pytest
 
 from ai_company.config.schema import RootConfig
+from ai_company.core.enums import CompanyType
 from ai_company.templates.errors import TemplateInheritanceError
 from ai_company.templates.loader import load_template, load_template_file
 from ai_company.templates.merge import (
@@ -16,7 +17,13 @@ from ai_company.templates.merge import (
     _merge_departments,
     merge_template_configs,
 )
-from ai_company.templates.renderer import render_template
+from ai_company.templates.renderer import _collect_parent_variables, render_template
+from ai_company.templates.schema import (
+    CompanyTemplate,
+    TemplateAgentConfig,
+    TemplateMetadata,
+    TemplateVariable,
+)
 
 from .conftest import (
     CHILD_EXTENDS_STARTUP_YAML,
@@ -196,6 +203,64 @@ class TestMergeTemplateConfigs:
         assert len(result["workflow_handoffs"]) == 1
         assert result["workflow_handoffs"][0]["from"] == "x"
 
+    def test_escalation_paths_parent_fallback(self) -> None:
+        """Parent escalation_paths used when child doesn't provide them."""
+        parent: dict[str, Any] = {
+            "escalation_paths": [{"from": "eng", "to": "security"}],
+        }
+        child: dict[str, Any] = {}
+        result = merge_template_configs(parent, child)
+        assert result["escalation_paths"] == [{"from": "eng", "to": "security"}]
+
+    def test_none_child_scalar_uses_parent(self) -> None:
+        """None child scalar falls back to parent value."""
+        parent: dict[str, Any] = {"company_name": "Parent Co"}
+        child: dict[str, Any] = {"company_name": None}
+        result = merge_template_configs(parent, child)
+        assert result["company_name"] == "Parent Co"
+
+
+# ── TestCollectParentVariables ────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestCollectParentVariables:
+    def test_child_vars_override_parent_defaults(self) -> None:
+        """Child variables take precedence over parent defaults."""
+        parent = CompanyTemplate(
+            metadata=TemplateMetadata(name="P", company_type=CompanyType.CUSTOM),
+            variables=(
+                TemplateVariable(name="x", default="parent_x"),
+                TemplateVariable(name="y", default="parent_y"),
+            ),
+            agents=(TemplateAgentConfig(role="Backend Developer"),),
+        )
+        child_vars = {"x": "child_x", "z": "child_z"}
+        result = _collect_parent_variables(parent, child_vars)
+        assert result["x"] == "child_x"
+        assert result["y"] == "parent_y"
+        assert result["z"] == "child_z"
+
+    def test_parent_defaults_fill_gaps(self) -> None:
+        """Parent defaults fill variables not in child."""
+        parent = CompanyTemplate(
+            metadata=TemplateMetadata(name="P", company_type=CompanyType.CUSTOM),
+            variables=(TemplateVariable(name="a", default="default_a"),),
+            agents=(TemplateAgentConfig(role="Backend Developer"),),
+        )
+        result = _collect_parent_variables(parent, {})
+        assert result["a"] == "default_a"
+
+    def test_required_parent_var_without_child_value(self) -> None:
+        """Required parent var with no child value or default is omitted."""
+        parent = CompanyTemplate(
+            metadata=TemplateMetadata(name="P", company_type=CompanyType.CUSTOM),
+            variables=(TemplateVariable(name="req", required=True),),
+            agents=(TemplateAgentConfig(role="Backend Developer"),),
+        )
+        result = _collect_parent_variables(parent, {})
+        assert "req" not in result
+
 
 # ── TestResolveInheritance ───────────────────────────────────────
 
@@ -213,7 +278,7 @@ class TestResolveInheritance:
         config = render_template(loaded)
         assert isinstance(config, RootConfig)
         # Should have startup's 5 agents + 1 new QA agent.
-        assert len(config.agents) >= 6
+        assert len(config.agents) == 6
 
     def test_override_agent_via_extends(
         self,
@@ -305,7 +370,7 @@ template:
             config = render_template(loaded)
             assert isinstance(config, RootConfig)
             # startup(5) + child_b adds QA(1) + child_a adds Data Analyst(1) = 7
-            assert len(config.agents) >= 7
+            assert len(config.agents) == 7
 
 
 # ── TestCircularDetection ────────────────────────────────────────

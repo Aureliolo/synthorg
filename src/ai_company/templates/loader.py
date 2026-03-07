@@ -25,7 +25,11 @@ from ai_company.observability.events.template import (
     TEMPLATE_BUILTIN_DEFECT,
     TEMPLATE_LIST_SKIP_INVALID,
     TEMPLATE_LOAD_ERROR,
+    TEMPLATE_LOAD_NOT_FOUND,
+    TEMPLATE_LOAD_PARSE_ERROR,
+    TEMPLATE_LOAD_READ_ERROR,
     TEMPLATE_LOAD_START,
+    TEMPLATE_LOAD_STRUCTURE_ERROR,
     TEMPLATE_LOAD_SUCCESS,
     TEMPLATE_PASS1_FLOAT_FALLBACK,
 )
@@ -169,6 +173,7 @@ def load_template(name: str) -> LoadedTemplate:
     # Sanitize to prevent path traversal (OS-independent).
     if "/" in name_clean or "\\" in name_clean or ".." in name_clean:
         msg = f"Invalid template name {name!r}: must not contain path separators"
+        logger.warning(TEMPLATE_LOAD_NOT_FOUND, template_name=name)
         raise TemplateNotFoundError(
             msg,
             locations=(ConfigLocation(file_path=f"<template:{name}>"),),
@@ -225,6 +230,7 @@ def load_template_file(path: Path | str) -> LoadedTemplate:
     path = Path(path)
     if not path.is_file():
         msg = f"Template file not found: {path}"
+        logger.warning(TEMPLATE_LOAD_NOT_FOUND, path=str(path))
         raise TemplateNotFoundError(
             msg,
             locations=(ConfigLocation(file_path=str(path)),),
@@ -242,6 +248,7 @@ def _load_builtin(name: str) -> LoadedTemplate:
     filename = BUILTIN_TEMPLATES.get(name)
     if filename is None:
         msg = f"Unknown built-in template: {name!r}"
+        logger.warning(TEMPLATE_LOAD_NOT_FOUND, template_name=name)
         raise TemplateNotFoundError(
             msg,
             locations=(ConfigLocation(file_path=f"<builtin:{name}>"),),
@@ -269,12 +276,14 @@ def _load_from_file(path: Path) -> LoadedTemplate:
         yaml_text = path.read_text(encoding="utf-8")
     except OSError as exc:
         msg = f"Unable to read template file: {path}"
+        logger.warning(TEMPLATE_LOAD_READ_ERROR, path=str(path), error=str(exc))
         raise TemplateRenderError(
             msg,
             locations=(ConfigLocation(file_path=source_name),),
         ) from exc
     except UnicodeDecodeError as exc:
         msg = f"Template file is not valid UTF-8: {path}"
+        logger.warning(TEMPLATE_LOAD_READ_ERROR, path=str(path), error=str(exc))
         raise TemplateRenderError(
             msg,
             locations=(ConfigLocation(file_path=source_name),),
@@ -334,6 +343,7 @@ def _parse_template_yaml(
         data = yaml.safe_load(safe_text)
     except yaml.YAMLError as exc:
         msg = f"Template YAML syntax error in {source_name}: {exc}"
+        logger.warning(TEMPLATE_LOAD_PARSE_ERROR, source=source_name, error=str(exc))
         raise TemplateRenderError(
             msg,
             locations=(ConfigLocation(file_path=source_name),),
@@ -343,14 +353,9 @@ def _parse_template_yaml(
     try:
         normalized = _normalize_template_data(template_data)
         return CompanyTemplate(**normalized)
-    except ValidationError as exc:
+    except (ValidationError, ValueError, TypeError) as exc:
         msg = f"Template validation failed for {source_name}: {exc}"
-        raise TemplateValidationError(
-            msg,
-            locations=(ConfigLocation(file_path=source_name),),
-        ) from exc
-    except (ValueError, TypeError) as exc:
-        msg = f"Template validation failed for {source_name}: {exc}"
+        logger.warning(TEMPLATE_LOAD_PARSE_ERROR, source=source_name, error=str(exc))
         raise TemplateValidationError(
             msg,
             locations=(ConfigLocation(file_path=source_name),),
@@ -368,6 +373,7 @@ def _validate_template_structure(
     """
     if not isinstance(data, dict) or "template" not in data:
         msg = f"Template YAML must have a top-level 'template' key in {source_name}"
+        logger.warning(TEMPLATE_LOAD_STRUCTURE_ERROR, source=source_name, error=msg)
         raise TemplateValidationError(
             msg,
             locations=(ConfigLocation(file_path=source_name),),
@@ -375,6 +381,7 @@ def _validate_template_structure(
     template_data = data["template"]
     if not isinstance(template_data, dict):
         msg = f"Template 'template' key must map to an object in {source_name}"
+        logger.warning(TEMPLATE_LOAD_STRUCTURE_ERROR, source=source_name, error=msg)
         raise TemplateValidationError(
             msg,
             locations=(ConfigLocation(file_path=source_name),),
@@ -394,13 +401,15 @@ def _normalize_template_data(data: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Dict suitable for ``CompanyTemplate(**result)``.
     """
-    company_raw = data.get("company", {})
-    if company_raw is None:
-        company_raw = {}
-    if not isinstance(company_raw, dict):
+    company = data.get("company") or {}
+    if not isinstance(company, dict):
         msg = "Template field 'template.company' must be a mapping"
+        logger.warning(
+            TEMPLATE_LOAD_STRUCTURE_ERROR,
+            source="template.company",
+            error=msg,
+        )
         raise TypeError(msg)
-    company: dict[str, Any] = company_raw
 
     metadata: dict[str, Any] = {
         "description": data.get("description", ""),
