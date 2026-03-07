@@ -46,6 +46,7 @@ from ai_company.observability.events.communication import (
     COMM_SUBSCRIPTION_CREATED,
     COMM_SUBSCRIPTION_NOT_FOUND,
     COMM_SUBSCRIPTION_REMOVED,
+    COMM_UNSUBSCRIBE_SENTINEL_FAILED,
 )
 
 logger = get_logger(__name__)
@@ -403,8 +404,8 @@ class InMemoryMessageBus:
                 try:
                     queue.put_nowait(None)
                 except asyncio.QueueFull:
-                    logger.warning(
-                        COMM_SUBSCRIPTION_REMOVED,
+                    logger.exception(
+                        COMM_UNSUBSCRIBE_SENTINEL_FAILED,
                         channel=channel_name,
                         subscriber=subscriber_id,
                         detail="Queue full — unsubscribe sentinel not delivered",
@@ -428,13 +429,19 @@ class InMemoryMessageBus:
         the bus is stopped.  When ``timeout`` is ``None``, awaits
         indefinitely (or until shutdown).
 
+        Note: Only one ``receive()`` call should be pending per
+        ``(channel_name, subscriber_id)`` pair at a time.  The
+        unsubscribe sentinel wakes a single waiter; concurrent
+        receivers on the same subscription are not supported.
+
         Args:
             channel_name: Channel to receive from.
             subscriber_id: Agent ID receiving.
             timeout: Seconds to wait before returning ``None``.
 
         Returns:
-            A delivery envelope, or ``None`` on timeout or shutdown.
+            A delivery envelope, or ``None`` on timeout, shutdown,
+            or when an in-flight receive is woken by :meth:`unsubscribe`.
 
         Raises:
             MessageBusNotRunningError: If the bus is not running.

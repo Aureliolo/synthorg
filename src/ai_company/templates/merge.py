@@ -115,8 +115,8 @@ def _merge_agents(
          remove it. Child entry is discarded.
        - Otherwise: match against first unmatched parent with same key,
          replace. No match -> append.
-    3. Discard ``_remove`` entries; strip ``_remove`` key from
-       replacement/appended dicts.
+    3. Discard ``_remove`` entries; strip ``_remove`` and ``merge_id``
+       keys from replacement/appended dicts.
     4. Result: parent agents (with replacements/removals) + appended.
 
     Args:
@@ -277,11 +277,14 @@ def _agent_key(agent: dict[str, Any]) -> tuple[str, str, str]:
     """
     role = str(agent.get("role", "")).lower()
     if not role:
+        msg = f"Agent dict is missing 'role' field (keys: {sorted(agent.keys())})"
         logger.warning(
             TEMPLATE_INHERIT_MERGE_ERROR,
             action="missing_role",
             agent_keys=sorted(agent.keys()),
+            error=msg,
         )
+        raise TemplateInheritanceError(msg)
     dept = agent.get("department")
     if not dept:
         dept = DEFAULT_MERGE_DEPARTMENT

@@ -285,7 +285,8 @@ class AgentMessenger:
             timeout: Max seconds to wait, or ``None`` for indefinite.
 
         Returns:
-            The next delivery envelope, or ``None`` on timeout/shutdown.
+            The next delivery envelope, or ``None`` on timeout, shutdown,
+            or when an in-flight receive is woken by :meth:`unsubscribe`.
         """
         return await self._bus.receive(
             channel_name,

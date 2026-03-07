@@ -103,7 +103,13 @@ class MessageDispatcher:
                 f"MessageHandler {type(handler).__name__!r} has a "
                 f"synchronous handle() — must be async"
             )
-            logger.warning(COMM_HANDLER_INVALID, error=msg)
+            logger.warning(
+                COMM_HANDLER_INVALID,
+                agent_id=self._agent_id,
+                handler_name=name,
+                handler_type=type(handler).__name__,
+                error=msg,
+            )
             raise TypeError(msg)
 
         registration = HandlerRegistration(

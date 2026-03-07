@@ -505,12 +505,14 @@ class TestMergeIdTargeting:
                 "role": "Full-Stack Developer",
                 "department": "engineering",
                 "merge_id": "frontend",
+                "specialty": "frontend",
                 "level": "mid",
             },
             {
                 "role": "Full-Stack Developer",
                 "department": "engineering",
                 "merge_id": "backend",
+                "specialty": "backend",
                 "level": "mid",
             },
         ]
@@ -518,16 +520,17 @@ class TestMergeIdTargeting:
             {
                 "role": "Full-Stack Developer",
                 "department": "engineering",
-                "merge_id": "frontend",
+                "merge_id": "backend",
+                "specialty": "backend",
                 "level": "senior",
             },
         ]
         result = _merge_agents(parent, child)
         assert len(result) == 2
-        # The frontend agent should be overridden to senior
-        assert result[0]["level"] == "senior"
-        # The backend agent should remain unchanged
-        assert result[1]["level"] == "mid"
+        backend = next(a for a in result if a["specialty"] == "backend")
+        frontend = next(a for a in result if a["specialty"] == "frontend")
+        assert backend["level"] == "senior"
+        assert frontend["level"] == "mid"
 
     def test_merge_id_stripped_from_output(self) -> None:
         """merge_id is stripped from the final output."""
@@ -548,12 +551,14 @@ class TestMergeIdTargeting:
                 "role": "Full-Stack Developer",
                 "department": "engineering",
                 "merge_id": "frontend",
+                "specialty": "frontend",
                 "level": "mid",
             },
             {
                 "role": "Full-Stack Developer",
                 "department": "engineering",
                 "merge_id": "backend",
+                "specialty": "backend",
                 "level": "mid",
             },
         ]
@@ -567,7 +572,13 @@ class TestMergeIdTargeting:
         ]
         result = _merge_agents(parent, child)
         assert len(result) == 1
-        assert result[0]["level"] == "mid"
+        assert result[0]["specialty"] == "backend"
+
+    def test_missing_role_raises(self) -> None:
+        """Agent dict without role raises TemplateInheritanceError."""
+        parent = [{"department": "engineering"}]
+        with pytest.raises(TemplateInheritanceError, match="missing 'role'"):
+            _merge_agents(parent, [])
 
 
 @pytest.mark.unit

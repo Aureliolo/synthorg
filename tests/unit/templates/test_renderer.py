@@ -539,6 +539,18 @@ class TestExpandPreservesMergeId:
         result = _expand_single_agent(agent, 0, set(), has_extends=True)
         assert "merge_id" not in result
 
+    def test_expand_omits_merge_id_without_extends(self) -> None:
+        """Standalone templates do not leak merge_id into output."""
+        from ai_company.templates.renderer import _expand_single_agent
+
+        agent: dict[str, object] = {
+            "role": "Full-Stack Developer",
+            "merge_id": "frontend",
+            "department": "engineering",
+        }
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        assert "merge_id" not in result
+
 
 @pytest.mark.unit
 class TestRosterCounts:

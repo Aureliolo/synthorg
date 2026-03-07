@@ -633,9 +633,10 @@ def _expand_single_agent(
             raise TemplateRenderError(msg)
         agent_dict["_remove"] = True
 
-    # Preserve merge_id for inheritance merge key disambiguation.
-    merge_id = agent.get("merge_id")
-    if merge_id:
+    # Preserve merge_id only when inheritance is active — standalone
+    # templates have no merge step to strip it later.
+    merge_id = str(agent.get("merge_id", "")).strip()
+    if has_extends and merge_id:
         agent_dict["merge_id"] = merge_id
 
     return agent_dict

@@ -4,9 +4,10 @@ Coordinates multiple ``AgentEngine.run()`` calls in parallel using
 structured concurrency (``asyncio.TaskGroup``), with error isolation,
 concurrency limits, resource locking, and progress tracking.
 
-Follows the ``ToolInvoker.invoke_all()`` pattern from
-``tools/invoker.py`` — ``TaskGroup`` + optional ``Semaphore`` +
-``_run_guarded()`` error isolation.
+Inspired by the ``ToolInvoker.invoke_all()`` pattern from
+``tools/invoker.py`` (``TaskGroup`` + ``Semaphore`` + guarded
+execution), extended with fail-fast, progress tracking, and
+``CancelledError`` handling.
 """
 
 import asyncio
@@ -154,15 +155,24 @@ class ParallelExecutor:
                 progress,
             )
         finally:
+            release_error: Exception | None = None
             if lock is not None:
                 try:
                     await self._release_all_locks(group, lock)
-                except Exception:
+                except Exception as exc:
                     logger.exception(
                         PARALLEL_LOCK_RELEASE_ERROR,
                         error="Failed to release resource locks",
                         group_id=group.group_id,
                     )
+                    release_error = exc
+
+        if release_error is not None:
+            msg = (
+                f"Parallel group {group.group_id!r} completed but "
+                "resource locks could not be released"
+            )
+            raise ParallelExecutionError(msg) from release_error
 
         result = self._build_result(
             group,
@@ -223,7 +233,7 @@ class ParallelExecutor:
             # TaskGroup wraps exceptions in ExceptionGroup when
             # _run_guarded re-raises (fail_fast enabled).
             # Individual errors already logged in _record_error_outcome.
-            logger.debug(
+            logger.warning(
                 PARALLEL_GROUP_SUPPRESSED,
                 error=f"ExceptionGroup suppressed: {eg!r}",
                 group_id=group.group_id,
@@ -296,6 +306,7 @@ class ParallelExecutor:
                 PARALLEL_AGENT_CANCELLED,
                 agent_id=agent_id,
                 task_id=task_id,
+                group_id=group.group_id,
             )
             raise
         finally:

@@ -246,7 +246,8 @@ class Team(BaseModel):
         """Ensure no duplicate members (case-insensitive)."""
         normalized = [m.strip().casefold() for m in self.members]
         if len(normalized) != len(set(normalized)):
-            dupes = sorted(m for m, c in Counter(normalized).items() if c > 1)
+            dup_keys = {m for m, c in Counter(normalized).items() if c > 1}
+            dupes = sorted(m for m in self.members if m.strip().casefold() in dup_keys)
             msg = f"Duplicate members in team {self.name!r}: {dupes}"
             logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
@@ -297,7 +298,10 @@ class Department(BaseModel):
         """Ensure no duplicate team names within a department (case-insensitive)."""
         names = [t.name.strip().casefold() for t in self.teams]
         if len(names) != len(set(names)):
-            dupes = sorted(n for n, c in Counter(names).items() if c > 1)
+            dup_keys = {n for n, c in Counter(names).items() if c > 1}
+            dupes = sorted(
+                t.name for t in self.teams if t.name.strip().casefold() in dup_keys
+            )
             msg = f"Duplicate team names in department {self.name!r}: {dupes}"
             logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
@@ -383,7 +387,10 @@ class HRRegistry(BaseModel):
         """Ensure no duplicate entries in active_agents (case-insensitive)."""
         normalized = [a.strip().casefold() for a in self.active_agents]
         if len(normalized) != len(set(normalized)):
-            dupes = sorted(a for a, c in Counter(normalized).items() if c > 1)
+            dup_keys = {a for a, c in Counter(normalized).items() if c > 1}
+            dupes = sorted(
+                a for a in self.active_agents if a.strip().casefold() in dup_keys
+            )
             msg = f"Duplicate entries in active_agents: {dupes}"
             logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)

@@ -347,10 +347,15 @@ class CompanyTemplate(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_department_names(self) -> Self:
-        """Department names must be unique."""
-        names = [d.name for d in self.departments]
+        """Department names must be unique (case-insensitive)."""
+        names = [d.name.strip().casefold() for d in self.departments]
         if len(names) != len(set(names)):
-            dupes = sorted(n for n, c in Counter(names).items() if c > 1)
+            dup_keys = {n for n, c in Counter(names).items() if c > 1}
+            dupes = sorted(
+                d.name
+                for d in self.departments
+                if d.name.strip().casefold() in dup_keys
+            )
             msg = f"Duplicate department names: {dupes}"
             logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)

@@ -613,13 +613,16 @@ class TestParallelExecutorCancellation:
         a2 = _make_assignment("a2", "t2")
 
         call_count = 0
+        peer_started = asyncio.Event()
 
         async def side_effect(**kwargs: object) -> AgentRunResult:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
+                await peer_started.wait()
                 msg = "fail fast"
                 raise RuntimeError(msg)
+            peer_started.set()
             await asyncio.sleep(10)
             identity = kwargs.get("identity")
             task = kwargs.get("task")
@@ -675,4 +678,6 @@ class TestParallelExecutorInProgressSemantics:
         result = await executor.execute_group(group)
 
         assert result.all_succeeded is True
+        assert progress_updates
+        assert any(p.in_progress > 0 for p in progress_updates)
         assert max_in_progress <= 2
