@@ -3,17 +3,22 @@
 Implements DESIGN_SPEC §6.7 — cooperative timeout strategy for clean
 process shutdown.  When SIGINT/SIGTERM is received the framework signals
 agents to exit at turn boundaries, waits a grace period, force-cancels
-stragglers, marks tasks INTERRUPTED, and runs cleanup callbacks.
+stragglers, and runs cleanup callbacks.  The *engine* layer is responsible
+for transitioning tasks to INTERRUPTED (see ``AgentEngine``).
 
 The ``ShutdownStrategy`` protocol is pluggable for future strategies.
 """
 
 import asyncio
+import contextlib
 import signal
 import sys
 import time
-from collections.abc import Callable, Coroutine
-from typing import Any, Protocol, runtime_checkable
+from collections.abc import Callable, Coroutine, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    import types
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,7 +30,10 @@ from ai_company.observability.events.execution import (
     EXECUTION_SHUTDOWN_COMPLETE,
     EXECUTION_SHUTDOWN_FORCE_CANCEL,
     EXECUTION_SHUTDOWN_GRACE_START,
+    EXECUTION_SHUTDOWN_MANAGER_CREATED,
     EXECUTION_SHUTDOWN_SIGNAL,
+    EXECUTION_SHUTDOWN_TASK_ERROR,
+    EXECUTION_SHUTDOWN_TASK_TRACKED,
 )
 
 logger = get_logger(__name__)
@@ -54,8 +62,8 @@ class ShutdownResult(BaseModel):
     tasks_interrupted: int = Field(
         ge=0,
         description=(
-            "Number of tasks force-cancelled during shutdown "
-            "(transitioned to INTERRUPTED)"
+            "Number of tasks still running after the grace period "
+            "that were force-cancelled"
         ),
     )
     tasks_completed: int = Field(
@@ -86,15 +94,15 @@ class ShutdownStrategy(Protocol):
     async def execute_shutdown(
         self,
         *,
-        running_tasks: dict[str, asyncio.Task[Any]],
-        cleanup_callbacks: list[CleanupCallback],
+        running_tasks: Mapping[str, asyncio.Task[Any]],
+        cleanup_callbacks: Sequence[CleanupCallback],
     ) -> ShutdownResult:
         """Execute the full shutdown sequence.
 
         Args:
             running_tasks: Map of task_id → asyncio.Task for in-flight
                 agent executions.
-            cleanup_callbacks: Ordered list of async cleanup callbacks
+            cleanup_callbacks: Ordered sequence of async cleanup callbacks
                 to invoke after task shutdown.
 
         Returns:
@@ -147,8 +155,8 @@ class CooperativeTimeoutStrategy:
     async def execute_shutdown(
         self,
         *,
-        running_tasks: dict[str, asyncio.Task[Any]],
-        cleanup_callbacks: list[CleanupCallback],
+        running_tasks: Mapping[str, asyncio.Task[Any]],
+        cleanup_callbacks: Sequence[CleanupCallback],
     ) -> ShutdownResult:
         """Execute the cooperative timeout shutdown sequence."""
         start = time.monotonic()
@@ -184,9 +192,12 @@ class CooperativeTimeoutStrategy:
         )
         return result
 
+    _CANCEL_PROPAGATION_TIMEOUT: float = 5.0
+    """Seconds to wait for cancellation to propagate after force-cancel."""
+
     async def _wait_and_cancel(
         self,
-        running_tasks: dict[str, asyncio.Task[Any]],
+        running_tasks: Mapping[str, asyncio.Task[Any]],
     ) -> tuple[int, int]:
         """Wait for cooperative exit, then force-cancel stragglers.
 
@@ -203,17 +214,21 @@ class CooperativeTimeoutStrategy:
         )
 
         # Retrieve exceptions from done tasks to prevent
-        # "Task exception was never retrieved" warnings
+        # "Task exception was never retrieved" warnings.
+        # Tasks that raised are not counted as "completed" — only
+        # cleanly-finished tasks count.
+        tasks_completed = 0
         for task in done:
-            if not task.cancelled() and task.exception() is not None:
+            if task.cancelled():
+                continue
+            exc = task.exception()
+            if exc is not None:
                 logger.warning(
-                    EXECUTION_SHUTDOWN_FORCE_CANCEL,
-                    error=(
-                        f"Task raised during shutdown: "
-                        f"{type(task.exception()).__name__}"
-                    ),
+                    EXECUTION_SHUTDOWN_TASK_ERROR,
+                    error=(f"Task raised during shutdown: {type(exc).__name__}"),
                 )
-        tasks_completed = len(done)
+            else:
+                tasks_completed += 1
 
         if pending:
             logger.warning(
@@ -222,16 +237,29 @@ class CooperativeTimeoutStrategy:
             )
             for task in pending:
                 task.cancel()
-            # Wait for cancellation to propagate (bounded)
-            await asyncio.wait(pending, timeout=5.0)
+            # Wait for cancellation to propagate (bounded).
+            # Retrieve exceptions to suppress "never retrieved" warnings.
+            cancel_done, _ = await asyncio.wait(
+                pending,
+                timeout=self._CANCEL_PROPAGATION_TIMEOUT,
+            )
+            for task in cancel_done:
+                if not task.cancelled():
+                    with contextlib.suppress(Exception):
+                        task.exception()
 
         return tasks_completed, len(pending)
 
     async def _run_cleanup(
         self,
-        callbacks: list[CleanupCallback],
+        callbacks: Sequence[CleanupCallback],
     ) -> bool:
-        """Run cleanup callbacks sequentially within the time budget."""
+        """Run cleanup callbacks sequentially within the time budget.
+
+        Returns:
+            ``True`` if all callbacks completed successfully within the
+            time budget, ``False`` otherwise.
+        """
         if not callbacks:
             return True
 
@@ -290,9 +318,8 @@ class ShutdownManager:
         self._cleanup_callbacks: list[CleanupCallback] = []
         self._signals_installed = False
         logger.debug(
-            EXECUTION_SHUTDOWN_COMPLETE,
+            EXECUTION_SHUTDOWN_MANAGER_CREATED,
             strategy=self._strategy.get_strategy_type(),
-            action="manager_created",
         )
 
     @property
@@ -337,7 +364,7 @@ class ShutdownManager:
     def _handle_signal_threadsafe(
         self,
         signum: int,
-        _frame: Any,
+        _frame: types.FrameType | None,
     ) -> None:
         """Handle signal on Windows (called outside the event loop context).
 
@@ -350,28 +377,51 @@ class ShutdownManager:
             sig_name = f"UNKNOWN({signum})"
 
         def _on_loop() -> None:
-            logger.info(
-                EXECUTION_SHUTDOWN_SIGNAL,
-                signal=sig_name,
-            )
-            self._strategy.request_shutdown()
+            try:
+                logger.info(
+                    EXECUTION_SHUTDOWN_SIGNAL,
+                    signal=sig_name,
+                )
+                self._strategy.request_shutdown()
+            except Exception:
+                logger.exception(
+                    EXECUTION_SHUTDOWN_SIGNAL,
+                    signal=sig_name,
+                    error="request_shutdown() raised in signal handler",
+                )
 
         try:
             loop = asyncio.get_running_loop()
             loop.call_soon_threadsafe(_on_loop)
         except RuntimeError:
             # No running event loop — call directly (best-effort).
-            self._strategy.request_shutdown()
+            # Cannot log safely without a loop, so suppress all errors.
+            with contextlib.suppress(Exception):
+                self._strategy.request_shutdown()
 
     def register_task(
         self,
         task_id: str,
         asyncio_task: asyncio.Task[Any],
     ) -> None:
-        """Track a running agent task."""
+        """Track a running agent task.
+
+        Raises:
+            RuntimeError: If shutdown has already been requested (drain
+                gate is closed).
+        """
+        if self._strategy.is_shutting_down():
+            msg = f"Cannot register task {task_id!r}: shutdown already in progress"
+            raise RuntimeError(msg)
+        if task_id in self._running_tasks:
+            logger.warning(
+                EXECUTION_SHUTDOWN_TASK_TRACKED,
+                action="task_overwritten",
+                task_id=task_id,
+            )
         self._running_tasks[task_id] = asyncio_task
         logger.debug(
-            EXECUTION_SHUTDOWN_GRACE_START,
+            EXECUTION_SHUTDOWN_TASK_TRACKED,
             action="task_registered",
             task_id=task_id,
             running_tasks=len(self._running_tasks),
@@ -381,7 +431,7 @@ class ShutdownManager:
         """Stop tracking a completed agent task."""
         self._running_tasks.pop(task_id, None)
         logger.debug(
-            EXECUTION_SHUTDOWN_GRACE_START,
+            EXECUTION_SHUTDOWN_TASK_TRACKED,
             action="task_unregistered",
             task_id=task_id,
             running_tasks=len(self._running_tasks),

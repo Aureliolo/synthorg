@@ -27,10 +27,10 @@ pytestmark = pytest.mark.timeout(30)
 
 
 class _ShutdownTriggeringProvider:
-    """Provider that triggers shutdown on the second call.
+    """Provider that triggers shutdown on the first call.
 
-    First call returns a tool-use response, second call triggers
-    shutdown and returns a stop response.
+    The first call triggers shutdown and returns a STOP response,
+    so the loop completes before checking the shutdown flag again.
     """
 
     def __init__(self, strategy: CooperativeTimeoutStrategy) -> None:
@@ -90,10 +90,17 @@ class _ShutdownTriggeringProvider:
 class TestGracefulShutdownFlow:
     """Full shutdown integration: engine + strategy + agent → INTERRUPTED."""
 
-    async def test_shutdown_interrupts_task_and_runs_cleanup(
+    async def test_shutdown_signal_propagates_through_manager(
         self,
     ) -> None:
-        """Engine with shutdown_checker stops and transitions to INTERRUPTED."""
+        """Shutdown signal during execution propagates through manager.
+
+        The provider triggers shutdown on the first call but returns
+        STOP (no tool calls), so the loop completes *before* the next
+        shutdown check.  This verifies the signal propagation path —
+        test_shutdown_during_multi_turn_interrupts below covers the
+        INTERRUPTED transition.
+        """
         from datetime import date
         from uuid import uuid4
 
@@ -122,7 +129,7 @@ class TestGracefulShutdownFlow:
         task = Task(
             id="task-shutdown-001",
             title="Task for shutdown test",
-            description="This task will be interrupted.",
+            description="This task will complete before shutdown check.",
             type=TaskType.DEVELOPMENT,
             priority=Priority.MEDIUM,
             project="proj-001",
@@ -136,14 +143,6 @@ class TestGracefulShutdownFlow:
         strategy = CooperativeTimeoutStrategy(grace_seconds=5.0)
         manager = ShutdownManager(strategy=strategy)
 
-        # Track cleanup execution
-        cleanup_ran = []
-
-        async def cleanup_cb() -> None:
-            cleanup_ran.append("done")
-
-        manager.register_cleanup(cleanup_cb)
-
         provider = _ShutdownTriggeringProvider(strategy)
 
         engine = AgentEngine(
@@ -151,14 +150,14 @@ class TestGracefulShutdownFlow:
             shutdown_checker=manager.is_shutting_down,
         )
 
-        await engine.run(
+        result = await engine.run(
             identity=identity,
             task=task,
         )
 
-        # The first LLM call triggers shutdown, but since it returns
-        # STOP with no tool calls, the loop completes normally.
-        # Verify the manager state reflects the shutdown signal.
+        # Loop completed normally (STOP with no tool calls)
+        assert result.is_success is True
+        # But the shutdown signal was set
         assert manager.is_shutting_down() is True
 
     async def test_shutdown_during_multi_turn_interrupts(

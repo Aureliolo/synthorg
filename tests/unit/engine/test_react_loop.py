@@ -966,6 +966,49 @@ class TestReactLoopShutdown:
 
         assert result.termination_reason == TerminationReason.COMPLETED
 
+    async def test_shutdown_checker_exception_returns_error(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Shutdown checker that raises → ERROR termination."""
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory([])
+        loop = ReactLoop()
+
+        def bad_checker() -> bool:
+            msg = "checker broke"
+            raise ValueError(msg)
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            shutdown_checker=bad_checker,
+        )
+
+        assert result.termination_reason == TerminationReason.ERROR
+        assert "Shutdown checker failed" in (result.error_message or "")
+
+    async def test_shutdown_checker_memory_error_propagates(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """MemoryError from shutdown checker propagates unconditionally."""
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory([])
+        loop = ReactLoop()
+
+        def oom_checker() -> bool:
+            raise MemoryError
+
+        with pytest.raises(MemoryError):
+            await loop.execute(
+                context=ctx,
+                provider=provider,
+                shutdown_checker=oom_checker,
+            )
+
 
 @pytest.mark.unit
 class TestReactLoopCostAccounting:

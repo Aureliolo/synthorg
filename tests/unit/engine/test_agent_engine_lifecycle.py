@@ -523,3 +523,45 @@ class TestAgentEnginePostExecutionResilience:
         te = result.execution_result.context.task_execution
         assert te is not None
         assert te.status == TaskStatus.CANCELLED
+
+    async def test_interrupted_transition_failure_preserves_result(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """SHUTDOWN with invalid task status → transition fails, result kept."""
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        ctx = ctx.with_task_transition(
+            TaskStatus.IN_PROGRESS,
+            reason="Engine starting execution",
+        )
+        te = ctx.task_execution
+        assert te is not None
+        # Force into COMPLETED (terminal) — INTERRUPTED transition should fail
+        bad_te = te.model_copy(update={"status": TaskStatus.COMPLETED})
+        ctx_bad = ctx.model_copy(update={"task_execution": bad_te})
+
+        mock_result = ExecutionResult(
+            context=ctx_bad,
+            termination_reason=TerminationReason.SHUTDOWN,
+        )
+        mock_loop = MagicMock()
+        mock_loop.execute = AsyncMock(return_value=mock_result)
+        mock_loop.get_loop_type = MagicMock(return_value="react")
+
+        provider = mock_provider_factory([])
+        engine = AgentEngine(provider=provider, execution_loop=mock_loop)
+
+        result = await engine.run(
+            identity=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+
+        te = result.execution_result.context.task_execution
+        assert te is not None
+        # Transition failed, so status stays as COMPLETED
+        assert te.status == TaskStatus.COMPLETED

@@ -38,7 +38,7 @@ class TestShutdownStrategyProtocol:
             cleanup_completed=True,
             duration_seconds=0.1,
         )
-        with pytest.raises(Exception, match="frozen"):
+        with pytest.raises(ValidationError, match="frozen"):
             result.tasks_interrupted = 5  # type: ignore[misc]
 
 
@@ -230,6 +230,15 @@ class TestShutdownManagerTaskTracking:
         strategy.request_shutdown()
         assert manager.is_shutting_down() is True
 
+    def test_register_task_during_shutdown_raises(self) -> None:
+        """Drain gate: registering a task after shutdown raises RuntimeError."""
+        strategy = CooperativeTimeoutStrategy()
+        manager = ShutdownManager(strategy=strategy)
+        strategy.request_shutdown()
+        mock_task = MagicMock(spec=asyncio.Task)
+        with pytest.raises(RuntimeError, match="shutdown already in progress"):
+            manager.register_task("late-task", mock_task)
+
 
 @pytest.mark.unit
 class TestShutdownManagerSignalHandlers:
@@ -302,9 +311,11 @@ class TestShutdownManagerSignalHandling:
         with patch("asyncio.get_running_loop", return_value=mock_loop):
             manager._handle_signal_threadsafe(signal.SIGINT.value, None)
         mock_loop.call_soon_threadsafe.assert_called_once()
-        # The callback is a closure (_on_loop) that logs and requests shutdown.
+        # Execute the callback to verify it actually calls request_shutdown.
         callback = mock_loop.call_soon_threadsafe.call_args[0][0]
         assert callable(callback)
+        callback()
+        assert strategy.is_shutting_down() is True
 
     def test_handle_signal_threadsafe_no_loop(self) -> None:
         strategy = CooperativeTimeoutStrategy()

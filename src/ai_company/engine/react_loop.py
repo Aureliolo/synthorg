@@ -186,6 +186,13 @@ class ReactLoop:
         # Check shutdown before tool invocations
         shutdown_result = self._check_shutdown(ctx, shutdown_checker, turns)
         if shutdown_result is not None:
+            # Tools were not executed — clear tool_calls_made in the
+            # last TurnRecord so it doesn't overstate what happened.
+            if turns:
+                last = turns[-1]
+                turns[-1] = last.model_copy(
+                    update={"tool_calls_made": ()},
+                )
             return shutdown_result
 
         return await self._execute_tool_calls(
@@ -283,11 +290,16 @@ class ReactLoop:
         turns: list[TurnRecord],
     ) -> CompletionResponse | ExecutionResult:
         """Call provider.complete(), returning an error result on failure."""
+        # Estimate input tokens from message character count (rough
+        # heuristic: ~4 chars per token).  The exact count is only
+        # available *after* the provider call.
+        char_count = sum(len(m.content or "") for m in ctx.conversation)
         logger.info(
             EXECUTION_LOOP_TURN_START,
             execution_id=ctx.execution_id,
             turn=turn_number,
             message_count=len(ctx.conversation),
+            input_token_estimate=char_count // 4,
         )
         try:
             return await provider.complete(

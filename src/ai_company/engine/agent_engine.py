@@ -771,7 +771,7 @@ class AgentEngine:
                 error=f"Failed to build error result: {build_exc}",
                 original_error=error_msg,
             )
-            raise exc from None
+            raise exc from build_exc
 
     async def _build_error_execution(  # noqa: PLR0913
         self,

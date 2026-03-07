@@ -158,6 +158,12 @@ class TestAgentRunResultComputedFields:
         )
         assert result.is_success is False
 
+    def test_is_success_false_on_shutdown(self) -> None:
+        result = _make_run_result(
+            termination_reason=TerminationReason.SHUTDOWN,
+        )
+        assert result.is_success is False
+
 
 @pytest.mark.unit
 class TestAgentRunResultValidation:

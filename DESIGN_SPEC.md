@@ -710,9 +710,9 @@ structured_phases:
           │      │ COMPLETED  │
           │      └────────────┘
           │
-          │ blocked          cancelled
+          │ blocked          cancelled (from ASSIGNED or IN_PROGRESS)
     ┌─────▼─────┐      ┌────────────┐
-    │  BLOCKED   │      │ CANCELLED   │
+    │  BLOCKED   │      │ CANCELLED   │ ◀── ASSIGNED / IN_PROGRESS
     └─────┬─────┘      └────────────┘
           │ unblocked        (terminal)
           └──▶ ASSIGNED
@@ -1033,7 +1033,7 @@ When the process receives SIGTERM/SIGINT (user Ctrl+C, Docker stop, systemd shut
 
 #### Strategy 1: Cooperative with Timeout (Default / MVP)
 
-The engine sets a shutdown event, stops accepting new tasks, and gives in-flight agents a grace period to finish their current turn. Agents check the shutdown event at turn boundaries (between LLM calls, before tool invocations) and exit cooperatively. After the grace period, remaining agents are force-cancelled and their tasks marked `INTERRUPTED`.
+The engine sets a shutdown event, stops accepting new tasks, and gives in-flight agents a grace period to finish their current turn. Agents check the shutdown event at turn boundaries (between LLM calls, before tool invocations) and exit cooperatively. After the grace period, remaining agents are force-cancelled. **All tasks terminated by shutdown — whether they exited cooperatively or were force-cancelled — are marked `INTERRUPTED`** by the engine layer.
 
 ```yaml
 graceful_shutdown:
@@ -1050,7 +1050,7 @@ On shutdown signal:
 4. Force-cancel remaining agents (`task.cancel()`) — tasks transition to `INTERRUPTED`
 5. Cleanup phase (`cleanup_seconds`): persist cost records, close provider connections, flush logs
 
-> **Non-terminal status (implemented in M3):** `INTERRUPTED` is a `TaskStatus` variant. Unlike `FAILED` (eligible for automatic reassignment) or `CANCELLED` (terminal), `INTERRUPTED` indicates the task was stopped due to process shutdown and is eligible for manual or automatic reassignment on restart. Valid transitions: `ASSIGNED → INTERRUPTED`, `IN_PROGRESS → INTERRUPTED`, `INTERRUPTED → ASSIGNED` (reassignment on restart). See the updated §6.1 lifecycle diagram.
+> **Non-terminal status (implemented in M3):** `INTERRUPTED` is a `TaskStatus` variant. Unlike `FAILED` (eligible for automatic reassignment) or `CANCELLED` (terminal), `INTERRUPTED` indicates the task was stopped due to process shutdown — regardless of whether the agent exited cooperatively or was force-cancelled — and is eligible for manual or automatic reassignment on restart. Valid transitions: `ASSIGNED → INTERRUPTED`, `IN_PROGRESS → INTERRUPTED`, `INTERRUPTED → ASSIGNED` (reassignment on restart). See the updated §6.1 lifecycle diagram.
 >
 > **Windows compatibility:** `loop.add_signal_handler()` is not supported on Windows. The implementation uses `signal.signal()` as a fallback. SIGINT (Ctrl+C) works cross-platform; SIGTERM on Windows requires `os.kill()`.
 >
