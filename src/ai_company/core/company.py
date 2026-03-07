@@ -136,6 +136,7 @@ class DepartmentPolicies(BaseModel):
         if len(action_types) != len(set(action_types)):
             dupes = sorted(a for a, c in Counter(action_types).items() if c > 1)
             msg = f"Duplicate action types in approval chains: {dupes}"
+            logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
         return self
 
