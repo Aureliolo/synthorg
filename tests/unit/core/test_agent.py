@@ -174,6 +174,31 @@ class TestPersonalityConfig:
         assert p.verbosity is CommunicationVerbosity.TERSE
         assert p.conflict_approach is ConflictApproach.COMPETE
 
+    @pytest.mark.parametrize(
+        "dimension",
+        [
+            "openness",
+            "conscientiousness",
+            "extraversion",
+            "agreeableness",
+            "stress_response",
+        ],
+    )
+    def test_big_five_nan_rejected(self, dimension: str) -> None:
+        """NaN values are rejected for Big Five dimensions."""
+        with pytest.raises(ValidationError):
+            PersonalityConfig(**{dimension: float("nan")})  # type: ignore[arg-type]
+
+    def test_description_max_length_rejected(self) -> None:
+        """Reject description exceeding max_length."""
+        with pytest.raises(ValidationError):
+            PersonalityConfig(description="x" * 501)
+
+    def test_communication_style_max_length_rejected(self) -> None:
+        """Reject communication_style exceeding max_length."""
+        with pytest.raises(ValidationError):
+            PersonalityConfig(communication_style="x" * 101)
+
     def test_backward_compatible_construction(self) -> None:
         """Construction without new fields works identically to before."""
         p = PersonalityConfig(

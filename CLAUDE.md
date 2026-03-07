@@ -54,7 +54,7 @@ src/ai_company/
   observability/  # Structured logging, correlation tracking, log sinks
   providers/      # LLM provider abstraction (LiteLLM adapter)
   security/       # SecOps agent, approval gates, audit
-  templates/      # Pre-built company templates and builder
+  templates/      # Pre-built company templates, personality presets, and builder
   tools/          # Tool registry, built-in tools (file_system/, git, sandbox/), MCP integration, role-based access
 ```
 

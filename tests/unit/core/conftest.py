@@ -101,19 +101,6 @@ class TeamFactory(ModelFactory[Team]):
     __model__ = Team
 
 
-class DepartmentFactory(ModelFactory[Department]):
-    __model__ = Department
-    budget_percent = 10.0
-
-
-class CompanyConfigFactory(ModelFactory[CompanyConfig]):
-    __model__ = CompanyConfig
-
-
-class HRRegistryFactory(ModelFactory[HRRegistry]):
-    __model__ = HRRegistry
-
-
 class ReportingLineFactory(ModelFactory[ReportingLine]):
     __model__ = ReportingLine
     subordinate = "dev"
@@ -135,6 +122,20 @@ class DepartmentPoliciesFactory(ModelFactory[DepartmentPolicies]):
     approval_chains = ()
 
 
+class DepartmentFactory(ModelFactory[Department]):
+    __model__ = Department
+    budget_percent = 10.0
+    policies = DepartmentPoliciesFactory
+
+
+class CompanyConfigFactory(ModelFactory[CompanyConfig]):
+    __model__ = CompanyConfig
+
+
+class HRRegistryFactory(ModelFactory[HRRegistry]):
+    __model__ = HRRegistry
+
+
 class WorkflowHandoffFactory(ModelFactory[WorkflowHandoff]):
     __model__ = WorkflowHandoff
     from_department = "engineering"
@@ -143,6 +144,8 @@ class WorkflowHandoffFactory(ModelFactory[WorkflowHandoff]):
 
 class EscalationPathFactory(ModelFactory[EscalationPath]):
     __model__ = EscalationPath
+    from_department = "engineering"
+    to_department = "executive"
 
 
 class CompanyFactory(ModelFactory[Company]):

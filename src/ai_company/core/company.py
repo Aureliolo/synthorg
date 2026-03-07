@@ -188,6 +188,20 @@ class EscalationPath(BaseModel):
         description="Priority boost on escalation (0-3)",
     )
 
+    @model_validator(mode="after")
+    def _validate_different_departments(self) -> Self:
+        """Reject escalations within the same department."""
+        if (
+            self.from_department.strip().casefold()
+            == self.to_department.strip().casefold()
+        ):
+            msg = (
+                f"Escalation must be between different departments: "
+                f"{self.from_department!r} == {self.to_department!r}"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class Team(BaseModel):
     """A team within a department.
@@ -368,6 +382,8 @@ class Company(BaseModel):
         departments: Company departments.
         config: Company-wide configuration.
         hr_registry: HR registry.
+        workflow_handoffs: Cross-department workflow handoffs.
+        escalation_paths: Cross-department escalation paths.
     """
 
     model_config = ConfigDict(frozen=True)

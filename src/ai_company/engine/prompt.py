@@ -649,18 +649,14 @@ def build_error_prompt(
     """
     if system_prompt is not None:
         return system_prompt
+    metadata = _build_metadata(identity)
+    metadata["agent_id"] = agent_id
     return SystemPrompt(
         content="",
         template_version="error",
         estimated_tokens=0,
         sections=(),
-        metadata={
-            "agent_id": agent_id,
-            "name": identity.name,
-            "role": identity.role,
-            "department": identity.department,
-            "level": identity.level.value,
-        },
+        metadata=metadata,
     )
 
 

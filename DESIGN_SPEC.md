@@ -153,6 +153,15 @@ Every agent has a comprehensive identity. At the design level, agent data splits
 
 > **Current state (M3):** Both layers are implemented. Config layer: `AgentIdentity` (frozen, in `core/agent.py`). Runtime state layer: `TaskExecution`, `AgentContext`, `AgentContextSnapshot` (frozen + `model_copy`, in `engine/`). `AgentEngine` orchestrates execution via `run()`. All identifier/name fields use `NotBlankStr` (from `core.types`) for automatic whitespace rejection; optional identifier fields use `NotBlankStr | None`; tuple fields use `tuple[NotBlankStr, ...]` for per-element validation.
 
+**Personality dimensions** split into two tiers:
+
+- **Big Five (OCEAN-variant)** — floats (0.0–1.0) used for internal compatibility scoring only (not injected into prompts). `stress_response` replaces traditional neuroticism with inverted polarity (1.0 = very calm). Scored by `core/personality.py`.
+- **Behavioral enums** — injected into system prompts as natural-language labels that LLMs respond to:
+  - `DecisionMakingStyle`: `analytical`, `intuitive`, `consultative`, `directive`
+  - `CollaborationPreference`: `independent`, `pair`, `team`
+  - `CommunicationVerbosity`: `terse`, `balanced`, `verbose`
+  - `ConflictApproach`: `avoid`, `accommodate`, `compete`, `compromise`, `collaborate` (Thomas-Kilmann model)
+
 ```yaml
 # --- Current (M2): Config layer — AgentIdentity (frozen) ---
 agent:
@@ -173,6 +182,17 @@ agent:
       Sarah is a methodical backend developer who prioritizes clean architecture
       and thorough testing. She pushes back on shortcuts and advocates for
       proper error handling. Prefers Pythonic solutions.
+    # Big Five (OCEAN-variant) dimensions — internal scoring (0.0-1.0)
+    openness: 0.4              # curiosity, creativity
+    conscientiousness: 0.9     # thoroughness, reliability
+    extraversion: 0.3          # assertiveness, sociability
+    agreeableness: 0.5         # cooperation, empathy
+    stress_response: 0.75      # emotional stability (1.0 = very calm)
+    # Behavioral enums — injected into system prompts
+    decision_making: "analytical"    # analytical, intuitive, consultative, directive
+    collaboration: "independent"     # independent, pair, team
+    verbosity: "balanced"            # terse, balanced, verbose
+    conflict_approach: "compromise"  # avoid, accommodate, compete, compromise, collaborate
   skills:
     primary:
       - python
@@ -2158,7 +2178,7 @@ template:
     - role: "product_manager"
       name: "{{ pm_name | auto }}"
       model: "medium"
-      personality_preset: "user_advocate"
+      personality_preset: "strategic_planner"
 
   workflow: "agile_kanban"
   communication: "hybrid"
@@ -2298,7 +2318,8 @@ ai-company/
 │       │   ├── project.py          # Project management
 │       │   ├── artifact.py         # Produced work items
 │       │   ├── role.py             # Role model
-│       │   └── role_catalog.py     # Role catalog
+│       │   ├── role_catalog.py     # Role catalog
+│       │   └── personality.py     # Personality compatibility scoring
 │       ├── engine/                  # Agent orchestration, execution loops, and task lifecycle
 │       │   ├── errors.py           # Engine error hierarchy
 │       │   ├── prompt.py           # System prompt builder
@@ -2340,6 +2361,7 @@ ai-company/
 │       │   │   ├── correlation.py # CORRELATION_* constants
 │       │   │   ├── execution.py   # EXECUTION_* constants
 │       │   │   ├── git.py         # GIT_* constants
+│       │   │   ├── personality.py # PERSONALITY_* constants
 │       │   │   ├── prompt.py      # PROMPT_* constants
 │       │   │   ├── provider.py    # PROVIDER_* constants
 │       │   │   ├── role.py        # ROLE_* constants
@@ -2432,7 +2454,7 @@ ai-company/
 │           ├── schema.py           # Template schema models
 │           ├── loader.py           # Template loader
 │           ├── renderer.py         # Template renderer
-│           ├── presets.py          # Template presets
+│           ├── presets.py          # Personality presets + auto-name generation
 │           ├── errors.py           # Template errors
 │           └── builtins/           # Pre-built company templates
 │               ├── agency.yaml
@@ -2484,6 +2506,7 @@ These conventions were established during the M0–M2+ review cycle. **Adopted**
 | **Tool permission checking** | Adopted (M3) | `ToolPermissionChecker` enforces category-level gating based on `ToolAccessLevel` (sandboxed → restricted → standard → elevated, plus custom). Priority-based resolution: denied list → allowed list → level categories → deny. Case-insensitive name matching. `ToolInvoker` filters definitions for prompt and checks at invocation time. | Defense-in-depth: agents only see permitted tools in the LLM prompt, and invocations are re-checked at execution time. Explicit allow/deny lists provide per-agent overrides. See §11.1.1. |
 | **Tool sandboxing** | Adopted (M3, incremental) | File system tools use in-process `PathValidator` for workspace-scoped path validation (symlink resolution + containment check). `BaseFileSystemTool` ABC provides shared `ToolCategory.FILE_SYSTEM` and `PathValidator` integration — all file system tools extend this base. `SandboxBackend` protocol with `SubprocessSandbox` implemented — git tools accept optional `SandboxBackend` injection and delegate subprocess management to it (env filtering, workspace enforcement, timeout + process-group kill). `DockerSandbox` planned for code_runner, terminal, web, and database tools. `K8sSandbox` planned for future container deployments. Config-driven per-category backend selection planned for engine wiring. | File system tools use defence-in-depth path validation; subprocess sandbox provides lightweight isolation for git tools; heavier Docker/K8s isolation reserved for higher-risk tool categories (code execution, network). See §11.1.2. |
 | **Crash recovery** | Adopted (M3) | Pluggable `RecoveryStrategy` protocol. M3: `FailAndReassignStrategy` (catch at engine boundary, log snapshot, mark FAILED / eligible for reassignment). M4/M5: `CheckpointStrategy` (persist `AgentContext` per turn, resume from last checkpoint). | Immutable `model_copy` pattern makes checkpoint serialization trivial to add later. Fail-and-reassign is sufficient for short MVP tasks. See §6.6. |
+| **Personality compatibility scoring** | Adopted (M3) | Weighted composite: 60% Big Five similarity (openness, conscientiousness, agreeableness, stress_response → 1−\|diff\|; extraversion → tent-function peaking at 0.3 diff), 20% collaboration alignment (ordinal adjacency: INDEPENDENT↔PAIR↔TEAM), 20% conflict approach (constructive pairs score 1.0, destructive pairs 0.2, mixed 0.4–0.6). `itertools.combinations` for team-level averaging. Result clamped to [0, 1]. | Covers behavioral diversity (extraversion complement), task alignment (conscientiousness similarity), and interpersonal friction (conflict approach). Weights are configurable module constants. |
 | **Agent behavior testing** | Planned (M3) | Scripted `FakeProvider` for unit tests (deterministic turn sequences); behavioral outcome assertions for integration tests (task completed, tools called, cost within budget). | Leverages existing `FakeProvider` and `CompletionResponseFactory` fixtures. Precise engine testing without brittle response-matching at integration level. |
 | **LLM call analytics** | Planned (incremental) | M3: proxy metrics (`turns_per_task`, `tokens_per_task`). M4: call categorization (`productive`, `coordination`, `system`) + orchestration ratio. M5+: full analytics (retry tracking, latency, cache hits, per-provider comparison). | Append-only, never blocks execution. Builds on existing `CostRecord` infrastructure. Detects orchestration overhead early. See §10.5. |
 | **State coordination** | Planned (M4) | Centralized single-writer: `TaskEngine` owns all task/project mutations via `asyncio.Queue`. Agents submit requests, engine applies `model_copy(update=...)` sequentially and publishes snapshots. `version: int` field on state models for future optimistic concurrency if multi-process scaling is needed. | Prevents lost updates by design. Trivial in single-threaded asyncio (no locks). Perfect audit trail. Industry consensus: MetaGPT, CrewAI, AutoGen all use prevention-by-design, not conflict resolution. See §6.8 State Coordination table. |

@@ -376,6 +376,8 @@ class RootConfig(BaseModel):
         routing: Model routing configuration.
         logging: Logging configuration (``None`` to use platform defaults).
         graceful_shutdown: Graceful shutdown configuration.
+        workflow_handoffs: Cross-department workflow handoffs.
+        escalation_paths: Cross-department escalation paths.
     """
 
     model_config = ConfigDict(frozen=True)

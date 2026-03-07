@@ -4,6 +4,8 @@ Computes pairwise and team-level compatibility scores from
 :class:`~ai_company.core.agent.PersonalityConfig` profiles.
 """
 
+import itertools
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from ai_company.core.enums import CollaborationPreference, ConflictApproach
@@ -32,13 +34,15 @@ _BF_AGREEABLENESS = 0.25
 _BF_STRESS = 0.15
 
 # Collaboration adjacency: INDEPENDENT <-> PAIR <-> TEAM
-_COLLAB_ORDER: dict[CollaborationPreference, int] = {
-    CollaborationPreference.INDEPENDENT: 0,
-    CollaborationPreference.PAIR: 1,
-    CollaborationPreference.TEAM: 2,
-}
+_COLLAB_ORDER: MappingProxyType[CollaborationPreference, int] = MappingProxyType(
+    {
+        CollaborationPreference.INDEPENDENT: 0,
+        CollaborationPreference.PAIR: 1,
+        CollaborationPreference.TEAM: 2,
+    }
+)
 
-# Conflict approach scoring matrix (row, col) -> score.
+# Conflict approach pair scoring.
 # Constructive combos score high; destructive combos score low.
 _CONSTRUCTIVE = frozenset({ConflictApproach.COLLABORATE, ConflictApproach.COMPROMISE})
 _DESTRUCTIVE_PAIRS = frozenset(
@@ -90,7 +94,7 @@ def compute_team_compatibility(
         members: Tuple of personality profiles for team members.
 
     Returns:
-        Average pairwise score (1.0 for single-member teams).
+        Average pairwise score (1.0 for teams with fewer than 2 members).
     """
     if len(members) <= 1:
         logger.debug(
@@ -100,19 +104,14 @@ def compute_team_compatibility(
         )
         return 1.0
 
-    total = 0.0
-    count = 0
-    for i in range(len(members)):
-        for j in range(i + 1, len(members)):
-            total += compute_compatibility(members[i], members[j])
-            count += 1
-
-    result = total / count
+    pairs = list(itertools.combinations(members, 2))
+    total = sum(compute_compatibility(a, b) for a, b in pairs)
+    result = total / len(pairs)
 
     logger.debug(
         PERSONALITY_TEAM_SCORE_COMPUTED,
         team_size=len(members),
-        pair_count=count,
+        pair_count=len(pairs),
         score=result,
     )
     return result
@@ -135,7 +134,7 @@ def _big_five_score(a: PersonalityConfig, b: PersonalityConfig) -> float:
     stress_sim = 1.0 - abs(a.stress_response - b.stress_response)
 
     # Extraversion: moderate difference is ideal (complement).
-    # Peak at ~0.3 difference, using a bell-curve-like scoring.
+    # Peak at 0.3 difference, using a tent-function scoring.
     extra_diff = abs(a.extraversion - b.extraversion)
     optimal_diff = 0.3
     extra_score = 1.0 - abs(extra_diff - optimal_diff) / max(

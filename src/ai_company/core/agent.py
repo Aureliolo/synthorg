@@ -55,6 +55,7 @@ class PersonalityConfig(BaseModel):
     )
     communication_style: NotBlankStr = Field(
         default="neutral",
+        max_length=100,
         description="Communication style description",
     )
     risk_tolerance: RiskTolerance = Field(
@@ -67,6 +68,7 @@ class PersonalityConfig(BaseModel):
     )
     description: str = Field(
         default="",
+        max_length=500,
         description="Extended personality description",
     )
 

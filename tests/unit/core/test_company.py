@@ -673,6 +673,24 @@ class TestEscalationPath:
                 priority_boost=-1,
             )
 
+    def test_same_department_rejected(self) -> None:
+        """Reject escalation within the same department."""
+        with pytest.raises(ValidationError, match="different departments"):
+            EscalationPath(
+                from_department="eng",
+                to_department="eng",
+                condition="test",
+            )
+
+    def test_same_department_case_insensitive(self) -> None:
+        """Same-department check is case-insensitive."""
+        with pytest.raises(ValidationError, match="different departments"):
+            EscalationPath(
+                from_department="Eng",
+                to_department="eng",
+                condition="test",
+            )
+
 
 # ── Department additions ──────────────────────────────────────────
 

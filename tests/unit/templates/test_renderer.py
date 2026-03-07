@@ -299,10 +299,7 @@ class TestCollectVariables:
 
 @pytest.mark.unit
 class TestInlinePersonality:
-    def test_inline_personality_overrides_preset(
-        self,
-        tmp_template_file: TemplateFileFactory,
-    ) -> None:
+    def test_inline_personality_overrides_preset(self) -> None:
         """Inline personality dict takes precedence over preset."""
         from ai_company.templates.renderer import _expand_single_agent
 
@@ -385,3 +382,37 @@ class TestDepartmentPassthrough:
         result = _build_config_dict(rendered, template, {})
         assert "workflow_handoffs" in result
         assert len(result["workflow_handoffs"]) == 1
+
+
+@pytest.mark.unit
+class TestUnknownPresetError:
+    def test_unknown_preset_raises_template_render_error(self) -> None:
+        """Unknown personality_preset raises TemplateRenderError."""
+        from ai_company.templates.errors import TemplateRenderError
+        from ai_company.templates.renderer import _expand_single_agent
+
+        agent: dict[str, object] = {
+            "role": "Dev",
+            "personality_preset": "does_not_exist",
+        }
+        with pytest.raises(TemplateRenderError, match="Unknown personality preset"):
+            _expand_single_agent(agent, 0, set())
+
+
+@pytest.mark.unit
+class TestValidateListErrors:
+    def test_non_list_raises(self) -> None:
+        """Non-list value for a list field raises TemplateRenderError."""
+        from ai_company.templates.errors import TemplateRenderError
+        from ai_company.templates.renderer import _validate_list
+
+        with pytest.raises(TemplateRenderError, match="must be a list"):
+            _validate_list({"agents": "not-a-list"}, "agents")
+
+    def test_non_dict_item_raises(self) -> None:
+        """Non-dict item in a list field raises TemplateRenderError."""
+        from ai_company.templates.errors import TemplateRenderError
+        from ai_company.templates.renderer import _validate_list
+
+        with pytest.raises(TemplateRenderError, match="must be a mapping"):
+            _validate_list({"agents": [{"role": "Dev"}, "bad"]}, "agents")

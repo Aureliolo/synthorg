@@ -87,6 +87,8 @@ class TemplateAgentConfig(BaseModel):
         level: Seniority level override.
         model: Model tier alias (e.g. ``"large"``, ``"medium"``, ``"small"``).
         personality_preset: Named personality preset from the presets registry.
+        personality: Inline personality config dict (alternative to
+            ``personality_preset``).
         department: Department override (``None`` defaults to
             ``"engineering"`` during rendering).
     """
@@ -117,14 +119,15 @@ class TemplateAgentConfig(BaseModel):
 class TemplateDepartmentConfig(BaseModel):
     """Department definition within a template.
 
-    Provides structural information only — department names, budget
-    allocations, and the head role.  Internal team composition and
-    reporting lines are defined separately (see follow-up issues).
+    Provides structural information — department names, budget
+    allocations, the head role, reporting lines, and operational policies.
 
     Attributes:
         name: Department name (standard or custom).
         budget_percent: Percentage of company budget (0-100).
         head_role: Role name of the department head.
+        reporting_lines: Reporting line definitions within this department.
+        policies: Department operational policies.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -205,6 +208,8 @@ class CompanyTemplate(BaseModel):
         budget_monthly: Default monthly budget in USD.
         autonomy: Autonomy level (0.0 = full human oversight,
             1.0 = fully autonomous).
+        workflow_handoffs: Cross-department workflow handoff definitions.
+        escalation_paths: Cross-department escalation path definitions.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

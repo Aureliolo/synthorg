@@ -19,6 +19,7 @@ from ai_company.config.defaults import default_config_dict
 from ai_company.config.errors import ConfigLocation
 from ai_company.config.schema import RootConfig
 from ai_company.config.utils import deep_merge, to_float
+from ai_company.core.agent import PersonalityConfig
 from ai_company.observability import get_logger
 from ai_company.observability.events.template import (
     TEMPLATE_RENDER_JINJA2_ERROR,
@@ -36,6 +37,12 @@ from ai_company.templates.presets import (
     generate_auto_name,
     get_personality_preset,
 )
+
+# Placeholder provider name resolved by the engine at startup.
+_DEFAULT_PROVIDER = "default"
+
+# Default department when not specified in template agent config.
+_DEFAULT_DEPARTMENT = "engineering"
 
 if TYPE_CHECKING:
     from ai_company.templates.loader import LoadedTemplate
@@ -282,12 +289,9 @@ def _build_config_dict(
         },
     }
 
-    workflow_handoffs = rendered_data.get("workflow_handoffs")
-    if workflow_handoffs:
-        result["workflow_handoffs"] = workflow_handoffs
-    escalation_paths = rendered_data.get("escalation_paths")
-    if escalation_paths:
-        result["escalation_paths"] = escalation_paths
+    for key in ("workflow_handoffs", "escalation_paths"):
+        if rendered_data.get(key):
+            result[key] = _validate_list(rendered_data, key)
 
     return result
 
@@ -376,13 +380,14 @@ def _expand_single_agent(
     agent_dict: dict[str, Any] = {
         "name": name,
         "role": role,
-        "department": agent.get("department", "engineering"),
+        "department": agent.get("department", _DEFAULT_DEPARTMENT),
         "level": agent.get("level", "mid"),
     }
 
     inline_personality = agent.get("personality")
     preset_name = agent.get("personality_preset")
     if inline_personality and isinstance(inline_personality, dict):
+        _validate_inline_personality(inline_personality, name)
         agent_dict["personality"] = inline_personality
     elif preset_name:
         try:
@@ -392,8 +397,28 @@ def _expand_single_agent(
             raise TemplateRenderError(msg) from exc
 
     model_tier = agent.get("model", "medium")
-    agent_dict["model"] = {"provider": "default", "model_id": model_tier}
+    agent_dict["model"] = {"provider": _DEFAULT_PROVIDER, "model_id": model_tier}
     return agent_dict
+
+
+def _validate_inline_personality(
+    personality: dict[str, Any],
+    agent_name: str,
+) -> None:
+    """Eagerly validate an inline personality dict.
+
+    Args:
+        personality: Raw personality dict from template YAML.
+        agent_name: Agent name for error context.
+
+    Raises:
+        TemplateRenderError: If the dict is not valid for PersonalityConfig.
+    """
+    try:
+        PersonalityConfig(**personality)
+    except Exception as exc:
+        msg = f"Invalid inline personality for agent {agent_name!r}: {exc}"
+        raise TemplateRenderError(msg) from exc
 
 
 def _build_departments(
@@ -424,9 +449,17 @@ def _build_departments(
         }
         reporting_lines = dept.get("reporting_lines")
         if reporting_lines:
+            if not isinstance(reporting_lines, list):
+                dept_name = dept.get("name", "")
+                msg = f"Department {dept_name!r} 'reporting_lines' must be a list"
+                raise TemplateRenderError(msg)
             dept_dict["reporting_lines"] = reporting_lines
         policies = dept.get("policies")
         if policies:
+            if not isinstance(policies, dict):
+                dept_name = dept.get("name", "")
+                msg = f"Department {dept_name!r} 'policies' must be a mapping"
+                raise TemplateRenderError(msg)
             dept_dict["policies"] = policies
         departments.append(dept_dict)
     return departments
