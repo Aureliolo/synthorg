@@ -1,41 +1,40 @@
 """Built-in git tools for version control operations.
 
-Provides six workspace-scoped git tools that agents use to interact with
-git repositories.  All tools enforce workspace boundary security — the LLM
-never controls absolute paths.  Subprocess execution uses
-``asyncio.create_subprocess_exec`` (never ``shell=True``) with
-``GIT_TERMINAL_PROMPT=0`` to prevent interactive credential prompts.
+Provides workspace-scoped git tools that agents use to interact with
+git repositories.  All tools enforce workspace boundary security — the
+LLM never controls absolute paths.  See ``_git_base._BaseGitTool`` for
+the subprocess execution model, environment hardening, and path
+validation shared by all tools.
 """
 
-import asyncio
-import os
-from abc import ABC
 from pathlib import Path  # noqa: TC003 — used at runtime
-from typing import Any
+from typing import Any, Final
 
-from ai_company.core.enums import ToolCategory
 from ai_company.observability import get_logger
 from ai_company.observability.events.git import (
-    GIT_COMMAND_FAILED,
+    GIT_CLONE_URL_REJECTED,
     GIT_COMMAND_START,
-    GIT_COMMAND_SUCCESS,
-    GIT_COMMAND_TIMEOUT,
-    GIT_WORKSPACE_VIOLATION,
 )
-from ai_company.tools.base import BaseTool, ToolExecutionResult
+from ai_company.tools._git_base import _BaseGitTool
+from ai_company.tools.base import ToolExecutionResult
 
 logger = get_logger(__name__)
 
-_DEFAULT_TIMEOUT: float = 30.0
-_CLONE_TIMEOUT: float = 120.0
-_ALLOWED_CLONE_SCHEMES = ("https://", "http://", "ssh://", "git://")
+_CLONE_TIMEOUT: Final[float] = 120.0
+_ALLOWED_CLONE_SCHEMES: Final[tuple[str, ...]] = (
+    "https://",
+    "http://",
+    "ssh://",
+    "git://",
+)
 
 
 def _is_allowed_clone_url(url: str) -> bool:
     """Check if a clone URL uses an allowed remote scheme.
 
     Allows standard remote schemes and SCP-like syntax.  Rejects
-    ``file://``, ``ext::``, and bare local paths.
+    ``file://``, ``ext::``, bare local paths, and URLs starting with
+    ``-`` (flag injection).
 
     Args:
         url: Repository URL string to validate.
@@ -43,214 +42,14 @@ def _is_allowed_clone_url(url: str) -> bool:
     Returns:
         ``True`` if the URL scheme is allowed.
     """
+    if url.startswith("-"):
+        return False
     if any(url.startswith(scheme) for scheme in _ALLOWED_CLONE_SCHEMES):
         return True
-    # SCP-like: user@host:path (e.g. git@github.com:user/repo.git)
+    # SCP-like syntax: user@host:path (e.g. git@github.com:user/repo.git).
+    # Must have @ and : but NOT :: (rejects ext:: protocol) and NOT ://
+    # (rejects URLs that should match a scheme above).
     return "@" in url and ":" in url and "::" not in url and "://" not in url
-
-
-# ── Base class ────────────────────────────────────────────────────
-
-
-class _BaseGitTool(BaseTool, ABC):
-    """Shared base for all git tools.
-
-    Holds the ``workspace`` path and provides helper methods for running
-    git commands and validating relative paths against the workspace
-    boundary.
-
-    Attributes:
-        workspace: Absolute path to the agent's workspace directory.
-    """
-
-    def __init__(
-        self,
-        *,
-        name: str,
-        description: str,
-        parameters_schema: dict[str, Any],
-        workspace: Path,
-    ) -> None:
-        """Initialize a git tool bound to a workspace.
-
-        Args:
-            name: Tool name.
-            description: Human-readable description.
-            parameters_schema: JSON Schema for tool parameters.
-            workspace: Absolute path to the workspace root.
-        """
-        super().__init__(
-            name=name,
-            description=description,
-            parameters_schema=parameters_schema,
-            category=ToolCategory.VERSION_CONTROL,
-        )
-        self._workspace = workspace.resolve()
-
-    @property
-    def workspace(self) -> Path:
-        """Workspace root directory."""
-        return self._workspace
-
-    def _validate_path(self, relative: str) -> Path:
-        """Resolve a relative path and verify it stays within workspace.
-
-        Args:
-            relative: A relative path string from the LLM.
-
-        Returns:
-            The resolved absolute ``Path``.
-
-        Raises:
-            ValueError: If the path escapes the workspace boundary.
-        """
-        resolved = (self._workspace / relative).resolve()
-        try:
-            resolved.relative_to(self._workspace)
-        except ValueError:
-            logger.warning(
-                GIT_WORKSPACE_VIOLATION,
-                path=relative,
-                workspace=str(self._workspace),
-            )
-            msg = f"Path '{relative}' is outside workspace"
-            raise ValueError(msg) from None
-        return resolved
-
-    def _check_paths(self, paths: list[str]) -> ToolExecutionResult | None:
-        """Validate a list of paths, returning an error result or None.
-
-        Args:
-            paths: Relative path strings to validate.
-
-        Returns:
-            A ``ToolExecutionResult`` with ``is_error=True`` if any path
-            escapes the workspace, or ``None`` if all paths are valid.
-        """
-        for p in paths:
-            try:
-                self._validate_path(p)
-            except ValueError as exc:
-                return ToolExecutionResult(
-                    content=str(exc),
-                    is_error=True,
-                )
-        return None
-
-    def _check_ref(
-        self,
-        value: str,
-        *,
-        param: str,
-    ) -> ToolExecutionResult | None:
-        """Reject ref-like values starting with ``-`` to prevent flag injection.
-
-        Args:
-            value: The ref or branch name string to validate.
-            param: Parameter name for the error message.
-
-        Returns:
-            A ``ToolExecutionResult`` with ``is_error=True`` if the value
-            starts with ``-``, or ``None`` if valid.
-        """
-        if value.startswith("-"):
-            return ToolExecutionResult(
-                content=f"Invalid {param}: must not start with '-'",
-                is_error=True,
-            )
-        return None
-
-    async def _run_git(
-        self,
-        args: list[str],
-        *,
-        cwd: Path | None = None,
-        deadline: float = _DEFAULT_TIMEOUT,
-    ) -> ToolExecutionResult:
-        """Run a git subprocess and return the result.
-
-        Args:
-            args: Arguments to pass after ``git``.
-            cwd: Working directory (defaults to workspace).
-            deadline: Seconds before the process is killed.
-
-        Returns:
-            A ``ToolExecutionResult`` with stdout as content on success,
-            or stderr/error message with ``is_error=True`` on failure.
-        """
-        work_dir = cwd or self._workspace
-        env = {
-            **os.environ,
-            "GIT_TERMINAL_PROMPT": "0",
-            "GIT_CONFIG_NOSYSTEM": "1",
-        }
-
-        logger.debug(
-            GIT_COMMAND_START,
-            command=["git", *args],
-            cwd=str(work_dir),
-        )
-
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "git",
-                *args,
-                cwd=work_dir,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=env,
-            )
-        except OSError:
-            logger.warning(
-                GIT_COMMAND_FAILED,
-                command=["git", *args],
-                error="subprocess start failed",
-                exc_info=True,
-            )
-            return ToolExecutionResult(
-                content="Failed to start git process",
-                is_error=True,
-            )
-
-        try:
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                proc.communicate(),
-                timeout=deadline,
-            )
-        except TimeoutError:
-            proc.kill()
-            await proc.communicate()
-            logger.warning(
-                GIT_COMMAND_TIMEOUT,
-                command=["git", *args],
-                deadline=deadline,
-            )
-            return ToolExecutionResult(
-                content=f"Git command timed out after {deadline}s",
-                is_error=True,
-            )
-
-        stdout = stdout_bytes.decode("utf-8", errors="replace").strip()
-        stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
-
-        if proc.returncode != 0:
-            logger.warning(
-                GIT_COMMAND_FAILED,
-                command=["git", *args],
-                returncode=proc.returncode,
-                stderr=stderr,
-            )
-            error_output = stderr or stdout or "Unknown git error"
-            return ToolExecutionResult(
-                content=error_output,
-                is_error=True,
-            )
-
-        logger.debug(
-            GIT_COMMAND_SUCCESS,
-            command=["git", *args],
-        )
-        return ToolExecutionResult(content=stdout)
 
 
 # ── GitStatusTool ─────────────────────────────────────────────────
@@ -285,7 +84,7 @@ class GitStatusTool(_BaseGitTool):
                     },
                     "porcelain": {
                         "type": "boolean",
-                        "description": "Use machine-readable porcelain format.",
+                        "description": ("Use machine-readable porcelain format."),
                         "default": False,
                     },
                 },
@@ -337,14 +136,14 @@ class GitLogTool(_BaseGitTool):
             name="git_log",
             description=(
                 "Show commit log. Returns recent commits with optional "
-                "filtering by count, author, date range, and paths."
+                "filtering by count, author, date range, ref, and paths."
             ),
             parameters_schema={
                 "type": "object",
                 "properties": {
                     "max_count": {
                         "type": "integer",
-                        "description": "Max commits (default 10, max 100).",
+                        "description": ("Max commits (default 10, max 100)."),
                         "default": 10,
                         "minimum": 1,
                         "maximum": 100,
@@ -356,15 +155,15 @@ class GitLogTool(_BaseGitTool):
                     },
                     "ref": {
                         "type": "string",
-                        "description": "Branch, tag, or commit ref to start from.",
+                        "description": ("Branch, tag, or commit ref to start from."),
                     },
                     "author": {
                         "type": "string",
-                        "description": "Filter commits by author pattern.",
+                        "description": ("Filter commits by author pattern."),
                     },
                     "since": {
                         "type": "string",
-                        "description": "Show commits after date (e.g. '2024-01-01').",
+                        "description": ("Show commits after date (e.g. '2024-01-01')."),
                     },
                     "until": {
                         "type": "string",
@@ -373,7 +172,7 @@ class GitLogTool(_BaseGitTool):
                     "paths": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Limit to commits touching these paths.",
+                        "description": ("Limit to commits touching these paths."),
                     },
                 },
                 "additionalProperties": False,
@@ -451,7 +250,8 @@ class GitDiffTool(_BaseGitTool):
             name="git_diff",
             description=(
                 "Show changes between commits, index, and working tree. "
-                "Supports staged changes, ref comparison, and path filtering."
+                "Supports staged changes, ref comparison, and path "
+                "filtering."
             ),
             parameters_schema={
                 "type": "object",
@@ -471,7 +271,7 @@ class GitDiffTool(_BaseGitTool):
                     },
                     "stat": {
                         "type": "boolean",
-                        "description": "Show diffstat summary instead of full diff.",
+                        "description": ("Show diffstat summary instead of full diff."),
                         "default": False,
                     },
                     "paths": {
@@ -559,7 +359,12 @@ class GitBranchTool(_BaseGitTool):
                 "properties": {
                     "action": {
                         "type": "string",
-                        "enum": ["list", "create", "switch", "delete"],
+                        "enum": [
+                            "list",
+                            "create",
+                            "switch",
+                            "delete",
+                        ],
                         "description": "Branch action to perform.",
                         "default": "list",
                     },
@@ -571,11 +376,13 @@ class GitBranchTool(_BaseGitTool):
                     },
                     "start_point": {
                         "type": "string",
-                        "description": "Starting ref for branch creation.",
+                        "description": ("Starting ref for branch creation."),
                     },
                     "force": {
                         "type": "boolean",
-                        "description": "Force delete (-D) instead of safe delete (-d).",
+                        "description": (
+                            "Force delete (-D) instead of safe delete (-d)."
+                        ),
                         "default": False,
                     },
                 },
@@ -623,14 +430,14 @@ class GitBranchTool(_BaseGitTool):
 
         if action in self._ACTIONS_REQUIRING_NAME and not name:
             return ToolExecutionResult(
-                content=f"Branch name is required for '{action}' action",
+                content=(f"Branch name is required for '{action}' action"),
                 is_error=True,
             )
 
         if action == "list":
             return await self._list_branches()
 
-        # Narrow name to str — guaranteed by _ACTIONS_REQUIRING_NAME guard
+        # Narrowing: guaranteed non-None by guard above.
         branch_name: str = name  # type: ignore[assignment]
 
         if err := self._check_ref(branch_name, param="name"):
@@ -680,11 +487,11 @@ class GitCommitTool(_BaseGitTool):
                     "paths": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Paths to stage before committing.",
+                        "description": ("Paths to stage before committing."),
                     },
                     "all": {
                         "type": "boolean",
-                        "description": "Stage all modified and deleted files.",
+                        "description": ("Stage all modified and deleted files."),
                         "default": False,
                     },
                 },
@@ -711,7 +518,6 @@ class GitCommitTool(_BaseGitTool):
         paths: list[str] = arguments.get("paths", [])
         stage_all: bool = arguments.get("all", False)
 
-        # Stage files
         if paths:
             if err := self._check_paths(paths):
                 return err
@@ -722,8 +528,13 @@ class GitCommitTool(_BaseGitTool):
             add_result = await self._run_git(["add", "-A"])
             if add_result.is_error:
                 return add_result
+        else:
+            logger.debug(
+                GIT_COMMAND_START,
+                command=["git", "commit"],
+                note="no staging requested; committing already staged",
+            )
 
-        # Commit
         return await self._run_git(["commit", "-m", message])
 
 
@@ -735,7 +546,9 @@ class GitCloneTool(_BaseGitTool):
 
     Validates that the target directory stays within the workspace
     boundary.  Supports optional branch selection and shallow clone
-    depth.
+    depth.  URLs are validated against allowed schemes (https, http,
+    ssh, git, SCP-like).  Local paths and ``file://`` URLs are
+    rejected.
     """
 
     def __init__(self, *, workspace: Path) -> None:
@@ -759,7 +572,7 @@ class GitCloneTool(_BaseGitTool):
                     },
                     "directory": {
                         "type": "string",
-                        "description": "Target directory name within workspace.",
+                        "description": ("Target directory name within workspace."),
                     },
                     "branch": {
                         "type": "string",
@@ -793,10 +606,15 @@ class GitCloneTool(_BaseGitTool):
         url: str = arguments["url"]
 
         if not _is_allowed_clone_url(url):
+            logger.warning(
+                GIT_CLONE_URL_REJECTED,
+                url=url,
+            )
             return ToolExecutionResult(
                 content=(
                     "Invalid clone URL. Only https://, http://, ssh://, "
-                    "git://, and SCP-like (user@host:path) URLs are allowed"
+                    "git://, and SCP-like (user@host:path) URLs are "
+                    "allowed"
                 ),
                 is_error=True,
             )
@@ -804,11 +622,14 @@ class GitCloneTool(_BaseGitTool):
         args = ["clone"]
 
         if branch := arguments.get("branch"):
+            if err := self._check_ref(branch, param="branch"):
+                return err
             args.extend(["--branch", branch])
 
         if depth := arguments.get("depth"):
             args.extend(["--depth", str(depth)])
 
+        args.append("--")
         args.append(url)
 
         if directory := arguments.get("directory"):

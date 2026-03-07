@@ -1,6 +1,8 @@
 """Tests for built-in git tools."""
 
-from pathlib import Path  # noqa: TC003 — used at runtime
+import asyncio
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -71,6 +73,10 @@ class TestWorkspaceValidation:
             arguments={"paths": ["README.md"]},
         )
         assert not result.is_error
+
+    def test_workspace_must_be_absolute(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="absolute path"):
+            GitStatusTool(workspace=Path("relative/path"))
 
 
 # ── Tool properties ──────────────────────────────────────────────
@@ -463,6 +469,7 @@ class TestGitCloneTool:
             arguments={"url": "not-a-real-url-at-all"},
         )
         assert result.is_error
+        assert "Invalid clone URL" in result.content
 
     async def test_clone_with_branch(
         self,
@@ -532,6 +539,19 @@ class TestFlagInjectionPrevention:
         )
         assert result.is_error
 
+    async def test_clone_branch_flag_blocked(
+        self,
+        clone_tool: GitCloneTool,
+    ) -> None:
+        result = await clone_tool.execute(
+            arguments={
+                "url": "https://example.com/repo.git",
+                "branch": "--upload-pack=evil",
+            },
+        )
+        assert result.is_error
+        assert "must not start with '-'" in result.content
+
 
 # ── Security: clone URL validation ───────────────────────────────
 
@@ -577,6 +597,111 @@ class TestCloneUrlValidation:
             arguments={"url": "../outside-repo"},
         )
         assert result.is_error
+
+    async def test_flag_url_blocked(self, clone_tool: GitCloneTool) -> None:
+        """URLs starting with '-' must be rejected (flag injection)."""
+        result = await clone_tool.execute(
+            arguments={"url": "-cfoo=bar@host:path"},
+        )
+        assert result.is_error
+        assert "Invalid clone URL" in result.content
+
+
+# ── Edge cases: detached HEAD ─────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestDetachedHead:
+    """Tools must work correctly in detached HEAD state."""
+
+    async def test_status_in_detached_head(self, detached_head_repo: Path) -> None:
+        tool = GitStatusTool(workspace=detached_head_repo)
+        result = await tool.execute(arguments={})
+        assert not result.is_error
+
+    async def test_log_in_detached_head(self, detached_head_repo: Path) -> None:
+        tool = GitLogTool(workspace=detached_head_repo)
+        result = await tool.execute(arguments={})
+        assert not result.is_error
+        assert "initial commit" in result.content.lower()
+
+    async def test_branch_list_in_detached_head(self, detached_head_repo: Path) -> None:
+        tool = GitBranchTool(workspace=detached_head_repo)
+        result = await tool.execute(arguments={"action": "list"})
+        assert not result.is_error
+        assert "detached" in result.content.lower() or "HEAD" in result.content
+
+
+# ── Edge cases: merge conflicts ───────────────────────────────────
+
+
+@pytest.mark.unit
+class TestMergeConflict:
+    """Tools must report merge conflict state clearly."""
+
+    async def test_status_shows_conflict(self, merge_conflict_repo: Path) -> None:
+        tool = GitStatusTool(workspace=merge_conflict_repo)
+        result = await tool.execute(arguments={})
+        assert not result.is_error
+        content = result.content.lower()
+        has_conflict_marker = (
+            "unmerged" in content or "both modified" in content or "readme" in content
+        )
+        assert has_conflict_marker
+
+    async def test_commit_without_staging_fails_during_conflict(
+        self, merge_conflict_repo: Path
+    ) -> None:
+        """Committing without staging unmerged files must fail."""
+        tool = GitCommitTool(workspace=merge_conflict_repo)
+        result = await tool.execute(
+            arguments={"message": "should fail"},
+        )
+        assert result.is_error
+
+
+# ── _run_git error paths ─────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestRunGitErrorPaths:
+    """Unit tests for _run_git timeout and OSError handling."""
+
+    async def test_timeout_kills_process(self, status_tool: GitStatusTool) -> None:
+        """Timeout kills the process and returns an error result."""
+        calls = 0
+
+        async def slow_communicate() -> tuple[bytes, bytes]:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                await asyncio.sleep(999)
+            return b"", b""
+
+        mock_proc = MagicMock()
+        mock_proc.communicate = slow_communicate
+        mock_proc.kill = MagicMock()
+
+        with patch(
+            "asyncio.create_subprocess_exec",
+            return_value=mock_proc,
+        ):
+            result = await status_tool._run_git(["status"], deadline=0.01)
+
+        assert result.is_error
+        assert "timed out" in result.content
+        mock_proc.kill.assert_called_once()
+
+    async def test_oserror_returns_error(self, status_tool: GitStatusTool) -> None:
+        """OSError when git binary not found returns error result."""
+        with patch(
+            "asyncio.create_subprocess_exec",
+            side_effect=FileNotFoundError("git not found"),
+        ):
+            result = await status_tool._run_git(["status"])
+
+        assert result.is_error
+        assert "Failed to start git" in result.content
 
 
 # ── Error handling edge cases ─────────────────────────────────────

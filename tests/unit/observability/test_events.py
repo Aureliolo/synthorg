@@ -14,6 +14,15 @@ from ai_company.observability.events.config import (
     CONFIG_VALIDATION_FAILED,
 )
 from ai_company.observability.events.execution import EXECUTION_TASK_CREATED
+from ai_company.observability.events.git import (
+    GIT_CLONE_URL_REJECTED,
+    GIT_COMMAND_FAILED,
+    GIT_COMMAND_START,
+    GIT_COMMAND_SUCCESS,
+    GIT_COMMAND_TIMEOUT,
+    GIT_REF_INJECTION_BLOCKED,
+    GIT_WORKSPACE_VIOLATION,
+)
 from ai_company.observability.events.prompt import PROMPT_BUILD_START
 from ai_company.observability.events.provider import (
     PROVIDER_CALL_START,
@@ -116,6 +125,15 @@ class TestEventConstants:
 
     def test_prompt_events_exist(self) -> None:
         assert PROMPT_BUILD_START == "prompt.build.start"
+
+    def test_git_events_exist(self) -> None:
+        assert GIT_COMMAND_START == "git.command.start"
+        assert GIT_COMMAND_SUCCESS == "git.command.success"
+        assert GIT_COMMAND_FAILED == "git.command.failed"
+        assert GIT_COMMAND_TIMEOUT == "git.command.timeout"
+        assert GIT_WORKSPACE_VIOLATION == "git.workspace.violation"
+        assert GIT_CLONE_URL_REJECTED == "git.clone.url_rejected"
+        assert GIT_REF_INJECTION_BLOCKED == "git.ref.injection_blocked"
 
     def test_tool_events_exist(self) -> None:
         assert TOOL_INVOKE_START == "tool.invoke.start"

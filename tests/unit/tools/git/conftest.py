@@ -2,7 +2,7 @@
 
 import os
 import subprocess
-from pathlib import Path  # noqa: TC003 — used at runtime
+from pathlib import Path  # noqa: TC003 — pytest evaluates annotations
 
 import pytest
 
@@ -24,6 +24,7 @@ _GIT_ENV = {
     "GIT_COMMITTER_EMAIL": "test@test.local",
     "GIT_TERMINAL_PROMPT": "0",
     "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_PROTOCOL_FROM_USER": "0",
 }
 
 
@@ -38,6 +39,19 @@ def _run_git(args: list[str], cwd: Path) -> None:
     )
 
 
+def _run_git_output(args: list[str], cwd: Path) -> str:
+    """Run a git command and return stdout."""
+    result = subprocess.run(  # noqa: S603
+        ["git", *args],  # noqa: S607
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        text=True,
+        env=_GIT_ENV,
+    )
+    return result.stdout.strip()
+
+
 @pytest.fixture
 def workspace(tmp_path: Path) -> Path:
     """Bare workspace directory (no git repo)."""
@@ -48,6 +62,8 @@ def workspace(tmp_path: Path) -> Path:
 def git_repo(tmp_path: Path) -> Path:
     """Initialized git repo with one commit."""
     _run_git(["init"], tmp_path)
+    _run_git(["config", "user.name", "Test"], tmp_path)
+    _run_git(["config", "user.email", "test@test.local"], tmp_path)
     readme = tmp_path / "README.md"
     readme.write_text("# Test\n")
     _run_git(["add", "."], tmp_path)
@@ -67,6 +83,36 @@ def git_repo_with_changes(git_repo: Path) -> Path:
     """Git repo with uncommitted changes."""
     (git_repo / "new_file.txt").write_text("hello\n")
     (git_repo / "README.md").write_text("# Modified\n")
+    return git_repo
+
+
+@pytest.fixture
+def detached_head_repo(git_repo: Path) -> Path:
+    """Git repo with HEAD detached at initial commit."""
+    sha = _run_git_output(["rev-parse", "HEAD"], git_repo)
+    _run_git(["checkout", sha], git_repo)
+    return git_repo
+
+
+@pytest.fixture
+def merge_conflict_repo(git_repo: Path) -> Path:
+    """Git repo with an active merge conflict."""
+    _run_git(["checkout", "-b", "conflict-branch"], git_repo)
+    (git_repo / "README.md").write_text("# Conflict branch\n")
+    _run_git(["add", "."], git_repo)
+    _run_git(["commit", "-m", "conflict change"], git_repo)
+    _run_git(["switch", "-"], git_repo)
+    (git_repo / "README.md").write_text("# Main change\n")
+    _run_git(["add", "."], git_repo)
+    _run_git(["commit", "-m", "main change"], git_repo)
+    # Merge will fail with conflict — don't use check=True
+    subprocess.run(
+        ["git", "merge", "conflict-branch"],  # noqa: S607
+        cwd=git_repo,
+        capture_output=True,
+        check=False,
+        env=_GIT_ENV,
+    )
     return git_repo
 
 
@@ -111,9 +157,15 @@ def clone_tool(workspace: Path) -> GitCloneTool:
 
 @pytest.fixture
 def allow_local_clone(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Allow local file paths in clone URL validation for testing."""
+    """Allow local file paths in clone URL validation for testing.
+
+    Also sets ``GIT_ALLOW_PROTOCOL=file`` so that ``_run_git`` (which
+    uses ``GIT_CONFIG_GLOBAL=/dev/null``) still permits the ``file``
+    transport.
+    """
     monkeypatch.setattr(
         git_tools_module,
         "_is_allowed_clone_url",
         lambda url: True,
     )
+    monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "file")
