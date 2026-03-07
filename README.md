@@ -36,6 +36,12 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 - **Vue 3** for web dashboard (planned)
 - **SQLite** → PostgreSQL for data persistence (planned)
 
+## System Requirements
+
+- **Python 3.14+**
+- **uv** — package manager ([install](https://docs.astral.sh/uv/getting-started/installation/))
+- **Git 2.x+** — required at runtime for built-in git tools (subprocess-based, not a Python binding)
+
 ## Getting Started
 
 ```bash
