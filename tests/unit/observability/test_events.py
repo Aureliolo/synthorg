@@ -30,6 +30,19 @@ from ai_company.observability.events.provider import (
 )
 from ai_company.observability.events.role import ROLE_LOOKUP_MISS
 from ai_company.observability.events.routing import ROUTING_DECISION_MADE
+from ai_company.observability.events.sandbox import (
+    SANDBOX_CLEANUP,
+    SANDBOX_ENV_FILTERED,
+    SANDBOX_EXECUTE_FAILED,
+    SANDBOX_EXECUTE_START,
+    SANDBOX_EXECUTE_SUCCESS,
+    SANDBOX_EXECUTE_TIMEOUT,
+    SANDBOX_HEALTH_CHECK,
+    SANDBOX_KILL_FAILED,
+    SANDBOX_PATH_FALLBACK,
+    SANDBOX_SPAWN_FAILED,
+    SANDBOX_WORKSPACE_VIOLATION,
+)
 from ai_company.observability.events.task import TASK_STATUS_CHANGED
 from ai_company.observability.events.template import (
     TEMPLATE_RENDER_START,
@@ -136,6 +149,19 @@ class TestEventConstants:
         assert GIT_WORKSPACE_VIOLATION == "git.workspace.violation"
         assert GIT_CLONE_URL_REJECTED == "git.clone.url_rejected"
         assert GIT_REF_INJECTION_BLOCKED == "git.ref.injection_blocked"
+
+    def test_sandbox_events_exist(self) -> None:
+        assert SANDBOX_EXECUTE_START == "sandbox.execute.start"
+        assert SANDBOX_EXECUTE_SUCCESS == "sandbox.execute.success"
+        assert SANDBOX_EXECUTE_FAILED == "sandbox.execute.failed"
+        assert SANDBOX_EXECUTE_TIMEOUT == "sandbox.execute.timeout"
+        assert SANDBOX_SPAWN_FAILED == "sandbox.spawn.failed"
+        assert SANDBOX_ENV_FILTERED == "sandbox.env.filtered"
+        assert SANDBOX_WORKSPACE_VIOLATION == "sandbox.workspace.violation"
+        assert SANDBOX_CLEANUP == "sandbox.cleanup"
+        assert SANDBOX_PATH_FALLBACK == "sandbox.path.fallback"
+        assert SANDBOX_HEALTH_CHECK == "sandbox.health_check"
+        assert SANDBOX_KILL_FAILED == "sandbox.kill.failed"
 
     def test_tool_events_exist(self) -> None:
         assert TOOL_INVOKE_START == "tool.invoke.start"

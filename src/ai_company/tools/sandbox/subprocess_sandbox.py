@@ -6,8 +6,10 @@ management, and PATH restriction.
 """
 
 import asyncio
+import contextlib
 import fnmatch
 import os
+import re
 import signal
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
@@ -21,6 +23,7 @@ from ai_company.observability.events.sandbox import (
     SANDBOX_EXECUTE_SUCCESS,
     SANDBOX_EXECUTE_TIMEOUT,
     SANDBOX_HEALTH_CHECK,
+    SANDBOX_KILL_FAILED,
     SANDBOX_PATH_FALLBACK,
     SANDBOX_SPAWN_FAILED,
     SANDBOX_WORKSPACE_VIOLATION,
@@ -43,6 +46,14 @@ _DEFAULT_CONFIG = SubprocessSandboxConfig()
 
 # Unix process-group support for killing child process trees.
 _HAS_PROCESS_GROUPS: Final[bool] = hasattr(os, "killpg")
+
+# Matches http(s)://user:pass@host patterns in URLs.
+_CREDENTIAL_RE = re.compile(r"(https?://)[^@/]+@")
+
+
+def _redact_args(args: tuple[str, ...]) -> tuple[str, ...]:
+    """Redact embedded credentials from command args for logging."""
+    return tuple(_CREDENTIAL_RE.sub(r"\1***@", a) for a in args)
 
 
 class SubprocessSandbox:
@@ -72,10 +83,20 @@ class SubprocessSandbox:
             ValueError: If *workspace* is not absolute or does not exist.
         """
         if not workspace.is_absolute():
+            logger.warning(
+                SANDBOX_WORKSPACE_VIOLATION,
+                workspace=str(workspace),
+                error="workspace must be an absolute path",
+            )
             msg = f"workspace must be an absolute path, got: {workspace}"
             raise ValueError(msg)
         resolved = workspace.resolve()
         if not resolved.is_dir():
+            logger.warning(
+                SANDBOX_WORKSPACE_VIOLATION,
+                workspace=str(resolved),
+                error="workspace directory does not exist",
+            )
             msg = f"workspace directory does not exist: {resolved}"
             raise ValueError(msg)
         self._config = config or _DEFAULT_CONFIG
@@ -100,33 +121,36 @@ class SubprocessSandbox:
         check_name = name.upper() if os.name == "nt" else name
         for pattern in self._config.env_allowlist:
             check_pattern = pattern.upper() if os.name == "nt" else pattern
-            if check_pattern == check_name:
-                return True
             if fnmatch.fnmatch(check_name, check_pattern):
                 return True
         return False
 
     def _matches_denylist(self, name: str) -> bool:
-        """Check if an env var name matches any denylist pattern."""
+        """Check if an env var name matches any denylist pattern.
+
+        Both name and patterns are uppercased for case-insensitive
+        matching — denylist patterns must catch secrets regardless of
+        casing.
+        """
         upper = name.upper()
         return any(
-            fnmatch.fnmatch(upper, pat) for pat in self._config.env_denylist_patterns
+            fnmatch.fnmatch(upper, pat.upper())
+            for pat in self._config.env_denylist_patterns
         )
 
     def _filter_path(self, path_value: str) -> str:
         """Filter PATH entries, keeping only safe system directories.
 
+        Uses directory-boundary checking to prevent prefix spoofing
+        (e.g. ``/usr/bin-malicious`` is rejected even though it starts
+        with ``/usr/bin``).  Entries are normalized before comparison.
+
         When no entries survive filtering, falls back to known safe
-        directories that actually exist on the system rather than
-        returning the unfiltered original PATH.
+        directories that actually exist on the system.
         """
         safe_prefixes = self._get_safe_path_prefixes()
         entries = path_value.split(_PATH_SEP)
-        filtered = [
-            e
-            for e in entries
-            if any(e.lower().startswith(prefix.lower()) for prefix in safe_prefixes)
-        ]
+        filtered = [e for e in entries if self._is_safe_path_entry(e, safe_prefixes)]
         if filtered:
             return _PATH_SEP.join(filtered)
         logger.warning(
@@ -135,7 +159,34 @@ class SubprocessSandbox:
             original_entry_count=len(entries),
         )
         safe_dirs = [p for p in safe_prefixes if Path(p).is_dir()]
+        if not safe_dirs:
+            logger.error(
+                SANDBOX_PATH_FALLBACK,
+                reason=(
+                    "no safe PATH directories exist on system — PATH will be empty"
+                ),
+            )
         return _PATH_SEP.join(safe_dirs)
+
+    @staticmethod
+    def _is_safe_path_entry(
+        entry: str,
+        safe_prefixes: tuple[str, ...],
+    ) -> bool:
+        """Check if a PATH entry falls within a safe prefix directory.
+
+        Normalizes both the entry and prefix, then checks for exact
+        match or directory boundary containment (prevents
+        ``/usr/bin-malicious`` from matching ``/usr/bin``).
+        """
+        entry_norm = os.path.normcase(os.path.normpath(entry))
+        for prefix in safe_prefixes:
+            prefix_norm = os.path.normcase(os.path.normpath(prefix))
+            if entry_norm == prefix_norm or entry_norm.startswith(
+                prefix_norm + os.sep,
+            ):
+                return True
+        return False
 
     @staticmethod
     def _get_safe_path_prefixes() -> tuple[str, ...]:
@@ -225,15 +276,130 @@ class SubprocessSandbox:
         On Unix with ``start_new_session=True``, kills the entire
         process group to prevent orphaned grandchild processes.
         Falls back to direct ``proc.kill()`` on Windows or on error.
+        Handles ``ProcessLookupError`` when the process already exited.
         """
         if _HAS_PROCESS_GROUPS:
             try:
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)  # type: ignore[attr-defined]
+            except ProcessLookupError:
+                return
             except OSError:
-                proc.kill()
+                with contextlib.suppress(ProcessLookupError):
+                    proc.kill()
+                return
             else:
                 return
-        proc.kill()
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+
+    async def _spawn_process(
+        self,
+        command: str,
+        args: tuple[str, ...],
+        work_dir: Path,
+        env: dict[str, str],
+    ) -> asyncio.subprocess.Process:
+        """Start the subprocess, raising on failure.
+
+        Args:
+            command: Executable name or path.
+            args: Command arguments.
+            work_dir: Working directory.
+            env: Filtered environment.
+
+        Raises:
+            SandboxStartError: If the subprocess could not be started.
+        """
+        try:
+            return await asyncio.create_subprocess_exec(
+                command,
+                *args,
+                cwd=work_dir,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
+                start_new_session=_HAS_PROCESS_GROUPS,
+            )
+        except OSError as exc:
+            logger.warning(
+                SANDBOX_SPAWN_FAILED,
+                command=command,
+                error=str(exc),
+                exc_info=True,
+            )
+            msg = f"Failed to start '{command}': {exc}"
+            raise SandboxStartError(
+                msg,
+                context={"command": command},
+            ) from exc
+
+    async def _communicate_with_timeout(
+        self,
+        proc: asyncio.subprocess.Process,
+        command: str,
+        args: tuple[str, ...],
+        deadline: float,
+    ) -> tuple[bytes, bytes, bool]:
+        """Wait for process output with timeout handling.
+
+        On timeout, kills the process and captures any partial output.
+
+        Args:
+            proc: The running subprocess.
+            command: Command name (for logging).
+            args: Command arguments (for logging).
+            deadline: Seconds before kill.
+
+        Returns:
+            Tuple of (stdout_bytes, stderr_bytes, timed_out).
+        """
+        try:
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=deadline,
+            )
+        except TimeoutError:
+            self._kill_process(proc)
+            stdout_bytes, stderr_bytes = await self._drain_after_kill(
+                proc,
+                command,
+                args,
+            )
+            logger.warning(
+                SANDBOX_EXECUTE_TIMEOUT,
+                command=command,
+                args=_redact_args(args),
+                timeout=deadline,
+            )
+            return stdout_bytes, stderr_bytes, True
+        return stdout_bytes, stderr_bytes, False
+
+    async def _drain_after_kill(
+        self,
+        proc: asyncio.subprocess.Process,
+        command: str,
+        args: tuple[str, ...],
+    ) -> tuple[bytes, bytes]:
+        """Drain remaining output after killing a process.
+
+        Waits up to 5 seconds for the process to terminate.  If the
+        process does not terminate, logs an error and returns empty
+        output.
+        """
+        try:
+            return await asyncio.wait_for(
+                proc.communicate(),
+                timeout=5.0,
+            )
+        except TimeoutError:
+            logger.exception(
+                SANDBOX_KILL_FAILED,
+                command=command,
+                args=_redact_args(args),
+                pid=proc.pid,
+                error="process did not terminate 5s after kill",
+            )
+            return b"", b""
 
     async def execute(
         self,
@@ -271,72 +437,36 @@ class SubprocessSandbox:
         logger.debug(
             SANDBOX_EXECUTE_START,
             command=command,
-            args=args,
+            args=_redact_args(args),
             cwd=str(work_dir),
             timeout=effective_timeout,
         )
 
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                command,
-                *args,
-                cwd=work_dir,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=env,
-                start_new_session=_HAS_PROCESS_GROUPS,
-            )
-        except OSError as exc:
-            logger.warning(
-                SANDBOX_SPAWN_FAILED,
-                command=command,
-                error=str(exc),
-                exc_info=True,
-            )
-            msg = f"Failed to start '{command}': {exc}"
-            raise SandboxStartError(
-                msg,
-                context={"command": command},
-            ) from exc
-
-        try:
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                proc.communicate(),
-                timeout=effective_timeout,
-            )
-        except TimeoutError:
-            self._kill_process(proc)
-            try:
-                await asyncio.wait_for(proc.communicate(), timeout=5.0)
-            except TimeoutError:
-                logger.warning(
-                    SANDBOX_EXECUTE_TIMEOUT,
-                    command=command,
-                    args=args,
-                    error="process did not terminate after kill",
-                )
-            logger.warning(
-                SANDBOX_EXECUTE_TIMEOUT,
-                command=command,
-                args=args,
-                timeout=effective_timeout,
-            )
-            return SandboxResult(
-                stdout="",
-                stderr=f"Process timed out after {effective_timeout}s",
-                returncode=-1,
-                timed_out=True,
-            )
+        proc = await self._spawn_process(command, args, work_dir, env)
+        stdout_bytes, stderr_bytes, timed_out = await self._communicate_with_timeout(
+            proc,
+            command,
+            args,
+            effective_timeout,
+        )
 
         stdout = stdout_bytes.decode("utf-8", errors="replace").strip()
         stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
         returncode = proc.returncode if proc.returncode is not None else -1
 
+        if timed_out:
+            return SandboxResult(
+                stdout=stdout,
+                stderr=(stderr or f"Process timed out after {effective_timeout}s"),
+                returncode=returncode,
+                timed_out=True,
+            )
+
         if returncode != 0:
             logger.warning(
                 SANDBOX_EXECUTE_FAILED,
                 command=command,
-                args=args,
+                args=_redact_args(args),
                 returncode=returncode,
                 stderr=stderr,
             )
@@ -344,7 +474,7 @@ class SubprocessSandbox:
             logger.debug(
                 SANDBOX_EXECUTE_SUCCESS,
                 command=command,
-                args=args,
+                args=_redact_args(args),
             )
 
         return SandboxResult(
@@ -354,7 +484,7 @@ class SubprocessSandbox:
         )
 
     async def cleanup(self) -> None:
-        """No-op — subprocesses are ephemeral."""
+        """Subprocesses are ephemeral — no resources to release."""
         logger.debug(SANDBOX_CLEANUP, backend="subprocess")
 
     async def health_check(self) -> bool:

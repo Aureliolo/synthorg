@@ -11,39 +11,29 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 class TestSandboxResult:
     """SandboxResult is frozen with a computed ``success`` field."""
 
-    def test_success_when_zero_returncode_no_timeout(self) -> None:
-        result = SandboxResult(
-            stdout="ok",
-            stderr="",
-            returncode=0,
-        )
-        assert result.success is True
-
-    def test_failure_when_nonzero_returncode(self) -> None:
-        result = SandboxResult(
-            stdout="",
-            stderr="error",
-            returncode=1,
-        )
-        assert result.success is False
-
-    def test_failure_when_timed_out(self) -> None:
-        result = SandboxResult(
-            stdout="",
-            stderr="timeout",
-            returncode=0,
-            timed_out=True,
-        )
-        assert result.success is False
-
-    def test_failure_when_both_nonzero_and_timed_out(self) -> None:
+    @pytest.mark.parametrize(
+        ("returncode", "timed_out", "expected_success"),
+        [
+            (0, False, True),
+            (1, False, False),
+            (0, True, False),
+            (-1, True, False),
+        ],
+        ids=["zero-no-timeout", "nonzero", "timeout-zero", "timeout-neg"],
+    )
+    def test_success_matrix(
+        self,
+        returncode: int,
+        timed_out: bool,
+        expected_success: bool,
+    ) -> None:
         result = SandboxResult(
             stdout="",
             stderr="",
-            returncode=-1,
-            timed_out=True,
+            returncode=returncode,
+            timed_out=timed_out,
         )
-        assert result.success is False
+        assert result.success is expected_success
 
     def test_frozen(self) -> None:
         result = SandboxResult(

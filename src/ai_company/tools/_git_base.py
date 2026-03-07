@@ -5,8 +5,8 @@ subprocesses, validating relative paths against the workspace
 boundary, and rejecting flag-injection attempts.  Subprocess
 execution uses ``asyncio.create_subprocess_exec`` (never
 ``shell=True``) with ``GIT_TERMINAL_PROMPT=0``,
-``GIT_CONFIG_NOSYSTEM=1``, ``GIT_CONFIG_GLOBAL`` pointed to
-``/dev/null``, and ``GIT_PROTOCOL_FROM_USER=0`` to prevent
+``GIT_CONFIG_NOSYSTEM=1``, ``GIT_CONFIG_GLOBAL`` pointed to the platform null device
+(``os.devnull``), and ``GIT_PROTOCOL_FROM_USER=0`` to prevent
 interactive prompts and restrict config/protocol attack surfaces.
 
 When a ``SandboxBackend`` is injected, subprocess management is
@@ -19,6 +19,7 @@ Without a sandbox, the direct-subprocess path is used.
 """
 
 import asyncio
+import contextlib
 import os
 import re
 from abc import ABC
@@ -47,7 +48,7 @@ logger = get_logger(__name__)
 
 _DEFAULT_TIMEOUT: Final[float] = 30.0
 
-# Matches http(s)://user:pass@host patterns in git URLs.
+# Matches http(s)://userinfo@host patterns in git URLs.
 _CREDENTIAL_RE = re.compile(r"(https?://)[^@/]+@")
 
 _GIT_HARDENING_OVERRIDES: Final[MappingProxyType[str, str]] = MappingProxyType(
@@ -286,6 +287,15 @@ class _BaseGitTool(BaseTool, ABC):
 
         On timeout, kills the process and waits up to 5 seconds for
         termination before returning an error result.
+
+        Args:
+            proc: The running subprocess.
+            args: Git command arguments (for logging).
+            deadline: Seconds before the process is killed.
+
+        Returns:
+            A ``(stdout, stderr)`` tuple on success, or a
+            ``ToolExecutionResult`` with ``is_error=True`` on timeout.
         """
         try:
             return await asyncio.wait_for(
@@ -293,7 +303,8 @@ class _BaseGitTool(BaseTool, ABC):
                 timeout=deadline,
             )
         except TimeoutError:
-            proc.kill()
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
             try:
                 await asyncio.wait_for(proc.communicate(), timeout=5.0)
             except TimeoutError:
@@ -319,7 +330,20 @@ class _BaseGitTool(BaseTool, ABC):
         stdout_bytes: bytes,
         stderr_bytes: bytes,
     ) -> ToolExecutionResult:
-        """Decode output and build the result."""
+        """Decode output and build the result.
+
+        Prefers stderr for error content; falls back to stdout, then
+        a generic "Unknown git error" message.
+
+        Args:
+            args: Git command arguments (for logging).
+            returncode: Process exit code (``None`` treated as error).
+            stdout_bytes: Raw stdout from the process.
+            stderr_bytes: Raw stderr from the process.
+
+        Returns:
+            A ``ToolExecutionResult`` with decoded content.
+        """
         stdout = stdout_bytes.decode("utf-8", errors="replace").strip()
         stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
         if returncode != 0:
@@ -344,6 +368,8 @@ class _BaseGitTool(BaseTool, ABC):
     def _sandbox_result_to_execution_result(
         args: list[str],
         result: SandboxResult,
+        *,
+        deadline: float,
     ) -> ToolExecutionResult:
         """Convert a ``SandboxResult`` to a ``ToolExecutionResult``.
 
@@ -353,6 +379,7 @@ class _BaseGitTool(BaseTool, ABC):
         Args:
             args: Git command arguments (for logging).
             result: The sandbox execution result.
+            deadline: Timeout that was used (for logging).
 
         Returns:
             A ``ToolExecutionResult`` with the appropriate content.
@@ -361,7 +388,7 @@ class _BaseGitTool(BaseTool, ABC):
             logger.warning(
                 GIT_COMMAND_TIMEOUT,
                 command=_sanitize_command(["git", *args]),
-                deadline="sandbox",
+                deadline=deadline,
             )
             return ToolExecutionResult(
                 content=result.stderr or "Git command timed out",
@@ -448,18 +475,11 @@ class _BaseGitTool(BaseTool, ABC):
                 content=str(exc),
                 is_error=True,
             )
-        except Exception as exc:
-            logger.error(
-                GIT_COMMAND_FAILED,
-                command=_sanitize_command(["git", *args]),
-                error=f"Unexpected sandbox error: {exc}",
-                exc_info=True,
-            )
-            return ToolExecutionResult(
-                content=f"Sandbox error: {exc}",
-                is_error=True,
-            )
-        return self._sandbox_result_to_execution_result(args, result)
+        return self._sandbox_result_to_execution_result(
+            args,
+            result,
+            deadline=deadline,
+        )
 
     async def _run_git_direct(
         self,

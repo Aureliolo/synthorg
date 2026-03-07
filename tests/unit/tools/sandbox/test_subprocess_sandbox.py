@@ -107,6 +107,29 @@ class TestEnvironmentFiltering:
             )
             assert env["GIT_TERMINAL_PROMPT"] == "0"
 
+    def test_env_overrides_bypass_denylist(
+        self,
+        sandbox_workspace: Path,
+    ) -> None:
+        """env_overrides bypass denylist by design (security contract)."""
+        config = SubprocessSandboxConfig(
+            env_allowlist=("HOME",),
+            env_denylist_patterns=("*KEY*",),
+        )
+        sandbox = SubprocessSandbox(
+            config=config,
+            workspace=sandbox_workspace,
+        )
+        with patch.dict(
+            os.environ,
+            {"HOME": "/home/test"},
+            clear=True,
+        ):
+            env = sandbox._build_filtered_env(
+                env_overrides={"API_KEY": "override_value"},
+            )
+            assert env["API_KEY"] == "override_value"
+
     def test_lc_glob_matching(
         self,
         sandbox_workspace: Path,
@@ -149,6 +172,47 @@ class TestEnvironmentFiltering:
         ):
             env = sandbox._build_filtered_env()
             assert "suspicious" not in env.get("PATH", "").lower()
+
+    def test_restricted_path_rejects_prefix_spoofing(
+        self,
+        sandbox_workspace: Path,
+    ) -> None:
+        """PATH entries like /usr/bin-malicious are rejected."""
+        config = SubprocessSandboxConfig(restricted_path=True)
+        sandbox = SubprocessSandbox(
+            config=config,
+            workspace=sandbox_workspace,
+        )
+        if os.name == "nt":
+            spoofed = r"C:\WINDOWS\system32;C:\WINDOWS-extra\bin"
+        else:
+            spoofed = "/usr/bin:/usr/bin-malicious"
+        with patch.dict(
+            os.environ,
+            {"PATH": spoofed},
+            clear=True,
+        ):
+            env = sandbox._build_filtered_env()
+            assert "malicious" not in env.get("PATH", "").lower()
+            assert "extra" not in env.get("PATH", "").lower()
+
+    def test_path_fallback_when_no_entries_match(
+        self,
+        sandbox_workspace: Path,
+    ) -> None:
+        """PATH fallback uses safe directories that exist."""
+        config = SubprocessSandboxConfig(restricted_path=True)
+        sandbox = SubprocessSandbox(
+            config=config,
+            workspace=sandbox_workspace,
+        )
+        with patch.dict(
+            os.environ,
+            {"PATH": "/totally/fake/dir"},
+            clear=True,
+        ):
+            env = sandbox._build_filtered_env()
+            assert "/totally/fake/dir" not in env.get("PATH", "")
 
 
 # ── Workspace boundary ───────────────────────────────────────────
@@ -250,6 +314,26 @@ class TestExecution:
                 command="sleep",
                 args=("10",),
                 timeout=0.5,
+            )
+        assert result.timed_out
+        assert not result.success
+
+    async def test_zero_timeout_kills_process(
+        self,
+        subprocess_sandbox: SubprocessSandbox,
+    ) -> None:
+        """timeout=0.0 is treated as immediate timeout, not default."""
+        if os.name == "nt":
+            result = await subprocess_sandbox.execute(
+                command="cmd",
+                args=("/c", "ping", "-n", "10", "127.0.0.1"),
+                timeout=0.0,
+            )
+        else:
+            result = await subprocess_sandbox.execute(
+                command="sleep",
+                args=("10",),
+                timeout=0.0,
             )
         assert result.timed_out
         assert not result.success

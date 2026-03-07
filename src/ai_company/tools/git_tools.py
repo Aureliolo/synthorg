@@ -174,7 +174,7 @@ class GitLogTool(_BaseGitTool):
     date range, ref, and paths.
     """
 
-    _MAX_COUNT_LIMIT: int = 100
+    _MAX_COUNT_LIMIT: Final[int] = 100
 
     def __init__(
         self,
@@ -613,9 +613,9 @@ class GitCloneTool(_BaseGitTool):
 
     Validates that the target directory stays within the workspace
     boundary.  Supports optional branch selection and shallow clone
-    depth.  URLs are validated against allowed schemes (https, http,
-    ssh, git, SCP-like).  Local paths and ``file://`` URLs are
-    rejected.
+    depth.  URLs are validated against allowed schemes (https, ssh,
+    git, SCP-like).  Local paths, ``file://``, and plain ``http://``
+    URLs are rejected.
     """
 
     def __init__(
@@ -684,10 +684,11 @@ class GitCloneTool(_BaseGitTool):
                 GIT_CLONE_URL_REJECTED,
                 url=url,
             )
+            schemes = ", ".join(_ALLOWED_CLONE_SCHEMES)
             return ToolExecutionResult(
                 content=(
-                    "Invalid clone URL. Only https://, http://, ssh://, "
-                    "git://, and SCP-like (user@host:path) URLs are "
+                    f"Invalid clone URL. Only {schemes}"
+                    "and SCP-like (user@host:path) URLs are "
                     "allowed"
                 ),
                 is_error=True,

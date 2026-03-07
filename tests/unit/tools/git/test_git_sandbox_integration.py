@@ -7,6 +7,7 @@ import pytest
 
 from ai_company.tools.git_tools import (
     GitBranchTool,
+    GitCloneTool,
     GitCommitTool,
     GitDiffTool,
     GitLogTool,
@@ -59,6 +60,19 @@ class TestGitToolsWithSandbox:
             },
         )
         assert not result.is_error
+
+    async def test_clone_with_sandbox(self, git_repo: Path) -> None:
+        sandbox = SubprocessSandbox(workspace=git_repo)
+        tool = GitCloneTool(workspace=git_repo, sandbox=sandbox)
+        result = await tool.execute(
+            arguments={
+                "url": git_repo.as_uri(),
+                "directory": "cloned",
+            },
+        )
+        # file:// URLs are intentionally rejected
+        assert result.is_error
+        assert "Invalid clone URL" in result.content
 
 
 class TestGitToolsWithoutSandbox:
@@ -113,6 +127,77 @@ class TestSandboxErrorSurfaces:
         result = await tool.execute(arguments={})
         assert result.is_error
         assert "workspace violation" in result.content
+
+
+class TestUnexpectedSandboxException:
+    """Non-SandboxError exceptions propagate (not swallowed)."""
+
+    async def test_unexpected_exception_propagates(
+        self,
+        git_repo: Path,
+    ) -> None:
+        sandbox = SubprocessSandbox(workspace=git_repo)
+        sandbox.execute = AsyncMock(  # type: ignore[method-assign]
+            side_effect=RuntimeError("unexpected bug"),
+        )
+        tool = GitStatusTool(workspace=git_repo, sandbox=sandbox)
+        with pytest.raises(RuntimeError, match="unexpected bug"):
+            await tool.execute(arguments={})
+
+
+class TestSandboxResultConversion:
+    """_sandbox_result_to_execution_result handles edge cases."""
+
+    async def test_nonzero_returncode_prefers_stderr(
+        self,
+        git_repo: Path,
+    ) -> None:
+        sandbox = SubprocessSandbox(workspace=git_repo)
+        sandbox.execute = AsyncMock(  # type: ignore[method-assign]
+            return_value=SandboxResult(
+                stdout="stdout detail",
+                stderr="stderr detail",
+                returncode=1,
+            ),
+        )
+        tool = GitStatusTool(workspace=git_repo, sandbox=sandbox)
+        result = await tool.execute(arguments={})
+        assert result.is_error
+        assert "stderr detail" in result.content
+
+    async def test_nonzero_returncode_falls_back_to_stdout(
+        self,
+        git_repo: Path,
+    ) -> None:
+        sandbox = SubprocessSandbox(workspace=git_repo)
+        sandbox.execute = AsyncMock(  # type: ignore[method-assign]
+            return_value=SandboxResult(
+                stdout="stdout detail",
+                stderr="",
+                returncode=1,
+            ),
+        )
+        tool = GitStatusTool(workspace=git_repo, sandbox=sandbox)
+        result = await tool.execute(arguments={})
+        assert result.is_error
+        assert "stdout detail" in result.content
+
+    async def test_nonzero_returncode_unknown_error_fallback(
+        self,
+        git_repo: Path,
+    ) -> None:
+        sandbox = SubprocessSandbox(workspace=git_repo)
+        sandbox.execute = AsyncMock(  # type: ignore[method-assign]
+            return_value=SandboxResult(
+                stdout="",
+                stderr="",
+                returncode=1,
+            ),
+        )
+        tool = GitStatusTool(workspace=git_repo, sandbox=sandbox)
+        result = await tool.execute(arguments={})
+        assert result.is_error
+        assert "Unknown git error" in result.content
 
 
 class TestGitHardeningWithSandbox:

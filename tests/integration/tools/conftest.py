@@ -7,11 +7,12 @@ from pathlib import Path  # noqa: TC003 — pytest evaluates annotations
 import pytest
 
 _GIT_ENV = {
-    **os.environ,
+    **{k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
     "GIT_AUTHOR_NAME": "Test",
     "GIT_AUTHOR_EMAIL": "test@test.local",
     "GIT_COMMITTER_NAME": "Test",
     "GIT_COMMITTER_EMAIL": "test@test.local",
+    "GIT_CONFIG_GLOBAL": os.devnull,
     "GIT_TERMINAL_PROMPT": "0",
     "GIT_CONFIG_NOSYSTEM": "1",
     "GIT_PROTOCOL_FROM_USER": "0",
