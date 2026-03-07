@@ -34,3 +34,8 @@ EXECUTION_ENGINE_COST_SKIPPED: Final[str] = "execution.engine.cost_skipped"
 EXECUTION_ENGINE_COST_FAILED: Final[str] = "execution.engine.cost_failed"
 EXECUTION_ENGINE_TASK_METRICS: Final[str] = "execution.engine.task_metrics"
 EXECUTION_ENGINE_TIMEOUT: Final[str] = "execution.engine.timeout"
+
+EXECUTION_RECOVERY_START: Final[str] = "execution.recovery.start"
+EXECUTION_RECOVERY_COMPLETE: Final[str] = "execution.recovery.complete"
+EXECUTION_RECOVERY_FAILED: Final[str] = "execution.recovery.failed"
+EXECUTION_RECOVERY_SNAPSHOT: Final[str] = "execution.recovery.snapshot"

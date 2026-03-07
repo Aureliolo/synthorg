@@ -58,8 +58,8 @@ class TestEnumMemberCounts:
     def test_department_name_has_9_members(self) -> None:
         assert len(DepartmentName) == 9
 
-    def test_task_status_has_7_members(self) -> None:
-        assert len(TaskStatus) == 7
+    def test_task_status_has_8_members(self) -> None:
+        assert len(TaskStatus) == 8
 
     def test_task_type_has_6_members(self) -> None:
         assert len(TaskType) == 6

@@ -26,6 +26,7 @@ from ai_company.engine.prompt import (
     format_task_instruction,
 )
 from ai_company.engine.react_loop import ReactLoop
+from ai_company.engine.recovery import FailAndReassignStrategy, RecoveryStrategy
 from ai_company.engine.run_result import AgentRunResult
 from ai_company.observability import get_logger
 from ai_company.observability.events.execution import (
@@ -41,6 +42,7 @@ from ai_company.observability.events.execution import (
     EXECUTION_ENGINE_TASK_METRICS,
     EXECUTION_ENGINE_TASK_TRANSITION,
     EXECUTION_ENGINE_TIMEOUT,
+    EXECUTION_RECOVERY_FAILED,
 )
 from ai_company.providers.enums import MessageRole
 from ai_company.providers.models import ChatMessage
@@ -57,6 +59,9 @@ if TYPE_CHECKING:
     from ai_company.tools.registry import ToolRegistry
 
 logger = get_logger(__name__)
+
+_DEFAULT_RECOVERY_STRATEGY = FailAndReassignStrategy()
+"""Module-level singleton for the default recovery strategy."""
 
 _EXECUTABLE_STATUSES = frozenset({TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS})
 """Task statuses the engine will accept for execution.
@@ -79,6 +84,8 @@ class AgentEngine:
         tool_registry: Optional tools available to the agent.
         cost_tracker: Optional cost recording service. When ``None``,
             cost recording is skipped silently.
+        recovery_strategy: Crash recovery strategy. Defaults to
+            ``FailAndReassignStrategy()``. Pass ``None`` to disable.
     """
 
     def __init__(
@@ -88,11 +95,13 @@ class AgentEngine:
         execution_loop: ExecutionLoop | None = None,
         tool_registry: ToolRegistry | None = None,
         cost_tracker: CostTracker | None = None,
+        recovery_strategy: RecoveryStrategy | None = _DEFAULT_RECOVERY_STRATEGY,
     ) -> None:
         self._provider = provider
         self._loop: ExecutionLoop = execution_loop or ReactLoop()
         self._tool_registry = tool_registry
         self._cost_tracker = cost_tracker
+        self._recovery_strategy = recovery_strategy
         logger.debug(
             EXECUTION_ENGINE_CREATED,
             loop_type=self._loop.get_loop_type(),
@@ -194,7 +203,7 @@ class AgentEngine:
             )
             raise
         except Exception as exc:
-            return self._handle_fatal_error(
+            return await self._handle_fatal_error(
                 exc=exc,
                 identity=identity,
                 task=task,
@@ -251,6 +260,13 @@ class AgentEngine:
             agent_id,
             task_id,
         )
+
+        if execution_result.termination_reason == TerminationReason.ERROR:
+            execution_result = await self._apply_recovery(
+                execution_result,
+                agent_id,
+                task_id,
+            )
 
         duration = time.monotonic() - start
         result = AgentRunResult(
@@ -555,6 +571,49 @@ class AgentEngine:
 
         return execution_result.model_copy(update={"context": ctx})
 
+    async def _apply_recovery(
+        self,
+        execution_result: ExecutionResult,
+        agent_id: str,
+        task_id: str,
+    ) -> ExecutionResult:
+        """Invoke recovery strategy on error outcomes.
+
+        Transitions the task to FAILED via the configured recovery
+        strategy.  If no strategy is set or no task execution exists,
+        returns the result unchanged.  Recovery failures are logged
+        but never block the error result.
+        """
+        if self._recovery_strategy is None:
+            return execution_result
+        ctx = execution_result.context
+        if ctx.task_execution is None:
+            return execution_result
+
+        error_msg = execution_result.error_message or "Unknown error"
+        try:
+            recovery_result = await self._recovery_strategy.recover(
+                task_execution=ctx.task_execution,
+                error_message=error_msg,
+                context=ctx,
+            )
+            updated_ctx = ctx.model_copy(
+                update={"task_execution": recovery_result.task_execution},
+            )
+            return execution_result.model_copy(
+                update={"context": updated_ctx},
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                EXECUTION_RECOVERY_FAILED,
+                agent_id=agent_id,
+                task_id=task_id,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return execution_result
+
     def _make_tool_invoker(
         self,
         identity: AgentIdentity,
@@ -701,7 +760,7 @@ class AgentEngine:
             cost_usd=turn.cost_usd,
         )
 
-    def _handle_fatal_error(  # noqa: PLR0913
+    async def _handle_fatal_error(  # noqa: PLR0913
         self,
         *,
         exc: Exception,
@@ -737,6 +796,11 @@ class AgentEngine:
                 context=error_ctx,
                 termination_reason=TerminationReason.ERROR,
                 error_message=error_msg,
+            )
+            error_execution = await self._apply_recovery(
+                error_execution,
+                agent_id,
+                task_id,
             )
             error_prompt = system_prompt or SystemPrompt(
                 content="",

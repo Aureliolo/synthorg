@@ -83,6 +83,26 @@ class TestTaskExecutionFromTask:
 
 
 @pytest.mark.unit
+class TestTaskExecutionRetryCount:
+    """TaskExecution.retry_count field."""
+
+    def test_retry_count_default_zero(self, sample_task_with_criteria: Task) -> None:
+        exe = TaskExecution.from_task(sample_task_with_criteria)
+        assert exe.retry_count == 0
+
+    def test_from_task_with_retry_count(self, sample_task_with_criteria: Task) -> None:
+        exe = TaskExecution.from_task(sample_task_with_criteria, retry_count=2)
+        assert exe.retry_count == 2
+
+    def test_retry_count_preserved_on_transition(
+        self, sample_task_with_criteria: Task
+    ) -> None:
+        exe = TaskExecution.from_task(sample_task_with_criteria, retry_count=1)
+        result = exe.with_transition(TaskStatus.IN_PROGRESS)
+        assert result.retry_count == 1
+
+
+@pytest.mark.unit
 class TestTaskExecutionTransitions:
     """TaskExecution.with_transition valid and invalid paths."""
 

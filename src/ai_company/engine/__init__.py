@@ -34,6 +34,11 @@ from ai_company.engine.prompt import (
     build_system_prompt,
 )
 from ai_company.engine.react_loop import ReactLoop
+from ai_company.engine.recovery import (
+    FailAndReassignStrategy,
+    RecoveryResult,
+    RecoveryStrategy,
+)
 from ai_company.engine.run_result import AgentRunResult
 from ai_company.engine.task_execution import StatusTransition, TaskExecution
 from ai_company.providers.models import ZERO_TOKEN_USAGE, add_token_usage
@@ -52,11 +57,14 @@ __all__ = [
     "ExecutionLoop",
     "ExecutionResult",
     "ExecutionStateError",
+    "FailAndReassignStrategy",
     "LoopExecutionError",
     "MaxTurnsExceededError",
     "PromptBuildError",
     "PromptTokenEstimator",
     "ReactLoop",
+    "RecoveryResult",
+    "RecoveryStrategy",
     "StatusTransition",
     "SystemPrompt",
     "TaskCompletionMetrics",

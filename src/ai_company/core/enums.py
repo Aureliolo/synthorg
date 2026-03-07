@@ -128,9 +128,10 @@ class TaskStatus(StrEnum):
 
         CREATED -> ASSIGNED
         ASSIGNED -> IN_PROGRESS | BLOCKED | CANCELLED
-        IN_PROGRESS -> IN_REVIEW | BLOCKED | CANCELLED
+        IN_PROGRESS -> IN_REVIEW | BLOCKED | CANCELLED | FAILED
         IN_REVIEW -> COMPLETED | IN_PROGRESS (rework) | BLOCKED | CANCELLED
         BLOCKED -> ASSIGNED (unblocked)
+        FAILED -> ASSIGNED (reassignment for retry)
         COMPLETED and CANCELLED are terminal states.
     """
 
@@ -140,6 +141,7 @@ class TaskStatus(StrEnum):
     IN_REVIEW = "in_review"
     COMPLETED = "completed"
     BLOCKED = "blocked"
+    FAILED = "failed"
     CANCELLED = "cancelled"
 
 

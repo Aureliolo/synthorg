@@ -52,6 +52,12 @@ class TestValidTransitions:
     def test_blocked_to_assigned(self) -> None:
         validate_transition(TaskStatus.BLOCKED, TaskStatus.ASSIGNED)
 
+    def test_in_progress_to_failed(self) -> None:
+        validate_transition(TaskStatus.IN_PROGRESS, TaskStatus.FAILED)
+
+    def test_failed_to_assigned(self) -> None:
+        validate_transition(TaskStatus.FAILED, TaskStatus.ASSIGNED)
+
 
 # ── Invalid Transitions ──────────────────────────────────────────
 
@@ -98,6 +104,14 @@ class TestInvalidTransitions:
         with pytest.raises(ValueError, match="Invalid task status transition"):
             validate_transition(TaskStatus.IN_PROGRESS, TaskStatus.ASSIGNED)
 
+    def test_failed_to_completed_rejected(self) -> None:
+        with pytest.raises(ValueError, match="Invalid task status transition"):
+            validate_transition(TaskStatus.FAILED, TaskStatus.COMPLETED)
+
+    def test_failed_to_in_progress_rejected(self) -> None:
+        with pytest.raises(ValueError, match="Invalid task status transition"):
+            validate_transition(TaskStatus.FAILED, TaskStatus.IN_PROGRESS)
+
     def test_error_message_includes_allowed(self) -> None:
         with pytest.raises(ValueError, match="Allowed from 'created'"):
             validate_transition(TaskStatus.CREATED, TaskStatus.COMPLETED)
@@ -121,6 +135,10 @@ class TestTransitionMapCompleteness:
         """COMPLETED and CANCELLED must have no outgoing transitions."""
         assert VALID_TRANSITIONS[TaskStatus.COMPLETED] == frozenset()
         assert VALID_TRANSITIONS[TaskStatus.CANCELLED] == frozenset()
+
+    def test_failed_is_non_terminal(self) -> None:
+        """FAILED has outgoing transitions (reassignment)."""
+        assert len(VALID_TRANSITIONS[TaskStatus.FAILED]) > 0
 
     def test_all_targets_are_valid_statuses(self) -> None:
         """Every target in the transition map must be a valid TaskStatus."""

@@ -93,6 +93,11 @@ class TaskExecution(BaseModel):
         ge=0,
         description="Number of turns completed",
     )
+    retry_count: int = Field(
+        default=0,
+        ge=0,
+        description="Number of previous failure-reassignment cycles",
+    )
     started_at: AwareDatetime | None = Field(
         default=None,
         description="When execution entered IN_PROGRESS",
@@ -103,16 +108,22 @@ class TaskExecution(BaseModel):
     )
 
     @classmethod
-    def from_task(cls, task: Task) -> TaskExecution:
+    def from_task(
+        cls,
+        task: Task,
+        *,
+        retry_count: int = 0,
+    ) -> TaskExecution:
         """Create a fresh execution from a task definition.
 
         Args:
             task: The frozen task to wrap.
+            retry_count: Number of previous failure-reassignment cycles.
 
         Returns:
             New ``TaskExecution`` with status matching the task.
         """
-        execution = cls(task=task, status=task.status)
+        execution = cls(task=task, status=task.status, retry_count=retry_count)
         logger.debug(
             EXECUTION_TASK_CREATED,
             task_id=task.id,

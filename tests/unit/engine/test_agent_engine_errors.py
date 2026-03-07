@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from ai_company.core.agent import AgentIdentity  # noqa: TC001
+from ai_company.core.enums import TaskStatus
 from ai_company.core.task import Task  # noqa: TC001
 from ai_company.engine.agent_engine import AgentEngine
 from ai_company.engine.context import AgentContext
@@ -14,10 +15,16 @@ from ai_company.engine.loop_protocol import (
     TerminationReason,
     TurnRecord,
 )
+from ai_company.engine.recovery import (
+    FailAndReassignStrategy,
+    RecoveryResult,
+)
 from ai_company.providers.enums import FinishReason, MessageRole
 from ai_company.providers.models import ChatMessage
 
 if TYPE_CHECKING:
+    from ai_company.engine.task_execution import TaskExecution
+
     from .conftest import MockCompletionProvider
 
 from .conftest import make_completion_response as _make_completion_response
@@ -350,3 +357,182 @@ class TestAgentEngineMemoryMessages:
             if m.role == MessageRole.USER and "# Task:" in m.content
         )
         assert sys_idx < mem_idx < task_idx
+
+
+@pytest.mark.unit
+class TestAgentEngineRecovery:
+    """Recovery strategy is invoked on error outcomes."""
+
+    async def test_provider_error_transitions_task_to_failed(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """Provider exception -> task status is FAILED."""
+        provider = MagicMock()
+        provider.complete = AsyncMock(side_effect=RuntimeError("LLM is down"))
+        engine = AgentEngine(provider=provider)
+
+        result = await engine.run(
+            identity=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+
+        assert result.termination_reason == TerminationReason.ERROR
+        te = result.execution_result.context.task_execution
+        assert te is not None
+        assert te.status is TaskStatus.FAILED
+
+    async def test_recovery_strategy_invoked_on_failure(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Custom recovery strategy's recover() is called on failure."""
+        mock_strategy = MagicMock(spec=FailAndReassignStrategy)
+        # Use actual strategy for the real call, but track it
+        real_strategy = FailAndReassignStrategy()
+        mock_strategy.recover = AsyncMock(
+            side_effect=real_strategy.recover,
+        )
+        mock_strategy.get_strategy_type = MagicMock(return_value="fail_reassign")
+
+        provider = MagicMock()
+        provider.complete = AsyncMock(side_effect=RuntimeError("crash"))
+        engine = AgentEngine(provider=provider, recovery_strategy=mock_strategy)
+
+        await engine.run(
+            identity=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+
+        mock_strategy.recover.assert_called_once()
+
+    async def test_recovery_failure_is_swallowed(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """If recovery itself fails, engine still returns error result."""
+        mock_strategy = MagicMock()
+        mock_strategy.recover = AsyncMock(
+            side_effect=ValueError("recovery broken"),
+        )
+
+        provider = MagicMock()
+        provider.complete = AsyncMock(side_effect=RuntimeError("LLM down"))
+        engine = AgentEngine(provider=provider, recovery_strategy=mock_strategy)
+
+        result = await engine.run(
+            identity=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+
+        # Engine still returns an error result, doesn't crash
+        assert result.termination_reason == TerminationReason.ERROR
+        assert result.is_success is False
+
+    async def test_no_recovery_when_strategy_is_none(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """Opting out of recovery: task stays IN_PROGRESS (not FAILED)."""
+        provider = MagicMock()
+        provider.complete = AsyncMock(side_effect=RuntimeError("crash"))
+        engine = AgentEngine(provider=provider, recovery_strategy=None)
+
+        result = await engine.run(
+            identity=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+
+        assert result.termination_reason == TerminationReason.ERROR
+        te = result.execution_result.context.task_execution
+        assert te is not None
+        # Without recovery, task stays at IN_PROGRESS (engine transitions
+        # ASSIGNED->IN_PROGRESS before the loop runs)
+        assert te.status is TaskStatus.IN_PROGRESS
+
+    async def test_loop_timeout_triggers_recovery(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Wall-clock timeout -> ERROR -> recovery -> FAILED."""
+        import asyncio
+
+        async def slow_execute(**_kwargs: object) -> ExecutionResult:
+            await asyncio.sleep(10)
+            ctx = AgentContext.from_identity(
+                sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )
+            return ExecutionResult(
+                context=ctx,
+                termination_reason=TerminationReason.COMPLETED,
+            )
+
+        mock_loop = MagicMock()
+        mock_loop.execute = AsyncMock(side_effect=slow_execute)
+        mock_loop.get_loop_type = MagicMock(return_value="react")
+
+        provider = mock_provider_factory([])
+        engine = AgentEngine(
+            provider=provider,
+            execution_loop=mock_loop,
+        )
+
+        result = await engine.run(
+            identity=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+            timeout_seconds=0.01,
+        )
+
+        assert result.termination_reason == TerminationReason.ERROR
+        te = result.execution_result.context.task_execution
+        assert te is not None
+        assert te.status is TaskStatus.FAILED
+
+    async def test_custom_recovery_strategy_used(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """Engine uses the custom strategy, not the default."""
+        custom_results: list[str] = []
+
+        class CustomRecovery:
+            async def recover(
+                self,
+                *,
+                task_execution: TaskExecution,
+                error_message: str,
+                context: AgentContext,
+            ) -> RecoveryResult:
+                custom_results.append("custom_called")
+                real = FailAndReassignStrategy()
+                return await real.recover(
+                    task_execution=task_execution,
+                    error_message=error_message,
+                    context=context,
+                )
+
+            def get_strategy_type(self) -> str:
+                return "custom"
+
+        provider = MagicMock()
+        provider.complete = AsyncMock(side_effect=RuntimeError("crash"))
+        engine = AgentEngine(
+            provider=provider,
+            recovery_strategy=CustomRecovery(),
+        )
+
+        await engine.run(
+            identity=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+
+        assert custom_results == ["custom_called"]
