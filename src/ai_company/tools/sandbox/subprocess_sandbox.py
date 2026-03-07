@@ -422,7 +422,7 @@ class SubprocessSandbox:
                 pid=proc.pid,
                 error="process did not terminate 5s after kill",
             )
-            return b"", b""
+            return b"", b"[sandbox] process did not terminate after kill"
 
     async def execute(
         self,

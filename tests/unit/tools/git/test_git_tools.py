@@ -783,7 +783,37 @@ class TestRunGitErrorPaths:
         assert result.is_error
         assert "\x00" not in result.content
         assert "\x07" not in result.content
-        assert "errorwithcontrolchars" in result.content
+        assert "error with control chars" in result.content
+
+    async def test_timeout_sanitizes_stderr_truncation(
+        self,
+        status_tool: GitStatusTool,
+    ) -> None:
+        """Stderr fragment is truncated to 500 characters."""
+        calls = 0
+
+        async def slow_then_long_stderr() -> tuple[bytes, bytes]:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                await asyncio.sleep(999)
+            return b"", ("x" * 1000).encode()
+
+        mock_proc = MagicMock()
+        mock_proc.communicate = slow_then_long_stderr
+        mock_proc.kill = MagicMock()
+        mock_proc._transport = None
+
+        with patch(
+            "asyncio.create_subprocess_exec",
+            return_value=mock_proc,
+        ):
+            result = await status_tool._run_git(["status"], deadline=0.01)
+
+        assert result.is_error
+        # 500 chars from stderr + prefix "Git command timed out after 0.01s: "
+        stderr_part = result.content.split(": ", 1)[1]
+        assert len(stderr_part) == 500
 
     async def test_oserror_returns_error(self, status_tool: GitStatusTool) -> None:
         """OSError when git binary not found returns error result."""

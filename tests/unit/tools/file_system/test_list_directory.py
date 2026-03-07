@@ -116,7 +116,7 @@ class TestListDirectoryExecution:
         assert not result.is_error
         assert "Truncated" in result.content
         assert result.metadata is not None
-        assert result.metadata["total_entries"] > MAX_ENTRIES
+        assert result.metadata["total_entries"] == MAX_ENTRIES
         assert result.metadata["truncated"] is True
 
     async def test_unsafe_glob_pattern_rejected(

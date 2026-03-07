@@ -412,3 +412,93 @@ class TestGracefulShutdownConfig:
     def test_blank_strategy_rejected(self) -> None:
         with pytest.raises(ValidationError):
             GracefulShutdownConfig(strategy="   ")
+
+
+# ── _log_post_cancel_exceptions ───────────────────────────────────
+
+
+@pytest.mark.unit
+class TestLogPostCancelExceptions:
+    """Extracted helper retrieves exceptions without swallowing them."""
+
+    def test_skips_cancelled_tasks(self) -> None:
+        strategy = CooperativeTimeoutStrategy()
+        task = MagicMock(spec=asyncio.Task)
+        task.cancelled.return_value = True
+        # Should not call task.exception()
+        strategy._log_post_cancel_exceptions({task})
+        task.exception.assert_not_called()
+
+    def test_logs_task_exception(self) -> None:
+        strategy = CooperativeTimeoutStrategy()
+        task = MagicMock(spec=asyncio.Task)
+        task.cancelled.return_value = False
+        task.exception.return_value = RuntimeError("boom")
+        task.get_name.return_value = "test-task"
+        # Should not raise
+        strategy._log_post_cancel_exceptions({task})
+        task.exception.assert_called_once()
+
+    def test_handles_no_exception(self) -> None:
+        strategy = CooperativeTimeoutStrategy()
+        task = MagicMock(spec=asyncio.Task)
+        task.cancelled.return_value = False
+        task.exception.return_value = None
+        task.get_name.return_value = "test-task"
+        strategy._log_post_cancel_exceptions({task})
+        task.exception.assert_called_once()
+
+    def test_handles_invalid_state_error(self) -> None:
+        strategy = CooperativeTimeoutStrategy()
+        task = MagicMock(spec=asyncio.Task)
+        task.cancelled.return_value = False
+        task.exception.side_effect = asyncio.InvalidStateError
+        task.get_name.return_value = "test-task"
+        # Should not raise — logs at DEBUG instead of silent pass
+        strategy._log_post_cancel_exceptions({task})
+
+
+# ── Signal handler recovery ──────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestSignalHandlerRecovery:
+    """Signal handler falls back to loop.stop() on strategy failure."""
+
+    def test_handle_signal_unix_falls_back_to_loop_stop(self) -> None:
+        strategy = MagicMock(spec=ShutdownStrategy)
+        strategy.request_shutdown.side_effect = RuntimeError("broken")
+        manager = ShutdownManager(strategy=strategy)
+        mock_loop = MagicMock()
+        with patch("asyncio.get_running_loop", return_value=mock_loop):
+            manager._handle_signal(signal.SIGINT)
+        mock_loop.stop.assert_called_once()
+
+    def test_handle_signal_threadsafe_no_loop_stderr_fallback(self) -> None:
+        strategy = MagicMock(spec=ShutdownStrategy)
+        strategy.request_shutdown.side_effect = RuntimeError("broken")
+        manager = ShutdownManager(strategy=strategy)
+        with (
+            patch(
+                "asyncio.get_running_loop",
+                side_effect=RuntimeError("no loop"),
+            ),
+            patch("sys.stderr") as mock_stderr,
+        ):
+            manager._handle_signal_threadsafe(signal.SIGINT.value, None)
+        mock_stderr.write.assert_called_once()
+
+    def test_handle_signal_threadsafe_no_loop_stderr_also_fails(self) -> None:
+        strategy = MagicMock(spec=ShutdownStrategy)
+        strategy.request_shutdown.side_effect = RuntimeError("broken")
+        manager = ShutdownManager(strategy=strategy)
+        with (
+            patch(
+                "asyncio.get_running_loop",
+                side_effect=RuntimeError("no loop"),
+            ),
+            patch("sys.stderr") as mock_stderr,
+        ):
+            mock_stderr.write.side_effect = OSError("stderr closed")
+            # Should not raise even when stderr fails
+            manager._handle_signal_threadsafe(signal.SIGINT.value, None)

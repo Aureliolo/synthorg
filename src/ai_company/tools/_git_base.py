@@ -72,7 +72,7 @@ _SECRET_SUBSTRINGS: Final[tuple[str, ...]] = (
 )
 
 
-_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]+")
 _MAX_STDERR_FRAGMENT: Final[int] = 500
 
 
@@ -82,8 +82,13 @@ def _sanitize_command(args: list[str]) -> list[str]:
 
 
 def _sanitize_stderr(raw: str) -> str:
-    """Strip control characters and truncate stderr for safe inclusion."""
-    return _CONTROL_CHAR_RE.sub("", raw)[:_MAX_STDERR_FRAGMENT]
+    """Replace control characters with spaces and truncate for safe inclusion.
+
+    All control characters (including newlines, tabs, and carriage
+    returns) are collapsed into single spaces to prevent log injection
+    and LLM prompt injection via stderr content.
+    """
+    return _CONTROL_CHAR_RE.sub(" ", raw).strip()[:_MAX_STDERR_FRAGMENT]
 
 
 class _BaseGitTool(BaseTool, ABC):
@@ -409,13 +414,20 @@ class _BaseGitTool(BaseTool, ABC):
             A ``ToolExecutionResult`` with the appropriate content.
         """
         if result.timed_out:
+            stderr_fragment = (
+                _sanitize_stderr(result.stderr.strip()) if result.stderr else ""
+            )
             logger.warning(
                 GIT_COMMAND_TIMEOUT,
                 command=_sanitize_command(["git", *args]),
                 deadline=deadline,
+                stderr_fragment=stderr_fragment,
             )
+            msg = f"Git command timed out after {deadline}s"
+            if stderr_fragment:
+                msg += f": {stderr_fragment}"
             return ToolExecutionResult(
-                content=result.stderr or "Git command timed out",
+                content=msg,
                 is_error=True,
             )
         if result.returncode != 0:

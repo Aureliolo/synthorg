@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from pydantic import ValidationError
 
 from ai_company.tools.sandbox.config import SubprocessSandboxConfig
 from ai_company.tools.sandbox.errors import SandboxError, SandboxStartError
@@ -511,11 +512,11 @@ class TestExtraSafePathPrefixes:
         )
 
     def test_rejects_empty_string(self) -> None:
-        with pytest.raises(ValueError, match="non-empty absolute"):
+        with pytest.raises(ValidationError, match="non-empty absolute"):
             SubprocessSandboxConfig(extra_safe_path_prefixes=("",))
 
     def test_rejects_relative_path(self) -> None:
-        with pytest.raises(ValueError, match="non-empty absolute"):
+        with pytest.raises(ValidationError, match="non-empty absolute"):
             SubprocessSandboxConfig(
                 extra_safe_path_prefixes=("relative/path",),
             )

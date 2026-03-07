@@ -71,12 +71,14 @@ def _list_sync(
     pattern: str | None,
     *,
     recursive: bool,
-) -> list[str]:
+) -> tuple[list[str], bool]:
     """Collect directory entries synchronously.
 
     Returns:
-        Formatted strings with type prefixes, capped at
-        ``MAX_ENTRIES + 1`` to allow truncation detection.
+        A tuple of ``(lines, raw_capped)`` where *lines* are
+        formatted strings with type prefixes and *raw_capped* is
+        ``True`` when the raw scan hit the ``MAX_ENTRIES`` limit
+        (meaning the directory may contain more entries).
     """
     glob_pattern = pattern or "*"
     if recursive:
@@ -87,9 +89,10 @@ def _list_sync(
         raw_iter = resolved.iterdir()
 
     entries = sorted(itertools.islice(raw_iter, MAX_ENTRIES + 1))
+    raw_capped = len(entries) > MAX_ENTRIES
 
     lines: list[str] = []
-    for entry in entries:
+    for entry in entries[:MAX_ENTRIES]:
         try:
             line = _classify_entry(
                 entry,
@@ -107,7 +110,7 @@ def _list_sync(
             )
             lines.append(f"[ERROR] {entry.name} ({exc})")
 
-    return lines
+    return lines, raw_capped
 
 
 class ListDirectoryTool(BaseFileSystemTool):
@@ -229,33 +232,35 @@ class ListDirectoryTool(BaseFileSystemTool):
     def _format_listing_result(
         user_path: str,
         lines: list[str],
+        *,
+        raw_capped: bool,
     ) -> tuple[str, dict[str, Any]]:
-        """Build output text and metadata from listing lines."""
-        # total reflects classified entries (not raw filesystem entries).
-        # _list_sync's islice caps scanning at MAX_ENTRIES + 1, but
-        # _classify_entry may drop some entries (e.g. non-symlinks outside
-        # workspace), so len(lines) can be less than the islice cap.
-        # When truncated, the true directory size is unknown.
+        """Build output text and metadata from listing lines.
+
+        Args:
+            user_path: The user-supplied directory path.
+            lines: Classified entry lines from ``_list_sync``.
+            raw_capped: Whether the raw filesystem scan hit the
+                ``MAX_ENTRIES`` limit (directory may contain more).
+        """
         total = len(lines)
-        truncated = total > MAX_ENTRIES
-        if truncated:
-            lines = lines[:MAX_ENTRIES]
         dir_count = sum(1 for ln in lines if ln.startswith("[DIR]"))
         file_count = sum(1 for ln in lines if ln.startswith("[FILE]"))
         if not lines:
             output = f"Directory is empty: {user_path}"
         else:
             output = "\n".join(lines)
-            if truncated:
+            if raw_capped:
                 output += (
-                    f"\n\n[Truncated: showing first {MAX_ENTRIES} of {total} entries]"
+                    f"\n\n[Truncated: showing {total} entries;"
+                    " directory may contain more]"
                 )
         metadata = {
             "path": user_path,
             "total_entries": total,
             "directories": dir_count,
             "files": file_count,
-            "truncated": truncated,
+            "truncated": raw_capped,
         }
         return output, metadata
 
@@ -285,7 +290,7 @@ class ListDirectoryTool(BaseFileSystemTool):
             return resolved_or_err
 
         try:
-            lines = await asyncio.to_thread(
+            lines, raw_capped = await asyncio.to_thread(
                 _list_sync,
                 resolved_or_err,
                 self.workspace_root,
@@ -309,7 +314,11 @@ class ListDirectoryTool(BaseFileSystemTool):
                 is_error=True,
             )
 
-        output, metadata = self._format_listing_result(user_path, lines)
+        output, metadata = self._format_listing_result(
+            user_path,
+            lines,
+            raw_capped=raw_capped,
+        )
         logger.info(
             TOOL_FS_LIST,
             path=user_path,

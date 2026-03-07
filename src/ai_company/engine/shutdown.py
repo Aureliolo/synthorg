@@ -10,14 +10,13 @@ The ``ShutdownStrategy`` protocol is pluggable for future strategies.
 """
 
 import asyncio
+import contextlib
 import signal
 import sys
 import time
+import types  # noqa: TC003 — used in runtime-visible annotation
 from collections.abc import Callable, Coroutine, Mapping, Sequence
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
-
-if TYPE_CHECKING:
-    import types
+from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -247,8 +246,8 @@ class CooperativeTimeoutStrategy:
 
         return tasks_completed, len(pending)
 
-    @staticmethod
     def _log_post_cancel_exceptions(
+        self,
         tasks: set[asyncio.Task[Any]],
     ) -> None:
         """Retrieve and log exceptions from post-cancel tasks.
@@ -262,13 +261,20 @@ class CooperativeTimeoutStrategy:
                 continue
             try:
                 exc = task.exception()
-            except Exception:  # noqa: S110
-                pass
+            except asyncio.InvalidStateError:
+                logger.debug(
+                    EXECUTION_SHUTDOWN_TASK_ERROR,
+                    error="Failed to inspect post-cancel task: InvalidStateError",
+                    task_name=task.get_name(),
+                )
             else:
                 if exc is not None:
                     logger.debug(
                         EXECUTION_SHUTDOWN_TASK_ERROR,
-                        error=(f"Post-cancel task exception: {type(exc).__name__}"),
+                        error=(
+                            f"Post-cancel task exception: {type(exc).__name__}: {exc}"
+                        ),
+                        task_name=task.get_name(),
                     )
 
     async def _run_cleanup(
@@ -378,8 +384,12 @@ class ShutdownManager:
             logger.exception(
                 EXECUTION_SHUTDOWN_SIGNAL,
                 signal=sig.name,
-                error="request_shutdown() raised in signal handler",
+                error="request_shutdown() raised — falling back to loop.stop()",
             )
+            # If request_shutdown() itself fails, stop the event loop as
+            # a last resort to avoid a process that ignores signals.
+            with contextlib.suppress(Exception):
+                asyncio.get_running_loop().stop()
 
     def _handle_signal_threadsafe(
         self,
@@ -407,8 +417,10 @@ class ShutdownManager:
                 logger.exception(
                     EXECUTION_SHUTDOWN_SIGNAL,
                     signal=sig_name,
-                    error="request_shutdown() raised in signal handler",
+                    error="request_shutdown() raised — falling back to loop.stop()",
                 )
+                with contextlib.suppress(Exception):
+                    asyncio.get_running_loop().stop()
 
         try:
             loop = asyncio.get_running_loop()
