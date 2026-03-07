@@ -1,9 +1,8 @@
-"""Shared helpers for execution loop implementations.
+"""Shared stateless helpers for all ExecutionLoop implementations.
 
-Stateless functions extracted from ``ReactLoop`` that are reused by
-both the ReAct and Plan-and-Execute loops.  Each function operates on
-explicit parameters (no ``self``), keeping loop implementations thin
-and focused on their control-flow logic.
+Each function operates on explicit parameters (no ``self``), keeping
+loop implementations (ReAct, Plan-and-Execute, etc.) thin and focused
+on their control-flow logic.
 """
 
 from typing import TYPE_CHECKING
@@ -47,7 +46,16 @@ def check_shutdown(
     shutdown_checker: ShutdownChecker | None,
     turns: list[TurnRecord],
 ) -> ExecutionResult | None:
-    """Return a SHUTDOWN result if a shutdown has been requested."""
+    """Return a SHUTDOWN result if a shutdown has been requested.
+
+    Args:
+        ctx: Current agent context.
+        shutdown_checker: Optional callback returning ``True`` on shutdown.
+        turns: Accumulated turn records.
+
+    Returns:
+        ``ExecutionResult`` with SHUTDOWN reason, or ``None`` to continue.
+    """
     if shutdown_checker is None:
         return None
     try:
@@ -83,7 +91,16 @@ def check_budget(
     budget_checker: BudgetChecker | None,
     turns: list[TurnRecord],
 ) -> ExecutionResult | None:
-    """Return a BUDGET_EXHAUSTED result if budget is exhausted or checker raises."""
+    """Return a BUDGET_EXHAUSTED result if budget is exhausted.
+
+    Args:
+        ctx: Current agent context.
+        budget_checker: Optional callback returning ``True`` on exhaustion.
+        turns: Accumulated turn records.
+
+    Returns:
+        ``ExecutionResult`` with BUDGET_EXHAUSTED reason, or ``None``.
+    """
     if budget_checker is None:
         return None
     try:
@@ -127,14 +144,31 @@ async def call_provider(  # noqa: PLR0913
     turn_number: int,
     turns: list[TurnRecord],
 ) -> CompletionResponse | ExecutionResult:
-    """Call ``provider.complete()``, returning an error result on failure."""
+    """Call ``provider.complete()``, returning an error result on failure.
+
+    Args:
+        ctx: Current agent context with conversation history.
+        provider: LLM completion provider.
+        model_id: Model identifier to use.
+        tool_defs: Optional tool definitions to pass to the LLM.
+        config: Completion config (temperature, max_tokens, etc.).
+        turn_number: Current turn number (1-indexed).
+        turns: Accumulated turn records.
+
+    Returns:
+        ``CompletionResponse`` on success, or ``ExecutionResult`` on error.
+
+    Raises:
+        MemoryError: Re-raised unconditionally.
+        RecursionError: Re-raised unconditionally.
+    """
     char_count = sum(len(m.content or "") for m in ctx.conversation)
     logger.info(
         EXECUTION_LOOP_TURN_START,
         execution_id=ctx.execution_id,
         turn=turn_number,
         message_count=len(ctx.conversation),
-        input_token_estimate=char_count // 4,
+        char_count_estimate=char_count,
     )
     try:
         return await provider.complete(
@@ -169,8 +203,8 @@ def check_response_errors(
 ) -> ExecutionResult | None:
     """Return an error result for CONTENT_FILTER or ERROR responses.
 
-    The context's accumulated cost is updated to include the failing
-    turn's token usage so callers see accurate totals.
+    When returning an error result, the result's context includes the
+    failing turn's token usage so callers see accurate totals.
     """
     if response.finish_reason not in (
         FinishReason.CONTENT_FILTER,
@@ -205,7 +239,22 @@ async def execute_tool_calls(
     turn_number: int,
     turns: list[TurnRecord],
 ) -> AgentContext | ExecutionResult:
-    """Execute tool calls and append results to context, or error if no invoker."""
+    """Execute tool calls and append results to context.
+
+    Args:
+        ctx: Current agent context.
+        tool_invoker: Tool invoker (``None`` causes an error result).
+        response: Provider response containing tool calls.
+        turn_number: Current turn number (1-indexed).
+        turns: Accumulated turn records.
+
+    Returns:
+        Updated ``AgentContext`` on success, or ``ExecutionResult`` on error.
+
+    Raises:
+        MemoryError: Re-raised unconditionally.
+        RecursionError: Re-raised unconditionally.
+    """
     if tool_invoker is None:
         error_msg = (
             f"LLM requested {len(response.tool_calls)} tool "
@@ -264,6 +313,20 @@ async def execute_tool_calls(
         ctx = ctx.with_message(tool_msg)
 
     return ctx
+
+
+def clear_last_turn_tool_calls(turns: list[TurnRecord]) -> None:
+    """Clear tool_calls_made on the last TurnRecord.
+
+    Used when shutdown fires between recording a turn and executing
+    tools — the turn should not overstate what happened.
+
+    Args:
+        turns: Mutable list of turn records (modified in-place).
+    """
+    if turns:
+        last = turns[-1]
+        turns[-1] = last.model_copy(update={"tool_calls_made": ()})
 
 
 def get_tool_definitions(

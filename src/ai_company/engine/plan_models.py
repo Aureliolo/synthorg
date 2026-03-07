@@ -44,7 +44,7 @@ class PlanStep(BaseModel):
         default=StepStatus.PENDING,
         description="Current execution status",
     )
-    actual_outcome: str | None = Field(
+    actual_outcome: NotBlankStr | None = Field(
         default=None,
         description="Observed result after execution",
     )

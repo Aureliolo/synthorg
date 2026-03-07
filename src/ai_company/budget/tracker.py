@@ -301,7 +301,6 @@ class CostTracker:
         Raises:
             ValueError: If ``start >= end``.
         """
-        _validate_time_range(start, end)
         breakdown = await self.get_category_breakdown(
             agent_id=agent_id,
             task_id=task_id,

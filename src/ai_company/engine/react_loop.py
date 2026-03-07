@@ -27,6 +27,7 @@ from .loop_helpers import (
     check_budget,
     check_response_errors,
     check_shutdown,
+    clear_last_turn_tool_calls,
     execute_tool_calls,
     get_tool_definitions,
     make_turn_record,
@@ -191,13 +192,7 @@ class ReactLoop:
         # Check shutdown before tool invocations
         shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
         if shutdown_result is not None:
-            # Tools were not executed — clear tool_calls_made in the
-            # last TurnRecord so it doesn't overstate what happened.
-            if turns:
-                last = turns[-1]
-                turns[-1] = last.model_copy(
-                    update={"tool_calls_made": ()},
-                )
+            clear_last_turn_tool_calls(turns)
             return shutdown_result
 
         return await execute_tool_calls(

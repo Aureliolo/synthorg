@@ -1,8 +1,8 @@
 """Per-turn cost recording for agent execution.
 
-Extracts cost-recording logic from ``AgentEngine`` to keep the engine
-module under the 800-line limit while preserving full per-turn
-granularity and structured logging.
+Handles per-turn cost recording from execution results into the
+``CostTracker`` service, preserving full per-call granularity and
+structured logging.
 """
 
 from datetime import UTC, datetime
@@ -55,7 +55,7 @@ async def record_execution_costs(
         # Skip only when provably nothing happened (zero cost and
         # zero tokens); a turn with tokens but zero cost (e.g., a
         # free-tier provider) is still recorded.
-        if turn.cost_usd <= 0.0 and turn.input_tokens == 0 and turn.output_tokens == 0:
+        if turn.cost_usd == 0.0 and turn.input_tokens == 0 and turn.output_tokens == 0:
             logger.debug(
                 EXECUTION_ENGINE_COST_SKIPPED,
                 agent_id=agent_id,

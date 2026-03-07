@@ -14,16 +14,15 @@ from ai_company.budget.call_category import (
     LLMCallCategory,
     OrchestrationAlertLevel,
 )
+from ai_company.budget.coordination_config import (
+    OrchestrationAlertThresholds,
+)
 from ai_company.constants import BUDGET_ROUNDING_PRECISION
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from ai_company.budget.cost_record import CostRecord
-
-from ai_company.budget.coordination_config import (
-    OrchestrationAlertThresholds,
-)
 
 
 class CategoryBreakdown(BaseModel):
@@ -117,7 +116,8 @@ class OrchestrationRatio(BaseModel):
     Attributes:
         ratio: Orchestration ratio (0.0-1.0).
         alert_level: Alert level based on ratio thresholds.
-        total_tokens: Total tokens across all categories.
+        total_tokens: Total tokens across all categories (includes
+            uncategorized tokens in the denominator).
         productive_tokens: Productive category tokens.
         coordination_tokens: Coordination category tokens.
         system_tokens: System category tokens.
@@ -144,20 +144,19 @@ def build_category_breakdown(
     Uses :func:`math.fsum` for accurate floating-point summation.
     """
     buckets: dict[LLMCallCategory | None, tuple[list[float], int, int]] = {
-        LLMCallCategory.PRODUCTIVE: ([], 0, 0),
-        LLMCallCategory.COORDINATION: ([], 0, 0),
-        LLMCallCategory.SYSTEM: ([], 0, 0),
-        None: ([], 0, 0),
-    }
+        cat: ([], 0, 0) for cat in LLMCallCategory
+    } | {None: ([], 0, 0)}
 
     for r in records:
-        costs, inp, out = buckets[r.call_category]
+        bucket_key = r.call_category if r.call_category in buckets else None
+        costs, tokens, count = buckets[bucket_key]
         costs.append(r.cost_usd)
-        # Tuples can't be mutated, so we use dict reassignment
-        buckets[r.call_category] = (
+        # Integer accumulators are in a tuple; replace the tuple to
+        # update them (the costs list is mutated in-place).
+        buckets[bucket_key] = (
             costs,
-            inp + r.input_tokens + r.output_tokens,
-            out + 1,
+            tokens + r.input_tokens + r.output_tokens,
+            count + 1,
         )
 
     def _round(vals: list[float]) -> float:

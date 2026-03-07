@@ -813,7 +813,7 @@ Tasks can be assigned through multiple strategies:
 
 The agent execution loop defines how an agent processes a task from start to finish. The framework provides multiple configurable loop architectures behind an `ExecutionLoop` protocol, making the system extensible. The default can vary by task complexity, and is configurable per agent or role.
 
-> **MVP: ReAct only (Loop 1).** Plan-and-Execute and Hybrid are M4+. Auto-selection is M4+.
+> **Current state (M3):** ReAct (Loop 1) and Plan-and-Execute (Loop 2) are implemented. Hybrid loop and auto-selection are M4+.
 
 #### ExecutionLoop Protocol
 
@@ -1543,7 +1543,7 @@ budget:
 
 ### 10.5 LLM Call Analytics
 
-> **MVP: Proxy metrics only (M3).** Call categorization is M4. Full analytics layer is M5+.
+> **Current state:** Proxy metrics (M3) and call categorization + coordination metric data models (M4 models, brought forward) are implemented. Runtime collection pipeline and full analytics layer are M5+.
 
 Every LLM provider call is tracked with comprehensive metadata for financial reporting, debugging, and orchestration overhead analysis. The analytics system builds incrementally across milestones.
 
@@ -1561,6 +1561,8 @@ These are natural overhead indicators — a task consuming 15 turns and 50k toke
 These metrics are captured in `TaskCompletionMetrics` (in `engine/metrics.py`), a frozen Pydantic model with a `from_run_result()` factory method. The engine logs these metrics at task completion via the `EXECUTION_ENGINE_TASK_METRICS` event.
 
 #### M4: Call Categorization + Orchestration Ratio
+
+> **Current state:** Data models (`LLMCallCategory`, `CategoryBreakdown`, `OrchestrationRatio`, `CostRecord.call_category`) and query methods (`CostTracker.get_category_breakdown`, `get_orchestration_ratio`) are implemented. Runtime categorization logic (automatic tagging of calls during multi-agent execution) is deferred to M4 runtime integration.
 
 When multi-agent coordination exists, each `CostRecord` is tagged with a **call category**:
 
@@ -2308,6 +2310,9 @@ ai-company/
 │       │   ├── loop_protocol.py    # ExecutionLoop protocol + result models
 │       │   ├── metrics.py          # TaskCompletionMetrics proxy overhead model
 │       │   ├── react_loop.py       # ReAct loop implementation
+│       │   ├── plan_models.py      # Plan step, plan, and plan-execute config models
+│       │   ├── plan_execute_loop.py # Plan-and-Execute loop implementation
+│       │   ├── loop_helpers.py     # Shared stateless helpers for all loop implementations
 │       │   ├── recovery.py         # Crash recovery strategies (RecoveryStrategy protocol)
 │       │   ├── cost_recording.py   # Per-turn cost recording helpers
 │       │   ├── run_result.py       # AgentRunResult outcome model
@@ -2412,6 +2417,10 @@ ai-company/
 │       ├── budget/                  # Cost management
 │       │   ├── config.py           # Budget configuration models
 │       │   ├── cost_record.py      # CostRecord model (frozen)
+│       │   ├── call_category.py   # LLM call category enums (productive, coordination, system)
+│       │   ├── category_analytics.py # Per-category cost breakdown + orchestration ratio
+│       │   ├── coordination_config.py # Coordination metrics config models
+│       │   ├── coordination_metrics.py # Five coordination metric models + computation
 │       │   ├── tracker.py          # CostTracker service (records + queries)
 │       │   ├── spending_summary.py # _SpendingTotals base + spending summary models
 │       │   ├── hierarchy.py        # BudgetHierarchy, BudgetConfig
@@ -2485,7 +2494,7 @@ These conventions were established during the M0–M2+ review cycle. **Adopted**
 | **Tool sandboxing** | Adopted (M3, incremental) | File system tools use in-process `PathValidator` for workspace-scoped path validation (symlink resolution + containment check). `BaseFileSystemTool` ABC provides shared `ToolCategory.FILE_SYSTEM` and `PathValidator` integration — all file system tools extend this base. `SandboxBackend` protocol with `SubprocessSandbox` implemented — git tools accept optional `SandboxBackend` injection and delegate subprocess management to it (env filtering, workspace enforcement, timeout + process-group kill). `DockerSandbox` planned for code_runner, terminal, web, and database tools. `K8sSandbox` planned for future container deployments. Config-driven per-category backend selection planned for engine wiring. | File system tools use defence-in-depth path validation; subprocess sandbox provides lightweight isolation for git tools; heavier Docker/K8s isolation reserved for higher-risk tool categories (code execution, network). See §11.1.2. |
 | **Crash recovery** | Adopted (M3) | Pluggable `RecoveryStrategy` protocol. M3: `FailAndReassignStrategy` (catch at engine boundary, log snapshot, mark FAILED / eligible for reassignment). M4/M5: `CheckpointStrategy` (persist `AgentContext` per turn, resume from last checkpoint). | Immutable `model_copy` pattern makes checkpoint serialization trivial to add later. Fail-and-reassign is sufficient for short MVP tasks. See §6.6. |
 | **Agent behavior testing** | Planned (M3) | Scripted `FakeProvider` for unit tests (deterministic turn sequences); behavioral outcome assertions for integration tests (task completed, tools called, cost within budget). | Leverages existing `FakeProvider` and `CompletionResponseFactory` fixtures. Precise engine testing without brittle response-matching at integration level. |
-| **LLM call analytics** | Planned (incremental) | M3: proxy metrics (`turns_per_task`, `tokens_per_task`). M4: call categorization (`productive`, `coordination`, `system`) + orchestration ratio. M5+: full analytics (retry tracking, latency, cache hits, per-provider comparison). | Append-only, never blocks execution. Builds on existing `CostRecord` infrastructure. Detects orchestration overhead early. See §10.5. |
+| **LLM call analytics** | Adopted (incremental) | M3: proxy metrics (`turns_per_task`, `tokens_per_task`) — adopted. M4 data models: call categorization (`productive`, `coordination`, `system`), category analytics, coordination metrics, orchestration ratio — adopted. M4 runtime collection pipeline and M5+ full analytics: planned. | Append-only, never blocks execution. Builds on existing `CostRecord` infrastructure. Detects orchestration overhead early. See §10.5. |
 | **State coordination** | Planned (M4) | Centralized single-writer: `TaskEngine` owns all task/project mutations via `asyncio.Queue`. Agents submit requests, engine applies `model_copy(update=...)` sequentially and publishes snapshots. `version: int` field on state models for future optimistic concurrency if multi-process scaling is needed. | Prevents lost updates by design. Trivial in single-threaded asyncio (no locks). Perfect audit trail. Industry consensus: MetaGPT, CrewAI, AutoGen all use prevention-by-design, not conflict resolution. See §6.8 State Coordination table. |
 | **Workspace isolation** | Planned (M4) | Pluggable `WorkspaceIsolationStrategy` protocol. Default: planner + git worktrees. Each agent works in an isolated worktree; sequential merge on completion. Textual conflicts detected by git; semantic conflicts reviewed by agent or human. | Industry standard (Codex, Cursor, Claude Code, VS Code). Maximum parallelism. Leverages mature git infrastructure. See §6.8. |
 | **Graceful shutdown** | Adopted (M3) | Pluggable `ShutdownStrategy` protocol. Default: cooperative with 30s timeout. Agents check shutdown event at turn boundaries. Force-cancel after timeout. `INTERRUPTED` status for force-cancelled tasks. M4/M5: upgrade to checkpoint-and-stop. | Cross-platform (Windows `signal.signal()` fallback). Bounded shutdown time. Mirrors cooperative shutdown in §6.7. |

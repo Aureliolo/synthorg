@@ -179,7 +179,9 @@ class TestPlanExecuteLoopBasic:
         assert result.metadata["loop_type"] == "plan_execute"
         assert result.metadata["replans_used"] == 0
         assert result.metadata["final_plan"] is not None
-        assert len(result.metadata["plans"]) == 1
+        plans = result.metadata["plans"]
+        assert isinstance(plans, list)
+        assert len(plans) == 1
 
     async def test_multi_step_completion(
         self,
@@ -241,22 +243,21 @@ class TestPlanExecuteLoopWithTools:
 class TestPlanExecuteLoopReplanning:
     """Re-planning on step failure."""
 
-    async def test_replan_on_step_failure_then_success(
+    async def test_content_filter_during_step_returns_error(
         self,
         sample_agent_context: AgentContext,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         ctx = _ctx_with_user_msg(sample_agent_context)
-        # Plan: 1 step, step fails (content_filter), replan: 1 step, succeeds
+        # Plan: 1 step, step returns content_filter → immediate ERROR
         provider = mock_provider_factory(
             [
                 _single_step_plan(),
-                _content_filter_response(),  # step 1 fails (error response)
+                _content_filter_response(),
             ]
         )
         loop = PlanExecuteLoop()
 
-        # Content filter returns an ExecutionResult (ERROR), so loop terminates
         result = await loop.execute(
             context=ctx,
             provider=provider,
@@ -564,7 +565,9 @@ class TestPlanExecuteLoopPlanParsing:
         )
 
         assert result.termination_reason == TerminationReason.COMPLETED
-        assert len(result.metadata["plans"]) >= 1
+        plans = result.metadata["plans"]
+        assert isinstance(plans, list)
+        assert len(plans) >= 1
 
 
 @pytest.mark.unit

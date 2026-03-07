@@ -1,14 +1,14 @@
 """Coordination metrics for multi-agent system tuning.
 
 Pure computation functions for five coordination metrics defined in
-DESIGN_SPEC Section 10.3: efficiency, overhead, error amplification,
-message density, and redundancy rate.
+DESIGN_SPEC (Coordination Metrics): efficiency, overhead, error
+amplification, message density, and redundancy rate.
 """
 
 import statistics
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -28,10 +28,21 @@ class CoordinationEfficiency(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    value: float = Field(description="Coordination efficiency")
-    success_rate: float = Field(description="Multi-agent success rate")
-    turns_mas: float = Field(description="Avg turns (multi-agent)")
-    turns_sas: float = Field(description="Avg turns (single-agent)")
+    success_rate: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Multi-agent success rate",
+    )
+    turns_mas: float = Field(gt=0, description="Avg turns (multi-agent)")
+    turns_sas: float = Field(gt=0, description="Avg turns (single-agent)")
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Coordination efficiency",
+    )
+    @property
+    def value(self) -> float:
+        """Computed efficiency: ``success_rate / (turns_mas / turns_sas)``."""
+        return self.success_rate / (self.turns_mas / self.turns_sas)
 
 
 class CoordinationOverhead(BaseModel):
@@ -47,9 +58,16 @@ class CoordinationOverhead(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    value_percent: float = Field(description="Overhead percentage")
-    turns_mas: float = Field(description="Avg turns (multi-agent)")
-    turns_sas: float = Field(description="Avg turns (single-agent)")
+    turns_mas: float = Field(gt=0, description="Avg turns (multi-agent)")
+    turns_sas: float = Field(gt=0, description="Avg turns (single-agent)")
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Overhead percentage",
+    )
+    @property
+    def value_percent(self) -> float:
+        """Overhead: ``(turns_mas - turns_sas) / turns_sas * 100``."""
+        return (self.turns_mas - self.turns_sas) / self.turns_sas * 100
 
 
 class ErrorAmplification(BaseModel):
@@ -65,9 +83,19 @@ class ErrorAmplification(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    value: float = Field(description="Error amplification factor")
-    error_rate_mas: float = Field(description="Multi-agent error rate")
-    error_rate_sas: float = Field(description="Single-agent error rate")
+    error_rate_mas: float = Field(
+        ge=0.0,
+        description="Multi-agent error rate",
+    )
+    error_rate_sas: float = Field(gt=0, description="Single-agent error rate")
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Error amplification factor",
+    )
+    @property
+    def value(self) -> float:
+        """Amplification: ``error_rate_mas / error_rate_sas``."""
+        return self.error_rate_mas / self.error_rate_sas
 
 
 class MessageDensity(BaseModel):
@@ -83,7 +111,6 @@ class MessageDensity(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    value: float = Field(description="Messages per reasoning turn")
     inter_agent_messages: int = Field(
         ge=0,
         description="Inter-agent message count",
@@ -92,6 +119,14 @@ class MessageDensity(BaseModel):
         gt=0,
         description="Reasoning turn count",
     )
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Messages per reasoning turn",
+    )
+    @property
+    def value(self) -> float:
+        """Density: ``inter_agent_messages / reasoning_turns``."""
+        return self.inter_agent_messages / self.reasoning_turns
 
 
 class RedundancyRate(BaseModel):
@@ -174,14 +209,12 @@ def compute_efficiency(
         Coordination efficiency model.
 
     Raises:
-        ValueError: If ``turns_sas`` is zero.
+        ValueError: If ``turns_sas`` is zero or negative.
     """
-    if turns_sas == 0:
+    if turns_sas <= 0:
         msg = "turns_sas must be positive (cannot divide by zero)"
         raise ValueError(msg)
-    value = success_rate / (turns_mas / turns_sas)
     return CoordinationEfficiency(
-        value=value,
         success_rate=success_rate,
         turns_mas=turns_mas,
         turns_sas=turns_sas,
@@ -203,14 +236,12 @@ def compute_overhead(
         Coordination overhead model.
 
     Raises:
-        ValueError: If ``turns_sas`` is zero.
+        ValueError: If ``turns_sas`` is zero or negative.
     """
-    if turns_sas == 0:
+    if turns_sas <= 0:
         msg = "turns_sas must be positive (cannot divide by zero)"
         raise ValueError(msg)
-    value_percent = (turns_mas - turns_sas) / turns_sas * 100
     return CoordinationOverhead(
-        value_percent=value_percent,
         turns_mas=turns_mas,
         turns_sas=turns_sas,
     )
@@ -231,14 +262,12 @@ def compute_error_amplification(
         Error amplification model.
 
     Raises:
-        ValueError: If ``error_rate_sas`` is zero.
+        ValueError: If ``error_rate_sas`` is zero or negative.
     """
-    if error_rate_sas == 0:
+    if error_rate_sas <= 0:
         msg = "error_rate_sas must be positive (cannot divide by zero)"
         raise ValueError(msg)
-    value = error_rate_mas / error_rate_sas
     return ErrorAmplification(
-        value=value,
         error_rate_mas=error_rate_mas,
         error_rate_sas=error_rate_sas,
     )
@@ -259,14 +288,12 @@ def compute_message_density(
         Message density model.
 
     Raises:
-        ValueError: If ``reasoning_turns`` is zero.
+        ValueError: If ``reasoning_turns`` is zero or negative.
     """
-    if reasoning_turns == 0:
+    if reasoning_turns <= 0:
         msg = "reasoning_turns must be positive (cannot divide by zero)"
         raise ValueError(msg)
-    value = inter_agent_messages / reasoning_turns
     return MessageDensity(
-        value=value,
         inter_agent_messages=inter_agent_messages,
         reasoning_turns=reasoning_turns,
     )

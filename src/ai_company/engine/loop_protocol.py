@@ -8,7 +8,7 @@ type aliases.
 
 from collections.abc import Callable
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Protocol, Self, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
@@ -103,7 +103,7 @@ class ExecutionResult(BaseModel):
         default=None,
         description="Error description (when reason is ERROR)",
     )
-    metadata: dict[str, Any] = Field(
+    metadata: dict[str, object] = Field(
         default_factory=dict,
         description="Forward-compatible metadata for future loop types",
     )

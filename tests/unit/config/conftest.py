@@ -6,6 +6,7 @@ import pytest
 from polyfactory.factories.pydantic_factory import ModelFactory
 
 from ai_company.budget.config import BudgetConfig
+from ai_company.budget.coordination_config import CoordinationMetricsConfig
 from ai_company.communication.config import CommunicationConfig
 from ai_company.config.schema import (
     AgentConfig,
@@ -69,6 +70,7 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     communication = CommunicationConfig()
     routing = RoutingConfig()
     logging = None
+    coordination_metrics = CoordinationMetricsConfig()
 
 
 # ── Sample YAML strings ──────────────────────────────────────────

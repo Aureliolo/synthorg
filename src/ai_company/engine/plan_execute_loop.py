@@ -2,14 +2,17 @@
 
 Implements the ``ExecutionLoop`` protocol using a two-phase approach:
 1. **Plan** — ask the LLM to decompose the task into ordered steps.
+   Planning calls pass ``tools=None`` (no tool access during planning).
 2. **Execute** — run each step via a mini-ReAct sub-loop with tools.
 
-Re-planning is triggered when a step fails, up to a configurable limit.
+Re-planning is triggered when a step fails, up to a configurable
+limit.  When re-planning is exhausted, the loop terminates with ERROR.
 """
 
+import copy
 import json
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from ai_company.observability import get_logger
 from ai_company.observability.events.execution import (
@@ -38,6 +41,7 @@ from .loop_helpers import (
     check_budget,
     check_response_errors,
     check_shutdown,
+    clear_last_turn_tool_calls,
     execute_tool_calls,
     get_tool_definitions,
     make_turn_record,
@@ -84,34 +88,18 @@ execution plan. Return your plan as a JSON object with this exact schema:
 Each step should be concrete, actionable, and independently verifiable. \
 Return ONLY the JSON object, no other text."""
 
-_REPLAN_PROMPT_TEMPLATE = """\
-Step {failed_step} failed: {failure_description}
-
-Completed steps so far:
-{completed_summary}
-
-Create a revised plan for the REMAINING work. Return your revised \
-plan as a JSON object with the same schema:
-
+_REPLAN_JSON_EXAMPLE = """\
 ```json
-{{
+{
   "steps": [
-    {{
+    {
       "step_number": 1,
       "description": "What to do in this step",
       "expected_outcome": "What should result from this step"
-    }}
+    }
   ]
-}}
-```
-
-Return ONLY the JSON object, no other text."""
-
-_STEP_INSTRUCTION_TEMPLATE = (
-    "Execute step {step_number}: {description}\n"
-    "Expected outcome: {expected_outcome}\n"
-    "When done, respond with a summary of what you accomplished."
-)
+}
+```"""
 
 
 class PlanExecuteLoop:
@@ -128,7 +116,7 @@ class PlanExecuteLoop:
         """Return the loop type identifier."""
         return "plan_execute"
 
-    async def execute(  # noqa: C901, PLR0911, PLR0913
+    async def execute(  # noqa: PLR0913
         self,
         *,
         context: AgentContext,
@@ -176,27 +164,82 @@ class PlanExecuteLoop:
         all_plans: list[ExecutionPlan] = []
         replans_used = 0
 
-        # ── Phase 1: Planning ───────────────────────────────────────
-        shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
-        if shutdown_result is not None:
-            return shutdown_result
-        budget_result = check_budget(ctx, budget_checker, turns)
-        if budget_result is not None:
-            return budget_result
-
-        plan_result = await self._generate_plan(
+        # Phase 1: Planning
+        plan_result = await self._run_planning_phase(
             ctx,
             provider,
             planner_model,
             default_config,
             turns,
+            shutdown_checker,
+            budget_checker,
         )
         if isinstance(plan_result, ExecutionResult):
             return plan_result
         ctx, plan = plan_result
         all_plans.append(plan)
 
-        # ── Phase 2: Execute steps ──────────────────────────────────
+        # Phase 2: Execute steps
+        return await self._run_steps(
+            ctx,
+            provider,
+            executor_model,
+            default_config,
+            tool_defs,
+            tool_invoker,
+            plan,
+            turns,
+            all_plans,
+            replans_used,
+            planner_model,
+            budget_checker,
+            shutdown_checker,
+        )
+
+    # ── Phase orchestration ─────────────────────────────────────────
+
+    async def _run_planning_phase(  # noqa: PLR0913
+        self,
+        ctx: AgentContext,
+        provider: CompletionProvider,
+        planner_model: str,
+        config: CompletionConfig,
+        turns: list[TurnRecord],
+        shutdown_checker: ShutdownChecker | None,
+        budget_checker: BudgetChecker | None,
+    ) -> tuple[AgentContext, ExecutionPlan] | ExecutionResult:
+        """Run pre-checks and generate the initial plan."""
+        shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
+        if shutdown_result is not None:
+            return shutdown_result
+        budget_result = check_budget(ctx, budget_checker, turns)
+        if budget_result is not None:
+            return budget_result
+        return await self._generate_plan(
+            ctx,
+            provider,
+            planner_model,
+            config,
+            turns,
+        )
+
+    async def _run_steps(  # noqa: PLR0913
+        self,
+        ctx: AgentContext,
+        provider: CompletionProvider,
+        executor_model: str,
+        config: CompletionConfig,
+        tool_defs: list[ToolDefinition] | None,
+        tool_invoker: ToolInvoker | None,
+        plan: ExecutionPlan,
+        turns: list[TurnRecord],
+        all_plans: list[ExecutionPlan],
+        replans_used: int,
+        planner_model: str,
+        budget_checker: BudgetChecker | None,
+        shutdown_checker: ShutdownChecker | None,
+    ) -> ExecutionResult:
+        """Iterate through plan steps, handling failures and replanning."""
         step_idx = 0
         while step_idx < len(plan.steps):
             if not ctx.has_turns_remaining:
@@ -214,7 +257,7 @@ class PlanExecuteLoop:
                 ctx,
                 provider,
                 executor_model,
-                default_config,
+                config,
                 tool_defs,
                 tool_invoker,
                 step,
@@ -224,11 +267,7 @@ class PlanExecuteLoop:
             )
 
             if isinstance(step_result, ExecutionResult):
-                return self._finalize(
-                    step_result,
-                    all_plans,
-                    replans_used,
-                )
+                return self._finalize(step_result, all_plans, replans_used)
 
             ctx, step_ok = step_result
 
@@ -246,48 +285,26 @@ class PlanExecuteLoop:
                 step_idx += 1
                 continue
 
-            # Step failed — try re-planning
-            plan = self._update_step_status(
+            # Step failed — attempt re-planning
+            failure = self._handle_step_failure(
+                ctx,
                 plan,
+                step,
                 step_idx,
-                StepStatus.FAILED,
+                replans_used,
+                turns,
             )
-            logger.warning(
-                EXECUTION_PLAN_STEP_FAILED,
-                execution_id=ctx.execution_id,
-                step_number=step.step_number,
-            )
+            if isinstance(failure, ExecutionResult):
+                return self._finalize(failure, all_plans, replans_used)
+            plan = failure
 
-            if replans_used >= self._config.max_replans:
-                logger.error(
-                    EXECUTION_PLAN_REPLAN_EXHAUSTED,
-                    execution_id=ctx.execution_id,
-                    replans_used=replans_used,
-                    max_replans=self._config.max_replans,
-                )
-                error_msg = (
-                    f"Max replans ({self._config.max_replans}) exhausted "
-                    f"after step {step.step_number} failed"
-                )
-                return self._finalize(
-                    build_result(
-                        ctx,
-                        TerminationReason.ERROR,
-                        turns,
-                        error_message=error_msg,
-                    ),
-                    all_plans,
-                    replans_used,
-                )
-
-            # Re-plan
             if not ctx.has_turns_remaining:
                 break
             replan_result = await self._replan(
                 ctx,
                 provider,
                 planner_model,
-                default_config,
+                config,
                 plan,
                 step,
                 turns,
@@ -299,9 +316,68 @@ class PlanExecuteLoop:
             replans_used += 1
             all_plans.append(new_plan)
             plan = new_plan
-            step_idx = 0  # Start from first step of new plan
+            step_idx = 0
 
-        # All steps done or turns exhausted
+        return self._build_final_result(
+            ctx,
+            plan,
+            step_idx,
+            turns,
+            all_plans,
+            replans_used,
+        )
+
+    def _handle_step_failure(  # noqa: PLR0913
+        self,
+        ctx: AgentContext,
+        plan: ExecutionPlan,
+        step: PlanStep,
+        step_idx: int,
+        replans_used: int,
+        turns: list[TurnRecord],
+    ) -> ExecutionPlan | ExecutionResult:
+        """Mark step as failed and check replan budget.
+
+        Returns:
+            Updated ``ExecutionPlan`` if replanning is allowed, or an
+            ``ExecutionResult`` if max replans is exhausted.
+        """
+        plan = self._update_step_status(plan, step_idx, StepStatus.FAILED)
+        logger.warning(
+            EXECUTION_PLAN_STEP_FAILED,
+            execution_id=ctx.execution_id,
+            step_number=step.step_number,
+        )
+
+        if replans_used >= self._config.max_replans:
+            logger.error(
+                EXECUTION_PLAN_REPLAN_EXHAUSTED,
+                execution_id=ctx.execution_id,
+                replans_used=replans_used,
+                max_replans=self._config.max_replans,
+            )
+            error_msg = (
+                f"Max replans ({self._config.max_replans}) exhausted "
+                f"after step {step.step_number} failed"
+            )
+            return build_result(
+                ctx,
+                TerminationReason.ERROR,
+                turns,
+                error_message=error_msg,
+            )
+        return plan
+
+    def _build_final_result(  # noqa: PLR0913
+        self,
+        ctx: AgentContext,
+        plan: ExecutionPlan,
+        step_idx: int,
+        turns: list[TurnRecord],
+        all_plans: list[ExecutionPlan],
+        replans_used: int,
+    ) -> ExecutionResult:
+        """Build the final result after step iteration completes."""
         if not ctx.has_turns_remaining and step_idx < len(plan.steps):
             logger.info(
                 EXECUTION_LOOP_TERMINATED,
@@ -342,44 +418,17 @@ class PlanExecuteLoop:
             role=MessageRole.USER,
             content=_PLANNING_PROMPT,
         )
-        ctx = ctx.with_message(plan_msg)
-        turn_number = ctx.turn_count + 1
-
-        response = await call_provider(
+        result = await self._call_planner(
             ctx,
             provider,
             planner_model,
-            None,
             config,
-            turn_number,
             turns,
+            plan_msg,
         )
-        if isinstance(response, ExecutionResult):
-            return response
-
-        turns.append(make_turn_record(turn_number, response))
-        ctx = ctx.with_turn_completed(
-            response.usage,
-            response_to_message(response),
-        )
-        logger.info(
-            EXECUTION_LOOP_TURN_COMPLETE,
-            execution_id=ctx.execution_id,
-            turn=turn_number,
-            finish_reason=response.finish_reason.value,
-            tool_call_count=0,
-        )
-
-        plan = self._parse_plan(response, ctx)
-        if plan is None:
-            error_msg = "Failed to parse execution plan from LLM response"
-            return build_result(
-                ctx,
-                TerminationReason.ERROR,
-                turns,
-                error_message=error_msg,
-            )
-
+        if isinstance(result, ExecutionResult):
+            return result
+        ctx, plan = result
         logger.info(
             EXECUTION_PLAN_CREATED,
             execution_id=ctx.execution_id,
@@ -415,22 +464,62 @@ class PlanExecuteLoop:
             or "  (none)"
         )
 
-        replan_content = _REPLAN_PROMPT_TEMPLATE.format(
-            failed_step=failed_step.step_number,
-            failure_description=failed_step.description,
-            completed_summary=completed_summary,
+        replan_content = (
+            f"Step {failed_step.step_number} failed: "
+            f"{failed_step.description}\n\n"
+            f"Completed steps so far:\n{completed_summary}\n\n"
+            f"Create a revised plan for the REMAINING work. "
+            f"Return your revised plan as a JSON object with the "
+            f"same schema:\n\n{_REPLAN_JSON_EXAMPLE}\n\n"
+            f"Return ONLY the JSON object, no other text."
         )
         replan_msg = ChatMessage(
             role=MessageRole.USER,
             content=replan_content,
         )
-        ctx = ctx.with_message(replan_msg)
+        result = await self._call_planner(
+            ctx,
+            provider,
+            planner_model,
+            config,
+            turns,
+            replan_msg,
+            revision_number=current_plan.revision_number + 1,
+        )
+        if isinstance(result, ExecutionResult):
+            return result
+        ctx, plan = result
+        logger.info(
+            EXECUTION_PLAN_REPLAN_COMPLETE,
+            execution_id=ctx.execution_id,
+            step_count=len(plan.steps),
+            revision=plan.revision_number,
+        )
+        return ctx, plan
+
+    async def _call_planner(  # noqa: PLR0913
+        self,
+        ctx: AgentContext,
+        provider: CompletionProvider,
+        model: str,
+        config: CompletionConfig,
+        turns: list[TurnRecord],
+        message: ChatMessage,
+        *,
+        revision_number: int = 0,
+    ) -> tuple[AgentContext, ExecutionPlan] | ExecutionResult:
+        """Shared body for plan generation and re-planning.
+
+        Sends the message to the LLM, records the turn, parses the
+        plan, and returns either ``(ctx, plan)`` or an error result.
+        """
+        ctx = ctx.with_message(message)
         turn_number = ctx.turn_count + 1
 
         response = await call_provider(
             ctx,
             provider,
-            planner_model,
+            model,
             None,
             config,
             turn_number,
@@ -455,28 +544,21 @@ class PlanExecuteLoop:
         plan = self._parse_plan(
             response,
             ctx,
-            revision_number=current_plan.revision_number + 1,
+            revision_number=revision_number,
         )
         if plan is None:
-            error_msg = "Failed to parse revised plan from LLM response"
+            error_msg = "Failed to parse execution plan from LLM response"
             return build_result(
                 ctx,
                 TerminationReason.ERROR,
                 turns,
                 error_message=error_msg,
             )
-
-        logger.info(
-            EXECUTION_PLAN_REPLAN_COMPLETE,
-            execution_id=ctx.execution_id,
-            step_count=len(plan.steps),
-            revision=plan.revision_number,
-        )
         return ctx, plan
 
     # ── Step execution ──────────────────────────────────────────────
 
-    async def _execute_step(  # noqa: PLR0911, PLR0913
+    async def _execute_step(  # noqa: PLR0913
         self,
         ctx: AgentContext,
         provider: CompletionProvider,
@@ -495,10 +577,10 @@ class PlanExecuteLoop:
             ``(ctx, True)`` on success, ``(ctx, False)`` on step failure,
             or ``ExecutionResult`` for termination conditions.
         """
-        instruction = _STEP_INSTRUCTION_TEMPLATE.format(
-            step_number=step.step_number,
-            description=step.description,
-            expected_outcome=step.expected_outcome,
+        instruction = (
+            f"Execute step {step.step_number}: {step.description}\n"
+            f"Expected outcome: {step.expected_outcome}\n"
+            f"When done, respond with a summary of what you accomplished."
         )
         step_msg = ChatMessage(
             role=MessageRole.USER,
@@ -506,79 +588,105 @@ class PlanExecuteLoop:
         )
         ctx = ctx.with_message(step_msg)
 
-        # Mini-ReAct sub-loop for this step
         while ctx.has_turns_remaining:
-            shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
-            if shutdown_result is not None:
-                return shutdown_result
-
-            budget_result = check_budget(ctx, budget_checker, turns)
-            if budget_result is not None:
-                return budget_result
-
-            turn_number = ctx.turn_count + 1
-            response = await call_provider(
+            result = await self._run_step_turn(
                 ctx,
                 provider,
                 executor_model,
-                tool_defs,
                 config,
-                turn_number,
-                turns,
-            )
-            if isinstance(response, ExecutionResult):
-                return response
-
-            turns.append(make_turn_record(turn_number, response))
-
-            error = check_response_errors(
-                ctx,
-                response,
-                turn_number,
-                turns,
-            )
-            if error is not None:
-                return error
-
-            ctx = ctx.with_turn_completed(
-                response.usage,
-                response_to_message(response),
-            )
-            logger.info(
-                EXECUTION_LOOP_TURN_COMPLETE,
-                execution_id=ctx.execution_id,
-                turn=turn_number,
-                finish_reason=response.finish_reason.value,
-                tool_call_count=len(response.tool_calls),
-            )
-
-            if not response.tool_calls:
-                # Step complete — LLM finished reasoning
-                return ctx, self._assess_step_success(response)
-
-            # Check shutdown before tool invocations
-            shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
-            if shutdown_result is not None:
-                if turns:
-                    last = turns[-1]
-                    turns[-1] = last.model_copy(
-                        update={"tool_calls_made": ()},
-                    )
-                return shutdown_result
-
-            tool_result = await execute_tool_calls(
-                ctx,
+                tool_defs,
                 tool_invoker,
-                response,
-                turn_number,
                 turns,
+                budget_checker,
+                shutdown_checker,
             )
-            if isinstance(tool_result, ExecutionResult):
-                return tool_result
-            ctx = tool_result
+            if isinstance(result, ExecutionResult):
+                return result
+            if isinstance(result, tuple):
+                return result
+            ctx = result
 
-        # Turns exhausted during step
         return ctx, False
+
+    async def _run_step_turn(  # noqa: PLR0911, PLR0913
+        self,
+        ctx: AgentContext,
+        provider: CompletionProvider,
+        model: str,
+        config: CompletionConfig,
+        tool_defs: list[ToolDefinition] | None,
+        tool_invoker: ToolInvoker | None,
+        turns: list[TurnRecord],
+        budget_checker: BudgetChecker | None,
+        shutdown_checker: ShutdownChecker | None,
+    ) -> AgentContext | ExecutionResult | tuple[AgentContext, bool]:
+        """Execute a single turn within a step's mini-ReAct sub-loop.
+
+        Returns:
+            ``AgentContext`` to continue the loop, ``(ctx, bool)`` for
+            step completion, or ``ExecutionResult`` for termination.
+        """
+        shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
+        if shutdown_result is not None:
+            return shutdown_result
+        budget_result = check_budget(ctx, budget_checker, turns)
+        if budget_result is not None:
+            return budget_result
+
+        turn_number = ctx.turn_count + 1
+        response = await call_provider(
+            ctx,
+            provider,
+            model,
+            tool_defs,
+            config,
+            turn_number,
+            turns,
+        )
+        if isinstance(response, ExecutionResult):
+            return response
+
+        turns.append(make_turn_record(turn_number, response))
+
+        error = check_response_errors(ctx, response, turn_number, turns)
+        if error is not None:
+            return error
+
+        ctx = ctx.with_turn_completed(
+            response.usage,
+            response_to_message(response),
+        )
+        logger.info(
+            EXECUTION_LOOP_TURN_COMPLETE,
+            execution_id=ctx.execution_id,
+            turn=turn_number,
+            finish_reason=response.finish_reason.value,
+            tool_call_count=len(response.tool_calls),
+        )
+
+        if not response.tool_calls:
+            success = self._assess_step_success(response)
+            if response.finish_reason == FinishReason.MAX_TOKENS:
+                logger.warning(
+                    EXECUTION_PLAN_STEP_COMPLETE,
+                    execution_id=ctx.execution_id,
+                    turn=turn_number,
+                    truncated=True,
+                )
+            return ctx, success
+
+        shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
+        if shutdown_result is not None:
+            clear_last_turn_tool_calls(turns)
+            return shutdown_result
+
+        return await execute_tool_calls(
+            ctx,
+            tool_invoker,
+            response,
+            turn_number,
+            turns,
+        )
 
     # ── Plan parsing ────────────────────────────────────────────────
 
@@ -595,9 +703,16 @@ class PlanExecuteLoop:
         then falls back to structured text parsing.
         """
         content = response.content or ""
+        if not content.strip():
+            logger.warning(
+                EXECUTION_PLAN_PARSE_ERROR,
+                execution_id=ctx.execution_id,
+                reason="empty LLM response content",
+            )
+            return None
+
         task_summary = self._extract_task_summary(ctx)
 
-        # Try JSON parsing
         plan = self._parse_json_plan(
             content,
             task_summary,
@@ -606,7 +721,6 @@ class PlanExecuteLoop:
         if plan is not None:
             return plan
 
-        # Try text parsing fallback
         plan = self._parse_text_plan(
             content,
             task_summary,
@@ -619,6 +733,7 @@ class PlanExecuteLoop:
             EXECUTION_PLAN_PARSE_ERROR,
             execution_id=ctx.execution_id,
             content_length=len(content),
+            content_snippet=content[:200],
         )
         return None
 
@@ -629,7 +744,6 @@ class PlanExecuteLoop:
         revision_number: int,
     ) -> ExecutionPlan | None:
         """Try to extract a JSON plan from the content."""
-        # Strip markdown code fences if present
         json_str = content.strip()
         fence_match = re.search(
             r"```(?:json)?\s*\n?(.*?)```",
@@ -641,7 +755,12 @@ class PlanExecuteLoop:
 
         try:
             data = json.loads(json_str)
-        except json.JSONDecodeError, ValueError:
+        except (json.JSONDecodeError, ValueError) as exc:
+            logger.debug(
+                EXECUTION_PLAN_PARSE_ERROR,
+                parser="json",
+                error=str(exc),
+            )
             return None
 
         return self._data_to_plan(data, task_summary, revision_number)
@@ -662,13 +781,13 @@ class PlanExecuteLoop:
             return None
 
         steps: list[PlanStep] = []
-        for i, (_, desc) in enumerate(matches, start=1):
+        for _, desc in matches:
             desc_clean = desc.strip()
             if not desc_clean:
                 continue
             steps.append(
                 PlanStep(
-                    step_number=i,
+                    step_number=len(steps) + 1,
                     description=desc_clean,
                     expected_outcome=desc_clean,
                 )
@@ -683,12 +802,17 @@ class PlanExecuteLoop:
                 revision_number=revision_number,
                 original_task_summary=task_summary,
             )
-        except ValueError, TypeError:
+        except ValueError as exc:
+            logger.debug(
+                EXECUTION_PLAN_PARSE_ERROR,
+                parser="text_fallback",
+                error=str(exc),
+            )
             return None
 
     def _data_to_plan(
         self,
-        data: Any,
+        data: object,
         task_summary: str,
         revision_number: int,
     ) -> ExecutionPlan | None:
@@ -712,7 +836,7 @@ class PlanExecuteLoop:
                 PlanStep(
                     step_number=i,
                     description=str(desc),
-                    expected_outcome=str(outcome) or str(desc),
+                    expected_outcome=str(outcome),
                 )
             )
 
@@ -722,7 +846,12 @@ class PlanExecuteLoop:
                 revision_number=revision_number,
                 original_task_summary=task_summary,
             )
-        except ValueError, TypeError:
+        except ValueError as exc:
+            logger.debug(
+                EXECUTION_PLAN_PARSE_ERROR,
+                parser="json_data",
+                error=str(exc),
+            )
             return None
 
     # ── Utilities ───────────────────────────────────────────────────
@@ -732,7 +861,6 @@ class PlanExecuteLoop:
         """Extract a task summary from the context."""
         if ctx.task_execution is not None:
             return ctx.task_execution.task.title[:200]
-        # Fall back to first user message
         for msg in ctx.conversation:
             if msg.role == MessageRole.USER and msg.content:
                 return msg.content[:200]
@@ -743,7 +871,10 @@ class PlanExecuteLoop:
         """Determine if a step completed successfully.
 
         A step is considered successful when the LLM terminates
-        normally (STOP or MAX_TOKENS).
+        normally (STOP or MAX_TOKENS).  MAX_TOKENS is treated as
+        success because the step instruction asks the LLM to summarize
+        its work; a truncated summary still represents a completed
+        step for planning purposes.
         """
         return response.finish_reason in (
             FinishReason.STOP,
@@ -770,7 +901,7 @@ class PlanExecuteLoop:
         replans_used: int,
     ) -> ExecutionResult:
         """Attach plan metadata to the execution result."""
-        metadata = dict(result.metadata) if result.metadata else {}
+        metadata = copy.deepcopy(result.metadata)
         metadata.update(
             {
                 "loop_type": "plan_execute",
