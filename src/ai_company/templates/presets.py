@@ -8,9 +8,6 @@ import random
 from typing import Any
 
 from ai_company.observability import get_logger
-from ai_company.observability.events.template import (
-    TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
-)
 
 logger = get_logger(__name__)
 
@@ -87,11 +84,6 @@ def get_personality_preset(name: str) -> dict[str, Any]:
     if key not in PERSONALITY_PRESETS:
         available = sorted(PERSONALITY_PRESETS)
         msg = f"Unknown personality preset {name!r}. Available: {available}"
-        logger.warning(
-            TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
-            preset_name=name,
-            available=available,
-        )
         raise KeyError(msg)
     return dict(PERSONALITY_PRESETS[key])
 

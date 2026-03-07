@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, ParamSpec, TypeVar
 
 import structlog
 
-from ai_company.observability._logger import get_logger
+from ai_company.observability import get_logger
 from ai_company.observability.events.correlation import (
     CORRELATION_ASYNC_DECORATOR_MISUSE,
     CORRELATION_SYNC_DECORATOR_MISUSE,

@@ -32,6 +32,8 @@ from .conftest import (
     TEMPLATE_WITH_VARIABLES_YAML,
 )
 
+pytestmark = pytest.mark.timeout(30)
+
 # ── list_builtin_templates ───────────────────────────────────────
 
 
@@ -257,7 +259,7 @@ class TestListTemplatesEdgeCases:
         ):
             templates = list_templates()
             # All builtins failed, so only user templates (none) remain.
-            assert isinstance(templates, tuple)
+            assert templates == ()
 
 
 # ── load_template path traversal ─────────────────────────────────

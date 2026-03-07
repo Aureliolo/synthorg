@@ -55,7 +55,7 @@ class TestWorkspaceValidation:
 
     async def test_symlink_escape_blocked(self, git_repo: Path) -> None:
         outside = git_repo.parent / "outside_dir"
-        outside.mkdir()
+        outside.mkdir(exist_ok=True)
         (outside / "secret.txt").write_text("secret")
         link = git_repo / "escape_link"
         try:

@@ -166,9 +166,8 @@ def load_template(name: str) -> LoadedTemplate:
     name_clean = name.strip().lower()
     logger.debug(TEMPLATE_LOAD_START, template_name=name_clean)
 
-    # Sanitize to prevent path traversal.
-    safe_name = Path(name_clean).name
-    if safe_name != name_clean:
+    # Sanitize to prevent path traversal (OS-independent).
+    if "/" in name_clean or "\\" in name_clean or ".." in name_clean:
         msg = f"Invalid template name {name!r}: must not contain path separators"
         raise TemplateNotFoundError(
             msg,
@@ -177,7 +176,7 @@ def load_template(name: str) -> LoadedTemplate:
 
     # Try user directory first.
     if _USER_TEMPLATES_DIR.is_dir():
-        user_path = _USER_TEMPLATES_DIR / f"{safe_name}.yaml"
+        user_path = _USER_TEMPLATES_DIR / f"{name_clean}.yaml"
         if user_path.is_file():
             result = _load_from_file(user_path)
             logger.debug(

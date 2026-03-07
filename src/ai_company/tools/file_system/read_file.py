@@ -41,9 +41,9 @@ def _read_sync(
         resolved: Resolved file path within the workspace.
         start: First line to return (1-based inclusive), or ``None``.
         end: Last line to return (1-based inclusive), or ``None``.
-        max_bytes: When set, only the first *max_bytes* characters are
-            read via text-mode ``read()`` (approximate byte cap for
-            oversized files without a line range).
+        max_bytes: When set, reads at most *max_bytes* characters via
+            text-mode ``read()`` (approximate byte cap for single-byte
+            or mostly-ASCII content without a line range).
 
     Returns:
         The file content (possibly sliced or truncated).

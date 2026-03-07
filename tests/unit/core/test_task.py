@@ -271,6 +271,7 @@ class TestTaskAssignmentConsistency:
     def test_non_active_allows_assigned_to(self, status: TaskStatus) -> None:
         task = _make_task(assigned_to="agent-1", status=status)
         assert task.assigned_to == "agent-1"
+        assert task.status is status
 
 
 # ── Task: Max Retries ───────────────────────────────────────────

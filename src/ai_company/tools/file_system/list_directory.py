@@ -51,7 +51,7 @@ def _classify_entry(
         return f"[SYMLINK] {display}"
 
     if entry.is_dir():
-        return f"[DIR]  {display}/"
+        return f"[DIR] {display}/"
 
     try:
         size = entry.stat().st_size

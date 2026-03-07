@@ -21,7 +21,6 @@ from ai_company.config.schema import RootConfig
 from ai_company.config.utils import deep_merge, to_float
 from ai_company.observability import get_logger
 from ai_company.observability.events.template import (
-    TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
     TEMPLATE_RENDER_JINJA2_ERROR,
     TEMPLATE_RENDER_START,
     TEMPLATE_RENDER_SUCCESS,
@@ -34,7 +33,6 @@ from ai_company.templates.errors import (
     TemplateValidationError,
 )
 from ai_company.templates.presets import (
-    PERSONALITY_PRESETS,
     generate_auto_name,
     get_personality_preset,
 )
@@ -296,6 +294,13 @@ def _validate_list(
     if not isinstance(raw, list):
         msg = f"Rendered template {key!r} must be a list"
         raise TemplateRenderError(msg)
+    for i, item in enumerate(raw):
+        if not isinstance(item, dict):
+            msg = (
+                f"Rendered template {key!r}[{i}] must be a "
+                f"mapping, got {type(item).__name__}"
+            )
+            raise TemplateRenderError(msg)
     return raw
 
 
@@ -371,13 +376,8 @@ def _expand_single_agent(
         try:
             agent_dict["personality"] = get_personality_preset(preset_name)
         except KeyError as exc:
-            logger.warning(
-                TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
-                preset_name=preset_name,
-                agent_name=name,
-                available=sorted(PERSONALITY_PRESETS),
-                error=str(exc),
-            )
+            msg = f"Unknown personality preset {preset_name!r} for agent {name!r}"
+            raise TemplateRenderError(msg) from exc
 
     model_tier = agent.get("model", "medium")
     agent_dict["model"] = {"provider": "default", "model_id": model_tier}

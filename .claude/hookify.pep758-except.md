@@ -2,7 +2,7 @@
 name: pep758-except
 enabled: true
 event: file
-pattern: except\s*\(
+pattern: except\s*\([^)]*\)\s*:
 action: warn
 ---
 

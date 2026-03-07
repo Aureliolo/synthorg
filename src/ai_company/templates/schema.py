@@ -161,7 +161,7 @@ class TemplateMetadata(BaseModel):
     )
     min_agents: int = Field(default=1, ge=1, description="Minimum agents")
     max_agents: int = Field(default=100, ge=1, description="Maximum agents")
-    tags: tuple[str, ...] = Field(default=(), description="Categorization tags")
+    tags: tuple[NotBlankStr, ...] = Field(default=(), description="Categorization tags")
 
     @model_validator(mode="after")
     def _validate_agent_range(self) -> Self:

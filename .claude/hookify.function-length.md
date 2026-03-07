@@ -8,7 +8,7 @@ conditions:
     value: "src/ai_company/.*\\.py$"
   - field: new_text
     operator: regex_match
-    value: "^    def |^def "
+    value: "^\\s*(?:async\\s+)?def "
 action: warn
 ---
 

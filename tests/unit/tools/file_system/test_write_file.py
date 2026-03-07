@@ -142,18 +142,16 @@ class TestWriteFileErrors:
     async def test_temp_file_cleanup_on_failure(
         self, workspace: Path, write_tool: WriteFileTool
     ) -> None:
-        """Temp file is removed when _write_sync raises."""
+        """Temp file is removed when atomic replace fails inside _write_sync."""
         target = workspace / "fail_target.txt"
         target.write_text("original", encoding="utf-8")
 
-        with patch(
-            "ai_company.tools.file_system.write_file._write_sync",
-            side_effect=OSError("boom"),
-        ):
-            await write_tool.execute(
+        with patch("os.fsync", side_effect=OSError("disk full")):
+            result = await write_tool.execute(
                 arguments={"path": "fail_target.txt", "content": "new"},
             )
 
+        assert result.is_error
         # No leftover .tmp files in the workspace
         assert not any(
             name.endswith(".tmp")

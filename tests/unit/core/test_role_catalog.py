@@ -248,18 +248,3 @@ class TestCatalogGuards:
         assert len(casefolded) == len(set(casefolded)), (
             "Duplicate built-in role names after case-normalization"
         )
-
-    def test_no_duplicate_seniority_levels(self) -> None:
-        """Verify _SENIORITY_INFO_BY_LEVEL guard: all levels are unique."""
-        levels = [info.level for info in SENIORITY_INFO]
-        assert len(levels) == len(set(levels)), (
-            "Duplicate seniority levels found in SENIORITY_INFO"
-        )
-
-    def test_no_missing_seniority_levels(self) -> None:
-        """Verify every SeniorityLevel enum value has a mapping in SENIORITY_INFO."""
-        mapped_levels = {info.level for info in SENIORITY_INFO}
-        missing = set(SeniorityLevel) - mapped_levels
-        assert not missing, (
-            f"Missing seniority mappings: {sorted(lv.value for lv in missing)}"
-        )

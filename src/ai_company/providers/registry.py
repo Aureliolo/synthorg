@@ -179,6 +179,11 @@ def _build_driver(
         driver = factory(name, config)  # type: ignore[operator]
     except Exception as exc:
         msg = f"Failed to instantiate driver {driver_type!r} for provider {name!r}"
+        logger.exception(
+            PROVIDER_DRIVER_FACTORY_MISSING,
+            provider=name,
+            driver=driver_type,
+        )
         raise DriverFactoryNotFoundError(
             msg,
             context={"provider": name, "driver": driver_type, "detail": str(exc)},
@@ -187,6 +192,12 @@ def _build_driver(
         msg = (
             f"Factory for {driver_type!r} did not produce a "
             f"BaseCompletionProvider instance"
+        )
+        logger.error(
+            PROVIDER_DRIVER_FACTORY_MISSING,
+            provider=name,
+            driver=driver_type,
+            error="factory returned non-BaseCompletionProvider",
         )
         raise DriverFactoryNotFoundError(
             msg,
@@ -234,6 +245,12 @@ def _resolve_factory(
 
     if not callable(factory):
         msg = f"Factory for driver {driver_type!r} is not callable"
+        logger.error(
+            PROVIDER_DRIVER_FACTORY_MISSING,
+            provider=name,
+            driver=driver_type,
+            error="factory is not callable",
+        )
         raise DriverFactoryNotFoundError(
             msg,
             context={"provider": name, "driver": driver_type},

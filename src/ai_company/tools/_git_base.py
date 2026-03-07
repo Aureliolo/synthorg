@@ -33,7 +33,7 @@ logger = get_logger(__name__)
 
 _DEFAULT_TIMEOUT: Final[float] = 30.0
 
-_CREDENTIAL_RE = re.compile(r"(https?://)[^@/:]+:[^@/:]+@")
+_CREDENTIAL_RE = re.compile(r"(https?://)[^@/]+@")
 
 
 def _sanitize_command(args: list[str]) -> list[str]:

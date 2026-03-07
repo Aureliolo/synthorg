@@ -26,8 +26,8 @@ conditions:
     value: "protocol.py"
   - field: new_text
     operator: regex_match
-    value: "^(def |class )"
-  - field: new_text
+    value: "^\\s*(?:async\\s+)?(?:def |class )"
+  - field: file_content
     operator: not_contains
     value: "get_logger"
 action: warn
