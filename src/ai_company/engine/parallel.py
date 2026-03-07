@@ -134,9 +134,6 @@ class ParallelExecutor:
         lock = self._resolve_lock(group)
         self._validate_resource_claims(group)
 
-        if lock is not None:
-            await self._acquire_all_locks(group, lock)
-
         outcomes: dict[str, AgentOutcome] = {}
         fatal_errors: list[Exception] = []
         progress = _ProgressState(
@@ -145,6 +142,8 @@ class ParallelExecutor:
         )
 
         try:
+            if lock is not None:
+                await self._acquire_all_locks(group, lock)
             await self._run_task_group(
                 group,
                 outcomes,
@@ -157,7 +156,7 @@ class ParallelExecutor:
                     await self._release_all_locks(group, lock)
                 except Exception:
                     logger.exception(
-                        PARALLEL_GROUP_COMPLETE,
+                        PARALLEL_VALIDATION_ERROR,
                         error="Failed to release resource locks",
                         group_id=group.group_id,
                     )
@@ -366,13 +365,17 @@ class ParallelExecutor:
                 agent_id=agent_id,
                 result=run_result,
             )
-            progress.succeeded += 1
+            success = run_result.is_success
+            if success:
+                progress.succeeded += 1
+            else:
+                progress.failed += 1
             logger.info(
                 PARALLEL_AGENT_COMPLETE,
                 group_id=group_id,
                 agent_id=agent_id,
                 task_id=task_id,
-                success=True,
+                success=success,
             )
 
     def _record_error_outcome(
@@ -401,7 +404,7 @@ class ParallelExecutor:
 
     def _record_fatal_outcome(  # noqa: PLR0913
         self,
-        exc: BaseException,
+        exc: MemoryError | RecursionError,
         assignment: AgentAssignment,
         group: ParallelExecutionGroup,
         outcomes: dict[str, AgentOutcome],
@@ -417,7 +420,7 @@ class ParallelExecutor:
             task_id=assignment.task_id,
             error=error_msg,
         )
-        fatal_errors.append(exc)  # type: ignore[arg-type]
+        fatal_errors.append(exc)
         outcomes[assignment.task_id] = AgentOutcome(
             task_id=assignment.task_id,
             agent_id=assignment.agent_id,
@@ -463,8 +466,7 @@ class ParallelExecutor:
             return None
         if self._resource_lock is not None:
             return self._resource_lock
-        self._resource_lock = InMemoryResourceLock()
-        return self._resource_lock
+        return InMemoryResourceLock()
 
     def _validate_resource_claims(
         self,
@@ -500,14 +502,18 @@ class ParallelExecutor:
     ) -> None:
         """Acquire resource locks for all assignments."""
         for assignment in group.assignments:
+            holder_id = f"{group.group_id}:{assignment.task_id}"
             for resource in assignment.resource_claims:
                 acquired = await lock.acquire(
                     resource,
-                    assignment.agent_id,
+                    holder_id,
                 )
                 if not acquired:
-                    holder = lock.holder_of(resource)
-                    msg = f"Failed to acquire lock on {resource!r}: held by {holder!r}"
+                    current_holder = lock.holder_of(resource)
+                    msg = (
+                        f"Failed to acquire lock on {resource!r}: "
+                        f"held by {current_holder!r}"
+                    )
                     logger.warning(
                         PARALLEL_VALIDATION_ERROR,
                         group_id=group.group_id,
@@ -523,7 +529,8 @@ class ParallelExecutor:
     ) -> None:
         """Release all resource locks for all assignments."""
         for assignment in group.assignments:
-            await lock.release_all(assignment.agent_id)
+            holder_id = f"{group.group_id}:{assignment.task_id}"
+            await lock.release_all(holder_id)
 
     def _emit_progress(self, state: _ProgressState) -> None:
         """Emit a progress update via the callback, if configured."""

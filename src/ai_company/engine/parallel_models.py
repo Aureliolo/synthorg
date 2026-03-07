@@ -169,6 +169,19 @@ class AgentOutcome(BaseModel):
         if (self.result is None) == (self.error is None):
             msg = "Exactly one of result or error must be set"
             raise ValueError(msg)
+        if self.result is not None:
+            if self.result.task_id != self.task_id:
+                msg = (
+                    f"result.task_id {self.result.task_id!r} "
+                    f"must match task_id {self.task_id!r}"
+                )
+                raise ValueError(msg)
+            if self.result.agent_id != self.agent_id:
+                msg = (
+                    f"result.agent_id {self.result.agent_id!r} "
+                    f"must match agent_id {self.agent_id!r}"
+                )
+                raise ValueError(msg)
         return self
 
     @computed_field(  # type: ignore[prop-decorator]

@@ -73,6 +73,7 @@ def _make_task(
 def _make_assignment(
     name: str = "agent",
     title: str = "task",
+    /,
     **kwargs: object,
 ) -> AgentAssignment:
     return AgentAssignment(
@@ -286,10 +287,12 @@ class TestAgentOutcome:
     """AgentOutcome frozen model."""
 
     def test_success_outcome(self) -> None:
-        result = _make_run_result()
+        identity = _make_identity()
+        task = _make_task()
+        result = _make_run_result(identity, task)
         outcome = AgentOutcome(
-            task_id="t1",
-            agent_id="a1",
+            task_id=task.id,
+            agent_id=str(identity.id),
             result=result,
         )
 
@@ -309,16 +312,44 @@ class TestAgentOutcome:
         assert outcome.is_success is False
 
     def test_failed_run_result(self) -> None:
-        result = _make_run_result(
-            reason=TerminationReason.ERROR,
-        )
+        identity = _make_identity()
+        task = _make_task()
+        result = _make_run_result(identity, task, reason=TerminationReason.ERROR)
         outcome = AgentOutcome(
-            task_id="t1",
-            agent_id="a1",
+            task_id=task.id,
+            agent_id=str(identity.id),
             result=result,
         )
 
         assert outcome.is_success is False
+
+    def test_mismatched_task_id_rejected(self) -> None:
+        identity = _make_identity()
+        task = _make_task()
+        result = _make_run_result(identity, task)
+        with pytest.raises(
+            ValidationError,
+            match=r"result\.task_id.*must match task_id",
+        ):
+            AgentOutcome(
+                task_id="wrong-task-id",
+                agent_id=str(identity.id),
+                result=result,
+            )
+
+    def test_mismatched_agent_id_rejected(self) -> None:
+        identity = _make_identity()
+        task = _make_task()
+        result = _make_run_result(identity, task)
+        with pytest.raises(
+            ValidationError,
+            match=r"result\.agent_id.*must match agent_id",
+        ):
+            AgentOutcome(
+                task_id=task.id,
+                agent_id="wrong-agent-id",
+                result=result,
+            )
 
     def test_both_none_rejected(self) -> None:
         with pytest.raises(
@@ -328,14 +359,16 @@ class TestAgentOutcome:
             AgentOutcome(task_id="t1", agent_id="a1")
 
     def test_both_set_rejected(self) -> None:
-        result = _make_run_result()
+        identity = _make_identity()
+        task = _make_task()
+        result = _make_run_result(identity, task)
         with pytest.raises(
             ValidationError,
             match="Exactly one of result or error",
         ):
             AgentOutcome(
-                task_id="t1",
-                agent_id="a1",
+                task_id=task.id,
+                agent_id=str(identity.id),
                 result=result,
                 error="also has error",
             )
@@ -355,15 +388,19 @@ class TestParallelExecutionResult:
     """ParallelExecutionResult frozen model with computed fields."""
 
     def test_all_succeeded(self) -> None:
+        i1, t1 = _make_identity("a1"), _make_task("t1")
+        i2, t2 = _make_identity("a2"), _make_task("t2")
+        r1 = _make_run_result(i1, t1)
+        r2 = _make_run_result(i2, t2)
         o1 = AgentOutcome(
-            task_id="t1",
-            agent_id="a1",
-            result=_make_run_result(),
+            task_id=t1.id,
+            agent_id=str(i1.id),
+            result=r1,
         )
         o2 = AgentOutcome(
-            task_id="t2",
-            agent_id="a2",
-            result=_make_run_result(),
+            task_id=t2.id,
+            agent_id=str(i2.id),
+            result=r2,
         )
         result = ParallelExecutionResult(
             group_id="grp",
@@ -376,10 +413,12 @@ class TestParallelExecutionResult:
         assert result.all_succeeded is True
 
     def test_partial_failure(self) -> None:
+        i1, t1 = _make_identity("a1"), _make_task("t1")
+        r1 = _make_run_result(i1, t1)
         o1 = AgentOutcome(
-            task_id="t1",
-            agent_id="a1",
-            result=_make_run_result(),
+            task_id=t1.id,
+            agent_id=str(i1.id),
+            result=r1,
         )
         o2 = AgentOutcome(
             task_id="t2",
@@ -397,10 +436,12 @@ class TestParallelExecutionResult:
         assert result.all_succeeded is False
 
     def test_total_cost_usd(self) -> None:
+        i1, t1 = _make_identity("a1"), _make_task("t1")
+        r1 = _make_run_result(i1, t1)
         o1 = AgentOutcome(
-            task_id="t1",
-            agent_id="a1",
-            result=_make_run_result(),
+            task_id=t1.id,
+            agent_id=str(i1.id),
+            result=r1,
         )
         o2 = AgentOutcome(
             task_id="t2",
