@@ -14,6 +14,7 @@ from ai_company.communication.config import (
     MeetingsConfig,
     MeetingTypeConfig,
     MessageBusConfig,
+    MessageRetentionConfig,
     RateLimitConfig,
 )
 from ai_company.communication.enums import (
@@ -23,6 +24,7 @@ from ai_company.communication.enums import (
     MessageType,
 )
 from ai_company.communication.message import Attachment, Message, MessageMetadata
+from ai_company.communication.subscription import DeliveryEnvelope, Subscription
 
 # ── Factories ──────────────────────────────────────────────────────
 
@@ -53,8 +55,13 @@ class ChannelFactory(ModelFactory[Channel]):
     subscribers = ()
 
 
+class MessageRetentionConfigFactory(ModelFactory[MessageRetentionConfig]):
+    __model__ = MessageRetentionConfig
+
+
 class MessageBusConfigFactory(ModelFactory[MessageBusConfig]):
     __model__ = MessageBusConfig
+    retention = MessageRetentionConfigFactory
 
 
 class MeetingTypeConfigFactory(ModelFactory[MeetingTypeConfig]):
@@ -83,6 +90,15 @@ class CircuitBreakerConfigFactory(ModelFactory[CircuitBreakerConfig]):
 class LoopPreventionConfigFactory(ModelFactory[LoopPreventionConfig]):
     __model__ = LoopPreventionConfig
     ancestry_tracking = True
+
+
+class SubscriptionFactory(ModelFactory[Subscription]):
+    __model__ = Subscription
+
+
+class DeliveryEnvelopeFactory(ModelFactory[DeliveryEnvelope]):
+    __model__ = DeliveryEnvelope
+    message = MessageFactory
 
 
 class CommunicationConfigFactory(ModelFactory[CommunicationConfig]):
@@ -146,3 +162,31 @@ def sample_meeting_type() -> MeetingTypeConfig:
 @pytest.fixture
 def sample_communication_config() -> CommunicationConfig:
     return CommunicationConfig()
+
+
+@pytest.fixture
+def sample_subscription() -> Subscription:
+    return Subscription(
+        channel_name="#engineering",
+        subscriber_id="agent-a",
+        subscribed_at=datetime(2026, 3, 7, 10, 0, tzinfo=UTC),
+    )
+
+
+@pytest.fixture
+def sample_delivery_envelope(
+    sample_message: Message,
+) -> DeliveryEnvelope:
+    return DeliveryEnvelope(
+        message=sample_message,
+        channel_name="#backend",
+        delivered_at=datetime(2026, 3, 7, 10, 1, tzinfo=UTC),
+    )
+
+
+@pytest.fixture
+def sample_bus_config() -> MessageBusConfig:
+    return MessageBusConfig(
+        channels=("#test-channel",),
+        retention=MessageRetentionConfig(max_messages_per_channel=100),
+    )
