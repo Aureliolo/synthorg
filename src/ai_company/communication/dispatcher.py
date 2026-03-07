@@ -1,9 +1,12 @@
-"""Message dispatcher — routes incoming messages to registered handlers."""
+"""Message dispatcher — routes incoming messages to registered handlers.
+
+See DESIGN_SPEC Section 5.
+"""
 
 import asyncio
 from uuid import UUID  # noqa: TC003 -- required at runtime by Pydantic
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from ai_company.communication.enums import MessagePriority, MessageType
 from ai_company.communication.handler import (
@@ -23,6 +26,7 @@ from ai_company.observability.events.communication import (
     COMM_DISPATCH_HANDLER_MATCHED,
     COMM_DISPATCH_NO_HANDLERS,
     COMM_DISPATCH_START,
+    COMM_HANDLER_DEREGISTER_MISS,
     COMM_HANDLER_DEREGISTERED,
     COMM_HANDLER_REGISTERED,
 )
@@ -35,7 +39,7 @@ class DispatchResult(BaseModel):
 
     Attributes:
         message_id: The dispatched message's identifier.
-        handlers_matched: Number of handlers that matched the message.
+        handlers_matched: Derived count (succeeded + failed).
         handlers_succeeded: Number of handlers that completed without error.
         handlers_failed: Number of handlers that raised an exception.
         errors: Error descriptions from failed handlers.
@@ -44,10 +48,15 @@ class DispatchResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     message_id: UUID
-    handlers_matched: int = Field(ge=0)
     handlers_succeeded: int = Field(ge=0)
     handlers_failed: int = Field(ge=0)
     errors: tuple[str, ...] = Field(default=())
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def handlers_matched(self) -> int:
+        """Total handlers that matched (succeeded + failed)."""
+        return self.handlers_succeeded + self.handlers_failed
 
 
 class MessageDispatcher:
@@ -121,13 +130,21 @@ class MessageDispatcher:
                 handler_name=removed.name,
             )
             return True
+        logger.debug(
+            COMM_HANDLER_DEREGISTER_MISS,
+            agent_id=self._agent_id,
+            handler_id=handler_id,
+        )
         return False
 
     async def dispatch(self, message: Message) -> DispatchResult:
         """Route a message to all matching handlers concurrently.
 
-        Handlers that raise are isolated — their errors are captured
-        without affecting other handlers.
+        Handlers that raise ``Exception`` subclasses are isolated —
+        their errors are captured without affecting other handlers.
+        ``BaseException`` subclasses (e.g. ``KeyboardInterrupt``,
+        ``CancelledError``) will still propagate and may cancel
+        remaining handlers.
 
         Args:
             message: The message to dispatch.
@@ -154,7 +171,6 @@ class MessageDispatcher:
             )
             return DispatchResult(
                 message_id=message.id,
-                handlers_matched=0,
                 handlers_succeeded=0,
                 handlers_failed=0,
             )
@@ -201,7 +217,6 @@ class MessageDispatcher:
 
         return DispatchResult(
             message_id=message.id,
-            handlers_matched=len(matched),
             handlers_succeeded=succeeded,
             handlers_failed=len(errors),
             errors=tuple(errors),

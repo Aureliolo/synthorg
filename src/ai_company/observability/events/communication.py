@@ -5,6 +5,8 @@ from typing import Final
 # Bus lifecycle
 COMM_BUS_STARTED: Final[str] = "communication.bus.started"
 COMM_BUS_STOPPED: Final[str] = "communication.bus.stopped"
+COMM_BUS_ALREADY_RUNNING: Final[str] = "communication.bus.already_running"
+COMM_BUS_NOT_RUNNING: Final[str] = "communication.bus.not_running"
 
 # Channel management
 COMM_CHANNEL_CREATED: Final[str] = "communication.channel.created"
@@ -30,7 +32,8 @@ COMM_MESSENGER_SUBSCRIBED: Final[str] = "communication.messenger.subscribed"
 COMM_MESSENGER_UNSUBSCRIBED: Final[str] = "communication.messenger.unsubscribed"
 COMM_MESSAGE_SENT: Final[str] = "communication.message.sent"
 COMM_MESSAGE_BROADCAST: Final[str] = "communication.message.broadcast"
-COMM_MESSAGE_SEND_FAILED: Final[str] = "communication.message.send_failed"
+COMM_HANDLER_DEREGISTER_MISS: Final[str] = "communication.handler.deregister_miss"
+COMM_DISPATCH_NO_DISPATCHER: Final[str] = "communication.dispatch.no_dispatcher"
 
 # Dispatcher
 COMM_DISPATCH_START: Final[str] = "communication.dispatch.start"

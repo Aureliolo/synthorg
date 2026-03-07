@@ -1,6 +1,8 @@
-"""Message handler protocol, adapter, and registration model."""
+"""Message handler protocol, adapter, and registration model (DESIGN_SPEC Section 5)."""
 
+import inspect
 from collections.abc import Awaitable, Callable
+from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 from uuid import uuid4
 
@@ -8,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ai_company.communication.enums import MessagePriority, MessageType
 from ai_company.communication.message import Message
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
 @runtime_checkable
@@ -31,12 +34,21 @@ class FunctionHandler:
     """Adapter wrapping a bare async function as a :class:`MessageHandler`.
 
     Args:
-        func: The async function to wrap.
+        func: The async coroutine function to wrap.
+
+    Raises:
+        TypeError: If *func* is not an async coroutine function.
     """
 
     __slots__ = ("_func",)
 
     def __init__(self, func: MessageHandlerFunc) -> None:
+        if not inspect.iscoroutinefunction(func):
+            msg = (
+                "Handler function must be async (coroutine function), "
+                f"got {type(func).__name__}"
+            )
+            raise TypeError(msg)
         self._func = func
 
     async def handle(self, message: Message) -> None:
@@ -48,12 +60,14 @@ class FunctionHandler:
         await self._func(message)
 
 
-_PRIORITY_ORDER: dict[MessagePriority, int] = {
-    MessagePriority.LOW: 0,
-    MessagePriority.NORMAL: 1,
-    MessagePriority.HIGH: 2,
-    MessagePriority.URGENT: 3,
-}
+_PRIORITY_ORDER: MappingProxyType[MessagePriority, int] = MappingProxyType(
+    {
+        MessagePriority.LOW: 0,
+        MessagePriority.NORMAL: 1,
+        MessagePriority.HIGH: 2,
+        MessagePriority.URGENT: 3,
+    }
+)
 
 
 def priority_at_least(
@@ -85,8 +99,8 @@ class HandlerRegistration(BaseModel):
 
     model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 
-    handler_id: str = Field(default_factory=lambda: str(uuid4()))
+    handler_id: NotBlankStr = Field(default_factory=lambda: str(uuid4()))
     handler: MessageHandler = Field(exclude=True)
     message_types: frozenset[MessageType] = Field(default=frozenset())
     min_priority: MessagePriority = Field(default=MessagePriority.LOW)
-    name: str = Field(default="unnamed")
+    name: NotBlankStr = Field(default="unnamed")

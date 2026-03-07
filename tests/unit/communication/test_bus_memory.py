@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 import pytest
 
 from ai_company.communication.bus_memory import InMemoryMessageBus
+from ai_company.communication.bus_protocol import MessageBus
 from ai_company.communication.channel import Channel
 from ai_company.communication.config import (
     MessageBusConfig,
@@ -126,6 +127,31 @@ class TestBusLifecycle:
         names = {ch.name for ch in channels}
         assert names == {"#alpha", "#beta"}
 
+    @pytest.mark.unit
+    async def test_send_direct_on_stopped_bus_raises(self) -> None:
+        bus = InMemoryMessageBus(config=_make_config())
+        msg = _make_message(sender="agent-a", to="agent-b")
+        with pytest.raises(MessageBusNotRunningError):
+            await bus.send_direct(msg, recipient="agent-b")
+
+    @pytest.mark.unit
+    async def test_unsubscribe_on_stopped_bus_raises(self) -> None:
+        bus = InMemoryMessageBus(config=_make_config())
+        with pytest.raises(MessageBusNotRunningError):
+            await bus.unsubscribe("#general", "agent-a")
+
+
+# ── Protocol Conformance ─────────────────────────────────────
+
+
+class TestProtocolConformance:
+    """Tests that InMemoryMessageBus satisfies the MessageBus protocol."""
+
+    @pytest.mark.unit
+    def test_isinstance_message_bus(self) -> None:
+        bus = InMemoryMessageBus(config=_make_config())
+        assert isinstance(bus, MessageBus)
+
 
 # ── Channel Management ───────────────────────────────────────────
 
@@ -230,6 +256,13 @@ class TestSubscription:
         with pytest.raises(NotSubscribedError):
             await bus.unsubscribe("#general", "agent-a")
 
+    @pytest.mark.unit
+    async def test_unsubscribe_nonexistent_channel_raises(self) -> None:
+        bus = InMemoryMessageBus(config=_make_config())
+        await bus.start()
+        with pytest.raises(NotSubscribedError):
+            await bus.unsubscribe("#nonexistent", "agent-a")
+
 
 # ── Publish & Receive ────────────────────────────────────────────
 
@@ -295,6 +328,31 @@ class TestPublishReceive:
         await bus.subscribe("#general", "agent-a")
         envelope = await bus.receive("#general", "agent-a", timeout=0.05)
         assert envelope is None
+
+    @pytest.mark.unit
+    async def test_receive_without_timeout_blocks_until_message(self) -> None:
+        """receive() with timeout=None blocks until a message arrives."""
+        bus = InMemoryMessageBus(config=_make_config())
+        await bus.start()
+        await bus.subscribe("#general", "agent-a")
+
+        received: list[str] = []
+
+        async def receiver() -> None:
+            envelope = await bus.receive("#general", "agent-a")
+            assert envelope is not None
+            received.append(envelope.message.content)
+
+        async def publisher() -> None:
+            await asyncio.sleep(0.05)
+            msg = _make_message(channel="#general", content="delayed")
+            await bus.publish(msg)
+
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(receiver())
+            tg.create_task(publisher())
+
+        assert received == ["delayed"]
 
     @pytest.mark.unit
     async def test_broadcast_delivers_to_all_known_agents(self) -> None:
@@ -439,6 +497,17 @@ class TestHistory:
         await bus.start()
         with pytest.raises(ChannelNotFoundError):
             await bus.get_channel_history("#nonexistent")
+
+    @pytest.mark.unit
+    async def test_history_for_direct_message_channel(self) -> None:
+        """Direct message channels also support history queries."""
+        bus = InMemoryMessageBus(config=_make_config())
+        await bus.start()
+        msg = _make_message(sender="agent-a", to="agent-b", content="dm-1")
+        await bus.send_direct(msg, recipient="agent-b")
+        history = await bus.get_channel_history("@agent-a:agent-b")
+        assert len(history) == 1
+        assert history[0].content == "dm-1"
 
 
 # ── Concurrency ───────────────────────────────────────────────────

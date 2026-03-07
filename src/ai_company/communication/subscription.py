@@ -1,4 +1,4 @@
-"""Subscription and delivery envelope models."""
+"""Subscription and delivery envelope models (DESIGN_SPEC Section 5.4)."""
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 

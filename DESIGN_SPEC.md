@@ -2318,10 +2318,17 @@ ai-company/
 │       │   ├── meeting_engine.py   # Meeting coordination (M4)
 │       │   └── hr_engine.py        # Hiring, firing, performance (M7)
 │       ├── communication/           # Inter-agent communication
+│       │   ├── bus_memory.py       # InMemoryMessageBus implementation
+│       │   ├── bus_protocol.py     # MessageBus protocol interface
 │       │   ├── channel.py          # Channel model
-│       │   ├── message.py          # Message model
 │       │   ├── config.py           # Communication config
-│       │   └── enums.py            # Communication enums
+│       │   ├── dispatcher.py       # MessageDispatcher + DispatchResult
+│       │   ├── enums.py            # Communication enums
+│       │   ├── errors.py           # Communication error hierarchy
+│       │   ├── handler.py          # MessageHandler protocol, FunctionHandler, HandlerRegistration
+│       │   ├── message.py          # Message model
+│       │   ├── messenger.py        # AgentMessenger per-agent facade
+│       │   └── subscription.py     # Subscription + DeliveryEnvelope models
 │       ├── memory/                  # Agent memory system (M5, stubs only)
 │       │   ├── store.py            # Memory storage backend (M5)
 │       │   ├── retrieval.py        # Memory retrieval & ranking (M5)
@@ -2336,6 +2343,7 @@ ai-company/
 │       │   ├── events/             # Per-domain event constants
 │       │   │   ├── __init__.py    # Package marker with usage docs; no re-exports
 │       │   │   ├── budget.py      # BUDGET_* constants
+│       │   │   ├── communication.py # COMM_* constants
 │       │   │   ├── config.py      # CONFIG_* constants
 │       │   │   ├── correlation.py # CORRELATION_* constants
 │       │   │   ├── execution.py   # EXECUTION_* constants

@@ -9,7 +9,11 @@ import pytest
 from ai_company.observability import events
 from ai_company.observability.events.budget import BUDGET_RECORD_ADDED
 from ai_company.observability.events.communication import (
+    COMM_BUS_ALREADY_RUNNING,
+    COMM_BUS_NOT_RUNNING,
     COMM_BUS_STARTED,
+    COMM_DISPATCH_NO_DISPATCHER,
+    COMM_HANDLER_DEREGISTER_MISS,
     COMM_MESSAGE_PUBLISHED,
 )
 from ai_company.observability.events.config import (
@@ -170,7 +174,11 @@ class TestEventConstants:
 
     def test_communication_events_exist(self) -> None:
         assert COMM_BUS_STARTED == "communication.bus.started"
+        assert COMM_BUS_ALREADY_RUNNING == "communication.bus.already_running"
+        assert COMM_BUS_NOT_RUNNING == "communication.bus.not_running"
         assert COMM_MESSAGE_PUBLISHED == "communication.message.published"
+        assert COMM_HANDLER_DEREGISTER_MISS == "communication.handler.deregister_miss"
+        assert COMM_DISPATCH_NO_DISPATCHER == "communication.dispatch.no_dispatcher"
 
     def test_tool_events_exist(self) -> None:
         assert TOOL_INVOKE_START == "tool.invoke.start"

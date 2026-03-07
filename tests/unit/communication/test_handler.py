@@ -82,6 +82,20 @@ class TestFunctionHandler:
 
         assert isinstance(FunctionHandler(_noop), MessageHandler)
 
+    def test_rejects_non_callable(self) -> None:
+        """FunctionHandler raises TypeError for non-callable input."""
+        with pytest.raises(TypeError, match="must be async"):
+            FunctionHandler("not a function")  # type: ignore[arg-type]
+
+    def test_rejects_sync_function(self) -> None:
+        """FunctionHandler raises TypeError for synchronous functions."""
+
+        def _sync(msg: Message) -> None:
+            pass
+
+        with pytest.raises(TypeError, match="must be async"):
+            FunctionHandler(_sync)  # type: ignore[arg-type]
+
 
 # ── HandlerRegistration ──────────────────────────────────────
 

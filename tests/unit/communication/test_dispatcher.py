@@ -205,6 +205,47 @@ class TestPriorityFiltering:
         assert len(handler.received) == 1
 
 
+# ── Combined Type + Priority Filtering ───────────────────────
+
+
+@pytest.mark.unit
+class TestCombinedFiltering:
+    async def test_type_and_priority_both_must_match(self) -> None:
+        """Handler with both type and priority filters requires both to match."""
+        dispatcher = MessageDispatcher()
+        handler = _RecordingHandler()
+        dispatcher.register(
+            handler,
+            message_types=frozenset({MessageType.ESCALATION}),
+            min_priority=MessagePriority.HIGH,
+        )
+
+        # Right type, wrong priority → no match
+        msg_low = _make_message(
+            type=MessageType.ESCALATION,
+            priority=MessagePriority.LOW,
+        )
+        result_low = await dispatcher.dispatch(msg_low)
+        assert result_low.handlers_matched == 0
+
+        # Wrong type, right priority → no match
+        msg_wrong_type = _make_message(
+            type=MessageType.TASK_UPDATE,
+            priority=MessagePriority.URGENT,
+        )
+        result_wrong = await dispatcher.dispatch(msg_wrong_type)
+        assert result_wrong.handlers_matched == 0
+
+        # Both match → handler receives message
+        msg_match = _make_message(
+            type=MessageType.ESCALATION,
+            priority=MessagePriority.URGENT,
+        )
+        result_match = await dispatcher.dispatch(msg_match)
+        assert result_match.handlers_matched == 1
+        assert len(handler.received) == 1
+
+
 # ── Error Isolation ───────────────────────────────────────────
 
 
@@ -307,7 +348,6 @@ class TestDispatchResult:
 
         result = DispatchResult(
             message_id=uuid4(),
-            handlers_matched=1,
             handlers_succeeded=1,
             handlers_failed=0,
         )

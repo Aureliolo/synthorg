@@ -26,6 +26,8 @@ from ai_company.communication.subscription import (
 )
 from ai_company.observability import get_logger
 from ai_company.observability.events.communication import (
+    COMM_BUS_ALREADY_RUNNING,
+    COMM_BUS_NOT_RUNNING,
     COMM_BUS_STARTED,
     COMM_BUS_STOPPED,
     COMM_CHANNEL_ALREADY_EXISTS,
@@ -73,6 +75,9 @@ def _raise_not_subscribed(
 class InMemoryMessageBus:
     """In-memory message bus using asyncio queues.
 
+    Implements the :class:`MessageBus` protocol defined in
+    ``bus_protocol``.
+
     Args:
         config: Message bus configuration including pre-defined
             channels and retention settings.
@@ -101,10 +106,7 @@ class InMemoryMessageBus:
         async with self._lock:
             if self._running:
                 msg = "Message bus is already running"
-                logger.warning(
-                    COMM_BUS_STARTED,
-                    status="already_running",
-                )
+                logger.warning(COMM_BUS_ALREADY_RUNNING)
                 raise MessageBusAlreadyRunningError(msg)
             self._running = True
             maxlen = self._config.retention.max_messages_per_channel
@@ -128,6 +130,7 @@ class InMemoryMessageBus:
     def _require_running(self) -> None:
         """Raise if the bus is not running."""
         if not self._running:
+            logger.warning(COMM_BUS_NOT_RUNNING)
             msg = "Message bus is not running"
             raise MessageBusNotRunningError(msg)
 
@@ -137,10 +140,10 @@ class InMemoryMessageBus:
         subscriber_id: str,
     ) -> asyncio.Queue[DeliveryEnvelope]:
         """Get or create a per-(channel, subscriber) queue."""
-        key = (channel_name, subscriber_id)
-        if key not in self._queues:
-            self._queues[key] = asyncio.Queue()
-        return self._queues[key]
+        return self._queues.setdefault(
+            (channel_name, subscriber_id),
+            asyncio.Queue(),
+        )
 
     async def publish(self, message: Message) -> None:
         """Publish a message to its channel.
@@ -193,8 +196,8 @@ class InMemoryMessageBus:
     ) -> None:
         """Send a direct message between two agents.
 
-        Lazily creates a DIRECT channel named ``@{sorted_pair}`` and
-        subscribes both agents.
+        Lazily creates a DIRECT channel named ``@{a}:{b}`` (where
+        a, b are the sorted agent IDs) and subscribes both agents.
 
         Args:
             message: The message to send.
@@ -208,48 +211,8 @@ class InMemoryMessageBus:
         channel_name = f"@{pair[0]}:{pair[1]}"
         async with self._lock:
             self._require_running()
-            if channel_name not in self._channels:
-                ch = Channel(
-                    name=channel_name,
-                    type=ChannelType.DIRECT,
-                    subscribers=(pair[0], pair[1]),
-                )
-                self._channels[channel_name] = ch
-                maxlen = self._config.retention.max_messages_per_channel
-                self._history[channel_name] = deque(maxlen=maxlen)
-                logger.info(
-                    COMM_CHANNEL_CREATED,
-                    channel=channel_name,
-                    type=str(ChannelType.DIRECT),
-                )
-            for agent_id in pair:
-                self._known_agents.add(agent_id)
-                self._ensure_queue(channel_name, agent_id)
-            current_ch = self._channels[channel_name]
-            current_subs = set(current_ch.subscribers)
-            needed = {pair[0], pair[1]}
-            if not needed.issubset(current_subs):
-                new_subs = tuple(sorted(current_subs | needed))
-                self._channels[channel_name] = current_ch.model_copy(
-                    update={"subscribers": new_subs},
-                )
-            self._history[channel_name].append(message)
-            now = datetime.now(UTC)
-            for agent_id in pair:
-                envelope = DeliveryEnvelope(
-                    message=message,
-                    channel_name=channel_name,
-                    delivered_at=now,
-                )
-                self._queues[(channel_name, agent_id)].put_nowait(
-                    envelope,
-                )
-                logger.debug(
-                    COMM_MESSAGE_DELIVERED,
-                    channel=channel_name,
-                    subscriber=agent_id,
-                    message_id=str(message.id),
-                )
+            self._ensure_direct_channel(channel_name, pair)
+            self._deliver_to_pair(channel_name, pair, message)
         logger.info(
             COMM_DIRECT_SENT,
             channel=channel_name,
@@ -258,12 +221,76 @@ class InMemoryMessageBus:
             message_id=str(message.id),
         )
 
+    def _ensure_direct_channel(
+        self,
+        channel_name: str,
+        pair: list[str],
+    ) -> None:
+        """Create DIRECT channel and register agents if needed.
+
+        Must be called under ``self._lock``.
+        """
+        if channel_name not in self._channels:
+            ch = Channel(
+                name=channel_name,
+                type=ChannelType.DIRECT,
+                subscribers=tuple(pair),
+            )
+            self._channels[channel_name] = ch
+            maxlen = self._config.retention.max_messages_per_channel
+            self._history[channel_name] = deque(maxlen=maxlen)
+            logger.info(
+                COMM_CHANNEL_CREATED,
+                channel=channel_name,
+                type=str(ChannelType.DIRECT),
+            )
+        for agent_id in pair:
+            self._known_agents.add(agent_id)
+            self._ensure_queue(channel_name, agent_id)
+        current_ch = self._channels[channel_name]
+        current_subs = set(current_ch.subscribers)
+        pair_set = set(pair)
+        if not pair_set.issubset(current_subs):
+            new_subs = tuple(sorted(current_subs | pair_set))
+            self._channels[channel_name] = current_ch.model_copy(
+                update={"subscribers": new_subs},
+            )
+
+    def _deliver_to_pair(
+        self,
+        channel_name: str,
+        pair: list[str],
+        message: Message,
+    ) -> None:
+        """Append to history and enqueue for both agents.
+
+        Must be called under ``self._lock``.
+        """
+        self._history[channel_name].append(message)
+        now = datetime.now(UTC)
+        for agent_id in pair:
+            envelope = DeliveryEnvelope(
+                message=message,
+                channel_name=channel_name,
+                delivered_at=now,
+            )
+            self._queues[(channel_name, agent_id)].put_nowait(envelope)
+            logger.debug(
+                COMM_MESSAGE_DELIVERED,
+                channel=channel_name,
+                subscriber=agent_id,
+                message_id=str(message.id),
+            )
+
     async def subscribe(
         self,
         channel_name: str,
         subscriber_id: str,
     ) -> Subscription:
         """Subscribe an agent to a channel.
+
+        Idempotent — returns a fresh subscription record if already
+        subscribed (the channel's subscriber list is not duplicated).
 
         Args:
             channel_name: Channel to subscribe to.
@@ -317,9 +344,11 @@ class InMemoryMessageBus:
             subscriber_id: Agent ID to remove.
 
         Raises:
+            MessageBusNotRunningError: If not running.
             NotSubscribedError: If the agent is not subscribed.
         """
         async with self._lock:
+            self._require_running()
             if channel_name not in self._channels:
                 _raise_not_subscribed(channel_name, subscriber_id)
             channel = self._channels[channel_name]
@@ -344,6 +373,9 @@ class InMemoryMessageBus:
         timeout: float | None = None,  # noqa: ASYNC109
     ) -> DeliveryEnvelope | None:
         """Receive the next message from a channel.
+
+        Awaits until a message is available or the timeout expires.
+        When ``timeout`` is ``None``, awaits indefinitely.
 
         Args:
             channel_name: Channel to receive from.
@@ -447,9 +479,7 @@ class InMemoryMessageBus:
         async with self._lock:
             if channel_name not in self._channels:
                 _raise_channel_not_found(channel_name)
-            messages = list(
-                self._history.get(channel_name, deque()),
-            )
+            messages = list(self._history[channel_name])
         if limit is not None and limit < len(messages):
             messages = messages[-limit:]
         logger.debug(

@@ -426,3 +426,19 @@ class TestHandlerDelegation:
         )
         result = await messenger.dispatch_message(msg)
         assert result.handlers_matched == 1
+
+    @pytest.mark.unit
+    async def test_deregister_handler_without_dispatcher_returns_false(
+        self,
+    ) -> None:
+        """Deregistering when no dispatcher exists returns False."""
+        bus = _make_mock_bus()
+        messenger = AgentMessenger(
+            agent_id="agent-a",
+            agent_name="Agent A",
+            bus=bus,
+        )
+
+        result = messenger.deregister_handler("nonexistent-id")
+
+        assert result is False

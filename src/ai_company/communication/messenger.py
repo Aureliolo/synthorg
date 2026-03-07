@@ -1,4 +1,4 @@
-"""Per-agent messenger facade over the message bus."""
+"""Per-agent messenger facade over the message bus (DESIGN_SPEC Section 5.4)."""
 
 from datetime import UTC, datetime
 
@@ -13,6 +13,8 @@ from ai_company.communication.message import Message
 from ai_company.communication.subscription import Subscription  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.communication import (
+    COMM_DISPATCH_NO_DISPATCHER,
+    COMM_HANDLER_DEREGISTER_MISS,
     COMM_MESSAGE_BROADCAST,
     COMM_MESSAGE_SENT,
     COMM_MESSENGER_CREATED,
@@ -35,6 +37,9 @@ class AgentMessenger:
         agent_name: Human-readable name of the agent.
         bus: The underlying message bus.
         dispatcher: Optional message dispatcher for handler routing.
+
+    Raises:
+        ValueError: If *agent_id* or *agent_name* is blank.
     """
 
     __slots__ = ("_agent_id", "_agent_name", "_bus", "_dispatcher")
@@ -46,6 +51,12 @@ class AgentMessenger:
         bus: MessageBus,
         dispatcher: MessageDispatcher | None = None,
     ) -> None:
+        if not agent_id.strip():
+            msg = "agent_id must not be blank"
+            raise ValueError(msg)
+        if not agent_name.strip():
+            msg = "agent_name must not be blank"
+            raise ValueError(msg)
         self._agent_id = agent_id
         self._agent_name = agent_name
         self._bus = bus
@@ -113,7 +124,9 @@ class AgentMessenger:
         """Send a direct message to another agent.
 
         Auto-fills sender, timestamp, and message ID. The bus handles
-        lazy creation of the direct channel.
+        lazy creation of the direct channel.  The message's ``channel``
+        field is set to a placeholder (``"@direct"``); the bus stores
+        it under the deterministic ``@{a}:{b}`` channel name.
 
         Args:
             to: Recipient agent ID.
@@ -154,13 +167,17 @@ class AgentMessenger:
         priority: MessagePriority = MessagePriority.NORMAL,
         channel: str = "#all-hands",
     ) -> Message:
-        """Broadcast a message to all agents via a broadcast channel.
+        """Publish an announcement to a shared channel.
+
+        Agents must be subscribed to the target channel to receive
+        the message.  For true fan-out to all known agents, use a
+        channel of type :attr:`ChannelType.BROADCAST`.
 
         Args:
             content: Message body text.
             message_type: Message type classification.
             priority: Message priority level.
-            channel: Broadcast channel name (default ``"#all-hands"``).
+            channel: Channel name (default ``"#all-hands"``).
 
         Returns:
             The constructed and published message.
@@ -267,6 +284,11 @@ class AgentMessenger:
             True if the handler was found and removed.
         """
         if self._dispatcher is None:
+            logger.debug(
+                COMM_HANDLER_DEREGISTER_MISS,
+                agent_id=self._agent_id,
+                handler_id=handler_id,
+            )
             return False
         return self._dispatcher.deregister(handler_id)
 
@@ -280,9 +302,13 @@ class AgentMessenger:
             A :class:`DispatchResult` summarising the outcome.
         """
         if self._dispatcher is None:
+            logger.debug(
+                COMM_DISPATCH_NO_DISPATCHER,
+                agent_id=self._agent_id,
+                message_id=str(message.id),
+            )
             return DispatchResult(
                 message_id=message.id,
-                handlers_matched=0,
                 handlers_succeeded=0,
                 handlers_failed=0,
             )

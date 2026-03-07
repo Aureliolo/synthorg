@@ -66,8 +66,8 @@ class MessageBus(Protocol):
     ) -> None:
         """Send a direct message between two agents.
 
-        Lazily creates a DIRECT channel named ``@{sorted(a,b)}`` and
-        subscribes both agents.
+        Lazily creates a DIRECT channel named ``@{a}:{b}`` (where
+        a, b are the sorted agent IDs) and subscribes both agents.
 
         Args:
             message: The message to send (``message.sender`` is the
@@ -114,6 +114,7 @@ class MessageBus(Protocol):
             subscriber_id: Agent ID to remove.
 
         Raises:
+            MessageBusNotRunningError: If the bus is not running.
             NotSubscribedError: If the agent is not subscribed.
         """
         ...
@@ -127,7 +128,8 @@ class MessageBus(Protocol):
     ) -> DeliveryEnvelope | None:
         """Receive the next message from a channel.
 
-        Blocks until a message is available or the timeout expires.
+        Awaits until a message is available or the timeout expires.
+        When ``timeout`` is ``None``, awaits indefinitely.
 
         Args:
             channel_name: Channel to receive from.
