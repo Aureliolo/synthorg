@@ -26,4 +26,6 @@ def default_config_dict() -> dict[str, Any]:
         "routing": {},
         "logging": None,
         "graceful_shutdown": {},
+        "workflow_handoffs": [],
+        "escalation_paths": [],
     }

@@ -7,7 +7,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.budget.config import BudgetConfig
 from ai_company.communication.config import CommunicationConfig
-from ai_company.core.company import CompanyConfig, Department
+from ai_company.core.company import (
+    CompanyConfig,
+    Department,
+    EscalationPath,
+    WorkflowHandoff,
+)
 from ai_company.core.enums import CompanyType, SeniorityLevel
 from ai_company.core.role import CustomRole  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
@@ -421,6 +426,14 @@ class RootConfig(BaseModel):
     graceful_shutdown: GracefulShutdownConfig = Field(
         default_factory=GracefulShutdownConfig,
         description="Graceful shutdown configuration",
+    )
+    workflow_handoffs: tuple[WorkflowHandoff, ...] = Field(
+        default=(),
+        description="Cross-department workflow handoffs",
+    )
+    escalation_paths: tuple[EscalationPath, ...] = Field(
+        default=(),
+        description="Cross-department escalation paths",
     )
 
     @model_validator(mode="after")

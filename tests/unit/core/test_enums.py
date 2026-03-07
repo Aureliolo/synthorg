@@ -3,12 +3,17 @@
 import pytest
 
 from ai_company.core.enums import (
+    ActionType,
     AgentStatus,
     ArtifactType,
+    CollaborationPreference,
+    CommunicationVerbosity,
     CompanyType,
     Complexity,
+    ConflictApproach,
     CostTier,
     CreativityLevel,
+    DecisionMakingStyle,
     DepartmentName,
     MemoryType,
     Priority,
@@ -75,6 +80,21 @@ class TestEnumMemberCounts:
 
     def test_project_status_has_5_members(self) -> None:
         assert len(ProjectStatus) == 5
+
+    def test_decision_making_style_has_4_members(self) -> None:
+        assert len(DecisionMakingStyle) == 4
+
+    def test_collaboration_preference_has_3_members(self) -> None:
+        assert len(CollaborationPreference) == 3
+
+    def test_communication_verbosity_has_3_members(self) -> None:
+        assert len(CommunicationVerbosity) == 3
+
+    def test_conflict_approach_has_5_members(self) -> None:
+        assert len(ConflictApproach) == 5
+
+    def test_action_type_has_6_members(self) -> None:
+        assert len(ActionType) == 6
 
 
 # ── String Values ──────────────────────────────────────────────────
@@ -144,6 +164,75 @@ class TestEnumStringValues:
         assert ProjectStatus.ON_HOLD.value == "on_hold"
         assert ProjectStatus.COMPLETED.value == "completed"
         assert ProjectStatus.CANCELLED.value == "cancelled"
+
+    @pytest.mark.parametrize(
+        ("member", "value"),
+        [
+            (DecisionMakingStyle.ANALYTICAL, "analytical"),
+            (DecisionMakingStyle.INTUITIVE, "intuitive"),
+            (DecisionMakingStyle.CONSULTATIVE, "consultative"),
+            (DecisionMakingStyle.DIRECTIVE, "directive"),
+        ],
+    )
+    def test_decision_making_style_values(
+        self, member: DecisionMakingStyle, value: str
+    ) -> None:
+        assert member.value == value
+
+    @pytest.mark.parametrize(
+        ("member", "value"),
+        [
+            (CollaborationPreference.INDEPENDENT, "independent"),
+            (CollaborationPreference.PAIR, "pair"),
+            (CollaborationPreference.TEAM, "team"),
+        ],
+    )
+    def test_collaboration_preference_values(
+        self, member: CollaborationPreference, value: str
+    ) -> None:
+        assert member.value == value
+
+    @pytest.mark.parametrize(
+        ("member", "value"),
+        [
+            (CommunicationVerbosity.TERSE, "terse"),
+            (CommunicationVerbosity.BALANCED, "balanced"),
+            (CommunicationVerbosity.VERBOSE, "verbose"),
+        ],
+    )
+    def test_communication_verbosity_values(
+        self, member: CommunicationVerbosity, value: str
+    ) -> None:
+        assert member.value == value
+
+    @pytest.mark.parametrize(
+        ("member", "value"),
+        [
+            (ConflictApproach.AVOID, "avoid"),
+            (ConflictApproach.ACCOMMODATE, "accommodate"),
+            (ConflictApproach.COMPETE, "compete"),
+            (ConflictApproach.COMPROMISE, "compromise"),
+            (ConflictApproach.COLLABORATE, "collaborate"),
+        ],
+    )
+    def test_conflict_approach_values(
+        self, member: ConflictApproach, value: str
+    ) -> None:
+        assert member.value == value
+
+    @pytest.mark.parametrize(
+        ("member", "value"),
+        [
+            (ActionType.CODE_MERGE, "code_merge"),
+            (ActionType.DEPLOYMENT, "deployment"),
+            (ActionType.BUDGET_SPEND, "budget_spend"),
+            (ActionType.EXTERNAL_COMMUNICATION, "external_communication"),
+            (ActionType.HIRING, "hiring"),
+            (ActionType.ARCHITECTURE_CHANGE, "architecture_change"),
+        ],
+    )
+    def test_action_type_values(self, member: ActionType, value: str) -> None:
+        assert member.value == value
 
 
 # ── StrEnum Behavior ───────────────────────────────────────────────

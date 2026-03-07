@@ -267,7 +267,7 @@ def _build_config_dict(
 
     autonomy, budget_monthly = _extract_numeric_config(company, template)
 
-    return {
+    result: dict[str, Any] = {
         "company_name": company_name,
         "company_type": company.get("type", template.metadata.company_type.value),
         "agents": agents,
@@ -281,6 +281,15 @@ def _build_config_dict(
             ),
         },
     }
+
+    workflow_handoffs = rendered_data.get("workflow_handoffs")
+    if workflow_handoffs:
+        result["workflow_handoffs"] = workflow_handoffs
+    escalation_paths = rendered_data.get("escalation_paths")
+    if escalation_paths:
+        result["escalation_paths"] = escalation_paths
+
+    return result
 
 
 def _validate_list(
@@ -371,8 +380,11 @@ def _expand_single_agent(
         "level": agent.get("level", "mid"),
     }
 
+    inline_personality = agent.get("personality")
     preset_name = agent.get("personality_preset")
-    if preset_name:
+    if inline_personality and isinstance(inline_personality, dict):
+        agent_dict["personality"] = inline_personality
+    elif preset_name:
         try:
             agent_dict["personality"] = get_personality_preset(preset_name)
         except KeyError as exc:
@@ -410,6 +422,12 @@ def _build_departments(
             "head": dept.get("head_role", dept.get("name", "")),
             "budget_percent": budget_pct,
         }
+        reporting_lines = dept.get("reporting_lines")
+        if reporting_lines:
+            dept_dict["reporting_lines"] = reporting_lines
+        policies = dept.get("policies")
+        if policies:
+            dept_dict["policies"] = policies
         departments.append(dept_dict)
     return departments
 

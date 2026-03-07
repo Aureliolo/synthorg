@@ -16,7 +16,11 @@ from ai_company.core.agent import (
 )
 from ai_company.core.enums import (
     AgentStatus,
+    CollaborationPreference,
+    CommunicationVerbosity,
+    ConflictApproach,
     CreativityLevel,
+    DecisionMakingStyle,
     MemoryType,
     RiskTolerance,
     SeniorityLevel,
@@ -92,6 +96,95 @@ class TestPersonalityConfig:
         """Verify factory produces a valid PersonalityConfig."""
         p = PersonalityConfigFactory.build()
         assert isinstance(p, PersonalityConfig)
+
+    def test_big_five_defaults(self) -> None:
+        """All Big Five dimensions default to 0.5."""
+        p = PersonalityConfig()
+        assert p.openness == 0.5
+        assert p.conscientiousness == 0.5
+        assert p.extraversion == 0.5
+        assert p.agreeableness == 0.5
+        assert p.stress_response == 0.5
+
+    @pytest.mark.parametrize(
+        "dimension",
+        [
+            "openness",
+            "conscientiousness",
+            "extraversion",
+            "agreeableness",
+            "stress_response",
+        ],
+    )
+    def test_big_five_boundaries_accepted(self, dimension: str) -> None:
+        """0.0 and 1.0 are accepted for Big Five dimensions."""
+        p_low = PersonalityConfig(**{dimension: 0.0})  # type: ignore[arg-type]
+        assert getattr(p_low, dimension) == 0.0
+        p_high = PersonalityConfig(**{dimension: 1.0})  # type: ignore[arg-type]
+        assert getattr(p_high, dimension) == 1.0
+
+    @pytest.mark.parametrize(
+        "dimension",
+        [
+            "openness",
+            "conscientiousness",
+            "extraversion",
+            "agreeableness",
+            "stress_response",
+        ],
+    )
+    def test_big_five_below_zero_rejected(self, dimension: str) -> None:
+        """Values below 0.0 are rejected for Big Five dimensions."""
+        with pytest.raises(ValidationError):
+            PersonalityConfig(**{dimension: -0.1})  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize(
+        "dimension",
+        [
+            "openness",
+            "conscientiousness",
+            "extraversion",
+            "agreeableness",
+            "stress_response",
+        ],
+    )
+    def test_big_five_above_one_rejected(self, dimension: str) -> None:
+        """Values above 1.0 are rejected for Big Five dimensions."""
+        with pytest.raises(ValidationError):
+            PersonalityConfig(**{dimension: 1.1})  # type: ignore[arg-type]
+
+    def test_extended_enum_defaults(self) -> None:
+        """Extended behavioral enums default to neutral values."""
+        p = PersonalityConfig()
+        assert p.decision_making is DecisionMakingStyle.CONSULTATIVE
+        assert p.collaboration is CollaborationPreference.TEAM
+        assert p.verbosity is CommunicationVerbosity.BALANCED
+        assert p.conflict_approach is ConflictApproach.COLLABORATE
+
+    def test_extended_enums_custom(self) -> None:
+        """Extended behavioral enums accept custom values."""
+        p = PersonalityConfig(
+            decision_making=DecisionMakingStyle.ANALYTICAL,
+            collaboration=CollaborationPreference.INDEPENDENT,
+            verbosity=CommunicationVerbosity.TERSE,
+            conflict_approach=ConflictApproach.COMPETE,
+        )
+        assert p.decision_making is DecisionMakingStyle.ANALYTICAL
+        assert p.collaboration is CollaborationPreference.INDEPENDENT
+        assert p.verbosity is CommunicationVerbosity.TERSE
+        assert p.conflict_approach is ConflictApproach.COMPETE
+
+    def test_backward_compatible_construction(self) -> None:
+        """Construction without new fields works identically to before."""
+        p = PersonalityConfig(
+            traits=("analytical",),
+            communication_style="concise",
+            risk_tolerance=RiskTolerance.LOW,
+            creativity=CreativityLevel.HIGH,
+            description="test",
+        )
+        assert p.openness == 0.5
+        assert p.decision_making is DecisionMakingStyle.CONSULTATIVE
 
 
 # ── SkillSet ───────────────────────────────────────────────────────

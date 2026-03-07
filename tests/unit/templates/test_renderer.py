@@ -292,3 +292,96 @@ class TestCollectVariables:
         )
         result = _collect_variables(template, {"undeclared_key": "value123"})
         assert result["undeclared_key"] == "value123"
+
+
+# ── Inline personality and department extensions ──────────────────
+
+
+@pytest.mark.unit
+class TestInlinePersonality:
+    def test_inline_personality_overrides_preset(
+        self,
+        tmp_template_file: TemplateFileFactory,
+    ) -> None:
+        """Inline personality dict takes precedence over preset."""
+        from ai_company.templates.renderer import _expand_single_agent
+
+        agent: dict[str, object] = {
+            "role": "Dev",
+            "personality_preset": "visionary_leader",
+            "personality": {
+                "traits": ("custom-trait",),
+                "communication_style": "custom",
+            },
+        }
+        result = _expand_single_agent(agent, 0, set())
+        # Inline should win.
+        assert result["personality"]["communication_style"] == "custom"
+        assert "custom-trait" in result["personality"]["traits"]
+
+
+@pytest.mark.unit
+class TestDepartmentPassthrough:
+    def test_reporting_lines_passthrough(self) -> None:
+        """Reporting lines from rendered data pass through to department dict."""
+        from ai_company.templates.renderer import _build_departments
+
+        raw = [
+            {
+                "name": "eng",
+                "head_role": "cto",
+                "budget_percent": 50,
+                "reporting_lines": [
+                    {"subordinate": "dev", "supervisor": "lead"},
+                ],
+            },
+        ]
+        result = _build_departments(raw)
+        assert "reporting_lines" in result[0]
+        assert len(result[0]["reporting_lines"]) == 1
+
+    def test_policies_passthrough(self) -> None:
+        """Policies from rendered data pass through to department dict."""
+        from ai_company.templates.renderer import _build_departments
+
+        raw = [
+            {
+                "name": "eng",
+                "head_role": "cto",
+                "budget_percent": 50,
+                "policies": {
+                    "review_requirements": {"min_reviewers": 2},
+                },
+            },
+        ]
+        result = _build_departments(raw)
+        assert "policies" in result[0]
+
+    def test_workflow_handoffs_passthrough(self) -> None:
+        """Workflow handoffs pass through to config dict."""
+        from ai_company.core.enums import CompanyType
+        from ai_company.templates.renderer import _build_config_dict
+        from ai_company.templates.schema import (
+            CompanyTemplate,
+            TemplateAgentConfig,
+            TemplateMetadata,
+        )
+
+        template = CompanyTemplate(
+            metadata=TemplateMetadata(
+                name="Test",
+                company_type=CompanyType.CUSTOM,
+            ),
+            agents=(TemplateAgentConfig(role="Dev"),),
+        )
+        rendered = {
+            "company": {"type": "custom"},
+            "agents": [{"role": "Dev"}],
+            "departments": [],
+            "workflow_handoffs": [
+                {"from_department": "eng", "to_department": "qa", "trigger": "done"},
+            ],
+        }
+        result = _build_config_dict(rendered, template, {})
+        assert "workflow_handoffs" in result
+        assert len(result["workflow_handoffs"]) == 1

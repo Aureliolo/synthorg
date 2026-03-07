@@ -16,11 +16,17 @@ from ai_company.core.agent import (
 )
 from ai_company.core.artifact import Artifact, ExpectedArtifact
 from ai_company.core.company import (
+    ApprovalChain,
     Company,
     CompanyConfig,
     Department,
+    DepartmentPolicies,
+    EscalationPath,
     HRRegistry,
+    ReportingLine,
+    ReviewRequirements,
     Team,
+    WorkflowHandoff,
 )
 from ai_company.core.enums import (
     ArtifactType,
@@ -106,6 +112,37 @@ class CompanyConfigFactory(ModelFactory[CompanyConfig]):
 
 class HRRegistryFactory(ModelFactory[HRRegistry]):
     __model__ = HRRegistry
+
+
+class ReportingLineFactory(ModelFactory[ReportingLine]):
+    __model__ = ReportingLine
+    subordinate = "dev"
+    supervisor = "lead"
+
+
+class ReviewRequirementsFactory(ModelFactory[ReviewRequirements]):
+    __model__ = ReviewRequirements
+
+
+class ApprovalChainFactory(ModelFactory[ApprovalChain]):
+    __model__ = ApprovalChain
+    approvers = ("lead",)
+    min_approvals = 0
+
+
+class DepartmentPoliciesFactory(ModelFactory[DepartmentPolicies]):
+    __model__ = DepartmentPolicies
+    approval_chains = ()
+
+
+class WorkflowHandoffFactory(ModelFactory[WorkflowHandoff]):
+    __model__ = WorkflowHandoff
+    from_department = "engineering"
+    to_department = "qa"
+
+
+class EscalationPathFactory(ModelFactory[EscalationPath]):
+    __model__ = EscalationPath
 
 
 class CompanyFactory(ModelFactory[Company]):

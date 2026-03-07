@@ -104,6 +104,10 @@ class TemplateAgentConfig(BaseModel):
         default=None,
         description="Named personality preset",
     )
+    personality: dict[str, Any] | None = Field(
+        default=None,
+        description="Inline personality override (alternative to preset)",
+    )
     department: NotBlankStr | None = Field(
         default=None,
         description="Department override",
@@ -135,6 +139,14 @@ class TemplateDepartmentConfig(BaseModel):
     head_role: NotBlankStr | None = Field(
         default=None,
         description="Role name of department head",
+    )
+    reporting_lines: tuple[dict[str, str], ...] = Field(
+        default=(),
+        description="Reporting line definitions",
+    )
+    policies: dict[str, Any] | None = Field(
+        default=None,
+        description="Department operational policies",
     )
 
 
@@ -227,6 +239,14 @@ class CompanyTemplate(BaseModel):
         ge=0.0,
         le=1.0,
         description="Autonomy level",
+    )
+    workflow_handoffs: tuple[dict[str, Any], ...] = Field(
+        default=(),
+        description="Cross-department workflow handoffs",
+    )
+    escalation_paths: tuple[dict[str, Any], ...] = Field(
+        default=(),
+        description="Cross-department escalation paths",
     )
 
     @model_validator(mode="after")

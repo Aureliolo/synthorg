@@ -230,3 +230,52 @@ class ToolCategory(StrEnum):
     DEPLOYMENT = "deployment"
     MCP = "mcp"
     OTHER = "other"
+
+
+class DecisionMakingStyle(StrEnum):
+    """Decision-making approach used by an agent."""
+
+    ANALYTICAL = "analytical"
+    INTUITIVE = "intuitive"
+    CONSULTATIVE = "consultative"
+    DIRECTIVE = "directive"
+
+
+class CollaborationPreference(StrEnum):
+    """Preferred collaboration mode for an agent."""
+
+    INDEPENDENT = "independent"
+    PAIR = "pair"
+    TEAM = "team"
+
+
+class CommunicationVerbosity(StrEnum):
+    """Communication verbosity level for an agent."""
+
+    TERSE = "terse"
+    BALANCED = "balanced"
+    VERBOSE = "verbose"
+
+
+class ConflictApproach(StrEnum):
+    """Conflict resolution approach used by an agent."""
+
+    AVOID = "avoid"
+    ACCOMMODATE = "accommodate"
+    COMPETE = "compete"
+    COMPROMISE = "compromise"
+    COLLABORATE = "collaborate"
+
+
+class ActionType(StrEnum):
+    """Convenience constants for common approval action types.
+
+    Fields use ``NotBlankStr`` for extensibility — custom values are valid.
+    """
+
+    CODE_MERGE = "code_merge"
+    DEPLOYMENT = "deployment"
+    BUDGET_SPEND = "budget_spend"
+    EXTERNAL_COMMUNICATION = "external_communication"
+    HIRING = "hiring"
+    ARCHITECTURE_CHANGE = "architecture_change"
