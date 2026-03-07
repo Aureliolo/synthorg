@@ -9,6 +9,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from ai_company.constants import BUDGET_ROUNDING_PRECISION
 from ai_company.core.enums import CompanyType
 from ai_company.core.types import NotBlankStr  # noqa: TC001
+from ai_company.observability import get_logger
+from ai_company.observability.events.company import COMPANY_VALIDATION_ERROR
+
+logger = get_logger(__name__)
 
 # ── Department internal structure models ─────────────────────────
 
@@ -85,15 +89,23 @@ class ApprovalChain(BaseModel):
 
     @model_validator(mode="after")
     def _validate_approvers(self) -> Self:
-        """Ensure approvers is non-empty and min_approvals is within bounds."""
+        """Ensure approvers is non-empty, unique, and min_approvals is within bounds."""
         if not self.approvers:
             msg = "Approval chain must have at least one approver"
+            logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
+            raise ValueError(msg)
+        normalized = [a.strip().casefold() for a in self.approvers]
+        if len(normalized) != len(set(normalized)):
+            dupes = sorted(a for a, c in Counter(normalized).items() if c > 1)
+            msg = f"Duplicate approvers in approval chain: {dupes}"
+            logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
         if self.min_approvals > len(self.approvers):
             msg = (
                 f"min_approvals ({self.min_approvals}) exceeds "
                 f"number of approvers ({len(self.approvers)})"
             )
+            logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
         return self
 
@@ -138,6 +150,7 @@ def _reject_same_department(from_dept: str, to_dept: str, label: str) -> None:
             f"{label} must be between different departments: "
             f"{from_dept!r} == {to_dept!r}"
         )
+        logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
         raise ValueError(msg)
 
 
@@ -425,6 +438,7 @@ class Company(BaseModel):
         if len(names) != len(set(names)):
             dupes = sorted(n for n, c in Counter(names).items() if c > 1)
             msg = f"Duplicate department names: {dupes}"
+            logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
 
         # Validate handoff/escalation references against declared departments
@@ -433,11 +447,13 @@ class Company(BaseModel):
             for dept in (handoff.from_department, handoff.to_department):
                 if dept.strip().casefold() not in known:
                     msg = f"Workflow handoff references unknown department: {dept!r}"
+                    logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
                     raise ValueError(msg)
         for escalation in self.escalation_paths:
             for dept in (escalation.from_department, escalation.to_department):
                 if dept.strip().casefold() not in known:
                     msg = f"Escalation path references unknown department: {dept!r}"
+                    logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
                     raise ValueError(msg)
 
         # Budget sum
@@ -448,5 +464,6 @@ class Company(BaseModel):
                 f"Department budget allocations sum to {total:.2f}%, "
                 f"exceeding {max_budget_percent:.0f}%"
             )
+            logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
         return self

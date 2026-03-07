@@ -317,7 +317,9 @@ def get_personality_preset(name: str) -> dict[str, Any]:
 # Validate all presets at import time to catch key typos immediately.
 for _preset_name, _preset_dict in PERSONALITY_PRESETS.items():
     PersonalityConfig(**_preset_dict)
-del _preset_name, _preset_dict
+# Clean up loop variables only if the loop body executed (non-empty dict).
+if PERSONALITY_PRESETS:
+    del _preset_name, _preset_dict
 
 
 def generate_auto_name(role: str, *, seed: int | None = None) -> str:

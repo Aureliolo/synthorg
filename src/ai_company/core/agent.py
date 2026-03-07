@@ -1,11 +1,10 @@
 """Agent identity and configuration models."""
 
-import math
 from datetime import date  # noqa: TC003 — required at runtime by Pydantic
 from typing import Self
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.enums import (
     AgentStatus,
@@ -47,7 +46,7 @@ class PersonalityConfig(BaseModel):
         conflict_approach: Conflict resolution approach.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     traits: tuple[NotBlankStr, ...] = Field(
         default=(),
@@ -121,22 +120,6 @@ class PersonalityConfig(BaseModel):
         default=ConflictApproach.COLLABORATE,
         description="Conflict resolution approach",
     )
-
-    @field_validator(
-        "openness",
-        "conscientiousness",
-        "extraversion",
-        "agreeableness",
-        "stress_response",
-        mode="after",
-    )
-    @classmethod
-    def _reject_nan(cls, v: float) -> float:
-        """Reject NaN values for Big Five dimensions."""
-        if math.isnan(v):
-            msg = "NaN is not allowed for Big Five dimensions"
-            raise ValueError(msg)
-        return v
 
 
 class SkillSet(BaseModel):

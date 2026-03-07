@@ -581,6 +581,22 @@ class TestApprovalChain:
         )
         assert c.min_approvals == 0
 
+    def test_duplicate_approvers_rejected(self) -> None:
+        """Reject approval chain with duplicate approvers."""
+        with pytest.raises(ValidationError, match="Duplicate approvers"):
+            ApprovalChain(
+                action_type="deploy",
+                approvers=("lead", "lead"),
+            )
+
+    def test_duplicate_approvers_case_insensitive(self) -> None:
+        """Reject approvers that differ only by case."""
+        with pytest.raises(ValidationError, match="Duplicate approvers"):
+            ApprovalChain(
+                action_type="deploy",
+                approvers=("Lead", "lead"),
+            )
+
     def test_frozen(self) -> None:
         """Ensure ApprovalChain is immutable."""
         c = ApprovalChain(action_type="deploy", approvers=("lead",))
@@ -768,7 +784,7 @@ class TestDepartmentExtended:
             )
 
     def test_duplicate_subordinates_case_insensitive(self) -> None:
-        """Reject subordinates that differ only by case or whitespace."""
+        """Reject subordinates that differ only by case."""
         with pytest.raises(ValidationError, match="Duplicate subordinates"):
             Department(
                 name="eng",
@@ -776,5 +792,17 @@ class TestDepartmentExtended:
                 reporting_lines=(
                     ReportingLine(subordinate="Alice", supervisor="lead"),
                     ReportingLine(subordinate="alice", supervisor="manager"),
+                ),
+            )
+
+    def test_duplicate_subordinates_whitespace_insensitive(self) -> None:
+        """Reject subordinates that differ only by surrounding whitespace."""
+        with pytest.raises(ValidationError, match="Duplicate subordinates"):
+            Department(
+                name="eng",
+                head="cto",
+                reporting_lines=(
+                    ReportingLine(subordinate="Alice", supervisor="lead"),
+                    ReportingLine(subordinate=" Alice ", supervisor="manager"),
                 ),
             )

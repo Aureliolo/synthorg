@@ -389,6 +389,23 @@ class TestCompanyTemplate:
         )
         assert len(t.workflow_handoffs) == 1
 
+    def test_escalation_paths_accepted(
+        self,
+        make_template_dict: Callable[..., dict[str, Any]],
+    ) -> None:
+        t = CompanyTemplate(
+            **make_template_dict(
+                escalation_paths=(
+                    {
+                        "from_department": "eng",
+                        "to_department": "security",
+                        "condition": "vulnerability found",
+                    },
+                ),
+            )
+        )
+        assert len(t.escalation_paths) == 1
+
     def test_frozen(
         self,
         make_template_dict: Callable[..., dict[str, Any]],
