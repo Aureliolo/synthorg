@@ -101,6 +101,17 @@ class TestTaskExecutionRetryCount:
         result = exe.with_transition(TaskStatus.IN_PROGRESS)
         assert result.retry_count == 1
 
+    def test_failed_transition_not_terminal(
+        self, sample_task_with_criteria: Task
+    ) -> None:
+        """FAILED does not set completed_at and is_terminal is False."""
+        exe = TaskExecution.from_task(sample_task_with_criteria)
+        in_progress = exe.with_transition(TaskStatus.IN_PROGRESS)
+        failed = in_progress.with_transition(TaskStatus.FAILED, reason="crash")
+        assert failed.status is TaskStatus.FAILED
+        assert failed.completed_at is None
+        assert failed.is_terminal is False
+
 
 @pytest.mark.unit
 class TestTaskExecutionTransitions:

@@ -109,6 +109,7 @@ class TestEnumStringValues:
         assert TaskStatus.IN_REVIEW.value == "in_review"
         assert TaskStatus.COMPLETED.value == "completed"
         assert TaskStatus.BLOCKED.value == "blocked"
+        assert TaskStatus.FAILED.value == "failed"
         assert TaskStatus.CANCELLED.value == "cancelled"
 
     def test_task_type_values(self) -> None:

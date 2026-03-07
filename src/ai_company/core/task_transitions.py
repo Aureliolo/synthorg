@@ -5,7 +5,7 @@ DESIGN_SPEC Section 6.1 and extended with BLOCKED, CANCELLED, and
 FAILED transitions for completeness::
 
     CREATED -> ASSIGNED
-    ASSIGNED -> IN_PROGRESS | BLOCKED | CANCELLED
+    ASSIGNED -> IN_PROGRESS | BLOCKED | CANCELLED | FAILED
     IN_PROGRESS -> IN_REVIEW | BLOCKED | CANCELLED | FAILED
     IN_REVIEW -> COMPLETED | IN_PROGRESS (rework) | BLOCKED | CANCELLED
     BLOCKED -> ASSIGNED (unblocked)
@@ -31,6 +31,7 @@ VALID_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
             TaskStatus.IN_PROGRESS,
             TaskStatus.BLOCKED,
             TaskStatus.CANCELLED,
+            TaskStatus.FAILED,
         }
     ),
     TaskStatus.IN_PROGRESS: frozenset(

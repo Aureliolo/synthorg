@@ -536,3 +536,25 @@ class TestAgentEngineRecovery:
         )
 
         assert custom_results == ["custom_called"]
+
+    async def test_memory_error_in_recovery_propagates(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """MemoryError from recovery strategy is not swallowed."""
+        mock_strategy = MagicMock()
+        mock_strategy.recover = AsyncMock(side_effect=MemoryError("OOM"))
+
+        provider = MagicMock()
+        provider.complete = AsyncMock(side_effect=RuntimeError("crash"))
+        engine = AgentEngine(
+            provider=provider,
+            recovery_strategy=mock_strategy,
+        )
+
+        with pytest.raises(MemoryError, match="OOM"):
+            await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )

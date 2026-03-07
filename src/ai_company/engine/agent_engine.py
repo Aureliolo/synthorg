@@ -61,13 +61,14 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _DEFAULT_RECOVERY_STRATEGY = FailAndReassignStrategy()
-"""Module-level singleton for the default recovery strategy."""
+"""Module-level default instance for the recovery strategy."""
 
 _EXECUTABLE_STATUSES = frozenset({TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS})
 """Task statuses the engine will accept for execution.
 
-CREATED tasks lack an assignee; terminal statuses (COMPLETED, CANCELLED)
-and BLOCKED/IN_REVIEW are not executable.
+CREATED tasks lack an assignee; terminal statuses (COMPLETED, CANCELLED),
+BLOCKED, IN_REVIEW, and FAILED are not executable.  FAILED tasks must be
+reassigned (FAILED -> ASSIGNED) before re-execution.
 """
 
 

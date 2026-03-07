@@ -10,9 +10,10 @@ See DESIGN_SPEC Section 6.6 for the full crash recovery design.
 
 from typing import Protocol, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from ai_company.core.enums import TaskStatus
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.engine.context import AgentContext, AgentContextSnapshot  # noqa: TC001
 from ai_company.engine.task_execution import TaskExecution  # noqa: TC001
 from ai_company.observability import get_logger
@@ -31,7 +32,7 @@ class RecoveryResult(BaseModel):
     Attributes:
         task_execution: Updated execution with FAILED status.
         strategy_type: Identifier of the strategy used (e.g. ``"fail_reassign"``).
-        can_reassign: Whether retry_count < task.max_retries.
+        can_reassign: Computed — ``True`` when retry_count < task.max_retries.
         context_snapshot: Redacted snapshot (no message contents).
         error_message: The error that triggered recovery.
     """
@@ -41,11 +42,8 @@ class RecoveryResult(BaseModel):
     task_execution: TaskExecution = Field(
         description="Updated execution with FAILED status",
     )
-    strategy_type: str = Field(
+    strategy_type: NotBlankStr = Field(
         description="Identifier of the recovery strategy used",
-    )
-    can_reassign: bool = Field(
-        description="Whether the task can be reassigned for retry",
     )
     context_snapshot: AgentContextSnapshot = Field(
         description="Redacted context snapshot (no message contents)",
@@ -53,6 +51,14 @@ class RecoveryResult(BaseModel):
     error_message: str = Field(
         description="The error that triggered recovery",
     )
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Whether the task can be reassigned for retry",
+    )
+    @property
+    def can_reassign(self) -> bool:
+        """Whether the task can be reassigned for retry."""
+        return self.task_execution.retry_count < self.task_execution.task.max_retries
 
 
 @runtime_checkable
@@ -97,6 +103,8 @@ class FailAndReassignStrategy:
     4. Report ``can_reassign = retry_count < task.max_retries``.
     """
 
+    STRATEGY_TYPE: str = "fail_reassign"
+
     async def recover(
         self,
         *,
@@ -117,7 +125,7 @@ class FailAndReassignStrategy:
         logger.info(
             EXECUTION_RECOVERY_START,
             task_id=task_execution.task.id,
-            strategy="fail_reassign",
+            strategy=self.STRATEGY_TYPE,
             retry_count=task_execution.retry_count,
         )
 
@@ -135,12 +143,9 @@ class FailAndReassignStrategy:
             reason=error_message,
         )
 
-        can_reassign = task_execution.retry_count < task_execution.task.max_retries
-
         result = RecoveryResult(
             task_execution=failed_execution,
-            strategy_type="fail_reassign",
-            can_reassign=can_reassign,
+            strategy_type=self.STRATEGY_TYPE,
             context_snapshot=snapshot,
             error_message=error_message,
         )
@@ -148,8 +153,8 @@ class FailAndReassignStrategy:
         logger.info(
             EXECUTION_RECOVERY_COMPLETE,
             task_id=task_execution.task.id,
-            strategy="fail_reassign",
-            can_reassign=can_reassign,
+            strategy=self.STRATEGY_TYPE,
+            can_reassign=result.can_reassign,
             retry_count=task_execution.retry_count,
             max_retries=task_execution.task.max_retries,
         )
@@ -158,4 +163,4 @@ class FailAndReassignStrategy:
 
     def get_strategy_type(self) -> str:
         """Return the strategy type identifier."""
-        return "fail_reassign"
+        return self.STRATEGY_TYPE

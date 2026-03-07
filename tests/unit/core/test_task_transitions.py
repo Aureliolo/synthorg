@@ -55,6 +55,9 @@ class TestValidTransitions:
     def test_in_progress_to_failed(self) -> None:
         validate_transition(TaskStatus.IN_PROGRESS, TaskStatus.FAILED)
 
+    def test_assigned_to_failed(self) -> None:
+        validate_transition(TaskStatus.ASSIGNED, TaskStatus.FAILED)
+
     def test_failed_to_assigned(self) -> None:
         validate_transition(TaskStatus.FAILED, TaskStatus.ASSIGNED)
 

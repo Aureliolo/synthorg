@@ -58,6 +58,7 @@ class Task(BaseModel):
         estimated_complexity: Task complexity estimate.
         budget_limit: Maximum USD spend for this task.
         deadline: Optional deadline (ISO 8601 string or ``None``).
+        max_retries: Max reassignment attempts after failure (default 1).
         status: Current lifecycle status.
     """
 

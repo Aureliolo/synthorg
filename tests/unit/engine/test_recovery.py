@@ -11,6 +11,7 @@ from ai_company.engine.context import AgentContext
 
 if TYPE_CHECKING:
     from ai_company.core.agent import AgentIdentity
+
 from ai_company.engine.recovery import (
     FailAndReassignStrategy,
     RecoveryResult,

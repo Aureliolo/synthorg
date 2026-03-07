@@ -694,12 +694,13 @@ structured_phases:
                  └─────┬─────┘
                        │ assignment
                  ┌─────▼─────┐
-          ┌──────│ ASSIGNED   │
-          │      └─────┬─────┘
-          │            │ agent starts
-          │      ┌─────▼─────┐
-          │      │IN_PROGRESS │◀──── (rework)
+          ┌──────│ ASSIGNED   │◀──── (reassignment)
           │      └─────┬─────┘        │
+          │            │ agent starts  │
+          │      ┌─────▼─────┐   ┌────┴─────┐
+          │      │IN_PROGRESS │──▶│  FAILED   │
+          │      └─────┬─────┘   └──────────┘
+          │            │  ◀──── (rework)
           │            │ agent done    │
           │      ┌─────▼─────┐        │
           │      │ IN_REVIEW  │───────┘
@@ -715,6 +716,8 @@ structured_phases:
     │ CANCELLED  │
     └────────────┘
 ```
+
+> **Non-terminal states:** BLOCKED and FAILED are non-terminal — BLOCKED returns to ASSIGNED when unblocked, FAILED returns to ASSIGNED for retry (see §6.6). COMPLETED and CANCELLED are terminal states with no outgoing transitions.
 
 > **Runtime wrapper (M3):** During execution, `Task` is wrapped by `TaskExecution` (in `engine/task_execution.py`). `TaskExecution` is a frozen Pydantic model that tracks status transitions via `model_copy(update=...)`, accumulates `TokenUsage` cost, and records a `StatusTransition` audit trail. The original `Task` is preserved unchanged; `to_task_snapshot()` produces a `Task` copy with the current execution status for persistence.
 
@@ -748,6 +751,7 @@ task:
   task_structure: "parallel"      # sequential, parallel, mixed (M4 — see §6.9)
   budget_limit: 2.00             # max USD for this task
   deadline: null
+  max_retries: 1                 # max reassignment attempts after failure (0 = no retry)
   status: "assigned"
 ```
 
@@ -956,7 +960,7 @@ When an agent execution fails unexpectedly (unhandled exception, OOM, process ki
 
 The engine catches the failure at its outermost boundary, logs a redacted `AgentContext` snapshot (turn count, accumulated cost — excluding message contents to avoid leaking sensitive prompts/tool outputs), transitions the task to `FAILED`, and makes it available for reassignment (manual or automatic via the task router).
 
-> **New non-terminal state:** `FAILED` is a new `TaskStatus` variant to be added alongside `CANCELLED`. The §6.1 lifecycle diagram and `TaskStatus` enum will be updated when crash recovery is implemented in M3. `FAILED` differs from `CANCELLED` (which is terminal) in that failed tasks are eligible for automatic reassignment.
+> **Non-terminal state (implemented in M3):** `FAILED` is a `TaskStatus` variant alongside `CANCELLED`. `FAILED` differs from `CANCELLED` (which is terminal) in that failed tasks are eligible for automatic reassignment. Valid transitions: `IN_PROGRESS → FAILED`, `ASSIGNED → FAILED` (early setup failures), `FAILED → ASSIGNED` (reassignment). See the updated §6.1 lifecycle diagram.
 
 ```yaml
 crash_recovery:
@@ -968,9 +972,11 @@ crash_recovery:
 
 On crash:
 1. Catch exception at the engine boundary (outermost `try/except` in the execution loop)
-2. Log at ERROR with redacted `AgentContext` snapshot (turn count, accumulated cost, tool call history — message contents excluded)
+2. Log at ERROR with redacted `AgentContext` snapshot (turn count, accumulated cost — message contents excluded)
 3. Transition `TaskExecution` → `FAILED` with the exception as the failure reason
-4. Task becomes available for reassignment via the task router
+4. `RecoveryResult.can_reassign` reports whether `retry_count < max_retries`
+
+> **M3 limitation:** The `can_reassign` flag is computed and returned in `RecoveryResult`, but automated reassignment is not yet implemented — the task router (§6.4) will consume this in a later milestone.
 
 #### Strategy 2: Checkpoint Recovery (Planned — M4/M5)
 
@@ -2272,6 +2278,7 @@ ai-company/
 │       │   ├── loop_protocol.py    # ExecutionLoop protocol + result models
 │       │   ├── metrics.py          # TaskCompletionMetrics proxy overhead model
 │       │   ├── react_loop.py       # ReAct loop implementation
+│       │   ├── recovery.py         # Crash recovery strategies (RecoveryStrategy protocol)
 │       │   ├── run_result.py       # AgentRunResult outcome model
 │       │   ├── agent_engine.py     # Agent execution engine
 │       │   ├── task_engine.py      # Task routing & scheduling (M3-M4)

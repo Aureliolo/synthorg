@@ -71,6 +71,7 @@ class TaskExecution(BaseModel):
         transition_log: Audit trail of status transitions.
         accumulated_cost: Running token usage and cost totals.
         turn_count: Number of LLM turns completed.
+        retry_count: Number of previous failure-reassignment cycles.
         started_at: Set by ``with_transition`` on first entry to
             ``IN_PROGRESS`` (``None`` until then).
         completed_at: When execution reached a terminal state.
