@@ -1,7 +1,7 @@
 """E2E tests: single agent completes real tasks end-to-end.
 
 Validates the core MVP hypothesis — a single agent can complete a real
-task through the full execution pipeline (engine, ReAct loop, real tools,
+task through the full execution pipeline (engine, execution loop, real tools,
 cost tracking, task lifecycle).
 """
 
@@ -36,7 +36,7 @@ pytestmark = [pytest.mark.e2e, pytest.mark.timeout(30)]
 
 
 class TestFileToolAgent:
-    """Agent creates a file using real WriteFileTool + ReadFileTool."""
+    """Agent creates a file using real file system tools."""
 
     async def test_agent_creates_file_with_real_tools(
         self, e2e_workspace: Path
@@ -98,6 +98,7 @@ class TestFileToolAgent:
         tool_msgs = [m for m in conversation if m.role == MessageRole.TOOL]
         assert len(tool_msgs) == 1
         assert tool_msgs[0].tool_result is not None
+        assert tool_msgs[0].tool_result.is_error is False
         assert "Created output.txt" in tool_msgs[0].tool_result.content
 
         # Task lifecycle: ASSIGNED -> IN_PROGRESS -> IN_REVIEW -> COMPLETED
@@ -341,7 +342,7 @@ class TestMaxIterationsExhausted:
         assert result.termination_reason == TerminationReason.MAX_TURNS
         assert result.total_turns == 2
 
-        # Task stays IN_PROGRESS (MAX_TURNS is not ERROR)
+        # Task stays IN_PROGRESS (only COMPLETED/SHUTDOWN/ERROR trigger transitions)
         te = result.execution_result.context.task_execution
         assert te is not None
         assert te.status == TaskStatus.IN_PROGRESS
@@ -377,9 +378,12 @@ class TestMaxIterationsExhausted:
 class TestRealLLMIntegration:
     """Optional smoke test with a real LLM provider.
 
-    Never runs in CI. Requires REAL_LLM_TEST=1 environment variable.
+    Skipped unless REAL_LLM_TEST=1 is set; not expected to run in CI.
     """
 
     async def test_real_provider_text_completion(self) -> None:
-        """Minimal text-only task with a real provider."""
+        """Minimal text-only task with a real provider.
+
+        Placeholder — replace the skip with real provider setup when ready.
+        """
         pytest.skip("Real LLM test placeholder — configure a real provider")

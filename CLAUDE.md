@@ -34,6 +34,7 @@ uv run ruff format src/ tests/             # format
 uv run mypy src/ tests/                    # type-check (strict)
 uv run pytest tests/ -m unit               # unit tests only
 uv run pytest tests/ -m integration        # integration tests only
+uv run pytest tests/ -m e2e                # e2e tests only
 uv run pytest tests/ -n auto --cov=ai_company --cov-fail-under=80  # full suite + coverage
 uv run pre-commit run --all-files          # all pre-commit hooks
 ```

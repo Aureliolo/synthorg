@@ -820,14 +820,15 @@ The agent execution loop defines how an agent processes a task from start to fin
 All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol (defined in `engine/loop_protocol.py`):
 
 - **`get_loop_type() -> str`** — returns a unique identifier (e.g. `"react"`)
-- **`execute(...) -> ExecutionResult`** — runs the loop to completion, accepting `AgentContext`, `CompletionProvider`, optional `ToolInvoker`, optional `BudgetChecker`, and optional `CompletionConfig`
+- **`execute(...) -> ExecutionResult`** — runs the loop to completion, accepting `AgentContext`, `CompletionProvider`, optional `ToolInvoker`, optional `BudgetChecker`, optional `ShutdownChecker`, and optional `CompletionConfig`
 
 Supporting models:
 
-- **`TerminationReason`** — enum: `COMPLETED`, `MAX_TURNS`, `BUDGET_EXHAUSTED`, `ERROR`
+- **`TerminationReason`** — enum: `COMPLETED`, `MAX_TURNS`, `BUDGET_EXHAUSTED`, `SHUTDOWN`, `ERROR`
 - **`TurnRecord`** — frozen per-turn stats (tokens, cost, tool calls, finish reason)
 - **`ExecutionResult`** — frozen outcome with final context, termination reason, turn records, and optional error message (required when reason is `ERROR`)
 - **`BudgetChecker`** — callback type `Callable[[AgentContext], bool]` invoked before each LLM call
+- **`ShutdownChecker`** — callback type `Callable[[], bool]` checked at turn boundaries to initiate cooperative shutdown
 
 #### Loop 1: ReAct (Default for Simple Tasks)
 

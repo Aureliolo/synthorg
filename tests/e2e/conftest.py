@@ -67,6 +67,12 @@ class ScriptedProvider:
         """Return the next scripted response."""
         self.received_messages.append(list(messages))
         idx = self._call_count
+        if idx >= len(self._responses):
+            msg = (
+                f"ScriptedProvider exhausted: call #{idx + 1} but only "
+                f"{len(self._responses)} responses were scripted"
+            )
+            raise IndexError(msg)
         self._call_count += 1
         return self._responses[idx]
 
