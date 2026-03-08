@@ -6,29 +6,32 @@ A framework for orchestrating autonomous AI agents as employees within a virtual
 
 ## Concept
 
-AI Company lets you spin up a virtual organization staffed entirely by AI agents. Each agent has a role (CEO, developer, designer, QA, etc.), a personality, persistent memory, and access to real tools. Agents collaborate through structured communication, follow workflows, and produce real artifacts - code, documents, designs, and more.
+AI Company lets you spin up a virtual organization staffed entirely by AI agents. Each agent has a role (CEO, developer, designer, QA, etc.), a personality, and access to real tools, with persistent memory planned for the next milestone. Agents collaborate through structured communication, follow workflows, and produce real artifacts - code, documents, designs, and more.
 
-## Key Features (Planned)
+## Current Capability Snapshot
 
-- **Any Company Structure** - From a 2-person startup to a 50+ enterprise, defined via config/templates
-- **Deep Agent Identity** - Names, personalities, skills, seniority levels, performance tracking
-- **Multi-Provider** - Any LLM via LiteLLM — cloud APIs, OpenRouter (400+ models), local Ollama, and more
-- **Smart Cost Management** - Per-agent budget tracking, auto model routing, CFO agent optimization
-- **Hierarchical Delegation** - Chain-of-command task delegation with five-mechanism loop prevention
-- **Conflict Resolution** - Pluggable strategies for resolving agent disagreements (authority, debate, human escalation, hybrid) with dissent audit trail
-- **Task Decomposition & Routing** - DAG-based and LLM-based subtask decomposition, structure classification, and agent-task scoring
-- **Task Assignment** - Pluggable strategies (manual, role-based, load-balanced, cost-optimized, hierarchical, auction) for matching tasks to capable agents
-- **Workspace Isolation** - Git worktree-based concurrent workspace isolation with sequential merge and conflict escalation
-- **Configurable Autonomy** - From fully autonomous to human-approves-everything, with a Security Ops agent in between
-- **Persistent Memory** - Agents remember past decisions, code, relationships (memory layer TBD)
-- **HR System** - Hire, fire, promote agents. HR agent analyzes skill gaps and proposes candidates
-- **Real Tool Access** - File system, git, code execution, web, databases - role-based and sandboxed
-- **API-First** - REST + WebSocket API with local web dashboard
-- **Templates + Builder** - Pre-built company templates and interactive builder
+### Implemented (M0-M4 foundation)
+
+- **Company Config + Core Models** - Strong Pydantic validation, immutable config models, runtime state models
+- **Provider Layer** - LiteLLM-based provider abstraction with routing, retry, and rate limiting
+- **Budget Tracking** - Cost records, summaries, and coordination analytics models
+- **Tool System** - File system tools, git tools, sandbox abstraction, permission gating
+- **Single-Agent Engine (M3)** - ReAct/Plan-Execute loops, fail-and-reassign recovery, graceful shutdown
+- **Multi-Agent Core (M4)** - Message bus, delegation with loop prevention, conflict resolution, meeting protocols
+- **Task Intelligence (M4)** - Task decomposition, routing, assignment strategies, workspace isolation via git worktrees
+- **Templates** - Built-in templates, inheritance/merge, rendering, personality presets
+
+### Not implemented yet (planned milestones)
+
+- **Memory Layer (M5)** - Mem0 selected as initial backend behind pluggable protocol ([ADR-001](docs/decisions/ADR-001-memory-layer.md)); implementation pending
+- **Budget Enforcement (M5)** - Auto-downgrade, CFO agent logic, cost tiers
+- **API Layer (M6)** - REST + WebSocket API, CLI commands
+- **Security/Approval System (M7)** - SecOps agent, progressive trust, approval workflows
+- **Advanced Product Surface** - Web dashboard, HR workflows, MCP integrations
 
 ## Status
 
-**M3: Single Agent** and **M4: Multi-Agent** in progress (M0 Tooling, M1 Config & Core, M2 Providers — all done). See [DESIGN_SPEC.md](DESIGN_SPEC.md) for the full high-level specification.
+**M0-M4 complete. M5 (Memory, Persistence & Budget Enforcement) is next.** See [DESIGN_SPEC.md](DESIGN_SPEC.md) for the full high-level specification.
 
 ## Tech Stack
 
@@ -36,7 +39,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 - **uv** as package manager, **Hatchling** as build backend
 - **LiteLLM** for multi-provider LLM abstraction
 - **structlog** for structured logging and observability
-- **Memory layer TBD** (candidates: Mem0, Zep, Letta, Cognee, custom) for agent memory (planned)
+- **Mem0** for agent memory (initial backend, config-driven, swappable via protocol)
 - **MCP** for tool integration (planned)
 - **Vue 3** for web dashboard (planned)
 - **SQLite** → PostgreSQL for data persistence (planned)
