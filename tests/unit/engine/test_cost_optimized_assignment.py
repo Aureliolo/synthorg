@@ -131,7 +131,7 @@ class TestCostOptimizedAssignmentStrategy:
 
         assert result.selected is not None
         assert result.selected.agent_identity.name == "best-dev"
-        assert "no cost data" in result.reason
+        assert "insufficient cost data" in result.reason
 
     def test_no_eligible_returns_none(self) -> None:
         """All below min_score returns selected=None."""
@@ -158,7 +158,7 @@ class TestCostOptimizedAssignmentStrategy:
         assert result.selected is None
 
     def test_partial_cost_data(self) -> None:
-        """Missing agents default to 0.0 cost."""
+        """Incomplete cost data triggers score-only fallback."""
         scorer = AgentTaskScorer()
         strategy = CostOptimizedAssignmentStrategy(scorer)
 
@@ -190,8 +190,10 @@ class TestCostOptimizedAssignmentStrategy:
         result = strategy.assign(request)
 
         assert result.selected is not None
-        # unknown-dev defaults to 0.0 cost, so it wins
-        assert result.selected.agent_identity.name == "unknown-dev"
+        # Incomplete cost data → score-only fallback; equal scores,
+        # known-dev wins by sort stability (first in available_agents).
+        assert result.selected.agent_identity.name == "known-dev"
+        assert "insufficient cost data" in result.reason
 
     @pytest.mark.parametrize(
         ("costs", "expected_winner"),

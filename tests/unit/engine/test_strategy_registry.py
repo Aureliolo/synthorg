@@ -189,4 +189,5 @@ class TestBuildStrategyMap:
             STRATEGY_NAME_COST_OPTIMIZED,
             STRATEGY_NAME_AUCTION,
         ):
-            assert result[name]._scorer is custom_scorer
+            strategy = result[name]
+            assert getattr(strategy, "_scorer", None) is custom_scorer
