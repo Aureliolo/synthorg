@@ -20,24 +20,27 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # Seniority-to-complexity alignment mapping
-_SENIORITY_COMPLEXITY: dict[SeniorityLevel, tuple[str, ...]] = {
-    SeniorityLevel.JUNIOR: (Complexity.SIMPLE.value,),
-    SeniorityLevel.MID: (Complexity.SIMPLE.value, Complexity.MEDIUM.value),
-    SeniorityLevel.SENIOR: (Complexity.MEDIUM.value, Complexity.COMPLEX.value),
-    SeniorityLevel.LEAD: (Complexity.COMPLEX.value, Complexity.EPIC.value),
-    SeniorityLevel.PRINCIPAL: (Complexity.COMPLEX.value, Complexity.EPIC.value),
-    SeniorityLevel.DIRECTOR: (Complexity.EPIC.value,),
-    SeniorityLevel.VP: (Complexity.EPIC.value,),
-    SeniorityLevel.C_SUITE: (Complexity.EPIC.value,),
+_SENIORITY_COMPLEXITY: dict[SeniorityLevel, tuple[Complexity, ...]] = {
+    SeniorityLevel.JUNIOR: (Complexity.SIMPLE,),
+    SeniorityLevel.MID: (Complexity.SIMPLE, Complexity.MEDIUM),
+    SeniorityLevel.SENIOR: (Complexity.MEDIUM, Complexity.COMPLEX),
+    SeniorityLevel.LEAD: (Complexity.COMPLEX, Complexity.EPIC),
+    SeniorityLevel.PRINCIPAL: (Complexity.COMPLEX, Complexity.EPIC),
+    SeniorityLevel.DIRECTOR: (Complexity.EPIC,),
+    SeniorityLevel.VP: (Complexity.EPIC,),
+    SeniorityLevel.C_SUITE: (Complexity.EPIC,),
 }
 
 
 class AgentTaskScorer:
     """Scores agent-subtask compatibility for routing.
 
-    Scoring heuristics:
+    Scoring heuristics (both skill ratios use total required count
+    as denominator — i.e. fraction of required skills covered per tier):
+
     - Primary skill overlap: matched/max(required, 1) * 0.4
     - Secondary skill overlap: matched/max(required, 1) * 0.2
+      (skills already matched by primary are excluded)
     - Role match (if required_role set): +0.2
     - Seniority-complexity alignment: +0.2
     - Score capped at 1.0
@@ -45,12 +48,16 @@ class AgentTaskScorer:
 
     When the subtask has no ``required_skills``, skill-overlap
     components (0.6 total weight) are skipped, and the maximum
-    score is 0.4 (role 0.2 + seniority 0.2).
+    score is 0.4 (role 0.2 + seniority 0.2). If ``required_role``
+    is also not set, the maximum score is 0.2 (seniority only).
     """
 
     __slots__ = ("_min_score",)
 
     def __init__(self, min_score: float = 0.1) -> None:
+        if not 0.0 <= min_score <= 1.0:
+            msg = f"min_score must be between 0.0 and 1.0, got {min_score}"
+            raise ValueError(msg)
         self._min_score = min_score
 
     @property
@@ -98,9 +105,9 @@ class AgentTaskScorer:
         else:
             reasons.append("no skills required, skill matching skipped")
 
-        # Secondary skill overlap (weight: 0.2)
+        # Secondary skill overlap (weight: 0.2) — exclude primary matches
         secondary = set(agent.skills.secondary)
-        secondary_matched = required & secondary
+        secondary_matched = (required & secondary) - primary_matched
         if required:
             secondary_ratio = len(secondary_matched) / max(len(required), 1)
             secondary_contrib = secondary_ratio * 0.2
@@ -118,12 +125,12 @@ class AgentTaskScorer:
             reasons.append("role match")
 
         # Seniority-complexity alignment (weight: 0.2)
-        complexity = subtask.estimated_complexity.value
         aligned_complexities = _SENIORITY_COMPLEXITY.get(agent.level, ())
-        if complexity in aligned_complexities:
+        if subtask.estimated_complexity in aligned_complexities:
             total_score += 0.2
             reasons.append(
-                f"seniority {agent.level.value} aligns with complexity {complexity}"
+                f"seniority {agent.level.value} aligns with "
+                f"complexity {subtask.estimated_complexity.value}"
             )
 
         # Cap at 1.0

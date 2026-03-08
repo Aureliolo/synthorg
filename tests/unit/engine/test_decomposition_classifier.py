@@ -2,7 +2,9 @@
 
 import pytest
 
+from ai_company.core.artifact import ExpectedArtifact
 from ai_company.core.enums import (
+    ArtifactType,
     Priority,
     TaskStructure,
     TaskType,
@@ -17,6 +19,7 @@ def _make_task(
     criteria: tuple[AcceptanceCriterion, ...] = (),
     task_structure: TaskStructure | None = None,
     dependencies: tuple[str, ...] = (),
+    artifacts: tuple[ExpectedArtifact, ...] = (),
 ) -> Task:
     """Helper to create a task with custom description/criteria."""
     return Task(
@@ -30,6 +33,7 @@ def _make_task(
         acceptance_criteria=criteria,
         task_structure=task_structure,
         dependencies=dependencies,
+        artifacts_expected=artifacts,
     )
 
 
@@ -143,6 +147,30 @@ class TestTaskStructureClassifier:
         task = _make_task(description, dependencies=("dep-1",))
         result = classifier.classify(task)
         assert result == TaskStructure.SEQUENTIAL
+
+    @pytest.mark.unit
+    def test_artifact_boundary_at_threshold(self) -> None:
+        """Exactly 4 artifacts favours sequential structural signal."""
+        classifier = TaskStructureClassifier()
+        artifacts = tuple(
+            ExpectedArtifact(type=ArtifactType.CODE, path=f"file{i}.py")
+            for i in range(4)
+        )
+        task = _make_task("Do generic work", artifacts=artifacts)
+        result = classifier.classify(task)
+        assert result == TaskStructure.SEQUENTIAL
+
+    @pytest.mark.unit
+    def test_artifact_boundary_above_threshold(self) -> None:
+        """5 artifacts favours parallel structural signal."""
+        classifier = TaskStructureClassifier()
+        artifacts = tuple(
+            ExpectedArtifact(type=ArtifactType.CODE, path=f"file{i}.py")
+            for i in range(5)
+        )
+        task = _make_task("Do generic work", artifacts=artifacts)
+        result = classifier.classify(task)
+        assert result == TaskStructure.PARALLEL
 
     @pytest.mark.unit
     @pytest.mark.parametrize(

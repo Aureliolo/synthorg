@@ -248,6 +248,29 @@ class TestDecompositionService:
         assert result.created_tasks[0].estimated_complexity == Complexity.SIMPLE
 
     @pytest.mark.unit
+    async def test_decompose_exception_propagates(self) -> None:
+        """Unexpected exceptions are logged and re-raised."""
+
+        class _FailingStrategy:
+            async def decompose(
+                self, task: Task, context: DecompositionContext
+            ) -> DecompositionPlan:
+                msg = "strategy boom"
+                raise RuntimeError(msg)
+
+            def get_strategy_name(self) -> str:
+                return "failing"
+
+        task = _make_task()
+        strategy = _FailingStrategy()
+        classifier = TaskStructureClassifier()
+        service = DecompositionService(strategy, classifier)
+        ctx = DecompositionContext()
+
+        with pytest.raises(RuntimeError, match="strategy boom"):
+            await service.decompose_task(task, ctx)
+
+    @pytest.mark.unit
     def test_rollup_status_delegates(self) -> None:
         """rollup_status delegates to StatusRollup.compute."""
         plan = _make_plan()

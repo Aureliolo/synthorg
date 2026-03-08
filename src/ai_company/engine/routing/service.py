@@ -15,6 +15,7 @@ from ai_company.observability.events.task_routing import (
     TASK_ROUTING_COMPLETE,
     TASK_ROUTING_FAILED,
     TASK_ROUTING_NO_AGENTS,
+    TASK_ROUTING_STARTED,
     TASK_ROUTING_SUBTASK_ROUTED,
     TASK_ROUTING_SUBTASK_UNROUTABLE,
 )
@@ -58,7 +59,7 @@ class TaskRoutingService:
         For each subtask:
         1. Score all available agents.
         2. Select the best candidate (highest score >= min_score).
-        3. Select topology per plan.
+        3. Select topology from parent task override or plan structure.
         4. Report unroutable subtasks.
 
         Args:
@@ -71,11 +72,22 @@ class TaskRoutingService:
         """
         plan = decomposition_result.plan
 
+        logger.info(
+            TASK_ROUTING_STARTED,
+            parent_task_id=plan.parent_task_id,
+            subtask_count=len(plan.subtasks),
+            agent_count=len(available_agents),
+        )
+
         if not available_agents:
             logger.warning(
                 TASK_ROUTING_NO_AGENTS,
                 parent_task_id=plan.parent_task_id,
                 subtask_count=len(plan.subtasks),
+            )
+            return RoutingResult(
+                parent_task_id=plan.parent_task_id,
+                unroutable=tuple(s.id for s in plan.subtasks),
             )
 
         try:

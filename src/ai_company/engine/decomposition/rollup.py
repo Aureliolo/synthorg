@@ -10,6 +10,7 @@ from ai_company.engine.decomposition.models import SubtaskStatusRollup
 
 if TYPE_CHECKING:
     from ai_company.core.types import NotBlankStr
+
 from ai_company.observability import get_logger
 from ai_company.observability.events.decomposition import (
     DECOMPOSITION_ROLLUP_COMPUTED,
@@ -26,22 +27,18 @@ class StatusRollup:
         parent_task_id: NotBlankStr,
         subtask_statuses: tuple[TaskStatus, ...],
     ) -> SubtaskStatusRollup:
-        """Compute a status rollup from subtask statuses.
+        """Compute a status rollup from a collection of subtask statuses.
 
-        Rules (applied in order, first match wins):
-        - All COMPLETED -> COMPLETED
-        - All CANCELLED -> CANCELLED
-        - Any FAILED -> FAILED
-        - Any IN_PROGRESS -> IN_PROGRESS
-        - Any BLOCKED (none IN_PROGRESS) -> BLOCKED
-        - Otherwise -> IN_PROGRESS (work still pending)
+        Aggregates subtask statuses into a ``SubtaskStatusRollup`` whose
+        ``derived_parent_status`` computed field determines the overall
+        parent task status based on the aggregated counts.
 
         Args:
             parent_task_id: The parent task identifier.
             subtask_statuses: Statuses of all subtasks.
 
         Returns:
-            Aggregated status rollup.
+            An aggregated status rollup object.
         """
         total = len(subtask_statuses)
 

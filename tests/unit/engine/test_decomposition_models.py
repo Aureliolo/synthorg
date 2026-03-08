@@ -362,6 +362,20 @@ class TestSubtaskStatusRollup:
         )
         assert rollup.derived_parent_status == TaskStatus.IN_PROGRESS
 
+    @pytest.mark.unit
+    def test_completed_plus_cancelled_mix(self) -> None:
+        """Fully terminal mix of COMPLETED+CANCELLED -> COMPLETED."""
+        rollup = SubtaskStatusRollup(
+            parent_task_id="task-1",
+            total=5,
+            completed=3,
+            failed=0,
+            in_progress=0,
+            blocked=0,
+            cancelled=2,
+        )
+        assert rollup.derived_parent_status == TaskStatus.COMPLETED
+
 
 # ---------------------------------------------------------------------------
 # DecompositionContext
@@ -390,3 +404,21 @@ class TestDecompositionContext:
         """Context allows current_depth < max_depth."""
         ctx = DecompositionContext(current_depth=2, max_depth=3)
         assert ctx.current_depth == 2
+
+    @pytest.mark.unit
+    def test_zero_max_subtasks_rejected(self) -> None:
+        """max_subtasks must be >= 1."""
+        with pytest.raises(ValueError, match="greater than or equal to 1"):
+            DecompositionContext(max_subtasks=0)
+
+    @pytest.mark.unit
+    def test_zero_max_depth_rejected(self) -> None:
+        """max_depth must be >= 1."""
+        with pytest.raises(ValueError, match="greater than or equal to 1"):
+            DecompositionContext(max_depth=0)
+
+    @pytest.mark.unit
+    def test_negative_current_depth_rejected(self) -> None:
+        """current_depth must be >= 0."""
+        with pytest.raises(ValueError, match="greater than or equal to 0"):
+            DecompositionContext(current_depth=-1)

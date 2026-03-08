@@ -205,6 +205,19 @@ class TestDependencyGraph:
         assert graph.get_dependencies("nonexistent") == ()
 
     @pytest.mark.unit
+    def test_parallel_groups_cycle_raises(self) -> None:
+        """parallel_groups raises DecompositionCycleError on cycle."""
+        graph = DependencyGraph(
+            (
+                _sub("a", ("c",)),
+                _sub("b", ("a",)),
+                _sub("c", ("b",)),
+            )
+        )
+        with pytest.raises(DecompositionCycleError, match="cycle"):
+            graph.parallel_groups()
+
+    @pytest.mark.unit
     def test_single_node(self) -> None:
         """Single node graph validates and sorts correctly."""
         graph = DependencyGraph((_sub("only"),))

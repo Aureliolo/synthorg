@@ -181,7 +181,7 @@ class TaskStructureClassifier:
         """
         score = 0
 
-        # Multiple distinct artifact types suggest parallel work
+        # Many expected artifacts suggest parallel work
         if len(task.artifacts_expected) > _ARTIFACT_COUNT_THRESHOLD:
             score += 1
 

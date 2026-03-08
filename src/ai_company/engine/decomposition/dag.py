@@ -1,6 +1,6 @@
 """Dependency graph utilities for subtask DAG analysis.
 
-Pure graph logic operating on ``SubtaskDefinition`` tuples.
+Pure graph logic operating on sequences of ``SubtaskDefinition`` objects.
 Returns immutable tuples for all results.
 """
 
@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from ai_company.engine.errors import DecompositionCycleError, DecompositionError
 from ai_company.observability import get_logger
 from ai_company.observability.events.decomposition import (
+    DECOMPOSITION_GRAPH_BUILT,
     DECOMPOSITION_GRAPH_CYCLE,
     DECOMPOSITION_GRAPH_VALIDATED,
     DECOMPOSITION_REFERENCE_ERROR,
@@ -59,6 +60,13 @@ class DependencyGraph:
             MappingProxyType(reverse)
         )
 
+        edge_count = sum(len(v) for v in self._adjacency.values())
+        logger.debug(
+            DECOMPOSITION_GRAPH_BUILT,
+            subtask_count=len(subtasks),
+            edge_count=edge_count,
+        )
+
     def validate(self) -> None:
         """Validate the dependency graph.
 
@@ -95,7 +103,7 @@ class DependencyGraph:
                     raise DecompositionError(msg)
 
     def _check_cycles(self) -> None:
-        """Iterative cycle detection via DFS with explicit stack."""
+        """Iterative DFS cycle detection to avoid stack overflow on deep chains."""
         visited: set[str] = set()
         in_stack: set[str] = set()
 

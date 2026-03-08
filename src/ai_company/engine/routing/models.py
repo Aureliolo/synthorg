@@ -44,7 +44,7 @@ class RoutingDecision(BaseModel):
     Attributes:
         subtask_id: ID of the subtask being routed.
         selected_candidate: The chosen agent candidate.
-        alternatives: Other candidates considered (sorted by score).
+        alternatives: Other candidates considered.
         topology: Coordination topology for this subtask.
     """
 
@@ -65,9 +65,10 @@ class RoutingDecision(BaseModel):
     @model_validator(mode="after")
     def _validate_selected_not_in_alternatives(self) -> Self:
         """Ensure selected candidate is not duplicated in alternatives."""
-        selected_name = self.selected_candidate.agent_identity.name
+        selected_id = self.selected_candidate.agent_identity.id
         for alt in self.alternatives:
-            if alt.agent_identity.name == selected_name:
+            if alt.agent_identity.id == selected_id:
+                selected_name = self.selected_candidate.agent_identity.name
                 msg = (
                     f"Selected candidate {selected_name!r} also appears in alternatives"
                 )

@@ -234,6 +234,10 @@ class SubtaskStatusRollup(BaseModel):
         if self.blocked > 0:
             return TaskStatus.BLOCKED
 
+        # All subtasks in terminal states (completed + cancelled mix)
+        if self.completed + self.cancelled == self.total:
+            return TaskStatus.COMPLETED
+
         return TaskStatus.IN_PROGRESS
 
 

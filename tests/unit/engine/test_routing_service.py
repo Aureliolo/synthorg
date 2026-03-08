@@ -292,3 +292,26 @@ class TestTaskRoutingService:
 
         result = service.route(decomp, (), task)
         assert result.parent_task_id == "task-route-1"
+
+    @pytest.mark.unit
+    def test_exception_propagates(self) -> None:
+        """Exceptions from _do_route are logged and re-raised."""
+        from unittest.mock import MagicMock
+
+        scorer = MagicMock(spec=AgentTaskScorer)
+        scorer.min_score = 0.1
+        scorer.score.side_effect = RuntimeError("scorer boom")
+
+        selector = TopologySelector()
+        service = TaskRoutingService(scorer, selector)
+
+        task = _make_task()
+        decomp = _make_decomposition_result()
+
+        agent = _make_agent(
+            "Dev",
+            primary=("python",),
+        )
+
+        with pytest.raises(RuntimeError, match="scorer boom"):
+            service.route(decomp, (agent,), task)

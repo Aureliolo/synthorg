@@ -146,7 +146,7 @@ class TestAgentTaskScorer:
         )
 
         candidate = scorer.score(agent, subtask)
-        assert candidate.score < 0.2
+        assert candidate.score == 0.0
 
     @pytest.mark.unit
     def test_min_score_property(self) -> None:
@@ -190,6 +190,9 @@ class TestAgentTaskScorer:
             (SeniorityLevel.SENIOR, Complexity.COMPLEX),
             (SeniorityLevel.LEAD, Complexity.EPIC),
             (SeniorityLevel.PRINCIPAL, Complexity.EPIC),
+            (SeniorityLevel.DIRECTOR, Complexity.EPIC),
+            (SeniorityLevel.VP, Complexity.EPIC),
+            (SeniorityLevel.C_SUITE, Complexity.EPIC),
         ],
         ids=[
             "junior-simple",
@@ -197,6 +200,9 @@ class TestAgentTaskScorer:
             "senior-complex",
             "lead-epic",
             "principal-epic",
+            "director-epic",
+            "vp-epic",
+            "c_suite-epic",
         ],
     )
     def test_seniority_complexity_parametrized(
@@ -209,3 +215,28 @@ class TestAgentTaskScorer:
 
         candidate = scorer.score(agent, subtask)
         assert candidate.score >= 0.2
+
+    @pytest.mark.unit
+    def test_skill_in_both_primary_and_secondary(self) -> None:
+        """Skill in both primary and secondary is not double-counted."""
+        scorer = AgentTaskScorer()
+        agent = _make_agent(primary=("python",), secondary=("python",))
+        subtask = _make_subtask(required_skills=("python",))
+
+        candidate = scorer.score(agent, subtask)
+        # Primary match gives 0.4, secondary should not add 0.2
+        # plus seniority alignment (MID + MEDIUM = 0.2) = 0.6
+        assert candidate.score == pytest.approx(0.6)
+        assert candidate.matched_skills.count("python") == 1
+
+    @pytest.mark.unit
+    def test_min_score_negative_rejected(self) -> None:
+        """Negative min_score is rejected."""
+        with pytest.raises(ValueError, match=r"between 0\.0 and 1\.0"):
+            AgentTaskScorer(min_score=-0.5)
+
+    @pytest.mark.unit
+    def test_min_score_above_one_rejected(self) -> None:
+        """min_score above 1.0 is rejected."""
+        with pytest.raises(ValueError, match=r"between 0\.0 and 1\.0"):
+            AgentTaskScorer(min_score=1.5)

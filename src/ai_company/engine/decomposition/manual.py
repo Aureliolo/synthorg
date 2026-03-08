@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from ai_company.engine.errors import DecompositionDepthError, DecompositionError
 from ai_company.observability import get_logger
 from ai_company.observability.events.decomposition import (
+    DECOMPOSITION_COMPLETED,
     DECOMPOSITION_VALIDATION_ERROR,
 )
 
@@ -51,7 +52,7 @@ class ManualDecompositionStrategy:
         Raises:
             DecompositionError: If the plan's parent_task_id doesn't
                 match the task.
-            DecompositionDepthError: If current depth exceeds max depth.
+            DecompositionDepthError: If current depth meets or exceeds max depth.
             DecompositionError: If subtask count exceeds max_subtasks.
         """
         if self._plan.parent_task_id != task.id:
@@ -78,6 +79,12 @@ class ManualDecompositionStrategy:
             logger.warning(DECOMPOSITION_VALIDATION_ERROR, error=msg)
             raise DecompositionError(msg)
 
+        logger.debug(
+            DECOMPOSITION_COMPLETED,
+            task_id=task.id,
+            strategy="manual",
+            subtask_count=len(self._plan.subtasks),
+        )
         return self._plan
 
     def get_strategy_name(self) -> str:

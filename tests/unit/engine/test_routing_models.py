@@ -1,13 +1,9 @@
 """Tests for task routing domain models."""
 
-from typing import TYPE_CHECKING
-
 import pytest
 
+from ai_company.core.agent import AgentIdentity  # noqa: TC001
 from ai_company.core.enums import CoordinationTopology
-
-if TYPE_CHECKING:
-    from ai_company.core.agent import AgentIdentity
 from ai_company.engine.routing.models import (
     AutoTopologyConfig,
     RoutingCandidate,

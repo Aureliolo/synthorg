@@ -57,7 +57,7 @@ class DecompositionService:
 
         1. Classify task structure (uses explicit if set,
            otherwise heuristic inference). Override the plan's
-           structure if classifier disagrees.
+           structure with the classifier's result when they differ.
         2. Call strategy.decompose().
         3. Validate DAG via DependencyGraph.
         4. Create Task objects from SubtaskDefinitions.
