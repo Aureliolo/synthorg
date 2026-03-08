@@ -640,6 +640,8 @@ class TestParallelExecutorCancellation:
             e for e in cap if e.get("event") == PARALLEL_AGENT_CANCELLED
         ]
         assert len(cancelled_events) >= 1
+        for ev in cancelled_events:
+            assert ev["group_id"] == group.group_id
 
 
 @pytest.mark.unit

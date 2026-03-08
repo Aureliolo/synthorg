@@ -201,9 +201,8 @@ def _collect_merged_agents(
         (entry for entries in parent_entries.values() for entry in entries),
         key=lambda e: e.index,
     )
-    _strip_keys = _STRIP_KEYS
     result: list[dict[str, Any]] = [
-        {k: v for k, v in entry.agent.items() if k not in _strip_keys}
+        {k: v for k, v in entry.agent.items() if k not in _STRIP_KEYS}
         for entry in all_entries
         if entry.agent is not None
     ]
@@ -278,7 +277,7 @@ def _agent_key(agent: dict[str, Any]) -> tuple[str, str, str]:
     role = str(agent.get("role", "")).lower()
     if not role:
         msg = f"Agent dict is missing 'role' field (keys: {sorted(agent.keys())})"
-        logger.warning(
+        logger.error(
             TEMPLATE_INHERIT_MERGE_ERROR,
             action="missing_role",
             agent_keys=sorted(agent.keys()),

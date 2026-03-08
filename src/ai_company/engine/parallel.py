@@ -145,6 +145,8 @@ class ParallelExecutor:
             total=len(group.assignments),
         )
 
+        task_error: Exception | None = None
+        release_error: Exception | None = None
         try:
             if lock is not None:
                 await self._acquire_all_locks(group, lock)
@@ -154,8 +156,9 @@ class ParallelExecutor:
                 fatal_errors,
                 progress,
             )
+        except Exception as exc:
+            task_error = exc
         finally:
-            release_error: Exception | None = None
             if lock is not None:
                 try:
                     await self._release_all_locks(group, lock)
@@ -168,11 +171,17 @@ class ParallelExecutor:
                     release_error = exc
 
         if release_error is not None:
-            msg = (
-                f"Parallel group {group.group_id!r} completed but "
+            lock_msg = (
+                f"Parallel group {group.group_id!r}: "
                 "resource locks could not be released"
             )
-            raise ParallelExecutionError(msg) from release_error
+            if task_error is not None:
+                task_error.add_note(lock_msg)
+            else:
+                raise ParallelExecutionError(lock_msg) from release_error
+
+        if task_error is not None:
+            raise task_error
 
         result = self._build_result(
             group,
@@ -233,7 +242,7 @@ class ParallelExecutor:
             # TaskGroup wraps exceptions in ExceptionGroup when
             # _run_guarded re-raises (fail_fast enabled).
             # Individual errors already logged in _record_error_outcome.
-            logger.warning(
+            logger.debug(
                 PARALLEL_GROUP_SUPPRESSED,
                 error=f"ExceptionGroup suppressed: {eg!r}",
                 group_id=group.group_id,
@@ -401,7 +410,7 @@ class ParallelExecutor:
                     success=success,
                 )
             finally:
-                progress.in_progress = max(0, progress.in_progress - 1)
+                progress.in_progress -= 1
 
     def _record_error_outcome(
         self,
