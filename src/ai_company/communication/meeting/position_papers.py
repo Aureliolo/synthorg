@@ -39,6 +39,9 @@ from ai_company.observability.events.meeting import (
 
 logger = get_logger(__name__)
 
+# Reserve 20% of budget for the synthesis phase.
+_SYNTHESIS_RESERVE_FRACTION = 0.20
+
 
 def _build_position_prompt(agenda_text: str, agent_id: str) -> str:
     """Build a position paper prompt for an agent."""
@@ -200,8 +203,11 @@ class PositionPapersProtocol:
         results: list[tuple[str, str] | None] = [None] * n
         contrib_results: list[MeetingContribution | None] = [None] * n
 
-        # Pre-divide budget evenly across parallel agents
-        tokens_per_agent = max(1, tracker.remaining // max(1, n))
+        # Reserve 20% of budget for the synthesis phase, divide rest
+        # evenly across parallel agents (mirrors RoundRobinProtocol).
+        synthesis_reserve = int(tracker.remaining * _SYNTHESIS_RESERVE_FRACTION)
+        paper_budget = tracker.remaining - synthesis_reserve
+        tokens_per_agent = max(1, paper_budget // max(1, n))
 
         async def _collect_paper(
             participant_id: str,

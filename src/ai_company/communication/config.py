@@ -5,6 +5,9 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from ai_company.communication.conflict_resolution.config import (
+    ConflictResolutionConfig,
+)
 from ai_company.communication.enums import (
     CommunicationPattern,
     MessageBusBackend,
@@ -306,4 +309,8 @@ class CommunicationConfig(BaseModel):
     loop_prevention: LoopPreventionConfig = Field(
         default_factory=LoopPreventionConfig,
         description="Loop prevention safeguards",
+    )
+    conflict_resolution: ConflictResolutionConfig = Field(
+        default_factory=ConflictResolutionConfig,
+        description="Conflict resolution configuration (DESIGN_SPEC §5.6)",
     )

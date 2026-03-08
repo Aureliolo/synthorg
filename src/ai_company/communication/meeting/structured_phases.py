@@ -46,6 +46,9 @@ from ai_company.observability.events.meeting import (
 
 logger = get_logger(__name__)
 
+# Reserve 20% of budget for later phases (conflict check + synthesis).
+_SYNTHESIS_RESERVE_FRACTION = 0.20
+
 
 class KeywordConflictDetector:
     """Default conflict detector using keyword matching.
@@ -320,7 +323,11 @@ class StructuredPhasesProtocol:
         )
 
         num_participants = len(participant_ids)
-        tokens_per_agent = max(1, tracker.remaining // max(1, num_participants))
+        # Reserve budget for conflict check, discussion, and synthesis
+        # phases that follow input gathering (mirrors RoundRobinProtocol).
+        later_reserve = int(tracker.remaining * _SYNTHESIS_RESERVE_FRACTION)
+        input_budget = tracker.remaining - later_reserve
+        tokens_per_agent = max(1, input_budget // max(1, num_participants))
 
         # Pre-allocate result slots for deterministic ordering
         result_inputs: list[tuple[str, str] | None] = [None] * num_participants
@@ -465,6 +472,11 @@ class StructuredPhasesProtocol:
         )
 
         logger.info(
+            MEETING_CONFLICT_DETECTED,
+            meeting_id=meeting_id,
+            conflicts_found=conflicts_detected,
+        )
+        logger.debug(
             MEETING_CONFLICT_DETECTED,
             meeting_id=meeting_id,
             conflicts_found=conflicts_detected,

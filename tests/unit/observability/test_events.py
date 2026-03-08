@@ -21,6 +21,29 @@ from ai_company.observability.events.config import (
     CONFIG_PARSE_FAILED,
     CONFIG_VALIDATION_FAILED,
 )
+from ai_company.observability.events.conflict import (
+    CONFLICT_AMBIGUOUS_RESULT,
+    CONFLICT_AUTHORITY_DECIDED,
+    CONFLICT_AUTHORITY_FALLBACK,
+    CONFLICT_CROSS_DEPARTMENT,
+    CONFLICT_DEBATE_JUDGE_DECIDED,
+    CONFLICT_DEBATE_STARTED,
+    CONFLICT_DETECTED,
+    CONFLICT_DISSENT_QUERIED,
+    CONFLICT_DISSENT_RECORDED,
+    CONFLICT_ESCALATED,
+    CONFLICT_HIERARCHY_ERROR,
+    CONFLICT_HUMAN_ESCALATION_STUB,
+    CONFLICT_HYBRID_AUTO_RESOLVED,
+    CONFLICT_HYBRID_REVIEW,
+    CONFLICT_LCM_LOOKUP,
+    CONFLICT_NO_RESOLVER,
+    CONFLICT_RESOLUTION_FAILED,
+    CONFLICT_RESOLUTION_STARTED,
+    CONFLICT_RESOLVED,
+    CONFLICT_STRATEGY_ERROR,
+    CONFLICT_VALIDATION_ERROR,
+)
 from ai_company.observability.events.delegation import (
     DELEGATION_CREATED,
     DELEGATION_HIERARCHY_BUILT,
@@ -114,7 +137,9 @@ class TestEventConstants:
             "communication",
             "company",
             "config",
+            "conflict",
             "correlation",
+            "decomposition",
             "delegation",
             "execution",
             "git",
@@ -127,6 +152,7 @@ class TestEventConstants:
             "routing",
             "sandbox",
             "task",
+            "task_routing",
             "template",
             "tool",
         }
@@ -202,6 +228,29 @@ class TestEventConstants:
         assert DELEGATION_LOOP_ESCALATED == "delegation.loop.escalated"
         assert DELEGATION_HIERARCHY_BUILT == "delegation.hierarchy.built"
         assert DELEGATION_HIERARCHY_CYCLE == "delegation.hierarchy.cycle"
+
+    def test_conflict_events_exist(self) -> None:
+        assert CONFLICT_DETECTED == "conflict.detected"
+        assert CONFLICT_RESOLUTION_STARTED == "conflict.resolution.started"
+        assert CONFLICT_RESOLVED == "conflict.resolved"
+        assert CONFLICT_RESOLUTION_FAILED == "conflict.resolution.failed"
+        assert CONFLICT_ESCALATED == "conflict.escalated"
+        assert CONFLICT_DISSENT_RECORDED == "conflict.dissent.recorded"
+        assert CONFLICT_AUTHORITY_DECIDED == "conflict.authority.decided"
+        assert CONFLICT_DEBATE_STARTED == "conflict.debate.started"
+        assert CONFLICT_DEBATE_JUDGE_DECIDED == "conflict.debate.judge_decided"
+        assert CONFLICT_HYBRID_REVIEW == "conflict.hybrid.review"
+        assert CONFLICT_HYBRID_AUTO_RESOLVED == "conflict.hybrid.auto_resolved"
+        assert CONFLICT_HUMAN_ESCALATION_STUB == "conflict.human.escalation_stub"
+        assert CONFLICT_CROSS_DEPARTMENT == "conflict.cross_department"
+        assert CONFLICT_LCM_LOOKUP == "conflict.lcm_lookup"
+        assert CONFLICT_DISSENT_QUERIED == "conflict.dissent.queried"
+        assert CONFLICT_VALIDATION_ERROR == "conflict.validation.error"
+        assert CONFLICT_NO_RESOLVER == "conflict.no_resolver"
+        assert CONFLICT_AUTHORITY_FALLBACK == "conflict.authority_fallback"
+        assert CONFLICT_AMBIGUOUS_RESULT == "conflict.ambiguous_result"
+        assert CONFLICT_HIERARCHY_ERROR == "conflict.hierarchy.error"
+        assert CONFLICT_STRATEGY_ERROR == "conflict.strategy.error"
 
     def test_tool_events_exist(self) -> None:
         assert TOOL_INVOKE_START == "tool.invoke.start"

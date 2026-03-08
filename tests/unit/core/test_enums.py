@@ -24,6 +24,7 @@ from ai_company.core.enums import (
     SkillCategory,
     TaskStatus,
     TaskType,
+    compare_seniority,
 )
 
 pytestmark = pytest.mark.timeout(30)
@@ -307,6 +308,37 @@ class TestEnumPydanticIntegration:
         restored = _M.model_validate_json(json_str)
         assert restored.status is AgentStatus.ACTIVE
         assert restored.tier is CostTier.PREMIUM
+
+
+# ── compare_seniority ────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestCompareSeniority:
+    def test_higher_is_positive(self) -> None:
+        assert compare_seniority(SeniorityLevel.C_SUITE, SeniorityLevel.JUNIOR) > 0
+
+    def test_lower_is_negative(self) -> None:
+        assert compare_seniority(SeniorityLevel.JUNIOR, SeniorityLevel.SENIOR) < 0
+
+    def test_equal_is_zero(self) -> None:
+        assert compare_seniority(SeniorityLevel.LEAD, SeniorityLevel.LEAD) == 0
+
+    def test_adjacent_levels(self) -> None:
+        assert compare_seniority(SeniorityLevel.MID, SeniorityLevel.JUNIOR) > 0
+        assert compare_seniority(SeniorityLevel.SENIOR, SeniorityLevel.MID) > 0
+
+    @pytest.mark.parametrize(
+        ("a", "b"),
+        [
+            (SeniorityLevel.VP, SeniorityLevel.DIRECTOR),
+            (SeniorityLevel.C_SUITE, SeniorityLevel.VP),
+            (SeniorityLevel.PRINCIPAL, SeniorityLevel.LEAD),
+        ],
+    )
+    def test_ordering_pairs(self, a: SeniorityLevel, b: SeniorityLevel) -> None:
+        assert compare_seniority(a, b) > 0
+        assert compare_seniority(b, a) < 0
 
 
 # ── __all__ exports ──────────────────────────────────────────────

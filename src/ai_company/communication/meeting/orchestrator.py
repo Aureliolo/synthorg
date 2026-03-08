@@ -31,6 +31,7 @@ from ai_company.communication.meeting.protocol import (  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.meeting import (
     MEETING_ACTION_ITEM_EXTRACTED,
+    MEETING_BUDGET_EXHAUSTED,
     MEETING_COMPLETED,
     MEETING_FAILED,
     MEETING_PROTOCOL_NOT_FOUND,
@@ -263,7 +264,7 @@ class MeetingOrchestrator:
 
         if status == MeetingStatus.BUDGET_EXHAUSTED:
             logger.warning(
-                MEETING_FAILED,
+                MEETING_BUDGET_EXHAUSTED,
                 meeting_id=meeting_id,
                 status=status,
                 error=error_msg,

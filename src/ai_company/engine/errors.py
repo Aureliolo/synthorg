@@ -45,3 +45,19 @@ class ParallelExecutionError(EngineError):
 
 class ResourceConflictError(EngineError):
     """Raised when resource claims conflict between assignments."""
+
+
+class DecompositionError(EngineError):
+    """Base exception for task decomposition failures."""
+
+
+class DecompositionCycleError(DecompositionError):
+    """Raised when a dependency cycle is detected in the subtask graph."""
+
+
+class DecompositionDepthError(DecompositionError):
+    """Raised when decomposition exceeds the maximum nesting depth."""
+
+
+class TaskRoutingError(EngineError):
+    """Raised when task routing to an agent fails."""

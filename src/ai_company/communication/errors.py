@@ -1,4 +1,4 @@
-"""Communication error hierarchy (DESIGN_SPEC Sections 5.4, 5.5).
+"""Communication error hierarchy (DESIGN_SPEC Sections 5.4, 5.5, 5.6).
 
 All communication errors carry an immutable context mapping for
 structured metadata, following the same pattern as ``ToolError``.
@@ -98,3 +98,15 @@ class DelegationDuplicateError(DelegationLoopError):
 
 class HierarchyResolutionError(CommunicationError):
     """Error resolving organizational hierarchy."""
+
+
+class ConflictResolutionError(CommunicationError):
+    """Base exception for conflict resolution errors."""
+
+
+class ConflictStrategyError(ConflictResolutionError):
+    """Error within a conflict resolution strategy."""
+
+
+class ConflictHierarchyError(ConflictResolutionError):
+    """No common manager found for cross-department conflict."""

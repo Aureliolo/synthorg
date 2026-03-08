@@ -73,6 +73,42 @@ class CommunicationPattern(StrEnum):
     HYBRID = "hybrid"
 
 
+class ConflictType(StrEnum):
+    """Type of inter-agent conflict (DESIGN_SPEC §5.6).
+
+    Members:
+        ARCHITECTURE: Disagreement on system design choices.
+        IMPLEMENTATION: Disagreement on implementation approach.
+        PRIORITY: Disagreement on task priority or ordering.
+        RESOURCE: Disagreement on resource allocation.
+        PROCESS: Disagreement on process or methodology.
+        OTHER: Any other type of conflict.
+    """
+
+    ARCHITECTURE = "architecture"
+    IMPLEMENTATION = "implementation"
+    PRIORITY = "priority"
+    RESOURCE = "resource"
+    PROCESS = "process"
+    OTHER = "other"
+
+
+class ConflictResolutionStrategy(StrEnum):
+    """Strategy for resolving inter-agent conflicts (DESIGN_SPEC §5.6).
+
+    Members:
+        AUTHORITY: Resolve by seniority/hierarchy with dissent log.
+        DEBATE: Structured debate with judge evaluation.
+        HUMAN: Escalate to human for resolution.
+        HYBRID: Combination of automated review and escalation.
+    """
+
+    AUTHORITY = "authority"
+    DEBATE = "debate"
+    HUMAN = "human"
+    HYBRID = "hybrid"
+
+
 class MessageBusBackend(StrEnum):
     """Message bus backend implementation.
 

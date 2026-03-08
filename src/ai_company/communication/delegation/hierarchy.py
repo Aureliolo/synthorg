@@ -209,6 +209,39 @@ class HierarchyResolver:
             ancestors.append(current)
         return tuple(ancestors)
 
+    def get_lowest_common_manager(
+        self,
+        agent_a: str,
+        agent_b: str,
+    ) -> str | None:
+        """Find the lowest common manager of two agents.
+
+        If one agent is an ancestor of the other, that agent is
+        returned as the LCM.
+
+        Args:
+            agent_a: First agent name.
+            agent_b: Second agent name.
+
+        Returns:
+            Name of the lowest common manager, or None if no
+            common manager exists.
+        """
+        ancestors_a = self.get_ancestors(agent_a)
+        ancestors_b_set = set(self.get_ancestors(agent_b))
+        # Check if agent_a is an ancestor of agent_b
+        if agent_a in ancestors_b_set:
+            return agent_a
+        # Check if agent_b is an ancestor of agent_a
+        if agent_b in set(ancestors_a):
+            return agent_b
+        # Walk agent_a's ancestors bottom-up; first hit in agent_b's
+        # ancestor set is the LCM
+        for ancestor in ancestors_a:
+            if ancestor in ancestors_b_set:
+                return ancestor
+        return None
+
     def get_delegation_depth(
         self,
         from_agent: str,

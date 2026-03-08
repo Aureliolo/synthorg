@@ -15,6 +15,8 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 - **Multi-Provider** - Any LLM via LiteLLM — cloud APIs, OpenRouter (400+ models), local Ollama, and more
 - **Smart Cost Management** - Per-agent budget tracking, auto model routing, CFO agent optimization
 - **Hierarchical Delegation** - Chain-of-command task delegation with five-mechanism loop prevention
+- **Conflict Resolution** - Pluggable strategies for resolving agent disagreements (authority, debate, human escalation, hybrid) with dissent audit trail
+- **Task Decomposition & Routing** - DAG-based subtask decomposition, structure classification, and agent-task scoring
 - **Configurable Autonomy** - From fully autonomous to human-approves-everything, with a Security Ops agent in between
 - **Persistent Memory** - Agents remember past decisions, code, relationships (memory layer TBD)
 - **HR System** - Hire, fire, promote agents. HR agent analyzes skill gaps and proposes candidates

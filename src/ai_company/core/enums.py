@@ -21,6 +21,25 @@ class SeniorityLevel(StrEnum):
     C_SUITE = "c_suite"
 
 
+_SENIORITY_ORDER: tuple[SeniorityLevel, ...] = tuple(SeniorityLevel)
+
+
+def compare_seniority(a: SeniorityLevel, b: SeniorityLevel) -> int:
+    """Compare two seniority levels.
+
+    Returns negative if *a* is junior to *b*, zero if equal,
+    positive if *a* is senior to *b*.
+
+    Args:
+        a: First seniority level.
+        b: Second seniority level.
+
+    Returns:
+        Integer indicating relative seniority.
+    """
+    return _SENIORITY_ORDER.index(a) - _SENIORITY_ORDER.index(b)
+
+
 class AgentStatus(StrEnum):
     """Lifecycle status of an agent."""
 
@@ -265,6 +284,32 @@ class ConflictApproach(StrEnum):
     COMPETE = "compete"
     COMPROMISE = "compromise"
     COLLABORATE = "collaborate"
+
+
+class TaskStructure(StrEnum):
+    """Classification of how a task's subtasks relate to each other.
+
+    Used by the decomposition engine to determine coordination topology
+    and execution ordering. See DESIGN_SPEC Section 6.9.
+    """
+
+    SEQUENTIAL = "sequential"
+    PARALLEL = "parallel"
+    MIXED = "mixed"
+
+
+class CoordinationTopology(StrEnum):
+    """Coordination topology for multi-agent task execution.
+
+    Determines how agents coordinate when executing decomposed subtasks.
+    See DESIGN_SPEC Section 6.9.
+    """
+
+    SAS = "sas"
+    CENTRALIZED = "centralized"
+    DECENTRALIZED = "decentralized"
+    CONTEXT_DEPENDENT = "context_dependent"
+    AUTO = "auto"
 
 
 class ActionType(StrEnum):

@@ -7,7 +7,14 @@ from typing import Any, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.artifact import ExpectedArtifact  # noqa: TC001
-from ai_company.core.enums import Complexity, Priority, TaskStatus, TaskType
+from ai_company.core.enums import (
+    Complexity,
+    CoordinationTopology,
+    Priority,
+    TaskStatus,
+    TaskStructure,
+    TaskType,
+)
 from ai_company.core.task_transitions import validate_transition
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.observability import get_logger
@@ -132,6 +139,14 @@ class Task(BaseModel):
     delegation_chain: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Ordered agent IDs of delegators (root first)",
+    )
+    task_structure: TaskStructure | None = Field(
+        default=None,
+        description="Classification of subtask relationships (None = not classified)",
+    )
+    coordination_topology: CoordinationTopology = Field(
+        default=CoordinationTopology.AUTO,
+        description="Coordination topology for multi-agent execution",
     )
 
     @model_validator(mode="after")

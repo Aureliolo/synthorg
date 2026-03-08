@@ -17,6 +17,11 @@ from ai_company.communication.config import (
     MessageRetentionConfig,
     RateLimitConfig,
 )
+from ai_company.communication.conflict_resolution.config import (
+    ConflictResolutionConfig,
+    DebateConfig,
+    HybridConfig,
+)
 from ai_company.communication.enums import (
     AttachmentType,
     ChannelType,
@@ -101,10 +106,23 @@ class DeliveryEnvelopeFactory(ModelFactory[DeliveryEnvelope]):
     message = MessageFactory
 
 
+class DebateConfigFactory(ModelFactory[DebateConfig]):
+    __model__ = DebateConfig
+
+
+class HybridConfigFactory(ModelFactory[HybridConfig]):
+    __model__ = HybridConfig
+
+
+class ConflictResolutionConfigFactory(ModelFactory[ConflictResolutionConfig]):
+    __model__ = ConflictResolutionConfig
+
+
 class CommunicationConfigFactory(ModelFactory[CommunicationConfig]):
     __model__ = CommunicationConfig
     meetings = MeetingsConfigFactory
     loop_prevention = LoopPreventionConfigFactory
+    conflict_resolution = ConflictResolutionConfigFactory
 
 
 # ── Sample Fixtures ────────────────────────────────────────────────

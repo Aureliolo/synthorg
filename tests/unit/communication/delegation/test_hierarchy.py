@@ -339,6 +339,47 @@ class TestEdgeCases:
 
 
 @pytest.mark.unit
+class TestGetLowestCommonManager:
+    def test_same_team_lcm_is_lead(self) -> None:
+        company = _make_company(departments=(_eng_department(),))
+        resolver = HierarchyResolver(company)
+        assert resolver.get_lowest_common_manager("sr_dev", "jr_dev") == "backend_lead"
+
+    def test_cross_team_lcm_is_dept_head(self) -> None:
+        company = _make_company(departments=(_eng_department(),))
+        resolver = HierarchyResolver(company)
+        assert resolver.get_lowest_common_manager("sr_dev", "ui_dev") == "cto"
+
+    def test_no_common_manager_returns_none(self) -> None:
+        company = _make_company(departments=(_eng_department(), _qa_department()))
+        resolver = HierarchyResolver(company)
+        assert resolver.get_lowest_common_manager("cto", "qa_head") is None
+
+    def test_agent_is_ancestor_of_other(self) -> None:
+        company = _make_company(departments=(_eng_department(),))
+        resolver = HierarchyResolver(company)
+        assert (
+            resolver.get_lowest_common_manager("backend_lead", "sr_dev")
+            == "backend_lead"
+        )
+
+    def test_reverse_agent_is_ancestor(self) -> None:
+        company = _make_company(departments=(_eng_department(),))
+        resolver = HierarchyResolver(company)
+        assert (
+            resolver.get_lowest_common_manager("sr_dev", "backend_lead")
+            == "backend_lead"
+        )
+
+    def test_cross_department_agents_under_same_root(self) -> None:
+        """If eng/qa share a root, that root is LCM."""
+        company = _make_company(departments=(_eng_department(), _qa_department()))
+        resolver = HierarchyResolver(company)
+        # sr_dev and qa_eng have no common manager (cto and qa_head are unlinked)
+        assert resolver.get_lowest_common_manager("sr_dev", "qa_eng") is None
+
+
+@pytest.mark.unit
 class TestCycleDetection:
     def test_cycle_raises_hierarchy_error(self) -> None:
         dept = Department(
