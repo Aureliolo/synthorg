@@ -836,7 +836,7 @@ Tasks can be assigned through multiple strategies:
 | **Hierarchical** | Flow down through management chain |
 | **Cost-optimized** | Assign to cheapest capable agent |
 
-> **Current state (M4):** All six strategies are implemented behind the `TaskAssignmentStrategy` protocol. Manual, Role-based, Load-balanced, Cost-optimized, and Auction strategies are in the static `STRATEGY_MAP`. Hierarchical requires a `HierarchyResolver` at runtime via `build_strategy_map(hierarchy=...)`.
+> **Current state (M4):** All six strategies are implemented behind the `TaskAssignmentStrategy` protocol. Manual, Role-based, Load-balanced, Cost-optimized, and Auction strategies are in the static `STRATEGY_MAP`. Hierarchical requires a `HierarchyResolver` at runtime via `build_strategy_map(hierarchy=...)`. Config-level `TaskAssignmentConfig` validates strategy names against the known set. Scoring-based strategies filter out agents at capacity via `AssignmentRequest.max_concurrent_tasks`. Error signaling contract: `ManualAssignmentStrategy` raises exceptions (`TaskAssignmentError`, `NoEligibleAgentError`); scoring-based strategies return `AssignmentResult(selected=None)`. `TaskAssignmentService` propagates both patterns.
 
 ### 6.5 Agent Execution Loop
 
@@ -1102,7 +1102,7 @@ On shutdown signal, each agent persists its full `AgentContext` snapshot and tra
 
 ### 6.8 Concurrent Workspace Isolation (M4+)
 
-> **Current state:** The `WorkspaceIsolationStrategy` protocol, `PlannerWorktreeStrategy` (git worktree backend), `MergeOrchestrator` (sequential merge with configurable conflict escalation), and `WorkspaceIsolationService` (lifecycle orchestrator with rollback and best-effort teardown) are implemented in `engine/workspace/`. Runtime multi-agent coordination using these components is M4+.
+> **Current state:** The `WorkspaceIsolationStrategy` protocol, `PlannerWorktreeStrategy` (git worktree backend), `MergeOrchestrator` (sequential merge with configurable conflict escalation), and `WorkspaceIsolationService` (lifecycle orchestrator with rollback and best-effort teardown) are implemented in `engine/workspace/`. `_validate_git_ref` raises context-appropriate exception types (`WorkspaceMergeError` in merge, `WorkspaceCleanupError` in teardown) with matching log events. `_run_git` similarly accepts a `log_event` parameter for context-aware timeout logging. Runtime multi-agent coordination using these components is M4+.
 
 When multiple agents work on the same codebase concurrently, they may need to edit overlapping files. The framework provides a pluggable `WorkspaceIsolationStrategy` protocol for managing concurrent file access. The default strategy combines intelligent task decomposition with git worktree isolation — the dominant industry pattern (used by OpenAI Codex, Cursor, Claude Code, VS Code background agents).
 

@@ -14,6 +14,7 @@ from uuid import uuid4
 from ai_company.core.enums import ConflictType
 from ai_company.engine.errors import (
     WorkspaceCleanupError,
+    WorkspaceError,
     WorkspaceLimitError,
     WorkspaceMergeError,
     WorkspaceSetupError,
@@ -50,7 +51,7 @@ def _validate_git_ref(
     value: str,
     label: str,
     *,
-    error_cls: type[Exception] = WorkspaceSetupError,
+    error_cls: type[WorkspaceError] = WorkspaceSetupError,
     event: str = WORKSPACE_SETUP_FAILED,
 ) -> None:
     """Validate that a string is safe for use as a git command argument.
@@ -61,15 +62,16 @@ def _validate_git_ref(
     Args:
         value: The string to validate.
         label: Human-readable label for error messages.
-        error_cls: Exception class to raise on failure. Defaults to
-            ``WorkspaceSetupError`` but callers in merge/teardown
-            contexts should pass the appropriate type.
+        error_cls: ``WorkspaceError`` subclass to raise on failure.
+            Defaults to ``WorkspaceSetupError``; callers in
+            merge/teardown contexts pass the appropriate type.
         event: Log event constant for the failure message.
 
     Raises:
-        WorkspaceSetupError: By default, if the value is unsafe.
-        WorkspaceMergeError: When called from merge context.
-        WorkspaceCleanupError: When called from teardown context.
+        WorkspaceError: The subclass specified by ``error_cls``.
+            Defaults to ``WorkspaceSetupError``; merge contexts
+            use ``WorkspaceMergeError``, teardown contexts use
+            ``WorkspaceCleanupError``.
     """
     if (
         not value
@@ -123,12 +125,16 @@ class PlannerWorktreeStrategy:
         self,
         *args: str,
         cmd_timeout: float = 60.0,
+        log_event: str = WORKSPACE_SETUP_FAILED,
     ) -> tuple[int, str, str]:
         """Run a git command in the repository root.
 
         Args:
             *args: Git command arguments.
             cmd_timeout: Maximum seconds to wait for the command.
+            log_event: Event constant for timeout error logging.
+                Callers in merge/teardown contexts should pass the
+                appropriate event.
 
         Returns:
             Tuple of (return_code, stdout, stderr).
@@ -150,7 +156,7 @@ class PlannerWorktreeStrategy:
             await proc.wait()
             msg = f"git {args[0] if args else ''} timed out after {cmd_timeout}s"
             logger.exception(
-                WORKSPACE_SETUP_FAILED,
+                log_event,
                 error=msg,
                 args=args,
             )
@@ -318,6 +324,7 @@ class PlannerWorktreeStrategy:
             rc, _, stderr = await self._run_git(
                 "checkout",
                 workspace.base_branch,
+                log_event=WORKSPACE_MERGE_FAILED,
             )
             if rc != 0:
                 logger.warning(
@@ -332,6 +339,7 @@ class PlannerWorktreeStrategy:
                 "merge",
                 "--no-ff",
                 workspace.branch_name,
+                log_event=WORKSPACE_MERGE_FAILED,
             )
             elapsed = time.monotonic() - start
 
@@ -339,6 +347,7 @@ class PlannerWorktreeStrategy:
                 rc_sha, sha_out, sha_err = await self._run_git(
                     "rev-parse",
                     "HEAD",
+                    log_event=WORKSPACE_MERGE_FAILED,
                 )
                 if rc_sha != 0:
                     logger.error(
@@ -378,6 +387,7 @@ class PlannerWorktreeStrategy:
             abort_rc, _, abort_stderr = await self._run_git(
                 "merge",
                 "--abort",
+                log_event=WORKSPACE_MERGE_FAILED,
             )
             if abort_rc != 0:
                 logger.error(
@@ -437,6 +447,7 @@ class PlannerWorktreeStrategy:
                 "remove",
                 workspace.worktree_path,
                 "--force",
+                log_event=WORKSPACE_TEARDOWN_FAILED,
             )
             if rc != 0:
                 errors.append(
@@ -452,6 +463,7 @@ class PlannerWorktreeStrategy:
                 "branch",
                 "-D",
                 workspace.branch_name,
+                log_event=WORKSPACE_TEARDOWN_FAILED,
             )
             if rc != 0:
                 errors.append(

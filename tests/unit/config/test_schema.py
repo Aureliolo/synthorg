@@ -549,17 +549,20 @@ class TestTaskAssignmentConfig:
         with pytest.raises(ValidationError):
             TaskAssignmentConfig(min_score=float("inf"))
 
-    def test_valid_strategy_names_accepted(self) -> None:
-        for name in (
+    @pytest.mark.parametrize(
+        "name",
+        [
             "manual",
             "role_based",
             "load_balanced",
             "cost_optimized",
             "hierarchical",
             "auction",
-        ):
-            cfg = TaskAssignmentConfig(strategy=name)
-            assert cfg.strategy == name
+        ],
+    )
+    def test_valid_strategy_names_accepted(self, name: str) -> None:
+        cfg = TaskAssignmentConfig(strategy=name)
+        assert cfg.strategy == name
 
     def test_unknown_strategy_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Unknown assignment strategy"):

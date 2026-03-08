@@ -81,7 +81,9 @@ def _score_and_filter_candidates(
     Shared scoring logic used by all scorer-based strategies.
     Filters out agents with non-ACTIVE status and agents at
     capacity (when ``max_concurrent_tasks`` and workload data
-    are available) before scoring.
+    are available) before scoring. Agents not present in the
+    workload data are assumed to have zero active tasks and
+    will not be filtered for capacity.
 
     Args:
         scorer: The agent-task scorer to use.
@@ -104,7 +106,16 @@ def _score_and_filter_candidates(
 
         # Skip agents at capacity
         if workload_map is not None and request.max_concurrent_tasks is not None:
-            active = workload_map.get(str(agent.id), 0)
+            agent_id_str = str(agent.id)
+            if agent_id_str not in workload_map:
+                logger.debug(
+                    TASK_ASSIGNMENT_AGENT_SCORED,
+                    task_id=request.task.id,
+                    agent_name=agent.name,
+                    score=0.0,
+                    reason="missing_workload_data",
+                )
+            active = workload_map.get(agent_id_str, 0)
             if active >= request.max_concurrent_tasks:
                 logger.debug(
                     TASK_ASSIGNMENT_AGENT_SCORED,
@@ -388,7 +399,8 @@ class LoadBalancedAssignmentStrategy:
         has_complete_data = bool(workload_map) and candidate_ids <= workload_map.keys()
 
         if has_complete_data:
-            candidates.sort(
+            candidates = sorted(
+                candidates,
                 key=lambda c: (
                     workload_map[str(c.agent_identity.id)],
                     -c.score,
@@ -490,7 +502,8 @@ class CostOptimizedAssignmentStrategy:
         has_complete_data = bool(cost_map) and candidate_ids <= cost_map.keys()
 
         if has_complete_data:
-            candidates.sort(
+            candidates = sorted(
+                candidates,
                 key=lambda c: (
                     cost_map[str(c.agent_identity.id)],
                     -c.score,
@@ -659,6 +672,7 @@ class HierarchicalAssignmentStrategy:
             min_score=request.min_score,
             required_skills=request.required_skills,
             required_role=request.required_role,
+            max_concurrent_tasks=request.max_concurrent_tasks,
         )
 
         subtask = _build_subtask_definition(filtered_request)

@@ -555,3 +555,68 @@ class TestMaxConcurrentTasksEnforcement:
         assert result.selected is not None
         # busy-dev has better matching skills so wins despite being busy
         assert result.selected.agent_identity.name == "busy-dev"
+
+    def test_all_agents_at_capacity_returns_none(self) -> None:
+        """Returns selected=None when all agents are at capacity."""
+        scorer = AgentTaskScorer()
+        strategy = RoleBasedAssignmentStrategy(scorer)
+
+        dev1 = make_assignment_agent(
+            "dev-1",
+            primary_skills=("python",),
+            level=SeniorityLevel.MID,
+        )
+        dev2 = make_assignment_agent(
+            "dev-2",
+            primary_skills=("python",),
+            level=SeniorityLevel.MID,
+        )
+
+        task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
+        request = AssignmentRequest(
+            task=task,
+            available_agents=(dev1, dev2),
+            required_skills=("python",),
+            max_concurrent_tasks=2,
+            workloads=(
+                AgentWorkload(
+                    agent_id=str(dev1.id),
+                    active_task_count=2,
+                    total_cost_usd=0.0,
+                ),
+                AgentWorkload(
+                    agent_id=str(dev2.id),
+                    active_task_count=3,
+                    total_cost_usd=0.0,
+                ),
+            ),
+        )
+
+        result = strategy.assign(request)
+
+        assert result.selected is None
+
+    def test_max_concurrent_with_empty_workloads(self) -> None:
+        """max_concurrent_tasks set but no workloads → no filtering."""
+        scorer = AgentTaskScorer()
+        strategy = RoleBasedAssignmentStrategy(scorer)
+
+        dev = make_assignment_agent(
+            "solo-dev",
+            primary_skills=("python",),
+            level=SeniorityLevel.MID,
+        )
+
+        task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
+        request = AssignmentRequest(
+            task=task,
+            available_agents=(dev,),
+            required_skills=("python",),
+            max_concurrent_tasks=1,
+            # No workloads — capacity filter should not apply
+        )
+
+        result = strategy.assign(request)
+
+        assert result.selected is not None
+        assert result.selected.agent_identity.name == "solo-dev"

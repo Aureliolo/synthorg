@@ -77,7 +77,7 @@ Directory suffix is auto-derived from the branch name:
 
    If dirty, warn and ask via AskUserQuestion whether to proceed or abort.
 
-   c. Ensure on main and up to date. If checkout fails due to dirty working tree, warn and ask whether to stash changes, discard, or abort:
+   c. Ensure on main and up to date. If checkout fails due to dirty working tree, warn and ask whether to stash changes or abort:
 
    ```bash
    git checkout main
@@ -412,7 +412,7 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
    git -C <path> rev-list --left-right --count main...<branch>
    ```
 
-   This outputs two numbers: `<behind>\t<ahead>` (behind = commits main has that branch doesn't, ahead = commits branch has that main doesn't).
+   This outputs two tab-separated numbers: `<left>\t<right>` where left = commits on main not on branch (behind), right = commits on branch not on main (ahead).
 
    - If **0 behind AND 0 ahead**: fully up to date — skip.
    - If **0 behind AND N ahead**: branch is ahead but main hasn't moved — skip (rebase is a no-op, branch already contains everything from main).

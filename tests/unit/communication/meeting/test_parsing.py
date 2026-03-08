@@ -88,6 +88,7 @@ class TestParseActionItems:
         result = parse_action_items(text)
         assert len(result) == 1
         # The description should remain intact — no false assignee extraction
+        assert result[0].description == "Please assign to bob the new module"
         assert result[0].assignee_id is None
 
     def test_with_assignee_colon_syntax(self) -> None:

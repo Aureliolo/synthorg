@@ -78,6 +78,10 @@ class AssignmentRequest(BaseModel):
         min_score: Minimum score threshold for eligibility.
         required_skills: Skill names needed for scoring.
         required_role: Optional role name for scoring.
+        max_concurrent_tasks: Maximum concurrent tasks per agent.
+            Agents at or above this limit are excluded from scoring.
+            ``None`` disables the limit. Corresponds to
+            ``TaskAssignmentConfig.max_concurrent_tasks_per_agent``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)

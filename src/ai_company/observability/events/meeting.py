@@ -39,5 +39,8 @@ MEETING_SUMMARY_SKIPPED: Final[str] = "meeting.summary.skipped"
 # Token tracking
 MEETING_TOKENS_RECORDED: Final[str] = "meeting.tokens.recorded"
 
+# Parsing
+MEETING_PARSING_NO_SECTION: Final[str] = "meeting.parsing.no_section"
+
 # Internal invariant violations
 MEETING_INTERNAL_ERROR: Final[str] = "meeting.internal.error"

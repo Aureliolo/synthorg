@@ -623,6 +623,26 @@ class TestValidateGitRefContextExceptions:
             await strategy.teardown_workspace(workspace=ws)
 
     @pytest.mark.unit
+    async def test_merge_path_traversal_base_raises_merge_error(self) -> None:
+        """Path traversal base_branch in merge context raises WorkspaceMergeError."""
+        strategy = _make_strategy()
+        ws = make_workspace(branch_name="valid/branch", base_branch="../escape")
+        strategy._active_workspaces[ws.workspace_id] = ws
+
+        with pytest.raises(WorkspaceMergeError, match="Unsafe"):
+            await strategy.merge_workspace(workspace=ws)
+
+    @pytest.mark.unit
+    async def test_teardown_path_traversal_raises_cleanup_error(self) -> None:
+        """Path traversal branch_name in teardown raises WorkspaceCleanupError."""
+        strategy = _make_strategy()
+        ws = make_workspace(branch_name="../escape")
+        strategy._active_workspaces[ws.workspace_id] = ws
+
+        with pytest.raises(WorkspaceCleanupError, match="Unsafe"):
+            await strategy.teardown_workspace(workspace=ws)
+
+    @pytest.mark.unit
     async def test_setup_unsafe_ref_raises_setup_error(self) -> None:
         """Unsafe task_id in setup context raises WorkspaceSetupError."""
         strategy = _make_strategy()
