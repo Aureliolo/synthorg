@@ -267,6 +267,32 @@ class ConflictApproach(StrEnum):
     COLLABORATE = "collaborate"
 
 
+class TaskStructure(StrEnum):
+    """Classification of how a task's subtasks relate to each other.
+
+    Used by the decomposition engine to determine coordination topology
+    and execution ordering. See DESIGN_SPEC Section 6.9.
+    """
+
+    SEQUENTIAL = "sequential"
+    PARALLEL = "parallel"
+    MIXED = "mixed"
+
+
+class CoordinationTopology(StrEnum):
+    """Coordination topology for multi-agent task execution.
+
+    Determines how agents coordinate when executing decomposed subtasks.
+    See DESIGN_SPEC Section 6.9.
+    """
+
+    SAS = "sas"
+    CENTRALIZED = "centralized"
+    DECENTRALIZED = "decentralized"
+    CONTEXT_DEPENDENT = "context_dependent"
+    AUTO = "auto"
+
+
 class ActionType(StrEnum):
     """Convenience constants for common approval action types.
 
