@@ -358,6 +358,40 @@ class GracefulShutdownConfig(BaseModel):
     )
 
 
+class TaskAssignmentConfig(BaseModel):
+    """Configuration for task assignment behaviour.
+
+    Attributes:
+        strategy: Assignment strategy name (e.g. ``"role_based"``).
+        min_score: Minimum capability score for agent eligibility.
+        max_concurrent_tasks_per_agent: Maximum tasks an agent can
+            handle concurrently.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    strategy: NotBlankStr = Field(
+        default="role_based",
+        description="Assignment strategy name",
+    )
+    min_score: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Minimum capability score for agent eligibility",
+    )
+    max_concurrent_tasks_per_agent: int = Field(
+        default=5,
+        ge=1,
+        le=50,
+        description=(
+            "Maximum concurrent tasks an agent is intended to handle. "
+            "Actual enforcement must be implemented by the "
+            "engine/assignment layer."
+        ),
+    )
+
+
 class RootConfig(BaseModel):
     """Root company configuration — the top-level validation target.
 
@@ -379,6 +413,8 @@ class RootConfig(BaseModel):
         graceful_shutdown: Graceful shutdown configuration.
         workflow_handoffs: Cross-department workflow handoffs.
         escalation_paths: Cross-department escalation paths.
+        coordination_metrics: Coordination metrics configuration.
+        task_assignment: Task assignment configuration.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -441,6 +477,10 @@ class RootConfig(BaseModel):
     coordination_metrics: CoordinationMetricsConfig = Field(
         default_factory=CoordinationMetricsConfig,
         description="Coordination metrics configuration",
+    )
+    task_assignment: TaskAssignmentConfig = Field(
+        default_factory=TaskAssignmentConfig,
+        description="Task assignment configuration",
     )
 
     @model_validator(mode="after")

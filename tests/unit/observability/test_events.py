@@ -84,6 +84,16 @@ from ai_company.observability.events.sandbox import (
     SANDBOX_WORKSPACE_VIOLATION,
 )
 from ai_company.observability.events.task import TASK_STATUS_CHANGED
+from ai_company.observability.events.task_assignment import (
+    TASK_ASSIGNMENT_AGENT_SCORED,
+    TASK_ASSIGNMENT_AGENT_SELECTED,
+    TASK_ASSIGNMENT_COMPLETE,
+    TASK_ASSIGNMENT_FAILED,
+    TASK_ASSIGNMENT_MANUAL_VALIDATED,
+    TASK_ASSIGNMENT_NO_ELIGIBLE,
+    TASK_ASSIGNMENT_STARTED,
+    TASK_ASSIGNMENT_WORKLOAD_BALANCED,
+)
 from ai_company.observability.events.template import (
     TEMPLATE_RENDER_START,
     TEMPLATE_RENDER_SUCCESS,
@@ -152,6 +162,7 @@ class TestEventConstants:
             "routing",
             "sandbox",
             "task",
+            "task_assignment",
             "task_routing",
             "template",
             "tool",
@@ -251,6 +262,16 @@ class TestEventConstants:
         assert CONFLICT_AMBIGUOUS_RESULT == "conflict.ambiguous_result"
         assert CONFLICT_HIERARCHY_ERROR == "conflict.hierarchy.error"
         assert CONFLICT_STRATEGY_ERROR == "conflict.strategy.error"
+
+    def test_task_assignment_events_exist(self) -> None:
+        assert TASK_ASSIGNMENT_STARTED == "task_assignment.started"
+        assert TASK_ASSIGNMENT_COMPLETE == "task_assignment.complete"
+        assert TASK_ASSIGNMENT_FAILED == "task_assignment.failed"
+        assert TASK_ASSIGNMENT_NO_ELIGIBLE == "task_assignment.no_eligible"
+        assert TASK_ASSIGNMENT_AGENT_SCORED == "task_assignment.agent.scored"
+        assert TASK_ASSIGNMENT_AGENT_SELECTED == "task_assignment.agent.selected"
+        assert TASK_ASSIGNMENT_MANUAL_VALIDATED == "task_assignment.manual.validated"
+        assert TASK_ASSIGNMENT_WORKLOAD_BALANCED == "task_assignment.workload.balanced"
 
     def test_tool_events_exist(self) -> None:
         assert TOOL_INVOKE_START == "tool.invoke.start"

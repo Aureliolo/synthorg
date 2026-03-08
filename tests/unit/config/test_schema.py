@@ -10,6 +10,7 @@ from ai_company.config.schema import (
     RootConfig,
     RoutingConfig,
     RoutingRuleConfig,
+    TaskAssignmentConfig,
 )
 from ai_company.core.enums import CompanyType, SeniorityLevel
 
@@ -494,3 +495,56 @@ class TestRootConfig:
         cfg = RootConfigFactory.build()
         assert isinstance(cfg, RootConfig)
         assert cfg.company_name
+
+
+# ── TaskAssignmentConfig ────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestTaskAssignmentConfig:
+    def test_defaults(self) -> None:
+        cfg = TaskAssignmentConfig()
+        assert cfg.strategy == "role_based"
+        assert cfg.min_score == 0.1
+        assert cfg.max_concurrent_tasks_per_agent == 5
+
+    def test_frozen(self) -> None:
+        cfg = TaskAssignmentConfig()
+        with pytest.raises(ValidationError):
+            cfg.strategy = "manual"  # type: ignore[misc]
+
+    def test_min_score_below_zero_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="min_score"):
+            TaskAssignmentConfig(min_score=-0.1)
+
+    def test_min_score_above_one_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="min_score"):
+            TaskAssignmentConfig(min_score=1.5)
+
+    def test_min_score_boundaries(self) -> None:
+        low = TaskAssignmentConfig(min_score=0.0)
+        high = TaskAssignmentConfig(min_score=1.0)
+        assert low.min_score == 0.0
+        assert high.min_score == 1.0
+
+    def test_max_concurrent_below_one_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="max_concurrent_tasks_per_agent",
+        ):
+            TaskAssignmentConfig(max_concurrent_tasks_per_agent=0)
+
+    def test_max_concurrent_above_fifty_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="max_concurrent_tasks_per_agent",
+        ):
+            TaskAssignmentConfig(max_concurrent_tasks_per_agent=51)
+
+    def test_nan_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            TaskAssignmentConfig(min_score=float("nan"))
+
+    def test_inf_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            TaskAssignmentConfig(min_score=float("inf"))

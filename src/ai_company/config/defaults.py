@@ -29,4 +29,5 @@ def default_config_dict() -> dict[str, Any]:
         "workflow_handoffs": [],
         "escalation_paths": [],
         "coordination_metrics": {},
+        "task_assignment": {},
     }

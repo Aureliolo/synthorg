@@ -836,6 +836,8 @@ Tasks can be assigned through multiple strategies:
 | **Hierarchical** | Flow down through management chain |
 | **Cost-optimized** | Assign to cheapest capable agent |
 
+> **Current state (M3):** Manual, Role-based, and Load-balanced strategies are implemented behind a `TaskAssignmentStrategy` protocol. `TaskAssignmentService` orchestrates assignment with validation and logging. Auction, Hierarchical, and Cost-optimized strategies are planned for M4+.
+
 ### 6.5 Agent Execution Loop
 
 The agent execution loop defines how an agent processes a task from start to finish. The framework provides multiple configurable loop architectures behind an `ExecutionLoop` protocol, making the system extensible. The default can vary by task complexity, and is configurable per agent or role.
@@ -2365,7 +2367,7 @@ ai-company/
 │       │   ├── role.py             # Role model
 │       │   ├── role_catalog.py     # Role catalog
 │       │   └── personality.py     # Personality compatibility scoring
-│       ├── engine/                  # Agent orchestration, execution loops, parallel execution, task decomposition, routing, task lifecycle, recovery, and shutdown
+│       ├── engine/                  # Agent orchestration, execution loops, parallel execution, task decomposition, routing, task assignment, task lifecycle, recovery, and shutdown
 │       │   ├── errors.py           # Engine error hierarchy
 │       │   ├── prompt.py           # System prompt builder
 │       │   ├── prompt_template.py  # System prompt Jinja2 templates
@@ -2386,6 +2388,12 @@ ai-company/
 │       │   ├── parallel_models.py  # AgentAssignment, ParallelExecutionGroup, AgentOutcome, ParallelExecutionResult, ParallelProgress
 │       │   ├── resource_lock.py    # ResourceLock protocol + InMemoryResourceLock
 │       │   ├── shutdown.py        # Graceful shutdown strategy & manager
+│       │   ├── assignment/          # Task assignment subsystem
+│       │   │   ├── __init__.py    # Package exports
+│       │   │   ├── models.py      # AssignmentRequest, AssignmentResult, AssignmentCandidate, AgentWorkload
+│       │   │   ├── protocol.py    # TaskAssignmentStrategy protocol
+│       │   │   ├── service.py     # TaskAssignmentService (orchestrates strategy + validation)
+│       │   │   └── strategies.py  # ManualAssignmentStrategy, RoleBasedAssignmentStrategy, LoadBalancedAssignmentStrategy
 │       │   ├── decomposition/      # Task decomposition subsystem
 │       │   │   ├── __init__.py    # Package exports
 │       │   │   ├── classifier.py  # TaskStructureClassifier (sequential/parallel/mixed)
@@ -2490,6 +2498,7 @@ ai-company/
 │       │   │   ├── routing.py     # ROUTING_* constants
 │       │   │   ├── sandbox.py     # SANDBOX_* constants
 │       │   │   ├── task.py        # TASK_* constants
+│       │   │   ├── task_assignment.py # TASK_ASSIGNMENT_* constants
 │       │   │   ├── task_routing.py # TASK_ROUTING_* constants
 │       │   │   ├── template.py    # TEMPLATE_* constants
 │       │   │   └── tool.py        # TOOL_* constants
@@ -2646,6 +2655,7 @@ These conventions were established during the M0–M2+ review cycle. **Adopted**
 | **Pydantic alias for YAML directives** | Adopted (M2.5) | `Field(alias="_remove")` in `TemplateAgentConfig` — YAML uses `_remove: true`, Python accesses `agent.remove`. Keeps the YAML-facing name (underscore prefix signals internal directive) separate from the Python attribute name. | Underscore-prefixed YAML keys signal merge directives vs regular fields. Pydantic alias bridges the naming convention gap cleanly. |
 | **Communication foundation** | Adopted (M4) | `MessageBus` protocol with `InMemoryMessageBus` backend (asyncio queues, pull-model `receive()` with shutdown signaling via `asyncio.Event`). `MessageDispatcher` routes to concurrent handlers via `asyncio.TaskGroup` with pre-allocated error collection. `AgentMessenger` per-agent facade auto-fills sender/timestamp/ID; deterministic direct-channel naming `@{sorted_a}:{sorted_b}`. `DeliveryEnvelope` for delivery tracking. `NotBlankStr` validation on all protocol boundary identifiers. | Pull-model avoids callback complexity and enables agents to consume at their own pace. Protocol + backend split enables future persistent/distributed bus implementations. Deterministic DM channel names prevent duplicates. See §5. |
 | **Delegation & loop prevention** | Adopted (M4) | `HierarchyResolver` resolves org hierarchy from `Company` at construction (cycle-detected, `MappingProxyType`-frozen). `AuthorityValidator` checks chain-of-command + role permissions. `DelegationGuard` orchestrates five mechanisms (ancestry, depth, dedup, rate limit, circuit breaker) in sequence, short-circuiting on first rejection. `DelegationService` is synchronous (CPU-only); messaging integration deferred. Stateful mechanisms use injectable clock for deterministic testing. Task model extended with `parent_task_id` and `delegation_chain` fields. | Synchronous delegation avoids async complexity for CPU-only validation. Five-mechanism guard provides defence-in-depth against all loop patterns. Injectable clocks enable deterministic testing. See §5.4, §5.5. |
+| **Task assignment** | Adopted (M3) | `TaskAssignmentStrategy` protocol with three concrete strategies: Manual (pre-designated), RoleBased (capability scoring via `AgentTaskScorer`), LoadBalanced (workload-aware with score tiebreaker). `TaskAssignmentService` orchestrates with status validation, structured logging, and `STRATEGY_MAP` registry (`MappingProxyType`-wrapped singletons). Inactive agents filtered during scoring. | Pluggable strategies behind a protocol mirror the execution loop and conflict resolution patterns. Reuses `AgentTaskScorer` from routing subsystem. `MappingProxyType` registry matches existing immutability conventions. See §6.4. |
 | **Conflict resolution** | Adopted (M4) | `ConflictResolver` protocol with async `resolve()` + sync `build_dissent_records()` split (resolve may call LLM, dissent record is pure construction). Four strategies: `AuthorityResolver` (seniority comparison iterating all N positions, hierarchy proximity tiebreaker via `get_lowest_common_manager`), `DebateResolver` (LLM judge via `JudgeEvaluator` protocol, authority fallback when absent), `HumanEscalationResolver` (stub, returns `ESCALATED_TO_HUMAN`), `HybridResolver` (LLM review + ambiguity escalation/authority fallback). `ConflictResolutionService` follows `DelegationService` pattern (`__slots__`, keyword-only constructor, `MappingProxyType`-wrapped resolver mapping, audit trail). `DissentRecord` preserves losing agent's reasoning. `Conflict.is_cross_department` is a `@computed_field` derived from positions. `HierarchyResolver` extended with `get_lowest_common_manager()` and `get_delegation_depth()`. | Protocol + strategy pattern enables adding new resolution approaches without modifying existing code. Async resolve accommodates LLM calls; sync dissent record avoids unnecessary async overhead. Shared `find_losers` utility prevents code duplication across strategies. See §5.6. |
 
 ---

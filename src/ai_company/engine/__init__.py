@@ -6,6 +6,21 @@ and engine errors.
 """
 
 from ai_company.engine.agent_engine import AgentEngine
+from ai_company.engine.assignment import (
+    STRATEGY_MAP,
+    STRATEGY_NAME_LOAD_BALANCED,
+    STRATEGY_NAME_MANUAL,
+    STRATEGY_NAME_ROLE_BASED,
+    AgentWorkload,
+    AssignmentCandidate,
+    AssignmentRequest,
+    AssignmentResult,
+    LoadBalancedAssignmentStrategy,
+    ManualAssignmentStrategy,
+    RoleBasedAssignmentStrategy,
+    TaskAssignmentService,
+    TaskAssignmentStrategy,
+)
 from ai_company.engine.context import (
     DEFAULT_MAX_TURNS,
     AgentContext,
@@ -33,9 +48,11 @@ from ai_company.engine.errors import (
     ExecutionStateError,
     LoopExecutionError,
     MaxTurnsExceededError,
+    NoEligibleAgentError,
     ParallelExecutionError,
     PromptBuildError,
     ResourceConflictError,
+    TaskAssignmentError,
     TaskRoutingError,
 )
 from ai_company.engine.loop_protocol import (
@@ -97,6 +114,10 @@ from ai_company.providers.models import ZERO_TOKEN_USAGE, add_token_usage
 
 __all__ = [
     "DEFAULT_MAX_TURNS",
+    "STRATEGY_MAP",
+    "STRATEGY_NAME_LOAD_BALANCED",
+    "STRATEGY_NAME_MANUAL",
+    "STRATEGY_NAME_ROLE_BASED",
     "ZERO_TOKEN_USAGE",
     "AgentAssignment",
     "AgentContext",
@@ -105,6 +126,10 @@ __all__ = [
     "AgentOutcome",
     "AgentRunResult",
     "AgentTaskScorer",
+    "AgentWorkload",
+    "AssignmentCandidate",
+    "AssignmentRequest",
+    "AssignmentResult",
     "AutoTopologyConfig",
     "BudgetChecker",
     "BudgetExhaustedError",
@@ -127,9 +152,12 @@ __all__ = [
     "ExecutionStateError",
     "FailAndReassignStrategy",
     "InMemoryResourceLock",
+    "LoadBalancedAssignmentStrategy",
     "LoopExecutionError",
+    "ManualAssignmentStrategy",
     "ManualDecompositionStrategy",
     "MaxTurnsExceededError",
+    "NoEligibleAgentError",
     "ParallelExecutionError",
     "ParallelExecutionGroup",
     "ParallelExecutionResult",
@@ -146,6 +174,7 @@ __all__ = [
     "RecoveryStrategy",
     "ResourceConflictError",
     "ResourceLock",
+    "RoleBasedAssignmentStrategy",
     "RoutingCandidate",
     "RoutingDecision",
     "RoutingResult",
@@ -159,6 +188,9 @@ __all__ = [
     "SubtaskDefinition",
     "SubtaskStatusRollup",
     "SystemPrompt",
+    "TaskAssignmentError",
+    "TaskAssignmentService",
+    "TaskAssignmentStrategy",
     "TaskCompletionMetrics",
     "TaskExecution",
     "TaskRoutingError",

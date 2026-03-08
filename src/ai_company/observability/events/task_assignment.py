@@ -1,0 +1,12 @@
+"""Task assignment event constants."""
+
+from typing import Final
+
+TASK_ASSIGNMENT_STARTED: Final[str] = "task_assignment.started"
+TASK_ASSIGNMENT_COMPLETE: Final[str] = "task_assignment.complete"
+TASK_ASSIGNMENT_FAILED: Final[str] = "task_assignment.failed"
+TASK_ASSIGNMENT_NO_ELIGIBLE: Final[str] = "task_assignment.no_eligible"
+TASK_ASSIGNMENT_AGENT_SCORED: Final[str] = "task_assignment.agent.scored"
+TASK_ASSIGNMENT_AGENT_SELECTED: Final[str] = "task_assignment.agent.selected"
+TASK_ASSIGNMENT_MANUAL_VALIDATED: Final[str] = "task_assignment.manual.validated"
+TASK_ASSIGNMENT_WORKLOAD_BALANCED: Final[str] = "task_assignment.workload.balanced"

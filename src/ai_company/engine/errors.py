@@ -61,3 +61,11 @@ class DecompositionDepthError(DecompositionError):
 
 class TaskRoutingError(EngineError):
     """Raised when task routing to an agent fails."""
+
+
+class TaskAssignmentError(EngineError):
+    """Raised when task assignment fails."""
+
+
+class NoEligibleAgentError(TaskAssignmentError):
+    """Raised when no eligible agent is found for assignment."""

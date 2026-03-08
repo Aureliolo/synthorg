@@ -8,7 +8,9 @@ from ai_company.engine.errors import (
     ExecutionStateError,
     LoopExecutionError,
     MaxTurnsExceededError,
+    NoEligibleAgentError,
     PromptBuildError,
+    TaskAssignmentError,
 )
 
 
@@ -43,3 +45,17 @@ class TestEngineErrorHierarchy:
         err = LoopExecutionError("loop failed")
         assert isinstance(err, EngineError)
         assert str(err) == "loop failed"
+
+    def test_task_assignment_error_is_engine_error(self) -> None:
+        assert issubclass(TaskAssignmentError, EngineError)
+        err = TaskAssignmentError("assignment failed")
+        assert isinstance(err, EngineError)
+        assert str(err) == "assignment failed"
+
+    def test_no_eligible_agent_error_is_task_assignment_error(self) -> None:
+        assert issubclass(NoEligibleAgentError, TaskAssignmentError)
+        assert issubclass(NoEligibleAgentError, EngineError)
+        err = NoEligibleAgentError("no agents")
+        assert isinstance(err, TaskAssignmentError)
+        assert isinstance(err, EngineError)
+        assert str(err) == "no agents"
