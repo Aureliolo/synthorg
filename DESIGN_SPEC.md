@@ -1332,6 +1332,121 @@ org_memory:
 > **Extensibility:** All backends implement the `OrgMemoryBackend` protocol (`query(context) → list[OrgFact]`, `write(fact, author)`, `list_policies()`). The MVP ships with Backend 1; Backends 2 and 3 are research directions that may be explored if the default approach proves insufficient. The selected memory layer backend Mem0 (ADR-001) provides optional graph memory via Neo4j/FalkorDB, which could reduce implementation effort for Backends 2-3.
 > **Write access control:** Core policies are human-only. ADRs and procedures can be written by senior+ agents. All writes are versioned and auditable. This prevents agents from corrupting shared organizational knowledge while allowing senior agents to document decisions.
 
+### 7.5 Operational Data Persistence
+
+Agent memory (§7.1–7.4) is handled by the `MemoryBackend` protocol (Mem0 initial, custom stack future — ADR-001). **Operational data** — tasks, cost records, messages, audit logs — is a separate concern managed by a pluggable `PersistenceBackend` protocol. Application code depends only on repository protocols; the storage engine is an implementation detail swappable via config.
+
+```text
+┌──────────────────────────────────────────────────────────────────┐
+│                     Application Code                              │
+│  engine/  budget/  communication/  security/                      │
+│     │        │           │             │                          │
+│     ▼        ▼           ▼             ▼                          │
+│  ┌──────┐ ┌──────┐ ┌──────────┐ ┌──────────┐                    │
+│  │ Task │ │ Cost │ │ Message  │ │  Audit   │  ← Repository       │
+│  │ Repo │ │ Repo │ │  Repo    │ │  Repo    │    Protocols        │
+│  └──┬───┘ └──┬───┘ └────┬─────┘ └────┬─────┘                    │
+│     └────────┴──────────┴────────────┘                            │
+│                      │                                            │
+│  ┌───────────────────┴───────────────────────────────────────┐   │
+│  │              PersistenceBackend (protocol)                  │   │
+│  │  connect() · disconnect() · health_check() · migrate()     │   │
+│  └───────────────────┬───────────────────────────────────────┘   │
+│                      │                                            │
+│  ┌───────────────────┴───────────────────────────────────────┐   │
+│  │  SQLitePersistenceBackend (initial)                         │   │
+│  │  PostgresPersistenceBackend (future)                        │   │
+│  │  MariaDBPersistenceBackend (future)                         │   │
+│  └───────────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+#### Protocol Design
+
+```python
+@runtime_checkable
+class PersistenceBackend(Protocol):
+    """Lifecycle management for operational data storage."""
+
+    async def connect(self) -> None: ...
+    async def disconnect(self) -> None: ...
+    async def health_check(self) -> bool: ...
+    async def migrate(self) -> None: ...
+
+    @property
+    def is_connected(self) -> bool: ...
+    @property
+    def backend_name(self) -> str: ...
+```
+
+Each entity type has its own repository protocol:
+
+```python
+@runtime_checkable
+class TaskRepository(Protocol):
+    """CRUD + query interface for Task persistence."""
+
+    async def save(self, task: Task) -> None: ...
+    async def get(self, task_id: str) -> Task | None: ...
+    async def list_tasks(self, *, status: TaskStatus | None = None, assigned_to: str | None = None) -> tuple[Task, ...]: ...
+    async def delete(self, task_id: str) -> bool: ...
+
+@runtime_checkable
+class CostRecordRepository(Protocol):
+    """CRUD + aggregation interface for CostRecord persistence."""
+
+    async def save(self, record: CostRecord) -> None: ...
+    async def query(self, *, agent_id: str | None = None, task_id: str | None = None) -> tuple[CostRecord, ...]: ...
+    async def aggregate(self, *, agent_id: str | None = None) -> float: ...
+
+@runtime_checkable
+class MessageRepository(Protocol):
+    """CRUD + query interface for Message persistence."""
+
+    async def save(self, message: Message) -> None: ...
+    async def get_history(self, channel: str, *, limit: int | None = None) -> tuple[Message, ...]: ...
+```
+
+#### Configuration
+
+```yaml
+persistence:
+  backend: "sqlite"                   # sqlite, postgresql, mariadb (future)
+  sqlite:
+    path: "/data/ai-company.db"       # database file path (mounted volume in Docker)
+    wal_mode: true                    # WAL for concurrent read performance
+    journal_size_limit: 67108864      # 64 MB WAL journal limit
+  # postgresql:                       # future
+  #   url: "postgresql://user:pass@host:5432/ai_company"
+  #   pool_size: 10
+  # mariadb:                          # future
+  #   url: "mariadb://user:pass@host:3306/ai_company"
+  #   pool_size: 10
+```
+
+#### Entities Persisted
+
+| Entity | Source Module | Repository | Key Queries |
+|--------|-------------|------------|-------------|
+| `Task` | `core/task.py` | `TaskRepository` | by status, by assignee, by project |
+| `CostRecord` | `budget/cost_record.py` | `CostRecordRepository` | by agent, by task, aggregations |
+| `Message` | `communication/message.py` | `MessageRepository` | by channel, by sender, time range |
+| Audit entries | `security/` | `AuditRepository` | by agent, by action type, time range |
+
+#### Migration Strategy
+
+- Migrations run programmatically at startup via `PersistenceBackend.migrate()`
+- Initial migration creates all tables
+- Versioned migration scripts tracked in `persistence/migrations/`
+- SQLite uses `user_version` pragma for version tracking; PostgreSQL/MariaDB use a migrations table
+
+#### Key Principles
+
+- **App code never imports a concrete backend** — only repository protocols
+- **Adding a new backend** requires implementing `PersistenceBackend` + all repository protocols — no changes to consumers
+- **Same entity models everywhere** — repositories accept and return the existing frozen Pydantic models (Task, CostRecord, Message), no ORM models or data transfer objects
+- **Async throughout** — all repository methods are async, matching the project's concurrency model
+
 ---
 
 ## 8. HR & Workforce Management
@@ -2339,7 +2454,7 @@ Run: ai-company start acme-corp
 | **Agent Memory** | Mem0 (Qdrant + SQLite) → custom (Neo4j + Qdrant) | Mem0 in-process as initial backend behind pluggable `MemoryBackend` protocol ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Qdrant embedded + SQLite for persistence. Custom stack (Neo4j + Qdrant external) as future upgrade. Config-driven backend selection |
 | **Message Bus** | Internal (async queues) → Redis | Start with Python asyncio queues, upgrade to Redis for multi-process/distributed |
 | **Task Queue** | Internal → Celery/Redis | Start simple, scale with Celery when needed |
-| **Database** | SQLite → PostgreSQL | Start lightweight, migrate to Postgres for production/multi-user |
+| **Database** | SQLite → PostgreSQL / MariaDB | Pluggable `PersistenceBackend` protocol (§7.5). SQLite ships first. PostgreSQL, MariaDB as future backends — swap via config, no app code changes |
 | **Web UI** | Vue 3 + Vite | Modern, fast, good ecosystem. Simpler than React for dashboards |
 | **Real-time** | WebSocket (FastAPI native) | Real-time agent activity, task updates, chat feed |
 | **Containerization** | Docker + Docker Compose | Isolated code execution, reproducible environments |
@@ -2492,6 +2607,17 @@ ai-company/
 │       │   ├── retrieval.py        # Memory retrieval & ranking (M5)
 │       │   ├── consolidation.py    # Memory compression over time (M5)
 │       │   └── shared.py           # Shared knowledge base (M5)
+│       ├── persistence/             # Operational data persistence (§7.5)
+│       │   ├── __init__.py         # Package exports
+│       │   ├── protocol.py         # PersistenceBackend protocol (M5)
+│       │   ├── repositories.py     # Repository protocols: TaskRepository, CostRecordRepository, MessageRepository, AuditRepository (M5)
+│       │   ├── config.py           # PersistenceConfig model (M5)
+│       │   ├── errors.py           # Persistence error hierarchy (M5)
+│       │   └── sqlite/             # SQLite backend (M5, initial)
+│       │       ├── __init__.py    # Package exports
+│       │       ├── backend.py     # SQLitePersistenceBackend
+│       │       ├── repositories.py # SQLite repository implementations
+│       │       └── migrations.py  # Schema migrations (user_version pragma)
 │       ├── observability/           # Structured logging & correlation
 │       │   ├── __init__.py         # get_logger() entry point
 │       │   ├── _logger.py          # Logger configuration

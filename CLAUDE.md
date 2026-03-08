@@ -51,6 +51,7 @@ src/ai_company/
   core/           # Shared domain models and base classes
   engine/         # Agent orchestration, execution loops, parallel execution, task decomposition, routing, task assignment, task lifecycle, recovery, shutdown, and workspace isolation
   memory/         # Persistent agent memory (Mem0 initial, custom stack future — ADR-001)
+  persistence/    # Operational data persistence — pluggable PersistenceBackend protocol, SQLite initial (§7.5)
   observability/  # Structured logging, correlation tracking, log sinks
   providers/      # LLM provider abstraction (LiteLLM adapter)
   security/       # SecOps agent, approval gates, audit
