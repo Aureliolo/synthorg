@@ -514,6 +514,45 @@ class TestValidateListErrors:
 
 
 @pytest.mark.unit
+class TestExpandPreservesMergeId:
+    def test_expand_preserves_merge_id(self) -> None:
+        """Expanded agent dict contains merge_id when set."""
+        from ai_company.templates.renderer import _expand_single_agent
+
+        agent: dict[str, object] = {
+            "role": "Full-Stack Developer",
+            "merge_id": "frontend",
+            "department": "engineering",
+        }
+        result = _expand_single_agent(agent, 0, set(), has_extends=True)
+        assert result.get("merge_id") == "frontend"
+
+    def test_expand_omits_empty_merge_id(self) -> None:
+        """Expanded agent dict omits merge_id when empty."""
+        from ai_company.templates.renderer import _expand_single_agent
+
+        agent: dict[str, object] = {
+            "role": "Full-Stack Developer",
+            "merge_id": "",
+            "department": "engineering",
+        }
+        result = _expand_single_agent(agent, 0, set(), has_extends=True)
+        assert "merge_id" not in result
+
+    def test_expand_omits_merge_id_without_extends(self) -> None:
+        """Standalone templates do not leak merge_id into output."""
+        from ai_company.templates.renderer import _expand_single_agent
+
+        agent: dict[str, object] = {
+            "role": "Full-Stack Developer",
+            "merge_id": "frontend",
+            "department": "engineering",
+        }
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        assert "merge_id" not in result
+
+
+@pytest.mark.unit
 class TestRosterCounts:
     @pytest.mark.parametrize("name", sorted(BUILTIN_TEMPLATES))
     def test_template_agent_count_in_range(self, name: str) -> None:

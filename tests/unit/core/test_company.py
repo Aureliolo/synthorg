@@ -90,6 +90,15 @@ class TestTeam:
                 members=("alice", "bob", "alice"),
             )
 
+    def test_duplicate_members_case_insensitive(self) -> None:
+        """Reject members that differ only by case."""
+        with pytest.raises(ValidationError, match="Duplicate members"):
+            Team(
+                name="backend",
+                lead="lead",
+                members=("Alice", "alice"),
+            )
+
     def test_frozen(self) -> None:
         """Ensure Team is immutable."""
         team = Team(name="test", lead="lead")
@@ -173,6 +182,18 @@ class TestDepartment:
                 head="head",
                 teams=(
                     Team(name="backend", lead="a"),
+                    Team(name="backend", lead="b"),
+                ),
+            )
+
+    def test_duplicate_team_names_case_insensitive(self) -> None:
+        """Reject team names that differ only by case."""
+        with pytest.raises(ValidationError, match="Duplicate team names"):
+            Department(
+                name="Eng",
+                head="head",
+                teams=(
+                    Team(name="Backend", lead="a"),
                     Team(name="backend", lead="b"),
                 ),
             )
@@ -281,6 +302,11 @@ class TestHRRegistry:
         """Reject duplicate entries in active_agents."""
         with pytest.raises(ValidationError, match="Duplicate entries"):
             HRRegistry(active_agents=("alice", "alice"))
+
+    def test_duplicate_active_agents_case_insensitive(self) -> None:
+        """Reject active agents that differ only by case."""
+        with pytest.raises(ValidationError, match="Duplicate entries"):
+            HRRegistry(active_agents=("Alice", "alice"))
 
     def test_empty_active_agent_rejected(self) -> None:
         """Reject empty string in active_agents."""

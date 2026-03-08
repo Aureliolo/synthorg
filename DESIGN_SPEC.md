@@ -163,7 +163,7 @@ Every agent has a comprehensive identity. At the design level, agent data splits
   - `ConflictApproach`: `avoid`, `accommodate`, `compete`, `compromise`, `collaborate` (Thomas-Kilmann model)
 
 ```yaml
-# --- Current (M2): Config layer — AgentIdentity (frozen) ---
+# --- Current (M3): Config layer — AgentIdentity (frozen) ---
 agent:
   id: "uuid"
   name: "Sarah Chen"
@@ -2374,7 +2374,6 @@ ai-company/
 │       │   ├── metrics.py          # TaskCompletionMetrics proxy overhead model
 │       │   ├── react_loop.py       # ReAct loop implementation
 │       │   ├── plan_models.py      # Plan step, plan, and plan-execute config models
-│       │   ├── plan_parsing.py     # Plan response parsing utilities
 │       │   ├── plan_execute_loop.py # Plan-and-Execute loop implementation
 │       │   ├── plan_parsing.py     # Plan extraction from LLM responses (JSON + text fallback)
 │       │   ├── loop_helpers.py     # Shared stateless helpers for all loop implementations
@@ -2386,7 +2385,7 @@ ai-company/
 │       │   ├── parallel_models.py  # AgentAssignment, ParallelExecutionGroup, AgentOutcome, ParallelExecutionResult, ParallelProgress
 │       │   ├── resource_lock.py    # ResourceLock protocol + InMemoryResourceLock
 │       │   ├── shutdown.py        # Graceful shutdown strategy & manager
-│       │   ├── task_engine.py      # Task routing & scheduling (M3-M4)
+│       │   ├── task_engine.py      # Task routing & scheduling (M4)
 │       │   ├── workflow_engine.py  # Workflow orchestration (M4)
 │       │   ├── meeting_engine.py   # Meeting coordination (M4)
 │       │   └── hr_engine.py        # Hiring, firing, performance (M7)
@@ -2482,6 +2481,7 @@ ai-company/
 │       │   ├── permissions.py      # ToolPermissionChecker (access-level gating)
 │       │   ├── errors.py           # Tool error hierarchy (incl. ToolPermissionDeniedError)
 │       │   ├── examples/           # Example tool implementations
+│       │   │   ├── __init__.py    # Package exports
 │       │   │   └── echo.py        # Echo tool (for testing)
 │       │   ├── sandbox/            # Sandboxing backends
 │       │   │   ├── __init__.py    # Package exports
@@ -2502,8 +2502,8 @@ ai-company/
 │       │   ├── _git_base.py        # Base class for git tools (workspace, subprocess, sandbox integration)
 │       │   ├── _process_cleanup.py  # Subprocess transport cleanup utility (Windows ResourceWarning prevention)
 │       │   ├── git_tools.py        # Git operations — 6 built-in tools (sandbox-aware)
-│       │   ├── code_runner.py      # Code execution (M3)
-│       │   ├── web_tools.py        # HTTP, search (M3)
+│       │   ├── code_runner.py      # Code execution (M7)
+│       │   ├── web_tools.py        # HTTP, search (M7)
 │       │   └── mcp_bridge.py       # MCP server integration (M7)
 │       ├── security/                # Security & approval (M7, stubs only)
 │       │   ├── approval.py         # Approval workflow (M7)
@@ -2597,7 +2597,7 @@ These conventions were established during the M0–M2+ review cycle. **Adopted**
 | **State coordination** | Planned (M4) | Centralized single-writer: `TaskEngine` owns all task/project mutations via `asyncio.Queue`. Agents submit requests, engine applies `model_copy(update=...)` sequentially and publishes snapshots. `version: int` field on state models for future optimistic concurrency if multi-process scaling is needed. | Prevents lost updates by design. Trivial in single-threaded asyncio (no locks). Perfect audit trail. Industry consensus: MetaGPT, CrewAI, AutoGen all use prevention-by-design, not conflict resolution. See §6.8 State Coordination table. |
 | **Workspace isolation** | Planned (M4) | Pluggable `WorkspaceIsolationStrategy` protocol. Default: planner + git worktrees. Each agent works in an isolated worktree; sequential merge on completion. Textual conflicts detected by git; semantic conflicts reviewed by agent or human. | Industry standard (Codex, Cursor, Claude Code, VS Code). Maximum parallelism. Leverages mature git infrastructure. See §6.8. |
 | **Graceful shutdown** | Adopted (M3) | Pluggable `ShutdownStrategy` protocol. Default: cooperative with 30s timeout. Agents check shutdown event at turn boundaries. Force-cancel after timeout. `INTERRUPTED` status for force-cancelled tasks. M4/M5: upgrade to checkpoint-and-stop. | Cross-platform (Windows `signal.signal()` fallback). Bounded shutdown time. Mirrors cooperative shutdown in §6.7. |
-| **Template inheritance** | Adopted (M2.5) | `extends` field on `CompanyTemplate` triggers parent resolution at render time. `merge.py` merges configs by field type: scalars (child wins), config dicts (deep merge), agents (by `(role, department)` key with `_remove` support), departments (by name). `_ParentEntry` dataclass tracks merge state. `DEFAULT_MERGE_DEPARTMENT = "engineering"` shared between merge and renderer. Circular chains detected via `frozenset` tracking; max depth = 10. | Enables template composition without copy-paste. Merge-by-key preserves parent order. `_remove` directive enables clean agent removal without workarounds. |
+| **Template inheritance** | Adopted (M2.5) | `extends` field on `CompanyTemplate` triggers parent resolution at render time. `merge.py` merges configs by field type: scalars (child wins), config dicts (deep merge), agents (by `(role, department, merge_id)` key with `_remove` support), departments (by name). `_ParentEntry` dataclass tracks merge state. `DEFAULT_MERGE_DEPARTMENT = "engineering"` shared between merge and renderer. Circular chains detected via `frozenset` tracking; max depth = 10. | Enables template composition without copy-paste. Merge-by-key preserves parent order. `_remove` directive enables clean agent removal without workarounds. |
 | **Pydantic alias for YAML directives** | Adopted (M2.5) | `Field(alias="_remove")` in `TemplateAgentConfig` — YAML uses `_remove: true`, Python accesses `agent.remove`. Keeps the YAML-facing name (underscore prefix signals internal directive) separate from the Python attribute name. | Underscore-prefixed YAML keys signal merge directives vs regular fields. Pydantic alias bridges the naming convention gap cleanly. |
 | **Communication foundation** | Adopted (M4) | `MessageBus` protocol with `InMemoryMessageBus` backend (asyncio queues, pull-model `receive()` with shutdown signaling via `asyncio.Event`). `MessageDispatcher` routes to concurrent handlers via `asyncio.TaskGroup` with pre-allocated error collection. `AgentMessenger` per-agent facade auto-fills sender/timestamp/ID; deterministic direct-channel naming `@{sorted_a}:{sorted_b}`. `DeliveryEnvelope` for delivery tracking. `NotBlankStr` validation on all protocol boundary identifiers. | Pull-model avoids callback complexity and enables agents to consume at their own pace. Protocol + backend split enables future persistent/distributed bus implementations. Deterministic DM channel names prevent duplicates. See §5. |
 | **Delegation & loop prevention** | Adopted (M4) | `HierarchyResolver` resolves org hierarchy from `Company` at construction (cycle-detected, `MappingProxyType`-frozen). `AuthorityValidator` checks chain-of-command + role permissions. `DelegationGuard` orchestrates five mechanisms (ancestry, depth, dedup, rate limit, circuit breaker) in sequence, short-circuiting on first rejection. `DelegationService` is synchronous (CPU-only); messaging integration deferred. Stateful mechanisms use injectable clock for deterministic testing. Task model extended with `parent_task_id` and `delegation_chain` fields. | Synchronous delegation avoids async complexity for CPU-only validation. Five-mechanism guard provides defence-in-depth against all loop patterns. Injectable clocks enable deterministic testing. See §5.4, §5.5. |

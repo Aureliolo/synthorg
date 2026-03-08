@@ -5,6 +5,7 @@ deployments and testing.
 """
 
 import asyncio
+import contextlib
 from collections import deque
 from datetime import UTC, datetime
 from typing import NoReturn
@@ -38,11 +39,14 @@ from ai_company.observability.events.communication import (
     COMM_HISTORY_QUERIED,
     COMM_MESSAGE_DELIVERED,
     COMM_MESSAGE_PUBLISHED,
+    COMM_RECEIVE_SHUTDOWN,
     COMM_RECEIVE_TIMEOUT,
+    COMM_RECEIVE_UNSUBSCRIBED,
     COMM_SEND_DIRECT_INVALID,
     COMM_SUBSCRIPTION_CREATED,
     COMM_SUBSCRIPTION_NOT_FOUND,
     COMM_SUBSCRIPTION_REMOVED,
+    COMM_UNSUBSCRIBE_SENTINEL_FAILED,
 )
 
 logger = get_logger(__name__)
@@ -93,7 +97,7 @@ class InMemoryMessageBus:
         self._config = config
         self._lock = asyncio.Lock()
         self._channels: dict[str, Channel] = {}
-        self._queues: dict[tuple[str, str], asyncio.Queue[DeliveryEnvelope]] = {}
+        self._queues: dict[tuple[str, str], asyncio.Queue[DeliveryEnvelope | None]] = {}
         self._history: dict[str, deque[Message]] = {}
         self._known_agents: set[str] = set()
         self._running = False
@@ -154,7 +158,7 @@ class InMemoryMessageBus:
         self,
         channel_name: str,
         subscriber_id: str,
-    ) -> asyncio.Queue[DeliveryEnvelope]:
+    ) -> asyncio.Queue[DeliveryEnvelope | None]:
         """Get or create a per-(channel, subscriber) queue."""
         return self._queues.setdefault(
             (channel_name, subscriber_id),
@@ -395,7 +399,17 @@ class InMemoryMessageBus:
             self._channels[channel_name] = channel.model_copy(
                 update={"subscribers": new_subs},
             )
-            self._queues.pop((channel_name, subscriber_id), None)
+            queue = self._queues.pop((channel_name, subscriber_id), None)
+            if queue is not None:
+                try:
+                    queue.put_nowait(None)
+                except asyncio.QueueFull:
+                    logger.exception(
+                        COMM_UNSUBSCRIBE_SENTINEL_FAILED,
+                        channel=channel_name,
+                        subscriber=subscriber_id,
+                        detail="Queue full — unsubscribe sentinel not delivered",
+                    )
         logger.info(
             COMM_SUBSCRIPTION_REMOVED,
             channel=channel_name,
@@ -415,13 +429,19 @@ class InMemoryMessageBus:
         the bus is stopped.  When ``timeout`` is ``None``, awaits
         indefinitely (or until shutdown).
 
+        Note: Only one ``receive()`` call should be pending per
+        ``(channel_name, subscriber_id)`` pair at a time.  The
+        unsubscribe sentinel wakes a single waiter; concurrent
+        receivers on the same subscription are not supported.
+
         Args:
             channel_name: Channel to receive from.
             subscriber_id: Agent ID receiving.
             timeout: Seconds to wait before returning ``None``.
 
         Returns:
-            A delivery envelope, or ``None`` on timeout or shutdown.
+            A delivery envelope, or ``None`` on timeout, shutdown,
+            or when an in-flight receive is woken by :meth:`unsubscribe`.
 
         Raises:
             MessageBusNotRunningError: If the bus is not running.
@@ -442,17 +462,39 @@ class InMemoryMessageBus:
             queue = self._ensure_queue(channel_name, subscriber_id)
         result = await self._await_with_shutdown(queue, timeout)
         if result is None:
+            self._log_receive_null(channel_name, subscriber_id, timeout)
+        return result
+
+    def _log_receive_null(
+        self,
+        channel_name: str,
+        subscriber_id: str,
+        timeout: float | None,
+    ) -> None:
+        """Log the cause when ``receive()`` returns ``None``."""
+        if self._shutdown_event.is_set():
+            logger.debug(
+                COMM_RECEIVE_SHUTDOWN,
+                channel=channel_name,
+                subscriber=subscriber_id,
+            )
+        elif (channel_name, subscriber_id) not in self._queues:
+            logger.debug(
+                COMM_RECEIVE_UNSUBSCRIBED,
+                channel=channel_name,
+                subscriber=subscriber_id,
+            )
+        else:
             logger.debug(
                 COMM_RECEIVE_TIMEOUT,
                 channel=channel_name,
                 subscriber=subscriber_id,
                 timeout=timeout,
             )
-        return result
 
     async def _await_with_shutdown(
         self,
-        queue: asyncio.Queue[DeliveryEnvelope],
+        queue: asyncio.Queue[DeliveryEnvelope | None],
         timeout: float | None,  # noqa: ASYNC109
     ) -> DeliveryEnvelope | None:
         """Await next envelope, returning ``None`` on timeout or shutdown.
@@ -464,8 +506,8 @@ class InMemoryMessageBus:
         Returns:
             The next envelope, or ``None``.
         """
-        get_task = asyncio.ensure_future(queue.get())
-        shutdown_task = asyncio.ensure_future(
+        get_task = asyncio.create_task(queue.get())
+        shutdown_task = asyncio.create_task(
             self._shutdown_event.wait(),
         )
         try:
@@ -480,8 +522,12 @@ class InMemoryMessageBus:
             raise
         if not get_task.done():
             get_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await get_task
         if not shutdown_task.done():
             shutdown_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await shutdown_task
         if get_task in done and not get_task.cancelled():
             return get_task.result()
         return None

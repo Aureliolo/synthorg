@@ -497,6 +497,91 @@ template:
 
 
 @pytest.mark.unit
+class TestMergeIdTargeting:
+    def test_child_targets_specific_agent_by_merge_id(self) -> None:
+        """Child can override a specific agent among same-role duplicates."""
+        parent = [
+            {
+                "role": "Full-Stack Developer",
+                "department": "engineering",
+                "merge_id": "frontend",
+                "specialty": "frontend",
+                "level": "mid",
+            },
+            {
+                "role": "Full-Stack Developer",
+                "department": "engineering",
+                "merge_id": "backend",
+                "specialty": "backend",
+                "level": "mid",
+            },
+        ]
+        child = [
+            {
+                "role": "Full-Stack Developer",
+                "department": "engineering",
+                "merge_id": "backend",
+                "specialty": "backend",
+                "level": "senior",
+            },
+        ]
+        result = _merge_agents(parent, child)
+        assert len(result) == 2
+        backend = next(a for a in result if a["specialty"] == "backend")
+        frontend = next(a for a in result if a["specialty"] == "frontend")
+        assert backend["level"] == "senior"
+        assert frontend["level"] == "mid"
+
+    def test_merge_id_stripped_from_output(self) -> None:
+        """merge_id is stripped from the final output."""
+        parent = [
+            {
+                "role": "Dev",
+                "department": "eng",
+                "merge_id": "alpha",
+            },
+        ]
+        result = _merge_agents(parent, [])
+        assert "merge_id" not in result[0]
+
+    def test_remove_targets_specific_agent_by_merge_id(self) -> None:
+        """_remove with merge_id removes only the targeted agent."""
+        parent = [
+            {
+                "role": "Full-Stack Developer",
+                "department": "engineering",
+                "merge_id": "frontend",
+                "specialty": "frontend",
+                "level": "mid",
+            },
+            {
+                "role": "Full-Stack Developer",
+                "department": "engineering",
+                "merge_id": "backend",
+                "specialty": "backend",
+                "level": "mid",
+            },
+        ]
+        child = [
+            {
+                "role": "Full-Stack Developer",
+                "department": "engineering",
+                "merge_id": "frontend",
+                "_remove": True,
+            },
+        ]
+        result = _merge_agents(parent, child)
+        assert len(result) == 1
+        assert result[0]["specialty"] == "backend"
+
+    def test_missing_role_raises(self) -> None:
+        """Agent dict without role raises TemplateInheritanceError."""
+        parent = [{"department": "engineering"}]
+        with pytest.raises(TemplateInheritanceError, match="missing 'role'"):
+            _merge_agents(parent, [])
+
+
+@pytest.mark.unit
 class TestInheritanceIntegration:
     def test_child_extends_builtin_renders_to_valid_root_config(
         self,

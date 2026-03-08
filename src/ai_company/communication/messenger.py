@@ -10,7 +10,10 @@ from ai_company.communication.handler import (  # noqa: TC001
     MessageHandlerFunc,
 )
 from ai_company.communication.message import Message
-from ai_company.communication.subscription import Subscription  # noqa: TC001
+from ai_company.communication.subscription import (  # noqa: TC001
+    DeliveryEnvelope,
+    Subscription,
+)
 from ai_company.observability import get_logger
 from ai_company.observability.events.communication import (
     COMM_DISPATCH_NO_DISPATCHER,
@@ -267,6 +270,28 @@ class AgentMessenger:
             COMM_MESSENGER_UNSUBSCRIBED,
             agent_id=self._agent_id,
             channel=channel_name,
+        )
+
+    async def receive(
+        self,
+        channel_name: str,
+        *,
+        timeout: float | None = None,  # noqa: ASYNC109
+    ) -> DeliveryEnvelope | None:
+        """Receive the next message from a channel.
+
+        Args:
+            channel_name: Channel to receive from.
+            timeout: Max seconds to wait, or ``None`` for indefinite.
+
+        Returns:
+            The next delivery envelope, or ``None`` on timeout, shutdown,
+            or when an in-flight receive is woken by :meth:`unsubscribe`.
+        """
+        return await self._bus.receive(
+            channel_name,
+            self._agent_id,
+            timeout=timeout,
         )
 
     def register_handler(
