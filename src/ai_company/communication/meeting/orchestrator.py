@@ -5,7 +5,6 @@ configured protocol, executes the meeting, optionally creates tasks
 from action items, and records audit trail entries.
 """
 
-import copy
 from collections import Counter
 from collections.abc import Mapping  # noqa: TC003
 from types import MappingProxyType
@@ -96,7 +95,7 @@ class MeetingOrchestrator:
     ) -> None:
         self._protocol_registry: MappingProxyType[
             MeetingProtocolType, MeetingProtocol
-        ] = MappingProxyType(copy.deepcopy(dict(protocol_registry)))
+        ] = MappingProxyType(dict(protocol_registry))
         self._agent_caller = agent_caller
         self._task_creator = task_creator
         self._records: list[MeetingRecord] = []

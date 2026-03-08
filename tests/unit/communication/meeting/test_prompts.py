@@ -72,3 +72,23 @@ class TestBuildAgendaPrompt:
         agenda = MeetingAgenda(title="Design", items=items)
         result = build_agenda_prompt(agenda)
         assert "1. Auth — OAuth flow" in result
+
+    def test_items_with_presenter_id(self) -> None:
+        """Presenter ID is included in the formatted prompt."""
+        items = (
+            MeetingAgendaItem(
+                title="API Design",
+                description="REST endpoints",
+                presenter_id="lead-dev",
+            ),
+        )
+        agenda = MeetingAgenda(title="Review", items=items)
+        result = build_agenda_prompt(agenda)
+        assert "(presenter: lead-dev)" in result
+
+    def test_items_without_presenter_id(self) -> None:
+        """No presenter tag when presenter_id is None."""
+        items = (MeetingAgendaItem(title="Topic"),)
+        agenda = MeetingAgenda(title="Sync", items=items)
+        result = build_agenda_prompt(agenda)
+        assert "presenter:" not in result

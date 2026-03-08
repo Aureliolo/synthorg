@@ -377,6 +377,12 @@ class TestGetLowestCommonManager:
         resolver = HierarchyResolver(company)
         assert resolver.get_lowest_common_manager("sr_dev", "sr_dev") == "sr_dev"
 
+    def test_same_unknown_agent_returns_none(self) -> None:
+        """Unknown agent passed as both arguments returns None."""
+        company = _make_company(departments=(_eng_department(),))
+        resolver = HierarchyResolver(company)
+        assert resolver.get_lowest_common_manager("unknown", "unknown") is None
+
     def test_cross_department_agents_under_same_root(self) -> None:
         """If eng/qa share a root, that root is LCM."""
         company = _make_company(departments=(_eng_department(), _qa_department()))

@@ -38,3 +38,6 @@ MEETING_SUMMARY_SKIPPED: Final[str] = "meeting.summary.skipped"
 
 # Token tracking
 MEETING_TOKENS_RECORDED: Final[str] = "meeting.tokens.recorded"
+
+# Internal invariant violations
+MEETING_INTERNAL_ERROR: Final[str] = "meeting.internal.error"

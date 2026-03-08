@@ -41,6 +41,7 @@ from ai_company.observability.events.meeting import (
     MEETING_BUDGET_EXHAUSTED,
     MEETING_CONFLICT_DETECTED,
     MEETING_CONTRIBUTION_RECORDED,
+    MEETING_INTERNAL_ERROR,
     MEETING_PHASE_COMPLETED,
     MEETING_PHASE_STARTED,
     MEETING_SUMMARY_GENERATED,
@@ -133,9 +134,11 @@ def _build_synthesis_prompt(
     parts.append("")
     parts.append(
         "As the meeting leader, synthesize all inputs and discussion "
-        "into final decisions and action items. List decisions as a "
-        "numbered list and action items as a bulleted list with "
-        "assignees."
+        "into your output using exactly these section headers:\n\n"
+        "Decisions:\n"
+        "1. <decision>\n\n"
+        "Action Items:\n"
+        "- <action item> (assigned to <agent_id>)"
     )
     return "\n".join(parts)
 
@@ -277,7 +280,13 @@ class StructuredPhasesProtocol:
         )
 
         decisions = parse_decisions(summary)
-        action_items = parse_action_items(summary)
+        raw_action_items = parse_action_items(summary)
+        allowed_assignees = set(participant_ids) | {leader_id}
+        action_items = tuple(
+            item
+            for item in raw_action_items
+            if item.assignee_id is None or item.assignee_id in allowed_assignees
+        )
 
         logger.debug(
             MEETING_TOKENS_RECORDED,
@@ -400,11 +409,19 @@ class StructuredPhasesProtocol:
         # on any task failure, so reaching this point means all succeeded.
         if not all(r is not None for r in result_inputs):
             msg = f"Expected {num_participants} inputs but some slots are None"
-            logger.error(msg, meeting_id=meeting_id)
+            logger.error(
+                MEETING_INTERNAL_ERROR,
+                error=msg,
+                meeting_id=meeting_id,
+            )
             raise RuntimeError(msg)
         if not all(c is not None for c in result_contributions):
             msg = f"Expected {num_participants} contributions but some slots are None"
-            logger.error(msg, meeting_id=meeting_id)
+            logger.error(
+                MEETING_INTERNAL_ERROR,
+                error=msg,
+                meeting_id=meeting_id,
+            )
             raise RuntimeError(msg)
         inputs: list[tuple[str, str]] = list(result_inputs)  # type: ignore[arg-type]
         input_contributions: list[MeetingContribution] = list(

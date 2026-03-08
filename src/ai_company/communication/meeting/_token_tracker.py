@@ -15,6 +15,7 @@ import dataclasses
 from ai_company.observability import get_logger
 from ai_company.observability.events.meeting import (
     MEETING_BUDGET_EXHAUSTED,
+    MEETING_VALIDATION_FAILED,
 )
 
 logger = get_logger(__name__)
@@ -75,7 +76,7 @@ class TokenTracker:
                 f"output_tokens={output_tokens}"
             )
             logger.warning(
-                MEETING_BUDGET_EXHAUSTED,
+                MEETING_VALIDATION_FAILED,
                 error=msg,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,

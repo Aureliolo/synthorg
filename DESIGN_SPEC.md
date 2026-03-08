@@ -2412,7 +2412,7 @@ ai-company/
 │       │   ├── config.py           # Communication config
 │       │   ├── conflict_resolution/ # Conflict resolution subsystem (§5.6)
 │       │   │   ├── __init__.py   # Package exports
-│       │   │   ├── _helpers.py   # Shared utility (find_losers, build_dissent_records)
+│       │   │   ├── _helpers.py   # Shared utility (find_losers, pick_highest_seniority)
 │       │   │   ├── authority_strategy.py # AuthorityResolver (Strategy 1)
 │       │   │   ├── config.py     # ConflictResolutionConfig, DebateConfig, HybridConfig
 │       │   │   ├── debate_strategy.py   # DebateResolver (Strategy 2)

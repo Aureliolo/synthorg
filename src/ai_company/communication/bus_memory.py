@@ -464,12 +464,20 @@ class InMemoryMessageBus:
         try:
             result = await self._await_with_shutdown(queue, timeout)
         finally:
-            # Decrement outside the lock: in asyncio cooperative
-            # multitasking, this dict mutation is atomic between await
-            # points.  The asymmetry with the lock-guarded increment
-            # is intentional — the decrement must happen after
+            # Decrement outside the lock: no ``await`` separates the
+            # read and write of ``_waiters``, so no other coroutine
+            # can interleave in a single-threaded asyncio event loop.
+            # The asymmetry with the lock-guarded increment is
+            # intentional — the decrement must happen after
             # _await_with_shutdown completes.
-            self._waiters[key] = max(0, self._waiters.get(key, 0) - 1)
+            current = self._waiters.get(key)
+            if current is None:
+                # Key was removed (e.g. by unsubscribe); don't recreate.
+                pass
+            elif current <= 1:
+                self._waiters.pop(key, None)
+            else:
+                self._waiters[key] = current - 1
         if result is None:
             await self._log_receive_null(channel_name, subscriber_id, timeout)
         return result

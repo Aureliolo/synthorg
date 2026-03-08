@@ -189,7 +189,17 @@ class TestMeetingMinutes:
         assert minutes.conflicts_detected is False
 
     def test_total_tokens_computed(self) -> None:
+        contrib = MeetingContribution(
+            agent_id="agent-a",
+            content="Input",
+            phase=MeetingPhase.ROUND_ROBIN_TURN,
+            turn_number=0,
+            input_tokens=100,
+            output_tokens=50,
+            timestamp=_NOW,
+        )
         minutes = self._make_minutes(
+            contributions=(contrib,),
             total_input_tokens=100,
             total_output_tokens=50,
         )
@@ -462,6 +472,25 @@ class TestMeetingMinutesTokenAggregates:
                 contributions=(contrib,),
                 total_input_tokens=10,
                 total_output_tokens=999,
+                started_at=_NOW,
+                ended_at=_LATER,
+            )
+
+    def test_empty_contributions_non_zero_totals_rejected(self) -> None:
+        """Empty contributions with non-zero totals raises."""
+        with pytest.raises(
+            ValidationError,
+            match="must be 0 when contributions are empty",
+        ):
+            MeetingMinutes(
+                meeting_id="m-1",
+                protocol_type=MeetingProtocolType.ROUND_ROBIN,
+                leader_id="leader",
+                participant_ids=("agent-a",),
+                agenda=MeetingAgenda(title="Test"),
+                contributions=(),
+                total_input_tokens=100,
+                total_output_tokens=0,
                 started_at=_NOW,
                 ended_at=_LATER,
             )

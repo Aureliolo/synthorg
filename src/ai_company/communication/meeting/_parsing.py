@@ -22,13 +22,14 @@ _ACTION_ITEMS_HEADER_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 _ANY_HEADER_RE = re.compile(
-    r"^#+\s+\S|^\S.*:\s*$",
+    r"^#+\s+\S|^(?!\s*(?:\d+[\.\)]\s|-\s|\*\s|\u2022\s))\S.*:\s*$",
     re.MULTILINE,
 )
 
-# List item patterns (numbered or bulleted)
+# List item patterns (numbered or bulleted), capturing continuation lines
 _LIST_ITEM_RE = re.compile(
-    r"^[^\S\n]*(?:\d+[\.\)][^\S\n]*|-[^\S\n]*|\*[^\S\n]*|\u2022[^\S\n]*)(.+)",
+    r"^[^\S\n]*(?:\d+[\.\)][^\S\n]*|-[^\S\n]*|\*[^\S\n]*|\u2022[^\S\n]*)"
+    r"(.+(?:\n(?![^\S\n]*(?:\d+[\.\)]\s|-\s|\*\s|\u2022\s)|#+\s|\S.*:\s*$).+)*)",
     re.MULTILINE,
 )
 
@@ -82,11 +83,16 @@ def parse_decisions(summary_text: str) -> tuple[str, ...]:
     """
     section = _extract_section(summary_text, _DECISIONS_HEADER_RE)
     if not section:
+        logger.debug(
+            "meeting.parsing.no_section",
+            section="decisions",
+        )
         return ()
 
     decisions: list[str] = []
     for match in _LIST_ITEM_RE.finditer(section):
-        text = match.group(1).strip()
+        # Join continuation lines into a single string
+        text = " ".join(match.group(1).split())
         if text:
             decisions.append(text)
 
@@ -135,11 +141,16 @@ def parse_action_items(
     """
     section = _extract_section(summary_text, _ACTION_ITEMS_HEADER_RE)
     if not section:
+        logger.debug(
+            "meeting.parsing.no_section",
+            section="action_items",
+        )
         return ()
 
     items: list[ActionItem] = []
     for match in _LIST_ITEM_RE.finditer(section):
-        raw_text = match.group(1).strip()
+        # Join continuation lines into a single string
+        raw_text = " ".join(match.group(1).split())
         if not raw_text:
             continue
 

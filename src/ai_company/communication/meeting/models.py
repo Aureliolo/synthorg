@@ -242,6 +242,12 @@ class MeetingMinutes(BaseModel):
         zero totals).
         """
         if not self.contributions:
+            if self.total_input_tokens != 0 or self.total_output_tokens != 0:
+                msg = (
+                    "total_input_tokens and total_output_tokens must "
+                    "be 0 when contributions are empty"
+                )
+                raise ValueError(msg)
             return self
         sum_input = sum(c.input_tokens for c in self.contributions)
         sum_output = sum(c.output_tokens for c in self.contributions)

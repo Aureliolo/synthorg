@@ -58,10 +58,15 @@ class TestStatusRollup:
 
     @pytest.mark.unit
     def test_empty_statuses(self) -> None:
-        """Empty statuses -> derived CREATED."""
+        """Empty statuses -> derived CREATED with all counts zero."""
         rollup = StatusRollup.compute("task-1", ())
         assert rollup.derived_parent_status == TaskStatus.CREATED
         assert rollup.total == 0
+        assert rollup.completed == 0
+        assert rollup.failed == 0
+        assert rollup.in_progress == 0
+        assert rollup.blocked == 0
+        assert rollup.cancelled == 0
 
     @pytest.mark.unit
     def test_pending_work(self) -> None:

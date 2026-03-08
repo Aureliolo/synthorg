@@ -237,7 +237,10 @@ class TestDecompositionResult:
                 SubtaskDefinition(id="sub-2", title="B", description="B desc"),
             ),
         )
-        with pytest.raises(ValueError, match="do not match plan subtask IDs"):
+        with pytest.raises(
+            ValueError,
+            match=r"missing=\['sub-2'\].*extra=\['sub-99'\]",
+        ):
             DecompositionResult(
                 plan=plan,
                 created_tasks=(

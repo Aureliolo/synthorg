@@ -186,6 +186,10 @@ class SubtaskStatusRollup(BaseModel):
     these. The ``derived_parent_status`` treats any such remainder
     as work still pending (IN_PROGRESS).
 
+    When all subtasks are in terminal states but with a mix of
+    completed and cancelled, ``derived_parent_status`` returns
+    ``CANCELLED`` (some work was abandoned).
+
     Attributes:
         parent_task_id: ID of the parent task.
         total: Total number of subtasks.

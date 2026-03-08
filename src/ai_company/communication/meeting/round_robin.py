@@ -74,9 +74,12 @@ def _build_summary_prompt(
     parts.extend(transcript)
     parts.append("")
     parts.append(
-        "Please summarize this meeting. List the key decisions made "
-        "and any action items with assignees. Format decisions as a "
-        "numbered list and action items as a bulleted list."
+        "Please summarize this meeting using exactly these section "
+        "headers:\n\n"
+        "Decisions:\n"
+        "1. <decision>\n\n"
+        "Action Items:\n"
+        "- <action item> (assigned to <agent_id>)"
     )
     return "\n".join(parts)
 
@@ -163,7 +166,13 @@ class RoundRobinProtocol:
             )
             all_contributions = (*contributions, summary_contribution)
             decisions = parse_decisions(summary)
-            action_items = parse_action_items(summary)
+            raw_action_items = parse_action_items(summary)
+            allowed_assignees = set(participant_ids) | {leader_id}
+            action_items = tuple(
+                item
+                for item in raw_action_items
+                if item.assignee_id is None or item.assignee_id in allowed_assignees
+            )
         elif self._config.leader_summarizes and tracker.is_exhausted:
             logger.warning(
                 MEETING_SUMMARY_SKIPPED,
