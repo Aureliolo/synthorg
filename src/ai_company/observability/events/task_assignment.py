@@ -10,3 +10,9 @@ TASK_ASSIGNMENT_AGENT_SCORED: Final[str] = "task_assignment.agent.scored"
 TASK_ASSIGNMENT_AGENT_SELECTED: Final[str] = "task_assignment.agent.selected"
 TASK_ASSIGNMENT_MANUAL_VALIDATED: Final[str] = "task_assignment.manual.validated"
 TASK_ASSIGNMENT_WORKLOAD_BALANCED: Final[str] = "task_assignment.workload.balanced"
+TASK_ASSIGNMENT_COST_OPTIMIZED: Final[str] = "task_assignment.cost_optimized"
+TASK_ASSIGNMENT_HIERARCHICAL_DELEGATED: Final[str] = (
+    "task_assignment.hierarchical.delegated"
+)
+TASK_ASSIGNMENT_AUCTION_BID: Final[str] = "task_assignment.auction.bid"
+TASK_ASSIGNMENT_AUCTION_WON: Final[str] = "task_assignment.auction.won"

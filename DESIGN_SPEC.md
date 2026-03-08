@@ -836,7 +836,7 @@ Tasks can be assigned through multiple strategies:
 | **Hierarchical** | Flow down through management chain |
 | **Cost-optimized** | Assign to cheapest capable agent |
 
-> **Current state (M3):** Manual, Role-based, and Load-balanced strategies are implemented behind a `TaskAssignmentStrategy` protocol. `TaskAssignmentService` orchestrates assignment with validation and logging. Auction, Hierarchical, and Cost-optimized strategies are planned for M4+.
+> **Current state (M4):** All six strategies are implemented behind the `TaskAssignmentStrategy` protocol. Manual, Role-based, Load-balanced, Cost-optimized, and Auction strategies are in the static `STRATEGY_MAP`. Hierarchical requires a `HierarchyResolver` at runtime via `build_strategy_map(hierarchy=...)`.
 
 ### 6.5 Agent Execution Loop
 
@@ -2393,7 +2393,7 @@ ai-company/
 │       │   │   ├── models.py      # AssignmentRequest, AssignmentResult, AssignmentCandidate, AgentWorkload
 │       │   │   ├── protocol.py    # TaskAssignmentStrategy protocol
 │       │   │   ├── service.py     # TaskAssignmentService (orchestrates strategy + validation)
-│       │   │   └── strategies.py  # ManualAssignmentStrategy, RoleBasedAssignmentStrategy, LoadBalancedAssignmentStrategy
+│       │   │   └── strategies.py  # All 6 strategy implementations + STRATEGY_MAP + build_strategy_map
 │       │   ├── decomposition/      # Task decomposition subsystem
 │       │   │   ├── __init__.py    # Package exports
 │       │   │   ├── classifier.py  # TaskStructureClassifier (sequential/parallel/mixed)

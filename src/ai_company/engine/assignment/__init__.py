@@ -1,7 +1,8 @@
 """Task assignment engine.
 
 Assigns tasks to agents using pluggable strategies: manual
-designation, role-based scoring, or load-balanced selection.
+designation, role-based scoring, load-balanced selection,
+cost-optimized selection, hierarchical delegation, or auction.
 """
 
 from ai_company.engine.assignment.models import (
@@ -14,16 +15,26 @@ from ai_company.engine.assignment.protocol import TaskAssignmentStrategy
 from ai_company.engine.assignment.service import TaskAssignmentService
 from ai_company.engine.assignment.strategies import (
     STRATEGY_MAP,
+    STRATEGY_NAME_AUCTION,
+    STRATEGY_NAME_COST_OPTIMIZED,
+    STRATEGY_NAME_HIERARCHICAL,
     STRATEGY_NAME_LOAD_BALANCED,
     STRATEGY_NAME_MANUAL,
     STRATEGY_NAME_ROLE_BASED,
+    AuctionAssignmentStrategy,
+    CostOptimizedAssignmentStrategy,
+    HierarchicalAssignmentStrategy,
     LoadBalancedAssignmentStrategy,
     ManualAssignmentStrategy,
     RoleBasedAssignmentStrategy,
+    build_strategy_map,
 )
 
 __all__ = [
     "STRATEGY_MAP",
+    "STRATEGY_NAME_AUCTION",
+    "STRATEGY_NAME_COST_OPTIMIZED",
+    "STRATEGY_NAME_HIERARCHICAL",
     "STRATEGY_NAME_LOAD_BALANCED",
     "STRATEGY_NAME_MANUAL",
     "STRATEGY_NAME_ROLE_BASED",
@@ -31,9 +42,13 @@ __all__ = [
     "AssignmentCandidate",
     "AssignmentRequest",
     "AssignmentResult",
+    "AuctionAssignmentStrategy",
+    "CostOptimizedAssignmentStrategy",
+    "HierarchicalAssignmentStrategy",
     "LoadBalancedAssignmentStrategy",
     "ManualAssignmentStrategy",
     "RoleBasedAssignmentStrategy",
     "TaskAssignmentService",
     "TaskAssignmentStrategy",
+    "build_strategy_map",
 ]
