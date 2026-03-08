@@ -1,11 +1,12 @@
 """Task assignment strategy implementations.
 
 Six concrete strategies — Manual, RoleBased, LoadBalanced,
-CostOptimized, Hierarchical, Auction — plus a module-level
-strategy registry mapping names to singletons.
+CostOptimized, Hierarchical, Auction.  The module-level
+``STRATEGY_MAP`` (five strategies; Hierarchical requires
+explicit construction via ``build_strategy_map``) and the
+``build_strategy_map`` factory live in ``registry.py``.
 """
 
-from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 from ai_company.core.enums import AgentStatus
@@ -13,6 +14,7 @@ from ai_company.core.enums import AgentStatus
 if TYPE_CHECKING:
     from ai_company.communication.delegation.hierarchy import HierarchyResolver
     from ai_company.core.agent import AgentIdentity
+    from ai_company.engine.routing.scorer import AgentTaskScorer
 from ai_company.engine.assignment.models import (
     AssignmentCandidate,
     AssignmentRequest,
@@ -20,15 +22,17 @@ from ai_company.engine.assignment.models import (
 )
 from ai_company.engine.decomposition.models import SubtaskDefinition
 from ai_company.engine.errors import NoEligibleAgentError, TaskAssignmentError
-from ai_company.engine.routing.scorer import AgentTaskScorer
 from ai_company.observability import get_logger
 from ai_company.observability.events.task_assignment import (
     TASK_ASSIGNMENT_AGENT_SCORED,
     TASK_ASSIGNMENT_AUCTION_BID,
     TASK_ASSIGNMENT_AUCTION_WON,
+    TASK_ASSIGNMENT_CAPABILITY_FALLBACK,
     TASK_ASSIGNMENT_COST_OPTIMIZED,
+    TASK_ASSIGNMENT_DELEGATOR_RESOLVED,
     TASK_ASSIGNMENT_FAILED,
     TASK_ASSIGNMENT_HIERARCHICAL_DELEGATED,
+    TASK_ASSIGNMENT_HIERARCHY_TRANSITIVE,
     TASK_ASSIGNMENT_MANUAL_VALIDATED,
     TASK_ASSIGNMENT_NO_ELIGIBLE,
     TASK_ASSIGNMENT_WORKLOAD_BALANCED,
@@ -74,9 +78,7 @@ def _score_and_filter_candidates(
 ) -> list[AssignmentCandidate]:
     """Score all agents and return filtered, sorted candidates.
 
-    Shared scoring logic used by ``RoleBasedAssignmentStrategy``,
-    ``LoadBalancedAssignmentStrategy``, ``CostOptimizedAssignmentStrategy``,
-    ``HierarchicalAssignmentStrategy``, and ``AuctionAssignmentStrategy``.
+    Shared scoring logic used by all scorer-based strategies.
 
     Args:
         scorer: The agent-task scorer to use.
@@ -157,8 +159,8 @@ class ManualAssignmentStrategy:
             )
             raise TaskAssignmentError(msg)
 
-        # task.assigned_to stores agent ID as string; compare against
-        # UUID string form (str(uuid4()) produces lowercase hyphenated)
+        # Compare agent ID string forms (assigned_to is a plain
+        # string, agent.id is a UUID)
         agent: AgentIdentity | None = None
         for available in request.available_agents:
             if str(available.id) == task.assigned_to:
@@ -370,17 +372,31 @@ class LoadBalancedAssignmentStrategy:
                     0,
                 ),
             )
+        else:
+            logger.debug(
+                TASK_ASSIGNMENT_CAPABILITY_FALLBACK,
+                task_id=request.task.id,
+                strategy=self.name,
+            )
 
         selected = candidates[0]
         alternatives = tuple(candidates[1:])
+
+        reason = (
+            f"Least loaded: {selected.agent_identity.name!r} "
+            f"(score={selected.score:.2f})"
+            if workload_map
+            else f"Best match (no workload data): "
+            f"{selected.agent_identity.name!r} "
+            f"(score={selected.score:.2f})"
+        )
 
         return AssignmentResult(
             task_id=request.task.id,
             strategy_used=self.name,
             selected=selected,
             alternatives=alternatives,
-            reason=f"Least loaded: {selected.agent_identity.name!r} "
-            f"(score={selected.score:.2f})",
+            reason=reason,
         )
 
 
@@ -388,9 +404,9 @@ class CostOptimizedAssignmentStrategy:
     """Assigns a task to the cheapest eligible agent.
 
     Scores agents like ``RoleBasedAssignmentStrategy``, then
-    sorts by total cost (ascending) with score as tiebreaker
-    (descending). Falls back to pure capability sorting when
-    no workload/cost data is provided.
+    sorts by ``total_cost_usd`` (ascending) with score as
+    tiebreaker (descending).  Falls back to pure capability
+    sorting when ``request.workloads`` is empty.
     """
 
     __slots__ = ("_scorer",)
@@ -447,27 +463,39 @@ class CostOptimizedAssignmentStrategy:
                     -c.score,
                 ),
             )
-            selected = candidates[0]
             logger.debug(
                 TASK_ASSIGNMENT_COST_OPTIMIZED,
                 task_id=request.task.id,
-                agent_name=selected.agent_identity.name,
+                agent_name=candidates[0].agent_identity.name,
                 total_cost_usd=cost_map.get(
-                    str(selected.agent_identity.id),
+                    str(candidates[0].agent_identity.id),
                     0.0,
                 ),
+            )
+        else:
+            logger.debug(
+                TASK_ASSIGNMENT_CAPABILITY_FALLBACK,
+                task_id=request.task.id,
+                strategy=self.name,
             )
 
         selected = candidates[0]
         alternatives = tuple(candidates[1:])
+
+        reason = (
+            f"Cheapest: {selected.agent_identity.name!r} (score={selected.score:.2f})"
+            if cost_map
+            else f"Best match (no cost data): "
+            f"{selected.agent_identity.name!r} "
+            f"(score={selected.score:.2f})"
+        )
 
         return AssignmentResult(
             task_id=request.task.id,
             strategy_used=self.name,
             selected=selected,
             alternatives=alternatives,
-            reason=f"Cheapest: {selected.agent_identity.name!r} "
-            f"(score={selected.score:.2f})",
+            reason=reason,
         )
 
 
@@ -475,9 +503,10 @@ class HierarchicalAssignmentStrategy:
     """Assigns a task to a subordinate of the delegator.
 
     Identifies the delegator from ``task.delegation_chain[-1]``
-    (or ``task.created_by`` as fallback), then filters the agent
-    pool to the delegator's direct reports. Falls back to
-    transitive subordinates if no direct report matches.
+    (the most recent delegator) or ``task.created_by`` as
+    fallback, then filters the agent pool to the delegator's
+    direct reports.  Falls back to transitive subordinates if
+    no direct report matches.
     """
 
     __slots__ = ("_hierarchy", "_scorer")
@@ -508,7 +537,20 @@ class HierarchicalAssignmentStrategy:
         """
         task = request.task
         if task.delegation_chain:
-            return task.delegation_chain[-1]
+            delegator = task.delegation_chain[-1]
+            logger.debug(
+                TASK_ASSIGNMENT_DELEGATOR_RESOLVED,
+                task_id=task.id,
+                delegator=delegator,
+                source="delegation_chain",
+            )
+            return delegator
+        logger.debug(
+            TASK_ASSIGNMENT_DELEGATOR_RESOLVED,
+            task_id=task.id,
+            delegator=task.created_by,
+            source="created_by",
+        )
         return task.created_by
 
     def _filter_by_hierarchy(
@@ -535,6 +577,11 @@ class HierarchicalAssignmentStrategy:
             return direct
 
         # Fall back to transitive subordinates
+        logger.debug(
+            TASK_ASSIGNMENT_HIERARCHY_TRANSITIVE,
+            delegator=delegator,
+            direct_report_count=len(direct_reports),
+        )
         return tuple(
             a
             for a in request.available_agents
@@ -652,8 +699,9 @@ class AuctionAssignmentStrategy:
 
     Each agent's bid is ``capability_score * availability_factor``,
     where ``availability_factor = 1.0 / (1.0 + active_task_count)``.
-    The highest bidder wins. Falls back to pure capability sorting
-    when no workload data is provided.
+    The highest bidder wins.  When no workload data is provided,
+    all availability factors default to 1.0, making bids equal
+    to raw capability scores.
     """
 
     __slots__ = ("_scorer",)
@@ -745,82 +793,3 @@ class AuctionAssignmentStrategy:
             reason=f"Auction winner: {selected.agent_identity.name!r} "
             f"(bid={bids[0][1]:.4f})",
         )
-
-
-# ── Strategy registry ────────────────────────────────────────────
-_DEFAULT_SCORER = AgentTaskScorer()
-
-_StrategyType = (
-    ManualAssignmentStrategy
-    | RoleBasedAssignmentStrategy
-    | LoadBalancedAssignmentStrategy
-    | CostOptimizedAssignmentStrategy
-    | HierarchicalAssignmentStrategy
-    | AuctionAssignmentStrategy
-)
-
-STRATEGY_MAP: MappingProxyType[str, _StrategyType] = MappingProxyType(
-    {
-        STRATEGY_NAME_MANUAL: ManualAssignmentStrategy(),
-        STRATEGY_NAME_ROLE_BASED: RoleBasedAssignmentStrategy(
-            _DEFAULT_SCORER,
-        ),
-        STRATEGY_NAME_LOAD_BALANCED: LoadBalancedAssignmentStrategy(
-            _DEFAULT_SCORER,
-        ),
-        STRATEGY_NAME_COST_OPTIMIZED: CostOptimizedAssignmentStrategy(
-            _DEFAULT_SCORER,
-        ),
-        STRATEGY_NAME_AUCTION: AuctionAssignmentStrategy(
-            _DEFAULT_SCORER,
-        ),
-    },
-)
-
-
-def build_strategy_map(
-    *,
-    hierarchy: HierarchyResolver | None = None,
-    scorer: AgentTaskScorer | None = None,
-) -> MappingProxyType[str, _StrategyType]:
-    """Build a strategy map, optionally including hierarchical.
-
-    When ``hierarchy`` is provided, includes the
-    ``HierarchicalAssignmentStrategy`` in the returned map.
-    Otherwise, returns the same five strategies as the static
-    ``STRATEGY_MAP``.
-
-    Args:
-        hierarchy: Optional hierarchy resolver for the hierarchical
-            strategy.
-        scorer: Optional custom scorer. Defaults to a new
-            ``AgentTaskScorer``.
-
-    Returns:
-        Immutable mapping of strategy names to instances.
-    """
-    effective_scorer = scorer if scorer is not None else AgentTaskScorer()
-
-    strategies: dict[str, _StrategyType] = {
-        STRATEGY_NAME_MANUAL: ManualAssignmentStrategy(),
-        STRATEGY_NAME_ROLE_BASED: RoleBasedAssignmentStrategy(
-            effective_scorer,
-        ),
-        STRATEGY_NAME_LOAD_BALANCED: LoadBalancedAssignmentStrategy(
-            effective_scorer,
-        ),
-        STRATEGY_NAME_COST_OPTIMIZED: CostOptimizedAssignmentStrategy(
-            effective_scorer,
-        ),
-        STRATEGY_NAME_AUCTION: AuctionAssignmentStrategy(
-            effective_scorer,
-        ),
-    }
-
-    if hierarchy is not None:
-        strategies[STRATEGY_NAME_HIERARCHICAL] = HierarchicalAssignmentStrategy(
-            effective_scorer,
-            hierarchy,
-        )
-
-    return MappingProxyType(strategies)

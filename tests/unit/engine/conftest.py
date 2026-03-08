@@ -14,6 +14,7 @@ from ai_company.core.agent import (
 )
 from ai_company.core.company import Company, CompanyConfig, Department
 from ai_company.core.enums import (
+    AgentStatus,
     Complexity,
     CreativityLevel,
     DepartmentName,
@@ -351,3 +352,53 @@ def make_merge_result(  # noqa: PLR0913
         merged_commit_sha=merged_commit_sha,
         escalation=escalation,
     )
+
+
+# ── Assignment strategy test helpers ─────────────────────────
+
+
+def make_assignment_model_config() -> ModelConfig:
+    """Build a vendor-agnostic ModelConfig for assignment tests."""
+    return ModelConfig(
+        provider="test-provider",
+        model_id="test-small-001",
+    )
+
+
+def make_assignment_agent(  # noqa: PLR0913
+    name: str,
+    *,
+    level: SeniorityLevel = SeniorityLevel.MID,
+    primary_skills: tuple[str, ...] = (),
+    secondary_skills: tuple[str, ...] = (),
+    role: str = "Developer",
+    status: AgentStatus = AgentStatus.ACTIVE,
+) -> AgentIdentity:
+    """Build an AgentIdentity with sensible defaults for tests."""
+    return AgentIdentity(
+        name=name,
+        role=role,
+        department="Engineering",
+        level=level,
+        model=make_assignment_model_config(),
+        hiring_date=date(2026, 1, 1),
+        skills=SkillSet(
+            primary=primary_skills,
+            secondary=secondary_skills,
+        ),
+        status=status,
+    )
+
+
+def make_assignment_task(**overrides: object) -> Task:
+    """Build a Task with sensible defaults for assignment tests."""
+    defaults: dict[str, object] = {
+        "id": "task-001",
+        "title": "Test task",
+        "description": "A test task",
+        "type": TaskType.DEVELOPMENT,
+        "project": "proj-001",
+        "created_by": "manager",
+    }
+    defaults.update(overrides)
+    return Task(**defaults)  # type: ignore[arg-type]

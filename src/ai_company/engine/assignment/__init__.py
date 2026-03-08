@@ -12,9 +12,12 @@ from ai_company.engine.assignment.models import (
     AssignmentResult,
 )
 from ai_company.engine.assignment.protocol import TaskAssignmentStrategy
+from ai_company.engine.assignment.registry import (
+    STRATEGY_MAP,
+    build_strategy_map,
+)
 from ai_company.engine.assignment.service import TaskAssignmentService
 from ai_company.engine.assignment.strategies import (
-    STRATEGY_MAP,
     STRATEGY_NAME_AUCTION,
     STRATEGY_NAME_COST_OPTIMIZED,
     STRATEGY_NAME_HIERARCHICAL,
@@ -27,7 +30,6 @@ from ai_company.engine.assignment.strategies import (
     LoadBalancedAssignmentStrategy,
     ManualAssignmentStrategy,
     RoleBasedAssignmentStrategy,
-    build_strategy_map,
 )
 
 __all__ = [
