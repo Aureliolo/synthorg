@@ -166,6 +166,36 @@ class TestHierarchicalAssignmentStrategy:
         assert result.selected is not None
         assert result.selected.agent_identity.name == "dev-1"
 
+    def test_single_element_delegation_chain(
+        self,
+        hierarchy: HierarchyResolver,
+    ) -> None:
+        """Single-element delegation_chain resolves correctly."""
+        scorer = AgentTaskScorer()
+        strategy = HierarchicalAssignmentStrategy(scorer, hierarchy)
+
+        dev1 = make_assignment_agent(
+            "dev-1",
+            primary_skills=("python",),
+            level=SeniorityLevel.MID,
+        )
+
+        task = make_assignment_task(
+            created_by="manager",
+            delegation_chain=("lead",),
+            estimated_complexity=Complexity.MEDIUM,
+        )
+        request = AssignmentRequest(
+            task=task,
+            available_agents=(dev1,),
+            required_skills=("python",),
+        )
+
+        result = strategy.assign(request)
+
+        assert result.selected is not None
+        assert result.selected.agent_identity.name == "dev-1"
+
     def test_no_subordinates_returns_none(
         self,
         hierarchy: HierarchyResolver,

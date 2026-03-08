@@ -1,8 +1,8 @@
 """Task assignment strategy implementations.
 
-Six concrete strategies — Manual, RoleBased, LoadBalanced,
+Concrete strategies — Manual, RoleBased, LoadBalanced,
 CostOptimized, Hierarchical, Auction.  The module-level
-``STRATEGY_MAP`` (five strategies; Hierarchical requires
+``STRATEGY_MAP`` (Hierarchical excluded; it requires
 explicit construction via ``build_strategy_map``) and the
 ``build_strategy_map`` factory live in ``registry.py``.
 """
@@ -79,6 +79,7 @@ def _score_and_filter_candidates(
     """Score all agents and return filtered, sorted candidates.
 
     Shared scoring logic used by all scorer-based strategies.
+    Filters out agents with non-ACTIVE status before scoring.
 
     Args:
         scorer: The agent-task scorer to use.
@@ -86,7 +87,8 @@ def _score_and_filter_candidates(
         subtask: The subtask definition for scoring.
 
     Returns:
-        Sorted list of candidates above the minimum score.
+        Sorted list of candidates whose score meets or exceeds
+        ``request.min_score``, ordered by score descending.
     """
     candidates: list[AssignmentCandidate] = []
     for agent in request.available_agents:
@@ -257,6 +259,8 @@ class RoleBasedAssignmentStrategy:
     def assign(self, request: AssignmentRequest) -> AssignmentResult:
         """Score and rank agents, selecting the best match.
 
+        Returns ``selected=None`` when no candidates meet threshold.
+
         Args:
             request: The assignment request.
 
@@ -305,8 +309,8 @@ class LoadBalancedAssignmentStrategy:
 
     Scores agents like ``RoleBasedAssignmentStrategy``, then
     sorts by workload (ascending) with score as tiebreaker
-    (descending). Falls back to pure capability sorting when
-    no workload data is provided.
+    (descending). Falls back to score-based ranking when
+    workload data is absent or incomplete.
     """
 
     __slots__ = ("_scorer",)
@@ -321,6 +325,8 @@ class LoadBalancedAssignmentStrategy:
 
     def assign(self, request: AssignmentRequest) -> AssignmentResult:
         """Score, filter by workload, and select the least-loaded agent.
+
+        Returns ``selected=None`` when no candidates meet threshold.
 
         Args:
             request: The assignment request.
@@ -355,11 +361,13 @@ class LoadBalancedAssignmentStrategy:
         workload_map: dict[str, int] = {
             w.agent_id: w.active_task_count for w in request.workloads
         }
+        candidate_ids = {str(c.agent_identity.id) for c in candidates}
+        has_complete_data = bool(workload_map) and candidate_ids <= workload_map.keys()
 
-        if workload_map:
+        if has_complete_data:
             candidates.sort(
                 key=lambda c: (
-                    workload_map.get(str(c.agent_identity.id), 0),
+                    workload_map[str(c.agent_identity.id)],
                     -c.score,
                 ),
             )
@@ -367,16 +375,14 @@ class LoadBalancedAssignmentStrategy:
                 TASK_ASSIGNMENT_WORKLOAD_BALANCED,
                 task_id=request.task.id,
                 agent_name=candidates[0].agent_identity.name,
-                workload=workload_map.get(
-                    str(candidates[0].agent_identity.id),
-                    0,
-                ),
+                workload=workload_map[str(candidates[0].agent_identity.id)],
             )
         else:
-            logger.debug(
+            logger.warning(
                 TASK_ASSIGNMENT_CAPABILITY_FALLBACK,
                 task_id=request.task.id,
                 strategy=self.name,
+                partial_data=bool(workload_map),
             )
 
         selected = candidates[0]
@@ -385,8 +391,8 @@ class LoadBalancedAssignmentStrategy:
         reason = (
             f"Least loaded: {selected.agent_identity.name!r} "
             f"(score={selected.score:.2f})"
-            if workload_map
-            else f"Best match (no workload data): "
+            if has_complete_data
+            else f"Best match (insufficient workload data): "
             f"{selected.agent_identity.name!r} "
             f"(score={selected.score:.2f})"
         )
@@ -405,8 +411,8 @@ class CostOptimizedAssignmentStrategy:
 
     Scores agents like ``RoleBasedAssignmentStrategy``, then
     sorts by ``total_cost_usd`` (ascending) with score as
-    tiebreaker (descending).  Falls back to pure capability
-    sorting when ``request.workloads`` is empty.
+    tiebreaker (descending).  Falls back to score-based
+    ranking when cost data is absent or incomplete.
     """
 
     __slots__ = ("_scorer",)
@@ -421,6 +427,8 @@ class CostOptimizedAssignmentStrategy:
 
     def assign(self, request: AssignmentRequest) -> AssignmentResult:
         """Score, sort by cost, and select the cheapest eligible agent.
+
+        Returns ``selected=None`` when no candidates meet threshold.
 
         Args:
             request: The assignment request.
@@ -455,11 +463,13 @@ class CostOptimizedAssignmentStrategy:
         cost_map: dict[str, float] = {
             w.agent_id: w.total_cost_usd for w in request.workloads
         }
+        candidate_ids = {str(c.agent_identity.id) for c in candidates}
+        has_complete_data = bool(cost_map) and candidate_ids <= cost_map.keys()
 
-        if cost_map:
+        if has_complete_data:
             candidates.sort(
                 key=lambda c: (
-                    cost_map.get(str(c.agent_identity.id), 0.0),
+                    cost_map[str(c.agent_identity.id)],
                     -c.score,
                 ),
             )
@@ -467,16 +477,14 @@ class CostOptimizedAssignmentStrategy:
                 TASK_ASSIGNMENT_COST_OPTIMIZED,
                 task_id=request.task.id,
                 agent_name=candidates[0].agent_identity.name,
-                total_cost_usd=cost_map.get(
-                    str(candidates[0].agent_identity.id),
-                    0.0,
-                ),
+                total_cost_usd=cost_map[str(candidates[0].agent_identity.id)],
             )
         else:
-            logger.debug(
+            logger.warning(
                 TASK_ASSIGNMENT_CAPABILITY_FALLBACK,
                 task_id=request.task.id,
                 strategy=self.name,
+                partial_data=bool(cost_map),
             )
 
         selected = candidates[0]
@@ -484,8 +492,8 @@ class CostOptimizedAssignmentStrategy:
 
         reason = (
             f"Cheapest: {selected.agent_identity.name!r} (score={selected.score:.2f})"
-            if cost_map
-            else f"Best match (no cost data): "
+            if has_complete_data
+            else f"Best match (insufficient cost data): "
             f"{selected.agent_identity.name!r} "
             f"(score={selected.score:.2f})"
         )
@@ -503,7 +511,7 @@ class HierarchicalAssignmentStrategy:
     """Assigns a task to a subordinate of the delegator.
 
     Identifies the delegator from ``task.delegation_chain[-1]``
-    (the most recent delegator) or ``task.created_by`` as
+    (the deepest in the root-first chain) or ``task.created_by`` as
     fallback, then filters the agent pool to the delegator's
     direct reports.  Falls back to transitive subordinates if
     no direct report matches.
@@ -577,10 +585,12 @@ class HierarchicalAssignmentStrategy:
             return direct
 
         # Fall back to transitive subordinates
+        available_names = tuple(a.name for a in request.available_agents)
         logger.debug(
             TASK_ASSIGNMENT_HIERARCHY_TRANSITIVE,
             delegator=delegator,
-            direct_report_count=len(direct_reports),
+            direct_reports=tuple(sorted(direct_reports)),
+            available_agents=available_names,
         )
         return tuple(
             a
@@ -588,55 +598,37 @@ class HierarchicalAssignmentStrategy:
             if self._hierarchy.is_subordinate(delegator, a.name)
         )
 
-    def assign(self, request: AssignmentRequest) -> AssignmentResult:
-        """Assign to the best-scoring subordinate of the delegator.
+    def _is_known_delegator(self, delegator: str) -> bool:
+        """Check if the delegator exists in the hierarchy.
+
+        An agent is "known" if it has direct reports or a supervisor.
 
         Args:
-            request: The assignment request.
+            delegator: Delegator agent name.
 
         Returns:
-            Assignment result with the best subordinate.
+            True if the delegator is part of the hierarchy.
         """
-        delegator = self._resolve_delegator(request)
-
-        # Unknown delegator: no reports and no supervisor means
-        # the agent is not part of the hierarchy at all.
         has_reports = bool(self._hierarchy.get_direct_reports(delegator))
         has_supervisor = self._hierarchy.get_supervisor(delegator) is not None
-        if not has_reports and not has_supervisor:
-            logger.warning(
-                TASK_ASSIGNMENT_NO_ELIGIBLE,
-                task_id=request.task.id,
-                strategy=self.name,
-                delegator=delegator,
-                reason="unknown_delegator",
-            )
-            return AssignmentResult(
-                task_id=request.task.id,
-                strategy_used=self.name,
-                reason=f"Delegator {delegator!r} not found in hierarchy",
-            )
+        return has_reports or has_supervisor
 
-        subordinates = self._filter_by_hierarchy(request, delegator)
+    def _score_subordinates(
+        self,
+        request: AssignmentRequest,
+        delegator: str,
+        subordinates: tuple[AgentIdentity, ...],
+    ) -> AssignmentResult:
+        """Score subordinates and select the best match.
 
-        if not subordinates:
-            logger.warning(
-                TASK_ASSIGNMENT_NO_ELIGIBLE,
-                task_id=request.task.id,
-                strategy=self.name,
-                delegator=delegator,
-                reason="no_subordinates",
-            )
-            return AssignmentResult(
-                task_id=request.task.id,
-                strategy_used=self.name,
-                reason=(
-                    f"No subordinates of {delegator!r} found "
-                    f"in available agents for task {request.task.id!r}"
-                ),
-            )
+        Args:
+            request: The original assignment request.
+            delegator: Delegator agent name.
+            subordinates: Filtered subordinate agents.
 
-        # Create a new request with filtered agents to reuse scoring
+        Returns:
+            Assignment result with best-scoring subordinate.
+        """
         filtered_request = AssignmentRequest(
             task=request.task,
             available_agents=subordinates,
@@ -693,6 +685,54 @@ class HierarchicalAssignmentStrategy:
             f"(score={selected.score:.2f})",
         )
 
+    def assign(self, request: AssignmentRequest) -> AssignmentResult:
+        """Assign to the best-scoring subordinate of the delegator.
+
+        Returns ``selected=None`` when no candidates meet threshold.
+
+        Args:
+            request: The assignment request.
+
+        Returns:
+            Assignment result with the best subordinate.
+        """
+        delegator = self._resolve_delegator(request)
+
+        if not self._is_known_delegator(delegator):
+            logger.warning(
+                TASK_ASSIGNMENT_NO_ELIGIBLE,
+                task_id=request.task.id,
+                strategy=self.name,
+                delegator=delegator,
+                reason="unknown_delegator",
+            )
+            return AssignmentResult(
+                task_id=request.task.id,
+                strategy_used=self.name,
+                reason=f"Delegator {delegator!r} not found in hierarchy",
+            )
+
+        subordinates = self._filter_by_hierarchy(request, delegator)
+
+        if not subordinates:
+            logger.warning(
+                TASK_ASSIGNMENT_NO_ELIGIBLE,
+                task_id=request.task.id,
+                strategy=self.name,
+                delegator=delegator,
+                reason="no_subordinates",
+            )
+            return AssignmentResult(
+                task_id=request.task.id,
+                strategy_used=self.name,
+                reason=(
+                    f"No subordinates of {delegator!r} found "
+                    f"in available agents for task {request.task.id!r}"
+                ),
+            )
+
+        return self._score_subordinates(request, delegator, subordinates)
+
 
 class AuctionAssignmentStrategy:
     """Assigns a task via simulated auction bidding.
@@ -716,6 +756,8 @@ class AuctionAssignmentStrategy:
 
     def assign(self, request: AssignmentRequest) -> AssignmentResult:
         """Run a simulated auction and select the highest bidder.
+
+        Returns ``selected=None`` when no candidates meet threshold.
 
         Args:
             request: The assignment request.
@@ -750,15 +792,25 @@ class AuctionAssignmentStrategy:
         workload_map: dict[str, int] = {
             w.agent_id: w.active_task_count for w in request.workloads
         }
+        candidate_ids = {str(c.agent_identity.id) for c in candidates}
+        has_complete_data = bool(workload_map) and candidate_ids <= workload_map.keys()
+
+        if not has_complete_data and workload_map:
+            logger.warning(
+                TASK_ASSIGNMENT_CAPABILITY_FALLBACK,
+                task_id=request.task.id,
+                strategy=self.name,
+                partial_data=True,
+            )
 
         # Compute bids: score * availability_factor
         bids: list[tuple[AssignmentCandidate, float]] = []
         for candidate in candidates:
-            active_tasks = workload_map.get(
-                str(candidate.agent_identity.id),
-                0,
-            )
-            availability = 1.0 / (1.0 + active_tasks)
+            if has_complete_data:
+                active_tasks = workload_map[str(candidate.agent_identity.id)]
+                availability = 1.0 / (1.0 + active_tasks)
+            else:
+                availability = 1.0
             bid = candidate.score * availability
 
             logger.debug(

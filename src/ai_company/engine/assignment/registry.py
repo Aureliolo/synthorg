@@ -1,9 +1,10 @@
 """Strategy registry and factory for task assignment.
 
-``STRATEGY_MAP`` provides five pre-built strategies as an
-immutable mapping.  ``build_strategy_map`` is the preferred
-factory when a ``HierarchyResolver`` is available (adds the
-sixth strategy) or a custom ``AgentTaskScorer`` is needed.
+``STRATEGY_MAP`` provides all pre-built strategies except
+``HierarchicalAssignmentStrategy`` as an immutable mapping.
+``build_strategy_map`` is the preferred factory when a
+``HierarchyResolver`` is available (adds the hierarchical
+strategy) or a custom ``AgentTaskScorer`` is needed.
 """
 
 from types import MappingProxyType
@@ -24,6 +25,7 @@ from ai_company.engine.assignment.strategies import (
     RoleBasedAssignmentStrategy,
 )
 from ai_company.engine.routing.scorer import AgentTaskScorer
+from ai_company.observability import get_logger
 
 if TYPE_CHECKING:
     from ai_company.communication.delegation.hierarchy import (
@@ -33,12 +35,14 @@ if TYPE_CHECKING:
         TaskAssignmentStrategy,
     )
 
+logger = get_logger(__name__)
+
 _DEFAULT_SCORER = AgentTaskScorer()
 
 # Excludes HierarchicalAssignmentStrategy — it requires a
 # HierarchyResolver at construction.  Use
 # build_strategy_map(hierarchy=...) to get a complete map
-# with all six strategies.
+# that includes all strategies.
 STRATEGY_MAP: MappingProxyType[str, TaskAssignmentStrategy] = MappingProxyType(
     {
         STRATEGY_NAME_MANUAL: ManualAssignmentStrategy(),
@@ -67,19 +71,25 @@ def build_strategy_map(
 
     When ``hierarchy`` is provided, includes the
     ``HierarchicalAssignmentStrategy`` in the returned map.
-    Otherwise, returns the same five strategies as the static
+    Otherwise, returns the same strategies as the static
     ``STRATEGY_MAP``.
 
     Args:
         hierarchy: Optional hierarchy resolver for the
             hierarchical strategy.
-        scorer: Optional custom scorer.  Defaults to a new
-            ``AgentTaskScorer``.
+        scorer: Optional custom scorer.  Defaults to the
+            shared module-level ``AgentTaskScorer`` instance.
 
     Returns:
         Immutable mapping of strategy names to instances.
     """
-    effective_scorer = scorer if scorer is not None else AgentTaskScorer()
+    effective_scorer = scorer if scorer is not None else _DEFAULT_SCORER
+
+    logger.debug(
+        "task_assignment.registry.build",
+        has_hierarchy=hierarchy is not None,
+        custom_scorer=scorer is not None,
+    )
 
     strategies: dict[str, TaskAssignmentStrategy] = {
         STRATEGY_NAME_MANUAL: ManualAssignmentStrategy(),

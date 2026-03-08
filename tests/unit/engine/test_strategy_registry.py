@@ -6,8 +6,6 @@ import pytest
 
 from ai_company.communication.delegation.hierarchy import HierarchyResolver
 from ai_company.core.company import Company, Department, Team
-from ai_company.core.enums import Complexity, SeniorityLevel
-from ai_company.engine.assignment.models import AssignmentRequest
 from ai_company.engine.assignment.protocol import TaskAssignmentStrategy
 from ai_company.engine.assignment.registry import (
     STRATEGY_MAP,
@@ -28,8 +26,6 @@ from ai_company.engine.assignment.strategies import (
     RoleBasedAssignmentStrategy,
 )
 from ai_company.engine.routing.scorer import AgentTaskScorer
-
-from .conftest import make_assignment_agent, make_assignment_task
 
 pytestmark = pytest.mark.unit
 
@@ -183,31 +179,14 @@ class TestBuildStrategyMap:
         assert isinstance(result, MappingProxyType)
 
     def test_custom_scorer_injected(self) -> None:
-        """Custom scorer is used by strategies in the returned map."""
-        custom_scorer = AgentTaskScorer(min_score=0.5)
+        """Custom scorer instance is stored on all scorer-based strategies."""
+        custom_scorer = AgentTaskScorer()
         result = build_strategy_map(scorer=custom_scorer)
 
-        # Verify the custom scorer is effective by running an
-        # assignment that would pass default min_score (0.1) but
-        # fail with the custom min_score (0.5)
-        strategy = result[STRATEGY_NAME_ROLE_BASED]
-        agent = make_assignment_agent(
-            "dev-1",
-            primary_skills=("testing",),
-            level=SeniorityLevel.JUNIOR,
-        )
-        task = make_assignment_task(
-            estimated_complexity=Complexity.EPIC,
-        )
-        request = AssignmentRequest(
-            task=task,
-            available_agents=(agent,),
-            required_skills=("python", "api-design"),
-            required_role="Backend Developer",
-            min_score=0.5,
-        )
-
-        assignment_result = strategy.assign(request)
-
-        # Agent should not be selected with the high threshold
-        assert assignment_result.selected is None
+        for name in (
+            STRATEGY_NAME_ROLE_BASED,
+            STRATEGY_NAME_LOAD_BALANCED,
+            STRATEGY_NAME_COST_OPTIMIZED,
+            STRATEGY_NAME_AUCTION,
+        ):
+            assert result[name]._scorer is custom_scorer

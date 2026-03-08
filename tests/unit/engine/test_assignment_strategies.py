@@ -8,6 +8,7 @@ from ai_company.engine.assignment.models import (
     AssignmentRequest,
 )
 from ai_company.engine.assignment.strategies import (
+    CostOptimizedAssignmentStrategy,
     LoadBalancedAssignmentStrategy,
     ManualAssignmentStrategy,
     RoleBasedAssignmentStrategy,
@@ -318,7 +319,7 @@ class TestLoadBalancedAssignmentStrategy:
 
         assert result.selected is not None
         assert result.selected.agent_identity.name == "best-dev"
-        assert "no workload data" in result.reason
+        assert "insufficient workload data" in result.reason
 
     @pytest.mark.parametrize(
         ("workloads", "expected_winner"),
@@ -391,8 +392,8 @@ class TestLoadBalancedAssignmentStrategy:
 
         assert result.selected is None
 
-    def test_partial_workload_data(self) -> None:
-        """Agents without workload entries default to zero workload."""
+    def test_partial_workload_data_falls_back(self) -> None:
+        """Incomplete workload data falls back to score-based ranking."""
         scorer = AgentTaskScorer()
         strategy = LoadBalancedAssignmentStrategy(scorer)
 
@@ -423,10 +424,45 @@ class TestLoadBalancedAssignmentStrategy:
         result = strategy.assign(request)
 
         assert result.selected is not None
-        # unknown-dev should win because it defaults to 0 workload
-        assert result.selected.agent_identity.name == "unknown-dev"
+        # Falls back to capability: known-dev first by sort stability
+        assert result.selected.agent_identity.name == "known-dev"
+        assert "insufficient workload data" in result.reason
 
     def test_name_property(self) -> None:
         """Strategy name is 'load_balanced'."""
         scorer = AgentTaskScorer()
         assert LoadBalancedAssignmentStrategy(scorer).name == "load_balanced"
+
+
+class TestScorerBasedStrategies:
+    """Shared behavior tests across all scorer-based strategies."""
+
+    def test_inactive_agents_excluded_from_scoring(self) -> None:
+        """Scorer-based strategies exclude non-ACTIVE agents."""
+        scorer = AgentTaskScorer()
+        strategy = CostOptimizedAssignmentStrategy(scorer)
+
+        active = make_assignment_agent(
+            "active-dev",
+            primary_skills=("python",),
+            level=SeniorityLevel.MID,
+        )
+        on_leave = make_assignment_agent(
+            "leave-dev",
+            primary_skills=("python", "api-design"),
+            level=SeniorityLevel.SENIOR,
+            status=AgentStatus.ON_LEAVE,
+        )
+
+        task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
+        request = AssignmentRequest(
+            task=task,
+            available_agents=(active, on_leave),
+            required_skills=("python",),
+        )
+
+        result = strategy.assign(request)
+
+        assert result.selected is not None
+        assert result.selected.agent_identity.name == "active-dev"
+        assert all(a.agent_identity.name != "leave-dev" for a in result.alternatives)

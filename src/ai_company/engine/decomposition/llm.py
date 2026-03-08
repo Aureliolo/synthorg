@@ -158,7 +158,7 @@ class LlmDecompositionStrategy:
                 # Include the failed assistant response for context
                 assistant_msg = ChatMessage(
                     role=MessageRole.ASSISTANT,
-                    content=last_response.content or "" if last_response else "",
+                    content=(last_response.content or "") if last_response else "",
                     tool_calls=last_response.tool_calls if last_response else (),
                 )
                 messages = [

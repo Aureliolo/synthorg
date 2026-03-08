@@ -60,6 +60,8 @@ class TestAuctionAssignmentStrategy:
         assert result.selected.agent_identity.name == "agent-a"
         assert result.strategy_used == "auction"
         assert "Auction winner:" in result.reason
+        assert len(result.alternatives) == 1
+        assert result.alternatives[0].agent_identity.name == "agent-b"
 
     def test_idle_agent_preferred_over_busy(self) -> None:
         """Equal scores, idle agent wins."""

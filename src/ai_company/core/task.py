@@ -56,7 +56,7 @@ class Task(BaseModel):
         type: Classification of the task's work type.
         priority: Task urgency and importance level.
         project: Project ID this task belongs to.
-        created_by: Agent ID of the task creator.
+        created_by: Agent name of the task creator.
         assigned_to: Agent ID of the assignee (``None`` if unassigned).
         reviewers: Agent IDs of designated reviewers.
         dependencies: IDs of tasks this task depends on.
@@ -69,7 +69,7 @@ class Task(BaseModel):
         status: Current lifecycle status.
         parent_task_id: Parent task ID when created via delegation
             (``None`` for root tasks).
-        delegation_chain: Ordered agent IDs of delegators (root first).
+        delegation_chain: Ordered agent names of delegators (root first).
         task_structure: Classification of how subtasks relate to each
             other (``None`` when not yet classified).
         coordination_topology: Coordination topology for multi-agent
@@ -92,7 +92,7 @@ class Task(BaseModel):
         description="Project ID this task belongs to",
     )
     created_by: NotBlankStr = Field(
-        description="Agent ID of the task creator",
+        description="Agent name of the task creator",
     )
     assigned_to: NotBlankStr | None = Field(
         default=None,
@@ -142,7 +142,7 @@ class Task(BaseModel):
     )
     delegation_chain: tuple[NotBlankStr, ...] = Field(
         default=(),
-        description="Ordered agent IDs of delegators (root first)",
+        description="Ordered agent names of delegators (root first)",
     )
     task_structure: TaskStructure | None = Field(
         default=None,
