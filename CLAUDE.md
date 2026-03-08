@@ -49,7 +49,7 @@ src/ai_company/
   communication/  # Message bus, dispatcher, messenger, channels, delegation, loop prevention
   config/         # YAML company config loading and validation
   core/           # Shared domain models and base classes
-  engine/         # Agent orchestration, execution loops, parallel execution, task lifecycle, recovery, and shutdown
+  engine/         # Agent orchestration, execution loops, parallel execution, task decomposition, routing, task lifecycle, recovery, and shutdown
   memory/         # Persistent agent memory (memory layer TBD)
   observability/  # Structured logging, correlation tracking, log sinks
   providers/      # LLM provider abstraction (LiteLLM adapter)

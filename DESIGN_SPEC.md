@@ -2385,6 +2385,21 @@ ai-company/
 │       │   ├── parallel_models.py  # AgentAssignment, ParallelExecutionGroup, AgentOutcome, ParallelExecutionResult, ParallelProgress
 │       │   ├── resource_lock.py    # ResourceLock protocol + InMemoryResourceLock
 │       │   ├── shutdown.py        # Graceful shutdown strategy & manager
+│       │   ├── decomposition/      # Task decomposition subsystem
+│       │   │   ├── __init__.py    # Package exports
+│       │   │   ├── classifier.py  # TaskStructureClassifier (sequential/parallel/mixed)
+│       │   │   ├── dag.py         # DependencyGraph (validation, topo sort, parallel groups)
+│       │   │   ├── manual.py      # ManualDecompositionStrategy
+│       │   │   ├── models.py      # SubtaskDefinition, DecompositionPlan, DecompositionResult, SubtaskStatusRollup, DecompositionContext
+│       │   │   ├── protocol.py    # DecompositionStrategy protocol
+│       │   │   ├── rollup.py      # StatusRollup (compute subtask status aggregation)
+│       │   │   └── service.py     # DecompositionService (orchestrates strategy + classifier + DAG)
+│       │   ├── routing/            # Task routing subsystem
+│       │   │   ├── __init__.py    # Package exports
+│       │   │   ├── models.py      # RoutingCandidate, RoutingDecision, RoutingResult, AutoTopologyConfig
+│       │   │   ├── scorer.py      # AgentTaskScorer (skill/role/seniority matching)
+│       │   │   ├── service.py     # TaskRoutingService (routes subtasks to agents)
+│       │   │   └── topology_selector.py # TopologySelector (auto coordination topology)
 │       │   ├── task_engine.py      # Task routing & scheduling (M4)
 │       │   ├── workflow_engine.py  # Workflow orchestration (M4)
 │       │   ├── meeting_engine.py   # Meeting coordination (M4)
@@ -2436,6 +2451,7 @@ ai-company/
 │       │   │   ├── config.py      # CONFIG_* constants
 │       │   │   ├── delegation.py  # DELEGATION_* constants
 │       │   │   ├── correlation.py # CORRELATION_* constants
+│       │   │   ├── decomposition.py # DECOMPOSITION_* constants
 │       │   │   ├── execution.py   # EXECUTION_* constants
 │       │   │   ├── git.py         # GIT_* constants
 │       │   │   ├── parallel.py    # PARALLEL_* constants
@@ -2446,6 +2462,7 @@ ai-company/
 │       │   │   ├── routing.py     # ROUTING_* constants
 │       │   │   ├── sandbox.py     # SANDBOX_* constants
 │       │   │   ├── task.py        # TASK_* constants
+│       │   │   ├── task_routing.py # TASK_ROUTING_* constants
 │       │   │   ├── template.py    # TEMPLATE_* constants
 │       │   │   └── tool.py        # TOOL_* constants
 │       │   ├── processors.py       # Log processors

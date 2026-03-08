@@ -12,6 +12,7 @@ from ai_company.engine.decomposition.models import (
     SubtaskDefinition,
 )
 from ai_company.engine.decomposition.service import DecompositionService
+from ai_company.engine.errors import DecompositionCycleError
 
 
 def _make_task(
@@ -129,7 +130,10 @@ class TestDecompositionService:
 
         result = await service.decompose_task(task, ctx)
 
-        assert result.created_tasks[0].delegation_chain == ("agent-a", "agent-b")
+        assert result.created_tasks[0].delegation_chain == (
+            "agent-a",
+            "agent-b",
+        )
 
     @pytest.mark.unit
     async def test_decompose_classifies_structure(self) -> None:
@@ -146,6 +150,104 @@ class TestDecompositionService:
         assert result.plan.task_structure == TaskStructure.PARALLEL
 
     @pytest.mark.unit
+    async def test_decompose_structure_override(self) -> None:
+        """Classifier overrides plan's default structure when it differs."""
+        # Task with sequential signals (dependencies + no parallel keywords)
+        task = Task(
+            id="task-svc-1",
+            title="Service Test Task",
+            description="A task for service testing",
+            type=TaskType.DEVELOPMENT,
+            priority=Priority.HIGH,
+            project="proj-1",
+            created_by="creator",
+            dependencies=("dep-1",),
+        )
+        # Plan defaults to SEQUENTIAL, but classifier should also return
+        # SEQUENTIAL based on dependencies — so they agree.
+        # Use a plan with PARALLEL structure to test override.
+        plan = DecompositionPlan(
+            parent_task_id=task.id,
+            subtasks=(SubtaskDefinition(id="sub-1", title="A", description="Desc A"),),
+            task_structure=TaskStructure.PARALLEL,
+        )
+        strategy = ManualDecompositionStrategy(plan)
+        classifier = TaskStructureClassifier()
+        service = DecompositionService(strategy, classifier)
+        ctx = DecompositionContext()
+
+        result = await service.decompose_task(task, ctx)
+
+        # Classifier infers SEQUENTIAL (dependencies present, no parallel
+        # language), overriding the plan's PARALLEL
+        assert result.plan.task_structure == TaskStructure.SEQUENTIAL
+
+    @pytest.mark.unit
+    async def test_decompose_dag_cycle_raises(self) -> None:
+        """Service raises DecompositionCycleError for cyclic plans."""
+        task = _make_task()
+        # Cycle: sub-1 -> sub-2 -> sub-1
+        plan = DecompositionPlan(
+            parent_task_id=task.id,
+            subtasks=(
+                SubtaskDefinition(
+                    id="sub-1",
+                    title="A",
+                    description="Desc A",
+                    dependencies=("sub-2",),
+                ),
+                SubtaskDefinition(
+                    id="sub-2",
+                    title="B",
+                    description="Desc B",
+                    dependencies=("sub-1",),
+                ),
+            ),
+        )
+        strategy = ManualDecompositionStrategy(plan)
+        classifier = TaskStructureClassifier()
+        service = DecompositionService(strategy, classifier)
+        ctx = DecompositionContext()
+
+        with pytest.raises(DecompositionCycleError, match="cycle"):
+            await service.decompose_task(task, ctx)
+
+    @pytest.mark.unit
+    async def test_decompose_uses_subtask_complexity(self) -> None:
+        """Child tasks use subtask's estimated_complexity, not parent's."""
+        from ai_company.core.enums import Complexity
+
+        task = Task(
+            id="task-svc-1",
+            title="Epic Task",
+            description="Parent task",
+            type=TaskType.DEVELOPMENT,
+            priority=Priority.HIGH,
+            project="proj-1",
+            created_by="creator",
+            estimated_complexity=Complexity.EPIC,
+        )
+        plan = DecompositionPlan(
+            parent_task_id=task.id,
+            subtasks=(
+                SubtaskDefinition(
+                    id="sub-1",
+                    title="Simple Child",
+                    description="Simple subtask",
+                    estimated_complexity=Complexity.SIMPLE,
+                ),
+            ),
+        )
+        strategy = ManualDecompositionStrategy(plan)
+        classifier = TaskStructureClassifier()
+        service = DecompositionService(strategy, classifier)
+        ctx = DecompositionContext()
+
+        result = await service.decompose_task(task, ctx)
+
+        assert result.created_tasks[0].estimated_complexity == Complexity.SIMPLE
+
+    @pytest.mark.unit
     def test_rollup_status_delegates(self) -> None:
         """rollup_status delegates to StatusRollup.compute."""
         plan = _make_plan()
@@ -155,6 +257,10 @@ class TestDecompositionService:
 
         rollup = service.rollup_status(
             "task-svc-1",
-            (TaskStatus.COMPLETED, TaskStatus.COMPLETED, TaskStatus.COMPLETED),
+            (
+                TaskStatus.COMPLETED,
+                TaskStatus.COMPLETED,
+                TaskStatus.COMPLETED,
+            ),
         )
         assert rollup.derived_parent_status == TaskStatus.COMPLETED

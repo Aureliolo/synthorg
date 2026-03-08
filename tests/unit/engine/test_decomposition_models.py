@@ -5,9 +5,12 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ai_company.core.enums import (
+    Complexity,
     CoordinationTopology,
+    Priority,
     TaskStatus,
     TaskStructure,
+    TaskType,
 )
 
 if TYPE_CHECKING:
@@ -40,7 +43,7 @@ class TestSubtaskDefinition:
         assert sub.dependencies == ()
         assert sub.required_skills == ()
         assert sub.required_role is None
-        assert sub.estimated_complexity == "medium"
+        assert sub.estimated_complexity == Complexity.MEDIUM
 
     @pytest.mark.unit
     def test_subtask_with_all_fields(self) -> None:
@@ -50,13 +53,14 @@ class TestSubtaskDefinition:
             title="Do thing",
             description="Detailed",
             dependencies=("sub-0",),
-            estimated_complexity="complex",
+            estimated_complexity=Complexity.COMPLEX,
             required_skills=("python", "sql"),
             required_role="backend-developer",
         )
         assert sub.dependencies == ("sub-0",)
         assert sub.required_skills == ("python", "sql")
         assert sub.required_role == "backend-developer"
+        assert sub.estimated_complexity == Complexity.COMPLEX
 
     @pytest.mark.unit
     def test_self_dependency_rejected(self) -> None:
@@ -143,31 +147,47 @@ class TestDecompositionPlan:
             )
 
     @pytest.mark.unit
-    def test_cycle_rejected(self) -> None:
-        """Plan rejects dependency cycles."""
-        with pytest.raises(ValueError, match="cycle"):
-            DecompositionPlan(
-                parent_task_id="task-1",
-                subtasks=(
-                    SubtaskDefinition(
-                        id="sub-1",
-                        title="A",
-                        description="A desc",
-                        dependencies=("sub-2",),
-                    ),
-                    SubtaskDefinition(
-                        id="sub-2",
-                        title="B",
-                        description="B desc",
-                        dependencies=("sub-1",),
-                    ),
+    def test_cycle_accepted_at_plan_level(self) -> None:
+        """Plan does not perform cycle detection (handled by DAG)."""
+        # Cycles are caught by DependencyGraph.validate(), not by the plan
+        plan = DecompositionPlan(
+            parent_task_id="task-1",
+            subtasks=(
+                SubtaskDefinition(
+                    id="sub-1",
+                    title="A",
+                    description="A desc",
+                    dependencies=("sub-2",),
                 ),
-            )
+                SubtaskDefinition(
+                    id="sub-2",
+                    title="B",
+                    description="B desc",
+                    dependencies=("sub-1",),
+                ),
+            ),
+        )
+        assert len(plan.subtasks) == 2
 
 
 # ---------------------------------------------------------------------------
 # DecompositionResult
 # ---------------------------------------------------------------------------
+
+
+def _make_result_task(subtask_id: str) -> Task:
+    """Helper to create a minimal task for result construction."""
+    from ai_company.core.task import Task
+
+    return Task(
+        id=subtask_id,
+        title=f"Subtask {subtask_id}",
+        description=f"Description for {subtask_id}",
+        type=TaskType.DEVELOPMENT,
+        priority=Priority.MEDIUM,
+        project="proj-1",
+        created_by="creator",
+    )
 
 
 class TestDecompositionResult:
@@ -180,13 +200,46 @@ class TestDecompositionResult:
             parent_task_id=sample_task_with_criteria.id,
             subtasks=(SubtaskDefinition(id="sub-1", title="A", description="A desc"),),
         )
+        child_task = _make_result_task("sub-1")
         result = DecompositionResult(
             plan=plan,
-            created_tasks=(),
+            created_tasks=(child_task,),
             dependency_edges=(),
         )
         assert result.plan is plan
         assert result.dependency_edges == ()
+        assert len(result.created_tasks) == 1
+
+    @pytest.mark.unit
+    def test_task_count_mismatch_rejected(self) -> None:
+        """Result rejects mismatched task count vs plan subtasks."""
+        plan = DecompositionPlan(
+            parent_task_id="task-1",
+            subtasks=(
+                SubtaskDefinition(id="sub-1", title="A", description="A desc"),
+                SubtaskDefinition(id="sub-2", title="B", description="B desc"),
+            ),
+        )
+        with pytest.raises(ValueError, match="does not match plan subtask count"):
+            DecompositionResult(
+                plan=plan,
+                created_tasks=(_make_result_task("sub-1"),),
+                dependency_edges=(),
+            )
+
+    @pytest.mark.unit
+    def test_unknown_edge_ids_rejected(self) -> None:
+        """Result rejects edges referencing unknown task IDs."""
+        plan = DecompositionPlan(
+            parent_task_id="task-1",
+            subtasks=(SubtaskDefinition(id="sub-1", title="A", description="A desc"),),
+        )
+        with pytest.raises(ValueError, match="unknown task IDs"):
+            DecompositionResult(
+                plan=plan,
+                created_tasks=(_make_result_task("sub-1"),),
+                dependency_edges=(("sub-1", "sub-99"),),
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -327,10 +380,10 @@ class TestDecompositionContext:
         assert ctx.current_depth == 0
 
     @pytest.mark.unit
-    def test_depth_at_max_rejected(self) -> None:
-        """Context rejects current_depth >= max_depth."""
-        with pytest.raises(ValueError, match="reached max depth"):
-            DecompositionContext(current_depth=3, max_depth=3)
+    def test_depth_at_max_allowed(self) -> None:
+        """Context allows current_depth == max_depth (policy is in strategy)."""
+        ctx = DecompositionContext(current_depth=3, max_depth=3)
+        assert ctx.current_depth == 3
 
     @pytest.mark.unit
     def test_valid_depth(self) -> None:

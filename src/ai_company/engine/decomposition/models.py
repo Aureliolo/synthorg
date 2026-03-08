@@ -10,6 +10,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from ai_company.core.enums import (
+    Complexity,
     CoordinationTopology,
     TaskStatus,
     TaskStructure,
@@ -26,7 +27,7 @@ class SubtaskDefinition(BaseModel):
         title: Short subtask title.
         description: Detailed subtask description.
         dependencies: IDs of other subtasks this one depends on.
-        estimated_complexity: Free-text complexity estimate.
+        estimated_complexity: Complexity estimate for routing.
         required_skills: Skill names needed for routing.
         required_role: Optional role name for routing.
     """
@@ -40,9 +41,9 @@ class SubtaskDefinition(BaseModel):
         default=(),
         description="IDs of subtasks this one depends on",
     )
-    estimated_complexity: NotBlankStr = Field(
-        default="medium",
-        description="Free-text complexity estimate",
+    estimated_complexity: Complexity = Field(
+        default=Complexity.MEDIUM,
+        description="Complexity estimate for routing",
     )
     required_skills: tuple[NotBlankStr, ...] = Field(
         default=(),
@@ -64,6 +65,11 @@ class SubtaskDefinition(BaseModel):
 
 class DecompositionPlan(BaseModel):
     """Plan describing how a parent task is decomposed into subtasks.
+
+    Validates subtask collection integrity at construction:
+    non-empty, unique IDs, valid dependency references.
+    Cycle detection is handled by ``DependencyGraph.validate()``
+    in the service layer.
 
     Attributes:
         parent_task_id: ID of the task being decomposed.
@@ -113,32 +119,7 @@ class DecompositionPlan(BaseModel):
                 )
                 raise ValueError(msg)
 
-        # Cycle detection via DFS
-        self._detect_cycles(id_set)
         return self
-
-    def _detect_cycles(self, id_set: set[str]) -> None:
-        """Detect cycles in the subtask dependency graph using DFS."""
-        dep_map: dict[str, tuple[str, ...]] = {
-            s.id: s.dependencies for s in self.subtasks
-        }
-        visited: set[str] = set()
-        in_stack: set[str] = set()
-
-        def dfs(node: str) -> None:
-            visited.add(node)
-            in_stack.add(node)
-            for dep in dep_map.get(node, ()):
-                if dep in in_stack:
-                    msg = f"Dependency cycle detected involving {dep!r}"
-                    raise ValueError(msg)
-                if dep not in visited:
-                    dfs(dep)
-            in_stack.discard(node)
-
-        for sid in id_set:
-            if sid not in visited:
-                dfs(sid)
 
 
 class DecompositionResult(BaseModel):
@@ -161,9 +142,38 @@ class DecompositionResult(BaseModel):
         description="Directed edges (from_id, to_id) in the DAG",
     )
 
+    @model_validator(mode="after")
+    def _validate_plan_task_consistency(self) -> Self:
+        """Ensure created_tasks align with plan subtasks."""
+        if len(self.created_tasks) != len(self.plan.subtasks):
+            msg = (
+                f"created_tasks count ({len(self.created_tasks)}) "
+                f"does not match plan subtask count ({len(self.plan.subtasks)})"
+            )
+            raise ValueError(msg)
+
+        task_ids = {t.id for t in self.created_tasks}
+        edge_ids = {eid for edge in self.dependency_edges for eid in edge}
+        unknown_edge_ids = edge_ids - task_ids
+        if unknown_edge_ids:
+            msg = (
+                f"dependency_edges reference unknown task IDs: "
+                f"{sorted(unknown_edge_ids)}"
+            )
+            raise ValueError(msg)
+
+        return self
+
 
 class SubtaskStatusRollup(BaseModel):
     """Aggregated status of subtasks for a parent task.
+
+    Tracks five explicit statuses: COMPLETED, FAILED, IN_PROGRESS,
+    BLOCKED, and CANCELLED. Other statuses (CREATED, ASSIGNED,
+    IN_REVIEW, INTERRUPTED) are not individually tracked; the gap
+    between the sum of tracked counts and ``total`` accounts for
+    these. The ``derived_parent_status`` treats any such remainder
+    as work still pending (IN_PROGRESS).
 
     Attributes:
         parent_task_id: ID of the parent task.
@@ -253,14 +263,3 @@ class DecompositionContext(BaseModel):
         ge=0,
         description="Current nesting depth",
     )
-
-    @model_validator(mode="after")
-    def _validate_depth(self) -> Self:
-        """Ensure current depth doesn't exceed max depth."""
-        if self.current_depth >= self.max_depth:
-            msg = (
-                f"Current depth {self.current_depth} "
-                f"has reached max depth {self.max_depth}"
-            )
-            raise ValueError(msg)
-        return self

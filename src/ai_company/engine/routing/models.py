@@ -62,6 +62,18 @@ class RoutingDecision(BaseModel):
         description="Coordination topology for this subtask",
     )
 
+    @model_validator(mode="after")
+    def _validate_selected_not_in_alternatives(self) -> Self:
+        """Ensure selected candidate is not duplicated in alternatives."""
+        selected_name = self.selected_candidate.agent_identity.name
+        for alt in self.alternatives:
+            if alt.agent_identity.name == selected_name:
+                msg = (
+                    f"Selected candidate {selected_name!r} also appears in alternatives"
+                )
+                raise ValueError(msg)
+        return self
+
 
 class RoutingResult(BaseModel):
     """Result of routing all subtasks in a decomposition.
@@ -106,8 +118,8 @@ class AutoTopologyConfig(BaseModel):
         sequential_override: Topology for sequential structures.
         parallel_default: Topology for parallel structures.
         mixed_default: Topology for mixed structures.
-        parallel_tool_threshold: Tool count above which parallel
-            tasks use decentralized topology.
+        parallel_artifact_threshold: Artifact count above which
+            parallel tasks use decentralized topology.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -124,8 +136,22 @@ class AutoTopologyConfig(BaseModel):
         default=CoordinationTopology.CONTEXT_DEPENDENT,
         description="Topology for mixed structures",
     )
-    parallel_tool_threshold: int = Field(
+    parallel_artifact_threshold: int = Field(
         default=4,
         ge=1,
-        description="Tool count threshold for decentralized topology",
+        description="Artifact count threshold for decentralized topology",
     )
+
+    @model_validator(mode="after")
+    def _validate_no_auto_defaults(self) -> Self:
+        """Ensure topology defaults are concrete, not AUTO."""
+        for field_name in (
+            "sequential_override",
+            "parallel_default",
+            "mixed_default",
+        ):
+            value = getattr(self, field_name)
+            if value == CoordinationTopology.AUTO:
+                msg = f"{field_name} cannot be AUTO — would cause infinite resolution"
+                raise ValueError(msg)
+        return self

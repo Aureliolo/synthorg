@@ -4,13 +4,16 @@ Pure graph logic operating on ``SubtaskDefinition`` tuples.
 Returns immutable tuples for all results.
 """
 
+import heapq
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
-from ai_company.engine.errors import DecompositionCycleError
+from ai_company.engine.errors import DecompositionCycleError, DecompositionError
 from ai_company.observability import get_logger
 from ai_company.observability.events.decomposition import (
     DECOMPOSITION_GRAPH_CYCLE,
     DECOMPOSITION_GRAPH_VALIDATED,
+    DECOMPOSITION_REFERENCE_ERROR,
 )
 
 if TYPE_CHECKING:
@@ -25,6 +28,9 @@ class DependencyGraph:
     Provides validation, topological sorting, and parallel group
     computation for subtask execution ordering.
 
+    Internal adjacency data is frozen after construction via
+    ``MappingProxyType`` wrapping and tuple values.
+
     Attributes:
         subtasks: The subtask definitions this graph was built from.
     """
@@ -35,67 +41,99 @@ class DependencyGraph:
         self.subtasks = subtasks
         self._subtask_ids = tuple(s.id for s in subtasks)
 
-        # Forward adjacency: node -> nodes that depend on it
-        self._adjacency: dict[str, list[str]] = {sid: [] for sid in self._subtask_ids}
-        # Reverse adjacency: node -> its dependencies
-        self._reverse_adjacency: dict[str, tuple[str, ...]] = {}
+        # Build mutable adjacency during construction
+        forward: dict[str, list[str]] = {sid: [] for sid in self._subtask_ids}
+        reverse: dict[str, tuple[str, ...]] = {}
 
         for subtask in subtasks:
-            self._reverse_adjacency[subtask.id] = subtask.dependencies
+            reverse[subtask.id] = subtask.dependencies
             for dep in subtask.dependencies:
-                if dep in self._adjacency:
-                    self._adjacency[dep].append(subtask.id)
+                if dep in forward:
+                    forward[dep].append(subtask.id)
+
+        # Freeze: convert lists to tuples and wrap with MappingProxyType
+        self._adjacency: MappingProxyType[str, tuple[str, ...]] = MappingProxyType(
+            {k: tuple(v) for k, v in forward.items()}
+        )
+        self._reverse_adjacency: MappingProxyType[str, tuple[str, ...]] = (
+            MappingProxyType(reverse)
+        )
 
     def validate(self) -> None:
         """Validate the dependency graph.
 
-        Checks for missing references and cycles. Raises
-        ``DecompositionCycleError`` if a cycle is detected.
+        Checks for missing references and cycles.
+
+        Raises:
+            DecompositionError: If a dependency references an unknown
+                subtask ID.
+            DecompositionCycleError: If a cycle is detected.
         """
-        id_set = set(self._subtask_ids)
-
-        # Check for missing references
-        for subtask in self.subtasks:
-            for dep in subtask.dependencies:
-                if dep not in id_set:
-                    msg = (
-                        f"Subtask {subtask.id!r} references unknown dependency {dep!r}"
-                    )
-                    raise DecompositionCycleError(msg)
-
-        # Cycle detection via DFS
-        visited: set[str] = set()
-        in_stack: set[str] = set()
-
-        def dfs(node: str) -> None:
-            visited.add(node)
-            in_stack.add(node)
-            for dep in self._reverse_adjacency.get(node, ()):
-                if dep in in_stack:
-                    logger.warning(
-                        DECOMPOSITION_GRAPH_CYCLE,
-                        node=node,
-                        dependency=dep,
-                    )
-                    msg = f"Dependency cycle detected: {node!r} -> {dep!r}"
-                    raise DecompositionCycleError(msg)
-                if dep not in visited:
-                    dfs(dep)
-            in_stack.discard(node)
-
-        for sid in self._subtask_ids:
-            if sid not in visited:
-                dfs(sid)
+        self._check_missing_references()
+        self._check_cycles()
 
         logger.debug(
             DECOMPOSITION_GRAPH_VALIDATED,
             subtask_count=len(self._subtask_ids),
         )
 
+    def _check_missing_references(self) -> None:
+        """Check for dependencies referencing unknown subtask IDs."""
+        id_set = set(self._subtask_ids)
+        for subtask in self.subtasks:
+            for dep in subtask.dependencies:
+                if dep not in id_set:
+                    msg = (
+                        f"Subtask {subtask.id!r} references unknown dependency {dep!r}"
+                    )
+                    logger.warning(
+                        DECOMPOSITION_REFERENCE_ERROR,
+                        subtask_id=subtask.id,
+                        unknown_dep=dep,
+                        error=msg,
+                    )
+                    raise DecompositionError(msg)
+
+    def _check_cycles(self) -> None:
+        """Iterative cycle detection via DFS with explicit stack."""
+        visited: set[str] = set()
+        in_stack: set[str] = set()
+
+        for start in self._subtask_ids:
+            if start in visited:
+                continue
+
+            stack: list[tuple[str, int]] = [(start, 0)]
+            while stack:
+                node, idx = stack[-1]
+
+                if idx == 0:
+                    visited.add(node)
+                    in_stack.add(node)
+
+                deps = self._reverse_adjacency.get(node, ())
+                if idx < len(deps):
+                    stack[-1] = (node, idx + 1)
+                    dep = deps[idx]
+                    if dep in in_stack:
+                        logger.warning(
+                            DECOMPOSITION_GRAPH_CYCLE,
+                            node=node,
+                            dependency=dep,
+                        )
+                        msg = f"Dependency cycle detected: {node!r} -> {dep!r}"
+                        raise DecompositionCycleError(msg)
+                    if dep not in visited:
+                        stack.append((dep, 0))
+                else:
+                    in_stack.discard(node)
+                    stack.pop()
+
     def topological_sort(self) -> tuple[str, ...]:
         """Return subtask IDs in topological execution order.
 
-        Dependencies come before dependents. Uses Kahn's algorithm.
+        Dependencies come before dependents. Uses Kahn's algorithm
+        with a min-heap for deterministic ordering.
 
         Returns:
             Tuple of subtask IDs in execution order.
@@ -103,25 +141,30 @@ class DependencyGraph:
         Raises:
             DecompositionCycleError: If a cycle prevents sorting.
         """
-        in_degree = dict.fromkeys(self._subtask_ids, 0)
+        in_degree: dict[str, int] = dict.fromkeys(self._subtask_ids, 0)
         for subtask in self.subtasks:
             for _dep in subtask.dependencies:
                 in_degree[subtask.id] += 1
 
-        queue = [sid for sid in self._subtask_ids if in_degree[sid] == 0]
+        heap = [sid for sid in self._subtask_ids if in_degree[sid] == 0]
+        heapq.heapify(heap)
         result: list[str] = []
 
-        while queue:
-            # Sort for deterministic output
-            queue.sort()
-            node = queue.pop(0)
+        while heap:
+            node = heapq.heappop(heap)
             result.append(node)
-            for dependent in self._adjacency.get(node, []):
+            for dependent in self._adjacency.get(node, ()):
                 in_degree[dependent] -= 1
                 if in_degree[dependent] == 0:
-                    queue.append(dependent)
+                    heapq.heappush(heap, dependent)
 
         if len(result) != len(self._subtask_ids):
+            logger.warning(
+                DECOMPOSITION_GRAPH_CYCLE,
+                context="topological_sort",
+                sorted_count=len(result),
+                total_count=len(self._subtask_ids),
+            )
             msg = "Dependency cycle detected during topological sort"
             raise DecompositionCycleError(msg)
 
@@ -136,8 +179,11 @@ class DependencyGraph:
 
         Returns:
             Tuple of groups, each group a tuple of subtask IDs.
+
+        Raises:
+            DecompositionCycleError: If a cycle prevents grouping.
         """
-        in_degree = dict.fromkeys(self._subtask_ids, 0)
+        in_degree: dict[str, int] = dict.fromkeys(self._subtask_ids, 0)
         for subtask in self.subtasks:
             for _dep in subtask.dependencies:
                 in_degree[subtask.id] += 1
@@ -146,18 +192,21 @@ class DependencyGraph:
         groups: list[tuple[str, ...]] = []
 
         while remaining:
-            # Find all nodes with in_degree == 0 among remaining
             ready = sorted(sid for sid in remaining if in_degree[sid] == 0)
             if not ready:
+                logger.warning(
+                    DECOMPOSITION_GRAPH_CYCLE,
+                    context="parallel_groups",
+                    remaining_count=len(remaining),
+                )
                 msg = "Dependency cycle detected during parallel grouping"
                 raise DecompositionCycleError(msg)
 
             groups.append(tuple(ready))
 
-            # Remove ready nodes and update in-degrees
             for node in ready:
                 remaining.discard(node)
-                for dependent in self._adjacency.get(node, []):
+                for dependent in self._adjacency.get(node, ()):
                     in_degree[dependent] -= 1
 
         return tuple(groups)
@@ -169,9 +218,10 @@ class DependencyGraph:
             subtask_id: The subtask to find dependents for.
 
         Returns:
-            Tuple of dependent subtask IDs.
+            Tuple of dependent subtask IDs, or empty tuple if
+            the subtask ID is not in the graph.
         """
-        return tuple(sorted(self._adjacency.get(subtask_id, [])))
+        return tuple(sorted(self._adjacency.get(subtask_id, ())))
 
     def get_dependencies(self, subtask_id: str) -> tuple[str, ...]:
         """Get IDs of subtasks that the given subtask depends on.
@@ -180,6 +230,7 @@ class DependencyGraph:
             subtask_id: The subtask to find dependencies for.
 
         Returns:
-            Tuple of dependency subtask IDs.
+            Tuple of dependency subtask IDs, or empty tuple if
+            the subtask ID is not in the graph.
         """
         return tuple(sorted(self._reverse_adjacency.get(subtask_id, ())))

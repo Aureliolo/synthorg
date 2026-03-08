@@ -129,6 +129,26 @@ class TestTopologySelector:
         assert selector.select(task, plan_mix) == CoordinationTopology.SAS
 
     @pytest.mark.unit
+    def test_parallel_structure_at_threshold(self) -> None:
+        """Parallel structure at exact threshold -> CENTRALIZED (not DECENTRALIZED)."""
+        selector = TopologySelector()
+        task = _make_task(artifact_count=4)
+        plan = _make_plan(TaskStructure.PARALLEL)
+
+        result = selector.select(task, plan)
+        assert result == CoordinationTopology.CENTRALIZED
+
+    @pytest.mark.unit
+    def test_parallel_structure_above_threshold(self) -> None:
+        """Parallel structure one above threshold -> DECENTRALIZED."""
+        selector = TopologySelector()
+        task = _make_task(artifact_count=5)
+        plan = _make_plan(TaskStructure.PARALLEL)
+
+        result = selector.select(task, plan)
+        assert result == CoordinationTopology.DECENTRALIZED
+
+    @pytest.mark.unit
     def test_config_property(self) -> None:
         """Config property returns the active configuration."""
         config = AutoTopologyConfig()

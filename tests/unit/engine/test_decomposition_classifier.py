@@ -56,14 +56,13 @@ class TestTaskStructureClassifier:
 
     @pytest.mark.unit
     def test_parallel_signals(self) -> None:
-        """Parallel language signals classify as PARALLEL."""
+        """Parallel language signals with no sequential -> PARALLEL."""
         classifier = TaskStructureClassifier()
         task = _make_task(
             "Build frontend and backend independently in parallel",
         )
         result = classifier.classify(task)
-        # Should have parallel signals
-        assert result in (TaskStructure.PARALLEL, TaskStructure.MIXED)
+        assert result == TaskStructure.PARALLEL
 
     @pytest.mark.unit
     def test_mixed_signals(self) -> None:
@@ -91,6 +90,14 @@ class TestTaskStructureClassifier:
         assert result == TaskStructure.SEQUENTIAL
 
     @pytest.mark.unit
+    def test_neutral_task_no_signals(self) -> None:
+        """Task with no language signals defaults to SEQUENTIAL."""
+        classifier = TaskStructureClassifier()
+        task = _make_task("Do something generic")
+        result = classifier.classify(task)
+        assert result == TaskStructure.SEQUENTIAL
+
+    @pytest.mark.unit
     def test_criteria_contribute_to_scoring(self) -> None:
         """Acceptance criteria text is analyzed for signals."""
         classifier = TaskStructureClassifier()
@@ -105,3 +112,59 @@ class TestTaskStructureClassifier:
         )
         result = classifier.classify(task)
         assert result == TaskStructure.SEQUENTIAL
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "description",
+        [
+            "then do something",
+            "after the setup, continue",
+            "before deployment, test",
+            "first configure the DB",
+            "next build the API",
+            "finally deploy it",
+            "step 1 is setup",
+            "phase 2 is testing",
+        ],
+        ids=[
+            "then",
+            "after",
+            "before",
+            "first",
+            "next",
+            "finally",
+            "step_N",
+            "phase_N",
+        ],
+    )
+    def test_individual_sequential_patterns(self, description: str) -> None:
+        """Each sequential pattern is individually recognised."""
+        classifier = TaskStructureClassifier()
+        task = _make_task(description, dependencies=("dep-1",))
+        result = classifier.classify(task)
+        assert result == TaskStructure.SEQUENTIAL
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "description",
+        [
+            "work independently on modules",
+            "run them in parallel",
+            "execute concurrently",
+            "process simultaneously",
+            "develop separately",
+        ],
+        ids=[
+            "independently",
+            "in_parallel",
+            "concurrently",
+            "simultaneously",
+            "separately",
+        ],
+    )
+    def test_individual_parallel_patterns(self, description: str) -> None:
+        """Each parallel pattern is individually recognised."""
+        classifier = TaskStructureClassifier()
+        task = _make_task(description)
+        result = classifier.classify(task)
+        assert result == TaskStructure.PARALLEL

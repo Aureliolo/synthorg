@@ -80,6 +80,29 @@ class TestRoutingDecision:
         assert decision.subtask_id == "sub-1"
         assert decision.alternatives == ()
 
+    @pytest.mark.unit
+    def test_selected_in_alternatives_rejected(
+        self, sample_agent_with_personality: AgentIdentity
+    ) -> None:
+        """Selected candidate duplicated in alternatives is rejected."""
+        candidate = RoutingCandidate(
+            agent_identity=sample_agent_with_personality,
+            score=0.9,
+            reason="Match",
+        )
+        alt = RoutingCandidate(
+            agent_identity=sample_agent_with_personality,
+            score=0.5,
+            reason="Also match",
+        )
+        with pytest.raises(ValueError, match="also appears in alternatives"):
+            RoutingDecision(
+                subtask_id="sub-1",
+                selected_candidate=candidate,
+                alternatives=(alt,),
+                topology=CoordinationTopology.CENTRALIZED,
+            )
+
 
 class TestRoutingResult:
     """Tests for RoutingResult model."""
@@ -127,4 +150,20 @@ class TestAutoTopologyConfig:
         assert config.sequential_override == CoordinationTopology.SAS
         assert config.parallel_default == CoordinationTopology.CENTRALIZED
         assert config.mixed_default == CoordinationTopology.CONTEXT_DEPENDENT
-        assert config.parallel_tool_threshold == 4
+        assert config.parallel_artifact_threshold == 4
+
+    @pytest.mark.unit
+    def test_auto_topology_rejected(self) -> None:
+        """AUTO topology in defaults causes infinite resolution."""
+        with pytest.raises(ValueError, match="cannot be AUTO"):
+            AutoTopologyConfig(
+                sequential_override=CoordinationTopology.AUTO,
+            )
+        with pytest.raises(ValueError, match="cannot be AUTO"):
+            AutoTopologyConfig(
+                parallel_default=CoordinationTopology.AUTO,
+            )
+        with pytest.raises(ValueError, match="cannot be AUTO"):
+            AutoTopologyConfig(
+                mixed_default=CoordinationTopology.AUTO,
+            )

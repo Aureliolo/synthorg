@@ -25,7 +25,9 @@ class TopologySelector:
     """Selects coordination topology for decomposed tasks.
 
     Uses explicit overrides when set, otherwise applies heuristic
-    rules based on task structure and tool count.
+    rules based on task structure and artifact count.
+    Implements the auto-selection heuristics from DESIGN_SPEC
+    Section 6.9.
     """
 
     __slots__ = ("_config",)
@@ -64,17 +66,25 @@ class TopologySelector:
 
         # Auto-select based on structure
         structure = plan.task_structure
-        tool_count = len(task.artifacts_expected)
+        artifact_count = len(task.artifacts_expected)
 
         if structure == TaskStructure.SEQUENTIAL:
             topology = self._config.sequential_override
         elif structure == TaskStructure.PARALLEL:
-            if tool_count > self._config.parallel_tool_threshold:
+            if artifact_count > self._config.parallel_artifact_threshold:
                 topology = CoordinationTopology.DECENTRALIZED
             else:
                 topology = self._config.parallel_default
-        else:
-            # MIXED or unknown
+        elif structure == TaskStructure.MIXED:
+            topology = self._config.mixed_default
+        else:  # pragma: no cover — defensive fallback
+            logger.warning(  # type: ignore[unreachable]
+                TASK_ROUTING_TOPOLOGY_AUTO_RESOLVED,
+                task_id=task.id,
+                structure=structure.value,
+                fallback=self._config.mixed_default.value,
+                reason="unrecognised task structure, using mixed default",
+            )
             topology = self._config.mixed_default
 
         logger.debug(
@@ -82,7 +92,7 @@ class TopologySelector:
             task_id=task.id,
             topology=topology.value,
             structure=structure.value,
-            tool_count=tool_count,
+            artifact_count=artifact_count,
         )
 
         return topology

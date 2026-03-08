@@ -4,7 +4,7 @@ import pytest
 
 from ai_company.engine.decomposition.dag import DependencyGraph
 from ai_company.engine.decomposition.models import SubtaskDefinition
-from ai_company.engine.errors import DecompositionCycleError
+from ai_company.engine.errors import DecompositionCycleError, DecompositionError
 
 
 def _sub(
@@ -50,8 +50,7 @@ class TestDependencyGraph:
 
     @pytest.mark.unit
     def test_validate_detects_missing_reference(self) -> None:
-        """Missing dependency reference raises error."""
-        # Manually construct a subtask with a dependency not in the graph
+        """Missing dependency reference raises DecompositionError."""
         subtask = SubtaskDefinition(
             id="a",
             title="Task a",
@@ -59,8 +58,24 @@ class TestDependencyGraph:
             dependencies=("missing",),
         )
         graph = DependencyGraph((subtask,))
-        with pytest.raises(DecompositionCycleError, match="unknown dependency"):
+        with pytest.raises(DecompositionError, match="unknown dependency"):
             graph.validate()
+
+    @pytest.mark.unit
+    def test_validate_and_topo_sort_agree(self) -> None:
+        """validate() and topological_sort() agree on valid graphs."""
+        graph = DependencyGraph(
+            (
+                _sub("a"),
+                _sub("b", ("a",)),
+                _sub("c", ("a",)),
+                _sub("d", ("b", "c")),
+            )
+        )
+        graph.validate()
+        result = graph.topological_sort()
+        assert result[0] == "a"
+        assert result[-1] == "d"
 
     @pytest.mark.unit
     def test_topological_sort_linear(self) -> None:
@@ -176,6 +191,18 @@ class TestDependencyGraph:
         )
         assert graph.get_dependencies("c") == ("a", "b")
         assert graph.get_dependencies("a") == ()
+
+    @pytest.mark.unit
+    def test_get_dependents_unknown_id(self) -> None:
+        """get_dependents returns empty for unknown subtask ID."""
+        graph = DependencyGraph((_sub("a"),))
+        assert graph.get_dependents("nonexistent") == ()
+
+    @pytest.mark.unit
+    def test_get_dependencies_unknown_id(self) -> None:
+        """get_dependencies returns empty for unknown subtask ID."""
+        graph = DependencyGraph((_sub("a"),))
+        assert graph.get_dependencies("nonexistent") == ()
 
     @pytest.mark.unit
     def test_single_node(self) -> None:

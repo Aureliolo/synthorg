@@ -27,9 +27,6 @@ class ManualDecompositionStrategy:
 
     Validates the plan against decomposition context constraints
     (max subtasks, max depth) before returning it.
-
-    Attributes:
-        plan: The pre-built decomposition plan.
     """
 
     __slots__ = ("_plan",)

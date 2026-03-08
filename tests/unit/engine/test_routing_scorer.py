@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 
 from ai_company.core.agent import AgentIdentity, ModelConfig, SkillSet
-from ai_company.core.enums import AgentStatus, SeniorityLevel
+from ai_company.core.enums import AgentStatus, Complexity, SeniorityLevel
 from ai_company.engine.decomposition.models import SubtaskDefinition
 from ai_company.engine.routing.scorer import AgentTaskScorer
 
@@ -37,7 +37,7 @@ def _make_subtask(
     *,
     required_skills: tuple[str, ...] = (),
     required_role: str | None = None,
-    complexity: str = "medium",
+    complexity: Complexity = Complexity.MEDIUM,
 ) -> SubtaskDefinition:
     """Helper to create a subtask with requirements."""
     return SubtaskDefinition(
@@ -110,7 +110,7 @@ class TestAgentTaskScorer:
         """Seniority-complexity alignment adds to score."""
         scorer = AgentTaskScorer()
         agent = _make_agent(level=SeniorityLevel.SENIOR)
-        subtask = _make_subtask(complexity="complex")
+        subtask = _make_subtask(complexity=Complexity.COMPLEX)
 
         candidate = scorer.score(agent, subtask)
         assert candidate.score >= 0.2
@@ -128,7 +128,7 @@ class TestAgentTaskScorer:
         subtask = _make_subtask(
             required_skills=("python",),
             required_role="developer",
-            complexity="medium",
+            complexity=Complexity.MEDIUM,
         )
 
         candidate = scorer.score(agent, subtask)
@@ -142,7 +142,7 @@ class TestAgentTaskScorer:
         subtask = _make_subtask(
             required_skills=("python",),
             required_role="backend",
-            complexity="epic",
+            complexity=Complexity.EPIC,
         )
 
         candidate = scorer.score(agent, subtask)
@@ -161,9 +161,51 @@ class TestAgentTaskScorer:
         agent = _make_agent(level=SeniorityLevel.MID, role="developer")
         subtask = _make_subtask(
             required_role="developer",
-            complexity="medium",
+            complexity=Complexity.MEDIUM,
         )
 
         candidate = scorer.score(agent, subtask)
         # Role match (0.2) + seniority alignment (0.2) = 0.4
         assert candidate.score == pytest.approx(0.4)
+
+    @pytest.mark.unit
+    def test_on_leave_agent_scores_zero(self) -> None:
+        """ON_LEAVE agent gets score 0.0."""
+        scorer = AgentTaskScorer()
+        agent = _make_agent(
+            primary=("python",),
+            status=AgentStatus.ON_LEAVE,
+        )
+        subtask = _make_subtask(required_skills=("python",))
+
+        candidate = scorer.score(agent, subtask)
+        assert candidate.score == 0.0
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        ("level", "complexity"),
+        [
+            (SeniorityLevel.JUNIOR, Complexity.SIMPLE),
+            (SeniorityLevel.MID, Complexity.MEDIUM),
+            (SeniorityLevel.SENIOR, Complexity.COMPLEX),
+            (SeniorityLevel.LEAD, Complexity.EPIC),
+            (SeniorityLevel.PRINCIPAL, Complexity.EPIC),
+        ],
+        ids=[
+            "junior-simple",
+            "mid-medium",
+            "senior-complex",
+            "lead-epic",
+            "principal-epic",
+        ],
+    )
+    def test_seniority_complexity_parametrized(
+        self, level: SeniorityLevel, complexity: Complexity
+    ) -> None:
+        """Seniority-complexity alignment works for various levels."""
+        scorer = AgentTaskScorer()
+        agent = _make_agent(level=level)
+        subtask = _make_subtask(complexity=complexity)
+
+        candidate = scorer.score(agent, subtask)
+        assert candidate.score >= 0.2

@@ -1,7 +1,7 @@
 """Task structure classifier.
 
 Infers ``TaskStructure`` from task properties using heuristics
-based on DESIGN_SPEC Section 6.9 and Kim et al. research.
+based on DESIGN_SPEC Section 6.9.
 """
 
 import re
@@ -39,8 +39,8 @@ _PARALLEL_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bseparately\b", re.IGNORECASE),
 )
 
-# Maximum tool count threshold for sequential classification
-_SEQUENTIAL_TOOL_THRESHOLD = 4
+# Artifact count at or below which sequential is favoured
+_ARTIFACT_COUNT_THRESHOLD = 4
 
 
 class TaskStructureClassifier:
@@ -49,6 +49,11 @@ class TaskStructureClassifier:
     Examines task description, acceptance criteria, and artifact types
     to determine whether subtasks are sequential, parallel, or mixed.
     Defaults to sequential (safest per research) when uncertain.
+
+    The MIXED classification is triggered only when **language patterns**
+    from both sequential and parallel categories appear. Structural
+    signals (artifact count, dependency presence) act as tiebreakers
+    but do not influence MIXED detection.
     """
 
     def classify(self, task: Task) -> TaskStructure:
@@ -69,10 +74,16 @@ class TaskStructureClassifier:
             )
             return task.task_structure
 
-        sequential_score = self._score_sequential(task)
-        parallel_score = self._score_parallel(task)
+        seq_language = self._score_language_sequential(task)
+        par_language = self._score_language_parallel(task)
+        seq_structural = self._score_structural_sequential(task)
+        par_structural = self._score_structural_parallel(task)
 
-        if sequential_score > 0 and parallel_score > 0:
+        sequential_score = seq_language + seq_structural
+        parallel_score = par_language + par_structural
+
+        # MIXED only when both language categories have signals
+        if seq_language > 0 and par_language > 0:
             structure = TaskStructure.MIXED
         elif parallel_score > sequential_score:
             structure = TaskStructure.PARALLEL
@@ -92,8 +103,15 @@ class TaskStructureClassifier:
         )
         return structure
 
-    def _score_sequential(self, task: Task) -> int:
-        """Count sequential signals in the task."""
+    def _score_language_sequential(self, task: Task) -> int:
+        """Count sequential language pattern matches.
+
+        Args:
+            task: The task to analyse.
+
+        Returns:
+            Number of sequential language signals found.
+        """
         score = 0
         text = f"{task.title} {task.description}"
 
@@ -101,14 +119,49 @@ class TaskStructureClassifier:
             if pattern.search(text):
                 score += 1
 
-        # Check acceptance criteria for step-like language
         for criterion in task.acceptance_criteria:
             for pattern in _SEQUENTIAL_PATTERNS:
                 if pattern.search(criterion.description):
                     score += 1
 
-        # Few tools suggest sequential workflow
-        if len(task.artifacts_expected) <= _SEQUENTIAL_TOOL_THRESHOLD:
+        return score
+
+    def _score_language_parallel(self, task: Task) -> int:
+        """Count parallel language pattern matches.
+
+        Args:
+            task: The task to analyse.
+
+        Returns:
+            Number of parallel language signals found.
+        """
+        score = 0
+        text = f"{task.title} {task.description}"
+
+        for pattern in _PARALLEL_PATTERNS:
+            if pattern.search(text):
+                score += 1
+
+        for criterion in task.acceptance_criteria:
+            for pattern in _PARALLEL_PATTERNS:
+                if pattern.search(criterion.description):
+                    score += 1
+
+        return score
+
+    def _score_structural_sequential(self, task: Task) -> int:
+        """Count structural signals favouring sequential execution.
+
+        Args:
+            task: The task to analyse.
+
+        Returns:
+            Number of structural sequential signals found.
+        """
+        score = 0
+
+        # Few artifacts suggest sequential workflow
+        if len(task.artifacts_expected) <= _ARTIFACT_COUNT_THRESHOLD:
             score += 1
 
         # Ordered dependencies suggest sequential structure
@@ -117,23 +170,19 @@ class TaskStructureClassifier:
 
         return score
 
-    def _score_parallel(self, task: Task) -> int:
-        """Count parallel signals in the task."""
+    def _score_structural_parallel(self, task: Task) -> int:
+        """Count structural signals favouring parallel execution.
+
+        Args:
+            task: The task to analyse.
+
+        Returns:
+            Number of structural parallel signals found.
+        """
         score = 0
-        text = f"{task.title} {task.description}"
-
-        for pattern in _PARALLEL_PATTERNS:
-            if pattern.search(text):
-                score += 1
-
-        # Check acceptance criteria for parallel language
-        for criterion in task.acceptance_criteria:
-            for pattern in _PARALLEL_PATTERNS:
-                if pattern.search(criterion.description):
-                    score += 1
 
         # Multiple distinct artifact types suggest parallel work
-        if len(task.artifacts_expected) > _SEQUENTIAL_TOOL_THRESHOLD:
+        if len(task.artifacts_expected) > _ARTIFACT_COUNT_THRESHOLD:
             score += 1
 
         # No dependencies suggest potential parallelism

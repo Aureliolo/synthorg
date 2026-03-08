@@ -10,7 +10,8 @@ from ai_company.engine.decomposition.models import (
     DecompositionPlan,
     SubtaskDefinition,
 )
-from ai_company.engine.errors import DecompositionError
+from ai_company.engine.decomposition.protocol import DecompositionStrategy
+from ai_company.engine.errors import DecompositionDepthError, DecompositionError
 
 
 def _make_task(task_id: str = "task-manual-1") -> Task:
@@ -76,14 +77,22 @@ class TestManualDecompositionStrategy:
         task = _make_task()
         plan = _make_plan()
         strategy = ManualDecompositionStrategy(plan)
+
+        # current_depth == max_depth triggers DecompositionDepthError
+        ctx = DecompositionContext(current_depth=3, max_depth=3)
+        with pytest.raises(DecompositionDepthError, match="exceeds max depth"):
+            await strategy.decompose(task, ctx)
+
+    @pytest.mark.unit
+    async def test_depth_below_max_succeeds(self) -> None:
+        """Depth below max allows decomposition."""
+        task = _make_task()
+        plan = _make_plan()
+        strategy = ManualDecompositionStrategy(plan)
         ctx = DecompositionContext(current_depth=2, max_depth=3)
 
         result = await strategy.decompose(task, ctx)
         assert result is plan
-
-        # At max depth (2 >= 3 is false, 3 >= 3 is true - can't even create context)
-        with pytest.raises(ValueError, match="reached max depth"):
-            DecompositionContext(current_depth=3, max_depth=3)
 
     @pytest.mark.unit
     async def test_too_many_subtasks_rejected(self) -> None:
@@ -102,3 +111,10 @@ class TestManualDecompositionStrategy:
         plan = _make_plan()
         strategy = ManualDecompositionStrategy(plan)
         assert strategy.get_strategy_name() == "manual"
+
+    @pytest.mark.unit
+    def test_protocol_conformance(self) -> None:
+        """ManualDecompositionStrategy satisfies DecompositionStrategy."""
+        plan = _make_plan()
+        strategy = ManualDecompositionStrategy(plan)
+        assert isinstance(strategy, DecompositionStrategy)

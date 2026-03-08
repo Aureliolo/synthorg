@@ -6,7 +6,7 @@ to decompose a parent task into executable subtasks.
 
 from typing import TYPE_CHECKING
 
-from ai_company.core.enums import TaskStatus, TaskType
+from ai_company.core.enums import TaskStatus
 from ai_company.core.task import Task
 from ai_company.engine.decomposition.dag import DependencyGraph
 from ai_company.engine.decomposition.models import (
@@ -17,11 +17,13 @@ from ai_company.engine.decomposition.rollup import StatusRollup
 from ai_company.observability import get_logger
 from ai_company.observability.events.decomposition import (
     DECOMPOSITION_COMPLETED,
+    DECOMPOSITION_FAILED,
     DECOMPOSITION_STARTED,
     DECOMPOSITION_SUBTASK_CREATED,
 )
 
 if TYPE_CHECKING:
+    from ai_company.core.types import NotBlankStr
     from ai_company.engine.decomposition.classifier import TaskStructureClassifier
     from ai_company.engine.decomposition.models import DecompositionContext
     from ai_company.engine.decomposition.protocol import DecompositionStrategy
@@ -53,7 +55,9 @@ class DecompositionService:
     ) -> DecompositionResult:
         """Decompose a task into subtasks.
 
-        1. Classify task structure if not explicit.
+        1. Classify task structure (uses explicit if set,
+           otherwise heuristic inference). Override the plan's
+           structure if classifier disagrees.
         2. Call strategy.decompose().
         3. Validate DAG via DependencyGraph.
         4. Create Task objects from SubtaskDefinitions.
@@ -73,6 +77,30 @@ class DecompositionService:
             current_depth=context.current_depth,
         )
 
+        try:
+            return await self._do_decompose(task, context)
+        except Exception:
+            logger.exception(
+                DECOMPOSITION_FAILED,
+                task_id=task.id,
+                strategy=self._strategy.get_strategy_name(),
+            )
+            raise
+
+    async def _do_decompose(
+        self,
+        task: Task,
+        context: DecompositionContext,
+    ) -> DecompositionResult:
+        """Internal decomposition logic.
+
+        Args:
+            task: The parent task to decompose.
+            context: Decomposition constraints.
+
+        Returns:
+            Decomposition result with created tasks and dependency edges.
+        """
         # 1. Classify structure
         structure = self._classifier.classify(task)
 
@@ -94,14 +122,14 @@ class DecompositionService:
                 id=subtask_def.id,
                 title=subtask_def.title,
                 description=subtask_def.description,
-                type=task.type or TaskType.DEVELOPMENT,
+                type=task.type,
                 priority=task.priority,
                 project=task.project,
                 created_by=task.created_by,
                 parent_task_id=task.id,
                 delegation_chain=task.delegation_chain,
                 status=TaskStatus.CREATED,
-                estimated_complexity=task.estimated_complexity,
+                estimated_complexity=subtask_def.estimated_complexity,
             )
             created_tasks.append(child_task)
             logger.debug(
@@ -136,7 +164,7 @@ class DecompositionService:
 
     def rollup_status(
         self,
-        parent_task_id: str,
+        parent_task_id: NotBlankStr,
         subtask_statuses: tuple[TaskStatus, ...],
     ) -> SubtaskStatusRollup:
         """Compute status rollup for a parent task.

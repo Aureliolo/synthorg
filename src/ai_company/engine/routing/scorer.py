@@ -6,7 +6,7 @@ role match, and seniority-complexity alignment.
 
 from typing import TYPE_CHECKING
 
-from ai_company.core.enums import AgentStatus, SeniorityLevel
+from ai_company.core.enums import AgentStatus, Complexity, SeniorityLevel
 from ai_company.engine.routing.models import RoutingCandidate
 from ai_company.observability import get_logger
 from ai_company.observability.events.task_routing import (
@@ -21,14 +21,14 @@ logger = get_logger(__name__)
 
 # Seniority-to-complexity alignment mapping
 _SENIORITY_COMPLEXITY: dict[SeniorityLevel, tuple[str, ...]] = {
-    SeniorityLevel.JUNIOR: ("simple",),
-    SeniorityLevel.MID: ("simple", "medium"),
-    SeniorityLevel.SENIOR: ("medium", "complex"),
-    SeniorityLevel.LEAD: ("complex", "epic"),
-    SeniorityLevel.PRINCIPAL: ("complex", "epic"),
-    SeniorityLevel.DIRECTOR: ("epic",),
-    SeniorityLevel.VP: ("epic",),
-    SeniorityLevel.C_SUITE: ("epic",),
+    SeniorityLevel.JUNIOR: (Complexity.SIMPLE.value,),
+    SeniorityLevel.MID: (Complexity.SIMPLE.value, Complexity.MEDIUM.value),
+    SeniorityLevel.SENIOR: (Complexity.MEDIUM.value, Complexity.COMPLEX.value),
+    SeniorityLevel.LEAD: (Complexity.COMPLEX.value, Complexity.EPIC.value),
+    SeniorityLevel.PRINCIPAL: (Complexity.COMPLEX.value, Complexity.EPIC.value),
+    SeniorityLevel.DIRECTOR: (Complexity.EPIC.value,),
+    SeniorityLevel.VP: (Complexity.EPIC.value,),
+    SeniorityLevel.C_SUITE: (Complexity.EPIC.value,),
 }
 
 
@@ -42,6 +42,10 @@ class AgentTaskScorer:
     - Seniority-complexity alignment: +0.2
     - Score capped at 1.0
     - Agent must be ACTIVE status
+
+    When the subtask has no ``required_skills``, skill-overlap
+    components (0.6 total weight) are skipped, and the maximum
+    score is 0.4 (role 0.2 + seniority 0.2).
     """
 
     __slots__ = ("_min_score",)
@@ -91,6 +95,8 @@ class AgentTaskScorer:
             all_matched.extend(sorted(primary_matched))
             if primary_matched:
                 reasons.append(f"primary skills: {sorted(primary_matched)}")
+        else:
+            reasons.append("no skills required, skill matching skipped")
 
         # Secondary skill overlap (weight: 0.2)
         secondary = set(agent.skills.secondary)
@@ -112,7 +118,7 @@ class AgentTaskScorer:
             reasons.append("role match")
 
         # Seniority-complexity alignment (weight: 0.2)
-        complexity = subtask.estimated_complexity.casefold()
+        complexity = subtask.estimated_complexity.value
         aligned_complexities = _SENIORITY_COMPLEXITY.get(agent.level, ())
         if complexity in aligned_complexities:
             total_score += 0.2

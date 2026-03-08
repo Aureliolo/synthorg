@@ -8,6 +8,7 @@ import pytest
 from ai_company.core.agent import AgentIdentity, ModelConfig, SkillSet
 from ai_company.core.enums import (
     AgentStatus,
+    Complexity,
     Priority,
     SeniorityLevel,
     TaskType,
@@ -59,6 +60,20 @@ def _make_task(task_id: str = "task-route-1") -> Task:
     )
 
 
+def _make_child_task(task_id: str, parent_task_id: str = "task-route-1") -> Task:
+    """Helper to create a child task for decomposition results."""
+    return Task(
+        id=task_id,
+        title=f"Subtask {task_id}",
+        description=f"Description for {task_id}",
+        type=TaskType.DEVELOPMENT,
+        priority=Priority.MEDIUM,
+        project="proj-1",
+        created_by="creator",
+        parent_task_id=parent_task_id,
+    )
+
+
 def _make_decomposition_result(
     parent_task_id: str = "task-route-1",
 ) -> DecompositionResult:
@@ -72,7 +87,7 @@ def _make_decomposition_result(
                 description="Backend development",
                 required_skills=("python", "sql"),
                 required_role="developer",
-                estimated_complexity="medium",
+                estimated_complexity=Complexity.MEDIUM,
             ),
             SubtaskDefinition(
                 id="sub-2",
@@ -80,14 +95,17 @@ def _make_decomposition_result(
                 description="Frontend development",
                 required_skills=("javascript", "react"),
                 required_role="frontend-developer",
-                estimated_complexity="medium",
+                estimated_complexity=Complexity.MEDIUM,
                 dependencies=("sub-1",),
             ),
         ),
     )
     return DecompositionResult(
         plan=plan,
-        created_tasks=(),
+        created_tasks=(
+            _make_child_task("sub-1", parent_task_id),
+            _make_child_task("sub-2", parent_task_id),
+        ),
         dependency_edges=(("sub-1", "sub-2"),),
     )
 
@@ -189,13 +207,13 @@ class TestTaskRoutingService:
                     description="Python development",
                     required_skills=("python",),
                     required_role="developer",
-                    estimated_complexity="medium",
+                    estimated_complexity=Complexity.MEDIUM,
                 ),
             ),
         )
         decomp = DecompositionResult(
             plan=plan,
-            created_tasks=(),
+            created_tasks=(_make_child_task("sub-1"),),
         )
         task = _make_task()
 

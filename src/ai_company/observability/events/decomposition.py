@@ -10,3 +10,5 @@ DECOMPOSITION_STRUCTURE_CLASSIFIED: Final[str] = "decomposition.structure.classi
 DECOMPOSITION_ROLLUP_COMPUTED: Final[str] = "decomposition.rollup.computed"
 DECOMPOSITION_GRAPH_VALIDATED: Final[str] = "decomposition.graph.validated"
 DECOMPOSITION_GRAPH_CYCLE: Final[str] = "decomposition.graph.cycle"
+DECOMPOSITION_FAILED: Final[str] = "decomposition.failed"
+DECOMPOSITION_REFERENCE_ERROR: Final[str] = "decomposition.reference.error"

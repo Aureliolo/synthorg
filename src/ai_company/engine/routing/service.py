@@ -13,6 +13,8 @@ from ai_company.engine.routing.models import (
 from ai_company.observability import get_logger
 from ai_company.observability.events.task_routing import (
     TASK_ROUTING_COMPLETE,
+    TASK_ROUTING_FAILED,
+    TASK_ROUTING_NO_AGENTS,
     TASK_ROUTING_SUBTASK_ROUTED,
     TASK_ROUTING_SUBTASK_UNROUTABLE,
 )
@@ -58,6 +60,40 @@ class TaskRoutingService:
         2. Select the best candidate (highest score >= min_score).
         3. Select topology per plan.
         4. Report unroutable subtasks.
+
+        Args:
+            decomposition_result: The decomposition to route.
+            available_agents: Pool of agents to consider.
+            parent_task: The parent task (for topology selection).
+
+        Returns:
+            Routing result with decisions and unroutable subtask IDs.
+        """
+        plan = decomposition_result.plan
+
+        if not available_agents:
+            logger.warning(
+                TASK_ROUTING_NO_AGENTS,
+                parent_task_id=plan.parent_task_id,
+                subtask_count=len(plan.subtasks),
+            )
+
+        try:
+            return self._do_route(decomposition_result, available_agents, parent_task)
+        except Exception:
+            logger.exception(
+                TASK_ROUTING_FAILED,
+                parent_task_id=plan.parent_task_id,
+            )
+            raise
+
+    def _do_route(
+        self,
+        decomposition_result: DecompositionResult,
+        available_agents: tuple[AgentIdentity, ...],
+        parent_task: Task,
+    ) -> RoutingResult:
+        """Internal routing logic.
 
         Args:
             decomposition_result: The decomposition to route.
