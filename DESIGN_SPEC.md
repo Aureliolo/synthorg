@@ -2326,7 +2326,7 @@ Run: ai-company start acme-corp
 | **Language** | Python 3.14+ | Best AI/ML ecosystem, all major frameworks use it, LiteLLM/MCP and memory layer candidates all Python-native. PEP 649 native lazy annotations, PEP 758 except syntax. |
 | **API Framework** | FastAPI | Async-native, WebSocket support, auto OpenAPI docs, high performance, type-safe with Pydantic |
 | **LLM Abstraction** | LiteLLM | 100+ providers, unified API, built-in cost tracking, retries/fallbacks |
-| **Agent Memory** | TBD (candidates: Mem0, Zep, Letta, Cognee, custom) + SQLite | Memory layer library TBD after evaluation. SQLite for structured data. Upgrade to Postgres later |
+| **Agent Memory** | Mem0 (initial) → custom stack (future) + SQLite | Mem0 in-process as initial backend behind pluggable `MemoryBackend` protocol (ADR-001). Qdrant embedded + SQLite for persistence. Custom stack (Neo4j + Qdrant external) as future upgrade. Config-driven backend selection |
 | **Message Bus** | Internal (async queues) → Redis | Start with Python asyncio queues, upgrade to Redis for multi-process/distributed |
 | **Task Queue** | Internal → Celery/Redis | Start simple, scale with Celery when needed |
 | **Database** | SQLite → PostgreSQL | Start lightweight, migrate to Postgres for production/multi-user |
