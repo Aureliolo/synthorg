@@ -58,6 +58,9 @@ class TokenTracker:
     def record(self, input_tokens: int, output_tokens: int) -> None:
         """Record token usage from an agent call.
 
+        Logs a warning when token usage exceeds the budget after
+        recording.
+
         Args:
             input_tokens: Prompt tokens consumed (must be >= 0).
             output_tokens: Response tokens generated (must be >= 0).
@@ -70,6 +73,12 @@ class TokenTracker:
                 f"Token counts must be non-negative, got "
                 f"input_tokens={input_tokens}, "
                 f"output_tokens={output_tokens}"
+            )
+            logger.warning(
+                MEETING_BUDGET_EXHAUSTED,
+                error=msg,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
             )
             raise ValueError(msg)
         self.input_tokens += input_tokens

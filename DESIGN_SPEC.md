@@ -602,13 +602,12 @@ conflict_resolution:
 
 #### Strategy 2: Structured Debate + Judge
 
-Both agents present arguments (1 round each, capped at `max_tokens_per_argument`). A judge — their shared manager, the CEO, or a configurable arbitrator agent — evaluates both positions and decides. The judge's reasoning and both arguments are logged as a dissent record.
+Both agents present arguments (1 round each). A judge — their shared manager, the CEO, or a configurable arbitrator agent — evaluates both positions and decides. The judge's reasoning and both arguments are logged as a dissent record.
 
 ```yaml
 conflict_resolution:
   strategy: "debate"
   debate:
-    max_tokens_per_argument: 500
     judge: "shared_manager"        # shared_manager, ceo, designated_agent
 ```
 
@@ -631,7 +630,7 @@ conflict_resolution:
 
 Combines strategies with an intelligent review layer:
 
-1. Both agents present arguments (1 round, capped tokens) — preserving dissent
+1. Both agents present arguments (1 round) — preserving dissent
 2. A **conflict review agent** evaluates the result:
    - If the resolution is **clear** (one position is objectively better, or authority applies cleanly) → resolve automatically, log dissent record
    - If the resolution is **ambiguous** (genuine trade-offs, no clear winner) → escalate to human queue with both positions + the review agent's analysis
@@ -640,7 +639,6 @@ Combines strategies with an intelligent review layer:
 conflict_resolution:
   strategy: "hybrid"
   hybrid:
-    max_tokens_per_argument: 500
     review_agent: "conflict_reviewer"  # dedicated agent or role
     escalate_on_ambiguity: true
 ```
@@ -652,7 +650,7 @@ conflict_resolution:
 
 Meetings (§5.1 Pattern 3) follow configurable protocols that determine how agents interact during structured multi-agent conversations. Different meeting types naturally suit different protocols. All protocols implement a `MeetingProtocol` protocol, making the system extensible — new protocols can be registered and selected per meeting type. Cost bounds are enforced by `duration_tokens` in meeting config (§5.4).
 
-> **Current state (M4 complete):** All 3 meeting protocols are implemented in `communication/meeting/`: `RoundRobinProtocol`, `PositionPapersProtocol`, and `StructuredPhasesProtocol`. The `MeetingOrchestrator` runs meetings end-to-end with token budget enforcement via `TokenTracker`. All protocols implement the `MeetingProtocol` protocol interface.
+> **Current state (M4 complete):** All 3 meeting protocols are implemented in `communication/meeting/`: `RoundRobinProtocol`, `PositionPapersProtocol`, and `StructuredPhasesProtocol`. The `MeetingOrchestrator` runs meetings end-to-end with token budget enforcement via `TokenTracker`. Shared LLM response parsing for decisions and action items is in `_parsing.py`. All protocols implement the `MeetingProtocol` protocol interface.
 
 #### Protocol 1: Round-Robin Transcript
 
@@ -2446,6 +2444,7 @@ ai-company/
 │       │   ├── message.py          # Message model
 │       │   ├── meeting/             # Meeting protocol subsystem
 │       │   │   ├── __init__.py    # Package exports
+│       │   │   ├── _parsing.py   # Shared helpers for parsing decisions and action items
 │       │   │   ├── _prompts.py    # LLM prompt templates for meeting phases
 │       │   │   ├── _token_tracker.py # TokenTracker for duration_tokens enforcement
 │       │   │   ├── config.py      # MeetingProtocolConfig, protocol-specific config models

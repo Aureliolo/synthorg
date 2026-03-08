@@ -8,6 +8,9 @@ from ai_company.communication.conflict_resolution._helpers import (
     find_position_or_raise,
     pick_highest_seniority,
 )
+from ai_company.communication.delegation.hierarchy import (
+    HierarchyResolver,  # noqa: TC001
+)
 from ai_company.communication.errors import ConflictStrategyError
 from ai_company.core.enums import SeniorityLevel
 
@@ -126,3 +129,62 @@ class TestPickHighestSeniority:
         )
         best = pick_highest_seniority(conflict)
         assert best.agent_id == "first"
+
+    def test_hierarchy_tiebreak_closer_to_root_wins(
+        self,
+        hierarchy: HierarchyResolver,
+    ) -> None:
+        """When seniority is equal, the agent closer to root wins."""
+        conflict = make_conflict(
+            positions=(
+                make_position(
+                    agent_id="jr_dev",
+                    level=SeniorityLevel.SENIOR,
+                    position="Deep agent",
+                ),
+                make_position(
+                    agent_id="backend_lead",
+                    level=SeniorityLevel.SENIOR,
+                    position="Shallow agent",
+                ),
+            ),
+        )
+        best = pick_highest_seniority(conflict, hierarchy=hierarchy)
+        # backend_lead is closer to root (fewer ancestors) than jr_dev
+        assert best.agent_id == "backend_lead"
+
+    def test_hierarchy_tiebreak_equal_depth_keeps_incumbent(
+        self,
+        hierarchy: HierarchyResolver,
+    ) -> None:
+        """When seniority and depth are equal, incumbent wins."""
+        conflict = make_conflict(
+            positions=(
+                make_position(
+                    agent_id="sr_dev",
+                    level=SeniorityLevel.SENIOR,
+                    position="First",
+                ),
+                make_position(
+                    agent_id="jr_dev",
+                    level=SeniorityLevel.SENIOR,
+                    position="Second",
+                ),
+            ),
+        )
+        best = pick_highest_seniority(conflict, hierarchy=hierarchy)
+        # Same depth under backend_lead — incumbent (sr_dev) kept
+        assert best.agent_id == "sr_dev"
+
+
+@pytest.mark.unit
+class TestFindLosersWinnerValidation:
+    def test_winner_not_in_positions_raises(self) -> None:
+        """Raises when winning agent is not among conflict positions."""
+        conflict = make_conflict()
+        resolution = make_resolution(winning_agent_id="nonexistent")
+        with pytest.raises(
+            ConflictStrategyError,
+            match="not found in conflict positions",
+        ):
+            find_losers(conflict, resolution)

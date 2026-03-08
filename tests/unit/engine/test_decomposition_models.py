@@ -228,6 +228,26 @@ class TestDecompositionResult:
             )
 
     @pytest.mark.unit
+    def test_task_id_mismatch_rejected(self) -> None:
+        """Result rejects matching count but different IDs."""
+        plan = DecompositionPlan(
+            parent_task_id="task-1",
+            subtasks=(
+                SubtaskDefinition(id="sub-1", title="A", description="A desc"),
+                SubtaskDefinition(id="sub-2", title="B", description="B desc"),
+            ),
+        )
+        with pytest.raises(ValueError, match="do not match plan subtask IDs"):
+            DecompositionResult(
+                plan=plan,
+                created_tasks=(
+                    _make_result_task("sub-1"),
+                    _make_result_task("sub-99"),
+                ),
+                dependency_edges=(),
+            )
+
+    @pytest.mark.unit
     def test_unknown_edge_ids_rejected(self) -> None:
         """Result rejects edges referencing unknown task IDs."""
         plan = DecompositionPlan(

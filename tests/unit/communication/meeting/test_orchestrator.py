@@ -124,6 +124,21 @@ class TestMeetingOrchestratorValidation:
                 token_budget=2000,
             )
 
+    async def test_duplicate_participants_raises(
+        self,
+        simple_agenda: MeetingAgenda,
+    ) -> None:
+        orchestrator = _make_orchestrator()
+        with pytest.raises(MeetingParticipantError, match="Duplicate participant"):
+            await orchestrator.run_meeting(
+                meeting_type_name="standup",
+                protocol_config=MeetingProtocolConfig(),
+                agenda=simple_agenda,
+                leader_id="leader",
+                participant_ids=("agent-a", "agent-b", "agent-a"),
+                token_budget=2000,
+            )
+
     async def test_unregistered_protocol_raises(
         self,
         simple_agenda: MeetingAgenda,

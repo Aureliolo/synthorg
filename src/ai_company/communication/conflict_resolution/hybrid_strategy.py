@@ -216,7 +216,8 @@ class HybridResolver:
             reason: Why authority fallback was triggered.
 
         Returns:
-            Resolution with ``RESOLVED_BY_HYBRID`` outcome.
+            Resolution with ``RESOLVED_BY_HYBRID`` outcome
+            (authority used as fallback within hybrid strategy).
         """
         logger.warning(
             CONFLICT_AUTHORITY_FALLBACK,

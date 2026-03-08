@@ -271,6 +271,23 @@ class TestDecompositionService:
             await service.decompose_task(task, ctx)
 
     @pytest.mark.unit
+    async def test_decompose_propagates_dependencies(self) -> None:
+        """Subtask dependencies propagate to created Task objects."""
+        task = _make_task()
+        plan = _make_plan()
+        strategy = ManualDecompositionStrategy(plan)
+        classifier = TaskStructureClassifier()
+        service = DecompositionService(strategy, classifier)
+        ctx = DecompositionContext()
+
+        result = await service.decompose_task(task, ctx)
+
+        tasks_by_id = {t.id: t for t in result.created_tasks}
+        assert tasks_by_id["sub-1"].dependencies == ()
+        assert tasks_by_id["sub-2"].dependencies == ("sub-1",)
+        assert tasks_by_id["sub-3"].dependencies == ("sub-2",)
+
+    @pytest.mark.unit
     def test_rollup_status_delegates(self) -> None:
         """rollup_status delegates to StatusRollup.compute."""
         plan = _make_plan()

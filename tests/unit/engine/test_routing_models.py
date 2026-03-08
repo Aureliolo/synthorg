@@ -135,6 +135,43 @@ class TestRoutingResult:
                 unroutable=("sub-1",),
             )
 
+    @pytest.mark.unit
+    def test_duplicate_decision_ids_rejected(
+        self, sample_agent_with_personality: AgentIdentity
+    ) -> None:
+        """Duplicate subtask IDs within decisions are rejected."""
+        candidate = RoutingCandidate(
+            agent_identity=sample_agent_with_personality,
+            score=0.5,
+            reason="Match",
+        )
+        decision_a = RoutingDecision(
+            subtask_id="sub-1",
+            selected_candidate=candidate,
+            topology=CoordinationTopology.SAS,
+        )
+        decision_b = RoutingDecision(
+            subtask_id="sub-1",
+            selected_candidate=candidate,
+            topology=CoordinationTopology.SAS,
+        )
+        with pytest.raises(ValueError, match="Duplicate subtask IDs in decisions"):
+            RoutingResult(
+                parent_task_id="task-1",
+                decisions=(decision_a, decision_b),
+                unroutable=(),
+            )
+
+    @pytest.mark.unit
+    def test_duplicate_unroutable_ids_rejected(self) -> None:
+        """Duplicate subtask IDs within unroutable are rejected."""
+        with pytest.raises(ValueError, match="Duplicate subtask IDs in unroutable"):
+            RoutingResult(
+                parent_task_id="task-1",
+                decisions=(),
+                unroutable=("sub-1", "sub-1"),
+            )
+
 
 class TestAutoTopologyConfig:
     """Tests for AutoTopologyConfig model."""

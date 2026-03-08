@@ -72,6 +72,20 @@ class TaskRoutingService:
         """
         plan = decomposition_result.plan
 
+        if parent_task.id != plan.parent_task_id:
+            msg = (
+                f"parent_task.id {parent_task.id!r} does not "
+                f"match plan.parent_task_id "
+                f"{plan.parent_task_id!r}"
+            )
+            logger.warning(
+                TASK_ROUTING_FAILED,
+                parent_task_id=parent_task.id,
+                plan_parent_task_id=plan.parent_task_id,
+                error=msg,
+            )
+            raise ValueError(msg)
+
         logger.info(
             TASK_ROUTING_STARTED,
             parent_task_id=plan.parent_task_id,
@@ -114,27 +128,8 @@ class TaskRoutingService:
 
         Returns:
             Routing result with decisions and unroutable subtask IDs.
-
-        Raises:
-            ValueError: If parent_task.id does not match
-                plan.parent_task_id.
         """
         plan = decomposition_result.plan
-
-        if parent_task.id != plan.parent_task_id:
-            msg = (
-                f"parent_task.id {parent_task.id!r} does not "
-                f"match plan.parent_task_id "
-                f"{plan.parent_task_id!r}"
-            )
-            logger.warning(
-                TASK_ROUTING_FAILED,
-                parent_task_id=parent_task.id,
-                plan_parent_task_id=plan.parent_task_id,
-                error=msg,
-            )
-            raise ValueError(msg)
-
         topology = self._topology_selector.select(parent_task, plan)
 
         decisions: list[RoutingDecision] = []

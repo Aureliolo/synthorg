@@ -52,11 +52,6 @@ COMM_RECEIVE_TIMEOUT: Final[str] = "communication.receive.timeout"
 COMM_RECEIVE_SHUTDOWN: Final[str] = "communication.receive.shutdown"
 COMM_RECEIVE_UNSUBSCRIBED: Final[str] = "communication.receive.unsubscribed"
 
-# Unsubscribe sentinel
-COMM_UNSUBSCRIBE_SENTINEL_FAILED: Final[str] = (
-    "communication.unsubscribe.sentinel_failed"
-)
-
 # Validation
 COMM_MESSENGER_INVALID_AGENT: Final[str] = "communication.messenger.invalid_agent"
 COMM_SEND_DIRECT_INVALID: Final[str] = "communication.message.send_direct_invalid"

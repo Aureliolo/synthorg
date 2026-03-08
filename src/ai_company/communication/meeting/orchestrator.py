@@ -134,8 +134,8 @@ class MeetingOrchestrator:
         Raises:
             MeetingProtocolNotFoundError: If the configured protocol
                 is not in the registry.
-            MeetingParticipantError: If participant list is empty or
-                leader is in participants.
+            MeetingParticipantError: If participant list is empty,
+                contains duplicates, or leader is in participants.
             ValueError: If token_budget is not positive.
         """
         meeting_id = f"mtg-{uuid4().hex[:12]}"
@@ -371,8 +371,8 @@ class MeetingOrchestrator:
         """Validate meeting inputs.
 
         Raises:
-            MeetingParticipantError: If participants are empty or leader
-                is in participants.
+            MeetingParticipantError: If participants are empty, contain
+                duplicates, or leader is in participants.
             ValueError: If token_budget is not positive.
         """
         if token_budget <= 0:

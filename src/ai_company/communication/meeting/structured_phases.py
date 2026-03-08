@@ -50,7 +50,7 @@ from ai_company.observability.events.meeting import (
 
 logger = get_logger(__name__)
 
-# Reserve 20% of budget for later phases (conflict check + synthesis).
+# Reserve 20% of remaining budget for the synthesis phase.
 _SYNTHESIS_RESERVE_FRACTION = 0.20
 
 
@@ -400,9 +400,11 @@ class StructuredPhasesProtocol:
         # on any task failure, so reaching this point means all succeeded.
         if not all(r is not None for r in result_inputs):
             msg = f"Expected {num_participants} inputs but some slots are None"
+            logger.error(msg, meeting_id=meeting_id)
             raise RuntimeError(msg)
         if not all(c is not None for c in result_contributions):
             msg = f"Expected {num_participants} contributions but some slots are None"
+            logger.error(msg, meeting_id=meeting_id)
             raise RuntimeError(msg)
         inputs: list[tuple[str, str]] = list(result_inputs)  # type: ignore[arg-type]
         input_contributions: list[MeetingContribution] = list(

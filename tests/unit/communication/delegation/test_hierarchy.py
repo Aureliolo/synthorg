@@ -371,6 +371,12 @@ class TestGetLowestCommonManager:
             == "backend_lead"
         )
 
+    def test_same_agent_returns_self(self) -> None:
+        """Same agent as both arguments returns that agent."""
+        company = _make_company(departments=(_eng_department(),))
+        resolver = HierarchyResolver(company)
+        assert resolver.get_lowest_common_manager("sr_dev", "sr_dev") == "sr_dev"
+
     def test_cross_department_agents_under_same_root(self) -> None:
         """If eng/qa share a root, that root is LCM."""
         company = _make_company(departments=(_eng_department(), _qa_department()))

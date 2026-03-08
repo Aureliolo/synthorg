@@ -183,7 +183,7 @@ class ParallelExecutor:
                 ) from release_error
 
         if task_error is not None:
-            raise task_error from task_error
+            raise task_error
 
         result = self._build_result(
             group,

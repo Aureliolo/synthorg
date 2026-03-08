@@ -288,6 +288,32 @@ class TestSubscription:
 
         assert received == [None]
 
+    @pytest.mark.unit
+    async def test_unsubscribe_wakes_multiple_blocked_receivers(self) -> None:
+        """Unsubscribing wakes all concurrent blocked receive() calls."""
+        bus = InMemoryMessageBus(config=_make_config())
+        await bus.start()
+        await bus.subscribe("#general", "agent-a")
+
+        received: list[object] = []
+
+        async def receiver() -> None:
+            result = await bus.receive("#general", "agent-a")
+            received.append(result)
+
+        async def unsubscriber() -> None:
+            await asyncio.sleep(0.05)
+            await bus.unsubscribe("#general", "agent-a")
+
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(receiver())
+            tg.create_task(receiver())
+            tg.create_task(receiver())
+            tg.create_task(unsubscriber())
+
+        assert len(received) == 3
+        assert all(r is None for r in received)
+
 
 # ── Publish & Receive ────────────────────────────────────────────
 

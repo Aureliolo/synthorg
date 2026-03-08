@@ -1,12 +1,16 @@
 """Shared helpers for parsing decisions and action items from LLM text.
 
-Extracts structured ``Decision`` and ``ActionItem`` data from free-form
-synthesis/summary responses produced by meeting protocol LLM calls.
+Extracts structured decision strings and ``ActionItem`` instances from
+free-form synthesis/summary responses produced by meeting protocol LLM
+calls.
 """
 
 import re
 
 from ai_company.communication.meeting.models import ActionItem
+from ai_company.observability import get_logger
+
+logger = get_logger(__name__)
 
 # Patterns for section headers
 _DECISIONS_HEADER_RE = re.compile(
@@ -24,12 +28,11 @@ _ANY_HEADER_RE = re.compile(
 
 # List item patterns (numbered or bulleted)
 _LIST_ITEM_RE = re.compile(
-    r"^\s*(?:\d+[\.\)]\s*|-\s*|\*\s*|\u2022\s*)(.+)",
+    r"^[^\S\n]*(?:\d+[\.\)][^\S\n]*|-[^\S\n]*|\*[^\S\n]*|\u2022[^\S\n]*)(.+)",
     re.MULTILINE,
 )
 
-# Pattern for "assignee: <name>" or "(assigned to <name>)" or
-# "- assignee: <name>" at end of line
+# Pattern for "assignee: <name>" or "(assigned to <name>)" at end of line
 _ASSIGNEE_RE = re.compile(
     r"(?:"
     r"\(?assigned?\s+to:?\s*(.+?)\)?"

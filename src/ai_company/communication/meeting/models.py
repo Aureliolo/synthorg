@@ -236,7 +236,11 @@ class MeetingMinutes(BaseModel):
 
     @model_validator(mode="after")
     def _validate_token_aggregates(self) -> Self:
-        """Ensure aggregate token counts match sum of contributions."""
+        """Ensure aggregate token counts match sum of contributions.
+
+        Skipped when no contributions are present (allows default
+        zero totals).
+        """
         if not self.contributions:
             return self
         sum_input = sum(c.input_tokens for c in self.contributions)
@@ -285,7 +289,7 @@ class MeetingRecord(BaseModel):
         default=None,
         description="Complete minutes on success",
     )
-    error_message: str | None = Field(
+    error_message: NotBlankStr | None = Field(
         default=None,
         description="Error description on failure",
     )
@@ -312,12 +316,6 @@ class MeetingRecord(BaseModel):
                 msg = (
                     "error_message is required when status is "
                     "failed or budget_exhausted"
-                )
-                raise ValueError(msg)
-            if not self.error_message.strip():
-                msg = (
-                    "error_message must not be empty when status "
-                    "is failed or budget_exhausted"
                 )
                 raise ValueError(msg)
             if self.minutes is not None:

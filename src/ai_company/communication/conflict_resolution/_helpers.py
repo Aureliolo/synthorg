@@ -24,8 +24,9 @@ def find_losers(
 ) -> tuple[ConflictPosition, ...]:
     """Find all non-winning positions in a conflict.
 
-    For N-party conflicts (3+ agents), returns every position whose
-    agent was not the winner.
+    Returns every position whose agent was not the winner.  For
+    2-party conflicts this is a single position; for N-party
+    conflicts (3+ agents) this may return multiple.
 
     Args:
         conflict: The original conflict.

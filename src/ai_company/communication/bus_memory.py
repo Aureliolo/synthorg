@@ -404,6 +404,8 @@ class InMemoryMessageBus:
             if queue is not None:
                 # Put a sentinel for each pending waiter so all
                 # concurrent receive() calls are woken up.
+                # Safe to use put_nowait: queues are unbounded
+                # (maxsize=0), so QueueFull cannot be raised.
                 pending = self._waiters.pop(key, 0)
                 sentinels = max(1, pending)
                 for _ in range(sentinels):
@@ -433,8 +435,12 @@ class InMemoryMessageBus:
             timeout: Seconds to wait before returning ``None``.
 
         Returns:
-            A delivery envelope, or ``None`` on timeout, shutdown,
-            or when an in-flight receive is woken by :meth:`unsubscribe`.
+            The next delivery envelope, or ``None`` when:
+
+            - *timeout* expires without a message arriving.
+            - The bus is shut down while waiting.
+            - The subscription is cancelled via :meth:`unsubscribe`
+              while a ``receive()`` call is in flight.
 
         Raises:
             MessageBusNotRunningError: If the bus is not running.
@@ -458,6 +464,11 @@ class InMemoryMessageBus:
         try:
             result = await self._await_with_shutdown(queue, timeout)
         finally:
+            # Decrement outside the lock: in asyncio cooperative
+            # multitasking, this dict mutation is atomic between await
+            # points.  The asymmetry with the lock-guarded increment
+            # is intentional — the decrement must happen after
+            # _await_with_shutdown completes.
             self._waiters[key] = max(0, self._waiters.get(key, 0) - 1)
         if result is None:
             await self._log_receive_null(channel_name, subscriber_id, timeout)

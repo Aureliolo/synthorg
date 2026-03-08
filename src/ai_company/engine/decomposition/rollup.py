@@ -7,14 +7,13 @@ from typing import TYPE_CHECKING
 
 from ai_company.core.enums import TaskStatus
 from ai_company.engine.decomposition.models import SubtaskStatusRollup
-
-if TYPE_CHECKING:
-    from ai_company.core.types import NotBlankStr
-
 from ai_company.observability import get_logger
 from ai_company.observability.events.decomposition import (
     DECOMPOSITION_ROLLUP_COMPUTED,
 )
+
+if TYPE_CHECKING:
+    from ai_company.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

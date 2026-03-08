@@ -294,6 +294,19 @@ class TestTaskRoutingService:
         assert result.parent_task_id == "task-route-1"
 
     @pytest.mark.unit
+    def test_parent_task_id_mismatch_raises(self) -> None:
+        """ValueError when parent_task.id != plan.parent_task_id."""
+        scorer = AgentTaskScorer()
+        selector = TopologySelector()
+        service = TaskRoutingService(scorer, selector)
+
+        task = _make_task("task-wrong-id")
+        decomp = _make_decomposition_result("task-route-1")
+
+        with pytest.raises(ValueError, match="does not match"):
+            service.route(decomp, (), task)
+
+    @pytest.mark.unit
     def test_exception_propagates(self) -> None:
         """Exceptions from _do_route are logged and re-raised."""
         from unittest.mock import MagicMock

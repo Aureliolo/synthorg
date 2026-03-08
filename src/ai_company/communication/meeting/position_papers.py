@@ -281,9 +281,11 @@ class PositionPapersProtocol:
         # on any task failure, so reaching this point means all succeeded.
         if not all(r is not None for r in results):
             msg = f"Expected {n} position papers but some slots are None"
+            logger.error(msg, meeting_id=meeting_id)
             raise RuntimeError(msg)
         if not all(c is not None for c in contrib_results):
             msg = f"Expected {n} contributions but some slots are None"
+            logger.error(msg, meeting_id=meeting_id)
             raise RuntimeError(msg)
         papers: list[tuple[str, str]] = list(results)  # type: ignore[arg-type]
         paper_contributions: list[MeetingContribution] = list(contrib_results)  # type: ignore[arg-type]
