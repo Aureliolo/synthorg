@@ -265,13 +265,15 @@ class TestDebateResolverThreeParty:
         self,
         hierarchy: HierarchyResolver,
     ) -> None:
-        """3-party conflict uses iterative LCM for judge selection."""
+        """3-party conflict across teams uses iterative LCM for judge."""
         judge = FakeJudgeEvaluator(winner_id="sr_dev")
         resolver = DebateResolver(
             hierarchy=hierarchy,
             config=DebateConfig(judge="shared_manager"),
             judge_evaluator=judge,
         )
+        # sr_dev, jr_dev are under backend_lead; ui_dev is under
+        # frontend_lead.  LCM of agents from different teams = cto.
         conflict = make_conflict(
             positions=(
                 make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
@@ -281,16 +283,16 @@ class TestDebateResolverThreeParty:
                     position="Approach B",
                 ),
                 make_position(
-                    agent_id="backend_lead",
-                    level=SeniorityLevel.LEAD,
+                    agent_id="ui_dev",
+                    level=SeniorityLevel.JUNIOR,
                     position="Approach C",
-                    reasoning="Lead perspective",
+                    reasoning="Frontend perspective",
                 ),
             ),
         )
         resolution = await resolver.resolve(conflict)
         assert resolution.winning_agent_id == "sr_dev"
-        # Judge should be LCM of all three — cto (all are under cto)
+        # Judge should be LCM of all three — cto (cross-team)
         _, judge_id = judge.calls[0]
         assert judge_id == "cto"
 

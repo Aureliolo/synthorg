@@ -14,6 +14,9 @@ from ai_company.communication.conflict_resolution.models import (
     ConflictResolutionOutcome,
 )
 from ai_company.communication.conflict_resolution.protocol import JudgeDecision
+from ai_company.communication.delegation.hierarchy import (
+    HierarchyResolver,  # noqa: TC001
+)
 from ai_company.communication.enums import ConflictResolutionStrategy
 from ai_company.core.enums import SeniorityLevel
 
@@ -39,9 +42,13 @@ class FakeReviewEvaluator:
 
 @pytest.mark.unit
 class TestHybridResolverAutoResolve:
-    async def test_clear_winner_auto_resolves(self) -> None:
+    async def test_clear_winner_auto_resolves(
+        self,
+        hierarchy: HierarchyResolver,
+    ) -> None:
         evaluator = FakeReviewEvaluator(winner_id="sr_dev")
         resolver = HybridResolver(
+            hierarchy=hierarchy,
             config=HybridConfig(),
             human_resolver=HumanEscalationResolver(),
             review_evaluator=evaluator,
@@ -63,10 +70,14 @@ class TestHybridResolverAutoResolve:
 
 @pytest.mark.unit
 class TestHybridResolverAmbiguous:
-    async def test_ambiguous_escalates_to_human(self) -> None:
+    async def test_ambiguous_escalates_to_human(
+        self,
+        hierarchy: HierarchyResolver,
+    ) -> None:
         # Return a winner that is NOT a participant
         evaluator = FakeReviewEvaluator(winner_id="unknown_agent")
         resolver = HybridResolver(
+            hierarchy=hierarchy,
             config=HybridConfig(escalate_on_ambiguity=True),
             human_resolver=HumanEscalationResolver(),
             review_evaluator=evaluator,
@@ -84,9 +95,13 @@ class TestHybridResolverAmbiguous:
         resolution = await resolver.resolve(conflict)
         assert resolution.outcome == ConflictResolutionOutcome.ESCALATED_TO_HUMAN
 
-    async def test_ambiguous_falls_back_to_authority(self) -> None:
+    async def test_ambiguous_falls_back_to_authority(
+        self,
+        hierarchy: HierarchyResolver,
+    ) -> None:
         evaluator = FakeReviewEvaluator(winner_id="unknown_agent")
         resolver = HybridResolver(
+            hierarchy=hierarchy,
             config=HybridConfig(escalate_on_ambiguity=False),
             human_resolver=HumanEscalationResolver(),
             review_evaluator=evaluator,
@@ -108,8 +123,12 @@ class TestHybridResolverAmbiguous:
 
 @pytest.mark.unit
 class TestHybridResolverNoEvaluator:
-    async def test_no_evaluator_falls_back_to_authority(self) -> None:
+    async def test_no_evaluator_falls_back_to_authority(
+        self,
+        hierarchy: HierarchyResolver,
+    ) -> None:
         resolver = HybridResolver(
+            hierarchy=hierarchy,
             config=HybridConfig(),
             human_resolver=HumanEscalationResolver(),
             review_evaluator=None,
@@ -131,9 +150,13 @@ class TestHybridResolverNoEvaluator:
 
 @pytest.mark.unit
 class TestHybridResolverDissentRecord:
-    async def test_dissent_record_for_resolved(self) -> None:
+    async def test_dissent_record_for_resolved(
+        self,
+        hierarchy: HierarchyResolver,
+    ) -> None:
         evaluator = FakeReviewEvaluator(winner_id="sr_dev")
         resolver = HybridResolver(
+            hierarchy=hierarchy,
             config=HybridConfig(),
             human_resolver=HumanEscalationResolver(),
             review_evaluator=evaluator,
@@ -153,9 +176,13 @@ class TestHybridResolverDissentRecord:
         assert records[0].dissenting_agent_id == "jr_dev"
         assert records[0].strategy_used == ConflictResolutionStrategy.HYBRID
 
-    async def test_dissent_record_for_escalated(self) -> None:
+    async def test_dissent_record_for_escalated(
+        self,
+        hierarchy: HierarchyResolver,
+    ) -> None:
         evaluator = FakeReviewEvaluator(winner_id="unknown")
         resolver = HybridResolver(
+            hierarchy=hierarchy,
             config=HybridConfig(escalate_on_ambiguity=True),
             human_resolver=HumanEscalationResolver(),
             review_evaluator=evaluator,

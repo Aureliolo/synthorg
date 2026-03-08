@@ -9,6 +9,10 @@ meetings.
 import asyncio
 from datetime import UTC, datetime
 
+from ai_company.communication.meeting._parsing import (
+    parse_action_items,
+    parse_decisions,
+)
 from ai_company.communication.meeting._prompts import build_agenda_prompt
 from ai_company.communication.meeting._token_tracker import TokenTracker
 from ai_company.communication.meeting.config import (
@@ -272,6 +276,9 @@ class StructuredPhasesProtocol:
             synthesis_contribution,
         )
 
+        decisions = parse_decisions(summary)
+        action_items = parse_action_items(summary)
+
         logger.debug(
             MEETING_TOKENS_RECORDED,
             meeting_id=meeting_id,
@@ -290,6 +297,8 @@ class StructuredPhasesProtocol:
             agenda=agenda,
             contributions=contributions,
             summary=summary,
+            decisions=decisions,
+            action_items=action_items,
             conflicts_detected=conflicts_detected,
             total_input_tokens=tracker.input_tokens,
             total_output_tokens=tracker.output_tokens,
@@ -389,12 +398,12 @@ class StructuredPhasesProtocol:
 
         # All slots must be filled — TaskGroup propagates ExceptionGroup
         # on any task failure, so reaching this point means all succeeded.
-        assert all(r is not None for r in result_inputs), (  # noqa: S101
-            f"Expected {num_participants} inputs but some slots are None"
-        )
-        assert all(c is not None for c in result_contributions), (  # noqa: S101
-            f"Expected {num_participants} contributions but some slots are None"
-        )
+        if not all(r is not None for r in result_inputs):
+            msg = f"Expected {num_participants} inputs but some slots are None"
+            raise RuntimeError(msg)
+        if not all(c is not None for c in result_contributions):
+            msg = f"Expected {num_participants} contributions but some slots are None"
+            raise RuntimeError(msg)
         inputs: list[tuple[str, str]] = list(result_inputs)  # type: ignore[arg-type]
         input_contributions: list[MeetingContribution] = list(
             result_contributions,  # type: ignore[arg-type]
@@ -476,12 +485,6 @@ class StructuredPhasesProtocol:
             meeting_id=meeting_id,
             conflicts_found=conflicts_detected,
         )
-        logger.debug(
-            MEETING_CONFLICT_DETECTED,
-            meeting_id=meeting_id,
-            conflicts_found=conflicts_detected,
-            raw_response=conflict_response.content,
-        )
 
         should_discuss = conflicts_detected or (
             not self._config.skip_discussion_if_no_conflicts
@@ -540,9 +543,13 @@ class StructuredPhasesProtocol:
             phase=MeetingPhase.DISCUSSION,
         )
 
+        # Reserve tokens for the synthesis phase that follows
+        # discussion so that discussion cannot exhaust the budget.
+        synthesis_reserve = int(tracker.remaining * _SYNTHESIS_RESERVE_FRACTION)
+        available_for_discussion = max(0, tracker.remaining - synthesis_reserve)
         discussion_budget = min(
             self._config.max_discussion_tokens,
-            tracker.remaining,
+            available_for_discussion,
         )
         tokens_per_agent = max(
             1,
@@ -551,9 +558,10 @@ class StructuredPhasesProtocol:
 
         round_contributions: list[MeetingContribution] = []
         round_discussion: list[tuple[str, str]] = []
+        discussion_used = 0
 
         for pid in participant_ids:
-            if tracker.is_exhausted:
+            if tracker.is_exhausted or discussion_used >= discussion_budget:
                 logger.warning(
                     MEETING_BUDGET_EXHAUSTED,
                     meeting_id=meeting_id,
@@ -576,15 +584,17 @@ class StructuredPhasesProtocol:
                 phase=MeetingPhase.DISCUSSION,
             )
 
+            remaining_discussion = discussion_budget - discussion_used
             disc_response = await agent_caller(
                 pid,
                 disc_prompt,
-                min(tokens_per_agent, tracker.remaining),
+                min(tokens_per_agent, remaining_discussion),
             )
             tracker.record(
                 disc_response.input_tokens,
                 disc_response.output_tokens,
             )
+            discussion_used += disc_response.input_tokens + disc_response.output_tokens
 
             disc_contribution = MeetingContribution(
                 agent_id=pid,

@@ -70,6 +70,10 @@ class Task(BaseModel):
         parent_task_id: Parent task ID when created via delegation
             (``None`` for root tasks).
         delegation_chain: Ordered agent IDs of delegators (root first).
+        task_structure: Classification of how subtasks relate to each
+            other (``None`` when not yet classified).
+        coordination_topology: Coordination topology for multi-agent
+            execution (defaults to ``AUTO``).
     """
 
     model_config = ConfigDict(frozen=True)

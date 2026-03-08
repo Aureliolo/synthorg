@@ -49,6 +49,15 @@ class StatusRollup:
                 total=0,
                 reason="rollup computed with no subtask statuses",
             )
+            return SubtaskStatusRollup(
+                parent_task_id=parent_task_id,
+                total=0,
+                completed=0,
+                failed=0,
+                in_progress=0,
+                blocked=0,
+                cancelled=0,
+            )
 
         completed = subtask_statuses.count(TaskStatus.COMPLETED)
         failed = subtask_statuses.count(TaskStatus.FAILED)

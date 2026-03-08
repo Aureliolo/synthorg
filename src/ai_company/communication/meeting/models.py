@@ -234,6 +234,29 @@ class MeetingMinutes(BaseModel):
             raise ValueError(msg)
         return self
 
+    @model_validator(mode="after")
+    def _validate_token_aggregates(self) -> Self:
+        """Ensure aggregate token counts match sum of contributions."""
+        if not self.contributions:
+            return self
+        sum_input = sum(c.input_tokens for c in self.contributions)
+        sum_output = sum(c.output_tokens for c in self.contributions)
+        if self.total_input_tokens != sum_input:
+            msg = (
+                f"total_input_tokens ({self.total_input_tokens}) "
+                f"does not match sum of contributions "
+                f"({sum_input})"
+            )
+            raise ValueError(msg)
+        if self.total_output_tokens != sum_output:
+            msg = (
+                f"total_output_tokens ({self.total_output_tokens})"
+                f" does not match sum of contributions "
+                f"({sum_output})"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class MeetingRecord(BaseModel):
     """Audit trail entry for a meeting execution.
@@ -289,6 +312,12 @@ class MeetingRecord(BaseModel):
                 msg = (
                     "error_message is required when status is "
                     "failed or budget_exhausted"
+                )
+                raise ValueError(msg)
+            if not self.error_message.strip():
+                msg = (
+                    "error_message must not be empty when status "
+                    "is failed or budget_exhausted"
                 )
                 raise ValueError(msg)
             if self.minutes is not None:

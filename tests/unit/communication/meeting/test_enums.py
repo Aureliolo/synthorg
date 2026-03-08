@@ -8,6 +8,8 @@ from ai_company.communication.meeting.enums import (
     MeetingStatus,
 )
 
+pytestmark = pytest.mark.timeout(30)
+
 
 @pytest.mark.unit
 class TestMeetingProtocolType:

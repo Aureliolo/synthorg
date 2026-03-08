@@ -4,6 +4,7 @@ Frozen Pydantic models for routing candidates, decisions,
 results, and topology configuration.
 """
 
+from collections import Counter
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -11,6 +12,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from ai_company.core.agent import AgentIdentity  # noqa: TC001
 from ai_company.core.enums import CoordinationTopology
 from ai_company.core.types import NotBlankStr  # noqa: TC001
+from ai_company.observability import get_logger
+from ai_company.observability.events.task_routing import (
+    TASK_ROUTING_FAILED,
+)
+
+logger = get_logger(__name__)
 
 
 class RoutingCandidate(BaseModel):
@@ -72,6 +79,11 @@ class RoutingDecision(BaseModel):
                 msg = (
                     f"Selected candidate {selected_name!r} also appears in alternatives"
                 )
+                logger.warning(
+                    TASK_ROUTING_FAILED,
+                    subtask_id=self.subtask_id,
+                    error=msg,
+                )
                 raise ValueError(msg)
         return self
 
@@ -99,14 +111,47 @@ class RoutingResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_subtask_ids(self) -> Self:
-        """Ensure no subtask appears in both decisions and unroutable."""
-        decision_ids = {d.subtask_id for d in self.decisions}
+        """Ensure no duplicate or overlapping subtask IDs."""
+        # Check for duplicate IDs within decisions
+        decision_id_list = [d.subtask_id for d in self.decisions]
+        decision_dupes = sorted(
+            i for i, c in Counter(decision_id_list).items() if c > 1
+        )
+        if decision_dupes:
+            msg = f"Duplicate subtask IDs in decisions: {decision_dupes}"
+            logger.warning(
+                TASK_ROUTING_FAILED,
+                parent_task_id=self.parent_task_id,
+                error=msg,
+            )
+            raise ValueError(msg)
+
+        # Check for duplicate IDs within unroutable
+        unroutable_dupes = sorted(
+            i for i, c in Counter(self.unroutable).items() if c > 1
+        )
+        if unroutable_dupes:
+            msg = f"Duplicate subtask IDs in unroutable: {unroutable_dupes}"
+            logger.warning(
+                TASK_ROUTING_FAILED,
+                parent_task_id=self.parent_task_id,
+                error=msg,
+            )
+            raise ValueError(msg)
+
+        # Check for overlap between decisions and unroutable
+        decision_ids = set(decision_id_list)
         unroutable_set = set(self.unroutable)
         overlap = decision_ids & unroutable_set
         if overlap:
             msg = (
                 f"Subtask IDs appear in both decisions and "
                 f"unroutable: {sorted(overlap)}"
+            )
+            logger.warning(
+                TASK_ROUTING_FAILED,
+                parent_task_id=self.parent_task_id,
+                error=msg,
             )
             raise ValueError(msg)
         return self
@@ -154,5 +199,9 @@ class AutoTopologyConfig(BaseModel):
             value = getattr(self, field_name)
             if value == CoordinationTopology.AUTO:
                 msg = f"{field_name} cannot be AUTO — would cause infinite resolution"
+                logger.warning(
+                    TASK_ROUTING_FAILED,
+                    error=msg,
+                )
                 raise ValueError(msg)
         return self

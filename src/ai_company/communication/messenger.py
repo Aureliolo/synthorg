@@ -14,6 +14,7 @@ from ai_company.communication.subscription import (  # noqa: TC001
     DeliveryEnvelope,
     Subscription,
 )
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.communication import (
     COMM_DISPATCH_NO_DISPATCHER,
@@ -235,7 +236,7 @@ class AgentMessenger:
         )
         return msg
 
-    async def subscribe(self, channel_name: str) -> Subscription:
+    async def subscribe(self, channel_name: NotBlankStr) -> Subscription:
         """Subscribe this agent to a channel.
 
         Args:
@@ -256,7 +257,7 @@ class AgentMessenger:
         )
         return sub
 
-    async def unsubscribe(self, channel_name: str) -> None:
+    async def unsubscribe(self, channel_name: NotBlankStr) -> None:
         """Unsubscribe this agent from a channel.
 
         Args:
@@ -274,7 +275,7 @@ class AgentMessenger:
 
     async def receive(
         self,
-        channel_name: str,
+        channel_name: NotBlankStr,
         *,
         timeout: float | None = None,  # noqa: ASYNC109
     ) -> DeliveryEnvelope | None:
@@ -285,8 +286,12 @@ class AgentMessenger:
             timeout: Max seconds to wait, or ``None`` for indefinite.
 
         Returns:
-            The next delivery envelope, or ``None`` on timeout, shutdown,
-            or when an in-flight receive is woken by :meth:`unsubscribe`.
+            The next delivery envelope, or ``None`` when:
+
+            - *timeout* expires without a message arriving.
+            - The bus is shut down while waiting.
+            - The subscription is cancelled via :meth:`unsubscribe`
+              while a ``receive()`` call is in flight.
         """
         return await self._bus.receive(
             channel_name,

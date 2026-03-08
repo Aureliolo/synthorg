@@ -15,7 +15,6 @@ from ai_company.communication.conflict_resolution.config import (  # noqa: TC001
     ConflictResolutionConfig,
 )
 from ai_company.communication.conflict_resolution.models import (
-    _MIN_POSITIONS,
     Conflict,
     ConflictPosition,
     ConflictResolution,
@@ -43,6 +42,8 @@ from ai_company.observability.events.conflict import (
 )
 
 logger = get_logger(__name__)
+
+_MIN_POSITIONS = 2
 
 
 class ConflictResolutionService:

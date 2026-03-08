@@ -178,10 +178,12 @@ class ParallelExecutor:
             if task_error is not None:
                 task_error.add_note(lock_msg)
             else:
-                raise ParallelExecutionError(lock_msg) from release_error
+                raise ParallelExecutionError(
+                    lock_msg,
+                ) from release_error
 
         if task_error is not None:
-            raise task_error
+            raise task_error from task_error
 
         result = self._build_result(
             group,

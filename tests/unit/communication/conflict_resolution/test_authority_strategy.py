@@ -167,6 +167,71 @@ class TestAuthorityResolverHierarchy:
 
 
 @pytest.mark.unit
+class TestAuthorityResolverThreeParticipants:
+    async def test_three_participants_highest_seniority_wins(
+        self,
+        hierarchy: HierarchyResolver,
+    ) -> None:
+        """Authority resolution picks highest seniority among 3+ agents."""
+        resolver = AuthorityResolver(hierarchy=hierarchy)
+        conflict = make_conflict(
+            positions=(
+                make_position(
+                    agent_id="jr_dev",
+                    level=SeniorityLevel.JUNIOR,
+                    position="Quick hack",
+                ),
+                make_position(
+                    agent_id="sr_dev",
+                    level=SeniorityLevel.SENIOR,
+                    position="Proper refactor",
+                ),
+                make_position(
+                    agent_id="backend_lead",
+                    level=SeniorityLevel.LEAD,
+                    position="Full redesign",
+                ),
+            ),
+        )
+        resolution = await resolver.resolve(conflict)
+        assert resolution.winning_agent_id == "backend_lead"
+        assert resolution.outcome == ConflictResolutionOutcome.RESOLVED_BY_AUTHORITY
+
+    async def test_three_participants_produces_two_dissent_records(
+        self,
+        hierarchy: HierarchyResolver,
+    ) -> None:
+        """With 3 participants, the two losers each produce a dissent record."""
+        resolver = AuthorityResolver(hierarchy=hierarchy)
+        conflict = make_conflict(
+            positions=(
+                make_position(
+                    agent_id="jr_dev",
+                    level=SeniorityLevel.JUNIOR,
+                    position="Approach A",
+                ),
+                make_position(
+                    agent_id="sr_dev",
+                    level=SeniorityLevel.SENIOR,
+                    position="Approach B",
+                ),
+                make_position(
+                    agent_id="backend_lead",
+                    level=SeniorityLevel.LEAD,
+                    position="Approach C",
+                ),
+            ),
+        )
+        resolution = await resolver.resolve(conflict)
+        records = resolver.build_dissent_records(conflict, resolution)
+        assert len(records) == 2
+        dissenter_ids = {r.dissenting_agent_id for r in records}
+        assert dissenter_ids == {"jr_dev", "sr_dev"}
+        for record in records:
+            assert record.strategy_used == ConflictResolutionStrategy.AUTHORITY
+
+
+@pytest.mark.unit
 class TestAuthorityResolverDissentRecord:
     async def test_dissent_record_has_loser_info(
         self,

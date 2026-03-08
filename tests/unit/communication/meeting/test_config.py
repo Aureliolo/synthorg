@@ -11,6 +11,8 @@ from ai_company.communication.meeting.config import (
 )
 from ai_company.communication.meeting.enums import MeetingProtocolType
 
+pytestmark = pytest.mark.timeout(30)
+
 
 @pytest.mark.unit
 class TestRoundRobinConfig:

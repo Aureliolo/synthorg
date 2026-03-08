@@ -128,6 +128,7 @@ class DecompositionService:
                 created_by=task.created_by,
                 parent_task_id=task.id,
                 delegation_chain=task.delegation_chain,
+                dependencies=subtask_def.dependencies,
                 status=TaskStatus.CREATED,
                 estimated_complexity=subtask_def.estimated_complexity,
             )

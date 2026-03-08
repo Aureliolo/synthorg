@@ -17,6 +17,8 @@ from tests.unit.communication.meeting.conftest import (
     make_mock_agent_caller,
 )
 
+pytestmark = pytest.mark.timeout(30)
+
 
 @pytest.mark.unit
 class TestRoundRobinProtocolType:

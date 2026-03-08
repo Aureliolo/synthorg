@@ -27,6 +27,9 @@ from ai_company.communication.conflict_resolution.protocol import (  # noqa: TC0
     ConflictResolver,
     JudgeEvaluator,
 )
+from ai_company.communication.delegation.hierarchy import (  # noqa: TC001
+    HierarchyResolver,
+)
 from ai_company.communication.enums import ConflictResolutionStrategy
 from ai_company.observability import get_logger
 from ai_company.observability.events.conflict import (
@@ -53,6 +56,7 @@ class HybridResolver:
     When no evaluator is provided, falls back to authority.
 
     Args:
+        hierarchy: Resolved organizational hierarchy.
         config: Hybrid strategy configuration.
         human_resolver: Human escalation resolver for ambiguous cases.
         review_evaluator: Optional LLM-based reviewer.
@@ -60,6 +64,7 @@ class HybridResolver:
 
     __slots__ = (
         "_config",
+        "_hierarchy",
         "_human_resolver",
         "_review_evaluator",
     )
@@ -67,10 +72,12 @@ class HybridResolver:
     def __init__(
         self,
         *,
+        hierarchy: HierarchyResolver,
         config: HybridConfig,
         human_resolver: ConflictResolver,
         review_evaluator: JudgeEvaluator | None = None,
     ) -> None:
+        self._hierarchy = hierarchy
         self._config = config
         self._human_resolver = human_resolver
         self._review_evaluator = review_evaluator
@@ -201,7 +208,8 @@ class HybridResolver:
     ) -> ConflictResolution:
         """Fall back to authority-based resolution.
 
-        Logs the fallback reason and resolves by highest seniority.
+        Logs the fallback reason and resolves by highest seniority,
+        using hierarchy as a tiebreaker when seniority levels are equal.
 
         Args:
             conflict: The conflict to resolve.
@@ -216,7 +224,7 @@ class HybridResolver:
             strategy="hybrid",
             reason=reason,
         )
-        best = pick_highest_seniority(conflict)
+        best = pick_highest_seniority(conflict, hierarchy=self._hierarchy)
 
         return ConflictResolution(
             conflict_id=conflict.id,

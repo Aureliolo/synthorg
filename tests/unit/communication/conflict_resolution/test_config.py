@@ -17,12 +17,10 @@ pytestmark = pytest.mark.timeout(30)
 class TestDebateConfig:
     def test_defaults(self) -> None:
         cfg = DebateConfig()
-        assert cfg.max_tokens_per_argument == 500
         assert cfg.judge == "shared_manager"
 
     def test_custom_values(self) -> None:
-        cfg = DebateConfig(max_tokens_per_argument=1000, judge="ceo")
-        assert cfg.max_tokens_per_argument == 1000
+        cfg = DebateConfig(judge="ceo")
         assert cfg.judge == "ceo"
 
     def test_frozen(self) -> None:
@@ -30,26 +28,16 @@ class TestDebateConfig:
         with pytest.raises(ValidationError):
             cfg.judge = "changed"  # type: ignore[misc]
 
-    def test_zero_tokens_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            DebateConfig(max_tokens_per_argument=0)
-
-    def test_negative_tokens_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            DebateConfig(max_tokens_per_argument=-1)
-
 
 @pytest.mark.unit
 class TestHybridConfig:
     def test_defaults(self) -> None:
         cfg = HybridConfig()
-        assert cfg.max_tokens_per_argument == 500
         assert cfg.review_agent == "conflict_reviewer"
         assert cfg.escalate_on_ambiguity is True
 
     def test_custom_values(self) -> None:
         cfg = HybridConfig(
-            max_tokens_per_argument=300,
             review_agent="senior_reviewer",
             escalate_on_ambiguity=False,
         )

@@ -24,5 +24,7 @@ def build_agenda_prompt(agenda: MeetingAgenda) -> str:
             entry = f"  {i}. {item.title}"
             if item.description:
                 entry += f" — {item.description}"
+            if item.presenter_id:
+                entry += f" (presenter: {item.presenter_id})"
             parts.append(entry)
     return "\n".join(parts)

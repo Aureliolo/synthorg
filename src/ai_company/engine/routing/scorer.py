@@ -11,6 +11,7 @@ from ai_company.engine.routing.models import RoutingCandidate
 from ai_company.observability import get_logger
 from ai_company.observability.events.task_routing import (
     TASK_ROUTING_AGENT_SCORED,
+    TASK_ROUTING_SCORER_INVALID_CONFIG,
 )
 
 if TYPE_CHECKING:
@@ -58,7 +59,7 @@ class AgentTaskScorer:
         if not 0.0 <= min_score <= 1.0:
             msg = f"min_score must be between 0.0 and 1.0, got {min_score}"
             logger.warning(
-                "agent_task_scorer.invalid_min_score",
+                TASK_ROUTING_SCORER_INVALID_CONFIG,
                 min_score=min_score,
                 error=msg,
             )

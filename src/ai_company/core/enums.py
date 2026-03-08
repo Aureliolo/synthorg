@@ -23,6 +23,30 @@ class SeniorityLevel(StrEnum):
 
 _SENIORITY_ORDER: tuple[SeniorityLevel, ...] = tuple(SeniorityLevel)
 
+# Validate that _SENIORITY_ORDER contains every SeniorityLevel member
+# exactly once and preserves enum declaration order.  This guards
+# against silent breakage if the enum is reordered or extended without
+# updating the ordering tuple.
+_all_members = set(SeniorityLevel)
+_order_set = set(_SENIORITY_ORDER)
+if _order_set != _all_members:
+    _missing = _all_members - _order_set
+    _extra = _order_set - _all_members
+    _msg = (
+        f"_SENIORITY_ORDER is out of sync with SeniorityLevel: "
+        f"missing={_missing}, extra={_extra}"
+    )
+    raise RuntimeError(_msg)
+if len(_SENIORITY_ORDER) != len(_order_set):
+    _msg = "_SENIORITY_ORDER contains duplicate entries"
+    raise RuntimeError(_msg)
+del _all_members, _order_set
+
+# Precomputed rank lookup for O(1) seniority comparison.
+_SENIORITY_RANK: dict[SeniorityLevel, int] = {
+    level: idx for idx, level in enumerate(_SENIORITY_ORDER)
+}
+
 
 def compare_seniority(a: SeniorityLevel, b: SeniorityLevel) -> int:
     """Compare two seniority levels.
@@ -37,7 +61,7 @@ def compare_seniority(a: SeniorityLevel, b: SeniorityLevel) -> int:
     Returns:
         Integer indicating relative seniority.
     """
-    return _SENIORITY_ORDER.index(a) - _SENIORITY_ORDER.index(b)
+    return _SENIORITY_RANK[a] - _SENIORITY_RANK[b]
 
 
 class AgentStatus(StrEnum):

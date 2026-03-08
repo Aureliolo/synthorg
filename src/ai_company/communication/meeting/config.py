@@ -62,7 +62,8 @@ class StructuredPhasesConfig(BaseModel):
     Attributes:
         skip_discussion_if_no_conflicts: Skip discussion when no
             conflicts are detected.
-        max_discussion_tokens: Token budget for the discussion round.
+        max_discussion_tokens: Token budget for the discussion
+            round.
     """
 
     model_config = ConfigDict(frozen=True)

@@ -5,6 +5,8 @@ import pytest
 from ai_company.communication.meeting._prompts import build_agenda_prompt
 from ai_company.communication.meeting.models import MeetingAgenda, MeetingAgendaItem
 
+pytestmark = pytest.mark.timeout(30)
+
 
 @pytest.mark.unit
 class TestBuildAgendaPrompt:

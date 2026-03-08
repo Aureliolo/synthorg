@@ -5,7 +5,10 @@ configured protocol, executes the meeting, optionally creates tasks
 from action items, and records audit trail entries.
 """
 
+import copy
+from collections import Counter
 from collections.abc import Mapping  # noqa: TC003
+from types import MappingProxyType
 from uuid import uuid4
 
 from ai_company.communication.meeting.config import MeetingProtocolConfig  # noqa: TC001
@@ -91,7 +94,9 @@ class MeetingOrchestrator:
         agent_caller: AgentCaller,
         task_creator: TaskCreator | None = None,
     ) -> None:
-        self._protocol_registry = protocol_registry
+        self._protocol_registry: MappingProxyType[
+            MeetingProtocolType, MeetingProtocol
+        ] = MappingProxyType(copy.deepcopy(dict(protocol_registry)))
         self._agent_caller = agent_caller
         self._task_creator = task_creator
         self._records: list[MeetingRecord] = []
@@ -389,6 +394,22 @@ class MeetingOrchestrator:
             raise MeetingParticipantError(
                 msg,
                 context={"meeting_id": meeting_id},
+            )
+        if len(participant_ids) != len(set(participant_ids)):
+            dupes = sorted(v for v, c in Counter(participant_ids).items() if c > 1)
+            logger.warning(
+                MEETING_VALIDATION_FAILED,
+                meeting_id=meeting_id,
+                error="duplicate participant_ids",
+                duplicates=dupes,
+            )
+            msg = f"Duplicate participant IDs: {dupes}"
+            raise MeetingParticipantError(
+                msg,
+                context={
+                    "meeting_id": meeting_id,
+                    "duplicates": dupes,
+                },
             )
         if leader_id in participant_ids:
             logger.warning(

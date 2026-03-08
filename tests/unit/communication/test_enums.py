@@ -28,6 +28,7 @@ class TestMessageType:
         assert MessageType.DELEGATION.value == "delegation"
         assert MessageType.STATUS_REPORT.value == "status_report"
         assert MessageType.ESCALATION.value == "escalation"
+        assert MessageType.MEETING_CONTRIBUTION.value == "meeting_contribution"
 
     def test_string_identity(self) -> None:
         assert str(MessageType.TASK_UPDATE) == "task_update"

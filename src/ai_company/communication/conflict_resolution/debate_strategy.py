@@ -238,11 +238,13 @@ class DebateResolver:
         # invalid names surface at evaluation time.
         return self._config.judge
 
-    @staticmethod
     def _authority_fallback(
+        self,
         conflict: Conflict,
     ) -> JudgeDecision:
         """Fall back to authority when no judge evaluator is available.
+
+        Uses hierarchy as a tiebreaker when seniority levels are equal.
 
         Args:
             conflict: The conflict to resolve.
@@ -250,7 +252,7 @@ class DebateResolver:
         Returns:
             Decision with winning agent ID and reasoning.
         """
-        best = pick_highest_seniority(conflict)
+        best = pick_highest_seniority(conflict, hierarchy=self._hierarchy)
         return JudgeDecision(
             winning_agent_id=best.agent_id,
             reasoning=(

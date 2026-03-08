@@ -9,6 +9,10 @@ bias and no quadratic context growth.
 import asyncio
 from datetime import UTC, datetime
 
+from ai_company.communication.meeting._parsing import (
+    parse_action_items,
+    parse_decisions,
+)
 from ai_company.communication.meeting._prompts import build_agenda_prompt
 from ai_company.communication.meeting._token_tracker import TokenTracker
 from ai_company.communication.meeting.config import PositionPapersConfig  # noqa: TC001
@@ -146,6 +150,10 @@ class PositionPapersProtocol:
             synthesis_contribution,
         )
 
+        synthesis_text = synthesis_contribution.content
+        decisions = parse_decisions(synthesis_text)
+        action_items = parse_action_items(synthesis_text)
+
         logger.debug(
             MEETING_TOKENS_RECORDED,
             meeting_id=meeting_id,
@@ -163,7 +171,9 @@ class PositionPapersProtocol:
             participant_ids=participant_ids,
             agenda=agenda,
             contributions=tuple(contributions),
-            summary=synthesis_contribution.content,
+            summary=synthesis_text,
+            decisions=decisions,
+            action_items=action_items,
             total_input_tokens=tracker.input_tokens,
             total_output_tokens=tracker.output_tokens,
             started_at=started_at,
@@ -269,12 +279,12 @@ class PositionPapersProtocol:
 
         # All slots must be filled — TaskGroup propagates ExceptionGroup
         # on any task failure, so reaching this point means all succeeded.
-        assert all(r is not None for r in results), (  # noqa: S101
-            f"Expected {n} position papers but some slots are None"
-        )
-        assert all(c is not None for c in contrib_results), (  # noqa: S101
-            f"Expected {n} contributions but some slots are None"
-        )
+        if not all(r is not None for r in results):
+            msg = f"Expected {n} position papers but some slots are None"
+            raise RuntimeError(msg)
+        if not all(c is not None for c in contrib_results):
+            msg = f"Expected {n} contributions but some slots are None"
+            raise RuntimeError(msg)
         papers: list[tuple[str, str]] = list(results)  # type: ignore[arg-type]
         paper_contributions: list[MeetingContribution] = list(contrib_results)  # type: ignore[arg-type]
 

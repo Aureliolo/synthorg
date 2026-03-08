@@ -34,6 +34,8 @@ from ai_company.communication.meeting.structured_phases import (
     StructuredPhasesProtocol,
 )
 
+pytestmark = pytest.mark.timeout(30)
+
 
 def _make_agent_caller(
     responses: dict[str, list[str]] | None = None,

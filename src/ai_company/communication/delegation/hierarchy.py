@@ -217,7 +217,8 @@ class HierarchyResolver:
         """Find the lowest common manager of two agents.
 
         If one agent is an ancestor of the other, that agent is
-        returned as the LCM.
+        returned as the LCM.  When both arguments refer to the same
+        agent, that agent is returned directly.
 
         Args:
             agent_a: First agent name.
@@ -227,6 +228,8 @@ class HierarchyResolver:
             Name of the lowest common manager, or None if no
             common manager exists.
         """
+        if agent_a == agent_b:
+            return agent_a
         ancestors_a = self.get_ancestors(agent_a)
         ancestors_b_set = set(self.get_ancestors(agent_b))
         # Check if agent_a is an ancestor of agent_b

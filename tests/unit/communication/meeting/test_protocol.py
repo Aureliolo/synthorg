@@ -14,6 +14,8 @@ from ai_company.communication.meeting.protocol import (
     TaskCreator,
 )
 
+pytestmark = pytest.mark.timeout(30)
+
 
 @pytest.mark.unit
 class TestMeetingProtocolInterface:

@@ -364,7 +364,11 @@ class TestSubtaskStatusRollup:
 
     @pytest.mark.unit
     def test_completed_plus_cancelled_mix(self) -> None:
-        """Fully terminal mix of COMPLETED+CANCELLED -> COMPLETED."""
+        """Fully terminal mix of COMPLETED+CANCELLED -> CANCELLED.
+
+        When some subtasks were cancelled, the parent cannot be considered
+        fully completed — CANCELLED signals partial abandonment.
+        """
         rollup = SubtaskStatusRollup(
             parent_task_id="task-1",
             total=5,
@@ -374,7 +378,7 @@ class TestSubtaskStatusRollup:
             blocked=0,
             cancelled=2,
         )
-        assert rollup.derived_parent_status == TaskStatus.COMPLETED
+        assert rollup.derived_parent_status == TaskStatus.CANCELLED
 
 
 # ---------------------------------------------------------------------------

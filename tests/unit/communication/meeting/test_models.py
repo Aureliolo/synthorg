@@ -24,6 +24,8 @@ from ai_company.core.enums import Priority
 _NOW = datetime(2026, 3, 8, 10, 0, tzinfo=UTC)
 _LATER = datetime(2026, 3, 8, 10, 30, tzinfo=UTC)
 
+pytestmark = pytest.mark.timeout(30)
+
 
 @pytest.mark.unit
 class TestAgentResponse:
@@ -223,7 +225,11 @@ class TestMeetingMinutes:
             output_tokens=20,
             timestamp=_NOW,
         )
-        minutes = self._make_minutes(contributions=(contrib,))
+        minutes = self._make_minutes(
+            contributions=(contrib,),
+            total_input_tokens=10,
+            total_output_tokens=20,
+        )
         assert len(minutes.contributions) == 1
 
     def test_with_action_items(self) -> None:

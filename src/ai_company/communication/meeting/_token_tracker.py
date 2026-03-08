@@ -12,6 +12,13 @@ budgets before launching parallel work rather than checking
 
 import dataclasses
 
+from ai_company.observability import get_logger
+from ai_company.observability.events.meeting import (
+    MEETING_BUDGET_EXHAUSTED,
+)
+
+logger = get_logger(__name__)
+
 
 @dataclasses.dataclass
 class TokenTracker:
@@ -61,8 +68,17 @@ class TokenTracker:
         if input_tokens < 0 or output_tokens < 0:
             msg = (
                 f"Token counts must be non-negative, got "
-                f"input_tokens={input_tokens}, output_tokens={output_tokens}"
+                f"input_tokens={input_tokens}, "
+                f"output_tokens={output_tokens}"
             )
             raise ValueError(msg)
         self.input_tokens += input_tokens
         self.output_tokens += output_tokens
+
+        if self.used > self.budget:
+            logger.warning(
+                MEETING_BUDGET_EXHAUSTED,
+                tokens_used=self.used,
+                token_budget=self.budget,
+                overage=self.used - self.budget,
+            )
