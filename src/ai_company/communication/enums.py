@@ -17,6 +17,7 @@ class MessageType(StrEnum):
     DELEGATION = "delegation"
     STATUS_REPORT = "status_report"
     ESCALATION = "escalation"
+    MEETING_CONTRIBUTION = "meeting_contribution"
 
 
 class MessagePriority(StrEnum):

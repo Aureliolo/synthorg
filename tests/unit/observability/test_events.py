@@ -143,6 +143,7 @@ class TestEventConstants:
             "delegation",
             "execution",
             "git",
+            "meeting",
             "parallel",
             "personality",
             "prompt",
@@ -253,3 +254,46 @@ class TestEventConstants:
 
     def test_tool_events_exist(self) -> None:
         assert TOOL_INVOKE_START == "tool.invoke.start"
+
+    def test_meeting_events_exist(self) -> None:
+        from ai_company.observability.events.meeting import (
+            MEETING_ACTION_ITEM_EXTRACTED,
+            MEETING_AGENT_CALLED,
+            MEETING_AGENT_RESPONDED,
+            MEETING_BUDGET_EXHAUSTED,
+            MEETING_COMPLETED,
+            MEETING_CONFLICT_DETECTED,
+            MEETING_CONTRIBUTION_RECORDED,
+            MEETING_FAILED,
+            MEETING_PHASE_COMPLETED,
+            MEETING_PHASE_STARTED,
+            MEETING_PROTOCOL_NOT_FOUND,
+            MEETING_STARTED,
+            MEETING_SUMMARY_GENERATED,
+            MEETING_SUMMARY_SKIPPED,
+            MEETING_SYNTHESIS_SKIPPED,
+            MEETING_TASK_CREATED,
+            MEETING_TASK_CREATION_FAILED,
+            MEETING_TOKENS_RECORDED,
+            MEETING_VALIDATION_FAILED,
+        )
+
+        assert MEETING_STARTED == "meeting.lifecycle.started"
+        assert MEETING_COMPLETED == "meeting.lifecycle.completed"
+        assert MEETING_FAILED == "meeting.lifecycle.failed"
+        assert MEETING_BUDGET_EXHAUSTED == "meeting.lifecycle.budget_exhausted"
+        assert MEETING_PHASE_STARTED == "meeting.phase.started"
+        assert MEETING_PHASE_COMPLETED == "meeting.phase.completed"
+        assert MEETING_AGENT_CALLED == "meeting.agent.called"
+        assert MEETING_AGENT_RESPONDED == "meeting.agent.responded"
+        assert MEETING_CONTRIBUTION_RECORDED == "meeting.contribution.recorded"
+        assert MEETING_CONFLICT_DETECTED == "meeting.conflict.detected"
+        assert MEETING_SUMMARY_GENERATED == "meeting.summary.generated"
+        assert MEETING_ACTION_ITEM_EXTRACTED == "meeting.action_item.extracted"
+        assert MEETING_TASK_CREATED == "meeting.task.created"
+        assert MEETING_TASK_CREATION_FAILED == "meeting.task.creation_failed"
+        assert MEETING_VALIDATION_FAILED == "meeting.validation.failed"
+        assert MEETING_PROTOCOL_NOT_FOUND == "meeting.protocol.not_found"
+        assert MEETING_SYNTHESIS_SKIPPED == "meeting.synthesis.skipped"
+        assert MEETING_SUMMARY_SKIPPED == "meeting.summary.skipped"
+        assert MEETING_TOKENS_RECORDED == "meeting.tokens.recorded"

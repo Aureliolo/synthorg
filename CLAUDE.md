@@ -46,7 +46,7 @@ src/ai_company/
   api/            # FastAPI REST + WebSocket routes
   budget/         # Per-agent cost tracking and spending controls
   cli/            # Typer CLI commands
-  communication/  # Message bus, dispatcher, messenger, channels, delegation, loop prevention, conflict resolution
+  communication/  # Message bus, dispatcher, messenger, channels, delegation, loop prevention, conflict resolution, meeting protocol
   config/         # YAML company config loading and validation
   core/           # Shared domain models and base classes
   engine/         # Agent orchestration, execution loops, parallel execution, task decomposition, routing, task lifecycle, recovery, and shutdown
@@ -82,7 +82,7 @@ src/ai_company/
 - **Every module** with business logic MUST have: `from ai_company.observability import get_logger` then `logger = get_logger(__name__)`
 - **Never** use `import logging` / `logging.getLogger()` / `print()` in application code
 - **Variable name**: always `logger` (not `_logger`, not `log`)
-- **Event names**: always use constants from the domain-specific module under `ai_company.observability.events` (e.g. `PROVIDER_CALL_START` from `events.provider`, `BUDGET_RECORD_ADDED` from `events.budget`, `CONFLICT_DETECTED` from `events.conflict`). Import directly: `from ai_company.observability.events.<domain> import EVENT_CONSTANT`
+- **Event names**: always use constants from the domain-specific module under `ai_company.observability.events` (e.g. `PROVIDER_CALL_START` from `events.provider`, `BUDGET_RECORD_ADDED` from `events.budget`, `CONFLICT_DETECTED` from `events.conflict`, `MEETING_STARTED` from `events.meeting`). Import directly: `from ai_company.observability.events.<domain> import EVENT_CONSTANT`
 - **Structured kwargs**: always `logger.info(EVENT, key=value)` — never `logger.info("msg %s", val)`
 - **All error paths** must log at WARNING or ERROR with context before raising
 - **All state transitions** must log at INFO
