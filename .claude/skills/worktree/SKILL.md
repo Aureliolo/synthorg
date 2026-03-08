@@ -1,5 +1,5 @@
 ---
-description: "Manage parallel worktrees: create with prompts, cleanup after merge, tree view, status"
+description: "Manage parallel worktrees: create with prompts, cleanup after merge, status, tree view, rebase"
 argument-hint: "<setup|cleanup|status|tree|rebase> [options]"
 allowed-tools:
   - Bash
@@ -7,6 +7,7 @@ allowed-tools:
   - Glob
   - Grep
   - AskUserQuestion
+  - Task
 ---
 
 # Worktree Manager
@@ -37,6 +38,7 @@ feat/parallel-execution #22 "Parallel Agent Execution"
 #22 "Parallel Execution"
 ```
 Branch names auto-generated from description: `feat/delegation-loop-prevention`.
+Default branch type prefix is `feat/` unless the user specifies otherwise or the issue labels suggest a different type (e.g., `type:bug` → `fix/`, `type:refactor` → `refactor/`).
 
 **Mode 3 — Milestone-aware:**
 ```
@@ -52,33 +54,44 @@ If no definitions are provided at all, ask the user via AskUserQuestion for:
 
 Directory suffix is auto-derived from the branch name:
 - `feat/delegation-loop-prevention` → `../ai-company-wt-delegation-loop-prevention`
-- Strip the `feat/`, `fix/`, `refactor/` etc. prefix, prepend `wt-`
+- Strip everything up to and including the first `/` in the branch name (covers `feat/`, `fix/`, `refactor/`, `chore/`, `docs/`, `test/`, `perf/`, `ci/`), then prepend `wt-`
 - Repo name extracted from the current working directory basename
 
 ### Steps
 
 1. **Pre-flight checks:**
 
-   a. Ensure on main and up to date:
+   a. Verify GitHub CLI is installed and authenticated:
+
+   ```bash
+   gh auth status
+   ```
+
+   If not authenticated, prompt user to run `gh auth login` first and abort.
+
+   b. Check for uncommitted changes:
+
+   ```bash
+   git status --short
+   ```
+
+   If dirty, warn and ask via AskUserQuestion whether to proceed or abort.
+
+   c. Ensure on main and up to date:
+
    ```bash
    git checkout main && git pull
    ```
 
-   b. Check for uncommitted changes:
-   ```bash
-   git status --short
-   ```
-   If dirty, warn and ask via AskUserQuestion whether to proceed or abort.
-
-   c. For each worktree definition, verify:
-   - Branch doesn't already exist: `git branch --list <branch-name>`
+   d. For each worktree definition, verify:
+   - Branch doesn't already exist: `git rev-parse --verify --quiet refs/heads/<branch-name>`
    - Directory doesn't already exist: `test -d <dir-path>`
    If either exists, warn and ask how to proceed (skip / reuse / abort).
 
 2. **Check `.claude/` local files exist:**
 
    ```bash
-   ls .claude/settings.local.json 2>/dev/null
+   test -f .claude/settings.local.json
    ```
 
    If missing, warn: "No .claude/settings.local.json found — worktrees will prompt for tool permissions." Continue anyway.
@@ -88,17 +101,21 @@ Directory suffix is auto-derived from the branch name:
    a. Determine the directory path: `../<repo-name>-wt-<slug>` (e.g. `../ai-company-wt-delegation-loop-prevention`)
 
    b. Create the worktree:
+
    ```bash
    git worktree add -b <branch-name> <dir-path> main
    ```
 
    c. Copy all `.claude/` local files (settings, hooks, etc.):
+
    ```bash
-   cp .claude/settings.local.json <dir-path>/.claude/settings.local.json
+   test -f .claude/settings.local.json && cp .claude/settings.local.json <dir-path>/.claude/settings.local.json
    ```
+
    Also copy any other `.claude/*.local.*` files if they exist:
+
    ```bash
-   for f in .claude/*.local.*; do test -f "$f" && cp "$f" "<dir-path>/.claude/$(basename $f)"; done
+   for f in .claude/*.local.*; do test -f "$f" && cp "$f" "<dir-path>/.claude/$(basename "$f")"; done
    ```
 
 4. **Verify all worktrees created:**
@@ -127,6 +144,12 @@ Directory suffix is auto-derived from the branch name:
    - `spec:tools` → `src/ai_company/tools/`
    - `spec:hr` → `src/ai_company/core/`
    - `spec:human-interaction` → `src/ai_company/api/`, `src/ai_company/cli/`
+   - `spec:memory` → `src/ai_company/memory/`
+   - `spec:security` → `src/ai_company/security/`
+   - `spec:architecture` → `src/ai_company/core/`, `src/ai_company/config/`
+   - `spec:providers-scope` → `src/ai_company/providers/`
+
+   **Note:** This mapping is repository-specific. Update it when new `spec:*` labels are added or when the directory structure changes.
 
    Also read the issue bodies for `§` references to DESIGN_SPEC sections.
 
@@ -160,7 +183,8 @@ Directory suffix is auto-derived from the branch name:
    If there are multiple issues in one worktree that have a natural ordering (from dependency parsing or logical sequence), add an `## Implementation order` section.
 
 6. **Present the output** to the user:
-   - For each worktree: the `cd` + `claude` command using **Windows-native paths** (e.g. `cd C:\Users\Aurelio\ai-company-wt-delegation-loop-prevention && claude`), followed by the prompt in a code block
+   - For each worktree: show the **absolute path** to the worktree directory and a separate `claude` invocation command, followed by the prompt in a code block. Derive the absolute path dynamically by resolving the worktree directory (e.g., using `realpath <dir-path>` or `pwd` from within the worktree) and converting to the platform's native format. On Windows, use backslash paths (e.g., `C:\Users\Aurelio\ai-company-wt-delegation-loop-prevention`).
+   - **Note:** The `cd <path> && claude` instruction is for the **user's own terminal** (they will paste it into a new shell). This is NOT a Bash tool invocation — do not confuse with CLAUDE.md's "never use cd in Bash commands" rule, which applies to Bash tool calls within the skill.
    - End with a count: "N worktrees ready. Go."
 
 ---
@@ -191,31 +215,32 @@ Remove worktrees and clean up branches after PRs are merged.
    git fetch --prune
    ```
 
-4. **Check PR merge status** for each non-main worktree's branch:
+4. **Check PR merge status** for each non-main worktree's branch individually:
 
    ```bash
-   gh pr list --repo <owner/repo> --state merged --json headRefName --jq '.[].headRefName'
-   gh pr list --repo <owner/repo> --state open --json headRefName,number --jq '.[] | "\(.headRefName) #\(.number)"'
+   gh pr list --repo <owner/repo> --head <branch-name> --state all --json state,number --jq '.[0] | {state, number}'
    ```
 
    For each worktree branch:
    - If PR is **merged**: safe to remove. Proceed.
    - If PR is **open**: warn user — "Branch <name> has open PR #N. Still remove?" Ask via AskUserQuestion.
-   - If **no PR found**: warn — "No PR found for <branch>. Still remove?" Ask via AskUserQuestion.
+   - If **no PR found**: warn — "No PR found for <branch>. `git branch -D` will permanently delete any unpushed commits on this branch. Still remove?" Ask via AskUserQuestion.
 
-5. **For each approved worktree**, remove it:
+5. **For each approved worktree**, remove it and track success:
 
    ```bash
    git worktree remove <path>
    ```
 
-   If removal fails (dirty worktree), warn the user and ask via AskUserQuestion whether to force-remove.
+   If removal fails (dirty worktree), warn the user and ask via AskUserQuestion whether to force-remove. Track which worktrees were **successfully removed** — only these branches are eligible for deletion in Step 6.
 
-6. **Delete local feature branches.** These are squash-merged so git won't recognize them as merged — use `-D`:
+6. **Delete local feature branches only for successfully removed worktrees.** These are squash-merged so git won't recognize them as merged — use `-D`:
 
    ```bash
-   git branch -D <branch1> <branch2> ...
+   git branch -D <successfully-removed-branch1> <successfully-removed-branch2> ...
    ```
+
+   Do NOT delete branches for worktrees that failed removal or where the user declined force-remove — this would orphan the worktree.
 
 7. **Verify clean state:**
 
@@ -227,7 +252,7 @@ Remove worktrees and clean up branches after PRs are merged.
 8. **Show milestone progress** (if determinable). Detect the milestone from the branches/issues that were cleaned up:
 
    ```bash
-   gh issue list --repo <owner/repo> --milestone "<milestone>" --state all --json state --jq '[group_by(.state) | .[] | {state: .[0].state, count: length}]'
+   gh issue list --repo <owner/repo> --milestone "<milestone>" --state all --json state --jq '[sort_by(.state) | group_by(.state) | .[] | {state: .[0].state, count: length}]'
    ```
 
    Report: "Clean. Main up to date, N worktrees removed, N branches deleted. Milestone: X/Y issues closed, Z remaining."
@@ -292,7 +317,7 @@ If no milestone specified, try to detect from current worktree branches or ask v
 1. **Fetch all issues for the milestone:**
 
    ```bash
-   gh issue list --repo <owner/repo> --milestone "<milestone-title>" --state all --limit 100 --json number,title,state,labels,body
+   gh issue list --repo <owner/repo> --milestone "<milestone-title>" --state all --limit 500 --json number,title,state,labels,body
    ```
 
    Find the milestone title by querying:
@@ -354,22 +379,22 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
    git checkout main && git pull
    ```
 
-2. **For each non-main worktree**, check for local commits beyond main:
-
-   ```bash
-   git -C <path> rev-list --count main..<branch>
-   ```
-
-   - If **0 commits ahead**: safe to rebase.
-   - If **has commits**: warn the user — "Worktree <name> has N local commits. Rebase may cause conflicts." Ask via AskUserQuestion: rebase anyway / skip / abort all.
-
-3. **Check for uncommitted changes:**
+2. **For each non-main worktree**, first check for uncommitted changes (hard prerequisite):
 
    ```bash
    git -C <path> status --short
    ```
 
-   If dirty, warn and skip (don't rebase dirty worktrees).
+   If dirty, warn and skip immediately: "Worktree <name> has uncommitted changes — skipping rebase."
+
+3. **Then check for local commits beyond main:**
+
+   ```bash
+   git -C <path> rev-list --count main..<branch>
+   ```
+
+   - If **0 commits ahead**: already up to date with main — skip (rebase is a no-op).
+   - If **has commits**: this worktree needs rebasing. Warn the user — "Worktree <name> has N local commits. Rebase may cause conflicts." Ask via AskUserQuestion: rebase anyway / skip / abort all.
 
 4. **For approved worktrees**, rebase:
 
@@ -399,11 +424,18 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
 - **Always check `.claude/` local files exist** before copying — warn if missing.
 - **Repo name detection**: extract from the current directory basename (e.g. `ai-company`).
 - **Owner/repo detection**: extract from `git remote get-url origin`.
-- **Windows paths**: all `cd` commands in prompts use backslash Windows-native paths (e.g. `C:\Users\...`).
+- **Platform-aware paths**: derive worktree absolute paths dynamically at runtime. On Windows, convert to backslash paths for user-facing output. The `cd <path> && claude` instructions are for the user's own terminal, not Bash tool invocations.
 - Worktree directories are always siblings of the main repo directory (`../`).
 - When generating prompts, read the actual issue bodies — do not guess or use stale information.
 - Parse `spec:*` labels to auto-match source directories for prompt generation.
 - Parse `## Dependencies` sections to auto-detect implementation order.
+- **Input validation (CRITICAL):** Before interpolating any user-provided value into shell commands, validate:
+  - Issue numbers: must match `^[0-9]+$`
+  - Branch names: must match `^[a-zA-Z0-9/_.-]+$`
+  - Milestone identifiers: must match `^M[0-9]+$` or a reasonable alphanumeric pattern
+  - Owner/repo (from `git remote`): must match `^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$`
+  - Directory paths: must not contain shell metacharacters (`;`, `|`, `&`, `$`, `` ` ``, `(`, `)`)
+  - Reject and warn if any value fails validation — do not execute the command.
 - If `$ARGUMENTS` is empty or doesn't match a command, show a brief usage guide:
   ```
   /worktree setup <definitions>   — Create worktrees with prompts
