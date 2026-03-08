@@ -219,19 +219,18 @@ class DebateResolver:
             return lcm
 
         if self._config.judge == "ceo":
-            # Walk from first position to hierarchy root
-            ancestors = self._hierarchy.get_ancestors(
-                conflict.positions[0].agent_id,
-            )
-            if ancestors:
-                return ancestors[-1]
-            # Agent has no ancestors — may be the root or not in hierarchy
+            # Walk from any position to hierarchy root
+            for pos in conflict.positions:
+                ancestors = self._hierarchy.get_ancestors(pos.agent_id)
+                if ancestors:
+                    return ancestors[-1]
+            # All positions are roots or not in hierarchy; use first
             agent_id = conflict.positions[0].agent_id
             logger.warning(
                 CONFLICT_HIERARCHY_ERROR,
                 conflict_id=conflict.id,
                 agent=agent_id,
-                error="Agent has no ancestors; using as CEO/judge",
+                error="No ancestors found for any position; using as CEO/judge",
             )
             return agent_id
 

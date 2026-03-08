@@ -47,31 +47,12 @@ class TestFindLosers:
         loser_ids = {p.agent_id for p in losers}
         assert loser_ids == {"a2", "a3"}
 
-    def test_no_losers_raises(self) -> None:
-        conflict = make_conflict()
-        # All positions have the same agent_id as winner — impossible
-        # normally, but we fake a resolution with an agent_id that
-        # doesn't match any position either → all are "losers" so this
-        # won't hit the error.  To trigger no-losers, every position
-        # must match the winner.  Since make_conflict enforces unique
-        # IDs, we manually create a 2-party conflict where the winner
-        # is "agent-a", and make a fake resolution where both positions
-        # have agent_id == winner (not possible with real models due to
-        # unique constraint).  Instead, test with a scenario where
-        # winner matches all participants — since Conflict validation
-        # forbids duplicates, we use a single test: if somehow the
-        # winner matches all 2 positions, find_losers raises.
-        # Realistically this path is unreachable but tests the guard.
-
-        # Create a conflict with known IDs
+    def test_finds_loser_with_distinct_agents(self) -> None:
         pos_a = make_position(agent_id="only-agent")
         pos_b = make_position(agent_id="other-agent", position="Other")
         conflict = make_conflict(positions=(pos_a, pos_b))
-
-        # Resolution where winner is "only-agent"
         resolution = make_resolution(winning_agent_id="only-agent")
         losers = find_losers(conflict, resolution)
-        # This should find "other-agent" as loser
         assert losers[0].agent_id == "other-agent"
 
 
