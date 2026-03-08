@@ -7,15 +7,19 @@ meetings.
 """
 
 import asyncio
-import dataclasses
 from datetime import UTC, datetime
 
+from ai_company.communication.meeting._prompts import build_agenda_prompt
+from ai_company.communication.meeting._token_tracker import TokenTracker
 from ai_company.communication.meeting.config import (
     StructuredPhasesConfig,  # noqa: TC001
 )
 from ai_company.communication.meeting.enums import (
     MeetingPhase,
     MeetingProtocolType,
+)
+from ai_company.communication.meeting.errors import (
+    MeetingBudgetExhaustedError,
 )
 from ai_company.communication.meeting.models import (
     MeetingAgenda,
@@ -33,54 +37,11 @@ from ai_company.observability.events.meeting import (
     MEETING_PHASE_COMPLETED,
     MEETING_PHASE_STARTED,
     MEETING_SUMMARY_GENERATED,
+    MEETING_SYNTHESIS_SKIPPED,
     MEETING_TOKENS_RECORDED,
 )
 
 logger = get_logger(__name__)
-
-
-@dataclasses.dataclass
-class _TokenTracker:
-    """Mutable token budget tracker scoped to a single meeting execution."""
-
-    budget: int
-    input_tokens: int = 0
-    output_tokens: int = 0
-
-    @property
-    def used(self) -> int:
-        """Total tokens consumed so far."""
-        return self.input_tokens + self.output_tokens
-
-    @property
-    def remaining(self) -> int:
-        """Tokens remaining in the budget."""
-        return max(0, self.budget - self.used)
-
-    @property
-    def is_exhausted(self) -> bool:
-        """Whether the budget is fully consumed."""
-        return self.remaining == 0
-
-    def record(self, input_tokens: int, output_tokens: int) -> None:
-        """Record token usage from an agent call."""
-        self.input_tokens += input_tokens
-        self.output_tokens += output_tokens
-
-
-def _build_agenda_prompt(agenda: MeetingAgenda) -> str:
-    """Build the initial agenda prompt text."""
-    parts = [f"Meeting: {agenda.title}"]
-    if agenda.context:
-        parts.append(f"Context: {agenda.context}")
-    if agenda.items:
-        parts.append("Agenda items:")
-        for i, item in enumerate(agenda.items, 1):
-            entry = f"  {i}. {item.title}"
-            if item.description:
-                entry += f" — {item.description}"
-            parts.append(entry)
-    return "\n".join(parts)
 
 
 def _build_input_prompt(agenda_text: str, agent_id: str) -> str:
@@ -198,11 +159,15 @@ class StructuredPhasesProtocol:
 
         Returns:
             Complete meeting minutes.
+
+        Raises:
+            MeetingBudgetExhaustedError: If the token budget is
+                exhausted before synthesis can begin.
         """
         started_at = datetime.now(UTC)
-        tracker = _TokenTracker(budget=token_budget)
+        tracker = TokenTracker(budget=token_budget)
         contributions: list[MeetingContribution] = []
-        agenda_text = _build_agenda_prompt(agenda)
+        agenda_text = build_agenda_prompt(agenda)
         turn_number = 0
         conflicts_detected = False
 
@@ -219,76 +184,15 @@ class StructuredPhasesProtocol:
         )
 
         # Phase 2: Input gathering (parallel)
-        logger.info(
-            MEETING_PHASE_STARTED,
+        inputs, input_contributions = await self._run_input_gathering(
             meeting_id=meeting_id,
-            phase=MeetingPhase.INPUT_GATHERING,
-            participant_count=len(participant_ids),
+            agenda_text=agenda_text,
+            participant_ids=participant_ids,
+            agent_caller=agent_caller,
+            tracker=tracker,
         )
-
-        inputs: list[tuple[str, str]] = []
-        input_contributions: list[MeetingContribution] = []
-
-        async def _collect_input(
-            participant_id: str,
-            turn: int,
-        ) -> None:
-            prompt = _build_input_prompt(agenda_text, participant_id)
-
-            logger.debug(
-                MEETING_AGENT_CALLED,
-                meeting_id=meeting_id,
-                agent_id=participant_id,
-                phase=MeetingPhase.INPUT_GATHERING,
-            )
-
-            response = await agent_caller(
-                participant_id,
-                prompt,
-                tracker.remaining,
-            )
-            tracker.record(response.input_tokens, response.output_tokens)
-
-            logger.debug(
-                MEETING_AGENT_RESPONDED,
-                meeting_id=meeting_id,
-                agent_id=participant_id,
-                input_tokens=response.input_tokens,
-                output_tokens=response.output_tokens,
-            )
-
-            now = datetime.now(UTC)
-            contribution = MeetingContribution(
-                agent_id=participant_id,
-                content=response.content,
-                phase=MeetingPhase.INPUT_GATHERING,
-                turn_number=turn,
-                input_tokens=response.input_tokens,
-                output_tokens=response.output_tokens,
-                timestamp=now,
-            )
-            inputs.append((participant_id, response.content))
-            input_contributions.append(contribution)
-
-            logger.debug(
-                MEETING_CONTRIBUTION_RECORDED,
-                meeting_id=meeting_id,
-                agent_id=participant_id,
-            )
-
-        async with asyncio.TaskGroup() as tg:
-            for idx, pid in enumerate(participant_ids):
-                tg.create_task(_collect_input(pid, idx))
-
         contributions.extend(input_contributions)
         turn_number = len(participant_ids)
-
-        logger.info(
-            MEETING_PHASE_COMPLETED,
-            meeting_id=meeting_id,
-            phase=MeetingPhase.INPUT_GATHERING,
-            inputs_collected=len(inputs),
-        )
 
         # Phase 3: Discussion (conditional on conflicts)
         discussion: list[tuple[str, str]] = []
@@ -346,6 +250,109 @@ class StructuredPhasesProtocol:
             ended_at=ended_at,
         )
 
+    async def _run_input_gathering(
+        self,
+        *,
+        meeting_id: str,
+        agenda_text: str,
+        participant_ids: tuple[str, ...],
+        agent_caller: AgentCaller,
+        tracker: TokenTracker,
+    ) -> tuple[list[tuple[str, str]], list[MeetingContribution]]:
+        """Run parallel input gathering from all participants.
+
+        Pre-divides the remaining token budget equally among
+        participants and collects results into deterministically
+        ordered lists (indexed by turn number).
+
+        Returns:
+            Tuple of (inputs, contributions) in participant order.
+        """
+        logger.info(
+            MEETING_PHASE_STARTED,
+            meeting_id=meeting_id,
+            phase=MeetingPhase.INPUT_GATHERING,
+            participant_count=len(participant_ids),
+        )
+
+        num_participants = len(participant_ids)
+        tokens_per_agent = max(1, tracker.remaining // max(1, num_participants))
+
+        # Pre-allocate result slots for deterministic ordering
+        result_inputs: list[tuple[str, str] | None] = [None] * num_participants
+        result_contributions: list[MeetingContribution | None] = [
+            None
+        ] * num_participants
+
+        async def _collect_input(
+            participant_id: str,
+            turn: int,
+            budget: int,
+        ) -> None:
+            prompt = _build_input_prompt(agenda_text, participant_id)
+
+            logger.debug(
+                MEETING_AGENT_CALLED,
+                meeting_id=meeting_id,
+                agent_id=participant_id,
+                phase=MeetingPhase.INPUT_GATHERING,
+            )
+
+            response = await agent_caller(
+                participant_id,
+                prompt,
+                budget,
+            )
+            tracker.record(response.input_tokens, response.output_tokens)
+
+            logger.debug(
+                MEETING_AGENT_RESPONDED,
+                meeting_id=meeting_id,
+                agent_id=participant_id,
+                input_tokens=response.input_tokens,
+                output_tokens=response.output_tokens,
+            )
+
+            now = datetime.now(UTC)
+            contribution = MeetingContribution(
+                agent_id=participant_id,
+                content=response.content,
+                phase=MeetingPhase.INPUT_GATHERING,
+                turn_number=turn,
+                input_tokens=response.input_tokens,
+                output_tokens=response.output_tokens,
+                timestamp=now,
+            )
+            result_inputs[turn] = (participant_id, response.content)
+            result_contributions[turn] = contribution
+
+            logger.debug(
+                MEETING_CONTRIBUTION_RECORDED,
+                meeting_id=meeting_id,
+                agent_id=participant_id,
+            )
+
+        async with asyncio.TaskGroup() as tg:
+            for idx, pid in enumerate(participant_ids):
+                tg.create_task(_collect_input(pid, idx, tokens_per_agent))
+
+        # Build final lists in deterministic order (by turn number)
+        inputs: list[tuple[str, str]] = [
+            item for item in result_inputs if item is not None
+        ]
+        input_contributions: list[MeetingContribution] = [
+            c for c in result_contributions if c is not None
+        ]
+
+        logger.info(
+            MEETING_PHASE_COMPLETED,
+            meeting_id=meeting_id,
+            phase=MeetingPhase.INPUT_GATHERING,
+            inputs_collected=len(inputs),
+        )
+
+        return inputs, input_contributions
+
     async def _run_discussion(  # noqa: PLR0913
         self,
         *,
@@ -354,7 +361,7 @@ class StructuredPhasesProtocol:
         leader_id: str,
         participant_ids: tuple[str, ...],
         agent_caller: AgentCaller,
-        tracker: _TokenTracker,
+        tracker: TokenTracker,
         token_budget: int,
         inputs: list[tuple[str, str]],
         contributions: list[MeetingContribution],
@@ -402,11 +409,12 @@ class StructuredPhasesProtocol:
 
         conflicts_detected = "CONFLICTS: YES" in conflict_response.content.upper()
 
-        if conflicts_detected:
-            logger.info(
-                MEETING_CONFLICT_DETECTED,
-                meeting_id=meeting_id,
-            )
+        logger.info(
+            MEETING_CONFLICT_DETECTED,
+            meeting_id=meeting_id,
+            conflicts_found=conflicts_detected,
+            raw_response=conflict_response.content,
+        )
 
         should_discuss = conflicts_detected or (
             not self._config.skip_discussion_if_no_conflicts
@@ -436,7 +444,7 @@ class StructuredPhasesProtocol:
         agenda_text: str,
         participant_ids: tuple[str, ...],
         agent_caller: AgentCaller,
-        tracker: _TokenTracker,
+        tracker: TokenTracker,
         token_budget: int,
         inputs: list[tuple[str, str]],
         conflict_analysis: str,
@@ -533,7 +541,7 @@ class StructuredPhasesProtocol:
         agenda_text: str,
         leader_id: str,
         agent_caller: AgentCaller,
-        tracker: _TokenTracker,
+        tracker: TokenTracker,
         inputs: list[tuple[str, str]],
         discussion: list[tuple[str, str]],
         contributions: list[MeetingContribution],
@@ -542,10 +550,28 @@ class StructuredPhasesProtocol:
         """Run the synthesis phase.
 
         Returns:
-            Summary text (empty if budget exhausted).
+            Summary text.
+
+        Raises:
+            MeetingBudgetExhaustedError: If the token budget is
+                exhausted before synthesis can begin.
         """
         if tracker.is_exhausted:
-            return ""
+            logger.warning(
+                MEETING_SYNTHESIS_SKIPPED,
+                meeting_id=meeting_id,
+                tokens_used=tracker.used,
+                token_budget=tracker.budget,
+            )
+            msg = "Token budget exhausted before synthesis phase"
+            raise MeetingBudgetExhaustedError(
+                msg,
+                context={
+                    "meeting_id": meeting_id,
+                    "tokens_used": tracker.used,
+                    "token_budget": tracker.budget,
+                },
+            )
 
         logger.info(
             MEETING_PHASE_STARTED,

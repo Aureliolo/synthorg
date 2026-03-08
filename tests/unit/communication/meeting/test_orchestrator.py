@@ -1,5 +1,7 @@
 """Tests for meeting orchestrator."""
 
+from typing import TYPE_CHECKING
+
 import pytest
 
 from ai_company.communication.meeting.config import (
@@ -25,6 +27,9 @@ from ai_company.communication.meeting.round_robin import RoundRobinProtocol
 from tests.unit.communication.meeting.conftest import (
     make_mock_agent_caller,
 )
+
+if TYPE_CHECKING:
+    from ai_company.core.enums import Priority
 
 
 def _make_orchestrator(
@@ -281,6 +286,61 @@ class TestMeetingOrchestratorErrorHandling:
 
 
 @pytest.mark.unit
+class TestMeetingOrchestratorBudgetExhaustion:
+    """Tests for budget exhaustion handling."""
+
+    async def test_budget_exhaustion_produces_record(
+        self,
+        simple_agenda: MeetingAgenda,
+    ) -> None:
+        """Tiny budget triggers BUDGET_EXHAUSTED status."""
+        orchestrator = _make_orchestrator()
+        record = await orchestrator.run_meeting(
+            meeting_type_name="standup",
+            protocol_config=MeetingProtocolConfig(),
+            agenda=simple_agenda,
+            leader_id="leader",
+            participant_ids=("agent-a",),
+            token_budget=1,
+        )
+        assert record.status in (
+            MeetingStatus.BUDGET_EXHAUSTED,
+            MeetingStatus.FAILED,
+        )
+        assert record.error_message is not None
+
+    async def test_zero_token_budget_raises(
+        self,
+        simple_agenda: MeetingAgenda,
+    ) -> None:
+        orchestrator = _make_orchestrator()
+        with pytest.raises(ValueError, match="positive"):
+            await orchestrator.run_meeting(
+                meeting_type_name="standup",
+                protocol_config=MeetingProtocolConfig(),
+                agenda=simple_agenda,
+                leader_id="leader",
+                participant_ids=("agent-a",),
+                token_budget=0,
+            )
+
+    async def test_negative_token_budget_raises(
+        self,
+        simple_agenda: MeetingAgenda,
+    ) -> None:
+        orchestrator = _make_orchestrator()
+        with pytest.raises(ValueError, match="positive"):
+            await orchestrator.run_meeting(
+                meeting_type_name="standup",
+                protocol_config=MeetingProtocolConfig(),
+                agenda=simple_agenda,
+                leader_id="leader",
+                participant_ids=("agent-a",),
+                token_budget=-100,
+            )
+
+
+@pytest.mark.unit
 class TestMeetingOrchestratorTaskCreation:
     """Tests for task creation from action items."""
 
@@ -288,12 +348,12 @@ class TestMeetingOrchestratorTaskCreation:
         self,
         simple_agenda: MeetingAgenda,
     ) -> None:
-        created_tasks: list[tuple[str, str | None, str]] = []
+        created_tasks: list[tuple[str, str | None, Priority]] = []
 
         def _creator(
             desc: str,
             assignee: str | None,
-            priority: str,
+            priority: Priority,
         ) -> None:
             created_tasks.append((desc, assignee, priority))
 
@@ -310,3 +370,61 @@ class TestMeetingOrchestratorTaskCreation:
 
         # Mock responses don't produce action items
         assert len(created_tasks) == 0
+
+    async def test_task_creator_not_called_when_disabled(
+        self,
+        simple_agenda: MeetingAgenda,
+    ) -> None:
+        created_tasks: list[tuple[str, str | None, Priority]] = []
+
+        def _creator(
+            desc: str,
+            assignee: str | None,
+            priority: Priority,
+        ) -> None:
+            created_tasks.append((desc, assignee, priority))
+
+        config = MeetingProtocolConfig(auto_create_tasks=False)
+        orchestrator = _make_orchestrator(
+            task_creator=_creator,
+            protocol_config=config,
+        )
+
+        await orchestrator.run_meeting(
+            meeting_type_name="standup",
+            protocol_config=config,
+            agenda=simple_agenda,
+            leader_id="leader",
+            participant_ids=("agent-a",),
+            token_budget=10000,
+        )
+
+        assert len(created_tasks) == 0
+
+    async def test_task_creator_failure_does_not_crash(
+        self,
+        simple_agenda: MeetingAgenda,
+    ) -> None:
+        """A failing task_creator should not cause the meeting to fail."""
+
+        def _failing_creator(
+            desc: str,
+            assignee: str | None,
+            priority: Priority,
+        ) -> None:
+            msg = "Task system unavailable"
+            raise RuntimeError(msg)
+
+        orchestrator = _make_orchestrator(task_creator=_failing_creator)
+
+        # Meeting should succeed even if task creation would fail
+        record = await orchestrator.run_meeting(
+            meeting_type_name="standup",
+            protocol_config=MeetingProtocolConfig(),
+            agenda=simple_agenda,
+            leader_id="leader",
+            participant_ids=("agent-a",),
+            token_budget=10000,
+        )
+
+        assert record.status == MeetingStatus.COMPLETED

@@ -7,13 +7,17 @@ bias and no quadratic context growth.
 """
 
 import asyncio
-import dataclasses
 from datetime import UTC, datetime
 
+from ai_company.communication.meeting._prompts import build_agenda_prompt
+from ai_company.communication.meeting._token_tracker import TokenTracker
 from ai_company.communication.meeting.config import PositionPapersConfig  # noqa: TC001
 from ai_company.communication.meeting.enums import (
     MeetingPhase,
     MeetingProtocolType,
+)
+from ai_company.communication.meeting.errors import (
+    MeetingBudgetExhaustedError,
 )
 from ai_company.communication.meeting.models import (
     MeetingAgenda,
@@ -29,54 +33,11 @@ from ai_company.observability.events.meeting import (
     MEETING_PHASE_COMPLETED,
     MEETING_PHASE_STARTED,
     MEETING_SUMMARY_GENERATED,
+    MEETING_SYNTHESIS_SKIPPED,
     MEETING_TOKENS_RECORDED,
 )
 
 logger = get_logger(__name__)
-
-
-@dataclasses.dataclass
-class _TokenTracker:
-    """Mutable token budget tracker scoped to a single meeting execution."""
-
-    budget: int
-    input_tokens: int = 0
-    output_tokens: int = 0
-
-    @property
-    def used(self) -> int:
-        """Total tokens consumed so far."""
-        return self.input_tokens + self.output_tokens
-
-    @property
-    def remaining(self) -> int:
-        """Tokens remaining in the budget."""
-        return max(0, self.budget - self.used)
-
-    @property
-    def is_exhausted(self) -> bool:
-        """Whether the budget is fully consumed."""
-        return self.remaining == 0
-
-    def record(self, input_tokens: int, output_tokens: int) -> None:
-        """Record token usage from an agent call."""
-        self.input_tokens += input_tokens
-        self.output_tokens += output_tokens
-
-
-def _build_agenda_prompt(agenda: MeetingAgenda) -> str:
-    """Build the initial agenda prompt text."""
-    parts = [f"Meeting: {agenda.title}"]
-    if agenda.context:
-        parts.append(f"Context: {agenda.context}")
-    if agenda.items:
-        parts.append("Agenda items:")
-        for i, item in enumerate(agenda.items, 1):
-            entry = f"  {i}. {item.title}"
-            if item.description:
-                entry += f" — {item.description}"
-            parts.append(entry)
-    return "\n".join(parts)
 
 
 def _build_position_prompt(agenda_text: str, agent_id: str) -> str:
@@ -150,36 +111,107 @@ class PositionPapersProtocol:
             Complete meeting minutes.
         """
         started_at = datetime.now(UTC)
-        tracker = _TokenTracker(budget=token_budget)
-        contributions: list[MeetingContribution] = []
-        agenda_text = _build_agenda_prompt(agenda)
+        tracker = TokenTracker(budget=token_budget)
+        agenda_text = build_agenda_prompt(agenda)
 
-        # Determine synthesizer agent
         synthesizer_id = (
             leader_id
             if self._config.synthesizer == "meeting_leader"
             else self._config.synthesizer
         )
 
-        # Phase 1: Parallel position papers
+        papers, paper_contributions = await self._collect_position_papers(
+            meeting_id=meeting_id,
+            agenda_text=agenda_text,
+            participant_ids=participant_ids,
+            agent_caller=agent_caller,
+            tracker=tracker,
+        )
+
+        synthesis_contribution = await self._run_synthesis(
+            meeting_id=meeting_id,
+            agenda_text=agenda_text,
+            papers=papers,
+            synthesizer_id=synthesizer_id,
+            turn_number=len(participant_ids),
+            agent_caller=agent_caller,
+            tracker=tracker,
+        )
+
+        contributions = (
+            *paper_contributions,
+            synthesis_contribution,
+        )
+
+        logger.debug(
+            MEETING_TOKENS_RECORDED,
+            meeting_id=meeting_id,
+            input_tokens=tracker.input_tokens,
+            output_tokens=tracker.output_tokens,
+            total_tokens=tracker.used,
+            budget=token_budget,
+        )
+
+        ended_at = datetime.now(UTC)
+        return MeetingMinutes(
+            meeting_id=meeting_id,
+            protocol_type=MeetingProtocolType.POSITION_PAPERS,
+            leader_id=leader_id,
+            participant_ids=participant_ids,
+            agenda=agenda,
+            contributions=tuple(contributions),
+            summary=synthesis_contribution.content,
+            total_input_tokens=tracker.input_tokens,
+            total_output_tokens=tracker.output_tokens,
+            started_at=started_at,
+            ended_at=ended_at,
+        )
+
+    async def _collect_position_papers(
+        self,
+        *,
+        meeting_id: str,
+        agenda_text: str,
+        participant_ids: tuple[str, ...],
+        agent_caller: AgentCaller,
+        tracker: TokenTracker,
+    ) -> tuple[list[tuple[str, str]], list[MeetingContribution]]:
+        """Collect position papers from all participants in parallel.
+
+        Args:
+            meeting_id: Unique meeting identifier.
+            agenda_text: Formatted agenda prompt text.
+            participant_ids: IDs of participating agents.
+            agent_caller: Callback to invoke agents.
+            tracker: Token budget tracker.
+
+        Returns:
+            Tuple of (papers, contributions) in deterministic order.
+        """
+        n = len(participant_ids)
         logger.info(
             MEETING_PHASE_STARTED,
             meeting_id=meeting_id,
             phase=MeetingPhase.POSITION_PAPER,
-            participant_count=len(participant_ids),
+            participant_count=n,
         )
 
-        papers: list[tuple[str, str]] = []
-        paper_contributions: list[MeetingContribution] = []
+        # Pre-allocate slots for deterministic ordering
+        results: list[tuple[str, str] | None] = [None] * n
+        contrib_results: list[MeetingContribution | None] = [None] * n
+
+        # Pre-divide budget evenly across parallel agents
+        tokens_per_agent = max(1, tracker.remaining // max(1, n))
 
         async def _collect_paper(
             participant_id: str,
             turn: int,
+            budget_slice: int,
         ) -> None:
             prompt = _build_position_prompt(agenda_text, participant_id)
             max_tokens = min(
                 self._config.max_tokens_per_position,
-                tracker.remaining,
+                budget_slice,
             )
 
             logger.debug(
@@ -214,8 +246,8 @@ class PositionPapersProtocol:
                 output_tokens=response.output_tokens,
                 timestamp=now,
             )
-            papers.append((participant_id, response.content))
-            paper_contributions.append(contribution)
+            results[turn] = (participant_id, response.content)
+            contrib_results[turn] = contribution
 
             logger.debug(
                 MEETING_CONTRIBUTION_RECORDED,
@@ -225,9 +257,13 @@ class PositionPapersProtocol:
 
         async with asyncio.TaskGroup() as tg:
             for idx, pid in enumerate(participant_ids):
-                tg.create_task(_collect_paper(pid, idx))
+                tg.create_task(
+                    _collect_paper(pid, idx, tokens_per_agent),
+                )
 
-        contributions.extend(paper_contributions)
+        # Build ordered lists from pre-allocated slots
+        papers = [r for r in results if r is not None]
+        paper_contributions = [c for c in contrib_results if c is not None]
 
         logger.info(
             MEETING_PHASE_COMPLETED,
@@ -236,13 +272,61 @@ class PositionPapersProtocol:
             papers_collected=len(papers),
         )
 
-        # Phase 2: Synthesis
+        return papers, paper_contributions
+
+    async def _run_synthesis(  # noqa: PLR0913
+        self,
+        *,
+        meeting_id: str,
+        agenda_text: str,
+        papers: list[tuple[str, str]],
+        synthesizer_id: str,
+        turn_number: int,
+        agent_caller: AgentCaller,
+        tracker: TokenTracker,
+    ) -> MeetingContribution:
+        """Run the synthesis phase to combine position papers.
+
+        Args:
+            meeting_id: Unique meeting identifier.
+            agenda_text: Formatted agenda prompt text.
+            papers: Collected position papers as (agent_id, content).
+            synthesizer_id: ID of the synthesizer agent.
+            turn_number: Turn number for the synthesis contribution.
+            agent_caller: Callback to invoke agents.
+            tracker: Token budget tracker.
+
+        Returns:
+            The synthesis contribution.
+
+        Raises:
+            MeetingBudgetExhaustedError: If the token budget is exhausted
+                before synthesis can begin.
+        """
         logger.info(
             MEETING_PHASE_STARTED,
             meeting_id=meeting_id,
             phase=MeetingPhase.SYNTHESIS,
             synthesizer=synthesizer_id,
         )
+
+        if tracker.is_exhausted:
+            logger.warning(
+                MEETING_SYNTHESIS_SKIPPED,
+                meeting_id=meeting_id,
+                synthesizer_id=synthesizer_id,
+                reason="token_budget_exhausted",
+            )
+            msg = "Token budget exhausted before synthesis phase"
+            raise MeetingBudgetExhaustedError(
+                msg,
+                context={
+                    "meeting_id": meeting_id,
+                    "synthesizer_id": synthesizer_id,
+                    "budget": tracker.budget,
+                    "used": tracker.used,
+                },
+            )
 
         synthesis_prompt = _build_synthesis_prompt(agenda_text, papers)
         synthesis_response = await agent_caller(
@@ -255,7 +339,6 @@ class PositionPapersProtocol:
             synthesis_response.output_tokens,
         )
 
-        turn_number = len(participant_ids)
         synthesis_contribution = MeetingContribution(
             agent_id=synthesizer_id,
             content=synthesis_response.content,
@@ -265,7 +348,6 @@ class PositionPapersProtocol:
             output_tokens=synthesis_response.output_tokens,
             timestamp=datetime.now(UTC),
         )
-        contributions.append(synthesis_contribution)
 
         logger.info(
             MEETING_SUMMARY_GENERATED,
@@ -278,26 +360,4 @@ class PositionPapersProtocol:
             phase=MeetingPhase.SYNTHESIS,
         )
 
-        logger.debug(
-            MEETING_TOKENS_RECORDED,
-            meeting_id=meeting_id,
-            input_tokens=tracker.input_tokens,
-            output_tokens=tracker.output_tokens,
-            total_tokens=tracker.used,
-            budget=token_budget,
-        )
-
-        ended_at = datetime.now(UTC)
-        return MeetingMinutes(
-            meeting_id=meeting_id,
-            protocol_type=MeetingProtocolType.POSITION_PAPERS,
-            leader_id=leader_id,
-            participant_ids=participant_ids,
-            agenda=agenda,
-            contributions=tuple(contributions),
-            summary=synthesis_response.content,
-            total_input_tokens=tracker.input_tokens,
-            total_output_tokens=tracker.output_tokens,
-            started_at=started_at,
-            ended_at=ended_at,
-        )
+        return synthesis_contribution

@@ -19,9 +19,8 @@ class TestMeetingProtocolInterface:
     """Tests for MeetingProtocol as a runtime-checkable protocol."""
 
     def test_is_runtime_checkable(self) -> None:
-        assert hasattr(MeetingProtocol, "__protocol_attrs__") or isinstance(
-            MeetingProtocol, type
-        )
+        """MeetingProtocol must be decorated with @runtime_checkable."""
+        assert getattr(MeetingProtocol, "_is_runtime_protocol", False)
 
     def test_conforming_class_is_instance(self) -> None:
         class _MockProtocol:

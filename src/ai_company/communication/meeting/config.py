@@ -76,10 +76,6 @@ class StructuredPhasesConfig(BaseModel):
         gt=0,
         description="Token budget for discussion round",
     )
-    auto_create_tasks: bool = Field(
-        default=True,
-        description="Auto-create tasks from action items",
-    )
 
 
 class MeetingProtocolConfig(BaseModel):
@@ -90,6 +86,8 @@ class MeetingProtocolConfig(BaseModel):
 
     Attributes:
         protocol: Which protocol strategy to use.
+        auto_create_tasks: Whether to auto-create tasks from action items
+            extracted during any protocol execution.
         round_robin: Round-robin protocol settings.
         position_papers: Position-papers protocol settings.
         structured_phases: Structured-phases protocol settings.
@@ -100,6 +98,10 @@ class MeetingProtocolConfig(BaseModel):
     protocol: MeetingProtocolType = Field(
         default=MeetingProtocolType.ROUND_ROBIN,
         description="Which protocol strategy to use",
+    )
+    auto_create_tasks: bool = Field(
+        default=True,
+        description="Auto-create tasks from action items",
     )
     round_robin: RoundRobinConfig = Field(
         default_factory=RoundRobinConfig,

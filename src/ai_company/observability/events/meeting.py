@@ -26,6 +26,15 @@ MEETING_ACTION_ITEM_EXTRACTED: Final[str] = "meeting.action_item.extracted"
 
 # Task creation from action items
 MEETING_TASK_CREATED: Final[str] = "meeting.task.created"
+MEETING_TASK_CREATION_FAILED: Final[str] = "meeting.task.creation_failed"
+
+# Validation and resolution
+MEETING_VALIDATION_FAILED: Final[str] = "meeting.validation.failed"
+MEETING_PROTOCOL_NOT_FOUND: Final[str] = "meeting.protocol.not_found"
+
+# Phase skipping
+MEETING_SYNTHESIS_SKIPPED: Final[str] = "meeting.synthesis.skipped"
+MEETING_SUMMARY_SKIPPED: Final[str] = "meeting.summary.skipped"
 
 # Token tracking
 MEETING_TOKENS_RECORDED: Final[str] = "meeting.tokens.recorded"

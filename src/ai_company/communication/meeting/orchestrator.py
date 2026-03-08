@@ -15,12 +15,12 @@ from ai_company.communication.meeting.enums import (
 )
 from ai_company.communication.meeting.errors import (
     MeetingBudgetExhaustedError,
-    MeetingError,
     MeetingParticipantError,
     MeetingProtocolNotFoundError,
 )
 from ai_company.communication.meeting.models import (
     MeetingAgenda,
+    MeetingMinutes,
     MeetingRecord,
 )
 from ai_company.communication.meeting.protocol import (  # noqa: TC001
@@ -33,11 +33,26 @@ from ai_company.observability.events.meeting import (
     MEETING_ACTION_ITEM_EXTRACTED,
     MEETING_COMPLETED,
     MEETING_FAILED,
+    MEETING_PROTOCOL_NOT_FOUND,
     MEETING_STARTED,
     MEETING_TASK_CREATED,
+    MEETING_TASK_CREATION_FAILED,
+    MEETING_VALIDATION_FAILED,
 )
 
 logger = get_logger(__name__)
+
+
+def _format_exception(exc: BaseException) -> str:
+    """Format an exception for error messages.
+
+    Extracts sub-exception details from ``ExceptionGroup`` for
+    better diagnostics when parallel ``TaskGroup`` tasks fail.
+    """
+    if isinstance(exc, ExceptionGroup):
+        parts = [f"{type(e).__name__}: {e}" for e in exc.exceptions]
+        return f"Multiple errors: {'; '.join(parts)}"
+    return str(exc)
 
 
 class MeetingOrchestrator:
@@ -84,13 +99,20 @@ class MeetingOrchestrator:
     ) -> MeetingRecord:
         """Execute a meeting and return the audit record.
 
+        Validation errors (``MeetingParticipantError``,
+        ``MeetingProtocolNotFoundError``) are raised directly.
+        Domain and runtime errors during protocol execution are caught
+        and returned as a ``MeetingRecord`` with ``FAILED`` or
+        ``BUDGET_EXHAUSTED`` status.  ``BaseException`` subclasses
+        (e.g. ``KeyboardInterrupt``) are NOT caught.
+
         Args:
             meeting_type_name: Name of the meeting type from config.
             protocol_config: Protocol configuration to use.
             agenda: The meeting agenda.
             leader_id: ID of the agent leading the meeting.
             participant_ids: IDs of participating agents.
-            token_budget: Maximum tokens for the meeting.
+            token_budget: Maximum tokens for the meeting (must be > 0).
 
         Returns:
             Meeting record with status and optional minutes.
@@ -98,18 +120,19 @@ class MeetingOrchestrator:
         Raises:
             MeetingProtocolNotFoundError: If the configured protocol
                 is not in the registry.
-            MeetingParticipantError: If participant list is empty.
+            MeetingParticipantError: If participant list is empty or
+                leader is in participants.
+            ValueError: If token_budget is not positive.
         """
         meeting_id = f"mtg-{uuid4().hex[:12]}"
         protocol_type = protocol_config.protocol
 
-        # Validate
-        self._validate_participants(
+        self._validate_inputs(
             meeting_id,
             leader_id,
             participant_ids,
+            token_budget,
         )
-
         protocol = self._resolve_protocol(meeting_id, protocol_type)
 
         logger.info(
@@ -122,8 +145,60 @@ class MeetingOrchestrator:
             token_budget=token_budget,
         )
 
+        result = await self._execute_protocol(
+            protocol,
+            meeting_id,
+            meeting_type_name,
+            agenda,
+            leader_id,
+            participant_ids,
+            token_budget,
+        )
+
+        if isinstance(result, MeetingRecord):
+            return result
+
+        self._create_tasks(meeting_id, protocol_config, result)
+        return self._record_success(
+            meeting_id,
+            meeting_type_name,
+            protocol_type,
+            result,
+            token_budget,
+        )
+
+    def get_records(self) -> tuple[MeetingRecord, ...]:
+        """Return all meeting audit records.
+
+        Returns:
+            Tuple of meeting records in chronological order.
+        """
+        return tuple(self._records)
+
+    async def _execute_protocol(  # noqa: PLR0913
+        self,
+        protocol: MeetingProtocol,
+        meeting_id: str,
+        meeting_type_name: str,
+        agenda: MeetingAgenda,
+        leader_id: str,
+        participant_ids: tuple[str, ...],
+        token_budget: int,
+    ) -> MeetingMinutes | MeetingRecord:
+        """Run the protocol, catching errors as failure records.
+
+        ``MeetingBudgetExhaustedError`` produces a
+        ``BUDGET_EXHAUSTED`` record; all other ``Exception``
+        subclasses (including ``ExceptionGroup`` from parallel
+        ``TaskGroup`` execution) produce ``FAILED`` records.
+        ``BaseException`` subclasses (e.g. ``KeyboardInterrupt``)
+        propagate uncaught.
+
+        Returns:
+            Minutes on success, or a failure MeetingRecord on error.
+        """
         try:
-            minutes = await protocol.run(
+            return await protocol.run(
                 meeting_id=meeting_id,
                 agenda=agenda,
                 leader_id=leader_id,
@@ -132,52 +207,109 @@ class MeetingOrchestrator:
                 token_budget=token_budget,
             )
         except MeetingBudgetExhaustedError as exc:
-            record = MeetingRecord(
-                meeting_id=meeting_id,
-                meeting_type_name=meeting_type_name,
-                protocol_type=protocol_type,
-                status=MeetingStatus.BUDGET_EXHAUSTED,
-                error_message=str(exc),
-                token_budget=token_budget,
+            return self._make_failure_record(
+                meeting_id,
+                meeting_type_name,
+                protocol,
+                token_budget,
+                MeetingStatus.BUDGET_EXHAUSTED,
+                exc,
             )
-            self._records.append(record)
+        except Exception as exc:
+            return self._make_failure_record(
+                meeting_id,
+                meeting_type_name,
+                protocol,
+                token_budget,
+                MeetingStatus.FAILED,
+                exc,
+            )
+
+    def _make_failure_record(  # noqa: PLR0913
+        self,
+        meeting_id: str,
+        meeting_type_name: str,
+        protocol: MeetingProtocol,
+        token_budget: int,
+        status: MeetingStatus,
+        exc: BaseException,
+    ) -> MeetingRecord:
+        """Build, store, and log a failure record."""
+        error_msg = _format_exception(exc)
+        record = MeetingRecord(
+            meeting_id=meeting_id,
+            meeting_type_name=meeting_type_name,
+            protocol_type=protocol.get_protocol_type(),
+            status=status,
+            error_message=error_msg,
+            token_budget=token_budget,
+        )
+        self._records.append(record)
+
+        if status == MeetingStatus.BUDGET_EXHAUSTED:
             logger.warning(
                 MEETING_FAILED,
                 meeting_id=meeting_id,
-                status=MeetingStatus.BUDGET_EXHAUSTED,
-                error=str(exc),
+                status=status,
+                error=error_msg,
             )
-            return record
-        except (MeetingError, Exception) as exc:
-            record = MeetingRecord(
-                meeting_id=meeting_id,
-                meeting_type_name=meeting_type_name,
-                protocol_type=protocol_type,
-                status=MeetingStatus.FAILED,
-                error_message=str(exc),
-                token_budget=token_budget,
-            )
-            self._records.append(record)
-            logger.exception(
+        else:
+            logger.error(
                 MEETING_FAILED,
                 meeting_id=meeting_id,
-                status=MeetingStatus.FAILED,
-                error=str(exc),
+                status=status,
+                error=error_msg,
+                error_type=type(exc).__name__,
             )
-            return record
+        return record
 
-        # Create tasks from action items if configured
+    def _record_success(
+        self,
+        meeting_id: str,
+        meeting_type_name: str,
+        protocol_type: MeetingProtocolType,
+        minutes: MeetingMinutes,
+        token_budget: int,
+    ) -> MeetingRecord:
+        """Build, store, and log a success record."""
+        record = MeetingRecord(
+            meeting_id=meeting_id,
+            meeting_type_name=meeting_type_name,
+            protocol_type=protocol_type,
+            status=MeetingStatus.COMPLETED,
+            minutes=minutes,
+            token_budget=token_budget,
+        )
+        self._records.append(record)
+        logger.info(
+            MEETING_COMPLETED,
+            meeting_id=meeting_id,
+            total_tokens=minutes.total_tokens,
+            contributions=len(minutes.contributions),
+        )
+        return record
+
+    def _create_tasks(
+        self,
+        meeting_id: str,
+        protocol_config: MeetingProtocolConfig,
+        minutes: MeetingMinutes,
+    ) -> None:
+        """Create tasks from action items if configured."""
         if (
-            self._task_creator is not None
-            and protocol_config.structured_phases.auto_create_tasks
-            and minutes.action_items
+            self._task_creator is None
+            or not protocol_config.auto_create_tasks
+            or not minutes.action_items
         ):
-            logger.info(
-                MEETING_ACTION_ITEM_EXTRACTED,
-                meeting_id=meeting_id,
-                action_item_count=len(minutes.action_items),
-            )
-            for action_item in minutes.action_items:
+            return
+
+        logger.info(
+            MEETING_ACTION_ITEM_EXTRACTED,
+            meeting_id=meeting_id,
+            action_item_count=len(minutes.action_items),
+        )
+        for action_item in minutes.action_items:
+            try:
                 self._task_creator(
                     action_item.description,
                     action_item.assignee_id,
@@ -189,53 +321,50 @@ class MeetingOrchestrator:
                     description=action_item.description,
                     assignee=action_item.assignee_id,
                 )
+            except Exception:
+                logger.exception(
+                    MEETING_TASK_CREATION_FAILED,
+                    meeting_id=meeting_id,
+                    description=action_item.description,
+                    assignee=action_item.assignee_id,
+                )
 
-        record = MeetingRecord(
-            meeting_id=meeting_id,
-            meeting_type_name=meeting_type_name,
-            protocol_type=protocol_type,
-            status=MeetingStatus.COMPLETED,
-            minutes=minutes,
-            token_budget=token_budget,
-        )
-        self._records.append(record)
-
-        logger.info(
-            MEETING_COMPLETED,
-            meeting_id=meeting_id,
-            total_tokens=minutes.total_tokens,
-            contributions=len(minutes.contributions),
-        )
-
-        return record
-
-    def get_records(self) -> tuple[MeetingRecord, ...]:
-        """Return all meeting audit records.
-
-        Returns:
-            Tuple of meeting records in chronological order.
-        """
-        return tuple(self._records)
-
-    def _validate_participants(
+    def _validate_inputs(
         self,
         meeting_id: str,
         leader_id: str,
         participant_ids: tuple[str, ...],
+        token_budget: int,
     ) -> None:
-        """Validate participant configuration.
+        """Validate meeting inputs.
 
         Raises:
             MeetingParticipantError: If participants are empty or leader
                 is in participants.
+            ValueError: If token_budget is not positive.
         """
+        if token_budget <= 0:
+            msg = f"token_budget must be positive, got {token_budget}"
+            raise ValueError(msg)
+
         if not participant_ids:
+            logger.warning(
+                MEETING_VALIDATION_FAILED,
+                meeting_id=meeting_id,
+                error="at least one participant is required",
+            )
             msg = "At least one participant is required"
             raise MeetingParticipantError(
                 msg,
                 context={"meeting_id": meeting_id},
             )
         if leader_id in participant_ids:
+            logger.warning(
+                MEETING_VALIDATION_FAILED,
+                meeting_id=meeting_id,
+                error="leader in participant_ids",
+                leader_id=leader_id,
+            )
             msg = (
                 f"Leader {leader_id!r} must not be in participant_ids "
                 f"(leader participates implicitly)"
@@ -260,6 +389,11 @@ class MeetingOrchestrator:
         """
         protocol = self._protocol_registry.get(protocol_type)
         if protocol is None:
+            logger.warning(
+                MEETING_PROTOCOL_NOT_FOUND,
+                meeting_id=meeting_id,
+                protocol_type=protocol_type,
+            )
             msg = f"Protocol {protocol_type!r} is not registered"
             raise MeetingProtocolNotFoundError(
                 msg,

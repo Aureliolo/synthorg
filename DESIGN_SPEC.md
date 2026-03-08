@@ -578,7 +578,7 @@ When a loop is detected, the framework:
 3. Escalates to the sender's manager (or human if at top of hierarchy)
 4. Logs the loop for analytics and process improvement
 
-> **Current state (M4 in-progress):** The communication foundation is implemented: `MessageBus` protocol with `InMemoryMessageBus` backend (asyncio queues, pull-model `receive()`), `MessageDispatcher` for concurrent handler routing via `asyncio.TaskGroup`, `AgentMessenger` per-agent facade (auto-fills sender/timestamp/ID, deterministic direct-channel naming `@{sorted_a}:{sorted_b}`), and `DeliveryEnvelope` for delivery tracking. Loop prevention (§5.5) is implemented: `DelegationGuard` orchestrates five mechanisms (ancestry, depth, dedup, rate limit, circuit breaker) with `LoopPreventionConfig`. Hierarchical delegation is implemented via `DelegationService` with `HierarchyResolver` and `AuthorityValidator`. Task model extended with `parent_task_id` and `delegation_chain` fields. Conflict resolution (§5.6) and meeting protocol (§5.7) are planned for later M4 work.
+> **Current state (M4 in-progress):** The communication foundation is implemented: `MessageBus` protocol with `InMemoryMessageBus` backend (asyncio queues, pull-model `receive()`), `MessageDispatcher` for concurrent handler routing via `asyncio.TaskGroup`, `AgentMessenger` per-agent facade (auto-fills sender/timestamp/ID, deterministic direct-channel naming `@{sorted_a}:{sorted_b}`), and `DeliveryEnvelope` for delivery tracking. Loop prevention (§5.5) is implemented: `DelegationGuard` orchestrates five mechanisms (ancestry, depth, dedup, rate limit, circuit breaker) with `LoopPreventionConfig`. Hierarchical delegation is implemented via `DelegationService` with `HierarchyResolver` and `AuthorityValidator`. Task model extended with `parent_task_id` and `delegation_chain` fields. Meeting protocol (§5.7) is implemented with all 3 protocols (round-robin, position papers, structured phases) via `MeetingOrchestrator` in `communication/meeting/`. Conflict resolution (§5.6) is planned for later M4 work.
 
 ### 5.6 Conflict Resolution Protocol
 
@@ -650,7 +650,7 @@ conflict_resolution:
 
 Meetings (§5.1 Pattern 3) follow configurable protocols that determine how agents interact during structured multi-agent conversations. Different meeting types naturally suit different protocols. All protocols implement a `MeetingProtocol` protocol, making the system extensible — new protocols can be registered and selected per meeting type. Cost bounds are enforced by `duration_tokens` in meeting config (§5.4).
 
-> **MVP: Not in M3.** Meetings are an M4 feature. Round-Robin (Protocol 1) is the initial default.
+> **Current state (M4 complete):** All 3 meeting protocols are implemented in `communication/meeting/`: `RoundRobinProtocol`, `PositionPapersProtocol`, and `StructuredPhasesProtocol`. The `MeetingOrchestrator` runs meetings end-to-end with token budget enforcement via `TokenBudgetTracker`. All protocols implement the `MeetingProtocol` protocol interface.
 
 #### Protocol 1: Round-Robin Transcript
 
@@ -694,10 +694,10 @@ Meeting split into phases with targeted participation:
 
 ```yaml
 meeting_protocol: "structured_phases"
+auto_create_tasks: true              # action items become tasks (top-level, applies to any protocol)
 structured_phases:
   skip_discussion_if_no_conflicts: true
   max_discussion_tokens: 1000
-  auto_create_tasks: true          # action items become tasks
 ```
 
 - Cost-efficient — parallel input, discussion only when needed
@@ -2415,6 +2415,19 @@ ai-company/
 │       │   │   ├── models.py      # GuardCheckOutcome
 │       │   │   └── rate_limit.py  # DelegationRateLimiter (per-pair)
 │       │   ├── message.py          # Message model
+│       │   ├── meeting/             # Meeting protocol subsystem
+│       │   │   ├── __init__.py    # Package exports
+│       │   │   ├── _prompts.py    # LLM prompt templates for meeting phases
+│       │   │   ├── _token_tracker.py # TokenBudgetTracker for duration_tokens enforcement
+│       │   │   ├── config.py      # MeetingConfig, protocol-specific config models
+│       │   │   ├── enums.py       # MeetingProtocolType, MeetingPhase enums
+│       │   │   ├── errors.py      # Meeting error hierarchy
+│       │   │   ├── models.py      # MeetingRecord, AgendaItem, ActionItem, etc.
+│       │   │   ├── orchestrator.py # MeetingOrchestrator (runs meetings end-to-end)
+│       │   │   ├── position_papers.py # PositionPapersProtocol implementation
+│       │   │   ├── protocol.py    # MeetingProtocol protocol interface
+│       │   │   ├── round_robin.py # RoundRobinProtocol implementation
+│       │   │   └── structured_phases.py # StructuredPhasesProtocol implementation
 │       │   ├── messenger.py        # AgentMessenger per-agent facade
 │       │   └── subscription.py     # Subscription + DeliveryEnvelope models
 │       ├── memory/                  # Agent memory system (M5, stubs only)
@@ -2438,6 +2451,7 @@ ai-company/
 │       │   │   ├── correlation.py # CORRELATION_* constants
 │       │   │   ├── execution.py   # EXECUTION_* constants
 │       │   │   ├── git.py         # GIT_* constants
+│       │   │   ├── meeting.py    # MEETING_* constants
 │       │   │   ├── parallel.py    # PARALLEL_* constants
 │       │   │   ├── personality.py # PERSONALITY_* constants
 │       │   │   ├── prompt.py      # PROMPT_* constants

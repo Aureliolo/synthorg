@@ -6,13 +6,17 @@ producing rich contextual dialogue at the cost of quadratic token
 growth.
 """
 
-import dataclasses
 from datetime import UTC, datetime
 
+from ai_company.communication.meeting._prompts import build_agenda_prompt
+from ai_company.communication.meeting._token_tracker import TokenTracker
 from ai_company.communication.meeting.config import RoundRobinConfig  # noqa: TC001
 from ai_company.communication.meeting.enums import (
     MeetingPhase,
     MeetingProtocolType,
+)
+from ai_company.communication.meeting.errors import (
+    MeetingBudgetExhaustedError,
 )
 from ai_company.communication.meeting.models import (
     MeetingAgenda,
@@ -29,6 +33,7 @@ from ai_company.observability.events.meeting import (
     MEETING_PHASE_COMPLETED,
     MEETING_PHASE_STARTED,
     MEETING_SUMMARY_GENERATED,
+    MEETING_SUMMARY_SKIPPED,
     MEETING_TOKENS_RECORDED,
 )
 
@@ -36,50 +41,6 @@ logger = get_logger(__name__)
 
 # Reserve 20% of budget for the summary phase.
 _SUMMARY_RESERVE_FRACTION = 0.20
-
-
-@dataclasses.dataclass
-class _TokenTracker:
-    """Mutable token budget tracker scoped to a single meeting execution."""
-
-    budget: int
-    input_tokens: int = 0
-    output_tokens: int = 0
-
-    @property
-    def used(self) -> int:
-        """Total tokens consumed so far."""
-        return self.input_tokens + self.output_tokens
-
-    @property
-    def remaining(self) -> int:
-        """Tokens remaining in the budget."""
-        return max(0, self.budget - self.used)
-
-    @property
-    def is_exhausted(self) -> bool:
-        """Whether the budget is fully consumed."""
-        return self.remaining == 0
-
-    def record(self, input_tokens: int, output_tokens: int) -> None:
-        """Record token usage from an agent call."""
-        self.input_tokens += input_tokens
-        self.output_tokens += output_tokens
-
-
-def _build_agenda_prompt(agenda: MeetingAgenda) -> str:
-    """Build the initial agenda prompt text."""
-    parts = [f"Meeting: {agenda.title}"]
-    if agenda.context:
-        parts.append(f"Context: {agenda.context}")
-    if agenda.items:
-        parts.append("Agenda items:")
-        for i, item in enumerate(agenda.items, 1):
-            entry = f"  {i}. {item.title}"
-            if item.description:
-                entry += f" — {item.description}"
-            parts.append(entry)
-    return "\n".join(parts)
 
 
 def _build_turn_prompt(
@@ -158,144 +119,56 @@ class RoundRobinProtocol:
             Complete meeting minutes.
         """
         started_at = datetime.now(UTC)
-        tracker = _TokenTracker(budget=token_budget)
-        contributions: list[MeetingContribution] = []
-        transcript: list[str] = []
-        agenda_text = _build_agenda_prompt(agenda)
-        turn_number = 0
-        budget_exhausted = False
+        tracker = TokenTracker(budget=token_budget)
+        agenda_text = build_agenda_prompt(agenda)
 
         summary_reserve = int(token_budget * _SUMMARY_RESERVE_FRACTION)
         discussion_budget = token_budget - summary_reserve
 
-        logger.info(
-            MEETING_PHASE_STARTED,
+        contributions = await self._run_discussion_rounds(
             meeting_id=meeting_id,
-            phase=MeetingPhase.ROUND_ROBIN_TURN,
-            participant_count=len(participant_ids),
+            participant_ids=participant_ids,
+            agent_caller=agent_caller,
+            tracker=tracker,
+            discussion_budget=discussion_budget,
+            agenda_text=agenda_text,
         )
 
-        for _round_idx in range(self._config.max_turns_per_agent):
-            if budget_exhausted:
-                break
-            for participant_id in participant_ids:
-                if turn_number >= self._config.max_total_turns:
-                    break
-                if tracker.used >= discussion_budget:
-                    budget_exhausted = True
-                    logger.warning(
-                        MEETING_BUDGET_EXHAUSTED,
-                        meeting_id=meeting_id,
-                        tokens_used=tracker.used,
-                        token_budget=token_budget,
-                    )
-                    break
-
-                prompt = _build_turn_prompt(
-                    agenda_text,
-                    transcript,
-                    participant_id,
-                )
-                tokens_available = min(
-                    discussion_budget - tracker.used,
-                    tracker.remaining,
-                )
-
-                logger.debug(
-                    MEETING_AGENT_CALLED,
-                    meeting_id=meeting_id,
-                    agent_id=participant_id,
-                    turn_number=turn_number,
-                )
-
-                response = await agent_caller(
-                    participant_id,
-                    prompt,
-                    tokens_available,
-                )
-                tracker.record(response.input_tokens, response.output_tokens)
-
-                logger.debug(
-                    MEETING_AGENT_RESPONDED,
-                    meeting_id=meeting_id,
-                    agent_id=participant_id,
-                    input_tokens=response.input_tokens,
-                    output_tokens=response.output_tokens,
-                )
-
-                now = datetime.now(UTC)
-                contribution = MeetingContribution(
-                    agent_id=participant_id,
-                    content=response.content,
-                    phase=MeetingPhase.ROUND_ROBIN_TURN,
-                    turn_number=turn_number,
-                    input_tokens=response.input_tokens,
-                    output_tokens=response.output_tokens,
-                    timestamp=now,
-                )
-                contributions.append(contribution)
-                transcript.append(f"[{participant_id}]: {response.content}")
-
-                logger.debug(
-                    MEETING_CONTRIBUTION_RECORDED,
-                    meeting_id=meeting_id,
-                    agent_id=participant_id,
-                    turn_number=turn_number,
-                )
-
-                turn_number += 1
-
-            if turn_number >= self._config.max_total_turns:
-                break
-
-        logger.info(
-            MEETING_PHASE_COMPLETED,
-            meeting_id=meeting_id,
-            phase=MeetingPhase.ROUND_ROBIN_TURN,
-            total_turns=turn_number,
-        )
+        turn_number = len(contributions)
+        transcript = [f"[{c.agent_id}]: {c.content}" for c in contributions]
 
         # Summary phase
         summary = ""
         if self._config.leader_summarizes and not tracker.is_exhausted:
-            logger.info(
-                MEETING_PHASE_STARTED,
-                meeting_id=meeting_id,
-                phase=MeetingPhase.SUMMARY,
-            )
-
-            summary_prompt = _build_summary_prompt(agenda_text, transcript)
-            summary_response = await agent_caller(
-                leader_id,
-                summary_prompt,
-                tracker.remaining,
-            )
-            tracker.record(
-                summary_response.input_tokens,
-                summary_response.output_tokens,
-            )
-            summary = summary_response.content
-
-            summary_contribution = MeetingContribution(
-                agent_id=leader_id,
-                content=summary,
-                phase=MeetingPhase.SUMMARY,
-                turn_number=turn_number,
-                input_tokens=summary_response.input_tokens,
-                output_tokens=summary_response.output_tokens,
-                timestamp=datetime.now(UTC),
-            )
-            contributions.append(summary_contribution)
-
-            logger.info(
-                MEETING_SUMMARY_GENERATED,
+            summary, summary_contribution = await self._run_summary(
                 meeting_id=meeting_id,
                 leader_id=leader_id,
+                agent_caller=agent_caller,
+                tracker=tracker,
+                agenda_text=agenda_text,
+                transcript=transcript,
+                turn_number=turn_number,
             )
-            logger.info(
-                MEETING_PHASE_COMPLETED,
+            contributions.append(summary_contribution)
+        elif self._config.leader_summarizes and tracker.is_exhausted:
+            logger.warning(
+                MEETING_SUMMARY_SKIPPED,
                 meeting_id=meeting_id,
-                phase=MeetingPhase.SUMMARY,
+                reason="budget_exhausted",
+                tokens_used=tracker.used,
+                token_budget=token_budget,
+            )
+            msg = (
+                f"Cannot generate meeting summary: token budget exhausted "
+                f"({tracker.used}/{token_budget} tokens used)"
+            )
+            raise MeetingBudgetExhaustedError(
+                msg,
+                context={
+                    "meeting_id": meeting_id,
+                    "tokens_used": tracker.used,
+                    "token_budget": token_budget,
+                },
             )
 
         logger.debug(
@@ -321,3 +194,222 @@ class RoundRobinProtocol:
             started_at=started_at,
             ended_at=ended_at,
         )
+
+    async def _run_discussion_rounds(  # noqa: PLR0913
+        self,
+        *,
+        meeting_id: str,
+        participant_ids: tuple[str, ...],
+        agent_caller: AgentCaller,
+        tracker: TokenTracker,
+        discussion_budget: int,
+        agenda_text: str,
+    ) -> list[MeetingContribution]:
+        """Execute all discussion rounds and return contributions.
+
+        Args:
+            meeting_id: Unique meeting identifier.
+            participant_ids: IDs of participating agents.
+            agent_caller: Callback to invoke agents.
+            tracker: Token budget tracker.
+            discussion_budget: Token budget for discussion (excluding summary).
+            agenda_text: Formatted agenda text.
+
+        Returns:
+            List of contributions from the discussion phase.
+        """
+        contributions: list[MeetingContribution] = []
+        transcript: list[str] = []
+        turn_number = 0
+        budget_exhausted = False
+
+        logger.info(
+            MEETING_PHASE_STARTED,
+            meeting_id=meeting_id,
+            phase=MeetingPhase.ROUND_ROBIN_TURN,
+            participant_count=len(participant_ids),
+        )
+
+        for _round_idx in range(self._config.max_turns_per_agent):
+            if budget_exhausted:
+                break
+            for participant_id in participant_ids:
+                if turn_number >= self._config.max_total_turns:
+                    break
+                tokens_available = discussion_budget - tracker.used
+                if tokens_available <= 0:
+                    budget_exhausted = True
+                    logger.warning(
+                        MEETING_BUDGET_EXHAUSTED,
+                        meeting_id=meeting_id,
+                        tokens_used=tracker.used,
+                        token_budget=tracker.budget,
+                    )
+                    break
+
+                contribution = await self._execute_turn(
+                    meeting_id=meeting_id,
+                    participant_id=participant_id,
+                    agent_caller=agent_caller,
+                    tracker=tracker,
+                    agenda_text=agenda_text,
+                    transcript=transcript,
+                    turn_number=turn_number,
+                    tokens_available=tokens_available,
+                )
+                contributions.append(contribution)
+                transcript.append(f"[{participant_id}]: {contribution.content}")
+                turn_number += 1
+
+            if turn_number >= self._config.max_total_turns:
+                break
+
+        logger.info(
+            MEETING_PHASE_COMPLETED,
+            meeting_id=meeting_id,
+            phase=MeetingPhase.ROUND_ROBIN_TURN,
+            total_turns=turn_number,
+        )
+
+        # Sort by turn_number for deterministic ordering.
+        # For round-robin this is already sequential, but we sort
+        # explicitly to make the contract clear and future-proof.
+        contributions.sort(key=lambda c: c.turn_number)
+
+        return contributions
+
+    async def _execute_turn(  # noqa: PLR0913
+        self,
+        *,
+        meeting_id: str,
+        participant_id: str,
+        agent_caller: AgentCaller,
+        tracker: TokenTracker,
+        agenda_text: str,
+        transcript: list[str],
+        turn_number: int,
+        tokens_available: int,
+    ) -> MeetingContribution:
+        """Execute a single agent turn and return the contribution.
+
+        Args:
+            meeting_id: Unique meeting identifier.
+            participant_id: ID of the agent taking this turn.
+            agent_caller: Callback to invoke agents.
+            tracker: Token budget tracker.
+            agenda_text: Formatted agenda text.
+            transcript: Current transcript lines.
+            turn_number: Current turn number.
+            tokens_available: Tokens available for this turn.
+
+        Returns:
+            The contribution from this turn.
+        """
+        prompt = _build_turn_prompt(agenda_text, transcript, participant_id)
+
+        logger.debug(
+            MEETING_AGENT_CALLED,
+            meeting_id=meeting_id,
+            agent_id=participant_id,
+            turn_number=turn_number,
+        )
+
+        response = await agent_caller(
+            participant_id,
+            prompt,
+            tokens_available,
+        )
+        tracker.record(response.input_tokens, response.output_tokens)
+
+        logger.debug(
+            MEETING_AGENT_RESPONDED,
+            meeting_id=meeting_id,
+            agent_id=participant_id,
+            input_tokens=response.input_tokens,
+            output_tokens=response.output_tokens,
+        )
+
+        contribution = MeetingContribution(
+            agent_id=participant_id,
+            content=response.content,
+            phase=MeetingPhase.ROUND_ROBIN_TURN,
+            turn_number=turn_number,
+            input_tokens=response.input_tokens,
+            output_tokens=response.output_tokens,
+            timestamp=datetime.now(UTC),
+        )
+
+        logger.debug(
+            MEETING_CONTRIBUTION_RECORDED,
+            meeting_id=meeting_id,
+            agent_id=participant_id,
+            turn_number=turn_number,
+        )
+
+        return contribution
+
+    async def _run_summary(  # noqa: PLR0913
+        self,
+        *,
+        meeting_id: str,
+        leader_id: str,
+        agent_caller: AgentCaller,
+        tracker: TokenTracker,
+        agenda_text: str,
+        transcript: list[str],
+        turn_number: int,
+    ) -> tuple[str, MeetingContribution]:
+        """Execute the summary phase and return summary text and contribution.
+
+        Args:
+            meeting_id: Unique meeting identifier.
+            leader_id: ID of the meeting leader.
+            agent_caller: Callback to invoke agents.
+            tracker: Token budget tracker.
+            agenda_text: Formatted agenda text.
+            transcript: Full transcript lines.
+            turn_number: Next turn number for the summary contribution.
+
+        Returns:
+            Tuple of (summary text, summary contribution).
+        """
+        logger.info(
+            MEETING_PHASE_STARTED,
+            meeting_id=meeting_id,
+            phase=MeetingPhase.SUMMARY,
+        )
+
+        summary_prompt = _build_summary_prompt(agenda_text, transcript)
+        summary_response = await agent_caller(
+            leader_id,
+            summary_prompt,
+            tracker.remaining,
+        )
+        tracker.record(
+            summary_response.input_tokens,
+            summary_response.output_tokens,
+        )
+        summary = summary_response.content
+
+        summary_contribution = MeetingContribution(
+            agent_id=leader_id,
+            content=summary,
+            phase=MeetingPhase.SUMMARY,
+            turn_number=turn_number,
+            input_tokens=summary_response.input_tokens,
+            output_tokens=summary_response.output_tokens,
+            timestamp=datetime.now(UTC),
+        )
+
+        logger.info(
+            MEETING_SUMMARY_GENERATED,
+            meeting_id=meeting_id,
+            leader_id=leader_id,
+        )
+        logger.info(
+            MEETING_PHASE_COMPLETED,
+            meeting_id=meeting_id,
+            phase=MeetingPhase.SUMMARY,
+        )
+
+        return summary, summary_contribution

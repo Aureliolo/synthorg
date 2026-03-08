@@ -14,6 +14,7 @@ from ai_company.communication.meeting.models import (
     MeetingAgenda,
     MeetingMinutes,
 )
+from ai_company.core.enums import Priority
 
 AgentCaller = Callable[[str, str, int], Awaitable[AgentResponse]]
 """Callback to invoke an agent during a meeting.
@@ -24,10 +25,10 @@ The orchestrator constructs this from the engine layer, decoupling
 protocol implementations from the execution engine.
 """
 
-TaskCreator = Callable[[str, str | None, str], None]
+TaskCreator = Callable[[str, str | None, Priority], None]
 """Callback to create a task from a meeting action item.
 
-Signature: ``(description, assignee_id, priority) -> None``
+Signature: ``(description, assignee_id, priority: Priority) -> None``
 
 Used by the orchestrator to optionally create tasks from extracted
 action items.

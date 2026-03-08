@@ -7,6 +7,9 @@ from ai_company.communication.meeting.enums import (
     MeetingPhase,
     MeetingProtocolType,
 )
+from ai_company.communication.meeting.errors import (
+    MeetingBudgetExhaustedError,
+)
 from ai_company.communication.meeting.models import MeetingAgenda  # noqa: TC001
 from ai_company.communication.meeting.protocol import MeetingProtocol
 from ai_company.communication.meeting.structured_phases import (
@@ -292,13 +295,13 @@ class TestStructuredPhasesExecution:
 
         assert minutes.started_at <= minutes.ended_at
 
-    async def test_budget_exhaustion_skips_later_phases(
+    async def test_budget_exhaustion_raises_on_synthesis(
         self,
         simple_agenda: MeetingAgenda,
         leader_id: str,
         meeting_id: str,
     ) -> None:
-        # Very tight budget — may not reach synthesis
+        # Very tight budget — will exhaust before synthesis
         caller = make_mock_agent_caller(
             input_tokens=30,
             output_tokens=30,
@@ -308,17 +311,15 @@ class TestStructuredPhasesExecution:
         )
         protocol = StructuredPhasesProtocol(config=config)
 
-        minutes = await protocol.run(
-            meeting_id=meeting_id,
-            agenda=simple_agenda,
-            leader_id=leader_id,
-            participant_ids=("agent-a", "agent-b", "agent-c"),
-            agent_caller=caller,
-            token_budget=60,  # Very tight: 3 inputs = 180 tokens, will exhaust
-        )
-
-        # Meeting completes without error despite tight budget
-        assert minutes.total_tokens <= 300
+        with pytest.raises(MeetingBudgetExhaustedError):
+            await protocol.run(
+                meeting_id=meeting_id,
+                agenda=simple_agenda,
+                leader_id=leader_id,
+                participant_ids=("agent-a", "agent-b", "agent-c"),
+                agent_caller=caller,
+                token_budget=60,  # Very tight: 3 inputs = 180 tokens
+            )
 
     async def test_single_participant(
         self,

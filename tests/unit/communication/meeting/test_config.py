@@ -81,17 +81,14 @@ class TestStructuredPhasesConfig:
         cfg = StructuredPhasesConfig()
         assert cfg.skip_discussion_if_no_conflicts is True
         assert cfg.max_discussion_tokens == 1000
-        assert cfg.auto_create_tasks is True
 
     def test_custom_values(self) -> None:
         cfg = StructuredPhasesConfig(
             skip_discussion_if_no_conflicts=False,
             max_discussion_tokens=2000,
-            auto_create_tasks=False,
         )
         assert cfg.skip_discussion_if_no_conflicts is False
         assert cfg.max_discussion_tokens == 2000
-        assert cfg.auto_create_tasks is False
 
     def test_frozen(self) -> None:
         cfg = StructuredPhasesConfig()
@@ -129,8 +126,18 @@ class TestMeetingProtocolConfig:
         cfg = MeetingProtocolConfig(
             round_robin=RoundRobinConfig(max_turns_per_agent=5),
             position_papers=PositionPapersConfig(max_tokens_per_position=500),
-            structured_phases=StructuredPhasesConfig(auto_create_tasks=False),
+            structured_phases=StructuredPhasesConfig(
+                skip_discussion_if_no_conflicts=False,
+            ),
         )
         assert cfg.round_robin.max_turns_per_agent == 5
         assert cfg.position_papers.max_tokens_per_position == 500
-        assert cfg.structured_phases.auto_create_tasks is False
+        assert cfg.structured_phases.skip_discussion_if_no_conflicts is False
+
+    def test_auto_create_tasks_default(self) -> None:
+        cfg = MeetingProtocolConfig()
+        assert cfg.auto_create_tasks is True
+
+    def test_auto_create_tasks_disabled(self) -> None:
+        cfg = MeetingProtocolConfig(auto_create_tasks=False)
+        assert cfg.auto_create_tasks is False

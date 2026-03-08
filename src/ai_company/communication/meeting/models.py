@@ -17,7 +17,7 @@ from ai_company.communication.meeting.enums import (
     MeetingStatus,
 )
 from ai_company.core.enums import Priority
-from ai_company.core.types import NotBlankStr  # noqa: TC001
+from ai_company.core.types import NotBlankStr, validate_unique_strings
 
 
 class AgentResponse(BaseModel):
@@ -186,7 +186,7 @@ class MeetingMinutes(BaseModel):
         description="All contributions in order",
     )
     summary: str = Field(default="", description="Final summary")
-    decisions: tuple[str, ...] = Field(
+    decisions: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Decisions made",
     )
@@ -222,6 +222,15 @@ class MeetingMinutes(BaseModel):
         """Ensure ended_at is not before started_at."""
         if self.ended_at < self.started_at:
             msg = "ended_at must not be before started_at"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_participants(self) -> Self:
+        """Ensure participant IDs are unique and leader is not among them."""
+        validate_unique_strings(self.participant_ids, "participant_ids")
+        if self.leader_id in self.participant_ids:
+            msg = "leader_id must not be in participant_ids"
             raise ValueError(msg)
         return self
 

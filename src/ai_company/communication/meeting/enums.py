@@ -20,7 +20,14 @@ class MeetingProtocolType(StrEnum):
 class MeetingPhase(StrEnum):
     """Phase within a meeting protocol execution.
 
-    Members:
+    Phases are scoped to specific protocols:
+
+    - All protocols: ``AGENDA_BROADCAST``, ``SYNTHESIS``
+    - Round-robin only: ``ROUND_ROBIN_TURN``, ``SUMMARY``
+    - Position papers only: ``POSITION_PAPER``
+    - Structured phases only: ``INPUT_GATHERING``, ``DISCUSSION``
+
+    Attributes:
         AGENDA_BROADCAST: Initial agenda distribution.
         ROUND_ROBIN_TURN: Single turn in round-robin protocol.
         POSITION_PAPER: Independent position paper submission.
@@ -42,7 +49,13 @@ class MeetingPhase(StrEnum):
 class MeetingStatus(StrEnum):
     """Lifecycle status of a meeting.
 
-    Members:
+    Currently produced by ``MeetingOrchestrator``:
+    ``COMPLETED``, ``FAILED``, ``BUDGET_EXHAUSTED``.
+
+    Reserved for future lifecycle management:
+    ``SCHEDULED``, ``IN_PROGRESS``, ``CANCELLED``.
+
+    Attributes:
         SCHEDULED: Meeting is planned but not yet started.
         IN_PROGRESS: Meeting is currently running.
         COMPLETED: Meeting finished successfully.

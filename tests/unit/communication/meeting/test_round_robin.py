@@ -7,6 +7,9 @@ from ai_company.communication.meeting.enums import (
     MeetingPhase,
     MeetingProtocolType,
 )
+from ai_company.communication.meeting.errors import (
+    MeetingBudgetExhaustedError,
+)
 from ai_company.communication.meeting.models import MeetingAgenda  # noqa: TC001
 from ai_company.communication.meeting.protocol import MeetingProtocol
 from ai_company.communication.meeting.round_robin import RoundRobinProtocol
@@ -223,10 +226,38 @@ class TestRoundRobinExecution:
         # Each call uses 30 tokens, budget is 50 (20% reserve = 40 discussion).
         # agent-a: 30 used (< 40), agent-b: 60 used (>= 40, stops after).
         # Budget check is pre-turn, so the call that crosses is completed.
+        # With leader_summarizes=True (default), budget exhaustion raises
+        # MeetingBudgetExhaustedError when summary cannot be generated.
         caller = make_mock_agent_caller(input_tokens=10, output_tokens=20)
         config = RoundRobinConfig(
             max_turns_per_agent=5,
             max_total_turns=100,
+        )
+        protocol = RoundRobinProtocol(config=config)
+        participants = ("agent-a", "agent-b", "agent-c")
+
+        with pytest.raises(MeetingBudgetExhaustedError, match="budget exhausted"):
+            await protocol.run(
+                meeting_id=meeting_id,
+                agenda=simple_agenda,
+                leader_id=leader_id,
+                participant_ids=participants,
+                agent_caller=caller,
+                token_budget=50,
+            )
+
+    async def test_budget_exhaustion_no_summary_returns_minutes(
+        self,
+        simple_agenda: MeetingAgenda,
+        leader_id: str,
+        meeting_id: str,
+    ) -> None:
+        """When leader_summarizes is disabled, budget exhaustion returns minutes."""
+        caller = make_mock_agent_caller(input_tokens=10, output_tokens=20)
+        config = RoundRobinConfig(
+            max_turns_per_agent=5,
+            max_total_turns=100,
+            leader_summarizes=False,
         )
         protocol = RoundRobinProtocol(config=config)
         participants = ("agent-a", "agent-b", "agent-c")
@@ -240,12 +271,13 @@ class TestRoundRobinExecution:
             token_budget=50,
         )
 
-        # Budget stops before agent-c; 2 turns completed, no summary (exhausted)
+        # Budget stops before agent-c; 2 turns completed, no summary
         round_robin_contribs = [
             c for c in minutes.contributions if c.phase == MeetingPhase.ROUND_ROBIN_TURN
         ]
         max_turns = len(participants) * config.max_turns_per_agent
         assert len(round_robin_contribs) < max_turns
+        assert minutes.summary == ""
 
     async def test_timing_fields(
         self,
