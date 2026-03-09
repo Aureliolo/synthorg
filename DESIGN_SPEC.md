@@ -81,7 +81,7 @@ The MVP validates the core hypothesis: **a single agent can complete a real task
 
 > **Implementation snapshot (2026-03-08):**
 > - **Done:** M0–M4 (tooling, config/core, providers, single-agent engine, multi-agent orchestration). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)).
-> - **In progress:** M5 — memory layer implementation, persistence, budget enforcement.
+> - **In progress:** M5 — memory layer implementation, budget enforcement. Persistence backend (§7.5) completed.
 > - **Not started (mostly placeholders):** M6 API/CLI surface, M7 security + approval system.
 
 ### 1.5 Configuration Philosophy
@@ -1438,13 +1438,13 @@ persistence:
 | `Task` | `core/task.py` | `TaskRepository` | by status, by assignee, by project |
 | `CostRecord` | `budget/cost_record.py` | `CostRecordRepository` | by agent, by task, aggregations |
 | `Message` | `communication/message.py` | `MessageRepository` | by channel, by sender, time range |
-| Audit entries | `security/` | `AuditRepository` | by agent, by action type, time range |
+| Audit entries (planned — M7) | `security/` | `AuditRepository` (planned) | by agent, by action type, time range |
 
 #### Migration Strategy
 
 - Migrations run programmatically at startup via `PersistenceBackend.migrate()`
 - Initial migration creates all tables
-- Versioned migration scripts tracked in `persistence/migrations/`
+- Versioned migrations implemented per-backend (e.g. `persistence/sqlite/migrations.py` for SQLite)
 - SQLite uses `user_version` pragma for version tracking; PostgreSQL/MariaDB use a migrations table
 
 #### Key Principles

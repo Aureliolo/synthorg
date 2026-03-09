@@ -50,8 +50,13 @@ PERSISTENCE_COST_RECORD_AGGREGATE_FAILED: Final[str] = (
     "persistence.cost_record.aggregate_failed"
 )
 
+PERSISTENCE_TASK_DESERIALIZE_FAILED: Final[str] = "persistence.task.deserialize_failed"
+
 PERSISTENCE_MESSAGE_SAVED: Final[str] = "persistence.message.saved"
 PERSISTENCE_MESSAGE_SAVE_FAILED: Final[str] = "persistence.message.save_failed"
 PERSISTENCE_MESSAGE_DUPLICATE: Final[str] = "persistence.message.duplicate"
 PERSISTENCE_MESSAGE_HISTORY_FETCHED: Final[str] = "persistence.message.history_fetched"
 PERSISTENCE_MESSAGE_HISTORY_FAILED: Final[str] = "persistence.message.history_failed"
+PERSISTENCE_MESSAGE_DESERIALIZE_FAILED: Final[str] = (
+    "persistence.message.deserialize_failed"
+)

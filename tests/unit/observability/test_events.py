@@ -367,45 +367,46 @@ class TestEventConstants:
         )
         assert WORKSPACE_GROUP_SETUP_FAILED == "workspace.group.setup.failed"
 
-    def test_persistence_events_exist(self) -> None:
-        from ai_company.observability.events.persistence import (
-            PERSISTENCE_BACKEND_CONNECTED,
-            PERSISTENCE_BACKEND_CONNECTING,
-            PERSISTENCE_BACKEND_DISCONNECTED,
-            PERSISTENCE_BACKEND_DISCONNECTING,
-            PERSISTENCE_BACKEND_HEALTH_CHECK,
-            PERSISTENCE_COST_RECORD_AGGREGATED,
-            PERSISTENCE_COST_RECORD_QUERIED,
-            PERSISTENCE_COST_RECORD_SAVED,
-            PERSISTENCE_MESSAGE_HISTORY_FETCHED,
-            PERSISTENCE_MESSAGE_SAVED,
-            PERSISTENCE_MIGRATION_COMPLETED,
-            PERSISTENCE_MIGRATION_SKIPPED,
-            PERSISTENCE_MIGRATION_STARTED,
-            PERSISTENCE_TASK_DELETED,
-            PERSISTENCE_TASK_FETCHED,
-            PERSISTENCE_TASK_LISTED,
-            PERSISTENCE_TASK_SAVED,
-        )
+    @pytest.mark.parametrize(
+        ("constant_name", "expected"),
+        [
+            ("PERSISTENCE_BACKEND_CONNECTING", "persistence.backend.connecting"),
+            ("PERSISTENCE_BACKEND_CONNECTED", "persistence.backend.connected"),
+            ("PERSISTENCE_BACKEND_DISCONNECTING", "persistence.backend.disconnecting"),
+            ("PERSISTENCE_BACKEND_DISCONNECTED", "persistence.backend.disconnected"),
+            ("PERSISTENCE_BACKEND_HEALTH_CHECK", "persistence.backend.health_check"),
+            ("PERSISTENCE_MIGRATION_STARTED", "persistence.migration.started"),
+            ("PERSISTENCE_MIGRATION_COMPLETED", "persistence.migration.completed"),
+            ("PERSISTENCE_MIGRATION_SKIPPED", "persistence.migration.skipped"),
+            ("PERSISTENCE_TASK_SAVED", "persistence.task.saved"),
+            ("PERSISTENCE_TASK_FETCHED", "persistence.task.fetched"),
+            ("PERSISTENCE_TASK_LISTED", "persistence.task.listed"),
+            ("PERSISTENCE_TASK_DELETED", "persistence.task.deleted"),
+            (
+                "PERSISTENCE_TASK_DESERIALIZE_FAILED",
+                "persistence.task.deserialize_failed",
+            ),
+            ("PERSISTENCE_COST_RECORD_SAVED", "persistence.cost_record.saved"),
+            (
+                "PERSISTENCE_COST_RECORD_QUERIED",
+                "persistence.cost_record.queried",
+            ),
+            (
+                "PERSISTENCE_COST_RECORD_AGGREGATED",
+                "persistence.cost_record.aggregated",
+            ),
+            ("PERSISTENCE_MESSAGE_SAVED", "persistence.message.saved"),
+            (
+                "PERSISTENCE_MESSAGE_HISTORY_FETCHED",
+                "persistence.message.history_fetched",
+            ),
+            (
+                "PERSISTENCE_MESSAGE_DESERIALIZE_FAILED",
+                "persistence.message.deserialize_failed",
+            ),
+        ],
+    )
+    def test_persistence_events_exist(self, constant_name: str, expected: str) -> None:
+        from ai_company.observability.events import persistence as mod
 
-        assert PERSISTENCE_BACKEND_CONNECTING == "persistence.backend.connecting"
-        assert PERSISTENCE_BACKEND_CONNECTED == "persistence.backend.connected"
-        assert PERSISTENCE_BACKEND_DISCONNECTING == "persistence.backend.disconnecting"
-        assert PERSISTENCE_BACKEND_DISCONNECTED == "persistence.backend.disconnected"
-        assert PERSISTENCE_BACKEND_HEALTH_CHECK == "persistence.backend.health_check"
-        assert PERSISTENCE_MIGRATION_STARTED == "persistence.migration.started"
-        assert PERSISTENCE_MIGRATION_COMPLETED == "persistence.migration.completed"
-        assert PERSISTENCE_MIGRATION_SKIPPED == "persistence.migration.skipped"
-        assert PERSISTENCE_TASK_SAVED == "persistence.task.saved"
-        assert PERSISTENCE_TASK_FETCHED == "persistence.task.fetched"
-        assert PERSISTENCE_TASK_LISTED == "persistence.task.listed"
-        assert PERSISTENCE_TASK_DELETED == "persistence.task.deleted"
-        assert PERSISTENCE_COST_RECORD_SAVED == "persistence.cost_record.saved"
-        assert PERSISTENCE_COST_RECORD_QUERIED == "persistence.cost_record.queried"
-        assert PERSISTENCE_COST_RECORD_AGGREGATED == (
-            "persistence.cost_record.aggregated"
-        )
-        assert PERSISTENCE_MESSAGE_SAVED == "persistence.message.saved"
-        assert PERSISTENCE_MESSAGE_HISTORY_FETCHED == (
-            "persistence.message.history_fetched"
-        )
+        assert getattr(mod, constant_name) == expected

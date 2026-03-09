@@ -4,14 +4,13 @@ Application code depends on this protocol for storage lifecycle
 management.  Repository protocols provide entity-level access.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from ai_company.persistence.repositories import (
-        CostRecordRepository,
-        MessageRepository,
-        TaskRepository,
-    )
+from ai_company.persistence.repositories import (
+    CostRecordRepository,  # noqa: TC001
+    MessageRepository,  # noqa: TC001
+    TaskRepository,  # noqa: TC001
+)
 
 
 @runtime_checkable

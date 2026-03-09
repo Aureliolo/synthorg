@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import aiosqlite
 import pytest
 
 from ai_company.persistence.config import SQLiteConfig
@@ -21,10 +22,15 @@ class TestSQLiteOnDisk:
         task = make_task()
         await backend.tasks.save(task)
 
-        # WAL file may or may not exist depending on checkpoint behavior,
-        # but the db file should exist
         assert Path(db_path).exists()  # noqa: ASYNC240
         await backend.disconnect()
+
+        # Verify WAL mode by querying the journal_mode pragma
+        async with aiosqlite.connect(db_path) as db:
+            cursor = await db.execute("PRAGMA journal_mode")
+            row = await cursor.fetchone()
+            assert row is not None
+            assert row[0] == "wal"
 
     async def test_data_persists_across_reconnect(self, db_path: str) -> None:
         """Data written before disconnect is readable after reconnect."""
@@ -101,7 +107,6 @@ class TestSQLiteOnDisk:
         async def read_all() -> int:
             b = SQLitePersistenceBackend(SQLiteConfig(path=db_path))
             await b.connect()
-            await b.migrate()
             tasks = await b.tasks.list_tasks()
             await b.disconnect()
             return len(tasks)

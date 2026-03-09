@@ -45,6 +45,14 @@ class TestSQLiteConfig:
         with pytest.raises(ValidationError):
             SQLiteConfig(journal_size_limit=-1)
 
+    def test_traversal_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="traversal"):
+            SQLiteConfig(path="../escape/test.db")
+
+    def test_embedded_traversal_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="traversal"):
+            SQLiteConfig(path="data/../../../etc/test.db")
+
 
 @pytest.mark.unit
 class TestPersistenceConfig:

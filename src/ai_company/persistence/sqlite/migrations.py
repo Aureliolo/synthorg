@@ -110,6 +110,11 @@ async def set_user_version(db: aiosqlite.Connection, version: int) -> None:
     """
     if not isinstance(version, int) or version < 0:
         msg = f"Schema version must be a non-negative integer, got {version!r}"
+        logger.error(
+            PERSISTENCE_MIGRATION_FAILED,
+            error=msg,
+            version=version,
+        )
         raise MigrationError(msg)
     # PRAGMA does not support parameterized queries; version is validated above.
     await db.execute(f"PRAGMA user_version = {version}")
@@ -141,7 +146,12 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
     Raises:
         MigrationError: If any migration step fails.
     """
-    current = await get_user_version(db)
+    try:
+        current = await get_user_version(db)
+    except (sqlite3.Error, aiosqlite.Error) as exc:
+        msg = "Failed to read current schema version"
+        logger.exception(PERSISTENCE_MIGRATION_FAILED, error=str(exc))
+        raise MigrationError(msg) from exc
 
     if current >= SCHEMA_VERSION:
         logger.debug(
@@ -165,8 +175,17 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
 
         await set_user_version(db, SCHEMA_VERSION)
         await db.commit()
-    except (sqlite3.Error, aiosqlite.Error) as exc:
-        await db.rollback()
+    except (sqlite3.Error, aiosqlite.Error, MigrationError) as exc:
+        try:
+            await db.rollback()
+        except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
+            logger.error(  # noqa: TRY400
+                PERSISTENCE_MIGRATION_FAILED,
+                error=f"Rollback also failed: {rollback_exc}",
+                original_error=str(exc),
+            )
+        if isinstance(exc, MigrationError):
+            raise
         msg = f"Migration to version {SCHEMA_VERSION} failed"
         logger.exception(
             PERSISTENCE_MIGRATION_FAILED,

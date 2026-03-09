@@ -15,16 +15,20 @@ if TYPE_CHECKING:
 async def memory_db() -> AsyncGenerator[aiosqlite.Connection]:
     """Raw in-memory SQLite connection (no migrations)."""
     db = await aiosqlite.connect(":memory:")
-    db.row_factory = aiosqlite.Row
-    yield db
-    await db.close()
+    try:
+        db.row_factory = aiosqlite.Row
+        yield db
+    finally:
+        await db.close()
 
 
 @pytest.fixture
 async def migrated_db() -> AsyncGenerator[aiosqlite.Connection]:
     """In-memory SQLite connection with v1 schema applied."""
     db = await aiosqlite.connect(":memory:")
-    db.row_factory = aiosqlite.Row
-    await run_migrations(db)
-    yield db
-    await db.close()
+    try:
+        db.row_factory = aiosqlite.Row
+        await run_migrations(db)
+        yield db
+    finally:
+        await db.close()

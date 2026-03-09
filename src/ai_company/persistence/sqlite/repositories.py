@@ -18,6 +18,7 @@ from ai_company.observability.events.persistence import (
     PERSISTENCE_COST_RECORD_QUERY_FAILED,
     PERSISTENCE_COST_RECORD_SAVE_FAILED,
     PERSISTENCE_COST_RECORD_SAVED,
+    PERSISTENCE_MESSAGE_DESERIALIZE_FAILED,
     PERSISTENCE_MESSAGE_DUPLICATE,
     PERSISTENCE_MESSAGE_HISTORY_FAILED,
     PERSISTENCE_MESSAGE_HISTORY_FETCHED,
@@ -25,6 +26,7 @@ from ai_company.observability.events.persistence import (
     PERSISTENCE_MESSAGE_SAVED,
     PERSISTENCE_TASK_DELETE_FAILED,
     PERSISTENCE_TASK_DELETED,
+    PERSISTENCE_TASK_DESERIALIZE_FAILED,
     PERSISTENCE_TASK_FETCH_FAILED,
     PERSISTENCE_TASK_FETCHED,
     PERSISTENCE_TASK_LIST_FAILED,
@@ -141,9 +143,19 @@ ON CONFLICT(id) DO UPDATE SET
             for field in self._JSON_FIELDS:
                 data[field] = json.loads(data[field])
             return Task.model_validate(data)
-        except (json.JSONDecodeError, ValidationError) as exc:
+        except (
+            json.JSONDecodeError,
+            ValidationError,
+            KeyError,
+            TypeError,
+        ) as exc:
             task_id = row["id"] if row else "unknown"
             msg = f"Failed to deserialize task {task_id!r}"
+            logger.exception(
+                PERSISTENCE_TASK_DESERIALIZE_FAILED,
+                task_id=task_id,
+                error=str(exc),
+            )
             raise QueryError(msg) from exc
 
     _TASK_COLUMNS = """\
@@ -385,9 +397,23 @@ INSERT INTO messages (
             )
             await self._db.commit()
         except sqlite3.IntegrityError as exc:
-            err_msg = f"Message {msg_id} already exists"
-            logger.warning(PERSISTENCE_MESSAGE_DUPLICATE, message_id=msg_id)
-            raise DuplicateRecordError(err_msg) from exc
+            error_text = str(exc)
+            is_duplicate_id = (
+                "UNIQUE constraint failed: messages.id" in error_text
+                or "PRIMARY KEY" in error_text
+            )
+            if is_duplicate_id:
+                err_msg = f"Message {msg_id} already exists"
+                logger.warning(PERSISTENCE_MESSAGE_DUPLICATE, message_id=msg_id)
+                raise DuplicateRecordError(err_msg) from exc
+            # Other integrity errors (NOT NULL, different UNIQUE).
+            msg = f"Failed to save message {msg_id!r}"
+            logger.exception(
+                PERSISTENCE_MESSAGE_SAVE_FAILED,
+                message_id=msg_id,
+                error=error_text,
+            )
+            raise QueryError(msg) from exc
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to save message {msg_id!r}"
             logger.exception(
@@ -407,9 +433,19 @@ INSERT INTO messages (
             data["attachments"] = json.loads(data["attachments"])
             data["metadata"] = json.loads(data["metadata"])
             return Message.model_validate(data)
-        except (json.JSONDecodeError, ValidationError) as exc:
+        except (
+            json.JSONDecodeError,
+            ValidationError,
+            KeyError,
+            TypeError,
+        ) as exc:
             msg_id = row["id"] if row else "unknown"
             msg = f"Failed to deserialize message {msg_id!r}"
+            logger.exception(
+                PERSISTENCE_MESSAGE_DESERIALIZE_FAILED,
+                message_id=msg_id,
+                error=str(exc),
+            )
             raise QueryError(msg) from exc
 
     async def get_history(
@@ -419,6 +455,9 @@ INSERT INTO messages (
         limit: int | None = None,
     ) -> tuple[Message, ...]:
         """Retrieve message history for a channel, newest first."""
+        if limit is not None and limit < 1:
+            msg = f"limit must be a positive integer, got {limit}"
+            raise QueryError(msg)
         sql = """\
 SELECT id, timestamp, sender, "to", type, priority,
        channel, content, attachments, metadata

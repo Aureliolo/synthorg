@@ -2,6 +2,7 @@
 
 import sqlite3
 
+import aiosqlite
 import pytest
 
 from ai_company.persistence.config import SQLiteConfig
@@ -121,6 +122,42 @@ class TestSQLitePersistenceBackend:
         result = await backend.health_check()
         assert result is False
         await backend.disconnect()
+
+    async def test_disconnect_cleans_up_on_close_error(self) -> None:
+        """If db.close() raises, state is still cleared."""
+        from unittest.mock import AsyncMock
+
+        backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))
+        await backend.connect()
+        assert backend._db is not None
+        backend._db.close = AsyncMock(  # type: ignore[method-assign]
+            side_effect=sqlite3.OperationalError("close failed")
+        )
+        await backend.disconnect()
+        assert backend.is_connected is False
+
+    async def test_connect_pragma_failure_cleans_up(self) -> None:
+        """If PRAGMA fails after connect, backend cleans up and raises."""
+        from unittest.mock import AsyncMock, patch
+
+        backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:", wal_mode=True))
+
+        real_connect = aiosqlite.connect
+
+        async def patched_connect(*args: object, **kwargs: object) -> object:
+            conn = await real_connect(":memory:")
+            conn.execute = AsyncMock(  # type: ignore[method-assign]
+                side_effect=sqlite3.OperationalError("PRAGMA failed")
+            )
+            return conn
+
+        with (
+            patch("aiosqlite.connect", side_effect=patched_connect),
+            pytest.raises(PersistenceConnectionError),
+        ):
+            await backend.connect()
+
+        assert backend.is_connected is False
 
     async def test_protocol_compliance(self) -> None:
         backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))

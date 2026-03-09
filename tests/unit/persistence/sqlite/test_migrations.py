@@ -29,6 +29,18 @@ class TestUserVersion:
         await set_user_version(memory_db, 42)
         assert await get_user_version(memory_db) == 42
 
+    async def test_set_negative_version_raises(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        with pytest.raises(MigrationError, match="non-negative integer"):
+            await set_user_version(memory_db, -1)
+
+    async def test_set_non_int_version_raises(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        with pytest.raises(MigrationError, match="non-negative integer"):
+            await set_user_version(memory_db, 2.5)  # type: ignore[arg-type]
+
 
 @pytest.mark.unit
 class TestRunMigrations:

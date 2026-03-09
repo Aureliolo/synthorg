@@ -4,13 +4,12 @@ Each entity type has its own protocol so that application code depends
 only on abstract interfaces, never on a concrete backend.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-if TYPE_CHECKING:
-    from ai_company.budget.cost_record import CostRecord
-    from ai_company.communication.message import Message
-    from ai_company.core.enums import TaskStatus
-    from ai_company.core.task import Task
+from ai_company.budget.cost_record import CostRecord  # noqa: TC001
+from ai_company.communication.message import Message  # noqa: TC001
+from ai_company.core.enums import TaskStatus  # noqa: TC001
+from ai_company.core.task import Task  # noqa: TC001
 
 
 @runtime_checkable
@@ -81,7 +80,7 @@ class TaskRepository(Protocol):
 
 @runtime_checkable
 class CostRecordRepository(Protocol):
-    """CRUD + aggregation interface for CostRecord persistence."""
+    """Append-only persistence + query/aggregation for CostRecord."""
 
     async def save(self, record: CostRecord) -> None:
         """Persist a cost record (append-only).
@@ -131,7 +130,7 @@ class CostRecordRepository(Protocol):
 
 @runtime_checkable
 class MessageRepository(Protocol):
-    """CRUD + query interface for Message persistence."""
+    """Write + history query interface for Message persistence."""
 
     async def save(self, message: Message) -> None:
         """Persist a message.

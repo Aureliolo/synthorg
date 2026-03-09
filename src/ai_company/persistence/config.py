@@ -4,7 +4,7 @@ Frozen Pydantic models for persistence backend selection and
 backend-specific settings.
 """
 
-from pathlib import PurePosixPath
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -45,15 +45,26 @@ class SQLiteConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _resolve_path(self) -> Self:
-        """Resolve relative paths to absolute to prevent traversal ambiguity.
+    def _reject_traversal(self) -> Self:
+        """Reject parent-directory traversal to prevent path escapes.
 
         The special ``:memory:`` identifier is passed through unchanged.
+        Paths containing ``..`` components are rejected to prevent
+        path-traversal attacks in multi-tenant configs.  Absolute paths
+        are allowed for operational flexibility.
         """
         if self.path == ":memory:":
             return self
-        resolved = str(PurePosixPath(self.path))
-        object.__setattr__(self, "path", resolved)
+        parts = PureWindowsPath(self.path).parts + PurePosixPath(self.path).parts
+        if ".." in parts:
+            msg = "Database path must not contain parent-directory traversal (..)"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="path",
+                value=self.path,
+                reason=msg,
+            )
+            raise ValueError(msg)
         return self
 
 

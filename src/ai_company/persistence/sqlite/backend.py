@@ -1,6 +1,5 @@
 """SQLite persistence backend implementation."""
 
-import contextlib
 import sqlite3
 from typing import TYPE_CHECKING
 
@@ -36,8 +35,8 @@ class SQLitePersistenceBackend:
     """SQLite implementation of the PersistenceBackend protocol.
 
     Uses a single ``aiosqlite.Connection`` with WAL mode enabled by
-    default for concurrent read performance (configurable via
-    ``SQLiteConfig.wal_mode``).
+    default for file-based databases (in-memory databases do not
+    support WAL).  Configurable via ``SQLiteConfig.wal_mode``.
 
     Args:
         config: SQLite-specific configuration.
@@ -93,8 +92,16 @@ class SQLitePersistenceBackend:
                 error=str(exc),
             )
             if self._db is not None:
-                with contextlib.suppress(sqlite3.Error, OSError):
+                try:
                     await self._db.close()
+                except (sqlite3.Error, OSError) as cleanup_exc:
+                    logger.warning(
+                        PERSISTENCE_BACKEND_DISCONNECT_ERROR,
+                        path=self._config.path,
+                        error=str(cleanup_exc),
+                        error_type=type(cleanup_exc).__name__,
+                        context="cleanup_after_connect_failure",
+                    )
             self._clear_state()
             msg = "Failed to connect to persistence backend"
             raise PersistenceConnectionError(msg) from exc
@@ -109,6 +116,7 @@ class SQLitePersistenceBackend:
         logger.info(PERSISTENCE_BACKEND_DISCONNECTING, path=self._config.path)
         try:
             await self._db.close()
+            logger.info(PERSISTENCE_BACKEND_DISCONNECTED, path=self._config.path)
         except (sqlite3.Error, OSError) as exc:
             logger.warning(
                 PERSISTENCE_BACKEND_DISCONNECT_ERROR,
@@ -118,7 +126,6 @@ class SQLitePersistenceBackend:
             )
         finally:
             self._clear_state()
-        logger.info(PERSISTENCE_BACKEND_DISCONNECTED, path=self._config.path)
 
     async def health_check(self) -> bool:
         """Check database connectivity."""

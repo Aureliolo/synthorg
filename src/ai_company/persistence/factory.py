@@ -6,19 +6,15 @@ company, selectable via the ``PersistenceConfig`` embedded in each
 company's ``RootConfig``.
 """
 
-from typing import TYPE_CHECKING
-
 from ai_company.observability import get_logger
 from ai_company.observability.events.persistence import (
     PERSISTENCE_BACKEND_CREATED,
     PERSISTENCE_BACKEND_UNKNOWN,
 )
+from ai_company.persistence.config import PersistenceConfig  # noqa: TC001
 from ai_company.persistence.errors import PersistenceConnectionError
+from ai_company.persistence.protocol import PersistenceBackend  # noqa: TC001
 from ai_company.persistence.sqlite.backend import SQLitePersistenceBackend
-
-if TYPE_CHECKING:
-    from ai_company.persistence.config import PersistenceConfig
-    from ai_company.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
 

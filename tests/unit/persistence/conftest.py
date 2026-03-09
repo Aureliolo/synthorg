@@ -12,6 +12,16 @@ if TYPE_CHECKING:
     from uuid import UUID
 
 
+_REQUIRES_ASSIGNEE = frozenset(
+    {
+        TaskStatus.ASSIGNED,
+        TaskStatus.IN_PROGRESS,
+        TaskStatus.IN_REVIEW,
+        TaskStatus.COMPLETED,
+    }
+)
+
+
 def make_task(  # noqa: PLR0913
     *,
     task_id: str = "task-001",
@@ -24,7 +34,14 @@ def make_task(  # noqa: PLR0913
     assigned_to: str | None = None,
     status: TaskStatus = TaskStatus.CREATED,
 ) -> Task:
-    """Build a Task with sensible defaults for persistence tests."""
+    """Build a Task with sensible defaults for persistence tests.
+
+    Automatically fills ``assigned_to`` with ``"alice"`` when the
+    status requires an assignee and none was provided.
+    """
+    effective_assigned_to = assigned_to
+    if effective_assigned_to is None and status in _REQUIRES_ASSIGNEE:
+        effective_assigned_to = "alice"
     return Task(
         id=task_id,
         title=title,
@@ -33,7 +50,7 @@ def make_task(  # noqa: PLR0913
         priority=priority,
         project=project,
         created_by=created_by,
-        assigned_to=assigned_to,
+        assigned_to=effective_assigned_to,
         status=status,
     )
 

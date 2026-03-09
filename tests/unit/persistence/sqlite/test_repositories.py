@@ -438,3 +438,94 @@ class TestSQLiteMessageRepository:
 
         history = await repo.get_history("general")
         assert history[0].id == original_id
+
+    async def test_get_history_invalid_limit(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """Negative or zero limit raises QueryError."""
+        from ai_company.persistence.errors import QueryError
+
+        repo = SQLiteMessageRepository(migrated_db)
+        with pytest.raises(QueryError, match="positive integer"):
+            await repo.get_history("general", limit=0)
+        with pytest.raises(QueryError, match="positive integer"):
+            await repo.get_history("general", limit=-1)
+
+
+@pytest.mark.unit
+class TestSQLiteRepoProtocolCompliance:
+    """Verify SQLite repositories satisfy their protocol interfaces."""
+
+    async def test_task_repo_implements_protocol(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        from ai_company.persistence.repositories import TaskRepository
+
+        repo = SQLiteTaskRepository(migrated_db)
+        assert isinstance(repo, TaskRepository)
+
+    async def test_cost_record_repo_implements_protocol(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        from ai_company.persistence.repositories import CostRecordRepository
+
+        repo = SQLiteCostRecordRepository(migrated_db)
+        assert isinstance(repo, CostRecordRepository)
+
+    async def test_message_repo_implements_protocol(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        from ai_company.persistence.repositories import MessageRepository
+
+        repo = SQLiteMessageRepository(migrated_db)
+        assert isinstance(repo, MessageRepository)
+
+
+@pytest.mark.unit
+class TestDeserializationFailures:
+    """Test deserialization error paths with corrupt data."""
+
+    async def test_row_to_task_corrupt_json(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """Corrupt JSON in a tuple field raises QueryError."""
+        from ai_company.persistence.errors import QueryError
+
+        await migrated_db.execute(
+            """\
+INSERT INTO tasks (
+    id, title, description, type, priority, project,
+    created_by, status, reviewers
+) VALUES (
+    'corrupt-1', 'Test', 'Test', 'development', 'medium',
+    'proj', 'alice', 'created', '{BAD JSON}'
+)"""
+        )
+        await migrated_db.commit()
+
+        repo = SQLiteTaskRepository(migrated_db)
+        with pytest.raises(QueryError, match="deserialize task"):
+            await repo.get("corrupt-1")
+
+    async def test_row_to_message_corrupt_json(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """Corrupt JSON in attachments raises QueryError."""
+        from ai_company.persistence.errors import QueryError
+
+        await migrated_db.execute(
+            """\
+INSERT INTO messages (
+    id, timestamp, sender, "to", type, priority,
+    channel, content, attachments, metadata
+) VALUES (
+    'corrupt-msg', '2026-01-01T00:00:00+00:00', 'alice',
+    'bob', 'task_update', 'normal', 'general',
+    'hello', '{BAD}', '{}'
+)"""
+        )
+        await migrated_db.commit()
+
+        repo = SQLiteMessageRepository(migrated_db)
+        with pytest.raises(QueryError, match="deserialize message"):
+            await repo.get_history("general")
