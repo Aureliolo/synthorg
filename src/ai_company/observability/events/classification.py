@@ -1,0 +1,9 @@
+"""Classification pipeline event constants."""
+
+from typing import Final
+
+CLASSIFICATION_START: Final[str] = "classification.start"
+CLASSIFICATION_COMPLETE: Final[str] = "classification.complete"
+CLASSIFICATION_FINDING: Final[str] = "classification.finding"
+CLASSIFICATION_ERROR: Final[str] = "classification.error"
+CLASSIFICATION_SKIPPED: Final[str] = "classification.skipped"

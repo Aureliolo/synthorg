@@ -28,6 +28,12 @@ from ai_company.engine.assignment import (
     TaskAssignmentStrategy,
     build_strategy_map,
 )
+from ai_company.engine.classification import (
+    ClassificationResult,
+    ErrorFinding,
+    ErrorSeverity,
+    classify_execution_errors,
+)
 from ai_company.engine.context import (
     DEFAULT_MAX_TURNS,
     AgentContext,
@@ -164,6 +170,7 @@ __all__ = [
     "AutoTopologyConfig",
     "BudgetChecker",
     "BudgetExhaustedError",
+    "ClassificationResult",
     "CleanupCallback",
     "CooperativeTimeoutStrategy",
     "CostOptimizedAssignmentStrategy",
@@ -178,6 +185,8 @@ __all__ = [
     "DefaultTokenEstimator",
     "DependencyGraph",
     "EngineError",
+    "ErrorFinding",
+    "ErrorSeverity",
     "ExecutionLoop",
     "ExecutionPlan",
     "ExecutionResult",
@@ -253,4 +262,5 @@ __all__ = [
     "add_token_usage",
     "build_strategy_map",
     "build_system_prompt",
+    "classify_execution_errors",
 ]

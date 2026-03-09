@@ -10,6 +10,7 @@ import time
 from typing import TYPE_CHECKING
 
 from ai_company.core.enums import AgentStatus, TaskStatus
+from ai_company.engine.classification.pipeline import classify_execution_errors
 from ai_company.engine.context import DEFAULT_MAX_TURNS, AgentContext
 from ai_company.engine.cost_recording import record_execution_costs
 from ai_company.engine.errors import ExecutionStateError
@@ -29,6 +30,9 @@ from ai_company.engine.react_loop import ReactLoop
 from ai_company.engine.recovery import FailAndReassignStrategy, RecoveryStrategy
 from ai_company.engine.run_result import AgentRunResult
 from ai_company.observability import get_logger
+from ai_company.observability.events.classification import (
+    CLASSIFICATION_ERROR as _CLASSIFICATION_ERROR,
+)
 from ai_company.observability.events.execution import (
     EXECUTION_ENGINE_COMPLETE,
     EXECUTION_ENGINE_CREATED,
@@ -47,6 +51,7 @@ from ai_company.tools.invoker import ToolInvoker
 from ai_company.tools.permissions import ToolPermissionChecker
 
 if TYPE_CHECKING:
+    from ai_company.budget.coordination_config import ErrorTaxonomyConfig
     from ai_company.budget.tracker import CostTracker
     from ai_company.core.agent import AgentIdentity
     from ai_company.core.task import Task
@@ -103,6 +108,7 @@ class AgentEngine:
         cost_tracker: CostTracker | None = None,
         recovery_strategy: RecoveryStrategy | None = _DEFAULT_RECOVERY_STRATEGY,
         shutdown_checker: ShutdownChecker | None = None,
+        error_taxonomy_config: ErrorTaxonomyConfig | None = None,
     ) -> None:
         self._provider = provider
         self._loop: ExecutionLoop = execution_loop or ReactLoop()
@@ -110,6 +116,7 @@ class AgentEngine:
         self._cost_tracker = cost_tracker
         self._recovery_strategy = recovery_strategy
         self._shutdown_checker = shutdown_checker
+        self._error_taxonomy_config = error_taxonomy_config
         logger.debug(
             EXECUTION_ENGINE_CREATED,
             loop_type=self._loop.get_loop_type(),
@@ -259,7 +266,7 @@ class AgentEngine:
         agent_id: str,
         task_id: str,
     ) -> ExecutionResult:
-        """Record costs, apply transitions, and run recovery if needed."""
+        """Record costs, apply transitions, run recovery and classify."""
         await record_execution_costs(
             execution_result,
             identity,
@@ -278,7 +285,44 @@ class AgentEngine:
                 agent_id,
                 task_id,
             )
+        await self._classify_errors(execution_result, agent_id, task_id)
         return execution_result
+
+    async def _classify_errors(
+        self,
+        execution_result: ExecutionResult,
+        agent_id: str,
+        task_id: str,
+    ) -> None:
+        """Run error taxonomy classification if configured.
+
+        Never raises — all exceptions are caught and logged.
+        """
+        if self._error_taxonomy_config is None:
+            return
+        try:
+            await classify_execution_errors(
+                execution_result,
+                agent_id,
+                task_id,
+                config=self._error_taxonomy_config,
+            )
+        except MemoryError, RecursionError:
+            logger.error(
+                _CLASSIFICATION_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error="non-recoverable error in error classification",
+                exc_info=True,
+            )
+            raise
+        except Exception as exc:
+            logger.exception(
+                _CLASSIFICATION_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
     def _build_and_log_result(
         self,
