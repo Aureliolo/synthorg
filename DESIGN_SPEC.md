@@ -81,7 +81,7 @@ The MVP validates the core hypothesis: **a single agent can complete a real task
 
 > **Implementation snapshot (2026-03-09):**
 > - **Done:** M0–M4 (tooling, config/core, providers, single-agent engine, multi-agent orchestration). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed.
-> - **In progress:** M5 — memory interface protocol complete (MemoryBackend, MemoryCapabilities, SharedKnowledgeStore protocols, models, config, factory), budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking), Mem0 adapter (#41) pending.
+> - **In progress:** M5 — memory interface protocol complete (MemoryBackend, MemoryCapabilities, SharedKnowledgeStore protocols, models, config, factory), budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking). Memory retrieval pipeline (#41: ranking, token-budget formatting, context injection) in progress. Mem0 adapter backend pending.
 > - **Not started (mostly placeholders):** M6 API/CLI surface, M7 security + approval system.
 
 ### 1.5 Configuration Philosophy
@@ -1590,7 +1590,7 @@ receives memories.
 
 Pipeline: `MemoryBackend.retrieve()` -> rank by relevance+recency ->
 filter by min_relevance -> greedy token-budget packing -> format as
-SYSTEM message with delimiters.
+ChatMessage (configured role: SYSTEM or USER) with delimiters.
 
 Ranking algorithm:
 1. `relevance = entry.relevance_score ?? config.default_relevance`

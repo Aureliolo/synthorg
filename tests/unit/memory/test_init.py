@@ -13,5 +13,33 @@ class TestMemoryExports:
         for name in memory_module.__all__:
             assert hasattr(memory_module, name), f"{name} in __all__ but not importable"
 
-    def test_all_has_expected_count(self) -> None:
-        assert len(memory_module.__all__) == 26
+    def test_all_has_expected_names(self) -> None:
+        expected = {
+            "CompanyMemoryConfig",
+            "ContextInjectionStrategy",
+            "DefaultTokenEstimator",
+            "InjectionPoint",
+            "InjectionStrategy",
+            "MemoryBackend",
+            "MemoryCapabilities",
+            "MemoryCapabilityError",
+            "MemoryConfigError",
+            "MemoryConnectionError",
+            "MemoryEntry",
+            "MemoryError",
+            "MemoryInjectionStrategy",
+            "MemoryMetadata",
+            "MemoryNotFoundError",
+            "MemoryOptionsConfig",
+            "MemoryQuery",
+            "MemoryRetrievalConfig",
+            "MemoryRetrievalError",
+            "MemoryStorageConfig",
+            "MemoryStoreError",
+            "MemoryStoreRequest",
+            "ScoredMemory",
+            "SharedKnowledgeStore",
+            "TokenEstimator",
+            "create_memory_backend",
+        }
+        assert set(memory_module.__all__) == expected

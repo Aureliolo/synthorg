@@ -27,7 +27,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 
 ### Not implemented yet (planned milestones)
 
-- **Memory Backends (M5)** - Mem0 adapter backend ([ADR-001](docs/decisions/ADR-001-memory-layer.md)) pending; shared knowledge store backends planned
+- **Memory Backends (M5)** - Initial adapter backend ([ADR-001](docs/decisions/ADR-001-memory-layer.md)) pending; shared knowledge store backends planned
 - **API Layer (M6)** - `api/` package and route modules are placeholders
 - **CLI Surface (M6)** - `cli/` package is placeholder-only
 - **Security/Approval System (M7)** - `security/` package is placeholder-only

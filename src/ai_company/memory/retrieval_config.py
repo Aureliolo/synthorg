@@ -107,3 +107,20 @@ class MemoryRetrievalConfig(BaseModel):
             )
             raise ValueError(msg)
         return self
+
+    @model_validator(mode="after")
+    def _validate_supported_strategy(self) -> Self:
+        """Reject strategies that are not yet implemented."""
+        if self.strategy != InjectionStrategy.CONTEXT:
+            msg = (
+                f"Strategy {self.strategy.value!r} is not yet implemented; "
+                f"only {InjectionStrategy.CONTEXT.value!r} is supported"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="strategy",
+                value=self.strategy.value,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        return self

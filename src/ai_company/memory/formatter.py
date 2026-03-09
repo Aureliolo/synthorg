@@ -1,7 +1,8 @@
 """Memory context formatter — converts ranked memories to ChatMessages.
 
-Handles token budget enforcement via greedy packing: iterate by rank,
-include memories until the budget is exhausted.
+Handles token budget enforcement via greedy packing: iterates by rank,
+skips entries that exceed the remaining budget, and continues with
+smaller entries to maximise context within the token limit.
 """
 
 from ai_company.memory.injection import (
@@ -12,6 +13,7 @@ from ai_company.memory.ranking import ScoredMemory  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.memory import (
     MEMORY_FORMAT_COMPLETE,
+    MEMORY_FORMAT_INVALID_INJECTION_POINT,
     MEMORY_TOKEN_BUDGET_EXCEEDED,
 )
 from ai_company.providers.enums import MessageRole
@@ -46,7 +48,9 @@ def _format_line(memory: ScoredMemory) -> str:
     shared_prefix = "[shared] " if memory.is_shared else ""
     category = memory.entry.category.value
     score = memory.combined_score
-    content = memory.entry.content
+    # Sanitise content to prevent delimiter injection — replace end
+    # delimiter inside memory content so it cannot break the block.
+    content = memory.entry.content.replace(MEMORY_BLOCK_END, "[DELIMITER_REDACTED]")
     return f"{shared_prefix}[{category} | score: {score:.2f}] {content}"
 
 
@@ -75,7 +79,9 @@ def format_memory_context(
     if not memories or token_budget <= 0:
         return ()
 
-    delimiter_text = f"{MEMORY_BLOCK_START}\n{MEMORY_BLOCK_END}"
+    # Account for both newlines in the final block format:
+    # "{START}\n{body}\n{END}"
+    delimiter_text = f"{MEMORY_BLOCK_START}\n\n{MEMORY_BLOCK_END}"
     delimiter_tokens = estimator.estimate_tokens(delimiter_text)
 
     remaining = token_budget - delimiter_tokens
@@ -96,9 +102,11 @@ def format_memory_context(
     for memory in memories:
         line = _format_line(memory)
         line_tokens = estimator.estimate_tokens(line)
-        if line_tokens <= remaining:
+        # Account for the newline separator added by "\n".join()
+        separator_cost = estimator.estimate_tokens("\n") if included_lines else 0
+        if line_tokens + separator_cost <= remaining:
             included_lines.append(line)
-            remaining -= line_tokens
+            remaining -= line_tokens + separator_cost
         else:
             logger.debug(
                 MEMORY_TOKEN_BUDGET_EXCEEDED,
@@ -124,6 +132,11 @@ def format_memory_context(
         role = _INJECTION_POINT_TO_ROLE[injection_point]
     except KeyError:
         msg = f"Unsupported injection point: {injection_point!r}"
+        logger.warning(
+            MEMORY_FORMAT_INVALID_INJECTION_POINT,
+            injection_point=injection_point,
+            reason=msg,
+        )
         raise ValueError(msg) from None
     message = ChatMessage(role=role, content=block)
 

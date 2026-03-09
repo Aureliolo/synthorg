@@ -4,7 +4,8 @@ Defines the pluggable ``MemoryInjectionStrategy`` protocol that
 controls *how* memories reach agents during execution.  Three
 strategies are planned (context injection, tool-based, self-editing);
 this module provides the protocol and enums for all, while only
-``ContextInjectionStrategy`` is implemented in this release.
+``ContextInjectionStrategy`` (in ``ai_company.memory.retriever``)
+is implemented in this release.
 
 ``TokenEstimator`` is a local structural protocol that avoids a
 ``memory → engine`` import cycle (``PromptTokenEstimator`` lives in

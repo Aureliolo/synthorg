@@ -59,4 +59,7 @@ MEMORY_RETRIEVAL_DEGRADED: Final[str] = "memory.retrieval.degraded"
 MEMORY_RETRIEVAL_SKIPPED: Final[str] = "memory.retrieval.skipped"
 MEMORY_RANKING_COMPLETE: Final[str] = "memory.ranking.complete"
 MEMORY_FORMAT_COMPLETE: Final[str] = "memory.format.complete"
+MEMORY_FORMAT_INVALID_INJECTION_POINT: Final[str] = (
+    "memory.format.invalid_injection_point"
+)
 MEMORY_TOKEN_BUDGET_EXCEEDED: Final[str] = "memory.token_budget.exceeded"  # noqa: S105

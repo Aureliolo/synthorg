@@ -28,7 +28,9 @@ class ScoredMemory(BaseModel):
 
     Attributes:
         entry: The original memory entry.
-        relevance_score: Relevance after personal boost (personal) or raw (shared).
+        relevance_score: Relevance score — defaults to ``config.default_relevance``
+            when the backend omits it, then boosted for personal entries
+            (clamped to 1.0).  Shared entries use the unboosted value.
         recency_score: Exponential decay based on age.
         combined_score: Weighted combination of relevance and recency.
         is_shared: Whether this came from SharedKnowledgeStore.
@@ -99,9 +101,12 @@ def compute_combined_score(
         recency_weight: Weight for recency.
 
     Returns:
-        Combined score.
+        Combined score clamped to [0.0, 1.0].  When
+        ``relevance_weight + recency_weight == 1.0`` and inputs are
+        in [0.0, 1.0], the result is naturally bounded; the clamp
+        guards against floating-point tolerance in the weight sum.
     """
-    return relevance_weight * relevance + recency_weight * recency
+    return min(1.0, relevance_weight * relevance + recency_weight * recency)
 
 
 def _score_entry(
@@ -200,8 +205,10 @@ def rank_memories(
     logger.debug(
         MEMORY_RANKING_COMPLETE,
         total_candidates=len(scored),
-        after_filter=len(result),
+        after_filter=len(filtered),
+        after_truncation=len(result),
         min_relevance=config.min_relevance,
+        max_memories=config.max_memories,
     )
 
     return result

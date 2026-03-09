@@ -386,6 +386,21 @@ class TestRankMemories:
         )
         assert len(result) == 3
 
+    def test_min_relevance_exact_boundary_included(self) -> None:
+        """Entry whose combined_score equals min_relevance is included."""
+        now = datetime.now(UTC)
+        entry = _make_entry(relevance_score=0.5, created_at=now)
+        config = MemoryRetrievalConfig(
+            personal_boost=0.0,
+            min_relevance=0.5,
+            recency_decay_rate=0.0,  # recency = 1.0
+            relevance_weight=1.0,
+            recency_weight=0.0,
+        )
+        result = rank_memories((entry,), config=config, now=now)
+        assert len(result) == 1
+        assert result[0].combined_score == pytest.approx(0.5)
+
     def test_both_empty_returns_empty(self) -> None:
         config = MemoryRetrievalConfig()
         result = rank_memories(

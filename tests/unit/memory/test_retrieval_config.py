@@ -117,10 +117,15 @@ class TestMemoryRetrievalConfigValidation:
 
 @pytest.mark.unit
 class TestMemoryRetrievalConfigStrategy:
-    def test_all_strategies(self) -> None:
-        for strategy in InjectionStrategy:
-            c = MemoryRetrievalConfig(strategy=strategy)
-            assert c.strategy is strategy
+    def test_context_strategy_accepted(self) -> None:
+        c = MemoryRetrievalConfig(strategy=InjectionStrategy.CONTEXT)
+        assert c.strategy is InjectionStrategy.CONTEXT
+
+    def test_unsupported_strategy_rejected(self) -> None:
+        with pytest.raises(ValueError, match="not yet implemented"):
+            MemoryRetrievalConfig(strategy=InjectionStrategy.TOOL_BASED)
+        with pytest.raises(ValueError, match="not yet implemented"):
+            MemoryRetrievalConfig(strategy=InjectionStrategy.SELF_EDITING)
 
     def test_injection_point_user(self) -> None:
         c = MemoryRetrievalConfig(injection_point=InjectionPoint.USER)

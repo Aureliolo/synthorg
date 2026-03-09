@@ -235,3 +235,14 @@ class TestFormatMemoryContext:
         assert content is not None
         assert content.startswith(MEMORY_BLOCK_START)
         assert content.endswith(MEMORY_BLOCK_END)
+
+    def test_unsupported_injection_point_raises_value_error(self) -> None:
+        """Unsupported InjectionPoint raises ValueError."""
+        memories = (_make_scored(content="test"),)
+        with pytest.raises(ValueError, match="Unsupported injection point"):
+            format_memory_context(
+                memories,
+                estimator=DefaultTokenEstimator(),
+                token_budget=1000,
+                injection_point="bogus",  # type: ignore[arg-type]
+            )

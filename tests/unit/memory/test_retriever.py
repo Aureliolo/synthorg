@@ -366,6 +366,28 @@ class TestGracefulDegradation:
         assert content is not None
         assert "personal survives generic" in content
 
+    async def test_both_backends_failing_returns_empty(self) -> None:
+        """When both personal and shared backends fail, returns empty."""
+        backend = _make_backend()
+        backend.retrieve = AsyncMock(
+            side_effect=MemoryRetrievalError("personal db down"),
+        )
+        shared_store = _make_shared_store()
+        shared_store.search_shared = AsyncMock(
+            side_effect=MemoryRetrievalError("shared db down"),
+        )
+        strategy = ContextInjectionStrategy(
+            backend=backend,
+            config=MemoryRetrievalConfig(include_shared=True),
+            shared_store=shared_store,
+        )
+        result = await strategy.prepare_messages(
+            agent_id="agent-1",
+            query_text="query",
+            token_budget=1000,
+        )
+        assert result == ()
+
 
 # ── Token budget ─────────────────────────────────────────────────
 

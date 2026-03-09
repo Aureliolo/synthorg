@@ -71,11 +71,12 @@ async def _safe_call(
         raise
     except RecursionError:
         raise
-    except memory_errors.MemoryError:
+    except memory_errors.MemoryError as exc:
         logger.warning(
             MEMORY_RETRIEVAL_DEGRADED,
             source=source,
             agent_id=agent_id,
+            error_type=type(exc).__qualname__,
             exc_info=True,
         )
         return ()
@@ -95,12 +96,6 @@ class ContextInjectionStrategy:
 
     Implements ``MemoryInjectionStrategy`` protocol.  Orchestrates
     the full pipeline: retrieve → rank → budget-fit → format.
-
-    Args:
-        backend: Memory backend for personal memories.
-        config: Retrieval pipeline configuration.
-        shared_store: Optional shared knowledge store.
-        token_estimator: Optional custom token estimator.
     """
 
     def __init__(
@@ -111,10 +106,28 @@ class ContextInjectionStrategy:
         shared_store: SharedKnowledgeStore | None = None,
         token_estimator: TokenEstimator | None = None,
     ) -> None:
+        """Initialise the context injection strategy.
+
+        Args:
+            backend: Memory backend for personal memories.
+            config: Retrieval pipeline configuration.
+            shared_store: Optional shared knowledge store.
+            token_estimator: Optional custom token estimator.
+        """
         self._backend = backend
         self._config = config
         self._shared_store = shared_store
-        self._estimator = token_estimator or DefaultTokenEstimator()
+        self._estimator = (
+            token_estimator if token_estimator is not None else DefaultTokenEstimator()
+        )
+        logger.debug(
+            MEMORY_RETRIEVAL_START,
+            strategy="context_injection",
+            backend=backend.backend_name
+            if hasattr(backend, "backend_name")
+            else type(backend).__qualname__,
+            has_shared_store=shared_store is not None,
+        )
 
     async def prepare_messages(
         self,
@@ -145,6 +158,15 @@ class ContextInjectionStrategy:
             token_budget=token_budget,
         )
 
+        if token_budget <= 0:
+            logger.info(
+                MEMORY_RETRIEVAL_SKIPPED,
+                agent_id=agent_id,
+                reason="non-positive token budget",
+                token_budget=token_budget,
+            )
+            return ()
+
         try:
             return await self._execute_pipeline(
                 agent_id=agent_id,
@@ -165,6 +187,17 @@ class ContextInjectionStrategy:
             )
             return ()
         except Exception as exc:
+            # ExceptionGroup may wrap system-level errors that must
+            # propagate — inspect and re-raise them.
+            if isinstance(exc, ExceptionGroup):
+                system_errors = exc.subgroup(
+                    lambda e: isinstance(
+                        e,
+                        builtins_MemoryError | RecursionError,
+                    ),
+                )
+                if system_errors is not None:
+                    raise system_errors from exc
             logger.error(
                 MEMORY_RETRIEVAL_DEGRADED,
                 source="pipeline",
@@ -205,7 +238,7 @@ class ContextInjectionStrategy:
         )
 
         if not personal_entries and not shared_entries:
-            logger.debug(
+            logger.info(
                 MEMORY_RETRIEVAL_SKIPPED,
                 agent_id=agent_id,
                 reason="no memories found",
@@ -221,7 +254,7 @@ class ContextInjectionStrategy:
         )
 
         if not ranked:
-            logger.debug(
+            logger.info(
                 MEMORY_RETRIEVAL_SKIPPED,
                 agent_id=agent_id,
                 reason="all below min_relevance",
@@ -270,19 +303,16 @@ class ContextInjectionStrategy:
             builtins.MemoryError: Unwrapped from TaskGroup.
             RecursionError: Unwrapped from TaskGroup.
         """
-        should_fetch_shared = (
-            self._config.include_shared and self._shared_store is not None
-        )
-
         personal_coro = _safe_call(
             self._backend.retrieve(agent_id, query),
             source="personal",
             agent_id=agent_id,
         )
 
-        if should_fetch_shared:
+        shared_store = self._shared_store
+        if self._config.include_shared and shared_store is not None:
             shared_coro = _safe_call(
-                self._shared_store.search_shared(  # type: ignore[union-attr]
+                shared_store.search_shared(
                     query,
                     exclude_agent=agent_id,
                 ),
@@ -297,6 +327,8 @@ class ContextInjectionStrategy:
                     shared_task = tg.create_task(
                         shared_coro,
                     )
+            # TaskGroup wraps task exceptions in ExceptionGroup;
+            # unwrap system-level errors so callers see bare exceptions.
             except* builtins_MemoryError as eg:
                 raise eg.exceptions[0] from eg
             except* RecursionError as eg:

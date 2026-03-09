@@ -32,8 +32,8 @@ class TestInjectionStrategy:
         assert InjectionStrategy("self_editing") is InjectionStrategy.SELF_EDITING
 
     def test_invalid_string_raises(self) -> None:
-        with pytest.raises(ValueError, match="invalid"):
-            InjectionStrategy("invalid")
+        with pytest.raises(ValueError, match="not_a_strategy"):
+            InjectionStrategy("not_a_strategy")
 
 
 # ── InjectionPoint enum ─────────────────────────────────────────
