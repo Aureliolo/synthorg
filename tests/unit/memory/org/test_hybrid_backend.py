@@ -72,6 +72,20 @@ class TestHybridBackendLifecycle:
         assert backend.backend_name == "hybrid_prompt_retrieval"
         await backend.disconnect()
 
+    async def test_connect_failure_propagates(self) -> None:
+        mock_store = AsyncMock()
+        mock_store.connect = AsyncMock(
+            side_effect=OrgMemoryConnectionError("store down"),
+        )
+        backend = HybridPromptRetrievalBackend(
+            core_policies=(),
+            store=mock_store,
+            access_config=WriteAccessConfig(),
+        )
+        with pytest.raises(OrgMemoryConnectionError, match="store down"):
+            await backend.connect()
+        assert backend.is_connected is False
+
 
 @pytest.mark.unit
 class TestHybridBackendPolicies:

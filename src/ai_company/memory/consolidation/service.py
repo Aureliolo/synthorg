@@ -33,6 +33,8 @@ from ai_company.observability.events.consolidation import (
 
 logger = get_logger(__name__)
 
+_MAX_ENFORCE_BATCH = 1000
+
 
 class MemoryConsolidationService:
     """Orchestrates memory consolidation, retention, and archival.
@@ -69,17 +71,20 @@ class MemoryConsolidationService:
     ) -> ConsolidationResult:
         """Run memory consolidation for an agent.
 
-        Retrieves memories and applies the consolidation strategy.
+        Retrieves memories, applies the consolidation strategy, and
+        archives removed entries if archival is configured and enabled.
+        Per-entry archival failures are logged and skipped — they do
+        not abort the entire archival batch.
 
         Args:
             agent_id: Agent whose memories to consolidate.
 
         Returns:
-            Consolidation result.
+            Consolidation result (including archival count).
         """
         if self._strategy is None:
             logger.info(CONSOLIDATION_SKIPPED, agent_id=agent_id)
-            return ConsolidationResult(consolidated_count=0)
+            return ConsolidationResult()
 
         logger.info(CONSOLIDATION_START, agent_id=agent_id)
 
@@ -99,7 +104,6 @@ class MemoryConsolidationService:
                     result.removed_ids,
                 )
                 result = ConsolidationResult(
-                    consolidated_count=result.consolidated_count,
                     removed_ids=result.removed_ids,
                     summary_id=result.summary_id,
                     archived_count=archived,
@@ -127,8 +131,11 @@ class MemoryConsolidationService:
     ) -> int:
         """Enforce the maximum memories limit for an agent.
 
-        Deletes excess entries (as returned by the backend's default
-        ordering) if the agent has exceeded ``max_memories_per_agent``.
+        Retrieves excess entries in batches (up to 1000 per query,
+        the ``MemoryQuery.limit`` cap) and deletes them.  The entries
+        selected for deletion depend on the backend's default query
+        ordering — typically oldest-first, but consult the concrete
+        backend for specifics.
 
         Args:
             agent_id: Agent to check.
@@ -143,13 +150,18 @@ class MemoryConsolidationService:
             if excess <= 0:
                 return 0
 
-            query = MemoryQuery(limit=excess)
-            entries = await self._backend.retrieve(agent_id, query)
-
             deleted = 0
-            for entry in entries:
-                if await self._backend.delete(agent_id, entry.id):
-                    deleted += 1
+            remaining = excess
+            while remaining > 0:
+                batch_size = min(remaining, _MAX_ENFORCE_BATCH)
+                query = MemoryQuery(limit=batch_size)
+                entries = await self._backend.retrieve(agent_id, query)
+                if not entries:
+                    break
+                for entry in entries:
+                    if await self._backend.delete(agent_id, entry.id):
+                        deleted += 1
+                remaining -= len(entries)
         except Exception as exc:
             logger.exception(
                 MAX_MEMORIES_ENFORCE_FAILED,
@@ -220,13 +232,17 @@ class MemoryConsolidationService:
     ) -> int:
         """Archive removed entries to cold storage.
 
+        Per-entry failures are logged at WARNING and skipped so that a
+        single archival error does not abort the entire batch.  This is
+        consistent with ``RetentionEnforcer``'s per-category isolation.
+
         Args:
             agent_id: Agent identifier.
             all_entries: All retrieved entries (to find removed ones).
             removed_ids: IDs of entries that were removed.
 
         Returns:
-            Number of entries archived.
+            Number of entries successfully archived.
         """
         if self._archival_store is None:
             return 0
@@ -257,7 +273,7 @@ class MemoryConsolidationService:
                     error=str(exc),
                     error_type=type(exc).__name__,
                 )
-                raise
+                continue
             archived += 1
             logger.debug(
                 ARCHIVAL_ENTRY_STORED,

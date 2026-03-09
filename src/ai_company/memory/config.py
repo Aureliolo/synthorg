@@ -31,7 +31,7 @@ class MemoryStorageConfig(BaseModel):
         history_store: History store backend name.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     _VALID_VECTOR_STORES: ClassVar[frozenset[str]] = frozenset(
         {"qdrant", "qdrant-external"},
@@ -140,7 +140,7 @@ class CompanyMemoryConfig(BaseModel):
     """Top-level company-wide memory configuration.
 
     Attributes:
-        backend: Memory backend name (currently only ``"mem0"``).
+        backend: Memory backend name (validated against ``_VALID_BACKENDS``).
         level: Default memory persistence level.
         storage: Storage-specific settings.
         options: Memory behaviour options.
@@ -148,7 +148,7 @@ class CompanyMemoryConfig(BaseModel):
         consolidation: Memory consolidation settings.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     _VALID_BACKENDS: ClassVar[frozenset[str]] = frozenset({"mem0"})
 

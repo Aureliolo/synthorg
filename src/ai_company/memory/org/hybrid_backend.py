@@ -10,7 +10,11 @@ from datetime import UTC, datetime
 from ai_company.core.enums import OrgFactCategory
 from ai_company.core.types import NotBlankStr
 from ai_company.memory.org.access_control import WriteAccessConfig, require_write_access
-from ai_company.memory.org.errors import OrgMemoryConnectionError, OrgMemoryWriteError
+from ai_company.memory.org.errors import (
+    OrgMemoryConnectionError,
+    OrgMemoryQueryError,
+    OrgMemoryWriteError,
+)
 from ai_company.memory.org.models import (
     OrgFact,
     OrgFactAuthor,
@@ -112,14 +116,18 @@ class HybridPromptRetrievalBackend:
             raise OrgMemoryConnectionError(msg)
 
     async def list_policies(self) -> tuple[OrgFact, ...]:
-        """Return core policies as ``OrgFact`` objects.
+        """Return all core policies — static config *and* dynamically written.
+
+        Static policies (from ``core_policies`` config) are returned
+        first as synthetic ``OrgFact`` objects.  Dynamically written
+        ``CORE_POLICY`` facts stored in the extended store follow.
 
         Returns:
             Core policy facts with category ``CORE_POLICY``.
         """
         self._require_connected()
         now = datetime.now(UTC)
-        facts = tuple(
+        static = tuple(
             OrgFact(
                 id=f"core-policy-{i}",
                 content=policy,
@@ -130,6 +138,8 @@ class HybridPromptRetrievalBackend:
             )
             for i, policy in enumerate(self._core_policies)
         )
+        dynamic = await self._store.list_by_category(OrgFactCategory.CORE_POLICY)
+        facts = static + dynamic
         logger.debug(ORG_MEMORY_POLICIES_LISTED, count=len(facts))
         return facts
 
@@ -161,9 +171,17 @@ class HybridPromptRetrievalBackend:
                 text=query.context,
                 limit=query.limit,
             )
-        except Exception:
+        except OrgMemoryQueryError:
             logger.exception(ORG_MEMORY_QUERY_FAILED)
             raise
+        except Exception as exc:
+            logger.exception(
+                ORG_MEMORY_QUERY_FAILED,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            msg = f"Failed to query org facts: {exc}"
+            raise OrgMemoryQueryError(msg) from exc
         else:
             logger.info(ORG_MEMORY_QUERY_COMPLETE, count=len(results))
             return results
@@ -245,18 +263,35 @@ class HybridPromptRetrievalBackend:
     ) -> int:
         """Compute the next version number for facts in this category.
 
-        Uses ``MAX(version)`` query via the store to determine the next
-        version.  Note: concurrent writers in the same category may
-        produce duplicate versions — callers requiring strict uniqueness
-        should wrap the version+save in a transaction.
+        Fetches all existing facts in the category and computes
+        ``max(version) + 1`` in Python.  Note: this loads all rows,
+        which may be inefficient for categories with many facts.
+
+        Concurrent writers in the same category may produce duplicate
+        versions because the read-then-write is not atomic.  The
+        ``OrgFactStore`` protocol does not expose transaction primitives,
+        so strict uniqueness cannot be guaranteed at this layer.
 
         Args:
             category: The fact category.
 
         Returns:
             Next version number (max existing + 1, or 1 if none).
+
+        Raises:
+            OrgMemoryQueryError: If the version lookup fails.
         """
-        existing = await self._store.list_by_category(category)
+        try:
+            existing = await self._store.list_by_category(category)
+        except Exception as exc:
+            logger.warning(
+                ORG_MEMORY_QUERY_FAILED,
+                operation="compute_next_version",
+                category=category.value,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            raise
         if not existing:
             return 1
         return max(f.version for f in existing) + 1

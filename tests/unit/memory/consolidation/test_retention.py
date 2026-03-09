@@ -9,7 +9,7 @@ from ai_company.core.enums import MemoryCategory
 from ai_company.memory.consolidation.config import RetentionConfig
 from ai_company.memory.consolidation.models import RetentionRule
 from ai_company.memory.consolidation.retention import RetentionEnforcer
-from ai_company.memory.models import MemoryEntry, MemoryMetadata
+from ai_company.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -86,7 +86,7 @@ class TestRetentionEnforcer:
 
     async def test_mixed_categories(self) -> None:
         working_entry = _make_entry("w1", MemoryCategory.WORKING)
-        _make_entry("e1", MemoryCategory.EPISODIC)  # created but not expired
+        # e1 is created but not expired — no assignment needed
 
         backend = AsyncMock()
         backend.retrieve = AsyncMock(
@@ -107,6 +107,49 @@ class TestRetentionEnforcer:
         enforcer = RetentionEnforcer(config=config, backend=backend)
         deleted = await enforcer.cleanup_expired(_AGENT_ID, now=_NOW)
         assert deleted == 1
+
+    async def test_continues_on_per_category_failure(self) -> None:
+        """Item 11: failure in one category does not block the rest."""
+        _make_entry("w1", MemoryCategory.WORKING)  # used indirectly in mock
+        episodic_entry = _make_entry("e1", MemoryCategory.EPISODIC)
+
+        call_count = 0
+
+        async def _mock_retrieve(
+            agent_id: str,
+            query: MemoryQuery,
+        ) -> tuple[MemoryEntry, ...]:
+            nonlocal call_count
+            call_count += 1
+            cats = query.categories or frozenset()
+            if MemoryCategory.WORKING in cats:
+                msg = "working store unavailable"
+                raise RuntimeError(msg)
+            if MemoryCategory.EPISODIC in cats:
+                return (episodic_entry,)
+            return ()
+
+        backend = AsyncMock()
+        backend.retrieve = AsyncMock(side_effect=_mock_retrieve)
+        backend.delete = AsyncMock(return_value=True)
+
+        config = RetentionConfig(
+            rules=(
+                RetentionRule(
+                    category=MemoryCategory.WORKING,
+                    retention_days=30,
+                ),
+                RetentionRule(
+                    category=MemoryCategory.EPISODIC,
+                    retention_days=30,
+                ),
+            ),
+        )
+        enforcer = RetentionEnforcer(config=config, backend=backend)
+        deleted = await enforcer.cleanup_expired(_AGENT_ID, now=_NOW)
+        # Working failed, but episodic should still succeed
+        assert deleted == 1
+        backend.delete.assert_called_once()
 
     async def test_delete_returns_false_not_counted(self) -> None:
         expired_entry = _make_entry("m1", MemoryCategory.WORKING)

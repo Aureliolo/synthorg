@@ -205,15 +205,18 @@ class TestSQLiteOrgFactStoreOperations:
         with pytest.raises(OrgMemoryConnectionError):
             await store.list_by_category(OrgFactCategory.ADR)
 
-    async def test_save_replaces_existing(self) -> None:
+    async def test_save_duplicate_id_raises(self) -> None:
+        """INSERT (not INSERT OR REPLACE) preserves audit trail."""
         store = SQLiteOrgFactStore(":memory:")
         await store.connect()
         try:
             await store.save(_make_fact("f1", "Original content"))
-            await store.save(_make_fact("f1", "Updated content"))
+            with pytest.raises(OrgMemoryWriteError):
+                await store.save(_make_fact("f1", "Updated content"))
+            # Original still intact
             retrieved = await store.get("f1")
             assert retrieved is not None
-            assert retrieved.content == "Updated content"
+            assert retrieved.content == "Original content"
         finally:
             await store.disconnect()
 
@@ -329,6 +332,23 @@ class TestSQLiteOrgFactStoreOperations:
             results_underscore = await store.query(text="_")
             assert len(results_underscore) == 1
             assert results_underscore[0].id == "f2"
+        finally:
+            await store.disconnect()
+
+    async def test_list_by_category_sqlite_error_wraps(self) -> None:
+        """Item 12: list_by_category wraps sqlite3.Error."""
+        store = SQLiteOrgFactStore(":memory:")
+        await store.connect()
+        try:
+            with (
+                patch.object(
+                    store._db,
+                    "execute",
+                    side_effect=sqlite3.Error("disk I/O error"),
+                ),
+                pytest.raises(OrgMemoryQueryError, match="disk I/O error"),
+            ):
+                await store.list_by_category(OrgFactCategory.ADR)
         finally:
             await store.disconnect()
 

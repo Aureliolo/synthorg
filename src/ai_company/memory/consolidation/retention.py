@@ -78,6 +78,10 @@ class RetentionEnforcer:
         Processes each category independently so that a failure in one
         category does not prevent cleanup of the remaining categories.
 
+        Processes up to 1000 expired entries per category per
+        invocation.  Multiple calls may be needed for categories
+        with a large backlog.
+
         Args:
             agent_id: Agent whose memories to clean up.
             now: Current time (defaults to UTC now).

@@ -76,9 +76,10 @@ class TestCheckWriteAccess:
         )
         assert check_write_access(config, OrgFactCategory.CONVENTION, _HUMAN) is False
 
-    def test_unknown_category_defaults_to_human_only(self) -> None:
+    def test_unknown_category_defaults_to_deny_all(self) -> None:
+        """Fail-closed: missing category rule denies everyone."""
         config = WriteAccessConfig(rules={})
-        assert check_write_access(config, OrgFactCategory.CORE_POLICY, _HUMAN) is True
+        assert check_write_access(config, OrgFactCategory.CORE_POLICY, _HUMAN) is False
         assert (
             check_write_access(config, OrgFactCategory.CORE_POLICY, _SENIOR_AGENT)
             is False

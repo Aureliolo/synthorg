@@ -1,7 +1,7 @@
 """Write access control for organizational memory.
 
-Pure-function access checks that enforce seniority-based and
-human-based write restrictions per fact category.
+Provides seniority-based and human-based write restriction
+models, configuration, and enforcement functions.
 """
 
 from types import MappingProxyType
@@ -92,9 +92,10 @@ def check_write_access(
     Returns:
         ``True`` if write is permitted, ``False`` otherwise.
     """
+    # Fail closed: if a category has no explicit rule, deny all writes.
     rule = config.rules.get(
         category,
-        CategoryWriteRule(allowed_seniority=None, human_allowed=True),
+        CategoryWriteRule(allowed_seniority=None, human_allowed=False),
     )
 
     if author.is_human:

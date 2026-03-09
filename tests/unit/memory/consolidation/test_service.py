@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
+import structlog.testing
 
 from ai_company.core.enums import MemoryCategory
 from ai_company.memory.consolidation.config import (
@@ -58,10 +59,7 @@ class TestRunConsolidation:
         result = await service.run_consolidation(_AGENT_ID)
         assert result.consolidated_count == 0
 
-    async def test_run_consolidation_skipped_when_no_strategy(
-        self,
-        capsys: pytest.CaptureFixture[str],
-    ) -> None:
+    async def test_run_consolidation_skipped_when_no_strategy(self) -> None:
         backend = _make_backend_mock()
         config = ConsolidationConfig()
         service = MemoryConsolidationService(
@@ -69,12 +67,12 @@ class TestRunConsolidation:
             config=config,
             strategy=None,
         )
-        result = await service.run_consolidation(_AGENT_ID)
+        with structlog.testing.capture_logs() as logs:
+            result = await service.run_consolidation(_AGENT_ID)
         assert result.consolidated_count == 0
         assert result.removed_ids == ()
         assert result.summary_id is None
-        captured = capsys.readouterr()
-        assert "consolidation.run.skipped" in captured.out
+        assert any(log.get("event") == "consolidation.run.skipped" for log in logs)
 
     async def test_with_strategy(self) -> None:
         entries = (_make_entry("m1"), _make_entry("m2"))
@@ -83,7 +81,6 @@ class TestRunConsolidation:
         strategy = AsyncMock()
         strategy.consolidate = AsyncMock(
             return_value=ConsolidationResult(
-                consolidated_count=1,
                 removed_ids=("m1",),
                 summary_id="summary-1",
             ),
@@ -124,7 +121,6 @@ class TestRunConsolidation:
         strategy = AsyncMock()
         strategy.consolidate = AsyncMock(
             return_value=ConsolidationResult(
-                consolidated_count=1,
                 removed_ids=("m1",),
             ),
         )
@@ -211,7 +207,7 @@ class TestRunMaintenance:
         backend = _make_backend_mock(count=5)
         strategy = AsyncMock()
         strategy.consolidate = AsyncMock(
-            return_value=ConsolidationResult(consolidated_count=0),
+            return_value=ConsolidationResult(),
         )
 
         config = ConsolidationConfig(max_memories_per_agent=100)
@@ -223,3 +219,75 @@ class TestRunMaintenance:
         result = await service.run_maintenance(_AGENT_ID)
         assert result.consolidated_count == 0
         strategy.consolidate.assert_called_once()
+
+    async def test_maintenance_propagates_enforce_error(self) -> None:
+        """Item 13: run_maintenance propagates sub-step errors."""
+        backend = AsyncMock()
+        backend.retrieve = AsyncMock(return_value=())
+        backend.count = AsyncMock(side_effect=RuntimeError("backend down"))
+        config = ConsolidationConfig(max_memories_per_agent=10)
+        service = MemoryConsolidationService(backend=backend, config=config)
+        with pytest.raises(RuntimeError, match="backend down"):
+            await service.run_maintenance(_AGENT_ID)
+
+
+@pytest.mark.unit
+class TestEnforceMaxMemoriesErrors:
+    """enforce_max_memories error propagation (Item 14)."""
+
+    async def test_count_error_propagates(self) -> None:
+        backend = AsyncMock()
+        backend.count = AsyncMock(side_effect=RuntimeError("count failed"))
+        config = ConsolidationConfig(max_memories_per_agent=10)
+        service = MemoryConsolidationService(backend=backend, config=config)
+        with pytest.raises(RuntimeError, match="count failed"):
+            await service.enforce_max_memories(_AGENT_ID)
+
+    async def test_retrieve_error_propagates(self) -> None:
+        backend = _make_backend_mock(count=15)
+        backend.retrieve = AsyncMock(
+            side_effect=RuntimeError("retrieve failed"),
+        )
+        config = ConsolidationConfig(max_memories_per_agent=10)
+        service = MemoryConsolidationService(backend=backend, config=config)
+        with pytest.raises(RuntimeError, match="retrieve failed"):
+            await service.enforce_max_memories(_AGENT_ID)
+
+
+@pytest.mark.unit
+class TestArchivalResilience:
+    """Archival per-entry error resilience (Item 1)."""
+
+    async def test_archival_continues_on_per_entry_failure(self) -> None:
+        """A single archival failure does not abort remaining entries."""
+        entries = (_make_entry("m1"), _make_entry("m2"), _make_entry("m3"))
+        backend = _make_backend_mock(entries=entries)
+
+        strategy = AsyncMock()
+        strategy.consolidate = AsyncMock(
+            return_value=ConsolidationResult(
+                removed_ids=("m1", "m2", "m3"),
+            ),
+        )
+
+        archival = AsyncMock()
+        archival.archive = AsyncMock(
+            side_effect=[
+                "arch-1",  # m1 succeeds
+                RuntimeError("disk full"),  # m2 fails
+                "arch-3",  # m3 succeeds
+            ],
+        )
+
+        config = ConsolidationConfig(
+            archival=ArchivalConfig(enabled=True),
+        )
+        service = MemoryConsolidationService(
+            backend=backend,
+            config=config,
+            strategy=strategy,
+            archival_store=archival,
+        )
+        result = await service.run_consolidation(_AGENT_ID)
+        assert result.archived_count == 2
+        assert archival.archive.call_count == 3

@@ -33,8 +33,8 @@ class SimpleConsolidationStrategy:
 
     Groups entries by category.  For each group exceeding a threshold,
     keeps the entry with the highest relevance score (with most recent
-    as tiebreaker), creates a summary entry from the rest, and marks
-    removed entries.
+    as tiebreaker), creates a summary entry from the rest, and deletes
+    consolidated entries from the backend.
 
     Args:
         backend: Memory backend for storing summaries.
@@ -68,6 +68,9 @@ class SimpleConsolidationStrategy:
     ) -> ConsolidationResult:
         """Consolidate entries by grouping and summarizing per category.
 
+        Groups with fewer than ``group_threshold`` entries are left
+        unchanged.
+
         Args:
             entries: Memory entries to consolidate.
             agent_id: Owning agent identifier.
@@ -76,7 +79,7 @@ class SimpleConsolidationStrategy:
             Result describing what was consolidated.
         """
         if not entries:
-            return ConsolidationResult(consolidated_count=0)
+            return ConsolidationResult()
 
         logger.info(
             STRATEGY_START,
@@ -115,7 +118,6 @@ class SimpleConsolidationStrategy:
                 removed_ids.append(entry.id)
 
         result = ConsolidationResult(
-            consolidated_count=len(removed_ids),
             removed_ids=tuple(removed_ids),
             summary_id=summary_id,
         )
@@ -134,6 +136,10 @@ class SimpleConsolidationStrategy:
         group: list[MemoryEntry],
     ) -> tuple[MemoryEntry, list[MemoryEntry]]:
         """Select the best entry to keep and the rest to remove.
+
+        Entries with ``None`` relevance scores are treated as ``0.0``
+        for comparison.  When scores are equal, the most recently
+        created entry wins.
 
         Args:
             group: Entries in the same category.

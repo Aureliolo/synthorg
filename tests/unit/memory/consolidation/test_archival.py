@@ -26,11 +26,22 @@ class _MockArchivalStore:
         self._entries[archive_id] = entry
         return archive_id
 
-    async def search(self, query: object) -> tuple[ArchivalEntry, ...]:
-        return tuple(self._entries.values())
+    async def search(
+        self,
+        agent_id: str,
+        query: object,
+    ) -> tuple[ArchivalEntry, ...]:
+        return tuple(e for e in self._entries.values() if e.agent_id == agent_id)
 
-    async def restore(self, entry_id: str) -> ArchivalEntry | None:
-        return self._entries.get(entry_id)
+    async def restore(
+        self,
+        agent_id: str,
+        entry_id: str,
+    ) -> ArchivalEntry | None:
+        entry = self._entries.get(entry_id)
+        if entry is not None and entry.agent_id == agent_id:
+            return entry
+        return None
 
     async def count(self, agent_id: str) -> int:
         return sum(1 for e in self._entries.values() if e.agent_id == agent_id)
@@ -62,7 +73,7 @@ class TestMockArchivalStoreRoundTrip:
         archive_id = await store.archive(entry)
         assert archive_id == "archive-1"
 
-        results = await store.search(None)
+        results = await store.search("agent-1", None)
         assert len(results) == 1
         assert results[0].original_id == "mem-1"
 
@@ -77,13 +88,13 @@ class TestMockArchivalStoreRoundTrip:
             archived_at=_NOW,
         )
         archive_id = await store.archive(entry)
-        restored = await store.restore(archive_id)
+        restored = await store.restore("agent-1", archive_id)
         assert restored is not None
         assert restored.original_id == "mem-1"
 
     async def test_restore_nonexistent(self) -> None:
         store = _MockArchivalStore()
-        assert await store.restore("nonexistent") is None
+        assert await store.restore("agent-1", "nonexistent") is None
 
     async def test_count(self) -> None:
         store = _MockArchivalStore()

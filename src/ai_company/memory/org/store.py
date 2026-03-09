@@ -260,11 +260,13 @@ class SQLiteOrgFactStore:
             if self._db is not None:
                 try:
                     await self._db.close()
-                except sqlite3.Error, OSError:
+                except (sqlite3.Error, OSError) as close_exc:
                     logger.warning(
                         ORG_MEMORY_DISCONNECT_FAILED,
                         db_path=self._db_path,
                         reason="cleanup close during failed connect",
+                        error=str(close_exc),
+                        error_type=type(close_exc).__name__,
                     )
             self._db = None
             msg = f"Failed to connect to org fact store: {exc}"
@@ -289,10 +291,12 @@ class SQLiteOrgFactStore:
             return
         try:
             await self._db.close()
-        except sqlite3.Error, OSError:
+        except (sqlite3.Error, OSError) as exc:
             logger.warning(
                 ORG_MEMORY_DISCONNECT_FAILED,
                 db_path=self._db_path,
+                error=str(exc),
+                error_type=type(exc).__name__,
             )
         finally:
             self._db = None
@@ -312,17 +316,21 @@ class SQLiteOrgFactStore:
     async def save(self, fact: OrgFact) -> None:
         """Persist a fact to the database.
 
+        Uses ``INSERT`` (not ``INSERT OR REPLACE``) to preserve the
+        append-only, versioned audit trail.  Duplicate IDs raise
+        ``OrgMemoryWriteError``.
+
         Args:
             fact: The fact to save.
 
         Raises:
             OrgMemoryConnectionError: If not connected.
-            OrgMemoryWriteError: If the save fails.
+            OrgMemoryWriteError: If the save fails or the ID exists.
         """
         db = self._require_connected()
         try:
             await db.execute(
-                "INSERT OR REPLACE INTO org_facts "
+                "INSERT INTO org_facts "
                 "(id, content, category, author_agent_id, "
                 "author_seniority, author_is_human, created_at, version) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -419,7 +427,18 @@ class SQLiteOrgFactStore:
             params.append(f"%{escaped}%")
 
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
-        sql = f"SELECT * FROM org_facts{where} ORDER BY created_at DESC LIMIT ?"  # noqa: S608
+        # When a text filter is active, rank by match position (earlier
+        # = more relevant), then content length (shorter = more focused),
+        # then recency.  Without text, fall back to pure recency.
+        if text is not None:
+            order = (
+                "ORDER BY INSTR(LOWER(content), LOWER(?)) ASC, "
+                "LENGTH(content) ASC, created_at DESC"
+            )
+            params.append(escaped)
+        else:
+            order = "ORDER BY created_at DESC"
+        sql = f"SELECT * FROM org_facts{where} {order} LIMIT ?"  # noqa: S608
         params.append(limit)
 
         try:

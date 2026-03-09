@@ -27,7 +27,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 
 ### Not implemented yet (planned milestones)
 
-- **Memory Backends (M5)** - Initial adapter backend ([ADR-001](docs/decisions/ADR-001-memory-layer.md)) pending; shared org memory Backend 1 (hybrid prompt+retrieval) shipped, research backends (GraphRAG, Temporal KG) planned
+- **Memory Backends (M5)** - Initial Mem0 adapter backend ([ADR-001](docs/decisions/ADR-001-memory-layer.md)) pending; research backends (GraphRAG, Temporal KG) planned
 - **API Layer (M6)** - `api/` package and route modules are placeholders
 - **CLI Surface (M6)** - `cli/` package is placeholder-only
 - **Security/Approval System (M7)** - `security/` package is placeholder-only

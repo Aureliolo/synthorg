@@ -15,6 +15,10 @@ from ai_company.memory.consolidation.models import RetentionRule  # noqa: TC001
 class RetentionConfig(BaseModel):
     """Per-category retention configuration.
 
+    Retention rules apply uniformly across all agents.  Per-agent
+    retention overrides (e.g. longer retention for senior agents) are
+    not yet supported and are a known scope gap for a future iteration.
+
     Attributes:
         rules: Per-category retention rules (unique categories).
         default_retention_days: Default retention in days

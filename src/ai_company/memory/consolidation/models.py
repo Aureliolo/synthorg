@@ -6,7 +6,14 @@ and retention rules.
 
 from typing import Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    model_validator,
+)
 
 from ai_company.core.enums import MemoryCategory  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
@@ -17,18 +24,14 @@ class ConsolidationResult(BaseModel):
     """Result of a memory consolidation run.
 
     Attributes:
-        consolidated_count: Number of memories consolidated.
         removed_ids: IDs of removed memory entries.
         summary_id: ID of the summary entry (if created).
         archived_count: Number of entries archived.
+        consolidated_count: Derived from ``len(removed_ids)``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    consolidated_count: int = Field(
-        ge=0,
-        description="Number of memories consolidated",
-    )
     removed_ids: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="IDs of removed memory entries",
@@ -42,6 +45,12 @@ class ConsolidationResult(BaseModel):
         ge=0,
         description="Number of entries archived",
     )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def consolidated_count(self) -> int:
+        """Number of memories consolidated (derived from ``removed_ids``)."""
+        return len(self.removed_ids)
 
 
 class ArchivalEntry(BaseModel):

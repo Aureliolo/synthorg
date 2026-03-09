@@ -30,25 +30,36 @@ class ArchivalStore(Protocol):
         """
         ...
 
-    async def search(self, query: MemoryQuery) -> tuple[ArchivalEntry, ...]:
-        """Search archived entries.
+    async def search(
+        self,
+        agent_id: NotBlankStr,
+        query: MemoryQuery,
+    ) -> tuple[ArchivalEntry, ...]:
+        """Search archived entries for a specific agent.
 
         Args:
+            agent_id: Agent whose archived entries to search.
             query: Search parameters.
 
         Returns:
-            Matching archived entries.
+            Matching archived entries owned by the agent.
         """
         ...
 
-    async def restore(self, entry_id: NotBlankStr) -> ArchivalEntry | None:
-        """Restore a specific archived entry.
+    async def restore(
+        self,
+        agent_id: NotBlankStr,
+        entry_id: NotBlankStr,
+    ) -> ArchivalEntry | None:
+        """Restore a specific archived entry for a specific agent.
 
         Args:
+            agent_id: Agent who owns the archived entry.
             entry_id: The archive entry ID.
 
         Returns:
-            The archived entry, or ``None`` if not found.
+            The archived entry, or ``None`` if not found or not
+            owned by the agent.
         """
         ...
 

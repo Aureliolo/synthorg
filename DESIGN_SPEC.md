@@ -80,8 +80,8 @@ The MVP validates the core hypothesis: **a single agent can complete a real task
 > **How to read this spec:** Sections describe the full vision. Each section with deferred features includes an **MVP** callout box indicating what ships in M3 and what is deferred. The full design is documented upfront to inform architecture decisions — protocol interfaces are designed even for features that won't be built until later milestones.
 
 > **Implementation snapshot (2026-03-09):**
-> - **Done:** M0–M4 (tooling, config/core, providers, single-agent engine, multi-agent orchestration). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed.
-> - **In progress:** M5 — memory interface protocol complete (MemoryBackend, MemoryCapabilities, SharedKnowledgeStore protocols, models, config, factory), budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking), CFO cost optimization complete (CostOptimizer: anomaly detection, efficiency analysis, downgrade recommendations, routing optimization, approval decisions; ReportGenerator: multi-dimensional spending reports). Memory retrieval pipeline (#41: ranking, token-budget formatting, context injection) in progress. Mem0 adapter backend pending.
+> - **Done:** M0–M4 (tooling, config/core, providers, single-agent engine, multi-agent orchestration). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed. Memory retrieval pipeline (#41: ranking, token-budget formatting, context injection) complete. Budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking). CFO cost optimization complete (CostOptimizer: anomaly detection, efficiency analysis, downgrade recommendations, routing optimization, approval decisions; ReportGenerator: multi-dimensional spending reports). Shared org memory (#125: HybridPromptRetrievalBackend, OrgFactStore, access control, factory) complete. Memory consolidation/archival (#48: ConsolidationService, SimpleConsolidationStrategy, RetentionEnforcer, ArchivalStore protocol) complete.
+> - **In progress:** M5 — Mem0 adapter backend pending. Remaining M5 issues (#46 advanced engine+budget features).
 > - **Not started (mostly placeholders):** M6 API/CLI surface, M7 security + approval system.
 
 ### 1.5 Configuration Philosophy
@@ -1330,7 +1330,7 @@ org_memory:
 - Handles policy evolution naturally. Agents understand when and why things changed
 - Most complex. Potentially overkill for small companies or local-first use
 
-> **Extensibility:** All backends implement the `OrgMemoryBackend` protocol (`query(context) → list[OrgFact]`, `write(fact, author)`, `list_policies()`). The MVP ships with Backend 1; Backends 2 and 3 are research directions that may be explored if the default approach proves insufficient. The selected memory layer backend Mem0 (ADR-001) provides optional graph memory via Neo4j/FalkorDB, which could reduce implementation effort for Backends 2-3.
+> **Extensibility:** All backends implement the `OrgMemoryBackend` protocol (`query(OrgMemoryQuery) → tuple[OrgFact, ...]`, `write(OrgFactWriteRequest, *, author: OrgFactAuthor) → NotBlankStr`, `list_policies() → tuple[OrgFact, ...]`, plus `connect`/`disconnect`/`health_check`/`is_connected`/`backend_name` lifecycle). The MVP ships with Backend 1; Backends 2 and 3 are research directions that may be explored if the default approach proves insufficient. The selected memory layer backend Mem0 (ADR-001) provides optional graph memory via Neo4j/FalkorDB, which could reduce implementation effort for Backends 2-3.
 > **Write access control:** Core policies are human-only. ADRs and procedures can be written by senior+ agents. All writes are versioned and auditable. This prevents agents from corrupting shared organizational knowledge while allowing senior agents to document decisions.
 
 ### 7.5 Memory Backend Protocol
@@ -1437,6 +1437,18 @@ memory:
 ```
 
 Configuration is modeled by `CompanyMemoryConfig` (top-level), `MemoryStorageConfig` (storage paths/backends), and `MemoryOptionsConfig` (behaviour tuning). All are frozen Pydantic models. The `create_memory_backend(config)` factory returns an isolated `MemoryBackend` instance per company.
+
+#### Consolidation & Retention Configuration
+
+Memory consolidation, retention enforcement, and archival are configured via frozen Pydantic models in `memory/consolidation/config.py`:
+
+| Config | Purpose |
+|--------|---------|
+| `ConsolidationConfig` | Top-level: `max_memories_per_agent` limit, nested `retention` and `archival` sub-configs |
+| `RetentionConfig` | Per-category `RetentionRule` tuples (category + retention_days), optional `default_retention_days` fallback |
+| `ArchivalConfig` | Enables/disables archival of consolidated entries to `ArchivalStore` |
+
+Note: Retention is currently per-category, not per-agent. Per-agent retention overrides are a scope gap to be addressed in a future iteration.
 
 ### 7.6 Operational Data Persistence
 

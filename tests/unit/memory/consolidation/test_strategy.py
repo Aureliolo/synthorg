@@ -167,6 +167,27 @@ class TestSimpleConsolidationStrategy:
         assert result.consolidated_count == 2
         assert result.summary_id == "summary-1"
 
+    async def test_equal_relevance_keeps_most_recent(self) -> None:
+        """When relevance scores are equal, most recently created wins."""
+        backend = AsyncMock()
+        backend.store = AsyncMock(return_value="summary-1")
+        backend.delete = AsyncMock(return_value=True)
+
+        strategy = SimpleConsolidationStrategy(
+            backend=backend,
+            group_threshold=3,
+        )
+        entries = (
+            _make_entry("old", relevance=0.5, age_hours=10),
+            _make_entry("mid", relevance=0.5, age_hours=5),
+            _make_entry("new", relevance=0.5, age_hours=1),
+        )
+        result = await strategy.consolidate(entries, agent_id=_AGENT_ID)
+        # Most recent (age_hours=1, so closest to _NOW) should be kept
+        assert "new" not in result.removed_ids
+        assert "old" in result.removed_ids
+        assert "mid" in result.removed_ids
+
     def test_group_threshold_validation(self) -> None:
         backend = AsyncMock()
         with pytest.raises(ValueError, match="group_threshold must be >= 2"):

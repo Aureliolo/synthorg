@@ -57,6 +57,15 @@ class OrgFactAuthor(BaseModel):
                     reason=msg,
                 )
                 raise ValueError(msg)
+            if self.seniority is not None:
+                msg = "Human authors must not have a seniority level"
+                logger.warning(
+                    ORG_MEMORY_MODEL_INVALID,
+                    model="OrgFactAuthor",
+                    field="seniority",
+                    reason=msg,
+                )
+                raise ValueError(msg)
         else:
             if self.agent_id is None:
                 msg = "Non-human authors must have an agent_id"

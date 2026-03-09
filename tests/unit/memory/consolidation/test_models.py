@@ -23,7 +23,7 @@ class TestConsolidationResult:
     """ConsolidationResult creation and validation."""
 
     def test_minimal(self) -> None:
-        result = ConsolidationResult(consolidated_count=0)
+        result = ConsolidationResult()
         assert result.consolidated_count == 0
         assert result.removed_ids == ()
         assert result.summary_id is None
@@ -31,7 +31,6 @@ class TestConsolidationResult:
 
     def test_full(self) -> None:
         result = ConsolidationResult(
-            consolidated_count=3,
             removed_ids=("m1", "m2", "m3"),
             summary_id="summary-1",
             archived_count=2,
@@ -39,14 +38,15 @@ class TestConsolidationResult:
         assert result.consolidated_count == 3
         assert len(result.removed_ids) == 3
 
-    def test_negative_count_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            ConsolidationResult(consolidated_count=-1)
+    def test_consolidated_count_is_computed(self) -> None:
+        """consolidated_count always equals len(removed_ids)."""
+        result = ConsolidationResult(removed_ids=("a", "b"))
+        assert result.consolidated_count == 2
 
     def test_frozen(self) -> None:
-        result = ConsolidationResult(consolidated_count=0)
+        result = ConsolidationResult()
         with pytest.raises(ValidationError):
-            result.consolidated_count = 5  # type: ignore[misc]
+            result.removed_ids = ("x",)  # type: ignore[misc]
 
 
 @pytest.mark.unit
