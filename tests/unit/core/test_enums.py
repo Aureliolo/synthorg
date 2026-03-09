@@ -15,7 +15,7 @@ from ai_company.core.enums import (
     CreativityLevel,
     DecisionMakingStyle,
     DepartmentName,
-    MemoryType,
+    MemoryLevel,
     Priority,
     ProficiencyLevel,
     ProjectStatus,
@@ -47,7 +47,7 @@ class TestEnumMemberCounts:
         assert len(CreativityLevel) == 3
 
     def test_memory_type_has_4_members(self) -> None:
-        assert len(MemoryType) == 4
+        assert len(MemoryLevel) == 4
 
     def test_cost_tier_has_4_members(self) -> None:
         assert len(CostTier) == 4

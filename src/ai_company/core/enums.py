@@ -88,13 +88,32 @@ class CreativityLevel(StrEnum):
     HIGH = "high"
 
 
-class MemoryType(StrEnum):
-    """Memory persistence type for an agent."""
+class MemoryLevel(StrEnum):
+    """Memory persistence level for an agent (§7.3)."""
 
     PERSISTENT = "persistent"
     PROJECT = "project"
     SESSION = "session"
     NONE = "none"
+
+
+class MemoryCategory(StrEnum):
+    """Memory type categories for agent memory (§7.2)."""
+
+    WORKING = "working"
+    EPISODIC = "episodic"
+    SEMANTIC = "semantic"
+    PROCEDURAL = "procedural"
+    SOCIAL = "social"
+
+
+class ConsolidationInterval(StrEnum):
+    """Interval for memory consolidation."""
+
+    HOURLY = "hourly"
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    NEVER = "never"
 
 
 class CostTier(StrEnum):

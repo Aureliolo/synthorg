@@ -21,7 +21,7 @@ from ai_company.core.enums import (
     ConflictApproach,
     CreativityLevel,
     DecisionMakingStyle,
-    MemoryType,
+    MemoryLevel,
     RiskTolerance,
     SeniorityLevel,
 )
@@ -369,13 +369,13 @@ class TestMemoryConfig:
     def test_defaults(self) -> None:
         """Verify default type is SESSION with no retention."""
         m = MemoryConfig()
-        assert m.type is MemoryType.SESSION
+        assert m.type is MemoryLevel.SESSION
         assert m.retention_days is None
 
     def test_custom_values(self) -> None:
         """Verify explicitly provided type and retention_days."""
-        m = MemoryConfig(type=MemoryType.PERSISTENT, retention_days=30)
-        assert m.type is MemoryType.PERSISTENT
+        m = MemoryConfig(type=MemoryLevel.PERSISTENT, retention_days=30)
+        assert m.type is MemoryLevel.PERSISTENT
         assert m.retention_days == 30
 
     def test_retention_days_zero_rejected(self) -> None:
@@ -391,18 +391,18 @@ class TestMemoryConfig:
     def test_none_type_with_retention_rejected(self) -> None:
         """Reject retention_days when memory type is NONE."""
         with pytest.raises(ValidationError, match="retention_days must be None"):
-            MemoryConfig(type=MemoryType.NONE, retention_days=30)
+            MemoryConfig(type=MemoryLevel.NONE, retention_days=30)
 
     def test_none_type_without_retention_accepted(self) -> None:
         """Accept NONE memory type when retention_days is omitted."""
-        m = MemoryConfig(type=MemoryType.NONE)
+        m = MemoryConfig(type=MemoryLevel.NONE)
         assert m.retention_days is None
 
     def test_frozen(self) -> None:
         """Ensure MemoryConfig is immutable."""
         m = MemoryConfig()
         with pytest.raises(ValidationError):
-            m.type = MemoryType.PERSISTENT  # type: ignore[misc]
+            m.type = MemoryLevel.PERSISTENT  # type: ignore[misc]
 
     def test_factory(self) -> None:
         """Verify factory produces a valid MemoryConfig."""
@@ -652,7 +652,7 @@ class TestAgentIdentity:
                 secondary=("docker",),
             ),
             model=sample_model_config,
-            memory=MemoryConfig(type=MemoryType.PERSISTENT, retention_days=90),
+            memory=MemoryConfig(type=MemoryLevel.PERSISTENT, retention_days=90),
             tools=ToolPermissions(allowed=("git",), denied=("deploy",)),
             authority=Authority(
                 can_approve=("code_review",),

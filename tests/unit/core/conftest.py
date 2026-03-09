@@ -32,7 +32,7 @@ from ai_company.core.enums import (
     ArtifactType,
     Complexity,
     DepartmentName,
-    MemoryType,
+    MemoryLevel,
     Priority,
     ProficiencyLevel,
     SeniorityLevel,
@@ -82,7 +82,7 @@ class ModelConfigFactory(ModelFactory[ModelConfig]):
 
 class MemoryConfigFactory(ModelFactory[MemoryConfig]):
     __model__ = MemoryConfig
-    type = MemoryType.SESSION
+    type = MemoryLevel.SESSION
 
 
 class ToolPermissionsFactory(ModelFactory[ToolPermissions]):

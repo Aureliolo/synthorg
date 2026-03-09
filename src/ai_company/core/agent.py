@@ -13,7 +13,7 @@ from ai_company.core.enums import (
     ConflictApproach,
     CreativityLevel,
     DecisionMakingStyle,
-    MemoryType,
+    MemoryLevel,
     RiskTolerance,
     SeniorityLevel,
     ToolAccessLevel,
@@ -184,8 +184,8 @@ class MemoryConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    type: MemoryType = Field(
-        default=MemoryType.SESSION,
+    type: MemoryLevel = Field(
+        default=MemoryLevel.SESSION,
         description="Memory persistence type",
     )
     retention_days: int | None = Field(
@@ -196,8 +196,8 @@ class MemoryConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_retention_consistency(self) -> Self:
-        """Ensure retention_days is None when memory type is MemoryType.NONE."""
-        if self.type is MemoryType.NONE and self.retention_days is not None:
+        """Ensure retention_days is None when memory type is MemoryLevel.NONE."""
+        if self.type is MemoryLevel.NONE and self.retention_days is not None:
             msg = "retention_days must be None when memory type is 'none'"
             raise ValueError(msg)
         return self

@@ -176,6 +176,7 @@ class TestEventConstants:
             "execution",
             "git",
             "meeting",
+            "memory",
             "parallel",
             "personality",
             "prompt",

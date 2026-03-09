@@ -17,6 +17,7 @@ from ai_company.core.company import (
 from ai_company.core.enums import CompanyType, SeniorityLevel
 from ai_company.core.role import CustomRole  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
+from ai_company.memory.config import CompanyMemoryConfig
 from ai_company.observability import get_logger
 from ai_company.observability.config import LogConfig  # noqa: TC001
 from ai_company.observability.events.config import CONFIG_VALIDATION_FAILED
@@ -459,6 +460,7 @@ class RootConfig(BaseModel):
         escalation_paths: Cross-department escalation paths.
         coordination_metrics: Coordination metrics configuration.
         task_assignment: Task assignment configuration.
+        memory: Memory backend configuration.
         persistence: Persistence backend configuration.
     """
 
@@ -526,6 +528,10 @@ class RootConfig(BaseModel):
     task_assignment: TaskAssignmentConfig = Field(
         default_factory=TaskAssignmentConfig,
         description="Task assignment configuration",
+    )
+    memory: CompanyMemoryConfig = Field(
+        default_factory=CompanyMemoryConfig,
+        description="Memory backend configuration",
     )
     persistence: PersistenceConfig = Field(
         default_factory=PersistenceConfig,
