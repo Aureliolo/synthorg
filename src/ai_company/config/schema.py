@@ -5,6 +5,7 @@ from typing import Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from ai_company.api.config import ApiConfig
 from ai_company.budget.config import BudgetConfig
 from ai_company.budget.coordination_config import CoordinationMetricsConfig
 from ai_company.budget.cost_tiers import CostTiersConfig
@@ -567,6 +568,10 @@ class RootConfig(BaseModel):
     org_memory: OrgMemoryConfig = Field(
         default_factory=OrgMemoryConfig,
         description="Organizational memory configuration",
+    )
+    api: ApiConfig = Field(
+        default_factory=ApiConfig,
+        description="API server configuration",
     )
 
     @model_validator(mode="after")

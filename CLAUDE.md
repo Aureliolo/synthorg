@@ -43,9 +43,9 @@ uv run pre-commit run --all-files          # all pre-commit hooks
 
 ```text
 src/ai_company/
-  api/            # FastAPI REST + WebSocket routes
+  api/            # Litestar REST + WebSocket API (controllers, guards, channels)
   budget/         # Cost tracking, budget enforcement (pre-flight/in-flight checks, auto-downgrade), billing periods, cost tiers, quota/subscription tracking, CFO cost optimization (anomaly detection, efficiency analysis, downgrade recommendations, approval decisions), spending reports
-  cli/            # Typer CLI commands
+  cli/            # CLI interface (future — thin API wrapper if needed)
   communication/  # Message bus, dispatcher, messenger, channels, delegation, loop prevention, conflict resolution, meeting protocol
   config/         # YAML company config loading and validation
   core/           # Shared domain models and base classes

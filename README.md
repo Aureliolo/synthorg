@@ -35,11 +35,11 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 
 ## Status
 
-**M5: Memory & Budget** in progress (M0 Tooling, M1 Config & Core, M2 Providers, M3 Single Agent, M4 Multi-Agent — all done). See [DESIGN_SPEC.md](DESIGN_SPEC.md) for the full high-level specification.
+**M6: API & Human Interaction** next (M0–M5 all done). See [DESIGN_SPEC.md](DESIGN_SPEC.md) for the full high-level specification.
 
 ## Tech Stack
 
-- **Python 3.14+** with FastAPI, Pydantic, Typer
+- **Python 3.14+** with Litestar, Pydantic
 - **uv** as package manager, **Hatchling** as build backend
 - **LiteLLM** for multi-provider LLM abstraction
 - **structlog** for structured logging and observability

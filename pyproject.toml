@@ -17,6 +17,7 @@ dependencies = [
     "jinja2==3.1.6",
     "jsonschema==4.26.0",
     "litellm==1.82.0",
+    "litestar[standard,structlog,pydantic,brotli,prometheus]==2.21.1",
     "pydantic==2.12.5",
     "pyyaml==6.0.3",
     "structlog==25.5.0",
@@ -94,7 +95,7 @@ select = [
     "FURB",   # refurb
     "RUF",    # ruff-specific rules
     "S",      # flake8-bandit (security)
-    "FAST",   # fastapi
+    # "FAST" removed — using Litestar, not FastAPI
     "ASYNC",  # flake8-async
     "FBT",    # flake8-boolean-trap
     "PL",     # pylint
@@ -160,6 +161,10 @@ ignore_missing_imports = true
 module = "aiosqlite.*"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "litestar.*"
+ignore_missing_imports = true
+
 [tool.pydantic-mypy]
 init_forbid_extra = true
 init_typed = true
@@ -200,6 +205,7 @@ markers = [
 addopts = ["--strict-markers", "--strict-config", "-ra", "--tb=short"]
 filterwarnings = [
     "error",
+    "ignore:Core Pydantic V1 functionality:UserWarning",
 ]
 
 # ---------------------------------------------------------------------------

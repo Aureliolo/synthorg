@@ -201,7 +201,7 @@ agent:
   skills:
     primary:
       - python
-      - fastapi
+      - litestar
       - postgresql
       - system-design
     secondary:
@@ -972,7 +972,7 @@ Pipeline steps:
 
 1. **Validate inputs** — agent must be `ACTIVE`, task must be `ASSIGNED` or `IN_PROGRESS`. Raises `ExecutionStateError` on violation.
 2. **Pre-flight budget enforcement** — if `BudgetEnforcer` is provided, check monthly hard stop and daily limit via `check_can_execute()`, then apply auto-downgrade via `resolve_model()`. Raises `BudgetExhaustedError` or `DailyLimitExceededError` on violation.
-3. **Build system prompt** — calls `build_system_prompt()` with agent identity, task, and available tool definitions.
+3. **Build system prompt** — calls `build_system_prompt()` with agent identity, task, and available tool definitions. Follows the **non-inferable-only principle**: system prompts include only information the agent cannot discover by reading the codebase or environment (role constraints, custom conventions, organizational policies). Generic architecture overviews and file structure descriptions are excluded — [research](https://arxiv.org/abs/2602.11988) shows they reduce success rates while increasing costs 20%+.
 4. **Create context** — `AgentContext.from_identity()` with the configured `max_turns`.
 5. **Seed conversation** — injects system prompt, optional memory messages, and formatted task instruction as initial messages.
 6. **Transition task** — `ASSIGNED` → `IN_PROGRESS` (pass-through if already `IN_PROGRESS`).
@@ -1246,7 +1246,7 @@ The auto-selector uses task structure, artifact count, and (when available from 
 |------|-------|-------------|---------|
 | **Working** | Current task | None (in-context) | "I'm implementing the auth endpoint" |
 | **Episodic** | Past events | Configurable | "Last sprint we chose JWT over sessions" |
-| **Semantic** | Knowledge | Long-term | "This project uses FastAPI with SQLAlchemy" |
+| **Semantic** | Knowledge | Long-term | "This project uses Litestar with aiosqlite" |
 | **Procedural** | Skills/patterns | Long-term | "Code reviews require 2 approvals here" |
 | **Social** | Relationships | Long-term | "The QA lead prefers detailed test plans" |
 
@@ -1269,7 +1269,7 @@ memory:
 
 ### 7.4 Shared Organizational Memory
 
-Beyond individual agent memory (§7.1–7.3), the framework needs **organizational memory** — company-wide knowledge that all agents can access: policies, conventions, architecture decision records (ADRs), coding standards, and operational procedures. This is not personal episodic memory ("what I did last Tuesday") but institutional knowledge ("we always use FastAPI, not Flask").
+Beyond individual agent memory (§7.1–7.3), the framework needs **organizational memory** — company-wide knowledge that all agents can access: policies, conventions, architecture decision records (ADRs), coding standards, and operational procedures. This is not personal episodic memory ("what I did last Tuesday") but institutional knowledge ("we always use Litestar, not Flask").
 
 Shared organizational memory is implemented behind an `OrgMemoryBackend` protocol, making the system highly modular and extensible. New backends can be added without modifying existing ones.
 
@@ -1282,7 +1282,7 @@ org_memory:
   backend: "hybrid_prompt_retrieval"    # hybrid_prompt_retrieval, graph_rag, temporal_kg
   core_policies:                        # always in system prompt
     - "All code must have 80%+ test coverage"
-    - "Use FastAPI, not Flask"
+    - "Use Litestar, not Flask"
     - "PRs require 2 approvals"
   extended_store:
     backend: "sqlite"                   # sqlite, postgresql
@@ -1302,7 +1302,7 @@ The following backends illustrate why `OrgMemoryBackend` is a protocol — the a
 
 #### Backend 2: GraphRAG Knowledge Graph (Research)
 
-Organizational knowledge stored as entities + relationships in a knowledge graph. Agents query via graph traversal, enabling multi-hop reasoning: "FastAPI is our standard" → linked to → "don't use Flask" → linked to → "exception: data team uses Django for admin."
+Organizational knowledge stored as entities + relationships in a knowledge graph. Agents query via graph traversal, enabling multi-hop reasoning: "Litestar is our standard" → linked to → "don't use Flask" → linked to → "exception: data team uses Django for admin."
 
 ```yaml
 org_memory:
@@ -1317,7 +1317,7 @@ org_memory:
 
 #### Backend 3: Temporal Knowledge Graph (Research)
 
-Like GraphRAG but tracks how facts change over time. "We used Flask until March 2026, then switched to FastAPI." Agents see current truth but can query history for context.
+Like GraphRAG but tracks how facts change over time. "We used Flask until March 2026, then switched to Litestar." Agents see current truth but can query history for context.
 
 ```yaml
 org_memory:
@@ -1599,6 +1599,8 @@ Pre-retrieves relevant memories before execution, ranks by
 relevance+recency, enforces token budget, formats as ChatMessage(s)
 injected between system prompt and task instruction. Agent passively
 receives memories.
+
+> **Non-inferable filter:** Retrieved memories should be filtered before injection to exclude content the agent can discover by reading the codebase or environment. Only inject memories containing non-inferable information: prior decisions, learned conventions, interpersonal context, historical outcomes. [Research](https://arxiv.org/abs/2602.11988) shows generic context increases cost 20%+ with minimal success improvement; LLM-generated context can actually reduce success rates.
 
 Pipeline: `MemoryBackend.retrieve()` -> rank by relevance+recency ->
 filter by min_relevance -> greedy token-budget packing -> format as
@@ -2427,6 +2429,8 @@ approval_timeout:
 
 ### 13.1 Architecture: API-First
 
+The REST/WebSocket API is the **primary interface** for all consumers. The Web UI and any future CLI tool are thin clients that call the API — they contain no business logic.
+
 ```text
 ┌─────────────────────────────────────────────┐
 │               AI Company Engine              │
@@ -2434,15 +2438,17 @@ approval_timeout:
 └──────────────────┬──────────────────────────┘
                    │
           ┌────────▼────────┐
-          │   REST/WS API    │
-          │   (FastAPI)      │
+          │   REST/WS API    │  ← primary interface
+          │   (Litestar)     │
           └───┬─────────┬───┘
               │         │
       ┌───────▼──┐  ┌───▼────────┐
       │  Web UI   │  │  CLI Tool   │
-      │ (Local)   │  │             │
+      │ (Future)  │  │  (Future)   │
       └──────────┘  └────────────┘
 ```
+
+> **CLI Tool (Future):** If needed, a thin CLI utility wrapping the REST API with terminal formatting (Typer + Rich or similar). Not a priority — the API is fully self-sufficient. To be determined whether a dedicated CLI is warranted or whether `curl`/`httpie` and the OpenAPI docs at `/docs` suffice.
 
 ### 13.2 API Surface
 
@@ -2572,42 +2578,9 @@ Inheritance resolves parent→child chains up to 10 levels deep. Merge semantics
 
 Circular inheritance is detected via chain tracking and raises `TemplateInheritanceError`.
 
-### 14.2 Company Builder
+### 14.2 Company Builder (Future)
 
-Interactive CLI/web wizard for creating custom companies:
-
-```bash
-$ ai-company create
-
-? Company name: Acme Corp
-? Template: [Custom]
-? Budget (monthly USD): 100
-? Autonomy level: semi-autonomous
-
-? Add departments:
-  [x] Engineering
-  [x] Product
-  [ ] Design
-  [ ] Marketing
-  [ ] Operations
-
-? Engineering team size: 5
-  - 1x Lead (large)
-  - 2x Senior Dev (medium)
-  - 2x Junior Dev (small)
-
-? Add QA? yes
-  - 1x QA Lead (medium)
-  - 1x QA Engineer (small)
-
-? Model providers:
-  [x] Cloud API
-  [x] Local Ollama
-  [ ] OpenRouter
-
-Created company "Acme Corp" with 9 agents.
-Run: ai-company start acme-corp
-```
+> **Deferred.** The template system (§14.1) already supports creating companies from YAML configs. An interactive wizard is a nice-to-have after the REST API exists — it could be a thin CLI utility or a web form that POSTs to `/api/v1/company`. To be determined.
 
 ### 14.3 Community Marketplace (Future)
 
@@ -2665,19 +2638,19 @@ Run: ai-company start acme-corp
 | Component | Technology | Rationale |
 |-----------|-----------|-----------|
 | **Language** | Python 3.14+ | Best AI/ML ecosystem, all major frameworks use it, LiteLLM/MCP and memory layer candidates all Python-native. PEP 649 native lazy annotations, PEP 758 except syntax. |
-| **API Framework** | FastAPI | Async-native, WebSocket support, auto OpenAPI docs, high performance, type-safe with Pydantic |
+| **API Framework** | Litestar | Async-native, built-in channels (pub/sub WebSocket), auto OpenAPI 3.1 docs, class-based controllers, native route guards, built-in rate limiting / CSRF / compression middleware, explicit DI, Pydantic v2 support via plugin. Chosen over FastAPI — see §15.4 |
 | **LLM Abstraction** | LiteLLM | 100+ providers, unified API, built-in cost tracking, retries/fallbacks |
 | **Agent Memory** | Mem0 (Qdrant + SQLite) → custom (Neo4j + Qdrant) | Mem0 in-process as initial backend behind pluggable `MemoryBackend` protocol ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Qdrant embedded + SQLite for persistence. Custom stack (Neo4j + Qdrant external) as future upgrade. Config-driven backend selection |
 | **Message Bus** | Internal (async queues) → Redis | Start with Python asyncio queues, upgrade to Redis for multi-process/distributed |
 | **Task Queue** | Internal → Celery/Redis | Start simple, scale with Celery when needed |
 | **Database** | SQLite (aiosqlite) → PostgreSQL / MariaDB | Pluggable `PersistenceBackend` protocol (§7.6). SQLite ships first via aiosqlite async driver. PostgreSQL, MariaDB as future backends — swap via config, no app code changes |
 | **Web UI** | Vue 3 + Vite | Modern, fast, good ecosystem. Simpler than React for dashboards |
-| **Real-time** | WebSocket (FastAPI native) | Real-time agent activity, task updates, chat feed |
+| **Real-time** | WebSocket (Litestar channels plugin) | Built-in pub/sub broadcasting, per-channel history, backpressure management. Real-time agent activity, task updates, chat feed |
 | **Containerization** | Docker + Docker Compose | Isolated code execution, reproducible environments |
 | **Tool Integration** | MCP (Model Context Protocol) | Industry standard for LLM-to-tool integration |
 | **Agent Comms** | A2A Protocol compatible | Future-proof inter-agent communication |
 | **Config Format** | YAML + Pydantic validation | Human-readable config with strict validation |
-| **CLI** | Typer (Click-based) | Pythonic CLI framework, auto-help, completions |
+| **CLI** | TBD (future, if needed) | Thin wrapper around the REST API for terminal use. May not be needed — OpenAPI docs at `/docs` and `curl`/`httpie` may suffice |
 
 ### 15.3 Project Structure
 
@@ -2990,14 +2963,12 @@ ai-company/
 │       │   ├── quota_tracker.py    # QuotaTracker service: per-provider request/token quota enforcement
 │       │   └── reports.py          # Spending reports (M5)
 │       ├── api/                     # REST + WebSocket API (M6, stubs only)
-│       │   ├── app.py              # FastAPI application (M6)
-│       │   ├── routes/             # Route handlers (M6)
-│       │   ├── websocket.py        # WebSocket handlers (M6)
-│       │   └── middleware.py       # Auth, CORS, logging (M6)
-│       ├── cli/                     # CLI interface (M6, stubs only)
-│       │   ├── main.py             # Typer app (M6)
-│       │   ├── commands/           # CLI commands (M6)
-│       │   └── display.py          # Rich terminal output (M6)
+│       │   ├── app.py              # Litestar application factory (M6)
+│       │   ├── controllers/        # Class-based route controllers (M6)
+│       │   ├── guards.py           # Route guards for auth/approval (M6)
+│       │   └── channels.py         # WebSocket channel definitions (M6)
+│       ├── cli/                     # CLI interface (future, if needed)
+│       │   └── (thin API wrapper — deferred, TBD)
 │       └── templates/               # Company templates
 │           ├── schema.py           # Template schema models
 │           ├── loader.py           # Template loader
@@ -3032,13 +3003,13 @@ ai-company/
 | Decision | Choice | Alternatives Considered | Rationale |
 |----------|--------|------------------------|-----------|
 | Language | Python 3.14+ | TypeScript, Go, Rust | AI ecosystem, LiteLLM/MCP and memory layer candidates are Python-native, PEP 649 lazy annotations, PEP 758 except syntax |
-| API | FastAPI | Flask, Django, aiohttp | Async native, Pydantic integration, auto docs, WebSocket support |
+| API | Litestar | FastAPI, Flask, Django, aiohttp | Built-in channels (pub/sub WebSocket), class-based controllers, native route guards, middleware (rate limiting, CSRF, compression), explicit DI. FastAPI considered but Litestar offers more batteries-included for less custom code — see rationale below |
 | LLM Layer | LiteLLM | Direct APIs, OpenRouter only | 100+ providers, cost tracking, fallbacks, load balancing built-in |
 | Memory | Mem0 (initial) → custom stack (future) + SQLite | Graphiti, Letta, Cognee, custom | Mem0 in-process as initial backend behind pluggable `MemoryBackend` protocol ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Custom stack (Neo4j + Qdrant) as future upgrade. Must support episodic, semantic, procedural memory types (§7.1–7.3). Org memory served via `OrgMemoryBackend` protocol (§7.4) |
 | Message Bus | asyncio queues → Redis | Kafka, RabbitMQ, NATS | Start simple, Redis well-supported, Kafka overkill for local |
 | Config | YAML + Pydantic | JSON, TOML, Python dicts | Human-friendly, strict validation, good IDE support |
-| CLI | Typer | Click, argparse, Fire | Built on Click, auto-completion, type hints |
-| Web UI | Vue 3 | React, Svelte, HTMX | Simpler than React for dashboards, good with FastAPI |
+| CLI | Deferred (TBD) | Typer, Click, argparse | Thin API wrapper if needed. OpenAPI docs + `curl`/`httpie` may suffice |
+| Web UI | Vue 3 | React, Svelte, HTMX | Simpler than React for dashboards |
 | Persistence | Pluggable protocol + repository protocols | ORM (SQLAlchemy), raw SQL, hybrid | Same frozen Pydantic models in and out (no DTOs), async throughout, backend-swappable via config. Repository protocols decouple app code from storage engine. See §7.6 |
 | Sandboxing | Layered: subprocess + Docker | Docker-only, subprocess-only, WASM | Risk-proportionate: fast subprocess for file/git, Docker isolation for code execution. Pluggable `SandboxBackend` protocol enables K8s migration later |
 
@@ -3131,17 +3102,26 @@ Rationale:
 - No existing framework covers even 50% of our requirements
 - Our core differentiators (HR, budget, security ops, deep personalities, progressive trust) don't exist in any framework
 - Forking MetaGPT or CrewAI would mean fighting their architecture while adding our features
-- **LiteLLM**, **FastAPI**, **MCP**, and **Mem0** (memory layer — ADR-001) give us battle-tested components for the hard parts
+- **LiteLLM**, **Litestar**, **MCP**, and **Mem0** (memory layer — ADR-001) give us battle-tested components for the hard parts
 - The "company simulation" layer on top is our unique value and must be purpose-built
 
 What we **plan to leverage** (not fork) — subject to evaluation:
-- **LiteLLM** (candidate) - Provider abstraction
+- **LiteLLM** (selected) - Provider abstraction
 - **Mem0** (selected, ADR-001) - Agent memory (initial backend; custom stack future)
-- **FastAPI** (candidate) - API layer
+- **Litestar** (selected) - API layer (see §15.4 rationale)
 - **MCP** - Tool integration standard (strong candidate, emerging industry standard)
-- **Pydantic** (candidate) - Config validation and data models
-- **Typer** (candidate) - CLI
+- **Pydantic** (selected) - Config validation and data models
 - **Web UI framework** - TBD (Vue 3, React, Svelte, HTMX all under consideration)
+
+> **Why Litestar over FastAPI?** Both are async-native Python frameworks with auto-generated OpenAPI docs and Pydantic support. FastAPI has a larger ecosystem and more community resources. However, Litestar provides significantly more built-in functionality that we would otherwise need to write and maintain ourselves:
+>
+> 1. **Channels plugin** — pub/sub WebSocket broadcasting with per-channel subscriptions, backpressure management, and subscriber backlog. FastAPI requires hand-rolling all WebSocket connection management.
+> 2. **Class-based controllers** — group routes with shared guards, middleware, and configuration. Our 13 route groups map naturally to controllers. FastAPI only supports loose functions on routers.
+> 3. **Native route guards** — declarative authorization at controller/route level. Essential for the approval queue and future security features. FastAPI requires `Depends()` on every route.
+> 4. **Built-in middleware** — rate limiting, CSRF protection, GZip/Brotli compression, session handling, request logging. FastAPI requires third-party packages or custom code for each.
+> 5. **Explicit dependency injection** — pytest-style named dependencies with scope control. Matches our testing approach. FastAPI's DI is implicit (function parameter magic).
+>
+> The ecosystem size gap is acceptable: our API is an internal orchestration interface, not a public web service. The bottleneck is LLM latency (seconds), not framework overhead (microseconds). Litestar's ~2x performance advantage in micro-benchmarks is a bonus, not the deciding factor. Python 3.14 is supported by both.
 
 ---
 
@@ -3260,3 +3240,4 @@ Phase 4: Cloud/Hosted
 - [OpenRouter](https://openrouter.ai/) - Multi-model API gateway
 - [Kim et al., "Towards a Science of Scaling Agent Systems" (2025)](https://arxiv.org/abs/2512.08296) - Empirical agent scaling research (180 experiments, 3 LLM families)
 - [Cemri et al., "Multi-Agent System Failure Taxonomy (MAST)" (2025)] - MAS coordination error classification
+- [Gloaguen et al., "Evaluating AGENTS.md" (2026)](https://arxiv.org/abs/2602.11988) - Context files reduce success rates; non-inferable-only principle for system prompts
