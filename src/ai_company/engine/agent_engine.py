@@ -53,6 +53,7 @@ from ai_company.tools.permissions import ToolPermissionChecker
 
 if TYPE_CHECKING:
     from ai_company.budget.coordination_config import ErrorTaxonomyConfig
+    from ai_company.budget.enforcer import BudgetEnforcer
     from ai_company.budget.tracker import CostTracker
     from ai_company.core.agent import AgentIdentity
     from ai_company.core.task import Task
@@ -93,6 +94,9 @@ class AgentEngine:
         error_taxonomy_config: Optional error taxonomy configuration.
             When provided and enabled, runs post-execution
             classification of coordination errors.
+        budget_enforcer: Optional budget enforcement service. When
+            provided, enables pre-flight checks, auto-downgrade, and
+            enhanced in-flight budget checking.
     """
 
     def __init__(  # noqa: PLR0913
@@ -105,11 +109,15 @@ class AgentEngine:
         recovery_strategy: RecoveryStrategy | None = _DEFAULT_RECOVERY_STRATEGY,
         shutdown_checker: ShutdownChecker | None = None,
         error_taxonomy_config: ErrorTaxonomyConfig | None = None,
+        budget_enforcer: BudgetEnforcer | None = None,
     ) -> None:
         self._provider = provider
         self._loop: ExecutionLoop = execution_loop or ReactLoop()
         self._tool_registry = tool_registry
-        self._cost_tracker = cost_tracker
+        self._budget_enforcer = budget_enforcer
+        self._cost_tracker = cost_tracker or (
+            budget_enforcer.cost_tracker if budget_enforcer else None
+        )
         self._recovery_strategy = recovery_strategy
         self._shutdown_checker = shutdown_checker
         self._error_taxonomy_config = error_taxonomy_config
@@ -118,6 +126,7 @@ class AgentEngine:
             loop_type=self._loop.get_loop_type(),
             has_tool_registry=self._tool_registry is not None,
             has_cost_tracker=self._cost_tracker is not None,
+            has_budget_enforcer=self._budget_enforcer is not None,
         )
 
     async def run(  # noqa: PLR0913
@@ -162,6 +171,11 @@ class AgentEngine:
         ctx: AgentContext | None = None
         system_prompt: SystemPrompt | None = None
         try:
+            # Pre-flight budget enforcement
+            if self._budget_enforcer:
+                await self._budget_enforcer.check_can_execute(agent_id)
+                identity = await self._budget_enforcer.resolve_model(identity)
+
             tool_invoker = self._make_tool_invoker(identity)
             ctx, system_prompt = self._prepare_context(
                 identity=identity,
@@ -220,7 +234,14 @@ class AgentEngine:
         tool_invoker: ToolInvoker | None = None,
     ) -> AgentRunResult:
         """Run execution loop, record costs, apply transitions, and build result."""
-        budget_checker = make_budget_checker(task)
+        budget_checker: BudgetChecker | None
+        if self._budget_enforcer:
+            budget_checker = await self._budget_enforcer.make_budget_checker(
+                task,
+                agent_id,
+            )
+        else:
+            budget_checker = make_budget_checker(task)
 
         logger.debug(
             EXECUTION_ENGINE_PROMPT_BUILT,

@@ -103,6 +103,7 @@ class TestAutoDowngradeConfig:
         assert cfg.enabled is False
         assert cfg.threshold == 85
         assert cfg.downgrade_map == ()
+        assert cfg.boundary == "task_assignment"
 
     def test_custom_values(self) -> None:
         """Accept valid custom configuration."""
@@ -183,6 +184,16 @@ class TestAutoDowngradeConfig:
         )
         assert cfg.downgrade_map == (("large", "medium"),)
 
+    def test_boundary_default_is_task_assignment(self) -> None:
+        """Verify boundary default is 'task_assignment'."""
+        cfg = AutoDowngradeConfig()
+        assert cfg.boundary == "task_assignment"
+
+    def test_boundary_rejects_other_values(self) -> None:
+        """Reject boundary values other than 'task_assignment'."""
+        with pytest.raises(ValidationError):
+            AutoDowngradeConfig(boundary="mid_execution")  # type: ignore[arg-type]
+
     def test_frozen(self) -> None:
         """Ensure AutoDowngradeConfig is immutable."""
         cfg = AutoDowngradeConfig()
@@ -210,6 +221,7 @@ class TestBudgetConfig:
         assert cfg.per_agent_daily_limit == 10.0
         assert cfg.alerts.warn_at == 75
         assert cfg.auto_downgrade.enabled is False
+        assert cfg.reset_day == 1
 
     def test_custom_values(self, sample_budget_config: BudgetConfig) -> None:
         """Accept valid custom budget config."""
@@ -257,6 +269,28 @@ class TestBudgetConfig:
         )
         assert cfg.per_task_limit == 100.0
         assert cfg.per_agent_daily_limit == 100.0
+
+    def test_reset_day_valid_range(self) -> None:
+        """Accept reset_day in valid range (1-28)."""
+        cfg_1 = BudgetConfig(reset_day=1)
+        assert cfg_1.reset_day == 1
+        cfg_28 = BudgetConfig(reset_day=28)
+        assert cfg_28.reset_day == 28
+
+    def test_reset_day_zero_rejected(self) -> None:
+        """Reject reset_day of 0."""
+        with pytest.raises(ValidationError):
+            BudgetConfig(reset_day=0)
+
+    def test_reset_day_29_rejected(self) -> None:
+        """Reject reset_day of 29 (avoids month-length issues)."""
+        with pytest.raises(ValidationError):
+            BudgetConfig(reset_day=29)
+
+    def test_reset_day_float_rejected(self) -> None:
+        """Reject float value for reset_day (strict int)."""
+        with pytest.raises(ValidationError):
+            BudgetConfig(reset_day=15.0)  # type: ignore[arg-type]
 
     def test_frozen(self) -> None:
         """Ensure BudgetConfig is immutable."""

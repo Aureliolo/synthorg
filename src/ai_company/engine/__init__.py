@@ -56,6 +56,7 @@ from ai_company.engine.decomposition import (
 )
 from ai_company.engine.errors import (
     BudgetExhaustedError,
+    DailyLimitExceededError,
     DecompositionCycleError,
     DecompositionDepthError,
     DecompositionError,
@@ -174,6 +175,7 @@ __all__ = [
     "CleanupCallback",
     "CooperativeTimeoutStrategy",
     "CostOptimizedAssignmentStrategy",
+    "DailyLimitExceededError",
     "DecompositionContext",
     "DecompositionCycleError",
     "DecompositionDepthError",

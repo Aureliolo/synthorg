@@ -30,6 +30,10 @@ class BudgetExhaustedError(EngineError):
     """
 
 
+class DailyLimitExceededError(BudgetExhaustedError):
+    """Per-agent daily spending limit exceeded."""
+
+
 class LoopExecutionError(EngineError):
     """Non-recoverable execution loop error for the engine layer.
 

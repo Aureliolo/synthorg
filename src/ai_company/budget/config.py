@@ -5,7 +5,7 @@ thresholds, per-task and per-agent limits, and automatic model downgrade.
 """
 
 from collections import Counter
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -74,6 +74,8 @@ class AutoDowngradeConfig(BaseModel):
         enabled: Whether auto-downgrade is active.
         threshold: Budget percent that triggers downgrade.
         downgrade_map: Ordered pairs of (from_alias, to_alias).
+        boundary: When to apply downgrade (task_assignment only,
+            never mid-execution per DESIGN_SPEC §10.4).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -92,6 +94,12 @@ class AutoDowngradeConfig(BaseModel):
     downgrade_map: tuple[tuple[NotBlankStr, NotBlankStr], ...] = Field(
         default=(),
         description="Ordered pairs of (from_alias, to_alias)",
+    )
+    boundary: Literal["task_assignment"] = Field(
+        default="task_assignment",
+        description=(
+            "When to apply downgrade (task_assignment only, never mid-execution)"
+        ),
     )
 
     @model_validator(mode="before")
@@ -152,6 +160,8 @@ class BudgetConfig(BaseModel):
         per_task_limit: Maximum USD per task.
         per_agent_daily_limit: Maximum USD per agent per day.
         auto_downgrade: Automatic model downgrade configuration.
+        reset_day: Day of month when budget resets (1-28, avoids
+            month-length issues).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -178,6 +188,15 @@ class BudgetConfig(BaseModel):
     auto_downgrade: AutoDowngradeConfig = Field(
         default_factory=AutoDowngradeConfig,
         description="Automatic model downgrade configuration",
+    )
+    reset_day: int = Field(
+        default=1,
+        ge=1,
+        le=28,
+        strict=True,
+        description=(
+            "Day of month when budget resets (1-28, avoids month-length issues)"
+        ),
     )
 
     @model_validator(mode="after")
