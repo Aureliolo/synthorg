@@ -484,6 +484,8 @@ def _trim_sections(  # noqa: PLR0913
     max_tokens: int,
     estimator: PromptTokenEstimator,
 ) -> tuple[
+    str,
+    int,
     Task | None,
     tuple[ToolDefinition, ...],
     Company | None,
@@ -491,13 +493,13 @@ def _trim_sections(  # noqa: PLR0913
 ]:
     """Progressively remove optional sections until under token budget.
 
-    Returns the (possibly cleared) task, available_tools, company,
-    and org_policies.
+    Returns ``(content, estimated, task, available_tools, company,
+    org_policies)`` so the caller can reuse the final render.
     """
     trimmed_sections: list[str] = []
 
     for section in _TRIMMABLE_SECTIONS:
-        _, estimated = _render_and_estimate(
+        content, estimated = _render_and_estimate(
             template_str,
             agent,
             role,
@@ -522,20 +524,22 @@ def _trim_sections(  # noqa: PLR0913
             continue
 
         trimmed_sections.append(section)
+    else:
+        # All sections exhausted — do a final render.
+        content, estimated = _render_and_estimate(
+            template_str,
+            agent,
+            role,
+            task,
+            available_tools,
+            company,
+            org_policies,
+            estimator,
+        )
 
-    _, estimated = _render_and_estimate(
-        template_str,
-        agent,
-        role,
-        task,
-        available_tools,
-        company,
-        org_policies,
-        estimator,
-    )
     _log_trim_results(agent, max_tokens, estimated, trimmed_sections)
 
-    return task, available_tools, company, org_policies
+    return content, estimated, task, available_tools, company, org_policies
 
 
 def _log_trim_results(
@@ -587,26 +591,18 @@ def _render_with_trimming(  # noqa: PLR0913
     )
 
     if max_tokens is not None and estimated > max_tokens:
-        task, available_tools, company, org_policies = _trim_sections(
-            template_str=template_str,
-            agent=agent,
-            role=role,
-            task=task,
-            available_tools=available_tools,
-            company=company,
-            org_policies=org_policies,
-            max_tokens=max_tokens,
-            estimator=estimator,
-        )
-        content, estimated = _render_and_estimate(
-            template_str,
-            agent,
-            role,
-            task,
-            available_tools,
-            company,
-            org_policies,
-            estimator,
+        content, estimated, task, available_tools, company, org_policies = (
+            _trim_sections(
+                template_str=template_str,
+                agent=agent,
+                role=role,
+                task=task,
+                available_tools=available_tools,
+                company=company,
+                org_policies=org_policies,
+                max_tokens=max_tokens,
+                estimator=estimator,
+            )
         )
 
     return _build_prompt_result(
