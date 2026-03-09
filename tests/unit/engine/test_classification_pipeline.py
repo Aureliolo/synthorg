@@ -218,6 +218,88 @@ class TestClassifyExecutionErrors:
             ErrorCategory.NUMERICAL_DRIFT,
         }
 
+    async def test_per_detector_isolation(self) -> None:
+        """One broken detector should not prevent others from producing findings."""
+        config = ErrorTaxonomyConfig(
+            enabled=True,
+            categories=(
+                ErrorCategory.LOGICAL_CONTRADICTION,
+                ErrorCategory.COORDINATION_FAILURE,
+            ),
+        )
+        messages = (
+            ChatMessage(role=MessageRole.ASSISTANT, content="Running tool."),
+            ChatMessage(
+                role=MessageRole.TOOL,
+                tool_result=_make_tool_error(),
+            ),
+        )
+        with patch(
+            "ai_company.engine.classification.pipeline.detect_logical_contradictions",
+            side_effect=RuntimeError("detector crash"),
+        ):
+            result = await classify_execution_errors(
+                _execution_result(messages=messages, turns=(_turn(),)),
+                "agent-1",
+                "task-1",
+                config=config,
+            )
+        assert result is not None
+        # Coordination failure detector should still produce findings
+        assert result.finding_count >= 1
+        for finding in result.findings:
+            assert finding.category == ErrorCategory.COORDINATION_FAILURE
+
+    async def test_safe_detect_memory_error_propagates(self) -> None:
+        """MemoryError from an individual detector propagates through _safe_detect."""
+        config = ErrorTaxonomyConfig(
+            enabled=True,
+            categories=(ErrorCategory.LOGICAL_CONTRADICTION,),
+        )
+        messages = (
+            ChatMessage(role=MessageRole.ASSISTANT, content="Message one."),
+            ChatMessage(role=MessageRole.USER, content="Continue."),
+            ChatMessage(role=MessageRole.ASSISTANT, content="Message two."),
+        )
+        with (
+            patch(
+                "ai_company.engine.classification.pipeline"
+                ".detect_logical_contradictions",
+                side_effect=MemoryError,
+            ),
+            pytest.raises(MemoryError),
+        ):
+            await classify_execution_errors(
+                _execution_result(messages=messages, turns=(_turn(),)),
+                "agent-1",
+                "task-1",
+                config=config,
+            )
+
+    async def test_empty_categories_produces_no_findings(self) -> None:
+        """Enabled config with empty categories tuple runs no detectors."""
+        config = ErrorTaxonomyConfig(
+            enabled=True,
+            categories=(),
+        )
+        messages = (
+            ChatMessage(role=MessageRole.ASSISTANT, content="The cache is enabled."),
+            ChatMessage(role=MessageRole.USER, content="Check."),
+            ChatMessage(
+                role=MessageRole.ASSISTANT,
+                content="The cache is not enabled.",
+            ),
+        )
+        result = await classify_execution_errors(
+            _execution_result(messages=messages, turns=(_turn(),)),
+            "agent-1",
+            "task-1",
+            config=config,
+        )
+        assert result is not None
+        assert result.finding_count == 0
+        assert result.categories_checked == ()
+
 
 def _make_tool_error() -> ToolResult:
     """Create a ToolResult representing an error."""

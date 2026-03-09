@@ -1,7 +1,7 @@
 """Coordination error classification pipeline.
 
 Re-exports the public API for error taxonomy classification —
-models, detectors, and the main pipeline entry point.
+models and the main pipeline entry point.
 """
 
 from ai_company.engine.classification.models import (

@@ -22,6 +22,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 - **Templates** - Built-in templates, inheritance/merge, rendering, personality presets
 - **Persistence Layer (M5)** - Pluggable `PersistenceBackend` protocol with SQLite backend (aiosqlite), repository protocols, schema migrations
 - **Memory Interface (M5)** - Pluggable `MemoryBackend` protocol with capability discovery, shared knowledge protocol, domain models, config, and factory
+- **Coordination Error Taxonomy (M5)** - Post-execution classification pipeline detecting logical contradictions, numerical drift, context omissions, and coordination failures
 
 ### Not implemented yet (planned milestones)
 

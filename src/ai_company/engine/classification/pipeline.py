@@ -6,7 +6,6 @@ exceptions — all errors are caught and logged.
 """
 
 from typing import TYPE_CHECKING
-from uuid import uuid4
 
 from ai_company.budget.coordination_config import (
     ErrorCategory,
@@ -35,6 +34,7 @@ from ai_company.observability.events.classification import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ai_company.core.types import NotBlankStr
     from ai_company.engine.loop_protocol import ExecutionResult
 
 logger = get_logger(__name__)
@@ -42,8 +42,8 @@ logger = get_logger(__name__)
 
 async def classify_execution_errors(
     execution_result: ExecutionResult,
-    agent_id: str,
-    task_id: str,
+    agent_id: NotBlankStr,
+    task_id: NotBlankStr,
     *,
     config: ErrorTaxonomyConfig,
 ) -> ClassificationResult | None:
@@ -51,6 +51,9 @@ async def classify_execution_errors(
 
     Returns ``None`` when the taxonomy is disabled.  Never raises —
     all exceptions are caught and logged as ``CLASSIFICATION_ERROR``.
+
+    The function is async for compatibility with the engine's async
+    execution pipeline; current detectors run synchronously.
 
     Args:
         execution_result: The completed execution result to analyse.
@@ -71,7 +74,7 @@ async def classify_execution_errors(
         )
         return None
 
-    execution_id = str(uuid4())
+    execution_id = execution_result.context.execution_id
     logger.info(
         CLASSIFICATION_START,
         agent_id=agent_id,
@@ -123,6 +126,7 @@ def _run_detectors(
     conversation = execution_result.context.conversation
     turns = execution_result.turns
     categories = config.categories
+    msg_count = len(conversation)
 
     all_findings: list[ErrorFinding] = []
 
@@ -134,6 +138,7 @@ def _run_detectors(
                 agent_id,
                 task_id,
                 execution_id,
+                message_count=msg_count,
             ),
         )
 
@@ -145,6 +150,7 @@ def _run_detectors(
                 agent_id,
                 task_id,
                 execution_id,
+                message_count=msg_count,
             ),
         )
 
@@ -156,6 +162,7 @@ def _run_detectors(
                 agent_id,
                 task_id,
                 execution_id,
+                message_count=msg_count,
             ),
         )
 
@@ -170,6 +177,7 @@ def _run_detectors(
                 agent_id,
                 task_id,
                 execution_id,
+                message_count=msg_count,
             ),
         )
 
@@ -203,18 +211,19 @@ def _run_detectors(
     return result
 
 
-def _safe_detect(
+def _safe_detect(  # noqa: PLR0913
     detector_fn: Callable[[], tuple[ErrorFinding, ...]],
     detector_name: str,
     agent_id: str,
     task_id: str,
     execution_id: str,
+    *,
+    message_count: int,
 ) -> tuple[ErrorFinding, ...]:
     """Run a single detector with isolation.
 
-    Catches all exceptions except ``MemoryError`` and
-    ``RecursionError``, logging failures without stopping the
-    pipeline.
+    Re-raises ``MemoryError`` and ``RecursionError``; catches and
+    logs all other exceptions without stopping the pipeline.
 
     Args:
         detector_fn: Zero-arg callable that returns findings.
@@ -222,6 +231,8 @@ def _safe_detect(
         agent_id: Agent identifier.
         task_id: Task identifier.
         execution_id: Execution run identifier.
+        message_count: Number of messages in the conversation
+            (included in error logs for debuggability).
 
     Returns:
         Detector findings, or empty tuple on failure.
@@ -237,5 +248,6 @@ def _safe_detect(
             task_id=task_id,
             execution_id=execution_id,
             detector=detector_name,
+            message_count=message_count,
         )
         return ()

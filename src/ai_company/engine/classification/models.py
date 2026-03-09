@@ -37,8 +37,9 @@ class ErrorFinding(BaseModel):
         severity: Severity level of the finding.
         description: Human-readable description of the error.
         evidence: Supporting evidence extracted from the conversation.
-        turn_range: Optional (start, end) turn indices where the
-            error was observed.
+        turn_range: (start, end) message index range where the error
+            was observed, or ``None`` if the error cannot be
+            attributed to specific messages.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -46,13 +47,13 @@ class ErrorFinding(BaseModel):
     category: ErrorCategory = Field(description="Error taxonomy category")
     severity: ErrorSeverity = Field(description="Severity level")
     description: NotBlankStr = Field(description="Error description")
-    evidence: tuple[str, ...] = Field(
+    evidence: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Supporting evidence from conversation",
     )
     turn_range: tuple[int, int] | None = Field(
         default=None,
-        description="Turn index range (start, end) where error observed",
+        description="Message index range (start, end) where error observed",
     )
 
     @model_validator(mode="after")
@@ -96,6 +97,16 @@ class ClassificationResult(BaseModel):
         default_factory=lambda: datetime.now(UTC),
         description="Classification timestamp",
     )
+
+    @model_validator(mode="after")
+    def _validate_findings_match_categories(self) -> Self:
+        checked = set(self.categories_checked)
+        invalid = {f.category for f in self.findings} - checked
+        if invalid:
+            names = sorted(c.value for c in invalid)
+            msg = f"Findings contain unchecked categories: {names}"
+            raise ValueError(msg)
+        return self
 
     @computed_field(description="Number of findings")  # type: ignore[prop-decorator]
     @property

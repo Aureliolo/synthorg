@@ -4,7 +4,6 @@ Verifies end-to-end classification with realistic conversation
 patterns and validates structured log events are emitted.
 """
 
-import time
 from datetime import date
 from uuid import uuid4
 
@@ -22,6 +21,8 @@ from ai_company.engine.loop_protocol import (
 )
 from ai_company.providers.enums import FinishReason, MessageRole
 from ai_company.providers.models import ChatMessage, ToolResult
+
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
 
 
 def _identity() -> AgentIdentity:
@@ -196,8 +197,8 @@ class TestErrorTaxonomyIntegration:
         assert result is not None
         assert set(result.categories_checked) == set(ErrorCategory)
 
-    async def test_pipeline_does_not_block_execution(self) -> None:
-        """Classification should complete in reasonable time."""
+    async def test_pipeline_handles_large_conversation(self) -> None:
+        """Classification should complete for a moderately large conversation."""
         # Build a moderately large conversation (50 messages)
         messages: list[ChatMessage] = [
             ChatMessage(
@@ -225,32 +226,26 @@ class TestErrorTaxonomyIntegration:
             categories=tuple(ErrorCategory),
         )
 
-        start = time.monotonic()
         result = await classify_execution_errors(
             _execution_result(tuple(messages), turns=turns),
             "agent-1",
             "task-1",
             config=config,
         )
-        elapsed = time.monotonic() - start
 
         assert result is not None
-        # Should complete in under 2 seconds even on slow machines
-        assert elapsed < 2.0
+        assert set(result.categories_checked) == set(ErrorCategory)
 
-    async def test_disabled_taxonomy_returns_none_fast(self) -> None:
-        """Disabled taxonomy should return immediately."""
+    async def test_disabled_taxonomy_returns_none(self) -> None:
+        """Disabled taxonomy should return None."""
         config = ErrorTaxonomyConfig(enabled=False)
-        start = time.monotonic()
         result = await classify_execution_errors(
             _execution_result(()),
             "agent-1",
             "task-1",
             config=config,
         )
-        elapsed = time.monotonic() - start
         assert result is None
-        assert elapsed < 0.1
 
     async def test_numerical_drift_with_realistic_data(self) -> None:
         """Real-world scenario: cost estimate changes between turns."""

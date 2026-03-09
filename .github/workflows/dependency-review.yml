@@ -22,9 +22,10 @@ jobs:
         uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high
+          # LicenseRef-scancode-free-unknown: aiosqlite 0.21.0 — MIT per classifiers, scancode misdetects
           allow-licenses: >-
             MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause,
             ISC, MPL-2.0, PSF-2.0, Unlicense, 0BSD,
             CC0-1.0, Python-2.0,
-            LicenseRef-scancode-free-unknown  # aiosqlite 0.21.0 — MIT per classifiers, scancode misdetects
+            LicenseRef-scancode-free-unknown
           comment-summary-in-pr: always

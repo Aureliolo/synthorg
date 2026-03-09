@@ -14,6 +14,9 @@ from ai_company.observability.events.classification import (
     CLASSIFICATION_FINDING,
     CLASSIFICATION_SKIPPED,
     CLASSIFICATION_START,
+    DETECTOR_COMPLETE,
+    DETECTOR_ERROR,
+    DETECTOR_START,
 )
 from ai_company.observability.events.communication import (
     COMM_BUS_ALREADY_RUNNING,
@@ -468,3 +471,6 @@ class TestEventConstants:
         assert CLASSIFICATION_FINDING == "classification.finding"
         assert CLASSIFICATION_ERROR == "classification.error"
         assert CLASSIFICATION_SKIPPED == "classification.skipped"
+        assert DETECTOR_START == "classification.detector.start"
+        assert DETECTOR_COMPLETE == "classification.detector.complete"
+        assert DETECTOR_ERROR == "classification.detector.error"

@@ -204,7 +204,7 @@ def _check_drift_in_group(
     return tuple(findings)
 
 
-_ENTITY_PATTERN = re.compile(r"\b([A-Z][a-zA-Z]{2,}(?:[A-Z][a-zA-Z]*)*)\b")
+_ENTITY_PATTERN = re.compile(r"\b([A-Z][a-zA-Z]{2,})\b")
 
 
 def _extract_entities(text: str) -> set[str]:
@@ -288,6 +288,9 @@ def detect_numerical_drift(
     Returns:
         Tuple of findings for each drifted quantity.
     """
+    if threshold_percent <= 0:
+        msg = "threshold_percent must be positive"
+        raise ValueError(msg)
     logger.debug(
         DETECTOR_START,
         detector="numerical_drift",
@@ -439,7 +442,7 @@ def detect_coordination_failures(
                     severity=ErrorSeverity.HIGH,
                     description="Tool execution error detected",
                     evidence=(
-                        f"Message {i}: tool "
+                        f"Message {i}: tool_call_id="
                         f"'{msg.tool_result.tool_call_id}' "
                         f"returned error",
                     ),
@@ -447,19 +450,20 @@ def detect_coordination_failures(
                 )
             )
 
-    findings.extend(
-        ErrorFinding(
-            category=ErrorCategory.COORDINATION_FAILURE,
-            severity=ErrorSeverity.HIGH,
-            description="Error finish reason in turn record",
-            evidence=(
-                f"Turn {turn.turn_number}: finish_reason={turn.finish_reason.value}",
-            ),
-            turn_range=(turn.turn_number, turn.turn_number),
-        )
-        for turn in turns
-        if turn.finish_reason == FinishReason.ERROR
-    )
+    for turn_idx, turn in enumerate(turns):
+        if turn.finish_reason == FinishReason.ERROR:
+            findings.append(
+                ErrorFinding(
+                    category=ErrorCategory.COORDINATION_FAILURE,
+                    severity=ErrorSeverity.HIGH,
+                    description="Error finish reason in turn record",
+                    evidence=(
+                        f"Turn {turn.turn_number} (index {turn_idx}): "
+                        f"finish_reason={turn.finish_reason.value}",
+                    ),
+                    turn_range=(turn_idx, turn_idx),
+                )
+            )
 
     result = tuple(findings)
     logger.debug(

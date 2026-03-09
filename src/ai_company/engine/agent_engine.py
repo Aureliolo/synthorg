@@ -9,7 +9,7 @@ import contextlib
 import time
 from typing import TYPE_CHECKING
 
-from ai_company.core.enums import AgentStatus, TaskStatus
+from ai_company.core.enums import TaskStatus
 from ai_company.engine.classification.pipeline import classify_execution_errors
 from ai_company.engine.context import DEFAULT_MAX_TURNS, AgentContext
 from ai_company.engine.cost_recording import record_execution_costs
@@ -29,12 +29,16 @@ from ai_company.engine.prompt import (
 from ai_company.engine.react_loop import ReactLoop
 from ai_company.engine.recovery import FailAndReassignStrategy, RecoveryStrategy
 from ai_company.engine.run_result import AgentRunResult
+from ai_company.engine.validation import (
+    validate_agent,
+    validate_run_inputs,
+    validate_task,
+)
 from ai_company.observability import get_logger
 from ai_company.observability.events.execution import (
     EXECUTION_ENGINE_COMPLETE,
     EXECUTION_ENGINE_CREATED,
     EXECUTION_ENGINE_ERROR,
-    EXECUTION_ENGINE_INVALID_INPUT,
     EXECUTION_ENGINE_PROMPT_BUILT,
     EXECUTION_ENGINE_START,
     EXECUTION_ENGINE_TASK_METRICS,
@@ -66,14 +70,6 @@ logger = get_logger(__name__)
 _DEFAULT_RECOVERY_STRATEGY = FailAndReassignStrategy()
 """Module-level default instance for the recovery strategy."""
 
-_EXECUTABLE_STATUSES = frozenset({TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS})
-"""Task statuses the engine will accept for execution.
-
-CREATED tasks lack an assignee; terminal statuses (COMPLETED, CANCELLED),
-BLOCKED, IN_REVIEW, FAILED, and INTERRUPTED are not executable.  FAILED
-and INTERRUPTED tasks must be reassigned (-> ASSIGNED) before re-execution.
-"""
-
 
 class AgentEngine:
     """Top-level orchestrator for agent execution.
@@ -94,6 +90,9 @@ class AgentEngine:
         shutdown_checker: Optional callback; returns ``True`` when a
             graceful shutdown has been requested.  Passed through to
             the execution loop.
+        error_taxonomy_config: Optional error taxonomy configuration.
+            When provided and enabled, runs post-execution
+            classification of coordination errors.
     """
 
     def __init__(  # noqa: PLR0913
@@ -142,14 +141,14 @@ class AgentEngine:
         agent_id = str(identity.id)
         task_id = task.id
 
-        self._validate_run_inputs(
+        validate_run_inputs(
             agent_id=agent_id,
             task_id=task_id,
             max_turns=max_turns,
             timeout_seconds=timeout_seconds,
         )
-        self._validate_agent(identity, agent_id)
-        self._validate_task(task, agent_id, task_id)
+        validate_agent(identity, agent_id)
+        validate_task(task, agent_id, task_id)
 
         logger.info(
             EXECUTION_ENGINE_START,
@@ -282,15 +281,24 @@ class AgentEngine:
                 agent_id,
                 task_id,
             )
-        # Classification is log-only for now; classify_execution_errors
-        # never raises regular exceptions.
+        # Classification is non-critical — never destroys a result.
         if self._error_taxonomy_config is not None:
-            await classify_execution_errors(
-                execution_result,
-                agent_id,
-                task_id,
-                config=self._error_taxonomy_config,
-            )
+            try:
+                await classify_execution_errors(
+                    execution_result,
+                    agent_id,
+                    task_id,
+                    config=self._error_taxonomy_config,
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.debug(
+                    EXECUTION_ENGINE_ERROR,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    error="classification failed (details logged by pipeline)",
+                )
         return execution_result
 
     def _build_and_log_result(
@@ -420,82 +428,6 @@ class AgentEngine:
 
         ctx = self._transition_task_if_needed(ctx, agent_id, task_id)
         return ctx, system_prompt
-
-    # ── Validation ───────────────────────────────────────────────
-
-    def _validate_run_inputs(
-        self,
-        *,
-        agent_id: str,
-        task_id: str,
-        max_turns: int,
-        timeout_seconds: float | None,
-    ) -> None:
-        """Validate scalar ``run()`` arguments before execution."""
-        if max_turns < 1:
-            msg = f"max_turns must be >= 1, got {max_turns}"
-            logger.warning(
-                EXECUTION_ENGINE_INVALID_INPUT,
-                agent_id=agent_id,
-                task_id=task_id,
-                reason=msg,
-            )
-            raise ValueError(msg)
-        if timeout_seconds is not None and timeout_seconds <= 0:
-            msg = f"timeout_seconds must be > 0, got {timeout_seconds}"
-            logger.warning(
-                EXECUTION_ENGINE_INVALID_INPUT,
-                agent_id=agent_id,
-                task_id=task_id,
-                reason=msg,
-            )
-            raise ValueError(msg)
-
-    def _validate_agent(self, identity: AgentIdentity, agent_id: str) -> None:
-        """Raise if agent is not ACTIVE."""
-        if identity.status != AgentStatus.ACTIVE:
-            msg = (
-                f"Agent {agent_id} has status {identity.status.value!r}; "
-                f"only 'active' agents can run tasks"
-            )
-            logger.warning(
-                EXECUTION_ENGINE_INVALID_INPUT,
-                agent_id=agent_id,
-                reason=msg,
-            )
-            raise ExecutionStateError(msg)
-
-    def _validate_task(
-        self,
-        task: Task,
-        agent_id: str,
-        task_id: str,
-    ) -> None:
-        """Raise if task is not executable or not assigned to this agent."""
-        if task.status not in _EXECUTABLE_STATUSES:
-            msg = (
-                f"Task {task_id!r} has status {task.status.value!r}; "
-                f"only 'assigned' or 'in_progress' tasks can be executed"
-            )
-            logger.warning(
-                EXECUTION_ENGINE_INVALID_INPUT,
-                agent_id=agent_id,
-                task_id=task_id,
-                reason=msg,
-            )
-            raise ExecutionStateError(msg)
-        if task.assigned_to is not None and task.assigned_to != agent_id:
-            msg = (
-                f"Task {task_id!r} is assigned to {task.assigned_to!r}, "
-                f"not to agent {agent_id!r}"
-            )
-            logger.warning(
-                EXECUTION_ENGINE_INVALID_INPUT,
-                agent_id=agent_id,
-                task_id=task_id,
-                reason=msg,
-            )
-            raise ExecutionStateError(msg)
 
     # ── Helpers ──────────────────────────────────────────────────
 
