@@ -19,12 +19,15 @@ from ai_company.budget.hierarchy import (
     DepartmentBudget,
     TeamBudget,
 )
+from ai_company.budget.optimizer import CostOptimizer
+from ai_company.budget.optimizer_models import CostOptimizerConfig
 from ai_company.budget.quota import (
     QuotaLimit,
     QuotaWindow,
     SubscriptionConfig,
 )
 from ai_company.budget.quota_tracker import QuotaTracker
+from ai_company.budget.reports import ReportGenerator
 from ai_company.budget.spending_summary import (
     AgentSpending,
     DepartmentSpending,
@@ -103,6 +106,10 @@ class SpendingSummaryFactory(ModelFactory[SpendingSummary]):
     period = PeriodSpendingFactory
     by_agent = ()
     by_department = ()
+
+
+class CostOptimizerConfigFactory(ModelFactory[CostOptimizerConfig]):
+    __model__ = CostOptimizerConfig
 
 
 class CostTierDefinitionFactory(ModelFactory[CostTierDefinition]):
@@ -297,4 +304,39 @@ def make_cost_record(  # noqa: PLR0913
         output_tokens=output_tokens,
         cost_usd=cost_usd,
         timestamp=timestamp or datetime(2026, 2, 15, 12, 0, 0, tzinfo=UTC),
+    )
+
+
+# ── CFO / CostOptimizer fixtures ─────────────────────────────────
+
+
+@pytest.fixture
+def cost_optimizer_config() -> CostOptimizerConfig:
+    """Default CostOptimizerConfig for tests."""
+    return CostOptimizerConfig()
+
+
+@pytest.fixture
+def cost_optimizer(
+    budget_config_for_tracker: BudgetConfig,
+    cost_tracker: CostTracker,
+    cost_optimizer_config: CostOptimizerConfig,
+) -> CostOptimizer:
+    """CostOptimizer wired with tracker and config."""
+    return CostOptimizer(
+        cost_tracker=cost_tracker,
+        budget_config=budget_config_for_tracker,
+        config=cost_optimizer_config,
+    )
+
+
+@pytest.fixture
+def report_generator(
+    budget_config_for_tracker: BudgetConfig,
+    cost_tracker: CostTracker,
+) -> ReportGenerator:
+    """ReportGenerator wired with tracker and config."""
+    return ReportGenerator(
+        cost_tracker=cost_tracker,
+        budget_config=budget_config_for_tracker,
     )

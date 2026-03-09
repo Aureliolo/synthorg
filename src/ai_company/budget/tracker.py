@@ -41,6 +41,7 @@ from ai_company.observability.events.budget import (
     BUDGET_TOTAL_COST_QUERIED,
     BUDGET_TRACKER_CREATED,
 )
+from ai_company.observability.events.cfo import CFO_RECORDS_QUERIED
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -180,6 +181,48 @@ class CostTracker:
         """
         async with self._lock:
             return len(self._records)
+
+    async def get_records(
+        self,
+        *,
+        agent_id: str | None = None,
+        task_id: str | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> tuple[CostRecord, ...]:
+        """Return filtered cost records.
+
+        Returns an immutable snapshot of records matching the filters.
+
+        Args:
+            agent_id: Filter by agent.
+            task_id: Filter by task.
+            start: Inclusive lower bound on ``timestamp``.
+            end: Exclusive upper bound on ``timestamp``.
+
+        Returns:
+            Immutable tuple of matching cost records.
+
+        Raises:
+            ValueError: If both *start* and *end* are given and
+                ``start >= end``.
+        """
+        _validate_time_range(start, end)
+        logger.debug(
+            CFO_RECORDS_QUERIED,
+            agent_id=agent_id,
+            task_id=task_id,
+            start=start,
+            end=end,
+        )
+        snapshot = await self._snapshot()
+        return _filter_records(
+            snapshot,
+            agent_id=agent_id,
+            task_id=task_id,
+            start=start,
+            end=end,
+        )
 
     async def build_summary(
         self,
