@@ -107,3 +107,21 @@ class TestRetentionEnforcer:
         enforcer = RetentionEnforcer(config=config, backend=backend)
         deleted = await enforcer.cleanup_expired(_AGENT_ID, now=_NOW)
         assert deleted == 1
+
+    async def test_delete_returns_false_not_counted(self) -> None:
+        expired_entry = _make_entry("m1", MemoryCategory.WORKING)
+        backend = AsyncMock()
+        backend.retrieve = AsyncMock(return_value=(expired_entry,))
+        backend.delete = AsyncMock(return_value=False)
+
+        config = RetentionConfig(
+            rules=(
+                RetentionRule(
+                    category=MemoryCategory.WORKING,
+                    retention_days=30,
+                ),
+            ),
+        )
+        enforcer = RetentionEnforcer(config=config, backend=backend)
+        deleted = await enforcer.cleanup_expired(_AGENT_ID, now=_NOW)
+        assert deleted == 0

@@ -1,5 +1,8 @@
 """Tests for HybridPromptRetrievalBackend."""
 
+from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock
+
 import pytest
 
 from ai_company.core.enums import OrgFactCategory, SeniorityLevel
@@ -7,6 +10,7 @@ from ai_company.memory.org.access_control import WriteAccessConfig
 from ai_company.memory.org.errors import (
     OrgMemoryAccessDeniedError,
     OrgMemoryConnectionError,
+    OrgMemoryWriteError,
 )
 from ai_company.memory.org.hybrid_backend import HybridPromptRetrievalBackend
 from ai_company.memory.org.models import (
@@ -15,6 +19,9 @@ from ai_company.memory.org.models import (
     OrgMemoryQuery,
 )
 from ai_company.memory.org.store import SQLiteOrgFactStore
+
+if TYPE_CHECKING:
+    from ai_company.core.types import NotBlankStr
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -32,7 +39,7 @@ _JUNIOR = OrgFactAuthor(
 
 
 async def _make_backend(
-    policies: tuple[str, ...] = (),
+    policies: tuple[NotBlankStr, ...] = (),
 ) -> HybridPromptRetrievalBackend:
     store = SQLiteOrgFactStore(":memory:")
     backend = HybridPromptRetrievalBackend(
@@ -75,6 +82,16 @@ class TestHybridBackendPolicies:
         policies = await backend.list_policies()
         assert policies == ()
         await backend.disconnect()
+
+    async def test_list_policies_when_not_connected(self) -> None:
+        store = SQLiteOrgFactStore(":memory:")
+        backend = HybridPromptRetrievalBackend(
+            core_policies=(),
+            store=store,
+            access_config=WriteAccessConfig(),
+        )
+        with pytest.raises(OrgMemoryConnectionError):
+            await backend.list_policies()
 
     async def test_list_policies_returns_facts(self) -> None:
         backend = await _make_backend(
@@ -211,3 +228,53 @@ class TestHybridBackendWrite:
                 ),
                 author=_SENIOR,
             )
+
+    async def test_write_non_org_memory_write_error_wraps(self) -> None:
+        mock_store = AsyncMock()
+        mock_store.connect = AsyncMock()
+        mock_store.is_connected = True
+        mock_store.list_by_category = AsyncMock(return_value=())
+        mock_store.save = AsyncMock(
+            side_effect=RuntimeError("unexpected failure"),
+        )
+
+        backend = HybridPromptRetrievalBackend(
+            core_policies=(),
+            store=mock_store,
+            access_config=WriteAccessConfig(),
+        )
+        await backend.connect()
+
+        with pytest.raises(OrgMemoryWriteError, match="unexpected failure"):
+            await backend.write(
+                OrgFactWriteRequest(
+                    content="test fact",
+                    category=OrgFactCategory.CONVENTION,
+                ),
+                author=_SENIOR,
+            )
+
+    async def test_write_org_memory_write_error_reraises(self) -> None:
+        original_error = OrgMemoryWriteError("store write failed")
+        mock_store = AsyncMock()
+        mock_store.connect = AsyncMock()
+        mock_store.is_connected = True
+        mock_store.list_by_category = AsyncMock(return_value=())
+        mock_store.save = AsyncMock(side_effect=original_error)
+
+        backend = HybridPromptRetrievalBackend(
+            core_policies=(),
+            store=mock_store,
+            access_config=WriteAccessConfig(),
+        )
+        await backend.connect()
+
+        with pytest.raises(OrgMemoryWriteError) as exc_info:
+            await backend.write(
+                OrgFactWriteRequest(
+                    content="test fact",
+                    category=OrgFactCategory.CONVENTION,
+                ),
+                author=_SENIOR,
+            )
+        assert exc_info.value is original_error

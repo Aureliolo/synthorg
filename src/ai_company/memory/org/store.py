@@ -4,12 +4,13 @@ Self-contained storage for organizational facts, separate from the
 operational persistence layer.
 """
 
-import contextlib
 import sqlite3
-from datetime import datetime
+from datetime import UTC, datetime
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import Protocol, runtime_checkable
 
 import aiosqlite
+from pydantic import ValidationError
 
 from ai_company.core.enums import OrgFactCategory, SeniorityLevel
 from ai_company.core.types import NotBlankStr
@@ -21,7 +22,11 @@ from ai_company.memory.org.errors import (
 from ai_company.memory.org.models import OrgFact, OrgFactAuthor
 from ai_company.observability import get_logger
 from ai_company.observability.events.org_memory import (
+    ORG_MEMORY_CONNECT_FAILED,
+    ORG_MEMORY_DISCONNECT_FAILED,
+    ORG_MEMORY_NOT_CONNECTED,
     ORG_MEMORY_QUERY_FAILED,
+    ORG_MEMORY_ROW_PARSE_FAILED,
     ORG_MEMORY_WRITE_FAILED,
 )
 
@@ -63,6 +68,11 @@ class OrgFactStore(Protocol):
         """Close the store connection."""
         ...
 
+    @property
+    def is_connected(self) -> bool:
+        """Whether the store has an active connection."""
+        ...
+
     async def save(self, fact: OrgFact) -> None:
         """Save an organizational fact.
 
@@ -75,7 +85,7 @@ class OrgFactStore(Protocol):
         """
         ...
 
-    async def get(self, fact_id: str) -> OrgFact | None:
+    async def get(self, fact_id: NotBlankStr) -> OrgFact | None:
         """Get a fact by ID.
 
         Args:
@@ -131,11 +141,11 @@ class OrgFactStore(Protocol):
         """
         ...
 
-    async def delete(self, fact_id: str) -> bool:
+    async def delete(self, fact_id: NotBlankStr) -> bool:
         """Delete a fact by ID.
 
         Args:
-            fact_id: The fact identifier.
+            fact_id: Fact identifier.
 
         Returns:
             ``True`` if deleted, ``False`` if not found.
@@ -147,6 +157,28 @@ class OrgFactStore(Protocol):
         ...
 
 
+def _reject_traversal(db_path: str) -> None:
+    """Reject paths containing ``..`` traversal components.
+
+    Args:
+        db_path: Database file path to validate.
+
+    Raises:
+        OrgMemoryConnectionError: If traversal is detected.
+    """
+    if db_path == ":memory:":
+        return
+    for cls in (PurePosixPath, PureWindowsPath):
+        if ".." in cls(db_path).parts:
+            msg = f"Path traversal detected in db_path: {db_path!r}"
+            logger.warning(
+                ORG_MEMORY_CONNECT_FAILED,
+                db_path=db_path,
+                reason="path traversal",
+            )
+            raise OrgMemoryConnectionError(msg)
+
+
 def _row_to_org_fact(row: aiosqlite.Row) -> OrgFact:
     """Reconstruct an ``OrgFact`` from a database row.
 
@@ -155,22 +187,41 @@ def _row_to_org_fact(row: aiosqlite.Row) -> OrgFact:
 
     Returns:
         An ``OrgFact`` model instance.
+
+    Raises:
+        OrgMemoryQueryError: If the row cannot be deserialized.
     """
-    author = OrgFactAuthor(
-        agent_id=row["author_agent_id"],
-        seniority=(
-            SeniorityLevel(row["author_seniority"]) if row["author_seniority"] else None
-        ),
-        is_human=bool(row["author_is_human"]),
-    )
-    return OrgFact(
-        id=row["id"],
-        content=row["content"],
-        category=OrgFactCategory(row["category"]),
-        author=author,
-        created_at=datetime.fromisoformat(row["created_at"]),
-        version=row["version"],
-    )
+    try:
+        created_at_str: str = row["created_at"]
+        created_at = datetime.fromisoformat(created_at_str)
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=UTC)
+
+        author = OrgFactAuthor(
+            agent_id=row["author_agent_id"],
+            seniority=(
+                SeniorityLevel(row["author_seniority"])
+                if row["author_seniority"]
+                else None
+            ),
+            is_human=bool(row["author_is_human"]),
+        )
+        return OrgFact(
+            id=row["id"],
+            content=row["content"],
+            category=OrgFactCategory(row["category"]),
+            author=author,
+            created_at=created_at,
+            version=row["version"],
+        )
+    except (KeyError, ValueError, ValidationError) as exc:
+        logger.warning(
+            ORG_MEMORY_ROW_PARSE_FAILED,
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+        msg = f"Failed to deserialize org fact row: {exc}"
+        raise OrgMemoryQueryError(msg) from exc
 
 
 class SQLiteOrgFactStore:
@@ -181,9 +232,13 @@ class SQLiteOrgFactStore:
 
     Args:
         db_path: Path to the SQLite database file (or ``:memory:``).
+
+    Raises:
+        OrgMemoryConnectionError: If the path contains traversal.
     """
 
     def __init__(self, db_path: str) -> None:
+        _reject_traversal(db_path)
         self._db_path = db_path
         self._db: aiosqlite.Connection | None = None
 
@@ -203,19 +258,30 @@ class SQLiteOrgFactStore:
             await self._ensure_schema()
         except (sqlite3.Error, OSError) as exc:
             if self._db is not None:
-                with contextlib.suppress(sqlite3.Error, OSError):
+                try:
                     await self._db.close()
+                except sqlite3.Error, OSError:
+                    logger.warning(
+                        ORG_MEMORY_DISCONNECT_FAILED,
+                        db_path=self._db_path,
+                        reason="cleanup close during failed connect",
+                    )
             self._db = None
             msg = f"Failed to connect to org fact store: {exc}"
+            logger.exception(
+                ORG_MEMORY_CONNECT_FAILED,
+                db_path=self._db_path,
+                error=str(exc),
+            )
             raise OrgMemoryConnectionError(msg) from exc
 
     async def _ensure_schema(self) -> None:
         """Create tables and indexes if they don't exist."""
-        assert self._db is not None  # noqa: S101
-        await self._db.execute(_CREATE_TABLE_SQL)
-        await self._db.execute(_CREATE_CATEGORY_INDEX_SQL)
-        await self._db.execute(_CREATE_VERSION_INDEX_SQL)
-        await self._db.commit()
+        db = self._require_connected()
+        await db.execute(_CREATE_TABLE_SQL)
+        await db.execute(_CREATE_CATEGORY_INDEX_SQL)
+        await db.execute(_CREATE_VERSION_INDEX_SQL)
+        await db.commit()
 
     async def disconnect(self) -> None:
         """Close the database connection."""
@@ -224,7 +290,10 @@ class SQLiteOrgFactStore:
         try:
             await self._db.close()
         except sqlite3.Error, OSError:
-            pass
+            logger.warning(
+                ORG_MEMORY_DISCONNECT_FAILED,
+                db_path=self._db_path,
+            )
         finally:
             self._db = None
 
@@ -236,6 +305,7 @@ class SQLiteOrgFactStore:
         """
         if self._db is None:
             msg = "Not connected — call connect() first"
+            logger.warning(ORG_MEMORY_NOT_CONNECTED, db_path=self._db_path)
             raise OrgMemoryConnectionError(msg)
         return self._db
 
@@ -277,7 +347,7 @@ class SQLiteOrgFactStore:
             msg = f"Failed to save org fact: {exc}"
             raise OrgMemoryWriteError(msg) from exc
 
-    async def get(self, fact_id: str) -> OrgFact | None:
+    async def get(self, fact_id: NotBlankStr) -> OrgFact | None:
         """Get a fact by its ID.
 
         Args:
@@ -338,14 +408,15 @@ class SQLiteOrgFactStore:
         clauses: list[str] = []
         params: list[str | int] = []
 
-        if categories is not None:
+        if categories is not None and categories:
             placeholders = ",".join("?" for _ in categories)
             clauses.append(f"category IN ({placeholders})")
             params.extend(c.value for c in categories)
 
         if text is not None:
-            clauses.append("content LIKE ?")
-            params.append(f"%{text}%")
+            escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            clauses.append("content LIKE ? ESCAPE '\\'")
+            params.append(f"%{escaped}%")
 
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         sql = f"SELECT * FROM org_facts{where} ORDER BY created_at DESC LIMIT ?"  # noqa: S608
@@ -396,7 +467,7 @@ class SQLiteOrgFactStore:
             raise OrgMemoryQueryError(msg) from exc
         return tuple(_row_to_org_fact(row) for row in rows)
 
-    async def delete(self, fact_id: str) -> bool:
+    async def delete(self, fact_id: NotBlankStr) -> bool:
         """Delete a fact by ID.
 
         Args:

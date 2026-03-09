@@ -20,6 +20,8 @@ from ai_company.memory.org.models import (
 from ai_company.memory.org.store import OrgFactStore  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.org_memory import (
+    ORG_MEMORY_CONNECT_FAILED,
+    ORG_MEMORY_NOT_CONNECTED,
     ORG_MEMORY_POLICIES_LISTED,
     ORG_MEMORY_QUERY_COMPLETE,
     ORG_MEMORY_QUERY_FAILED,
@@ -50,7 +52,7 @@ class HybridPromptRetrievalBackend:
     def __init__(
         self,
         *,
-        core_policies: tuple[str, ...],
+        core_policies: tuple[NotBlankStr, ...],
         store: OrgFactStore,
         access_config: WriteAccessConfig,
     ) -> None:
@@ -65,21 +67,32 @@ class HybridPromptRetrievalBackend:
         Raises:
             OrgMemoryConnectionError: If the store connection fails.
         """
-        await self._store.connect()
+        try:
+            await self._store.connect()
+        except OrgMemoryConnectionError:
+            logger.exception(
+                ORG_MEMORY_CONNECT_FAILED,
+                backend="hybrid_prompt_retrieval",
+                reason="store connection failed",
+            )
+            raise
         self._connected = True
 
     async def disconnect(self) -> None:
         """Disconnect the underlying store."""
-        await self._store.disconnect()
-        self._connected = False
+        try:
+            await self._store.disconnect()
+        finally:
+            self._connected = False
 
     async def health_check(self) -> bool:
-        """Check store connectivity.
+        """Check store connectivity by delegating to the store.
 
         Returns:
-            ``True`` if connected, ``False`` otherwise.
+            ``True`` if connected and the store reports connected,
+            ``False`` otherwise.
         """
-        return self._connected
+        return self._connected and self._store.is_connected
 
     @property
     def is_connected(self) -> bool:
@@ -95,6 +108,7 @@ class HybridPromptRetrievalBackend:
         """Raise if not connected."""
         if not self._connected:
             msg = "Not connected — call connect() first"
+            logger.warning(ORG_MEMORY_NOT_CONNECTED, backend="hybrid_prompt_retrieval")
             raise OrgMemoryConnectionError(msg)
 
     async def list_policies(self) -> tuple[OrgFact, ...]:
@@ -203,16 +217,20 @@ class HybridPromptRetrievalBackend:
 
         try:
             await self._store.save(fact)
+        except OrgMemoryWriteError:
+            logger.exception(
+                ORG_MEMORY_WRITE_FAILED,
+                fact_id=fact_id,
+            )
+            raise
         except Exception as exc:
             logger.exception(
                 ORG_MEMORY_WRITE_FAILED,
                 fact_id=fact_id,
                 error=str(exc),
             )
-            if not isinstance(exc, OrgMemoryWriteError):
-                msg = f"Failed to write org fact: {exc}"
-                raise OrgMemoryWriteError(msg) from exc
-            raise
+            msg = f"Failed to write org fact: {exc}"
+            raise OrgMemoryWriteError(msg) from exc
         else:
             logger.info(
                 ORG_MEMORY_WRITE_COMPLETE,
@@ -226,6 +244,11 @@ class HybridPromptRetrievalBackend:
         category: OrgFactCategory,
     ) -> int:
         """Compute the next version number for facts in this category.
+
+        Uses ``MAX(version)`` query via the store to determine the next
+        version.  Note: concurrent writers in the same category may
+        produce duplicate versions — callers requiring strict uniqueness
+        should wrap the version+save in a transaction.
 
         Args:
             category: The fact category.

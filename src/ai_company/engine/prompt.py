@@ -138,9 +138,9 @@ _SECTION_COMPANY = "company"
 # Sections trimmed when over token budget, least critical first.
 _TRIMMABLE_SECTIONS = (
     _SECTION_COMPANY,
-    _SECTION_ORG_POLICIES,
     _SECTION_TOOLS,
     _SECTION_TASK,
+    _SECTION_ORG_POLICIES,
 )
 
 
@@ -162,7 +162,7 @@ def build_system_prompt(  # noqa: PLR0913
     """Build a system prompt from agent identity and optional context.
 
     When ``max_tokens`` is provided and the prompt exceeds it, optional
-    sections are progressively trimmed (company, tools, task).
+    sections are progressively trimmed (company, tools, task, org_policies).
 
     Args:
         agent: Agent identity containing personality, skills, authority.
@@ -363,7 +363,7 @@ def _build_template_context(  # noqa: PLR0913
     """
     context = _build_core_context(agent, role)
 
-    context["org_policies"] = org_policies or None
+    context["org_policies"] = org_policies
 
     context["task"] = (
         {
@@ -421,6 +421,7 @@ def _compute_sections(
     ]
     if org_policies:
         sections.append(_SECTION_ORG_POLICIES)
+    # Autonomy follows org_policies in the template.
     sections.append(_SECTION_AUTONOMY)
     if task is not None:
         sections.append(_SECTION_TASK)

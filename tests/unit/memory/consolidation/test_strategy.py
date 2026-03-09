@@ -82,18 +82,17 @@ class TestSimpleConsolidationStrategy:
             group_threshold=3,
         )
         entries = (
-            _make_entry("e1", MemoryCategory.EPISODIC),
-            _make_entry("e2", MemoryCategory.EPISODIC),
-            _make_entry("e3", MemoryCategory.EPISODIC),
-            _make_entry("s1", MemoryCategory.SEMANTIC),
-            _make_entry("s2", MemoryCategory.SEMANTIC),
+            _make_entry("e1", MemoryCategory.EPISODIC, relevance=0.1),
+            _make_entry("e2", MemoryCategory.EPISODIC, relevance=0.5),
+            _make_entry("e3", MemoryCategory.EPISODIC, relevance=0.9),
+            _make_entry("s1", MemoryCategory.SEMANTIC, relevance=0.3),
+            _make_entry("s2", MemoryCategory.SEMANTIC, relevance=0.7),
         )
         result = await strategy.consolidate(entries, agent_id=_AGENT_ID)
         assert result.consolidated_count == 2
-        assert all(
-            rid in ("e1", "e2") or rid in ("e1", "e3") or rid in ("e2", "e3")
-            for rid in result.removed_ids
-        )
+        assert "e3" not in result.removed_ids
+        assert "e1" in result.removed_ids
+        assert "e2" in result.removed_ids
 
     async def test_keeps_highest_relevance(self) -> None:
         backend = AsyncMock()
@@ -113,3 +112,64 @@ class TestSimpleConsolidationStrategy:
         assert "high" not in result.removed_ids
         assert "low" in result.removed_ids
         assert "mid" in result.removed_ids
+
+    async def test_build_summary_truncation(self) -> None:
+        backend = AsyncMock()
+        backend.store = AsyncMock(return_value="summary-1")
+        backend.delete = AsyncMock(return_value=True)
+
+        strategy = SimpleConsolidationStrategy(
+            backend=backend,
+            group_threshold=3,
+        )
+        long_content = "x" * 300
+        entries = tuple(
+            _make_entry(
+                f"m{i}",
+                relevance=0.1 * i,
+            )
+            for i in range(4)
+        )
+        # Override content to be long for entries that will be removed
+        long_entries = tuple(
+            MemoryEntry(
+                id=e.id,
+                agent_id=e.agent_id,
+                category=e.category,
+                content=long_content,
+                metadata=e.metadata,
+                created_at=e.created_at,
+                relevance_score=e.relevance_score,
+            )
+            for e in entries
+        )
+        await strategy.consolidate(long_entries, agent_id=_AGENT_ID)
+
+        store_call = backend.store.call_args
+        summary_content = store_call[0][1].content
+        assert "..." in summary_content
+
+    async def test_none_relevance_scores(self) -> None:
+        backend = AsyncMock()
+        backend.store = AsyncMock(return_value="summary-1")
+        backend.delete = AsyncMock(return_value=True)
+
+        strategy = SimpleConsolidationStrategy(
+            backend=backend,
+            group_threshold=3,
+        )
+        entries = (
+            _make_entry("m0", relevance=None),
+            _make_entry("m1", relevance=None),
+            _make_entry("m2", relevance=None),
+        )
+        result = await strategy.consolidate(entries, agent_id=_AGENT_ID)
+        assert result.consolidated_count == 2
+        assert result.summary_id == "summary-1"
+
+    def test_group_threshold_validation(self) -> None:
+        backend = AsyncMock()
+        with pytest.raises(ValueError, match="group_threshold must be >= 2"):
+            SimpleConsolidationStrategy(backend=backend, group_threshold=1)
+        with pytest.raises(ValueError, match="group_threshold must be >= 2"):
+            SimpleConsolidationStrategy(backend=backend, group_threshold=0)

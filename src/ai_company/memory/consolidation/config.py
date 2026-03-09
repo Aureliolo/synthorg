@@ -4,7 +4,9 @@ Frozen Pydantic models for consolidation interval, retention,
 and archival settings.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.enums import ConsolidationInterval
 from ai_company.memory.consolidation.models import RetentionRule  # noqa: TC001
@@ -14,7 +16,7 @@ class RetentionConfig(BaseModel):
     """Per-category retention configuration.
 
     Attributes:
-        rules: Per-category retention rules.
+        rules: Per-category retention rules (unique categories).
         default_retention_days: Default retention in days
             (``None`` = keep forever).
     """
@@ -30,6 +32,16 @@ class RetentionConfig(BaseModel):
         ge=1,
         description="Default retention in days (None = forever)",
     )
+
+    @model_validator(mode="after")
+    def _validate_unique_categories(self) -> Self:
+        """Ensure each category appears at most once in rules."""
+        categories = [rule.category for rule in self.rules]
+        if len(categories) != len(set(categories)):
+            dupes = sorted(c.value for c in categories if categories.count(c) > 1)
+            msg = f"Duplicate retention categories: {dupes}"
+            raise ValueError(msg)
+        return self
 
 
 class ArchivalConfig(BaseModel):

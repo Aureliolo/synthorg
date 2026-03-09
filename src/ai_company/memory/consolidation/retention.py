@@ -14,7 +14,9 @@ from ai_company.memory.protocol import MemoryBackend  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.consolidation import (
     RETENTION_CLEANUP_COMPLETE,
+    RETENTION_CLEANUP_FAILED,
     RETENTION_CLEANUP_START,
+    RETENTION_DELETE_SKIPPED,
 )
 
 logger = get_logger(__name__)
@@ -39,9 +41,32 @@ class RetentionEnforcer:
     ) -> None:
         self._config = config
         self._backend = backend
-        self._category_days: dict[MemoryCategory, int] = {
-            rule.category: rule.retention_days for rule in config.rules
-        }
+        self._categories_to_check = self._build_categories_to_check(config)
+
+    @staticmethod
+    def _build_categories_to_check(
+        config: RetentionConfig,
+    ) -> tuple[tuple[MemoryCategory, int], ...]:
+        """Pre-compute (category, retention_days) pairs at construction.
+
+        Includes explicit per-category rules and fills in any remaining
+        categories with the default retention (if set).
+
+        Args:
+            config: Retention configuration with per-category rules.
+
+        Returns:
+            Tuple of category/retention_days pairs.
+        """
+        category_days = {rule.category: rule.retention_days for rule in config.rules}
+        result: list[tuple[MemoryCategory, int]] = []
+        for category in MemoryCategory:
+            days = category_days.get(category)
+            if days is not None:
+                result.append((category, days))
+            elif config.default_retention_days is not None:
+                result.append((category, config.default_retention_days))
+        return tuple(result)
 
     async def cleanup_expired(
         self,
@@ -49,6 +74,9 @@ class RetentionEnforcer:
         now: datetime | None = None,
     ) -> int:
         """Delete memories that have exceeded their retention period.
+
+        Processes each category independently so that a failure in one
+        category does not prevent cleanup of the remaining categories.
 
         Args:
             agent_id: Agent whose memories to clean up.
@@ -63,20 +91,35 @@ class RetentionEnforcer:
         logger.info(RETENTION_CLEANUP_START, agent_id=agent_id)
         total_deleted = 0
 
-        categories_to_check = self._get_categories_with_retention()
-
-        for category, retention_days in categories_to_check:
-            cutoff = now - timedelta(days=retention_days)
-            query = MemoryQuery(
-                categories=frozenset({category}),
-                until=cutoff,
-                limit=1000,
-            )
-            expired = await self._backend.retrieve(agent_id, query)
-            for entry in expired:
-                deleted = await self._backend.delete(agent_id, entry.id)
-                if deleted:
-                    total_deleted += 1
+        for category, retention_days in self._categories_to_check:
+            try:
+                cutoff = now - timedelta(days=retention_days)
+                query = MemoryQuery(
+                    categories=frozenset({category}),
+                    until=cutoff,
+                    limit=1000,
+                )
+                expired = await self._backend.retrieve(agent_id, query)
+                for entry in expired:
+                    deleted = await self._backend.delete(agent_id, entry.id)
+                    if deleted:
+                        total_deleted += 1
+                    else:
+                        logger.debug(
+                            RETENTION_DELETE_SKIPPED,
+                            agent_id=agent_id,
+                            entry_id=entry.id,
+                            category=category.value,
+                        )
+            except Exception as exc:
+                logger.warning(
+                    RETENTION_CLEANUP_FAILED,
+                    agent_id=agent_id,
+                    category=category.value,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
+                continue
 
         logger.info(
             RETENTION_CLEANUP_COMPLETE,
@@ -84,25 +127,3 @@ class RetentionEnforcer:
             deleted_count=total_deleted,
         )
         return total_deleted
-
-    def _get_categories_with_retention(
-        self,
-    ) -> list[tuple[MemoryCategory, int]]:
-        """Build list of (category, retention_days) pairs.
-
-        Includes explicit per-category rules and fills in any remaining
-        categories with the default retention (if set).
-
-        Returns:
-            List of category/retention_days tuples.
-        """
-        result: list[tuple[MemoryCategory, int]] = []
-
-        for category in MemoryCategory:
-            days = self._category_days.get(category)
-            if days is not None:
-                result.append((category, days))
-            elif self._config.default_retention_days is not None:
-                result.append((category, self._config.default_retention_days))
-
-        return result

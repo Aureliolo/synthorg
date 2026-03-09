@@ -145,6 +145,7 @@ class CompanyMemoryConfig(BaseModel):
         storage: Storage-specific settings.
         options: Memory behaviour options.
         retrieval: Memory retrieval pipeline settings.
+        consolidation: Memory consolidation settings.
     """
 
     model_config = ConfigDict(frozen=True)

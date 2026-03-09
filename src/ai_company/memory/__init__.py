@@ -1,9 +1,11 @@
 """Agent memory system — protocols, models, config, and factory.
 
-Re-exports the protocols (``MemoryBackend``, ``MemoryCapabilities``,
-``SharedKnowledgeStore``, ``MemoryInjectionStrategy``), domain models,
-config models, factory, retrieval pipeline, and error hierarchy so
-consumers can import from ``ai_company.memory`` directly.
+Re-exports protocols (``MemoryBackend``, ``MemoryCapabilities``,
+``SharedKnowledgeStore``, ``MemoryInjectionStrategy``,
+``OrgMemoryBackend``, ``ConsolidationStrategy``, ``ArchivalStore``),
+domain models, config models, factory, retrieval pipeline,
+consolidation, org memory, and error hierarchy so consumers can
+import from ``ai_company.memory`` directly.
 """
 
 from ai_company.memory.capabilities import MemoryCapabilities

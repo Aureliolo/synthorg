@@ -1,21 +1,22 @@
 """Simple consolidation strategy.
 
-Groups old entries by category, keeps the most relevant entry
-per group, and creates a summary entry from the rest.
+Groups entries by category, keeps the most relevant entry per group
+(with most recent as tiebreaker), and creates a summary entry from
+the rest.
 """
 
 from itertools import groupby
 from operator import attrgetter
 
 from ai_company.core.enums import MemoryCategory  # noqa: TC001
-from ai_company.core.types import NotBlankStr
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.memory.consolidation.models import ConsolidationResult
 from ai_company.memory.models import MemoryEntry, MemoryMetadata, MemoryStoreRequest
 from ai_company.memory.protocol import MemoryBackend  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.consolidation import (
-    CONSOLIDATION_COMPLETE,
-    CONSOLIDATION_START,
+    STRATEGY_COMPLETE,
+    STRATEGY_START,
 )
 
 logger = get_logger(__name__)
@@ -24,17 +25,24 @@ _SUMMARY_TRUNCATE_LENGTH = 200
 
 _DEFAULT_GROUP_THRESHOLD = 3
 
+_MIN_GROUP_THRESHOLD = 2
+
 
 class SimpleConsolidationStrategy:
     """Simple memory consolidation strategy.
 
     Groups entries by category.  For each group exceeding a threshold,
-    keeps the entry with the highest relevance score (or most recent),
-    creates a summary entry from the rest, and marks removed entries.
+    keeps the entry with the highest relevance score (with most recent
+    as tiebreaker), creates a summary entry from the rest, and marks
+    removed entries.
 
     Args:
         backend: Memory backend for storing summaries.
-        group_threshold: Minimum group size to trigger consolidation.
+        group_threshold: Minimum group size to trigger consolidation
+            (must be >= 2).
+
+    Raises:
+        ValueError: If ``group_threshold`` is less than 2.
     """
 
     def __init__(
@@ -43,6 +51,12 @@ class SimpleConsolidationStrategy:
         backend: MemoryBackend,
         group_threshold: int = _DEFAULT_GROUP_THRESHOLD,
     ) -> None:
+        if group_threshold < _MIN_GROUP_THRESHOLD:
+            msg = (
+                f"group_threshold must be >= {_MIN_GROUP_THRESHOLD}, "
+                f"got {group_threshold}"
+            )
+            raise ValueError(msg)
         self._backend = backend
         self._group_threshold = group_threshold
 
@@ -65,7 +79,7 @@ class SimpleConsolidationStrategy:
             return ConsolidationResult(consolidated_count=0)
 
         logger.info(
-            CONSOLIDATION_START,
+            STRATEGY_START,
             agent_id=agent_id,
             entry_count=len(entries),
         )
@@ -81,7 +95,7 @@ class SimpleConsolidationStrategy:
             if len(group) < self._group_threshold:
                 continue
 
-            _kept, to_remove = self._select_entries(group)
+            _, to_remove = self._select_entries(group)
             summary_content = self._build_summary(category, to_remove)
 
             store_request = MemoryStoreRequest(
@@ -98,7 +112,7 @@ class SimpleConsolidationStrategy:
 
             for entry in to_remove:
                 await self._backend.delete(agent_id, entry.id)
-                removed_ids.append(NotBlankStr(entry.id))
+                removed_ids.append(entry.id)
 
         result = ConsolidationResult(
             consolidated_count=len(removed_ids),
@@ -107,7 +121,7 @@ class SimpleConsolidationStrategy:
         )
 
         logger.info(
-            CONSOLIDATION_COMPLETE,
+            STRATEGY_COMPLETE,
             agent_id=agent_id,
             consolidated_count=result.consolidated_count,
             summary_id=result.summary_id,

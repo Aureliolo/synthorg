@@ -4,7 +4,9 @@ Frozen Pydantic models for consolidation results, archival entries,
 and retention rules.
 """
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.enums import MemoryCategory  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
@@ -67,6 +69,17 @@ class ArchivalEntry(BaseModel):
     )
     created_at: AwareDatetime = Field(description="Original creation timestamp")
     archived_at: AwareDatetime = Field(description="When this entry was archived")
+
+    @model_validator(mode="after")
+    def _validate_temporal_order(self) -> Self:
+        """Ensure archived_at >= created_at."""
+        if self.archived_at < self.created_at:
+            msg = (
+                f"archived_at ({self.archived_at}) must be >= "
+                f"created_at ({self.created_at})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class RetentionRule(BaseModel):

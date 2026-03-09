@@ -6,7 +6,7 @@ max-memories enforcement into a single maintenance entry point.
 
 from datetime import UTC, datetime
 
-from ai_company.core.types import NotBlankStr
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.memory.consolidation.archival import ArchivalStore  # noqa: TC001
 from ai_company.memory.consolidation.config import ConsolidationConfig  # noqa: TC001
 from ai_company.memory.consolidation.models import ArchivalEntry, ConsolidationResult
@@ -19,9 +19,15 @@ from ai_company.memory.protocol import MemoryBackend  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.consolidation import (
     ARCHIVAL_ENTRY_STORED,
+    ARCHIVAL_FAILED,
     CONSOLIDATION_COMPLETE,
     CONSOLIDATION_FAILED,
+    CONSOLIDATION_SKIPPED,
     CONSOLIDATION_START,
+    MAINTENANCE_COMPLETE,
+    MAINTENANCE_FAILED,
+    MAINTENANCE_START,
+    MAX_MEMORIES_ENFORCE_FAILED,
     MAX_MEMORIES_ENFORCED,
 )
 
@@ -63,7 +69,7 @@ class MemoryConsolidationService:
     ) -> ConsolidationResult:
         """Run memory consolidation for an agent.
 
-        Retrieves old memories and applies the consolidation strategy.
+        Retrieves memories and applies the consolidation strategy.
 
         Args:
             agent_id: Agent whose memories to consolidate.
@@ -72,6 +78,7 @@ class MemoryConsolidationService:
             Consolidation result.
         """
         if self._strategy is None:
+            logger.info(CONSOLIDATION_SKIPPED, agent_id=agent_id)
             return ConsolidationResult(consolidated_count=0)
 
         logger.info(CONSOLIDATION_START, agent_id=agent_id)
@@ -120,8 +127,8 @@ class MemoryConsolidationService:
     ) -> int:
         """Enforce the maximum memories limit for an agent.
 
-        Deletes the oldest/least relevant entries if the agent has
-        exceeded ``max_memories_per_agent``.
+        Deletes excess entries (as returned by the backend's default
+        ordering) if the agent has exceeded ``max_memories_per_agent``.
 
         Args:
             agent_id: Agent to check.
@@ -129,27 +136,36 @@ class MemoryConsolidationService:
         Returns:
             Number of entries deleted.
         """
-        total = await self._backend.count(agent_id)
-        excess = total - self._config.max_memories_per_agent
+        try:
+            total = await self._backend.count(agent_id)
+            excess = total - self._config.max_memories_per_agent
 
-        if excess <= 0:
-            return 0
+            if excess <= 0:
+                return 0
 
-        query = MemoryQuery(limit=excess)
-        oldest = await self._backend.retrieve(agent_id, query)
+            query = MemoryQuery(limit=excess)
+            entries = await self._backend.retrieve(agent_id, query)
 
-        deleted = 0
-        for entry in oldest:
-            if await self._backend.delete(agent_id, entry.id):
-                deleted += 1
-
-        logger.info(
-            MAX_MEMORIES_ENFORCED,
-            agent_id=agent_id,
-            total_before=total,
-            deleted=deleted,
-        )
-        return deleted
+            deleted = 0
+            for entry in entries:
+                if await self._backend.delete(agent_id, entry.id):
+                    deleted += 1
+        except Exception as exc:
+            logger.exception(
+                MAX_MEMORIES_ENFORCE_FAILED,
+                agent_id=agent_id,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            raise
+        else:
+            logger.info(
+                MAX_MEMORIES_ENFORCED,
+                agent_id=agent_id,
+                total_before=total,
+                deleted=deleted,
+            )
+            return deleted
 
     async def cleanup_retention(
         self,
@@ -179,10 +195,22 @@ class MemoryConsolidationService:
         Returns:
             Consolidation result from the consolidation step.
         """
-        await self.cleanup_retention(agent_id)
-        result = await self.run_consolidation(agent_id)
-        await self.enforce_max_memories(agent_id)
-        return result
+        logger.info(MAINTENANCE_START, agent_id=agent_id)
+        try:
+            await self.cleanup_retention(agent_id)
+            result = await self.run_consolidation(agent_id)
+            await self.enforce_max_memories(agent_id)
+        except Exception as exc:
+            logger.exception(
+                MAINTENANCE_FAILED,
+                agent_id=agent_id,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            raise
+        else:
+            logger.info(MAINTENANCE_COMPLETE, agent_id=agent_id)
+            return result
 
     async def _archive_entries(
         self,
@@ -200,7 +228,8 @@ class MemoryConsolidationService:
         Returns:
             Number of entries archived.
         """
-        assert self._archival_store is not None  # noqa: S101
+        if self._archival_store is None:
+            return 0
         removed_set = set(removed_ids)
         now = datetime.now(UTC)
         archived = 0
@@ -210,15 +239,25 @@ class MemoryConsolidationService:
                 continue
 
             archival_entry = ArchivalEntry(
-                original_id=NotBlankStr(entry.id),
-                agent_id=NotBlankStr(entry.agent_id),
-                content=NotBlankStr(entry.content),
+                original_id=entry.id,
+                agent_id=entry.agent_id,
+                content=entry.content,
                 category=entry.category,
                 metadata=entry.metadata,
                 created_at=entry.created_at,
                 archived_at=now,
             )
-            await self._archival_store.archive(archival_entry)
+            try:
+                await self._archival_store.archive(archival_entry)
+            except Exception as exc:
+                logger.warning(
+                    ARCHIVAL_FAILED,
+                    original_id=entry.id,
+                    agent_id=agent_id,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
+                raise
             archived += 1
             logger.debug(
                 ARCHIVAL_ENTRY_STORED,

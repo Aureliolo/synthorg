@@ -101,3 +101,13 @@ class TestRequireWriteAccess:
                 OrgFactCategory.CORE_POLICY,
                 _JUNIOR_AGENT,
             )
+
+
+@pytest.mark.unit
+class TestWriteAccessConfigImmutability:
+    """WriteAccessConfig.rules is a MappingProxyType."""
+
+    def test_rules_immutable(self) -> None:
+        config = WriteAccessConfig()
+        with pytest.raises(TypeError):
+            config.rules[OrgFactCategory.CORE_POLICY] = CategoryWriteRule()

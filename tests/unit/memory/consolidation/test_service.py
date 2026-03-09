@@ -58,6 +58,24 @@ class TestRunConsolidation:
         result = await service.run_consolidation(_AGENT_ID)
         assert result.consolidated_count == 0
 
+    async def test_run_consolidation_skipped_when_no_strategy(
+        self,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        backend = _make_backend_mock()
+        config = ConsolidationConfig()
+        service = MemoryConsolidationService(
+            backend=backend,
+            config=config,
+            strategy=None,
+        )
+        result = await service.run_consolidation(_AGENT_ID)
+        assert result.consolidated_count == 0
+        assert result.removed_ids == ()
+        assert result.summary_id is None
+        captured = capsys.readouterr()
+        assert "consolidation.run.skipped" in captured.out
+
     async def test_with_strategy(self) -> None:
         entries = (_make_entry("m1"), _make_entry("m2"))
         backend = _make_backend_mock(entries=entries)
@@ -80,6 +98,24 @@ class TestRunConsolidation:
         result = await service.run_consolidation(_AGENT_ID)
         assert result.consolidated_count == 1
         assert result.summary_id == "summary-1"
+
+    async def test_run_consolidation_exception_propagates(self) -> None:
+        entries = (_make_entry("m1"),)
+        backend = _make_backend_mock(entries=entries)
+
+        strategy = AsyncMock()
+        strategy.consolidate = AsyncMock(
+            side_effect=RuntimeError("strategy failure"),
+        )
+
+        config = ConsolidationConfig()
+        service = MemoryConsolidationService(
+            backend=backend,
+            config=config,
+            strategy=strategy,
+        )
+        with pytest.raises(RuntimeError, match="strategy failure"):
+            await service.run_consolidation(_AGENT_ID)
 
     async def test_with_archival(self) -> None:
         entries = (_make_entry("m1"), _make_entry("m2"))
@@ -134,6 +170,19 @@ class TestEnforceMaxMemories:
         )
         deleted = await service.enforce_max_memories(_AGENT_ID)
         assert deleted == 3
+
+    async def test_enforce_max_memories_delete_returns_false(self) -> None:
+        entries = tuple(_make_entry(f"m{i}") for i in range(3))
+        backend = _make_backend_mock(entries=entries, count=13)
+        backend.delete = AsyncMock(side_effect=[True, False, True])
+
+        config = ConsolidationConfig(max_memories_per_agent=10)
+        service = MemoryConsolidationService(
+            backend=backend,
+            config=config,
+        )
+        deleted = await service.enforce_max_memories(_AGENT_ID)
+        assert deleted == 2
 
 
 @pytest.mark.unit

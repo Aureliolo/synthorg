@@ -2825,7 +2825,26 @@ ai-company/
 │       │   ├── ranking.py          # ScoredMemory model, rank_memories(), scoring functions
 │       │   ├── retrieval_config.py # MemoryRetrievalConfig (weights, thresholds, strategy selection)
 │       │   ├── retriever.py        # ContextInjectionStrategy (full retrieval → rank → format pipeline)
-│       │   └── shared.py           # SharedKnowledgeStore protocol
+│       │   ├── shared.py           # SharedKnowledgeStore protocol
+│       │   ├── consolidation/    # Memory consolidation — strategies, retention, archival
+│       │   │   ├── __init__.py
+│       │   │   ├── archival.py   # ArchivalStore protocol
+│       │   │   ├── config.py     # ConsolidationConfig, ArchivalConfig, RetentionConfig
+│       │   │   ├── models.py     # ConsolidationResult, ArchivalEntry, RetentionRule
+│       │   │   ├── retention.py  # RetentionEnforcer
+│       │   │   ├── service.py    # MemoryConsolidationService
+│       │   │   ├── simple_strategy.py # SimpleConsolidationStrategy
+│       │   │   └── strategy.py   # ConsolidationStrategy protocol
+│       │   └── org/              # Shared organizational memory (§7.4)
+│       │       ├── __init__.py
+│       │       ├── access_control.py # Write access control
+│       │       ├── config.py     # OrgMemoryConfig
+│       │       ├── errors.py     # OrgMemory error hierarchy
+│       │       ├── factory.py    # create_org_memory_backend()
+│       │       ├── hybrid_backend.py # HybridPromptRetrievalBackend
+│       │       ├── models.py     # OrgFact, OrgFactAuthor, OrgMemoryQuery
+│       │       ├── protocol.py   # OrgMemoryBackend protocol
+│       │       └── store.py      # OrgFactStore protocol, SQLiteOrgFactStore
 │       ├── persistence/             # Operational data persistence (§7.6)
 │       │   ├── __init__.py         # Package exports
 │       │   ├── protocol.py         # PersistenceBackend protocol (M5)
@@ -2849,6 +2868,7 @@ ai-company/
 │       │   │   ├── budget.py      # BUDGET_* constants
 │       │   │   ├── cfo.py         # CFO_* constants
 │       │   │   ├── classification.py # CLASSIFICATION_* constants
+│       │   │   ├── consolidation.py # CONSOLIDATION_* and RETENTION_* constants
 │       │   │   ├── company.py      # COMPANY_* constants
 │       │   │   ├── communication.py # COMM_* constants
 │       │   │   ├── conflict.py    # CONFLICT_* constants
@@ -2860,6 +2880,7 @@ ai-company/
 │       │   │   ├── git.py         # GIT_* constants
 │       │   │   ├── meeting.py    # MEETING_* constants
 │       │   │   ├── memory.py     # MEMORY_* constants
+│       │   │   ├── org_memory.py # ORG_MEMORY_* constants
 │       │   │   ├── parallel.py    # PARALLEL_* constants
 │       │   │   ├── persistence.py # PERSISTENCE_* constants
 │       │   │   ├── personality.py # PERSONALITY_* constants
@@ -3030,6 +3051,8 @@ These conventions were established during the M0–M2+ review cycle. **Adopted**
 | **Agent behavior testing** | Planned (M3) | Scripted `FakeProvider` for unit tests (deterministic turn sequences); behavioral outcome assertions for integration tests (task completed, tools called, cost within budget). | Leverages existing `FakeProvider` and `CompletionResponseFactory` fixtures. Precise engine testing without brittle response-matching at integration level. |
 | **LLM call analytics** | Adopted (incremental) | M3: proxy metrics (`turns_per_task`, `tokens_per_task`) — adopted. M4 data models: call categorization (`productive`, `coordination`, `system`), category analytics, coordination metrics, orchestration ratio — adopted. M4 runtime collection pipeline and M5+ full analytics: planned. | Append-only, never blocks execution. Builds on existing `CostRecord` infrastructure. Detects orchestration overhead early. See §10.5. |
 | **Cost tiers & quota tracking** | Adopted (M5) | Configurable `CostTierDefinition` definitions with merge/override semantics via `resolve_tiers(config: CostTiersConfig)`. `SubscriptionConfig` + `QuotaLimit` model per-provider subscription plans. `QuotaTracker` enforces per-provider request/token quotas with window-based rotation. `DegradationConfig` controls behavior when quotas are exhausted (default: `ALERT` — raise error; `FALLBACK` and `QUEUE` strategies defined but not yet implemented). | Enables cost classification without hardcoding vendor tiers. Quota tracking prevents surprise overages at the provider level. Window-based rotation aligns quota resets with billing periods. See §10.4. |
+| **Shared org memory** | Adopted (M5) | `OrgMemoryBackend` protocol (pluggable) with `HybridPromptRetrievalBackend` (Backend 1). `OrgFactStore` protocol with `SQLiteOrgFactStore` for persistent fact storage. Seniority-based write access control via `CategoryWriteRule`. Core policies injected into system prompts; extended facts retrieved on demand via `OrgMemoryQuery`. `OrgFact` model with `OrgFactAuthor` provenance tracking. Config-driven via `OrgMemoryConfig`. | Pluggable backend mirrors `MemoryBackend` pattern. Hybrid prompt+retrieval balances always-available core policies with on-demand extended knowledge. Seniority-based access control prevents junior agents from overwriting organizational knowledge. See §7.4. |
+| **Memory consolidation** | Adopted (M5) | `ConsolidationStrategy` protocol with `SimpleConsolidationStrategy` (deduplication + summarization). `RetentionEnforcer` for per-category age-based cleanup via `RetentionRule` policies. `ArchivalStore` protocol for cold storage before deletion. `MemoryConsolidationService` orchestrates retention → consolidation → max-memories enforcement pipeline. `ConsolidationResult` tracks statistics. Config-driven via `ConsolidationConfig` + `RetentionConfig` + `ArchivalConfig`. | Prevents unbounded memory growth. Pluggable strategy enables different consolidation approaches (simple dedup now, LLM-based summarization later). Retention + archival ensures compliance with data lifecycle policies. See §7.4. |
 | **State coordination** | Planned (M4) | Centralized single-writer: `TaskEngine` owns all task/project mutations via `asyncio.Queue`. Agents submit requests, engine applies `model_copy(update=...)` sequentially and publishes snapshots. `version: int` field on state models for future optimistic concurrency if multi-process scaling is needed. | Prevents lost updates by design. Trivial in single-threaded asyncio (no locks). Perfect audit trail. Industry consensus: MetaGPT, CrewAI, AutoGen all use prevention-by-design, not conflict resolution. See §6.8 State Coordination table. |
 | **Workspace isolation** | Adopted (M4 core) | Pluggable `WorkspaceIsolationStrategy` protocol. Default: planner + git worktrees. Each agent works in an isolated worktree; sequential merge on completion. Textual conflicts detected by git; semantic conflicts reviewed by agent or human. Runtime multi-agent coordination wiring remains M4 hardening work. | Industry standard (Codex, Cursor, Claude Code, VS Code). Maximum parallelism. Leverages mature git infrastructure. See §6.8. |
 | **Graceful shutdown** | Adopted (M3) | Pluggable `ShutdownStrategy` protocol. Default: cooperative with 30s timeout. Agents check shutdown event at turn boundaries. Force-cancel after timeout. `INTERRUPTED` status for force-cancelled tasks. M4/M5: upgrade to checkpoint-and-stop. | Cross-platform (Windows `signal.signal()` fallback). Bounded shutdown time. Mirrors cooperative shutdown in §6.7. |

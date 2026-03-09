@@ -29,7 +29,7 @@ class OrgFactAuthor(BaseModel):
         is_human: Whether the author is a human operator.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     agent_id: NotBlankStr | None = Field(
         default=None,
@@ -109,7 +109,7 @@ class OrgFactWriteRequest(BaseModel):
         category: Category classification.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     content: NotBlankStr = Field(description="Fact content text")
     category: OrgFactCategory = Field(description="Category classification")

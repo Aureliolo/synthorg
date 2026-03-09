@@ -4,7 +4,10 @@ Pure-function access checks that enforce seniority-based and
 human-based write restrictions per fact category.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from types import MappingProxyType
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.enums import (
     OrgFactCategory,
@@ -28,7 +31,7 @@ class CategoryWriteRule(BaseModel):
         human_allowed: Whether human operators can write.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     allowed_seniority: SeniorityLevel | None = Field(
         default=None,
@@ -40,36 +43,38 @@ class CategoryWriteRule(BaseModel):
     )
 
 
+def _default_rules() -> dict[OrgFactCategory, CategoryWriteRule]:
+    """Build default write rules for all org fact categories."""
+    senior_rule = CategoryWriteRule(
+        allowed_seniority=SeniorityLevel.SENIOR,
+    )
+    return {
+        OrgFactCategory.CORE_POLICY: CategoryWriteRule(),
+        OrgFactCategory.ADR: senior_rule,
+        OrgFactCategory.PROCEDURE: senior_rule,
+        OrgFactCategory.CONVENTION: senior_rule,
+    }
+
+
 class WriteAccessConfig(BaseModel):
     """Write access configuration for all fact categories.
 
     Attributes:
-        rules: Per-category write rules.
+        rules: Per-category write rules (read-only mapping).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     rules: dict[OrgFactCategory, CategoryWriteRule] = Field(
-        default_factory=lambda: {
-            OrgFactCategory.CORE_POLICY: CategoryWriteRule(
-                allowed_seniority=None,
-                human_allowed=True,
-            ),
-            OrgFactCategory.ADR: CategoryWriteRule(
-                allowed_seniority=SeniorityLevel.SENIOR,
-                human_allowed=True,
-            ),
-            OrgFactCategory.PROCEDURE: CategoryWriteRule(
-                allowed_seniority=SeniorityLevel.SENIOR,
-                human_allowed=True,
-            ),
-            OrgFactCategory.CONVENTION: CategoryWriteRule(
-                allowed_seniority=SeniorityLevel.SENIOR,
-                human_allowed=True,
-            ),
-        },
+        default_factory=_default_rules,
         description="Per-category write rules",
     )
+
+    @model_validator(mode="after")
+    def _wrap_rules_readonly(self) -> Self:
+        """Wrap the rules dict in a MappingProxyType for immutability."""
+        object.__setattr__(self, "rules", MappingProxyType(dict(self.rules)))
+        return self
 
 
 def check_write_access(

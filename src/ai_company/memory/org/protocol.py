@@ -106,6 +106,5 @@ class OrgMemoryBackend(Protocol):
 
         Raises:
             OrgMemoryConnectionError: If not connected.
-            OrgMemoryQueryError: If the query fails.
         """
         ...

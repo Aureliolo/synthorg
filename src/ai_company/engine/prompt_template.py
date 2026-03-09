@@ -119,18 +119,18 @@ in the {{ agent_department }} department.
 - **Budget limit**: ${{ "%.2f" | format(budget_limit) }} per task
 {% endif %}
 
-## Autonomy
-
-{{ autonomy_instructions }}
 {% if org_policies %}
-
 ## Organizational Policies
 
 These are company-wide rules that must always be followed:
 {% for policy in org_policies %}
 - {{ policy }}
 {% endfor %}
+
 {% endif %}
+## Autonomy
+
+{{ autonomy_instructions }}
 {% if task %}
 
 ## Current Task

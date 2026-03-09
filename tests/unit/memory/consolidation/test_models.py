@@ -1,6 +1,6 @@
 """Tests for consolidation domain models."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from pydantic import ValidationError
@@ -88,6 +88,22 @@ class TestArchivalEntry:
         )
         with pytest.raises(ValidationError):
             entry.content = "changed"  # type: ignore[misc]
+
+    def test_archival_entry_archived_before_created_rejected(self) -> None:
+        created = _NOW
+        archived = _NOW - timedelta(hours=1)
+        with pytest.raises(
+            ValidationError,
+            match=r"archived_at.*must be >= created_at",
+        ):
+            ArchivalEntry(
+                original_id="mem-1",
+                agent_id="agent-1",
+                content="test",
+                category=MemoryCategory.EPISODIC,
+                created_at=created,
+                archived_at=archived,
+            )
 
 
 @pytest.mark.unit

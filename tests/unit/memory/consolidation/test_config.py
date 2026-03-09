@@ -76,3 +76,23 @@ class TestConsolidationConfig:
     def test_zero_max_memories_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ConsolidationConfig(max_memories_per_agent=0)
+
+
+@pytest.mark.unit
+class TestRetentionConfigValidation:
+    """RetentionConfig duplicate category validation."""
+
+    def test_duplicate_retention_categories_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Duplicate retention categories"):
+            RetentionConfig(
+                rules=(
+                    RetentionRule(
+                        category=MemoryCategory.WORKING,
+                        retention_days=7,
+                    ),
+                    RetentionRule(
+                        category=MemoryCategory.WORKING,
+                        retention_days=30,
+                    ),
+                ),
+            )

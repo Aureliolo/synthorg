@@ -484,6 +484,7 @@ class RootConfig(BaseModel):
         memory: Memory backend configuration.
         persistence: Persistence backend configuration.
         cost_tiers: Cost tier definitions.
+        org_memory: Organizational memory configuration.
     """
 
     model_config = ConfigDict(frozen=True)

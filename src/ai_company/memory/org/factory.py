@@ -10,7 +10,10 @@ from ai_company.memory.org.hybrid_backend import HybridPromptRetrievalBackend
 from ai_company.memory.org.protocol import OrgMemoryBackend  # noqa: TC001
 from ai_company.memory.org.store import OrgFactStore  # noqa: TC001
 from ai_company.observability import get_logger
-from ai_company.observability.events.org_memory import ORG_MEMORY_BACKEND_CREATED
+from ai_company.observability.events.org_memory import (
+    ORG_MEMORY_BACKEND_CREATED,
+    ORG_MEMORY_CONFIG_INVALID,
+)
 
 logger = get_logger(__name__)
 
@@ -47,5 +50,10 @@ def create_org_memory_backend(
     msg = (
         f"Unknown org memory backend {config.backend!r}. "
         f"Valid backends: ['hybrid_prompt_retrieval']"
+    )
+    logger.error(
+        ORG_MEMORY_CONFIG_INVALID,
+        backend=config.backend,
+        reason=msg,
     )
     raise OrgMemoryConfigError(msg)
