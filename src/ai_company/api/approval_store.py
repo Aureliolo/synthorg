@@ -40,6 +40,11 @@ class ApprovalStore:
         """
         if item.id in self._items:
             msg = f"Approval {item.id!r} already exists"
+            logger.warning(
+                API_APPROVAL_EXPIRED,
+                error="duplicate",
+                approval_id=item.id,
+            )
             raise ConflictError(msg)
         self._items[item.id] = item
 

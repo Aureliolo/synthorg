@@ -34,7 +34,7 @@ class HumanRole(StrEnum):
     OBSERVER = "observer"
 
 
-_WRITE_ROLES: frozenset[str] = frozenset(
+_WRITE_ROLES: frozenset[HumanRole] = frozenset(
     {
         HumanRole.CEO,
         HumanRole.MANAGER,
@@ -42,7 +42,7 @@ _WRITE_ROLES: frozenset[str] = frozenset(
         HumanRole.PAIR_PROGRAMMER,
     }
 )
-_READ_ROLES: frozenset[str] = _WRITE_ROLES | frozenset({HumanRole.OBSERVER})
+_READ_ROLES: frozenset[HumanRole] = _WRITE_ROLES | frozenset({HumanRole.OBSERVER})
 
 
 def _get_role(connection: ASGIConnection) -> str | None:  # type: ignore[type-arg]

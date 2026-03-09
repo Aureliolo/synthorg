@@ -10,6 +10,7 @@ from ai_company.api.pagination import PaginationLimit, PaginationOffset, paginat
 from ai_company.api.state import AppState  # noqa: TC001
 from ai_company.budget.config import BudgetConfig  # noqa: TC001
 from ai_company.budget.cost_record import CostRecord  # noqa: TC001
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.observability import get_logger
 
 logger = get_logger(__name__)
@@ -25,7 +26,7 @@ class AgentSpending(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    agent_id: str = Field(description="Agent identifier")
+    agent_id: NotBlankStr = Field(description="Agent identifier")
     total_cost_usd: float = Field(ge=0.0, description="Total cost in USD")
 
 

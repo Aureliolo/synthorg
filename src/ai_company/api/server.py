@@ -2,11 +2,6 @@
 
 Provides a convenience function to start the API server
 with settings from ``RootConfig``.
-
-Note: ``run_server`` creates the app without backend services
-(persistence, message bus, cost tracker).  The proper production
-startup path is via the engine orchestrator that creates all
-services and calls ``create_app`` with full dependencies.
 """
 
 from typing import TYPE_CHECKING

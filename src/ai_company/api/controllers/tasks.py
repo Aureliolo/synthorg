@@ -12,8 +12,8 @@ from ai_company.api.dto import (
     TransitionTaskRequest,
     UpdateTaskRequest,
 )
-from ai_company.api.errors import NotFoundError
-from ai_company.api.guards import require_write_access
+from ai_company.api.errors import ApiValidationError, NotFoundError
+from ai_company.api.guards import require_read_access, require_write_access
 from ai_company.api.pagination import PaginationLimit, PaginationOffset, paginate
 from ai_company.api.state import AppState  # noqa: TC001
 from ai_company.core.enums import TaskStatus  # noqa: TC001
@@ -37,6 +37,7 @@ class TaskController(Controller):
 
     path = "/tasks"
     tags = ("tasks",)
+    guards = [require_read_access]  # noqa: RUF012
 
     @get()
     async def list_tasks(  # noqa: PLR0913
@@ -112,7 +113,7 @@ class TaskController(Controller):
             Created task envelope.
         """
         app_state: AppState = state.app_state
-        task_id = f"task-{uuid4().hex[:12]}"
+        task_id = f"task-{uuid4().hex}"
         task = Task(
             id=task_id,
             title=data.title,
@@ -201,7 +202,10 @@ class TaskController(Controller):
         if data.assigned_to is not None:
             overrides["assigned_to"] = data.assigned_to
 
-        new_task = task.with_transition(data.target_status, **overrides)
+        try:
+            new_task = task.with_transition(data.target_status, **overrides)
+        except ValueError as exc:
+            raise ApiValidationError(str(exc)) from exc
         await app_state.persistence.tasks.save(new_task)
         logger.info(
             TASK_STATUS_CHANGED,

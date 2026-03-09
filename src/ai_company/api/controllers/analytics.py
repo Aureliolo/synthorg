@@ -29,7 +29,7 @@ class OverviewMetrics(BaseModel):
 
     total_tasks: int = Field(ge=0, description="Total number of tasks")
     tasks_by_status: dict[str, int] = Field(
-        description="Task counts by status",
+        description="Task counts by status (keys are TaskStatus values)",
     )
     total_agents: int = Field(ge=0, description="Number of configured agents")
     total_cost_usd: float = Field(ge=0.0, description="Total cost in USD")

@@ -18,14 +18,15 @@ from ai_company.observability import get_logger
 from ai_company.observability.events.api import (
     API_APP_SHUTDOWN,
     API_APP_STARTUP,
+    API_BRIDGE_CHANNEL_DEAD,
     API_BUS_BRIDGE_POLL_ERROR,
     API_BUS_BRIDGE_SUBSCRIBE_FAILED,
 )
 
 logger = get_logger(__name__)
 
-_SUBSCRIBER_ID: str = "__api_bridge__"
-_POLL_TIMEOUT: float = 1.0
+_SUBSCRIBER_ID: Final[str] = "__api_bridge__"
+_POLL_TIMEOUT: Final[float] = 1.0
 _MAX_CONSECUTIVE_ERRORS: Final[int] = 30
 
 
@@ -36,9 +37,13 @@ class MessageBusBridge:
     ``__api_bridge__`` and re-publishes messages as ``WsEvent``
     JSON to the corresponding Litestar channel.
 
-    Args:
-        message_bus: The internal message bus to poll.
-        channels_plugin: The Litestar channels plugin to publish to.
+    Uses bare ``asyncio.create_task`` instead of ``TaskGroup``
+    because the polling tasks must outlive the ``start()`` call
+    frame — they run continuously until ``stop()`` is called.
+
+    Attributes:
+        _bus: The internal message bus to poll.
+        _plugin: The Litestar channels plugin to publish to.
     """
 
     def __init__(
@@ -59,6 +64,7 @@ class MessageBusBridge:
         """
         if self._running:
             msg = "MessageBusBridge is already running"
+            logger.warning(API_APP_STARTUP, error=msg)
             raise RuntimeError(msg)
 
         logger.info(API_APP_STARTUP, component="bus_bridge")
@@ -122,10 +128,9 @@ class MessageBusBridge:
                 consecutive_errors += 1
                 if consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
                     logger.error(
-                        API_BUS_BRIDGE_POLL_ERROR,
+                        API_BRIDGE_CHANNEL_DEAD,
                         channel=channel_name,
                         consecutive_errors=consecutive_errors,
-                        note="max consecutive errors reached, stopping poll",
                         exc_info=True,
                     )
                     break

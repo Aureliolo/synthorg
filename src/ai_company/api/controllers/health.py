@@ -82,9 +82,7 @@ class HealthController(Controller):
             persistence_ok = False
 
         try:
-            bus_ok = (
-                app_state.message_bus is not None and app_state.message_bus.is_running
-            )
+            bus_ok = app_state.message_bus.is_running
         except Exception:
             logger.warning(
                 API_HEALTH_CHECK,

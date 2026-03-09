@@ -21,6 +21,9 @@ from ai_company.core.types import NotBlankStr  # noqa: TC001
 DEFAULT_LIMIT: int = 50
 MAX_LIMIT: int = 200
 
+_MAX_METADATA_KEYS: int = 20
+_MAX_METADATA_STR_LEN: int = 256
+
 
 # ── Response envelopes ──────────────────────────────────────────
 
@@ -89,6 +92,21 @@ class PaginatedResponse[T](BaseModel):
     error: str | None = None
     pagination: PaginationMeta
 
+    @model_validator(mode="after")
+    def _validate_success_consistency(self) -> Self:
+        """Enforce envelope invariant.
+
+        ``success=False`` requires a non-None ``error``.
+        ``success=True`` requires ``error`` to be ``None``.
+        """
+        if not self.success and self.error is None:
+            msg = "error must be set when success is False"
+            raise ValueError(msg)
+        if self.success and self.error is not None:
+            msg = "error must be None when success is True"
+            raise ValueError(msg)
+        return self
+
 
 # ── Task request DTOs ───────────────────────────────────────────
 
@@ -110,8 +128,8 @@ class CreateTaskRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    title: NotBlankStr
-    description: NotBlankStr
+    title: NotBlankStr = Field(max_length=256)
+    description: NotBlankStr = Field(max_length=4096)
     type: TaskType
     priority: Priority = Priority.MEDIUM
     project: NotBlankStr
@@ -136,8 +154,8 @@ class UpdateTaskRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    title: NotBlankStr | None = None
-    description: NotBlankStr | None = None
+    title: NotBlankStr | None = Field(default=None, max_length=256)
+    description: NotBlankStr | None = Field(default=None, max_length=4096)
     priority: Priority | None = None
     assigned_to: NotBlankStr | None = None
     budget_limit: float | None = Field(default=None, ge=0.0)
@@ -176,14 +194,29 @@ class CreateApprovalRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    action_type: NotBlankStr
-    title: NotBlankStr
-    description: NotBlankStr
-    requested_by: NotBlankStr
+    action_type: NotBlankStr = Field(max_length=128)
+    title: NotBlankStr = Field(max_length=256)
+    description: NotBlankStr = Field(max_length=4096)
+    requested_by: NotBlankStr = Field(max_length=128)
     risk_level: ApprovalRiskLevel
     ttl_seconds: int | None = Field(default=None, ge=60)
-    task_id: NotBlankStr | None = None
+    task_id: NotBlankStr | None = Field(default=None, max_length=128)
     metadata: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_metadata_bounds(self) -> Self:
+        """Limit metadata size to prevent memory abuse."""
+        if len(self.metadata) > _MAX_METADATA_KEYS:
+            msg = "metadata must have at most 20 keys"
+            raise ValueError(msg)
+        for k, v in self.metadata.items():
+            if len(k) > _MAX_METADATA_STR_LEN:
+                msg = "metadata key must be at most 256 characters"
+                raise ValueError(msg)
+            if len(v) > _MAX_METADATA_STR_LEN:
+                msg = "metadata value must be at most 256 characters"
+                raise ValueError(msg)
+        return self
 
 
 class ApproveRequest(BaseModel):
@@ -207,4 +240,4 @@ class RejectRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    reason: NotBlankStr
+    reason: NotBlankStr = Field(max_length=4096)

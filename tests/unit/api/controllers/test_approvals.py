@@ -134,7 +134,7 @@ class TestListApprovals:
         assert body["pagination"]["offset"] == 2
 
     def test_list_blocks_no_role(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(_BASE)
+        resp = test_client.get(_BASE, headers={"X-Human-Role": "invalid"})
         assert resp.status_code == 403
 
 
@@ -169,7 +169,10 @@ class TestGetApproval:
         assert resp.status_code == 404  # 404 = authorized but not found
 
     def test_get_blocks_no_role(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(f"{_BASE}/whatever")
+        resp = test_client.get(
+            f"{_BASE}/whatever",
+            headers={"X-Human-Role": "invalid"},
+        )
         assert resp.status_code == 403
 
 

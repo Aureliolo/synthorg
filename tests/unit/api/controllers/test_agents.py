@@ -46,6 +46,7 @@ class TestAgentController:
             cost_tracker=CostTracker(),
         )
         with TestClient(app) as client:
+            client.headers["X-Human-Role"] = "observer"
             resp = client.get("/api/v1/agents")
             body = resp.json()
             assert body["pagination"]["total"] == 1

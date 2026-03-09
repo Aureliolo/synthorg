@@ -25,5 +25,8 @@ class TestAnalyticsController:
         assert data["total_cost_usd"] == 0.0
 
     def test_overview_requires_read_access(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/analytics/overview")
+        resp = test_client.get(
+            "/api/v1/analytics/overview",
+            headers={"X-Human-Role": "invalid"},
+        )
         assert resp.status_code == 403

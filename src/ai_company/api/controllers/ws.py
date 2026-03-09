@@ -20,7 +20,9 @@ from ai_company.observability.events.api import (
     API_WS_CONNECTED,
     API_WS_DISCONNECTED,
     API_WS_INVALID_MESSAGE,
+    API_WS_SEND_FAILED,
     API_WS_SUBSCRIBE,
+    API_WS_TRANSPORT_ERROR,
     API_WS_UNKNOWN_ACTION,
     API_WS_UNSUBSCRIBE,
 )
@@ -30,6 +32,7 @@ logger = get_logger(__name__)
 _ALL_CHANNELS_SET: frozenset[str] = frozenset(ALL_CHANNELS)
 _MAX_FILTER_KEYS: int = 10
 _MAX_FILTER_VALUE_LEN: int = 256
+_MAX_WS_MESSAGE_BYTES: int = 4096
 
 
 @websocket("/ws", guards=[require_read_access])
@@ -78,7 +81,15 @@ async def ws_handler(
             if not all(payload.get(k) == v for k, v in channel_filters.items()):
                 return
 
-        await socket.send_text(event_data.decode("utf-8"))
+        try:
+            await socket.send_text(event_data.decode("utf-8"))
+        except WebSocketDisconnect:
+            logger.debug(API_WS_SEND_FAILED, reason="client_disconnected")
+        except Exception:
+            logger.warning(
+                API_WS_SEND_FAILED,
+                exc_info=True,
+            )
 
     try:
         async with subscriber.run_in_background(_on_event):
@@ -98,10 +109,15 @@ async def _receive_loop(
         while True:
             data = await socket.receive_text()
             response = _handle_message(data, subscribed, filters)
-            if response is not None:
-                await socket.send_text(response)
+            await socket.send_text(response)
     except WebSocketDisconnect:
         logger.debug(API_WS_DISCONNECTED, reason="client_disconnect")
+    except Exception:
+        logger.error(
+            API_WS_TRANSPORT_ERROR,
+            exc_info=True,
+        )
+        raise
 
 
 def _handle_message(
@@ -119,6 +135,9 @@ def _handle_message(
     Returns:
         JSON acknowledgement or error string.
     """
+    if len(data) > _MAX_WS_MESSAGE_BYTES:
+        return json.dumps({"error": "Message too large"})
+
     try:
         msg = json.loads(data)
     except json.JSONDecodeError, TypeError:
@@ -134,10 +153,10 @@ def _handle_message(
 
     if action == "subscribe":
         # Validate filter bounds to prevent memory abuse.
-        if len(client_filters) > _MAX_FILTER_KEYS:
-            return json.dumps({"error": "Too many filter keys"})
-        if any(len(str(v)) > _MAX_FILTER_VALUE_LEN for v in client_filters.values()):
-            return json.dumps({"error": "Filter value too long"})
+        if len(client_filters) > _MAX_FILTER_KEYS or any(
+            len(str(v)) > _MAX_FILTER_VALUE_LEN for v in client_filters.values()
+        ):
+            return json.dumps({"error": "Filter bounds exceeded"})
 
         valid = [c for c in channels if c in _ALL_CHANNELS_SET]
         subscribed.update(valid)

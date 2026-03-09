@@ -102,12 +102,10 @@ def handle_api_error(
 ) -> Response[ApiResponse[None]]:
     """Map ``ApiError`` subclasses to their declared status code."""
     _log_error(request, exc, status=exc.status_code)
-    # Return the default message for the error class, not the
+    # Return the class-level default message, not the
     # caller-interpolated string (which may contain internal IDs).
     exc_cls = type(exc)
-    default_msg = (
-        exc_cls().args[0] if exc_cls is not ApiError else "Internal server error"
-    )
+    default_msg = getattr(exc_cls, "default_message", "Internal server error")
     return Response(
         content=ApiResponse[None](success=False, error=default_msg),
         status_code=exc.status_code,

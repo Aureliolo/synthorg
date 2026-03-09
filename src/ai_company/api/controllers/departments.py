@@ -5,6 +5,7 @@ from litestar.datastructures import State  # noqa: TC002
 
 from ai_company.api.dto import ApiResponse, PaginatedResponse
 from ai_company.api.errors import NotFoundError
+from ai_company.api.guards import require_read_access
 from ai_company.api.pagination import PaginationLimit, PaginationOffset, paginate
 from ai_company.api.state import AppState  # noqa: TC001
 from ai_company.core.company import Department  # noqa: TC001
@@ -19,6 +20,7 @@ class DepartmentController(Controller):
 
     path = "/departments"
     tags = ("departments",)
+    guards = [require_read_access]  # noqa: RUF012
 
     @get()
     async def list_departments(

@@ -5,6 +5,7 @@ from litestar.datastructures import State  # noqa: TC002
 
 from ai_company.api.dto import ApiResponse
 from ai_company.api.errors import NotFoundError
+from ai_company.api.guards import require_read_access
 from ai_company.api.state import AppState  # noqa: TC001
 from ai_company.config.schema import (
     ProviderConfig,  # noqa: TC001
@@ -26,6 +27,7 @@ class ProviderController(Controller):
 
     path = "/providers"
     tags = ("providers",)
+    guards = [require_read_access]  # noqa: RUF012
 
     @get()
     async def list_providers(

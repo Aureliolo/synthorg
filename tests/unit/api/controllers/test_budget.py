@@ -72,5 +72,8 @@ class TestBudgetController:
         assert body["data"]["total_cost_usd"] == 0.05
 
     def test_budget_requires_read_access(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/budget/config")
+        resp = test_client.get(
+            "/api/v1/budget/config",
+            headers={"X-Human-Role": "invalid"},
+        )
         assert resp.status_code == 403

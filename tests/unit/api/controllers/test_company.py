@@ -25,5 +25,8 @@ class TestCompanyController:
         assert isinstance(body["data"], list)
 
     def test_company_requires_read_access(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/company")
+        resp = test_client.get(
+            "/api/v1/company",
+            headers={"X-Human-Role": "invalid"},
+        )
         assert resp.status_code == 403

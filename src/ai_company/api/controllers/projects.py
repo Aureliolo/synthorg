@@ -4,6 +4,7 @@ from litestar import Controller, Response, get
 from litestar.datastructures import State  # noqa: TC002
 
 from ai_company.api.dto import ApiResponse, PaginatedResponse
+from ai_company.api.guards import require_read_access
 from ai_company.api.pagination import PaginationLimit, PaginationOffset, paginate
 
 
@@ -16,6 +17,7 @@ class ProjectController(Controller):
 
     path = "/projects"
     tags = ("projects",)
+    guards = [require_read_access]  # noqa: RUF012
 
     @get()
     async def list_projects(

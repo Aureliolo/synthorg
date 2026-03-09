@@ -29,7 +29,9 @@ from ai_company.core.enums import (
 from ai_company.observability import get_logger
 from ai_company.observability.events.api import (
     API_APPROVAL_APPROVED,
+    API_APPROVAL_CONFLICT,
     API_APPROVAL_CREATED,
+    API_APPROVAL_PUBLISH_FAILED,
     API_APPROVAL_REJECTED,
     API_RESOURCE_NOT_FOUND,
 )
@@ -47,11 +49,15 @@ def _get_channels_plugin(
 
     Returns:
         The registered ChannelsPlugin instance.
+
+    Raises:
+        RuntimeError: If no ChannelsPlugin is registered on the app.
     """
     for plugin in request.app.plugins:
         if isinstance(plugin, ChannelsPlugin):
             return plugin
     msg = "ChannelsPlugin not registered"
+    logger.error(API_APPROVAL_PUBLISH_FAILED, error=msg)
     raise RuntimeError(msg)
 
 
@@ -87,9 +93,9 @@ def _publish_approval_event(
             event.model_dump_json(),
             channels=[CHANNEL_APPROVALS],
         )
-    except Exception:
+    except RuntimeError, OSError:
         logger.warning(
-            "api.approval.publish_failed",
+            API_APPROVAL_PUBLISH_FAILED,
             approval_id=item.id,
             event_type=event_type.value,
             exc_info=True,
@@ -183,7 +189,7 @@ class ApprovalsController(Controller):
         """
         app_state: AppState = state.app_state
         now = datetime.now(UTC)
-        approval_id = f"approval-{uuid4().hex[:12]}"
+        approval_id = f"approval-{uuid4().hex}"
 
         expires_at = None
         if data.ttl_seconds is not None:
@@ -259,6 +265,11 @@ class ApprovalsController(Controller):
 
         if item.status != ApprovalStatus.PENDING:
             msg = f"Approval {approval_id!r} is {item.status.value}, not pending"
+            logger.warning(
+                API_APPROVAL_CONFLICT,
+                approval_id=approval_id,
+                current_status=item.status.value,
+            )
             raise ConflictError(msg)
 
         role = request.headers.get("x-human-role", "unknown")
@@ -271,7 +282,16 @@ class ApprovalsController(Controller):
                 "decision_reason": data.comment,
             },
         )
-        await app_state.approval_store.save(updated)
+        saved = await app_state.approval_store.save(updated)
+        if saved is None:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="approval",
+                id=approval_id,
+                note="disappeared between get and save",
+            )
+            msg = f"Approval {approval_id!r} not found"
+            raise NotFoundError(msg)
 
         _publish_approval_event(
             request,
@@ -328,6 +348,11 @@ class ApprovalsController(Controller):
 
         if item.status != ApprovalStatus.PENDING:
             msg = f"Approval {approval_id!r} is {item.status.value}, not pending"
+            logger.warning(
+                API_APPROVAL_CONFLICT,
+                approval_id=approval_id,
+                current_status=item.status.value,
+            )
             raise ConflictError(msg)
 
         role = request.headers.get("x-human-role", "unknown")
@@ -340,7 +365,16 @@ class ApprovalsController(Controller):
                 "decision_reason": data.reason,
             },
         )
-        await app_state.approval_store.save(updated)
+        saved = await app_state.approval_store.save(updated)
+        if saved is None:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="approval",
+                id=approval_id,
+                note="disappeared between get and save",
+            )
+            msg = f"Approval {approval_id!r} not found"
+            raise NotFoundError(msg)
 
         _publish_approval_event(
             request,

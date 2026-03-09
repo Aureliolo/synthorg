@@ -2962,11 +2962,22 @@ ai-company/
 │       │   ├── quota.py            # Quota/subscription models, degradation config, quota snapshots
 │       │   ├── quota_tracker.py    # QuotaTracker service: per-provider request/token quota enforcement
 │       │   └── reports.py          # Spending reports (M5)
-│       ├── api/                     # REST + WebSocket API (M6, stubs only)
-│       │   ├── app.py              # Litestar application factory (M6)
-│       │   ├── controllers/        # Class-based route controllers (M6)
-│       │   ├── guards.py           # Route guards for auth/approval (M6)
-│       │   └── channels.py         # WebSocket channel definitions (M6)
+│       ├── api/                     # REST + WebSocket API (M6)
+│       │   ├── app.py              # Litestar application factory, lifecycle hooks
+│       │   ├── approval_store.py   # In-memory approval queue storage
+│       │   ├── bus_bridge.py       # Message-bus → WebSocket bridge
+│       │   ├── channels.py         # WebSocket channel definitions
+│       │   ├── config.py           # API configuration models (ServerConfig, CorsConfig)
+│       │   ├── controllers/        # Class-based route controllers (14 controllers)
+│       │   ├── dto.py              # Request/response DTOs and envelopes
+│       │   ├── errors.py           # API error hierarchy (ApiError, NotFoundError, etc.)
+│       │   ├── exception_handlers.py # Litestar exception handler registration
+│       │   ├── guards.py           # Route guards — read/write access (stub auth, M7 real auth)
+│       │   ├── middleware.py       # Request logging middleware
+│       │   ├── pagination.py       # Cursor-free offset/limit pagination
+│       │   ├── server.py           # Uvicorn server runner
+│       │   ├── state.py            # Typed AppState container with service access
+│       │   └── ws_models.py        # WebSocket event models (WsEvent, WsEventType)
 │       ├── cli/                     # CLI interface (future, if needed)
 │       │   └── (thin API wrapper — deferred, TBD)
 │       └── templates/               # Company templates

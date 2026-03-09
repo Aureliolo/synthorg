@@ -24,7 +24,8 @@ class RequestLoggingMiddleware:
     """ASGI middleware that logs request start and completion.
 
     Uses ``time.perf_counter()`` for high-resolution duration
-    measurement. Only processes HTTP scope (skips WebSocket/lifespan).
+    measurement.  Only logs HTTP requests (non-HTTP scopes like
+    WebSocket and lifespan are passed through without logging).
     """
 
     def __init__(self, app: ASGIApp) -> None:

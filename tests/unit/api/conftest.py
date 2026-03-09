@@ -1,5 +1,6 @@
 """Shared fixtures for API unit tests."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -193,8 +194,6 @@ class FakeMessageBus:
         *,
         timeout: float | None = None,  # noqa: ASYNC109
     ) -> Any:
-        import asyncio
-
         # Simulate waiting for a message (yields to event loop)
         if timeout is not None:
             await asyncio.sleep(min(timeout, 0.01))
@@ -227,16 +226,16 @@ class FakeMessageBus:
 
 
 @pytest.fixture
-def fake_persistence() -> FakePersistenceBackend:
+async def fake_persistence() -> FakePersistenceBackend:
     backend = FakePersistenceBackend()
-    backend._connected = True
+    await backend.connect()
     return backend
 
 
 @pytest.fixture
-def fake_message_bus() -> FakeMessageBus:
+async def fake_message_bus() -> FakeMessageBus:
     bus = FakeMessageBus()
-    bus._running = True
+    await bus.start()
     return bus
 
 
@@ -270,7 +269,9 @@ def test_client(
         cost_tracker=cost_tracker,
         approval_store=approval_store,
     )
-    return TestClient(app)
+    client = TestClient(app)
+    client.headers["X-Human-Role"] = "observer"
+    return client
 
 
 def make_task(  # noqa: PLR0913

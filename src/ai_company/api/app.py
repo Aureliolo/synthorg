@@ -1,7 +1,8 @@
 """Litestar application factory.
 
 Creates and configures the Litestar application with all
-controllers, middleware, exception handlers, and plugins.
+controllers, middleware, exception handlers, plugins, and
+lifecycle hooks (startup/shutdown).
 """
 
 import time
@@ -225,9 +226,9 @@ def create_app(
 
     app_state = AppState(
         config=effective_config,
-        persistence=persistence,  # type: ignore[arg-type]
-        message_bus=message_bus,  # type: ignore[arg-type]
-        cost_tracker=cost_tracker,  # type: ignore[arg-type]
+        persistence=persistence,
+        message_bus=message_bus,
+        cost_tracker=cost_tracker,
         approval_store=effective_approval_store,
         startup_time=time.monotonic(),
     )
@@ -273,6 +274,18 @@ def create_app(
             ResponseHeader(
                 name="Referrer-Policy",
                 value="strict-origin-when-cross-origin",
+            ),
+            ResponseHeader(
+                name="Strict-Transport-Security",
+                value="max-age=63072000; includeSubDomains",
+            ),
+            ResponseHeader(
+                name="Permissions-Policy",
+                value="geolocation=(), camera=(), microphone=()",
+            ),
+            ResponseHeader(
+                name="Content-Security-Policy",
+                value="default-src 'self'; script-src 'self' 'unsafe-inline'",
             ),
         ],
         middleware=middleware,  # type: ignore[arg-type]

@@ -131,7 +131,7 @@ class TestWsHandleMessage:
             filters,
         )
         data = json.loads(result)
-        assert data["error"] == "Too many filter keys"
+        assert data["error"] == "Filter bounds exceeded"
         assert "tasks" not in subscribed
 
     def test_subscribe_filter_value_too_long(self) -> None:
@@ -149,5 +149,5 @@ class TestWsHandleMessage:
             filters,
         )
         data = json.loads(result)
-        assert data["error"] == "Filter value too long"
+        assert data["error"] == "Filter bounds exceeded"
         assert "tasks" not in subscribed

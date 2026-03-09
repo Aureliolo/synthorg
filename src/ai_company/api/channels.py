@@ -33,6 +33,6 @@ def create_channels_plugin() -> ChannelsPlugin:
     """
     return ChannelsPlugin(
         backend=MemoryChannelsBackend(history=20),
-        channels=list(ALL_CHANNELS),
+        channels=ALL_CHANNELS,
         arbitrary_channels_allowed=False,
     )
