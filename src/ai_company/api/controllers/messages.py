@@ -4,10 +4,13 @@ from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
 
 from ai_company.api.dto import ApiResponse, PaginatedResponse
-from ai_company.api.pagination import paginate
+from ai_company.api.pagination import PaginationLimit, PaginationOffset, paginate
 from ai_company.api.state import AppState  # noqa: TC001
 from ai_company.communication.channel import Channel  # noqa: TC001
 from ai_company.communication.message import Message  # noqa: TC001
+from ai_company.observability import get_logger
+
+logger = get_logger(__name__)
 
 
 class MessageController(Controller):
@@ -21,10 +24,14 @@ class MessageController(Controller):
         self,
         state: State,
         channel: str | None = None,
-        offset: int = 0,
-        limit: int = 50,
+        offset: PaginationOffset = 0,
+        limit: PaginationLimit = 50,
     ) -> PaginatedResponse[Message]:
         """List messages, optionally filtered by channel.
+
+        When no ``channel`` filter is provided, returns an empty
+        list — use ``GET /messages/channels`` to discover available
+        channels first.
 
         Args:
             state: Application state.

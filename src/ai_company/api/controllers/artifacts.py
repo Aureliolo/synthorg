@@ -1,10 +1,10 @@
 """Artifact controller (stub — no ArtifactRepository yet)."""
 
-from litestar import Controller, get
+from litestar import Controller, Response, get
 from litestar.datastructures import State  # noqa: TC002
 
 from ai_company.api.dto import ApiResponse, PaginatedResponse
-from ai_company.api.pagination import paginate
+from ai_company.api.pagination import PaginationLimit, PaginationOffset, paginate
 
 
 class ArtifactController(Controller):
@@ -21,8 +21,8 @@ class ArtifactController(Controller):
     async def list_artifacts(
         self,
         state: State,  # noqa: ARG002
-        offset: int = 0,
-        limit: int = 50,
+        offset: PaginationOffset = 0,
+        limit: PaginationLimit = 50,
     ) -> PaginatedResponse[object]:
         """List artifacts (empty — no repository yet).
 
@@ -43,7 +43,7 @@ class ArtifactController(Controller):
         self,
         state: State,  # noqa: ARG002
         artifact_id: str,  # noqa: ARG002
-    ) -> ApiResponse[None]:
+    ) -> Response[ApiResponse[None]]:
         """Get an artifact by ID (stub → not implemented).
 
         Args:
@@ -53,7 +53,10 @@ class ArtifactController(Controller):
         Returns:
             Not implemented response.
         """
-        return ApiResponse(
-            success=False,
-            error="Artifact persistence not implemented yet",
+        return Response(
+            content=ApiResponse[None](
+                success=False,
+                error="Artifact persistence not implemented yet",
+            ),
+            status_code=501,
         )

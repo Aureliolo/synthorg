@@ -1,12 +1,14 @@
 """Health check controller."""
 
 import time
+from enum import StrEnum
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
 from ai_company import __version__
+from ai_company.api import app as _app_module
 from ai_company.api.dto import ApiResponse
 from ai_company.api.state import AppState  # noqa: TC001
 from ai_company.observability import get_logger
@@ -14,7 +16,13 @@ from ai_company.observability.events.api import API_HEALTH_CHECK
 
 logger = get_logger(__name__)
 
-_STARTUP_TIME: float = time.monotonic()
+
+class ServiceStatus(StrEnum):
+    """Health check status values."""
+
+    OK = "ok"
+    DEGRADED = "degraded"
+    DOWN = "down"
 
 
 class HealthStatus(BaseModel):
@@ -30,7 +38,7 @@ class HealthStatus(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    status: str = Field(description="Overall health status")
+    status: ServiceStatus = Field(description="Overall health status")
     persistence: bool = Field(
         description="Persistence backend healthy",
     )
@@ -63,21 +71,39 @@ class HealthController(Controller):
             Health status envelope.
         """
         app_state: AppState = state.app_state
-        persistence_ok = await app_state.persistence.health_check()
-        bus_ok = app_state.message_bus.is_running
+
+        try:
+            persistence_ok = await app_state.persistence.health_check()
+        except Exception:
+            logger.warning(
+                API_HEALTH_CHECK,
+                component="persistence",
+                exc_info=True,
+            )
+            persistence_ok = False
+
+        try:
+            bus_ok = app_state.message_bus.is_running
+        except Exception:
+            logger.warning(
+                API_HEALTH_CHECK,
+                component="message_bus",
+                exc_info=True,
+            )
+            bus_ok = False
 
         if persistence_ok and bus_ok:
-            status = "ok"
+            status = ServiceStatus.OK
         elif persistence_ok or bus_ok:
-            status = "degraded"
+            status = ServiceStatus.DEGRADED
         else:
-            status = "down"
+            status = ServiceStatus.DOWN
 
-        uptime = round(time.monotonic() - _STARTUP_TIME, 2)
+        uptime = round(time.monotonic() - _app_module._startup_time, 2)  # noqa: SLF001
 
         logger.debug(
             API_HEALTH_CHECK,
-            status=status,
+            status=status.value,
             persistence=persistence_ok,
             message_bus=bus_ok,
         )

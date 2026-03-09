@@ -1,6 +1,6 @@
 """Approvals controller (stub — implemented in M7)."""
 
-from litestar import Controller, get
+from litestar import Controller, Response, get
 from litestar.datastructures import State  # noqa: TC002
 
 from ai_company.api.dto import ApiResponse
@@ -19,7 +19,7 @@ class ApprovalsController(Controller):
     async def list_approvals(
         self,
         state: State,  # noqa: ARG002
-    ) -> ApiResponse[None]:
+    ) -> Response[ApiResponse[None]]:
         """List pending approvals (stub → 501).
 
         Args:
@@ -28,7 +28,10 @@ class ApprovalsController(Controller):
         Returns:
             Not implemented response.
         """
-        return ApiResponse(
-            success=False,
-            error="Approval queue not implemented yet (M7)",
+        return Response(
+            content=ApiResponse[None](
+                success=False,
+                error="Approval queue not implemented yet (M7)",
+            ),
+            status_code=501,
         )

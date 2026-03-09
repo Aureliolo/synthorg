@@ -89,7 +89,7 @@ class TestExceptionHandlers:
             resp = client.get("/test")
             assert resp.status_code == 403
 
-    def test_value_error_maps_to_422(self) -> None:
+    def test_value_error_falls_through_to_catch_all(self) -> None:
         @get("/test")
         async def handler() -> None:
             msg = "bad input"
@@ -97,7 +97,7 @@ class TestExceptionHandlers:
 
         with TestClient(_make_app(handler)) as client:
             resp = client.get("/test")
-            assert resp.status_code == 422
+            assert resp.status_code == 500
 
     def test_unexpected_error_maps_to_500(self) -> None:
         @get("/test")

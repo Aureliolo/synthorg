@@ -17,6 +17,10 @@ from ai_company.observability import get_logger
 from ai_company.observability.events.api import (
     API_WS_CONNECTED,
     API_WS_DISCONNECTED,
+    API_WS_INVALID_MESSAGE,
+    API_WS_SUBSCRIBE,
+    API_WS_UNKNOWN_ACTION,
+    API_WS_UNSUBSCRIBE,
 )
 
 logger = get_logger(__name__)
@@ -24,6 +28,9 @@ logger = get_logger(__name__)
 
 class WsHandler(WebsocketListener):
     """WebSocket handler for channel subscriptions.
+
+    Litestar's ``WebsocketListener`` creates a new handler instance
+    per connection, so ``_subscribed`` is safe per-connection state.
 
     Protocol (JSON):
     - ``{"action": "subscribe", "channels": ["tasks"]}``
@@ -65,7 +72,11 @@ class WsHandler(WebsocketListener):
         """
         try:
             msg = json.loads(data)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError, TypeError:
+            logger.warning(
+                API_WS_INVALID_MESSAGE,
+                data_preview=str(data)[:100],
+            )
             return json.dumps({"error": "Invalid JSON"})
 
         action = msg.get("action")
@@ -74,6 +85,11 @@ class WsHandler(WebsocketListener):
         if action == "subscribe":
             valid = [c for c in channels if c in ALL_CHANNELS]
             self._subscribed.update(valid)
+            logger.debug(
+                API_WS_SUBSCRIBE,
+                channels=valid,
+                active=sorted(self._subscribed),
+            )
             return json.dumps(
                 {
                     "action": "subscribed",
@@ -83,6 +99,11 @@ class WsHandler(WebsocketListener):
 
         if action == "unsubscribe":
             self._subscribed -= set(channels)
+            logger.debug(
+                API_WS_UNSUBSCRIBE,
+                channels=channels,
+                active=sorted(self._subscribed),
+            )
             return json.dumps(
                 {
                     "action": "unsubscribed",
@@ -90,4 +111,5 @@ class WsHandler(WebsocketListener):
                 }
             )
 
-        return json.dumps({"error": f"Unknown action: {action}"})
+        logger.warning(API_WS_UNKNOWN_ACTION, action=str(action)[:64])
+        return json.dumps({"error": "Unknown action"})

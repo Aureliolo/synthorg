@@ -48,7 +48,7 @@ class RequestLoggingMiddleware:
         logger.info(API_REQUEST_STARTED, method=method, path=path)
         start = time.perf_counter()
 
-        status_code = 500
+        status_code: int | None = None
         original_send = send
 
         async def capture_send(message: Any) -> None:
@@ -60,13 +60,14 @@ class RequestLoggingMiddleware:
                 status_code = message.get("status", 500)
             await original_send(message)
 
-        await self.app(scope, receive, capture_send)
-
-        duration_ms = round((time.perf_counter() - start) * 1000, 2)
-        logger.info(
-            API_REQUEST_COMPLETED,
-            method=method,
-            path=path,
-            status_code=status_code,
-            duration_ms=duration_ms,
-        )
+        try:
+            await self.app(scope, receive, capture_send)
+        finally:
+            duration_ms = round((time.perf_counter() - start) * 1000, 2)
+            logger.info(
+                API_REQUEST_COMPLETED,
+                method=method,
+                path=path,
+                status_code=status_code or 500,
+                duration_ms=duration_ms,
+            )

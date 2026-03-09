@@ -5,9 +5,13 @@ from litestar.datastructures import State  # noqa: TC002
 
 from ai_company.api.dto import ApiResponse, PaginatedResponse
 from ai_company.api.errors import NotFoundError
-from ai_company.api.pagination import paginate
+from ai_company.api.pagination import PaginationLimit, PaginationOffset, paginate
 from ai_company.api.state import AppState  # noqa: TC001
 from ai_company.core.company import Department  # noqa: TC001
+from ai_company.observability import get_logger
+from ai_company.observability.events.api import API_RESOURCE_NOT_FOUND
+
+logger = get_logger(__name__)
 
 
 class DepartmentController(Controller):
@@ -20,8 +24,8 @@ class DepartmentController(Controller):
     async def list_departments(
         self,
         state: State,
-        offset: int = 0,
-        limit: int = 50,
+        offset: PaginationOffset = 0,
+        limit: PaginationLimit = 50,
     ) -> PaginatedResponse[Department]:
         """List all departments.
 
@@ -64,4 +68,5 @@ class DepartmentController(Controller):
             if dept.name == name:
                 return ApiResponse(data=dept)
         msg = f"Department {name!r} not found"
+        logger.warning(API_RESOURCE_NOT_FOUND, resource="department", name=name)
         raise NotFoundError(msg)

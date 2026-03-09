@@ -1,5 +1,7 @@
 """Analytics controller — derived read-only metrics."""
 
+from collections import Counter
+
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
@@ -7,6 +9,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from ai_company.api.dto import ApiResponse
 from ai_company.api.state import AppState  # noqa: TC001
 from ai_company.core.enums import TaskStatus
+from ai_company.observability import get_logger
+
+logger = get_logger(__name__)
 
 
 class OverviewMetrics(BaseModel):
@@ -51,11 +56,10 @@ class AnalyticsController(Controller):
         app_state: AppState = state.app_state
 
         all_tasks = await app_state.persistence.tasks.list_tasks()
-        by_status: dict[str, int] = {}
-        for status in TaskStatus:
-            count = sum(1 for t in all_tasks if t.status == status)
-            if count > 0:
-                by_status[status.value] = count
+        counts = Counter(t.status.value for t in all_tasks)
+        by_status = {
+            s.value: counts[s.value] for s in TaskStatus if counts[s.value] > 0
+        }
 
         total_cost = await app_state.cost_tracker.get_total_cost()
 

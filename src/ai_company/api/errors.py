@@ -26,7 +26,7 @@ class NotFoundError(ApiError):
         super().__init__(message, status_code=404)
 
 
-class ValidationError(ApiError):
+class ApiValidationError(ApiError):
     """Raised when request data fails validation (422)."""
 
     def __init__(self, message: str = "Validation error") -> None:

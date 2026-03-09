@@ -16,6 +16,6 @@ class TestMeetingController:
 
     def test_get_meeting_stub(self, test_client: TestClient[Any]) -> None:
         resp = test_client.get("/api/v1/meetings/any-id")
-        assert resp.status_code == 200
+        assert resp.status_code == 501
         body = resp.json()
         assert body["success"] is False

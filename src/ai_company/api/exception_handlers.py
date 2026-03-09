@@ -28,8 +28,14 @@ def _log_error(
     *,
     status: int,
 ) -> None:
-    """Log an API error with request context."""
-    logger.warning(
+    """Log an API error with request context.
+
+    Uses ERROR level for 5xx (server errors) and WARNING for 4xx
+    (client errors).
+    """
+    _server_error_threshold = 500
+    log = logger.error if status >= _server_error_threshold else logger.warning
+    log(
         API_REQUEST_ERROR,
         method=request.method,
         path=str(request.url.path),
@@ -90,18 +96,6 @@ def handle_api_error(
     )
 
 
-def handle_value_error(
-    request: Request[Any, Any, Any],
-    exc: ValueError,
-) -> Response[ApiResponse[None]]:
-    """Map ``ValueError`` (including Pydantic validation) to 422."""
-    _log_error(request, exc, status=422)
-    return Response(
-        content=ApiResponse[None](success=False, error=str(exc)),
-        status_code=422,
-    )
-
-
 def handle_unexpected(
     request: Request[Any, Any, Any],
     exc: Exception,
@@ -135,6 +129,5 @@ EXCEPTION_HANDLERS: dict[type[Exception], object] = {
     PersistenceError: handle_persistence_error,
     PermissionDeniedException: handle_permission_denied,
     ApiError: handle_api_error,
-    ValueError: handle_value_error,
     Exception: handle_unexpected,
 }

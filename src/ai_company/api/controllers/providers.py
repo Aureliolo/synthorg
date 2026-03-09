@@ -10,6 +10,15 @@ from ai_company.config.schema import (
     ProviderConfig,  # noqa: TC001
     ProviderModelConfig,  # noqa: TC001
 )
+from ai_company.observability import get_logger
+from ai_company.observability.events.api import API_RESOURCE_NOT_FOUND
+
+logger = get_logger(__name__)
+
+
+def _safe_provider(provider: ProviderConfig) -> ProviderConfig:
+    """Return a copy of the provider config with api_key stripped."""
+    return provider.model_copy(update={"api_key": None})
 
 
 class ProviderController(Controller):
@@ -29,10 +38,13 @@ class ProviderController(Controller):
             state: Application state.
 
         Returns:
-            Provider configurations envelope.
+            Provider configurations envelope (api_key stripped).
         """
         app_state: AppState = state.app_state
-        return ApiResponse(data=app_state.config.providers)
+        safe = {
+            name: _safe_provider(p) for name, p in app_state.config.providers.items()
+        }
+        return ApiResponse(data=safe)
 
     @get("/{name:str}")
     async def get_provider(
@@ -47,7 +59,7 @@ class ProviderController(Controller):
             name: Provider name.
 
         Returns:
-            Provider configuration envelope.
+            Provider configuration envelope (api_key stripped).
 
         Raises:
             NotFoundError: If the provider is not found.
@@ -56,8 +68,9 @@ class ProviderController(Controller):
         provider = app_state.config.providers.get(name)
         if provider is None:
             msg = f"Provider {name!r} not found"
+            logger.warning(API_RESOURCE_NOT_FOUND, resource="provider", name=name)
             raise NotFoundError(msg)
-        return ApiResponse(data=provider)
+        return ApiResponse(data=_safe_provider(provider))
 
     @get("/{name:str}/models")
     async def list_models(
@@ -81,5 +94,6 @@ class ProviderController(Controller):
         provider = app_state.config.providers.get(name)
         if provider is None:
             msg = f"Provider {name!r} not found"
+            logger.warning(API_RESOURCE_NOT_FOUND, resource="provider", name=name)
             raise NotFoundError(msg)
         return ApiResponse(data=provider.models)

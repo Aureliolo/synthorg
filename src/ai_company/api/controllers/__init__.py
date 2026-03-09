@@ -13,7 +13,11 @@ from ai_company.api.controllers.messages import MessageController
 from ai_company.api.controllers.projects import ProjectController
 from ai_company.api.controllers.providers import ProviderController
 from ai_company.api.controllers.tasks import TaskController
+from ai_company.api.controllers.ws import WsHandler
 
+# WsHandler is NOT in ALL_CONTROLLERS because it requires
+# ChannelsPlugin injection and must be registered separately
+# when the channels plugin is wired into create_app().
 ALL_CONTROLLERS: tuple[type, ...] = (
     HealthController,
     CompanyController,
@@ -45,4 +49,5 @@ __all__ = [
     "ProjectController",
     "ProviderController",
     "TaskController",
+    "WsHandler",
 ]

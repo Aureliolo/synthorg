@@ -52,7 +52,7 @@ class WsEvent(BaseModel):
     event_type: WsEventType = Field(
         description="Event classification",
     )
-    channel: str = Field(description="Target channel name")
+    channel: str = Field(min_length=1, description="Target channel name")
     timestamp: AwareDatetime = Field(
         description="When the event occurred",
     )

@@ -18,6 +18,8 @@ from ai_company.observability import get_logger
 from ai_company.observability.events.api import (
     API_APP_SHUTDOWN,
     API_APP_STARTUP,
+    API_BUS_BRIDGE_POLL_ERROR,
+    API_BUS_BRIDGE_SUBSCRIBE_FAILED,
 )
 
 logger = get_logger(__name__)
@@ -46,18 +48,32 @@ class MessageBusBridge:
         self._bus = message_bus
         self._plugin = channels_plugin
         self._tasks: list[asyncio.Task[None]] = []
+        self._running: bool = False
 
     async def start(self) -> None:
-        """Start polling tasks for each channel."""
+        """Start polling tasks for each channel.
+
+        Raises:
+            RuntimeError: If the bridge is already running.
+        """
+        if self._running:
+            msg = "MessageBusBridge is already running"
+            raise RuntimeError(msg)
+
         logger.info(API_APP_STARTUP, component="bus_bridge")
+        self._running = True
+
         for channel_name in ALL_CHANNELS:
             try:
                 await self._bus.subscribe(channel_name, _SUBSCRIBER_ID)
             except Exception:
-                logger.debug(
-                    "bus_bridge.subscribe.skip",
+                logger.warning(
+                    API_BUS_BRIDGE_SUBSCRIBE_FAILED,
                     channel=channel_name,
+                    subscriber_id=_SUBSCRIBER_ID,
+                    exc_info=True,
                 )
+                continue
             task = asyncio.create_task(
                 self._poll_channel(channel_name),
                 name=f"bridge-{channel_name}",
@@ -66,12 +82,16 @@ class MessageBusBridge:
 
     async def stop(self) -> None:
         """Cancel all polling tasks."""
+        if not self._running:
+            return
+
         logger.info(API_APP_SHUTDOWN, component="bus_bridge")
         for task in self._tasks:
             task.cancel()
         if self._tasks:
             await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks.clear()
+        self._running = False
 
     async def _poll_channel(self, channel_name: str) -> None:
         """Poll a single channel and publish to Litestar."""
@@ -92,8 +112,8 @@ class MessageBusBridge:
             except asyncio.CancelledError:
                 break
             except Exception:
-                logger.debug(
-                    "bus_bridge.poll.error",
+                logger.warning(
+                    API_BUS_BRIDGE_POLL_ERROR,
                     channel=channel_name,
                     exc_info=True,
                 )

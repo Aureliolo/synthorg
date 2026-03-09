@@ -4,6 +4,9 @@ Creates and configures the Litestar application with all
 controllers, middleware, exception handlers, and plugins.
 """
 
+import time
+from typing import TYPE_CHECKING
+
 from litestar import Litestar, Router
 from litestar.config.compression import CompressionConfig
 from litestar.config.cors import CORSConfig
@@ -30,7 +33,91 @@ from ai_company.observability.events.api import (
 )
 from ai_company.persistence.protocol import PersistenceBackend  # noqa: TC001
 
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable, Sequence
+
 logger = get_logger(__name__)
+
+_startup_time: float = 0.0
+"""Module-level holder for application startup timestamp."""
+
+
+def _build_lifecycle(
+    persistence: PersistenceBackend | None,
+    message_bus: MessageBus | None,
+) -> tuple[
+    Sequence[Callable[[], Awaitable[None]]],
+    Sequence[Callable[[], Awaitable[None]]],
+]:
+    """Build startup and shutdown hooks.
+
+    Returns:
+        A tuple of (on_startup, on_shutdown) callback lists.
+    """
+
+    async def on_startup() -> None:
+        global _startup_time  # noqa: PLW0603
+        _startup_time = time.monotonic()
+        logger.info(API_APP_STARTUP, version=__version__)
+        await _safe_startup(persistence, message_bus)
+
+    async def on_shutdown() -> None:
+        logger.info(API_APP_SHUTDOWN, version=__version__)
+        await _safe_shutdown(message_bus, persistence)
+
+    return [on_startup], [on_shutdown]
+
+
+async def _safe_startup(
+    persistence: PersistenceBackend | None,
+    message_bus: MessageBus | None,
+) -> None:
+    """Connect persistence and start message bus with error logging."""
+    if persistence is not None:
+        try:
+            await persistence.connect()
+        except Exception:
+            logger.error(
+                API_APP_STARTUP,
+                error="Failed to connect persistence",
+                exc_info=True,
+            )
+            raise
+    if message_bus is not None:
+        try:
+            await message_bus.start()
+        except Exception:
+            logger.error(
+                API_APP_STARTUP,
+                error="Failed to start message bus",
+                exc_info=True,
+            )
+            raise
+
+
+async def _safe_shutdown(
+    message_bus: MessageBus | None,
+    persistence: PersistenceBackend | None,
+) -> None:
+    """Stop message bus and disconnect persistence with error logging."""
+    if message_bus is not None:
+        try:
+            await message_bus.stop()
+        except Exception:
+            logger.error(
+                API_APP_SHUTDOWN,
+                error="Failed to stop message bus",
+                exc_info=True,
+            )
+    if persistence is not None:
+        try:
+            await persistence.disconnect()
+        except Exception:
+            logger.error(
+                API_APP_SHUTDOWN,
+                error="Failed to disconnect persistence",
+                exc_info=True,
+            )
 
 
 def create_app(
@@ -84,19 +171,7 @@ def create_app(
         route_handlers=list(ALL_CONTROLLERS),
     )
 
-    async def on_startup() -> None:
-        logger.info(API_APP_STARTUP, version=__version__)
-        if persistence is not None:
-            await persistence.connect()
-        if message_bus is not None:
-            await message_bus.start()
-
-    async def on_shutdown() -> None:
-        logger.info(API_APP_SHUTDOWN, version=__version__)
-        if message_bus is not None:
-            await message_bus.stop()
-        if persistence is not None:
-            await persistence.disconnect()
+    startup, shutdown = _build_lifecycle(persistence, message_bus)
 
     return Litestar(
         route_handlers=[api_router],
@@ -116,6 +191,6 @@ def create_app(
                 RedocRenderPlugin(path="/redoc"),
             ],
         ),
-        on_startup=[on_startup],
-        on_shutdown=[on_shutdown],
+        on_startup=startup,
+        on_shutdown=shutdown,
     )

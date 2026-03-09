@@ -4,10 +4,13 @@ from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
 
 from ai_company.api.dto import ApiResponse, PaginatedResponse
-from ai_company.api.pagination import paginate
+from ai_company.api.pagination import PaginationLimit, PaginationOffset, paginate
 from ai_company.api.state import AppState  # noqa: TC001
 from ai_company.budget.config import BudgetConfig  # noqa: TC001
 from ai_company.budget.cost_record import CostRecord  # noqa: TC001
+from ai_company.observability import get_logger
+
+logger = get_logger(__name__)
 
 
 class BudgetController(Controller):
@@ -38,8 +41,8 @@ class BudgetController(Controller):
         state: State,
         agent_id: str | None = None,
         task_id: str | None = None,
-        offset: int = 0,
-        limit: int = 50,
+        offset: PaginationOffset = 0,
+        limit: PaginationLimit = 50,
     ) -> PaginatedResponse[CostRecord]:
         """List cost records with optional filters.
 
