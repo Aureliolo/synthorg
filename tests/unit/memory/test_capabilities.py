@@ -86,6 +86,23 @@ class _FakeUnlimitedCapabilities:
         return None
 
 
+class _IncompleteCapabilities:
+    """Missing required properties — should fail isinstance check."""
+
+    @property
+    def supported_categories(self) -> frozenset[MemoryCategory]:
+        return frozenset(MemoryCategory)
+
+
+@pytest.mark.unit
+class TestCapabilitiesNonCompliance:
+    def test_incomplete_class_fails_isinstance(self) -> None:
+        assert not isinstance(_IncompleteCapabilities(), MemoryCapabilities)
+
+    def test_plain_object_fails_isinstance(self) -> None:
+        assert not isinstance(object(), MemoryCapabilities)
+
+
 @pytest.mark.unit
 class TestCapabilitiesVariants:
     def test_unlimited_is_memory_capabilities(self) -> None:

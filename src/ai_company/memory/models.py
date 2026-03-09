@@ -12,6 +12,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.enums import MemoryCategory  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
+from ai_company.observability import get_logger
+from ai_company.observability.events.config import CONFIG_VALIDATION_FAILED
+
+logger = get_logger(__name__)
 
 
 class MemoryMetadata(BaseModel):
@@ -40,6 +44,19 @@ class MemoryMetadata(BaseModel):
         description="Categorization tags",
     )
 
+    @model_validator(mode="after")
+    def _deduplicate_tags(self) -> Self:
+        """Remove duplicate tags while preserving order."""
+        seen: set[str] = set()
+        deduped: list[str] = []
+        for tag in self.tags:
+            if tag not in seen:
+                seen.add(tag)
+                deduped.append(tag)
+        if len(deduped) != len(self.tags):
+            object.__setattr__(self, "tags", tuple(deduped))
+        return self
+
 
 class MemoryStoreRequest(BaseModel):
     """Input to ``MemoryBackend.store()``.
@@ -54,7 +71,7 @@ class MemoryStoreRequest(BaseModel):
         expires_at: Optional expiration timestamp.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     category: MemoryCategory = Field(description="Memory type category")
     content: NotBlankStr = Field(description="Memory content text")
@@ -108,6 +125,23 @@ class MemoryEntry(BaseModel):
         le=1.0,
         description="Relevance score set by backend on retrieval",
     )
+
+    @model_validator(mode="after")
+    def _validate_timestamps(self) -> Self:
+        """Ensure ``updated_at >= created_at`` when both are set."""
+        if self.updated_at is not None and self.updated_at < self.created_at:
+            msg = (
+                f"updated_at ({self.updated_at}) must be "
+                f">= created_at ({self.created_at})"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="MemoryEntry",
+                field="updated_at",
+                reason=msg,
+            )
+            raise ValueError(msg)
+        return self
 
 
 class MemoryQuery(BaseModel):
@@ -170,5 +204,13 @@ class MemoryQuery(BaseModel):
             and self.since >= self.until
         ):
             msg = "since must be before until"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="MemoryQuery",
+                field="since/until",
+                since=str(self.since),
+                until=str(self.until),
+                reason=msg,
+            )
             raise ValueError(msg)
         return self

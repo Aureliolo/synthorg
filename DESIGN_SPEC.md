@@ -12,7 +12,7 @@
 4. [Company Structure](#4-company-structure)
 5. [Communication Architecture](#5-communication-architecture) — 5.6 Conflict Resolution, 5.7 Meeting Protocol
 6. [Task & Workflow Engine](#6-task--workflow-engine) — 6.5 Execution Loop, 6.6 Crash Recovery, **6.7 Graceful Shutdown**, **6.8 Workspace Isolation**, **6.9 Task Decomposability & Coordination Topology**
-7. [Memory & Persistence](#7-memory--persistence) — 7.4 Shared Org Memory (Research Directions), **7.5 Operational Data Persistence**
+7. [Memory & Persistence](#7-memory--persistence) — **7.5 Memory Backend Protocol**, 7.4 Shared Org Memory (Research Directions), **7.6 Operational Data Persistence**
 8. [HR & Workforce Management](#8-hr--workforce-management)
 9. [Model Provider Layer](#9-model-provider-layer)
 10. [Cost & Budget Management](#10-cost--budget-management)
@@ -79,9 +79,9 @@ The MVP validates the core hypothesis: **a single agent can complete a real task
 
 > **How to read this spec:** Sections describe the full vision. Each section with deferred features includes an **MVP** callout box indicating what ships in M3 and what is deferred. The full design is documented upfront to inform architecture decisions — protocol interfaces are designed even for features that won't be built until later milestones.
 
-> **Implementation snapshot (2026-03-08):**
-> - **Done:** M0–M4 (tooling, config/core, providers, single-agent engine, multi-agent orchestration). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)).
-> - **In progress:** M5 — memory layer implementation, budget enforcement. Persistence backend (§7.5) completed.
+> **Implementation snapshot (2026-03-09):**
+> - **Done:** M0–M4 (tooling, config/core, providers, single-agent engine, multi-agent orchestration). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed.
+> - **In progress:** M5 — memory interface protocol complete (MemoryBackend, MemoryCapabilities, SharedKnowledgeStore protocols, models, config, factory), Mem0 adapter (#41) and budget enforcement pending.
 > - **Not started (mostly placeholders):** M6 API/CLI surface, M7 security + approval system.
 
 ### 1.5 Configuration Philosophy
@@ -1253,7 +1253,7 @@ The auto-selector uses task structure, artifact count, and (when available from 
 
 ```yaml
 memory:
-  level: "full"                 # none, session, project, full
+  level: "persistent"            # none, session, project, persistent
   backend: "mem0"               # mem0, custom, cognee, graphiti (future) — see ADR-001
   storage:
     data_dir: "/data/memory"    # mounted Docker volume path
@@ -1332,9 +1332,114 @@ org_memory:
 > **Extensibility:** All backends implement the `OrgMemoryBackend` protocol (`query(context) → list[OrgFact]`, `write(fact, author)`, `list_policies()`). The MVP ships with Backend 1; Backends 2 and 3 are research directions that may be explored if the default approach proves insufficient. The selected memory layer backend Mem0 (ADR-001) provides optional graph memory via Neo4j/FalkorDB, which could reduce implementation effort for Backends 2-3.
 > **Write access control:** Core policies are human-only. ADRs and procedures can be written by senior+ agents. All writes are versioned and auditable. This prevents agents from corrupting shared organizational knowledge while allowing senior agents to document decisions.
 
-### 7.5 Operational Data Persistence
+### 7.5 Memory Backend Protocol
 
-Agent memory (§7.1–7.4) is handled by the `MemoryBackend` protocol (Mem0 initial, custom stack future — ADR-001). **Operational data** — tasks, cost records, messages, audit logs — is a separate concern managed by a pluggable `PersistenceBackend` protocol. Application code depends only on repository protocols; the storage engine is an implementation detail swappable via config.
+Agent memory (§7.1–7.4) is implemented behind a pluggable `MemoryBackend` protocol (Mem0 initial, custom stack future — ADR-001). Application code depends only on the protocol; the storage engine is an implementation detail swappable via config.
+
+#### Enums
+
+| Enum | Values | Purpose |
+|------|--------|---------|
+| `MemoryCategory` | WORKING, EPISODIC, SEMANTIC, PROCEDURAL, SOCIAL | Memory type categories (§7.2) |
+| `MemoryLevel` | PERSISTENT, PROJECT, SESSION, NONE | Persistence level per agent (§7.3) |
+| `ConsolidationInterval` | HOURLY, DAILY, WEEKLY, NEVER | How often old memories are compressed |
+
+#### MemoryBackend Protocol
+
+```python
+@runtime_checkable
+class MemoryBackend(Protocol):
+    """Lifecycle + CRUD for agent memory storage."""
+
+    async def connect(self) -> None: ...
+    async def disconnect(self) -> None: ...
+    async def health_check(self) -> bool: ...
+
+    @property
+    def is_connected(self) -> bool: ...
+    @property
+    def backend_name(self) -> str: ...
+
+    async def store(self, agent_id: NotBlankStr, request: MemoryStoreRequest) -> NotBlankStr: ...
+    async def retrieve(self, agent_id: NotBlankStr, query: MemoryQuery) -> tuple[MemoryEntry, ...]: ...
+    async def get(self, agent_id: NotBlankStr, memory_id: NotBlankStr) -> MemoryEntry | None: ...
+    async def delete(self, agent_id: NotBlankStr, memory_id: NotBlankStr) -> bool: ...
+    async def count(self, agent_id: NotBlankStr, *, category: MemoryCategory | None = None) -> int: ...
+```
+
+#### MemoryCapabilities Protocol
+
+Backends that implement `MemoryCapabilities` expose what features they support, enabling runtime capability checks before attempting operations.
+
+```python
+@runtime_checkable
+class MemoryCapabilities(Protocol):
+    """Capability discovery for memory backends."""
+
+    @property
+    def supported_categories(self) -> frozenset[MemoryCategory]: ...
+    @property
+    def supports_graph(self) -> bool: ...
+    @property
+    def supports_temporal(self) -> bool: ...
+    @property
+    def supports_vector_search(self) -> bool: ...
+    @property
+    def supports_shared_access(self) -> bool: ...
+    @property
+    def max_memories_per_agent(self) -> int | None: ...
+```
+
+#### SharedKnowledgeStore Protocol
+
+Backends that support cross-agent shared knowledge implement this protocol alongside `MemoryBackend`. Not all backends need cross-agent queries — this keeps the base protocol clean.
+
+```python
+@runtime_checkable
+class SharedKnowledgeStore(Protocol):
+    """Cross-agent shared knowledge operations."""
+
+    async def publish(self, agent_id: NotBlankStr, request: MemoryStoreRequest) -> NotBlankStr: ...
+    async def search_shared(self, query: MemoryQuery, *, exclude_agent: NotBlankStr | None = None) -> tuple[MemoryEntry, ...]: ...
+    async def retract(self, agent_id: NotBlankStr, memory_id: NotBlankStr) -> bool: ...
+```
+
+#### Error Hierarchy
+
+All memory errors inherit from `MemoryError` so callers can catch the entire family with a single except clause.
+
+| Error | When Raised |
+|-------|------------|
+| `MemoryError` | Base exception for all memory operations |
+| `MemoryConnectionError` | Backend connection cannot be established or is lost |
+| `MemoryStoreError` | A store or delete operation fails |
+| `MemoryRetrievalError` | A retrieve, search, or count operation fails |
+| `MemoryNotFoundError` | A specific memory ID is not found |
+| `MemoryConfigError` | Memory configuration is invalid |
+| `MemoryCapabilityError` | An unsupported operation is attempted for a backend |
+
+#### Configuration
+
+```yaml
+memory:
+  backend: "mem0"
+  level: "persistent"              # none, session, project, persistent
+  storage:
+    data_dir: "/data/memory"
+    vector_store: "qdrant"
+    history_store: "sqlite"
+  options:
+    retention_days: null            # null = forever
+    max_memories_per_agent: 10000
+    consolidation_interval: "daily"
+    shared_knowledge_base: true
+```
+
+Configuration is modeled by `CompanyMemoryConfig` (top-level), `MemoryStorageConfig` (storage paths/backends), and `MemoryOptionsConfig` (behaviour tuning). All are frozen Pydantic models. The `create_memory_backend(config)` factory returns an isolated `MemoryBackend` instance per company.
+
+### 7.6 Operational Data Persistence
+
+Agent memory (§7.1–7.5) is handled by the `MemoryBackend` protocol (Mem0 initial, custom stack future — ADR-001). **Operational data** — tasks, cost records, messages, audit logs — is a separate concern managed by a pluggable `PersistenceBackend` protocol. Application code depends only on repository protocols; the storage engine is an implementation detail swappable via config.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────┐
@@ -2476,7 +2581,7 @@ Run: ai-company start acme-corp
 | **Agent Memory** | Mem0 (Qdrant + SQLite) → custom (Neo4j + Qdrant) | Mem0 in-process as initial backend behind pluggable `MemoryBackend` protocol ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Qdrant embedded + SQLite for persistence. Custom stack (Neo4j + Qdrant external) as future upgrade. Config-driven backend selection |
 | **Message Bus** | Internal (async queues) → Redis | Start with Python asyncio queues, upgrade to Redis for multi-process/distributed |
 | **Task Queue** | Internal → Celery/Redis | Start simple, scale with Celery when needed |
-| **Database** | SQLite (aiosqlite) → PostgreSQL / MariaDB | Pluggable `PersistenceBackend` protocol (§7.5). SQLite ships first via aiosqlite async driver. PostgreSQL, MariaDB as future backends — swap via config, no app code changes |
+| **Database** | SQLite (aiosqlite) → PostgreSQL / MariaDB | Pluggable `PersistenceBackend` protocol (§7.6). SQLite ships first via aiosqlite async driver. PostgreSQL, MariaDB as future backends — swap via config, no app code changes |
 | **Web UI** | Vue 3 + Vite | Modern, fast, good ecosystem. Simpler than React for dashboards |
 | **Real-time** | WebSocket (FastAPI native) | Real-time agent activity, task updates, chat feed |
 | **Containerization** | Docker + Docker Compose | Isolated code execution, reproducible environments |
@@ -2624,12 +2729,16 @@ ai-company/
 │       │   │   └── structured_phases.py # StructuredPhasesProtocol implementation
 │       │   ├── messenger.py        # AgentMessenger per-agent facade
 │       │   └── subscription.py     # Subscription + DeliveryEnvelope models
-│       ├── memory/                  # Agent memory system (M5, stubs only)
-│       │   ├── store.py            # Memory storage backend (M5)
-│       │   ├── retrieval.py        # Memory retrieval & ranking (M5)
-│       │   ├── consolidation.py    # Memory compression over time (M5)
-│       │   └── shared.py           # Shared knowledge base (M5)
-│       ├── persistence/             # Operational data persistence (§7.5)
+│       ├── memory/                  # Agent memory system — protocols, models, config, factory (M5)
+│       │   ├── __init__.py         # Re-exports
+│       │   ├── capabilities.py     # MemoryCapabilities protocol
+│       │   ├── config.py           # CompanyMemoryConfig, MemoryStorageConfig, MemoryOptionsConfig
+│       │   ├── errors.py           # Memory error hierarchy (MemoryError and subclasses)
+│       │   ├── factory.py          # create_memory_backend() factory
+│       │   ├── models.py           # MemoryEntry, MemoryMetadata, MemoryQuery, MemoryStoreRequest
+│       │   ├── protocol.py         # MemoryBackend protocol
+│       │   └── shared.py           # SharedKnowledgeStore protocol
+│       ├── persistence/             # Operational data persistence (§7.6)
 │       │   ├── __init__.py         # Package exports
 │       │   ├── protocol.py         # PersistenceBackend protocol (M5)
 │       │   ├── repositories.py     # Repository protocols: TaskRepository, CostRecordRepository, MessageRepository (M5); AuditRepository planned (M7)
@@ -2660,6 +2769,7 @@ ai-company/
 │       │   │   ├── execution.py   # EXECUTION_* constants
 │       │   │   ├── git.py         # GIT_* constants
 │       │   │   ├── meeting.py    # MEETING_* constants
+│       │   │   ├── memory.py     # MEMORY_* constants
 │       │   │   ├── parallel.py    # PARALLEL_* constants
 │       │   │   ├── persistence.py # PERSISTENCE_* constants
 │       │   │   ├── personality.py # PERSONALITY_* constants
@@ -2800,7 +2910,7 @@ ai-company/
 | Config | YAML + Pydantic | JSON, TOML, Python dicts | Human-friendly, strict validation, good IDE support |
 | CLI | Typer | Click, argparse, Fire | Built on Click, auto-completion, type hints |
 | Web UI | Vue 3 | React, Svelte, HTMX | Simpler than React for dashboards, good with FastAPI |
-| Persistence | Pluggable protocol + repository protocols | ORM (SQLAlchemy), raw SQL, hybrid | Same frozen Pydantic models in and out (no DTOs), async throughout, backend-swappable via config. Repository protocols decouple app code from storage engine. See §7.5 |
+| Persistence | Pluggable protocol + repository protocols | ORM (SQLAlchemy), raw SQL, hybrid | Same frozen Pydantic models in and out (no DTOs), async throughout, backend-swappable via config. Repository protocols decouple app code from storage engine. See §7.6 |
 | Sandboxing | Layered: subprocess + Docker | Docker-only, subprocess-only, WASM | Risk-proportionate: fast subprocess for file/git, Docker isolation for code execution. Pluggable `SandboxBackend` protocol enables K8s migration later |
 
 ### 15.5 Engineering Conventions

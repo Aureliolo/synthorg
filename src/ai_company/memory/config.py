@@ -33,7 +33,11 @@ class MemoryStorageConfig(BaseModel):
 
     data_dir: NotBlankStr = Field(
         default="/data/memory",
-        description="Directory path for memory data persistence",
+        description=(
+            "Directory path for memory data persistence.  "
+            "Default targets a Docker volume mount — override "
+            "for local development."
+        ),
     )
     vector_store: NotBlankStr = Field(
         default="qdrant",

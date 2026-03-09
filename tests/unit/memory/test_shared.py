@@ -53,10 +53,23 @@ class _FakeSharedKnowledgeStore:
         return False
 
 
+class _IncompleteSharedStore:
+    """Missing required methods — should fail isinstance check."""
+
+    async def publish(self, agent_id: str, request: MemoryStoreRequest) -> str:
+        return "id"
+
+
 @pytest.mark.unit
 class TestSharedProtocolCompliance:
     def test_fake_is_shared_knowledge_store(self) -> None:
         assert isinstance(_FakeSharedKnowledgeStore(), SharedKnowledgeStore)
+
+    def test_incomplete_class_fails_isinstance(self) -> None:
+        assert not isinstance(_IncompleteSharedStore(), SharedKnowledgeStore)
+
+    def test_plain_object_fails_isinstance(self) -> None:
+        assert not isinstance(object(), SharedKnowledgeStore)
 
 
 @pytest.mark.unit

@@ -8,10 +8,7 @@ from ai_company.memory.config import CompanyMemoryConfig  # noqa: TC001
 from ai_company.memory.errors import MemoryConfigError
 from ai_company.memory.protocol import MemoryBackend  # noqa: TC001
 from ai_company.observability import get_logger
-from ai_company.observability.events.memory import (
-    MEMORY_BACKEND_CREATED,
-    MEMORY_BACKEND_UNKNOWN,
-)
+from ai_company.observability.events.memory import MEMORY_BACKEND_UNKNOWN
 
 logger = get_logger(__name__)
 
@@ -27,20 +24,26 @@ def create_memory_backend(config: CompanyMemoryConfig) -> MemoryBackend:
             backend-specific settings).
 
     Returns:
-        A new, disconnected backend instance.
+        A new, disconnected backend instance.  Currently unreachable
+        — the function always raises while the Mem0 adapter (#41)
+        is pending.
 
     Raises:
         MemoryConfigError: If the backend is not yet implemented or
             not recognized.
     """
     if config.backend == "mem0":
-        logger.debug(
-            MEMORY_BACKEND_CREATED,
-            backend="mem0",
-            data_dir=config.storage.data_dir,
-        )
         msg = "mem0 backend not yet implemented"
+        logger.warning(
+            MEMORY_BACKEND_UNKNOWN,
+            backend="mem0",
+            reason=msg,
+        )
         raise MemoryConfigError(msg)
+    # Defensive guard: config validation rejects unknown backends, so
+    # this branch is unreachable under normal construction.  It exists
+    # as a safety net for callers that bypass validation (e.g. via
+    # model_construct).
     msg = f"Unknown memory backend: {config.backend!r}"
     logger.error(MEMORY_BACKEND_UNKNOWN, backend=config.backend)
     raise MemoryConfigError(msg)

@@ -78,6 +78,14 @@ class TestMemoryMetadata:
         with pytest.raises(ValidationError, match="whitespace-only"):
             MemoryMetadata(source="   ")
 
+    def test_duplicate_tags_deduplicated(self) -> None:
+        m = MemoryMetadata(tags=("important", "reviewed", "important"))
+        assert m.tags == ("important", "reviewed")
+
+    def test_duplicate_tags_preserves_order(self) -> None:
+        m = MemoryMetadata(tags=("b", "a", "b", "c", "a"))
+        assert m.tags == ("b", "a", "c")
+
 
 # ── MemoryStoreRequest ────────────────────────────────────────────
 
@@ -247,6 +255,55 @@ class TestMemoryEntry:
                 created_at=now,
             )
 
+    def test_relevance_score_nan_rejected(self) -> None:
+        now = datetime.now(tz=UTC)
+        with pytest.raises(ValidationError):
+            MemoryEntry(
+                id="m",
+                agent_id="a",
+                category=MemoryCategory.WORKING,
+                content="c",
+                created_at=now,
+                relevance_score=float("nan"),
+            )
+
+    def test_updated_at_before_created_at_rejected(self) -> None:
+        now = datetime.now(tz=UTC)
+        with pytest.raises(ValidationError, match="updated_at"):
+            MemoryEntry(
+                id="m",
+                agent_id="a",
+                category=MemoryCategory.WORKING,
+                content="c",
+                created_at=now,
+                updated_at=now - timedelta(hours=1),
+            )
+
+    def test_updated_at_equal_created_at_accepted(self) -> None:
+        now = datetime.now(tz=UTC)
+        e = MemoryEntry(
+            id="m",
+            agent_id="a",
+            category=MemoryCategory.WORKING,
+            content="c",
+            created_at=now,
+            updated_at=now,
+        )
+        assert e.updated_at == e.created_at
+
+    def test_updated_at_after_created_at_accepted(self) -> None:
+        now = datetime.now(tz=UTC)
+        e = MemoryEntry(
+            id="m",
+            agent_id="a",
+            category=MemoryCategory.WORKING,
+            content="c",
+            created_at=now,
+            updated_at=now + timedelta(hours=1),
+        )
+        assert e.updated_at is not None
+        assert e.updated_at > e.created_at
+
     def test_json_roundtrip(self) -> None:
         now = datetime.now(tz=UTC)
         e = MemoryEntry(
@@ -344,6 +401,10 @@ class TestMemoryQuery:
         with pytest.raises(ValidationError):
             MemoryQuery(min_relevance=1.1)
 
+    def test_min_relevance_nan_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            MemoryQuery(min_relevance=float("nan"))
+
     def test_json_roundtrip(self) -> None:
         now = datetime.now(tz=UTC)
         q = MemoryQuery(
@@ -360,3 +421,7 @@ class TestMemoryQuery:
         assert restored.text == q.text
         assert restored.limit == q.limit
         assert restored.min_relevance == q.min_relevance
+        assert restored.categories == q.categories
+        assert restored.tags == q.tags
+        assert restored.since == q.since
+        assert restored.until == q.until

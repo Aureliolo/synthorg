@@ -1,8 +1,9 @@
 """Memory event constants for structured logging.
 
 Constants follow the ``memory.<entity>.<action>`` naming convention
-and are passed as the first argument to ``logger.info()``/``logger.debug()``
-calls in the memory layer.
+and are passed as the first argument to structured logger calls
+(``logger.debug()``, ``logger.info()``, ``logger.warning()``,
+``logger.error()``) in the memory layer.
 """
 
 from typing import Final
@@ -27,6 +28,8 @@ MEMORY_ENTRY_RETRIEVED: Final[str] = "memory.entry.retrieved"
 MEMORY_ENTRY_RETRIEVAL_FAILED: Final[str] = "memory.entry.retrieval_failed"
 MEMORY_ENTRY_DELETED: Final[str] = "memory.entry.deleted"
 MEMORY_ENTRY_DELETE_FAILED: Final[str] = "memory.entry.delete_failed"
+MEMORY_ENTRY_FETCHED: Final[str] = "memory.entry.fetched"
+MEMORY_ENTRY_FETCH_FAILED: Final[str] = "memory.entry.fetch_failed"
 MEMORY_ENTRY_COUNTED: Final[str] = "memory.entry.counted"
 MEMORY_ENTRY_COUNT_FAILED: Final[str] = "memory.entry.count_failed"
 

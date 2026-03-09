@@ -11,10 +11,12 @@ from ai_company.core.enums import (
     CompanyType,
     Complexity,
     ConflictApproach,
+    ConsolidationInterval,
     CostTier,
     CreativityLevel,
     DecisionMakingStyle,
     DepartmentName,
+    MemoryCategory,
     MemoryLevel,
     Priority,
     ProficiencyLevel,
@@ -93,6 +95,12 @@ class TestEnumMemberCounts:
 
     def test_conflict_approach_has_5_members(self) -> None:
         assert len(ConflictApproach) == 5
+
+    def test_memory_category_has_5_members(self) -> None:
+        assert len(MemoryCategory) == 5
+
+    def test_consolidation_interval_has_4_members(self) -> None:
+        assert len(ConsolidationInterval) == 4
 
     def test_action_type_has_6_members(self) -> None:
         assert len(ActionType) == 6
@@ -218,6 +226,33 @@ class TestEnumStringValues:
     )
     def test_conflict_approach_values(
         self, member: ConflictApproach, value: str
+    ) -> None:
+        assert member.value == value
+
+    @pytest.mark.parametrize(
+        ("member", "value"),
+        [
+            (MemoryCategory.WORKING, "working"),
+            (MemoryCategory.EPISODIC, "episodic"),
+            (MemoryCategory.SEMANTIC, "semantic"),
+            (MemoryCategory.PROCEDURAL, "procedural"),
+            (MemoryCategory.SOCIAL, "social"),
+        ],
+    )
+    def test_memory_category_values(self, member: MemoryCategory, value: str) -> None:
+        assert member.value == value
+
+    @pytest.mark.parametrize(
+        ("member", "value"),
+        [
+            (ConsolidationInterval.HOURLY, "hourly"),
+            (ConsolidationInterval.DAILY, "daily"),
+            (ConsolidationInterval.WEEKLY, "weekly"),
+            (ConsolidationInterval.NEVER, "never"),
+        ],
+    )
+    def test_consolidation_interval_values(
+        self, member: ConsolidationInterval, value: str
     ) -> None:
         assert member.value == value
 

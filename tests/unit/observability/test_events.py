@@ -371,6 +371,42 @@ class TestEventConstants:
     @pytest.mark.parametrize(
         ("constant_name", "expected"),
         [
+            ("MEMORY_BACKEND_CONNECTING", "memory.backend.connecting"),
+            ("MEMORY_BACKEND_CONNECTED", "memory.backend.connected"),
+            ("MEMORY_BACKEND_CONNECTION_FAILED", "memory.backend.connection_failed"),
+            ("MEMORY_BACKEND_DISCONNECTING", "memory.backend.disconnecting"),
+            ("MEMORY_BACKEND_DISCONNECTED", "memory.backend.disconnected"),
+            ("MEMORY_BACKEND_HEALTH_CHECK", "memory.backend.health_check"),
+            ("MEMORY_BACKEND_CREATED", "memory.backend.created"),
+            ("MEMORY_BACKEND_UNKNOWN", "memory.backend.unknown"),
+            ("MEMORY_BACKEND_NOT_CONNECTED", "memory.backend.not_connected"),
+            ("MEMORY_ENTRY_STORED", "memory.entry.stored"),
+            ("MEMORY_ENTRY_STORE_FAILED", "memory.entry.store_failed"),
+            ("MEMORY_ENTRY_RETRIEVED", "memory.entry.retrieved"),
+            ("MEMORY_ENTRY_RETRIEVAL_FAILED", "memory.entry.retrieval_failed"),
+            ("MEMORY_ENTRY_FETCHED", "memory.entry.fetched"),
+            ("MEMORY_ENTRY_FETCH_FAILED", "memory.entry.fetch_failed"),
+            ("MEMORY_ENTRY_DELETED", "memory.entry.deleted"),
+            ("MEMORY_ENTRY_DELETE_FAILED", "memory.entry.delete_failed"),
+            ("MEMORY_ENTRY_COUNTED", "memory.entry.counted"),
+            ("MEMORY_ENTRY_COUNT_FAILED", "memory.entry.count_failed"),
+            ("MEMORY_SHARED_PUBLISHED", "memory.shared.published"),
+            ("MEMORY_SHARED_PUBLISH_FAILED", "memory.shared.publish_failed"),
+            ("MEMORY_SHARED_SEARCHED", "memory.shared.searched"),
+            ("MEMORY_SHARED_SEARCH_FAILED", "memory.shared.search_failed"),
+            ("MEMORY_SHARED_RETRACTED", "memory.shared.retracted"),
+            ("MEMORY_SHARED_RETRACT_FAILED", "memory.shared.retract_failed"),
+            ("MEMORY_CAPABILITY_UNSUPPORTED", "memory.capability.unsupported"),
+        ],
+    )
+    def test_memory_events_exist(self, constant_name: str, expected: str) -> None:
+        from ai_company.observability.events import memory as mod
+
+        assert getattr(mod, constant_name) == expected
+
+    @pytest.mark.parametrize(
+        ("constant_name", "expected"),
+        [
             ("PERSISTENCE_BACKEND_CONNECTING", "persistence.backend.connecting"),
             ("PERSISTENCE_BACKEND_CONNECTED", "persistence.backend.connected"),
             ("PERSISTENCE_BACKEND_DISCONNECTING", "persistence.backend.disconnecting"),

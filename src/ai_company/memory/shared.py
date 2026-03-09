@@ -36,6 +36,9 @@ class SharedKnowledgeStore(Protocol):
 
         Returns:
             The backend-assigned shared memory ID.
+
+        Raises:
+            MemoryStoreError: If the publish operation fails.
         """
         ...
 
@@ -53,6 +56,9 @@ class SharedKnowledgeStore(Protocol):
 
         Returns:
             Matching shared memory entries ordered by relevance.
+
+        Raises:
+            MemoryRetrievalError: If the search fails.
         """
         ...
 
@@ -69,5 +75,8 @@ class SharedKnowledgeStore(Protocol):
 
         Returns:
             ``True`` if retracted, ``False`` if not found.
+
+        Raises:
+            MemoryStoreError: If the retraction operation fails.
         """
         ...

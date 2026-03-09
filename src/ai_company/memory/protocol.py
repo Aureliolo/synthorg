@@ -48,7 +48,13 @@ class MemoryBackend(Protocol):
         """Check whether the backend is healthy and responsive.
 
         Returns:
-            ``True`` if the backend is reachable and operational.
+            ``True`` if the backend is reachable and operational,
+            ``False`` if unreachable or unhealthy.
+
+        Note:
+            Implementations should catch connection-level errors and
+            return ``False`` rather than raising.  Only raise for
+            programming errors (e.g. backend not initialized).
         """
         ...
 
@@ -110,12 +116,18 @@ class MemoryBackend(Protocol):
     ) -> MemoryEntry | None:
         """Get a specific memory entry by ID.
 
+        Returns ``None`` when the entry does not exist —
+        ``MemoryNotFoundError`` is never raised by this method.
+
         Args:
             agent_id: Owning agent identifier.
             memory_id: Memory identifier.
 
         Returns:
             The memory entry, or ``None`` if not found.
+
+        Raises:
+            MemoryRetrievalError: If the backend query fails.
         """
         ...
 
@@ -132,6 +144,9 @@ class MemoryBackend(Protocol):
 
         Returns:
             ``True`` if the entry was deleted, ``False`` if not found.
+
+        Raises:
+            MemoryStoreError: If the delete operation fails.
         """
         ...
 
@@ -149,5 +164,8 @@ class MemoryBackend(Protocol):
 
         Returns:
             Number of matching entries.
+
+        Raises:
+            MemoryRetrievalError: If the count query fails.
         """
         ...

@@ -87,10 +87,26 @@ class _FakeMemoryBackend:
         return sum(1 for e in agent_store.values() if e.category is category)
 
 
+class _IncompleteBackend:
+    """Missing required methods — should fail isinstance check."""
+
+    async def connect(self) -> None: ...
+
+    @property
+    def is_connected(self) -> bool:
+        return False
+
+
 @pytest.mark.unit
 class TestProtocolCompliance:
     def test_fake_backend_is_memory_backend(self) -> None:
         assert isinstance(_FakeMemoryBackend(), MemoryBackend)
+
+    def test_incomplete_class_fails_isinstance(self) -> None:
+        assert not isinstance(_IncompleteBackend(), MemoryBackend)
+
+    def test_plain_object_fails_isinstance(self) -> None:
+        assert not isinstance(object(), MemoryBackend)
 
 
 @pytest.mark.unit

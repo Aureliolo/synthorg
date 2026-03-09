@@ -42,6 +42,24 @@ class TestMemoryStorageConfig:
         with pytest.raises(ValidationError, match="traversal"):
             MemoryStorageConfig(data_dir="/data/../etc/passwd")
 
+    @pytest.mark.parametrize(
+        "bad_path",
+        [
+            "/data/sub/../../../etc",
+            "/data/..",
+            "..",
+            "data/../secret",
+        ],
+    )
+    def test_path_traversal_variants_rejected(self, bad_path: str) -> None:
+        with pytest.raises(ValidationError, match="traversal"):
+            MemoryStorageConfig(data_dir=bad_path)
+
+    def test_dotdot_substring_in_segment_accepted(self) -> None:
+        """Paths with '..' as a substring (e.g. '..hidden') are valid."""
+        c = MemoryStorageConfig(data_dir="/data/..hidden/memory")
+        assert c.data_dir == "/data/..hidden/memory"
+
     def test_absolute_path_accepted(self) -> None:
         c = MemoryStorageConfig(data_dir="/var/data/memory")
         assert c.data_dir == "/var/data/memory"

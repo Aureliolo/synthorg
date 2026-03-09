@@ -78,6 +78,14 @@ class RetryConfig(BaseModel):
                 f"base_delay ({self.base_delay}) must be"
                 f" <= max_delay ({self.max_delay})"
             )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="RetryConfig",
+                field="base_delay/max_delay",
+                base_delay=self.base_delay,
+                max_delay=self.max_delay,
+                reason=msg,
+            )
             raise ValueError(msg)
         return self
 
