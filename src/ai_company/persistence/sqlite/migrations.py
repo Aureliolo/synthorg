@@ -28,7 +28,7 @@ SCHEMA_VERSION = 1
 _V1_STATEMENTS: Sequence[str] = (
     # ── Tasks ─────────────────────────────────────────────
     """\
-CREATE TABLE tasks (
+CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     description TEXT NOT NULL,
@@ -51,12 +51,12 @@ CREATE TABLE tasks (
     acceptance_criteria TEXT NOT NULL DEFAULT '[]',
     delegation_chain TEXT NOT NULL DEFAULT '[]'
 )""",
-    "CREATE INDEX idx_tasks_status ON tasks(status)",
-    "CREATE INDEX idx_tasks_assigned_to ON tasks(assigned_to)",
-    "CREATE INDEX idx_tasks_project ON tasks(project)",
+    "CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)",
+    "CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to ON tasks(assigned_to)",
+    "CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project)",
     # ── Cost records ──────────────────────────────────────
     """\
-CREATE TABLE cost_records (
+CREATE TABLE IF NOT EXISTS cost_records (
     rowid INTEGER PRIMARY KEY AUTOINCREMENT,
     agent_id TEXT NOT NULL,
     task_id TEXT NOT NULL,
@@ -68,11 +68,11 @@ CREATE TABLE cost_records (
     timestamp TEXT NOT NULL,
     call_category TEXT
 )""",
-    "CREATE INDEX idx_cost_records_agent_id ON cost_records(agent_id)",
-    "CREATE INDEX idx_cost_records_task_id ON cost_records(task_id)",
+    "CREATE INDEX IF NOT EXISTS idx_cost_records_agent_id ON cost_records(agent_id)",
+    "CREATE INDEX IF NOT EXISTS idx_cost_records_task_id ON cost_records(task_id)",
     # ── Messages ──────────────────────────────────────────
     """\
-CREATE TABLE messages (
+CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
     timestamp TEXT NOT NULL,
     sender TEXT NOT NULL,
@@ -84,8 +84,8 @@ CREATE TABLE messages (
     attachments TEXT NOT NULL DEFAULT '[]',
     metadata TEXT NOT NULL DEFAULT '{}'
 )""",
-    "CREATE INDEX idx_messages_channel ON messages(channel)",
-    "CREATE INDEX idx_messages_timestamp ON messages(timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel)",
+    "CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)",
 )
 
 _MigrateFn = Callable[[aiosqlite.Connection], Coroutine[Any, Any, None]]
@@ -136,9 +136,13 @@ _MIGRATIONS: list[tuple[int, _MigrateFn]] = [
 async def run_migrations(db: aiosqlite.Connection) -> None:
     """Run pending migrations up to ``SCHEMA_VERSION``.
 
-    Migrations are executed within an implicit transaction.  On
-    failure, the transaction is explicitly rolled back and
-    ``MigrationError`` is raised.
+    .. note::
+
+       SQLite implicitly commits before each DDL statement, so
+       multi-statement migrations are **not** fully atomic.  All DDL
+       uses ``IF NOT EXISTS`` guards so that a partial failure
+       (e.g. disk full after creating some tables) can be recovered
+       by re-running the migration.
 
     Args:
         db: An open aiosqlite connection.

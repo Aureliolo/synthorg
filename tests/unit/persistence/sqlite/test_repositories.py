@@ -263,6 +263,29 @@ class TestSQLiteCostRecordRepository:
         total = await repo.aggregate(agent_id="alice")
         assert abs(total - 0.10) < 1e-9
 
+    async def test_aggregate_by_task(self, migrated_db: aiosqlite.Connection) -> None:
+        repo = SQLiteCostRecordRepository(migrated_db)
+        await repo.save(self._make_record(task_id="t1", cost_usd=0.10))
+        await repo.save(self._make_record(task_id="t2", cost_usd=0.20))
+
+        total = await repo.aggregate(task_id="t1")
+        assert abs(total - 0.10) < 1e-9
+
+    async def test_aggregate_by_agent_and_task(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        repo = SQLiteCostRecordRepository(migrated_db)
+        await repo.save(
+            self._make_record(agent_id="alice", task_id="t1", cost_usd=0.10)
+        )
+        await repo.save(
+            self._make_record(agent_id="alice", task_id="t2", cost_usd=0.20)
+        )
+        await repo.save(self._make_record(agent_id="bob", task_id="t1", cost_usd=0.30))
+
+        total = await repo.aggregate(agent_id="alice", task_id="t1")
+        assert abs(total - 0.10) < 1e-9
+
     async def test_aggregate_empty(self, migrated_db: aiosqlite.Connection) -> None:
         repo = SQLiteCostRecordRepository(migrated_db)
         total = await repo.aggregate()

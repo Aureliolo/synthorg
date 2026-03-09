@@ -2,13 +2,13 @@
 
 import json
 import sqlite3
-from typing import TYPE_CHECKING
 
 import aiosqlite
 from pydantic import BaseModel, ValidationError
 
 from ai_company.budget.cost_record import CostRecord
 from ai_company.communication.message import Message
+from ai_company.core.enums import TaskStatus  # noqa: TC001
 from ai_company.core.task import Task
 from ai_company.observability import get_logger
 from ai_company.observability.events.persistence import (
@@ -35,9 +35,6 @@ from ai_company.observability.events.persistence import (
     PERSISTENCE_TASK_SAVED,
 )
 from ai_company.persistence.errors import DuplicateRecordError, QueryError
-
-if TYPE_CHECKING:
-    from ai_company.core.enums import TaskStatus
 
 logger = get_logger(__name__)
 
@@ -322,15 +319,26 @@ FROM cost_records"""
         logger.debug(PERSISTENCE_COST_RECORD_QUERIED, count=len(records))
         return records
 
-    async def aggregate(self, *, agent_id: str | None = None) -> float:
-        """Sum total cost_usd, optionally filtered by agent."""
+    async def aggregate(
+        self,
+        *,
+        agent_id: str | None = None,
+        task_id: str | None = None,
+    ) -> float:
+        """Sum total cost_usd, optionally filtered by agent and/or task."""
         try:
             sql = "SELECT COALESCE(SUM(cost_usd), 0.0) FROM cost_records"
-            params: tuple[str, ...] = ()
+            conditions: list[str] = []
+            params: list[str] = []
             if agent_id is not None:
-                sql += " WHERE agent_id = ?"
-                params = (agent_id,)
-            cursor = await self._db.execute(sql, params)
+                conditions.append("agent_id = ?")
+                params.append(agent_id)
+            if task_id is not None:
+                conditions.append("task_id = ?")
+                params.append(task_id)
+            if conditions:
+                sql += " WHERE " + " AND ".join(conditions)
+            cursor = await self._db.execute(sql, tuple(params))
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to aggregate cost records"

@@ -1437,7 +1437,7 @@ persistence:
 |--------|-------------|------------|-------------|
 | `Task` | `core/task.py` | `TaskRepository` | by status, by assignee, by project |
 | `CostRecord` | `budget/cost_record.py` | `CostRecordRepository` | by agent, by task, aggregations |
-| `Message` | `communication/message.py` | `MessageRepository` | by channel, by sender, time range |
+| `Message` | `communication/message.py` | `MessageRepository` | by channel |
 | Audit entries (planned — M7) | `security/` | `AuditRepository` (planned) | by agent, by action type, time range |
 
 #### Migration Strategy

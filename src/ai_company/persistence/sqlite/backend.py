@@ -1,5 +1,6 @@
 """SQLite persistence backend implementation."""
 
+import asyncio
 import sqlite3
 from typing import TYPE_CHECKING
 
@@ -15,6 +16,7 @@ from ai_company.observability.events.persistence import (
     PERSISTENCE_BACKEND_DISCONNECTED,
     PERSISTENCE_BACKEND_DISCONNECTING,
     PERSISTENCE_BACKEND_HEALTH_CHECK,
+    PERSISTENCE_BACKEND_NOT_CONNECTED,
     PERSISTENCE_BACKEND_WAL_MODE_FAILED,
 )
 from ai_company.persistence.errors import PersistenceConnectionError
@@ -44,6 +46,7 @@ class SQLitePersistenceBackend:
 
     def __init__(self, config: SQLiteConfig) -> None:
         self._config = config
+        self._lifecycle_lock = asyncio.Lock()
         self._db: aiosqlite.Connection | None = None
         self._tasks: SQLiteTaskRepository | None = None
         self._cost_records: SQLiteCostRecordRepository | None = None
@@ -58,74 +61,79 @@ class SQLitePersistenceBackend:
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
-        if self._db is not None:
-            logger.debug(PERSISTENCE_BACKEND_ALREADY_CONNECTED)
-            return
-
-        logger.info(PERSISTENCE_BACKEND_CONNECTING, path=self._config.path)
-        try:
-            self._db = await aiosqlite.connect(self._config.path)
-            self._db.row_factory = aiosqlite.Row
-
-            if self._config.wal_mode:
-                cursor = await self._db.execute("PRAGMA journal_mode=WAL")
-                row = await cursor.fetchone()
-                actual_mode = row[0] if row else "unknown"
-                if actual_mode != "wal" and self._config.path != ":memory:":
-                    logger.warning(
-                        PERSISTENCE_BACKEND_WAL_MODE_FAILED,
-                        requested="wal",
-                        actual=actual_mode,
-                    )
-                # PRAGMA does not support parameterized queries;
-                # journal_size_limit is validated as int >= 0 by Pydantic.
-                limit = int(self._config.journal_size_limit)
-                await self._db.execute(f"PRAGMA journal_size_limit={limit}")
-
-            self._tasks = SQLiteTaskRepository(self._db)
-            self._cost_records = SQLiteCostRecordRepository(self._db)
-            self._messages = SQLiteMessageRepository(self._db)
-        except (sqlite3.Error, OSError) as exc:
-            logger.exception(
-                PERSISTENCE_BACKEND_CONNECTION_FAILED,
-                path=self._config.path,
-                error=str(exc),
-            )
+        async with self._lifecycle_lock:
             if self._db is not None:
-                try:
-                    await self._db.close()
-                except (sqlite3.Error, OSError) as cleanup_exc:
-                    logger.warning(
-                        PERSISTENCE_BACKEND_DISCONNECT_ERROR,
-                        path=self._config.path,
-                        error=str(cleanup_exc),
-                        error_type=type(cleanup_exc).__name__,
-                        context="cleanup_after_connect_failure",
-                    )
-            self._clear_state()
-            msg = "Failed to connect to persistence backend"
-            raise PersistenceConnectionError(msg) from exc
+                logger.debug(PERSISTENCE_BACKEND_ALREADY_CONNECTED)
+                return
 
-        logger.info(PERSISTENCE_BACKEND_CONNECTED, path=self._config.path)
+            logger.info(PERSISTENCE_BACKEND_CONNECTING, path=self._config.path)
+            try:
+                self._db = await aiosqlite.connect(self._config.path)
+                self._db.row_factory = aiosqlite.Row
+
+                if self._config.wal_mode:
+                    cursor = await self._db.execute("PRAGMA journal_mode=WAL")
+                    row = await cursor.fetchone()
+                    actual_mode = row[0] if row else "unknown"
+                    if actual_mode != "wal" and self._config.path != ":memory:":
+                        logger.warning(
+                            PERSISTENCE_BACKEND_WAL_MODE_FAILED,
+                            requested="wal",
+                            actual=actual_mode,
+                        )
+                    # PRAGMA does not support parameterized queries;
+                    # journal_size_limit is validated as int >= 0 by Pydantic.
+                    limit = int(self._config.journal_size_limit)
+                    await self._db.execute(f"PRAGMA journal_size_limit={limit}")
+
+                self._tasks = SQLiteTaskRepository(self._db)
+                self._cost_records = SQLiteCostRecordRepository(self._db)
+                self._messages = SQLiteMessageRepository(self._db)
+            except (sqlite3.Error, OSError) as exc:
+                logger.exception(
+                    PERSISTENCE_BACKEND_CONNECTION_FAILED,
+                    path=self._config.path,
+                    error=str(exc),
+                )
+                if self._db is not None:
+                    try:
+                        await self._db.close()
+                    except (sqlite3.Error, OSError) as cleanup_exc:
+                        logger.warning(
+                            PERSISTENCE_BACKEND_DISCONNECT_ERROR,
+                            path=self._config.path,
+                            error=str(cleanup_exc),
+                            error_type=type(cleanup_exc).__name__,
+                            context="cleanup_after_connect_failure",
+                        )
+                self._clear_state()
+                msg = "Failed to connect to persistence backend"
+                raise PersistenceConnectionError(msg) from exc
+
+            logger.info(PERSISTENCE_BACKEND_CONNECTED, path=self._config.path)
 
     async def disconnect(self) -> None:
         """Close the database connection."""
-        if self._db is None:
-            return
+        async with self._lifecycle_lock:
+            if self._db is None:
+                return
 
-        logger.info(PERSISTENCE_BACKEND_DISCONNECTING, path=self._config.path)
-        try:
-            await self._db.close()
-            logger.info(PERSISTENCE_BACKEND_DISCONNECTED, path=self._config.path)
-        except (sqlite3.Error, OSError) as exc:
-            logger.warning(
-                PERSISTENCE_BACKEND_DISCONNECT_ERROR,
-                path=self._config.path,
-                error=str(exc),
-                error_type=type(exc).__name__,
-            )
-        finally:
-            self._clear_state()
+            logger.info(PERSISTENCE_BACKEND_DISCONNECTING, path=self._config.path)
+            try:
+                await self._db.close()
+                logger.info(
+                    PERSISTENCE_BACKEND_DISCONNECTED,
+                    path=self._config.path,
+                )
+            except (sqlite3.Error, OSError) as exc:
+                logger.warning(
+                    PERSISTENCE_BACKEND_DISCONNECT_ERROR,
+                    path=self._config.path,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
+            finally:
+                self._clear_state()
 
     async def health_check(self) -> bool:
         """Check database connectivity."""
@@ -155,7 +163,7 @@ class SQLitePersistenceBackend:
         """
         if self._db is None:
             msg = "Cannot migrate: not connected"
-            logger.warning(PERSISTENCE_BACKEND_CONNECTION_FAILED, error=msg)
+            logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
             raise PersistenceConnectionError(msg)
         await run_migrations(self._db)
 
@@ -181,7 +189,7 @@ class SQLitePersistenceBackend:
         """
         if repo is None:
             msg = f"Not connected — call connect() before accessing {name}"
-            logger.warning(PERSISTENCE_BACKEND_CONNECTION_FAILED, error=msg)
+            logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
             raise PersistenceConnectionError(msg)
         return repo
 

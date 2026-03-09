@@ -375,6 +375,10 @@ class TestEventConstants:
             ("PERSISTENCE_BACKEND_DISCONNECTING", "persistence.backend.disconnecting"),
             ("PERSISTENCE_BACKEND_DISCONNECTED", "persistence.backend.disconnected"),
             ("PERSISTENCE_BACKEND_HEALTH_CHECK", "persistence.backend.health_check"),
+            (
+                "PERSISTENCE_BACKEND_NOT_CONNECTED",
+                "persistence.backend.not_connected",
+            ),
             ("PERSISTENCE_MIGRATION_STARTED", "persistence.migration.started"),
             ("PERSISTENCE_MIGRATION_COMPLETED", "persistence.migration.completed"),
             ("PERSISTENCE_MIGRATION_SKIPPED", "persistence.migration.skipped"),

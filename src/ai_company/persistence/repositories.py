@@ -10,6 +10,7 @@ from ai_company.budget.cost_record import CostRecord  # noqa: TC001
 from ai_company.communication.message import Message  # noqa: TC001
 from ai_company.core.enums import TaskStatus  # noqa: TC001
 from ai_company.core.task import Task  # noqa: TC001
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
 @runtime_checkable
@@ -27,7 +28,7 @@ class TaskRepository(Protocol):
         """
         ...
 
-    async def get(self, task_id: str) -> Task | None:
+    async def get(self, task_id: NotBlankStr) -> Task | None:
         """Retrieve a task by its ID.
 
         Args:
@@ -45,8 +46,8 @@ class TaskRepository(Protocol):
         self,
         *,
         status: TaskStatus | None = None,
-        assigned_to: str | None = None,
-        project: str | None = None,
+        assigned_to: NotBlankStr | None = None,
+        project: NotBlankStr | None = None,
     ) -> tuple[Task, ...]:
         """List tasks with optional filters.
 
@@ -63,7 +64,7 @@ class TaskRepository(Protocol):
         """
         ...
 
-    async def delete(self, task_id: str) -> bool:
+    async def delete(self, task_id: NotBlankStr) -> bool:
         """Delete a task by ID.
 
         Args:
@@ -96,8 +97,8 @@ class CostRecordRepository(Protocol):
     async def query(
         self,
         *,
-        agent_id: str | None = None,
-        task_id: str | None = None,
+        agent_id: NotBlankStr | None = None,
+        task_id: NotBlankStr | None = None,
     ) -> tuple[CostRecord, ...]:
         """Query cost records with optional filters.
 
@@ -113,11 +114,17 @@ class CostRecordRepository(Protocol):
         """
         ...
 
-    async def aggregate(self, *, agent_id: str | None = None) -> float:
-        """Sum total cost_usd, optionally filtered by agent.
+    async def aggregate(
+        self,
+        *,
+        agent_id: NotBlankStr | None = None,
+        task_id: NotBlankStr | None = None,
+    ) -> float:
+        """Sum total cost_usd, optionally filtered by agent and/or task.
 
         Args:
             agent_id: Filter by agent identifier.
+            task_id: Filter by task identifier.
 
         Returns:
             Total cost in USD.
@@ -146,7 +153,7 @@ class MessageRepository(Protocol):
 
     async def get_history(
         self,
-        channel: str,
+        channel: NotBlankStr,
         *,
         limit: int | None = None,
     ) -> tuple[Message, ...]:

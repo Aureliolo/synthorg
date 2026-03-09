@@ -24,6 +24,7 @@ PERSISTENCE_BACKEND_HEALTH_CHECK: Final[str] = "persistence.backend.health_check
 PERSISTENCE_BACKEND_CREATED: Final[str] = "persistence.backend.created"
 PERSISTENCE_BACKEND_UNKNOWN: Final[str] = "persistence.backend.unknown"
 PERSISTENCE_BACKEND_WAL_MODE_FAILED: Final[str] = "persistence.backend.wal_mode_failed"
+PERSISTENCE_BACKEND_NOT_CONNECTED: Final[str] = "persistence.backend.not_connected"
 
 PERSISTENCE_MIGRATION_STARTED: Final[str] = "persistence.migration.started"
 PERSISTENCE_MIGRATION_COMPLETED: Final[str] = "persistence.migration.completed"

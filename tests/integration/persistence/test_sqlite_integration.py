@@ -9,11 +9,12 @@ from ai_company.persistence.config import SQLiteConfig
 from ai_company.persistence.sqlite.backend import SQLitePersistenceBackend
 from tests.unit.persistence.conftest import make_message, make_task
 
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
 
-@pytest.mark.integration
+
 class TestSQLiteOnDisk:
-    async def test_wal_file_created(self, db_path: str) -> None:
-        """WAL mode creates -wal and -shm files on disk."""
+    async def test_wal_mode_enabled(self, db_path: str) -> None:
+        """WAL journal mode is enabled for the on-disk SQLite database."""
         backend = SQLitePersistenceBackend(SQLiteConfig(path=db_path))
         await backend.connect()
         await backend.migrate()
