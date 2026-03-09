@@ -23,9 +23,10 @@ jobs:
         with:
           fail-on-severity: high
           # LicenseRef-scancode-free-unknown: aiosqlite 0.21.0 — MIT per classifiers, scancode misdetects
+          # Python-2.0.1: editorconfig 0.17.1 (via jsbeautifier via litestar[standard])
           allow-licenses: >-
             MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause,
             ISC, MPL-2.0, PSF-2.0, Unlicense, 0BSD,
-            CC0-1.0, Python-2.0,
+            CC0-1.0, Python-2.0, Python-2.0.1,
             LicenseRef-scancode-free-unknown
           comment-summary-in-pr: always
