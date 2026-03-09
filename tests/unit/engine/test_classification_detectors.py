@@ -358,6 +358,19 @@ class TestDetectCoordinationFailures:
         finding = result[0]
         assert finding.category == ErrorCategory.COORDINATION_FAILURE
         assert "finish_reason" in finding.evidence[0]
+        assert finding.turn_range == (0, 0)
+
+    def test_error_finish_reason_uses_turn_index(self) -> None:
+        """turn_range uses 0-based index into turns tuple."""
+        conversation = (_assistant("Processing."),)
+        turns = (
+            _turn(turn_number=1),
+            _turn(turn_number=2, finish_reason=FinishReason.ERROR),
+        )
+        result = detect_coordination_failures(conversation, turns)
+        error_findings = [f for f in result if "finish_reason" in f.evidence[0]]
+        assert len(error_findings) == 1
+        assert error_findings[0].turn_range == (1, 1)
 
     def test_empty_turns_returns_empty(self) -> None:
         conversation = (_assistant("Hello."),)

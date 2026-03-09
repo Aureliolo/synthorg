@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ai_company.core.types import NotBlankStr
 from ai_company.persistence.protocol import PersistenceBackend
 from ai_company.persistence.repositories import (
     CostRecordRepository,
@@ -85,8 +86,8 @@ class _FakeBackend:
         return True
 
     @property
-    def backend_name(self) -> str:
-        return "fake"
+    def backend_name(self) -> NotBlankStr:
+        return NotBlankStr("fake")
 
     @property
     def tasks(self) -> _FakeTaskRepository:

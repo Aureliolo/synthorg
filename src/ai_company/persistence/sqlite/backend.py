@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import aiosqlite
 
+from ai_company.core.types import NotBlankStr
 from ai_company.observability import get_logger
 from ai_company.observability.events.persistence import (
     PERSISTENCE_BACKEND_ALREADY_CONNECTED,
@@ -173,9 +174,9 @@ class SQLitePersistenceBackend:
         return self._db is not None
 
     @property
-    def backend_name(self) -> str:
+    def backend_name(self) -> NotBlankStr:
         """Human-readable backend identifier."""
-        return "sqlite"
+        return NotBlankStr("sqlite")
 
     def _require_connected[T](self, repo: T | None, name: str) -> T:
         """Return *repo* or raise if the backend is not connected.

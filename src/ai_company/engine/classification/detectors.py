@@ -458,9 +458,9 @@ def detect_coordination_failures(
             evidence=(
                 f"Turn {turn.turn_number}: finish_reason={turn.finish_reason.value}",
             ),
-            turn_range=(turn.turn_number, turn.turn_number),
+            turn_range=(turn_idx, turn_idx),
         )
-        for turn in turns
+        for turn_idx, turn in enumerate(turns)
         if turn.finish_reason == FinishReason.ERROR
     )
 

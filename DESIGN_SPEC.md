@@ -1359,7 +1359,7 @@ class MemoryBackend(Protocol):
     @property
     def is_connected(self) -> bool: ...
     @property
-    def backend_name(self) -> str: ...
+    def backend_name(self) -> NotBlankStr: ...
 
     async def store(self, agent_id: NotBlankStr, request: MemoryStoreRequest) -> NotBlankStr: ...
     async def retrieve(self, agent_id: NotBlankStr, query: MemoryQuery) -> tuple[MemoryEntry, ...]: ...
@@ -1482,7 +1482,7 @@ class PersistenceBackend(Protocol):
     @property
     def is_connected(self) -> bool: ...
     @property
-    def backend_name(self) -> str: ...
+    def backend_name(self) -> NotBlankStr: ...
 
     @property
     def tasks(self) -> TaskRepository: ...
@@ -1694,7 +1694,7 @@ providers:
         cost_per_1k_output: 0.0
 ```
 
-### 9.3 LiteLLM Integration (Candidate)
+### 9.3 LiteLLM Integration
 
 Use **LiteLLM** as the provider abstraction layer:
 - Unified API across 100+ providers
@@ -2778,6 +2778,7 @@ ai-company/
 │       │   ├── events/             # Per-domain event constants
 │       │   │   ├── __init__.py    # Package marker with usage docs; no re-exports
 │       │   │   ├── budget.py      # BUDGET_* constants
+│       │   │   ├── classification.py # CLASSIFICATION_* constants
 │       │   │   ├── company.py      # COMPANY_* constants
 │       │   │   ├── communication.py # COMM_* constants
 │       │   │   ├── conflict.py    # CONFLICT_* constants

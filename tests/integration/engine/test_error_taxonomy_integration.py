@@ -316,7 +316,7 @@ class TestErrorTaxonomyIntegration:
                 role=MessageRole.ASSISTANT,
                 content=(
                     "AuthService handles JWT tokens and session management. "
-                    "PaymentGateway processes Stripe webhooks."
+                    "PaymentGateway processes payment webhooks."
                 ),
             ),
             ChatMessage(
@@ -327,14 +327,15 @@ class TestErrorTaxonomyIntegration:
                 role=MessageRole.ASSISTANT,
                 content=(
                     "We deploy AuthService to a dedicated cluster. "
-                    "The database runs on managed PostgreSQL."
+                    "The database runs on a managed relational store."
                 ),
             ),
             ChatMessage(role=MessageRole.USER, content="And monitoring?"),
             ChatMessage(
                 role=MessageRole.ASSISTANT,
                 content=(
-                    "We use Prometheus for metrics and Grafana for dashboards. "
+                    "We use a metrics collector for metrics "
+                    "and a dashboard service for dashboards. "
                     "Alerts go to the ops team."
                 ),
             ),

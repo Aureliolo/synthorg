@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 
 from ai_company.core.enums import MemoryCategory
+from ai_company.core.types import NotBlankStr
 from ai_company.memory.models import (
     MemoryEntry,
     MemoryMetadata,
@@ -38,8 +39,8 @@ class _FakeMemoryBackend:
         return self._connected
 
     @property
-    def backend_name(self) -> str:
-        return "fake"
+    def backend_name(self) -> NotBlankStr:
+        return NotBlankStr("fake")
 
     async def store(self, agent_id: str, request: MemoryStoreRequest) -> str:
         memory_id = str(uuid4())

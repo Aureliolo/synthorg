@@ -137,32 +137,20 @@ def _ctx_with_cost(
     )
 
 
-def _patch_periods() -> contextlib.AbstractContextManager[None]:
-    """Context manager that patches billing and daily period starts."""
-    return _combined_patch(_BILLING_START, _DAY_START)
-
-
-def _combined_patch(
-    billing_start: datetime,
-    day_start: datetime,
-) -> contextlib.AbstractContextManager[None]:
-    """Return combined patch context manager for both period functions."""
-
-    @contextlib.contextmanager
-    def _ctx() -> Iterator[None]:
-        with (
-            patch(
-                "ai_company.budget.enforcer.billing_period_start",
-                return_value=billing_start,
-            ),
-            patch(
-                "ai_company.budget.enforcer.daily_period_start",
-                return_value=day_start,
-            ),
-        ):
-            yield
-
-    return _ctx()
+@contextlib.contextmanager
+def _patch_periods() -> Iterator[None]:
+    """Patch billing and daily period starts to fixed test timestamps."""
+    with (
+        patch(
+            "ai_company.budget.enforcer.billing_period_start",
+            return_value=_BILLING_START,
+        ),
+        patch(
+            "ai_company.budget.enforcer.daily_period_start",
+            return_value=_DAY_START,
+        ),
+    ):
+        yield
 
 
 # ── Pre-flight checks ───────────────────────────────────────────────
@@ -285,6 +273,33 @@ class TestCheckCanExecute:
         tracker = CostTracker(budget_config=cfg)
         enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
         await enforcer.check_can_execute("alice")
+
+    async def test_daily_limit_enforced_when_monthly_disabled(self) -> None:
+        """Daily limit still fires when total_monthly=0."""
+        cfg = _make_budget_config(
+            total_monthly=0.0,
+            per_agent_daily_limit=10.0,
+        )
+        tracker = CostTracker(budget_config=cfg)
+        await tracker.record(
+            make_cost_record(
+                agent_id="alice",
+                cost_usd=10.0,
+                input_tokens=100,
+                output_tokens=50,
+                timestamp=_RECORD_TS,
+            ),
+        )
+        enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
+
+        with (
+            _patch_periods(),
+            pytest.raises(
+                DailyLimitExceededError,
+                match="daily limit exceeded",
+            ),
+        ):
+            await enforcer.check_can_execute("alice")
 
     async def test_daily_limit_disabled_skips_check(self) -> None:
         """Daily limit of 0 skips the daily check entirely."""

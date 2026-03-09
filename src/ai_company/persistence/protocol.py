@@ -6,6 +6,7 @@ management.  Repository protocols provide entity-level access.
 
 from typing import Protocol, runtime_checkable
 
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.persistence.repositories import (
     CostRecordRepository,  # noqa: TC001
     MessageRepository,  # noqa: TC001
@@ -67,7 +68,7 @@ class PersistenceBackend(Protocol):
         ...
 
     @property
-    def backend_name(self) -> str:
+    def backend_name(self) -> NotBlankStr:
         """Human-readable backend identifier (e.g. ``"sqlite"``)."""
         ...
 

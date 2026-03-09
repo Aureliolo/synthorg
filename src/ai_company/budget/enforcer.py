@@ -92,7 +92,7 @@ class BudgetEnforcer:
             await self._check_daily_limit(cfg, agent_id)
         except BudgetExhaustedError:
             raise
-        except MemoryError, RecursionError:
+        except MemoryError, RecursionError:  # builtin MemoryError (OOM)
             raise
         except Exception:
             logger.exception(
@@ -201,7 +201,7 @@ class BudgetEnforcer:
             monthly_cost = await self._cost_tracker.get_total_cost(
                 start=period_start,
             )
-        except MemoryError, RecursionError:
+        except MemoryError, RecursionError:  # builtin MemoryError (OOM)
             raise
         except Exception:
             logger.exception(
@@ -262,8 +262,6 @@ class BudgetEnforcer:
         daily_limit = cfg.per_agent_daily_limit
 
         # All enforcement disabled — monthly, task, and daily all off.
-        # Note: total_monthly=0 disables monthly/daily checks but task
-        # limits are independent (set on the Task, not the budget).
         if monthly_budget <= 0 and task_limit <= 0 and daily_limit <= 0:
             return None
 
@@ -309,7 +307,7 @@ class BudgetEnforcer:
                 daily_limit,
                 agent_id,
             )
-        except MemoryError, RecursionError:
+        except MemoryError, RecursionError:  # builtin MemoryError (OOM)
             raise
         except Exception:
             logger.exception(

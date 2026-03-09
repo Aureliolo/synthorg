@@ -10,7 +10,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 
 ## Current Capability Snapshot
 
-### Implemented (M0–M4 foundation)
+### Implemented (M0–M4 complete, M5 in progress)
 
 - **Company Config + Core Models** - Strong Pydantic validation, immutable config models, runtime state models
 - **Provider Layer** - LiteLLM-based provider abstraction with routing, retry, and rate limiting
