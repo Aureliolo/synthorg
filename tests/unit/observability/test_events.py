@@ -188,6 +188,7 @@ class TestEventConstants:
             "task_routing",
             "template",
             "tool",
+            "persistence",
             "workspace",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
@@ -365,3 +366,51 @@ class TestEventConstants:
             WORKSPACE_SORT_WORKSPACES_APPENDED == "workspace.sort.workspaces.appended"
         )
         assert WORKSPACE_GROUP_SETUP_FAILED == "workspace.group.setup.failed"
+
+    @pytest.mark.parametrize(
+        ("constant_name", "expected"),
+        [
+            ("PERSISTENCE_BACKEND_CONNECTING", "persistence.backend.connecting"),
+            ("PERSISTENCE_BACKEND_CONNECTED", "persistence.backend.connected"),
+            ("PERSISTENCE_BACKEND_DISCONNECTING", "persistence.backend.disconnecting"),
+            ("PERSISTENCE_BACKEND_DISCONNECTED", "persistence.backend.disconnected"),
+            ("PERSISTENCE_BACKEND_HEALTH_CHECK", "persistence.backend.health_check"),
+            (
+                "PERSISTENCE_BACKEND_NOT_CONNECTED",
+                "persistence.backend.not_connected",
+            ),
+            ("PERSISTENCE_MIGRATION_STARTED", "persistence.migration.started"),
+            ("PERSISTENCE_MIGRATION_COMPLETED", "persistence.migration.completed"),
+            ("PERSISTENCE_MIGRATION_SKIPPED", "persistence.migration.skipped"),
+            ("PERSISTENCE_TASK_SAVED", "persistence.task.saved"),
+            ("PERSISTENCE_TASK_FETCHED", "persistence.task.fetched"),
+            ("PERSISTENCE_TASK_LISTED", "persistence.task.listed"),
+            ("PERSISTENCE_TASK_DELETED", "persistence.task.deleted"),
+            (
+                "PERSISTENCE_TASK_DESERIALIZE_FAILED",
+                "persistence.task.deserialize_failed",
+            ),
+            ("PERSISTENCE_COST_RECORD_SAVED", "persistence.cost_record.saved"),
+            (
+                "PERSISTENCE_COST_RECORD_QUERIED",
+                "persistence.cost_record.queried",
+            ),
+            (
+                "PERSISTENCE_COST_RECORD_AGGREGATED",
+                "persistence.cost_record.aggregated",
+            ),
+            ("PERSISTENCE_MESSAGE_SAVED", "persistence.message.saved"),
+            (
+                "PERSISTENCE_MESSAGE_HISTORY_FETCHED",
+                "persistence.message.history_fetched",
+            ),
+            (
+                "PERSISTENCE_MESSAGE_DESERIALIZE_FAILED",
+                "persistence.message.deserialize_failed",
+            ),
+        ],
+    )
+    def test_persistence_events_exist(self, constant_name: str, expected: str) -> None:
+        from ai_company.observability.events import persistence as mod
+
+        assert getattr(mod, constant_name) == expected

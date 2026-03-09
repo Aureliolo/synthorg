@@ -327,6 +327,23 @@ class TestRootConfig:
         assert cfg.communication.default_pattern.value == "hybrid"
         assert cfg.routing.strategy == "cost_aware"
 
+    def test_persistence_defaults(self) -> None:
+        cfg = RootConfig(company_name="X")
+        assert cfg.persistence.backend == "sqlite"
+        assert cfg.persistence.sqlite.path == "ai-company.db"
+        assert cfg.persistence.sqlite.wal_mode is True
+
+    def test_persistence_custom_path(self) -> None:
+        from ai_company.persistence.config import PersistenceConfig, SQLiteConfig
+
+        cfg = RootConfig(
+            company_name="X",
+            persistence=PersistenceConfig(
+                sqlite=SQLiteConfig(path="data/company-a.db"),
+            ),
+        )
+        assert cfg.persistence.sqlite.path == "data/company-a.db"
+
     def test_missing_company_name_rejected(self) -> None:
         with pytest.raises(ValidationError):
             RootConfig()  # type: ignore[call-arg]

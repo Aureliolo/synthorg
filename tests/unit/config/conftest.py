@@ -20,6 +20,7 @@ from ai_company.config.schema import (
     TaskAssignmentConfig,
 )
 from ai_company.core.company import CompanyConfig
+from ai_company.persistence.config import PersistenceConfig
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -73,6 +74,7 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     logging = None
     coordination_metrics = CoordinationMetricsConfig()
     task_assignment = TaskAssignmentConfig()
+    persistence = PersistenceConfig()
 
 
 # ── Sample YAML strings ──────────────────────────────────────────

@@ -1,0 +1,108 @@
+"""Tests for SQLite schema migrations."""
+
+import sqlite3
+from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from ai_company.persistence.errors import MigrationError
+from ai_company.persistence.sqlite.migrations import (
+    SCHEMA_VERSION,
+    get_user_version,
+    run_migrations,
+    set_user_version,
+)
+
+if TYPE_CHECKING:
+    import aiosqlite
+
+
+@pytest.mark.unit
+class TestUserVersion:
+    async def test_default_version_is_zero(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        assert await get_user_version(memory_db) == 0
+
+    async def test_set_and_get_version(self, memory_db: aiosqlite.Connection) -> None:
+        await set_user_version(memory_db, 42)
+        assert await get_user_version(memory_db) == 42
+
+    async def test_set_negative_version_raises(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        with pytest.raises(MigrationError, match="non-negative integer"):
+            await set_user_version(memory_db, -1)
+
+    async def test_set_non_int_version_raises(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        with pytest.raises(MigrationError, match="non-negative integer"):
+            await set_user_version(memory_db, 2.5)  # type: ignore[arg-type]
+
+
+@pytest.mark.unit
+class TestRunMigrations:
+    async def test_creates_tables(self, memory_db: aiosqlite.Connection) -> None:
+        await run_migrations(memory_db)
+
+        cursor = await memory_db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        )
+        tables = [row[0] for row in await cursor.fetchall()]
+        assert "tasks" in tables
+        assert "cost_records" in tables
+        assert "messages" in tables
+
+    async def test_sets_version(self, memory_db: aiosqlite.Connection) -> None:
+        await run_migrations(memory_db)
+        assert await get_user_version(memory_db) == SCHEMA_VERSION
+
+    async def test_idempotent(self, memory_db: aiosqlite.Connection) -> None:
+        await run_migrations(memory_db)
+        await run_migrations(memory_db)
+        assert await get_user_version(memory_db) == SCHEMA_VERSION
+
+    async def test_creates_indexes(self, memory_db: aiosqlite.Connection) -> None:
+        await run_migrations(memory_db)
+
+        cursor = await memory_db.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' "
+            "AND name LIKE 'idx_%' ORDER BY name"
+        )
+        indexes = {row[0] for row in await cursor.fetchall()}
+        expected = {
+            "idx_tasks_status",
+            "idx_tasks_assigned_to",
+            "idx_tasks_project",
+            "idx_cost_records_agent_id",
+            "idx_cost_records_task_id",
+            "idx_messages_channel",
+            "idx_messages_timestamp",
+        }
+        assert expected.issubset(indexes)
+
+    async def test_skips_when_already_at_version(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """Running migrations on an already-migrated db is a no-op."""
+        version_before = await get_user_version(migrated_db)
+        await run_migrations(migrated_db)
+        assert await get_user_version(migrated_db) == version_before
+
+    async def test_migration_failure_raises_migration_error(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        """A failing migration step wraps the error as MigrationError."""
+        failing_fn = AsyncMock(
+            side_effect=sqlite3.OperationalError("simulated migration failure")
+        )
+        with (
+            patch(
+                "ai_company.persistence.sqlite.migrations._MIGRATIONS",
+                [(1, failing_fn)],
+            ),
+            pytest.raises(MigrationError, match="Migration to version"),
+        ):
+            await run_migrations(memory_db)

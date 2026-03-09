@@ -30,4 +30,5 @@ def default_config_dict() -> dict[str, Any]:
         "escalation_paths": [],
         "coordination_metrics": {},
         "task_assignment": {},
+        "persistence": {},
     }

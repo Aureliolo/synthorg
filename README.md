@@ -20,6 +20,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 - **Multi-Agent Core (M4)** - Message bus, delegation with loop prevention, conflict resolution, meeting protocols
 - **Task Intelligence (M4)** - Task decomposition, routing, assignment strategies, workspace isolation via git worktrees
 - **Templates** - Built-in templates, inheritance/merge, rendering, personality presets
+- **Persistence Layer (M5)** - Pluggable `PersistenceBackend` protocol with SQLite backend (aiosqlite), repository protocols, schema migrations
 
 ### Not implemented yet (planned milestones)
 
@@ -43,7 +44,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 - **Mem0** for agent memory (initial backend; custom stack future — see [ADR-001](docs/decisions/ADR-001-memory-layer.md))
 - **MCP** for tool integration (planned)
 - **Vue 3** for web dashboard (planned)
-- **SQLite** → PostgreSQL for data persistence (planned)
+- **SQLite** (aiosqlite) → PostgreSQL for operational data persistence
 
 ## System Requirements
 

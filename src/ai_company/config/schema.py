@@ -20,6 +20,7 @@ from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.config import LogConfig  # noqa: TC001
 from ai_company.observability.events.config import CONFIG_VALIDATION_FAILED
+from ai_company.persistence.config import PersistenceConfig
 
 logger = get_logger(__name__)
 
@@ -458,6 +459,7 @@ class RootConfig(BaseModel):
         escalation_paths: Cross-department escalation paths.
         coordination_metrics: Coordination metrics configuration.
         task_assignment: Task assignment configuration.
+        persistence: Persistence backend configuration.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -524,6 +526,10 @@ class RootConfig(BaseModel):
     task_assignment: TaskAssignmentConfig = Field(
         default_factory=TaskAssignmentConfig,
         description="Task assignment configuration",
+    )
+    persistence: PersistenceConfig = Field(
+        default_factory=PersistenceConfig,
+        description="Persistence backend configuration",
     )
 
     @model_validator(mode="after")
