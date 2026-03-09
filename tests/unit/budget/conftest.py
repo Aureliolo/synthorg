@@ -12,12 +12,19 @@ from ai_company.budget.config import (
     BudgetConfig,
 )
 from ai_company.budget.cost_record import CostRecord
+from ai_company.budget.cost_tiers import CostTierDefinition, CostTiersConfig
 from ai_company.budget.enums import BudgetAlertLevel
 from ai_company.budget.hierarchy import (
     BudgetHierarchy,
     DepartmentBudget,
     TeamBudget,
 )
+from ai_company.budget.quota import (
+    QuotaLimit,
+    QuotaWindow,
+    SubscriptionConfig,
+)
+from ai_company.budget.quota_tracker import QuotaTracker
 from ai_company.budget.spending_summary import (
     AgentSpending,
     DepartmentSpending,
@@ -96,6 +103,27 @@ class SpendingSummaryFactory(ModelFactory[SpendingSummary]):
     period = PeriodSpendingFactory
     by_agent = ()
     by_department = ()
+
+
+class CostTierDefinitionFactory(ModelFactory[CostTierDefinition]):
+    __model__ = CostTierDefinition
+    sort_order = 0
+
+
+class CostTiersConfigFactory(ModelFactory[CostTiersConfig]):
+    __model__ = CostTiersConfig
+    tiers = ()
+    include_builtin = True
+
+
+class QuotaLimitFactory(ModelFactory[QuotaLimit]):
+    __model__ = QuotaLimit
+    max_requests = 60
+
+
+class SubscriptionConfigFactory(ModelFactory[SubscriptionConfig]):
+    __model__ = SubscriptionConfig
+    quotas = ()
 
 
 # ── Sample Fixtures ────────────────────────────────────────────────
@@ -233,6 +261,19 @@ def cost_tracker(
         budget_config=budget_config_for_tracker,
         department_resolver=department_resolver,
     )
+
+
+def make_quota_tracker(
+    *,
+    provider: str = "test-provider",
+    max_requests: int = 60,
+    window: QuotaWindow = QuotaWindow.PER_MINUTE,
+) -> QuotaTracker:
+    """Build a QuotaTracker with a single provider and quota."""
+    sub = SubscriptionConfig(
+        quotas=(QuotaLimit(window=window, max_requests=max_requests),),
+    )
+    return QuotaTracker(subscriptions={provider: sub})
 
 
 def make_cost_record(  # noqa: PLR0913

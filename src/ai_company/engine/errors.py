@@ -38,6 +38,10 @@ class DailyLimitExceededError(BudgetExhaustedError):
     """Per-agent daily spending limit exceeded."""
 
 
+class QuotaExhaustedError(BudgetExhaustedError):
+    """Raised when provider quota is exhausted and degradation is ALERT."""
+
+
 class LoopExecutionError(EngineError):
     """Non-recoverable execution loop error for the engine layer.
 

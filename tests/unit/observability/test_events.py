@@ -192,6 +192,7 @@ class TestEventConstants:
             "personality",
             "prompt",
             "provider",
+            "quota",
             "role",
             "routing",
             "sandbox",

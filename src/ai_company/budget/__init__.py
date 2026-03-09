@@ -29,6 +29,13 @@ from ai_company.budget.coordination_metrics import (
     RedundancyRate,
 )
 from ai_company.budget.cost_record import CostRecord
+from ai_company.budget.cost_tiers import (
+    BUILTIN_TIERS,
+    CostTierDefinition,
+    CostTiersConfig,
+    classify_model_tier,
+    resolve_tiers,
+)
 from ai_company.budget.enforcer import BudgetEnforcer
 from ai_company.budget.enums import BudgetAlertLevel
 from ai_company.budget.hierarchy import (
@@ -36,6 +43,18 @@ from ai_company.budget.hierarchy import (
     DepartmentBudget,
     TeamBudget,
 )
+from ai_company.budget.quota import (
+    DegradationAction,
+    DegradationConfig,
+    ProviderCostModel,
+    QuotaCheckResult,
+    QuotaLimit,
+    QuotaSnapshot,
+    QuotaWindow,
+    SubscriptionConfig,
+    effective_cost_per_1k,
+)
+from ai_company.budget.quota_tracker import QuotaTracker
 from ai_company.budget.spending_summary import (
     AgentSpending,
     DepartmentSpending,
@@ -45,6 +64,7 @@ from ai_company.budget.spending_summary import (
 from ai_company.budget.tracker import CostTracker
 
 __all__ = [
+    "BUILTIN_TIERS",
     "AgentSpending",
     "AutoDowngradeConfig",
     "BudgetAlertConfig",
@@ -59,7 +79,11 @@ __all__ = [
     "CoordinationMetricsConfig",
     "CoordinationOverhead",
     "CostRecord",
+    "CostTierDefinition",
+    "CostTiersConfig",
     "CostTracker",
+    "DegradationAction",
+    "DegradationConfig",
     "DepartmentBudget",
     "DepartmentSpending",
     "ErrorAmplification",
@@ -71,9 +95,19 @@ __all__ = [
     "OrchestrationAlertThresholds",
     "OrchestrationRatio",
     "PeriodSpending",
+    "ProviderCostModel",
+    "QuotaCheckResult",
+    "QuotaLimit",
+    "QuotaSnapshot",
+    "QuotaTracker",
+    "QuotaWindow",
     "RedundancyRate",
     "SpendingSummary",
+    "SubscriptionConfig",
     "TeamBudget",
     "billing_period_start",
+    "classify_model_tier",
     "daily_period_start",
+    "effective_cost_per_1k",
+    "resolve_tiers",
 ]

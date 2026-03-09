@@ -32,4 +32,5 @@ def default_config_dict() -> dict[str, Any]:
         "task_assignment": {},
         "memory": {},
         "persistence": {},
+        "cost_tiers": {},
     }

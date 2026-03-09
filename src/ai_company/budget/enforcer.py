@@ -10,8 +10,13 @@ from typing import TYPE_CHECKING, NamedTuple
 
 from ai_company.budget.billing import billing_period_start, daily_period_start
 from ai_company.budget.enums import BudgetAlertLevel
+from ai_company.budget.quota import QuotaCheckResult
 from ai_company.constants import BUDGET_ROUNDING_PRECISION
-from ai_company.engine.errors import BudgetExhaustedError, DailyLimitExceededError
+from ai_company.engine.errors import (
+    BudgetExhaustedError,
+    DailyLimitExceededError,
+    QuotaExhaustedError,
+)
 from ai_company.observability import get_logger
 from ai_company.observability.events.budget import (
     BUDGET_ALERT_THRESHOLD_CROSSED,
@@ -27,9 +32,14 @@ from ai_company.observability.events.budget import (
     BUDGET_RESOLVE_MODEL_ERROR,
     BUDGET_TASK_LIMIT_HIT,
 )
+from ai_company.observability.events.quota import (
+    QUOTA_CHECK_ALLOWED,
+    QUOTA_CHECK_DENIED,
+)
 
 if TYPE_CHECKING:
     from ai_company.budget.config import BudgetConfig
+    from ai_company.budget.quota_tracker import QuotaTracker
     from ai_company.budget.tracker import CostTracker
     from ai_company.core.agent import AgentIdentity, ModelConfig
     from ai_company.core.task import Task
@@ -59,6 +69,8 @@ class BudgetEnforcer:
         cost_tracker: Cost tracking service for querying spend.
         model_resolver: Optional model resolver for auto-downgrade
             alias lookup.
+        quota_tracker: Optional quota tracker for provider-level
+            quota enforcement.
     """
 
     def __init__(
@@ -67,23 +79,37 @@ class BudgetEnforcer:
         budget_config: BudgetConfig,
         cost_tracker: CostTracker,
         model_resolver: ModelResolver | None = None,
+        quota_tracker: QuotaTracker | None = None,
     ) -> None:
         self._budget_config = budget_config
         self._cost_tracker = cost_tracker
         self._model_resolver = model_resolver
+        self._quota_tracker = quota_tracker
 
     @property
     def cost_tracker(self) -> CostTracker:
         """The underlying cost tracker."""
         return self._cost_tracker
 
-    async def check_can_execute(self, agent_id: str) -> None:
-        """Pre-flight: verify monthly + daily limits allow execution.
+    async def check_can_execute(
+        self,
+        agent_id: str,
+        *,
+        provider_name: str | None = None,
+    ) -> None:
+        """Pre-flight: verify monthly + daily + quota limits allow execution.
+
+        Args:
+            agent_id: Agent requesting execution.
+            provider_name: Optional provider name for quota checks.
+                When ``None``, quota check is skipped.
 
         Raises:
             BudgetExhaustedError: Monthly hard stop exceeded.
             DailyLimitExceededError: Agent daily limit exceeded
                 (subclass of ``BudgetExhaustedError``).
+            QuotaExhaustedError: Provider quota exhausted and
+                degradation strategy is ALERT.
         """
         cfg = self._budget_config
 
@@ -91,6 +117,9 @@ class BudgetEnforcer:
             if cfg.total_monthly > 0:
                 await self._check_monthly_hard_stop(cfg, agent_id)
             await self._check_daily_limit(cfg, agent_id)
+
+            if provider_name is not None:
+                await self._check_provider_quota(agent_id, provider_name)
         except BudgetExhaustedError:
             raise
         except MemoryError, RecursionError:  # builtin MemoryError (OOM)
@@ -108,6 +137,53 @@ class BudgetEnforcer:
             agent_id=agent_id,
             result="pass",
         )
+
+    async def check_quota(
+        self,
+        provider_name: str,
+        *,
+        estimated_tokens: int = 0,
+    ) -> QuotaCheckResult:
+        """Check provider quota, delegating to QuotaTracker.
+
+        Returns always-allowed when no quota tracker is configured.
+
+        Args:
+            provider_name: Provider to check.
+            estimated_tokens: Estimated tokens for the request.
+
+        Returns:
+            Quota check result.
+        """
+        if self._quota_tracker is None:
+            logger.debug(
+                QUOTA_CHECK_ALLOWED,
+                provider=provider_name,
+                reason="no_quota_tracker",
+            )
+            return _always_allowed_result(provider_name)
+
+        return await self._quota_tracker.check_quota(
+            provider_name,
+            estimated_tokens=estimated_tokens,
+        )
+
+    async def _check_provider_quota(
+        self,
+        agent_id: str,
+        provider_name: str,
+    ) -> None:
+        """Check provider quota, raising on exhaustion."""
+        quota_result = await self.check_quota(provider_name)
+        if not quota_result.allowed:
+            logger.warning(
+                QUOTA_CHECK_DENIED,
+                agent_id=agent_id,
+                provider=provider_name,
+                reason=quota_result.reason,
+            )
+            msg = f"Provider {provider_name!r} quota exhausted: {quota_result.reason}"
+            raise QuotaExhaustedError(msg)
 
     async def _check_monthly_hard_stop(
         self,
@@ -346,6 +422,14 @@ class BudgetEnforcer:
 
 
 # ── Module-level pure helpers ────────────────────────────────────
+
+
+def _always_allowed_result(provider_name: str) -> QuotaCheckResult:
+    """Build an always-allowed QuotaCheckResult."""
+    return QuotaCheckResult(
+        allowed=True,
+        provider_name=provider_name,
+    )
 
 
 def _apply_downgrade(
