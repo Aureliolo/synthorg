@@ -46,12 +46,22 @@ def _make_budget_config(
 class TestEngineWithEnforcer:
     """Tests for AgentEngine with budget_enforcer wired in."""
 
-    async def test_preflight_budget_exhausted_returns_error(
+    @pytest.mark.parametrize(
+        ("exc_cls", "msg"),
+        [
+            (BudgetExhaustedError, "Monthly budget exhausted"),
+            (DailyLimitExceededError, "Daily limit exceeded"),
+        ],
+        ids=["monthly_exhausted", "daily_limit"],
+    )
+    async def test_preflight_budget_stop_returns_budget_exhausted(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
+        exc_cls: type[BudgetExhaustedError],
+        msg: str,
     ) -> None:
-        """Pre-flight BudgetExhaustedError propagates as error result."""
+        """Pre-flight budget errors propagate as BUDGET_EXHAUSTED result."""
         cfg = _make_budget_config(total_monthly=100.0)
         tracker = CostTracker(budget_config=cfg)
         enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
@@ -67,42 +77,7 @@ class TestEngineWithEnforcer:
         with patch.object(
             enforcer,
             "check_can_execute",
-            new=AsyncMock(
-                side_effect=BudgetExhaustedError("Monthly budget exhausted"),
-            ),
-        ):
-            result = await engine.run(
-                identity=sample_agent_with_personality,
-                task=sample_task_with_criteria,
-            )
-
-        assert result.termination_reason == TerminationReason.BUDGET_EXHAUSTED
-        assert provider.call_count == 0
-
-    async def test_preflight_daily_limit_returns_budget_exhausted(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-        sample_task_with_criteria: Task,
-    ) -> None:
-        """Pre-flight DailyLimitExceededError uses BUDGET_EXHAUSTED reason."""
-        cfg = _make_budget_config(total_monthly=100.0)
-        tracker = CostTracker(budget_config=cfg)
-        enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
-
-        provider = MockCompletionProvider(
-            [make_completion_response(content="Done.")],
-        )
-        engine = AgentEngine(
-            provider=provider,
-            budget_enforcer=enforcer,
-        )
-
-        with patch.object(
-            enforcer,
-            "check_can_execute",
-            new=AsyncMock(
-                side_effect=DailyLimitExceededError("Daily limit exceeded"),
-            ),
+            new=AsyncMock(side_effect=exc_cls(msg)),
         ):
             result = await engine.run(
                 identity=sample_agent_with_personality,

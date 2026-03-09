@@ -37,11 +37,6 @@ from ai_company.engine.prompt import (
 from ai_company.engine.react_loop import ReactLoop
 from ai_company.engine.recovery import FailAndReassignStrategy, RecoveryStrategy
 from ai_company.engine.run_result import AgentRunResult
-from ai_company.engine.validation import (
-    validate_agent,
-    validate_run_inputs,
-    validate_task,
-)
 from ai_company.observability import get_logger
 from ai_company.observability.events.execution import (
     EXECUTION_ENGINE_BUDGET_STOPPED,
@@ -71,7 +66,7 @@ if TYPE_CHECKING:
         ExecutionLoop,
         ShutdownChecker,
     )
-    from ai_company.providers.models import CompletionConfig, ToolDefinition
+    from ai_company.providers.models import CompletionConfig
     from ai_company.providers.protocol import CompletionProvider
     from ai_company.tools.registry import ToolRegistry
 
@@ -90,23 +85,15 @@ class AgentEngine:
 
     Args:
         provider: LLM completion provider (required).
-        execution_loop: Loop implementation. Defaults to ``ReactLoop()``.
+        execution_loop: Defaults to ``ReactLoop()``.
         tool_registry: Optional tools available to the agent.
-        cost_tracker: Optional cost recording service. Falls back to
-            ``budget_enforcer.cost_tracker`` when both ``cost_tracker``
-            is ``None`` and ``budget_enforcer`` is provided. Cost
-            recording is skipped only when both are ``None``.
-        recovery_strategy: Crash recovery strategy. Defaults to a
-            shared ``FailAndReassignStrategy`` instance. Pass ``None``
-            to disable.
-        shutdown_checker: Optional callback; returns ``True`` when a
-            graceful shutdown has been requested.  Passed through to
-            the execution loop.
-        error_taxonomy_config: Optional error taxonomy configuration.
-            When provided and enabled, runs post-execution
-            classification of coordination errors.
-        budget_enforcer: Optional budget enforcement service. When
-            provided, enables pre-flight checks, auto-downgrade, and
+        cost_tracker: Falls back to ``budget_enforcer.cost_tracker``
+            when ``None`` and ``budget_enforcer`` is provided. Must
+            match ``budget_enforcer.cost_tracker`` if both supplied.
+        recovery_strategy: Defaults to ``FailAndReassignStrategy``.
+        shutdown_checker: Returns ``True`` for graceful shutdown.
+        error_taxonomy_config: Post-execution error classification.
+        budget_enforcer: Pre-flight checks, auto-downgrade, and
             enhanced in-flight budget checking.
     """
 
@@ -126,9 +113,20 @@ class AgentEngine:
         self._loop: ExecutionLoop = execution_loop or ReactLoop()
         self._tool_registry = tool_registry
         self._budget_enforcer = budget_enforcer
-        self._cost_tracker = cost_tracker or (
-            budget_enforcer.cost_tracker if budget_enforcer else None
-        )
+        self._cost_tracker: CostTracker | None
+        if budget_enforcer is not None:
+            if (
+                cost_tracker is not None
+                and cost_tracker is not budget_enforcer.cost_tracker
+            ):
+                msg = (
+                    "cost_tracker must match budget_enforcer.cost_tracker "
+                    "when budget_enforcer is provided"
+                )
+                raise ValueError(msg)
+            self._cost_tracker = budget_enforcer.cost_tracker
+        else:
+            self._cost_tracker = cost_tracker
         self._recovery_strategy = recovery_strategy
         self._shutdown_checker = shutdown_checker
         self._error_taxonomy_config = error_taxonomy_config
@@ -444,7 +442,7 @@ class AgentEngine:
         tool_invoker: ToolInvoker | None = None,
     ) -> tuple[AgentContext, SystemPrompt]:
         """Build system prompt and prepare execution context."""
-        tool_defs = self._get_tool_definitions(tool_invoker)
+        tool_defs = tool_invoker.get_permitted_definitions() if tool_invoker else ()
         system_prompt = build_system_prompt(
             agent=identity,
             task=task,
@@ -472,15 +470,6 @@ class AgentEngine:
         return ctx, system_prompt
 
     # ── Helpers ──────────────────────────────────────────────────
-
-    def _get_tool_definitions(
-        self,
-        tool_invoker: ToolInvoker | None,
-    ) -> tuple[ToolDefinition, ...]:
-        """Extract permitted tool definitions for prompt building."""
-        if tool_invoker is None:
-            return ()
-        return tool_invoker.get_permitted_definitions()
 
     def _transition_task_if_needed(
         self,
@@ -707,14 +696,7 @@ class AgentEngine:
         ctx: AgentContext | None = None,
         system_prompt: SystemPrompt | None = None,
     ) -> AgentRunResult:
-        """Build a budget-exhausted result without recovery.
-
-        Unlike ``_handle_fatal_error``, this uses
-        ``TerminationReason.BUDGET_EXHAUSTED`` so the orchestration
-        layer can distinguish budget stops from crashes.  Recovery is
-        skipped because budget exhaustion is a controlled stop, not a
-        crash — the task may be resumable after a budget reset.
-        """
+        """Build a BUDGET_EXHAUSTED result (no recovery — controlled stop)."""
         logger.warning(
             EXECUTION_ENGINE_BUDGET_STOPPED,
             agent_id=agent_id,
@@ -748,7 +730,7 @@ class AgentEngine:
                 task_id=task_id,
                 error=f"Failed to build budget-exhausted result: {build_exc}",
             )
-            raise exc from build_exc
+            raise exc from None
 
     async def _handle_fatal_error(  # noqa: PLR0913
         self,

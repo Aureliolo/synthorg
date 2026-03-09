@@ -84,7 +84,7 @@ class BudgetEnforcer:
         """
         cfg = self._budget_config
 
-        # Skip if enforcement disabled (total_monthly == 0)
+        # Skip if enforcement disabled (total_monthly <= 0)
         if cfg.total_monthly <= 0:
             logger.debug(
                 BUDGET_ENFORCEMENT_CHECK,
@@ -247,15 +247,17 @@ class BudgetEnforcer:
         level and only logs upward transitions
         (NORMAL -> WARNING -> CRITICAL -> HARD_STOP).
 
-        Returns ``None`` if all limits are disabled (total_monthly == 0,
-        task has no budget limit, and daily limit == 0).
+        Returns ``None`` when all limits are disabled (monthly,
+        task, and daily all off).
         """
         cfg = self._budget_config
         task_limit = task.budget_limit
         monthly_budget = cfg.total_monthly
         daily_limit = cfg.per_agent_daily_limit
 
-        # All enforcement disabled
+        # All enforcement disabled — monthly, task, and daily all off.
+        # Note: total_monthly=0 disables monthly/daily checks but task
+        # limits are independent (set on the Task, not the budget).
         if monthly_budget <= 0 and task_limit <= 0 and daily_limit <= 0:
             return None
 

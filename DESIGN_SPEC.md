@@ -986,7 +986,7 @@ Error handling: `MemoryError` and `RecursionError` propagate unconditionally. `B
 
 Constructor accepts: `provider` (required), `execution_loop` (defaults to `ReactLoop`), `tool_registry`, `cost_tracker`, `recovery_strategy` (defaults to `FailAndReassignStrategy`), `shutdown_checker`, `budget_enforcer`. The `run()` method also accepts `memory_messages` — optional working memory to inject between the system prompt and task instruction (memory retrieval is M5; the engine provides the injection hook).
 
-Logs structured events under the `execution.engine.*` namespace (12 constants in `events/execution.py`): creation, start, prompt built, completion, errors, invalid input, task transitions, cost recording outcomes, task metrics, and timeout.
+Logs structured events under the `execution.engine.*` namespace (13 constants in `events/execution.py`): creation, start, prompt built, completion, errors, budget stopped, invalid input, task transitions, cost recording outcomes, task metrics, and timeout.
 
 **`AgentRunResult`** — frozen Pydantic model wrapping `ExecutionResult` with engine metadata:
 
