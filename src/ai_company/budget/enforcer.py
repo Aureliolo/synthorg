@@ -21,7 +21,9 @@ from ai_company.observability.events.budget import (
     BUDGET_DOWNGRADE_APPLIED,
     BUDGET_DOWNGRADE_SKIPPED,
     BUDGET_ENFORCEMENT_CHECK,
+    BUDGET_HARD_STOP_EXCEEDED,
     BUDGET_HARD_STOP_TRIGGERED,
+    BUDGET_PREFLIGHT_ERROR,
     BUDGET_RESOLVE_MODEL_ERROR,
     BUDGET_TASK_LIMIT_HIT,
 )
@@ -94,8 +96,20 @@ class BudgetEnforcer:
             )
             return
 
-        await self._check_monthly_hard_stop(cfg, agent_id)
-        await self._check_daily_limit(cfg, agent_id)
+        try:
+            await self._check_monthly_hard_stop(cfg, agent_id)
+            await self._check_daily_limit(cfg, agent_id)
+        except BudgetExhaustedError, DailyLimitExceededError:
+            raise
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                BUDGET_PREFLIGHT_ERROR,
+                agent_id=agent_id,
+                reason="falling_back_to_allow_execution",
+            )
+            return
 
         logger.debug(
             BUDGET_ENFORCEMENT_CHECK,
@@ -120,9 +134,10 @@ class BudgetEnforcer:
 
         if monthly_cost >= hard_stop_limit:
             logger.warning(
-                BUDGET_HARD_STOP_TRIGGERED,
+                BUDGET_HARD_STOP_EXCEEDED,
                 agent_id=agent_id,
-                monthly_cost=monthly_cost,
+                total_cost=monthly_cost,
+                monthly_budget=cfg.total_monthly,
                 hard_stop_limit=hard_stop_limit,
             )
             msg = (
@@ -545,64 +560,106 @@ def _build_checker_closure(  # noqa: PLR0913
 
     def _check(ctx: AgentContext) -> bool:
         running_cost = ctx.accumulated_cost.cost_usd
-
-        # 1. Task budget limit
-        if task_limit > 0 and running_cost >= task_limit:
-            logger.warning(
-                BUDGET_TASK_LIMIT_HIT,
-                agent_id=agent_id,
-                running_cost=running_cost,
-                task_limit=task_limit,
+        return (
+            _check_task_limit(running_cost, task_limit, agent_id)
+            or _check_monthly_limit(
+                running_cost,
+                monthly_budget,
+                monthly_baseline,
+                thresholds,
+                last_alert,
+                agent_id,
             )
-            return True
-
-        # 2. Monthly hard stop + alerts
-        if monthly_budget > 0:
-            total_monthly = round(
-                monthly_baseline + running_cost,
-                BUDGET_ROUNDING_PRECISION,
+            or _check_daily_limit(
+                running_cost,
+                daily_limit,
+                daily_baseline,
+                agent_id,
             )
-            if total_monthly >= thresholds.hard_stop:
-                _emit_alert(
-                    BudgetAlertLevel.HARD_STOP,
-                    last_alert,
-                    agent_id,
-                    total_monthly,
-                    monthly_budget,
-                )
-                return True
-            if total_monthly >= thresholds.critical:
-                _emit_alert(
-                    BudgetAlertLevel.CRITICAL,
-                    last_alert,
-                    agent_id,
-                    total_monthly,
-                    monthly_budget,
-                )
-            elif total_monthly >= thresholds.warn:
-                _emit_alert(
-                    BudgetAlertLevel.WARNING,
-                    last_alert,
-                    agent_id,
-                    total_monthly,
-                    monthly_budget,
-                )
-
-        # 3. Agent daily limit
-        if daily_limit > 0:
-            total_daily = round(
-                daily_baseline + running_cost,
-                BUDGET_ROUNDING_PRECISION,
-            )
-            if total_daily >= daily_limit:
-                logger.warning(
-                    BUDGET_DAILY_LIMIT_HIT,
-                    agent_id=agent_id,
-                    total_daily=total_daily,
-                    daily_limit=daily_limit,
-                )
-                return True
-
-        return False
+        )
 
     return _check
+
+
+def _check_task_limit(
+    running_cost: float,
+    task_limit: float,
+    agent_id: str,
+) -> bool:
+    """Return True if task budget limit is exhausted."""
+    if task_limit > 0 and running_cost >= task_limit:
+        logger.warning(
+            BUDGET_TASK_LIMIT_HIT,
+            agent_id=agent_id,
+            running_cost=running_cost,
+            task_limit=task_limit,
+        )
+        return True
+    return False
+
+
+def _check_monthly_limit(  # noqa: PLR0913
+    running_cost: float,
+    monthly_budget: float,
+    monthly_baseline: float,
+    thresholds: _AlertThresholds,
+    last_alert: list[BudgetAlertLevel],
+    agent_id: str,
+) -> bool:
+    """Return True if monthly hard stop is hit; emit alerts."""
+    if monthly_budget <= 0:
+        return False
+    total_monthly = round(
+        monthly_baseline + running_cost,
+        BUDGET_ROUNDING_PRECISION,
+    )
+    if total_monthly >= thresholds.hard_stop:
+        _emit_alert(
+            BudgetAlertLevel.HARD_STOP,
+            last_alert,
+            agent_id,
+            total_monthly,
+            monthly_budget,
+        )
+        return True
+    if total_monthly >= thresholds.critical:
+        _emit_alert(
+            BudgetAlertLevel.CRITICAL,
+            last_alert,
+            agent_id,
+            total_monthly,
+            monthly_budget,
+        )
+    elif total_monthly >= thresholds.warn:
+        _emit_alert(
+            BudgetAlertLevel.WARNING,
+            last_alert,
+            agent_id,
+            total_monthly,
+            monthly_budget,
+        )
+    return False
+
+
+def _check_daily_limit(
+    running_cost: float,
+    daily_limit: float,
+    daily_baseline: float,
+    agent_id: str,
+) -> bool:
+    """Return True if daily limit is exhausted."""
+    if daily_limit <= 0:
+        return False
+    total_daily = round(
+        daily_baseline + running_cost,
+        BUDGET_ROUNDING_PRECISION,
+    )
+    if total_daily >= daily_limit:
+        logger.warning(
+            BUDGET_DAILY_LIMIT_HIT,
+            agent_id=agent_id,
+            total_daily=total_daily,
+            daily_limit=daily_limit,
+        )
+        return True
+    return False

@@ -15,6 +15,7 @@ BUDGET_ORCHESTRATION_RATIO_QUERIED: Final[str] = "budget.orchestration_ratio.que
 BUDGET_ORCHESTRATION_RATIO_ALERT: Final[str] = "budget.orchestration_ratio.alert"
 
 BUDGET_ALERT_THRESHOLD_CROSSED: Final[str] = "budget.alert.threshold_crossed"
+BUDGET_HARD_STOP_EXCEEDED: Final[str] = "budget.hard_stop.exceeded"
 BUDGET_HARD_STOP_TRIGGERED: Final[str] = "budget.hard_stop.triggered"
 BUDGET_DAILY_LIMIT_EXCEEDED: Final[str] = "budget.daily_limit.exceeded"
 BUDGET_DOWNGRADE_APPLIED: Final[str] = "budget.downgrade.applied"
@@ -23,4 +24,5 @@ BUDGET_ENFORCEMENT_CHECK: Final[str] = "budget.enforcement.check"
 BUDGET_TASK_LIMIT_HIT: Final[str] = "budget.task_limit.hit"
 BUDGET_DAILY_LIMIT_HIT: Final[str] = "budget.daily_limit.hit"
 BUDGET_BASELINE_ERROR: Final[str] = "budget.baseline.error"
+BUDGET_PREFLIGHT_ERROR: Final[str] = "budget.preflight.error"
 BUDGET_RESOLVE_MODEL_ERROR: Final[str] = "budget.resolve_model.error"
