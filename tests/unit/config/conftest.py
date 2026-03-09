@@ -7,6 +7,8 @@ from polyfactory.factories.pydantic_factory import ModelFactory
 
 from ai_company.budget.config import BudgetConfig
 from ai_company.budget.coordination_config import CoordinationMetricsConfig
+from ai_company.budget.cost_tiers import CostTiersConfig
+from ai_company.budget.quota import DegradationConfig, SubscriptionConfig
 from ai_company.communication.config import CommunicationConfig
 from ai_company.config.schema import (
     AgentConfig,
@@ -45,6 +47,8 @@ class ProviderConfigFactory(ModelFactory[ProviderConfig]):
     models = ()
     retry = RetryConfig()
     rate_limiter = RateLimiterConfig()
+    subscription = SubscriptionConfig()
+    degradation = DegradationConfig()
 
 
 class RoutingRuleConfigFactory(ModelFactory[RoutingRuleConfig]):
@@ -77,6 +81,7 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     task_assignment = TaskAssignmentConfig()
     memory = CompanyMemoryConfig()
     persistence = PersistenceConfig()
+    cost_tiers = CostTiersConfig()
 
 
 # ── Sample YAML strings ──────────────────────────────────────────

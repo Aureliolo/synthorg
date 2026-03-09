@@ -7,6 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.budget.config import BudgetConfig
 from ai_company.budget.coordination_config import CoordinationMetricsConfig
+from ai_company.budget.cost_tiers import CostTiersConfig
+from ai_company.budget.quota import DegradationConfig, SubscriptionConfig
 from ai_company.communication.config import CommunicationConfig
 from ai_company.core.company import (
     CompanyConfig,
@@ -166,6 +168,8 @@ class ProviderConfig(BaseModel):
         models: Available models for this provider.
         retry: Retry configuration for transient errors.
         rate_limiter: Client-side rate limiting configuration.
+        subscription: Subscription and quota configuration.
+        degradation: Degradation strategy when quota exhausted.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -194,6 +198,14 @@ class ProviderConfig(BaseModel):
     rate_limiter: RateLimiterConfig = Field(
         default_factory=RateLimiterConfig,
         description="Client-side rate limiting configuration",
+    )
+    subscription: SubscriptionConfig = Field(
+        default_factory=SubscriptionConfig,
+        description="Subscription and quota configuration",
+    )
+    degradation: DegradationConfig = Field(
+        default_factory=DegradationConfig,
+        description="Degradation strategy when quota exhausted",
     )
 
     @model_validator(mode="after")
@@ -470,6 +482,7 @@ class RootConfig(BaseModel):
         task_assignment: Task assignment configuration.
         memory: Memory backend configuration.
         persistence: Persistence backend configuration.
+        cost_tiers: Cost tier definitions.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -544,6 +557,10 @@ class RootConfig(BaseModel):
     persistence: PersistenceConfig = Field(
         default_factory=PersistenceConfig,
         description="Persistence backend configuration",
+    )
+    cost_tiers: CostTiersConfig = Field(
+        default_factory=CostTiersConfig,
+        description="Cost tier definitions",
     )
 
     @model_validator(mode="after")
@@ -634,4 +651,24 @@ class RootConfig(BaseModel):
                     error=msg,
                 )
                 raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_degradation_fallback_providers(self) -> Self:
+        """Ensure degradation fallback_providers reference known providers."""
+        known_providers = set(self.providers)
+        for prov_name, prov_config in self.providers.items():
+            for fb in prov_config.degradation.fallback_providers:
+                if fb not in known_providers:
+                    msg = (
+                        f"Provider {prov_name!r} degradation "
+                        f"fallback_providers references unknown "
+                        f"provider: {fb!r}"
+                    )
+                    logger.warning(
+                        CONFIG_VALIDATION_FAILED,
+                        model="RootConfig",
+                        error=msg,
+                    )
+                    raise ValueError(msg)
         return self

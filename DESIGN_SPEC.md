@@ -81,7 +81,7 @@ The MVP validates the core hypothesis: **a single agent can complete a real task
 
 > **Implementation snapshot (2026-03-09):**
 > - **Done:** M0–M4 (tooling, config/core, providers, single-agent engine, multi-agent orchestration). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed.
-> - **In progress:** M5 — memory interface protocol complete (MemoryBackend, MemoryCapabilities, SharedKnowledgeStore protocols, models, config, factory), Mem0 adapter (#41) and budget enforcement pending.
+> - **In progress:** M5 — memory interface protocol complete (MemoryBackend, MemoryCapabilities, SharedKnowledgeStore protocols, models, config, factory), budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking), Mem0 adapter (#41) pending.
 > - **Not started (mostly placeholders):** M6 API/CLI surface, M7 security + approval system.
 
 ### 1.5 Configuration Philosophy
@@ -1694,6 +1694,8 @@ providers:
         cost_per_1k_output: 0.0
 ```
 
+> **Implementation note (M5):** `ProviderConfig` now includes `subscription: SubscriptionConfig` and `degradation: DegradationConfig` fields for per-provider quota limits and subscription-aware degradation behavior. The default degradation strategy is `ALERT` (raise `QuotaExhaustedError`). `FALLBACK` (route to fallback providers) and `QUEUE` (delay and retry) strategies are defined in the model but **not yet implemented** — the engine currently always raises on quota exhaustion regardless of strategy. Regular quota polling / proactive alerting before quotas are hit is deferred to a follow-up issue.
+
 ### 9.3 LiteLLM Integration
 
 Use **LiteLLM** as the provider abstraction layer:
@@ -1825,12 +1827,14 @@ budget:
 > **Auto-downgrade boundary:** Model downgrades apply only at **task assignment time**, never mid-execution. An agent halfway through an architecture review cannot be switched to a cheaper model — the task completes on its assigned model. The next task assignment respects the downgrade threshold. This prevents quality degradation from mid-thought model switches.
 
 > **Implementation note (M5):** `BudgetEnforcer` composes `CostTracker` +
-> `BudgetConfig` to provide three enforcement layers: (1) pre-flight checks
-> via `check_can_execute` (monthly hard stop + per-agent daily limit), (2)
-> in-flight budget checking via a sync `BudgetChecker` closure with
-> pre-computed baselines (task + monthly + daily limits, alert deduplication),
-> and (3) task-boundary auto-downgrade via `resolve_model`. Billing periods
-> are scoped by `billing_period_start(reset_day)`. `DailyLimitExceededError`
+> `BudgetConfig` + optional `QuotaTracker` + optional `ModelResolver` to
+> provide three enforcement layers: (1) pre-flight checks via
+> `check_can_execute` (monthly hard stop + per-agent daily limit + provider
+> quota enforcement when `QuotaTracker` is present), (2) in-flight budget
+> checking via a sync `BudgetChecker` closure with pre-computed baselines
+> (task + monthly + daily limits, alert deduplication), and (3)
+> task-boundary auto-downgrade via `resolve_model`. Billing periods are
+> scoped by `billing_period_start(reset_day)`. `DailyLimitExceededError`
 > is a subclass of `BudgetExhaustedError` for granular error handling.
 
 ### 10.5 LLM Call Analytics
@@ -2794,6 +2798,7 @@ ai-company/
 │       │   │   ├── persistence.py # PERSISTENCE_* constants
 │       │   │   ├── personality.py # PERSONALITY_* constants
 │       │   │   ├── prompt.py      # PROMPT_* constants
+│       │   │   ├── quota.py       # QUOTA_* event constants
 │       │   │   ├── provider.py    # PROVIDER_* constants
 │       │   │   ├── role.py        # ROLE_* constants
 │       │   │   ├── routing.py     # ROUTING_* constants
@@ -2869,6 +2874,7 @@ ai-company/
 │       ├── budget/                  # Cost management
 │       │   ├── config.py           # Budget configuration models
 │       │   ├── cost_record.py      # CostRecord model (frozen)
+│       │   ├── cost_tiers.py      # Cost tier definitions, classification, and built-in tiers
 │       │   ├── call_category.py   # LLM call category enums (productive, coordination, system)
 │       │   ├── category_analytics.py # Per-category cost breakdown + orchestration ratio
 │       │   ├── coordination_config.py # Coordination metrics config models
@@ -2880,6 +2886,8 @@ ai-company/
 │       │   ├── billing.py          # Billing period computation utilities
 │       │   ├── enforcer.py         # BudgetEnforcer service (pre-flight, in-flight, auto-downgrade)
 │       │   ├── optimizer.py        # Cost optimization / CFO logic (M5)
+│       │   ├── quota.py            # Quota/subscription models, degradation config, quota snapshots
+│       │   ├── quota_tracker.py    # QuotaTracker service: per-provider request/token quota enforcement
 │       │   └── reports.py          # Spending reports (M5)
 │       ├── api/                     # REST + WebSocket API (M6, stubs only)
 │       │   ├── app.py              # FastAPI application (M6)
@@ -2954,6 +2962,7 @@ These conventions were established during the M0–M2+ review cycle. **Adopted**
 | **Personality compatibility scoring** | Adopted (M3) | Weighted composite: 60% Big Five similarity (openness, conscientiousness, agreeableness, stress_response → 1−\|diff\|; extraversion → tent-function peaking at 0.3 diff), 20% collaboration alignment (ordinal adjacency: INDEPENDENT↔PAIR↔TEAM), 20% conflict approach (constructive pairs score 1.0, destructive pairs 0.2, mixed 0.4–0.6). `itertools.combinations` for team-level averaging. Result clamped to [0, 1]. | Covers behavioral diversity (extraversion complement), task alignment (conscientiousness similarity), and interpersonal friction (conflict approach). Weights are configurable module constants. |
 | **Agent behavior testing** | Planned (M3) | Scripted `FakeProvider` for unit tests (deterministic turn sequences); behavioral outcome assertions for integration tests (task completed, tools called, cost within budget). | Leverages existing `FakeProvider` and `CompletionResponseFactory` fixtures. Precise engine testing without brittle response-matching at integration level. |
 | **LLM call analytics** | Adopted (incremental) | M3: proxy metrics (`turns_per_task`, `tokens_per_task`) — adopted. M4 data models: call categorization (`productive`, `coordination`, `system`), category analytics, coordination metrics, orchestration ratio — adopted. M4 runtime collection pipeline and M5+ full analytics: planned. | Append-only, never blocks execution. Builds on existing `CostRecord` infrastructure. Detects orchestration overhead early. See §10.5. |
+| **Cost tiers & quota tracking** | Adopted (M5) | Configurable `CostTierDefinition` definitions with merge/override semantics via `resolve_tiers(config: CostTiersConfig)`. `SubscriptionConfig` + `QuotaLimit` model per-provider subscription plans. `QuotaTracker` enforces per-provider request/token quotas with window-based rotation. `DegradationConfig` controls behavior when quotas are exhausted (default: `ALERT` — raise error; `FALLBACK` and `QUEUE` strategies defined but not yet implemented). | Enables cost classification without hardcoding vendor tiers. Quota tracking prevents surprise overages at the provider level. Window-based rotation aligns quota resets with billing periods. See §10.4. |
 | **State coordination** | Planned (M4) | Centralized single-writer: `TaskEngine` owns all task/project mutations via `asyncio.Queue`. Agents submit requests, engine applies `model_copy(update=...)` sequentially and publishes snapshots. `version: int` field on state models for future optimistic concurrency if multi-process scaling is needed. | Prevents lost updates by design. Trivial in single-threaded asyncio (no locks). Perfect audit trail. Industry consensus: MetaGPT, CrewAI, AutoGen all use prevention-by-design, not conflict resolution. See §6.8 State Coordination table. |
 | **Workspace isolation** | Adopted (M4 core) | Pluggable `WorkspaceIsolationStrategy` protocol. Default: planner + git worktrees. Each agent works in an isolated worktree; sequential merge on completion. Textual conflicts detected by git; semantic conflicts reviewed by agent or human. Runtime multi-agent coordination wiring remains M4 hardening work. | Industry standard (Codex, Cursor, Claude Code, VS Code). Maximum parallelism. Leverages mature git infrastructure. See §6.8. |
 | **Graceful shutdown** | Adopted (M3) | Pluggable `ShutdownStrategy` protocol. Default: cooperative with 30s timeout. Agents check shutdown event at turn boundaries. Force-cancel after timeout. `INTERRUPTED` status for force-cancelled tasks. M4/M5: upgrade to checkpoint-and-stop. | Cross-platform (Windows `signal.signal()` fallback). Bounded shutdown time. Mirrors cooperative shutdown in §6.7. |
