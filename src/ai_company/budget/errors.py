@@ -12,10 +12,10 @@ class BudgetExhaustedError(Exception):
     Used in two contexts:
 
     1. Raised directly by :meth:`BudgetEnforcer.check_can_execute`
-       when pre-flight budget checks fail (monthly hard stop or daily
-       limit exceeded).
-    2. Caught by the engine layer (``AgentEngine.run``) and converted
-       into an ``ExecutionResult`` with
+       when pre-flight budget checks fail (e.g., monthly hard stop,
+       daily limit, or provider quota exceeded).
+    2. Caught by the engine layer (``AgentEngine.run``) and used to
+       build an ``AgentRunResult`` with
        ``TerminationReason.BUDGET_EXHAUSTED``.
     """
 
@@ -28,5 +28,5 @@ class QuotaExhaustedError(BudgetExhaustedError):
     """Raised when provider quota is exhausted.
 
     Raised for all degradation strategies. Degradation routing
-    (FALLBACK/QUEUE) is tracked in M7.
+    (FALLBACK/QUEUE) is not yet implemented.
     """

@@ -18,14 +18,21 @@ class TestBudgetErrorHierarchy:
     def test_budget_exhausted_is_exception(self) -> None:
         assert issubclass(BudgetExhaustedError, Exception)
 
-    def test_daily_limit_is_budget_exhausted(self) -> None:
-        assert issubclass(DailyLimitExceededError, BudgetExhaustedError)
-        err = DailyLimitExceededError("daily limit hit")
-        assert isinstance(err, BudgetExhaustedError)
-
-    def test_quota_exhausted_is_budget_exhausted(self) -> None:
-        assert issubclass(QuotaExhaustedError, BudgetExhaustedError)
-        err = QuotaExhaustedError("quota hit")
+    @pytest.mark.parametrize(
+        ("exc_cls", "msg"),
+        [
+            (DailyLimitExceededError, "daily limit hit"),
+            (QuotaExhaustedError, "quota hit"),
+        ],
+        ids=["daily_limit", "quota"],
+    )
+    def test_subclass_is_budget_exhausted(
+        self,
+        exc_cls: type[BudgetExhaustedError],
+        msg: str,
+    ) -> None:
+        assert issubclass(exc_cls, BudgetExhaustedError)
+        err = exc_cls(msg)
         assert isinstance(err, BudgetExhaustedError)
 
     def test_budget_exhausted_not_engine_error(self) -> None:
@@ -41,9 +48,16 @@ class TestBudgetErrorHierarchy:
         err = BudgetExhaustedError(msg)
         assert str(err) == msg
 
-    def test_except_budget_exhausted_catches_subclasses(self) -> None:
+    @pytest.mark.parametrize(
+        "exc_cls",
+        [DailyLimitExceededError, QuotaExhaustedError],
+        ids=["daily_limit", "quota"],
+    )
+    def test_except_budget_exhausted_catches_subclasses(
+        self,
+        exc_cls: type[BudgetExhaustedError],
+    ) -> None:
         """Ensure except BudgetExhaustedError catches all subtypes."""
-        for exc_cls in (DailyLimitExceededError, QuotaExhaustedError):
-            msg = "subclass caught"
-            with pytest.raises(BudgetExhaustedError):
-                raise exc_cls(msg)
+        msg = "subclass caught"
+        with pytest.raises(BudgetExhaustedError):
+            raise exc_cls(msg)

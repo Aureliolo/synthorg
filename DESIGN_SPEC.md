@@ -3029,7 +3029,7 @@ ai-company/
 │       │   │   ├── role.py        # ROLE_* constants
 │       │   │   ├── routing.py     # ROUTING_* constants
 │       │   │   ├── sandbox.py     # SANDBOX_* constants
-│       │   │   ├── security.py   # SECURITY_* constants
+│       │   │   ├── security.py    # SECURITY_* constants
 │       │   │   ├── task.py        # TASK_* constants
 │       │   │   ├── task_assignment.py # TASK_ASSIGNMENT_* constants
 │       │   │   ├── task_routing.py # TASK_ROUTING_* constants
@@ -3040,7 +3040,6 @@ ai-company/
 │       │   │   ├── code_runner.py # CODE_RUNNER_* constants
 │       │   │   ├── docker.py      # DOCKER_* constants
 │       │   │   ├── mcp.py         # MCP_* constants
-│       │   │   ├── security.py    # Security event constants
 │       │   │   ├── trust.py       # Trust event constants
 │       │   │   └── promotion.py   # Promotion event constants
 │       │   ├── processors.py       # Log processors
