@@ -13,6 +13,7 @@ from ai_company.hr.persistence_protocol import (
     TaskMetricRepository,  # noqa: TC001
 )
 from ai_company.persistence.repositories import (
+    AuditRepository,  # noqa: TC001
     CostRecordRepository,  # noqa: TC001
     MessageRepository,  # noqa: TC001
     ParkedContextRepository,  # noqa: TC001
@@ -37,6 +38,7 @@ class PersistenceBackend(Protocol):
         lifecycle_events: Repository for AgentLifecycleEvent persistence.
         task_metrics: Repository for TaskMetricRecord persistence.
         collaboration_metrics: Repository for CollaborationMetricRecord persistence.
+        audit_entries: Repository for AuditEntry persistence.
     """
 
     async def connect(self) -> None:
@@ -114,4 +116,9 @@ class PersistenceBackend(Protocol):
     @property
     def parked_contexts(self) -> ParkedContextRepository:
         """Repository for ParkedContext persistence."""
+        ...
+
+    @property
+    def audit_entries(self) -> AuditRepository:
+        """Repository for AuditEntry persistence."""
         ...

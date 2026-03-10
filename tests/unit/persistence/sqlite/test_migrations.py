@@ -114,6 +114,36 @@ class TestRunMigrations:
         assert "idx_pc_agent_id" in indexes
         assert "idx_pc_approval_id" in indexes
 
+    async def test_v4_creates_audit_entries_table(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        """V4 migration creates the audit_entries table."""
+        await run_migrations(memory_db)
+        cursor = await memory_db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='audit_entries'"
+        )
+        row = await cursor.fetchone()
+        assert row is not None
+
+    async def test_v4_creates_audit_entry_indexes(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        """All v4 indexes are present after migration."""
+        await run_migrations(memory_db)
+        cursor = await memory_db.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' "
+            "AND name LIKE 'idx_ae_%' ORDER BY name"
+        )
+        indexes = {row[0] for row in await cursor.fetchall()}
+        expected = {
+            "idx_ae_timestamp",
+            "idx_ae_agent_id",
+            "idx_ae_action_type",
+            "idx_ae_verdict",
+            "idx_ae_risk_level",
+        }
+        assert expected.issubset(indexes)
+
     async def test_migration_failure_raises_migration_error(
         self, memory_db: aiosqlite.Connection
     ) -> None:

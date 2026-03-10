@@ -3,10 +3,10 @@
 from typing import TYPE_CHECKING
 
 import aiosqlite
+import pytest
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
-import pytest
 
 from ai_company.persistence.sqlite.migrations import (
     SCHEMA_VERSION,
@@ -28,8 +28,8 @@ async def memory_db() -> AsyncGenerator[aiosqlite.Connection]:
 
 @pytest.mark.unit
 class TestV2Migration:
-    async def test_schema_version_is_three(self) -> None:
-        assert SCHEMA_VERSION == 3
+    async def test_schema_version_is_four(self) -> None:
+        assert SCHEMA_VERSION == 4
 
     async def test_fresh_db_creates_all_v2_tables(
         self, memory_db: aiosqlite.Connection
@@ -58,7 +58,7 @@ class TestV2Migration:
         assert await get_user_version(memory_db) == 1
 
         await run_migrations(memory_db)
-        assert await get_user_version(memory_db) == 3
+        assert await get_user_version(memory_db) == 4
 
         cursor = await memory_db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"

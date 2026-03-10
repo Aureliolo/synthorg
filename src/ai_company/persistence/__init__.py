@@ -17,16 +17,20 @@ from ai_company.persistence.errors import (
 from ai_company.persistence.factory import create_backend
 from ai_company.persistence.protocol import PersistenceBackend
 from ai_company.persistence.repositories import (
+    AuditRepository,
     CostRecordRepository,
     MessageRepository,
+    ParkedContextRepository,
     TaskRepository,
 )
 
 __all__ = [
+    "AuditRepository",
     "CostRecordRepository",
     "DuplicateRecordError",
     "MessageRepository",
     "MigrationError",
+    "ParkedContextRepository",
     "PersistenceBackend",
     "PersistenceConfig",
     "PersistenceConnectionError",

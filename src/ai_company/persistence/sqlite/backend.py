@@ -21,6 +21,9 @@ from ai_company.observability.events.persistence import (
     PERSISTENCE_BACKEND_WAL_MODE_FAILED,
 )
 from ai_company.persistence.errors import PersistenceConnectionError
+from ai_company.persistence.sqlite.audit_repository import (
+    SQLiteAuditRepository,
+)
 from ai_company.persistence.sqlite.hr_repositories import (
     SQLiteCollaborationMetricRepository,
     SQLiteLifecycleEventRepository,
@@ -64,6 +67,7 @@ class SQLitePersistenceBackend:
         self._task_metrics: SQLiteTaskMetricRepository | None = None
         self._collaboration_metrics: SQLiteCollaborationMetricRepository | None = None
         self._parked_contexts: SQLiteParkedContextRepository | None = None
+        self._audit_entries: SQLiteAuditRepository | None = None
 
     def _clear_state(self) -> None:
         """Reset connection and repository references to ``None``."""
@@ -75,6 +79,7 @@ class SQLitePersistenceBackend:
         self._task_metrics = None
         self._collaboration_metrics = None
         self._parked_contexts = None
+        self._audit_entries = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -112,6 +117,7 @@ class SQLitePersistenceBackend:
                     self._db
                 )
                 self._parked_contexts = SQLiteParkedContextRepository(self._db)
+                self._audit_entries = SQLiteAuditRepository(self._db)
             except (sqlite3.Error, OSError) as exc:
                 logger.exception(
                     PERSISTENCE_BACKEND_CONNECTION_FAILED,
@@ -280,3 +286,12 @@ class SQLitePersistenceBackend:
             PersistenceConnectionError: If not connected.
         """
         return self._require_connected(self._parked_contexts, "parked_contexts")
+
+    @property
+    def audit_entries(self) -> SQLiteAuditRepository:
+        """Repository for AuditEntry persistence.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(self._audit_entries, "audit_entries")

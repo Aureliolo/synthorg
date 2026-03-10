@@ -23,7 +23,7 @@ from ai_company.persistence.errors import MigrationError
 logger = get_logger(__name__)
 
 # Current schema version — bump when adding new migrations.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 _V1_STATEMENTS: Sequence[str] = (
     # ── Tasks ─────────────────────────────────────────────
@@ -162,6 +162,32 @@ CREATE TABLE IF NOT EXISTS parked_contexts (
     "CREATE INDEX IF NOT EXISTS idx_pc_approval_id ON parked_contexts(approval_id)",
 )
 
+_V4_STATEMENTS: Sequence[str] = (
+    # ── Audit entries ──────────────────────────────────────
+    """\
+CREATE TABLE IF NOT EXISTS audit_entries (
+    id TEXT PRIMARY KEY,
+    timestamp TEXT NOT NULL,
+    agent_id TEXT,
+    task_id TEXT,
+    tool_name TEXT NOT NULL,
+    tool_category TEXT NOT NULL,
+    action_type TEXT NOT NULL,
+    arguments_hash TEXT NOT NULL,
+    verdict TEXT NOT NULL,
+    risk_level TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    matched_rules TEXT NOT NULL DEFAULT '[]',
+    evaluation_duration_ms REAL NOT NULL,
+    approval_id TEXT
+)""",
+    "CREATE INDEX IF NOT EXISTS idx_ae_timestamp ON audit_entries(timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_ae_agent_id ON audit_entries(agent_id)",
+    "CREATE INDEX IF NOT EXISTS idx_ae_action_type ON audit_entries(action_type)",
+    "CREATE INDEX IF NOT EXISTS idx_ae_verdict ON audit_entries(verdict)",
+    "CREATE INDEX IF NOT EXISTS idx_ae_risk_level ON audit_entries(risk_level)",
+)
+
 _MigrateFn = Callable[[aiosqlite.Connection], Coroutine[Any, Any, None]]
 
 
@@ -212,12 +238,19 @@ async def _apply_v3(db: aiosqlite.Connection) -> None:
         await db.execute(stmt)
 
 
+async def _apply_v4(db: aiosqlite.Connection) -> None:
+    """Apply schema v4: audit_entries."""
+    for stmt in _V4_STATEMENTS:
+        await db.execute(stmt)
+
+
 # Ordered list of (target_version, migration_function) pairs. Each migration
 # is applied when the current schema version is below its target version.
 _MIGRATIONS: list[tuple[int, _MigrateFn]] = [
     (1, _apply_v1),
     (2, _apply_v2),
     (3, _apply_v3),
+    (4, _apply_v4),
 ]
 
 

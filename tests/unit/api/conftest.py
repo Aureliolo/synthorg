@@ -21,6 +21,7 @@ from ai_company.core.enums import (
     TaskStatus,
 )
 from ai_company.core.task import Task
+from ai_company.security.models import AuditEntry  # noqa: TC001
 from ai_company.security.timeout.parked_context import ParkedContext  # noqa: TC001
 
 # ── Fake Repositories ────────────────────────────────────────────
@@ -214,6 +215,25 @@ class FakeParkedContextRepository:
         return self._contexts.pop(parked_id, None) is not None
 
 
+class FakeAuditRepository:
+    """In-memory audit entry repository for tests."""
+
+    async def save(self, entry: AuditEntry) -> None:
+        pass
+
+    async def query(  # noqa: PLR0913
+        self,
+        *,
+        agent_id: str | None = None,
+        action_type: str | None = None,
+        verdict: str | None = None,
+        risk_level: ApprovalRiskLevel | None = None,
+        since: Any = None,
+        limit: int = 100,
+    ) -> tuple[AuditEntry, ...]:
+        return ()
+
+
 class FakePersistenceBackend:
     """In-memory persistence backend for tests."""
 
@@ -225,6 +245,7 @@ class FakePersistenceBackend:
         self._task_metrics = FakeTaskMetricRepository()
         self._collaboration_metrics = FakeCollaborationMetricRepository()
         self._parked_contexts = FakeParkedContextRepository()
+        self._audit_entries = FakeAuditRepository()
         self._connected = False
 
     async def connect(self) -> None:
@@ -274,6 +295,10 @@ class FakePersistenceBackend:
     @property
     def parked_contexts(self) -> FakeParkedContextRepository:
         return self._parked_contexts
+
+    @property
+    def audit_entries(self) -> FakeAuditRepository:
+        return self._audit_entries
 
 
 # ── Fake Message Bus ────────────────────────────────────────────
