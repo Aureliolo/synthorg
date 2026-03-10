@@ -1,0 +1,64 @@
+# =============================================================================
+# Consolidated .dockerignore — applies to all Docker builds from repo root
+# =============================================================================
+# Both backend and web images build with context: . (repo root).
+# Backend needs: pyproject.toml, uv.lock, src/
+# Web needs: web/
+
+# Git
+.git/
+.github/
+.gitignore
+
+# Docker configs (Dockerfiles read via -f, not from context)
+docker/
+
+# Tests
+tests/
+
+# Documentation
+docs/
+*.md
+
+# Virtual environments
+.venv/
+venv/
+
+# Python caches
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Coverage
+htmlcov/
+coverage.xml
+.coverage
+.coverage.*
+
+# Databases
+*.db
+*.sqlite3
+
+# Environment files
+.env
+.env.*
+
+# IDE
+.idea/
+.vscode/
+
+# Claude Code config
+.claude/
+
+# Logs
+logs/
+*.log
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# uv
+.python-version

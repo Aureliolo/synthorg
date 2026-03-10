@@ -1,7 +1,7 @@
-"""Request logging middleware.
+"""Request middleware.
 
-Logs every request start and completion with method, path, status
-code, and duration using structured logging.
+Provides ASGI middleware for request logging and path-aware
+Content-Security-Policy headers.
 """
 
 import time
@@ -18,6 +18,62 @@ from ai_company.observability.events.api import (
 )
 
 logger = get_logger(__name__)
+
+# Strict CSP for API routes — no inline scripts, self-origin only.
+_API_CSP = "default-src 'self'; script-src 'self'"
+
+# Relaxed CSP for /docs/ — Scalar UI loads resources from external origins.
+# cdn.jsdelivr.net: JS bundle, CSS, fonts, source maps
+# proxy.scalar.com: API proxy and registry features
+_DOCS_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "img-src 'self' data: https://cdn.jsdelivr.net; "
+    "font-src 'self' data: https://cdn.jsdelivr.net https://fonts.scalar.com; "
+    "connect-src 'self' https://cdn.jsdelivr.net https://proxy.scalar.com"
+)
+
+
+class CSPMiddleware:
+    """ASGI middleware that applies path-aware Content-Security-Policy.
+
+    API routes get a strict policy (self-origin only). The ``/docs/``
+    path gets a relaxed policy that allows Scalar UI resources from
+    ``cdn.jsdelivr.net``.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(
+        self,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+    ) -> None:
+        """Inject the appropriate CSP header based on request path."""
+        if scope["type"] != ScopeType.HTTP:
+            await self.app(scope, receive, send)
+            return
+
+        path: str = scope.get("path", "")
+        is_docs = path.startswith("/docs")
+        csp_value = _DOCS_CSP if is_docs else _API_CSP
+
+        async def inject_csp(message: Any) -> None:
+            if (
+                isinstance(message, dict)
+                and message.get("type") == "http.response.start"
+            ):
+                headers = list(message.get("headers", []))
+                headers.append(
+                    (b"content-security-policy", csp_value.encode()),
+                )
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, inject_csp)
 
 
 class RequestLoggingMiddleware:

@@ -56,7 +56,8 @@ curl http://localhost:3000/api/v1/health   # backend (via web proxy)
 - **Backend**: 3-stage build (builder → setup → distroless runtime), Chainguard Python, non-root (UID 65532), CIS-hardened
 - **Web**: `nginxinc/nginx-unprivileged`, SPA routing, API/WebSocket proxy to backend
 - **Config**: all Docker files in `docker/` — Dockerfiles, compose, `.env.example`
-- **CI**: `.github/workflows/docker.yml` — build + push to GHCR + Trivy/Grype scan + cosign sign
+- **CI**: `.github/workflows/docker.yml` — build → scan → push to GHCR + cosign sign (images only pushed after Trivy/Grype scans pass)
+- **Build context**: single root `.dockerignore` (both images build with `context: .`)
 - **Tags**: CI tags images with version from `pyproject.toml` (`[tool.commitizen].version`), semver, and SHA
 - **Dependabot**: auto-updates Docker image digests and versions daily
 

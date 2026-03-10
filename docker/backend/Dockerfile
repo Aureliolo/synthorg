@@ -97,6 +97,8 @@ EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=15s \
     CMD ["/usr/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
 
+# Reset Chainguard base entrypoint (/usr/bin/python) so CMD specifies the full
+# uvicorn command path directly — required for distroless images without shell.
 ENTRYPOINT []
 CMD ["/app/.venv/bin/uvicorn", "ai_company.api.app:create_app", "--factory", \
      "--host", "0.0.0.0", "--port", "8000"]

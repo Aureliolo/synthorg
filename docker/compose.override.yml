@@ -1,4 +1,6 @@
-# Local development overrides (auto-merged by Docker Compose)
+# Local development overrides.
+# NOT auto-merged when using -f: include explicitly with:
+#   docker compose -f docker/compose.yml -f docker/compose.override.yml up
 services:
   backend:
     environment:

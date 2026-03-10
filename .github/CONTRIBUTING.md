@@ -8,7 +8,7 @@ cd ai-company
 uv sync
 ```
 
-For the full setup walkthrough (prerequisites, IDE config, etc.), see [docs/getting_started.md](docs/getting_started.md).
+For the full setup walkthrough (prerequisites, IDE config, etc.), see [docs/getting_started.md](../docs/getting_started.md).
 
 ## Branching Strategy
 
@@ -107,11 +107,11 @@ To run all hooks manually:
 uv run pre-commit run --all-files
 ```
 
-See [docs/getting_started.md](docs/getting_started.md) for the full list of hooks and what each one does.
+See [docs/getting_started.md](../docs/getting_started.md) for the full list of hooks and what each one does.
 
 ## Code Style
 
-Code conventions (type hints, docstrings, immutability, line length, etc.) are documented in [CLAUDE.md](CLAUDE.md). Both human contributors and AI assistants follow the same rules.
+Code conventions (type hints, docstrings, immutability, line length, etc.) are documented in [CLAUDE.md](../CLAUDE.md). Both human contributors and AI assistants follow the same rules.
 
 ## Pull Request Process
 
@@ -128,15 +128,18 @@ Code conventions (type hints, docstrings, immutability, line length, etc.) are d
 ```text
 src/ai_company/       # Main package
   api/  budget/  cli/  communication/  config/  core/
-  engine/  memory/  providers/  security/  templates/  tools/
+  engine/  hr/  memory/  observability/  persistence/
+  providers/  security/  templates/  tools/
 tests/
   unit/  integration/  e2e/
 docs/                 # Developer documentation
+docker/               # Dockerfiles, Compose, .env.example
+web/                  # Web UI scaffold (nginx + placeholder)
 .github/              # CI, dependabot, actions
 ```
 
-See [docs/getting_started.md](docs/getting_started.md) for descriptions of each sub-package.
+See [docs/getting_started.md](../docs/getting_started.md) for descriptions of each sub-package.
 
 ## License
 
-This project is licensed under [BUSL-1.1](LICENSE). By contributing, you agree that your contributions will be licensed under the same terms.
+This project is licensed under [BUSL-1.1](../LICENSE). By contributing, you agree that your contributions will be licensed under the same terms.

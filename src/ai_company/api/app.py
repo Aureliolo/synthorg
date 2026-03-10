@@ -25,7 +25,7 @@ from ai_company.api.channels import CHANNEL_APPROVALS, create_channels_plugin
 from ai_company.api.controllers import ALL_CONTROLLERS
 from ai_company.api.controllers.ws import ws_handler
 from ai_company.api.exception_handlers import EXCEPTION_HANDLERS
-from ai_company.api.middleware import RequestLoggingMiddleware
+from ai_company.api.middleware import CSPMiddleware, RequestLoggingMiddleware
 from ai_company.api.state import AppState
 from ai_company.api.ws_models import WsEvent, WsEventType
 from ai_company.budget.tracker import CostTracker  # noqa: TC001
@@ -335,10 +335,6 @@ def create_app(
                 name="Permissions-Policy",
                 value="geolocation=(), camera=(), microphone=()",
             ),
-            ResponseHeader(
-                name="Content-Security-Policy",
-                value="default-src 'self'; script-src 'self'",
-            ),
         ],
         middleware=middleware,  # type: ignore[arg-type]
         plugins=plugins,
@@ -373,4 +369,4 @@ def _build_middleware(api_config: ApiConfig) -> list[object]:
         rate_limit=(rl.time_unit, rl.max_requests),  # type: ignore[arg-type]
         exclude=list(rl.exclude_paths),
     )
-    return [RequestLoggingMiddleware, rate_limit.middleware]
+    return [CSPMiddleware, RequestLoggingMiddleware, rate_limit.middleware]

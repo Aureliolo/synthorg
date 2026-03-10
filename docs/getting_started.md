@@ -100,9 +100,9 @@ uv run ruff format src/ tests/
 ```text
 ai-company/
   src/ai_company/       # Main package (src layout)
-    api/                # FastAPI REST + WebSocket routes
+    api/                # Litestar REST + WebSocket routes
     budget/             # Cost tracking and spending controls
-    cli/                # Typer CLI commands
+    cli/                # CLI interface (future)
     communication/      # Inter-agent message bus
     config/             # YAML config loading and validation
     core/               # Shared domain models
@@ -112,16 +112,20 @@ ai-company/
     security/           # SecOps, approval gates, sandboxing
     templates/          # Pre-built company templates
     tools/              # Tool registry, MCP integration
+    hr/                 # HR engine (hiring, firing, performance)
+    observability/      # Structured logging, correlation tracking
+    persistence/        # Pluggable persistence backends
   tests/
     unit/               # Fast, isolated tests (no I/O)
     integration/        # Tests with I/O, databases, APIs
     e2e/                # Full system tests
   docs/                 # Developer documentation
+  docker/               # Dockerfiles, Compose, .env.example
+  web/                  # Web UI scaffold (nginx + placeholder)
   .github/              # CI workflows, dependabot, actions
   pyproject.toml        # Project config (deps, tools, linters)
   DESIGN_SPEC.md        # Full high-level design specification
   CLAUDE.md             # AI assistant quick reference
-  CONTRIBUTING.md       # Contributor workflow guide
 ```
 
 ## IDE Setup
@@ -146,6 +150,6 @@ VS Code should auto-detect the `.venv` directory. If not, use **Python: Select I
 
 ## Next Steps
 
-- [CONTRIBUTING.md](../CONTRIBUTING.md) — branch, commit, and PR workflow
+- [CONTRIBUTING.md](../.github/CONTRIBUTING.md) — branch, commit, and PR workflow
 - [CLAUDE.md](../CLAUDE.md) — code conventions and quick command reference
 - [DESIGN_SPEC.md](../DESIGN_SPEC.md) — full high-level design specification
