@@ -20,6 +20,7 @@ from ai_company.core.company import (
 from ai_company.core.enums import CompanyType, SeniorityLevel
 from ai_company.core.role import CustomRole  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
+from ai_company.hr.promotion.config import PromotionConfig
 from ai_company.memory.config import CompanyMemoryConfig
 from ai_company.memory.org.config import OrgMemoryConfig
 from ai_company.observability import get_logger
@@ -27,6 +28,7 @@ from ai_company.observability.config import LogConfig  # noqa: TC001
 from ai_company.observability.events.config import CONFIG_VALIDATION_FAILED
 from ai_company.persistence.config import PersistenceConfig
 from ai_company.security.config import SecurityConfig
+from ai_company.security.trust.config import TrustConfig
 from ai_company.tools.mcp.config import MCPConfig
 from ai_company.tools.sandbox.sandboxing_config import SandboxingConfig
 
@@ -493,6 +495,8 @@ class RootConfig(BaseModel):
         sandboxing: Sandboxing backend configuration.
         mcp: MCP bridge configuration.
         security: Security subsystem configuration.
+        trust: Progressive trust configuration.
+        promotion: Promotion/demotion configuration.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -591,6 +595,14 @@ class RootConfig(BaseModel):
     security: SecurityConfig = Field(
         default_factory=SecurityConfig,
         description="Security subsystem configuration",
+    )
+    trust: TrustConfig = Field(
+        default_factory=TrustConfig,
+        description="Progressive trust configuration",
+    )
+    promotion: PromotionConfig = Field(
+        default_factory=PromotionConfig,
+        description="Promotion/demotion configuration",
     )
 
     @model_validator(mode="after")

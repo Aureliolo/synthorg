@@ -7,6 +7,7 @@ from ai_company.hr.enums import (
     HiringRequestStatus,
     LifecycleEventType,
     OnboardingStep,
+    PromotionDirection,
     TrendDirection,
 )
 
@@ -62,9 +63,23 @@ class TestLifecycleEventType:
         assert LifecycleEventType.FIRED.value == "fired"
         assert LifecycleEventType.OFFBOARDED.value == "offboarded"
         assert LifecycleEventType.STATUS_CHANGED.value == "status_changed"
+        assert LifecycleEventType.PROMOTED.value == "promoted"
+        assert LifecycleEventType.DEMOTED.value == "demoted"
 
     def test_completeness(self) -> None:
-        assert len(LifecycleEventType) == 5
+        assert len(LifecycleEventType) == 7
+
+
+@pytest.mark.unit
+class TestPromotionDirection:
+    """PromotionDirection enum values."""
+
+    def test_values(self) -> None:
+        assert PromotionDirection.PROMOTION.value == "promotion"
+        assert PromotionDirection.DEMOTION.value == "demotion"
+
+    def test_completeness(self) -> None:
+        assert len(PromotionDirection) == 2
 
 
 @pytest.mark.unit

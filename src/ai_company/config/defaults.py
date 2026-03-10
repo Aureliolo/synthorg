@@ -38,4 +38,6 @@ def default_config_dict() -> dict[str, Any]:
         "sandboxing": {},
         "mcp": {},
         "security": {},
+        "trust": {},
+        "promotion": {},
     }

@@ -5,14 +5,11 @@ Designed to be attached to ``AppState`` and replaced with a
 persistence-backed implementation in M7.
 """
 
+from collections.abc import Callable  # noqa: TC003
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 from ai_company.api.errors import ConflictError
 from ai_company.core.approval import ApprovalItem  # noqa: TC001
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 from ai_company.core.enums import (
     ApprovalRiskLevel,
     ApprovalStatus,

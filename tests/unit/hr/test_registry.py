@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.core.enums import AgentStatus
+from ai_company.core.enums import AgentStatus, SeniorityLevel
 from ai_company.hr.errors import AgentAlreadyRegisteredError, AgentNotFoundError
 from ai_company.hr.registry import AgentRegistryService  # noqa: TC001
 from tests.unit.hr.conftest import make_agent_identity
@@ -156,3 +156,44 @@ class TestAgentRegistryService:
         assert await registry.agent_count() == 2
         await registry.unregister(str(a.id))
         assert await registry.agent_count() == 1
+
+    async def test_update_identity(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        identity = make_agent_identity(name="alice")
+        await registry.register(identity)
+        updated = await registry.update_identity(
+            str(identity.id),
+            level=SeniorityLevel.SENIOR,
+        )
+        assert updated.level == SeniorityLevel.SENIOR
+        # Original identity is not mutated
+        assert identity.level == SeniorityLevel.MID
+        # Stored value is updated
+        fetched = await registry.get(str(identity.id))
+        assert fetched is not None
+        assert fetched.level == SeniorityLevel.SENIOR
+
+    async def test_update_identity_not_found_raises(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        with pytest.raises(AgentNotFoundError, match="not found"):
+            await registry.update_identity(
+                "nonexistent",
+                level=SeniorityLevel.SENIOR,
+            )
+
+    async def test_update_identity_disallowed_field_raises(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """Fields not in the allowlist are rejected."""
+        identity = make_agent_identity(name="alice")
+        await registry.register(identity)
+        with pytest.raises(ValueError, match="not allowed"):
+            await registry.update_identity(
+                str(identity.id),
+                status=AgentStatus.ON_LEAVE,
+            )

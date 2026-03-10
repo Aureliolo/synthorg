@@ -37,6 +37,15 @@ class LifecycleEventType(StrEnum):
     FIRED = "fired"
     OFFBOARDED = "offboarded"
     STATUS_CHANGED = "status_changed"
+    PROMOTED = "promoted"
+    DEMOTED = "demoted"
+
+
+class PromotionDirection(StrEnum):
+    """Direction of a seniority level change."""
+
+    PROMOTION = "promotion"
+    DEMOTION = "demotion"
 
 
 class TrendDirection(StrEnum):

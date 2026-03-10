@@ -22,10 +22,12 @@ from ai_company.config.schema import (
     TaskAssignmentConfig,
 )
 from ai_company.core.company import CompanyConfig
+from ai_company.hr.promotion.config import PromotionConfig
 from ai_company.memory.config import CompanyMemoryConfig
 from ai_company.memory.org.config import OrgMemoryConfig
 from ai_company.persistence.config import PersistenceConfig
 from ai_company.security.config import SecurityConfig
+from ai_company.security.trust.config import TrustConfig
 from ai_company.tools.mcp.config import MCPConfig
 from ai_company.tools.sandbox.sandboxing_config import SandboxingConfig
 
@@ -90,6 +92,8 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     sandboxing = SandboxingConfig()
     mcp = MCPConfig()
     security = SecurityConfig()
+    trust = TrustConfig()
+    promotion = PromotionConfig()
 
 
 # ── Sample YAML strings ──────────────────────────────────────────

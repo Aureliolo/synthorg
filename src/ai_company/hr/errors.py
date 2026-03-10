@@ -74,3 +74,18 @@ class PerformanceError(HRError):
 
 class InsufficientDataError(PerformanceError):
     """Not enough data points for a meaningful computation."""
+
+
+# ── Promotion ───────────────────────────────────────────────────
+
+
+class PromotionError(HRError):
+    """Error during the promotion/demotion process."""
+
+
+class PromotionCooldownError(PromotionError):
+    """Promotion is blocked by the cooldown period."""
+
+
+class PromotionApprovalRequiredError(PromotionError):
+    """Promotion requires human approval before proceeding."""

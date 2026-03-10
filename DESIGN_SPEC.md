@@ -80,8 +80,8 @@ The MVP validates the core hypothesis: **a single agent can complete a real task
 > **How to read this spec:** Sections describe the full vision. Each section with deferred features includes an **MVP** callout box indicating what ships in M3 and what is deferred. The full design is documented upfront to inform architecture decisions — protocol interfaces are designed even for features that won't be built until later milestones.
 
 > **Implementation snapshot (2026-03-10):**
-> - **Done:** M0–M6 (tooling, config/core, providers, single-agent engine, multi-agent orchestration, API/CLI surface) + Docker sandbox (#50), MCP bridge (#53), code runner + HR engine (hiring/firing/onboarding/offboarding/registry) + performance tracking (task metrics, quality scoring, collaboration scoring, trend detection, rolling windows). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed. Memory retrieval pipeline (#41: ranking, token-budget formatting, context injection, non-inferable filtering) complete. Budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking). CFO cost optimization complete (CostOptimizer: anomaly detection, efficiency analysis, downgrade recommendations, routing optimization, approval decisions; ReportGenerator: multi-dimensional spending reports). Shared org memory (#125: HybridPromptRetrievalBackend, OrgFactStore, access control, factory) complete. Memory consolidation/archival (#48: ConsolidationService, SimpleConsolidationStrategy, RetentionEnforcer, ArchivalStore protocol) complete.
-> - **Remaining:** M7 security + approval system (SecOps agent, progressive trust, JWT/OAuth auth).
+> - **Done:** M0–M6 (tooling, config/core, providers, single-agent engine, multi-agent orchestration, API/CLI surface) + Docker sandbox (#50), MCP bridge (#53), code runner + HR engine (hiring/firing/onboarding/offboarding/registry) + performance tracking (task metrics, quality scoring, collaboration scoring, trend detection, rolling windows). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed. Memory retrieval pipeline (#41: ranking, token-budget formatting, context injection, non-inferable filtering) complete. Budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking). CFO cost optimization complete (CostOptimizer: anomaly detection, efficiency analysis, downgrade recommendations, routing optimization, approval decisions; ReportGenerator: multi-dimensional spending reports). Shared org memory (#125: HybridPromptRetrievalBackend, OrgFactStore, access control, factory) complete. Memory consolidation/archival (#48: ConsolidationService, SimpleConsolidationStrategy, RetentionEnforcer, ArchivalStore protocol) complete. SecOps agent (rule engine, audit log, output scanner, risk classifier, ToolInvoker integration), progressive trust (4 strategies: disabled/weighted/per-category/milestone behind TrustStrategy protocol), promotion/demotion (criteria evaluation, approval strategies, model mapping).
+> - **Remaining:** JWT/OAuth auth, approval workflow gates.
 
 ### 1.5 Configuration Philosophy
 
@@ -1658,7 +1658,8 @@ Strategy selection via config: `memory.retrieval.strategy: context | tool_based 
 > (`AgentRegistryService`) are now implemented. Performance tracking subsystem
 > (`hr/performance/`) complete with pluggable quality scoring, collaboration scoring,
 > trend detection, and multi-window aggregation. Promotions/demotions (section 8.4)
-> remain unimplemented.
+> are implemented in `hr/promotion/` — ThresholdEvaluator (D13), SeniorityApprovalStrategy
+> (D14), SeniorityModelMapping (D15), PromotionService orchestrator.
 
 ### 8.1 Hiring Process
 
@@ -2836,7 +2837,7 @@ ai-company/
 │       │   │   └── topology_selector.py # TopologySelector (auto coordination topology)
 │       ├── hr/                      # HR engine: hiring, firing, onboarding, offboarding, agent registry, performance tracking
 │       │   ├── __init__.py         # Package exports
-│       │   ├── enums.py            # HR enumerations (HiringRequestStatus, FiringReason, OnboardingStep, LifecycleEventType, TrendDirection)
+│       │   ├── enums.py            # HR enumerations (HiringRequestStatus, FiringReason, OnboardingStep, LifecycleEventType, TrendDirection, PromotionDirection)
 │       │   ├── errors.py           # HR error hierarchy
 │       │   ├── models.py           # CandidateCard, HiringRequest, FiringRequest, OnboardingChecklist, OffboardingRecord, AgentLifecycleEvent
 │       │   ├── registry.py         # AgentRegistryService (agent lifecycle registry)
@@ -2861,6 +2862,16 @@ ai-company/
 │       │       ├── theil_sen_strategy.py # TheilSenTrendDetector (robust trend detection)
 │       │       ├── window_protocol.py # WindowAggregator protocol
 │       │       └── multi_window_strategy.py # MultiWindowAggregator (multi-window rolling metrics)
+│       │   └── promotion/         # Promotion/demotion subsystem (D14)
+│       │       ├── config.py      # PromotionConfig, PromotionCriteriaConfig, PromotionApprovalConfig, ModelMappingConfig
+│       │       ├── models.py      # CriterionResult, PromotionEvaluation, PromotionApprovalDecision, PromotionRecord, PromotionRequest
+│       │       ├── criteria_protocol.py    # PromotionCriteriaStrategy protocol
+│       │       ├── approval_protocol.py    # PromotionApprovalStrategy protocol
+│       │       ├── model_mapping_protocol.py # ModelMappingStrategy protocol
+│       │       ├── threshold_evaluator.py  # ThresholdEvaluator (criteria evaluation)
+│       │       ├── seniority_approval_strategy.py # SeniorityApprovalStrategy (approval decisions)
+│       │       ├── seniority_model_mapping.py # SeniorityModelMapping (model resolution)
+│       │       └── service.py     # PromotionService orchestrator (evaluate, request, apply)
 │       ├── communication/           # Inter-agent communication
 │       │   ├── bus_memory.py       # InMemoryMessageBus implementation
 │       │   ├── bus_protocol.py     # MessageBus protocol interface
@@ -3007,7 +3018,10 @@ ai-company/
 │       │   │   ├── workspace.py   # WORKSPACE_* constants
 │       │   │   ├── code_runner.py # CODE_RUNNER_* constants
 │       │   │   ├── docker.py      # DOCKER_* constants
-│       │   │   └── mcp.py         # MCP_* constants
+│       │   │   ├── mcp.py         # MCP_* constants
+│       │   │   ├── security.py    # Security event constants
+│       │   │   ├── trust.py       # Trust event constants
+│       │   │   └── promotion.py   # Promotion event constants
 │       │   ├── processors.py       # Log processors
 │       │   ├── setup.py            # Logging setup
 │       │   └── sinks.py            # Log output backends
@@ -3096,6 +3110,17 @@ ai-company/
 │       │       ├── destructive_op_detector.py # Destructive operation detection (rm -rf, DROP TABLE)
 │       │       ├── path_traversal_detector.py # Path traversal attack detection (../, null bytes)
 │       │       └── _utils.py       # walk_string_values utility (recursive argument scanning)
+│       │   └── trust/              # Progressive trust subsystem (§11.3)
+│       │       ├── config.py       # TrustConfig, strategy-specific sub-configs
+│       │       ├── enums.py        # TrustStrategyType, TrustChangeReason
+│       │       ├── errors.py       # TrustEvaluationError
+│       │       ├── models.py       # TrustState, TrustEvaluationResult, TrustChangeRecord
+│       │       ├── protocol.py     # TrustStrategy protocol
+│       │       ├── service.py      # TrustService orchestrator (state, evaluation, decay, approval)
+│       │       ├── disabled_strategy.py    # DisabledTrustStrategy (passthrough)
+│       │       ├── weighted_strategy.py    # WeightedTrustStrategy (weighted score → thresholds)
+│       │       ├── per_category_strategy.py # PerCategoryTrustStrategy (per-tool-category tracks)
+│       │       └── milestone_strategy.py   # MilestoneTrustStrategy (milestone gates + decay)
 │       ├── budget/                  # Cost management
 │       │   ├── _optimizer_helpers.py # CostOptimizer shared helper functions
 │       │   ├── config.py           # Budget configuration models
