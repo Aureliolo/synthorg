@@ -55,6 +55,7 @@ from ai_company.observability.events.security import SECURITY_DISABLED
 from ai_company.providers.enums import MessageRole
 from ai_company.providers.models import ChatMessage
 from ai_company.security.audit import AuditLog
+from ai_company.security.autonomy.models import EffectiveAutonomy  # noqa: TC001
 from ai_company.security.output_scanner import OutputScanner
 from ai_company.security.rules.credential_detector import CredentialDetector
 from ai_company.security.rules.data_leak_detector import DataLeakDetector
@@ -175,6 +176,7 @@ class AgentEngine:
         max_turns: int = DEFAULT_MAX_TURNS,
         memory_messages: tuple[ChatMessage, ...] = (),
         timeout_seconds: float | None = None,
+        effective_autonomy: EffectiveAutonomy | None = None,
     ) -> AgentRunResult:
         """Execute an agent on a task.
 
@@ -213,7 +215,11 @@ class AgentEngine:
                 await self._budget_enforcer.check_can_execute(agent_id)
                 identity = await self._budget_enforcer.resolve_model(identity)
 
-            tool_invoker = self._make_tool_invoker(identity, task_id=task_id)
+            tool_invoker = self._make_tool_invoker(
+                identity,
+                task_id=task_id,
+                effective_autonomy=effective_autonomy,
+            )
             ctx, system_prompt = self._prepare_context(
                 identity=identity,
                 task=task,
@@ -222,6 +228,7 @@ class AgentEngine:
                 max_turns=max_turns,
                 memory_messages=memory_messages,
                 tool_invoker=tool_invoker,
+                effective_autonomy=effective_autonomy,
             )
             return await self._execute(
                 identity=identity,
@@ -469,6 +476,7 @@ class AgentEngine:
         max_turns: int,
         memory_messages: tuple[ChatMessage, ...],
         tool_invoker: ToolInvoker | None = None,
+        effective_autonomy: EffectiveAutonomy | None = None,
     ) -> tuple[AgentContext, SystemPrompt]:
         """Build system prompt and prepare execution context."""
         tool_defs = tool_invoker.get_permitted_definitions() if tool_invoker else ()
@@ -476,6 +484,7 @@ class AgentEngine:
             agent=identity,
             task=task,
             available_tools=tool_defs,
+            effective_autonomy=effective_autonomy,
         )
 
         ctx = AgentContext.from_identity(
@@ -673,6 +682,7 @@ class AgentEngine:
 
     def _make_security_interceptor(
         self,
+        effective_autonomy: EffectiveAutonomy | None = None,
     ) -> SecurityInterceptionStrategy | None:
         """Build the SecOps security interceptor if configured."""
         if self._security_config is None:
@@ -712,12 +722,14 @@ class AgentEngine:
             audit_log=self._audit_log,
             output_scanner=OutputScanner(),
             approval_store=self._approval_store,
+            effective_autonomy=effective_autonomy,
         )
 
     def _make_tool_invoker(
         self,
         identity: AgentIdentity,
         task_id: str | None = None,
+        effective_autonomy: EffectiveAutonomy | None = None,
     ) -> ToolInvoker | None:
         """Create a ToolInvoker with permission checking and security.
 
@@ -726,7 +738,7 @@ class AgentEngine:
         if self._tool_registry is None:
             return None
         checker = ToolPermissionChecker.from_permissions(identity.tools)
-        interceptor = self._make_security_interceptor()
+        interceptor = self._make_security_interceptor(effective_autonomy)
         return ToolInvoker(
             self._tool_registry,
             permission_checker=checker,

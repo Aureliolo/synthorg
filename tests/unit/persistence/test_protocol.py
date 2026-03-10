@@ -27,6 +27,7 @@ if TYPE_CHECKING:
         CollaborationMetricRecord,
         TaskMetricRecord,
     )
+    from ai_company.security.timeout.parked_context import ParkedContext
 
 
 class _FakeTaskRepository:
@@ -122,6 +123,23 @@ class _FakeCollaborationMetricRepository:
         return ()
 
 
+class _FakeParkedContextRepository:
+    async def save(self, context: ParkedContext) -> None:
+        pass
+
+    async def get(self, parked_id: str) -> ParkedContext | None:
+        return None
+
+    async def get_by_approval(self, approval_id: str) -> ParkedContext | None:
+        return None
+
+    async def get_by_agent(self, agent_id: str) -> tuple[ParkedContext, ...]:
+        return ()
+
+    async def delete(self, parked_id: str) -> bool:
+        return False
+
+
 class _FakeBackend:
     async def connect(self) -> None:
         pass
@@ -162,6 +180,10 @@ class _FakeBackend:
     @property
     def task_metrics(self) -> _FakeTaskMetricRepository:
         return _FakeTaskMetricRepository()
+
+    @property
+    def parked_contexts(self) -> _FakeParkedContextRepository:
+        return _FakeParkedContextRepository()
 
     @property
     def collaboration_metrics(self) -> _FakeCollaborationMetricRepository:

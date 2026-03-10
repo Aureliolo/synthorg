@@ -17,7 +17,7 @@ from ai_company.core.company import (
     EscalationPath,
     WorkflowHandoff,
 )
-from ai_company.core.enums import CompanyType, SeniorityLevel
+from ai_company.core.enums import AutonomyLevel, CompanyType, SeniorityLevel
 from ai_company.core.role import CustomRole  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.hr.promotion.config import PromotionConfig
@@ -363,6 +363,10 @@ class AgentConfig(BaseModel):
     authority: dict[str, Any] = Field(
         default_factory=dict,
         description="Raw authority config",
+    )
+    autonomy_level: AutonomyLevel | None = Field(
+        default=None,
+        description="Per-agent autonomy level override (D6)",
     )
 
 

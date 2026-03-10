@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from ai_company.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
 from ai_company.core.enums import (
+    AutonomyLevel,
     CollaborationPreference,
     CommunicationVerbosity,
     ConflictApproach,
@@ -33,6 +34,7 @@ from ai_company.observability.events.prompt import (
     PROMPT_BUILD_SUCCESS,
     PROMPT_BUILD_TOKEN_TRIMMED,
 )
+from ai_company.security.autonomy.models import EffectiveAutonomy
 
 if TYPE_CHECKING:
     from ai_company.core.company import Company
@@ -940,3 +942,76 @@ class TestCatchAllExceptionWrapping:
             build_system_prompt(agent=sample_agent_with_personality)
 
         assert isinstance(exc_info.value.__cause__, RuntimeError)
+
+
+# ── TestEffectiveAutonomyInPrompt ──────────────────────────────
+
+
+class TestEffectiveAutonomyInPrompt:
+    """Tests for effective autonomy info in the system prompt."""
+
+    @pytest.mark.unit
+    def test_autonomy_level_in_prompt(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """Effective autonomy level appears in the rendered prompt."""
+        autonomy = EffectiveAutonomy(
+            level=AutonomyLevel.SEMI,
+            auto_approve_actions=frozenset({"code:read", "code:write"}),
+            human_approval_actions=frozenset({"infra:deploy"}),
+            security_agent=False,
+        )
+        result = build_system_prompt(
+            agent=sample_agent_with_personality,
+            effective_autonomy=autonomy,
+        )
+        assert "semi" in result.content
+
+    @pytest.mark.unit
+    def test_auto_approve_actions_in_prompt(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """Auto-approved actions are listed in the prompt."""
+        autonomy = EffectiveAutonomy(
+            level=AutonomyLevel.FULL,
+            auto_approve_actions=frozenset({"code:read", "code:write"}),
+            human_approval_actions=frozenset(),
+            security_agent=False,
+        )
+        result = build_system_prompt(
+            agent=sample_agent_with_personality,
+            effective_autonomy=autonomy,
+        )
+        assert "code:read" in result.content
+        assert "code:write" in result.content
+
+    @pytest.mark.unit
+    def test_human_approval_actions_in_prompt(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """Human-approval-required actions are listed in the prompt."""
+        autonomy = EffectiveAutonomy(
+            level=AutonomyLevel.SUPERVISED,
+            auto_approve_actions=frozenset(),
+            human_approval_actions=frozenset({"infra:deploy", "budget:spend"}),
+            security_agent=False,
+        )
+        result = build_system_prompt(
+            agent=sample_agent_with_personality,
+            effective_autonomy=autonomy,
+        )
+        assert "infra:deploy" in result.content
+        assert "budget:spend" in result.content
+
+    @pytest.mark.unit
+    def test_no_autonomy_omits_section(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """When no effective_autonomy is provided, no autonomy level section."""
+        result = build_system_prompt(agent=sample_agent_with_personality)
+        assert "Autonomy level" not in result.content
+        assert "Auto-approved actions" not in result.content

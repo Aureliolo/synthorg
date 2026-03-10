@@ -15,6 +15,7 @@ from ai_company.hr.persistence_protocol import (
 from ai_company.persistence.repositories import (
     CostRecordRepository,  # noqa: TC001
     MessageRepository,  # noqa: TC001
+    ParkedContextRepository,  # noqa: TC001
     TaskRepository,  # noqa: TC001
 )
 
@@ -108,4 +109,9 @@ class PersistenceBackend(Protocol):
     @property
     def collaboration_metrics(self) -> CollaborationMetricRepository:
         """Repository for CollaborationMetricRecord persistence."""
+        ...
+
+    @property
+    def parked_contexts(self) -> ParkedContextRepository:
+        """Repository for ParkedContext persistence."""
         ...

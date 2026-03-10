@@ -21,6 +21,7 @@ from ai_company.core.enums import (
     TaskStatus,
 )
 from ai_company.core.task import Task
+from ai_company.security.timeout.parked_context import ParkedContext  # noqa: TC001
 
 # ── Fake Repositories ────────────────────────────────────────────
 
@@ -188,6 +189,31 @@ class FakeCollaborationMetricRepository:
         return tuple(result)
 
 
+class FakeParkedContextRepository:
+    """In-memory parked context repository for tests."""
+
+    def __init__(self) -> None:
+        self._contexts: dict[str, ParkedContext] = {}
+
+    async def save(self, context: ParkedContext) -> None:
+        self._contexts[context.id] = context
+
+    async def get(self, parked_id: str) -> ParkedContext | None:
+        return self._contexts.get(parked_id)
+
+    async def get_by_approval(self, approval_id: str) -> ParkedContext | None:
+        for ctx in self._contexts.values():
+            if ctx.approval_id == approval_id:
+                return ctx
+        return None
+
+    async def get_by_agent(self, agent_id: str) -> tuple[ParkedContext, ...]:
+        return tuple(ctx for ctx in self._contexts.values() if ctx.agent_id == agent_id)
+
+    async def delete(self, parked_id: str) -> bool:
+        return self._contexts.pop(parked_id, None) is not None
+
+
 class FakePersistenceBackend:
     """In-memory persistence backend for tests."""
 
@@ -198,6 +224,7 @@ class FakePersistenceBackend:
         self._lifecycle_events = FakeLifecycleEventRepository()
         self._task_metrics = FakeTaskMetricRepository()
         self._collaboration_metrics = FakeCollaborationMetricRepository()
+        self._parked_contexts = FakeParkedContextRepository()
         self._connected = False
 
     async def connect(self) -> None:
@@ -243,6 +270,10 @@ class FakePersistenceBackend:
     @property
     def collaboration_metrics(self) -> FakeCollaborationMetricRepository:
         return self._collaboration_metrics
+
+    @property
+    def parked_contexts(self) -> FakeParkedContextRepository:
+        return self._parked_contexts
 
 
 # ── Fake Message Bus ────────────────────────────────────────────

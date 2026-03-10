@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.enums import (
     AgentStatus,
+    AutonomyLevel,
     CollaborationPreference,
     CommunicationVerbosity,
     ConflictApproach,
@@ -315,6 +316,10 @@ class AgentIdentity(BaseModel):
     authority: Authority = Field(
         default_factory=Authority,
         description="Authority scope",
+    )
+    autonomy_level: AutonomyLevel | None = Field(
+        default=None,
+        description="Per-agent autonomy level override (D6)",
     )
     hiring_date: date = Field(description="Date the agent was hired")
     status: AgentStatus = Field(

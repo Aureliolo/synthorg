@@ -526,14 +526,21 @@ def _validate_list(
 def _extract_numeric_config(
     company: dict[str, Any],
     template: CompanyTemplate,
-) -> tuple[float, float]:
-    """Extract autonomy and budget_monthly as floats."""
+) -> tuple[float | dict[str, Any], float]:
+    """Extract autonomy and budget_monthly.
+
+    Autonomy may be a float (backward compat) or a dict. When it's
+    a float, we pass it through — the ``CompanyConfig.model_validator``
+    converts it to ``AutonomyConfig``.
+    """
     source_name = template.metadata.name
+    raw_autonomy = company.get("autonomy", template.autonomy)
     try:
-        autonomy = to_float(
-            company.get("autonomy", template.autonomy),
-            field_name="autonomy",
-        )
+        if isinstance(raw_autonomy, dict):
+            # Already an AutonomyConfig-like dict — pass through.
+            autonomy: float | dict[str, Any] = raw_autonomy
+        else:
+            autonomy = to_float(raw_autonomy, field_name="autonomy")
         budget_monthly = to_float(
             company.get("budget_monthly", template.budget_monthly),
             field_name="budget_monthly",

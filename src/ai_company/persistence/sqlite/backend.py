@@ -27,6 +27,9 @@ from ai_company.persistence.sqlite.hr_repositories import (
     SQLiteTaskMetricRepository,
 )
 from ai_company.persistence.sqlite.migrations import run_migrations
+from ai_company.persistence.sqlite.parked_context_repo import (
+    SQLiteParkedContextRepository,
+)
 from ai_company.persistence.sqlite.repositories import (
     SQLiteCostRecordRepository,
     SQLiteMessageRepository,
@@ -60,6 +63,7 @@ class SQLitePersistenceBackend:
         self._lifecycle_events: SQLiteLifecycleEventRepository | None = None
         self._task_metrics: SQLiteTaskMetricRepository | None = None
         self._collaboration_metrics: SQLiteCollaborationMetricRepository | None = None
+        self._parked_contexts: SQLiteParkedContextRepository | None = None
 
     def _clear_state(self) -> None:
         """Reset connection and repository references to ``None``."""
@@ -70,6 +74,7 @@ class SQLitePersistenceBackend:
         self._lifecycle_events = None
         self._task_metrics = None
         self._collaboration_metrics = None
+        self._parked_contexts = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -106,6 +111,7 @@ class SQLitePersistenceBackend:
                 self._collaboration_metrics = SQLiteCollaborationMetricRepository(
                     self._db
                 )
+                self._parked_contexts = SQLiteParkedContextRepository(self._db)
             except (sqlite3.Error, OSError) as exc:
                 logger.exception(
                     PERSISTENCE_BACKEND_CONNECTION_FAILED,
@@ -265,3 +271,12 @@ class SQLitePersistenceBackend:
         return self._require_connected(
             self._collaboration_metrics, "collaboration_metrics"
         )
+
+    @property
+    def parked_contexts(self) -> SQLiteParkedContextRepository:
+        """Repository for ParkedContext persistence.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(self._parked_contexts, "parked_contexts")

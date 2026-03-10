@@ -5,8 +5,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ai_company.core.enums import ApprovalRiskLevel, ApprovalStatus, ToolCategory
+from ai_company.core.enums import (
+    ApprovalRiskLevel,
+    ApprovalStatus,
+    AutonomyLevel,
+    ToolCategory,
+)
 from ai_company.security.audit import AuditLog
+from ai_company.security.autonomy.models import EffectiveAutonomy
 from ai_company.security.config import SecurityConfig
 from ai_company.security.models import (
     OutputScanResult,
@@ -443,3 +449,131 @@ class TestSecOpsEscalateStoreFailure:
 
         assert verdict.verdict == SecurityVerdictType.DENY
         assert "store error" in verdict.reason.lower()
+
+
+# ── Tests: autonomy pre-check ────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestAutonomyPrecheck:
+    """Autonomy-based action routing before the rule engine."""
+
+    def _make_service_with_autonomy(
+        self,
+        *,
+        effective_autonomy: EffectiveAutonomy | None = None,
+        config: SecurityConfig | None = None,
+        engine_verdict: SecurityVerdict | None = None,
+        approval_store: AsyncMock | None = None,
+    ) -> SecOpsService:
+        """Construct a SecOpsService with autonomy support."""
+        cfg = config or SecurityConfig()
+        rule_engine = MagicMock(spec=RuleEngine)
+        rule_engine.evaluate.return_value = engine_verdict or _make_allow_verdict()
+        audit_log = AuditLog()
+        output_scanner = MagicMock(spec=OutputScanner)
+        output_scanner.scan.return_value = OutputScanResult()
+
+        service = SecOpsService(
+            config=cfg,
+            rule_engine=rule_engine,
+            audit_log=audit_log,
+            output_scanner=output_scanner,
+            approval_store=approval_store,
+            effective_autonomy=effective_autonomy,
+        )
+        service._test_rule_engine = rule_engine  # type: ignore[attr-defined]
+        service._test_audit_log = audit_log  # type: ignore[attr-defined]
+        return service
+
+    async def test_auto_approve_returns_allow(self) -> None:
+        """When action is in auto_approve_actions, returns ALLOW without rule engine."""
+        autonomy = EffectiveAutonomy(
+            level=AutonomyLevel.SEMI,
+            auto_approve_actions=frozenset({"code:read"}),
+            human_approval_actions=frozenset({"infra:deploy"}),
+            security_agent=False,
+        )
+        service = self._make_service_with_autonomy(effective_autonomy=autonomy)
+        ctx = _make_context(action_type="code:read")
+
+        verdict = await service.evaluate_pre_tool(ctx)
+
+        assert verdict.verdict == SecurityVerdictType.ALLOW
+        assert "auto-approved" in verdict.reason.lower()
+        service._test_rule_engine.evaluate.assert_not_called()  # type: ignore[attr-defined]
+
+    async def test_human_approval_returns_escalate_as_deny(self) -> None:
+        """Human approval with no store converts ESCALATE to DENY."""
+        autonomy = EffectiveAutonomy(
+            level=AutonomyLevel.SEMI,
+            auto_approve_actions=frozenset({"code:read"}),
+            human_approval_actions=frozenset({"infra:deploy"}),
+            security_agent=False,
+        )
+        service = self._make_service_with_autonomy(
+            effective_autonomy=autonomy,
+            approval_store=None,
+        )
+        ctx = _make_context(action_type="infra:deploy")
+
+        verdict = await service.evaluate_pre_tool(ctx)
+
+        assert verdict.verdict == SecurityVerdictType.DENY
+        assert "escalation unavailable" in verdict.reason.lower()
+        service._test_rule_engine.evaluate.assert_not_called()  # type: ignore[attr-defined]
+
+    async def test_hard_deny_falls_through_to_rule_engine(self) -> None:
+        """When action is in hard_deny_action_types, autonomy is skipped."""
+        autonomy = EffectiveAutonomy(
+            level=AutonomyLevel.SEMI,
+            auto_approve_actions=frozenset({"deploy:production"}),
+            human_approval_actions=frozenset(),
+            security_agent=False,
+        )
+        deny_verdict = _make_deny_verdict()
+        service = self._make_service_with_autonomy(
+            effective_autonomy=autonomy,
+            engine_verdict=deny_verdict,
+        )
+        # deploy:production is in the default SecurityConfig.hard_deny_action_types
+        ctx = _make_context(action_type="deploy:production")
+
+        verdict = await service.evaluate_pre_tool(ctx)
+
+        assert verdict.verdict == SecurityVerdictType.DENY
+        service._test_rule_engine.evaluate.assert_called_once()  # type: ignore[attr-defined]
+
+    async def test_unknown_action_falls_through(self) -> None:
+        """When action is not in any autonomy set, falls through to rule engine."""
+        autonomy = EffectiveAutonomy(
+            level=AutonomyLevel.SEMI,
+            auto_approve_actions=frozenset({"code:read"}),
+            human_approval_actions=frozenset({"infra:deploy"}),
+            security_agent=False,
+        )
+        allow_verdict = _make_allow_verdict()
+        service = self._make_service_with_autonomy(
+            effective_autonomy=autonomy,
+            engine_verdict=allow_verdict,
+        )
+        ctx = _make_context(action_type="test:run")
+
+        verdict = await service.evaluate_pre_tool(ctx)
+
+        assert verdict.verdict == SecurityVerdictType.ALLOW
+        service._test_rule_engine.evaluate.assert_called_once()  # type: ignore[attr-defined]
+
+    async def test_no_autonomy_uses_rule_engine(self) -> None:
+        """When effective_autonomy=None, rule engine is used normally."""
+        allow_verdict = _make_allow_verdict()
+        service = self._make_service_with_autonomy(
+            effective_autonomy=None,
+            engine_verdict=allow_verdict,
+        )
+        ctx = _make_context(action_type="code:read")
+
+        verdict = await service.evaluate_pre_tool(ctx)
+
+        assert verdict.verdict == SecurityVerdictType.ALLOW
+        service._test_rule_engine.evaluate.assert_called_once()  # type: ignore[attr-defined]

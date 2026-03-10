@@ -51,6 +51,7 @@ if TYPE_CHECKING:
     from ai_company.core.role import Role
     from ai_company.core.task import Task
     from ai_company.providers.models import ToolDefinition
+    from ai_company.security.autonomy.models import EffectiveAutonomy
 
 logger = get_logger(__name__)
 
@@ -169,6 +170,7 @@ def build_system_prompt(  # noqa: PLR0913
     max_tokens: int | None = None,
     custom_template: str | None = None,
     token_estimator: PromptTokenEstimator | None = None,
+    effective_autonomy: EffectiveAutonomy | None = None,
 ) -> SystemPrompt:
     """Build a system prompt from agent identity and optional context.
 
@@ -188,6 +190,7 @@ def build_system_prompt(  # noqa: PLR0913
         max_tokens: Token budget; sections are trimmed if exceeded.
         custom_template: Optional Jinja2 template string override.
         token_estimator: Custom token estimator (defaults to char/4).
+        effective_autonomy: Resolved autonomy for the current run.
 
     Returns:
         Immutable :class:`SystemPrompt` with rendered content and metadata.
@@ -235,6 +238,7 @@ def build_system_prompt(  # noqa: PLR0913
             org_policies=org_policies,
             max_tokens=max_tokens,
             estimator=estimator,
+            effective_autonomy=effective_autonomy,
         )
     except PromptBuildError:
         raise  # Already logged by inner functions.
@@ -353,12 +357,14 @@ def _resolve_template(custom_template: str | None) -> str:
 def _build_core_context(
     agent: AgentIdentity,
     role: Role | None,
+    effective_autonomy: EffectiveAutonomy | None = None,
 ) -> dict[str, Any]:
     """Build the core (always-present) template variables from agent identity.
 
     Args:
         agent: Agent identity.
         role: Optional role with description.
+        effective_autonomy: Resolved autonomy for the current run.
 
     Returns:
         Dict of core template variables.
@@ -366,7 +372,7 @@ def _build_core_context(
     personality = agent.personality
     authority = agent.authority
 
-    return {
+    ctx: dict[str, Any] = {
         "agent_name": agent.name,
         "agent_role": agent.role,
         "agent_department": agent.department,
@@ -390,6 +396,17 @@ def _build_core_context(
         "autonomy_instructions": AUTONOMY_INSTRUCTIONS[agent.level],
     }
 
+    if effective_autonomy is not None:
+        ctx["effective_autonomy"] = {
+            "level": effective_autonomy.level.value,
+            "auto_approve_actions": sorted(effective_autonomy.auto_approve_actions),
+            "human_approval_actions": sorted(effective_autonomy.human_approval_actions),
+        }
+    else:
+        ctx["effective_autonomy"] = None
+
+    return ctx
+
 
 def _build_template_context(  # noqa: PLR0913
     *,
@@ -399,6 +416,7 @@ def _build_template_context(  # noqa: PLR0913
     available_tools: tuple[ToolDefinition, ...],
     company: Company | None,
     org_policies: tuple[str, ...] = (),
+    effective_autonomy: EffectiveAutonomy | None = None,
 ) -> dict[str, Any]:
     """Assemble the full Jinja2 template context from agent and optional inputs.
 
@@ -409,11 +427,12 @@ def _build_template_context(  # noqa: PLR0913
         available_tools: Tool definitions.
         company: Optional company context.
         org_policies: Company-wide policy texts.
+        effective_autonomy: Resolved autonomy for the current run.
 
     Returns:
         Dict of template variables.
     """
-    context = _build_core_context(agent, role)
+    context = _build_core_context(agent, role, effective_autonomy)
 
     context["org_policies"] = org_policies
 
@@ -542,6 +561,7 @@ def _trim_sections(  # noqa: PLR0913
     org_policies: tuple[str, ...],
     max_tokens: int,
     estimator: PromptTokenEstimator,
+    effective_autonomy: EffectiveAutonomy | None = None,
 ) -> tuple[
     str,
     int,
@@ -566,6 +586,7 @@ def _trim_sections(  # noqa: PLR0913
             company,
             org_policies,
             estimator,
+            effective_autonomy=effective_autonomy,
         )
         if estimated <= max_tokens:
             break
@@ -591,6 +612,7 @@ def _trim_sections(  # noqa: PLR0913
             company,
             org_policies,
             estimator,
+            effective_autonomy=effective_autonomy,
         )
 
     _log_trim_results(agent, max_tokens, estimated, trimmed_sections)
@@ -633,6 +655,7 @@ def _render_with_trimming(  # noqa: PLR0913
     org_policies: tuple[str, ...] = (),
     max_tokens: int | None,
     estimator: PromptTokenEstimator,
+    effective_autonomy: EffectiveAutonomy | None = None,
 ) -> SystemPrompt:
     """Render the prompt, trimming optional sections if over token budget."""
     content, estimated = _render_and_estimate(
@@ -644,19 +667,23 @@ def _render_with_trimming(  # noqa: PLR0913
         company,
         org_policies,
         estimator,
+        effective_autonomy=effective_autonomy,
     )
 
     if max_tokens is not None and estimated > max_tokens:
-        content, estimated, task, company, org_policies = _trim_sections(
-            template_str=template_str,
-            agent=agent,
-            role=role,
-            task=task,
-            available_tools=available_tools,
-            company=company,
-            org_policies=org_policies,
-            max_tokens=max_tokens,
-            estimator=estimator,
+        content, estimated, task, available_tools, company, org_policies = (
+            _trim_sections(
+                template_str=template_str,
+                agent=agent,
+                role=role,
+                task=task,
+                available_tools=available_tools,
+                company=company,
+                org_policies=org_policies,
+                max_tokens=max_tokens,
+                estimator=estimator,
+                effective_autonomy=effective_autonomy,
+            )
         )
 
     return _build_prompt_result(
@@ -708,6 +735,8 @@ def _render_and_estimate(  # noqa: PLR0913
     company: Company | None,
     org_policies: tuple[str, ...],
     estimator: PromptTokenEstimator,
+    *,
+    effective_autonomy: EffectiveAutonomy | None = None,
 ) -> tuple[str, int]:
     """Render the template and estimate its token count.
 
@@ -720,6 +749,7 @@ def _render_and_estimate(  # noqa: PLR0913
         company: Optional company context.
         org_policies: Company-wide policy texts.
         estimator: Token estimator.
+        effective_autonomy: Resolved autonomy for the current run.
 
     Returns:
         Tuple of (rendered content, estimated token count).
@@ -731,6 +761,7 @@ def _render_and_estimate(  # noqa: PLR0913
         available_tools=available_tools,
         company=company,
         org_policies=org_policies,
+        effective_autonomy=effective_autonomy,
     )
     content = _render_template(template_str, context)
     return content, estimator.estimate_tokens(content)

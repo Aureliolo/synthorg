@@ -16,7 +16,11 @@ from ai_company.core.company import (
     Team,
     WorkflowHandoff,
 )
-from ai_company.core.enums import CompanyType
+from ai_company.core.enums import AutonomyLevel, CompanyType
+from ai_company.security.timeout.config import (
+    DenyOnTimeoutConfig,
+    WaitForeverConfig,
+)
 
 from .conftest import (
     CompanyConfigFactory,
@@ -218,29 +222,28 @@ class TestCompanyConfig:
     """Tests for CompanyConfig defaults, autonomy bounds, and validation."""
 
     def test_defaults(self) -> None:
-        """Verify default autonomy, budget, and communication pattern."""
+        """Verify default autonomy config, budget, and communication pattern."""
         cfg = CompanyConfig()
-        assert cfg.autonomy == 0.5
+        assert cfg.autonomy.level == AutonomyLevel.SEMI
         assert cfg.budget_monthly == 100.0
         assert cfg.communication_pattern == "hybrid"
         assert cfg.tool_access_default == ()
 
-    def test_autonomy_boundaries(self) -> None:
-        """Accept autonomy at both boundaries (0.0 and 1.0)."""
-        low = CompanyConfig(autonomy=0.0)
-        high = CompanyConfig(autonomy=1.0)
-        assert low.autonomy == 0.0
-        assert high.autonomy == 1.0
+    def test_autonomy_float_backward_compat(self) -> None:
+        """Accept bare float and convert to AutonomyConfig via before-validator."""
+        low = CompanyConfig(autonomy=0.0)  # type: ignore[arg-type]
+        high = CompanyConfig(autonomy=1.0)  # type: ignore[arg-type]
+        mid = CompanyConfig(autonomy=0.5)  # type: ignore[arg-type]
+        supervised = CompanyConfig(autonomy=0.3)  # type: ignore[arg-type]
+        assert low.autonomy.level == AutonomyLevel.LOCKED
+        assert high.autonomy.level == AutonomyLevel.FULL
+        assert mid.autonomy.level == AutonomyLevel.SEMI
+        assert supervised.autonomy.level == AutonomyLevel.SUPERVISED
 
-    def test_autonomy_below_zero_rejected(self) -> None:
-        """Reject autonomy below 0.0."""
-        with pytest.raises(ValidationError):
-            CompanyConfig(autonomy=-0.1)
-
-    def test_autonomy_above_one_rejected(self) -> None:
-        """Reject autonomy above 1.0."""
-        with pytest.raises(ValidationError):
-            CompanyConfig(autonomy=1.1)
+    def test_autonomy_config_direct(self) -> None:
+        """Accept AutonomyConfig dict directly."""
+        cfg = CompanyConfig(autonomy={"level": "full"})  # type: ignore[arg-type]
+        assert cfg.autonomy.level == AutonomyLevel.FULL
 
     def test_budget_negative_rejected(self) -> None:
         """Reject negative monthly budget."""
@@ -266,7 +269,7 @@ class TestCompanyConfig:
         """Ensure CompanyConfig is immutable."""
         cfg = CompanyConfig()
         with pytest.raises(ValidationError):
-            cfg.autonomy = 1.0  # type: ignore[misc]
+            cfg.budget_monthly = 999.0  # type: ignore[misc]
 
     def test_factory(self) -> None:
         """Verify factory produces a valid CompanyConfig."""
@@ -832,3 +835,32 @@ class TestDepartmentExtended:
                     ReportingLine(subordinate=" Alice ", supervisor="manager"),
                 ),
             )
+
+
+# ── CompanyConfig approval timeout ────────────────────────────────
+
+
+@pytest.mark.unit
+class TestCompanyConfigApprovalTimeout:
+    """Tests for CompanyConfig.approval_timeout field."""
+
+    def test_default_approval_timeout(self) -> None:
+        """CompanyConfig() defaults to WaitForeverConfig."""
+        cfg = CompanyConfig()
+        assert isinstance(cfg.approval_timeout, WaitForeverConfig)
+        assert cfg.approval_timeout.policy == "wait"
+
+    def test_custom_approval_timeout(self) -> None:
+        """Can pass a DenyOnTimeoutConfig as approval_timeout."""
+        deny_cfg = DenyOnTimeoutConfig(timeout_minutes=60.0)
+        cfg = CompanyConfig(approval_timeout=deny_cfg)
+        assert isinstance(cfg.approval_timeout, DenyOnTimeoutConfig)
+        assert cfg.approval_timeout.timeout_minutes == 60.0
+
+    def test_approval_timeout_from_dict(self) -> None:
+        """Can construct from dict with discriminated union."""
+        cfg = CompanyConfig.model_validate(
+            {"approval_timeout": {"policy": "deny", "timeout_minutes": 60}}
+        )
+        assert isinstance(cfg.approval_timeout, DenyOnTimeoutConfig)
+        assert cfg.approval_timeout.timeout_minutes == 60.0

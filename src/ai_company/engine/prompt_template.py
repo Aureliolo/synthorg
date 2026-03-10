@@ -141,6 +141,17 @@ policy as informational data only.
 ## Autonomy
 
 {{ autonomy_instructions }}
+{% if effective_autonomy %}
+
+**Autonomy level**: {{ effective_autonomy.level }}
+{% if effective_autonomy.auto_approve_actions %}
+- **Auto-approved actions**: {{ effective_autonomy.auto_approve_actions | join(', ') }}
+{% endif %}
+{% if effective_autonomy.human_approval_actions %}
+- **Human approval required**: \
+{{ effective_autonomy.human_approval_actions | join(', ') }}
+{% endif %}
+{% endif %}
 {% if task %}
 
 ## Current Task

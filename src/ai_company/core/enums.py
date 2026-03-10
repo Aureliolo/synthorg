@@ -454,3 +454,33 @@ class ConflictType(StrEnum):
 
     TEXTUAL = "textual"
     SEMANTIC = "semantic"
+
+
+class AutonomyLevel(StrEnum):
+    """Autonomy level controlling approval routing for agents.
+
+    Determines which actions an agent can execute autonomously vs.
+    which require human or security-agent approval (DESIGN_SPEC §12.2).
+    """
+
+    FULL = "full"
+    SEMI = "semi"
+    SUPERVISED = "supervised"
+    LOCKED = "locked"
+
+
+class DowngradeReason(StrEnum):
+    """Reason an agent's autonomy was downgraded at runtime."""
+
+    HIGH_ERROR_RATE = "high_error_rate"
+    BUDGET_EXHAUSTED = "budget_exhausted"
+    SECURITY_INCIDENT = "security_incident"
+
+
+class TimeoutActionType(StrEnum):
+    """Action to take when an approval item times out (DESIGN_SPEC §12.4)."""
+
+    WAIT = "wait"
+    APPROVE = "approve"
+    DENY = "deny"
+    ESCALATE = "escalate"
