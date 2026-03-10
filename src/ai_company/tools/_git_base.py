@@ -211,18 +211,18 @@ class _BaseGitTool(BaseTool, ABC):
         *,
         param: str,
     ) -> ToolExecutionResult | None:
-        """Reject values starting with ``-`` to prevent flag injection.
+        """Reject flag-like values and control characters.
 
-        Used for refs, branch names, author filters, date strings, and
-        any other git argument that must not be interpreted as a flag.
+        Blocks values starting with ``-`` (flag injection) and values
+        containing control characters (null bytes, newlines, etc.).
 
         Args:
             value: The argument string to validate.
             param: Parameter name for the error message.
 
         Returns:
-            A ``ToolExecutionResult`` with ``is_error=True`` if the value
-            starts with ``-``, or ``None`` if valid.
+            A ``ToolExecutionResult`` with ``is_error=True`` if invalid,
+            or ``None`` if valid.
         """
         if value.startswith("-"):
             logger.warning(
@@ -232,6 +232,16 @@ class _BaseGitTool(BaseTool, ABC):
             )
             return ToolExecutionResult(
                 content=f"Invalid {param}: must not start with '-'",
+                is_error=True,
+            )
+        if _CONTROL_CHAR_RE.search(value):
+            logger.warning(
+                GIT_REF_INJECTION_BLOCKED,
+                param=param,
+                value=repr(value),
+            )
+            return ToolExecutionResult(
+                content=f"Invalid {param}: must not contain control characters",
                 is_error=True,
             )
         return None

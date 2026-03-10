@@ -1,10 +1,14 @@
 """Append-only in-memory audit log for security evaluations."""
 
 from collections import deque
+from datetime import datetime  # noqa: TC003
 
 from ai_company.core.enums import ApprovalRiskLevel  # noqa: TC001
 from ai_company.observability import get_logger
-from ai_company.observability.events.security import SECURITY_AUDIT_RECORDED
+from ai_company.observability.events.security import (
+    SECURITY_AUDIT_EVICTION,
+    SECURITY_AUDIT_RECORDED,
+)
 from ai_company.security.models import AuditEntry  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -15,9 +19,9 @@ class AuditLog:
 
     Thread-safety is not needed because the framework runs on a
     single event loop.  When ``max_entries`` is exceeded, the oldest
-    entries are evicted.
+    entries are evicted with a warning.
 
-    Future: back by ``PersistenceBackend``.
+    Future: backed by ``PersistenceBackend`` (see DESIGN_SPEC §7.6).
     """
 
     def __init__(self, *, max_entries: int = 100_000) -> None:
@@ -31,9 +35,14 @@ class AuditLog:
         """
         if max_entries < 1:
             msg = f"max_entries must be >= 1, got {max_entries}"
+            logger.warning(
+                SECURITY_AUDIT_EVICTION,
+                error=msg,
+            )
             raise ValueError(msg)
         self._max_entries = max_entries
         self._entries: deque[AuditEntry] = deque(maxlen=max_entries)
+        self._total_recorded: int = 0
 
     def record(self, entry: AuditEntry) -> None:
         """Append an audit entry.
@@ -41,13 +50,26 @@ class AuditLog:
         Args:
             entry: The audit entry to record.
         """
+        if len(self._entries) >= self._max_entries:
+            logger.warning(
+                SECURITY_AUDIT_EVICTION,
+                max_entries=self._max_entries,
+                total_recorded=self._total_recorded,
+                note="oldest entry evicted to make room",
+            )
         self._entries.append(entry)
+        self._total_recorded += 1
         logger.debug(
             SECURITY_AUDIT_RECORDED,
             audit_id=entry.id,
             tool_name=entry.tool_name,
             verdict=entry.verdict,
         )
+
+    @property
+    def total_recorded(self) -> int:
+        """Total entries ever recorded (including evicted)."""
+        return self._total_recorded
 
     def query(  # noqa: PLR0913
         self,
@@ -56,7 +78,7 @@ class AuditLog:
         tool_name: str | None = None,
         verdict: str | None = None,
         risk_level: ApprovalRiskLevel | None = None,
-        since: str | None = None,
+        since: datetime | None = None,
         limit: int = 100,
     ) -> tuple[AuditEntry, ...]:
         """Query audit entries with optional filters.
@@ -69,7 +91,7 @@ class AuditLog:
             tool_name: Filter by tool name.
             verdict: Filter by verdict string.
             risk_level: Filter by risk level.
-            since: ISO datetime string — entries before this are excluded.
+            since: Entries before this datetime are excluded.
             limit: Maximum results to return.
 
         Returns:
@@ -85,7 +107,7 @@ class AuditLog:
                 continue
             if risk_level is not None and entry.risk_level != risk_level:
                 continue
-            if since is not None and entry.timestamp.isoformat() < since:
+            if since is not None and entry.timestamp < since:
                 continue
             results.append(entry)
             if len(results) >= limit:

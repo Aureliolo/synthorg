@@ -5,80 +5,70 @@ from datetime import UTC, datetime
 from typing import Final
 
 from ai_company.core.enums import ApprovalRiskLevel
+from ai_company.observability import get_logger
+from ai_company.observability.events.security import SECURITY_DATA_LEAK_DETECTED
 from ai_company.security.models import (
     SecurityContext,
     SecurityVerdict,
     SecurityVerdictType,
 )
+from ai_company.security.rules._utils import walk_string_values
+
+logger = get_logger(__name__)
 
 _RULE_NAME: Final[str] = "data_leak_detector"
 
 # Sensitive file path patterns (case-insensitive).
-_SENSITIVE_PATHS: Final[tuple[re.Pattern[str], ...]] = (
-    re.compile(r"\.env(?:\.[a-z]+)?$", re.IGNORECASE),
-    re.compile(r"id_rsa(?:\.pub)?$"),
-    re.compile(r"id_ed25519(?:\.pub)?$"),
-    re.compile(r"id_ecdsa(?:\.pub)?$"),
-    re.compile(r"id_dsa(?:\.pub)?$"),
-    re.compile(r"\.pem$", re.IGNORECASE),
-    re.compile(r"\.p12$", re.IGNORECASE),
-    re.compile(r"\.pfx$", re.IGNORECASE),
-    re.compile(r"\.key$", re.IGNORECASE),
-    re.compile(r"\.aws[/\\]credentials$"),
-    re.compile(r"\.ssh[/\\]config$"),
-    re.compile(r"\.netrc$"),
-    re.compile(r"\.pgpass$"),
-    re.compile(r"credentials\.json$", re.IGNORECASE),
-    re.compile(r"secrets\.ya?ml$", re.IGNORECASE),
-    re.compile(r"\.kube[/\\]config$"),
+_SENSITIVE_PATHS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
+    ("environment file", re.compile(r"\.env(?:\.[a-z]+)?$", re.IGNORECASE)),
+    ("RSA key file", re.compile(r"id_rsa(?:\.pub)?$")),
+    ("Ed25519 key file", re.compile(r"id_ed25519(?:\.pub)?$")),
+    ("ECDSA key file", re.compile(r"id_ecdsa(?:\.pub)?$")),
+    ("DSA key file", re.compile(r"id_dsa(?:\.pub)?$")),
+    ("PEM certificate", re.compile(r"\.pem$", re.IGNORECASE)),
+    ("PKCS#12 file", re.compile(r"\.p12$", re.IGNORECASE)),
+    ("PFX file", re.compile(r"\.pfx$", re.IGNORECASE)),
+    ("key file", re.compile(r"\.key$", re.IGNORECASE)),
+    ("AWS credentials", re.compile(r"\.aws[/\\]credentials$")),
+    ("SSH config", re.compile(r"\.ssh[/\\]config$")),
+    ("netrc file", re.compile(r"\.netrc$")),
+    ("pgpass file", re.compile(r"\.pgpass$")),
+    ("credentials JSON", re.compile(r"credentials\.json$", re.IGNORECASE)),
+    ("secrets YAML", re.compile(r"secrets\.ya?ml$", re.IGNORECASE)),
+    ("kubeconfig", re.compile(r"\.kube[/\\]config$")),
 )
 
 # PII patterns.
-_PII_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
+PII_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
     (
         "Social Security Number",
         re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
     ),
     (
         "Credit card number",
-        re.compile(r"\b(?:4\d{3}|5[1-5]\d{2}|3[47]\d{2}|6011)\d{12}\b"),
+        re.compile(r"\b(?:4\d{3}|5[1-5]\d{2}|6011)\d{12}\b"),
     ),
 )
 
 
 def _check_sensitive_paths(arguments: dict[str, object]) -> list[str]:
-    """Find sensitive file paths in argument values."""
+    """Find sensitive file paths in argument values (recursive)."""
     findings: list[str] = []
-    for value in arguments.values():
-        if isinstance(value, str):
-            for pattern in _SENSITIVE_PATHS:
-                if pattern.search(value):
-                    findings.append(f"sensitive path: {value}")
-                    break
-        elif isinstance(value, list):
-            for item in value:
-                if isinstance(item, str):
-                    for pattern in _SENSITIVE_PATHS:
-                        if pattern.search(item):
-                            findings.append(f"sensitive path: {item}")
-                            break
+    for value in walk_string_values(arguments):
+        for label, pattern in _SENSITIVE_PATHS:
+            if pattern.search(value):
+                findings.append(f"sensitive path detected ({label})")
+                break
     return findings
 
 
 def _check_pii(arguments: dict[str, object]) -> list[str]:
-    """Find PII patterns in string argument values."""
+    """Find PII patterns in string argument values (recursive)."""
     findings: list[str] = []
-    for value in arguments.values():
-        if isinstance(value, str):
-            for name, pattern in _PII_PATTERNS:
-                if pattern.search(value):
-                    findings.append(name)
-        elif isinstance(value, list):
-            for item in value:
-                if isinstance(item, str):
-                    for name, pattern in _PII_PATTERNS:
-                        if pattern.search(item):
-                            findings.append(name)
+    for value in walk_string_values(arguments):
+        for name, pattern in PII_PATTERNS:
+            if pattern.search(value):
+                findings.append(name)
     return findings
 
 
@@ -103,6 +93,11 @@ class DataLeakDetector:
         if not findings:
             return None
         unique = sorted(set(findings))
+        logger.warning(
+            SECURITY_DATA_LEAK_DETECTED,
+            tool_name=context.tool_name,
+            finding_count=len(unique),
+        )
         return SecurityVerdict(
             verdict=SecurityVerdictType.DENY,
             reason=f"Data leak risk: {', '.join(unique)}",

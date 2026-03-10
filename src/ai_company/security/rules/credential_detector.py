@@ -5,16 +5,21 @@ from datetime import UTC, datetime
 from typing import Final
 
 from ai_company.core.enums import ApprovalRiskLevel
+from ai_company.observability import get_logger
+from ai_company.observability.events.security import SECURITY_CREDENTIAL_DETECTED
 from ai_company.security.models import (
     SecurityContext,
     SecurityVerdict,
     SecurityVerdictType,
 )
+from ai_company.security.rules._utils import walk_string_values
+
+logger = get_logger(__name__)
 
 _RULE_NAME: Final[str] = "credential_detector"
 
 # Pre-compiled patterns for credential detection.
-_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
+CREDENTIAL_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
     (
         "AWS access key",
         re.compile(r"(?:^|[^A-Za-z0-9])(AKIA[0-9A-Z]{16})(?:[^A-Za-z0-9]|$)"),
@@ -66,29 +71,10 @@ def _scan_value(value: str) -> str | None:
 
     Returns the pattern name if found, else None.
     """
-    for pattern_name, pattern in _PATTERNS:
+    for pattern_name, pattern in CREDENTIAL_PATTERNS:
         if pattern.search(value):
             return pattern_name
     return None
-
-
-def _scan_arguments(arguments: dict[str, object]) -> list[str]:
-    """Recursively scan all string values in arguments."""
-    findings: list[str] = []
-    for value in arguments.values():
-        if isinstance(value, str):
-            if match := _scan_value(value):
-                findings.append(match)
-        elif isinstance(value, dict):
-            findings.extend(_scan_arguments(value))
-        elif isinstance(value, list):
-            for item in value:
-                if isinstance(item, str):
-                    if match := _scan_value(item):
-                        findings.append(match)
-                elif isinstance(item, dict):
-                    findings.extend(_scan_arguments(item))
-    return findings
 
 
 class CredentialDetector:
@@ -111,10 +97,21 @@ class CredentialDetector:
 
         Returns DENY with CRITICAL risk if any credential is found.
         """
-        findings = _scan_arguments(context.arguments)
+        findings = [
+            match
+            for value in walk_string_values(context.arguments)
+            if (match := _scan_value(value))
+        ]
+
         if not findings:
             return None
+
         unique = sorted(set(findings))
+        logger.warning(
+            SECURITY_CREDENTIAL_DETECTED,
+            tool_name=context.tool_name,
+            findings=unique,
+        )
         return SecurityVerdict(
             verdict=SecurityVerdictType.DENY,
             reason=f"Credential detected in arguments: {', '.join(unique)}",

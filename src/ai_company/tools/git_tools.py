@@ -28,7 +28,6 @@ _CLONE_TIMEOUT: Final[float] = 120.0
 _ALLOWED_CLONE_SCHEMES: Final[tuple[str, ...]] = (
     "https://",
     "ssh://",
-    "git://",
 )
 
 
@@ -638,7 +637,7 @@ class GitCloneTool(_BaseGitTool):
         """
         super().__init__(
             name="git_clone",
-            action_type=ActionType.VCS_BRANCH,
+            action_type=ActionType.VCS_COMMIT,
             description=(
                 "Clone a git repository into a directory within the "
                 "workspace. Supports branch selection and shallow clones."

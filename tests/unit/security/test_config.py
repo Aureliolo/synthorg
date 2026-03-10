@@ -67,7 +67,7 @@ class TestSecurityPolicyRule:
             SecurityVerdictType.ESCALATE,
         ],
     )
-    def test_all_verdict_types_accepted(self, verdict: str) -> None:
+    def test_all_verdict_types_accepted(self, verdict: SecurityVerdictType) -> None:
         rule = SecurityPolicyRule(name="rule", verdict=verdict)
         assert rule.verdict == verdict
 

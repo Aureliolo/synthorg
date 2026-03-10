@@ -17,6 +17,7 @@ from ai_company.observability import get_logger
 from ai_company.observability.events.security import (
     SECURITY_DISABLED,
     SECURITY_ESCALATION_CREATED,
+    SECURITY_ESCALATION_STORE_ERROR,
     SECURITY_EVALUATE_COMPLETE,
     SECURITY_EVALUATE_START,
     SECURITY_VERDICT_ALLOW,
@@ -37,13 +38,18 @@ from ai_company.security.rules.engine import RuleEngine  # noqa: TC001
 
 if TYPE_CHECKING:
     from ai_company.api.approval_store import ApprovalStore
-    from ai_company.security.action_types import ActionTypeRegistry
 
 logger = get_logger(__name__)
 
 
 def _hash_arguments(arguments: dict[str, object]) -> str:
-    """Produce a SHA-256 hex digest of serialized arguments."""
+    """Produce a SHA-256 hex digest of serialized arguments.
+
+    Uses ``default=str`` for non-JSON-serializable values.  This means
+    two distinct objects with the same ``str()`` will produce identical
+    hashes — acceptable for tool arguments (strings, ints, lists, dicts)
+    but not a guaranteed-unique fingerprint for arbitrary types.
+    """
     serialized = json.dumps(arguments, sort_keys=True, default=str)
     return hashlib.sha256(serialized.encode()).hexdigest()
 
@@ -52,13 +58,14 @@ class SecOpsService:
     """Implements ``SecurityInterceptionStrategy``.
 
     Coordinates the rule engine, audit log, output scanner, and
-    optional approval store.
+    optional approval store.  Enforces security policies, scans
+    for sensitive data, and records audit entries.
 
     On ESCALATE: creates an ``ApprovalItem`` in the ``ApprovalStore``
     and returns the verdict with ``approval_id`` set.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         config: SecurityConfig,
@@ -66,7 +73,6 @@ class SecOpsService:
         audit_log: AuditLog,
         output_scanner: OutputScanner,
         approval_store: ApprovalStore | None = None,
-        action_type_registry: ActionTypeRegistry | None = None,
     ) -> None:
         """Initialize the SecOps service.
 
@@ -76,14 +82,12 @@ class SecOpsService:
             audit_log: Audit log for recording evaluations.
             output_scanner: Post-tool output scanner.
             approval_store: Optional store for escalation items.
-            action_type_registry: Optional registry for validation.
         """
         self._config = config
         self._rule_engine = rule_engine
         self._audit_log = audit_log
         self._output_scanner = output_scanner
         self._approval_store = approval_store
-        self._registry = action_type_registry
 
     async def evaluate_pre_tool(
         self,
@@ -93,12 +97,12 @@ class SecOpsService:
 
         Steps:
             1. Run rule engine.
-            2. Record audit entry.
-            3. If ESCALATE, create approval item.
+            2. If ESCALATE, create approval item (or convert to DENY).
+            3. Record audit entry.
             4. Return verdict.
         """
         if not self._config.enabled:
-            logger.debug(SECURITY_DISABLED, tool_name=context.tool_name)
+            logger.warning(SECURITY_DISABLED, tool_name=context.tool_name)
             return SecurityVerdict(
                 verdict=SecurityVerdictType.ALLOW,
                 reason="Security subsystem disabled",
@@ -133,7 +137,7 @@ class SecOpsService:
         logger.info(
             event,
             tool_name=context.tool_name,
-            verdict=verdict.verdict,
+            verdict=verdict.verdict.value,
             risk_level=verdict.risk_level.value,
         )
 
@@ -146,7 +150,8 @@ class SecOpsService:
     ) -> OutputScanResult:
         """Scan tool output for sensitive data.
 
-        Records findings in the audit log at WARNING level.
+        Delegates to the output scanner.  Records an audit entry
+        if sensitive data is found and audit is enabled.
         """
         if not self._config.post_tool_scanning_enabled:
             return OutputScanResult()
@@ -187,7 +192,7 @@ class SecOpsService:
             tool_category=context.tool_category,
             action_type=context.action_type,
             arguments_hash=_hash_arguments(context.arguments),
-            verdict=verdict.verdict,
+            verdict=verdict.verdict.value,
             risk_level=verdict.risk_level,
             reason=verdict.reason,
             matched_rules=verdict.matched_rules,
@@ -204,8 +209,9 @@ class SecOpsService:
         """Create an approval item and update the verdict."""
         if self._approval_store is None:
             logger.warning(
-                SECURITY_VERDICT_ESCALATE,
+                SECURITY_VERDICT_DENY,
                 tool_name=context.tool_name,
+                original_verdict="escalate",
                 note="no approval store — converting to DENY",
             )
             return verdict.model_copy(
@@ -232,7 +238,21 @@ class SecOpsService:
                 "tool_category": context.tool_category.value,
             },
         )
-        await self._approval_store.add(item)
+        try:
+            await self._approval_store.add(item)
+        except Exception:
+            logger.exception(
+                SECURITY_ESCALATION_STORE_ERROR,
+                approval_id=approval_id,
+                tool_name=context.tool_name,
+                agent_id=context.agent_id,
+            )
+            return verdict.model_copy(
+                update={
+                    "verdict": SecurityVerdictType.DENY,
+                    "reason": (f"{verdict.reason} (escalation store error — denied)"),
+                },
+            )
         logger.info(
             SECURITY_ESCALATION_CREATED,
             approval_id=approval_id,

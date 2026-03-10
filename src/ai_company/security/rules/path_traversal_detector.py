@@ -5,11 +5,16 @@ from datetime import UTC, datetime
 from typing import Final
 
 from ai_company.core.enums import ApprovalRiskLevel
+from ai_company.observability import get_logger
+from ai_company.observability.events.security import SECURITY_PATH_TRAVERSAL_DETECTED
 from ai_company.security.models import (
     SecurityContext,
     SecurityVerdict,
     SecurityVerdictType,
 )
+from ai_company.security.rules._utils import walk_string_values
+
+logger = get_logger(__name__)
 
 _RULE_NAME: Final[str] = "path_traversal_detector"
 
@@ -18,6 +23,10 @@ _TRAVERSAL_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
     (
         "directory traversal (../)",
         re.compile(r"(?:^|[/\\])\.\.(?:[/\\]|$)"),
+    ),
+    (
+        "directory traversal (..\\)",
+        re.compile(r"^\.\.[\\/]"),
     ),
     (
         "null byte injection",
@@ -31,6 +40,14 @@ _TRAVERSAL_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
         "double-encoded traversal",
         re.compile(r"%252e%252e", re.IGNORECASE),
     ),
+    (
+        "overlong UTF-8 traversal",
+        re.compile(r"%c0%ae", re.IGNORECASE),
+    ),
+    (
+        "Windows UNC path",
+        re.compile(r"^\\\\[^\\]"),
+    ),
 )
 
 
@@ -42,30 +59,11 @@ def _scan_value(value: str) -> str | None:
     return None
 
 
-def _scan_arguments(arguments: dict[str, object]) -> list[str]:
-    """Recursively scan all string values for path traversal."""
-    findings: list[str] = []
-    for value in arguments.values():
-        if isinstance(value, str):
-            if match := _scan_value(value):
-                findings.append(match)
-        elif isinstance(value, dict):
-            findings.extend(_scan_arguments(value))
-        elif isinstance(value, list):
-            for item in value:
-                if isinstance(item, str):
-                    if match := _scan_value(item):
-                        findings.append(match)
-                elif isinstance(item, dict):
-                    findings.extend(_scan_arguments(item))
-    return findings
-
-
 class PathTraversalDetector:
     """Detects path traversal attacks in tool call arguments.
 
     Looks for ``../`` sequences, null bytes, URL-encoded traversal,
-    and double-encoded traversal patterns.
+    double-encoded traversal, overlong UTF-8, and Windows UNC paths.
     """
 
     @property
@@ -81,10 +79,21 @@ class PathTraversalDetector:
 
         Returns DENY with CRITICAL risk if traversal is detected.
         """
-        findings = _scan_arguments(context.arguments)
+        findings = [
+            match
+            for value in walk_string_values(context.arguments)
+            if (match := _scan_value(value))
+        ]
+
         if not findings:
             return None
+
         unique = sorted(set(findings))
+        logger.warning(
+            SECURITY_PATH_TRAVERSAL_DETECTED,
+            tool_name=context.tool_name,
+            findings=unique,
+        )
         return SecurityVerdict(
             verdict=SecurityVerdictType.DENY,
             reason=f"Path traversal detected: {', '.join(unique)}",

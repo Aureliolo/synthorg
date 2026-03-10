@@ -99,7 +99,6 @@ class TestDataLeakDetectorPII:
             ("SSN", "My SSN is 123-45-6789"),
             ("Visa credit card", "Card: 4111111111111111"),
             ("Mastercard", "Card: 5111111111111111"),
-            ("Amex", "Card: 3711111111111111"),
         ],
     )
     def test_detects_pii_pattern(self, label: str, value: str) -> None:

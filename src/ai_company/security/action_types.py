@@ -52,8 +52,7 @@ class ActionTypeRegistry:
     Supports category expansion (e.g. ``"code"`` → all ``code:*`` types)
     and registration of custom action types at runtime.
 
-    Attributes:
-        custom_types: User-registered action types beyond the built-in set.
+    Access the full set of registered types via ``all_types()``.
     """
 
     def __init__(
@@ -70,8 +69,9 @@ class ActionTypeRegistry:
             ValueError: If any custom type lacks a ``category:action`` format.
         """
         for ct in custom_types:
-            if ":" not in ct:
+            if ":" not in ct or ct.startswith(":") or ct.endswith(":"):
                 msg = f"Custom action type {ct!r} must use 'category:action' format"
+                logger.warning(SECURITY_CONFIG_LOADED, error=msg)
                 raise ValueError(msg)
         self._custom_types = custom_types
         self._all_types = _BUILTIN_TYPES | custom_types
@@ -96,6 +96,7 @@ class ActionTypeRegistry:
         """
         if not self.is_registered(action_type):
             msg = f"Unknown action type: {action_type!r}"
+            logger.warning(SECURITY_CONFIG_LOADED, error=msg)
             raise ValueError(msg)
 
     def expand_category(self, category: str) -> frozenset[str]:

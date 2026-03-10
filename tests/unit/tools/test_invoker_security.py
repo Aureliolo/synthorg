@@ -58,7 +58,7 @@ _NOW = datetime.now(UTC)
 
 def _make_verdict(
     *,
-    verdict: str = SecurityVerdictType.ALLOW,
+    verdict: SecurityVerdictType = SecurityVerdictType.ALLOW,
     reason: str = "test reason",
     risk_level: ApprovalRiskLevel = ApprovalRiskLevel.LOW,
     approval_id: str | None = None,

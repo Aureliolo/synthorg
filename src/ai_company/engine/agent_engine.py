@@ -64,6 +64,7 @@ from ai_company.security.rules.path_traversal_detector import (
     PathTraversalDetector,
 )
 from ai_company.security.rules.policy_validator import PolicyValidator
+from ai_company.security.rules.protocol import SecurityRule  # noqa: TC001
 from ai_company.security.rules.risk_classifier import RiskClassifier
 from ai_company.security.service import SecOpsService
 from ai_company.tools.invoker import ToolInvoker
@@ -671,21 +672,26 @@ class AgentEngine:
             return None
 
         cfg = self._security_config
+        re_cfg = cfg.rule_engine
         policy_validator = PolicyValidator(
             hard_deny_action_types=frozenset(cfg.hard_deny_action_types),
             auto_approve_action_types=frozenset(cfg.auto_approve_action_types),
         )
-        rules = (
-            policy_validator,
-            CredentialDetector(),
-            PathTraversalDetector(),
-            DestructiveOpDetector(),
-            DataLeakDetector(),
-        )
+        # Build the detector list respecting config flags.
+        detectors: list[SecurityRule] = [policy_validator]
+        if re_cfg.credential_patterns_enabled:
+            detectors.append(CredentialDetector())
+        if re_cfg.path_traversal_detection_enabled:
+            detectors.append(PathTraversalDetector())
+        if re_cfg.destructive_op_detection_enabled:
+            detectors.append(DestructiveOpDetector())
+        if re_cfg.data_leak_detection_enabled:
+            detectors.append(DataLeakDetector())
+
         rule_engine = RuleEngine(
-            rules=rules,
+            rules=tuple(detectors),
             risk_classifier=RiskClassifier(),
-            config=cfg.rule_engine,
+            config=re_cfg,
         )
         return SecOpsService(
             config=cfg,
@@ -699,7 +705,10 @@ class AgentEngine:
         self,
         identity: AgentIdentity,
     ) -> ToolInvoker | None:
-        """Create a ToolInvoker with permission checking, or None."""
+        """Create a ToolInvoker with permission checking and security.
+
+        Returns None if no tool registry is configured.
+        """
         if self._tool_registry is None:
             return None
         checker = ToolPermissionChecker.from_permissions(identity.tools)

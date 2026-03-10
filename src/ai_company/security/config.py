@@ -28,7 +28,7 @@ class SecurityPolicyRule(BaseModel):
     name: NotBlankStr
     description: str = ""
     action_types: tuple[str, ...] = ()
-    verdict: str = SecurityVerdictType.DENY
+    verdict: SecurityVerdictType = SecurityVerdictType.DENY
     risk_level: ApprovalRiskLevel = ApprovalRiskLevel.MEDIUM
     enabled: bool = True
 
@@ -41,7 +41,7 @@ class RuleEngineConfig(BaseModel):
         data_leak_detection_enabled: Detect sensitive file paths / PII.
         destructive_op_detection_enabled: Detect destructive operations.
         path_traversal_detection_enabled: Detect path traversal attacks.
-        max_argument_length: Max total serialized arg length to scan.
+        max_argument_length: Reserved for future use — not yet enforced.
     """
 
     model_config = ConfigDict(frozen=True)

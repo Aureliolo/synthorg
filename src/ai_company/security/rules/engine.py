@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from ai_company.observability import get_logger
 from ai_company.observability.events.security import (
     SECURITY_EVALUATE_COMPLETE,
-    SECURITY_EVALUATE_START,
+    SECURITY_RULE_ERROR,
     SECURITY_RULE_MATCHED,
     SECURITY_VERDICT_ALLOW,
 )
@@ -21,6 +21,9 @@ from ai_company.security.rules.risk_classifier import RiskClassifier  # noqa: TC
 
 logger = get_logger(__name__)
 
+# Rules whose ALLOW verdict should not short-circuit remaining rules.
+_SOFT_ALLOW_RULES: frozenset[str] = frozenset({"policy_validator"})
+
 
 class RuleEngine:
     """Evaluates security rules in a defined order.
@@ -29,12 +32,19 @@ class RuleEngine:
     wins.  If no rule triggers, the engine returns ALLOW with a risk
     level from the ``RiskClassifier``.
 
-    Evaluation order:
+    The evaluation order is determined by the ``rules`` tuple passed
+    at construction.  Recommended order:
         1. Policy validator (fast path: hard deny / auto approve)
         2. Credential detector
         3. Path traversal detector
         4. Destructive operation detector
         5. Data leak detector
+
+    An ALLOW from the policy validator (auto-approve) does NOT
+    short-circuit remaining detection rules.  Only DENY/ESCALATE
+    from the policy validator is a hard exit.  This ensures that
+    auto-approved action types are still scanned for credentials,
+    path traversal, etc.
 
     All rules are synchronous — the engine itself is synchronous.
     """
@@ -60,6 +70,9 @@ class RuleEngine:
     def evaluate(self, context: SecurityContext) -> SecurityVerdict:
         """Run all rules in order, returning the final verdict.
 
+        Individual rule failures are caught and logged.  A failing
+        rule results in DENY (fail-closed) for that rule.
+
         Args:
             context: The tool invocation security context.
 
@@ -67,29 +80,53 @@ class RuleEngine:
             A ``SecurityVerdict`` — DENY/ESCALATE from the first
             matching rule, or ALLOW with risk from the classifier.
         """
-        logger.debug(
-            SECURITY_EVALUATE_START,
-            tool_name=context.tool_name,
-            action_type=context.action_type,
-        )
         start = time.monotonic()
+        soft_allow: SecurityVerdict | None = None
 
         for rule in self._rules:
-            verdict = rule.evaluate(context)
-            if verdict is not None:
-                duration_ms = (time.monotonic() - start) * 1000
-                logger.debug(
-                    SECURITY_RULE_MATCHED,
-                    rule_name=rule.name,
-                    verdict=verdict.verdict,
-                    tool_name=context.tool_name,
-                )
-                return verdict.model_copy(
+            verdict = self._safe_evaluate(rule, context)
+            if verdict is None:
+                continue
+
+            duration_ms = (time.monotonic() - start) * 1000
+
+            # Soft-allow rules (e.g. policy_validator auto-approve)
+            # record their verdict but do NOT short-circuit.
+            if (
+                verdict.verdict == SecurityVerdictType.ALLOW
+                and rule.name in _SOFT_ALLOW_RULES
+            ):
+                soft_allow = verdict.model_copy(
                     update={"evaluation_duration_ms": duration_ms},
                 )
+                continue
 
-        # No rule triggered — ALLOW with risk from classifier.
+            # DENY / ESCALATE / hard ALLOW → return immediately.
+            logger.debug(
+                SECURITY_RULE_MATCHED,
+                rule_name=rule.name,
+                verdict=verdict.verdict.value,
+                tool_name=context.tool_name,
+            )
+            return verdict.model_copy(
+                update={"evaluation_duration_ms": duration_ms},
+            )
+
+        # No rule returned DENY/ESCALATE.
         duration_ms = (time.monotonic() - start) * 1000
+
+        # If a soft-allow was recorded, use it.
+        if soft_allow is not None:
+            logger.debug(
+                SECURITY_EVALUATE_COMPLETE,
+                tool_name=context.tool_name,
+                duration_ms=duration_ms,
+            )
+            return soft_allow.model_copy(
+                update={"evaluation_duration_ms": duration_ms},
+            )
+
+        # Fallback: ALLOW with risk from classifier.
         risk = self._risk_classifier.classify(context.action_type)
         logger.debug(
             SECURITY_VERDICT_ALLOW,
@@ -108,3 +145,28 @@ class RuleEngine:
             evaluated_at=datetime.now(UTC),
             evaluation_duration_ms=duration_ms,
         )
+
+    def _safe_evaluate(
+        self,
+        rule: SecurityRule,
+        context: SecurityContext,
+    ) -> SecurityVerdict | None:
+        """Evaluate a single rule, catching exceptions (fail-closed)."""
+        try:
+            return rule.evaluate(context)
+        except Exception:
+            logger.exception(
+                SECURITY_RULE_ERROR,
+                rule_name=rule.name,
+                tool_name=context.tool_name,
+            )
+            return SecurityVerdict(
+                verdict=SecurityVerdictType.DENY,
+                reason=f"Security rule {rule.name!r} failed (fail-closed)",
+                risk_level=self._risk_classifier.classify(
+                    context.action_type,
+                ),
+                matched_rules=(rule.name,),
+                evaluated_at=datetime.now(UTC),
+                evaluation_duration_ms=0.0,
+            )

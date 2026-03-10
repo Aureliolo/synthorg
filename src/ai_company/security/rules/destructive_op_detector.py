@@ -5,30 +5,37 @@ from datetime import UTC, datetime
 from typing import Final
 
 from ai_company.core.enums import ApprovalRiskLevel
+from ai_company.observability import get_logger
+from ai_company.observability.events.security import SECURITY_DESTRUCTIVE_OP_DETECTED
 from ai_company.security.models import (
     SecurityContext,
     SecurityVerdict,
     SecurityVerdictType,
 )
+from ai_company.security.rules._utils import walk_string_values
+
+logger = get_logger(__name__)
 
 _RULE_NAME: Final[str] = "destructive_op_detector"
 
 # Patterns that indicate destructive operations.
-_DESTRUCTIVE_PATTERNS: Final[tuple[tuple[str, re.Pattern[str], str], ...]] = (
+_DESTRUCTIVE_PATTERNS: Final[
+    tuple[tuple[str, re.Pattern[str], SecurityVerdictType], ...]
+] = (
     (
         "rm -rf",
         re.compile(r"\brm\s+-[a-zA-Z]*r[a-zA-Z]*f|rm\s+-[a-zA-Z]*f[a-zA-Z]*r"),
-        "deny",
+        SecurityVerdictType.DENY,
     ),
     (
         "DROP TABLE",
         re.compile(r"\bDROP\s+TABLE\b", re.IGNORECASE),
-        "escalate",
+        SecurityVerdictType.ESCALATE,
     ),
     (
         "DROP DATABASE",
         re.compile(r"\bDROP\s+DATABASE\b", re.IGNORECASE),
-        "deny",
+        SecurityVerdictType.DENY,
     ),
     (
         "DELETE without WHERE",
@@ -36,61 +43,40 @@ _DESTRUCTIVE_PATTERNS: Final[tuple[tuple[str, re.Pattern[str], str], ...]] = (
             r"\bDELETE\s+FROM\s+\w+\s*;",
             re.IGNORECASE,
         ),
-        "escalate",
+        SecurityVerdictType.ESCALATE,
     ),
     (
         "TRUNCATE TABLE",
         re.compile(r"\bTRUNCATE\s+TABLE\b", re.IGNORECASE),
-        "escalate",
+        SecurityVerdictType.ESCALATE,
     ),
     (
         "git push --force",
         re.compile(r"\bgit\s+push\s+.*--force\b"),
-        "escalate",
+        SecurityVerdictType.ESCALATE,
     ),
     (
         "git reset --hard",
         re.compile(r"\bgit\s+reset\s+--hard\b"),
-        "escalate",
+        SecurityVerdictType.ESCALATE,
     ),
     (
         "format/mkfs",
         re.compile(r"\b(?:mkfs|format)\b", re.IGNORECASE),
-        "deny",
+        SecurityVerdictType.DENY,
     ),
 )
 
 
-def _scan_value(value: str) -> tuple[str, str] | None:
+def _scan_value(value: str) -> tuple[str, SecurityVerdictType] | None:
     """Scan a single string for destructive patterns.
 
-    Returns (pattern_name, verdict_str) or None.
+    Returns (pattern_name, verdict) or None.
     """
-    for pattern_name, pattern, verdict_str in _DESTRUCTIVE_PATTERNS:
+    for pattern_name, pattern, verdict in _DESTRUCTIVE_PATTERNS:
         if pattern.search(value):
-            return pattern_name, verdict_str
+            return pattern_name, verdict
     return None
-
-
-def _scan_arguments(
-    arguments: dict[str, object],
-) -> list[tuple[str, str]]:
-    """Recursively scan all string values for destructive patterns."""
-    findings: list[tuple[str, str]] = []
-    for value in arguments.values():
-        if isinstance(value, str):
-            if match := _scan_value(value):
-                findings.append(match)
-        elif isinstance(value, dict):
-            findings.extend(_scan_arguments(value))
-        elif isinstance(value, list):
-            for item in value:
-                if isinstance(item, str):
-                    if match := _scan_value(item):
-                        findings.append(match)
-                elif isinstance(item, dict):
-                    findings.extend(_scan_arguments(item))
-    return findings
 
 
 class DestructiveOpDetector:
@@ -114,18 +100,30 @@ class DestructiveOpDetector:
 
         Returns the most severe verdict found (DENY > ESCALATE).
         """
-        findings = _scan_arguments(context.arguments)
+        findings = [
+            match
+            for value in walk_string_values(context.arguments)
+            if (match := _scan_value(value))
+        ]
+
         if not findings:
             return None
 
-        # Pick the most severe verdict: deny > escalate.
         names = sorted({f[0] for f in findings})
-        has_deny = any(f[1] == "deny" for f in findings)
+        has_deny = any(f[1] == SecurityVerdictType.DENY for f in findings)
         verdict = SecurityVerdictType.DENY if has_deny else SecurityVerdictType.ESCALATE
+        risk = ApprovalRiskLevel.CRITICAL if has_deny else ApprovalRiskLevel.HIGH
+
+        logger.warning(
+            SECURITY_DESTRUCTIVE_OP_DETECTED,
+            tool_name=context.tool_name,
+            findings=names,
+            verdict=verdict.value,
+        )
         return SecurityVerdict(
             verdict=verdict,
             reason=f"Destructive operation detected: {', '.join(names)}",
-            risk_level=ApprovalRiskLevel.HIGH,
+            risk_level=risk,
             matched_rules=(_RULE_NAME,),
             evaluated_at=datetime.now(UTC),
             evaluation_duration_ms=0.0,

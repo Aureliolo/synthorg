@@ -4,6 +4,10 @@ from types import MappingProxyType
 from typing import Final
 
 from ai_company.core.enums import ActionType, ApprovalRiskLevel
+from ai_company.observability import get_logger
+from ai_company.observability.events.security import SECURITY_RISK_FALLBACK
+
+logger = get_logger(__name__)
 
 _DEFAULT_RISK_MAP: Final[MappingProxyType[str, ApprovalRiskLevel]] = MappingProxyType(
     {
@@ -74,4 +78,12 @@ class RiskClassifier:
         Returns:
             The assessed risk level.
         """
-        return self._risk_map.get(action_type, ApprovalRiskLevel.MEDIUM)
+        result = self._risk_map.get(action_type)
+        if result is None:
+            logger.debug(
+                SECURITY_RISK_FALLBACK,
+                action_type=action_type,
+                fallback="MEDIUM",
+            )
+            return ApprovalRiskLevel.MEDIUM
+        return result

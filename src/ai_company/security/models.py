@@ -4,24 +4,25 @@ Defines the value objects used by the SecOps service: security
 verdicts, evaluation contexts, audit entries, and output scan results.
 """
 
+from enum import StrEnum
 from typing import Any
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.enums import ApprovalRiskLevel, ToolCategory  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
-class SecurityVerdictType:
-    """Security verdict constants (plain strings, not an enum).
+class SecurityVerdictType(StrEnum):
+    """Security verdict constants.
 
-    Using module-level constants avoids adding yet another StrEnum
-    while keeping the same interface for comparisons.
+    Three possible outcomes of a security evaluation: the tool call
+    is allowed, denied, or escalated for human approval.
     """
 
-    ALLOW: str = "allow"
-    DENY: str = "deny"
-    ESCALATE: str = "escalate"
+    ALLOW = "allow"
+    DENY = "deny"
+    ESCALATE = "escalate"
 
 
 class SecurityVerdict(BaseModel):
@@ -39,7 +40,7 @@ class SecurityVerdict(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    verdict: str
+    verdict: SecurityVerdictType
     reason: NotBlankStr
     risk_level: ApprovalRiskLevel
     matched_rules: tuple[NotBlankStr, ...] = ()
@@ -55,7 +56,7 @@ class SecurityContext(BaseModel):
         tool_name: Name of the tool being invoked.
         tool_category: Tool's category for access-level gating.
         action_type: Two-level ``category:action`` type string.
-        arguments: Tool call arguments (deep-copied for inspection).
+        arguments: Tool call arguments for inspection.
         agent_id: ID of the agent requesting the tool.
         task_id: ID of the task being executed.
     """
@@ -82,7 +83,7 @@ class AuditEntry(BaseModel):
         tool_category: Tool category.
         action_type: Action type string.
         arguments_hash: SHA-256 of serialized arguments (never raw).
-        verdict: Allow / deny / escalate.
+        verdict: Allow / deny / escalate / output_scan.
         risk_level: Assessed risk level.
         reason: Explanation of the verdict.
         matched_rules: Rules that triggered.
@@ -122,3 +123,15 @@ class OutputScanResult(BaseModel):
     has_sensitive_data: bool = False
     findings: tuple[NotBlankStr, ...] = ()
     redacted_content: str | None = None
+
+    @model_validator(mode="after")
+    def _check_consistency(self) -> OutputScanResult:
+        """Enforce consistency between fields."""
+        if not self.has_sensitive_data:
+            if self.findings:
+                msg = "findings must be empty when has_sensitive_data is False"
+                raise ValueError(msg)
+            if self.redacted_content is not None:
+                msg = "redacted_content must be None when has_sensitive_data is False"
+                raise ValueError(msg)
+        return self

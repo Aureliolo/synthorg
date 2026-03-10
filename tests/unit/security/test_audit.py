@@ -239,7 +239,7 @@ class TestAuditLogQueryFilters:
         log = AuditLog()
         self._populate(log)
 
-        cutoff = (datetime.now(UTC) - timedelta(hours=1, minutes=30)).isoformat()
+        cutoff = datetime.now(UTC) - timedelta(hours=1, minutes=30)
         results = log.query(since=cutoff)
 
         ids = [e.id for e in results]

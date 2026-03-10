@@ -56,7 +56,7 @@ class TestDestructiveOpDetectorDenyPatterns:
 
         assert verdict is not None, f"Expected detection of: {label}"
         assert verdict.verdict == SecurityVerdictType.DENY
-        assert verdict.risk_level == ApprovalRiskLevel.HIGH
+        assert verdict.risk_level == ApprovalRiskLevel.CRITICAL
         assert "destructive_op_detector" in verdict.matched_rules
 
 

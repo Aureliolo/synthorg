@@ -1,10 +1,11 @@
 """Output scanner — post-tool output scanning for sensitive data.
 
-Reuses credential and PII patterns from rule detectors to scan tool
-output.  Never silently suppresses — always logs findings at WARNING.
+Shares credential patterns from ``credential_detector`` and PII
+patterns from ``data_leak_detector`` to scan tool output.
+Never silently suppresses — always logs findings at WARNING.
 """
 
-import re
+import re  # noqa: TC003
 from typing import Final
 
 from ai_company.observability import get_logger
@@ -13,46 +14,17 @@ from ai_company.observability.events.security import (
     SECURITY_OUTPUT_SCAN_START,
 )
 from ai_company.security.models import OutputScanResult
+from ai_company.security.rules.credential_detector import CREDENTIAL_PATTERNS
+from ai_company.security.rules.data_leak_detector import PII_PATTERNS
 
 logger = get_logger(__name__)
 
-# Patterns reused from credential_detector and data_leak_detector.
+# Combine credential and PII patterns for output scanning.
 _OUTPUT_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
-    (
-        "AWS access key",
-        re.compile(r"(?:^|[^A-Za-z0-9])(AKIA[0-9A-Z]{16})(?:[^A-Za-z0-9]|$)"),
-    ),
-    (
-        "SSH private key",
-        re.compile(r"-----BEGIN\s+(RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"),
-    ),
-    (
-        "Bearer token",
-        re.compile(r"[Bb]earer\s+[A-Za-z0-9_\-/.+=]{20,}"),
-    ),
-    (
-        "GitHub PAT",
-        re.compile(r"(?:^|[^A-Za-z0-9])(ghp_[A-Za-z0-9]{36,})"),
-    ),
-    (
-        "Generic secret value",
-        re.compile(
-            r"(?:SECRET|TOKEN|PASSWORD|CREDENTIAL)\s*[=:]\s*"
-            r"""['\"]?[^\s'\"]{8,}['\"]?""",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "Social Security Number",
-        re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
-    ),
-    (
-        "Credit card number",
-        re.compile(r"\b(?:4\d{3}|5[1-5]\d{2}|3[47]\d{2}|6011)\d{12}\b"),
-    ),
+    *CREDENTIAL_PATTERNS,
+    *PII_PATTERNS,
 )
 
-# Replacement placeholder.
 _REDACTED: Final[str] = "[REDACTED]"
 
 
@@ -61,6 +33,9 @@ class OutputScanner:
 
     def scan(self, output: str) -> OutputScanResult:
         """Scan output text for sensitive patterns.
+
+        Detection runs on the original output.  Redaction builds
+        a separate redacted copy by applying substitutions in order.
 
         Args:
             output: The tool's output string.

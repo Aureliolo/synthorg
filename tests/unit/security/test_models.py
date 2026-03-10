@@ -28,13 +28,13 @@ class TestSecurityVerdictType:
     """Tests for SecurityVerdictType string constants."""
 
     def test_allow_value(self) -> None:
-        assert SecurityVerdictType.ALLOW == "allow"
+        assert SecurityVerdictType.ALLOW.value == "allow"
 
     def test_deny_value(self) -> None:
-        assert SecurityVerdictType.DENY == "deny"
+        assert SecurityVerdictType.DENY.value == "deny"
 
     def test_escalate_value(self) -> None:
-        assert SecurityVerdictType.ESCALATE == "escalate"
+        assert SecurityVerdictType.ESCALATE.value == "escalate"
 
     def test_constants_are_strings(self) -> None:
         assert isinstance(SecurityVerdictType.ALLOW, str)
@@ -87,7 +87,7 @@ class TestSecurityVerdict:
             evaluation_duration_ms=0.0,
         )
         with pytest.raises(ValidationError):
-            verdict.verdict = "allow"  # type: ignore[misc]
+            verdict.verdict = SecurityVerdictType.ALLOW  # type: ignore[misc]
 
     def test_blank_reason_rejected(self) -> None:
         with pytest.raises(ValidationError):

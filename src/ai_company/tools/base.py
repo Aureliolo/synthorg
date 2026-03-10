@@ -15,6 +15,7 @@ from ai_company.observability import get_logger
 
 if TYPE_CHECKING:
     from ai_company.core.enums import ToolCategory
+from ai_company.core.enums import ActionType
 from ai_company.observability.events.tool import TOOL_BASE_INVALID_NAME
 from ai_company.providers.models import ToolDefinition
 from ai_company.security.action_type_mapping import DEFAULT_CATEGORY_ACTION_MAP
@@ -68,6 +69,7 @@ class BaseTool(ABC):
             or ``None`` if no parameter schema is defined (the invoker
             skips validation).
         category: Tool category for access-level gating.
+        action_type: Security action type for SecOps classification.
     """
 
     def __init__(
@@ -103,7 +105,12 @@ class BaseTool(ABC):
         self._action_type = (
             action_type
             if action_type is not None
-            else str(DEFAULT_CATEGORY_ACTION_MAP.get(category, "code:read"))
+            else str(
+                DEFAULT_CATEGORY_ACTION_MAP.get(
+                    category,
+                    ActionType.CODE_READ,
+                ),
+            )
         )
         self._parameters_schema: MappingProxyType[str, Any] | None = (
             MappingProxyType(copy.deepcopy(parameters_schema))

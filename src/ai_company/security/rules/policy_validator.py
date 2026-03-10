@@ -4,11 +4,18 @@ from datetime import UTC, datetime
 from typing import Final
 
 from ai_company.core.enums import ApprovalRiskLevel
+from ai_company.observability import get_logger
+from ai_company.observability.events.security import (
+    SECURITY_POLICY_AUTO_APPROVE,
+    SECURITY_POLICY_DENY,
+)
 from ai_company.security.models import (
     SecurityContext,
     SecurityVerdict,
     SecurityVerdictType,
 )
+
+logger = get_logger(__name__)
 
 _RULE_NAME: Final[str] = "policy_validator"
 
@@ -19,9 +26,12 @@ class PolicyValidator:
     This is the first rule evaluated — it provides the fast path for
     action types that are always denied or always approved.
 
-    Args:
-        hard_deny_action_types: Action types that are always denied.
-        auto_approve_action_types: Action types that are always approved.
+    Hard deny takes priority over auto approve.
+
+    Note:
+        An ALLOW from auto-approve does NOT short-circuit the remaining
+        detection rules (credential, path traversal, etc.).  The rule
+        engine continues evaluating detectors even after a policy ALLOW.
     """
 
     def __init__(
@@ -30,6 +40,12 @@ class PolicyValidator:
         hard_deny_action_types: frozenset[str],
         auto_approve_action_types: frozenset[str],
     ) -> None:
+        """Initialize with deny and approve lists.
+
+        Args:
+            hard_deny_action_types: Action types that are always denied.
+            auto_approve_action_types: Action types that are always approved.
+        """
         self._hard_deny = hard_deny_action_types
         self._auto_approve = auto_approve_action_types
 
@@ -48,6 +64,11 @@ class PolicyValidator:
         if the action type is in neither list.
         """
         if context.action_type in self._hard_deny:
+            logger.info(
+                SECURITY_POLICY_DENY,
+                tool_name=context.tool_name,
+                action_type=context.action_type,
+            )
             return SecurityVerdict(
                 verdict=SecurityVerdictType.DENY,
                 reason=(
@@ -59,6 +80,11 @@ class PolicyValidator:
                 evaluation_duration_ms=0.0,
             )
         if context.action_type in self._auto_approve:
+            logger.debug(
+                SECURITY_POLICY_AUTO_APPROVE,
+                tool_name=context.tool_name,
+                action_type=context.action_type,
+            )
             return SecurityVerdict(
                 verdict=SecurityVerdictType.ALLOW,
                 reason=(
