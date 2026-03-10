@@ -59,47 +59,34 @@ class TestCSPMiddleware:
         csp = response.headers.get("content-security-policy")
         assert csp == _DOCS_CSP
 
-    async def test_unrelated_docs_prefix_gets_strict_csp(self) -> None:
-        """Paths like /documents should NOT get the relaxed CSP."""
+    @pytest.mark.parametrize(
+        ("path", "expected_csp"),
+        [
+            ("/documents", _API_CSP),
+            ("/docsearch", _API_CSP),
+            ("/docs/api", _DOCS_CSP),
+            ("/docs/openapi.json", _DOCS_CSP),
+        ],
+        ids=[
+            "documents-strict",
+            "docsearch-strict",
+            "docs-subpath-relaxed",
+            "docs-openapi-relaxed",
+        ],
+    )
+    async def test_csp_path_boundary(self, path: str, expected_csp: str) -> None:
+        """Verify CSP assignment for boundary paths via direct ASGI invocation."""
         middleware = CSPMiddleware(_fake_app)
         captured: list[dict[str, Any]] = []
 
         async def capture_send(message: Any) -> None:
             captured.append(message)
 
-        await middleware(_make_scope("/documents"), None, capture_send)  # type: ignore[arg-type]
+        await middleware(_make_scope(path), None, capture_send)  # type: ignore[arg-type]
 
         start_msg = captured[0]
         headers = dict(start_msg["headers"])
-        assert headers[b"content-security-policy"] == _API_CSP.encode()
-
-    async def test_docsearch_prefix_gets_strict_csp(self) -> None:
-        """Paths like /docsearch should NOT get the relaxed CSP."""
-        middleware = CSPMiddleware(_fake_app)
-        captured: list[dict[str, Any]] = []
-
-        async def capture_send(message: Any) -> None:
-            captured.append(message)
-
-        await middleware(_make_scope("/docsearch"), None, capture_send)  # type: ignore[arg-type]
-
-        start_msg = captured[0]
-        headers = dict(start_msg["headers"])
-        assert headers[b"content-security-policy"] == _API_CSP.encode()
-
-    async def test_docs_subpath_gets_relaxed_csp(self) -> None:
-        """Paths like /docs/api should get the relaxed CSP."""
-        middleware = CSPMiddleware(_fake_app)
-        captured: list[dict[str, Any]] = []
-
-        async def capture_send(message: Any) -> None:
-            captured.append(message)
-
-        await middleware(_make_scope("/docs/api"), None, capture_send)  # type: ignore[arg-type]
-
-        start_msg = captured[0]
-        headers = dict(start_msg["headers"])
-        assert headers[b"content-security-policy"] == _DOCS_CSP.encode()
+        assert headers[b"content-security-policy"] == expected_csp.encode()
 
     async def test_non_http_scope_passes_through(self) -> None:
         """Non-HTTP scopes should not get CSP headers."""

@@ -91,10 +91,15 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64
 
+      # SHA tag always exists (version/semver tags only on v* tags)
+      - name: Compute scan image ref
+        id: scan-ref
+        run: echo "ref=ghcr.io/aureliolo/ai-company-backend:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
       - name: Trivy scan
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
-          image-ref: ghcr.io/aureliolo/ai-company-backend:${{ needs.version.outputs.app_version }}
+          image-ref: ${{ steps.scan-ref.outputs.ref }}
           format: table
           exit-code: "1"
           severity: CRITICAL,HIGH
@@ -102,7 +107,7 @@ jobs:
       - name: Grype scan
         uses: anchore/scan-action@1638637db639e0ade3258b51db49a9a137574c3e # v6
         with:
-          image: ghcr.io/aureliolo/ai-company-backend:${{ needs.version.outputs.app_version }}
+          image: ${{ steps.scan-ref.outputs.ref }}
           fail-build: true
           severity-cutoff: high
 
@@ -185,10 +190,15 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64
 
+      # SHA tag always exists (version/semver tags only on v* tags)
+      - name: Compute scan image ref
+        id: scan-ref
+        run: echo "ref=ghcr.io/aureliolo/ai-company-web:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
       - name: Trivy scan
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
-          image-ref: ghcr.io/aureliolo/ai-company-web:${{ needs.version.outputs.app_version }}
+          image-ref: ${{ steps.scan-ref.outputs.ref }}
           format: table
           exit-code: "1"
           severity: CRITICAL,HIGH
@@ -196,7 +206,7 @@ jobs:
       - name: Grype scan
         uses: anchore/scan-action@1638637db639e0ade3258b51db49a9a137574c3e # v6
         with:
-          image: ghcr.io/aureliolo/ai-company-web:${{ needs.version.outputs.app_version }}
+          image: ${{ steps.scan-ref.outputs.ref }}
           fail-build: true
           severity-cutoff: high
 

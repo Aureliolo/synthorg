@@ -10,8 +10,13 @@
       })
       .then(function (data) {
         var s = data.data && data.data.status;
-        el.className = "status status-connected";
-        text.textContent = "Backend connected (v" + (data.data && data.data.version || "?") + " \u2014 " + (s || "ok") + ")";
+        if (s === "healthy") {
+          el.className = "status status-connected";
+          text.textContent = "Backend connected (v" + (data.data && data.data.version || "?") + ")";
+        } else {
+          el.className = "status status-disconnected";
+          text.textContent = "Backend unhealthy (" + (s || "unknown") + ")";
+        }
       })
       .catch(function () {
         el.className = "status status-disconnected";
