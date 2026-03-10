@@ -387,6 +387,8 @@ class PromotionService:
             msg = f"Cannot apply promotion: request status is {request.status.value}"
             raise PromotionApprovalRequiredError(msg)
 
+        await self._verify_approval(request)
+
         identity = await self._registry.get(request.agent_id)
         if identity is None:
             msg = f"Agent {request.agent_id!r} not found"
@@ -530,6 +532,33 @@ class PromotionService:
         if until is None:
             return False
         return datetime.now(UTC) < until
+
+    async def _verify_approval(
+        self,
+        request: PromotionRequest,
+    ) -> None:
+        """Verify approval status from store (defense-in-depth).
+
+        If the request has an approval_id and an approval store is
+        configured, verify that the stored approval is actually approved.
+        Prevents crafted requests from bypassing human approval gates.
+        """
+        if request.approval_id is None or self._approval_store is None:
+            return
+
+        item = await self._approval_store.get(request.approval_id)
+        if item is None or item.status != ApprovalStatus.APPROVED:
+            msg = (
+                f"Approval {request.approval_id!r} not found or "
+                f"not approved in approval store"
+            )
+            logger.warning(
+                PROMOTION_REJECTED,
+                agent_id=request.agent_id,
+                approval_id=request.approval_id,
+                error=msg,
+            )
+            raise PromotionApprovalRequiredError(msg)
 
     async def _create_approval(
         self,

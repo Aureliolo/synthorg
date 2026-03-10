@@ -129,3 +129,25 @@ class TestPromotionCriteriaConfigFrozen:
         config = PromotionCriteriaConfig()
         with pytest.raises(ValidationError):
             config.min_criteria_met = 5  # type: ignore[misc]
+
+
+@pytest.mark.unit
+class TestPromotionApprovalConfigFrozen:
+    """Tests for PromotionApprovalConfig immutability."""
+
+    def test_frozen(self) -> None:
+        """PromotionApprovalConfig is immutable."""
+        config = PromotionApprovalConfig()
+        with pytest.raises(ValidationError):
+            config.auto_demote_cost_saving = False  # type: ignore[misc]
+
+
+@pytest.mark.unit
+class TestModelMappingConfigFrozen:
+    """Tests for ModelMappingConfig immutability."""
+
+    def test_frozen(self) -> None:
+        """ModelMappingConfig is immutable."""
+        config = ModelMappingConfig()
+        with pytest.raises(ValidationError):
+            config.model_follows_seniority = False  # type: ignore[misc]

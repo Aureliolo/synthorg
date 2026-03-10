@@ -374,3 +374,31 @@ class TrustConfig(BaseModel):
             raise ValueError(msg)
 
         return self
+
+    @model_validator(mode="after")
+    def _validate_category_criteria_coverage(self) -> Self:
+        """Ensure every category_criteria key has a matching initial level.
+
+        Categories with criteria but no initial level would be silently
+        skipped during evaluation.
+        """
+        if self.strategy != TrustStrategyType.PER_CATEGORY:
+            return self
+
+        uncovered = set(self.category_criteria.keys()) - set(
+            self.initial_category_levels.keys()
+        )
+        if uncovered:
+            msg = (
+                f"category_criteria categories {sorted(uncovered)} "
+                f"have no entry in initial_category_levels"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="TrustConfig",
+                field="category_criteria",
+                reason=msg,
+            )
+            raise ValueError(msg)
+
+        return self

@@ -32,6 +32,20 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _RE_VERIFY_QUALITY_MIN: Final[float] = 7.0
+_WINDOW_DAYS_SUFFIX: Final[str] = "d"
+
+
+def _parse_window_days(window_size: str) -> int | None:
+    """Extract day count from a window-size label like '7d'.
+
+    Returns None if the label doesn't match the expected format.
+    """
+    if window_size.endswith(_WINDOW_DAYS_SUFFIX):
+        try:
+            return int(window_size[: -len(_WINDOW_DAYS_SUFFIX)])
+        except ValueError:
+            return None
+    return None
 
 
 class MilestoneTrustStrategy:
@@ -206,6 +220,15 @@ class MilestoneTrustStrategy:
 
         if milestone.clean_history_days > 0:
             for window in snapshot.windows:
+                # Only check windows whose period fits within the
+                # required clean-history duration (e.g. skip the 90d
+                # window when clean_history_days=7).
+                window_days = _parse_window_days(str(window.window_size))
+                if (
+                    window_days is not None
+                    and window_days > milestone.clean_history_days
+                ):
+                    continue
                 if (
                     window.data_point_count > 0
                     and window.success_rate is not None

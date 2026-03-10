@@ -392,7 +392,7 @@ class TestMilestoneTrustStrategy:
         assert result.should_change is False
 
     async def test_clean_history_days_blocks_with_failures(self) -> None:
-        """clean_history_days > 0 blocks promotion if success_rate < 1.0."""
+        """clean_history_days blocks promotion if failures within the window."""
         config = TrustConfig(
             strategy=TrustStrategyType.MILESTONE,
             initial_level=ToolAccessLevel.SANDBOXED,
@@ -400,7 +400,7 @@ class TestMilestoneTrustStrategy:
                 "sandboxed_to_restricted": MilestoneCriteria(
                     tasks_completed=5,
                     quality_score_min=6.0,
-                    clean_history_days=7,
+                    clean_history_days=30,
                 ),
             },
         )
@@ -410,6 +410,7 @@ class TestMilestoneTrustStrategy:
             agent_id=NotBlankStr("agent-001"),
             global_level=ToolAccessLevel.SANDBOXED,
         )
+        # Snapshot uses 30d window (matches clean_history_days=30)
         snapshot = make_performance_snapshot(
             "agent-001",
             quality=9.0,

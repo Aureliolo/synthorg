@@ -195,6 +195,12 @@ class AgentRegistryService:
         )
         return updated
 
+    # Allowlist of fields that may be updated via update_identity.
+    # This prevents mass assignment of security-sensitive fields
+    # (e.g. authority, status, tools.access_level) through the
+    # generic update path.
+    _UPDATABLE_FIELDS: frozenset[str] = frozenset({"level", "model"})
+
     async def update_identity(
         self,
         agent_id: NotBlankStr,
@@ -202,8 +208,8 @@ class AgentRegistryService:
     ) -> AgentIdentity:
         """Update agent identity fields via model_copy(update=...).
 
-        Used by TrustService (tools.access_level) and PromotionService
-        (level, model) to update agent identity in a single mutation point.
+        Only fields in ``_UPDATABLE_FIELDS`` are accepted.  Use
+        ``update_status`` for status changes.
 
         Args:
             agent_id: The agent identifier.
@@ -214,7 +220,21 @@ class AgentRegistryService:
 
         Raises:
             AgentNotFoundError: If the agent is not found.
+            ValueError: If any field is not in the allowlist.
         """
+        disallowed = set(updates.keys()) - self._UPDATABLE_FIELDS
+        if disallowed:
+            msg = (
+                f"Fields not allowed for update_identity: "
+                f"{sorted(disallowed)}; allowed: {sorted(self._UPDATABLE_FIELDS)}"
+            )
+            logger.warning(
+                HR_REGISTRY_IDENTITY_UPDATED,
+                agent_id=str(agent_id),
+                error=msg,
+            )
+            raise ValueError(msg)
+
         key = str(agent_id)
         async with self._lock:
             identity = self._agents.get(key)

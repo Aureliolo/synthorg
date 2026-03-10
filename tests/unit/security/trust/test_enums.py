@@ -14,17 +14,21 @@ pytestmark = pytest.mark.timeout(30)
 class TestTrustStrategyType:
     """Tests for TrustStrategyType enum values."""
 
-    def test_disabled_value(self) -> None:
-        assert TrustStrategyType.DISABLED.value == "disabled"
-
-    def test_weighted_value(self) -> None:
-        assert TrustStrategyType.WEIGHTED.value == "weighted"
-
-    def test_per_category_value(self) -> None:
-        assert TrustStrategyType.PER_CATEGORY.value == "per_category"
-
-    def test_milestone_value(self) -> None:
-        assert TrustStrategyType.MILESTONE.value == "milestone"
+    @pytest.mark.parametrize(
+        ("member", "value"),
+        [
+            (TrustStrategyType.DISABLED, "disabled"),
+            (TrustStrategyType.WEIGHTED, "weighted"),
+            (TrustStrategyType.PER_CATEGORY, "per_category"),
+            (TrustStrategyType.MILESTONE, "milestone"),
+        ],
+    )
+    def test_member_value(
+        self,
+        member: TrustStrategyType,
+        value: str,
+    ) -> None:
+        assert member.value == value
 
     def test_members_are_strings(self) -> None:
         for member in TrustStrategyType:
@@ -41,28 +45,24 @@ class TestTrustStrategyType:
 class TestTrustChangeReason:
     """Tests for TrustChangeReason enum values."""
 
-    def test_score_threshold(self) -> None:
-        assert TrustChangeReason.SCORE_THRESHOLD.value == "score_threshold"
-
-    def test_milestone_achieved(self) -> None:
-        assert TrustChangeReason.MILESTONE_ACHIEVED.value == "milestone_achieved"
-
-    def test_human_approval(self) -> None:
-        assert TrustChangeReason.HUMAN_APPROVAL.value == "human_approval"
-
-    def test_trust_decay(self) -> None:
-        assert TrustChangeReason.TRUST_DECAY.value == "trust_decay"
-
-    def test_re_verification_failed(self) -> None:
-        assert (
-            TrustChangeReason.RE_VERIFICATION_FAILED.value == "re_verification_failed"
-        )
-
-    def test_manual(self) -> None:
-        assert TrustChangeReason.MANUAL.value == "manual"
-
-    def test_error_rate(self) -> None:
-        assert TrustChangeReason.ERROR_RATE.value == "error_rate"
+    @pytest.mark.parametrize(
+        ("member", "value"),
+        [
+            (TrustChangeReason.SCORE_THRESHOLD, "score_threshold"),
+            (TrustChangeReason.MILESTONE_ACHIEVED, "milestone_achieved"),
+            (TrustChangeReason.HUMAN_APPROVAL, "human_approval"),
+            (TrustChangeReason.TRUST_DECAY, "trust_decay"),
+            (TrustChangeReason.RE_VERIFICATION_FAILED, "re_verification_failed"),
+            (TrustChangeReason.MANUAL, "manual"),
+            (TrustChangeReason.ERROR_RATE, "error_rate"),
+        ],
+    )
+    def test_member_value(
+        self,
+        member: TrustChangeReason,
+        value: str,
+    ) -> None:
+        assert member.value == value
 
     def test_members_are_strings(self) -> None:
         for member in TrustChangeReason:

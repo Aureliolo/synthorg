@@ -185,16 +185,15 @@ class TestAgentRegistryService:
                 level=SeniorityLevel.SENIOR,
             )
 
-    async def test_update_identity_multiple_fields(
+    async def test_update_identity_disallowed_field_raises(
         self,
         registry: AgentRegistryService,
     ) -> None:
+        """Fields not in the allowlist are rejected."""
         identity = make_agent_identity(name="alice")
         await registry.register(identity)
-        updated = await registry.update_identity(
-            str(identity.id),
-            level=SeniorityLevel.LEAD,
-            status=AgentStatus.ON_LEAVE,
-        )
-        assert updated.level == SeniorityLevel.LEAD
-        assert updated.status == AgentStatus.ON_LEAVE
+        with pytest.raises(ValueError, match="not allowed"):
+            await registry.update_identity(
+                str(identity.id),
+                status=AgentStatus.ON_LEAVE,
+            )

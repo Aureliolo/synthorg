@@ -39,7 +39,7 @@ _DEMOTION_THRESHOLDS: MappingProxyType[str, float] = MappingProxyType(
     {
         "quality_score": 4.0,
         "success_rate": 0.5,
-        "tasks_completed": 0.0,
+        "tasks_completed": 3.0,
     }
 )
 
@@ -178,20 +178,23 @@ class ThresholdEvaluator:
             )
         )
 
-        # Tasks completed criterion — use peak value across windows
-        total_tasks = 0.0
+        # Tasks completed criterion — best single-window count
+        max_tasks_completed = 0.0
         for window in snapshot.windows:
-            total_tasks = max(total_tasks, float(window.tasks_completed))
+            max_tasks_completed = max(
+                max_tasks_completed,
+                float(window.tasks_completed),
+            )
         tasks_threshold = thresholds.get("tasks_completed", 10.0)
         if direction == PromotionDirection.PROMOTION:
-            tasks_met = total_tasks >= tasks_threshold
+            tasks_met = max_tasks_completed >= tasks_threshold
         else:
-            tasks_met = total_tasks < tasks_threshold
+            tasks_met = max_tasks_completed < tasks_threshold
         results.append(
             CriterionResult(
                 name="tasks_completed",
                 met=tasks_met,
-                current_value=total_tasks,
+                current_value=max_tasks_completed,
                 threshold=tasks_threshold,
             )
         )

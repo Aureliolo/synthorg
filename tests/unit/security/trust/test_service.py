@@ -325,7 +325,7 @@ class TestApplyTrustChange:
 class TestElevatedGateEnforcement:
     """Tests for defense-in-depth elevated gate in TrustService."""
 
-    async def test_elevated_gate_enforces_human_approval(
+    def test_elevated_gate_enforces_human_approval(
         self,
         trust_config: TrustConfig,
     ) -> None:
@@ -353,7 +353,7 @@ class TestElevatedGateEnforcement:
         assert enforced.requires_human_approval is True
         assert enforced.recommended_level == ToolAccessLevel.ELEVATED
 
-    async def test_elevated_gate_no_override_when_already_elevated(
+    def test_elevated_gate_no_override_when_already_elevated(
         self,
         trust_config: TrustConfig,
     ) -> None:
@@ -378,7 +378,7 @@ class TestElevatedGateEnforcement:
 
         assert enforced.requires_human_approval is False
 
-    async def test_elevated_gate_no_override_when_approval_set(
+    def test_elevated_gate_no_override_when_approval_set(
         self,
         trust_config: TrustConfig,
     ) -> None:

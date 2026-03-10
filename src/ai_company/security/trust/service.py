@@ -179,6 +179,11 @@ class TrustService:
             )
             raise TrustEvaluationError(msg)
 
+        # Defense-in-depth: re-enforce elevated gate on the result
+        # to prevent crafted TrustEvaluationResults from bypassing
+        # the mandatory human approval gate.
+        result = self._enforce_elevated_gate(result)
+
         if result.requires_human_approval:
             await self._create_approval(agent_id, result)
             return None
