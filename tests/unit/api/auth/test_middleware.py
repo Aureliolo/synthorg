@@ -235,6 +235,40 @@ class TestAuthMiddlewareApiKey:
 
 
 @pytest.mark.unit
+class TestAuthMiddlewareApiKeyEdgeCases:
+    async def test_api_key_with_deleted_owner_returns_401(self) -> None:
+        svc = _make_auth_service()
+        user = _make_user(svc)
+        persistence = FakePersistenceBackend()
+        await persistence.connect()
+        # Save the user, create a key, then delete the user
+        await persistence.users.save(user)
+
+        raw_key = AuthService.generate_api_key()
+        key_hash = AuthService.hash_api_key(raw_key)
+        now = datetime.now(UTC)
+        api_key = ApiKey(
+            id="key-orphan",
+            key_hash=key_hash,
+            name="orphaned-key",
+            role=HumanRole.CEO,
+            user_id=user.id,
+            created_at=now,
+        )
+        await persistence.api_keys.save(api_key)
+        await persistence.users.delete(user.id)
+
+        app = _build_app(auth_service=svc, persistence=persistence)
+
+        with TestClient(app) as client:
+            resp = client.get(
+                "/protected",
+                headers={"Authorization": f"Bearer {raw_key}"},
+            )
+            assert resp.status_code == 401
+
+
+@pytest.mark.unit
 class TestAuthMiddlewareExcludePaths:
     async def test_excluded_path_skips_auth(self) -> None:
         svc = _make_auth_service()

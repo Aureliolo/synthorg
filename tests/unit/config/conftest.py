@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Protocol
 import pytest
 from polyfactory.factories.pydantic_factory import ModelFactory
 
+from ai_company.api.config import ApiConfig
 from ai_company.budget.config import BudgetConfig
 from ai_company.budget.coordination_config import CoordinationMetricsConfig
 from ai_company.budget.cost_tiers import CostTiersConfig
@@ -78,6 +79,7 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     custom_roles = ()
     providers: dict[str, ProviderConfig] = {}  # noqa: RUF012
     config = CompanyConfig()
+    api = ApiConfig()
     budget = BudgetConfig()
     communication = CommunicationConfig()
     routing = RoutingConfig()

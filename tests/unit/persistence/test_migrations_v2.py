@@ -58,7 +58,7 @@ class TestSchemaMigrations:
         assert await get_user_version(memory_db) == 1
 
         await run_migrations(memory_db)
-        assert await get_user_version(memory_db) == 4
+        assert await get_user_version(memory_db) == 5
 
         cursor = await memory_db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"

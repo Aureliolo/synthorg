@@ -338,7 +338,7 @@ class UserRepository(Protocol):
         """
         ...
 
-    async def get(self, user_id: str) -> User | None:
+    async def get(self, user_id: NotBlankStr) -> User | None:
         """Retrieve a user by ID.
 
         Args:
@@ -352,7 +352,7 @@ class UserRepository(Protocol):
         """
         ...
 
-    async def get_by_username(self, username: str) -> User | None:
+    async def get_by_username(self, username: NotBlankStr) -> User | None:
         """Retrieve a user by username.
 
         Args:
@@ -388,7 +388,7 @@ class UserRepository(Protocol):
         """
         ...
 
-    async def delete(self, user_id: str) -> bool:
+    async def delete(self, user_id: NotBlankStr) -> bool:
         """Delete a user by ID.
 
         Args:
@@ -418,7 +418,7 @@ class ApiKeyRepository(Protocol):
         """
         ...
 
-    async def get(self, key_id: str) -> ApiKey | None:
+    async def get(self, key_id: NotBlankStr) -> ApiKey | None:
         """Retrieve an API key by ID.
 
         Args:
@@ -432,7 +432,7 @@ class ApiKeyRepository(Protocol):
         """
         ...
 
-    async def get_by_hash(self, key_hash: str) -> ApiKey | None:
+    async def get_by_hash(self, key_hash: NotBlankStr) -> ApiKey | None:
         """Retrieve an API key by its hash.
 
         Args:
@@ -446,7 +446,7 @@ class ApiKeyRepository(Protocol):
         """
         ...
 
-    async def list_by_user(self, user_id: str) -> tuple[ApiKey, ...]:
+    async def list_by_user(self, user_id: NotBlankStr) -> tuple[ApiKey, ...]:
         """List API keys belonging to a user.
 
         Args:
@@ -460,7 +460,7 @@ class ApiKeyRepository(Protocol):
         """
         ...
 
-    async def delete(self, key_id: str) -> bool:
+    async def delete(self, key_id: NotBlankStr) -> bool:
         """Delete an API key by ID.
 
         Args:

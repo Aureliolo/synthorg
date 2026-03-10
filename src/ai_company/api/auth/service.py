@@ -1,7 +1,6 @@
 """Authentication service — password hashing, JWT ops, API key hashing."""
 
 import hashlib
-import hmac
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -11,7 +10,7 @@ import jwt
 
 from ai_company.api.auth.models import User  # noqa: TC001
 from ai_company.observability import get_logger
-from ai_company.observability.events.api import API_AUTH_TOKEN_ISSUED
+from ai_company.observability.events.api import API_AUTH_FAILED
 
 if TYPE_CHECKING:
     from ai_company.api.auth.config import AuthConfig
@@ -28,7 +27,7 @@ _hasher = argon2.PasswordHasher(
 
 
 class AuthService:
-    """Stateless authentication operations.
+    """Immutable authentication operations.
 
     Args:
         config: Authentication configuration (carries JWT secret).
@@ -63,6 +62,18 @@ class AuthService:
         except argon2.exceptions.VerifyMismatchError:
             return False
         except argon2.exceptions.VerificationError:
+            logger.warning(
+                API_AUTH_FAILED,
+                reason="hash_verification_error",
+                exc_info=True,
+            )
+            return False
+        except argon2.exceptions.InvalidHashError:
+            logger.warning(
+                API_AUTH_FAILED,
+                reason="invalid_hash_format",
+                exc_info=True,
+            )
             return False
 
     def create_token(self, user: User) -> tuple[str, int]:
@@ -88,11 +99,6 @@ class AuthService:
             payload,
             self._config.jwt_secret,
             algorithm=self._config.jwt_algorithm,
-        )
-        logger.info(
-            API_AUTH_TOKEN_ISSUED,
-            user_id=user.id,
-            username=user.username,
         )
         return token, expiry_seconds
 
@@ -125,20 +131,6 @@ class AuthService:
             Lowercase hex digest.
         """
         return hashlib.sha256(raw_key.encode()).hexdigest()
-
-    @staticmethod
-    def verify_api_key(raw_key: str, stored_hash: str) -> bool:
-        """Constant-time comparison of API key hash.
-
-        Args:
-            raw_key: Plaintext API key from request.
-            stored_hash: SHA-256 hex digest from storage.
-
-        Returns:
-            ``True`` if the key matches.
-        """
-        computed = hashlib.sha256(raw_key.encode()).hexdigest()
-        return hmac.compare_digest(computed, stored_hash)
 
     @staticmethod
     def generate_api_key() -> str:

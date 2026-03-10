@@ -2,16 +2,17 @@
 
 import uuid
 from datetime import UTC, datetime
+from typing import Self
 
 from litestar import Controller, Response, get, post
 from litestar.connection import ASGIConnection  # noqa: TC002
 from litestar.exceptions import PermissionDeniedException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.api.auth.models import AuthenticatedUser, User
 from ai_company.api.auth.service import AuthService  # noqa: TC001
 from ai_company.api.dto import ApiResponse
-from ai_company.api.errors import ApiValidationError, ConflictError, UnauthorizedError
+from ai_company.api.errors import ConflictError, UnauthorizedError
 from ai_company.api.guards import HumanRole
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.observability import get_logger
@@ -25,6 +26,24 @@ from ai_company.observability.events.api import (
 logger = get_logger(__name__)
 
 _MIN_PASSWORD_LENGTH = 12
+
+
+def _check_password_length(password: str) -> str:
+    """Validate that a password meets the minimum length requirement.
+
+    Args:
+        password: Password to validate.
+
+    Returns:
+        The password unchanged.
+
+    Raises:
+        ValueError: If the password is too short.
+    """
+    if len(password) < _MIN_PASSWORD_LENGTH:
+        msg = f"Password must be at least {_MIN_PASSWORD_LENGTH} characters"
+        raise ValueError(msg)
+    return password
 
 
 # ── Request DTOs ──────────────────────────────────────────────
@@ -41,7 +60,13 @@ class SetupRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     username: NotBlankStr = Field(max_length=128)
-    password: NotBlankStr = Field(min_length=_MIN_PASSWORD_LENGTH, max_length=128)
+    password: NotBlankStr = Field(max_length=128)
+
+    @model_validator(mode="after")
+    def _validate_password_length(self) -> Self:
+        """Reject passwords shorter than the minimum."""
+        _check_password_length(self.password)
+        return self
 
 
 class LoginRequest(BaseModel):
@@ -69,7 +94,13 @@ class ChangePasswordRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     current_password: NotBlankStr = Field(max_length=128)
-    new_password: NotBlankStr = Field(min_length=_MIN_PASSWORD_LENGTH, max_length=128)
+    new_password: NotBlankStr = Field(max_length=128)
+
+    @model_validator(mode="after")
+    def _validate_password_length(self) -> Self:
+        """Reject new passwords shorter than the minimum."""
+        _check_password_length(self.new_password)
+        return self
 
 
 # ── Response DTOs ─────────────────────────────────────────────
@@ -103,9 +134,9 @@ class UserInfoResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    id: str
-    username: str
-    role: str
+    id: NotBlankStr
+    username: NotBlankStr
+    role: HumanRole
     must_change_password: bool
 
 
@@ -129,19 +160,10 @@ def require_password_changed(
         PermissionDeniedException: If password change is required.
     """
     user = connection.scope.get("user")
-    if (
-        user is not None
-        and isinstance(user, AuthenticatedUser)
-        and user.must_change_password
-    ):
+    if not isinstance(user, AuthenticatedUser):
+        return
+    if user.must_change_password:
         raise PermissionDeniedException(detail="Password change required")
-
-
-def _validate_password(password: str) -> None:
-    """Raise if the password is too short."""
-    if len(password) < _MIN_PASSWORD_LENGTH:
-        msg = f"Password must be at least {_MIN_PASSWORD_LENGTH} characters"
-        raise ApiValidationError(msg)
 
 
 # ── Controller ────────────────────────────────────────────────
@@ -168,8 +190,6 @@ class AuthController(Controller):
         Only available when no users exist. Returns 409 after
         the first account is created.
         """
-        _validate_password(data.password)
-
         app_state = request.app.state["app_state"]
         auth_service: AuthService = app_state.auth_service
         persistence = app_state.persistence
@@ -204,7 +224,7 @@ class AuthController(Controller):
                 data=TokenResponse(
                     token=token,
                     expires_in=expires_in,
-                    must_change_password=True,
+                    must_change_password=user.must_change_password,
                 ),
             ),
             status_code=201,
@@ -232,7 +252,6 @@ class AuthController(Controller):
             logger.warning(
                 API_AUTH_FAILED,
                 reason="invalid_credentials",
-                username=data.username,
             )
             msg = "Invalid credentials"
             raise UnauthorizedError(msg)
@@ -266,7 +285,6 @@ class AuthController(Controller):
         request: ASGIConnection,  # type: ignore[type-arg]
     ) -> Response[ApiResponse[UserInfoResponse]]:
         """Validate current password and set new one."""
-        _validate_password(data.new_password)
         auth_user: AuthenticatedUser = request.scope["user"]
         app_state = request.app.state["app_state"]
         auth_service: AuthService = app_state.auth_service
@@ -307,7 +325,7 @@ class AuthController(Controller):
                 data=UserInfoResponse(
                     id=updated_user.id,
                     username=updated_user.username,
-                    role=updated_user.role.value,
+                    role=updated_user.role,
                     must_change_password=False,
                 ),
             ),
@@ -329,7 +347,7 @@ class AuthController(Controller):
                 data=UserInfoResponse(
                     id=auth_user.user_id,
                     username=auth_user.username,
-                    role=auth_user.role.value,
+                    role=auth_user.role,
                     must_change_password=auth_user.must_change_password,
                 ),
             ),

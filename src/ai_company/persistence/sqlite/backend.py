@@ -19,6 +19,8 @@ from ai_company.observability.events.persistence import (
     PERSISTENCE_BACKEND_HEALTH_CHECK,
     PERSISTENCE_BACKEND_NOT_CONNECTED,
     PERSISTENCE_BACKEND_WAL_MODE_FAILED,
+    PERSISTENCE_SETTING_FETCH_FAILED,
+    PERSISTENCE_SETTING_SAVE_FAILED,
 )
 from ai_company.persistence.errors import (
     PersistenceConnectionError,
@@ -370,7 +372,8 @@ class SQLitePersistenceBackend:
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to get setting {key!r}"
             logger.exception(
-                PERSISTENCE_BACKEND_NOT_CONNECTED,
+                PERSISTENCE_SETTING_FETCH_FAILED,
+                key=key,
                 error=str(exc),
             )
             raise QueryError(msg) from exc
@@ -397,7 +400,8 @@ ON CONFLICT(key) DO UPDATE SET value=excluded.value""",
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to set setting {key!r}"
             logger.exception(
-                PERSISTENCE_BACKEND_NOT_CONNECTED,
+                PERSISTENCE_SETTING_SAVE_FAILED,
+                key=key,
                 error=str(exc),
             )
             raise QueryError(msg) from exc

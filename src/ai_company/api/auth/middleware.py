@@ -12,7 +12,6 @@ from litestar.middleware import (
 
 from ai_company.api.auth.models import AuthenticatedUser, AuthMethod
 from ai_company.api.auth.service import AuthService
-from ai_company.api.guards import HumanRole
 from ai_company.observability import get_logger
 from ai_company.observability.events.api import (
     API_AUTH_FAILED,
@@ -23,6 +22,7 @@ if TYPE_CHECKING:
     from litestar.connection import ASGIConnection
 
     from ai_company.api.auth.config import AuthConfig
+    from ai_company.api.state import AppState
 
 logger = get_logger(__name__)
 
@@ -107,23 +107,46 @@ def _extract_bearer_token(header: str) -> str | None:
 async def _try_jwt_auth(
     token: str,
     auth_service: AuthService,
-    app_state: Any,
+    app_state: AppState,
     connection: ASGIConnection[Any, Any, Any, Any],
 ) -> AuthenticatedUser | None:
-    """Attempt JWT authentication."""
+    """Attempt JWT authentication.
+
+    Returns:
+        Authenticated user on success, or ``None`` if the token is
+        invalid, the ``sub`` claim is missing, or the user no longer
+        exists in the database.
+    """
     try:
         claims = auth_service.decode_token(token)
-    except jwt.InvalidTokenError:
+    except jwt.InvalidTokenError as exc:
+        logger.warning(
+            API_AUTH_FAILED,
+            reason="jwt_invalid",
+            error_type=type(exc).__qualname__,
+            error=str(exc),
+            path=str(connection.url.path),
+        )
         return None
 
     user_id = claims.get("sub")
     if not user_id:
+        logger.warning(
+            API_AUTH_FAILED,
+            reason="jwt_missing_sub",
+            path=str(connection.url.path),
+        )
         return None
 
-    # Verify the user still exists
     persistence = app_state.persistence
     db_user = await persistence.users.get(user_id)
     if db_user is None:
+        logger.warning(
+            API_AUTH_FAILED,
+            reason="jwt_user_not_found",
+            user_id=user_id,
+            path=str(connection.url.path),
+        )
         return None
 
     authenticated = AuthenticatedUser(
@@ -145,31 +168,54 @@ async def _try_jwt_auth(
 
 async def _try_api_key_auth(
     token: str,
-    app_state: Any,
+    app_state: AppState,
     connection: ASGIConnection[Any, Any, Any, Any],
 ) -> AuthenticatedUser | None:
-    """Attempt API key authentication."""
+    """Attempt API key authentication.
+
+    Returns:
+        Authenticated user on success, or ``None`` if the key hash
+        is not found, the key is revoked or expired, or the owning
+        user no longer exists.
+    """
     key_hash = AuthService.hash_api_key(token)
     persistence = app_state.persistence
     api_key = await persistence.api_keys.get_by_hash(key_hash)
     if api_key is None:
         return None
 
-    # Check revocation and expiry
     if api_key.revoked:
+        logger.warning(
+            API_AUTH_FAILED,
+            reason="api_key_revoked",
+            key_name=api_key.name,
+            path=str(connection.url.path),
+        )
         return None
     if api_key.expires_at is not None and api_key.expires_at < datetime.now(UTC):
+        logger.warning(
+            API_AUTH_FAILED,
+            reason="api_key_expired",
+            key_name=api_key.name,
+            path=str(connection.url.path),
+        )
         return None
 
-    # Look up the owning user
     db_user = await persistence.users.get(api_key.user_id)
     if db_user is None:
+        logger.error(
+            API_AUTH_FAILED,
+            reason="api_key_orphaned",
+            key_name=api_key.name,
+            user_id=api_key.user_id,
+            path=str(connection.url.path),
+        )
         return None
 
     authenticated = AuthenticatedUser(
         user_id=db_user.id,
         username=db_user.username,
-        role=HumanRole(api_key.role),
+        role=api_key.role,
         auth_method=AuthMethod.API_KEY,
         must_change_password=db_user.must_change_password,
     )
@@ -200,7 +246,9 @@ def create_auth_middleware_class(
     Returns:
         Middleware class ready for use in the Litestar middleware stack.
     """
-    exclude_paths = list(auth_config.exclude_paths) or None
+    exclude_paths = (
+        list(auth_config.exclude_paths) if auth_config.exclude_paths else None
+    )
 
     class ConfiguredAuthMiddleware(ApiAuthMiddleware):
         """Auth middleware with pre-configured exclude paths."""

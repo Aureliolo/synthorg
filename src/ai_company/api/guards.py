@@ -43,6 +43,12 @@ def _get_role(connection: ASGIConnection) -> HumanRole | None:  # type: ignore[t
         try:
             return HumanRole(user.role)
         except ValueError:
+            logger.warning(
+                API_GUARD_DENIED,
+                guard="_get_role",
+                invalid_role=str(user.role),
+                path=str(connection.url.path),
+            )
             return None
     return None
 

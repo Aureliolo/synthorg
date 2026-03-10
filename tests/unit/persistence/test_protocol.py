@@ -203,7 +203,6 @@ class _FakeApiKeyRepository:
         return False
 
 
-
 class _FakeBackend:
     async def connect(self) -> None:
         pass

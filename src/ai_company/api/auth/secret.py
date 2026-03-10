@@ -11,6 +11,7 @@ logger = get_logger(__name__)
 
 _SETTING_KEY = "jwt_secret"
 _SECRET_LENGTH = 48  # 64 URL-safe base64 chars
+_MIN_SECRET_LENGTH = 32
 
 
 async def resolve_jwt_secret(
@@ -31,6 +32,13 @@ async def resolve_jwt_secret(
     # 1. Env var override (highest priority)
     env_secret = os.environ.get("AI_COMPANY_JWT_SECRET", "").strip()
     if env_secret:
+        if len(env_secret) < _MIN_SECRET_LENGTH:
+            msg = (
+                f"AI_COMPANY_JWT_SECRET must be at least "
+                f"{_MIN_SECRET_LENGTH} characters (got {len(env_secret)})"
+            )
+            logger.error(API_APP_STARTUP, error=msg)
+            raise ValueError(msg)
         logger.info(
             API_APP_STARTUP,
             note="JWT secret loaded from AI_COMPANY_JWT_SECRET env var",

@@ -118,8 +118,18 @@ ON CONFLICT(id) DO UPDATE SET
         if row is None:
             logger.debug(PERSISTENCE_USER_FETCHED, user_id=user_id, found=False)
             return None
+        try:
+            user = _row_to_user(row)
+        except (ValueError, ValidationError) as exc:
+            msg = f"Failed to deserialize user {user_id!r}"
+            logger.exception(
+                PERSISTENCE_USER_FETCH_FAILED,
+                user_id=user_id,
+                error=str(exc),
+            )
+            raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_USER_FETCHED, user_id=user_id, found=True)
-        return _row_to_user(row)
+        return user
 
     async def get_by_username(self, username: str) -> User | None:
         """Retrieve a user by username."""
@@ -138,18 +148,32 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
         if row is None:
             return None
-        return _row_to_user(row)
+        try:
+            return _row_to_user(row)
+        except (ValueError, ValidationError) as exc:
+            msg = f"Failed to deserialize user {username!r}"
+            logger.exception(
+                PERSISTENCE_USER_FETCH_FAILED,
+                username=username,
+                error=str(exc),
+            )
+            raise QueryError(msg) from exc
 
     async def list_users(self) -> tuple[User, ...]:
         """List all users."""
         try:
             cursor = await self._db.execute("SELECT * FROM users ORDER BY created_at")
             rows = await cursor.fetchall()
-        except (sqlite3.Error, aiosqlite.Error, ValidationError) as exc:
+        except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list users"
             logger.exception(PERSISTENCE_USER_LIST_FAILED, error=str(exc))
             raise QueryError(msg) from exc
-        users = tuple(_row_to_user(row) for row in rows)
+        try:
+            users = tuple(_row_to_user(row) for row in rows)
+        except (ValueError, ValidationError) as exc:
+            msg = "Failed to deserialize users"
+            logger.exception(PERSISTENCE_USER_LIST_FAILED, error=str(exc))
+            raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_USER_LISTED, count=len(users))
         return users
 
@@ -251,8 +275,18 @@ ON CONFLICT(id) DO UPDATE SET
         if row is None:
             logger.debug(PERSISTENCE_API_KEY_FETCHED, key_id=key_id, found=False)
             return None
+        try:
+            key = _row_to_api_key(row)
+        except (ValueError, ValidationError) as exc:
+            msg = f"Failed to deserialize API key {key_id!r}"
+            logger.exception(
+                PERSISTENCE_API_KEY_FETCH_FAILED,
+                key_id=key_id,
+                error=str(exc),
+            )
+            raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_API_KEY_FETCHED, key_id=key_id, found=True)
-        return _row_to_api_key(row)
+        return key
 
     async def get_by_hash(self, key_hash: str) -> ApiKey | None:
         """Retrieve an API key by its hash."""
@@ -268,7 +302,12 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
         if row is None:
             return None
-        return _row_to_api_key(row)
+        try:
+            return _row_to_api_key(row)
+        except (ValueError, ValidationError) as exc:
+            msg = "Failed to deserialize API key by hash"
+            logger.exception(PERSISTENCE_API_KEY_FETCH_FAILED, error=str(exc))
+            raise QueryError(msg) from exc
 
     async def list_by_user(self, user_id: str) -> tuple[ApiKey, ...]:
         """List API keys belonging to a user."""

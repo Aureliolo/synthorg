@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient  # noqa: TC002
 
+from ai_company.api.guards import HumanRole
 from tests.unit.api.conftest import make_auth_headers
 
 
@@ -76,7 +77,7 @@ class TestSetup:
             "/api/v1/auth/setup",
             json={"username": "admin", "password": "short"},
         )
-        assert response.status_code == 422
+        assert response.status_code == 400
 
 
 @pytest.mark.unit
@@ -191,3 +192,60 @@ class TestMe:
     def test_me_requires_auth(self, bare_client: TestClient[Any]) -> None:
         response = bare_client.get("/api/v1/auth/me")
         assert response.status_code == 401
+
+
+@pytest.mark.unit
+class TestRequirePasswordChanged:
+    def test_blocks_user_with_must_change_password(self) -> None:
+        """Guard raises PermissionDeniedException for flagged users."""
+        from unittest.mock import MagicMock
+
+        from litestar.exceptions import PermissionDeniedException
+
+        from ai_company.api.auth.controller import require_password_changed
+        from ai_company.api.auth.models import AuthenticatedUser, AuthMethod
+
+        user = AuthenticatedUser(
+            user_id="u1",
+            username="admin",
+            role=HumanRole.CEO,
+            auth_method=AuthMethod.JWT,
+            must_change_password=True,
+        )
+        connection = MagicMock()
+        connection.scope = {"user": user}
+
+        with pytest.raises(PermissionDeniedException):
+            require_password_changed(connection, None)
+
+    def test_allows_user_without_flag(self) -> None:
+        """Guard passes when must_change_password is False."""
+        from unittest.mock import MagicMock
+
+        from ai_company.api.auth.controller import require_password_changed
+        from ai_company.api.auth.models import AuthenticatedUser, AuthMethod
+
+        user = AuthenticatedUser(
+            user_id="u1",
+            username="admin",
+            role=HumanRole.CEO,
+            auth_method=AuthMethod.JWT,
+            must_change_password=False,
+        )
+        connection = MagicMock()
+        connection.scope = {"user": user}
+
+        # Should not raise
+        require_password_changed(connection, None)
+
+    def test_allows_when_no_user_in_scope(self) -> None:
+        """Guard passes when no user is in scope (pre-auth)."""
+        from unittest.mock import MagicMock
+
+        from ai_company.api.auth.controller import require_password_changed
+
+        connection = MagicMock()
+        connection.scope = {}
+
+        # Should not raise
+        require_password_changed(connection, None)

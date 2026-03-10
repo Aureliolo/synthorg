@@ -100,12 +100,15 @@ def handle_api_error(
 ) -> Response[ApiResponse[None]]:
     """Map ``ApiError`` subclasses to their declared status code."""
     _log_error(request, exc, status=exc.status_code)
-    # Return the class-level default message, not the
-    # caller-interpolated string (which may contain internal IDs).
-    exc_cls = type(exc)
-    default_msg = getattr(exc_cls, "default_message", "Internal server error")
+    # For 5xx errors return the generic class-level default to avoid
+    # leaking internals.  For 4xx client errors return the actual
+    # exception message — it was set by the controller and is user-safe.
+    if exc.status_code >= _SERVER_ERROR_THRESHOLD:
+        msg = type(exc).default_message
+    else:
+        msg = str(exc) or type(exc).default_message
     return Response(
-        content=ApiResponse[None](error=default_msg),
+        content=ApiResponse[None](error=msg),
         status_code=exc.status_code,
     )
 
@@ -130,8 +133,9 @@ def handle_permission_denied(
 ) -> Response[ApiResponse[None]]:
     """Map ``PermissionDeniedException`` to 403."""
     _log_error(request, exc, status=403)
+    detail = exc.detail or "Forbidden"
     return Response(
-        content=ApiResponse[None](error="Forbidden"),
+        content=ApiResponse[None](error=detail),
         status_code=403,
     )
 
@@ -156,8 +160,9 @@ def handle_not_authorized(
 ) -> Response[ApiResponse[None]]:
     """Map ``NotAuthorizedException`` to 401."""
     _log_error(request, exc, status=401)
+    detail = exc.detail or "Authentication required"
     return Response(
-        content=ApiResponse[None](error="Authentication required"),
+        content=ApiResponse[None](error=detail),
         status_code=401,
     )
 

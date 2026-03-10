@@ -135,19 +135,17 @@ async def _cleanup_on_failure(
         try:
             await message_bus.stop()
         except Exception:
-            logger.error(
+            logger.exception(
                 API_APP_STARTUP,
                 error="Cleanup: failed to stop message bus",
-                exc_info=True,
             )
     if started_persistence and persistence is not None:
         try:
             await persistence.disconnect()
         except Exception:
-            logger.error(
+            logger.exception(
                 API_APP_STARTUP,
                 error="Cleanup: failed to disconnect persistence",
-                exc_info=True,
             )
 
 
@@ -169,38 +167,36 @@ async def _safe_startup(
             try:
                 await persistence.connect()
             except Exception:
-                logger.error(
+                logger.exception(
                     API_APP_STARTUP,
                     error="Failed to connect persistence",
-                    exc_info=True,
                 )
                 raise
             started_persistence = True
 
             # Resolve JWT secret after persistence is up
-            if app_state._auth_service is None:  # noqa: SLF001
-                try:
-                    secret = await resolve_jwt_secret(persistence)
-                    auth_config = app_state.config.api.auth.with_secret(
-                        secret,
-                    )
-                    app_state._auth_service = AuthService(auth_config)  # noqa: SLF001
-                except Exception:
-                    logger.error(
-                        API_APP_STARTUP,
-                        error="Failed to resolve JWT secret",
-                        exc_info=True,
-                    )
-                    raise
+            try:
+                secret = await resolve_jwt_secret(persistence)
+                auth_config = app_state.config.api.auth.with_secret(
+                    secret,
+                )
+                app_state.set_auth_service(AuthService(auth_config))
+            except RuntimeError:
+                pass  # Already configured (e.g. test-injected)
+            except Exception:
+                logger.exception(
+                    API_APP_STARTUP,
+                    error="Failed to resolve JWT secret",
+                )
+                raise
 
         if message_bus is not None:
             try:
                 await message_bus.start()
             except Exception:
-                logger.error(
+                logger.exception(
                     API_APP_STARTUP,
                     error="Failed to start message bus",
-                    exc_info=True,
                 )
                 raise
             started_bus = True
@@ -208,10 +204,9 @@ async def _safe_startup(
             try:
                 await bridge.start()
             except Exception:
-                logger.error(
+                logger.exception(
                     API_APP_STARTUP,
                     error="Failed to start message bus bridge",
-                    exc_info=True,
                 )
                 raise
     except Exception:
@@ -234,28 +229,25 @@ async def _safe_shutdown(
         try:
             await bridge.stop()
         except Exception:
-            logger.error(
+            logger.exception(
                 API_APP_SHUTDOWN,
                 error="Failed to stop message bus bridge",
-                exc_info=True,
             )
     if message_bus is not None:
         try:
             await message_bus.stop()
         except Exception:
-            logger.error(
+            logger.exception(
                 API_APP_SHUTDOWN,
                 error="Failed to stop message bus",
-                exc_info=True,
             )
     if persistence is not None:
         try:
             await persistence.disconnect()
         except Exception:
-            logger.error(
+            logger.exception(
                 API_APP_SHUTDOWN,
                 error="Failed to disconnect persistence",
-                exc_info=True,
             )
 
 

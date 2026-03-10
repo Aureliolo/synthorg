@@ -62,50 +62,54 @@ class AppState:
         self._auth_service = auth_service
         self.startup_time = startup_time
 
+    def _require_service[T](self, service: T | None, name: str) -> T:
+        """Return *service* or raise 503 if not configured.
+
+        Args:
+            service: Service instance (``None`` when not configured).
+            name: Service name for logging and error message.
+
+        Raises:
+            ServiceUnavailableError: If *service* is ``None``.
+        """
+        if service is None:
+            logger.warning(API_SERVICE_UNAVAILABLE, service=name)
+            msg = f"{name.replace('_', ' ').title()} not configured"
+            raise ServiceUnavailableError(msg)
+        return service
+
     @property
     def persistence(self) -> PersistenceBackend:
         """Return persistence backend or raise 503."""
-        if self._persistence is None:
-            logger.warning(
-                API_SERVICE_UNAVAILABLE,
-                service="persistence",
-            )
-            msg = "Persistence backend not configured"
-            raise ServiceUnavailableError(msg)
-        return self._persistence
+        return self._require_service(self._persistence, "persistence")
 
     @property
     def message_bus(self) -> MessageBus:
         """Return message bus or raise 503."""
-        if self._message_bus is None:
-            logger.warning(
-                API_SERVICE_UNAVAILABLE,
-                service="message_bus",
-            )
-            msg = "Message bus not configured"
-            raise ServiceUnavailableError(msg)
-        return self._message_bus
+        return self._require_service(self._message_bus, "message_bus")
 
     @property
     def cost_tracker(self) -> CostTracker:
         """Return cost tracker or raise 503."""
-        if self._cost_tracker is None:
-            logger.warning(
-                API_SERVICE_UNAVAILABLE,
-                service="cost_tracker",
-            )
-            msg = "Cost tracker not configured"
-            raise ServiceUnavailableError(msg)
-        return self._cost_tracker
+        return self._require_service(self._cost_tracker, "cost_tracker")
 
     @property
     def auth_service(self) -> AuthService:
         """Return auth service or raise 503."""
-        if self._auth_service is None:
-            logger.warning(
-                API_SERVICE_UNAVAILABLE,
-                service="auth_service",
-            )
-            msg = "Auth service not configured"
-            raise ServiceUnavailableError(msg)
-        return self._auth_service
+        return self._require_service(self._auth_service, "auth_service")
+
+    def set_auth_service(self, service: AuthService) -> None:
+        """Set the auth service (deferred initialisation).
+
+        Called once during startup after the JWT secret is resolved.
+
+        Args:
+            service: Fully configured auth service.
+
+        Raises:
+            RuntimeError: If the auth service was already configured.
+        """
+        if self._auth_service is not None:
+            msg = "Auth service already configured"
+            raise RuntimeError(msg)
+        self._auth_service = service

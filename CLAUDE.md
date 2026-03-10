@@ -65,7 +65,7 @@ curl http://localhost:3000/api/v1/health   # backend (via web proxy)
 
 ```text
 src/ai_company/
-  api/            # Litestar REST + WebSocket API (controllers, guards, channels)
+  api/            # Litestar REST + WebSocket API (controllers, guards, channels, JWT + API key auth)
   budget/         # Cost tracking, budget enforcement (pre-flight/in-flight checks, auto-downgrade), billing periods, cost tiers, quota/subscription tracking, CFO cost optimization (anomaly detection, efficiency analysis, downgrade recommendations, approval decisions), spending reports, budget errors (BudgetExhaustedError, DailyLimitExceededError, QuotaExhaustedError)
   cli/            # CLI interface (future — thin API wrapper if needed)
   communication/  # Message bus, dispatcher, messenger, channels, delegation, loop prevention, conflict resolution, meeting protocol

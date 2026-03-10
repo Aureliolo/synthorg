@@ -56,3 +56,37 @@ class TestAppStateAccessors:
         tracker = CostTracker()
         state = _make_state(cost_tracker=tracker)
         assert state.cost_tracker is tracker
+
+    def test_auth_service_raises_when_none(self) -> None:
+        state = _make_state(auth_service=None)
+        with pytest.raises(ServiceUnavailableError):
+            _ = state.auth_service
+
+    def test_auth_service_returns_when_set(self) -> None:
+        from ai_company.api.auth.config import AuthConfig
+        from ai_company.api.auth.service import AuthService
+
+        secret = "test-secret-that-is-at-least-32-characters-long"
+        svc = AuthService(AuthConfig(jwt_secret=secret))
+        state = _make_state(auth_service=svc)
+        assert state.auth_service is svc
+
+    def test_set_auth_service_succeeds_once(self) -> None:
+        from ai_company.api.auth.config import AuthConfig
+        from ai_company.api.auth.service import AuthService
+
+        secret = "test-secret-that-is-at-least-32-characters-long"
+        svc = AuthService(AuthConfig(jwt_secret=secret))
+        state = _make_state()
+        state.set_auth_service(svc)
+        assert state.auth_service is svc
+
+    def test_set_auth_service_twice_raises(self) -> None:
+        from ai_company.api.auth.config import AuthConfig
+        from ai_company.api.auth.service import AuthService
+
+        secret = "test-secret-that-is-at-least-32-characters-long"
+        svc = AuthService(AuthConfig(jwt_secret=secret))
+        state = _make_state(auth_service=svc)
+        with pytest.raises(RuntimeError, match="already configured"):
+            state.set_auth_service(svc)

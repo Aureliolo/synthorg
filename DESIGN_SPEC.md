@@ -2562,6 +2562,7 @@ The REST/WebSocket API is the **primary interface** for all consumers. The Web U
 ```text
 /api/v1/
   ├── /health           # Health check, readiness
+  ├── /auth             # Authentication: setup, login, password change, me
   ├── /company          # CRUD company config
   ├── /agents           # List, hire, fire, modify agents
   ├── /departments      # Department management
@@ -2758,6 +2759,7 @@ Circular inheritance is detected via chain tracking and raises `TemplateInherita
 | **Docker API** | aiodocker | Async-native Docker API client for `DockerSandbox` backend |
 | **Tool Integration** | MCP SDK (`mcp`) | Industry standard for LLM-to-tool integration |
 | **Agent Comms** | A2A Protocol compatible | Future-proof inter-agent communication |
+| **Authentication** | PyJWT + argon2-cffi | JWT (HMAC HS256/384/512) for session tokens, Argon2id for password hashing, SHA-256 for API key storage |
 | **Config Format** | YAML + Pydantic validation | Human-readable config with strict validation |
 | **CLI** | TBD (future, if needed) | Thin wrapper around the REST API for terminal use. May not be needed — interactive Scalar docs at `/docs/api` and `curl`/`httpie` may suffice |
 
@@ -2980,7 +2982,7 @@ ai-company/
 │       ├── persistence/             # Operational data persistence (§7.6)
 │       │   ├── __init__.py         # Package exports
 │       │   ├── protocol.py         # PersistenceBackend protocol (M5)
-│       │   ├── repositories.py     # Repository protocols: TaskRepository, CostRecordRepository, MessageRepository, ParkedContextRepository, AuditRepository
+│       │   ├── repositories.py     # Repository protocols: TaskRepository, CostRecordRepository, MessageRepository, ParkedContextRepository, AuditRepository, UserRepository, ApiKeyRepository
 │       │   ├── config.py           # PersistenceConfig model (M5)
 │       │   ├── errors.py           # Persistence error hierarchy (M5)
 │       │   ├── factory.py          # create_backend() factory (M5)
@@ -2991,7 +2993,8 @@ ai-company/
 │       │       ├── hr_repositories.py # SQLite HR repositories (LifecycleEvent, TaskMetricRecord, CollaborationMetricRecord)
 │       │       ├── parked_context_repo.py # SQLiteParkedContextRepository (park/resume serialized agent state)
 │       │       ├── audit_repository.py # SQLiteAuditRepository (append-only audit entry persistence)
-│       │       └── migrations.py  # Schema migrations (user_version pragma)
+│       │       ├── user_repo.py   # SQLiteUserRepository + SQLiteApiKeyRepository
+│       │       └── migrations.py  # Schema migrations (user_version pragma, v1–v5)
 │       ├── observability/           # Structured logging & correlation
 │       │   ├── __init__.py         # get_logger() entry point
 │       │   ├── _logger.py          # Logger configuration
@@ -3183,18 +3186,25 @@ ai-company/
 │       ├── api/                     # REST + WebSocket API (M6)
 │       │   ├── app.py              # Litestar application factory, lifecycle hooks
 │       │   ├── approval_store.py   # In-memory approval queue storage
+│       │   ├── auth/               # JWT + API key authentication subsystem
+│       │   │   ├── config.py      # AuthConfig (frozen Pydantic, HMAC algorithm, exclude paths)
+│       │   │   ├── controller.py  # AuthController (setup, login, change-password, me)
+│       │   │   ├── middleware.py  # ApiAuthMiddleware (JWT-first, API key fallback)
+│       │   │   ├── models.py     # User, ApiKey, AuthenticatedUser, AuthMethod
+│       │   │   ├── secret.py     # JWT secret resolution (env var → persistence → auto-generate)
+│       │   │   └── service.py    # AuthService (Argon2id password hashing, JWT ops, API key hashing)
 │       │   ├── bus_bridge.py       # Message-bus → WebSocket bridge
 │       │   ├── channels.py         # WebSocket channel definitions
 │       │   ├── config.py           # API configuration models (ServerConfig, CorsConfig)
-│       │   ├── controllers/        # 14 class-based controllers + 1 WebSocket handler (15 route modules)
+│       │   ├── controllers/        # 15 class-based controllers + 1 WebSocket handler (16 route modules)
 │       │   ├── dto.py              # Request/response DTOs and envelopes
-│       │   ├── errors.py           # API error hierarchy (ApiError, NotFoundError, etc.)
+│       │   ├── errors.py           # API error hierarchy (ApiError, NotFoundError, UnauthorizedError, etc.)
 │       │   ├── exception_handlers.py # Litestar exception handler registration
-│       │   ├── guards.py           # Route guards — read/write access (stub auth, M7 real auth)
-│       │   ├── middleware.py       # Request logging middleware
+│       │   ├── guards.py           # Route guards — role-based read/write access control (HumanRole enum)
+│       │   ├── middleware.py       # Request logging, CSP middleware
 │       │   ├── pagination.py       # Cursor-free offset/limit pagination
 │       │   ├── server.py           # Uvicorn server runner
-│       │   ├── state.py            # Typed AppState container with service access
+│       │   ├── state.py            # Typed AppState container with service access (deferred auth init)
 │       │   └── ws_models.py        # WebSocket event models (WsEvent, WsEventType)
 │       ├── cli/                     # CLI interface (future, if needed)
 │       │   ├── __init__.py

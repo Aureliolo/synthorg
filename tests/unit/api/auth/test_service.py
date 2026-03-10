@@ -126,14 +126,10 @@ class TestApiKeyHashing:
         h2 = AuthService.hash_api_key("my-key")
         assert h1 == h2
 
-    def test_verify_correct_key(self) -> None:
-        key = AuthService.generate_api_key()
-        h = AuthService.hash_api_key(key)
-        assert AuthService.verify_api_key(key, h)
-
-    def test_verify_wrong_key(self) -> None:
-        h = AuthService.hash_api_key("real-key")
-        assert not AuthService.verify_api_key("wrong-key", h)
+    def test_different_keys_different_hashes(self) -> None:
+        h1 = AuthService.hash_api_key("key-one")
+        h2 = AuthService.hash_api_key("key-two")
+        assert h1 != h2
 
     def test_generate_key_unique(self) -> None:
         k1 = AuthService.generate_api_key()
