@@ -507,27 +507,25 @@ class TestPolicyValidationIntegration:
         assert "org_policies" in result.sections
 
     @pytest.mark.unit
-    def test_empty_org_policy_raises(
+    @pytest.mark.parametrize(
+        "policies",
+        [
+            ("valid policy must exist", ""),
+            ("   ",),
+        ],
+        ids=["empty_string", "whitespace_only"],
+    )
+    def test_invalid_org_policy_raises(
         self,
         sample_agent_with_personality: AgentIdentity,
+        *,
+        policies: tuple[str, ...],
     ) -> None:
-        """Empty string policy is rejected with PromptBuildError."""
+        """Empty or whitespace-only policy is rejected with PromptBuildError."""
         with pytest.raises(PromptBuildError, match="org_policies"):
             build_system_prompt(
                 agent=sample_agent_with_personality,
-                org_policies=("valid policy must exist", ""),
-            )
-
-    @pytest.mark.unit
-    def test_whitespace_only_org_policy_raises(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-    ) -> None:
-        """Whitespace-only policy is rejected with PromptBuildError."""
-        with pytest.raises(PromptBuildError, match="org_policies"):
-            build_system_prompt(
-                agent=sample_agent_with_personality,
-                org_policies=("   ",),
+                org_policies=policies,
             )
 
 

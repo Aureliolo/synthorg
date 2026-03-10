@@ -65,18 +65,15 @@ class TaskCompletionMetrics(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_prompt_tokens(self) -> TaskCompletionMetrics:
-        """Ensure prompt_tokens does not exceed tokens_per_task.
+    def _cap_prompt_tokens(self) -> TaskCompletionMetrics:
+        """Cap prompt_tokens to tokens_per_task.
 
-        Skipped when ``tokens_per_task`` is 0 (zero-turn runs where the
-        system prompt was built but no provider calls were made).
+        The heuristic estimator (char/4) can legitimately overshoot
+        actual provider-reported tokens, so we clamp rather than reject.
+        Skipped when ``tokens_per_task`` is 0 (zero-turn runs).
         """
         if self.tokens_per_task > 0 and self.prompt_tokens > self.tokens_per_task:
-            msg = (
-                f"prompt_tokens ({self.prompt_tokens}) cannot exceed "
-                f"tokens_per_task ({self.tokens_per_task})"
-            )
-            raise ValueError(msg)
+            object.__setattr__(self, "prompt_tokens", self.tokens_per_task)
         return self
 
     @computed_field  # type: ignore[prop-decorator]

@@ -19,6 +19,7 @@ from ai_company.memory.models import MemoryQuery
 from ai_company.memory.ranking import rank_memories
 from ai_company.observability import get_logger
 from ai_company.observability.events.memory import (
+    MEMORY_FILTER_INIT,
     MEMORY_RETRIEVAL_COMPLETE,
     MEMORY_RETRIEVAL_DEGRADED,
     MEMORY_RETRIEVAL_SKIPPED,
@@ -130,7 +131,7 @@ class ContextInjectionStrategy:
             memory_filter = TagBasedMemoryFilter()
         elif memory_filter is not None and config.non_inferable_only:
             logger.debug(
-                MEMORY_RETRIEVAL_START,
+                MEMORY_FILTER_INIT,
                 note="explicit memory_filter overrides non_inferable_only config",
                 filter_strategy=getattr(memory_filter, "strategy_name", "unknown"),
             )

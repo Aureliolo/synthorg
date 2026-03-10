@@ -143,10 +143,11 @@ _SECTION_ORG_POLICIES = "org_policies"
 _SECTION_AUTONOMY = "autonomy"
 _SECTION_TASK = "task"
 _SECTION_COMPANY = "company"
+_SECTION_TOOLS = "tools"
 
 # Sections trimmed when over token budget, least critical first.
 # Tools section was removed from the default template per D22
-# (non-inferable principle).
+# (non-inferable principle), but custom templates may still render tools.
 _TRIMMABLE_SECTIONS = (
     _SECTION_COMPANY,
     _SECTION_TASK,
@@ -207,7 +208,6 @@ def build_system_prompt(  # noqa: PLR0913
             logger.warning(
                 PROMPT_POLICY_VALIDATION_FAILED,
                 agent_id=str(agent.id),
-                error="Policy quality validation failed (advisory, continuing)",
                 exc_info=True,
             )
 
@@ -450,18 +450,24 @@ def _build_template_context(  # noqa: PLR0913
 def _compute_sections(
     *,
     task: Task | None,
+    available_tools: tuple[ToolDefinition, ...] = (),
     company: Company | None,
     org_policies: tuple[str, ...] = (),
+    custom_template: bool = False,
 ) -> tuple[str, ...]:
     """Determine which sections are present in the rendered prompt.
 
     The default template omits the tools section per D22 (non-inferable
-    principle), so ``available_tools`` is not considered here.
+    principle).  Custom templates may still render tools, so the tools
+    section is tracked when ``available_tools`` is non-empty and a custom
+    template is in use.
 
     Args:
         task: Optional task context.
+        available_tools: Tool definitions (tracked for custom templates).
         company: Optional company context.
         org_policies: Company-wide policy texts.
+        custom_template: Whether a custom template is being used.
 
     Returns:
         Tuple of section names that are included.
@@ -478,6 +484,8 @@ def _compute_sections(
     sections.append(_SECTION_AUTONOMY)
     if task is not None:
         sections.append(_SECTION_TASK)
+    if available_tools and custom_template:
+        sections.append(_SECTION_TOOLS)
     if company is not None:
         sections.append(_SECTION_COMPANY)
     return tuple(sections)
@@ -655,9 +663,11 @@ def _render_with_trimming(  # noqa: PLR0913
         content,
         estimated,
         task,
+        available_tools,
         company,
         org_policies,
         agent,
+        custom_template=template_str is not DEFAULT_TEMPLATE,
     )
 
 
@@ -665,15 +675,20 @@ def _build_prompt_result(  # noqa: PLR0913
     content: str,
     estimated: int,
     task: Task | None,
+    available_tools: tuple[ToolDefinition, ...],
     company: Company | None,
     org_policies: tuple[str, ...],
     agent: AgentIdentity,
+    *,
+    custom_template: bool = False,
 ) -> SystemPrompt:
     """Assemble the final ``SystemPrompt`` from rendered content."""
     sections = _compute_sections(
         task=task,
+        available_tools=available_tools,
         company=company,
         org_policies=org_policies,
+        custom_template=custom_template,
     )
     return SystemPrompt(
         content=content,

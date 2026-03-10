@@ -60,10 +60,10 @@ class TagBasedMemoryFilter:
     """
 
     def __init__(self, required_tag: str = NON_INFERABLE_TAG) -> None:
-        if not required_tag.strip():
+        if not isinstance(required_tag, str) or not required_tag.strip():
             msg = "required_tag must be a non-empty string"
             raise ValueError(msg)
-        self._required_tag = required_tag
+        self._required_tag = required_tag.strip()
         logger.debug(
             MEMORY_FILTER_INIT,
             strategy=self.strategy_name,

@@ -863,12 +863,18 @@ class TestAgentEnginePromptTokenRatioWarning:
     """High prompt-to-total token ratio emits PROMPT_TOKEN_RATIO_HIGH."""
 
     @pytest.mark.parametrize(
-        ("input_tokens", "output_tokens", "cost_usd", "expect_warning"),
+        (
+            "prompt_tokens",
+            "input_tokens",
+            "output_tokens",
+            "cost_usd",
+            "expect_warning",
+        ),
         [
-            # Moderate tokens: prompt estimate dominates total (300+100=400).
-            (300, 100, 0.01, True),
-            # Large tokens: prompt estimate negligible relative to total (10k).
-            (5000, 5000, 1.0, False),
+            # prompt_tokens=200 out of 400 total → ratio 0.50 > 0.3 threshold.
+            (200, 300, 100, 0.01, True),
+            # prompt_tokens=50 out of 10000 total → ratio 0.005 < 0.3 threshold.
+            (50, 5000, 5000, 1.0, False),
         ],
         ids=["high_ratio", "low_ratio"],
     )
@@ -878,12 +884,19 @@ class TestAgentEnginePromptTokenRatioWarning:
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
         *,
+        prompt_tokens: int,
         input_tokens: int,
         output_tokens: int,
         cost_usd: float,
         expect_warning: bool,
     ) -> None:
-        """Warning emitted iff prompt tokens dominate total tokens."""
+        """Warning emitted iff prompt tokens dominate total tokens.
+
+        Injects a fixed ``estimated_tokens`` via mock to isolate the
+        threshold-check logic from the live prompt estimator.
+        """
+        from ai_company.engine.prompt import SystemPrompt
+
         response = _make_completion_response(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
@@ -892,7 +905,21 @@ class TestAgentEnginePromptTokenRatioWarning:
         provider = mock_provider_factory([response])
         engine = AgentEngine(provider=provider)
 
-        with structlog.testing.capture_logs() as logs:
+        fixed_prompt = SystemPrompt(
+            content="test",
+            template_version="test",
+            estimated_tokens=prompt_tokens,
+            sections=("identity",),
+            metadata={"agent_id": str(sample_agent_with_personality.id)},
+        )
+
+        with (
+            patch(
+                "ai_company.engine.agent_engine.build_system_prompt",
+                return_value=fixed_prompt,
+            ),
+            structlog.testing.capture_logs() as logs,
+        ):
             await engine.run(
                 identity=sample_agent_with_personality,
                 task=sample_task_with_criteria,

@@ -115,7 +115,7 @@ def validate_policy_quality(
     for issue in issues:
         logger.warning(
             PROMPT_POLICY_QUALITY_ISSUE,
-            policy=issue.policy[:80],
+            policy_length=len(issue.policy),
             issue=issue.issue,
             severity=issue.severity,
         )
@@ -124,7 +124,7 @@ def validate_policy_quality(
 
 
 _ACTION_VERB_RE: re.Pattern[str] = re.compile(
-    r"\b(?:" + "|".join(_ACTION_VERBS) + r")\b",
+    r"\b(?:" + "|".join(sorted(_ACTION_VERBS)) + r")\b",
 )
 
 
