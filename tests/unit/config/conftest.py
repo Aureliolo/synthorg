@@ -14,14 +14,13 @@ from ai_company.config.schema import (
     AgentConfig,
     ProviderConfig,
     ProviderModelConfig,
-    RateLimiterConfig,
-    RetryConfig,
     RootConfig,
     RoutingConfig,
     RoutingRuleConfig,
     TaskAssignmentConfig,
 )
 from ai_company.core.company import CompanyConfig
+from ai_company.core.resilience_config import RateLimiterConfig, RetryConfig
 from ai_company.hr.promotion.config import PromotionConfig
 from ai_company.memory.config import CompanyMemoryConfig
 from ai_company.memory.org.config import OrgMemoryConfig

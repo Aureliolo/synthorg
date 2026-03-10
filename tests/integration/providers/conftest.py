@@ -13,11 +13,13 @@ from litellm.types.llms.openai import ChatCompletionToolCallFunctionChunk
 from litellm.types.utils import (  # type: ignore[attr-defined]
     ChatCompletionToolCallChunk,
     Delta,
+    ModelResponseStream,
     StreamingChoices,
     Usage,
 )
 
-from ai_company.config.schema import ProviderConfig, ProviderModelConfig, RetryConfig
+from ai_company.config.schema import ProviderConfig, ProviderModelConfig
+from ai_company.core.resilience_config import RetryConfig
 from ai_company.providers.enums import MessageRole
 from ai_company.providers.models import (
     ChatMessage,
@@ -165,9 +167,9 @@ def build_content_chunk(
     *,
     model: str = "test-model-001",
     chunk_id: str = "chunk_0",
-) -> ModelResponse:
+) -> ModelResponseStream:
     """Build a streaming chunk with text content."""
-    return ModelResponse(
+    return ModelResponseStream(
         id=chunk_id,
         choices=[
             StreamingChoices(
@@ -177,7 +179,6 @@ def build_content_chunk(
             ),
         ],
         model=model,
-        stream=True,
     )
 
 
@@ -187,9 +188,9 @@ def build_usage_chunk(
     completion_tokens: int = 50,
     model: str = "test-model-001",
     chunk_id: str = "chunk_usage",
-) -> ModelResponse:
+) -> ModelResponseStream:
     """Build a streaming chunk with usage data and no choices."""
-    return ModelResponse(
+    return ModelResponseStream(
         id=chunk_id,
         choices=[],
         usage=Usage(
@@ -198,7 +199,6 @@ def build_usage_chunk(
             total_tokens=prompt_tokens + completion_tokens,
         ),
         model=model,
-        stream=True,
     )
 
 
@@ -210,7 +210,7 @@ def build_tool_call_delta_chunk(  # noqa: PLR0913
     arguments: str | None = None,
     model: str = "test-model-001",
     chunk_id: str = "chunk_tc",
-) -> ModelResponse:
+) -> ModelResponseStream:
     """Build a streaming chunk with a tool call delta."""
     tc_delta = ChatCompletionToolCallChunk(
         index=index,
@@ -220,7 +220,7 @@ def build_tool_call_delta_chunk(  # noqa: PLR0913
         ),
         type="function",
     )
-    return ModelResponse(
+    return ModelResponseStream(
         id=chunk_id,
         choices=[
             StreamingChoices(
@@ -230,7 +230,6 @@ def build_tool_call_delta_chunk(  # noqa: PLR0913
             ),
         ],
         model=model,
-        stream=True,
     )
 
 
@@ -239,9 +238,9 @@ def build_finish_chunk(
     *,
     model: str = "test-model-001",
     chunk_id: str = "chunk_fin",
-) -> ModelResponse:
+) -> ModelResponseStream:
     """Build a streaming chunk with only a finish reason."""
-    return ModelResponse(
+    return ModelResponseStream(
         id=chunk_id,
         choices=[
             StreamingChoices(
@@ -251,14 +250,13 @@ def build_finish_chunk(
             ),
         ],
         model=model,
-        stream=True,
     )
 
 
 async def async_iter_chunks(
-    chunks: list[ModelResponse],
-) -> AsyncIterator[ModelResponse]:
-    """Wrap a list of ``ModelResponse`` chunks into an ``AsyncIterator``."""
+    chunks: list[ModelResponseStream],
+) -> AsyncIterator[ModelResponseStream]:
+    """Wrap a list of ``ModelResponseStream`` chunks into an ``AsyncIterator``."""
     for chunk in chunks:
         yield chunk
 

@@ -18,6 +18,7 @@ from ai_company.core.company import (
     WorkflowHandoff,
 )
 from ai_company.core.enums import AutonomyLevel, CompanyType, SeniorityLevel
+from ai_company.core.resilience_config import RateLimiterConfig, RetryConfig
 from ai_company.core.role import CustomRole  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.hr.promotion.config import PromotionConfig
@@ -33,94 +34,6 @@ from ai_company.tools.mcp.config import MCPConfig
 from ai_company.tools.sandbox.sandboxing_config import SandboxingConfig
 
 logger = get_logger(__name__)
-
-
-# ── Resilience config models ─────────────────────────────────────
-# Defined here (not in providers.resilience) to avoid circular imports
-# between config ↔ providers. Re-exported by providers.resilience.config.
-
-
-class RetryConfig(BaseModel):
-    """Configuration for automatic retry of transient provider errors.
-
-    Attributes:
-        max_retries: Maximum number of retry attempts (0 disables retries).
-        base_delay: Initial delay in seconds before the first retry.
-        max_delay: Upper bound on computed delay in seconds.
-        exponential_base: Multiplier for exponential backoff.
-        jitter: Whether to add random jitter to delay.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    max_retries: int = Field(
-        default=3,
-        ge=0,
-        le=10,
-        description="Maximum number of retry attempts (0 disables retries)",
-    )
-    base_delay: float = Field(
-        default=1.0,
-        gt=0.0,
-        description="Initial delay in seconds before the first retry",
-    )
-    max_delay: float = Field(
-        default=60.0,
-        gt=0.0,
-        description="Upper bound on computed delay in seconds",
-    )
-    exponential_base: float = Field(
-        default=2.0,
-        gt=1.0,
-        description="Multiplier for exponential backoff",
-    )
-    jitter: bool = Field(
-        default=True,
-        description="Whether to add random jitter to delay",
-    )
-
-    @model_validator(mode="after")
-    def _validate_delay_ordering(self) -> Self:
-        """Ensure base_delay does not exceed max_delay."""
-        if self.base_delay > self.max_delay:
-            msg = (
-                f"base_delay ({self.base_delay}) must be"
-                f" <= max_delay ({self.max_delay})"
-            )
-            logger.warning(
-                CONFIG_VALIDATION_FAILED,
-                model="RetryConfig",
-                field="base_delay/max_delay",
-                base_delay=self.base_delay,
-                max_delay=self.max_delay,
-                reason=msg,
-            )
-            raise ValueError(msg)
-        return self
-
-
-class RateLimiterConfig(BaseModel):
-    """Configuration for client-side rate limiting.
-
-    Attributes:
-        max_requests_per_minute: Maximum requests per minute
-            (0 means unlimited).
-        max_concurrent: Maximum concurrent in-flight requests
-            (0 means unlimited).
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    max_requests_per_minute: int = Field(
-        default=0,
-        ge=0,
-        description="Maximum requests per minute (0 = unlimited)",
-    )
-    max_concurrent: int = Field(
-        default=0,
-        ge=0,
-        description="Maximum concurrent in-flight requests (0 = unlimited)",
-    )
 
 
 class ProviderModelConfig(BaseModel):

@@ -38,6 +38,11 @@ from ai_company.budget.cost_tiers import (
 )
 from ai_company.budget.enforcer import BudgetEnforcer
 from ai_company.budget.enums import BudgetAlertLevel
+from ai_company.budget.errors import (
+    BudgetExhaustedError,
+    DailyLimitExceededError,
+    QuotaExhaustedError,
+)
 from ai_company.budget.hierarchy import (
     BudgetHierarchy,
     DepartmentBudget,
@@ -100,6 +105,7 @@ __all__ = [
     "BudgetAlertLevel",
     "BudgetConfig",
     "BudgetEnforcer",
+    "BudgetExhaustedError",
     "BudgetHierarchy",
     "CategoryBreakdown",
     "CoordinationEfficiency",
@@ -113,6 +119,7 @@ __all__ = [
     "CostTierDefinition",
     "CostTiersConfig",
     "CostTracker",
+    "DailyLimitExceededError",
     "DegradationAction",
     "DegradationConfig",
     "DepartmentBudget",
@@ -135,6 +142,7 @@ __all__ = [
     "ProviderCostModel",
     "ProviderDistribution",
     "QuotaCheckResult",
+    "QuotaExhaustedError",
     "QuotaLimit",
     "QuotaSnapshot",
     "QuotaTracker",

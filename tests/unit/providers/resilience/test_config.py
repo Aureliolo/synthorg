@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.providers.resilience.config import RateLimiterConfig, RetryConfig
+from ai_company.core.resilience_config import RateLimiterConfig, RetryConfig
 
 pytestmark = pytest.mark.timeout(30)
 

@@ -18,7 +18,7 @@ from .errors import RetryExhaustedError
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
 
-    from .config import RetryConfig
+    from ai_company.core.resilience_config import RetryConfig
 
 logger = get_logger(__name__)
 

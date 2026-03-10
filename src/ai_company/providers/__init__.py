@@ -38,8 +38,6 @@ from .protocol import CompletionProvider
 from .registry import ProviderRegistry
 from .resilience import (
     RateLimiter,
-    RateLimiterConfig,
-    RetryConfig,
     RetryExhaustedError,
     RetryHandler,
 )
@@ -107,9 +105,7 @@ __all__ = [
     "ProviderTimeoutError",
     "RateLimitError",
     "RateLimiter",
-    "RateLimiterConfig",
     "ResolvedModel",
-    "RetryConfig",
     "RetryExhaustedError",
     "RetryHandler",
     "RoleBasedStrategy",

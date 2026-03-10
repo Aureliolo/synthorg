@@ -2,8 +2,8 @@
 
 import pytest
 
+from ai_company.budget.errors import BudgetExhaustedError
 from ai_company.engine.errors import (
-    BudgetExhaustedError,
     EngineError,
     ExecutionStateError,
     LoopExecutionError,
@@ -34,10 +34,10 @@ class TestEngineErrorHierarchy:
         err = PromptBuildError("test")
         assert isinstance(err, EngineError)
 
-    def test_budget_exhausted_error_is_engine_error(self) -> None:
-        assert issubclass(BudgetExhaustedError, EngineError)
+    def test_budget_exhausted_error_is_not_engine_error(self) -> None:
+        assert not issubclass(BudgetExhaustedError, EngineError)
         err = BudgetExhaustedError("out of budget")
-        assert isinstance(err, EngineError)
+        assert isinstance(err, Exception)
         assert str(err) == "out of budget"
 
     def test_loop_execution_error_is_engine_error(self) -> None:
