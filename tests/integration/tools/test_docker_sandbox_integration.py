@@ -18,8 +18,11 @@ if TYPE_CHECKING:
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(60)]
 
 
-def _docker_available() -> bool:
-    """Check if Docker daemon is reachable."""
+_TEST_IMAGE = "python:3.12-slim"
+
+
+def _docker_and_image_available() -> bool:
+    """Check if Docker daemon is reachable and test image exists."""
     try:
         import aiodocker
 
@@ -28,6 +31,7 @@ def _docker_available() -> bool:
             try:
                 client = aiodocker.Docker()
                 await client.version()
+                await client.images.inspect(_TEST_IMAGE)
             except Exception:
                 return False
             else:
@@ -42,8 +46,8 @@ def _docker_available() -> bool:
 
 
 skip_no_docker = pytest.mark.skipif(
-    not _docker_available(),
-    reason="Docker daemon not available",
+    not _docker_and_image_available(),
+    reason=f"Docker daemon not available or {_TEST_IMAGE} not pulled",
 )
 
 
@@ -54,7 +58,7 @@ class TestDockerSandboxRealExecution:
     async def test_run_python_code(self, tmp_path: Path) -> None:
         """Execute Python code in a real Docker container."""
         config = DockerSandboxConfig(
-            image="python:3.12-slim",
+            image=_TEST_IMAGE,
             timeout_seconds=30,
         )
         sandbox = DockerSandbox(
@@ -74,7 +78,7 @@ class TestDockerSandboxRealExecution:
     async def test_run_with_timeout(self, tmp_path: Path) -> None:
         """Timeout kills the container."""
         config = DockerSandboxConfig(
-            image="python:3.12-slim",
+            image=_TEST_IMAGE,
             timeout_seconds=120,
         )
         sandbox = DockerSandbox(

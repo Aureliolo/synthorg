@@ -37,8 +37,11 @@ class TestSandboxingConfigCustomValues:
             SandboxingConfig(default_backend="kubernetes")  # type: ignore[arg-type]
 
     def test_overrides(self) -> None:
-        overrides = {"code_execution": "docker", "terminal": "subprocess"}
-        config = SandboxingConfig(overrides=overrides)
+        overrides: dict[str, str] = {
+            "code_execution": "docker",
+            "terminal": "subprocess",
+        }
+        config = SandboxingConfig(overrides=overrides)  # type: ignore[arg-type]
         assert config.overrides == overrides
 
     def test_invalid_override_backend_rejected(self) -> None:
@@ -90,6 +93,6 @@ class TestBackendForCategory:
     ) -> None:
         config = SandboxingConfig(
             default_backend=default,  # type: ignore[arg-type]
-            overrides={"code_execution": override_backend},
+            overrides={"code_execution": override_backend},  # type: ignore[dict-item]
         )
         assert config.backend_for_category("code_execution") == expected
