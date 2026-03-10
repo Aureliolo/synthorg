@@ -1,7 +1,7 @@
 # ADR-002: Design Decisions Batch 1 (D1–D23)
 
 > **Status:** DECIDED (2026-03-09)
-> **Generated:** 2026-03-09 by 11 parallel research agents.
+> **Generated:** 2026-03-09 by 11 parallel research agents (one per issue group, plus one cross-cutting coordinator).
 > **Decided:** 2026-03-09 — all 23 decisions finalized by user.
 >
 > Each decision includes options, pros/cons, real-world precedents, and the chosen approach.
@@ -22,7 +22,7 @@
 
 **Context:** The autonomy presets reference action types informally (code_changes, tests, docs, deployment, hiring, etc.) but there's no formal enum, no definition of what each covers, and no registry. These action types are used by autonomy presets, SecOps validation, tiered timeout policies, and progressive trust.
 
-**Sub-question 1: Fixed enum vs open/extensible registry?**
+**Sub-question 1 (D1.1): Fixed enum vs open/extensible registry?**
 
 | Option | Pros | Cons |
 |--------|------|------|
@@ -32,9 +32,9 @@
 
 **Precedents:** AWS IAM uses open namespaced strings (`s3:GetObject`). Kubernetes RBAC uses semi-open verbs. GitHub uses closed scopes. OPA/Rego uses open policy strings. Every production security system validates action strings against a known set.
 
-**Decision:** **(c) Enum core + validated registry.** StrEnum for built-in types (~20), plus an `ActionTypeRegistry` that accepts custom strings only if explicitly registered. Unknown strings rejected at config load time. Critical for security — a typo in `human_approval` list silently means "skip approval."
+**Decision:** **(c) Enum core + validated registry.** StrEnum for built-in types (~25), plus an `ActionTypeRegistry` that accepts custom strings only if explicitly registered. Unknown strings rejected at config load time. Critical for security — a typo in `human_approval` list silently means "skip approval."
 
-**Sub-question 2: Granularity — two-level hierarchy?**
+**Sub-question 2 (D1.2): Granularity — two-level hierarchy?**
 
 | Option | Pros | Cons |
 |--------|------|------|
@@ -43,7 +43,8 @@
 | **(c) Three+ levels** | Maximum granularity | Overkill; no one gates by language or sub-sub-type |
 
 **Proposed taxonomy (~25 leaf types):**
-```
+
+```text
 code:read, code:write, code:create, code:delete, code:refactor
 test:write, test:run
 docs:write
@@ -58,7 +59,7 @@ arch:decide
 
 **Decision:** **(b) Two-level `category:action` hierarchy** with category shortcuts. `auto_approve: ["code"]` expands to all code:* actions. Keeps simple configs simple, power configs powerful.
 
-**Sub-question 3: Who classifies an action into a type?**
+**Sub-question 3 (D1.3): Who classifies an action into a type?**
 
 | Option | Pros | Cons |
 |--------|------|------|
@@ -114,7 +115,8 @@ Start with Layer 1 only (free, sufficient for initial trust gates). Add layers i
 | **(d) Human-provided periodically** | Highest fidelity; cannot be gamed | Doesn't scale; too infrequent for real-time decisions | Human time |
 
 **Decision:** **(a) Automated behavioral telemetry** as primary signal:
-```
+
+```text
 collaboration_score = weighted_average(
     delegation_success_rate,
     delegation_response_latency,
@@ -124,6 +126,7 @@ collaboration_score = weighted_average(
     handoff_completeness,
 )
 ```
+
 Weights configurable per-role. Optional: periodic LLM sampling (1% of interactions) for calibration. Human override via REST API.
 
 ---
@@ -138,7 +141,7 @@ Weights configurable per-role. Optional: periodic LLM sampling (1% of interactio
 |--------|------|------|---------|
 | **(a) Pure rule engine** | Fast, deterministic, zero LLM cost; catches 80-90% of predictable threats (credentials, path traversal, destructive ops) | Can't handle novel situations or semantic reasoning | Sub-ms |
 | **(b) Pure LLM agent** | Flexible, reasons about novel actions and intent | 0.5-8.6s per evaluation; non-deterministic; costs tokens on every action; itself vulnerable to prompt injection | 0.5-8.6s |
-| **(c) Hybrid: rule engine fast path + LLM slow path (CHOSEN)** | Rules catch known patterns deterministically; LLM handles uncertain cases; rules serve as backstop if LLM fails | Two systems to maintain; handoff logic needs tuning | Sub-ms (95%), 0.5-2s (5%) |
+| **(c) Hybrid: rule engine fast path + LLM slow path (CHOSEN)** | Rules catch known patterns deterministically; LLM handles uncertain cases; rules serve as backstop if LLM fails | Two systems to maintain; handoff logic needs tuning | Sub-ms (est. 95%), 0.5-2s (est. 5%) |
 
 **Precedents:** AWS GuardDuty (YARA rules + ML anomaly detection), LlamaFirewall (PromptGuard + AlignmentCheck + CodeShield), Google ADK (in-tool guardrails + callback hooks), NeMo Guardrails (Colang DSL + LLM classification). **Every production security system uses a hybrid approach.**
 
@@ -147,7 +150,7 @@ Weights configurable per-role. Optional: periodic LLM sampling (1% of interactio
 - LLM slow path and human escalation disabled in full mode
 - Hard safety rules (credential exposure, data destruction) never bypass
 
-**Decision:** **(c) Hybrid.** Rule engine for known patterns (sub-ms). LLM fallback only for uncertain cases (~5% of actions). Full autonomy mode: rules + audit only, no LLM path.
+**Decision:** **(c) Hybrid.** Rule engine for known patterns (sub-ms). LLM fallback only for uncertain cases (estimated ~5% of actions). Full autonomy mode: rules + audit only, no LLM path.
 
 ---
 
@@ -164,7 +167,7 @@ Weights configurable per-role. Optional: periodic LLM sampling (1% of interactio
 
 **Performance reality:** Our bottleneck is LLM inference (seconds). A sub-ms rule check per tool call is invisible. Even OPA sidecar evaluations are 1-5ms. Total security overhead: milliseconds against minutes of LLM time.
 
-**Decision:** **(a) Before every tool invocation**, with policy strictness (not interception point) configurable per autonomy level. Slots naturally into existing `ToolInvoker` between permission check and tool execution. Add post-tool-call checking for result scanning (detect sensitive data in outputs).
+**Decision:** **(a) Before every tool invocation**, with policy strictness (not interception point) configurable per autonomy level. Implement behind a pluggable `SecurityInterceptionStrategy` protocol. Slots naturally into existing `ToolInvoker` between permission check and tool execution. Add post-tool-call checking for result scanning (detect sensitive data in outputs).
 
 ---
 
@@ -182,7 +185,7 @@ Weights configurable per-role. Optional: periodic LLM sampling (1% of interactio
 
 **Precedents:** CrewAI has 24 per-agent attributes. AutoGen has per-agent `human_input_mode`. LangGraph has per-node `interrupt_before`/`interrupt_after`. CSA Agentic Trust Framework requires per-agent identity and trust level.
 
-**Decision:** **(b) Per-agent override.** Optional `autonomy_level` on `AgentIdentity` (default: None = use company default). Resolution: `agent.autonomy_level or company.autonomy.level`. Add seniority-based validation (Juniors/Interns cannot be set to `full`).
+**Decision:** **(b) Per-agent override.** Optional `autonomy_level` on `AgentIdentity` and department config (default: None = use next level's default). Resolution: `agent.autonomy_level or department.autonomy_level or company.autonomy.level`. Add seniority-based validation (Juniors/Interns cannot be set to `full`).
 
 ---
 
@@ -209,7 +212,7 @@ Weights configurable per-role. Optional: periodic LLM sampling (1% of interactio
 
 **Unblocks:** #45
 
-**Sub-decision 1: Source**
+**Sub-decision 1 (D8.1): Source**
 
 | Option | Pros | Cons |
 |--------|------|------|
@@ -217,7 +220,7 @@ Weights configurable per-role. Optional: periodic LLM sampling (1% of interactio
 | **(b) LLM-generated only** | Maximum flexibility for novel roles | Risk of invalid configs; non-deterministic |
 | **(c) Both: template primary + LLM customization (CHOSEN)** | Templates for common cases; LLM customization for gaps; approval gate catches bad configs | Slightly more complex API surface |
 
-**Sub-decision 2: Persistence**
+**Sub-decision 2 (D8.2): Persistence**
 
 | Option | Pros | Cons |
 |--------|------|------|
@@ -225,7 +228,7 @@ Weights configurable per-role. Optional: periodic LLM sampling (1% of interactio
 | **(b) Persist to YAML** | Config is source of truth | YAML mutation at runtime is error-prone; race conditions |
 | **(c) Operational store via PersistenceBackend (CHOSEN)** | Survives restart; auditable; enables rehiring; YAML stays as bootstrap seed | Need reconciliation strategy (operational store wins for runtime) |
 
-**Sub-decision 3: Hot-plug**
+**Sub-decision 3 (D8.3): Hot-plug**
 
 | Option | Pros | Cons |
 |--------|------|------|
@@ -234,7 +237,7 @@ Weights configurable per-role. Optional: periodic LLM sampling (1% of interactio
 
 **Precedents:** AutoGen is hot-pluggable by design (`register()` at any time). Letta persists everything to database. No serious framework requires restart for agent changes.
 
-**Decision:** **(c) Both sources**, **(c) operational store**, **(b) hot-pluggable**. Template-based MVP. `HiringRequest` model carries template reference + overrides or custom config. Operational store via existing `PersistenceBackend`. Hot-plug via `AgentEngine.add_agent()`.
+**Decision:** **(c) Both sources**, **(c) operational store**, **(b) hot-pluggable**. Template-based MVP. `HiringRequest` model carries template reference + overrides or custom config. Operational store via existing `PersistenceBackend`. Hot-plug via dedicated company/registry service (not `AgentEngine`, which remains the per-agent task runner).
 
 ---
 
@@ -415,7 +418,7 @@ MCP `CallToolResult` has: `content: list[ContentBlock]` (text/image/audio/resour
 | Option | Pros | Cons |
 |--------|------|------|
 | **(a) Extend ToolResult to support multi-modal** | Native support for images/resources | Cascading changes across entire codebase; LLM providers consume tool results as text anyway |
-| **(b) Adapter in MCPBridgeTool; keep ToolResult as-is (CHOSEN)** | Zero disruption; text concatenation for LLM path; metadata dict for rich content; MCP spec requires TextContent block alongside structured content | Non-text content requires metadata extraction |
+| **(b) Adapter in MCPBridgeTool; keep ToolResult as-is (CHOSEN)** | Zero disruption; text concatenation for LLM path; rich content stored in `ToolExecutionResult.metadata` (not `ToolResult`, which has no metadata field); MCP spec requires TextContent block alongside structured content | Non-text content requires metadata extraction |
 
 **Mapping:**
 - Text blocks → concatenate into `content: str`

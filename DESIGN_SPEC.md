@@ -16,7 +16,7 @@
 8. [HR & Workforce Management](#8-hr--workforce-management)
 9. [Model Provider Layer](#9-model-provider-layer)
 10. [Cost & Budget Management](#10-cost--budget-management)
-11. [Tool & Capability System](#11-tool--capability-system) — 11.3 Progressive Trust
+11. [Tool & Capability System](#11-tool--capability-system) — **11.1.3 MCP Integration**, **11.1.4 Action Type System**, 11.3 Progressive Trust
 12. [Security & Approval System](#12-security--approval-system) — 12.4 Approval Timeout
 13. [Human Interaction Layer](#13-human-interaction-layer)
 14. [Templates & Builder](#14-templates--builder)
@@ -582,7 +582,7 @@ When a loop is detected, the framework:
 3. Escalates to the sender's manager (or human if at top of hierarchy)
 4. Logs the loop for analytics and process improvement
 
-> **Current state (M4 in-progress):** The communication foundation is implemented: `MessageBus` protocol with `InMemoryMessageBus` backend (asyncio queues, pull-model `receive()`), `MessageDispatcher` for concurrent handler routing via `asyncio.TaskGroup`, `AgentMessenger` per-agent facade (auto-fills sender/timestamp/ID, deterministic direct-channel naming `@{sorted_a}:{sorted_b}`), and `DeliveryEnvelope` for delivery tracking. Loop prevention (§5.5) is implemented: `DelegationGuard` orchestrates five mechanisms (ancestry, depth, dedup, rate limit, circuit breaker) with `LoopPreventionConfig`. Hierarchical delegation is implemented via `DelegationService` with `HierarchyResolver` and `AuthorityValidator`. Task model extended with `parent_task_id` and `delegation_chain` fields. Conflict resolution (§5.6) is implemented: `ConflictResolver` protocol with four strategies (Authority, Debate, HumanEscalation, Hybrid), `ConflictResolutionService` orchestrator, `DissentRecord` audit trail, and `HierarchyResolver.get_lowest_common_manager()` for cross-department conflict escalation. Meeting protocol (§5.7) is implemented with all 3 protocols (round-robin, position papers, structured phases) via `MeetingOrchestrator` in `communication/meeting/`.
+> **Current state (M4 complete):** The communication foundation is implemented: `MessageBus` protocol with `InMemoryMessageBus` backend (asyncio queues, pull-model `receive()`), `MessageDispatcher` for concurrent handler routing via `asyncio.TaskGroup`, `AgentMessenger` per-agent facade (auto-fills sender/timestamp/ID, deterministic direct-channel naming `@{sorted_a}:{sorted_b}`), and `DeliveryEnvelope` for delivery tracking. Loop prevention (§5.5) is implemented: `DelegationGuard` orchestrates five mechanisms (ancestry, depth, dedup, rate limit, circuit breaker) with `LoopPreventionConfig`. Hierarchical delegation is implemented via `DelegationService` with `HierarchyResolver` and `AuthorityValidator`. Task model extended with `parent_task_id` and `delegation_chain` fields. Conflict resolution (§5.6) is implemented: `ConflictResolver` protocol with four strategies (Authority, Debate, HumanEscalation, Hybrid), `ConflictResolutionService` orchestrator, `DissentRecord` audit trail, and `HierarchyResolver.get_lowest_common_manager()` for cross-department conflict escalation. Meeting protocol (§5.7) is implemented with all 3 protocols (round-robin, position papers, structured phases) via `MeetingOrchestrator` in `communication/meeting/`.
 
 ### 5.6 Conflict Resolution Protocol
 
@@ -971,7 +971,9 @@ Pipeline steps:
 
 1. **Validate inputs** — agent must be `ACTIVE`, task must be `ASSIGNED` or `IN_PROGRESS`. Raises `ExecutionStateError` on violation.
 2. **Pre-flight budget enforcement** — if `BudgetEnforcer` is provided, check monthly hard stop and daily limit via `check_can_execute()`, then apply auto-downgrade via `resolve_model()`. Raises `BudgetExhaustedError` or `DailyLimitExceededError` on violation.
-3. **Build system prompt** — calls `build_system_prompt()` with agent identity, task, and available tool definitions. Follows the **non-inferable-only principle**: system prompts include only information the agent cannot discover by reading the codebase or environment (role constraints, custom conventions, organizational policies). Generic architecture overviews and file structure descriptions are excluded — [research](https://arxiv.org/abs/2602.11988) shows they reduce success rates while increasing costs 20%+. **Decision ([ADR-002](docs/decisions/ADR-002-design-decisions-batch-1.md) D22):** Do NOT list available tools in the system prompt — the API's `tools` parameter already injects richer tool definitions including JSON schemas. The system prompt listing is strictly inferior (no schemas) and wastes 200-400+ tokens per call. Behavioral guidance ("when to use tool X vs Y") may be added later as non-redundant value.
+3. **Build system prompt** — calls `build_system_prompt()` with agent identity and task. Tool definitions are NOT included — they are supplied via the API's `tools` parameter (see D22 below). Follows the **non-inferable-only principle**: system prompts include only information the agent cannot discover by reading the codebase or environment (role constraints, custom conventions, organizational policies). Generic architecture overviews and file structure descriptions are excluded — [research](https://arxiv.org/abs/2602.11988) shows they reduce success rates while increasing costs 20%+.
+
+> **Decision ([ADR-002](docs/decisions/ADR-002-design-decisions-batch-1.md) D22):** Do NOT list available tools in the system prompt — the API's `tools` parameter already injects richer tool definitions including JSON schemas. The system prompt listing is strictly inferior (no schemas) and wastes 200-400+ tokens per call. Behavioral guidance ("when to use tool X vs Y") may be added later as non-redundant value.
 4. **Create context** — `AgentContext.from_identity()` with the configured `max_turns`.
 5. **Seed conversation** — injects system prompt, optional memory messages, and formatted task instruction as initial messages.
 6. **Transition task** — `ASSIGNED` → `IN_PROGRESS` (pass-through if already `IN_PROGRESS`).
@@ -1556,6 +1558,8 @@ persistence:
 | `CostRecord` | `budget/cost_record.py` | `CostRecordRepository` | by agent, by task, aggregations |
 | `Message` | `communication/message.py` | `MessageRepository` | by channel |
 | Audit entries (planned — M7) | `security/` | `AuditRepository` (planned) | by agent, by action type, time range |
+| `ParkedContext` (planned — M7) | `engine/` | `ParkedContextRepository` (planned) | by execution_id, by agent_id, by task_id |
+| Agent runtime state (planned — M7) | `engine/` | `AgentStateRepository` (planned) | by agent_id, active agents |
 
 #### Migration Strategy
 
@@ -1666,7 +1670,7 @@ The HR system manages the agent workforce dynamically:
 >
 > - **D8.1 — Source:** Templates + LLM customization. Templates for common roles (reuses existing template system §14.1). LLM generates config for novel roles not covered by templates. Approval gate catches invalid/bad configs before instantiation.
 > - **D8.2 — Persistence:** Operational store via `PersistenceBackend` (§7.6). YAML stays as bootstrap seed — operational store wins for runtime state. Enables rehiring, auditable history.
-> - **D8.3 — Hot-plug:** Agents are hot-pluggable at runtime via `AgentEngine.add_agent()`/`remove_agent()`. Thread-safe registry, wired into message bus + tools + budget.
+> - **D8.3 — Hot-plug:** Agents are hot-pluggable at runtime via a dedicated company/registry service (not `AgentEngine`, which remains the per-agent task runner). Thread-safe registry, wired into message bus + tools + budget.
 
 ### 8.2 Firing / Offboarding
 
@@ -2156,7 +2160,7 @@ sandboxing:
 >
 > Action types classify agent actions for use by autonomy presets (§12.2), SecOps validation (§12.3), tiered timeout policies (§12.4), and progressive trust (§11.3). Three sub-decisions:
 >
-> - **D1.1 — Registry:** `StrEnum` for ~20 built-in action types (type safety, autocomplete, typos caught at compile time) + `ActionTypeRegistry` for custom types via explicit registration. Unknown strings rejected at config load time. Critical for security — a typo in `human_approval` list silently means "skip approval."
+> - **D1.1 — Registry:** `StrEnum` for ~25 built-in action types (type safety, autocomplete, typos caught at compile time) + `ActionTypeRegistry` for custom types via explicit registration. Unknown strings rejected at config load time. Critical for security — a typo in `human_approval` list silently means "skip approval."
 > - **D1.2 — Granularity:** Two-level `category:action` hierarchy. Category shortcuts: `auto_approve: ["code"]` expands to all `code:*` actions. Fine-grained: `human_approval: ["code:create"]`.
 >
 > **Proposed taxonomy (~25 leaf types):**
@@ -2375,14 +2379,14 @@ autonomy:
 
     semi:
       description: "Most work is autonomous. Major decisions need approval."
-      auto_approve: ["code_changes", "tests", "docs", "internal_comms"]
-      human_approval: ["deployment", "external_comms", "budget_over_threshold", "hiring"]
+      auto_approve: ["code", "test", "docs", "comms:internal"]
+      human_approval: ["deploy", "comms:external", "budget:exceed", "org:hire"]
       security_agent: true
 
     supervised:
       description: "Human approves major steps. Agents handle details."
-      auto_approve: ["file_edits", "internal_comms"]
-      human_approval: ["architecture", "new_files", "deployment", "git_push"]
+      auto_approve: ["code:write", "comms:internal"]
+      human_approval: ["arch", "code:create", "deploy", "vcs:push"]
       security_agent: true
 
     locked:
@@ -2395,9 +2399,7 @@ autonomy:
 > **Decisions ([ADR-002](docs/decisions/ADR-002-design-decisions-batch-1.md) D6, D7):**
 >
 > - **D6 — Autonomy Scope:** Three-level resolution chain: per-agent → per-department → company default. Optional `autonomy_level` on `AgentIdentity` and department config. Resolution: `agent.autonomy_level or department.autonomy_level or company.autonomy.level`. Seniority validation: Juniors/Interns cannot be set to `full`.
-> - **D7 — Autonomy Changes at Runtime:** Pluggable `AutonomyChangeStrategy` protocol. Initial: human-only promotion via REST API. No agent (including CEO) can escalate privileges. Future strategies: human-only + auto-downgrade (on high error rate → one level down, budget exhausted → supervised, security incident → locked; recovery from auto-downgrade: human-only). Precedent: no real-world security system automatically grants higher privileges.
->
-> **Note:** The `auto_approve` / `human_approval` lists in presets above should use the `category:action` taxonomy (§11.1.4) — e.g. `auto_approve: ["code", "test", "docs", "comms:internal"]` instead of informal strings.
+> - **D7 — Autonomy Changes at Runtime:** Pluggable `AutonomyChangeStrategy` protocol. Initial: **(a+c hybrid)** — human-only promotion via REST API (no agent including CEO can escalate privileges) **plus** automatic downgrade on: high error rate → one level down, budget exhausted → supervised, security incident → locked. Recovery from auto-downgrade: human-only. Precedent: no real-world security system automatically grants higher privileges. Future strategies: fully configurable conditions.
 
 ### 12.3 Security Operations Agent
 
@@ -2459,15 +2461,15 @@ approval_timeout:
     low_risk:
       timeout_minutes: 60
       on_timeout: "approve"          # auto-approve low-risk after 1 hour
-      actions: ["file_edits", "internal_comms", "tests"]
+      actions: ["code:write", "comms:internal", "test"]
     medium_risk:
       timeout_minutes: 240
       on_timeout: "deny"             # auto-deny medium-risk after 4 hours
-      actions: ["new_files", "git_push", "architecture"]
+      actions: ["code:create", "vcs:push", "arch:decide"]
     high_risk:
       timeout_minutes: null          # wait forever
       on_timeout: "wait"
-      actions: ["deployment", "database_admin", "external_comms", "hiring"]
+      actions: ["deploy", "db:admin", "comms:external", "org:hire"]
 ```
 
 - Pragmatic — low-risk stuff doesn't stall, critical stuff stays safe
@@ -3082,7 +3084,8 @@ ai-company/
 │   └── e2e/
 ├── docs/
 │   ├── decisions/
-│   │   └── ADR-001-memory-layer.md
+│   │   ├── ADR-001-memory-layer.md
+│   │   └── ADR-002-design-decisions-batch-1.md
 │   └── getting_started.md
 ├── DESIGN_SPEC.md                   # This document
 ├── README.md
