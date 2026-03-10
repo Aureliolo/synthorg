@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient  # noqa: TC002
 
-from tests.unit.api.conftest import FakePersistenceBackend, make_task
+from tests.unit.api.conftest import FakePersistenceBackend, make_auth_headers, make_task
 
 
 @pytest.mark.unit
@@ -77,7 +77,7 @@ class TestTaskController:
                 "project": "proj-1",
                 "created_by": "alice",
             },
-            headers={"X-Human-Role": "ceo"},
+            headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 201
         body = resp.json()
@@ -93,14 +93,14 @@ class TestTaskController:
         fake_persistence.tasks._tasks[task.id] = task
         resp = test_client.delete(
             "/api/v1/tasks/task-001",
-            headers={"X-Human-Role": "ceo"},
+            headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 200
 
     def test_delete_task_not_found(self, test_client: TestClient[Any]) -> None:
         resp = test_client.delete(
             "/api/v1/tasks/nonexistent",
-            headers={"X-Human-Role": "ceo"},
+            headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 404
 
@@ -117,7 +117,7 @@ class TestUpdateTask:
         resp = test_client.patch(
             "/api/v1/tasks/task-001",
             json={"title": "Updated title"},
-            headers={"X-Human-Role": "ceo"},
+            headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 200
         assert resp.json()["data"]["title"] == "Updated title"
@@ -126,7 +126,7 @@ class TestUpdateTask:
         resp = test_client.patch(
             "/api/v1/tasks/nonexistent",
             json={"title": "Nope"},
-            headers={"X-Human-Role": "ceo"},
+            headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 404
 
@@ -134,7 +134,7 @@ class TestUpdateTask:
         resp = test_client.patch(
             "/api/v1/tasks/task-001",
             json={"title": "Nope"},
-            headers={"X-Human-Role": "observer"},
+            headers=make_auth_headers("observer"),
         )
         assert resp.status_code == 403
 
@@ -154,7 +154,7 @@ class TestTransitionTask:
                 "target_status": "assigned",
                 "assigned_to": "bob",
             },
-            headers={"X-Human-Role": "ceo"},
+            headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 201
         assert resp.json()["data"]["status"] == "assigned"
@@ -169,7 +169,7 @@ class TestTransitionTask:
         resp = test_client.post(
             "/api/v1/tasks/task-001/transition",
             json={"target_status": "completed"},
-            headers={"X-Human-Role": "ceo"},
+            headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 422
 
@@ -177,7 +177,7 @@ class TestTransitionTask:
         resp = test_client.post(
             "/api/v1/tasks/nonexistent/transition",
             json={"target_status": "assigned"},
-            headers={"X-Human-Role": "ceo"},
+            headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 404
 
@@ -185,6 +185,6 @@ class TestTransitionTask:
         resp = test_client.post(
             "/api/v1/tasks/task-001/transition",
             json={"target_status": "assigned"},
-            headers={"X-Human-Role": "observer"},
+            headers=make_auth_headers("observer"),
         )
         assert resp.status_code == 403

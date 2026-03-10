@@ -9,6 +9,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from ai_company.api.auth.config import AuthConfig
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
@@ -34,7 +35,7 @@ class CorsConfig(BaseModel):
         description="HTTP methods permitted in cross-origin requests",
     )
     allow_headers: tuple[str, ...] = Field(
-        default=("Content-Type", "Authorization", "X-Human-Role"),
+        default=("Content-Type", "Authorization"),
         description="Headers permitted in cross-origin requests",
     )
     allow_credentials: bool = Field(
@@ -166,6 +167,10 @@ class ApiConfig(BaseModel):
     server: ServerConfig = Field(
         default_factory=ServerConfig,
         description="Uvicorn server configuration",
+    )
+    auth: AuthConfig = Field(
+        default_factory=AuthConfig,
+        description="Authentication configuration",
     )
     api_prefix: NotBlankStr = Field(
         default="/api/v1",

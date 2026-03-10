@@ -1,16 +1,7 @@
 """Route guards for access control.
 
-.. warning:: **Security Stub (M6)**
-
-   These guards check the ``X-Human-Role`` header, which is
-   **self-asserted by the caller** — there is no signature
-   verification, session token, or JWT.  This is intentional for
-   the M6 milestone scope.  **Real authentication and authorization
-   (pre-shared API key, JWT, or OAuth) will be implemented in M7
-   (issue scope: security & HR).**
-
-   Until M7, the API should only be exposed on trusted networks or
-   behind a reverse proxy that enforces authentication.
+Guards read the authenticated user identity from ``connection.user``
+(populated by the auth middleware) and check role-based permissions.
 """
 
 from enum import StrEnum
@@ -45,11 +36,14 @@ _WRITE_ROLES: frozenset[HumanRole] = frozenset(
 _READ_ROLES: frozenset[HumanRole] = _WRITE_ROLES | frozenset({HumanRole.OBSERVER})
 
 
-def _get_role(connection: ASGIConnection) -> str | None:  # type: ignore[type-arg]
-    """Extract the human role from the request header."""
-    value = connection.headers.get("x-human-role")
-    if value is not None:
-        return value.strip().lower()
+def _get_role(connection: ASGIConnection) -> HumanRole | None:  # type: ignore[type-arg]
+    """Extract the human role from the authenticated user."""
+    user = connection.scope.get("user")
+    if user is not None and hasattr(user, "role"):
+        try:
+            return HumanRole(user.role)
+        except ValueError:
+            return None
     return None
 
 
@@ -59,7 +53,7 @@ def require_write_access(
 ) -> None:
     """Guard that allows only write-capable roles.
 
-    Checks the ``X-Human-Role`` header for ``ceo``, ``manager``,
+    Checks ``connection.user.role`` for ``ceo``, ``manager``,
     ``board_member``, or ``pair_programmer``.
 
     Args:
@@ -86,7 +80,7 @@ def require_read_access(
 ) -> None:
     """Guard that allows all recognised roles.
 
-    Checks the ``X-Human-Role`` header for any valid role
+    Checks ``connection.user.role`` for any valid role
     including ``observer``.
 
     Args:

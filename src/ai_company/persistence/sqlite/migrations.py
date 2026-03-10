@@ -23,7 +23,7 @@ from ai_company.persistence.errors import MigrationError
 logger = get_logger(__name__)
 
 # Current schema version — bump when adding new migrations.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 _V1_STATEMENTS: Sequence[str] = (
     # ── Tasks ─────────────────────────────────────────────
@@ -188,6 +188,41 @@ CREATE TABLE IF NOT EXISTS audit_entries (
     "CREATE INDEX IF NOT EXISTS idx_ae_risk_level ON audit_entries(risk_level)",
 )
 
+_V5_STATEMENTS: Sequence[str] = (
+    # ── Settings (key-value store) ─────────────────────────
+    """\
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+)""",
+    # ── Users ──────────────────────────────────────────────
+    """\
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL,
+    must_change_password INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+)""",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)",
+    # ── API keys ───────────────────────────────────────────
+    """\
+CREATE TABLE IF NOT EXISTS api_keys (
+    id TEXT PRIMARY KEY,
+    key_hash TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL,
+    expires_at TEXT,
+    revoked INTEGER NOT NULL DEFAULT 0
+)""",
+    "CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash)",
+)
+
 _MigrateFn = Callable[[aiosqlite.Connection], Coroutine[Any, Any, None]]
 
 
@@ -244,6 +279,12 @@ async def _apply_v4(db: aiosqlite.Connection) -> None:
         await db.execute(stmt)
 
 
+async def _apply_v5(db: aiosqlite.Connection) -> None:
+    """Apply schema v5: settings, users, api_keys."""
+    for stmt in _V5_STATEMENTS:
+        await db.execute(stmt)
+
+
 # Ordered list of (target_version, migration_function) pairs. Each migration
 # is applied when the current schema version is below its target version.
 _MIGRATIONS: list[tuple[int, _MigrateFn]] = [
@@ -251,6 +292,7 @@ _MIGRATIONS: list[tuple[int, _MigrateFn]] = [
     (2, _apply_v2),
     (3, _apply_v3),
     (4, _apply_v4),
+    (5, _apply_v5),
 ]
 
 

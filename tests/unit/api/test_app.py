@@ -35,9 +35,14 @@ class TestCreateApp:
 
 @pytest.mark.unit
 class TestAppLifecycle:
-    async def test_startup_partial_failure_cleanup(self) -> None:
+    async def test_startup_partial_failure_cleanup(
+        self,
+        root_config: Any,
+    ) -> None:
         """Persistence ok, bus fails → persistence cleaned up."""
         from ai_company.api.app import _safe_startup
+        from ai_company.api.approval_store import ApprovalStore
+        from ai_company.api.state import AppState
         from tests.unit.api.conftest import (
             FakeMessageBus,
             FakePersistenceBackend,
@@ -45,6 +50,11 @@ class TestAppLifecycle:
 
         persistence = FakePersistenceBackend()
         bus = FakeMessageBus()
+        app_state = AppState(
+            config=root_config,
+            approval_store=ApprovalStore(),
+            persistence=persistence,
+        )
 
         async def failing_start() -> None:
             msg = "bus boom"
@@ -53,7 +63,7 @@ class TestAppLifecycle:
         bus.start = failing_start  # type: ignore[method-assign]
 
         with pytest.raises(RuntimeError, match="bus boom"):
-            await _safe_startup(persistence, bus, None)
+            await _safe_startup(persistence, bus, None, app_state)
         # Persistence should have been disconnected during cleanup
         assert not persistence.is_connected
 

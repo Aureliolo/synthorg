@@ -6,9 +6,10 @@ import pytest
 from litestar.testing import TestClient
 
 from ai_company.config.schema import AgentConfig, RootConfig
-from tests.unit.api.conftest import (  # noqa: TC001
+from tests.unit.api.conftest import (
     FakeMessageBus,
     FakePersistenceBackend,
+    make_auth_headers,
 )
 
 
@@ -27,7 +28,9 @@ class TestAgentController:
         fake_message_bus: FakeMessageBus,
     ) -> None:
         from ai_company.api.app import create_app
+        from ai_company.api.auth.service import AuthService  # noqa: TC001
         from ai_company.budget.tracker import CostTracker
+        from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
 
         config = RootConfig(
             company_name="test",
@@ -39,14 +42,17 @@ class TestAgentController:
                 ),
             ),
         )
+        auth_service: AuthService = _make_test_auth_service()
+        _seed_test_users(fake_persistence, auth_service)
         app = create_app(
             config=config,
             persistence=fake_persistence,
             message_bus=fake_message_bus,
             cost_tracker=CostTracker(),
+            auth_service=auth_service,
         )
         with TestClient(app) as client:
-            client.headers["X-Human-Role"] = "observer"
+            client.headers.update(make_auth_headers("observer"))
             resp = client.get("/api/v1/agents")
             body = resp.json()
             assert body["pagination"]["total"] == 1

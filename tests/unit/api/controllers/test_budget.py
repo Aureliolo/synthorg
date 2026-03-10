@@ -8,8 +8,9 @@ from litestar.testing import TestClient  # noqa: TC002
 
 from ai_company.budget.cost_record import CostRecord
 from ai_company.budget.tracker import CostTracker  # noqa: TC001
+from tests.unit.api.conftest import make_auth_headers
 
-_HEADERS = {"X-Human-Role": "ceo"}
+_HEADERS = make_auth_headers("ceo")
 
 
 @pytest.mark.unit
@@ -74,6 +75,6 @@ class TestBudgetController:
     def test_budget_requires_read_access(self, test_client: TestClient[Any]) -> None:
         resp = test_client.get(
             "/api/v1/budget/config",
-            headers={"X-Human-Role": "invalid"},
+            headers={"Authorization": "Bearer invalid-token"},
         )
-        assert resp.status_code == 403
+        assert resp.status_code == 401

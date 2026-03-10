@@ -6,6 +6,7 @@ Holds typed references to core services, injected into
 """
 
 from ai_company.api.approval_store import ApprovalStore  # noqa: TC001
+from ai_company.api.auth.service import AuthService  # noqa: TC001
 from ai_company.api.errors import ServiceUnavailableError
 from ai_company.budget.tracker import CostTracker  # noqa: TC001
 from ai_company.communication.bus_protocol import MessageBus  # noqa: TC001
@@ -33,6 +34,7 @@ class AppState:
     """
 
     __slots__ = (
+        "_auth_service",
         "_cost_tracker",
         "_message_bus",
         "_persistence",
@@ -49,6 +51,7 @@ class AppState:
         persistence: PersistenceBackend | None = None,
         message_bus: MessageBus | None = None,
         cost_tracker: CostTracker | None = None,
+        auth_service: AuthService | None = None,
         startup_time: float = 0.0,
     ) -> None:
         self.config = config
@@ -56,6 +59,7 @@ class AppState:
         self._persistence = persistence
         self._message_bus = message_bus
         self._cost_tracker = cost_tracker
+        self._auth_service = auth_service
         self.startup_time = startup_time
 
     @property
@@ -93,3 +97,15 @@ class AppState:
             msg = "Cost tracker not configured"
             raise ServiceUnavailableError(msg)
         return self._cost_tracker
+
+    @property
+    def auth_service(self) -> AuthService:
+        """Return auth service or raise 503."""
+        if self._auth_service is None:
+            logger.warning(
+                API_SERVICE_UNAVAILABLE,
+                service="auth_service",
+            )
+            msg = "Auth service not configured"
+            raise ServiceUnavailableError(msg)
+        return self._auth_service

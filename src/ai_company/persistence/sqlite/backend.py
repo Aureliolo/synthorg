@@ -20,7 +20,10 @@ from ai_company.observability.events.persistence import (
     PERSISTENCE_BACKEND_NOT_CONNECTED,
     PERSISTENCE_BACKEND_WAL_MODE_FAILED,
 )
-from ai_company.persistence.errors import PersistenceConnectionError
+from ai_company.persistence.errors import (
+    PersistenceConnectionError,
+    QueryError,
+)
 from ai_company.persistence.sqlite.audit_repository import (
     SQLiteAuditRepository,
 )
@@ -37,6 +40,10 @@ from ai_company.persistence.sqlite.repositories import (
     SQLiteCostRecordRepository,
     SQLiteMessageRepository,
     SQLiteTaskRepository,
+)
+from ai_company.persistence.sqlite.user_repo import (
+    SQLiteApiKeyRepository,
+    SQLiteUserRepository,
 )
 
 if TYPE_CHECKING:
@@ -68,6 +75,8 @@ class SQLitePersistenceBackend:
         self._collaboration_metrics: SQLiteCollaborationMetricRepository | None = None
         self._parked_contexts: SQLiteParkedContextRepository | None = None
         self._audit_entries: SQLiteAuditRepository | None = None
+        self._users: SQLiteUserRepository | None = None
+        self._api_keys: SQLiteApiKeyRepository | None = None
 
     def _clear_state(self) -> None:
         """Reset connection and repository references to ``None``."""
@@ -80,6 +89,8 @@ class SQLitePersistenceBackend:
         self._collaboration_metrics = None
         self._parked_contexts = None
         self._audit_entries = None
+        self._users = None
+        self._api_keys = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -139,6 +150,8 @@ class SQLitePersistenceBackend:
         self._collaboration_metrics = SQLiteCollaborationMetricRepository(self._db)
         self._parked_contexts = SQLiteParkedContextRepository(self._db)
         self._audit_entries = SQLiteAuditRepository(self._db)
+        self._users = SQLiteUserRepository(self._db)
+        self._api_keys = SQLiteApiKeyRepository(self._db)
 
     async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:
         """Log failure, close partial connection, and raise.
@@ -320,3 +333,71 @@ class SQLitePersistenceBackend:
             PersistenceConnectionError: If not connected.
         """
         return self._require_connected(self._audit_entries, "audit_entries")
+
+    @property
+    def users(self) -> SQLiteUserRepository:
+        """Repository for User persistence.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(self._users, "users")
+
+    @property
+    def api_keys(self) -> SQLiteApiKeyRepository:
+        """Repository for ApiKey persistence.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(self._api_keys, "api_keys")
+
+    async def get_setting(self, key: str) -> str | None:
+        """Retrieve a setting value by key.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        if self._db is None:
+            msg = "Not connected — call connect() before accessing settings"
+            logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
+            raise PersistenceConnectionError(msg)
+        try:
+            cursor = await self._db.execute(
+                "SELECT value FROM settings WHERE key = ?", (key,)
+            )
+            row = await cursor.fetchone()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = f"Failed to get setting {key!r}"
+            logger.exception(
+                PERSISTENCE_BACKEND_NOT_CONNECTED,
+                error=str(exc),
+            )
+            raise QueryError(msg) from exc
+        return str(row[0]) if row else None
+
+    async def set_setting(self, key: str, value: str) -> None:
+        """Store a setting value (upsert).
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        if self._db is None:
+            msg = "Not connected — call connect() before accessing settings"
+            logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
+            raise PersistenceConnectionError(msg)
+        try:
+            await self._db.execute(
+                """\
+INSERT INTO settings (key, value) VALUES (?, ?)
+ON CONFLICT(key) DO UPDATE SET value=excluded.value""",
+                (key, value),
+            )
+            await self._db.commit()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = f"Failed to set setting {key!r}"
+            logger.exception(
+                PERSISTENCE_BACKEND_NOT_CONNECTED,
+                error=str(exc),
+            )
+            raise QueryError(msg) from exc

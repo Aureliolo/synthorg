@@ -19,6 +19,9 @@ from litestar.openapi.plugins import ScalarRenderPlugin
 
 from ai_company import __version__
 from ai_company.api.approval_store import ApprovalStore
+from ai_company.api.auth.middleware import create_auth_middleware_class
+from ai_company.api.auth.secret import resolve_jwt_secret
+from ai_company.api.auth.service import AuthService
 from ai_company.api.bus_bridge import MessageBusBridge
 from ai_company.api.channels import CHANNEL_APPROVALS, create_channels_plugin
 from ai_company.api.controllers import ALL_CONTROLLERS
@@ -98,6 +101,7 @@ def _build_lifecycle(
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
     bridge: MessageBusBridge | None,
+    app_state: AppState,
 ) -> tuple[
     Sequence[Callable[[], Awaitable[None]]],
     Sequence[Callable[[], Awaitable[None]]],
@@ -110,7 +114,7 @@ def _build_lifecycle(
 
     async def on_startup() -> None:
         logger.info(API_APP_STARTUP, version=__version__)
-        await _safe_startup(persistence, message_bus, bridge)
+        await _safe_startup(persistence, message_bus, bridge, app_state)
 
     async def on_shutdown() -> None:
         logger.info(API_APP_SHUTDOWN, version=__version__)
@@ -151,8 +155,9 @@ async def _safe_startup(
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
     bridge: MessageBusBridge | None,
+    app_state: AppState,
 ) -> None:
-    """Connect persistence, start message bus and bridge.
+    """Connect persistence, resolve JWT secret, start message bus and bridge.
 
     Executes in order; on failure, cleans up already-started
     components in reverse order before re-raising.
@@ -171,6 +176,23 @@ async def _safe_startup(
                 )
                 raise
             started_persistence = True
+
+            # Resolve JWT secret after persistence is up
+            if app_state._auth_service is None:  # noqa: SLF001
+                try:
+                    secret = await resolve_jwt_secret(persistence)
+                    auth_config = app_state.config.api.auth.with_secret(
+                        secret,
+                    )
+                    app_state._auth_service = AuthService(auth_config)  # noqa: SLF001
+                except Exception:
+                    logger.error(
+                        API_APP_STARTUP,
+                        error="Failed to resolve JWT secret",
+                        exc_info=True,
+                    )
+                    raise
+
         if message_bus is not None:
             try:
                 await message_bus.start()
@@ -237,13 +259,14 @@ async def _safe_shutdown(
             )
 
 
-def create_app(
+def create_app(  # noqa: PLR0913
     *,
     config: RootConfig | None = None,
     persistence: PersistenceBackend | None = None,
     message_bus: MessageBus | None = None,
     cost_tracker: CostTracker | None = None,
     approval_store: ApprovalStore | None = None,
+    auth_service: AuthService | None = None,
 ) -> Litestar:
     """Create and configure the Litestar application.
 
@@ -256,6 +279,7 @@ def create_app(
         message_bus: Internal message bus.
         cost_tracker: Cost tracking service.
         approval_store: Approval queue store.
+        auth_service: Pre-built auth service (for testing).
 
     Returns:
         Configured Litestar application.
@@ -283,6 +307,7 @@ def create_app(
         message_bus=message_bus,
         cost_tracker=cost_tracker,
         approval_store=effective_approval_store,
+        auth_service=auth_service,
         startup_time=time.monotonic(),
     )
 
@@ -299,6 +324,7 @@ def create_app(
         persistence,
         message_bus,
         bridge,
+        app_state,
     )
 
     return Litestar(
@@ -369,4 +395,10 @@ def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
         rate_limit=(rl.time_unit, rl.max_requests),  # type: ignore[arg-type]
         exclude=list(rl.exclude_paths),
     )
-    return [CSPMiddleware, RequestLoggingMiddleware, rate_limit.middleware]
+    auth_middleware = create_auth_middleware_class(api_config.auth)
+    return [
+        auth_middleware,
+        CSPMiddleware,
+        RequestLoggingMiddleware,
+        rate_limit.middleware,
+    ]

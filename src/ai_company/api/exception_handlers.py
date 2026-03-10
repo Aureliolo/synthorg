@@ -9,6 +9,7 @@ from typing import Any, Final
 
 from litestar import Request, Response
 from litestar.exceptions import (
+    NotAuthorizedException,
     PermissionDeniedException,
     ValidationException,
 )
@@ -149,10 +150,23 @@ def handle_validation_error(
     )
 
 
+def handle_not_authorized(
+    request: Request[Any, Any, Any],
+    exc: NotAuthorizedException,
+) -> Response[ApiResponse[None]]:
+    """Map ``NotAuthorizedException`` to 401."""
+    _log_error(request, exc, status=401)
+    return Response(
+        content=ApiResponse[None](error="Authentication required"),
+        status_code=401,
+    )
+
+
 EXCEPTION_HANDLERS: dict[type[Exception], object] = {
     RecordNotFoundError: handle_record_not_found,
     DuplicateRecordError: handle_duplicate_record,
     PersistenceError: handle_persistence_error,
+    NotAuthorizedException: handle_not_authorized,
     PermissionDeniedException: handle_permission_denied,
     ValidationException: handle_validation_error,
     ApiError: handle_api_error,

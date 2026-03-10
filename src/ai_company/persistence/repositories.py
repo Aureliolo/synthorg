@@ -8,6 +8,7 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import AwareDatetime  # noqa: TC002
 
+from ai_company.api.auth.models import ApiKey, User  # noqa: TC001
 from ai_company.budget.cost_record import CostRecord  # noqa: TC001
 from ai_company.communication.message import Message  # noqa: TC001
 from ai_company.core.enums import ApprovalRiskLevel, TaskStatus  # noqa: TC001
@@ -22,6 +23,7 @@ from ai_company.security.models import AuditEntry, AuditVerdictStr  # noqa: TC00
 from ai_company.security.timeout.parked_context import ParkedContext  # noqa: TC001
 
 __all__ = [
+    "ApiKeyRepository",
     "AuditRepository",
     "CollaborationMetricRepository",
     "CostRecordRepository",
@@ -30,6 +32,7 @@ __all__ = [
     "ParkedContextRepository",
     "TaskMetricRepository",
     "TaskRepository",
+    "UserRepository",
 ]
 
 
@@ -316,5 +319,157 @@ class AuditRepository(Protocol):
         Raises:
             QueryError: If the operation fails, *limit* < 1, or
                 *until* is earlier than *since*.
+        """
+        ...
+
+
+@runtime_checkable
+class UserRepository(Protocol):
+    """CRUD interface for User persistence."""
+
+    async def save(self, user: User) -> None:
+        """Persist a user (insert or update).
+
+        Args:
+            user: The user to persist.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def get(self, user_id: str) -> User | None:
+        """Retrieve a user by ID.
+
+        Args:
+            user_id: The user identifier.
+
+        Returns:
+            The user, or ``None`` if not found.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def get_by_username(self, username: str) -> User | None:
+        """Retrieve a user by username.
+
+        Args:
+            username: The login username.
+
+        Returns:
+            The user, or ``None`` if not found.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def list_users(self) -> tuple[User, ...]:
+        """List all users.
+
+        Returns:
+            All users as a tuple.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def count(self) -> int:
+        """Count the number of users.
+
+        Returns:
+            Total user count.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def delete(self, user_id: str) -> bool:
+        """Delete a user by ID.
+
+        Args:
+            user_id: The user identifier.
+
+        Returns:
+            ``True`` if deleted, ``False`` if not found.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+
+@runtime_checkable
+class ApiKeyRepository(Protocol):
+    """CRUD interface for API key persistence."""
+
+    async def save(self, key: ApiKey) -> None:
+        """Persist an API key.
+
+        Args:
+            key: The API key to persist.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def get(self, key_id: str) -> ApiKey | None:
+        """Retrieve an API key by ID.
+
+        Args:
+            key_id: The key identifier.
+
+        Returns:
+            The API key, or ``None`` if not found.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def get_by_hash(self, key_hash: str) -> ApiKey | None:
+        """Retrieve an API key by its hash.
+
+        Args:
+            key_hash: SHA-256 hex digest.
+
+        Returns:
+            The API key, or ``None`` if not found.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def list_by_user(self, user_id: str) -> tuple[ApiKey, ...]:
+        """List API keys belonging to a user.
+
+        Args:
+            user_id: The owner user ID.
+
+        Returns:
+            API keys for the user.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def delete(self, key_id: str) -> bool:
+        """Delete an API key by ID.
+
+        Args:
+            key_id: The key identifier.
+
+        Returns:
+            ``True`` if deleted, ``False`` if not found.
+
+        Raises:
+            PersistenceError: If the operation fails.
         """
         ...

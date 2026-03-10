@@ -1,6 +1,7 @@
 """Shared fixtures for API unit tests."""
 
 import asyncio
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -9,6 +10,10 @@ from litestar.testing import TestClient
 
 from ai_company.api.app import create_app
 from ai_company.api.approval_store import ApprovalStore
+from ai_company.api.auth.config import AuthConfig
+from ai_company.api.auth.models import ApiKey, User
+from ai_company.api.auth.service import AuthService
+from ai_company.api.guards import HumanRole
 from ai_company.budget.cost_record import CostRecord  # noqa: TC001
 from ai_company.budget.tracker import CostTracker
 from ai_company.communication.channel import Channel  # noqa: TC001
@@ -24,6 +29,12 @@ from ai_company.core.task import Task
 from ai_company.persistence.errors import DuplicateRecordError, QueryError
 from ai_company.security.models import AuditEntry, AuditVerdictStr  # noqa: TC001
 from ai_company.security.timeout.parked_context import ParkedContext  # noqa: TC001
+
+# ── Test auth constants ───────────────────────────────────────
+
+_TEST_JWT_SECRET = "test-secret-that-is-at-least-32-characters-long"
+_TEST_USER_ID = "test-user-001"
+_TEST_USERNAME = "testadmin"
 
 # ── Fake Repositories ────────────────────────────────────────────
 
@@ -262,6 +273,59 @@ class FakeAuditRepository:
         return tuple(results[:limit])
 
 
+class FakeUserRepository:
+    """In-memory user repository for tests."""
+
+    def __init__(self) -> None:
+        self._users: dict[str, User] = {}
+
+    async def save(self, user: User) -> None:
+        self._users[user.id] = user
+
+    async def get(self, user_id: str) -> User | None:
+        return self._users.get(user_id)
+
+    async def get_by_username(self, username: str) -> User | None:
+        for user in self._users.values():
+            if user.username == username:
+                return user
+        return None
+
+    async def list_users(self) -> tuple[User, ...]:
+        return tuple(self._users.values())
+
+    async def count(self) -> int:
+        return len(self._users)
+
+    async def delete(self, user_id: str) -> bool:
+        return self._users.pop(user_id, None) is not None
+
+
+class FakeApiKeyRepository:
+    """In-memory API key repository for tests."""
+
+    def __init__(self) -> None:
+        self._keys: dict[str, ApiKey] = {}
+
+    async def save(self, key: ApiKey) -> None:
+        self._keys[key.id] = key
+
+    async def get(self, key_id: str) -> ApiKey | None:
+        return self._keys.get(key_id)
+
+    async def get_by_hash(self, key_hash: str) -> ApiKey | None:
+        for key in self._keys.values():
+            if key.key_hash == key_hash:
+                return key
+        return None
+
+    async def list_by_user(self, user_id: str) -> tuple[ApiKey, ...]:
+        return tuple(k for k in self._keys.values() if k.user_id == user_id)
+
+    async def delete(self, key_id: str) -> bool:
+        return self._keys.pop(key_id, None) is not None
+
+
 class FakePersistenceBackend:
     """In-memory persistence backend for tests."""
 
@@ -274,6 +338,9 @@ class FakePersistenceBackend:
         self._collaboration_metrics = FakeCollaborationMetricRepository()
         self._parked_contexts = FakeParkedContextRepository()
         self._audit_entries = FakeAuditRepository()
+        self._users = FakeUserRepository()
+        self._api_keys = FakeApiKeyRepository()
+        self._settings: dict[str, str] = {}
         self._connected = False
 
     async def connect(self) -> None:
@@ -327,6 +394,20 @@ class FakePersistenceBackend:
     @property
     def audit_entries(self) -> FakeAuditRepository:
         return self._audit_entries
+
+    @property
+    def users(self) -> FakeUserRepository:
+        return self._users
+
+    @property
+    def api_keys(self) -> FakeApiKeyRepository:
+        return self._api_keys
+
+    async def get_setting(self, key: str) -> str | None:
+        return self._settings.get(key)
+
+    async def set_setting(self, key: str, value: str) -> None:
+        self._settings[key] = value
 
 
 # ── Fake Message Bus ────────────────────────────────────────────
@@ -396,7 +477,78 @@ class FakeMessageBus:
         return ()
 
 
+# ── Auth helpers ────────────────────────────────────────────────
+
+
+def _make_test_auth_config() -> AuthConfig:
+    """Create an AuthConfig with a test JWT secret."""
+    return AuthConfig(jwt_secret=_TEST_JWT_SECRET)
+
+
+def _make_test_auth_service() -> AuthService:
+    """Create an AuthService backed by test config."""
+    return AuthService(_make_test_auth_config())
+
+
+def _make_test_user(
+    *,
+    role: HumanRole = HumanRole.CEO,
+    must_change_password: bool = False,
+    user_id: str = _TEST_USER_ID,
+    username: str = _TEST_USERNAME,
+) -> User:
+    """Create a test User with given role."""
+    now = datetime.now(UTC)
+    auth_service = _make_test_auth_service()
+    return User(
+        id=user_id,
+        username=username,
+        password_hash=auth_service.hash_password("test-password-12chars"),
+        role=role,
+        must_change_password=must_change_password,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def make_auth_headers(
+    role: str = "ceo",
+    *,
+    must_change_password: bool = False,
+) -> dict[str, str]:
+    """Build an Authorization header with a JWT for the given role.
+
+    Uses deterministic user IDs matching ``_seed_test_users`` so
+    middleware user lookups succeed.
+    """
+    auth_service = _make_test_auth_service()
+    # Must match the ID pattern in _seed_test_users
+    user_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"test-{role}"))
+    now = datetime.now(UTC)
+    user = User(
+        id=user_id,
+        username=f"test-{role}",
+        password_hash=auth_service.hash_password("test-password-12chars"),
+        role=HumanRole(role),
+        must_change_password=must_change_password,
+        created_at=now,
+        updated_at=now,
+    )
+    token, _ = auth_service.create_token(user)
+    return {"Authorization": f"Bearer {token}"}
+
+
 # ── Fixtures ────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def auth_config() -> AuthConfig:
+    return _make_test_auth_config()
+
+
+@pytest.fixture
+def auth_service() -> AuthService:
+    return _make_test_auth_service()
 
 
 @pytest.fixture
@@ -429,23 +581,58 @@ def root_config() -> RootConfig:
 
 
 @pytest.fixture
-def test_client(
+def test_client(  # noqa: PLR0913
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
     cost_tracker: CostTracker,
     approval_store: ApprovalStore,
     root_config: RootConfig,
+    auth_service: AuthService,
 ) -> TestClient[Any]:
+    # Pre-seed users for each role so JWT sub claims resolve
+    _seed_test_users(fake_persistence, auth_service)
+
     app = create_app(
         config=root_config,
         persistence=fake_persistence,
         message_bus=fake_message_bus,
         cost_tracker=cost_tracker,
         approval_store=approval_store,
+        auth_service=auth_service,
     )
     client = TestClient(app)
-    client.headers["X-Human-Role"] = "observer"
+    # Default: CEO token (most tests need write access)
+    client.headers.update(make_auth_headers("ceo"))
     return client
+
+
+def _seed_test_users(
+    backend: FakePersistenceBackend,
+    auth_service: AuthService,
+) -> None:
+    """Pre-seed a user for each role so JWT validation succeeds.
+
+    The middleware looks up the user by ``sub`` claim, so we
+    need matching users in the fake persistence for every role
+    that tests might use.
+    """
+    import asyncio
+
+    now = datetime.now(UTC)
+    for role in HumanRole:
+        user_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"test-{role.value}"))
+        user = User(
+            id=user_id,
+            username=f"test-{role.value}",
+            password_hash=auth_service.hash_password("test-password-12chars"),
+            role=role,
+            must_change_password=False,
+            created_at=now,
+            updated_at=now,
+        )
+        # Save synchronously via event loop
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(backend.users.save(user))
 
 
 def make_task(  # noqa: PLR0913

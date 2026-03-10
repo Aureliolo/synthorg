@@ -5,9 +5,11 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient  # noqa: TC002
 
+from tests.unit.api.conftest import make_auth_headers
+
 _BASE = "/api/v1/agents"
-_WRITE_HEADERS = {"X-Human-Role": "ceo"}
-_READ_HEADERS = {"X-Human-Role": "observer"}
+_WRITE_HEADERS = make_auth_headers("ceo")
+_READ_HEADERS = make_auth_headers("observer")
 
 
 def _url(agent_id: str = "agent-001") -> str:
@@ -29,8 +31,10 @@ class TestGetAutonomy:
     def test_get_autonomy_requires_read_access(
         self, test_client: TestClient[Any]
     ) -> None:
-        resp = test_client.get(_url(), headers={"X-Human-Role": "invalid"})
-        assert resp.status_code == 403
+        resp = test_client.get(
+            _url(), headers={"Authorization": "Bearer invalid-token"}
+        )
+        assert resp.status_code == 401
 
 
 @pytest.mark.unit

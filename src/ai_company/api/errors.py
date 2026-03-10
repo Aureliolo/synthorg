@@ -56,6 +56,15 @@ class ForbiddenError(ApiError):
         super().__init__(message, status_code=403)
 
 
+class UnauthorizedError(ApiError):
+    """Raised when authentication is required or invalid (401)."""
+
+    default_message: str = "Authentication required"
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message, status_code=401)
+
+
 class ServiceUnavailableError(ApiError):
     """Raised when a required service is not configured (503)."""
 

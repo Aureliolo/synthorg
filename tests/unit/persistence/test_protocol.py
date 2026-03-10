@@ -12,16 +12,19 @@ from ai_company.hr.persistence_protocol import (
 )
 from ai_company.persistence.protocol import PersistenceBackend
 from ai_company.persistence.repositories import (
+    ApiKeyRepository,
     AuditRepository,
     CostRecordRepository,
     MessageRepository,
     ParkedContextRepository,
     TaskRepository,
+    UserRepository,
 )
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
 
+    from ai_company.api.auth.models import ApiKey, User
     from ai_company.budget.cost_record import CostRecord
     from ai_company.communication.message import Message
     from ai_company.core.enums import ApprovalRiskLevel, TaskStatus
@@ -163,6 +166,44 @@ class _FakeAuditRepository:
         return ()
 
 
+class _FakeUserRepository:
+    async def save(self, user: User) -> None:
+        pass
+
+    async def get(self, user_id: str) -> User | None:
+        return None
+
+    async def get_by_username(self, username: str) -> User | None:
+        return None
+
+    async def list_users(self) -> tuple[User, ...]:
+        return ()
+
+    async def count(self) -> int:
+        return 0
+
+    async def delete(self, user_id: str) -> bool:
+        return False
+
+
+class _FakeApiKeyRepository:
+    async def save(self, key: ApiKey) -> None:
+        pass
+
+    async def get(self, key_id: str) -> ApiKey | None:
+        return None
+
+    async def get_by_hash(self, key_hash: str) -> ApiKey | None:
+        return None
+
+    async def list_by_user(self, user_id: str) -> tuple[ApiKey, ...]:
+        return ()
+
+    async def delete(self, key_id: str) -> bool:
+        return False
+
+
+
 class _FakeBackend:
     async def connect(self) -> None:
         pass
@@ -216,6 +257,20 @@ class _FakeBackend:
     def audit_entries(self) -> _FakeAuditRepository:
         return _FakeAuditRepository()
 
+    @property
+    def users(self) -> _FakeUserRepository:
+        return _FakeUserRepository()
+
+    @property
+    def api_keys(self) -> _FakeApiKeyRepository:
+        return _FakeApiKeyRepository()
+
+    async def get_setting(self, key: str) -> str | None:
+        return None
+
+    async def set_setting(self, key: str, value: str) -> None:
+        pass
+
 
 @pytest.mark.unit
 class TestProtocolCompliance:
@@ -255,3 +310,9 @@ class TestProtocolCompliance:
 
     def test_fake_audit_repo_is_audit_repository(self) -> None:
         assert isinstance(_FakeAuditRepository(), AuditRepository)
+
+    def test_fake_user_repo_is_user_repository(self) -> None:
+        assert isinstance(_FakeUserRepository(), UserRepository)
+
+    def test_fake_api_key_repo_is_api_key_repository(self) -> None:
+        assert isinstance(_FakeApiKeyRepository(), ApiKeyRepository)

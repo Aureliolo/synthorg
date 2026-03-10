@@ -2,6 +2,7 @@
 
 from litestar import Controller
 
+from ai_company.api.auth.controller import AuthController
 from ai_company.api.controllers.agents import AgentController
 from ai_company.api.controllers.analytics import AnalyticsController
 from ai_company.api.controllers.approvals import ApprovalsController
@@ -33,6 +34,7 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     ProviderController,
     ApprovalsController,
     AutonomyController,
+    AuthController,
 )
 
 __all__ = [
@@ -41,6 +43,7 @@ __all__ = [
     "AnalyticsController",
     "ApprovalsController",
     "ArtifactController",
+    "AuthController",
     "AutonomyController",
     "BudgetController",
     "CompanyController",

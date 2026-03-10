@@ -236,8 +236,8 @@ class ApprovalsController(Controller):
     ) -> ApiResponse[ApprovalItem]:
         """Approve a pending approval item.
 
-        The ``decided_by`` field is populated from the
-        ``X-Human-Role`` header.
+        The ``decided_by`` field is populated from the authenticated
+        user's role.
 
         Args:
             state: Application state.
@@ -272,7 +272,8 @@ class ApprovalsController(Controller):
             )
             raise ConflictError(msg)
 
-        role = request.headers.get("x-human-role", "unknown")
+        auth_user = request.scope.get("user")
+        role = auth_user.role.value if auth_user is not None else "unknown"
         now = datetime.now(UTC)
         updated = item.model_copy(
             update={
@@ -319,8 +320,8 @@ class ApprovalsController(Controller):
     ) -> ApiResponse[ApprovalItem]:
         """Reject a pending approval item.
 
-        The ``decided_by`` field is populated from the
-        ``X-Human-Role`` header.
+        The ``decided_by`` field is populated from the authenticated
+        user's role.
 
         Args:
             state: Application state.
@@ -355,7 +356,8 @@ class ApprovalsController(Controller):
             )
             raise ConflictError(msg)
 
-        role = request.headers.get("x-human-role", "unknown")
+        auth_user = request.scope.get("user")
+        role = auth_user.role.value if auth_user is not None else "unknown"
         now = datetime.now(UTC)
         updated = item.model_copy(
             update={

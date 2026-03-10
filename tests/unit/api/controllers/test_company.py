@@ -5,7 +5,9 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient  # noqa: TC002
 
-_HEADERS = {"X-Human-Role": "ceo"}
+from tests.unit.api.conftest import make_auth_headers
+
+_HEADERS = make_auth_headers("ceo")
 
 
 @pytest.mark.unit
@@ -27,6 +29,6 @@ class TestCompanyController:
     def test_company_requires_read_access(self, test_client: TestClient[Any]) -> None:
         resp = test_client.get(
             "/api/v1/company",
-            headers={"X-Human-Role": "invalid"},
+            headers={"Authorization": "Bearer invalid-token"},
         )
-        assert resp.status_code == 403
+        assert resp.status_code == 401
