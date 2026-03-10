@@ -7,9 +7,6 @@ Delegates to strategy implementations.
 from typing import TYPE_CHECKING
 
 from ai_company.observability import get_logger
-
-if TYPE_CHECKING:
-    from ai_company.config.schema import ProviderConfig, RoutingConfig
 from ai_company.observability.events.routing import (
     ROUTING_DECISION_MADE,
     ROUTING_ROUTER_BUILT,
@@ -21,6 +18,9 @@ from .errors import RoutingError, UnknownStrategyError
 from .models import RoutingDecision, RoutingRequest  # noqa: TC001
 from .resolver import ModelResolver
 from .strategies import STRATEGY_MAP
+
+if TYPE_CHECKING:
+    from ai_company.config.schema import ProviderConfig, RoutingConfig
 
 logger = get_logger(__name__)
 

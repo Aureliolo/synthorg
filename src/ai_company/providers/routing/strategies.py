@@ -11,9 +11,6 @@ from typing import TYPE_CHECKING, Final, NoReturn, Protocol, runtime_checkable
 
 from ai_company.core.enums import SeniorityLevel  # noqa: TC001
 from ai_company.core.role_catalog import get_seniority_info
-
-if TYPE_CHECKING:
-    from ai_company.config.schema import RoutingConfig
 from ai_company.observability import get_logger
 from ai_company.observability.events.routing import (
     ROUTING_BUDGET_EXCEEDED,
@@ -36,6 +33,9 @@ from ._strategy_helpers import (
 from .errors import ModelResolutionError, NoAvailableModelError
 from .models import RoutingDecision, RoutingRequest
 from .resolver import ModelResolver  # noqa: TC001
+
+if TYPE_CHECKING:
+    from ai_company.config.schema import RoutingConfig
 
 logger = get_logger(__name__)
 

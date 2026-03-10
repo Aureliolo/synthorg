@@ -2775,7 +2775,8 @@ ai-company/
 │       │   ├── artifact.py         # Produced work items
 │       │   ├── role.py             # Role model
 │       │   ├── role_catalog.py     # Role catalog
-│       │   └── personality.py     # Personality compatibility scoring
+│       │   ├── personality.py     # Personality compatibility scoring
+│       │   └── resilience_config.py # RetryConfig, RateLimiterConfig (shared by config.schema + providers.resilience)
 │       ├── engine/                  # Agent orchestration, execution loops, parallel execution, task decomposition, routing, task assignment, task lifecycle, recovery, shutdown, workspace isolation, coordination error classification, and prompt policy validation
 │       │   ├── errors.py           # Engine error hierarchy
 │       │   ├── prompt.py           # System prompt builder
@@ -3048,7 +3049,6 @@ ai-company/
 │       │   │   ├── router.py      # Router orchestrator
 │       │   │   └── strategies.py  # Routing strategies
 │       │   └── resilience/         # Resilience patterns
-│       │       ├── config.py      # RetryConfig, RateLimiterConfig
 │       │       ├── errors.py      # RetryExhaustedError
 │       │       ├── rate_limiter.py # Token bucket rate limiter
 │       │       └── retry.py       # RetryHandler with backoff
@@ -3157,6 +3157,7 @@ ai-company/
 │       │   ├── enums.py            # Budget-related enums
 │       │   ├── billing.py          # Billing period computation utilities
 │       │   ├── enforcer.py         # BudgetEnforcer service (pre-flight, in-flight, auto-downgrade)
+│       │   ├── errors.py           # BudgetExhaustedError, DailyLimitExceededError, QuotaExhaustedError
 │       │   ├── optimizer.py        # CostOptimizer service — anomaly detection, efficiency analysis, downgrade recommendations, approval decisions (M5)
 │       │   ├── optimizer_models.py # CostOptimizer domain models — anomaly, efficiency, downgrade, approval, config (M5)
 │       │   ├── quota.py            # Quota/subscription models, degradation config, quota snapshots

@@ -66,11 +66,11 @@ curl http://localhost:3000/api/v1/health   # backend (via web proxy)
 ```text
 src/ai_company/
   api/            # Litestar REST + WebSocket API (controllers, guards, channels)
-  budget/         # Cost tracking, budget enforcement (pre-flight/in-flight checks, auto-downgrade), billing periods, cost tiers, quota/subscription tracking, CFO cost optimization (anomaly detection, efficiency analysis, downgrade recommendations, approval decisions), spending reports
+  budget/         # Cost tracking, budget enforcement (pre-flight/in-flight checks, auto-downgrade), billing periods, cost tiers, quota/subscription tracking, CFO cost optimization (anomaly detection, efficiency analysis, downgrade recommendations, approval decisions), spending reports, budget errors (BudgetExhaustedError, DailyLimitExceededError, QuotaExhaustedError)
   cli/            # CLI interface (future — thin API wrapper if needed)
   communication/  # Message bus, dispatcher, messenger, channels, delegation, loop prevention, conflict resolution, meeting protocol
   config/         # YAML company config loading and validation
-  core/           # Shared domain models and base classes
+  core/           # Shared domain models, base classes, and resilience config (RetryConfig, RateLimiterConfig)
   engine/         # Agent orchestration, execution loops, parallel execution, task decomposition, routing, task assignment, task lifecycle, recovery, shutdown, workspace isolation, coordination error classification, and prompt policy validation
   hr/             # HR engine: hiring, firing, onboarding, offboarding, agent registry, performance tracking (task metrics, collaboration scoring, trend detection), promotion/demotion (criteria evaluation, approval strategies, model mapping)
   memory/         # Persistent agent memory (Mem0 initial, custom stack future — ADR-001), retrieval pipeline (ranking, injection, context formatting, non-inferable filtering), shared org memory (org/), consolidation/archival (consolidation/)
