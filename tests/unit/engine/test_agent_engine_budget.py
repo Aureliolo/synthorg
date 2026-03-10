@@ -10,7 +10,11 @@ from ai_company.budget.config import (
     BudgetConfig,
 )
 from ai_company.budget.enforcer import BudgetEnforcer
-from ai_company.budget.errors import BudgetExhaustedError, DailyLimitExceededError
+from ai_company.budget.errors import (
+    BudgetExhaustedError,
+    DailyLimitExceededError,
+    QuotaExhaustedError,
+)
 from ai_company.budget.tracker import CostTracker
 from ai_company.engine.agent_engine import AgentEngine
 from ai_company.engine.loop_protocol import TerminationReason
@@ -51,8 +55,9 @@ class TestEngineWithEnforcer:
         [
             (BudgetExhaustedError, "Monthly budget exhausted"),
             (DailyLimitExceededError, "Daily limit exceeded"),
+            (QuotaExhaustedError, "Provider quota exhausted"),
         ],
-        ids=["monthly_exhausted", "daily_limit"],
+        ids=["monthly_exhausted", "daily_limit", "quota_exhausted"],
     )
     async def test_preflight_budget_stop_returns_budget_exhausted(
         self,
