@@ -4,8 +4,12 @@ Extracted from ``strategies.py`` to keep strategy classes focused on
 selection logic.
 """
 
-from ai_company.config.schema import RoutingConfig, RoutingRuleConfig  # noqa: TC001
+from typing import TYPE_CHECKING
+
 from ai_company.core.role_catalog import get_seniority_info
+
+if TYPE_CHECKING:
+    from ai_company.config.schema import RoutingConfig, RoutingRuleConfig
 from ai_company.observability import get_logger
 from ai_company.observability.events.routing import (
     ROUTING_BUDGET_EXCEEDED,

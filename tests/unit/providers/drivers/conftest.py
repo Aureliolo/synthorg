@@ -5,12 +5,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ai_company.config.schema import (
-    ProviderConfig,
-    ProviderModelConfig,
-    RateLimiterConfig,
-    RetryConfig,
-)
+from ai_company.config.schema import ProviderConfig, ProviderModelConfig
+from ai_company.core.resilience_config import RateLimiterConfig, RetryConfig
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator

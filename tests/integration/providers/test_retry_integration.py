@@ -9,12 +9,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from ai_company.config.schema import (
-    ProviderConfig,
-    ProviderModelConfig,
-    RateLimiterConfig,
-    RetryConfig,
-)
+from ai_company.config.schema import ProviderConfig, ProviderModelConfig
+from ai_company.core.resilience_config import RateLimiterConfig, RetryConfig
 from ai_company.providers.drivers.litellm_driver import LiteLLMDriver
 from ai_company.providers.enums import MessageRole
 from ai_company.providers.errors import (

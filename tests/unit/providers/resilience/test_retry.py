@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 import structlog
 
+from ai_company.core.resilience_config import RetryConfig
 from ai_company.observability.events.provider import (
     PROVIDER_CALL_ERROR,
     PROVIDER_RETRY_ATTEMPT,
@@ -18,7 +19,6 @@ from ai_company.providers.errors import (
     ProviderTimeoutError,
     RateLimitError,
 )
-from ai_company.providers.resilience.config import RetryConfig
 from ai_company.providers.resilience.errors import RetryExhaustedError
 from ai_company.providers.resilience.retry import RetryHandler
 

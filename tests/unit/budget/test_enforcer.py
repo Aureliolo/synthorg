@@ -17,12 +17,12 @@ from ai_company.budget.config import (
     BudgetConfig,
 )
 from ai_company.budget.enforcer import BudgetEnforcer
+from ai_company.budget.errors import BudgetExhaustedError, DailyLimitExceededError
 from ai_company.budget.tracker import CostTracker
 from ai_company.core.agent import AgentIdentity, ModelConfig
 from ai_company.core.enums import TaskStatus, TaskType
 from ai_company.core.task import Task
 from ai_company.engine.context import AgentContext
-from ai_company.engine.errors import BudgetExhaustedError, DailyLimitExceededError
 from ai_company.observability.events.budget import BUDGET_ALERT_THRESHOLD_CROSSED
 from ai_company.providers.models import TokenUsage
 from ai_company.providers.routing.models import ResolvedModel

@@ -11,6 +11,7 @@ import pytest
 
 from ai_company.budget.config import BudgetAlertConfig, BudgetConfig
 from ai_company.budget.enforcer import BudgetEnforcer
+from ai_company.budget.errors import QuotaExhaustedError
 from ai_company.budget.quota import (
     QuotaCheckResult,
     QuotaLimit,
@@ -19,7 +20,6 @@ from ai_company.budget.quota import (
 )
 from ai_company.budget.quota_tracker import QuotaTracker
 from ai_company.budget.tracker import CostTracker
-from ai_company.engine.errors import QuotaExhaustedError
 
 pytestmark = pytest.mark.timeout(30)
 

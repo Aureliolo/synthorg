@@ -17,7 +17,7 @@ dependencies = [
     "aiosqlite==0.22.1",
     "jinja2==3.1.6",
     "jsonschema==4.26.0",
-    "litellm==1.82.0",
+    "litellm==1.82.1",
     "litestar[standard,structlog,pydantic,brotli,prometheus]==2.21.1",
     "mcp==1.26.0",
     "pydantic==2.12.5",

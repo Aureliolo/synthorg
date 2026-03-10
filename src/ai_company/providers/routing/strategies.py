@@ -7,11 +7,13 @@ singletons registered in a module-level mapping.
 
 from collections.abc import Mapping  # noqa: TC003
 from types import MappingProxyType
-from typing import Final, NoReturn, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, NoReturn, Protocol, runtime_checkable
 
-from ai_company.config.schema import RoutingConfig  # noqa: TC001
 from ai_company.core.enums import SeniorityLevel  # noqa: TC001
 from ai_company.core.role_catalog import get_seniority_info
+
+if TYPE_CHECKING:
+    from ai_company.config.schema import RoutingConfig
 from ai_company.observability import get_logger
 from ai_company.observability.events.routing import (
     ROUTING_BUDGET_EXCEEDED,

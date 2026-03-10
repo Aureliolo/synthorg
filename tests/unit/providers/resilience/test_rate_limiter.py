@@ -7,11 +7,11 @@ import time
 import pytest
 import structlog
 
+from ai_company.core.resilience_config import RateLimiterConfig
 from ai_company.observability.events.provider import (
     PROVIDER_RATE_LIMITER_PAUSED,
     PROVIDER_RATE_LIMITER_THROTTLED,
 )
-from ai_company.providers.resilience.config import RateLimiterConfig
 from ai_company.providers.resilience.rate_limiter import RateLimiter
 
 pytestmark = pytest.mark.timeout(30)

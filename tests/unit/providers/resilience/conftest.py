@@ -2,6 +2,7 @@
 
 import pytest
 
+from ai_company.core.resilience_config import RateLimiterConfig, RetryConfig
 from ai_company.providers.errors import (
     AuthenticationError,
     ProviderConnectionError,
@@ -9,7 +10,6 @@ from ai_company.providers.errors import (
     ProviderTimeoutError,
     RateLimitError,
 )
-from ai_company.providers.resilience.config import RateLimiterConfig, RetryConfig
 
 
 @pytest.fixture

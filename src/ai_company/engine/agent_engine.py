@@ -9,6 +9,7 @@ import contextlib
 import time
 from typing import TYPE_CHECKING
 
+from ai_company.budget.errors import BudgetExhaustedError
 from ai_company.core.enums import TaskStatus
 from ai_company.engine._validation import (
     validate_agent,
@@ -18,10 +19,7 @@ from ai_company.engine._validation import (
 from ai_company.engine.classification.pipeline import classify_execution_errors
 from ai_company.engine.context import DEFAULT_MAX_TURNS, AgentContext
 from ai_company.engine.cost_recording import record_execution_costs
-from ai_company.engine.errors import (
-    BudgetExhaustedError,
-    ExecutionStateError,
-)
+from ai_company.engine.errors import ExecutionStateError
 from ai_company.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,

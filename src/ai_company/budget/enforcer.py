@@ -10,13 +10,13 @@ from typing import TYPE_CHECKING, NamedTuple
 
 from ai_company.budget.billing import billing_period_start, daily_period_start
 from ai_company.budget.enums import BudgetAlertLevel
-from ai_company.budget.quota import QuotaCheckResult
-from ai_company.constants import BUDGET_ROUNDING_PRECISION
-from ai_company.engine.errors import (
+from ai_company.budget.errors import (
     BudgetExhaustedError,
     DailyLimitExceededError,
     QuotaExhaustedError,
 )
+from ai_company.budget.quota import QuotaCheckResult
+from ai_company.constants import BUDGET_ROUNDING_PRECISION
 from ai_company.observability import get_logger
 from ai_company.observability.events.budget import (
     BUDGET_ALERT_THRESHOLD_CROSSED,
