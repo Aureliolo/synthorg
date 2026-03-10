@@ -4,7 +4,8 @@ Central service for recording and querying agent performance metrics.
 Delegates scoring, windowing, and trend detection to pluggable strategies.
 """
 
-from datetime import UTC, datetime
+import re
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from ai_company.core.types import NotBlankStr
@@ -187,7 +188,7 @@ class PerformanceTracker:
         )
 
         # Compute trends for quality and cost metrics.
-        trends = self._compute_trends(task_records, windows)
+        trends = self._compute_trends(task_records, windows, now=now)
 
         # Overall quality: average of all scored records.
         scored = [r.quality_score for r in task_records if r.quality_score is not None]
@@ -221,16 +222,33 @@ class PerformanceTracker:
         self,
         records: tuple[TaskMetricRecord, ...],
         windows: tuple[WindowMetrics, ...],
+        *,
+        now: AwareDatetime,
     ) -> list[TrendResult]:
-        """Compute trends for key metrics across windows."""
+        """Compute trends for key metrics across windows.
+
+        Records are filtered to each window's time boundary so that
+        e.g. the "7d" trend only considers the last 7 days of data.
+        """
         trends: list[TrendResult] = []
         for window in windows:
             if window.data_point_count < self._config.min_data_points:
                 continue
+
+            # Filter records to this window's time boundary.
+            window_label = str(window.window_size)
+            match = re.match(r"^(\d+)d$", window_label)
+            if match:
+                days = int(match.group(1))
+                cutoff = now - timedelta(days=days)
+                window_records = tuple(r for r in records if r.completed_at >= cutoff)
+            else:
+                window_records = records
+
             # Quality score trend.
             quality_values = tuple(
                 (r.completed_at, r.quality_score)
-                for r in records
+                for r in window_records
                 if r.quality_score is not None
             )
             if quality_values:
@@ -242,7 +260,7 @@ class PerformanceTracker:
                     )
                 )
             # Cost trend.
-            cost_values = tuple((r.completed_at, r.cost_usd) for r in records)
+            cost_values = tuple((r.completed_at, r.cost_usd) for r in window_records)
             if cost_values:
                 trends.append(
                     self._trend_strategy.detect(

@@ -99,7 +99,7 @@ class TestHiringRequest:
     def test_instantiated_without_candidate_raises(self) -> None:
         with pytest.raises(
             ValidationError,
-            match="INSTANTIATED requests must have a selected_candidate_id",
+            match="instantiated requests must have a selected_candidate_id",
         ):
             make_hiring_request(
                 status=HiringRequestStatus.INSTANTIATED,
@@ -123,10 +123,27 @@ class TestHiringRequest:
         )
         assert req.selected_candidate_id is None
 
-    def test_approved_without_candidate_ok(self) -> None:
-        """APPROVED status does not require selected_candidate_id."""
-        req = make_hiring_request(status=HiringRequestStatus.APPROVED)
+    def test_approved_without_candidate_raises(self) -> None:
+        """APPROVED status requires selected_candidate_id."""
+        with pytest.raises(
+            ValidationError,
+            match="approved requests must have a selected_candidate_id",
+        ):
+            make_hiring_request(
+                status=HiringRequestStatus.APPROVED,
+                selected_candidate_id=None,
+            )
+
+    def test_approved_with_candidate_ok(self) -> None:
+        """APPROVED status with selected_candidate_id passes."""
+        card = make_candidate_card(candidate_id="cand-001")
+        req = make_hiring_request(
+            status=HiringRequestStatus.APPROVED,
+            selected_candidate_id="cand-001",
+            candidates=(card,),
+        )
         assert req.status == HiringRequestStatus.APPROVED
+        assert req.selected_candidate_id == "cand-001"
 
     def test_budget_limit_non_negative(self) -> None:
         with pytest.raises(ValidationError, match="greater than or equal"):
@@ -152,9 +169,6 @@ class TestFiringRequest:
         req = make_firing_request()
         assert req.agent_id == "agent-001"
         assert req.reason == FiringReason.MANUAL
-        assert req.tasks_reassigned == ()
-        assert req.memory_archived is False
-        assert req.team_notified is False
         assert req.completed_at is None
 
     def test_frozen(self) -> None:
@@ -165,7 +179,6 @@ class TestFiringRequest:
     def test_defaults(self) -> None:
         req = make_firing_request()
         assert req.details == ""
-        assert req.tasks_reassigned == ()
 
     @pytest.mark.parametrize("reason", list(FiringReason))
     def test_all_reasons_accepted(self, reason: FiringReason) -> None:

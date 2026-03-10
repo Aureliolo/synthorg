@@ -6,6 +6,8 @@ and PROCEDURAL entries to org memory, then cleans the hot store.
 
 from datetime import UTC, datetime
 
+from pydantic import ValidationError
+
 from ai_company.core.enums import MemoryCategory, OrgFactCategory
 from ai_company.core.types import NotBlankStr
 from ai_company.hr.archival_protocol import ArchivalResult
@@ -17,7 +19,10 @@ from ai_company.memory.org.models import OrgFactAuthor, OrgFactWriteRequest
 from ai_company.memory.org.protocol import OrgMemoryBackend  # noqa: TC001
 from ai_company.memory.protocol import MemoryBackend  # noqa: TC001
 from ai_company.observability import get_logger
-from ai_company.observability.events.hr import HR_FIRING_MEMORY_ARCHIVED
+from ai_company.observability.events.hr import (
+    HR_ARCHIVAL_ENTRY_FAILED,
+    HR_FIRING_MEMORY_ARCHIVED,
+)
 
 logger = get_logger(__name__)
 
@@ -34,6 +39,9 @@ _CATEGORY_MAP: dict[MemoryCategory, OrgFactCategory] = {
     MemoryCategory.SEMANTIC: OrgFactCategory.CONVENTION,
     MemoryCategory.PROCEDURAL: OrgFactCategory.PROCEDURE,
 }
+
+# Maximum memories to retrieve per archival operation.
+_MAX_MEMORIES_PER_ARCHIVAL: int = 1000
 
 
 class FullSnapshotStrategy:
@@ -79,14 +87,16 @@ class FullSnapshotStrategy:
         try:
             entries = await memory_backend.retrieve(
                 agent_id,
-                MemoryQuery(limit=1000),
+                MemoryQuery(limit=_MAX_MEMORIES_PER_ARCHIVAL),
             )
         except Exception as exc:
             msg = f"Failed to retrieve memories for agent {agent_id!r}"
-            logger.exception(
-                HR_FIRING_MEMORY_ARCHIVED,
+            logger.error(  # noqa: TRY400
+                HR_ARCHIVAL_ENTRY_FAILED,
                 agent_id=agent_id,
+                phase="retrieve",
                 error=str(exc),
+                error_type=type(exc).__name__,
             )
             raise MemoryArchivalError(msg) from exc
 
@@ -110,12 +120,13 @@ class FullSnapshotStrategy:
                 await archival_store.archive(archival_entry)
                 archived_count += 1
                 deleted_ids.append(str(entry.id))
-            except Exception:
+            except (OSError, ValueError, ValidationError) as exc:
                 logger.warning(
-                    HR_FIRING_MEMORY_ARCHIVED,
+                    HR_ARCHIVAL_ENTRY_FAILED,
                     agent_id=agent_id,
                     memory_id=str(entry.id),
-                    error="archive_failed",
+                    phase="archive",
+                    error=str(exc),
                 )
                 continue
 
@@ -125,23 +136,21 @@ class FullSnapshotStrategy:
                 and entry.category in _PROMOTABLE_CATEGORIES
             ):
                 try:
-                    org_category = _CATEGORY_MAP.get(
-                        entry.category,
-                        OrgFactCategory.CONVENTION,
-                    )
+                    org_category = _CATEGORY_MAP[entry.category]
                     author = OrgFactAuthor(agent_id=agent_id)
-                    request = OrgFactWriteRequest(
+                    write_req = OrgFactWriteRequest(
                         content=NotBlankStr(entry.content),
                         category=org_category,
                     )
-                    await org_memory_backend.write(request, author=author)
+                    await org_memory_backend.write(write_req, author=author)
                     promoted_count += 1
-                except Exception:
+                except (OSError, ValueError, KeyError) as exc:
                     logger.warning(
-                        HR_FIRING_MEMORY_ARCHIVED,
+                        HR_ARCHIVAL_ENTRY_FAILED,
                         agent_id=agent_id,
                         memory_id=str(entry.id),
-                        error="promote_failed",
+                        phase="promote",
+                        error=str(exc),
                     )
 
         # Clean hot store.
@@ -149,13 +158,14 @@ class FullSnapshotStrategy:
         for memory_id in deleted_ids:
             try:
                 await memory_backend.delete(agent_id, NotBlankStr(memory_id))
-            except Exception:
+            except (OSError, ValueError) as exc:
                 hot_store_cleaned = False
                 logger.warning(
-                    HR_FIRING_MEMORY_ARCHIVED,
+                    HR_ARCHIVAL_ENTRY_FAILED,
                     agent_id=agent_id,
                     memory_id=memory_id,
-                    error="delete_failed",
+                    phase="delete",
+                    error=str(exc),
                 )
 
         result = ArchivalResult(

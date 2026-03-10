@@ -216,16 +216,19 @@ class TestHiringServiceInstantiateAgent:
         with pytest.raises(HiringApprovalRequiredError, match="requires approval"):
             await hiring_service.instantiate_agent(req)
 
-    async def test_instantiate_no_candidate_selected_raises(
+    async def test_approved_without_candidate_rejected_by_model(
         self,
-        hiring_service: HiringService,
     ) -> None:
-        req = make_hiring_request(
-            status=HiringRequestStatus.APPROVED,
-            selected_candidate_id=None,
-        )
-        with pytest.raises(InvalidCandidateError, match="No candidate selected"):
-            await hiring_service.instantiate_agent(req)
+        """APPROVED requests without selected_candidate_id are now
+        rejected by the model validator, so instantiate_agent
+        can never receive such a request."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="selected_candidate_id"):
+            make_hiring_request(
+                status=HiringRequestStatus.APPROVED,
+                selected_candidate_id=None,
+            )
 
     async def test_instantiate_triggers_onboarding(
         self,

@@ -14,12 +14,12 @@ from ai_company.hr.performance.models import (
     CollaborationMetricRecord,
     TaskMetricRecord,
 )
-from ai_company.persistence.sqlite.migrations import run_migrations
-from ai_company.persistence.sqlite.repositories import (
+from ai_company.persistence.sqlite.hr_repositories import (
     SQLiteCollaborationMetricRepository,
     SQLiteLifecycleEventRepository,
     SQLiteTaskMetricRepository,
 )
+from ai_company.persistence.sqlite.migrations import run_migrations
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator

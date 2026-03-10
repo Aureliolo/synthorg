@@ -31,6 +31,7 @@ from ai_company.observability.events.hr import (
     HR_HIRING_APPROVAL_SUBMITTED,
     HR_HIRING_CANDIDATE_GENERATED,
     HR_HIRING_INSTANTIATED,
+    HR_HIRING_INSTANTIATION_FAILED,
     HR_HIRING_REQUEST_CREATED,
 )
 
@@ -93,11 +94,22 @@ class HiringService:
         Returns:
             The created hiring request.
         """
+        try:
+            parsed_level = SeniorityLevel(level)
+        except ValueError as exc:
+            msg = f"Invalid seniority level {level!r} for hiring request"
+            logger.warning(
+                HR_HIRING_REQUEST_CREATED,
+                error=msg,
+                level=level,
+            )
+            raise HiringError(msg) from exc
+
         request = HiringRequest(
             requested_by=requested_by,
             department=department,
             role=role,
-            level=SeniorityLevel(level),
+            level=parsed_level,
             required_skills=required_skills,
             reason=reason,
             budget_limit_monthly=budget_limit_monthly,
@@ -139,7 +151,7 @@ class HiringService:
             rationale=NotBlankStr(
                 f"Generated for: {request.reason}",
             ),
-            estimated_monthly_cost=50.0,
+            estimated_monthly_cost=request.budget_limit_monthly or 50.0,
             template_source=request.template_name,
         )
 
@@ -174,13 +186,17 @@ class HiringService:
         Raises:
             InvalidCandidateError: If the candidate ID is not found.
         """
-        # Validate candidate exists.
         candidate = next(
             (c for c in request.candidates if str(c.id) == candidate_id),
             None,
         )
         if candidate is None:
             msg = f"Candidate {candidate_id!r} not found on request {request.id!r}"
+            logger.warning(
+                HR_HIRING_APPROVAL_SUBMITTED,
+                request_id=str(request.id),
+                error=msg,
+            )
             raise InvalidCandidateError(msg)
 
         if self._approval_store is None:
@@ -245,14 +261,37 @@ class HiringService:
             InvalidCandidateError: If no candidate is selected.
             HiringError: If instantiation fails.
         """
+        if request.status == HiringRequestStatus.INSTANTIATED:
+            msg = f"Hiring request {request.id!r} is already instantiated"
+            logger.warning(
+                HR_HIRING_INSTANTIATION_FAILED,
+                request_id=str(request.id),
+                error=msg,
+            )
+            raise HiringError(msg)
         if request.status == HiringRequestStatus.REJECTED:
             msg = f"Hiring request {request.id!r} was rejected"
+            logger.warning(
+                HR_HIRING_INSTANTIATION_FAILED,
+                request_id=str(request.id),
+                error=msg,
+            )
             raise HiringRejectedError(msg)
         if request.status == HiringRequestStatus.PENDING:
             msg = f"Hiring request {request.id!r} requires approval"
+            logger.warning(
+                HR_HIRING_INSTANTIATION_FAILED,
+                request_id=str(request.id),
+                error=msg,
+            )
             raise HiringApprovalRequiredError(msg)
         if request.selected_candidate_id is None:
             msg = f"No candidate selected on request {request.id!r}"
+            logger.warning(
+                HR_HIRING_INSTANTIATION_FAILED,
+                request_id=str(request.id),
+                error=msg,
+            )
             raise InvalidCandidateError(msg)
 
         candidate = next(
@@ -268,6 +307,11 @@ class HiringService:
                 f"Selected candidate {request.selected_candidate_id!r} "
                 f"not found on request {request.id!r}"
             )
+            logger.warning(
+                HR_HIRING_INSTANTIATION_FAILED,
+                request_id=str(request.id),
+                error=msg,
+            )
             raise InvalidCandidateError(msg)
 
         try:
@@ -277,8 +321,8 @@ class HiringService:
                 department=candidate.department,
                 level=candidate.level,
                 model=ModelConfig(
-                    provider="default-provider",
-                    model_id="default-model-001",
+                    provider=NotBlankStr("default-provider"),
+                    model_id=NotBlankStr("default-model-001"),
                 ),
                 status=AgentStatus.ONBOARDING,
                 hiring_date=datetime.now(UTC).date(),
@@ -287,7 +331,7 @@ class HiringService:
         except Exception as exc:
             msg = f"Failed to instantiate agent for request {request.id!r}"
             logger.exception(
-                HR_HIRING_INSTANTIATED,
+                HR_HIRING_INSTANTIATION_FAILED,
                 request_id=str(request.id),
                 error=str(exc),
             )

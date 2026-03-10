@@ -2823,7 +2823,33 @@ ai-company/
 │       │   │   ├── scorer.py      # AgentTaskScorer (skill/role/seniority matching)
 │       │   │   ├── service.py     # TaskRoutingService (routes subtasks to agents)
 │       │   │   └── topology_selector.py # TopologySelector (auto coordination topology)
-│       │   └── hr_engine.py        # Hiring, firing, performance (M7)
+│       ├── hr/                      # HR engine: hiring, firing, onboarding, offboarding, agent registry, performance tracking
+│       │   ├── __init__.py         # Package exports
+│       │   ├── enums.py            # HR enumerations (AgentStatus, OnboardingStep, etc.)
+│       │   ├── errors.py           # HR error hierarchy
+│       │   ├── models.py           # HiringRequest, AgentRecord, OnboardingChecklist, OffboardingResult, etc.
+│       │   ├── registry.py         # AgentRegistryService (agent lifecycle registry)
+│       │   ├── hiring_service.py   # HiringService (request → generate candidate → approval → instantiate)
+│       │   ├── onboarding_service.py # OnboardingService (checklist management)
+│       │   ├── offboarding_service.py # OffboardingService (reassign → archive → notify → terminate)
+│       │   ├── archival_protocol.py  # MemoryArchivalStrategy protocol
+│       │   ├── full_snapshot_strategy.py # FullSnapshotArchivalStrategy
+│       │   ├── reassignment_protocol.py # TaskReassignmentStrategy protocol
+│       │   ├── queue_return_strategy.py # QueueReturnReassignmentStrategy
+│       │   ├── persistence_protocol.py # HR-specific repository protocols
+│       │   └── performance/         # Performance tracking subsystem
+│       │       ├── __init__.py     # Package exports
+│       │       ├── models.py       # TaskMetricRecord, CollaborationMetricRecord, WindowMetrics, TrendResult, etc.
+│       │       ├── config.py       # PerformanceConfig
+│       │       ├── tracker.py      # PerformanceTracker service
+│       │       ├── quality_protocol.py # QualityScorer protocol
+│       │       ├── ci_quality_strategy.py # CiQualityScorer (CI-based quality scoring)
+│       │       ├── collaboration_protocol.py # CollaborationScorer protocol
+│       │       ├── behavioral_collaboration_strategy.py # BehavioralCollaborationScorer
+│       │       ├── trend_protocol.py # TrendDetector protocol
+│       │       ├── theil_sen_strategy.py # TheilSenTrendDetector (robust trend detection)
+│       │       ├── window_protocol.py # WindowAggregator protocol
+│       │       └── multi_window_strategy.py # MultiWindowAggregator (multi-window rolling metrics)
 │       ├── communication/           # Inter-agent communication
 │       │   ├── bus_memory.py       # InMemoryMessageBus implementation
 │       │   ├── bus_protocol.py     # MessageBus protocol interface
@@ -2921,6 +2947,7 @@ ai-company/
 │       │       ├── __init__.py    # Package exports
 │       │       ├── backend.py     # SQLitePersistenceBackend
 │       │       ├── repositories.py # SQLite repository implementations
+│       │       ├── hr_repositories.py # SQLite HR repository implementations (AgentRecord, TaskMetricRecord, etc.)
 │       │       └── migrations.py  # Schema migrations (user_version pragma)
 │       ├── observability/           # Structured logging & correlation
 │       │   ├── __init__.py         # get_logger() entry point
@@ -2944,10 +2971,12 @@ ai-company/
 │       │   │   ├── decomposition.py # DECOMPOSITION_* constants
 │       │   │   ├── execution.py   # EXECUTION_* constants
 │       │   │   ├── git.py         # GIT_* constants
+│       │   │   ├── hr.py         # HR_* constants
 │       │   │   ├── meeting.py    # MEETING_* constants
 │       │   │   ├── memory.py     # MEMORY_* constants
 │       │   │   ├── org_memory.py # ORG_MEMORY_* constants
 │       │   │   ├── parallel.py    # PARALLEL_* constants
+│       │   │   ├── performance.py # PERF_* constants
 │       │   │   ├── persistence.py # PERSISTENCE_* constants
 │       │   │   ├── personality.py # PERSONALITY_* constants
 │       │   │   ├── prompt.py      # PROMPT_* constants

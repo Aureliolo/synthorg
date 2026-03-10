@@ -41,7 +41,7 @@ def _normalize_response_time(seconds: float) -> float:
 class BehavioralTelemetryStrategy:
     """Collaboration scoring based on behavioral telemetry (D3).
 
-    Evaluates 6 components from collaboration metric records:
+    Evaluates 6 default components from collaboration metric records:
         - delegation_success: Average delegation success rate.
         - delegation_response_latency: Average response time (inverted).
         - conflict_constructiveness: Average constructiveness score.
@@ -49,8 +49,9 @@ class BehavioralTelemetryStrategy:
         - loop_prevention: Inverse of loop trigger rate.
         - handoff_completeness: Average handoff completeness.
 
-    None values are excluded; their weight is redistributed
-    proportionally among non-None components.
+    Default weights can be overridden via the ``role_weights`` parameter
+    on :meth:`score`. None values are excluded; their weight is
+    redistributed proportionally among non-None components.
     """
 
     @property

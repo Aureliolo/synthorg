@@ -27,7 +27,10 @@ _MIN_DELTA_DAYS: float = 1e-10
 
 
 def _median(values: list[float]) -> float:
-    """Compute the median of a sorted list of values."""
+    """Compute the median of a pre-sorted list of values.
+
+    Caller must sort the list before calling this function.
+    """
     n = len(values)
     if n == 0:
         return 0.0
@@ -40,8 +43,9 @@ def _median(values: list[float]) -> float:
 class TheilSenTrendStrategy:
     """Trend detection using the Theil-Sen estimator (D12).
 
-    Computes slopes for all n*(n-1)/2 pairs of data points and
-    takes the median as the robust slope estimate.  Timestamps are
+    Computes slopes for all n*(n-1)/2 pairs of data points
+    (skipping pairs with negligible time deltas) and takes the
+    median as the robust slope estimate.  Timestamps are
     normalized to days for slope computation.
 
     Args:

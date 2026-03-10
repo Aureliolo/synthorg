@@ -74,7 +74,7 @@ class FakeFailingArchivalStore:
 
     async def archive(self, entry: ArchivalEntry) -> NotBlankStr:
         msg = "Storage full"
-        raise RuntimeError(msg)
+        raise OSError(msg)
 
 
 class FakeOrgMemoryBackend:

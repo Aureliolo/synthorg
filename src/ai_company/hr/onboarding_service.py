@@ -59,6 +59,7 @@ class OnboardingService:
         """
         if agent_id in self._checklists:
             msg = f"Onboarding checklist already exists for agent {agent_id!r}"
+            logger.warning(HR_ONBOARDING_STARTED, agent_id=agent_id, error=msg)
             raise OnboardingError(msg)
 
         steps = tuple(OnboardingStepRecord(step=step) for step in OnboardingStep)
@@ -102,9 +103,24 @@ class OnboardingService:
         checklist = self._checklists.get(agent_id)
         if checklist is None:
             msg = f"No onboarding checklist for agent {agent_id!r}"
+            logger.warning(
+                HR_ONBOARDING_STEP_COMPLETE,
+                agent_id=agent_id,
+                error=msg,
+            )
             raise OnboardingError(msg)
 
         now = datetime.now(UTC)
+        step_found = any(s.step == step and not s.completed for s in checklist.steps)
+        if not step_found:
+            logger.debug(
+                HR_ONBOARDING_STEP_COMPLETE,
+                agent_id=agent_id,
+                step=step.value,
+                skipped="step_not_found_or_already_completed",
+            )
+            return checklist
+
         updated_steps = tuple(
             s.model_copy(
                 update={

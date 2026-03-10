@@ -35,7 +35,7 @@ class CandidateCard(BaseModel):
         role: Proposed role.
         department: Target department.
         level: Proposed seniority level.
-        skills: Primary and secondary skills.
+        skills: Agent skills.
         rationale: Why this candidate was generated.
         estimated_monthly_cost: Estimated monthly cost in USD.
         template_source: Template used for generation, if any.
@@ -60,7 +60,7 @@ class CandidateCard(BaseModel):
         ge=0.0,
         description="Estimated monthly cost in USD",
     )
-    template_source: str | None = Field(
+    template_source: NotBlankStr | None = Field(
         default=None,
         description="Template used for generation",
     )
@@ -106,7 +106,7 @@ class HiringRequest(BaseModel):
         ge=0.0,
         description="Maximum monthly cost",
     )
-    template_name: str | None = Field(
+    template_name: NotBlankStr | None = Field(
         default=None,
         description="Template for candidate generation",
     )
@@ -119,23 +119,24 @@ class HiringRequest(BaseModel):
         default=(),
         description="Generated candidate cards",
     )
-    selected_candidate_id: str | None = Field(
+    selected_candidate_id: NotBlankStr | None = Field(
         default=None,
         description="Chosen candidate ID",
     )
-    approval_id: str | None = Field(
+    approval_id: NotBlankStr | None = Field(
         default=None,
         description="Associated approval item ID",
     )
 
     @model_validator(mode="after")
-    def _validate_instantiated_has_candidate(self) -> Self:
-        """Ensure INSTANTIATED requests have a selected candidate."""
-        if (
-            self.status == HiringRequestStatus.INSTANTIATED
-            and self.selected_candidate_id is None
-        ):
-            msg = "INSTANTIATED requests must have a selected_candidate_id"
+    def _validate_status_candidate_consistency(self) -> Self:
+        """Ensure status-dependent candidate constraints."""
+        needs_candidate = {
+            HiringRequestStatus.INSTANTIATED,
+            HiringRequestStatus.APPROVED,
+        }
+        if self.status in needs_candidate and self.selected_candidate_id is None:
+            msg = f"{self.status.value} requests must have a selected_candidate_id"
             raise ValueError(msg)
         return self
 
@@ -151,9 +152,6 @@ class FiringRequest(BaseModel):
         requested_by: Initiator of the firing.
         details: Additional context.
         created_at: When the request was created.
-        tasks_reassigned: IDs of tasks that were reassigned.
-        memory_archived: Whether memories have been archived.
-        team_notified: Whether the team has been notified.
         completed_at: When the firing was completed.
     """
 
@@ -169,22 +167,21 @@ class FiringRequest(BaseModel):
     requested_by: NotBlankStr = Field(description="Firing initiator")
     details: str = Field(default="", description="Additional context")
     created_at: AwareDatetime = Field(description="When the request was created")
-    tasks_reassigned: tuple[str, ...] = Field(
-        default=(),
-        description="IDs of reassigned tasks",
-    )
-    memory_archived: bool = Field(
-        default=False,
-        description="Whether memories are archived",
-    )
-    team_notified: bool = Field(
-        default=False,
-        description="Whether team was notified",
-    )
     completed_at: AwareDatetime | None = Field(
         default=None,
         description="When the firing was completed",
     )
+
+    @model_validator(mode="after")
+    def _validate_temporal_order(self) -> Self:
+        """Ensure completed_at >= created_at when both are present."""
+        if self.completed_at is not None and self.completed_at < self.created_at:
+            msg = (
+                f"completed_at ({self.completed_at}) must be >= "
+                f"created_at ({self.created_at})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class OnboardingStepRecord(BaseModel):
@@ -207,6 +204,17 @@ class OnboardingStepRecord(BaseModel):
     )
     notes: str = Field(default="", description="Step notes")
 
+    @model_validator(mode="after")
+    def _validate_completed_consistency(self) -> Self:
+        """Ensure completed and completed_at are consistent."""
+        if self.completed and self.completed_at is None:
+            msg = "completed_at must be set when completed is True"
+            raise ValueError(msg)
+        if not self.completed and self.completed_at is not None:
+            msg = "completed_at must be None when completed is False"
+            raise ValueError(msg)
+        return self
+
 
 class OnboardingChecklist(BaseModel):
     """Agent onboarding checklist tracking all steps.
@@ -223,6 +231,7 @@ class OnboardingChecklist(BaseModel):
 
     agent_id: NotBlankStr = Field(description="Agent being onboarded")
     steps: tuple[OnboardingStepRecord, ...] = Field(
+        min_length=1,
         description="Individual step records",
     )
     started_at: AwareDatetime = Field(description="When onboarding began")
@@ -262,7 +271,7 @@ class OffboardingRecord(BaseModel):
         default=(),
         description="IDs of reassigned tasks",
     )
-    memory_archive_id: str | None = Field(
+    memory_archive_id: NotBlankStr | None = Field(
         default=None,
         description="Memory archive ID",
     )

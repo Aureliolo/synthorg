@@ -21,13 +21,15 @@ from ai_company.observability.events.persistence import (
     PERSISTENCE_BACKEND_WAL_MODE_FAILED,
 )
 from ai_company.persistence.errors import PersistenceConnectionError
+from ai_company.persistence.sqlite.hr_repositories import (
+    SQLiteCollaborationMetricRepository,
+    SQLiteLifecycleEventRepository,
+    SQLiteTaskMetricRepository,
+)
 from ai_company.persistence.sqlite.migrations import run_migrations
 from ai_company.persistence.sqlite.repositories import (
-    SQLiteCollaborationMetricRepository,
     SQLiteCostRecordRepository,
-    SQLiteLifecycleEventRepository,
     SQLiteMessageRepository,
-    SQLiteTaskMetricRepository,
     SQLiteTaskRepository,
 )
 

@@ -4,7 +4,6 @@ Orchestrates the firing/offboarding pipeline: task reassignment,
 memory archival, team notification, and agent termination.
 """
 
-import contextlib
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -13,12 +12,20 @@ from ai_company.communication.message import Message
 from ai_company.core.enums import AgentStatus, TaskStatus
 from ai_company.core.types import NotBlankStr
 from ai_company.hr.archival_protocol import ArchivalResult, MemoryArchivalStrategy
-from ai_company.hr.errors import AgentNotFoundError, OffboardingError
+from ai_company.hr.errors import (
+    AgentNotFoundError,
+    MemoryArchivalError,
+    OffboardingError,
+    TaskReassignmentError,
+)
 from ai_company.hr.models import FiringRequest, OffboardingRecord
 from ai_company.observability import get_logger
 from ai_company.observability.events.hr import (
+    HR_FIRING_ARCHIVAL_FAILED,
     HR_FIRING_COMPLETE,
     HR_FIRING_INITIATED,
+    HR_FIRING_NOTIFICATION_FAILED,
+    HR_FIRING_REASSIGNMENT_FAILED,
     HR_FIRING_TEAM_NOTIFIED,
 )
 
@@ -38,12 +45,10 @@ class OffboardingService:
     """Orchestrates the firing/offboarding pipeline.
 
     Pipeline steps:
-        1. Get agent's active tasks.
-        2. Reassign via task reassignment strategy.
-        3. Archive memory via archival strategy.
-        4. Notify team via message bus.
-        5. Update agent status to TERMINATED.
-        6. Return offboarding record.
+        1. Get active tasks and reassign via strategy.
+        2. Archive memory via archival strategy.
+        3. Notify team via message bus.
+        4. Update agent status to TERMINATED and return record.
 
     Args:
         registry: Agent registry for status updates.
@@ -105,6 +110,7 @@ class OffboardingService:
         identity = await self._registry.get(agent_id)
         if identity is None:
             msg = f"Agent {agent_id!r} not found in registry"
+            logger.warning(HR_FIRING_INITIATED, agent_id=agent_id, error=msg)
             raise AgentNotFoundError(msg)
 
         # Step 1: Get active tasks and reassign.
@@ -127,9 +133,13 @@ class OffboardingService:
                 for task in interrupted:
                     await self._task_repository.save(task)
                 tasks_reassigned = tuple(t.id for t in interrupted)
-            except Exception as exc:
+            except (TaskReassignmentError, OSError, ValueError) as exc:
                 msg = f"Task reassignment failed for agent {agent_id!r}: {exc}"
-                logger.exception(HR_FIRING_INITIATED, agent_id=agent_id, error=msg)
+                logger.exception(
+                    HR_FIRING_REASSIGNMENT_FAILED,
+                    agent_id=agent_id,
+                    error=msg,
+                )
                 raise OffboardingError(msg) from exc
 
         # Step 2: Archive memory.
@@ -148,9 +158,13 @@ class OffboardingService:
                     archival_store=self._archival_store,
                     org_memory_backend=self._org_memory_backend,
                 )
-            except Exception as exc:
+            except (MemoryArchivalError, OSError, ValueError) as exc:
                 msg = f"Memory archival failed for agent {agent_id!r}: {exc}"
-                logger.warning(HR_FIRING_INITIATED, agent_id=agent_id, error=msg)
+                logger.warning(
+                    HR_FIRING_ARCHIVAL_FAILED,
+                    agent_id=agent_id,
+                    error=msg,
+                )
                 # Non-fatal: continue with offboarding.
 
         # Step 3: Notify team.
@@ -175,16 +189,22 @@ class OffboardingService:
                     agent_id=agent_id,
                     department=str(identity.department),
                 )
-            except Exception as exc:
+            except (OSError, ValueError) as exc:
                 logger.warning(
-                    HR_FIRING_TEAM_NOTIFIED,
+                    HR_FIRING_NOTIFICATION_FAILED,
                     agent_id=agent_id,
                     error=str(exc),
                 )
 
         # Step 4: Terminate agent.
-        with contextlib.suppress(AgentNotFoundError):
+        try:
             await self._registry.update_status(agent_id, AgentStatus.TERMINATED)
+        except AgentNotFoundError:
+            logger.warning(
+                HR_FIRING_COMPLETE,
+                agent_id=agent_id,
+                warning="agent_not_found_during_termination",
+            )
 
         completed_at = datetime.now(UTC)
         record = OffboardingRecord(

@@ -16,6 +16,7 @@ from ai_company.observability import get_logger
 from ai_company.observability.events.hr import (
     HR_REGISTRY_AGENT_REGISTERED,
     HR_REGISTRY_AGENT_REMOVED,
+    HR_REGISTRY_STATUS_UPDATED,
 )
 
 if TYPE_CHECKING:
@@ -57,6 +58,11 @@ class AgentRegistryService:
         async with self._lock:
             if agent_key in self._agents:
                 msg = f"Agent {identity.name!r} ({agent_key}) is already registered"
+                logger.warning(
+                    HR_REGISTRY_AGENT_REGISTERED,
+                    agent_id=agent_key,
+                    error=msg,
+                )
                 raise AgentAlreadyRegisteredError(msg)
             self._agents[agent_key] = identity
 
@@ -83,6 +89,7 @@ class AgentRegistryService:
             identity = self._agents.pop(agent_id, None)
         if identity is None:
             msg = f"Agent {agent_id!r} not found in registry"
+            logger.warning(HR_REGISTRY_AGENT_REMOVED, agent_id=agent_id, error=msg)
             raise AgentNotFoundError(msg)
 
         logger.info(
@@ -164,15 +171,19 @@ class AgentRegistryService:
             identity = self._agents.get(agent_id)
             if identity is None:
                 msg = f"Agent {agent_id!r} not found in registry"
+                logger.warning(
+                    HR_REGISTRY_STATUS_UPDATED,
+                    agent_id=agent_id,
+                    error=msg,
+                )
                 raise AgentNotFoundError(msg)
             updated = identity.model_copy(update={"status": status})
             self._agents[agent_id] = updated
 
         logger.info(
-            HR_REGISTRY_AGENT_REGISTERED,
+            HR_REGISTRY_STATUS_UPDATED,
             agent_id=agent_id,
             status=status.value,
-            action="status_updated",
         )
         return updated
 

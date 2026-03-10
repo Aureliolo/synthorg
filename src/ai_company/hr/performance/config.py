@@ -1,6 +1,10 @@
 """Performance tracking configuration."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from ai_company.core.types import NotBlankStr
 
 
 class PerformanceConfig(BaseModel):
@@ -22,8 +26,12 @@ class PerformanceConfig(BaseModel):
         ge=1,
         description="Minimum data points for meaningful aggregation",
     )
-    windows: tuple[str, ...] = Field(
-        default=("7d", "30d", "90d"),
+    windows: tuple[NotBlankStr, ...] = Field(
+        default=(
+            NotBlankStr("7d"),
+            NotBlankStr("30d"),
+            NotBlankStr("90d"),
+        ),
         description="Time window labels for rolling metrics",
     )
     improving_threshold: float = Field(
@@ -38,3 +46,14 @@ class PerformanceConfig(BaseModel):
         default=None,
         description="Custom weights for collaboration scoring components",
     )
+
+    @model_validator(mode="after")
+    def _validate_threshold_ordering(self) -> Self:
+        """Ensure improving_threshold > declining_threshold."""
+        if self.improving_threshold <= self.declining_threshold:
+            msg = (
+                f"improving_threshold ({self.improving_threshold}) must be "
+                f"> declining_threshold ({self.declining_threshold})"
+            )
+            raise ValueError(msg)
+        return self
