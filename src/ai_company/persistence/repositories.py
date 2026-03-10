@@ -6,9 +6,11 @@ only on abstract interfaces, never on a concrete backend.
 
 from typing import Protocol, runtime_checkable
 
+from pydantic import AwareDatetime  # noqa: TC002
+
 from ai_company.budget.cost_record import CostRecord  # noqa: TC001
 from ai_company.communication.message import Message  # noqa: TC001
-from ai_company.core.enums import TaskStatus  # noqa: TC001
+from ai_company.core.enums import ApprovalRiskLevel, TaskStatus  # noqa: TC001
 from ai_company.core.task import Task  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.hr.persistence_protocol import (
@@ -16,9 +18,11 @@ from ai_company.hr.persistence_protocol import (
     LifecycleEventRepository,
     TaskMetricRepository,
 )
+from ai_company.security.models import AuditEntry, AuditVerdictStr  # noqa: TC001
 from ai_company.security.timeout.parked_context import ParkedContext  # noqa: TC001
 
 __all__ = [
+    "AuditRepository",
     "CollaborationMetricRepository",
     "CostRecordRepository",
     "LifecycleEventRepository",
@@ -256,5 +260,61 @@ class ParkedContextRepository(Protocol):
 
         Raises:
             PersistenceError: If the operation fails.
+        """
+        ...
+
+
+@runtime_checkable
+class AuditRepository(Protocol):
+    """Append-only persistence + query interface for AuditEntry.
+
+    Audit entries are immutable records of security evaluations.
+    No update or delete operations are provided to preserve audit
+    integrity.
+    """
+
+    async def save(self, entry: AuditEntry) -> None:
+        """Persist an audit entry (append-only).
+
+        Args:
+            entry: The audit entry to persist.
+
+        Raises:
+            DuplicateRecordError: If an entry with the same ID exists.
+            QueryError: If the operation fails.
+        """
+        ...
+
+    async def query(  # noqa: PLR0913
+        self,
+        *,
+        agent_id: NotBlankStr | None = None,
+        action_type: str | None = None,
+        verdict: AuditVerdictStr | None = None,
+        risk_level: ApprovalRiskLevel | None = None,
+        since: AwareDatetime | None = None,
+        until: AwareDatetime | None = None,
+        limit: int = 100,
+    ) -> tuple[AuditEntry, ...]:
+        """Query audit entries with optional filters.
+
+        Filters are AND-combined. Results are ordered by timestamp
+        descending (newest first).
+
+        Args:
+            agent_id: Filter by agent identifier.
+            action_type: Filter by action type string.
+            verdict: Filter by verdict string.
+            risk_level: Filter by risk level.
+            since: Only return entries at or after this timestamp.
+            until: Only return entries at or before this timestamp.
+            limit: Maximum number of entries to return (must be >= 1).
+
+        Returns:
+            Matching audit entries as a tuple.
+
+        Raises:
+            QueryError: If the operation fails, *limit* < 1, or
+                *until* is earlier than *since*.
         """
         ...

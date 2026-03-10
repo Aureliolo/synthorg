@@ -21,6 +21,9 @@ from ai_company.observability.events.persistence import (
     PERSISTENCE_BACKEND_WAL_MODE_FAILED,
 )
 from ai_company.persistence.errors import PersistenceConnectionError
+from ai_company.persistence.sqlite.audit_repository import (
+    SQLiteAuditRepository,
+)
 from ai_company.persistence.sqlite.hr_repositories import (
     SQLiteCollaborationMetricRepository,
     SQLiteLifecycleEventRepository,
@@ -64,6 +67,7 @@ class SQLitePersistenceBackend:
         self._task_metrics: SQLiteTaskMetricRepository | None = None
         self._collaboration_metrics: SQLiteCollaborationMetricRepository | None = None
         self._parked_contexts: SQLiteParkedContextRepository | None = None
+        self._audit_entries: SQLiteAuditRepository | None = None
 
     def _clear_state(self) -> None:
         """Reset connection and repository references to ``None``."""
@@ -75,6 +79,7 @@ class SQLitePersistenceBackend:
         self._task_metrics = None
         self._collaboration_metrics = None
         self._parked_contexts = None
+        self._audit_entries = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -83,57 +88,83 @@ class SQLitePersistenceBackend:
                 logger.debug(PERSISTENCE_BACKEND_ALREADY_CONNECTED)
                 return
 
-            logger.info(PERSISTENCE_BACKEND_CONNECTING, path=self._config.path)
+            logger.info(
+                PERSISTENCE_BACKEND_CONNECTING,
+                path=self._config.path,
+            )
             try:
                 self._db = await aiosqlite.connect(self._config.path)
                 self._db.row_factory = aiosqlite.Row
 
                 if self._config.wal_mode:
-                    cursor = await self._db.execute("PRAGMA journal_mode=WAL")
-                    row = await cursor.fetchone()
-                    actual_mode = row[0] if row else "unknown"
-                    if actual_mode != "wal" and self._config.path != ":memory:":
-                        logger.warning(
-                            PERSISTENCE_BACKEND_WAL_MODE_FAILED,
-                            requested="wal",
-                            actual=actual_mode,
-                        )
-                    # PRAGMA does not support parameterized queries;
-                    # journal_size_limit is validated as int >= 0 by Pydantic.
-                    limit = int(self._config.journal_size_limit)
-                    await self._db.execute(f"PRAGMA journal_size_limit={limit}")
+                    await self._configure_wal()
 
-                self._tasks = SQLiteTaskRepository(self._db)
-                self._cost_records = SQLiteCostRecordRepository(self._db)
-                self._messages = SQLiteMessageRepository(self._db)
-                self._lifecycle_events = SQLiteLifecycleEventRepository(self._db)
-                self._task_metrics = SQLiteTaskMetricRepository(self._db)
-                self._collaboration_metrics = SQLiteCollaborationMetricRepository(
-                    self._db
-                )
-                self._parked_contexts = SQLiteParkedContextRepository(self._db)
+                self._create_repositories()
             except (sqlite3.Error, OSError) as exc:
-                logger.exception(
-                    PERSISTENCE_BACKEND_CONNECTION_FAILED,
-                    path=self._config.path,
-                    error=str(exc),
-                )
-                if self._db is not None:
-                    try:
-                        await self._db.close()
-                    except (sqlite3.Error, OSError) as cleanup_exc:
-                        logger.warning(
-                            PERSISTENCE_BACKEND_DISCONNECT_ERROR,
-                            path=self._config.path,
-                            error=str(cleanup_exc),
-                            error_type=type(cleanup_exc).__name__,
-                            context="cleanup_after_connect_failure",
-                        )
-                self._clear_state()
-                msg = "Failed to connect to persistence backend"
-                raise PersistenceConnectionError(msg) from exc
+                await self._cleanup_failed_connect(exc)
 
-            logger.info(PERSISTENCE_BACKEND_CONNECTED, path=self._config.path)
+            logger.info(
+                PERSISTENCE_BACKEND_CONNECTED,
+                path=self._config.path,
+            )
+
+    async def _configure_wal(self) -> None:
+        """Configure WAL journal mode and size limit.
+
+        Must only be called when ``self._db`` is not ``None``.
+        """
+        assert self._db is not None  # noqa: S101
+        cursor = await self._db.execute("PRAGMA journal_mode=WAL")
+        row = await cursor.fetchone()
+        actual_mode = row[0] if row else "unknown"
+        if actual_mode != "wal" and self._config.path != ":memory:":
+            logger.warning(
+                PERSISTENCE_BACKEND_WAL_MODE_FAILED,
+                requested="wal",
+                actual=actual_mode,
+            )
+        # PRAGMA does not support parameterized queries;
+        # journal_size_limit is validated as int >= 0 by Pydantic.
+        limit = int(self._config.journal_size_limit)
+        await self._db.execute(f"PRAGMA journal_size_limit={limit}")
+
+    def _create_repositories(self) -> None:
+        """Instantiate all repository objects from the active connection."""
+        assert self._db is not None  # noqa: S101
+        self._tasks = SQLiteTaskRepository(self._db)
+        self._cost_records = SQLiteCostRecordRepository(self._db)
+        self._messages = SQLiteMessageRepository(self._db)
+        self._lifecycle_events = SQLiteLifecycleEventRepository(self._db)
+        self._task_metrics = SQLiteTaskMetricRepository(self._db)
+        self._collaboration_metrics = SQLiteCollaborationMetricRepository(self._db)
+        self._parked_contexts = SQLiteParkedContextRepository(self._db)
+        self._audit_entries = SQLiteAuditRepository(self._db)
+
+    async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:
+        """Log failure, close partial connection, and raise.
+
+        Raises:
+            PersistenceConnectionError: Always.
+        """
+        logger.exception(
+            PERSISTENCE_BACKEND_CONNECTION_FAILED,
+            path=self._config.path,
+            error=str(exc),
+        )
+        if self._db is not None:
+            try:
+                await self._db.close()
+            except (sqlite3.Error, OSError) as cleanup_exc:
+                logger.warning(
+                    PERSISTENCE_BACKEND_DISCONNECT_ERROR,
+                    path=self._config.path,
+                    error=str(cleanup_exc),
+                    error_type=type(cleanup_exc).__name__,
+                    context="cleanup_after_connect_failure",
+                )
+        self._clear_state()
+        msg = "Failed to connect to persistence backend"
+        raise PersistenceConnectionError(msg) from exc
 
     async def disconnect(self) -> None:
         """Close the database connection."""
@@ -280,3 +311,12 @@ class SQLitePersistenceBackend:
             PersistenceConnectionError: If not connected.
         """
         return self._require_connected(self._parked_contexts, "parked_contexts")
+
+    @property
+    def audit_entries(self) -> SQLiteAuditRepository:
+        """Repository for AuditEntry persistence.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(self._audit_entries, "audit_entries")

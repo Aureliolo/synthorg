@@ -24,7 +24,7 @@ async def memory_db() -> AsyncGenerator[aiosqlite.Connection]:
 
 @pytest.fixture
 async def migrated_db() -> AsyncGenerator[aiosqlite.Connection]:
-    """In-memory SQLite connection with v1 schema applied."""
+    """In-memory SQLite connection with all schema migrations applied."""
     db = await aiosqlite.connect(":memory:")
     try:
         db.row_factory = aiosqlite.Row

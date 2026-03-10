@@ -21,6 +21,8 @@ from ai_company.core.enums import (
     TaskStatus,
 )
 from ai_company.core.task import Task
+from ai_company.persistence.errors import DuplicateRecordError, QueryError
+from ai_company.security.models import AuditEntry, AuditVerdictStr  # noqa: TC001
 from ai_company.security.timeout.parked_context import ParkedContext  # noqa: TC001
 
 # ── Fake Repositories ────────────────────────────────────────────
@@ -214,6 +216,52 @@ class FakeParkedContextRepository:
         return self._contexts.pop(parked_id, None) is not None
 
 
+class FakeAuditRepository:
+    """In-memory audit entry repository for tests."""
+
+    def __init__(self) -> None:
+        self._entries: dict[str, AuditEntry] = {}
+
+    async def save(self, entry: AuditEntry) -> None:
+        if entry.id in self._entries:
+            msg = f"Duplicate audit entry {entry.id!r}"
+            raise DuplicateRecordError(msg)
+        self._entries[entry.id] = entry
+
+    async def query(  # noqa: PLR0913
+        self,
+        *,
+        agent_id: str | None = None,
+        action_type: str | None = None,
+        verdict: AuditVerdictStr | None = None,
+        risk_level: ApprovalRiskLevel | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 100,
+    ) -> tuple[AuditEntry, ...]:
+        if limit < 1:
+            msg = "limit must be >= 1"
+            raise QueryError(msg)
+        results = sorted(
+            self._entries.values(),
+            key=lambda e: e.timestamp,
+            reverse=True,
+        )
+        if agent_id is not None:
+            results = [e for e in results if e.agent_id == agent_id]
+        if action_type is not None:
+            results = [e for e in results if e.action_type == action_type]
+        if verdict is not None:
+            results = [e for e in results if e.verdict == verdict]
+        if risk_level is not None:
+            results = [e for e in results if e.risk_level == risk_level]
+        if since is not None:
+            results = [e for e in results if e.timestamp >= since]
+        if until is not None:
+            results = [e for e in results if e.timestamp <= until]
+        return tuple(results[:limit])
+
+
 class FakePersistenceBackend:
     """In-memory persistence backend for tests."""
 
@@ -225,6 +273,7 @@ class FakePersistenceBackend:
         self._task_metrics = FakeTaskMetricRepository()
         self._collaboration_metrics = FakeCollaborationMetricRepository()
         self._parked_contexts = FakeParkedContextRepository()
+        self._audit_entries = FakeAuditRepository()
         self._connected = False
 
     async def connect(self) -> None:
@@ -274,6 +323,10 @@ class FakePersistenceBackend:
     @property
     def parked_contexts(self) -> FakeParkedContextRepository:
         return self._parked_contexts
+
+    @property
+    def audit_entries(self) -> FakeAuditRepository:
+        return self._audit_entries
 
 
 # ── Fake Message Bus ────────────────────────────────────────────

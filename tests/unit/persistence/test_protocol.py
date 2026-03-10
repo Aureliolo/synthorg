@@ -12,6 +12,7 @@ from ai_company.hr.persistence_protocol import (
 )
 from ai_company.persistence.protocol import PersistenceBackend
 from ai_company.persistence.repositories import (
+    AuditRepository,
     CostRecordRepository,
     MessageRepository,
     ParkedContextRepository,
@@ -19,15 +20,18 @@ from ai_company.persistence.repositories import (
 )
 
 if TYPE_CHECKING:
+    from pydantic import AwareDatetime
+
     from ai_company.budget.cost_record import CostRecord
     from ai_company.communication.message import Message
-    from ai_company.core.enums import TaskStatus
+    from ai_company.core.enums import ApprovalRiskLevel, TaskStatus
     from ai_company.core.task import Task
     from ai_company.hr.models import AgentLifecycleEvent
     from ai_company.hr.performance.models import (
         CollaborationMetricRecord,
         TaskMetricRecord,
     )
+    from ai_company.security.models import AuditEntry, AuditVerdictStr
     from ai_company.security.timeout.parked_context import ParkedContext
 
 
@@ -141,6 +145,24 @@ class _FakeParkedContextRepository:
         return False
 
 
+class _FakeAuditRepository:
+    async def save(self, entry: AuditEntry) -> None:
+        pass
+
+    async def query(  # noqa: PLR0913
+        self,
+        *,
+        agent_id: str | None = None,
+        action_type: str | None = None,
+        verdict: AuditVerdictStr | None = None,
+        risk_level: ApprovalRiskLevel | None = None,
+        since: AwareDatetime | None = None,
+        until: AwareDatetime | None = None,
+        limit: int = 100,
+    ) -> tuple[AuditEntry, ...]:
+        return ()
+
+
 class _FakeBackend:
     async def connect(self) -> None:
         pass
@@ -190,6 +212,10 @@ class _FakeBackend:
     def collaboration_metrics(self) -> _FakeCollaborationMetricRepository:
         return _FakeCollaborationMetricRepository()
 
+    @property
+    def audit_entries(self) -> _FakeAuditRepository:
+        return _FakeAuditRepository()
+
 
 @pytest.mark.unit
 class TestProtocolCompliance:
@@ -226,3 +252,6 @@ class TestProtocolCompliance:
             _FakeParkedContextRepository(),
             ParkedContextRepository,
         )
+
+    def test_fake_audit_repo_is_audit_repository(self) -> None:
+        assert isinstance(_FakeAuditRepository(), AuditRepository)

@@ -84,6 +84,11 @@ class TestSQLitePersistenceBackend:
         with pytest.raises(PersistenceConnectionError, match="Not connected"):
             _ = backend.messages
 
+    async def test_audit_entries_before_connect_raises(self) -> None:
+        backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))
+        with pytest.raises(PersistenceConnectionError, match="Not connected"):
+            _ = backend.audit_entries
+
     async def test_wal_mode_enabled(self) -> None:
         backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:", wal_mode=True))
         await backend.connect()
