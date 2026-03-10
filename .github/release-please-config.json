@@ -20,6 +20,10 @@
         {
           "type": "generic",
           "path": "pyproject.toml"
+        },
+        {
+          "type": "generic",
+          "path": "src/ai_company/__init__.py"
         }
       ]
     }
