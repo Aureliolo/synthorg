@@ -6,7 +6,7 @@ Proxy overhead metrics for an agent run, computed from
 
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 
@@ -27,12 +27,15 @@ class TaskCompletionMetrics(BaseModel):
         tokens_per_task: Total tokens consumed (input + output).
         cost_per_task: Total USD cost for the task.
         duration_seconds: Wall-clock execution time in seconds.
-        prompt_tokens: Estimated system prompt tokens.
-        prompt_token_ratio: Ratio of prompt tokens to total tokens
-            (overhead indicator, derived via ``@computed_field``).
+        prompt_tokens: Estimated system prompt tokens (per-call estimate
+            from ``SystemPrompt.estimated_tokens``).
+        prompt_token_ratio: Per-call ratio of prompt tokens to total tokens
+            (overhead indicator, derived via ``@computed_field``).  For
+            multi-turn runs, the actual overhead is higher because the
+            system prompt is resent on every turn.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     task_id: NotBlankStr | None = Field(
         default=None,
@@ -61,10 +64,29 @@ class TaskCompletionMetrics(BaseModel):
         description="Estimated system prompt tokens",
     )
 
+    @model_validator(mode="after")
+    def _validate_prompt_tokens(self) -> TaskCompletionMetrics:
+        """Ensure prompt_tokens does not exceed tokens_per_task.
+
+        Skipped when ``tokens_per_task`` is 0 (zero-turn runs where the
+        system prompt was built but no provider calls were made).
+        """
+        if self.tokens_per_task > 0 and self.prompt_tokens > self.tokens_per_task:
+            msg = (
+                f"prompt_tokens ({self.prompt_tokens}) cannot exceed "
+                f"tokens_per_task ({self.tokens_per_task})"
+            )
+            raise ValueError(msg)
+        return self
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def prompt_token_ratio(self) -> float:
-        """Ratio of prompt tokens to total tokens (overhead indicator)."""
+        """Per-call ratio of prompt tokens to total tokens (overhead indicator).
+
+        For multi-turn runs the actual overhead is higher because the
+        system prompt is resent on every turn.
+        """
         if self.tokens_per_task > 0:
             return self.prompt_tokens / self.tokens_per_task
         return 0.0

@@ -862,19 +862,32 @@ class TestAgentEngineClassification:
 class TestAgentEnginePromptTokenRatioWarning:
     """High prompt-to-total token ratio emits PROMPT_TOKEN_RATIO_HIGH."""
 
-    async def test_high_ratio_emits_warning(
+    @pytest.mark.parametrize(
+        ("input_tokens", "output_tokens", "cost_usd", "expect_warning"),
+        [
+            # Moderate tokens: prompt estimate dominates total (300+100=400).
+            (300, 100, 0.01, True),
+            # Large tokens: prompt estimate negligible relative to total (10k).
+            (5000, 5000, 1.0, False),
+        ],
+        ids=["high_ratio", "low_ratio"],
+    )
+    async def test_prompt_token_ratio_warning(  # noqa: PLR0913
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
+        *,
+        input_tokens: int,
+        output_tokens: int,
+        cost_usd: float,
+        expect_warning: bool,
     ) -> None:
-        """When prompt tokens dominate, a warning is logged."""
-        # Use very small token counts so prompt estimate (~10 tokens from
-        # the heuristic len(content)//4) exceeds 30% of total.
+        """Warning emitted iff prompt tokens dominate total tokens."""
         response = _make_completion_response(
-            input_tokens=5,
-            output_tokens=2,
-            cost_usd=0.001,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost_usd,
         )
         provider = mock_provider_factory([response])
         engine = AgentEngine(provider=provider)
@@ -886,30 +899,8 @@ class TestAgentEnginePromptTokenRatioWarning:
             )
 
         warning_events = [e for e in logs if e.get("event") == PROMPT_TOKEN_RATIO_HIGH]
-        assert len(warning_events) == 1
-        assert "prompt_token_ratio" in warning_events[0]
-
-    async def test_low_ratio_no_warning(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-        sample_task_with_criteria: Task,
-        mock_provider_factory: type[MockCompletionProvider],
-    ) -> None:
-        """When prompt tokens are a small fraction, no warning is logged."""
-        # Large token counts make prompt estimate negligible.
-        response = _make_completion_response(
-            input_tokens=5000,
-            output_tokens=5000,
-            cost_usd=1.0,
-        )
-        provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
-
-        with structlog.testing.capture_logs() as logs:
-            await engine.run(
-                identity=sample_agent_with_personality,
-                task=sample_task_with_criteria,
-            )
-
-        warning_events = [e for e in logs if e.get("event") == PROMPT_TOKEN_RATIO_HIGH]
-        assert len(warning_events) == 0
+        if expect_warning:
+            assert len(warning_events) == 1
+            assert "prompt_token_ratio" in warning_events[0]
+        else:
+            assert len(warning_events) == 0

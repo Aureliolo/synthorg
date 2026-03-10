@@ -42,6 +42,7 @@ from ai_company.observability.events.prompt import (
     PROMPT_BUILD_TOKEN_TRIMMED,
     PROMPT_CUSTOM_TEMPLATE_FAILED,
     PROMPT_CUSTOM_TEMPLATE_LOADED,
+    PROMPT_POLICY_VALIDATION_FAILED,
 )
 
 if TYPE_CHECKING:
@@ -194,6 +195,7 @@ def build_system_prompt(  # noqa: PLR0913
         PromptBuildError: If prompt construction fails.
     """
     _validate_max_tokens(agent, max_tokens)
+    _validate_org_policies(agent, org_policies)
 
     # Advisory only — issues are logged but never block prompt construction.
     if org_policies:
@@ -203,7 +205,7 @@ def build_system_prompt(  # noqa: PLR0913
             raise
         except Exception:
             logger.warning(
-                PROMPT_BUILD_ERROR,
+                PROMPT_POLICY_VALIDATION_FAILED,
                 agent_id=str(agent.id),
                 error="Policy quality validation failed (advisory, continuing)",
                 exc_info=True,
@@ -272,6 +274,30 @@ def _validate_max_tokens(
             max_tokens=max_tokens,
         )
         raise PromptBuildError(msg)
+
+
+def _validate_org_policies(
+    agent: AgentIdentity,
+    org_policies: tuple[str, ...],
+) -> None:
+    """Raise ``PromptBuildError`` on blank or non-string policy entries.
+
+    Args:
+        agent: Agent identity for error context.
+        org_policies: Policy texts to validate.
+
+    Raises:
+        PromptBuildError: If any policy entry is empty or whitespace-only.
+    """
+    for index, policy in enumerate(org_policies):
+        if not isinstance(policy, str) or not policy.strip():
+            msg = f"org_policies[{index}] must be a non-empty string"
+            logger.error(
+                PROMPT_BUILD_ERROR,
+                agent_id=str(agent.id),
+                error=msg,
+            )
+            raise PromptBuildError(msg)
 
 
 def _log_and_return(

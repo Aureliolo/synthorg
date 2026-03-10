@@ -11,7 +11,10 @@ Both satisfy the ``MemoryFilterStrategy`` runtime-checkable protocol.
 from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 from ai_company.observability import get_logger
-from ai_company.observability.events.memory import MEMORY_FILTER_APPLIED
+from ai_company.observability.events.memory import (
+    MEMORY_FILTER_APPLIED,
+    MEMORY_FILTER_INIT,
+)
 
 if TYPE_CHECKING:
     from ai_company.memory.ranking import ScoredMemory
@@ -57,11 +60,13 @@ class TagBasedMemoryFilter:
     """
 
     def __init__(self, required_tag: str = NON_INFERABLE_TAG) -> None:
+        if not required_tag.strip():
+            msg = "required_tag must be a non-empty string"
+            raise ValueError(msg)
         self._required_tag = required_tag
         logger.debug(
-            MEMORY_FILTER_APPLIED,
+            MEMORY_FILTER_INIT,
             strategy=self.strategy_name,
-            phase="init",
             required_tag=required_tag,
         )
 

@@ -31,6 +31,6 @@ def validate_memory_tags(request: MemoryStoreRequest) -> None:
         logger.warning(
             MEMORY_FILTER_STORE_MISSING_TAG,
             category=request.category.value,
-            content_preview=request.content[:80],
+            content_length=len(request.content),
             tags=request.metadata.tags,
         )

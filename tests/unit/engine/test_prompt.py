@@ -479,6 +479,58 @@ class TestTokenEstimation:
         assert result.estimated_tokens > 0
 
 
+# ── TestPolicyValidationIntegration ──────────────────────────────
+
+
+class TestPolicyValidationIntegration:
+    """Tests for policy validation integration in build_system_prompt."""
+
+    @pytest.mark.unit
+    def test_policy_validation_error_does_not_block_prompt(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """When validate_policy_quality raises, prompt is still built."""
+        from unittest.mock import patch
+
+        with patch(
+            "ai_company.engine.prompt.validate_policy_quality",
+            side_effect=RuntimeError("boom"),
+        ):
+            result = build_system_prompt(
+                agent=sample_agent_with_personality,
+                org_policies=("All responses must include correlation_id",),
+            )
+
+        # Prompt is still built despite validation failure.
+        assert result.content
+        assert "org_policies" in result.sections
+
+    @pytest.mark.unit
+    def test_empty_org_policy_raises(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """Empty string policy is rejected with PromptBuildError."""
+        with pytest.raises(PromptBuildError, match="org_policies"):
+            build_system_prompt(
+                agent=sample_agent_with_personality,
+                org_policies=("valid policy must exist", ""),
+            )
+
+    @pytest.mark.unit
+    def test_whitespace_only_org_policy_raises(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """Whitespace-only policy is rejected with PromptBuildError."""
+        with pytest.raises(PromptBuildError, match="org_policies"):
+            build_system_prompt(
+                agent=sample_agent_with_personality,
+                org_policies=("   ",),
+            )
+
+
 # ── TestPromptVersioning ─────────────────────────────────────────
 
 

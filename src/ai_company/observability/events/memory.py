@@ -66,5 +66,6 @@ MEMORY_TOKEN_BUDGET_EXCEEDED: Final[str] = "memory.token_budget.exceeded"  # noq
 
 # ── Memory filter ──────────────────────────────────────────────
 
+MEMORY_FILTER_INIT: Final[str] = "memory.filter.init"
 MEMORY_FILTER_APPLIED: Final[str] = "memory.filter.applied"
 MEMORY_FILTER_STORE_MISSING_TAG: Final[str] = "memory.filter.store_missing_tag"

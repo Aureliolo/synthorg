@@ -2,6 +2,7 @@
 
 import pytest
 import structlog.testing
+from pydantic import ValidationError
 
 from ai_company.engine.policy_validation import (
     PolicyQualityIssue,
@@ -161,3 +162,50 @@ class TestEdgeCases:
         result = validate_policy_quality((policy,))
         verb_issues = [i for i in result if "action verbs" in i.issue]
         assert len(verb_issues) == 1
+
+    def test_frozen_enforcement(self) -> None:
+        """PolicyQualityIssue is immutable after construction."""
+        issue = PolicyQualityIssue(
+            policy="some policy",
+            issue="some issue",
+            severity="warning",
+        )
+        with pytest.raises(ValidationError):
+            issue.policy = "changed"  # type: ignore[misc]
+
+    def test_invalid_severity_rejected(self) -> None:
+        """Non-Literal severity values are rejected."""
+        with pytest.raises(ValidationError, match="severity"):
+            PolicyQualityIssue(
+                policy="some policy",
+                issue="some issue",
+                severity="info",  # type: ignore[arg-type]
+            )
+
+    @pytest.mark.parametrize(
+        ("policy", "expect_short"),
+        [
+            ("123456789", True),  # 9 chars — below _MIN_POLICY_LENGTH (10)
+            ("1234567890", False),  # 10 chars — exactly at boundary
+        ],
+    )
+    def test_min_length_boundary(self, policy: str, *, expect_short: bool) -> None:
+        """9 chars triggers 'Too short', 10 chars does not."""
+        result = validate_policy_quality((policy,))
+        short_issues = [i for i in result if "Too short" in i.issue]
+        assert len(short_issues) == (1 if expect_short else 0)
+
+    def test_max_length_boundary(self) -> None:
+        """500 chars is OK, 501 triggers 'Too long'."""
+        # 500-char policy with an action verb (no length warning expected).
+        at_limit = "Agents must always " + "x" * (500 - len("Agents must always "))
+        assert len(at_limit) == 500
+        result_ok = validate_policy_quality((at_limit,))
+        long_issues_ok = [i for i in result_ok if "Too long" in i.issue]
+        assert len(long_issues_ok) == 0
+
+        over_limit = at_limit + "y"
+        assert len(over_limit) == 501
+        result_bad = validate_policy_quality((over_limit,))
+        long_issues_bad = [i for i in result_bad if "Too long" in i.issue]
+        assert len(long_issues_bad) == 1

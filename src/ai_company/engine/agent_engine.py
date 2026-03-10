@@ -361,11 +361,12 @@ class AgentEngine:
             except MemoryError, RecursionError:
                 raise
             except Exception:
-                logger.debug(
+                logger.warning(
                     EXECUTION_ENGINE_ERROR,
                     agent_id=agent_id,
                     task_id=task_id,
-                    error="classification failed (details logged by pipeline)",
+                    error="classification failed",
+                    exc_info=True,
                 )
         return execution_result
 
