@@ -1,0 +1,10 @@
+# Local development overrides (auto-merged by Docker Compose)
+services:
+  backend:
+    environment:
+      AI_COMPANY_LOG_LEVEL: "debug"
+    # Docker socket for agent code execution sandbox.
+    # WARNING: Mounting the Docker socket gives the container full control
+    # over the Docker daemon. Only enable in trusted development environments.
+    # volumes:
+    #   - /var/run/docker.sock:/var/run/docker.sock

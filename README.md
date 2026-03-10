@@ -54,15 +54,19 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 - **MCP** for tool integration
 - **Vue 3** for web dashboard (planned)
 - **SQLite** (aiosqlite) → PostgreSQL for operational data persistence
+- **Docker** with Chainguard Python distroless runtime (CIS-hardened, non-root)
+- **nginx** (unprivileged) for web UI reverse proxy
 
 ## System Requirements
 
 - **Python 3.14+**
 - **uv** — package manager ([install](https://docs.astral.sh/uv/getting-started/installation/))
 - **Git 2.x+** — required at runtime for built-in git tools (subprocess-based, not a Python binding)
-- **Docker** (optional) — required for code execution sandbox and Docker-backed tool isolation. Install [Docker Desktop](https://docs.docker.com/get-docker/) or Docker Engine. File system and git tools work without Docker via subprocess isolation.
+- **Docker** (optional) — required for code execution sandbox, Docker-backed tool isolation, and running the full stack via Docker Compose. Install [Docker Desktop](https://docs.docker.com/get-docker/) or Docker Engine. File system and git tools work without Docker via subprocess isolation.
 
 ## Getting Started
+
+### Development (local Python)
 
 ```bash
 git clone https://github.com/Aureliolo/ai-company.git
@@ -72,10 +76,29 @@ uv sync
 
 See [docs/getting_started.md](docs/getting_started.md) for prerequisites, IDE setup, and the full walkthrough.
 
+### Docker Compose (full stack)
+
+```bash
+cp docker/.env.example docker/.env   # configure env vars (set LLM_API_KEY)
+docker compose -f docker/compose.yml build
+docker compose -f docker/compose.yml up -d
+```
+
+Services:
+- **Backend API**: http://localhost:8000 — Litestar REST + WebSocket
+- **Web Dashboard**: http://localhost:3000 — placeholder (proxies `/api/` and `/ws` to backend)
+
+```bash
+curl http://localhost:8000/api/v1/health   # backend health check
+docker compose -f docker/compose.yml down  # stop services
+```
+
+See [docker/](docker/) for Dockerfiles, compose config, and environment variable reference.
+
 ## Documentation
 
 - [Getting Started](docs/getting_started.md) - Setup and installation guide
-- [Contributing](CONTRIBUTING.md) - Branch, commit, and PR workflow
+- [Contributing](.github/CONTRIBUTING.md) - Branch, commit, and PR workflow
 - [CLAUDE.md](CLAUDE.md) - Code conventions and AI assistant reference
 - [Design Specification](DESIGN_SPEC.md) - Full high-level design
 

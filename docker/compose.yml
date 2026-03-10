@@ -1,0 +1,47 @@
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/backend/Dockerfile
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ai-company-data:/data
+    env_file: .env
+    environment:
+      AI_COMPANY_HOST: "0.0.0.0"
+      AI_COMPANY_PORT: "8000"
+      AI_COMPANY_DB_PATH: "/data/ai-company.db"
+      AI_COMPANY_MEMORY_DIR: "/data/memory"
+    # CIS 5.25 — restrict container capabilities
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=64m
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ..
+      dockerfile: docker/web/Dockerfile
+    ports:
+      - "${WEB_PORT:-3000}:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=16m
+      - /var/cache/nginx:size=32m
+      - /var/run:size=1m
+    restart: unless-stopped
+
+volumes:
+  ai-company-data:

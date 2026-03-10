@@ -39,6 +39,27 @@ uv run pytest tests/ -n auto --cov=ai_company --cov-fail-under=80  # full suite 
 uv run pre-commit run --all-files          # all pre-commit hooks
 ```
 
+## Docker
+
+```bash
+# Build and run (from repo root)
+cp docker/.env.example docker/.env        # configure env vars
+docker compose -f docker/compose.yml build
+docker compose -f docker/compose.yml up -d
+docker compose -f docker/compose.yml down
+
+# Verify
+curl http://localhost:8000/api/v1/health   # backend (direct)
+curl http://localhost:3000/api/v1/health   # backend (via web proxy)
+```
+
+- **Backend**: 3-stage build (builder → setup → distroless runtime), Chainguard Python, non-root (UID 65532), CIS-hardened
+- **Web**: `nginxinc/nginx-unprivileged`, SPA routing, API/WebSocket proxy to backend
+- **Config**: all Docker files in `docker/` — Dockerfiles, compose, `.env.example`
+- **CI**: `.github/workflows/docker.yml` — build + push to GHCR + Trivy/Grype scan + cosign sign
+- **Tags**: CI tags images with version from `pyproject.toml` (`[tool.commitizen].version`), semver, and SHA
+- **Dependabot**: auto-updates Docker image digests and versions daily
+
 ## Package Structure
 
 ```text
@@ -137,8 +158,9 @@ src/ai_company/
 ## CI
 
 - **Jobs**: lint (ruff) + type-check (mypy src/ tests/) + test (pytest + coverage) run in parallel → ci-pass (gate)
+- **Docker**: `.github/workflows/docker.yml` — builds backend + web images, pushes to GHCR, runs Trivy + Grype scans, signs with cosign. Triggers on push to main and version tags (`v*`).
 - **Matrix**: Python 3.14
-- **Dependabot**: daily uv + github-actions updates, grouped minor/patch, no auto-merge
+- **Dependabot**: daily uv + github-actions + docker updates, grouped minor/patch, no auto-merge
 - **Secret scanning**: gitleaks workflow on push/PR + weekly schedule
 - **Dependency review**: license allow-list (permissive only), PR comment summaries
 - **Coverage**: Codecov integration (replaces artifact-only uploads)

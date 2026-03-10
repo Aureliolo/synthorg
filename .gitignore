@@ -46,5 +46,9 @@ logs/
 Thumbs.db
 .DS_Store
 
+# Web UI
+web/node_modules/
+web/dist/
+
 # uv
 .python-version
