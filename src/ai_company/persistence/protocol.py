@@ -38,6 +38,7 @@ class PersistenceBackend(Protocol):
         lifecycle_events: Repository for AgentLifecycleEvent persistence.
         task_metrics: Repository for TaskMetricRecord persistence.
         collaboration_metrics: Repository for CollaborationMetricRecord persistence.
+        parked_contexts: Repository for ParkedContext persistence.
         audit_entries: Repository for AuditEntry persistence.
     """
 

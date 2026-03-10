@@ -27,7 +27,7 @@ async def memory_db() -> AsyncGenerator[aiosqlite.Connection]:
 
 
 @pytest.mark.unit
-class TestV2Migration:
+class TestSchemaMigrations:
     async def test_schema_version_is_four(self) -> None:
         assert SCHEMA_VERSION == 4
 

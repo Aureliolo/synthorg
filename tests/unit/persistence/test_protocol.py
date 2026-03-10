@@ -157,6 +157,7 @@ class _FakeAuditRepository:
         verdict: AuditVerdictStr | None = None,
         risk_level: ApprovalRiskLevel | None = None,
         since: AwareDatetime | None = None,
+        until: AwareDatetime | None = None,
         limit: int = 100,
     ) -> tuple[AuditEntry, ...]:
         return ()

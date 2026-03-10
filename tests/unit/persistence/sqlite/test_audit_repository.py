@@ -1,13 +1,15 @@
 """Tests for SQLiteAuditRepository."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
 
 from ai_company.core.enums import ApprovalRiskLevel, ToolCategory
 from ai_company.persistence.errors import DuplicateRecordError, QueryError
+from ai_company.persistence.repositories import AuditRepository
 from ai_company.persistence.sqlite.audit_repository import (
     SQLiteAuditRepository,
 )
@@ -192,13 +194,19 @@ class TestSQLiteAuditRepository:
         assert results[0].id == "ae-match"
 
     async def test_query_limit(self, migrated_db: aiosqlite.Connection) -> None:
-        """Respects limit parameter."""
+        """Limit returns the N newest entries."""
         repo = SQLiteAuditRepository(migrated_db)
+        base = datetime(2026, 3, 1, tzinfo=UTC)
         for i in range(5):
-            await repo.save(_make_entry(entry_id=f"ae-{i}"))
+            await repo.save(
+                _make_entry(
+                    entry_id=f"ae-{i}",
+                    timestamp=base + timedelta(minutes=i),
+                )
+            )
 
         results = await repo.query(limit=2)
-        assert len(results) == 2
+        assert [e.id for e in results] == ["ae-4", "ae-3"]
 
     async def test_query_empty(self, migrated_db: aiosqlite.Connection) -> None:
         """Returns empty tuple when no entries."""
@@ -342,3 +350,126 @@ class TestSQLiteAuditRepository:
 
         with pytest.raises(DuplicateRecordError):
             await repo.save(entry)
+
+    async def test_query_filter_by_until(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """Entries after until are excluded."""
+        repo = SQLiteAuditRepository(migrated_db)
+        now = datetime.now(UTC)
+        future = now + timedelta(hours=2)
+        cutoff = now + timedelta(hours=1)
+
+        e_now = _make_entry(entry_id="ae-now", timestamp=now)
+        e_future = _make_entry(entry_id="ae-future", timestamp=future)
+        await repo.save(e_now)
+        await repo.save(e_future)
+
+        results = await repo.query(until=cutoff)
+        assert len(results) == 1
+        assert results[0].id == "ae-now"
+
+    async def test_query_since_and_until(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """since + until creates a bounded time range."""
+        repo = SQLiteAuditRepository(migrated_db)
+        base = datetime(2026, 3, 1, tzinfo=UTC)
+        for i in range(5):
+            await repo.save(
+                _make_entry(
+                    entry_id=f"ae-{i}",
+                    timestamp=base + timedelta(hours=i),
+                )
+            )
+
+        results = await repo.query(
+            since=base + timedelta(hours=1),
+            until=base + timedelta(hours=3),
+        )
+        assert {e.id for e in results} == {"ae-1", "ae-2", "ae-3"}
+
+    async def test_query_until_before_since_raises(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """until < since raises QueryError."""
+        repo = SQLiteAuditRepository(migrated_db)
+        now = datetime.now(UTC)
+        with pytest.raises(QueryError, match="until"):
+            await repo.query(since=now, until=now - timedelta(hours=1))
+
+    async def test_since_boundary_inclusive(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """Entry with timestamp == since is included (>= semantics)."""
+        repo = SQLiteAuditRepository(migrated_db)
+        cutoff = datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC)
+        entry = _make_entry(entry_id="ae-boundary", timestamp=cutoff)
+        await repo.save(entry)
+
+        results = await repo.query(since=cutoff)
+        assert len(results) == 1
+        assert results[0].id == "ae-boundary"
+
+    async def test_save_normalizes_timestamp_to_utc(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """Non-UTC timestamps are stored as UTC for correct ordering."""
+        repo = SQLiteAuditRepository(migrated_db)
+        # Use timezone offset +05:30
+        offset = timezone(timedelta(hours=5, minutes=30))
+        ts = datetime(2026, 3, 10, 12, 0, 0, tzinfo=offset)
+        entry = _make_entry(entry_id="ae-tz", timestamp=ts)
+        await repo.save(entry)
+
+        # Querying with UTC equivalent should find the entry
+        utc_equiv = ts.astimezone(UTC)
+        results = await repo.query(since=utc_equiv)
+        assert len(results) == 1
+        assert results[0].id == "ae-tz"
+
+    async def test_save_db_error_raises_query_error(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """Generic sqlite3.Error during save raises QueryError."""
+        import sqlite3
+
+        repo = SQLiteAuditRepository(migrated_db)
+        entry = _make_entry(entry_id="ae-err")
+
+        with (
+            patch.object(
+                migrated_db,
+                "execute",
+                new_callable=AsyncMock,
+                side_effect=sqlite3.OperationalError("disk I/O error"),
+            ),
+            pytest.raises(QueryError, match="Failed to save"),
+        ):
+            await repo.save(entry)
+
+    async def test_query_db_error_raises_query_error(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """Generic sqlite3.Error during query raises QueryError."""
+        import sqlite3
+
+        repo = SQLiteAuditRepository(migrated_db)
+
+        with (
+            patch.object(
+                migrated_db,
+                "execute",
+                new_callable=AsyncMock,
+                side_effect=sqlite3.OperationalError("disk I/O error"),
+            ),
+            pytest.raises(QueryError, match="Failed to query"),
+        ):
+            await repo.query()
+
+    async def test_sqlite_audit_repo_satisfies_protocol(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """SQLiteAuditRepository is an AuditRepository."""
+        repo = SQLiteAuditRepository(migrated_db)
+        assert isinstance(repo, AuditRepository)

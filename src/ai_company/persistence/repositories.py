@@ -293,6 +293,7 @@ class AuditRepository(Protocol):
         verdict: AuditVerdictStr | None = None,
         risk_level: ApprovalRiskLevel | None = None,
         since: AwareDatetime | None = None,
+        until: AwareDatetime | None = None,
         limit: int = 100,
     ) -> tuple[AuditEntry, ...]:
         """Query audit entries with optional filters.
@@ -306,12 +307,14 @@ class AuditRepository(Protocol):
             verdict: Filter by verdict string.
             risk_level: Filter by risk level.
             since: Only return entries at or after this timestamp.
+            until: Only return entries at or before this timestamp.
             limit: Maximum number of entries to return (must be >= 1).
 
         Returns:
             Matching audit entries as a tuple.
 
         Raises:
-            QueryError: If the operation fails or *limit* < 1.
+            QueryError: If the operation fails, *limit* < 1, or
+                *until* is earlier than *since*.
         """
         ...
