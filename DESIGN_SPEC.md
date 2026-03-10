@@ -3231,6 +3231,8 @@ ai-company/
 │   ├── CONTRIBUTING.md
 │   └── SECURITY.md
 ├── .dockerignore                    # Consolidated Docker build context exclusions
+├── .grype.yaml                      # Grype CVE ignore list (synced with .trivyignore.yaml)
+├── .trivyignore.yaml                # Trivy CVE ignore list (structured YAML format)
 ├── DESIGN_SPEC.md                   # This document
 ├── README.md
 ├── pyproject.toml

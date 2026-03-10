@@ -159,7 +159,7 @@ src/ai_company/
 ## CI
 
 - **Jobs**: lint (ruff) + type-check (mypy src/ tests/) + test (pytest + coverage) run in parallel → ci-pass (gate)
-- **Docker**: `.github/workflows/docker.yml` — builds backend + web images, pushes to GHCR, runs Trivy + Grype scans, signs with cosign. Triggers on push to main and version tags (`v*`).
+- **Docker**: `.github/workflows/docker.yml` — builds backend + web images, pushes to GHCR, signs with cosign. Scans: Trivy (CRITICAL = hard fail, HIGH = warn-only) + Grype (critical cutoff). CVE triage via `.trivyignore.yaml` and `.grype.yaml`. Images only pushed after scans pass. Triggers on push to main and version tags (`v*`).
 - **Matrix**: Python 3.14
 - **Dependabot**: daily uv + github-actions + docker updates, grouped minor/patch, no auto-merge
 - **Secret scanning**: gitleaks workflow on push/PR + weekly schedule

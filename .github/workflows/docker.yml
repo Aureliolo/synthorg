@@ -107,6 +107,7 @@ jobs:
 
       - name: Trivy scan (high — warn only)
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        continue-on-error: true
         with:
           image-ref: ${{ steps.scan-ref.outputs.ref }}
           format: table
@@ -120,6 +121,7 @@ jobs:
           image: ${{ steps.scan-ref.outputs.ref }}
           fail-build: true
           severity-cutoff: critical
+          config: .grype.yaml
 
       # Push only after scans pass — prevents publishing vulnerable images.
       # NOTE: This is a separate build invocation from the scan step. GHA cache
@@ -216,6 +218,7 @@ jobs:
 
       - name: Trivy scan (high — warn only)
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        continue-on-error: true
         with:
           image-ref: ${{ steps.scan-ref.outputs.ref }}
           format: table
@@ -229,6 +232,7 @@ jobs:
           image: ${{ steps.scan-ref.outputs.ref }}
           fail-build: true
           severity-cutoff: critical
+          config: .grype.yaml
 
       # Push only after scans pass — prevents publishing vulnerable images.
       # NOTE: Separate build invocation; GHA cache ensures deterministic layers,
