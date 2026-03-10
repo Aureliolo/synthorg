@@ -6,6 +6,7 @@ import re
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING, Any, Final
 
+from ai_company.core.enums import ActionType
 from ai_company.observability import get_logger
 from ai_company.observability.events.tool import (
     TOOL_FS_ERROR,
@@ -138,6 +139,7 @@ class ListDirectoryTool(BaseFileSystemTool):
         super().__init__(
             workspace_root=workspace_root,
             name="list_directory",
+            action_type=ActionType.CODE_READ,
             description=(
                 "List files and directories. Supports glob filtering "
                 "and recursive listing."

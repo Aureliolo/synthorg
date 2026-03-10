@@ -6,6 +6,7 @@ import pathlib
 import tempfile
 from typing import TYPE_CHECKING, Any, Final
 
+from ai_company.core.enums import ActionType
 from ai_company.observability import get_logger
 from ai_company.observability.events.tool import (
     TOOL_FS_ERROR,
@@ -88,6 +89,7 @@ class WriteFileTool(BaseFileSystemTool):
         super().__init__(
             workspace_root=workspace_root,
             name="write_file",
+            action_type=ActionType.CODE_WRITE,
             description=(
                 "Write content to a file, creating or overwriting it. "
                 "Set create_directories to true to create parent dirs."

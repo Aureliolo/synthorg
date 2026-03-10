@@ -25,6 +25,7 @@ from ai_company.core.company import CompanyConfig
 from ai_company.memory.config import CompanyMemoryConfig
 from ai_company.memory.org.config import OrgMemoryConfig
 from ai_company.persistence.config import PersistenceConfig
+from ai_company.security.config import SecurityConfig
 from ai_company.tools.mcp.config import MCPConfig
 from ai_company.tools.sandbox.sandboxing_config import SandboxingConfig
 
@@ -88,6 +89,7 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     org_memory = OrgMemoryConfig()
     sandboxing = SandboxingConfig()
     mcp = MCPConfig()
+    security = SecurityConfig()
 
 
 # ── Sample YAML strings ──────────────────────────────────────────

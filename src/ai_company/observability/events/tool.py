@@ -40,6 +40,11 @@ TOOL_FS_PARENT_NOT_FOUND: Final[str] = "tool.fs.parent_not_found"
 TOOL_FS_GLOB_REJECTED: Final[str] = "tool.fs.glob_rejected"
 TOOL_FS_NOOP: Final[str] = "tool.fs.noop"
 
+# ── Security interception events ────────────────────────────────
+TOOL_SECURITY_DENIED: Final[str] = "tool.security.denied"
+TOOL_SECURITY_ESCALATED: Final[str] = "tool.security.escalated"
+TOOL_OUTPUT_REDACTED: Final[str] = "tool.output.redacted"
+
 # ── Subprocess utility events ───────────────────────────────────
 TOOL_SUBPROCESS_TRANSPORT_CLOSE_FAILED: Final[str] = (
     "tool.subprocess.transport_close_failed"

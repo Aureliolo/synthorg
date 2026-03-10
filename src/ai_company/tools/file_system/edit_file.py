@@ -6,6 +6,7 @@ import pathlib
 import tempfile
 from typing import TYPE_CHECKING, Any, Final
 
+from ai_company.core.enums import ActionType
 from ai_company.observability import get_logger
 from ai_company.observability.events.tool import (
     TOOL_FS_EDIT,
@@ -100,6 +101,7 @@ class EditFileTool(BaseFileSystemTool):
         super().__init__(
             workspace_root=workspace_root,
             name="edit_file",
+            action_type=ActionType.CODE_WRITE,
             description=(
                 "Replace the first occurrence of old_text with new_text "
                 "in a file. Use empty new_text to delete text."

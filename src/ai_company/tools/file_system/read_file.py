@@ -7,6 +7,7 @@ file-size guard to prevent loading excessively large files into memory.
 import asyncio
 from typing import TYPE_CHECKING, Any, Final
 
+from ai_company.core.enums import ActionType
 from ai_company.observability import get_logger
 from ai_company.observability.events.tool import (
     TOOL_FS_BINARY_DETECTED,
@@ -96,6 +97,7 @@ class ReadFileTool(BaseFileSystemTool):
                 "Read the contents of a file. Supports optional "
                 "line-range selection via start_line and end_line."
             ),
+            action_type=ActionType.CODE_READ,
             parameters_schema={
                 "type": "object",
                 "properties": {

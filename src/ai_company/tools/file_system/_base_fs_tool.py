@@ -50,6 +50,7 @@ class BaseFileSystemTool(BaseTool, ABC):
         name: str,
         description: str = "",
         parameters_schema: dict[str, Any] | None = None,
+        action_type: str | None = None,
     ) -> None:
         """Initialize with a workspace root and tool metadata.
 
@@ -58,12 +59,14 @@ class BaseFileSystemTool(BaseTool, ABC):
             name: Tool name.
             description: Human-readable description.
             parameters_schema: JSON Schema for tool parameters.
+            action_type: Security action type override.
         """
         super().__init__(
             name=name,
             description=description,
             category=ToolCategory.FILE_SYSTEM,
             parameters_schema=parameters_schema,
+            action_type=action_type,
         )
         self._path_validator = PathValidator(workspace_root)
 

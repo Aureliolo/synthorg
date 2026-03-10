@@ -102,8 +102,8 @@ class TestEnumMemberCounts:
     def test_consolidation_interval_has_4_members(self) -> None:
         assert len(ConsolidationInterval) == 4
 
-    def test_action_type_has_6_members(self) -> None:
-        assert len(ActionType) == 6
+    def test_action_type_has_25_members(self) -> None:
+        assert len(ActionType) == 25
 
 
 # ── String Values ──────────────────────────────────────────────────
@@ -259,16 +259,24 @@ class TestEnumStringValues:
     @pytest.mark.parametrize(
         ("member", "value"),
         [
-            (ActionType.CODE_MERGE, "code_merge"),
-            (ActionType.DEPLOYMENT, "deployment"),
-            (ActionType.BUDGET_SPEND, "budget_spend"),
-            (ActionType.EXTERNAL_COMMUNICATION, "external_communication"),
-            (ActionType.HIRING, "hiring"),
-            (ActionType.ARCHITECTURE_CHANGE, "architecture_change"),
+            (ActionType.CODE_READ, "code:read"),
+            (ActionType.CODE_WRITE, "code:write"),
+            (ActionType.CODE_DELETE, "code:delete"),
+            (ActionType.VCS_COMMIT, "vcs:commit"),
+            (ActionType.VCS_PUSH, "vcs:push"),
+            (ActionType.DEPLOY_PRODUCTION, "deploy:production"),
+            (ActionType.BUDGET_SPEND, "budget:spend"),
+            (ActionType.ORG_FIRE, "org:fire"),
+            (ActionType.DB_ADMIN, "db:admin"),
+            (ActionType.ARCH_DECIDE, "arch:decide"),
         ],
     )
     def test_action_type_values(self, member: ActionType, value: str) -> None:
         assert member.value == value
+
+    def test_action_type_uses_colon_format(self) -> None:
+        for member in ActionType:
+            assert ":" in member.value, f"{member.name} lacks category:action format"
 
 
 # ── StrEnum Behavior ───────────────────────────────────────────────

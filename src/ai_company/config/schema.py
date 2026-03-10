@@ -26,6 +26,7 @@ from ai_company.observability import get_logger
 from ai_company.observability.config import LogConfig  # noqa: TC001
 from ai_company.observability.events.config import CONFIG_VALIDATION_FAILED
 from ai_company.persistence.config import PersistenceConfig
+from ai_company.security.config import SecurityConfig
 from ai_company.tools.mcp.config import MCPConfig
 from ai_company.tools.sandbox.sandboxing_config import SandboxingConfig
 
@@ -491,6 +492,7 @@ class RootConfig(BaseModel):
         api: API server configuration.
         sandboxing: Sandboxing backend configuration.
         mcp: MCP bridge configuration.
+        security: Security subsystem configuration.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -585,6 +587,10 @@ class RootConfig(BaseModel):
     mcp: MCPConfig = Field(
         default_factory=MCPConfig,
         description="MCP bridge configuration",
+    )
+    security: SecurityConfig = Field(
+        default_factory=SecurityConfig,
+        description="Security subsystem configuration",
     )
 
     @model_validator(mode="after")

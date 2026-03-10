@@ -369,18 +369,42 @@ class CoordinationTopology(StrEnum):
 
 
 class ActionType(StrEnum):
-    """Convenience constants for common approval action types.
+    """Two-level action type taxonomy for security classification.
 
-    Models typically use ``NotBlankStr`` for ``action_type`` fields, so these
-    are optional helper constants and custom string values remain valid.
+    Used by autonomy presets (DESIGN_SPEC §12.2), SecOps validation
+    (§12.3), tiered timeout policies (§12.4), and progressive trust
+    (§11.3).  Values follow a ``category:action`` naming convention.
+
+    Custom action type strings are also accepted by models that use
+    ``str`` for ``action_type`` fields — these enum members are
+    convenience constants for the built-in taxonomy.
     """
 
-    CODE_MERGE = "code_merge"
-    DEPLOYMENT = "deployment"
-    BUDGET_SPEND = "budget_spend"
-    EXTERNAL_COMMUNICATION = "external_communication"
-    HIRING = "hiring"
-    ARCHITECTURE_CHANGE = "architecture_change"
+    CODE_READ = "code:read"
+    CODE_WRITE = "code:write"
+    CODE_CREATE = "code:create"
+    CODE_DELETE = "code:delete"
+    CODE_REFACTOR = "code:refactor"
+    TEST_WRITE = "test:write"
+    TEST_RUN = "test:run"
+    DOCS_WRITE = "docs:write"
+    VCS_COMMIT = "vcs:commit"
+    VCS_PUSH = "vcs:push"
+    VCS_BRANCH = "vcs:branch"
+    DEPLOY_STAGING = "deploy:staging"
+    DEPLOY_PRODUCTION = "deploy:production"
+    COMMS_INTERNAL = "comms:internal"
+    COMMS_EXTERNAL = "comms:external"
+    BUDGET_SPEND = "budget:spend"
+    BUDGET_EXCEED = "budget:exceed"
+    ORG_HIRE = "org:hire"
+    ORG_FIRE = "org:fire"
+    ORG_PROMOTE = "org:promote"
+    VCS_READ = "vcs:read"
+    DB_QUERY = "db:query"
+    DB_MUTATE = "db:mutate"
+    DB_ADMIN = "db:admin"
+    ARCH_DECIDE = "arch:decide"
 
 
 class MergeOrder(StrEnum):

@@ -3,6 +3,7 @@
 import asyncio
 from typing import TYPE_CHECKING, Any
 
+from ai_company.core.enums import ActionType
 from ai_company.observability import get_logger
 from ai_company.observability.events.tool import TOOL_FS_DELETE, TOOL_FS_ERROR
 from ai_company.tools.base import ToolExecutionResult
@@ -54,6 +55,7 @@ class DeleteFileTool(BaseFileSystemTool):
         super().__init__(
             workspace_root=workspace_root,
             name="delete_file",
+            action_type=ActionType.CODE_DELETE,
             description="Delete a single file from the workspace.",
             parameters_schema={
                 "type": "object",

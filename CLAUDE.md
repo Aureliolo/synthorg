@@ -54,7 +54,7 @@ src/ai_company/
   persistence/    # Operational data persistence — pluggable PersistenceBackend protocol, SQLite initial (§7.6)
   observability/  # Structured logging, correlation tracking, log sinks
   providers/      # LLM provider abstraction (LiteLLM adapter)
-  security/       # SecOps agent, approval gates, audit
+  security/       # SecOps agent, rule engine (soft-allow/hard-deny, fail-closed), audit log, output scanner, risk classifier, action type registry, ToolInvoker security integration
   templates/      # Pre-built company templates, personality presets, and builder
   tools/          # Tool registry, built-in tools (file_system/, git, sandbox/, code_runner), MCP bridge (mcp/), role-based access
 ```

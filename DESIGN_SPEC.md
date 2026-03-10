@@ -2169,7 +2169,7 @@ sandboxing:
 > code:read, code:write, code:create, code:delete, code:refactor
 > test:write, test:run
 > docs:write
-> vcs:commit, vcs:push, vcs:branch
+> vcs:read, vcs:commit, vcs:push, vcs:branch
 > deploy:staging, deploy:production
 > comms:internal, comms:external
 > budget:spend, budget:exceed
@@ -3034,11 +3034,25 @@ ai-company/
 │       │       ├── factory.py     # MCPToolFactory (parallel connect)
 │       │       ├── models.py      # MCP domain models
 │       │       └── result_mapper.py # MCP result → ToolExecutionResult mapping
-│       ├── security/                # Security & approval (M7, stubs only)
-│       │   ├── approval.py         # Approval workflow gates (M7) — domain model is in core/approval.py
-│       │   ├── secops_agent.py     # Security operations agent (M7)
-│       │   ├── audit.py            # Audit logging (M7)
-│       │   └── permissions.py      # Permission checking (M7)
+│       ├── security/                # Security & approval
+│       │   ├── action_type_mapping.py # Default ToolCategory → ActionType mapping
+│       │   ├── action_types.py     # ActionTypeCategory registry and validation
+│       │   ├── audit.py            # Append-only AuditLog with configurable eviction
+│       │   ├── config.py           # SecurityConfig, SecurityPolicyRule, RuleEngineConfig
+│       │   ├── models.py           # SecurityVerdict, SecurityContext, AuditEntry, OutputScanResult
+│       │   ├── output_scanner.py   # Post-tool output scanning (regex-based redaction)
+│       │   ├── protocol.py         # SecurityInterceptionStrategy protocol
+│       │   ├── service.py          # SecOpsService — meta-agent coordinating security
+│       │   └── rules/              # Rule engine and detectors
+│       │       ├── engine.py       # RuleEngine (soft-allow + hard-deny, fail-closed)
+│       │       ├── protocol.py     # SecurityRule protocol
+│       │       ├── policy_validator.py        # Policy list validation rule (hard-deny/auto-approve)
+│       │       ├── risk_classifier.py         # RiskClassifier (ActionType → ApprovalRiskLevel)
+│       │       ├── credential_detector.py     # Credential/secret pattern detection (API keys, tokens)
+│       │       ├── data_leak_detector.py      # Data leak detection (PII, sensitive file paths)
+│       │       ├── destructive_op_detector.py # Destructive operation detection (rm -rf, DROP TABLE)
+│       │       ├── path_traversal_detector.py # Path traversal attack detection (../, null bytes)
+│       │       └── _utils.py       # walk_string_values utility (recursive argument scanning)
 │       ├── budget/                  # Cost management
 │       │   ├── _optimizer_helpers.py # CostOptimizer shared helper functions
 │       │   ├── config.py           # Budget configuration models

@@ -210,6 +210,7 @@ class TestEventConstants:
             "workspace",
             "consolidation",
             "org_memory",
+            "security",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected

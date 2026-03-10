@@ -108,7 +108,7 @@ class _BaseGitTool(BaseTool, ABC):
         workspace: Absolute path to the agent's workspace directory.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         name: str,
@@ -116,6 +116,7 @@ class _BaseGitTool(BaseTool, ABC):
         parameters_schema: dict[str, Any],
         workspace: Path,
         sandbox: SandboxBackend | None = None,
+        action_type: str | None = None,
     ) -> None:
         """Initialize a git tool bound to a workspace.
 
@@ -125,6 +126,7 @@ class _BaseGitTool(BaseTool, ABC):
             parameters_schema: JSON Schema for tool parameters.
             workspace: Absolute path to the workspace root.
             sandbox: Optional sandbox backend for subprocess isolation.
+            action_type: Security action type override.
 
         Raises:
             ValueError: If *workspace* is not an absolute path.
@@ -137,6 +139,7 @@ class _BaseGitTool(BaseTool, ABC):
             description=description,
             parameters_schema=parameters_schema,
             category=ToolCategory.VERSION_CONTROL,
+            action_type=action_type,
         )
         self._workspace = workspace.resolve()
         self._sandbox = sandbox
@@ -208,18 +211,18 @@ class _BaseGitTool(BaseTool, ABC):
         *,
         param: str,
     ) -> ToolExecutionResult | None:
-        """Reject values starting with ``-`` to prevent flag injection.
+        """Reject flag-like values and control characters.
 
-        Used for refs, branch names, author filters, date strings, and
-        any other git argument that must not be interpreted as a flag.
+        Blocks values starting with ``-`` (flag injection) and values
+        containing control characters (null bytes, newlines, etc.).
 
         Args:
             value: The argument string to validate.
             param: Parameter name for the error message.
 
         Returns:
-            A ``ToolExecutionResult`` with ``is_error=True`` if the value
-            starts with ``-``, or ``None`` if valid.
+            A ``ToolExecutionResult`` with ``is_error=True`` if invalid,
+            or ``None`` if valid.
         """
         if value.startswith("-"):
             logger.warning(
@@ -229,6 +232,16 @@ class _BaseGitTool(BaseTool, ABC):
             )
             return ToolExecutionResult(
                 content=f"Invalid {param}: must not start with '-'",
+                is_error=True,
+            )
+        if _CONTROL_CHAR_RE.search(value):
+            logger.warning(
+                GIT_REF_INJECTION_BLOCKED,
+                param=param,
+                value=repr(value),
+            )
+            return ToolExecutionResult(
+                content=f"Invalid {param}: must not contain control characters",
                 is_error=True,
             )
         return None

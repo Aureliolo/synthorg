@@ -1,0 +1,8 @@
+# Gitleaks configuration — allowlist test files containing deliberately
+# fake credentials used by the security rule detector test suite.
+
+[allowlist]
+  paths = [
+    '''tests/unit/security/rules/test_credential_detector\.py''',
+    '''tests/unit/security/test_output_scanner\.py''',
+  ]

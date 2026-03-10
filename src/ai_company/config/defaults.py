@@ -37,4 +37,5 @@ def default_config_dict() -> dict[str, Any]:
         "api": {},
         "sandboxing": {},
         "mcp": {},
+        "security": {},
     }

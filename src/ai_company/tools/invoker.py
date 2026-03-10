@@ -17,6 +17,10 @@ from referencing import Registry as JsonSchemaRegistry
 from referencing.exceptions import NoSuchResource
 
 from ai_company.observability import get_logger
+from ai_company.observability.events.security import (
+    SECURITY_INTERCEPTOR_ERROR,
+    SECURITY_OUTPUT_SCAN_ERROR,
+)
 from ai_company.observability.events.tool import (
     TOOL_INVOKE_ALL_COMPLETE,
     TOOL_INVOKE_ALL_START,
@@ -30,18 +34,24 @@ from ai_company.observability.events.tool import (
     TOOL_INVOKE_SUCCESS,
     TOOL_INVOKE_TOOL_ERROR,
     TOOL_INVOKE_VALIDATION_UNEXPECTED,
+    TOOL_OUTPUT_REDACTED,
     TOOL_PERMISSION_DENIED,
+    TOOL_SECURITY_DENIED,
+    TOOL_SECURITY_ESCALATED,
 )
 from ai_company.providers.models import ToolCall, ToolResult
+from ai_company.security.models import SecurityContext, SecurityVerdictType
 
+from .base import ToolExecutionResult
 from .errors import ToolExecutionError, ToolNotFoundError, ToolParameterError
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from ai_company.providers.models import ToolDefinition
+    from ai_company.security.protocol import SecurityInterceptionStrategy
 
-    from .base import BaseTool, ToolExecutionResult
+    from .base import BaseTool
     from .permissions import ToolPermissionChecker
     from .registry import ToolRegistry
 
@@ -59,7 +69,7 @@ _SAFE_REGISTRY: JsonSchemaRegistry = JsonSchemaRegistry(  # type: ignore[call-ar
 
 
 class ToolInvoker:
-    """Validates parameters and executes tool calls against a registry.
+    """Validate parameters, enforce security policies, and execute tools.
 
     Recoverable errors are returned as ``ToolResult(is_error=True)``.
     Non-recoverable errors (``MemoryError``, ``RecursionError``) are
@@ -85,16 +95,25 @@ class ToolInvoker:
         registry: ToolRegistry,
         *,
         permission_checker: ToolPermissionChecker | None = None,
+        security_interceptor: SecurityInterceptionStrategy | None = None,
+        agent_id: str | None = None,
+        task_id: str | None = None,
     ) -> None:
-        """Initialize with a tool registry and optional permission checker.
+        """Initialize with a tool registry and optional checkers.
 
         Args:
             registry: Registry to look up tools from.
             permission_checker: Optional checker for access-level gating.
                 When ``None``, all registered tools are permitted.
+            security_interceptor: Optional pre/post-tool security layer.
+            agent_id: Agent ID for security context.
+            task_id: Task ID for security context.
         """
         self._registry = registry
         self._permission_checker = permission_checker
+        self._security_interceptor = security_interceptor
+        self._agent_id = agent_id
+        self._task_id = task_id
 
     @property
     def registry(self) -> ToolRegistry:
@@ -140,6 +159,157 @@ class ToolInvoker:
             is_error=True,
         )
 
+    def _build_security_context(
+        self,
+        tool: BaseTool,
+        tool_call: ToolCall,
+    ) -> SecurityContext:
+        """Build a ``SecurityContext`` for the given tool call."""
+        return SecurityContext(
+            tool_name=tool.name,
+            tool_category=tool.category,
+            action_type=tool.action_type,
+            arguments=copy.deepcopy(dict(tool_call.arguments)),
+            agent_id=self._agent_id,
+            task_id=self._task_id,
+        )
+
+    async def _check_security(
+        self,
+        tool: BaseTool,
+        tool_call: ToolCall,
+    ) -> tuple[SecurityContext | None, ToolResult | None]:
+        """Run the security interceptor (if any) before execution.
+
+        Builds the ``SecurityContext`` inside the fail-closed handler so
+        construction errors are also caught.
+
+        Returns ``(context, None)`` if allowed, or ``(context, ToolResult)``
+        if denied/escalated.  Returns ``(None, None)`` when no interceptor.
+        """
+        if self._security_interceptor is None:
+            return None, None
+        try:
+            context = self._build_security_context(tool, tool_call)
+            verdict = await self._security_interceptor.evaluate_pre_tool(
+                context,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                SECURITY_INTERCEPTOR_ERROR,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+            )
+            return None, ToolResult(
+                tool_call_id=tool_call.id,
+                content=(
+                    "Security evaluation failed (fail-closed). Tool execution blocked."
+                ),
+                is_error=True,
+            )
+        if verdict.verdict == SecurityVerdictType.ALLOW:
+            return context, None
+        if verdict.verdict == SecurityVerdictType.ESCALATE:
+            logger.warning(
+                TOOL_SECURITY_ESCALATED,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                reason=verdict.reason,
+                approval_id=verdict.approval_id,
+            )
+            msg = (
+                f"Security escalation: {verdict.reason}. "
+                f"Approval required (id={verdict.approval_id})"
+            )
+            return context, ToolResult(
+                tool_call_id=tool_call.id,
+                content=msg,
+                is_error=True,
+            )
+        # DENY
+        logger.warning(
+            TOOL_SECURITY_DENIED,
+            tool_call_id=tool_call.id,
+            tool_name=tool_call.name,
+            reason=verdict.reason,
+        )
+        return context, ToolResult(
+            tool_call_id=tool_call.id,
+            content=f"Security denied: {verdict.reason}",
+            is_error=True,
+        )
+
+    async def _scan_output(
+        self,
+        tool_call: ToolCall,
+        result: ToolExecutionResult,
+        context: SecurityContext,
+    ) -> ToolExecutionResult:
+        """Scan tool output for sensitive data (if interceptor is set).
+
+        If sensitive data is found and redacted, returns a new
+        ``ToolExecutionResult`` with the redacted content.  Exceptions
+        from the scanner are caught — the original result is returned
+        to avoid destroying valid tool output.
+        """
+        if self._security_interceptor is None:
+            return result
+
+        try:
+            scan_result = await self._security_interceptor.scan_output(
+                context,
+                result.content,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                SECURITY_OUTPUT_SCAN_ERROR,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+            )
+            return ToolExecutionResult(
+                content=("Output scan failed (fail-closed). Tool output withheld."),
+                is_error=True,
+                metadata={"output_scan_failed": True},
+            )
+
+        if scan_result.has_sensitive_data:
+            if scan_result.redacted_content is not None:
+                logger.warning(
+                    TOOL_OUTPUT_REDACTED,
+                    tool_call_id=tool_call.id,
+                    tool_name=tool_call.name,
+                    findings=scan_result.findings,
+                )
+                return ToolExecutionResult(
+                    content=scan_result.redacted_content,
+                    is_error=result.is_error,
+                    metadata={
+                        **result.metadata,
+                        "output_redacted": True,
+                        "redaction_findings": list(scan_result.findings),
+                    },
+                )
+            # Sensitive data found but no redaction available — fail closed.
+            logger.warning(
+                TOOL_OUTPUT_REDACTED,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                findings=scan_result.findings,
+                note="no redacted content available — withholding output",
+            )
+            return ToolExecutionResult(
+                content=(
+                    "Sensitive data detected (fail-closed). Tool output withheld."
+                ),
+                is_error=True,
+                metadata={"output_scan_failed": True},
+            )
+        return result
+
     async def invoke(self, tool_call: ToolCall) -> ToolResult:
         """Execute a single tool call.
 
@@ -147,8 +317,10 @@ class ToolInvoker:
             1. Look up the tool in the registry.
             2. Check permissions against the permission checker (if any).
             3. Validate arguments against the tool's JSON Schema (if any).
-            4. Call ``tool.execute(arguments=...)``.
-            5. Return a ``ToolResult`` with the output.
+            4. Run security interceptor pre-tool check (if any).
+            5. Call ``tool.execute(arguments=...)``.
+            6. Scan tool output for sensitive data (if interceptor is set).
+            7. Return a ``ToolResult`` with the output.
 
         Recoverable errors produce ``ToolResult(is_error=True)``.
         Non-recoverable errors are re-raised.
@@ -177,9 +349,24 @@ class ToolInvoker:
         if param_error is not None:
             return param_error
 
+        # Build security context inside fail-closed handling.
+        security_context, security_error = await self._check_security(
+            tool_or_error,
+            tool_call,
+        )
+        if security_error is not None:
+            return security_error
+
         exec_result = await self._execute_tool(tool_or_error, tool_call)
         if isinstance(exec_result, ToolResult):
             return exec_result
+
+        if security_context is not None:
+            exec_result = await self._scan_output(
+                tool_call,
+                exec_result,
+                security_context,
+            )
 
         return self._build_result(tool_call, exec_result)
 

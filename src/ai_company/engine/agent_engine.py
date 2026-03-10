@@ -50,12 +50,29 @@ from ai_company.observability.events.execution import (
     EXECUTION_ENGINE_TIMEOUT,
     EXECUTION_RECOVERY_FAILED,
 )
+from ai_company.observability.events.security import SECURITY_DISABLED
 from ai_company.providers.enums import MessageRole
 from ai_company.providers.models import ChatMessage
+from ai_company.security.audit import AuditLog
+from ai_company.security.output_scanner import OutputScanner
+from ai_company.security.rules.credential_detector import CredentialDetector
+from ai_company.security.rules.data_leak_detector import DataLeakDetector
+from ai_company.security.rules.destructive_op_detector import (
+    DestructiveOpDetector,
+)
+from ai_company.security.rules.engine import RuleEngine
+from ai_company.security.rules.path_traversal_detector import (
+    PathTraversalDetector,
+)
+from ai_company.security.rules.policy_validator import PolicyValidator
+from ai_company.security.rules.protocol import SecurityRule  # noqa: TC001
+from ai_company.security.rules.risk_classifier import RiskClassifier
+from ai_company.security.service import SecOpsService
 from ai_company.tools.invoker import ToolInvoker
 from ai_company.tools.permissions import ToolPermissionChecker
 
 if TYPE_CHECKING:
+    from ai_company.api.approval_store import ApprovalStore
     from ai_company.budget.coordination_config import ErrorTaxonomyConfig
     from ai_company.budget.enforcer import BudgetEnforcer
     from ai_company.budget.tracker import CostTracker
@@ -68,6 +85,8 @@ if TYPE_CHECKING:
     )
     from ai_company.providers.models import CompletionConfig
     from ai_company.providers.protocol import CompletionProvider
+    from ai_company.security.config import SecurityConfig
+    from ai_company.security.protocol import SecurityInterceptionStrategy
     from ai_company.tools.registry import ToolRegistry
 
 logger = get_logger(__name__)
@@ -108,6 +127,8 @@ class AgentEngine:
         shutdown_checker: ShutdownChecker | None = None,
         error_taxonomy_config: ErrorTaxonomyConfig | None = None,
         budget_enforcer: BudgetEnforcer | None = None,
+        security_config: SecurityConfig | None = None,
+        approval_store: ApprovalStore | None = None,
     ) -> None:
         self._provider = provider
         self._loop: ExecutionLoop = execution_loop or ReactLoop()
@@ -127,9 +148,12 @@ class AgentEngine:
             self._cost_tracker = budget_enforcer.cost_tracker
         else:
             self._cost_tracker = cost_tracker
+        self._security_config = security_config
+        self._approval_store = approval_store
         self._recovery_strategy = recovery_strategy
         self._shutdown_checker = shutdown_checker
         self._error_taxonomy_config = error_taxonomy_config
+        self._audit_log = AuditLog()
         logger.debug(
             EXECUTION_ENGINE_CREATED,
             loop_type=self._loop.get_loop_type(),
@@ -185,7 +209,7 @@ class AgentEngine:
                 await self._budget_enforcer.check_can_execute(agent_id)
                 identity = await self._budget_enforcer.resolve_model(identity)
 
-            tool_invoker = self._make_tool_invoker(identity)
+            tool_invoker = self._make_tool_invoker(identity, task_id=task_id)
             ctx, system_prompt = self._prepare_context(
                 identity=identity,
                 task=task,
@@ -642,15 +666,69 @@ class AgentEngine:
             )
             return execution_result
 
+    def _make_security_interceptor(
+        self,
+    ) -> SecurityInterceptionStrategy | None:
+        """Build the SecOps security interceptor if configured."""
+        if self._security_config is None:
+            logger.warning(
+                SECURITY_DISABLED,
+                note="No SecurityConfig provided — all security checks skipped",
+            )
+            return None
+        if not self._security_config.enabled:
+            return None
+
+        cfg = self._security_config
+        re_cfg = cfg.rule_engine
+        policy_validator = PolicyValidator(
+            hard_deny_action_types=frozenset(cfg.hard_deny_action_types),
+            auto_approve_action_types=frozenset(cfg.auto_approve_action_types),
+        )
+        # Build the detector list respecting config flags.
+        detectors: list[SecurityRule] = [policy_validator]
+        if re_cfg.credential_patterns_enabled:
+            detectors.append(CredentialDetector())
+        if re_cfg.path_traversal_detection_enabled:
+            detectors.append(PathTraversalDetector())
+        if re_cfg.destructive_op_detection_enabled:
+            detectors.append(DestructiveOpDetector())
+        if re_cfg.data_leak_detection_enabled:
+            detectors.append(DataLeakDetector())
+
+        rule_engine = RuleEngine(
+            rules=tuple(detectors),
+            risk_classifier=RiskClassifier(),
+            config=re_cfg,
+        )
+        return SecOpsService(
+            config=cfg,
+            rule_engine=rule_engine,
+            audit_log=self._audit_log,
+            output_scanner=OutputScanner(),
+            approval_store=self._approval_store,
+        )
+
     def _make_tool_invoker(
         self,
         identity: AgentIdentity,
+        task_id: str | None = None,
     ) -> ToolInvoker | None:
-        """Create a ToolInvoker with permission checking, or None."""
+        """Create a ToolInvoker with permission checking and security.
+
+        Returns None if no tool registry is configured.
+        """
         if self._tool_registry is None:
             return None
         checker = ToolPermissionChecker.from_permissions(identity.tools)
-        return ToolInvoker(self._tool_registry, permission_checker=checker)
+        interceptor = self._make_security_interceptor()
+        return ToolInvoker(
+            self._tool_registry,
+            permission_checker=checker,
+            security_interceptor=interceptor,
+            agent_id=str(identity.id),
+            task_id=task_id,
+        )
 
     def _log_completion(
         self,

@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from ai_company.core.enums import ToolCategory
 from ai_company.observability.events.tool import TOOL_BASE_INVALID_NAME
 from ai_company.providers.models import ToolDefinition
+from ai_company.security.action_type_mapping import DEFAULT_CATEGORY_ACTION_MAP
 
 logger = get_logger(__name__)
 
@@ -67,6 +68,7 @@ class BaseTool(ABC):
             or ``None`` if no parameter schema is defined (the invoker
             skips validation).
         category: Tool category for access-level gating.
+        action_type: Security action type for SecOps classification.
     """
 
     def __init__(
@@ -76,6 +78,7 @@ class BaseTool(ABC):
         description: str = "",
         parameters_schema: dict[str, Any] | None = None,
         category: ToolCategory,
+        action_type: str | None = None,
     ) -> None:
         """Initialize a tool with name, description, schema, and category.
 
@@ -84,6 +87,9 @@ class BaseTool(ABC):
             description: Human-readable description.
             parameters_schema: JSON Schema for tool parameters.
             category: Tool category for access-level gating.
+            action_type: Security action type for SecOps classification.
+                When ``None``, derived from the category via
+                ``DEFAULT_CATEGORY_ACTION_MAP``.
 
         Raises:
             ValueError: If name is empty or whitespace-only.
@@ -95,6 +101,18 @@ class BaseTool(ABC):
         self._name = name
         self._description = description
         self._category = category
+        if action_type is not None:
+            parts = action_type.split(":")
+            if len(parts) != 2 or not parts[0] or not parts[1]:  # noqa: PLR2004
+                msg = f"action_type {action_type!r} must use 'category:action' format"
+                logger.warning(TOOL_BASE_INVALID_NAME, name=repr(action_type))
+                raise ValueError(msg)
+            self._action_type = action_type
+        else:
+            if category not in DEFAULT_CATEGORY_ACTION_MAP:
+                msg = f"No default action_type mapping for ToolCategory.{category.name}"
+                raise ValueError(msg)
+            self._action_type = str(DEFAULT_CATEGORY_ACTION_MAP[category])
         self._parameters_schema: MappingProxyType[str, Any] | None = (
             MappingProxyType(copy.deepcopy(parameters_schema))
             if parameters_schema is not None
@@ -110,6 +128,11 @@ class BaseTool(ABC):
     def category(self) -> ToolCategory:
         """Tool category for access-level gating."""
         return self._category
+
+    @property
+    def action_type(self) -> str:
+        """Security action type for SecOps classification."""
+        return self._action_type
 
     @property
     def description(self) -> str:
