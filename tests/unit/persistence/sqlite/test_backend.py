@@ -123,6 +123,7 @@ class TestSQLitePersistenceBackend:
         assert result is False
         await backend.disconnect()
 
+    @pytest.mark.filterwarnings("ignore::pytest.PytestUnraisableExceptionWarning")
     async def test_disconnect_cleans_up_on_close_error(self) -> None:
         """If db.close() raises, state is still cleared."""
         from unittest.mock import AsyncMock
@@ -135,6 +136,8 @@ class TestSQLitePersistenceBackend:
         )
         await backend.disconnect()
         assert backend.is_connected is False
+        # Restore original close so __del__ can clean up properly.
+        backend._db = None
 
     async def test_connect_pragma_failure_cleans_up(self) -> None:
         """If PRAGMA fails after connect, backend cleans up and raises."""
