@@ -671,19 +671,17 @@ def _render_with_trimming(  # noqa: PLR0913
     )
 
     if max_tokens is not None and estimated > max_tokens:
-        content, estimated, task, available_tools, company, org_policies = (
-            _trim_sections(
-                template_str=template_str,
-                agent=agent,
-                role=role,
-                task=task,
-                available_tools=available_tools,
-                company=company,
-                org_policies=org_policies,
-                max_tokens=max_tokens,
-                estimator=estimator,
-                effective_autonomy=effective_autonomy,
-            )
+        content, estimated, task, company, org_policies = _trim_sections(
+            template_str=template_str,
+            agent=agent,
+            role=role,
+            task=task,
+            available_tools=available_tools,
+            company=company,
+            org_policies=org_policies,
+            max_tokens=max_tokens,
+            estimator=estimator,
+            effective_autonomy=effective_autonomy,
         )
 
     return _build_prompt_result(
