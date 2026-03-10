@@ -182,15 +182,42 @@ class TestBuildSystemPrompt:
             assert dept.name in result.content
 
     @pytest.mark.unit
-    def test_tool_availability_in_prompt(
+    def test_tools_not_in_default_template(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_tool_definitions: tuple[ToolDefinition, ...],
     ) -> None:
-        """Tool names and descriptions appear in prompt."""
+        """Tools passed to build_system_prompt don't appear (D22)."""
         result = build_system_prompt(
             agent=sample_agent_with_personality,
             available_tools=sample_tool_definitions,
+        )
+
+        assert "Available Tools" not in result.content
+        for tool in sample_tool_definitions:
+            assert tool.name not in result.content
+        assert "tools" not in result.sections
+
+    @pytest.mark.unit
+    def test_tools_render_in_custom_template(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_tool_definitions: tuple[ToolDefinition, ...],
+    ) -> None:
+        """Custom templates with {% if tools %} still render tools."""
+        custom = (
+            "Agent: {{ agent_name }}\n"
+            "{% if tools %}\n"
+            "Tools:\n"
+            "{% for tool in tools %}"
+            "- {{ tool.name }}: {{ tool.description }}\n"
+            "{% endfor %}"
+            "{% endif %}"
+        )
+        result = build_system_prompt(
+            agent=sample_agent_with_personality,
+            available_tools=sample_tool_definitions,
+            custom_template=custom,
         )
 
         for tool in sample_tool_definitions:
@@ -277,11 +304,11 @@ class TestBuildSystemPrompt:
         assert "task" not in result.sections
 
     @pytest.mark.unit
-    def test_no_tools_section_when_no_tools(
+    def test_no_tools_section_in_default_template(
         self,
         sample_agent_with_personality: AgentIdentity,
     ) -> None:
-        """No 'Available Tools' section when no tools are provided."""
+        """Default template never includes 'Available Tools' section (D22)."""
         result = build_system_prompt(agent=sample_agent_with_personality)
 
         assert "Available Tools" not in result.content
@@ -402,7 +429,6 @@ class TestTokenEstimation:
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
-        sample_tool_definitions: tuple[ToolDefinition, ...],
         sample_company: Company,
     ) -> None:
         """Very low max_tokens causes optional sections to be removed."""
@@ -410,25 +436,21 @@ class TestTokenEstimation:
         full = build_system_prompt(
             agent=sample_agent_with_personality,
             task=sample_task_with_criteria,
-            available_tools=sample_tool_definitions,
             company=sample_company,
         )
         assert "task" in full.sections
-        assert "tools" in full.sections
         assert "company" in full.sections
 
         # Now build with a tight token budget to force trimming.
         trimmed = build_system_prompt(
             agent=sample_agent_with_personality,
             task=sample_task_with_criteria,
-            available_tools=sample_tool_definitions,
             company=sample_company,
             max_tokens=10,
         )
 
         # All optional sections should be removed.
         assert "company" not in trimmed.sections
-        assert "tools" not in trimmed.sections
         assert "task" not in trimmed.sections
         # Core sections remain.
         assert "identity" in trimmed.sections
@@ -457,6 +479,56 @@ class TestTokenEstimation:
         assert result.estimated_tokens > 0
 
 
+# ── TestPolicyValidationIntegration ──────────────────────────────
+
+
+class TestPolicyValidationIntegration:
+    """Tests for policy validation integration in build_system_prompt."""
+
+    @pytest.mark.unit
+    def test_policy_validation_error_does_not_block_prompt(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """When validate_policy_quality raises, prompt is still built."""
+        from unittest.mock import patch
+
+        with patch(
+            "ai_company.engine.prompt.validate_policy_quality",
+            side_effect=RuntimeError("boom"),
+        ):
+            result = build_system_prompt(
+                agent=sample_agent_with_personality,
+                org_policies=("All responses must include correlation_id",),
+            )
+
+        # Prompt is still built despite validation failure.
+        assert result.content
+        assert "org_policies" in result.sections
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "policies",
+        [
+            ("valid policy must exist", ""),
+            ("   ",),
+        ],
+        ids=["empty_string", "whitespace_only"],
+    )
+    def test_invalid_org_policy_raises(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        *,
+        policies: tuple[str, ...],
+    ) -> None:
+        """Empty or whitespace-only policy is rejected with PromptBuildError."""
+        with pytest.raises(PromptBuildError, match="org_policies"):
+            build_system_prompt(
+                agent=sample_agent_with_personality,
+                org_policies=policies,
+            )
+
+
 # ── TestPromptVersioning ─────────────────────────────────────────
 
 
@@ -464,9 +536,9 @@ class TestPromptVersioning:
     """Tests for prompt versioning and section tracking."""
 
     @pytest.mark.unit
-    def test_template_version_is_1_2_0(self) -> None:
-        """PROMPT_TEMPLATE_VERSION is '1.2.0'."""
-        assert PROMPT_TEMPLATE_VERSION == "1.2.0"
+    def test_template_version_is_1_3_0(self) -> None:
+        """PROMPT_TEMPLATE_VERSION is '1.3.0' (D22 tools removal)."""
+        assert PROMPT_TEMPLATE_VERSION == "1.3.0"
 
     @pytest.mark.unit
     def test_template_version_in_result(
@@ -485,7 +557,7 @@ class TestPromptVersioning:
         sample_tool_definitions: tuple[ToolDefinition, ...],
         sample_company: Company,
     ) -> None:
-        """Sections tuple lists all included sections."""
+        """Sections tuple lists all included sections (tools excluded per D22)."""
         result = build_system_prompt(
             agent=sample_agent_with_personality,
             task=sample_task_with_criteria,
@@ -499,7 +571,7 @@ class TestPromptVersioning:
         assert "authority" in result.sections
         assert "autonomy" in result.sections
         assert "task" in result.sections
-        assert "tools" in result.sections
+        assert "tools" not in result.sections
         assert "company" in result.sections
 
 
@@ -633,11 +705,10 @@ class TestTrimmingPriority:
     """Tests for section trimming priority order."""
 
     @pytest.mark.unit
-    def test_company_trimmed_before_tools_and_task(
+    def test_company_trimmed_before_task(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
-        sample_tool_definitions: tuple[ToolDefinition, ...],
         sample_company: Company,
     ) -> None:
         """With a moderately tight budget, only company is trimmed first."""
@@ -645,7 +716,6 @@ class TestTrimmingPriority:
         full = build_system_prompt(
             agent=sample_agent_with_personality,
             task=sample_task_with_criteria,
-            available_tools=sample_tool_definitions,
             company=sample_company,
         )
         assert "company" in full.sections
@@ -655,7 +725,6 @@ class TestTrimmingPriority:
         without_company = build_system_prompt(
             agent=sample_agent_with_personality,
             task=sample_task_with_criteria,
-            available_tools=sample_tool_definitions,
         )
 
         # Set max_tokens between without-company and full sizes.
@@ -663,49 +732,46 @@ class TestTrimmingPriority:
         trimmed = build_system_prompt(
             agent=sample_agent_with_personality,
             task=sample_task_with_criteria,
-            available_tools=sample_tool_definitions,
             company=sample_company,
             max_tokens=budget,
         )
 
-        # Company should be trimmed but tools and task remain.
+        # Company should be trimmed but task remains.
         assert "company" not in trimmed.sections
-        assert "tools" in trimmed.sections
         assert "task" in trimmed.sections
 
     @pytest.mark.unit
-    def test_tools_trimmed_before_task(
+    def test_trimming_order_without_tools(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
-        sample_tool_definitions: tuple[ToolDefinition, ...],
         sample_company: Company,
     ) -> None:
-        """With a tighter budget, company and tools are trimmed but task remains."""
-        # Build with only task to find core + task size.
-        with_task = build_system_prompt(
+        """Trimming order is company → task → org_policies (no tools section)."""
+        # Build with company + task + org_policies.
+        org_policies = ("All responses must include correlation_id",)
+        full = build_system_prompt(
             agent=sample_agent_with_personality,
             task=sample_task_with_criteria,
+            company=sample_company,
+            org_policies=org_policies,
         )
-        # Build with task + tools to find core + task + tools size.
-        with_tools = build_system_prompt(
-            agent=sample_agent_with_personality,
-            task=sample_task_with_criteria,
-            available_tools=sample_tool_definitions,
-        )
+        assert "company" in full.sections
+        assert "task" in full.sections
+        assert "org_policies" in full.sections
 
-        budget = (with_task.estimated_tokens + with_tools.estimated_tokens) // 2
+        # With very tight budget, all optional sections are removed.
         trimmed = build_system_prompt(
             agent=sample_agent_with_personality,
             task=sample_task_with_criteria,
-            available_tools=sample_tool_definitions,
             company=sample_company,
-            max_tokens=budget,
+            org_policies=org_policies,
+            max_tokens=10,
         )
-
         assert "company" not in trimmed.sections
-        assert "tools" not in trimmed.sections
-        assert "task" in trimmed.sections
+        assert "task" not in trimmed.sections
+        assert "org_policies" not in trimmed.sections
+        assert "identity" in trimmed.sections
 
 
 # ── TestDefaultAgentPrompt ─────────────────────────────────────

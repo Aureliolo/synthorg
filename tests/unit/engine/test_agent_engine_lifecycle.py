@@ -347,11 +347,18 @@ class TestAgentEngineTimeout:
 
         assert result.is_success is True
 
-    async def test_zero_timeout_raises(
+    @pytest.mark.parametrize(
+        "timeout_seconds",
+        [0, -1.0],
+        ids=["zero", "negative"],
+    )
+    async def test_non_positive_timeout_raises(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
+        *,
+        timeout_seconds: float,
     ) -> None:
         provider = mock_provider_factory([])
         engine = AgentEngine(provider=provider)
@@ -360,23 +367,7 @@ class TestAgentEngineTimeout:
             await engine.run(
                 identity=sample_agent_with_personality,
                 task=sample_task_with_criteria,
-                timeout_seconds=0,
-            )
-
-    async def test_negative_timeout_raises(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-        sample_task_with_criteria: Task,
-        mock_provider_factory: type[MockCompletionProvider],
-    ) -> None:
-        provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
-
-        with pytest.raises(ValueError, match="timeout_seconds must be > 0"):
-            await engine.run(
-                identity=sample_agent_with_personality,
-                task=sample_task_with_criteria,
-                timeout_seconds=-1.0,
+                timeout_seconds=timeout_seconds,
             )
 
 
@@ -393,7 +384,11 @@ class TestAgentEngineCompletionMetrics:
         """Successful run computes and logs TaskCompletionMetrics."""
         from ai_company.engine.metrics import TaskCompletionMetrics
 
-        response = _make_completion_response(cost_usd=0.05)
+        response = _make_completion_response(
+            input_tokens=400,
+            output_tokens=200,
+            cost_usd=0.05,
+        )
         provider = mock_provider_factory([response])
         engine = AgentEngine(provider=provider)
 
@@ -410,6 +405,7 @@ class TestAgentEngineCompletionMetrics:
         assert metrics.duration_seconds > 0
         assert metrics.agent_id == str(sample_agent_with_personality.id)
         assert metrics.task_id == sample_task_with_criteria.id
+        assert 0.0 <= metrics.prompt_token_ratio <= 1.0
 
 
 @pytest.mark.unit

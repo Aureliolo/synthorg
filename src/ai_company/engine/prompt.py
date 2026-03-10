@@ -3,6 +3,14 @@
 Translates agent configuration (personality, skills, authority, role) into
 contextually rich system prompts that shape agent behavior during LLM calls.
 
+**Non-inferable principle:** System prompts should contain only information
+that agents cannot discover by reading the codebase or environment.  Tool
+definitions, for example, are already delivered via the LLM provider's API
+``tools`` parameter, so repeating them in the system prompt would increase
+cost without benefit (per D22, arXiv:2602.11988).  The default template
+therefore omits the ``Available Tools`` section.  Custom templates may still
+reference ``{{ tools }}`` when explicitly needed.
+
 Example::
 
     from ai_company.engine.prompt import build_system_prompt
@@ -19,6 +27,7 @@ from jinja2.sandbox import SandboxedEnvironment
 from pydantic import BaseModel, ConfigDict, Field
 
 from ai_company.engine.errors import PromptBuildError
+from ai_company.engine.policy_validation import validate_policy_quality
 from ai_company.engine.prompt_template import (
     AUTONOMY_INSTRUCTIONS,
     DEFAULT_TEMPLATE,
@@ -33,6 +42,7 @@ from ai_company.observability.events.prompt import (
     PROMPT_BUILD_TOKEN_TRIMMED,
     PROMPT_CUSTOM_TEMPLATE_FAILED,
     PROMPT_CUSTOM_TEMPLATE_LOADED,
+    PROMPT_POLICY_VALIDATION_FAILED,
 )
 
 if TYPE_CHECKING:
@@ -132,13 +142,14 @@ _SECTION_AUTHORITY = "authority"
 _SECTION_ORG_POLICIES = "org_policies"
 _SECTION_AUTONOMY = "autonomy"
 _SECTION_TASK = "task"
-_SECTION_TOOLS = "tools"
 _SECTION_COMPANY = "company"
+_SECTION_TOOLS = "tools"
 
 # Sections trimmed when over token budget, least critical first.
+# Tools section was removed from the default template per D22
+# (non-inferable principle), but custom templates may still render tools.
 _TRIMMABLE_SECTIONS = (
     _SECTION_COMPANY,
-    _SECTION_TOOLS,
     _SECTION_TASK,
     _SECTION_ORG_POLICIES,
 )
@@ -162,14 +173,17 @@ def build_system_prompt(  # noqa: PLR0913
     """Build a system prompt from agent identity and optional context.
 
     When ``max_tokens`` is provided and the prompt exceeds it, optional
-    sections are progressively trimmed (company, tools, task, org_policies).
+    sections are progressively trimmed (company, task, org_policies).
 
     Args:
         agent: Agent identity containing personality, skills, authority.
         role: Optional role with description and responsibilities.
         task: Optional task context injected into the prompt.
-        available_tools: Tool definitions available to the agent.
-        company: Optional company context (name, departments).
+        available_tools: Tool definitions populated into template context
+            for custom templates only; the default template omits tools
+            per D22 (non-inferable principle).
+        company: Opt-in. Non-inferable principle recommends omitting
+            unless agents need org-level context they cannot discover.
         org_policies: Company-wide policy texts to inject into prompt.
         max_tokens: Token budget; sections are trimmed if exceeded.
         custom_template: Optional Jinja2 template string override.
@@ -182,6 +196,20 @@ def build_system_prompt(  # noqa: PLR0913
         PromptBuildError: If prompt construction fails.
     """
     _validate_max_tokens(agent, max_tokens)
+    _validate_org_policies(agent, org_policies)
+
+    # Advisory only — issues are logged but never block prompt construction.
+    if org_policies:
+        try:
+            validate_policy_quality(org_policies)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                PROMPT_POLICY_VALIDATION_FAILED,
+                agent_id=str(agent.id),
+                exc_info=True,
+            )
 
     logger.info(
         PROMPT_BUILD_START,
@@ -246,6 +274,30 @@ def _validate_max_tokens(
             max_tokens=max_tokens,
         )
         raise PromptBuildError(msg)
+
+
+def _validate_org_policies(
+    agent: AgentIdentity,
+    org_policies: tuple[str, ...],
+) -> None:
+    """Raise ``PromptBuildError`` on blank or non-string policy entries.
+
+    Args:
+        agent: Agent identity for error context.
+        org_policies: Policy texts to validate.
+
+    Raises:
+        PromptBuildError: If any policy entry is empty or whitespace-only.
+    """
+    for index, policy in enumerate(org_policies):
+        if not isinstance(policy, str) or not policy.strip():
+            msg = f"org_policies[{index}] must be a non-empty string"
+            logger.error(
+                PROMPT_BUILD_ERROR,
+                agent_id=str(agent.id),
+                error=msg,
+            )
+            raise PromptBuildError(msg)
 
 
 def _log_and_return(
@@ -398,17 +450,24 @@ def _build_template_context(  # noqa: PLR0913
 def _compute_sections(
     *,
     task: Task | None,
-    available_tools: tuple[ToolDefinition, ...],
+    available_tools: tuple[ToolDefinition, ...] = (),
     company: Company | None,
     org_policies: tuple[str, ...] = (),
+    custom_template: bool = False,
 ) -> tuple[str, ...]:
     """Determine which sections are present in the rendered prompt.
 
+    The default template omits the tools section per D22 (non-inferable
+    principle).  Custom templates may still render tools, so the tools
+    section is tracked when ``available_tools`` is non-empty and a custom
+    template is in use.
+
     Args:
         task: Optional task context.
-        available_tools: Tool definitions.
+        available_tools: Tool definitions (tracked for custom templates).
         company: Optional company context.
         org_policies: Company-wide policy texts.
+        custom_template: Whether a custom template is being used.
 
     Returns:
         Tuple of section names that are included.
@@ -425,7 +484,7 @@ def _compute_sections(
     sections.append(_SECTION_AUTONOMY)
     if task is not None:
         sections.append(_SECTION_TASK)
-    if available_tools:
+    if available_tools and custom_template:
         sections.append(_SECTION_TOOLS)
     if company is not None:
         sections.append(_SECTION_COMPANY)
@@ -487,14 +546,13 @@ def _trim_sections(  # noqa: PLR0913
     str,
     int,
     Task | None,
-    tuple[ToolDefinition, ...],
     Company | None,
     tuple[str, ...],
 ]:
     """Progressively remove optional sections until under token budget.
 
-    Returns ``(content, estimated, task, available_tools, company,
-    org_policies)`` so the caller can reuse the final render.
+    Returns ``(content, estimated, task, company, org_policies)``
+    so the caller can reuse the final render.
     """
     trimmed_sections: list[str] = []
 
@@ -516,8 +574,6 @@ def _trim_sections(  # noqa: PLR0913
             company = None
         elif section == _SECTION_ORG_POLICIES and org_policies:
             org_policies = ()
-        elif section == _SECTION_TOOLS and available_tools:
-            available_tools = ()
         elif section == _SECTION_TASK and task is not None:
             task = None
         else:
@@ -539,7 +595,7 @@ def _trim_sections(  # noqa: PLR0913
 
     _log_trim_results(agent, max_tokens, estimated, trimmed_sections)
 
-    return content, estimated, task, available_tools, company, org_policies
+    return content, estimated, task, company, org_policies
 
 
 def _log_trim_results(
@@ -591,18 +647,16 @@ def _render_with_trimming(  # noqa: PLR0913
     )
 
     if max_tokens is not None and estimated > max_tokens:
-        content, estimated, task, available_tools, company, org_policies = (
-            _trim_sections(
-                template_str=template_str,
-                agent=agent,
-                role=role,
-                task=task,
-                available_tools=available_tools,
-                company=company,
-                org_policies=org_policies,
-                max_tokens=max_tokens,
-                estimator=estimator,
-            )
+        content, estimated, task, company, org_policies = _trim_sections(
+            template_str=template_str,
+            agent=agent,
+            role=role,
+            task=task,
+            available_tools=available_tools,
+            company=company,
+            org_policies=org_policies,
+            max_tokens=max_tokens,
+            estimator=estimator,
         )
 
     return _build_prompt_result(
@@ -613,6 +667,7 @@ def _render_with_trimming(  # noqa: PLR0913
         company,
         org_policies,
         agent,
+        custom_template=template_str is not DEFAULT_TEMPLATE,
     )
 
 
@@ -624,6 +679,8 @@ def _build_prompt_result(  # noqa: PLR0913
     company: Company | None,
     org_policies: tuple[str, ...],
     agent: AgentIdentity,
+    *,
+    custom_template: bool = False,
 ) -> SystemPrompt:
     """Assemble the final ``SystemPrompt`` from rendered content."""
     sections = _compute_sections(
@@ -631,6 +688,7 @@ def _build_prompt_result(  # noqa: PLR0913
         available_tools=available_tools,
         company=company,
         org_policies=org_policies,
+        custom_template=custom_template,
     )
     return SystemPrompt(
         content=content,

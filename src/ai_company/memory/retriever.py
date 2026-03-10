@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from ai_company.memory import errors as memory_errors
+from ai_company.memory.filter import TagBasedMemoryFilter
 from ai_company.memory.formatter import format_memory_context
 from ai_company.memory.injection import (
     DefaultTokenEstimator,
@@ -18,6 +19,7 @@ from ai_company.memory.models import MemoryQuery
 from ai_company.memory.ranking import rank_memories
 from ai_company.observability import get_logger
 from ai_company.observability.events.memory import (
+    MEMORY_FILTER_INIT,
     MEMORY_RETRIEVAL_COMPLETE,
     MEMORY_RETRIEVAL_DEGRADED,
     MEMORY_RETRIEVAL_SKIPPED,
@@ -29,6 +31,7 @@ if TYPE_CHECKING:
 
     from ai_company.core.enums import MemoryCategory
     from ai_company.core.types import NotBlankStr
+    from ai_company.memory.filter import MemoryFilterStrategy
     from ai_company.memory.models import MemoryEntry
     from ai_company.memory.protocol import MemoryBackend
     from ai_company.memory.retrieval_config import MemoryRetrievalConfig
@@ -105,6 +108,7 @@ class ContextInjectionStrategy:
         config: MemoryRetrievalConfig,
         shared_store: SharedKnowledgeStore | None = None,
         token_estimator: TokenEstimator | None = None,
+        memory_filter: MemoryFilterStrategy | None = None,
     ) -> None:
         """Initialise the context injection strategy.
 
@@ -113,10 +117,25 @@ class ContextInjectionStrategy:
             config: Retrieval pipeline configuration.
             shared_store: Optional shared knowledge store.
             token_estimator: Optional custom token estimator.
+            memory_filter: Optional filter applied after ranking,
+                before formatting.  When ``None`` and
+                ``config.non_inferable_only`` is ``True``, a
+                ``TagBasedMemoryFilter`` is auto-created.  When ``None``
+                and ``non_inferable_only`` is ``False``, all ranked
+                memories are injected (backward-compatible).
         """
         self._backend = backend
         self._config = config
         self._shared_store = shared_store
+        if memory_filter is None and config.non_inferable_only:
+            memory_filter = TagBasedMemoryFilter()
+        elif memory_filter is not None and config.non_inferable_only:
+            logger.debug(
+                MEMORY_FILTER_INIT,
+                note="explicit memory_filter overrides non_inferable_only config",
+                filter_strategy=getattr(memory_filter, "strategy_name", "unknown"),
+            )
+        self._memory_filter = memory_filter
         self._estimator = (
             token_estimator if token_estimator is not None else DefaultTokenEstimator()
         )
@@ -260,6 +279,31 @@ class ContextInjectionStrategy:
                 reason="all below min_relevance",
             )
             return ()
+
+        if self._memory_filter is not None:
+            try:
+                ranked = self._memory_filter.filter_for_injection(ranked)
+            except builtins_MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    MEMORY_RETRIEVAL_DEGRADED,
+                    source="memory_filter",
+                    agent_id=agent_id,
+                    error_type=type(exc).__qualname__,
+                    filter_strategy=getattr(
+                        self._memory_filter, "strategy_name", "unknown"
+                    ),
+                    exc_info=True,
+                )
+                # Graceful degradation: use unfiltered ranked memories.
+            if not ranked:
+                logger.info(
+                    MEMORY_RETRIEVAL_SKIPPED,
+                    agent_id=agent_id,
+                    reason="all filtered by memory filter",
+                )
+                return ()
 
         result = format_memory_context(
             ranked,

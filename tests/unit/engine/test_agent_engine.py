@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import structlog.testing
 
 from ai_company.budget.coordination_config import ErrorTaxonomyConfig
 from ai_company.budget.tracker import CostTracker
@@ -20,6 +21,7 @@ from ai_company.engine.loop_protocol import (
     TurnRecord,
 )
 from ai_company.engine.run_result import AgentRunResult
+from ai_company.observability.events.prompt import PROMPT_TOKEN_RATIO_HIGH
 from ai_company.providers.enums import FinishReason
 
 if TYPE_CHECKING:
@@ -355,8 +357,8 @@ class TestAgentEngineWithTools:
         )
 
         assert result.is_success is True
-        # System prompt should include tools section
-        assert "tools" in result.system_prompt.sections
+        # D22: tools section is no longer in the default template.
+        assert "tools" not in result.system_prompt.sections
 
 
 @pytest.mark.unit
@@ -854,3 +856,78 @@ class TestAgentEngineClassification:
                 identity=sample_agent_with_personality,
                 task=sample_task_with_criteria,
             )
+
+
+@pytest.mark.unit
+class TestAgentEnginePromptTokenRatioWarning:
+    """High prompt-to-total token ratio emits PROMPT_TOKEN_RATIO_HIGH."""
+
+    @pytest.mark.parametrize(
+        (
+            "prompt_tokens",
+            "input_tokens",
+            "output_tokens",
+            "cost_usd",
+            "expect_warning",
+        ),
+        [
+            # prompt_tokens=200 out of 400 total → ratio 0.50 > 0.3 threshold.
+            (200, 300, 100, 0.01, True),
+            # prompt_tokens=50 out of 10000 total → ratio 0.005 < 0.3 threshold.
+            (50, 5000, 5000, 1.0, False),
+        ],
+        ids=["high_ratio", "low_ratio"],
+    )
+    async def test_prompt_token_ratio_warning(  # noqa: PLR0913
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+        *,
+        prompt_tokens: int,
+        input_tokens: int,
+        output_tokens: int,
+        cost_usd: float,
+        expect_warning: bool,
+    ) -> None:
+        """Warning emitted iff prompt tokens dominate total tokens.
+
+        Injects a fixed ``estimated_tokens`` via mock to isolate the
+        threshold-check logic from the live prompt estimator.
+        """
+        from ai_company.engine.prompt import SystemPrompt
+
+        response = _make_completion_response(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost_usd,
+        )
+        provider = mock_provider_factory([response])
+        engine = AgentEngine(provider=provider)
+
+        fixed_prompt = SystemPrompt(
+            content="test",
+            template_version="test",
+            estimated_tokens=prompt_tokens,
+            sections=("identity",),
+            metadata={"agent_id": str(sample_agent_with_personality.id)},
+        )
+
+        with (
+            patch(
+                "ai_company.engine.agent_engine.build_system_prompt",
+                return_value=fixed_prompt,
+            ),
+            structlog.testing.capture_logs() as logs,
+        ):
+            await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )
+
+        warning_events = [e for e in logs if e.get("event") == PROMPT_TOKEN_RATIO_HIGH]
+        if expect_warning:
+            assert len(warning_events) == 1
+            assert "prompt_token_ratio" in warning_events[0]
+        else:
+            assert len(warning_events) == 0

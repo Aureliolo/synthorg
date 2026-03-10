@@ -1,12 +1,18 @@
 """Tests for ContextInjectionStrategy (retriever pipeline)."""
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
 import pytest
 
 from ai_company.core.enums import MemoryCategory
 from ai_company.memory.errors import MemoryRetrievalError
+from ai_company.memory.filter import (
+    NON_INFERABLE_TAG,
+    PassthroughMemoryFilter,
+    TagBasedMemoryFilter,
+)
 from ai_company.memory.formatter import MEMORY_BLOCK_START
 from ai_company.memory.injection import (
     DefaultTokenEstimator,
@@ -16,6 +22,9 @@ from ai_company.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
 from ai_company.memory.retrieval_config import MemoryRetrievalConfig
 from ai_company.memory.retriever import ContextInjectionStrategy
 from ai_company.providers.enums import MessageRole
+
+if TYPE_CHECKING:
+    from ai_company.memory.ranking import ScoredMemory
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -420,3 +429,189 @@ class TestTokenBudget:
             token_budget=0,
         )
         assert result == ()
+
+
+# ── Memory filter integration ────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestMemoryFilterIntegration:
+    async def test_filter_applied_after_ranking(self) -> None:
+        """TagBasedMemoryFilter excludes untagged memories after ranking."""
+        tagged = _make_entry(
+            entry_id="tagged",
+            content="tagged memory",
+            relevance_score=0.9,
+        )
+        # Manually set the non-inferable tag on metadata.
+        tagged = tagged.model_copy(
+            update={
+                "metadata": MemoryMetadata(tags=(NON_INFERABLE_TAG,)),
+            },
+        )
+        untagged = _make_entry(
+            entry_id="untagged",
+            content="untagged memory",
+            relevance_score=0.9,
+        )
+        strategy = ContextInjectionStrategy(
+            backend=_make_backend((tagged, untagged)),
+            config=MemoryRetrievalConfig(min_relevance=0.0),
+            memory_filter=TagBasedMemoryFilter(),
+        )
+        result = await strategy.prepare_messages(
+            agent_id="agent-1",
+            query_text="query",
+            token_budget=5000,
+        )
+        assert len(result) == 1
+        content = result[0].content
+        assert content is not None
+        assert "tagged memory" in content
+        assert "untagged memory" not in content
+
+    async def test_filter_skipped_when_none(self) -> None:
+        """When memory_filter is None, all ranked memories are injected."""
+        entry = _make_entry(content="all memories pass")
+        strategy = ContextInjectionStrategy(
+            backend=_make_backend((entry,)),
+            config=MemoryRetrievalConfig(
+                min_relevance=0.0,
+                non_inferable_only=False,
+            ),
+            memory_filter=None,
+        )
+        result = await strategy.prepare_messages(
+            agent_id="agent-1",
+            query_text="query",
+            token_budget=5000,
+        )
+        assert len(result) == 1
+        content = result[0].content
+        assert content is not None
+        assert "all memories pass" in content
+
+    async def test_filter_reduces_output(self) -> None:
+        """Filter that excludes everything returns empty result."""
+        entry = _make_entry(content="will be filtered out")
+        strategy = ContextInjectionStrategy(
+            backend=_make_backend((entry,)),
+            config=MemoryRetrievalConfig(min_relevance=0.0),
+            memory_filter=TagBasedMemoryFilter(),
+        )
+        result = await strategy.prepare_messages(
+            agent_id="agent-1",
+            query_text="query",
+            token_budget=5000,
+        )
+        assert result == ()
+
+    async def test_passthrough_filter_keeps_all(self) -> None:
+        """PassthroughMemoryFilter returns all memories unchanged."""
+        entry = _make_entry(content="passthrough content")
+        strategy = ContextInjectionStrategy(
+            backend=_make_backend((entry,)),
+            config=MemoryRetrievalConfig(min_relevance=0.0),
+            memory_filter=PassthroughMemoryFilter(),
+        )
+        result = await strategy.prepare_messages(
+            agent_id="agent-1",
+            query_text="query",
+            token_budget=5000,
+        )
+        assert len(result) == 1
+        content = result[0].content
+        assert content is not None
+        assert "passthrough content" in content
+
+    async def test_non_inferable_only_config_creates_filter(self) -> None:
+        """non_inferable_only=True auto-creates TagBasedMemoryFilter."""
+        tagged = _make_entry(
+            entry_id="tagged",
+            content="tagged memory",
+            relevance_score=0.9,
+        )
+        tagged = tagged.model_copy(
+            update={"metadata": MemoryMetadata(tags=(NON_INFERABLE_TAG,))},
+        )
+        untagged = _make_entry(
+            entry_id="untagged",
+            content="untagged memory",
+            relevance_score=0.9,
+        )
+        strategy = ContextInjectionStrategy(
+            backend=_make_backend((tagged, untagged)),
+            config=MemoryRetrievalConfig(
+                min_relevance=0.0,
+                non_inferable_only=True,
+            ),
+        )
+        result = await strategy.prepare_messages(
+            agent_id="agent-1",
+            query_text="query",
+            token_budget=5000,
+        )
+        assert len(result) == 1
+        content = result[0].content
+        assert content is not None
+        assert "tagged memory" in content
+        assert "untagged memory" not in content
+
+    async def test_filter_graceful_degradation(self) -> None:
+        """Filter error falls back to unfiltered ranked memories."""
+
+        class _BrokenFilter:
+            def filter_for_injection(
+                self,
+                memories: tuple[ScoredMemory, ...],
+            ) -> tuple[ScoredMemory, ...]:
+                msg = "filter exploded"
+                raise RuntimeError(msg)
+
+            @property
+            def strategy_name(self) -> str:
+                return "broken"
+
+        entry = _make_entry(content="survives filter error")
+        strategy = ContextInjectionStrategy(
+            backend=_make_backend((entry,)),
+            config=MemoryRetrievalConfig(min_relevance=0.0),
+            memory_filter=_BrokenFilter(),
+        )
+        result = await strategy.prepare_messages(
+            agent_id="agent-1",
+            query_text="query",
+            token_budget=5000,
+        )
+        # Graceful degradation: unfiltered memories are still returned.
+        assert len(result) == 1
+        content = result[0].content
+        assert content is not None
+        assert "survives filter error" in content
+
+    async def test_filter_memory_error_propagates(self) -> None:
+        """MemoryError through the filter path is re-raised."""
+
+        class _MemoryErrorFilter:
+            def filter_for_injection(
+                self,
+                memories: tuple[ScoredMemory, ...],
+            ) -> tuple[ScoredMemory, ...]:
+                raise MemoryError
+
+            @property
+            def strategy_name(self) -> str:
+                return "oom"
+
+        entry = _make_entry(content="oom test")
+        strategy = ContextInjectionStrategy(
+            backend=_make_backend((entry,)),
+            config=MemoryRetrievalConfig(min_relevance=0.0),
+            memory_filter=_MemoryErrorFilter(),
+        )
+        with pytest.raises(MemoryError):
+            await strategy.prepare_messages(
+                agent_id="agent-1",
+                query_text="query",
+                token_budget=5000,
+            )

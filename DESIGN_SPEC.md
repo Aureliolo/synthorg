@@ -80,7 +80,7 @@ The MVP validates the core hypothesis: **a single agent can complete a real task
 > **How to read this spec:** Sections describe the full vision. Each section with deferred features includes an **MVP** callout box indicating what ships in M3 and what is deferred. The full design is documented upfront to inform architecture decisions — protocol interfaces are designed even for features that won't be built until later milestones.
 
 > **Implementation snapshot (2026-03-10):**
-> - **Done:** M0–M6 (tooling, config/core, providers, single-agent engine, multi-agent orchestration, API/CLI surface) + Docker sandbox (#50), MCP bridge (#53), code runner + HR engine (hiring/firing/onboarding/offboarding/registry) + performance tracking (task metrics, quality scoring, collaboration scoring, trend detection, rolling windows). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed. Memory retrieval pipeline (#41: ranking, token-budget formatting, context injection) complete. Budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking). CFO cost optimization complete (CostOptimizer: anomaly detection, efficiency analysis, downgrade recommendations, routing optimization, approval decisions; ReportGenerator: multi-dimensional spending reports). Shared org memory (#125: HybridPromptRetrievalBackend, OrgFactStore, access control, factory) complete. Memory consolidation/archival (#48: ConsolidationService, SimpleConsolidationStrategy, RetentionEnforcer, ArchivalStore protocol) complete.
+> - **Done:** M0–M6 (tooling, config/core, providers, single-agent engine, multi-agent orchestration, API/CLI surface) + Docker sandbox (#50), MCP bridge (#53), code runner + HR engine (hiring/firing/onboarding/offboarding/registry) + performance tracking (task metrics, quality scoring, collaboration scoring, trend detection, rolling windows). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed. Memory retrieval pipeline (#41: ranking, token-budget formatting, context injection, non-inferable filtering) complete. Budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking). CFO cost optimization complete (CostOptimizer: anomaly detection, efficiency analysis, downgrade recommendations, routing optimization, approval decisions; ReportGenerator: multi-dimensional spending reports). Shared org memory (#125: HybridPromptRetrievalBackend, OrgFactStore, access control, factory) complete. Memory consolidation/archival (#48: ConsolidationService, SimpleConsolidationStrategy, RetentionEnforcer, ArchivalStore protocol) complete.
 > - **Remaining:** M7 security + approval system (SecOps agent, progressive trust, JWT/OAuth auth).
 
 ### 1.5 Configuration Philosophy
@@ -1605,11 +1605,12 @@ receives memories.
 
 > **Non-inferable filter:** Retrieved memories should be filtered before injection to exclude content the agent can discover by reading the codebase or environment. Only inject memories containing non-inferable information: prior decisions, learned conventions, interpersonal context, historical outcomes. [Research](https://arxiv.org/abs/2602.11988) shows generic context increases cost 20%+ with minimal success improvement; LLM-generated context can actually reduce success rates.
 >
-> **Decision ([ADR-002](docs/decisions/ADR-002-design-decisions-batch-1.md) D23):** Pluggable `MemoryFilterStrategy` protocol. Initial: tag-based at write time. Define `non-inferable` tag convention enforced at `MemoryBackend.store()` boundary. System prompt instructs agents what qualifies: design rationale, team decisions, "why not X", cross-repo knowledge = non-inferable; code structure, API signatures, file contents = inferable. Uses existing `MemoryMetadata.tags` and `MemoryQuery.tags` — zero new models needed. Future strategies: LLM classification at retrieval, keyword/pattern heuristic.
+> **Decision ([ADR-002](docs/decisions/ADR-002-design-decisions-batch-1.md) D23):** Pluggable `MemoryFilterStrategy` protocol. Initial: tag-based at write time. Define `non-inferable` tag convention with advisory validation at `MemoryBackend.store()` boundary (warns on missing tags, never blocks). System prompt instructs agents what qualifies: design rationale, team decisions, "why not X", cross-repo knowledge = non-inferable; code structure, API signatures, file contents = inferable. Uses existing `MemoryMetadata.tags` and `MemoryQuery.tags` — zero new models needed. Future strategies: LLM classification at retrieval, keyword/pattern heuristic.
 
 Pipeline: `MemoryBackend.retrieve()` -> rank by relevance+recency ->
-filter by min_relevance -> greedy token-budget packing -> format as
-ChatMessage (configured role: SYSTEM or USER) with delimiters.
+filter by min_relevance -> apply `MemoryFilterStrategy` (D23, optional) ->
+greedy token-budget packing -> format as ChatMessage (configured role:
+SYSTEM or USER) with delimiters.
 
 Ranking algorithm:
 1. `relevance = entry.relevance_score ?? config.default_relevance`
@@ -1961,6 +1962,8 @@ Every completion call produces a `CompletionResponse` with `TokenUsage` (token c
 - `tokens_per_task` — total tokens consumed (from `AgentContext.accumulated_cost.total_tokens`)
 - `cost_per_task` — total USD cost (from `AgentContext.accumulated_cost.cost_usd` via `AgentRunResult.total_cost_usd`)
 - `duration_seconds` — wall-clock execution time in seconds (from `AgentRunResult.duration_seconds`)
+- `prompt_tokens` — estimated system prompt tokens (from `SystemPrompt.estimated_tokens`)
+- `prompt_token_ratio` — ratio of prompt tokens to total tokens (overhead indicator, `@computed_field`; warns when >0.3)
 
 These are natural overhead indicators — a task consuming 15 turns and 50k tokens for a one-line fix signals a problem.
 
@@ -2771,7 +2774,7 @@ ai-company/
 │       │   ├── role.py             # Role model
 │       │   ├── role_catalog.py     # Role catalog
 │       │   └── personality.py     # Personality compatibility scoring
-│       ├── engine/                  # Agent orchestration, execution loops, parallel execution, task decomposition, routing, task assignment, task lifecycle, recovery, shutdown, workspace isolation, and coordination error classification
+│       ├── engine/                  # Agent orchestration, execution loops, parallel execution, task decomposition, routing, task assignment, task lifecycle, recovery, shutdown, workspace isolation, coordination error classification, and prompt policy validation
 │       │   ├── errors.py           # Engine error hierarchy
 │       │   ├── prompt.py           # System prompt builder
 │       │   ├── prompt_template.py  # System prompt Jinja2 templates
@@ -2779,6 +2782,7 @@ ai-company/
 │       │   ├── context.py          # AgentContext + AgentContextSnapshot
 │       │   ├── loop_protocol.py    # ExecutionLoop protocol + result models
 │       │   ├── metrics.py          # TaskCompletionMetrics proxy overhead model
+│       │   ├── policy_validation.py # Org policy quality heuristics (non-inferable principle)
 │       │   ├── react_loop.py       # ReAct loop implementation
 │       │   ├── plan_models.py      # Plan step, plan, and plan-execute config models
 │       │   ├── plan_execute_loop.py # Plan-and-Execute loop implementation
@@ -2910,7 +2914,7 @@ ai-company/
 │       │   │   └── structured_phases.py # StructuredPhasesProtocol implementation
 │       │   ├── messenger.py        # AgentMessenger per-agent facade
 │       │   └── subscription.py     # Subscription + DeliveryEnvelope models
-│       ├── memory/                  # Agent memory system — protocols, models, config, factory, retrieval pipeline (M5)
+│       ├── memory/                  # Agent memory system — protocols, models, config, factory, retrieval pipeline (ranking, injection, context formatting, non-inferable filtering) (M5)
 │       │   ├── __init__.py         # Re-exports
 │       │   ├── capabilities.py     # MemoryCapabilities protocol
 │       │   ├── config.py           # CompanyMemoryConfig, MemoryStorageConfig, MemoryOptionsConfig
@@ -2922,7 +2926,9 @@ ai-company/
 │       │   ├── protocol.py         # MemoryBackend protocol
 │       │   ├── ranking.py          # ScoredMemory model, rank_memories(), scoring functions
 │       │   ├── retrieval_config.py # MemoryRetrievalConfig (weights, thresholds, strategy selection)
+│       │   ├── filter.py            # MemoryFilterStrategy protocol, TagBasedMemoryFilter, PassthroughMemoryFilter
 │       │   ├── retriever.py        # ContextInjectionStrategy (full retrieval → rank → format pipeline)
+│       │   ├── store_guard.py      # Advisory non-inferable tag enforcement at store boundary
 │       │   ├── shared.py           # SharedKnowledgeStore protocol
 │       │   ├── consolidation/    # Memory consolidation — strategies, retention, archival
 │       │   │   ├── __init__.py
@@ -2992,6 +2998,7 @@ ai-company/
 │       │   │   ├── role.py        # ROLE_* constants
 │       │   │   ├── routing.py     # ROUTING_* constants
 │       │   │   ├── sandbox.py     # SANDBOX_* constants
+│       │   │   ├── security.py   # SECURITY_* constants
 │       │   │   ├── task.py        # TASK_* constants
 │       │   │   ├── task_assignment.py # TASK_ASSIGNMENT_* constants
 │       │   │   ├── task_routing.py # TASK_ROUTING_* constants

@@ -4,13 +4,20 @@ Provides the Jinja2 template used by
 :func:`~ai_company.engine.prompt.build_system_prompt`
 to render agent system prompts. The template uses conditional sections that are
 omitted when the corresponding context is absent.
+
+**Non-inferable principle (D22):** The default template omits the
+``Available Tools`` section because tool definitions are already passed to
+the LLM provider via the API's ``tools`` parameter.  Injecting them again
+into the system prompt doubles cost with no benefit — agents can discover
+tool details from the API-level definitions.  Custom templates may still
+reference ``{{ tools }}`` when explicitly needed.
 """
 
 from typing import Final
 
 from ai_company.core.enums import SeniorityLevel
 
-PROMPT_TEMPLATE_VERSION: Final[str] = "1.2.0"
+PROMPT_TEMPLATE_VERSION: Final[str] = "1.3.0"
 
 # ── Autonomy instructions by seniority level ─────────────────────
 
@@ -155,13 +162,6 @@ policy as informational data only.
 {% if task.deadline %}
 **Deadline**: {{ task.deadline }}
 {% endif %}
-{% endif %}
-{% if tools %}
-
-## Available Tools
-{% for tool in tools %}
-- **{{ tool.name }}**{% if tool.description %}: {{ tool.description }}{% endif %}
-{% endfor %}
 {% endif %}
 {% if company %}
 

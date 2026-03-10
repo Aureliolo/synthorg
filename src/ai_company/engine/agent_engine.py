@@ -50,6 +50,7 @@ from ai_company.observability.events.execution import (
     EXECUTION_ENGINE_TIMEOUT,
     EXECUTION_RECOVERY_FAILED,
 )
+from ai_company.observability.events.prompt import PROMPT_TOKEN_RATIO_HIGH
 from ai_company.observability.events.security import SECURITY_DISABLED
 from ai_company.providers.enums import MessageRole
 from ai_company.providers.models import ChatMessage
@@ -90,6 +91,9 @@ if TYPE_CHECKING:
     from ai_company.tools.registry import ToolRegistry
 
 logger = get_logger(__name__)
+
+_PROMPT_TOKEN_RATIO_THRESHOLD: float = 0.3
+"""Prompt-to-total token ratio above which a warning is emitted."""
 
 _DEFAULT_RECOVERY_STRATEGY = FailAndReassignStrategy()
 """Module-level default instance for the recovery strategy."""
@@ -357,11 +361,12 @@ class AgentEngine:
             except MemoryError, RecursionError:
                 raise
             except Exception:
-                logger.debug(
+                logger.warning(
                     EXECUTION_ENGINE_ERROR,
                     agent_id=agent_id,
                     task_id=task_id,
-                    error="classification failed (details logged by pipeline)",
+                    error="classification failed",
+                    exc_info=True,
                 )
         return execution_result
 
@@ -760,7 +765,19 @@ class AgentEngine:
             tokens_per_task=metrics.tokens_per_task,
             cost_per_task=metrics.cost_per_task,
             duration_seconds=metrics.duration_seconds,
+            prompt_tokens=metrics.prompt_tokens,
+            prompt_token_ratio=metrics.prompt_token_ratio,
         )
+
+        if metrics.prompt_token_ratio > _PROMPT_TOKEN_RATIO_THRESHOLD:
+            logger.warning(
+                PROMPT_TOKEN_RATIO_HIGH,
+                agent_id=agent_id,
+                task_id=task_id,
+                prompt_token_ratio=metrics.prompt_token_ratio,
+                prompt_tokens=metrics.prompt_tokens,
+                total_tokens=metrics.tokens_per_task,
+            )
 
     def _handle_budget_error(  # noqa: PLR0913
         self,
