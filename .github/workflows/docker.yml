@@ -116,7 +116,7 @@ jobs:
           trivyignores: .trivyignore.yaml
 
       - name: Grype scan
-        uses: anchore/scan-action@1638637db639e0ade3258b51db49a9a137574c3e # v6
+        uses: anchore/scan-action@7037fa011853d5a11690026fb85feee79f4c946c # v7.3.2
         with:
           image: ${{ steps.scan-ref.outputs.ref }}
           fail-build: true
@@ -227,7 +227,7 @@ jobs:
           trivyignores: .trivyignore.yaml
 
       - name: Grype scan
-        uses: anchore/scan-action@1638637db639e0ade3258b51db49a9a137574c3e # v6
+        uses: anchore/scan-action@7037fa011853d5a11690026fb85feee79f4c946c # v7.3.2
         with:
           image: ${{ steps.scan-ref.outputs.ref }}
           fail-build: true
