@@ -98,6 +98,8 @@ class SecurityConfig(BaseModel):
         post_tool_scanning_enabled: Scan tool output for secrets.
         hard_deny_action_types: Action types always denied.
         auto_approve_action_types: Action types always approved.
+        output_scan_policy_type: Output scan response policy
+            (default: ``REDACT``).
         custom_policies: User-defined policy rules.
     """
 

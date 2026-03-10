@@ -21,6 +21,7 @@ from ai_company.security.models import (
     SecurityVerdict,
     SecurityVerdictType,
 )
+from ai_company.security.output_scan_policy import WithholdPolicy
 from ai_company.security.output_scanner import OutputScanner
 from ai_company.security.rules.engine import RuleEngine
 from ai_company.security.service import SecOpsService
@@ -715,8 +716,6 @@ class TestSecOpsScanOutputPolicy:
 
     async def test_policy_transforms_result(self) -> None:
         """The result from policy.apply is what's returned."""
-        from ai_company.security.output_scan_policy import WithholdPolicy
-
         finding = OutputScanResult(
             has_sensitive_data=True,
             findings=("key",),
@@ -734,6 +733,24 @@ class TestSecOpsScanOutputPolicy:
         assert result.has_sensitive_data is True
         assert result.redacted_content is None
 
+    async def test_policy_called_on_clean_result(self) -> None:
+        """Policy.apply is called even when scan finds no sensitive data."""
+        mock_policy = MagicMock()
+        mock_policy.apply.return_value = OutputScanResult()
+        clean = OutputScanResult()
+        service = self._make_service_with_policy(
+            scan_result=clean,
+            policy=mock_policy,
+        )
+        ctx = _make_context()
+
+        await service.scan_output(ctx, "clean output")
+
+        mock_policy.apply.assert_called_once()
+        call_args = mock_policy.apply.call_args[0]
+        assert call_args[0] == clean
+        assert call_args[0].has_sensitive_data is False
+
     async def test_no_policy_returns_raw_result(self) -> None:
         """When policy=None, raw scanner result is returned."""
         finding = OutputScanResult(
@@ -750,3 +767,43 @@ class TestSecOpsScanOutputPolicy:
         result = await service.scan_output(ctx, "secret data")
 
         assert result == finding
+
+    async def test_policy_failure_returns_raw_scan_result(self) -> None:
+        """When policy.apply raises, raw scan result is returned."""
+        failing_policy = MagicMock()
+        failing_policy.name = "broken"
+        failing_policy.apply.side_effect = RuntimeError("policy bug")
+        finding = OutputScanResult(
+            has_sensitive_data=True,
+            findings=("token",),
+            redacted_content="[REDACTED]",
+        )
+        service = self._make_service_with_policy(
+            scan_result=finding,
+            policy=failing_policy,
+        )
+        ctx = _make_context()
+
+        # Should NOT raise — returns raw scan result.
+        result = await service.scan_output(ctx, "Bearer eyJ...")
+
+        assert result == finding
+
+    async def test_policy_memory_error_propagates(self) -> None:
+        """MemoryError from policy.apply propagates (non-recoverable)."""
+        failing_policy = MagicMock()
+        failing_policy.name = "oom-policy"
+        failing_policy.apply.side_effect = MemoryError("oom")
+        finding = OutputScanResult(
+            has_sensitive_data=True,
+            findings=("key",),
+            redacted_content="[REDACTED]",
+        )
+        service = self._make_service_with_policy(
+            scan_result=finding,
+            policy=failing_policy,
+        )
+        ctx = _make_context()
+
+        with pytest.raises(MemoryError):
+            await service.scan_output(ctx, "secret")

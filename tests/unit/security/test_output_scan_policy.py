@@ -187,6 +187,17 @@ class TestAutonomyTieredPolicy:
         # Fallback is RedactPolicy — passes through unchanged.
         assert transformed == result
 
+    def test_supervised_autonomy_uses_redact(self) -> None:
+        """SUPERVISED level delegates to RedactPolicy (default map)."""
+        autonomy = self._make_autonomy(AutonomyLevel.SUPERVISED)
+        policy = AutonomyTieredPolicy(effective_autonomy=autonomy)
+        result = _sensitive_result()
+
+        transformed = policy.apply(result, _make_context())
+
+        # RedactPolicy passes through unchanged.
+        assert transformed == result
+
     def test_custom_policy_map(self) -> None:
         """Custom policy_map overrides defaults."""
         autonomy = self._make_autonomy(AutonomyLevel.FULL)
@@ -202,6 +213,22 @@ class TestAutonomyTieredPolicy:
         # Custom map uses WithholdPolicy for FULL.
         assert transformed.has_sensitive_data is True
         assert transformed.redacted_content is None
+
+    def test_custom_map_missing_level_falls_back_to_redact(self) -> None:
+        """Missing level in custom map falls back to RedactPolicy."""
+        autonomy = self._make_autonomy(AutonomyLevel.SEMI)
+        # Custom map only has FULL — SEMI is missing.
+        custom_map = {AutonomyLevel.FULL: WithholdPolicy()}
+        policy = AutonomyTieredPolicy(
+            effective_autonomy=autonomy,
+            policy_map=custom_map,
+        )
+        result = _sensitive_result()
+
+        transformed = policy.apply(result, _make_context())
+
+        # Fallback is RedactPolicy — passes through unchanged.
+        assert transformed == result
 
 
 # ── Protocol compliance ──────────────────────────────────────────

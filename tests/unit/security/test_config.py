@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from ai_company.core.enums import ApprovalRiskLevel
 from ai_company.security.config import (
+    OutputScanPolicyType,
     RuleEngineConfig,
     SecurityConfig,
     SecurityPolicyRule,
@@ -169,6 +170,7 @@ class TestSecurityConfig:
             "code:read",
             "docs:write",
         )
+        assert cfg.output_scan_policy_type == OutputScanPolicyType.REDACT
         assert cfg.custom_policies == ()
 
     def test_disabled_state(self) -> None:
@@ -270,8 +272,39 @@ class TestSecurityConfig:
             post_tool_scanning_enabled=False,
             hard_deny_action_types=("org:fire",),
             auto_approve_action_types=(),
+            output_scan_policy_type=OutputScanPolicyType.WITHHOLD,
             custom_policies=(policy,),
         )
         json_str = cfg.model_dump_json()
         restored = SecurityConfig.model_validate_json(json_str)
         assert restored == cfg
+        assert restored.output_scan_policy_type == OutputScanPolicyType.WITHHOLD
+
+
+# ── OutputScanPolicyType ─────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestOutputScanPolicyType:
+    """Tests for OutputScanPolicyType enum values and config integration."""
+
+    @pytest.mark.parametrize(
+        "policy_type",
+        list(OutputScanPolicyType),
+    )
+    def test_all_policy_types_accepted_in_config(
+        self,
+        policy_type: OutputScanPolicyType,
+    ) -> None:
+        cfg = SecurityConfig(output_scan_policy_type=policy_type)
+        assert cfg.output_scan_policy_type == policy_type
+
+    def test_invalid_policy_type_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            SecurityConfig(output_scan_policy_type="nonexistent")  # type: ignore[arg-type]
+
+    def test_enum_values(self) -> None:
+        assert OutputScanPolicyType.REDACT.value == "redact"
+        assert OutputScanPolicyType.WITHHOLD.value == "withhold"
+        assert OutputScanPolicyType.LOG_ONLY.value == "log_only"
+        assert OutputScanPolicyType.AUTONOMY_TIERED.value == "autonomy_tiered"

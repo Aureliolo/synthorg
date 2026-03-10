@@ -80,7 +80,7 @@ The MVP validates the core hypothesis: **a single agent can complete a real task
 > **How to read this spec:** Sections describe the full vision. Each section with deferred features includes an **MVP** callout box indicating what ships in M3 and what is deferred. The full design is documented upfront to inform architecture decisions — protocol interfaces are designed even for features that won't be built until later milestones.
 
 > **Implementation snapshot (2026-03-10):**
-> - **Done:** M0–M6 (tooling, config/core, providers, single-agent engine, multi-agent orchestration, API/CLI surface) + Docker sandbox (#50), MCP bridge (#53), code runner + HR engine (hiring/firing/onboarding/offboarding/registry) + performance tracking (task metrics, quality scoring, collaboration scoring, trend detection, rolling windows). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed (including audit entry persistence via AuditRepository + SQLite backend). Memory retrieval pipeline (#41: ranking, token-budget formatting, context injection, non-inferable filtering) complete. Budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking). CFO cost optimization complete (CostOptimizer: anomaly detection, efficiency analysis, downgrade recommendations, routing optimization, approval decisions; ReportGenerator: multi-dimensional spending reports). Shared org memory (#125: HybridPromptRetrievalBackend, OrgFactStore, access control, factory) complete. Memory consolidation/archival (#48: ConsolidationService, SimpleConsolidationStrategy, RetentionEnforcer, ArchivalStore protocol) complete. SecOps agent (rule engine, audit log, output scanner, risk classifier, ToolInvoker integration), progressive trust (4 strategies: disabled/weighted/per-category/milestone behind TrustStrategy protocol), promotion/demotion (criteria evaluation, approval strategies, model mapping). Autonomy levels (#42: AutonomyLevel enum, presets, 3-level resolver, rule-based auto-downgrade/human-only promotion change strategy) + approval timeout policies (#126: 4 timeout policies, park/resume service, risk tier classifier, timeout checker) complete.
+> - **Done:** M0–M6 (tooling, config/core, providers, single-agent engine, multi-agent orchestration, API/CLI surface) + Docker sandbox (#50), MCP bridge (#53), code runner + HR engine (hiring/firing/onboarding/offboarding/registry) + performance tracking (task metrics, quality scoring, collaboration scoring, trend detection, rolling windows). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed (including audit entry persistence via AuditRepository + SQLite backend). Memory retrieval pipeline (#41: ranking, token-budget formatting, context injection, non-inferable filtering) complete. Budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking). CFO cost optimization complete (CostOptimizer: anomaly detection, efficiency analysis, downgrade recommendations, routing optimization, approval decisions; ReportGenerator: multi-dimensional spending reports). Shared org memory (#125: HybridPromptRetrievalBackend, OrgFactStore, access control, factory) complete. Memory consolidation/archival (#48: ConsolidationService, SimpleConsolidationStrategy, RetentionEnforcer, ArchivalStore protocol) complete. SecOps agent (rule engine, audit log, output scanner, output scan response policies (redact/withhold/log-only/autonomy-tiered), risk classifier, ToolInvoker integration), progressive trust (4 strategies: disabled/weighted/per-category/milestone behind TrustStrategy protocol), promotion/demotion (criteria evaluation, approval strategies, model mapping). Autonomy levels (#42: AutonomyLevel enum, presets, 3-level resolver, rule-based auto-downgrade/human-only promotion change strategy) + approval timeout policies (#126: 4 timeout policies, park/resume service, risk tier classifier, timeout checker) complete.
 > - **Remaining:** JWT/OAuth auth, approval workflow gates.
 
 ### 1.5 Configuration Philosophy
@@ -2431,6 +2431,19 @@ A special meta-agent that reviews all actions before execution:
 > - **D4 — LLM vs Rule-based:** Hybrid approach. Rule engine for known patterns (credentials, path traversal, destructive ops) — sub-ms, covers ~95% of cases. LLM fallback only for uncertain cases (~5%). Full autonomy mode: rules + audit logging only, no LLM path. Hard safety rules (credential exposure, data destruction) **never bypass** regardless of autonomy level. Precedent: AWS GuardDuty, LlamaFirewall, NeMo Guardrails all use hybrid.
 > - **D5 — Integration Point:** Pluggable `SecurityInterceptionStrategy` protocol. Initial: before every tool invocation — slots into existing `ToolInvoker` between permission check and tool execution. Policy strictness (not interception point) configurable per autonomy level. Add post-tool-call scanning for sensitive data in outputs. Performance: sub-ms rule check is invisible against seconds of LLM inference. Future strategies: batch-level (before task step), assignment-only.
 
+#### Output Scan Response Policies
+
+After the output scanner detects sensitive data, a pluggable **`OutputScanResponsePolicy`** protocol decides how to handle the findings. Four built-in policies ship behind the protocol:
+
+| Policy | Behavior | Default for |
+|--------|----------|-------------|
+| **Redact** (default) | Return scanner's redacted content as-is | `SEMI`, `SUPERVISED` autonomy |
+| **Withhold** | Clear redacted content — fail-closed, no partial data returned | `LOCKED` autonomy |
+| **Log-only** | Discard findings (logs at WARNING), pass original output through | `FULL` autonomy |
+| **Autonomy-tiered** | Delegate to a sub-policy based on effective autonomy level | Composite policy |
+
+Policy selection is declarative via `SecurityConfig.output_scan_policy_type` (`OutputScanPolicyType` enum). A factory function (`build_output_scan_policy`) resolves the enum to a concrete policy instance. Runtime constructor injection on `SecOpsService` is also supported for full flexibility. The policy is applied *after* audit recording, preserving audit fidelity regardless of policy outcome.
+
 ### 12.4 Approval Timeout Policy
 
 When an action requires human approval (per autonomy level in §12.2), the agent must wait. The framework provides configurable timeout policies that determine what happens when a human doesn't respond. All policies implement a `TimeoutPolicy` protocol. The policy is configurable per autonomy level and per action risk tier.
@@ -3102,8 +3115,10 @@ ai-company/
 │       │   ├── action_type_mapping.py # Default ToolCategory → ActionType mapping
 │       │   ├── action_types.py     # ActionTypeCategory registry and validation
 │       │   ├── audit.py            # Append-only AuditLog with configurable eviction
-│       │   ├── config.py           # SecurityConfig, SecurityPolicyRule, RuleEngineConfig
+│       │   ├── config.py           # SecurityConfig, SecurityPolicyRule, RuleEngineConfig, OutputScanPolicyType
 │       │   ├── models.py           # SecurityVerdict, SecurityContext, AuditEntry, OutputScanResult
+│       │   ├── output_scan_policy.py # Output scan response policies (redact/withhold/log-only/autonomy-tiered)
+│       │   ├── output_scan_policy_factory.py # build_output_scan_policy() factory
 │       │   ├── output_scanner.py   # Post-tool output scanning (regex-based redaction)
 │       │   ├── protocol.py         # SecurityInterceptionStrategy protocol
 │       │   ├── service.py          # SecOpsService — meta-agent coordinating security

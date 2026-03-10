@@ -254,7 +254,18 @@ class SecOpsService:
                 )
 
         if self._output_scan_policy is not None:
-            result = self._output_scan_policy.apply(result, context)
+            try:
+                result = self._output_scan_policy.apply(result, context)
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.exception(
+                    SECURITY_INTERCEPTOR_ERROR,
+                    tool_name=context.tool_name,
+                    policy=self._output_scan_policy.name,
+                    note="Output scan policy application failed "
+                    "— returning raw scan result",
+                )
 
         return result
 

@@ -6,6 +6,7 @@ sensitive data — redact, withhold, log-only, or delegate based on
 autonomy level.
 """
 
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ai_company.core.enums import AutonomyLevel
@@ -91,6 +92,9 @@ class WithholdPolicy:
     """Clear redacted content when sensitive data is found.
 
     Forces fail-closed in the invoker — no partial data is returned.
+    The ``findings`` tuple is deliberately preserved so that audit
+    consumers can categorise what was detected without seeing the
+    actual content.
     """
 
     @property
@@ -123,10 +127,13 @@ class WithholdPolicy:
 
 
 class LogOnlyPolicy:
-    """Return an empty result — findings are logged but output passes through.
+    """Discard scan findings, returning a clean result.
 
+    The caller should treat the original tool output as unmodified.
     Suitable for audit-only mode or high-trust agents where output
-    scanning is informational rather than enforced.
+    scanning is informational rather than enforced.  The audit entry
+    written by ``SecOpsService.scan_output`` before this policy runs
+    preserves the original findings.
     """
 
     @property
@@ -137,32 +144,50 @@ class LogOnlyPolicy:
     def apply(
         self,
         scan_result: OutputScanResult,
-        context: SecurityContext,  # noqa: ARG002
+        context: SecurityContext,
     ) -> OutputScanResult:
-        """Return empty result regardless of findings.
+        """Return a clean ``OutputScanResult`` regardless of findings.
+
+        Suppresses enforcement while preserving the audit log entry
+        written by ``SecOpsService.scan_output``.
 
         Args:
             scan_result: Result from the output scanner.
-            context: Security context (unused).
+            context: Security context of the tool invocation.
 
         Returns:
-            Empty ``OutputScanResult``.
+            Clean ``OutputScanResult`` with ``has_sensitive_data=False``.
         """
-        logger.debug(
-            SECURITY_OUTPUT_SCAN_POLICY_APPLIED,
-            policy="log_only",
-            has_sensitive_data=scan_result.has_sensitive_data,
-        )
+        if scan_result.has_sensitive_data:
+            logger.warning(
+                SECURITY_OUTPUT_SCAN_POLICY_APPLIED,
+                policy="log_only",
+                has_sensitive_data=True,
+                findings=scan_result.findings,
+                tool_name=context.tool_name,
+                agent_id=context.agent_id,
+                note="Sensitive data detected but passed through by log_only policy",
+            )
+        else:
+            logger.debug(
+                SECURITY_OUTPUT_SCAN_POLICY_APPLIED,
+                policy="log_only",
+                has_sensitive_data=False,
+            )
         return OutputScanResult()
 
 
-# Default autonomy-to-policy mapping.
-_DEFAULT_AUTONOMY_POLICY_MAP: dict[AutonomyLevel, OutputScanResponsePolicy] = {
-    AutonomyLevel.FULL: LogOnlyPolicy(),
-    AutonomyLevel.SEMI: RedactPolicy(),
-    AutonomyLevel.SUPERVISED: RedactPolicy(),
-    AutonomyLevel.LOCKED: WithholdPolicy(),
-}
+# Default autonomy-to-policy mapping (read-only).
+_DEFAULT_AUTONOMY_POLICY_MAP: Mapping[AutonomyLevel, OutputScanResponsePolicy] = (
+    MappingProxyType(
+        {
+            AutonomyLevel.FULL: LogOnlyPolicy(),
+            AutonomyLevel.SEMI: RedactPolicy(),
+            AutonomyLevel.SUPERVISED: RedactPolicy(),
+            AutonomyLevel.LOCKED: WithholdPolicy(),
+        }
+    )
+)
 
 
 class AutonomyTieredPolicy:
@@ -212,18 +237,31 @@ class AutonomyTieredPolicy:
         """
         if self._effective_autonomy is None:
             delegate = self._fallback
+            autonomy_level = None
         else:
-            level = self._effective_autonomy.level
-            delegate = self._policy_map.get(level, self._fallback)
+            autonomy_level = self._effective_autonomy.level
+            mapped = self._policy_map.get(autonomy_level)
+            if mapped is not None:
+                delegate = mapped
+            else:
+                delegate = self._fallback
+                logger.warning(
+                    SECURITY_OUTPUT_SCAN_POLICY_APPLIED,
+                    policy="autonomy_tiered",
+                    autonomy_level=autonomy_level.value,
+                    note=(
+                        f"No policy mapped for autonomy level "
+                        f"'{autonomy_level.value}' — falling back to "
+                        f"'{self._fallback.name}'"
+                    ),
+                )
 
         logger.debug(
             SECURITY_OUTPUT_SCAN_POLICY_APPLIED,
             policy="autonomy_tiered",
             delegate=delegate.name,
             autonomy_level=(
-                self._effective_autonomy.level.value
-                if self._effective_autonomy is not None
-                else None
+                autonomy_level.value if autonomy_level is not None else None
             ),
         )
         return delegate.apply(scan_result, context)

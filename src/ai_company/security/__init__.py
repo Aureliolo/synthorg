@@ -38,6 +38,9 @@ from ai_company.security.output_scan_policy import (
     RedactPolicy,
     WithholdPolicy,
 )
+from ai_company.security.output_scan_policy_factory import (
+    build_output_scan_policy,
+)
 from ai_company.security.output_scanner import OutputScanner
 from ai_company.security.protocol import SecurityInterceptionStrategy
 from ai_company.security.rules.engine import RuleEngine
@@ -67,4 +70,5 @@ __all__ = [
     "SecurityVerdict",
     "SecurityVerdictType",
     "WithholdPolicy",
+    "build_output_scan_policy",
 ]
