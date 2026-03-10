@@ -10,7 +10,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 
 ## Current Capability Snapshot
 
-### Implemented (M0–M6 complete)
+### Implemented (M0–M6 complete, M7 HR partial)
 
 - **Company Config + Core Models** - Strong Pydantic validation, immutable config models, runtime state models
 - **Provider Layer** - LiteLLM-based provider abstraction with routing, retry, and rate limiting
@@ -28,17 +28,19 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 - **Human Approval Queue (M6)** - Approval submission, approve/reject with reason, list/filter by status, WebSocket notifications for approval events
 - **WebSocket Real-Time Feed (M6)** - Channel-based subscriptions (tasks, agents, budget, messages, system, approvals), per-channel payload filters, message-bus bridge
 - **Route Guards (M6)** - Role-based read/write access control (stub auth for M6; real JWT/OAuth planned for M7)
+- **HR Engine (M7)** - Hiring pipeline (request → generate candidate → approval → instantiate), onboarding checklists, offboarding pipeline (reassign → archive → notify → terminate), agent registry
+- **Performance Tracking (M7)** - Task metrics, CI-based quality scoring, behavioral collaboration scoring, Theil-Sen robust trend detection, multi-window rolling metric aggregation
 
 ### Not implemented yet (planned milestones)
 
 - **Memory Backend Adapter (M5)** - Memory protocols, retrieval pipeline, org memory, and consolidation are complete; initial Mem0 adapter backend ([ADR-001](docs/decisions/ADR-001-memory-layer.md)) pending; research backends (GraphRAG, Temporal KG) planned
 - **CLI Surface** - `cli/` package is placeholder-only
 - **Security/Approval System (M7)** - SecOps agent with rule engine (soft-allow/hard-deny, fail-closed), audit log, output scanner, risk classifier, and ToolInvoker integration are implemented; real authentication (JWT/OAuth), progressive trust, and approval workflow gates are planned
-- **Advanced Product Surface** - web dashboard, HR workflows, and external integrations
+- **Advanced Product Surface** - web dashboard, external integrations
 
 ## Status
 
-**M7: Security & HR** in progress (M0–M6 all done). See [DESIGN_SPEC.md](DESIGN_SPEC.md) for the full high-level specification.
+**M7: Security & Approval** partially complete — Docker sandbox, MCP bridge, code runner, SecOps agent, HR engine + performance tracking done; authentication/approval remain. See [DESIGN_SPEC.md](DESIGN_SPEC.md) for the full high-level specification.
 
 ## Tech Stack
 

@@ -5,6 +5,11 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ai_company.core.types import NotBlankStr
+from ai_company.hr.persistence_protocol import (
+    CollaborationMetricRepository,
+    LifecycleEventRepository,
+    TaskMetricRepository,
+)
 from ai_company.persistence.protocol import PersistenceBackend
 from ai_company.persistence.repositories import (
     CostRecordRepository,
@@ -17,6 +22,11 @@ if TYPE_CHECKING:
     from ai_company.communication.message import Message
     from ai_company.core.enums import TaskStatus
     from ai_company.core.task import Task
+    from ai_company.hr.models import AgentLifecycleEvent
+    from ai_company.hr.performance.models import (
+        CollaborationMetricRecord,
+        TaskMetricRecord,
+    )
 
 
 class _FakeTaskRepository:
@@ -68,6 +78,50 @@ class _FakeMessageRepository:
         return ()
 
 
+class _FakeLifecycleEventRepository:
+    async def save(self, event: AgentLifecycleEvent) -> None:
+        pass
+
+    async def list_events(
+        self,
+        *,
+        agent_id: str | None = None,
+        event_type: str | None = None,
+        since: str | None = None,
+    ) -> tuple[AgentLifecycleEvent, ...]:
+        return ()
+
+
+class _FakeTaskMetricRepository:
+    async def save(self, record: TaskMetricRecord) -> None:
+        pass
+
+    async def query(
+        self,
+        *,
+        agent_id: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+    ) -> tuple[TaskMetricRecord, ...]:
+        return ()
+
+
+class _FakeCollaborationMetricRepository:
+    async def save(
+        self,
+        record: CollaborationMetricRecord,
+    ) -> None:
+        pass
+
+    async def query(
+        self,
+        *,
+        agent_id: str | None = None,
+        since: str | None = None,
+    ) -> tuple[CollaborationMetricRecord, ...]:
+        return ()
+
+
 class _FakeBackend:
     async def connect(self) -> None:
         pass
@@ -101,6 +155,18 @@ class _FakeBackend:
     def messages(self) -> _FakeMessageRepository:
         return _FakeMessageRepository()
 
+    @property
+    def lifecycle_events(self) -> _FakeLifecycleEventRepository:
+        return _FakeLifecycleEventRepository()
+
+    @property
+    def task_metrics(self) -> _FakeTaskMetricRepository:
+        return _FakeTaskMetricRepository()
+
+    @property
+    def collaboration_metrics(self) -> _FakeCollaborationMetricRepository:
+        return _FakeCollaborationMetricRepository()
+
 
 @pytest.mark.unit
 class TestProtocolCompliance:
@@ -115,3 +181,17 @@ class TestProtocolCompliance:
 
     def test_fake_message_repo_is_message_repository(self) -> None:
         assert isinstance(_FakeMessageRepository(), MessageRepository)
+
+    def test_fake_lifecycle_repo_is_lifecycle_event_repository(self) -> None:
+        assert isinstance(_FakeLifecycleEventRepository(), LifecycleEventRepository)
+
+    def test_fake_task_metric_repo_is_task_metric_repository(self) -> None:
+        assert isinstance(_FakeTaskMetricRepository(), TaskMetricRepository)
+
+    def test_fake_collab_metric_repo_is_collaboration_metric_repository(
+        self,
+    ) -> None:
+        assert isinstance(
+            _FakeCollaborationMetricRepository(),
+            CollaborationMetricRepository,
+        )

@@ -17,7 +17,7 @@ pytestmark = pytest.mark.timeout(30)
 @pytest.mark.unit
 class TestMessageType:
     def test_member_count(self) -> None:
-        assert len(MessageType) == 9
+        assert len(MessageType) == 10
 
     def test_values(self) -> None:
         assert MessageType.TASK_UPDATE.value == "task_update"
@@ -29,6 +29,7 @@ class TestMessageType:
         assert MessageType.STATUS_REPORT.value == "status_report"
         assert MessageType.ESCALATION.value == "escalation"
         assert MessageType.MEETING_CONTRIBUTION.value == "meeting_contribution"
+        assert MessageType.HR_NOTIFICATION.value == "hr_notification"
 
     def test_string_identity(self) -> None:
         assert str(MessageType.TASK_UPDATE) == "task_update"

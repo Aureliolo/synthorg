@@ -1,4 +1,8 @@
-"""SQLite repository implementations for Task, CostRecord, and Message."""
+"""SQLite repository implementations for Task, CostRecord, and Message.
+
+HR-related repositories (LifecycleEvent, TaskMetric, CollaborationMetric)
+are in ``hr_repositories.py`` within this package.
+"""
 
 import json
 import sqlite3

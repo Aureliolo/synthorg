@@ -79,9 +79,9 @@ The MVP validates the core hypothesis: **a single agent can complete a real task
 
 > **How to read this spec:** Sections describe the full vision. Each section with deferred features includes an **MVP** callout box indicating what ships in M3 and what is deferred. The full design is documented upfront to inform architecture decisions — protocol interfaces are designed even for features that won't be built until later milestones.
 
-> **Implementation snapshot (2026-03-09):**
-> - **Done:** M0–M6 (tooling, config/core, providers, single-agent engine, multi-agent orchestration, API/CLI surface). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed. Memory retrieval pipeline (#41: ranking, token-budget formatting, context injection) complete. Budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking). CFO cost optimization complete (CostOptimizer: anomaly detection, efficiency analysis, downgrade recommendations, routing optimization, approval decisions; ReportGenerator: multi-dimensional spending reports). Shared org memory (#125: HybridPromptRetrievalBackend, OrgFactStore, access control, factory) complete. Memory consolidation/archival (#48: ConsolidationService, SimpleConsolidationStrategy, RetentionEnforcer, ArchivalStore protocol) complete.
-> - **In progress:** M7 — Docker sandbox (#50), MCP bridge (#53), code runner implemented. Security + approval system not started.
+> **Implementation snapshot (2026-03-10):**
+> - **Done:** M0–M6 (tooling, config/core, providers, single-agent engine, multi-agent orchestration, API/CLI surface) + Docker sandbox (#50), MCP bridge (#53), code runner + HR engine (hiring/firing/onboarding/offboarding/registry) + performance tracking (task metrics, quality scoring, collaboration scoring, trend detection, rolling windows). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed. Memory retrieval pipeline (#41: ranking, token-budget formatting, context injection) complete. Budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking). CFO cost optimization complete (CostOptimizer: anomaly detection, efficiency analysis, downgrade recommendations, routing optimization, approval decisions; ReportGenerator: multi-dimensional spending reports). Shared org memory (#125: HybridPromptRetrievalBackend, OrgFactStore, access control, factory) complete. Memory consolidation/archival (#48: ConsolidationService, SimpleConsolidationStrategy, RetentionEnforcer, ArchivalStore protocol) complete.
+> - **Remaining:** M7 security + approval system (SecOps agent, progressive trust, JWT/OAuth auth).
 
 ### 1.5 Configuration Philosophy
 
@@ -1652,6 +1652,13 @@ Strategy selection via config: `memory.retrieval.strategy: context | tool_based 
 
 > **MVP: Not in M3–M4.** HR features (hiring, firing, performance tracking, promotions) are M5–M7. Agent workforce is configured manually via YAML in early milestones.
 
+> **Implementation note (M7):** Hiring pipeline (`HiringService`), offboarding pipeline
+> (`OffboardingService`), onboarding checklists (`OnboardingService`), and agent registry
+> (`AgentRegistryService`) are now implemented. Performance tracking subsystem
+> (`hr/performance/`) complete with pluggable quality scoring, collaboration scoring,
+> trend detection, and multi-window aggregation. Promotions/demotions (section 8.4)
+> remain unimplemented.
+
 ### 8.1 Hiring Process
 
 The HR system manages the agent workforce dynamically:
@@ -2823,7 +2830,33 @@ ai-company/
 │       │   │   ├── scorer.py      # AgentTaskScorer (skill/role/seniority matching)
 │       │   │   ├── service.py     # TaskRoutingService (routes subtasks to agents)
 │       │   │   └── topology_selector.py # TopologySelector (auto coordination topology)
-│       │   └── hr_engine.py        # Hiring, firing, performance (M7)
+│       ├── hr/                      # HR engine: hiring, firing, onboarding, offboarding, agent registry, performance tracking
+│       │   ├── __init__.py         # Package exports
+│       │   ├── enums.py            # HR enumerations (HiringRequestStatus, FiringReason, OnboardingStep, LifecycleEventType, TrendDirection)
+│       │   ├── errors.py           # HR error hierarchy
+│       │   ├── models.py           # CandidateCard, HiringRequest, FiringRequest, OnboardingChecklist, OffboardingRecord, AgentLifecycleEvent
+│       │   ├── registry.py         # AgentRegistryService (agent lifecycle registry)
+│       │   ├── hiring_service.py   # HiringService (request → generate candidate → approval → instantiate)
+│       │   ├── onboarding_service.py # OnboardingService (checklist management)
+│       │   ├── offboarding_service.py # OffboardingService (reassign → archive → notify → terminate)
+│       │   ├── archival_protocol.py  # MemoryArchivalStrategy protocol
+│       │   ├── full_snapshot_strategy.py # FullSnapshotArchivalStrategy
+│       │   ├── reassignment_protocol.py # TaskReassignmentStrategy protocol
+│       │   ├── queue_return_strategy.py # QueueReturnReassignmentStrategy
+│       │   ├── persistence_protocol.py # HR-specific repository protocols
+│       │   └── performance/         # Performance tracking subsystem
+│       │       ├── __init__.py     # Package exports
+│       │       ├── models.py       # TaskMetricRecord, CollaborationMetricRecord, WindowMetrics, TrendResult, etc.
+│       │       ├── config.py       # PerformanceConfig
+│       │       ├── tracker.py      # PerformanceTracker service
+│       │       ├── quality_protocol.py # QualityScorer protocol
+│       │       ├── ci_quality_strategy.py # CiQualityScorer (CI-based quality scoring)
+│       │       ├── collaboration_protocol.py # CollaborationScorer protocol
+│       │       ├── behavioral_collaboration_strategy.py # BehavioralCollaborationScorer
+│       │       ├── trend_protocol.py # TrendDetector protocol
+│       │       ├── theil_sen_strategy.py # TheilSenTrendDetector (robust trend detection)
+│       │       ├── window_protocol.py # WindowAggregator protocol
+│       │       └── multi_window_strategy.py # MultiWindowAggregator (multi-window rolling metrics)
 │       ├── communication/           # Inter-agent communication
 │       │   ├── bus_memory.py       # InMemoryMessageBus implementation
 │       │   ├── bus_protocol.py     # MessageBus protocol interface
@@ -2921,6 +2954,7 @@ ai-company/
 │       │       ├── __init__.py    # Package exports
 │       │       ├── backend.py     # SQLitePersistenceBackend
 │       │       ├── repositories.py # SQLite repository implementations
+│       │       ├── hr_repositories.py # SQLite HR repositories (LifecycleEvent, TaskMetricRecord, CollaborationMetricRecord)
 │       │       └── migrations.py  # Schema migrations (user_version pragma)
 │       ├── observability/           # Structured logging & correlation
 │       │   ├── __init__.py         # get_logger() entry point
@@ -2944,10 +2978,12 @@ ai-company/
 │       │   │   ├── decomposition.py # DECOMPOSITION_* constants
 │       │   │   ├── execution.py   # EXECUTION_* constants
 │       │   │   ├── git.py         # GIT_* constants
+│       │   │   ├── hr.py         # HR_* constants
 │       │   │   ├── meeting.py    # MEETING_* constants
 │       │   │   ├── memory.py     # MEMORY_* constants
 │       │   │   ├── org_memory.py # ORG_MEMORY_* constants
 │       │   │   ├── parallel.py    # PARALLEL_* constants
+│       │   │   ├── performance.py # PERF_* constants
 │       │   │   ├── persistence.py # PERSISTENCE_* constants
 │       │   │   ├── personality.py # PERSONALITY_* constants
 │       │   │   ├── prompt.py      # PROMPT_* constants

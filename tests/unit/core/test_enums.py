@@ -39,8 +39,8 @@ class TestEnumMemberCounts:
     def test_seniority_level_has_8_members(self) -> None:
         assert len(SeniorityLevel) == 8
 
-    def test_agent_status_has_3_members(self) -> None:
-        assert len(AgentStatus) == 3
+    def test_agent_status_has_4_members(self) -> None:
+        assert len(AgentStatus) == 4
 
     def test_risk_tolerance_has_3_members(self) -> None:
         assert len(RiskTolerance) == 3
@@ -119,6 +119,7 @@ class TestEnumStringValues:
         assert AgentStatus.ACTIVE.value == "active"
         assert AgentStatus.ON_LEAVE.value == "on_leave"
         assert AgentStatus.TERMINATED.value == "terminated"
+        assert AgentStatus.ONBOARDING.value == "onboarding"
 
     def test_cost_tier_values(self) -> None:
         assert CostTier.LOW.value == "low"

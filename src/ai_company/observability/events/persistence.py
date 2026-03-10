@@ -61,3 +61,37 @@ PERSISTENCE_MESSAGE_HISTORY_FAILED: Final[str] = "persistence.message.history_fa
 PERSISTENCE_MESSAGE_DESERIALIZE_FAILED: Final[str] = (
     "persistence.message.deserialize_failed"
 )
+
+PERSISTENCE_LIFECYCLE_EVENT_SAVED: Final[str] = "persistence.lifecycle_event.saved"
+PERSISTENCE_LIFECYCLE_EVENT_SAVE_FAILED: Final[str] = (
+    "persistence.lifecycle_event.save_failed"
+)
+PERSISTENCE_LIFECYCLE_EVENT_LISTED: Final[str] = "persistence.lifecycle_event.listed"
+PERSISTENCE_LIFECYCLE_EVENT_LIST_FAILED: Final[str] = (
+    "persistence.lifecycle_event.list_failed"
+)
+PERSISTENCE_LIFECYCLE_EVENT_DESERIALIZE_FAILED: Final[str] = (
+    "persistence.lifecycle_event.deserialize_failed"
+)
+
+PERSISTENCE_TASK_METRIC_SAVED: Final[str] = "persistence.task_metric.saved"
+PERSISTENCE_TASK_METRIC_SAVE_FAILED: Final[str] = "persistence.task_metric.save_failed"
+PERSISTENCE_TASK_METRIC_QUERIED: Final[str] = "persistence.task_metric.queried"
+PERSISTENCE_TASK_METRIC_QUERY_FAILED: Final[str] = (
+    "persistence.task_metric.query_failed"
+)
+PERSISTENCE_TASK_METRIC_DESERIALIZE_FAILED: Final[str] = (
+    "persistence.task_metric.deserialize_failed"
+)
+
+PERSISTENCE_COLLAB_METRIC_SAVED: Final[str] = "persistence.collab_metric.saved"
+PERSISTENCE_COLLAB_METRIC_SAVE_FAILED: Final[str] = (
+    "persistence.collab_metric.save_failed"
+)
+PERSISTENCE_COLLAB_METRIC_QUERIED: Final[str] = "persistence.collab_metric.queried"
+PERSISTENCE_COLLAB_METRIC_QUERY_FAILED: Final[str] = (
+    "persistence.collab_metric.query_failed"
+)
+PERSISTENCE_COLLAB_METRIC_DESERIALIZE_FAILED: Final[str] = (
+    "persistence.collab_metric.deserialize_failed"
+)
