@@ -23,8 +23,11 @@ from ai_company.observability.events.persistence import (
 from ai_company.persistence.errors import PersistenceConnectionError
 from ai_company.persistence.sqlite.migrations import run_migrations
 from ai_company.persistence.sqlite.repositories import (
+    SQLiteCollaborationMetricRepository,
     SQLiteCostRecordRepository,
+    SQLiteLifecycleEventRepository,
     SQLiteMessageRepository,
+    SQLiteTaskMetricRepository,
     SQLiteTaskRepository,
 )
 
@@ -52,6 +55,9 @@ class SQLitePersistenceBackend:
         self._tasks: SQLiteTaskRepository | None = None
         self._cost_records: SQLiteCostRecordRepository | None = None
         self._messages: SQLiteMessageRepository | None = None
+        self._lifecycle_events: SQLiteLifecycleEventRepository | None = None
+        self._task_metrics: SQLiteTaskMetricRepository | None = None
+        self._collaboration_metrics: SQLiteCollaborationMetricRepository | None = None
 
     def _clear_state(self) -> None:
         """Reset connection and repository references to ``None``."""
@@ -59,6 +65,9 @@ class SQLitePersistenceBackend:
         self._tasks = None
         self._cost_records = None
         self._messages = None
+        self._lifecycle_events = None
+        self._task_metrics = None
+        self._collaboration_metrics = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -90,6 +99,11 @@ class SQLitePersistenceBackend:
                 self._tasks = SQLiteTaskRepository(self._db)
                 self._cost_records = SQLiteCostRecordRepository(self._db)
                 self._messages = SQLiteMessageRepository(self._db)
+                self._lifecycle_events = SQLiteLifecycleEventRepository(self._db)
+                self._task_metrics = SQLiteTaskMetricRepository(self._db)
+                self._collaboration_metrics = SQLiteCollaborationMetricRepository(
+                    self._db
+                )
             except (sqlite3.Error, OSError) as exc:
                 logger.exception(
                     PERSISTENCE_BACKEND_CONNECTION_FAILED,
@@ -220,3 +234,32 @@ class SQLitePersistenceBackend:
             PersistenceConnectionError: If not connected.
         """
         return self._require_connected(self._messages, "messages")
+
+    @property
+    def lifecycle_events(self) -> SQLiteLifecycleEventRepository:
+        """Repository for AgentLifecycleEvent persistence.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(self._lifecycle_events, "lifecycle_events")
+
+    @property
+    def task_metrics(self) -> SQLiteTaskMetricRepository:
+        """Repository for TaskMetricRecord persistence.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(self._task_metrics, "task_metrics")
+
+    @property
+    def collaboration_metrics(self) -> SQLiteCollaborationMetricRepository:
+        """Repository for CollaborationMetricRecord persistence.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(
+            self._collaboration_metrics, "collaboration_metrics"
+        )

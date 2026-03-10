@@ -23,7 +23,7 @@ from ai_company.persistence.errors import MigrationError
 logger = get_logger(__name__)
 
 # Current schema version — bump when adding new migrations.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _V1_STATEMENTS: Sequence[str] = (
     # ── Tasks ─────────────────────────────────────────────
@@ -88,6 +88,58 @@ CREATE TABLE IF NOT EXISTS messages (
     "CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)",
 )
 
+_V2_STATEMENTS: Sequence[str] = (
+    # ── Lifecycle events ───────────────────────────────────
+    """\
+CREATE TABLE IF NOT EXISTS lifecycle_events (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    agent_name TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    initiated_by TEXT NOT NULL,
+    details TEXT NOT NULL DEFAULT '',
+    metadata TEXT NOT NULL DEFAULT '{}'
+)""",
+    "CREATE INDEX IF NOT EXISTS idx_le_agent_id ON lifecycle_events(agent_id)",
+    "CREATE INDEX IF NOT EXISTS idx_le_event_type ON lifecycle_events(event_type)",
+    "CREATE INDEX IF NOT EXISTS idx_le_timestamp ON lifecycle_events(timestamp)",
+    # ── Task metrics ───────────────────────────────────────
+    """\
+CREATE TABLE IF NOT EXISTS task_metrics (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    task_type TEXT NOT NULL,
+    completed_at TEXT NOT NULL,
+    is_success INTEGER NOT NULL,
+    duration_seconds REAL NOT NULL,
+    cost_usd REAL NOT NULL,
+    turns_used INTEGER NOT NULL,
+    tokens_used INTEGER NOT NULL,
+    quality_score REAL,
+    complexity TEXT NOT NULL
+)""",
+    "CREATE INDEX IF NOT EXISTS idx_tm_agent_id ON task_metrics(agent_id)",
+    "CREATE INDEX IF NOT EXISTS idx_tm_completed_at ON task_metrics(completed_at)",
+    # ── Collaboration metrics ──────────────────────────────
+    """\
+CREATE TABLE IF NOT EXISTS collaboration_metrics (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    recorded_at TEXT NOT NULL,
+    delegation_success INTEGER,
+    delegation_response_seconds REAL,
+    conflict_constructiveness REAL,
+    meeting_contribution REAL,
+    loop_triggered INTEGER NOT NULL DEFAULT 0,
+    handoff_completeness REAL
+)""",
+    "CREATE INDEX IF NOT EXISTS idx_cm_agent_id ON collaboration_metrics(agent_id)",
+    "CREATE INDEX IF NOT EXISTS idx_cm_recorded_at"
+    " ON collaboration_metrics(recorded_at)",
+)
+
 _MigrateFn = Callable[[aiosqlite.Connection], Coroutine[Any, Any, None]]
 
 
@@ -126,10 +178,17 @@ async def _apply_v1(db: aiosqlite.Connection) -> None:
         await db.execute(stmt)
 
 
+async def _apply_v2(db: aiosqlite.Connection) -> None:
+    """Apply schema v2: lifecycle_events, task_metrics, collaboration_metrics."""
+    for stmt in _V2_STATEMENTS:
+        await db.execute(stmt)
+
+
 # Ordered list of (target_version, migration_function) pairs. Each migration
 # is applied when the current schema version is below its target version.
 _MIGRATIONS: list[tuple[int, _MigrateFn]] = [
     (1, _apply_v1),
+    (2, _apply_v2),
 ]
 
 

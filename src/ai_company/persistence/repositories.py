@@ -11,6 +11,20 @@ from ai_company.communication.message import Message  # noqa: TC001
 from ai_company.core.enums import TaskStatus  # noqa: TC001
 from ai_company.core.task import Task  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
+from ai_company.hr.persistence_protocol import (
+    CollaborationMetricRepository,
+    LifecycleEventRepository,
+    TaskMetricRepository,
+)
+
+__all__ = [
+    "CollaborationMetricRepository",
+    "CostRecordRepository",
+    "LifecycleEventRepository",
+    "MessageRepository",
+    "TaskMetricRepository",
+    "TaskRepository",
+]
 
 
 @runtime_checkable

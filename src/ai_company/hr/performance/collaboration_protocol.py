@@ -1,0 +1,46 @@
+"""Collaboration scoring strategy protocol.
+
+Defines the interface for pluggable collaboration scoring strategies
+that evaluate agent collaboration behavior (DESIGN_SPEC §8.3, D3).
+"""
+
+from typing import Protocol, runtime_checkable
+
+from ai_company.core.types import NotBlankStr  # noqa: TC001
+from ai_company.hr.performance.models import (
+    CollaborationMetricRecord,  # noqa: TC001
+    CollaborationScoreResult,  # noqa: TC001
+)
+
+
+@runtime_checkable
+class CollaborationScoringStrategy(Protocol):
+    """Strategy for scoring agent collaboration behavior.
+
+    Implementations evaluate behavioral telemetry records to produce
+    a normalized collaboration score.
+    """
+
+    @property
+    def name(self) -> str:
+        """Human-readable strategy name."""
+        ...
+
+    async def score(
+        self,
+        *,
+        agent_id: NotBlankStr,
+        records: tuple[CollaborationMetricRecord, ...],
+        role_weights: dict[str, float] | None = None,
+    ) -> CollaborationScoreResult:
+        """Score agent collaboration behavior.
+
+        Args:
+            agent_id: Agent being evaluated.
+            records: Collaboration metric records to evaluate.
+            role_weights: Optional per-role weight overrides.
+
+        Returns:
+            Collaboration score result with component scores.
+        """
+        ...

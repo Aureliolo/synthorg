@@ -113,6 +113,73 @@ class FakeMessageRepository:
 # ── Fake Persistence Backend ────────────────────────────────────
 
 
+class FakeLifecycleEventRepository:
+    """In-memory lifecycle event repository for tests."""
+
+    def __init__(self) -> None:
+        self._events: list[Any] = []
+
+    async def save(self, event: Any) -> None:
+        self._events.append(event)
+
+    async def list_events(
+        self,
+        *,
+        agent_id: str | None = None,
+        event_type: Any = None,
+        since: Any = None,
+    ) -> tuple[Any, ...]:
+        result = self._events
+        if agent_id is not None:
+            result = [e for e in result if e.agent_id == agent_id]
+        if event_type is not None:
+            result = [e for e in result if e.event_type == event_type]
+        return tuple(result)
+
+
+class FakeTaskMetricRepository:
+    """In-memory task metric repository for tests."""
+
+    def __init__(self) -> None:
+        self._records: list[Any] = []
+
+    async def save(self, record: Any) -> None:
+        self._records.append(record)
+
+    async def query(
+        self,
+        *,
+        agent_id: str | None = None,
+        since: Any = None,
+        until: Any = None,
+    ) -> tuple[Any, ...]:
+        result = self._records
+        if agent_id is not None:
+            result = [r for r in result if r.agent_id == agent_id]
+        return tuple(result)
+
+
+class FakeCollaborationMetricRepository:
+    """In-memory collaboration metric repository for tests."""
+
+    def __init__(self) -> None:
+        self._records: list[Any] = []
+
+    async def save(self, record: Any) -> None:
+        self._records.append(record)
+
+    async def query(
+        self,
+        *,
+        agent_id: str | None = None,
+        since: Any = None,
+    ) -> tuple[Any, ...]:
+        result = self._records
+        if agent_id is not None:
+            result = [r for r in result if r.agent_id == agent_id]
+        return tuple(result)
+
+
 class FakePersistenceBackend:
     """In-memory persistence backend for tests."""
 
@@ -120,6 +187,9 @@ class FakePersistenceBackend:
         self._tasks = FakeTaskRepository()
         self._cost_records = FakeCostRecordRepository()
         self._messages = FakeMessageRepository()
+        self._lifecycle_events = FakeLifecycleEventRepository()
+        self._task_metrics = FakeTaskMetricRepository()
+        self._collaboration_metrics = FakeCollaborationMetricRepository()
         self._connected = False
 
     async def connect(self) -> None:
@@ -153,6 +223,18 @@ class FakePersistenceBackend:
     @property
     def messages(self) -> FakeMessageRepository:
         return self._messages
+
+    @property
+    def lifecycle_events(self) -> FakeLifecycleEventRepository:
+        return self._lifecycle_events
+
+    @property
+    def task_metrics(self) -> FakeTaskMetricRepository:
+        return self._task_metrics
+
+    @property
+    def collaboration_metrics(self) -> FakeCollaborationMetricRepository:
+        return self._collaboration_metrics
 
 
 # ── Fake Message Bus ────────────────────────────────────────────

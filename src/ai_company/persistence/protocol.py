@@ -7,6 +7,11 @@ management.  Repository protocols provide entity-level access.
 from typing import Protocol, runtime_checkable
 
 from ai_company.core.types import NotBlankStr  # noqa: TC001
+from ai_company.hr.persistence_protocol import (
+    CollaborationMetricRepository,  # noqa: TC001
+    LifecycleEventRepository,  # noqa: TC001
+    TaskMetricRepository,  # noqa: TC001
+)
 from ai_company.persistence.repositories import (
     CostRecordRepository,  # noqa: TC001
     MessageRepository,  # noqa: TC001
@@ -28,6 +33,9 @@ class PersistenceBackend(Protocol):
         tasks: Repository for Task persistence.
         cost_records: Repository for CostRecord persistence.
         messages: Repository for Message persistence.
+        lifecycle_events: Repository for AgentLifecycleEvent persistence.
+        task_metrics: Repository for TaskMetricRecord persistence.
+        collaboration_metrics: Repository for CollaborationMetricRecord persistence.
     """
 
     async def connect(self) -> None:
@@ -85,4 +93,19 @@ class PersistenceBackend(Protocol):
     @property
     def messages(self) -> MessageRepository:
         """Repository for Message persistence."""
+        ...
+
+    @property
+    def lifecycle_events(self) -> LifecycleEventRepository:
+        """Repository for AgentLifecycleEvent persistence."""
+        ...
+
+    @property
+    def task_metrics(self) -> TaskMetricRepository:
+        """Repository for TaskMetricRecord persistence."""
+        ...
+
+    @property
+    def collaboration_metrics(self) -> CollaborationMetricRepository:
+        """Repository for CollaborationMetricRecord persistence."""
         ...

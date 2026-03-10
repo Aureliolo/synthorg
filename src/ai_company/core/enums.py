@@ -68,6 +68,7 @@ class AgentStatus(StrEnum):
     """Lifecycle status of an agent."""
 
     ACTIVE = "active"
+    ONBOARDING = "onboarding"
     ON_LEAVE = "on_leave"
     TERMINATED = "terminated"
 
