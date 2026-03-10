@@ -1,8 +1,9 @@
 """SecOps service — the security meta-agent.
 
-Coordinates the rule engine, audit log, output scanner, and
-approval store into a single ``SecurityInterceptionStrategy``
-implementation that the ``ToolInvoker`` calls.
+Coordinates the rule engine, audit log, output scanner, output scan
+response policy, and approval store into a single
+``SecurityInterceptionStrategy`` implementation that the
+``ToolInvoker`` calls.
 """
 
 import hashlib
@@ -45,6 +46,9 @@ from ai_company.security.models import (
 from ai_company.security.output_scan_policy import (
     OutputScanResponsePolicy,  # noqa: TC001
 )
+from ai_company.security.output_scan_policy_factory import (
+    build_output_scan_policy,
+)
 from ai_company.security.output_scanner import OutputScanner  # noqa: TC001
 from ai_company.security.rules.engine import RuleEngine  # noqa: TC001
 from ai_company.security.timeout.protocol import RiskTierClassifier  # noqa: TC001
@@ -70,9 +74,10 @@ def _hash_arguments(arguments: dict[str, object]) -> str:
 class SecOpsService:
     """Implements ``SecurityInterceptionStrategy``.
 
-    Coordinates the rule engine, audit log, output scanner, and
-    optional approval store.  Enforces security policies, scans
-    for sensitive data, and records audit entries.
+    Coordinates the rule engine, audit log, output scanner, output
+    scan response policy, and optional approval store.  Enforces
+    security policies, scans for sensitive data, and records audit
+    entries.
 
     On ESCALATE: creates an ``ApprovalItem`` in the ``ApprovalStore``
     and returns the verdict with ``approval_id`` set.
@@ -104,9 +109,10 @@ class SecOpsService:
             risk_classifier: Optional classifier for determining action
                 risk levels in autonomy escalations.  Defaults to HIGH
                 when absent (fail-safe).
-            output_scan_policy: Optional policy applied to scan results
-                before returning.  When ``None``, raw scanner output is
-                returned unchanged.
+            output_scan_policy: Policy applied to scan results before
+                returning.  When ``None``, a default policy is built
+                from ``config.output_scan_policy_type`` via the
+                factory.  Pass an explicit instance to override.
         """
         self._config = config
         self._rule_engine = rule_engine
@@ -115,7 +121,14 @@ class SecOpsService:
         self._approval_store = approval_store
         self._effective_autonomy = effective_autonomy
         self._risk_classifier = risk_classifier
-        self._output_scan_policy = output_scan_policy
+        self._output_scan_policy: OutputScanResponsePolicy = (
+            output_scan_policy
+            if output_scan_policy is not None
+            else build_output_scan_policy(
+                config.output_scan_policy_type,
+                effective_autonomy=effective_autonomy,
+            )
+        )
 
         if config.custom_policies:
             logger.warning(
@@ -214,8 +227,11 @@ class SecOpsService:
     ) -> OutputScanResult:
         """Scan tool output for sensitive data.
 
-        Delegates to the output scanner.  Records an audit entry
-        if sensitive data is found and audit is enabled.
+        Steps:
+            1. Delegate to the output scanner.
+            2. Record an audit entry if sensitive data is found.
+            3. Apply the output scan response policy to transform
+               the result before returning.
         """
         if not self._config.post_tool_scanning_enabled:
             logger.debug(
@@ -253,19 +269,24 @@ class SecOpsService:
                     note="Output scan audit recording failed",
                 )
 
-        if self._output_scan_policy is not None:
-            try:
-                result = self._output_scan_policy.apply(result, context)
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
-                logger.exception(
-                    SECURITY_INTERCEPTOR_ERROR,
-                    tool_name=context.tool_name,
-                    policy=self._output_scan_policy.name,
-                    note="Output scan policy application failed "
-                    "— returning raw scan result",
-                )
+        # Apply the output scan response policy.  On failure, fall back
+        # to the raw scan result which already has scanner-level redaction
+        # applied (pattern matches replaced with [REDACTED]), so the
+        # fallback is still reasonably safe even if the intended policy
+        # (e.g. WithholdPolicy) would have been stricter.
+        policy_name = getattr(self._output_scan_policy, "name", "<unknown>")
+        try:
+            result = self._output_scan_policy.apply(result, context)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                SECURITY_INTERCEPTOR_ERROR,
+                tool_name=context.tool_name,
+                policy=policy_name,
+                note="Output scan policy application failed "
+                "— returning raw scan result",
+            )
 
         return result
 

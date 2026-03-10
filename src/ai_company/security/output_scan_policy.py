@@ -6,6 +6,7 @@ sensitive data — redact, withhold, log-only, or delegate based on
 autonomy level.
 """
 
+import copy
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -190,11 +191,24 @@ _DEFAULT_AUTONOMY_POLICY_MAP: Mapping[AutonomyLevel, OutputScanResponsePolicy] =
 )
 
 
+_expected_levels = set(AutonomyLevel)
+_mapped_levels = set(_DEFAULT_AUTONOMY_POLICY_MAP.keys())
+if _mapped_levels != _expected_levels:
+    _msg = (
+        f"_DEFAULT_AUTONOMY_POLICY_MAP is out of sync with AutonomyLevel: "
+        f"missing={_expected_levels - _mapped_levels}, "
+        f"extra={_mapped_levels - _expected_levels}"
+    )
+    raise RuntimeError(_msg)
+del _expected_levels, _mapped_levels
+
+
 class AutonomyTieredPolicy:
     """Delegate to sub-policies based on the effective autonomy level.
 
     Uses a configurable mapping from ``AutonomyLevel`` to a concrete
-    policy.  Falls back to ``RedactPolicy`` when no autonomy is set.
+    policy.  Falls back to ``RedactPolicy`` when no autonomy is set
+    or when the autonomy level has no entry in the policy map.
     """
 
     def __init__(
@@ -211,8 +225,9 @@ class AutonomyTieredPolicy:
                 defaults when ``None``.
         """
         self._effective_autonomy = effective_autonomy
+        raw = policy_map if policy_map is not None else _DEFAULT_AUTONOMY_POLICY_MAP
         self._policy_map: Mapping[AutonomyLevel, OutputScanResponsePolicy] = (
-            policy_map if policy_map is not None else _DEFAULT_AUTONOMY_POLICY_MAP
+            MappingProxyType(copy.deepcopy(dict(raw)))
         )
         self._fallback: OutputScanResponsePolicy = RedactPolicy()
 

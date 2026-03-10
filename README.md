@@ -37,7 +37,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 
 - **Memory Backend Adapter (M5)** - Memory protocols, retrieval pipeline, org memory, and consolidation are complete; initial Mem0 adapter backend ([ADR-001](docs/decisions/ADR-001-memory-layer.md)) pending; research backends (GraphRAG, Temporal KG) planned
 - **CLI Surface** - `cli/` package is placeholder-only
-- **Security/Approval System (M7)** - SecOps agent with rule engine (soft-allow/hard-deny, fail-closed), audit log, output scanner, risk classifier, and ToolInvoker integration are implemented; progressive trust (4 strategies), promotion/demotion, autonomy levels (5 tiers with presets, resolver, change strategies) and approval timeout policies (wait-forever, auto-deny, tiered, escalation-chain with task park/resume) are implemented; real authentication (JWT/OAuth) and approval workflow gates are planned
+- **Security/Approval System (M7)** - SecOps agent with rule engine (soft-allow/hard-deny, fail-closed), audit log, output scanner, output scan response policies (redact/withhold/log-only/autonomy-tiered), risk classifier, and ToolInvoker integration are implemented; progressive trust (4 strategies), promotion/demotion, autonomy levels (5 tiers with presets, resolver, change strategies) and approval timeout policies (wait-forever, auto-deny, tiered, escalation-chain with task park/resume) are implemented; real authentication (JWT/OAuth) and approval workflow gates are planned
 - **Advanced Product Surface** - web dashboard, external integrations
 
 ## Status

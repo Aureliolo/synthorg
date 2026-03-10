@@ -621,38 +621,30 @@ class _SecuritySoftErrorTool(BaseTool):
 class TestOutputScanNonRecoverableErrors:
     """MemoryError/RecursionError from scan_output propagate."""
 
-    async def test_memory_error_from_scan_propagates(
+    @pytest.mark.parametrize(
+        ("exc", "exc_cls"),
+        [
+            (MemoryError("oom"), MemoryError),
+            (RecursionError("max depth"), RecursionError),
+        ],
+    )
+    async def test_non_recoverable_scan_errors_propagate(
         self,
         security_registry: ToolRegistry,
         tool_call: ToolCall,
+        exc: BaseException,
+        exc_cls: type[BaseException],
     ) -> None:
+        """Non-recoverable errors from scan_output propagate."""
         interceptor = _make_interceptor(
             pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
         )
-        interceptor.scan_output = AsyncMock(side_effect=MemoryError("oom"))
+        interceptor.scan_output = AsyncMock(side_effect=exc)
         invoker = ToolInvoker(
             security_registry,
             security_interceptor=interceptor,
         )
-        with pytest.raises(MemoryError):
-            await invoker.invoke(tool_call)
-
-    async def test_recursion_error_from_scan_propagates(
-        self,
-        security_registry: ToolRegistry,
-        tool_call: ToolCall,
-    ) -> None:
-        interceptor = _make_interceptor(
-            pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
-        )
-        interceptor.scan_output = AsyncMock(
-            side_effect=RecursionError("max depth"),
-        )
-        invoker = ToolInvoker(
-            security_registry,
-            security_interceptor=interceptor,
-        )
-        with pytest.raises(RecursionError):
+        with pytest.raises(exc_cls):
             await invoker.invoke(tool_call)
 
 

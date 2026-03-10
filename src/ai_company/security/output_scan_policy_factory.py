@@ -4,7 +4,8 @@ from typing import TYPE_CHECKING
 
 from ai_company.observability import get_logger
 from ai_company.observability.events.security import (
-    SECURITY_OUTPUT_SCAN_POLICY_APPLIED,
+    SECURITY_CONFIG_LOADED,
+    SECURITY_INTERCEPTOR_ERROR,
 )
 from ai_company.security.config import OutputScanPolicyType
 from ai_company.security.output_scan_policy import (
@@ -31,8 +32,10 @@ def build_output_scan_policy(
     Args:
         policy_type: Declarative policy selection from config.
         effective_autonomy: Resolved autonomy for the current run.
-            Required when ``policy_type`` is ``AUTONOMY_TIERED``;
-            ignored otherwise.
+            Used when ``policy_type`` is ``AUTONOMY_TIERED``. If
+            ``None`` in that case, a warning is logged and the policy
+            will fall back to ``RedactPolicy``. Ignored for other
+            policy types.
 
     Returns:
         A configured output scan response policy instance.
@@ -50,7 +53,7 @@ def build_output_scan_policy(
         case OutputScanPolicyType.AUTONOMY_TIERED:
             if effective_autonomy is None:
                 logger.warning(
-                    SECURITY_OUTPUT_SCAN_POLICY_APPLIED,
+                    SECURITY_CONFIG_LOADED,
                     policy_type=policy_type.value,
                     note="output_scan_policy_type=autonomy_tiered "
                     "but no effective_autonomy — "
@@ -62,8 +65,8 @@ def build_output_scan_policy(
             )
 
     msg = f"Unknown output scan policy type: {policy_type!r}"  # type: ignore[unreachable]
-    logger.warning(
-        SECURITY_OUTPUT_SCAN_POLICY_APPLIED,
+    logger.error(
+        SECURITY_INTERCEPTOR_ERROR,
         policy_type=str(policy_type),
         note="Unknown output scan policy type",
     )

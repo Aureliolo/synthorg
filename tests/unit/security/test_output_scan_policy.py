@@ -83,6 +83,8 @@ class TestWithholdPolicy:
 
         assert transformed.has_sensitive_data is True
         assert transformed.redacted_content is None
+        # Original result is not mutated (immutability contract).
+        assert result.redacted_content == "output with [REDACTED]"
 
     def test_sensitive_result_preserves_findings(self) -> None:
         policy = WithholdPolicy()

@@ -751,8 +751,8 @@ class TestSecOpsScanOutputPolicy:
         assert call_args[0] == clean
         assert call_args[0].has_sensitive_data is False
 
-    async def test_no_policy_returns_raw_result(self) -> None:
-        """When policy=None, raw scanner result is returned."""
+    async def test_default_policy_from_config_passes_through(self) -> None:
+        """Default config uses RedactPolicy, which passes result through."""
         finding = OutputScanResult(
             has_sensitive_data=True,
             findings=("secret",),
@@ -766,6 +766,7 @@ class TestSecOpsScanOutputPolicy:
 
         result = await service.scan_output(ctx, "secret data")
 
+        # Default config → RedactPolicy → identity transform.
         assert result == finding
 
     async def test_policy_failure_returns_raw_scan_result(self) -> None:
@@ -789,11 +790,22 @@ class TestSecOpsScanOutputPolicy:
 
         assert result == finding
 
-    async def test_policy_memory_error_propagates(self) -> None:
-        """MemoryError from policy.apply propagates (non-recoverable)."""
+    @pytest.mark.parametrize(
+        ("exc_cls", "exc_msg"),
+        [
+            (MemoryError, "oom"),
+            (RecursionError, "max depth"),
+        ],
+    )
+    async def test_non_recoverable_policy_errors_propagate(
+        self,
+        exc_cls: type[BaseException],
+        exc_msg: str,
+    ) -> None:
+        """MemoryError/RecursionError from policy.apply propagate."""
         failing_policy = MagicMock()
-        failing_policy.name = "oom-policy"
-        failing_policy.apply.side_effect = MemoryError("oom")
+        failing_policy.name = "bad-policy"
+        failing_policy.apply.side_effect = exc_cls(exc_msg)
         finding = OutputScanResult(
             has_sensitive_data=True,
             findings=("key",),
@@ -805,5 +817,34 @@ class TestSecOpsScanOutputPolicy:
         )
         ctx = _make_context()
 
-        with pytest.raises(MemoryError):
+        with pytest.raises(exc_cls):
             await service.scan_output(ctx, "secret")
+
+    async def test_audit_preserves_findings_before_policy_clears_them(
+        self,
+    ) -> None:
+        """Audit entry records original findings even when policy clears."""
+        from ai_company.security.output_scan_policy import LogOnlyPolicy
+
+        finding = OutputScanResult(
+            has_sensitive_data=True,
+            findings=("Bearer token",),
+            redacted_content="[REDACTED]",
+        )
+        service = self._make_service_with_policy(
+            scan_result=finding,
+            policy=LogOnlyPolicy(),
+        )
+        ctx = _make_context()
+
+        result = await service.scan_output(ctx, "Bearer eyJ...")
+
+        # Policy clears findings in the returned result.
+        assert result.has_sensitive_data is False
+        assert result.findings == ()
+
+        # But the audit entry (recorded before policy) has the originals.
+        audit_log = service._audit_log  # type: ignore[attr-defined]
+        assert audit_log.count() == 1
+        entry = audit_log.entries[0]
+        assert "Bearer token" in entry.reason

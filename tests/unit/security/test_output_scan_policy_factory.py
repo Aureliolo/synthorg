@@ -71,3 +71,8 @@ class TestBuildOutputScanPolicy:
             effective_autonomy=autonomy,
         )
         assert isinstance(policy, RedactPolicy)
+
+    def test_unknown_policy_type_raises_type_error(self) -> None:
+        """Unknown policy type raises TypeError."""
+        with pytest.raises(TypeError, match="Unknown output scan policy type"):
+            build_output_scan_policy("invalid_type")  # type: ignore[arg-type]

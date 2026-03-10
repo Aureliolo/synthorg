@@ -2,7 +2,7 @@
 
 Defines ``SecurityConfig`` (the top-level security configuration),
 ``RuleEngineConfig``, ``SecurityPolicyRule``, and
-``OutputScanPolicyType`` for custom policies.
+``OutputScanPolicyType`` for output scan response policy selection.
 """
 
 from enum import StrEnum
