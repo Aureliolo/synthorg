@@ -45,13 +45,13 @@ asyncio.run(main())
 
 ---
 
-## Documentation Sections
+## Documentation
 
-| Section | Description |
-|---------|-------------|
-| [Getting Started](getting_started.md) | Development setup, installation, IDE config |
-| [Architecture](architecture/index.md) | System overview, module map, design principles |
-| [API Reference](api/index.md) | Auto-generated from source code docstrings |
+**Use SynthOrg** | **Develop SynthOrg**
+--- | ---
+[User Guide](user_guide.md) — Install, configure, run | [Developer Setup](getting_started.md) — Clone, install, test, contribute
+ | [Architecture](architecture/index.md) — System overview, design principles
+ | [API Reference](api/index.md) — Auto-generated from docstrings
 
 ---
 

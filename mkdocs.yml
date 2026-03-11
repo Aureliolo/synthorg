@@ -100,7 +100,8 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Getting Started: getting_started.md
+  - User Guide: user_guide.md
+  - Developer Setup: getting_started.md
   - Architecture:
       - architecture/index.md
       - Design Decisions: architecture/decisions.md
