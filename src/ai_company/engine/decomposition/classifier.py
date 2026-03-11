@@ -1,7 +1,7 @@
 """Task structure classifier.
 
 Infers ``TaskStructure`` from task properties using heuristics
-based on DESIGN_SPEC Section 6.9.
+based on the Engine design page.
 """
 
 import re

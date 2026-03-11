@@ -1,7 +1,8 @@
 """Cost record model for per-API-call tracking.
 
-Implements DESIGN_SPEC Section 10.2: every API call is tracked as an
-immutable cost record (append-only pattern).
+Implements the Cost Tracking section of the Operations design page:
+every API call is tracked as an immutable cost record
+(append-only pattern).
 """
 
 from typing import Self

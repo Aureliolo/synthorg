@@ -69,7 +69,7 @@ BUILTIN_PRESETS: Final[MappingProxyType[str, AutonomyPreset]] = MappingProxyType
             human_approval=(),
             security_agent=False,
         ),
-        # SEMI extends DESIGN_SPEC §12.2 with vcs and db:query auto-approve
+        # SEMI extends the Operations design page with vcs and db:query auto-approve
         # (safe read/commit operations) and broader human_approval categories.
         AutonomyLevel.SEMI: AutonomyPreset(
             level=AutonomyLevel.SEMI,

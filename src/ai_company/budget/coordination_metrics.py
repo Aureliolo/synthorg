@@ -1,7 +1,7 @@
 """Coordination metrics for multi-agent system tuning.
 
 Pure computation functions for five coordination metrics defined in
-DESIGN_SPEC (Coordination Metrics): efficiency, overhead, error
+the Operations design page (Coordination Metrics): efficiency, overhead, error
 amplification, message density, and redundancy rate.
 """
 

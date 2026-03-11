@@ -1,4 +1,4 @@
-"""Meeting protocol error hierarchy (DESIGN_SPEC Section 5.7).
+"""Meeting protocol error hierarchy (see Communication design page).
 
 All meeting errors extend ``CommunicationError`` and carry an
 immutable context mapping for structured metadata.

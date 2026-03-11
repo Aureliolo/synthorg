@@ -1,4 +1,4 @@
-"""Position-papers meeting protocol (DESIGN_SPEC Section 5.7).
+"""Position-papers meeting protocol (see Communication design page).
 
 Each participant writes an independent position paper in parallel,
 then a synthesizer combines all papers into decisions and action

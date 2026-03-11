@@ -1,4 +1,4 @@
-"""Conflict resolution event constants (DESIGN_SPEC §5.6)."""
+"""Conflict resolution event constants (see Communication design page)."""
 
 from typing import Final
 

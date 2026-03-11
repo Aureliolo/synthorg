@@ -59,6 +59,7 @@ graph TB
 
 ## Further Reading
 
-- [Design Specification](https://github.com/Aureliolo/synthorg/blob/main/DESIGN_SPEC.md) — Full high-level spec (~3500 lines, 18 sections)
-- [Design Decisions](decisions.md) — Architectural Decision Records (ADRs)
+- [Design Specification](../design/index.md) — Full design spec split into 7 focused pages
+- [Tech Stack](tech-stack.md) — Technology choices and engineering conventions
+- [Decision Log](decisions.md) — All design decisions, organized by domain
 - [API Reference](../api/index.md) — Auto-generated from source code

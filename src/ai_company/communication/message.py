@@ -1,4 +1,4 @@
-"""Message domain models (DESIGN_SPEC Section 5.3)."""
+"""Message domain models (see Communication design page)."""
 
 from collections import Counter
 from typing import Self
@@ -33,7 +33,7 @@ class Attachment(BaseModel):
 class MessageMetadata(BaseModel):
     """Optional metadata carried with a message.
 
-    Extends DESIGN_SPEC Section 5.3 metadata with an additional ``extra``
+    Extends the Communication design page metadata with an additional ``extra``
     field for arbitrary key-value pairs.
 
     Attributes:
@@ -88,7 +88,7 @@ class MessageMetadata(BaseModel):
 class Message(BaseModel):
     """An inter-agent message.
 
-    Field schema is based on DESIGN_SPEC Section 5.3 with typed refinements.
+    Field schema is based on the Communication design page with typed refinements.
     The ``sender`` field is aliased to ``"from"`` for JSON compatibility with
     the spec format.
 

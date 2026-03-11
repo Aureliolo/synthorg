@@ -1,4 +1,4 @@
-"""Conflict resolution configuration models (DESIGN_SPEC §5.6)."""
+"""Conflict resolution configuration models (see Communication design page)."""
 
 from pydantic import BaseModel, ConfigDict, Field
 

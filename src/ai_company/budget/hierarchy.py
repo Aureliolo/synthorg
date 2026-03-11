@@ -1,6 +1,6 @@
 """Budget hierarchy models.
 
-Implements DESIGN_SPEC Section 10.1: budget allocation hierarchy from
+Implements the Budget Hierarchy section of the Operations design page:
 Company to Department to Team, with percentage-based allocation at each
 level.
 """
@@ -94,7 +94,7 @@ class BudgetHierarchy(BaseModel):
     """Company-wide budget hierarchy.
 
     Maps the Company -> Department -> Team nesting from a budget
-    allocation perspective (DESIGN_SPEC 10.1). Department budget
+    allocation perspective (see Operations design page). Department budget
     percentages may sum to less than 100% to allow for an unallocated
     reserve at the company level.
 

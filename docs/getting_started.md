@@ -124,7 +124,7 @@ synthorg/
   web/                  # Web UI scaffold (nginx + placeholder)
   .github/              # CI workflows, dependabot, actions
   pyproject.toml        # Project config (deps, tools, linters)
-  DESIGN_SPEC.md        # Full high-level design specification
+  DESIGN_SPEC.md        # Pointer to design specification pages
   CLAUDE.md             # AI assistant quick reference
 ```
 
@@ -152,4 +152,4 @@ VS Code should auto-detect the `.venv` directory. If not, use **Python: Select I
 
 - [CONTRIBUTING.md](https://github.com/Aureliolo/synthorg/blob/main/.github/CONTRIBUTING.md) — branch, commit, and PR workflow
 - [CLAUDE.md](https://github.com/Aureliolo/synthorg/blob/main/CLAUDE.md) — code conventions and quick command reference
-- [Design Specification](design_spec.md) — full high-level design specification
+- [Design Specification](design/index.md) — full high-level design specification

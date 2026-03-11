@@ -1,7 +1,7 @@
 """Task completion metrics model.
 
 Proxy overhead metrics for an agent run, computed from
-``AgentRunResult`` data per DESIGN_SPEC §10.5.
+``AgentRunResult`` data per the Operations design page.
 """
 
 from typing import TYPE_CHECKING
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 class TaskCompletionMetrics(BaseModel):
-    """Proxy overhead metrics for an agent run (DESIGN_SPEC §10.5).
+    """Proxy overhead metrics for an agent run (see Operations design page).
 
     Computed from ``AgentRunResult`` after execution to surface
     orchestration overhead indicators (turns, tokens, cost, duration).

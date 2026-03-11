@@ -11,12 +11,13 @@ How to run SynthOrg.
 ```bash
 git clone https://github.com/Aureliolo/synthorg
 cd synthorg
+cp docker/.env.example docker/.env
 docker compose -f docker/compose.yml up -d
 ```
 
 The web dashboard is at [http://localhost:3000](http://localhost:3000).
 
-All configuration — LLM provider keys, organization setup, templates — is managed through the dashboard.
+Container configuration (ports, storage paths, log level) is defined in `docker/.env`. Organization setup and templates will be configurable through the dashboard once available.
 
 !!! danger "Work in Progress"
     SynthOrg is under active development. The web dashboard, templates, and many features described here are **not yet available**. Check the [GitHub repository](https://github.com/Aureliolo/synthorg) for current status.
@@ -43,4 +44,4 @@ docker compose -f docker/compose.yml down
 
 - Templates — Full list of pre-built configurations (coming soon)
 - REST API — Interact with your org via the API (coming soon)
-- [Design Specification](design_spec.md) — Full architecture details
+- [Design Specification](design/index.md) — Full architecture details

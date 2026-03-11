@@ -1,4 +1,6 @@
-"""Structured debate + judge conflict resolution strategy (DESIGN_SPEC §5.6).
+"""Structured debate + judge conflict resolution strategy.
+
+See the Communication design page for background.
 
 Strategy 2: A judge evaluates both positions and picks a winner.
 If a ``JudgeEvaluator`` is provided, it uses LLM-based judging.

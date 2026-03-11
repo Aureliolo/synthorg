@@ -2,7 +2,7 @@
 
 Provides the aggregation data structures used by
 :class:`~ai_company.budget.tracker.CostTracker` for cost reporting and
-designed for consumption by the CFO agent (DESIGN_SPEC Section 10.3).
+designed for consumption by the CFO agent (see Operations design page).
 Views of :class:`~ai_company.budget.cost_record.CostRecord` data are
 aggregated by agent, department, and time period.
 """

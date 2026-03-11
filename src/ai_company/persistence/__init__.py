@@ -1,4 +1,4 @@
-"""Pluggable persistence layer for operational data (DESIGN_SPEC §7.6).
+"""Pluggable persistence layer for operational data (see Memory design page).
 
 Re-exports the protocol, repository protocols, config models, factory,
 and error hierarchy so consumers can import from ``ai_company.persistence``

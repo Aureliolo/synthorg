@@ -1,4 +1,4 @@
-"""Meeting protocol domain models (DESIGN_SPEC Section 5.7)."""
+"""Meeting protocol domain models (see Communication design page)."""
 
 from typing import Self
 

@@ -3,7 +3,7 @@
 Provides an append-only in-memory store for :class:`CostRecord` entries and
 aggregation queries consumed by the CFO agent and budget monitoring.
 
-Service layer for the cost tracking schema defined in DESIGN_SPEC Section 10.2.
+Service layer for the cost tracking schema defined in the Operations design page.
 The current implementation is purely in-memory; persistence integration is
 planned.
 """

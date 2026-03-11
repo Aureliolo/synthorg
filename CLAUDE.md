@@ -6,16 +6,16 @@
 - **Python**: 3.14+ (PEP 649 native lazy annotations)
 - **License**: BUSL-1.1 (converts to Apache 2.0 on 2030-02-27)
 - **Layout**: `src/ai_company/` (src layout), `tests/` (unit/integration/e2e)
-- **Design**: [DESIGN_SPEC.md](DESIGN_SPEC.md) (full high-level spec)
+- **Design**: [DESIGN_SPEC.md](DESIGN_SPEC.md) (pointer to `docs/design/` pages)
 
 ## Design Spec (MANDATORY)
 
-- **ALWAYS read `DESIGN_SPEC.md`** before implementing any feature or planning any issue
+- **ALWAYS read the relevant `docs/design/` page** before implementing any feature or planning any issue. [DESIGN_SPEC.md](DESIGN_SPEC.md) is a pointer file linking to the 7 design pages.
 - The design spec is the **starting point** for architecture, data models, and behavior
 - If implementation deviates from the spec (better approach found, scope evolved, etc.), **alert the user and explain why** — user decides whether to proceed or update the spec
 - Do NOT silently diverge — every deviation needs explicit user approval
-- When a spec section is referenced (e.g. "Section 10.2"), read that section verbatim before coding
-- When approved deviations occur, update `DESIGN_SPEC.md` to reflect the new reality
+- When a spec topic is referenced (e.g. "the Agents page" or "the Engine page's Crash Recovery section"), read the relevant `docs/design/` page before coding
+- When approved deviations occur, update the relevant `docs/design/` page to reflect the new reality
 
 ## Planning (MANDATORY)
 
@@ -45,11 +45,15 @@ uv run mkdocs serve                        # local docs preview (http://127.0.0.
 ## Documentation
 
 - **Docs source**: `docs/` (MkDocs markdown + mkdocstrings auto-generated API reference)
+- **Design spec**: `docs/design/` (7 pages: index, agents, organization, communication, engine, memory, operations)
+- **Architecture**: `docs/architecture/` (overview, tech-stack, decision log)
+- **Roadmap**: `docs/roadmap/` (status, open questions, future vision)
+- **Reference**: `docs/reference/` (research, standards)
 - **Landing page**: `site/` (Astro, Concept C hybrid design)
 - **Config**: `mkdocs.yml` at repo root
 - **API reference**: auto-generated from docstrings via mkdocstrings + Griffe (AST-based, no imports)
 - **CI**: `.github/workflows/pages.yml` — builds Astro landing + MkDocs docs, merges, deploys to GitHub Pages
-- **Architecture decision**: `docs/decisions/ADR-003-documentation-architecture.md`
+- **Architecture decisions**: `docs/architecture/decisions.md` (decision log)
 - **Dependencies**: `docs` group in `pyproject.toml` (`mkdocs-material`, `mkdocstrings[python]`, `griffe-pydantic`)
 
 ## Docker
@@ -86,8 +90,8 @@ src/ai_company/
   core/           # Shared domain models, base classes, and resilience config (RetryConfig, RateLimiterConfig)
   engine/         # Agent orchestration, execution loops, parallel execution, task decomposition, routing, task assignment, task lifecycle, recovery, shutdown, workspace isolation, coordination error classification, and prompt policy validation
   hr/             # HR engine: hiring, firing, onboarding, offboarding, agent registry, performance tracking (task metrics, collaboration scoring, trend detection), promotion/demotion (criteria evaluation, approval strategies, model mapping)
-  memory/         # Persistent agent memory (Mem0 initial, custom stack future — ADR-001), retrieval pipeline (ranking, injection, context formatting, non-inferable filtering), shared org memory (org/), consolidation/archival (consolidation/)
-  persistence/    # Operational data persistence — pluggable PersistenceBackend protocol, SQLite initial (§7.6)
+  memory/         # Persistent agent memory (Mem0 initial, custom stack future — see Decision Log), retrieval pipeline (ranking, injection, context formatting, non-inferable filtering), shared org memory (org/), consolidation/archival (consolidation/)
+  persistence/    # Operational data persistence — pluggable PersistenceBackend protocol, SQLite initial (see Memory & Persistence design page)
   observability/  # Structured logging, correlation tracking, log sinks
   providers/      # LLM provider abstraction (LiteLLM adapter)
   security/       # SecOps agent, rule engine (soft-allow/hard-deny, fail-closed), audit log, output scanner, output scan response policies (redact/withhold/log-only/autonomy-tiered), risk classifier, risk tier classifier, action type registry, ToolInvoker security integration, progressive trust (4 strategies: disabled/weighted/per-category/milestone), autonomy levels (presets, resolver, change strategy), timeout policies (park/resume)
@@ -144,7 +148,7 @@ src/ai_company/
 - **Timeout**: 30 seconds per test
 - **Parallelism**: `pytest-xdist` via `-n auto` — **ALWAYS** include `-n auto` when running pytest, never run tests sequentially
 - **Parametrize**: Prefer `@pytest.mark.parametrize` for testing similar cases
-- **Vendor-agnostic everywhere**: NEVER use real vendor names (Anthropic, OpenAI, Claude, GPT, etc.) in project-owned code, docstrings, comments, tests, or config examples. Use generic names: `example-provider`, `example-large-001`, `example-medium-001`, `example-small-001`, `large`/`medium`/`small` as aliases. Vendor names may only appear in: (1) DESIGN_SPEC.md provider list (listing supported providers), (2) `.claude/` skill/agent files, (3) third-party import paths/module names (e.g. `litellm.types.llms.openai`). Tests must use `test-provider`, `test-small-001`, etc.
+- **Vendor-agnostic everywhere**: NEVER use real vendor names (Anthropic, OpenAI, Claude, GPT, etc.) in project-owned code, docstrings, comments, tests, or config examples. Use generic names: `example-provider`, `example-large-001`, `example-medium-001`, `example-small-001`, `large`/`medium`/`small` as aliases. Vendor names may only appear in: (1) Operations design page provider list (`docs/design/operations.md`), (2) `.claude/` skill/agent files, (3) third-party import paths/module names (e.g. `litellm.types.llms.openai`). Tests must use `test-provider`, `test-small-001`, etc.
 
 ## Git
 
@@ -152,7 +156,7 @@ src/ai_company/
 - **Enforced by**: commitizen (commit-msg hook)
 - **Branches**: `<type>/<slug>` from main
 - **Pre-commit hooks**: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-json, check-merge-conflict, check-added-large-files, no-commit-to-branch (main), ruff check+format, gitleaks
-- **GitHub issue queries**: use `gh issue list` via Bash (not MCP tools) — MCP `list_issues` returns `null` for milestone data
+- **GitHub issue queries**: use `gh issue list` via Bash (not MCP tools) — MCP `list_issues` has unreliable field data
 - **PR issue references**: preserve existing `Closes #NNN` references — never remove unless explicitly asked
 
 ## Post-Implementation (MANDATORY)

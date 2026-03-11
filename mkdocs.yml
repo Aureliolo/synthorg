@@ -102,10 +102,25 @@ nav:
   - Home: index.md
   - User Guide: user_guide.md
   - Developer Setup: getting_started.md
-  - Design Specification: design_spec.md
+  - Design:
+      - design/index.md
+      - Agents: design/agents.md
+      - Organization: design/organization.md
+      - Communication: design/communication.md
+      - Engine: design/engine.md
+      - Memory: design/memory.md
+      - Operations: design/operations.md
   - Architecture:
       - architecture/index.md
-      - Design Decisions: architecture/decisions.md
+      - Tech Stack: architecture/tech-stack.md
+      - Decision Log: architecture/decisions.md
+  - Roadmap:
+      - roadmap/index.md
+      - Open Questions: roadmap/open-questions.md
+      - Future Vision: roadmap/future-vision.md
+  - Reference:
+      - reference/research.md
+      - reference/standards.md
   - API Reference:
       - api/index.md
       - Core: api/core.md
@@ -124,6 +139,7 @@ nav:
       - Observability: api/observability.md
 
 extra:
+  homepage: /
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/Aureliolo/synthorg

@@ -1,4 +1,4 @@
-"""Authority + dissent log conflict resolution strategy (DESIGN_SPEC §5.6).
+"""Authority + dissent log conflict resolution strategy (see Communication design page).
 
 Strategy 1: The agent with higher seniority wins.  For equal seniority,
 hierarchy position decides — using the lowest common manager for

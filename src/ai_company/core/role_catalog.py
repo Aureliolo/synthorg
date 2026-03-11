@@ -1,8 +1,7 @@
 """Built-in role catalog and seniority information.
 
-Provides the canonical set of built-in roles from DESIGN_SPEC.md
-section 3.3 (Role Catalog) and the seniority mapping from
-section 3.2 (Seniority & Authority Levels).
+Provides the canonical set of built-in roles from the Agents design page
+(Role Catalog) and the seniority mapping (Seniority & Authority Levels).
 """
 
 from ai_company.core.enums import (

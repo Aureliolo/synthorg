@@ -1,6 +1,6 @@
 """Topology selection for decomposed tasks.
 
-Implements DESIGN_SPEC Section 6.9 auto-selection heuristics
+Implements the Engine design page auto-selection heuristics
 for coordination topologies.
 """
 
@@ -26,8 +26,8 @@ class TopologySelector:
 
     Uses explicit overrides when set, otherwise applies heuristic
     rules based on task structure and artifact count.
-    Implements the auto-selection heuristics from DESIGN_SPEC
-    Section 6.9.
+    Implements the auto-selection heuristics from the Engine design
+    page.
     """
 
     __slots__ = ("_config",)

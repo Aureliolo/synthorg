@@ -1,4 +1,4 @@
-"""Structured-phases meeting protocol (DESIGN_SPEC Section 5.7).
+"""Structured-phases meeting protocol (see Communication design page).
 
 A phased approach: agenda broadcast, parallel input gathering,
 optional conflict-driven discussion, and leader synthesis. The most

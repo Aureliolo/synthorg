@@ -23,7 +23,7 @@ class AuditLog:
     single event loop.  When ``max_entries`` is exceeded, the oldest
     entries are evicted with a warning.
 
-    Future: backed by ``PersistenceBackend`` (see DESIGN_SPEC §7.6).
+    Future: backed by ``PersistenceBackend`` (see Memory design page).
     """
 
     def __init__(self, *, max_entries: int = 100_000) -> None:

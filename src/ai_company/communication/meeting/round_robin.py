@@ -1,4 +1,4 @@
-"""Round-robin meeting protocol (DESIGN_SPEC Section 5.7).
+"""Round-robin meeting protocol (see Communication design page).
 
 Participants take sequential turns with full transcript context.
 Each agent sees the entire conversation history when contributing,

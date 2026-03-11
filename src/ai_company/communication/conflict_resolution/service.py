@@ -1,4 +1,4 @@
-"""Conflict resolution service orchestrator (DESIGN_SPEC §5.6).
+"""Conflict resolution service orchestrator (see Communication design page).
 
 Follows the ``DelegationService`` pattern: ``__slots__``, keyword-only
 constructor, audit trail list, structured logging.

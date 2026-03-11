@@ -8,7 +8,7 @@ operation approval decisions.  Composes
 queries — the advisory complement to
 :class:`~ai_company.budget.enforcer.BudgetEnforcer`.
 
-Service layer backing the CFO role (DESIGN_SPEC Section 10.3).
+Service layer backing the CFO role (see Operations design page).
 """
 
 import asyncio

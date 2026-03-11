@@ -1,7 +1,7 @@
 """Task lifecycle state machine transitions.
 
 Defines the valid state transitions for the task lifecycle, based on
-DESIGN_SPEC Sections 6.1 and 6.6, extended with BLOCKED, CANCELLED,
+the Engine design page, extended with BLOCKED, CANCELLED,
 FAILED, and INTERRUPTED transitions for completeness::
 
     CREATED -> ASSIGNED

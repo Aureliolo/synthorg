@@ -6,7 +6,7 @@ from enum import StrEnum
 class MessageType(StrEnum):
     """Type of inter-agent message.
 
-    Maps to the ``type`` field in DESIGN_SPEC Section 5.3.
+    Maps to the ``type`` field in the Communication design page.
     """
 
     TASK_UPDATE = "task_update"
@@ -25,7 +25,7 @@ class MessagePriority(StrEnum):
     """Priority level for messages.
 
     Separate from :class:`ai_company.core.enums.Priority` which uses
-    ``"medium"``; message priority uses ``"normal"`` per DESIGN_SPEC 5.3.
+    ``"medium"``; message priority uses ``"normal"`` per the Communication design page.
     """
 
     LOW = "low"
@@ -65,7 +65,7 @@ class AttachmentType(StrEnum):
 class CommunicationPattern(StrEnum):
     """High-level communication pattern for the company.
 
-    Maps to DESIGN_SPEC Section 5.1.
+    Maps to the Communication design page.
     """
 
     EVENT_DRIVEN = "event_driven"
@@ -75,7 +75,7 @@ class CommunicationPattern(StrEnum):
 
 
 class ConflictType(StrEnum):
-    """Type of inter-agent conflict (DESIGN_SPEC §5.6).
+    """Type of inter-agent conflict (see Communication design page).
 
     Members:
         ARCHITECTURE: Disagreement on system design choices.
@@ -95,7 +95,7 @@ class ConflictType(StrEnum):
 
 
 class ConflictResolutionStrategy(StrEnum):
-    """Strategy for resolving inter-agent conflicts (DESIGN_SPEC §5.6).
+    """Strategy for resolving inter-agent conflicts (see Communication design page).
 
     Members:
         AUTHORITY: Resolve by seniority/hierarchy with dissent log.
@@ -113,7 +113,7 @@ class ConflictResolutionStrategy(StrEnum):
 class MessageBusBackend(StrEnum):
     """Message bus backend implementation.
 
-    Maps to DESIGN_SPEC Section 5.4 ``message_bus.backend``.
+    Maps to the Communication design page ``message_bus.backend``.
     """
 
     INTERNAL = "internal"

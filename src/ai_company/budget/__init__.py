@@ -2,7 +2,7 @@
 
 This module provides the domain models for budget configuration, cost
 tracking, budget hierarchy, and spending summaries as described in
-DESIGN_SPEC Section 10.
+the Operations design page.
 """
 
 from ai_company.budget.billing import billing_period_start, daily_period_start

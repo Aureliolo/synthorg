@@ -1,146 +1,132 @@
-# SynthOrg
+<p align="center">
+  <strong>SynthOrg</strong>
+</p>
 
-[![CI](https://github.com/Aureliolo/synthorg/actions/workflows/ci.yml/badge.svg)](https://github.com/Aureliolo/synthorg/actions/workflows/ci.yml)
+<p align="center">
+  A framework for building synthetic organizations — autonomous AI agents orchestrated as a virtual company.
+</p>
 
-A framework for building synthetic organizations — autonomous AI agents orchestrated as a virtual company.
+<p align="center">
+  <a href="https://github.com/Aureliolo/synthorg/actions/workflows/ci.yml"><img src="https://github.com/Aureliolo/synthorg/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://codecov.io/gh/Aureliolo/synthorg"><img src="https://codecov.io/gh/Aureliolo/synthorg/branch/main/graph/badge.svg" alt="Coverage"></a>
+  <a href="https://github.com/Aureliolo/synthorg/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-BSL_1.1-blue" alt="License"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.14%2B-blue" alt="Python"></a>
+  <a href="https://synthorg.io/docs"><img src="https://img.shields.io/badge/docs-synthorg.io-purple" alt="Docs"></a>
+</p>
 
-## Concept
+---
 
-SynthOrg lets you spin up a synthetic organization staffed entirely by AI agents. Each agent has a role (CEO, developer, designer, QA, etc.), a personality, persistent memory, and access to real tools. Agents collaborate through structured communication, follow workflows, and produce real artifacts - code, documents, designs, and more.
+## What is SynthOrg?
 
-## What's Built
+SynthOrg lets you define agents with roles, personalities, budgets, and tools, then orchestrate them to collaborate on complex tasks as a virtual organization. Each agent has a defined role (CEO, developer, designer, QA), persistent memory, and access to real tools. Agents collaborate through structured communication, follow workflows, and produce real artifacts — code, documents, designs, and more.
 
-### Core Framework
+The framework is provider-agnostic (any LLM via LiteLLM), configuration-driven (YAML + Pydantic), and designed for the full autonomy spectrum — from locked-down human approval of every action to fully autonomous operation.
 
-- Company config + core models — Pydantic validation, immutable config, runtime state
-- Provider layer — LiteLLM-based abstraction with routing, retry, rate limiting
-- Templates — built-in templates, inheritance/merge, personality presets
-- Persistence — pluggable `PersistenceBackend` protocol, SQLite backend, schema migrations
+## Capabilities
 
-### Agent Engine
+<table>
+<tr>
+<td width="33%">
 
-- Single-agent execution — ReAct/Plan-Execute loops, fail-and-reassign recovery, graceful shutdown
-- Multi-agent orchestration — message bus, delegation, loop prevention, conflict resolution, meeting protocols
-- Task intelligence — decomposition, routing, assignment strategies, workspace isolation (git worktrees)
-- Coordination error taxonomy — post-execution classification (contradictions, drift, omissions)
+**Agent Orchestration**
 
-### Communication
+Define agents with roles, models, and tools. The engine handles task decomposition, routing, execution loops (ReAct, Plan-and-Execute), and multi-agent coordination.
 
-- Message bus with dispatcher and channels
-- Delegation with loop prevention
-- Conflict resolution (4 strategies: authority+dissent, debate+judge, human escalation, hybrid)
-- Meeting protocols (round-robin, position papers, structured phases)
+</td>
+<td width="33%">
 
-### Budget & Cost Management
+**Budget & Cost Management**
 
-- Cost tracking — records, summaries, coordination analytics
-- Budget enforcement — pre-flight/in-flight checks, auto-downgrade, cost tiers, quota tracking
-- CFO optimization — anomaly detection, efficiency analysis, downgrade recommendations, spending reports
+Per-agent cost limits, auto-downgrade to cheaper models at task boundaries, spending reports, CFO-level cost optimization with anomaly detection.
 
-### Memory
+</td>
+<td width="33%">
 
-- Pluggable `MemoryBackend` protocol — capability discovery, retrieval pipeline (ranking, formatting, filtering)
-- Shared org memory — `OrgMemoryBackend` with hybrid prompt+retrieval backend
-- Consolidation/archival — pluggable strategies, retention enforcement
+**Security & Trust**
 
-### Tool System
+SecOps agent with fail-closed rule engine, progressive trust (4 strategies), configurable autonomy levels, audit logging, and approval timeout policies.
 
-- Built-in tools — file system, git, code runner
-- Sandboxing — subprocess (file/git) + Docker (code execution)
-- MCP bridge — Model Context Protocol integration
-- Permission gating — role-based access, category-level enforcement
+</td>
+</tr>
+<tr>
+<td>
 
-### API & Human Interaction
+**Memory**
 
-- REST API — Litestar, 15 controllers (company, agents, tasks, budget, approvals, analytics, messages, meetings, projects, departments, artifacts, providers, health, auth)
-- WebSocket — channel-based subscriptions, per-channel filters, message-bus bridge
-- Approval queue — submit/approve/reject, status filtering, WebSocket notifications
-- Route guards — role-based access control, 5 human roles
+Per-agent and shared organizational memory with retrieval pipeline, non-inferable filtering, consolidation, and archival. Pluggable backends via protocol.
 
-### Security
+</td>
+<td>
 
-- Authentication — JWT + API key, Argon2id password hashing, HMAC-SHA256 API key hashing, first-run admin setup
-- SecOps agent — rule engine (soft-allow/hard-deny, fail-closed), audit log, output scanner, risk classifier
-- Progressive trust — 4 strategies behind `TrustStrategy` protocol
-- Autonomy levels — 5 tiers, presets, resolver, change strategies
-- Approval timeout policies — wait-forever/auto-deny/tiered/escalation-chain, task park/resume
+**Communication**
 
-### HR
+Message bus, hierarchical delegation with loop prevention, conflict resolution (4 strategies), and meeting protocols (round-robin, position papers, structured phases).
 
-- Hiring pipeline — request, candidate generation, approval, instantiation
-- Onboarding checklists, offboarding pipeline (reassign, archive, notify, terminate)
-- Agent registry
-- Performance tracking — task metrics, quality scoring, collaboration scoring, trend detection
-- Promotion/demotion — criteria evaluation, approval strategies, model mapping
+</td>
+<td>
 
-### Planned
+**Tools & Integration**
 
-- Memory backend adapter — Mem0 initial ([ADR-001](docs/decisions/ADR-001-memory-layer.md)); GraphRAG, Temporal KG on roadmap
-- Approval workflow gates — integration with engine execution flow
-- CLI surface — `cli/` package is placeholder-only
-- Web dashboard — Vue 3 (planned)
+Built-in tools (file system, git, sandbox, code runner) plus MCP bridge for external tools. Layered sandboxing with subprocess and Docker backends.
 
-## Status
+</td>
+</tr>
+</table>
 
-Core framework complete — agent engine, multi-agent coordination, API, security, HR, memory, and budget systems are implemented. Remaining: Mem0 adapter backend, approval workflow gates, CLI, web dashboard. See [DESIGN_SPEC.md](DESIGN_SPEC.md) for the full specification.
+## Quick Start
 
-## Tech Stack
-
-- **Python 3.14+** with Litestar, Pydantic
-- **uv** as package manager, **Hatchling** as build backend
-- **LiteLLM** for multi-provider LLM abstraction
-- **structlog** for structured logging and observability
-- **Mem0** for agent memory (initial backend; custom stack future — see [ADR-001](docs/decisions/ADR-001-memory-layer.md))
-- **MCP** for tool integration
-- **Vue 3** for web dashboard (planned)
-- **SQLite** (aiosqlite) → PostgreSQL for operational data persistence
-- **Docker** with Chainguard Python distroless runtime (CIS-hardened, non-root)
-- **nginx** (unprivileged) for web UI reverse proxy
-
-## System Requirements
-
-- **Python 3.14+**
-- **uv** — package manager ([install](https://docs.astral.sh/uv/getting-started/installation/))
-- **Git 2.x+** — required at runtime for built-in git tools (subprocess-based, not a Python binding)
-- **Docker** (optional) — required for code execution sandbox, Docker-backed tool isolation, and running the full stack via Docker Compose. Install [Docker Desktop](https://docs.docker.com/get-docker/) or Docker Engine. File system and git tools work without Docker via subprocess isolation.
-
-## Getting Started
-
-### Development (local Python)
+### Development
 
 ```bash
 git clone https://github.com/Aureliolo/synthorg.git
 cd synthorg
-uv sync
+uv sync                  # install dev + test deps
+uv sync --group docs     # install docs toolchain (mkdocs)
 ```
 
-See [docs/getting_started.md](docs/getting_started.md) for prerequisites, IDE setup, and the full walkthrough.
-
-### Docker Compose (full stack)
+### Docker Compose
 
 ```bash
-cp docker/.env.example docker/.env   # configure env vars (set LLM_API_KEY)
-docker compose -f docker/compose.yml build
+cp docker/.env.example docker/.env
 docker compose -f docker/compose.yml up -d
+curl http://localhost:8000/api/v1/health   # verify
+docker compose -f docker/compose.yml down  # stop
 ```
 
-Services (default ports, configurable via `BACKEND_PORT` / `WEB_PORT` in `docker/.env`):
-- **Backend API**: `http://localhost:8000` — Litestar REST + WebSocket
-- **Web Dashboard**: `http://localhost:3000` — placeholder (proxies `/api/` and `/ws` to backend)
+## Architecture
 
-```bash
-curl http://localhost:8000/api/v1/health   # health check (default port)
-docker compose -f docker/compose.yml down  # stop services
+```mermaid
+graph TB
+    Config[Config & Templates] --> Engine[Agent Engine]
+    Engine --> Core[Core Models]
+    Engine --> Providers[LLM Providers]
+    Engine --> Communication[Communication]
+    Engine --> Tools[Tools & MCP]
+    Engine --> Memory[Memory]
+    Engine --> Security[Security & Trust]
+    Engine --> Budget[Budget & Cost]
+    Engine --> HR[HR Engine]
+    API[REST & WebSocket API] --> Engine
+    Observability[Observability] -.-> Engine
+    Persistence[Persistence] -.-> HR
+    Persistence -.-> Security
 ```
-
-See [docker/](docker/) for Dockerfiles, compose config, and environment variable reference.
 
 ## Documentation
 
-- [Getting Started](docs/getting_started.md) - Setup and installation guide
-- [Contributing](.github/CONTRIBUTING.md) - Branch, commit, and PR workflow
-- [CLAUDE.md](CLAUDE.md) - Code conventions and AI assistant reference
-- [Design Specification](DESIGN_SPEC.md) - Full high-level design
+| Section | Description |
+|---------|-------------|
+| [Design Specification](docs/design/index.md) | Vision, agents, communication, engine, memory, operations |
+| [Architecture](docs/architecture/index.md) | System overview, tech stack, decision log |
+| [API Reference](docs/api/index.md) | Auto-generated from docstrings |
+| [Developer Setup](docs/getting_started.md) | Clone, test, lint, contribute |
+| [User Guide](docs/user_guide.md) | Install, configure, run via Docker |
+
+> **Contributors:** Start with the [Design Overview](docs/design/index.md) before implementing any feature — it is the mandatory starting point for architecture, data models, and behavior. [`DESIGN_SPEC.md`](DESIGN_SPEC.md) serves as a pointer to the full design set.
+
+## Status
+
+Core framework complete — agent engine, multi-agent coordination, API, security, HR, memory, and budget systems are implemented. Remaining: Mem0 adapter backend, approval workflow gates, CLI, web dashboard. See the [roadmap](docs/roadmap/index.md) for details.
 
 ## License
 

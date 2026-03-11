@@ -1,4 +1,4 @@
-"""SQLite persistence backend (DESIGN_SPEC §7.6 — initial backend)."""
+"""SQLite persistence backend (see Memory design page — initial backend)."""
 
 from ai_company.persistence.sqlite.audit_repository import (
     SQLiteAuditRepository,
