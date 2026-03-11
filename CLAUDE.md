@@ -173,7 +173,7 @@ src/ai_company/
 
 - **Jobs**: lint (ruff) + type-check (mypy src/ tests/) + test (pytest + coverage) run in parallel → ci-pass (gate)
 - **Pages**: `.github/workflows/pages.yml` — builds Astro landing + MkDocs docs, merges, deploys to GitHub Pages on push to main
-- **PR Preview**: `.github/workflows/pages-preview.yml` — builds site on PRs (same path triggers as Pages), injects "Development Preview" banner, deploys to Cloudflare Pages via `wrangler-action`. Each PR gets a unique preview URL. Requires `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` secrets. Build job runs regardless (catches build failures); deploy job skips on fork PRs (no secrets access).
+- **PR Preview**: `.github/workflows/pages-preview.yml` — builds site on PRs (same path triggers as Pages), injects "Development Preview" banner, deploys to Cloudflare Pages (`synthorg-pr-preview` project) via wrangler CLI. Each PR gets a unique preview URL at `pr-<number>.synthorg-pr-preview.pages.dev`. Requires `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` secrets. Build job runs regardless (catches build failures); deploy job skips on fork PRs (no secrets access). Concurrency group cancels stale builds on rapid pushes.
 - **Docker**: `.github/workflows/docker.yml` — builds backend + web images, pushes to GHCR, signs with cosign. Scans: Trivy (CRITICAL = hard fail, HIGH = warn-only) + Grype (critical cutoff). CVE triage via `.github/.trivyignore.yaml` and `.github/.grype.yaml`. Images only pushed after scans pass. Triggers on push to main and version tags (`v*`).
 - **Matrix**: Python 3.14
 - **Dependabot**: daily uv + github-actions + docker updates, grouped minor/patch, no auto-merge
