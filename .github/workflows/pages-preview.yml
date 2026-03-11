@@ -262,13 +262,15 @@ jobs:
 
           # Paginate through all deployments for this branch
           # Note: Cloudflare prevents deleting the most recent deployment per project — that one will remain
+          # Cloudflare Pages API rejects per_page=100 with page param; use default (25)
           echo "Fetching deployments for branch ${BRANCH}..."
+          PER_PAGE=25
           PAGE=1
           DEPLOYMENTS=""
           while :; do
             CURL_EXIT=0
             RESPONSE=$(curl -s -w "\n%{http_code}" \
-              "${API_BASE}?per_page=100&page=${PAGE}" \
+              "${API_BASE}?per_page=${PER_PAGE}&page=${PAGE}" \
               -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}") || CURL_EXIT=$?
             HTTP_CODE=$(echo "$RESPONSE" | tail -1)
             BODY=$(echo "$RESPONSE" | sed '$d')
@@ -302,7 +304,7 @@ jobs:
             fi
 
             PAGE_COUNT=$(echo "$BODY" | jq -r '.result | length')
-            [ "$PAGE_COUNT" -lt 100 ] && break
+            [ "$PAGE_COUNT" -lt "$PER_PAGE" ] && break
             PAGE=$((PAGE + 1))
           done
 
