@@ -3,6 +3,7 @@ name: PR Preview
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, closed]
     paths:
       - "docs/**"
       - "site/**"
@@ -19,6 +20,7 @@ concurrency:
 jobs:
   build:
     name: Build Preview
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -26,6 +28,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
 
       # --- MkDocs (documentation at /docs) ---
       - name: Set up Python
@@ -129,31 +132,23 @@ jobs:
           node-version: "22"
 
       - name: Deploy to Cloudflare Pages
-        id: deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           npm i --no-save wrangler@3.114.17 > /dev/null
-          DEPLOY_OUTPUT=$(npx wrangler pages deploy _site --project-name=synthorg-pr-preview --branch="pr-${PR_NUMBER}" 2>&1)
-          echo "$DEPLOY_OUTPUT"
-          DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | grep -oP 'https://[^\s]+\.pages\.dev' | tail -1 || true)
-          if [ -z "$DEPLOY_URL" ]; then
-            echo "::error::Could not extract deployment URL from wrangler output"
-            exit 1
-          fi
-          echo "deployment-url=${DEPLOY_URL}" >> "$GITHUB_OUTPUT"
+          npx wrangler pages deploy _site --project-name=synthorg-pr-preview --branch="pr-${PR_NUMBER}"
 
       - name: Comment preview URL
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
-          DEPLOY_URL: ${{ steps.deploy.outputs.deployment-url }}
+          PREVIEW_URL: "https://pr-${{ github.event.pull_request.number }}.synthorg-pr-preview.pages.dev"
         with:
           script: |
-            const url = process.env.DEPLOY_URL || '';
+            const url = process.env.PREVIEW_URL || '';
             if (!url) {
-              console.log('No deployment URL found — skipping comment');
+              console.log('No preview URL found — skipping comment');
               return;
             }
             const headSha = context.payload?.pull_request?.head?.sha || context.sha;
@@ -194,3 +189,36 @@ jobs:
                 body,
               });
             }
+
+  cleanup-preview:
+    name: Cleanup Preview
+    if: >-
+      github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Delete branch deployments
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          BRANCH="pr-${PR_NUMBER}"
+          # List deployments for this branch and delete them
+          DEPLOYMENTS=$(curl -sf \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/synthorg-pr-preview/deployments" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            | jq -r ".result[] | select(.deployment_trigger.metadata.branch == \"${BRANCH}\") | .id") || true
+          if [ -z "$DEPLOYMENTS" ]; then
+            echo "No deployments found for branch ${BRANCH}"
+            exit 0
+          fi
+          for DEPLOY_ID in $DEPLOYMENTS; do
+            echo "Deleting deployment ${DEPLOY_ID}..."
+            curl -sf -X DELETE \
+              "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/synthorg-pr-preview/deployments/${DEPLOY_ID}?force=true" \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" || true
+          done
+          echo "Cleaned up preview deployments for ${BRANCH}"
