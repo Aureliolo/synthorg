@@ -590,11 +590,11 @@ class AgentEngine:
             from_status=prev_status.value,
             to_status=TaskStatus.IN_REVIEW.value,
         )
-        # TODO(M4): Replace auto-complete with review gate (§6.5)
+        # TODO: Replace auto-complete with review gate (§6.5)
         prev_status = ctx.task_execution.status  # type: ignore[union-attr]
         ctx = ctx.with_task_transition(
             TaskStatus.COMPLETED,
-            reason="Auto-completed (no reviewers in M3)",
+            reason="Auto-completed (no reviewers configured)",
         )
         logger.info(
             EXECUTION_ENGINE_TASK_TRANSITION,

@@ -1,7 +1,7 @@
 """Task completion metrics model.
 
 Proxy overhead metrics for an agent run, computed from
-``AgentRunResult`` data per DESIGN_SPEC §10.5 (M3).
+``AgentRunResult`` data per DESIGN_SPEC §10.5.
 """
 
 from typing import TYPE_CHECKING

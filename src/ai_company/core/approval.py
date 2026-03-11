@@ -1,7 +1,7 @@
 """Human approval item domain model.
 
 Represents an action that requires human approval before proceeding.
-Used by the approval queue API and referenced by engine/security in M7.
+Used by the approval queue API and referenced by engine and security subsystems.
 """
 
 from typing import Self

@@ -369,7 +369,7 @@ Weights configurable per-role. Optional: periodic LLM sampling (1% of interactio
 | **(a) Docker only** | Simplest; covers all use cases; widest familiarity | 1-2s cold start (mitigatable) |
 | **(b) Docker + WASM optional** | WASM gives microsecond starts | CPython-in-WASM can't run pip packages or C extensions — disqualifying |
 | **(c) Docker + Firecracker optional** | Strongest isolation (hardware VM) | Linux-only (requires KVM); not available on macOS/Windows; complex setup; overkill for single-tenant |
-| **(d) Docker MVP, evaluate post-M7 (CHOSEN)** | Ships minimum viable sandbox; `SandboxBackend` protocol makes adding backends trivial later; gVisor upgrade is config-level only | Defers optimization |
+| **(d) Docker MVP, evaluate later (CHOSEN)** | Ships minimum viable sandbox; `SandboxBackend` protocol makes adding backends trivial later; gVisor upgrade is config-level only | Defers optimization |
 
 **Key performance insight:** LLM calls take 2-30s. Docker cold start (1-2s, sub-second with `--network none` + warm pool) is invisible in agent execution flow.
 
@@ -440,11 +440,11 @@ MCP `CallToolResult` has: `content: list[ContentBlock]` (text/image/audio/resour
 | Option | Pros | Cons |
 |--------|------|------|
 | **(a) Fixed per action type** | Simplest | Rigid; `git_push` might be low-risk for internal team but high-risk for production |
-| **(b) SecOps assigns at runtime** | Context-aware | Requires SecOps running (M7); non-deterministic; expensive; blocks timeout on SecOps |
+| **(b) SecOps assigns at runtime** | Context-aware | Requires SecOps running; non-deterministic; expensive; blocks timeout on SecOps |
 | **(c) Configurable YAML mapping (CHOSEN)** | Follows "Configuration over Code" principle; predictable; matches spec §12.4 examples; hot-reloadable; OPA best practice | Configuration burden (mitigated by sensible defaults) |
-| **(d) Default mapping + SecOps override** | Best of both | Premature coupling to M7; non-deterministic when SecOps active |
+| **(d) Default mapping + SecOps override** | Best of both | Premature coupling to SecOps; non-deterministic when SecOps active |
 
-**Decision:** **(c) Configurable YAML mapping.** `RiskTierMapping` config model with `dict[str, ApprovalRiskLevel]`. Sensible defaults matching spec examples. Unknown action types default to HIGH (fail-safe). Leaves door open for SecOps override in M7.
+**Decision:** **(c) Configurable YAML mapping.** `RiskTierMapping` config model with `dict[str, ApprovalRiskLevel]`. Sensible defaults matching spec examples. Unknown action types default to HIGH (fail-safe). Leaves door open for future SecOps override.
 
 ---
 

@@ -12,7 +12,7 @@ allowed-tools:
 
 # Worktree Manager
 
-Manage parallel git worktrees for multi-issue development across phases. Handles creation, settings propagation, prompt generation, cleanup after merge, milestone tree view, and status overview.
+Manage parallel git worktrees for multi-issue development across phases. Handles creation, settings propagation, prompt generation, cleanup after merge, dependency tree view, and status overview.
 
 **Arguments:** "$ARGUMENTS"
 
@@ -40,9 +40,9 @@ feat/parallel-execution #22 "Parallel Agent Execution"
 Branch names auto-generated from description: `feat/delegation-loop-prevention`.
 Default branch type prefix is `feat/` unless the user specifies otherwise or the issue labels suggest a different type (e.g., `type:bug` → `fix/`, `type:refactor` → `refactor/`).
 
-**Mode 3 — Milestone-aware:**
+**Mode 3 — Issue list only:**
 ```
-/worktree setup --milestone M4 --issues #26,#30,#133,#168
+/worktree setup --issues #26,#30,#133,#168
 ```
 Fetches issue titles from GitHub, groups by the user's worktree definitions (or asks for grouping via AskUserQuestion if not provided).
 
@@ -267,13 +267,9 @@ Remove worktrees and clean up branches after PRs are merged.
    git branch -a
    ```
 
-8. **Show milestone progress** (if determinable). Detect the milestone from the branches/issues that were cleaned up:
+8. **Report summary:**
 
-   ```bash
-   gh issue list --repo <owner/repo> --milestone "<milestone>" --state all --json state --jq '[sort_by(.state) | group_by(.state) | .[] | {state: .[0].state, count: length}]'
-   ```
-
-   Report: "Clean. Main up to date, N worktrees removed, N branches deleted. Milestone: X/Y issues closed, Z remaining."
+   Report: "Clean. Main up to date, N worktrees removed, N branches deleted."
 
 ---
 
@@ -321,33 +317,28 @@ Show current worktree state and how they compare to main.
 
 ## Command: `tree`
 
-Auto-generate a phase/dependency tree view from milestone issues.
+Auto-generate a phase/dependency tree view from a set of issues.
 
 ### Input format
 
 ```
-/worktree tree --milestone M4
+/worktree tree --issues #26,#30,#133,#168
 ```
 
-If no milestone specified, try to detect from current worktree branches or ask via AskUserQuestion.
+If no issues specified, try to detect from current worktree branches or ask via AskUserQuestion.
 
 ### Steps
 
-1. **Fetch all issues for the milestone:**
+1. **Fetch the specified issues:**
 
    ```bash
-   gh issue list --repo <owner/repo> --milestone "<milestone-title>" --state all --limit 500 --json number,title,state,labels,body
-   ```
-
-   Find the milestone title by querying:
-   ```bash
-   gh api repos/<owner/repo>/milestones --jq '.[] | select(.title | test("<milestone-pattern>")) | {number, title}'
+   gh issue view <number> --repo <owner/repo> --json number,title,state,labels,body
    ```
 
 2. **Parse dependency graph.** For each issue, extract `## Dependencies` section and resolve `#<N>` references. Build an adjacency list.
 
 3. **Compute tiers** using topological sort:
-   - Tier 0: issues with no open M-internal dependencies (all deps are closed or external)
+   - Tier 0: issues with no open internal dependencies (all deps are closed or external)
    - Tier 1: depends only on Tier 0 issues
    - Tier N: depends on Tier N-1 issues
    - Flag circular dependencies as errors. When detected, report the cycle (e.g. "#12 → #17 → #12"), render the remaining non-circular issues in their tiers, and suggest: "Break the cycle by removing one dependency edge, or implement the circular group in a single worktree."
@@ -365,7 +356,7 @@ If no milestone specified, try to detect from current worktree branches or ask v
 
    Format:
    ```
-   MILESTONE: M4 — Communication & Multi-Agent Orchestration (15/19 done)
+   ISSUES: 4 total (3/4 done)
 
    TIER 0 — No dependencies (all prereqs closed)
      ✅ #8   Message bus                    [critical]  communication/
@@ -454,16 +445,16 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
 - **Input validation (CRITICAL):** Before interpolating any user-provided value into shell commands, validate:
   - Issue numbers: must match `^[0-9]+$`
   - Branch names: must match `^[a-zA-Z0-9/_.-]+$`
-  - Milestone identifiers: must match `^M[0-9]+$` or a reasonable alphanumeric pattern
+  - Label/filter values: must be a reasonable alphanumeric pattern (no shell metacharacters)
   - Owner/repo (from `git remote`): must match `^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$`
   - Directory paths: must not contain shell metacharacters (`;`, `|`, `&`, `$`, `` ` ``, `(`, `)`)
   - Reject and warn if any value fails validation — do not execute the command.
 - If `$ARGUMENTS` is empty or doesn't match a command, show a brief usage guide:
   ```
   /worktree setup <definitions>   — Create worktrees with prompts
-  /worktree setup --milestone M4 --issues #26,#30  — Milestone-aware setup
+  /worktree setup --issues #26,#30  — Issue-aware setup
   /worktree cleanup                — Remove worktrees after merge
   /worktree status                 — Show worktree state
-  /worktree tree --milestone M4    — Dependency tree view
+  /worktree tree --issues #26,#30  — Dependency tree view
   /worktree rebase                 — Update worktrees to latest main
   ```

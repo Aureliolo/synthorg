@@ -2,7 +2,7 @@
 
 Strategy 3: Escalate to human for resolution.  Returns a stub
 resolution with ``ESCALATED_TO_HUMAN`` outcome — actual human
-approval queue integration depends on #37 (M6).
+approval queue integration depends on approval queue API (#37).
 """
 
 from datetime import UTC, datetime
@@ -28,7 +28,7 @@ class HumanEscalationResolver:
     """Escalate conflicts to a human for resolution.
 
     This is a stub implementation — the human approval queue (#37)
-    is an M6 dependency.  Callers receive a proper resolution
+    is a dependency.  Callers receive a proper resolution
     object with ``ESCALATED_TO_HUMAN`` outcome; no
     ``NotImplementedError`` is raised.
     """

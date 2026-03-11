@@ -24,7 +24,7 @@ Research any external content — URL, tool, concept, pasted article, code snipp
 
 ## Phase 0: Load Project Context
 
-**Before doing anything else**, read `DESIGN_SPEC.md` in the project root. This is the authoritative source for the project's architecture, module design, technology choices, milestones, and risk register. You need this context loaded to produce accurate project mappings and verdicts in later phases. Read it in parallel with the Phase 1 content acquisition.
+**Before doing anything else**, read `DESIGN_SPEC.md` in the project root. This is the authoritative source for the project's architecture, module design, technology choices, and risk register. You need this context loaded to produce accurate project mappings and verdicts in later phases. Read it in parallel with the Phase 1 content acquisition.
 
 ## Phase 1: Identify Input Type and Acquire Content
 
@@ -109,7 +109,7 @@ For each relevant concept, tool, or pattern found, assign exactly one verdict:
 | **ADAPT** | The concept applies but needs our own implementation | What to adapt, which module it goes in, rough approach |
 | **REPLACE** | Better than what we have or planned | What it replaces, migration effort, why it's better |
 | **RETHINK** | Fundamentally challenges an architectural assumption | Which assumption, what the alternative is, impact scope |
-| **LATER** | Relevant but not for current milestone | When it becomes relevant, what triggers revisiting |
+| **LATER** | Relevant but not for current scope | When it becomes relevant, what triggers revisiting |
 | **SKIP** | Not applicable to this project | Brief explanation why |
 
 ### Verdict Rules

@@ -53,11 +53,11 @@ Build a **configurable AI company framework** where AI agents operate within a v
 - Not a wrapper around a single model or provider
 - Not a toy/demo - designed for real, production-quality output
 
-### 1.4 MVP Definition (M3)
+### 1.4 MVP Definition
 
-The MVP validates the core hypothesis: **a single agent can complete a real task end-to-end** within the framework's architecture. It builds on M0–M2 (already complete: config models, provider layer, budget tracking, tool system, observability).
+The MVP validates the core hypothesis: **a single agent can complete a real task end-to-end** within the framework's architecture.
 
-**M3 scope (what the MVP builds):**
+**MVP scope:**
 
 - Single agent executing tasks via the **ReAct** execution loop
 - **Subprocess sandbox** for file system and git tools (Docker optional for code execution)
@@ -66,22 +66,11 @@ The MVP validates the core hypothesis: **a single agent can complete a real task
 - **Proxy metrics**: turns/tokens/cost per task
 - System prompt builder with agent personality injection
 
-**NOT in MVP (deferred to later milestones):**
-
-- Multi-agent coordination, delegation, message bus (M4)
-- Meetings, conflict resolution, meeting protocols (M4)
-- Progressive trust (M7) — disabled by default, static access levels only in M3–M6
-- HR/CFO agents, hiring/firing, performance tracking (M5–M7)
-- Memory layer integration, org memory backends (M5)
-- Web UI, WebSocket real-time updates (M6)
-- CLI commands beyond basic `start` (M6)
-- Security ops agent, approval workflows (M7)
-
-> **How to read this spec:** Sections describe the full vision. Each section with deferred features includes an **MVP** callout box indicating what ships in M3 and what is deferred. The full design is documented upfront to inform architecture decisions — protocol interfaces are designed even for features that won't be built until later milestones.
+> **How to read this spec:** Sections describe the full vision. The full design is documented upfront to inform architecture decisions — protocol interfaces are designed even for features that are not yet implemented.
 
 > **Implementation snapshot (2026-03-10):**
-> - **Done:** M0–M6 (tooling, config/core, providers, single-agent engine, multi-agent orchestration, API/CLI surface) + Docker sandbox (#50), MCP bridge (#53), code runner + HR engine (hiring/firing/onboarding/offboarding/registry) + performance tracking (task metrics, quality scoring, collaboration scoring, trend detection, rolling windows). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed (including audit entry persistence via AuditRepository + SQLite backend). Memory retrieval pipeline (#41: ranking, token-budget formatting, context injection, non-inferable filtering) complete. Budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking). CFO cost optimization complete (CostOptimizer: anomaly detection, efficiency analysis, downgrade recommendations, routing optimization, approval decisions; ReportGenerator: multi-dimensional spending reports). Shared org memory (#125: HybridPromptRetrievalBackend, OrgFactStore, access control, factory) complete. Memory consolidation/archival (#48: ConsolidationService, SimpleConsolidationStrategy, RetentionEnforcer, ArchivalStore protocol) complete. SecOps agent (rule engine, audit log, output scanner, output scan response policies (redact/withhold/log-only/autonomy-tiered), risk classifier, ToolInvoker integration), progressive trust (4 strategies: disabled/weighted/per-category/milestone behind TrustStrategy protocol), promotion/demotion (criteria evaluation, approval strategies, model mapping). Autonomy levels (#42: AutonomyLevel enum, presets, 3-level resolver, rule-based auto-downgrade/human-only promotion change strategy) + approval timeout policies (#126: 4 timeout policies, park/resume service, risk tier classifier, timeout checker) complete.
-> - **Remaining:** Approval workflow gates.
+> All major subsystems are implemented: config/core models, provider layer, single-agent engine, multi-agent orchestration (message bus, delegation, loop prevention, conflict resolution, meeting protocols), API surface (REST + WebSocket), Docker sandbox, MCP bridge, code runner, HR engine (hiring/firing/onboarding/offboarding/registry, performance tracking, promotion/demotion), memory layer (retrieval pipeline, shared org memory, consolidation/archival — backend selected per [ADR-001](docs/decisions/ADR-001-memory-layer.md)), persistence (SQLite backend, audit entry persistence), budget enforcement (BudgetEnforcer, cost tiers, quota/subscription tracking, CFO cost optimization), SecOps agent (rule engine, audit log, output scanner, output scan response policies, risk classifier, ToolInvoker integration), progressive trust (4 strategies behind TrustStrategy protocol), autonomy levels (presets, resolver, change strategy), and approval timeout policies (4 policies, park/resume service, risk tier classifier).
+> - **Remaining:** Mem0 adapter backend, approval workflow gates.
 
 ### 1.5 Configuration Philosophy
 
@@ -155,7 +144,7 @@ Every agent has a comprehensive identity. At the design level, agent data splits
 - **Config (immutable)**: identity, personality, skills, model preferences, tool permissions, authority. Defined at hire time, changed only by explicit reconfiguration. Represented as frozen Pydantic models.
 - **Runtime state (mutable-via-copy)**: current status, active task, conversation history, execution metrics. Evolves during agent operation. Represented as Pydantic models using `model_copy(update=...)` for state transitions — never mutated in place.
 
-> **Current state (M3):** Both layers are implemented. Config layer: `AgentIdentity` (frozen, in `core/agent.py`). Runtime state layer: `TaskExecution`, `AgentContext`, `AgentContextSnapshot` (frozen + `model_copy`, in `engine/`). `AgentEngine` orchestrates execution via `run()`. All identifier/name fields use `NotBlankStr` (from `core.types`) for automatic whitespace rejection; optional identifier fields use `NotBlankStr | None`; tuple fields use `tuple[NotBlankStr, ...]` for per-element validation.
+> **Current state:** Both layers are implemented. Config layer: `AgentIdentity` (frozen, in `core/agent.py`). Runtime state layer: `TaskExecution`, `AgentContext`, `AgentContextSnapshot` (frozen + `model_copy`, in `engine/`). `AgentEngine` orchestrates execution via `run()`. All identifier/name fields use `NotBlankStr` (from `core.types`) for automatic whitespace rejection; optional identifier fields use `NotBlankStr | None`; tuple fields use `tuple[NotBlankStr, ...]` for per-element validation.
 
 **Personality dimensions** split into two tiers:
 
@@ -167,7 +156,7 @@ Every agent has a comprehensive identity. At the design level, agent data splits
   - `ConflictApproach`: `avoid`, `accommodate`, `compete`, `compromise`, `collaborate` (Thomas-Kilmann model)
 
 ```yaml
-# --- Current (M3): Config layer — AgentIdentity (frozen) ---
+# --- Config layer — AgentIdentity (frozen) ---
 agent:
   id: "uuid"
   name: "Sarah Chen"
@@ -236,7 +225,7 @@ agent:
   hiring_date: "2026-02-27"
   status: "active"              # active, on_leave, terminated (on config model today)
 
-# --- Adopted (M3): Runtime state — engine/ (frozen + model_copy) ---
+# --- Runtime state — engine/ (frozen + model_copy) ---
 # TaskExecution wraps Task with evolving execution state:
 #   status: TaskStatus             # evolves via with_transition()
 #   transition_log: tuple[StatusTransition, ...]
@@ -583,15 +572,13 @@ When a loop is detected, the framework:
 3. Escalates to the sender's manager (or human if at top of hierarchy)
 4. Logs the loop for analytics and process improvement
 
-> **Current state (M4 complete):** The communication foundation is implemented: `MessageBus` protocol with `InMemoryMessageBus` backend (asyncio queues, pull-model `receive()`), `MessageDispatcher` for concurrent handler routing via `asyncio.TaskGroup`, `AgentMessenger` per-agent facade (auto-fills sender/timestamp/ID, deterministic direct-channel naming `@{sorted_a}:{sorted_b}`), and `DeliveryEnvelope` for delivery tracking. Loop prevention (§5.5) is implemented: `DelegationGuard` orchestrates five mechanisms (ancestry, depth, dedup, rate limit, circuit breaker) with `LoopPreventionConfig`. Hierarchical delegation is implemented via `DelegationService` with `HierarchyResolver` and `AuthorityValidator`. Task model extended with `parent_task_id` and `delegation_chain` fields. Conflict resolution (§5.6) is implemented: `ConflictResolver` protocol with four strategies (Authority, Debate, HumanEscalation, Hybrid), `ConflictResolutionService` orchestrator, `DissentRecord` audit trail, and `HierarchyResolver.get_lowest_common_manager()` for cross-department conflict escalation. Meeting protocol (§5.7) is implemented with all 3 protocols (round-robin, position papers, structured phases) via `MeetingOrchestrator` in `communication/meeting/`.
+> **Current state:** The communication foundation is implemented: `MessageBus` protocol with `InMemoryMessageBus` backend (asyncio queues, pull-model `receive()`), `MessageDispatcher` for concurrent handler routing via `asyncio.TaskGroup`, `AgentMessenger` per-agent facade (auto-fills sender/timestamp/ID, deterministic direct-channel naming `@{sorted_a}:{sorted_b}`), and `DeliveryEnvelope` for delivery tracking. Loop prevention (§5.5) is implemented: `DelegationGuard` orchestrates five mechanisms (ancestry, depth, dedup, rate limit, circuit breaker) with `LoopPreventionConfig`. Hierarchical delegation is implemented via `DelegationService` with `HierarchyResolver` and `AuthorityValidator`. Task model extended with `parent_task_id` and `delegation_chain` fields. Conflict resolution (§5.6) is implemented: `ConflictResolver` protocol with four strategies (Authority, Debate, HumanEscalation, Hybrid), `ConflictResolutionService` orchestrator, `DissentRecord` audit trail, and `HierarchyResolver.get_lowest_common_manager()` for cross-department conflict escalation. Meeting protocol (§5.7) is implemented with all 3 protocols (round-robin, position papers, structured phases) via `MeetingOrchestrator` in `communication/meeting/`.
 
 ### 5.6 Conflict Resolution Protocol
 
 When two or more agents disagree on an approach (architecture, implementation, priority, etc.), the framework provides multiple configurable resolution strategies behind a `ConflictResolver` protocol. New strategies can be added without modifying existing ones. The strategy is configurable per company, per department, or per conflict type.
 
-> **MVP: Not in M3.** Conflict resolution is an M4 feature (M3 is single-agent). Authority + Dissent Log (Strategy 1) is the initial default.
->
-> **Current state (M4):** All four strategies implemented: `AuthorityResolver` (seniority + hierarchy proximity), `DebateResolver` (judge-based with `JudgeEvaluator` protocol), `HumanEscalationResolver` (stub pending approval queue #37), `HybridResolver` (automated review + escalation). `ConflictResolutionService` orchestrates strategy selection and audit trail (`DissentRecord`). Models: `Conflict`, `ConflictPosition`, `ConflictResolution` (frozen Pydantic). Config: `ConflictResolutionConfig`, `DebateConfig`, `HybridConfig`. `HierarchyResolver` extended with `get_lowest_common_manager()` and `get_delegation_depth()`. Event constants in `observability/events/conflict.py`.
+> **Current state:** All four strategies implemented: `AuthorityResolver` (seniority + hierarchy proximity), `DebateResolver` (judge-based with `JudgeEvaluator` protocol), `HumanEscalationResolver` (stub pending approval queue #37), `HybridResolver` (automated review + escalation). `ConflictResolutionService` orchestrates strategy selection and audit trail (`DissentRecord`). Models: `Conflict`, `ConflictPosition`, `ConflictResolution` (frozen Pydantic). Config: `ConflictResolutionConfig`, `DebateConfig`, `HybridConfig`. `HierarchyResolver` extended with `get_lowest_common_manager()` and `get_delegation_depth()`. Event constants in `observability/events/conflict.py`.
 
 #### Strategy 1: Authority + Dissent Log (Default)
 
@@ -655,7 +642,7 @@ conflict_resolution:
 
 Meetings (§5.1 Pattern 3) follow configurable protocols that determine how agents interact during structured multi-agent conversations. Different meeting types naturally suit different protocols. All protocols implement a `MeetingProtocol` protocol, making the system extensible — new protocols can be registered and selected per meeting type. Cost bounds are enforced by `duration_tokens` in meeting config (§5.4).
 
-> **Current state (M4 complete):** All 3 meeting protocols are implemented in `communication/meeting/`: `RoundRobinProtocol`, `PositionPapersProtocol`, and `StructuredPhasesProtocol`. The `MeetingOrchestrator` runs meetings end-to-end with token budget enforcement via `TokenTracker`. Shared LLM response parsing for decisions and action items is in `_parsing.py`. All protocols implement the `MeetingProtocol` protocol interface.
+> **Current state:** All 3 meeting protocols are implemented in `communication/meeting/`: `RoundRobinProtocol`, `PositionPapersProtocol`, and `StructuredPhasesProtocol`. The `MeetingOrchestrator` runs meetings end-to-end with token budget enforcement via `TokenTracker`. Shared LLM response parsing for decisions and action items is in `_parsing.py`. All protocols implement the `MeetingProtocol` protocol interface.
 
 #### Protocol 1: Round-Robin Transcript
 
@@ -756,7 +743,7 @@ structured_phases:
 >
 > **Transitions into INTERRUPTED:** Both `ASSIGNED → INTERRUPTED` and `IN_PROGRESS → INTERRUPTED` are valid (graceful shutdown can occur at any active phase). `INTERRUPTED → ASSIGNED` enables reassignment on restart.
 
-> **Runtime wrapper (M3):** During execution, `Task` is wrapped by `TaskExecution` (in `engine/task_execution.py`). `TaskExecution` is a frozen Pydantic model that tracks status transitions via `model_copy(update=...)`, accumulates `TokenUsage` cost, and records a `StatusTransition` audit trail. The original `Task` is preserved unchanged; `to_task_snapshot()` produces a `Task` copy with the current execution status for persistence.
+> **Runtime wrapper:** During execution, `Task` is wrapped by `TaskExecution` (in `engine/task_execution.py`). `TaskExecution` is a frozen Pydantic model that tracks status transitions via `model_copy(update=...)`, accumulates `TokenUsage` cost, and records a `StatusTransition` audit trail. The original `Task` is preserved unchanged; `to_task_snapshot()` produces a `Task` copy with the current execution status for persistence.
 
 ### 6.2 Task Definition
 
@@ -811,7 +798,7 @@ Task ───┤                    ├──▶ Integration ──▶ QA
         └──▶ Backend Dev  ──┘
 ```
 
-> **Current state (M3):** `ParallelExecutor` (in `engine/parallel.py`) implements concurrent agent execution with `asyncio.TaskGroup`, configurable concurrency limits, resource locking for exclusive file access, error isolation, and progress tracking. While M3 primarily targets single-agent execution, parallel coordination is implemented here as prerequisite infrastructure for M4 multi-agent workflows. Models in `engine/parallel_models.py`: `AgentAssignment`, `ParallelExecutionGroup`, `AgentOutcome`, `ParallelExecutionResult`, `ParallelProgress`.
+> **Current state:** `ParallelExecutor` (in `engine/parallel.py`) implements concurrent agent execution with `asyncio.TaskGroup`, configurable concurrency limits, resource locking for exclusive file access, error isolation, and progress tracking. Models in `engine/parallel_models.py`: `AgentAssignment`, `ParallelExecutionGroup`, `AgentOutcome`, `ParallelExecutionResult`, `ParallelProgress`.
 
 #### Kanban Board
 
@@ -841,13 +828,13 @@ Tasks can be assigned through multiple strategies:
 | **Hierarchical** | Flow down through management chain |
 | **Cost-optimized** | Assign to cheapest capable agent |
 
-> **Current state (M4):** All six strategies are implemented behind the `TaskAssignmentStrategy` protocol. Manual, Role-based, Load-balanced, Cost-optimized, and Auction strategies are in the static `STRATEGY_MAP`. Hierarchical requires a `HierarchyResolver` at runtime via `build_strategy_map(hierarchy=...)`. Config-level `TaskAssignmentConfig` validates strategy names against the known set. Scoring-based strategies filter out agents at capacity via `AssignmentRequest.max_concurrent_tasks`. Error signaling contract: `ManualAssignmentStrategy` raises exceptions (`TaskAssignmentError`, `NoEligibleAgentError`); scoring-based strategies return `AssignmentResult(selected=None)`. `TaskAssignmentService` propagates both patterns.
+> **Current state:** All six strategies are implemented behind the `TaskAssignmentStrategy` protocol. Manual, Role-based, Load-balanced, Cost-optimized, and Auction strategies are in the static `STRATEGY_MAP`. Hierarchical requires a `HierarchyResolver` at runtime via `build_strategy_map(hierarchy=...)`. Config-level `TaskAssignmentConfig` validates strategy names against the known set. Scoring-based strategies filter out agents at capacity via `AssignmentRequest.max_concurrent_tasks`. Error signaling contract: `ManualAssignmentStrategy` raises exceptions (`TaskAssignmentError`, `NoEligibleAgentError`); scoring-based strategies return `AssignmentResult(selected=None)`. `TaskAssignmentService` propagates both patterns.
 
 ### 6.5 Agent Execution Loop
 
 The agent execution loop defines how an agent processes a task from start to finish. The framework provides multiple configurable loop architectures behind an `ExecutionLoop` protocol, making the system extensible. The default can vary by task complexity, and is configurable per agent or role.
 
-> **Current state (M3):** ReAct (Loop 1) and Plan-and-Execute (Loop 2) are implemented. `ParallelExecutor` enables concurrent `AgentEngine.run()` calls with `TaskGroup` + Semaphore concurrency limits, resource locking, and error isolation (see §6.3). Hybrid loop and auto-selection are M4+.
+> **Current state:** ReAct (Loop 1) and Plan-and-Execute (Loop 2) are implemented. `ParallelExecutor` enables concurrent `AgentEngine.run()` calls with `TaskGroup` + Semaphore concurrency limits, resource locking, and error isolation (see §6.3). Hybrid loop and auto-selection are planned.
 
 #### ExecutionLoop Protocol
 
@@ -889,7 +876,7 @@ execution_loop: "react"              # react, plan_execute, hybrid, auto
 
 - Simple, proven, flexible. Easy to implement. Works well for short tasks
 - Token-heavy on long tasks (re-reads full context every turn). No long-term planning — greedy step-by-step
-- **Best for**: Simple tasks, quick fixes, single-file changes, M3 MVP
+- **Best for**: Simple tasks, quick fixes, single-file changes
 
 #### Loop 2: Plan-and-Execute
 
@@ -981,12 +968,12 @@ Pipeline steps:
 7. **Prepare tools and budget** — creates `ToolInvoker` from registry and `BudgetChecker` from `BudgetEnforcer` (task + monthly + daily limits with pre-computed baselines and alert deduplication) or from task budget limit alone when no enforcer is configured.
 8. **Delegate to loop** — calls `ExecutionLoop.execute()` with context, provider, tool invoker, budget checker, and completion config. If `timeout_seconds` is set, wraps the call in `asyncio.wait_for`; on expiry the run returns with `TerminationReason.ERROR` but cost recording and post-execution processing still occur.
 9. **Record costs** — records accumulated `TokenUsage` to `CostTracker` (if available). Cost recording failures are logged but do not affect the result.
-10. **Apply post-execution transitions** — on `COMPLETED` termination: IN_PROGRESS → IN_REVIEW → COMPLETED (two-hop auto-complete in M3; reviewers deferred to M4+). On `SHUTDOWN` termination: current status → INTERRUPTED (see §6.7). On `ERROR` termination: recovery strategy is applied (default `FailAndReassignStrategy` transitions to FAILED; see §6.6). All other termination reasons (`MAX_TURNS`, `BUDGET_EXHAUSTED`) leave the task in its current state. Transition failures are logged but do not discard the successful execution result.
+10. **Apply post-execution transitions** — on `COMPLETED` termination: IN_PROGRESS → IN_REVIEW → COMPLETED (two-hop auto-complete; reviewers planned). On `SHUTDOWN` termination: current status → INTERRUPTED (see §6.7). On `ERROR` termination: recovery strategy is applied (default `FailAndReassignStrategy` transitions to FAILED; see §6.6). All other termination reasons (`MAX_TURNS`, `BUDGET_EXHAUSTED`) leave the task in its current state. Transition failures are logged but do not discard the successful execution result.
 11. **Return result** — wraps `ExecutionResult` in `AgentRunResult` with engine-level metadata.
 
 Error handling: `MemoryError` and `RecursionError` propagate unconditionally. `BudgetExhaustedError` (including `DailyLimitExceededError`) returns `TerminationReason.BUDGET_EXHAUSTED` without recovery — budget exhaustion is a controlled stop, not a crash. All other exceptions are caught and wrapped in an `AgentRunResult` with `TerminationReason.ERROR`.
 
-Constructor accepts: `provider` (required), `execution_loop` (defaults to `ReactLoop`), `tool_registry`, `cost_tracker`, `recovery_strategy` (defaults to `FailAndReassignStrategy`), `shutdown_checker`, `budget_enforcer`. The `run()` method also accepts `memory_messages` — optional working memory to inject between the system prompt and task instruction (memory retrieval is M5; the engine provides the injection hook).
+Constructor accepts: `provider` (required), `execution_loop` (defaults to `ReactLoop`), `tool_registry`, `cost_tracker`, `recovery_strategy` (defaults to `FailAndReassignStrategy`), `shutdown_checker`, `budget_enforcer`. The `run()` method also accepts `memory_messages` — optional working memory to inject between the system prompt and task instruction.
 
 Logs structured events under the `execution.engine.*` namespace (13 constants in `events/execution.py`): creation, start, prompt built, completion, errors, budget stopped, invalid input, task transitions, cost recording outcomes, task metrics, and timeout.
 
@@ -1002,7 +989,7 @@ Logs structured events under the `execution.engine.*` namespace (13 constants in
 
 When an agent execution fails unexpectedly (unhandled exception, OOM, process kill), the framework needs a recovery mechanism. Recovery strategies are implemented behind a `RecoveryStrategy` protocol, making the system pluggable — new strategies can be added without modifying existing ones.
 
-> **MVP: Fail-and-Reassign only (Strategy 1).** Checkpoint Recovery is M4/M5.
+> **MVP: Fail-and-Reassign only (Strategy 1).** Checkpoint Recovery is planned.
 
 **`RecoveryStrategy` protocol:**
 
@@ -1025,14 +1012,14 @@ When an agent execution fails unexpectedly (unhandled exception, OOM, process ki
 
 The engine catches the failure at its outermost boundary, logs a redacted `AgentContext` snapshot (turn count, accumulated cost — excluding message contents to avoid leaking sensitive prompts/tool outputs), transitions the task to `FAILED`, and makes it available for reassignment (manual or automatic via the task router).
 
-> **Non-terminal state (implemented in M3):** `FAILED` is a `TaskStatus` variant alongside `CANCELLED`. `FAILED` differs from `CANCELLED` (which is terminal) in that failed tasks are eligible for automatic reassignment. Valid transitions: `IN_PROGRESS → FAILED`, `ASSIGNED → FAILED` (early setup failures), `FAILED → ASSIGNED` (reassignment). See the updated §6.1 lifecycle diagram.
+> **Non-terminal state:** `FAILED` is a `TaskStatus` variant alongside `CANCELLED`. `FAILED` differs from `CANCELLED` (which is terminal) in that failed tasks are eligible for automatic reassignment. Valid transitions: `IN_PROGRESS → FAILED`, `ASSIGNED → FAILED` (early setup failures), `FAILED → ASSIGNED` (reassignment). See the updated §6.1 lifecycle diagram.
 
 ```yaml
 crash_recovery:
   strategy: "fail_reassign"            # fail_reassign, checkpoint
 ```
 
-- Simple, no persistence dependency, M3-ready
+- Simple, no persistence dependency
 - All progress is lost on crash — acceptable for short single-agent tasks in the MVP
 
 On crash:
@@ -1041,9 +1028,9 @@ On crash:
 3. Transition `TaskExecution` → `FAILED` with the exception as the failure reason
 4. `RecoveryResult.can_reassign` reports whether `retry_count < max_retries`
 
-> **M3 limitation:** The `can_reassign` flag is computed and returned in `RecoveryResult`, but automated reassignment is not yet implemented — the task router (§6.4) will consume this in a later milestone. The caller (task router) is responsible for incrementing `retry_count` when creating the next `TaskExecution`.
+> **Current limitation:** The `can_reassign` flag is computed and returned in `RecoveryResult`, but automated reassignment is not yet implemented — the task router (§6.4) will consume this in a future release. The caller (task router) is responsible for incrementing `retry_count` when creating the next `TaskExecution`.
 
-#### Strategy 2: Checkpoint Recovery (Planned — M4/M5)
+#### Strategy 2: Checkpoint Recovery (Planned)
 
 The engine persists an `AgentContext` snapshot after each completed turn. On crash, the framework detects the failure (via heartbeat timeout or exception), loads the last checkpoint, and resumes execution from the exact turn where it left off. The immutable `model_copy(update=...)` pattern makes checkpointing trivial — each `AgentContext` is a complete, self-contained frozen state that serializes cleanly via `model_dump_json()`.
 
@@ -1088,7 +1075,7 @@ On shutdown signal:
 4. Force-cancel remaining agents (`task.cancel()`) — tasks transition to `INTERRUPTED`
 5. Cleanup phase (`cleanup_seconds`): persist cost records, close provider connections, flush logs
 
-> **Non-terminal status (implemented in M3):** `INTERRUPTED` is a `TaskStatus` variant. Unlike `FAILED` (eligible for automatic reassignment) or `CANCELLED` (terminal), `INTERRUPTED` indicates the task was stopped due to process shutdown — regardless of whether the agent exited cooperatively or was force-cancelled — and is eligible for manual or automatic reassignment on restart. Valid transitions: `ASSIGNED → INTERRUPTED`, `IN_PROGRESS → INTERRUPTED`, `INTERRUPTED → ASSIGNED` (reassignment on restart). See the updated §6.1 lifecycle diagram.
+> **Non-terminal status:** `INTERRUPTED` is a `TaskStatus` variant. Unlike `FAILED` (eligible for automatic reassignment) or `CANCELLED` (terminal), `INTERRUPTED` indicates the task was stopped due to process shutdown — regardless of whether the agent exited cooperatively or was force-cancelled — and is eligible for manual or automatic reassignment on restart. Valid transitions: `ASSIGNED → INTERRUPTED`, `IN_PROGRESS → INTERRUPTED`, `INTERRUPTED → ASSIGNED` (reassignment on restart). See the updated §6.1 lifecycle diagram.
 >
 > **Windows compatibility:** `loop.add_signal_handler()` is not supported on Windows. The implementation uses `signal.signal()` as a fallback. SIGINT (Ctrl+C) works cross-platform; SIGTERM on Windows requires `os.kill()`.
 >
@@ -1102,15 +1089,15 @@ All agent tasks are cancelled immediately via `task.cancel()`. Fastest shutdown 
 
 Like cooperative timeout, but waits for the current tool invocation to complete even if it exceeds the grace period. Needs per-tool timeout as a backstop for long-running sandboxed execution.
 
-#### Strategy 4: Checkpoint and Stop (Planned — M4/M5)
+#### Strategy 4: Checkpoint and Stop (Planned)
 
 On shutdown signal, each agent persists its full `AgentContext` snapshot and transitions to `SUSPENDED`. On restart, the engine loads checkpoints and resumes execution. This naturally extends the `CheckpointStrategy` from §6.6 — the only difference is whether the checkpoint was written proactively (graceful shutdown) or loaded from the last turn (crash recovery).
 
-> **Planned non-terminal status:** `SUSPENDED` is a new `TaskStatus` variant for checkpoint-based shutdown, to be added alongside `INTERRUPTED` in M4/M5.
+> **Planned non-terminal status:** `SUSPENDED` is a new `TaskStatus` variant for checkpoint-based shutdown, to be added alongside `INTERRUPTED`.
 
-### 6.8 Concurrent Workspace Isolation (M4+)
+### 6.8 Concurrent Workspace Isolation
 
-> **Current state:** The `WorkspaceIsolationStrategy` protocol, `PlannerWorktreeStrategy` (git worktree backend), `MergeOrchestrator` (sequential merge with configurable conflict escalation), and `WorkspaceIsolationService` (lifecycle orchestrator with rollback and best-effort teardown) are implemented in `engine/workspace/`. `_validate_git_ref` raises context-appropriate exception types (`WorkspaceMergeError` in merge, `WorkspaceCleanupError` in teardown) with matching log events. `_run_git` similarly accepts a `log_event` parameter for context-aware timeout logging. Runtime multi-agent coordination using these components is M4+.
+> **Current state:** The `WorkspaceIsolationStrategy` protocol, `PlannerWorktreeStrategy` (git worktree backend), `MergeOrchestrator` (sequential merge with configurable conflict escalation), and `WorkspaceIsolationService` (lifecycle orchestrator with rollback and best-effort teardown) are implemented in `engine/workspace/`. `_validate_git_ref` raises context-appropriate exception types (`WorkspaceMergeError` in merge, `WorkspaceCleanupError` in teardown) with matching log events. `_run_git` similarly accepts a `log_event` parameter for context-aware timeout logging. Runtime multi-agent coordination using these components is planned.
 
 When multiple agents work on the same codebase concurrently, they may need to edit overlapping files. The framework provides a pluggable `WorkspaceIsolationStrategy` protocol for managing concurrent file access. The default strategy combines intelligent task decomposition with git worktree isolation — the dominant industry pattern (used by OpenAI Codex, Cursor, Claude Code, VS Code background agents).
 
@@ -1167,9 +1154,9 @@ These are complementary systems handling different types of shared state:
 | Agent memory (personal) | Per-agent ownership | Each agent owns its memory exclusively |
 | Org memory (shared knowledge) | Single-writer (`OrgMemoryBackend`) | `OrgMemoryBackend` protocol with role-based write access control |
 
-### 6.9 Task Decomposability & Coordination Topology (M4+)
+### 6.9 Task Decomposability & Coordination Topology
 
-> **Current state:** Task structure classification (`TaskStructureClassifier`), DAG-based decomposition (`DecompositionService`, `DependencyGraph`, `ManualDecompositionStrategy`), LLM-based decomposition (`LlmDecompositionStrategy` with tool calling and JSON content fallback), status rollup (`StatusRollup`), agent-task scoring (`AgentTaskScorer`), routing (`TaskRoutingService`), and auto topology selection (`TopologySelector`) are implemented in `engine/decomposition/` and `engine/routing/`. Workspace isolation (`PlannerWorktreeStrategy`, `MergeOrchestrator`, `WorkspaceIsolationService`) is implemented in `engine/workspace/`. Runtime multi-agent coordination is M4+.
+> **Current state:** Task structure classification (`TaskStructureClassifier`), DAG-based decomposition (`DecompositionService`, `DependencyGraph`, `ManualDecompositionStrategy`), LLM-based decomposition (`LlmDecompositionStrategy` with tool calling and JSON content fallback), status rollup (`StatusRollup`), agent-task scoring (`AgentTaskScorer`), routing (`TaskRoutingService`), and auto topology selection (`TopologySelector`) are implemented in `engine/decomposition/` and `engine/routing/`. Workspace isolation (`PlannerWorktreeStrategy`, `MergeOrchestrator`, `WorkspaceIsolationService`) is implemented in `engine/workspace/`. Runtime multi-agent coordination is planned.
 
 Empirical research on agent scaling ([Kim et al., 2025](https://arxiv.org/abs/2512.08296) — 180 controlled experiments across 3 LLM families and 4 benchmarks) demonstrates that **task decomposability is the strongest predictor of multi-agent effectiveness** — stronger than team size, model capability, or coordination architecture.
 
@@ -1185,9 +1172,9 @@ Each task carries a `task_structure` field (see §6.2 Task Definition) classifyi
 
 Classification can be:
 - **Explicit** — set in task config by the task creator or manager agent
-- **Inferred** — derived from task properties (tool count, dependency graph, acceptance criteria structure) by the task router (M4+)
+- **Inferred** — derived from task properties (tool count, dependency graph, acceptance criteria structure) by the task router
 
-#### Per-Task Coordination Topology (M4+)
+#### Per-Task Coordination Topology
 
 The communication pattern (§5.1) is configured at the company level, but **coordination topology can be selected per-task** based on task structure and properties. This allows the engine to use the most efficient coordination approach for each task rather than applying a single company-wide pattern.
 
@@ -1198,7 +1185,7 @@ The communication pattern (§5.1) is configured at the company level, but **coor
 | `parallel` + exploratory/open-ended | **Decentralized** | Peer debate enables diverse exploration of high-entropy search spaces |
 | `mixed` | **Context-dependent** | Sequential backbone handled by single agent; parallel sub-tasks delegated to sub-agents |
 
-#### Auto Topology Selector (M4+)
+#### Auto Topology Selector
 
 When topology is set to `"auto"`, the engine selects coordination topology based on measurable task properties:
 
@@ -1214,7 +1201,7 @@ coordination:
     mixed_default: "context_dependent"  # hybrid: not a single topology — engine selects per-phase
 ```
 
-The auto-selector uses task structure, artifact count, and (when available from M5 memory) historical single-agent success rate as inputs. The exact selection logic is an M4 implementation detail — the spec defines the interface and the empirically-grounded heuristics above.
+The auto-selector uses task structure, artifact count, and (when available from the memory subsystem) historical single-agent success rate as inputs. The exact selection logic is an implementation detail — the spec defines the interface and the empirically-grounded heuristics above.
 
 > **Reference:** These heuristics are derived from Kim et al. (2025), which achieved 87% accuracy predicting optimal architecture from task properties across held-out configurations. Our context differs (role-differentiated agents vs. identical agents), so thresholds should be validated empirically once multi-agent execution is implemented.
 
@@ -1298,7 +1285,7 @@ org_memory:
 - Simple to implement. Core rules always present. Extended knowledge scales
 - Basic retrieval may miss relational connections between policies
 
-#### Research Directions (M5+)
+#### Research Directions
 
 The following backends illustrate why `OrgMemoryBackend` is a protocol — the architecture supports future upgrades without modifying existing code. These are **not planned implementations**; they are research directions that may inform future work if/when organizational memory needs outgrow the Hybrid Prompt + Retrieval approach.
 
@@ -1562,7 +1549,7 @@ persistence:
 | `Message` | `communication/message.py` | `MessageRepository` | by channel |
 | `AuditEntry` | `security/models.py` | `AuditRepository` | by agent, by action type, by verdict, by risk level, time range |
 | `ParkedContext` | `security/timeout/parked_context.py` | `ParkedContextRepository` | by execution_id, by agent_id, by task_id |
-| Agent runtime state (planned — M7) | `engine/` | `AgentStateRepository` (planned) | by agent_id, active agents |
+| Agent runtime state (planned) | `engine/` | `AgentStateRepository` (planned) | by agent_id, active agents |
 
 #### Migration Strategy
 
@@ -1591,7 +1578,7 @@ company_b_backend = create_backend(company_b_config.persistence)
 
 #### Future: Runtime Backend Switching
 
-Runtime backend switching (e.g. migrating a company from SQLite to PostgreSQL during operation) is a planned future capability. The protocol-based design already supports this — the engine would disconnect the current backend, connect a new one with different config, and migrate. Implementation details (data migration tooling, zero-downtime switchover, connection draining) are deferred to the PostgreSQL backend milestone.
+Runtime backend switching (e.g. migrating a company from SQLite to PostgreSQL during operation) is a planned future capability. The protocol-based design already supports this — the engine would disconnect the current backend, connect a new one with different config, and migrate. Implementation details (data migration tooling, zero-downtime switchover, connection draining) are deferred to the PostgreSQL backend implementation.
 
 ### 7.7 Memory Injection Strategies
 
@@ -1654,9 +1641,7 @@ Strategy selection via config: `memory.retrieval.strategy: context | tool_based 
 
 ## 8. HR & Workforce Management
 
-> **MVP: Not in M3–M4.** HR features (hiring, firing, performance tracking, promotions) are M5–M7. Agent workforce is configured manually via YAML in early milestones.
-
-> **Implementation note (M7):** Hiring pipeline (`HiringService`), offboarding pipeline
+> **Implementation note:** Hiring pipeline (`HiringService`), offboarding pipeline
 > (`OffboardingService`), onboarding checklists (`OnboardingService`), and agent registry
 > (`AgentRegistryService`) are now implemented. Performance tracking subsystem
 > (`hr/performance/`) complete with pluggable quality scoring, collaboration scoring,
@@ -1801,7 +1786,7 @@ providers:
         cost_per_1k_output: 0.0
 ```
 
-> **Implementation note (M5):** `ProviderConfig` now includes `subscription: SubscriptionConfig` and `degradation: DegradationConfig` fields for per-provider quota limits and subscription-aware degradation behavior. The default degradation strategy is `ALERT` (raise `QuotaExhaustedError`). `FALLBACK` (route to fallback providers) and `QUEUE` (delay and retry) strategies are defined in the model but **not yet implemented** — the engine currently always raises on quota exhaustion regardless of strategy. Regular quota polling / proactive alerting before quotas are hit is deferred to a follow-up issue.
+> **Implementation note:** `ProviderConfig` now includes `subscription: SubscriptionConfig` and `degradation: DegradationConfig` fields for per-provider quota limits and subscription-aware degradation behavior. The default degradation strategy is `ALERT` (raise `QuotaExhaustedError`). `FALLBACK` (route to fallback providers) and `QUEUE` (delay and retry) strategies are defined in the model but **not yet implemented** — the engine currently always raises on quota exhaustion regardless of strategy. Regular quota polling / proactive alerting before quotas are hit is deferred to a follow-up issue.
 
 ### 9.3 LiteLLM Integration
 
@@ -1888,7 +1873,7 @@ Every API call is tracked (illustrative schema):
 
 ### 10.3 CFO Agent Responsibilities
 
-> **MVP: Not in M3.** Budget tracking and per-task cost recording exist (M2); cost controls (§10.4) are now enforced by `BudgetEnforcer` (a service the engine composes, not an agent — M5). The CFO agent is M5+.
+> **Current state:** Budget tracking, per-task cost recording, and cost controls (§10.4) are enforced by `BudgetEnforcer` (a service the engine composes, not an agent). CFO cost optimization is implemented via `CostOptimizer`.
 
 The CFO agent (when enabled) acts as a cost management system:
 
@@ -1900,7 +1885,7 @@ The CFO agent (when enabled) acts as a cost management system:
 - Blocks tasks that would exceed remaining budget
 - Optimizes model routing for cost/quality balance
 
-> **Implementation note (M5):** `CostOptimizer` service (`budget/optimizer.py`)
+> **Implementation note:** `CostOptimizer` service (`budget/optimizer.py`)
 > implements anomaly detection (sigma + spike factor), per-agent efficiency
 > analysis, model downgrade recommendations (via `ModelResolver`), routing
 > optimization suggestions (cost + context-window comparison), and operation
@@ -1941,7 +1926,7 @@ budget:
 
 > **Auto-downgrade boundary:** Model downgrades apply only at **task assignment time**, never mid-execution. An agent halfway through an architecture review cannot be switched to a cheaper model — the task completes on its assigned model. The next task assignment respects the downgrade threshold. This prevents quality degradation from mid-thought model switches.
 
-> **Implementation note (M5):** `BudgetEnforcer` composes `CostTracker` +
+> **Implementation note:** `BudgetEnforcer` composes `CostTracker` +
 > `BudgetConfig` + optional `QuotaTracker` + optional `ModelResolver` to
 > provide three enforcement layers: (1) pre-flight checks via
 > `check_can_execute` (monthly hard stop + per-agent daily limit + provider
@@ -1954,13 +1939,13 @@ budget:
 
 ### 10.5 LLM Call Analytics
 
-> **Current state:** Proxy metrics (M3), call categorization + coordination metric data models (M4 models, brought forward), and error taxonomy classification pipeline (M5) are implemented. Runtime collection pipeline for coordination metrics and full analytics layer are M5+.
+> **Current state:** Proxy metrics, call categorization + coordination metric data models, and error taxonomy classification pipeline are implemented. Runtime collection pipeline for coordination metrics and full analytics layer are planned.
 
-Every LLM provider call is tracked with comprehensive metadata for financial reporting, debugging, and orchestration overhead analysis. The analytics system builds incrementally across milestones.
+Every LLM provider call is tracked with comprehensive metadata for financial reporting, debugging, and orchestration overhead analysis. The analytics system builds incrementally.
 
-#### M3: Per-Call Tracking + Proxy Overhead Metrics
+#### Per-Call Tracking + Proxy Overhead Metrics
 
-Every completion call produces a `CompletionResponse` with `TokenUsage` (token counts and cost). The engine layer creates a `CostRecord` (with agent/task context) and records it into `CostTracker` — the provider itself does not have agent/task context. In M3, the engine additionally logs **proxy overhead metrics** at task completion:
+Every completion call produces a `CompletionResponse` with `TokenUsage` (token counts and cost). The engine layer creates a `CostRecord` (with agent/task context) and records it into `CostTracker` — the provider itself does not have agent/task context. The engine additionally logs **proxy overhead metrics** at task completion:
 
 - `turns_per_task` — number of LLM turns to complete the task (from `AgentRunResult.total_turns`)
 - `tokens_per_task` — total tokens consumed (from `AgentContext.accumulated_cost.total_tokens`)
@@ -1973,9 +1958,9 @@ These are natural overhead indicators — a task consuming 15 turns and 50k toke
 
 These metrics are captured in `TaskCompletionMetrics` (in `engine/metrics.py`), a frozen Pydantic model with a `from_run_result()` factory method. The engine logs these metrics at task completion via the `EXECUTION_ENGINE_TASK_METRICS` event.
 
-#### M4: Call Categorization + Orchestration Ratio
+#### Call Categorization + Orchestration Ratio
 
-> **Current state:** Data models (`LLMCallCategory`, `CategoryBreakdown`, `OrchestrationRatio`, `CostRecord.call_category`) and query methods (`CostTracker.get_category_breakdown`, `get_orchestration_ratio`) are implemented. Runtime categorization logic (automatic tagging of calls during multi-agent execution) is deferred to M4 runtime integration.
+> **Current state:** Data models (`LLMCallCategory`, `CategoryBreakdown`, `OrchestrationRatio`, `CostRecord.call_category`) and query methods (`CostTracker.get_category_breakdown`, `get_orchestration_ratio`) are implemented. Runtime categorization logic (automatic tagging of calls during multi-agent execution) is planned.
 
 When multi-agent coordination exists, each `CostRecord` is tagged with a **call category**:
 
@@ -1987,9 +1972,9 @@ When multi-agent coordination exists, each `CostRecord` is tagged with a **call 
 
 The **orchestration ratio** (`coordination / total`) is surfaced in metrics and alerts. If coordination tokens consistently exceed productive tokens, the company configuration needs tuning (fewer approval layers, simpler meeting protocols, etc.).
 
-#### M4: Coordination Metrics Suite
+#### Coordination Metrics Suite
 
-Beyond call categorization and orchestration ratio, M4 introduces a comprehensive suite of coordination metrics derived from empirical agent scaling research ([Kim et al., 2025](https://arxiv.org/abs/2512.08296)). These metrics explain coordination dynamics and enable data-driven tuning of multi-agent configurations.
+A comprehensive suite of coordination metrics derived from empirical agent scaling research ([Kim et al., 2025](https://arxiv.org/abs/2512.08296)). These metrics explain coordination dynamics and enable data-driven tuning of multi-agent configurations.
 
 | Metric | Symbol | Definition | What It Signals |
 |--------|--------|------------|-----------------|
@@ -2020,7 +2005,7 @@ coordination_metrics:
       - coordination_failure
 ```
 
-#### M5+: Full Analytics Layer
+#### Full Analytics Layer (Planned)
 
 Expanded per-call metadata for comprehensive financial and operational reporting:
 
@@ -2050,9 +2035,9 @@ call_analytics:
 
 > **Design principle:** Analytics metadata is append-only and never blocks execution. Failed analytics writes are logged and skipped — the agent's task is never delayed by telemetry. All analytics data flows through the existing `CostRecord` and structured logging infrastructure.
 
-#### M4/M5: Coordination Error Taxonomy
+#### Coordination Error Taxonomy
 
-> **Current state:** Error taxonomy classification pipeline is implemented in `engine/classification/`. Four heuristic-based detectors (logical contradiction, numerical drift, context omission, coordination failure) run post-execution when enabled via `error_taxonomy_config`. Integrated into `AgentEngine`. Classification results are log-only; programmatic access is planned for a future milestone. Full semantic analysis detectors are planned for future milestones.
+> **Current state:** Error taxonomy classification pipeline is implemented in `engine/classification/`. Four heuristic-based detectors (logical contradiction, numerical drift, context omission, coordination failure) run post-execution when enabled via `error_taxonomy_config`. Integrated into `AgentEngine`. Classification results are log-only; programmatic access is planned. Full semantic analysis detectors are planned.
 
 When coordination metrics collection is enabled, the system can optionally classify coordination errors into structured categories. This enables targeted diagnosis — e.g., if coordination failures spike, the topology may be too complex; if context omissions spike, the orchestrator's synthesis is insufficient.
 
@@ -2093,14 +2078,14 @@ When the LLM requests multiple tool calls in a single turn, `ToolInvoker.invoke_
 
 `BaseTool.parameters_schema` deep-copies the caller-supplied schema at construction and wraps it in `MappingProxyType` for read-only enforcement; the property returns a deep copy on access to prevent mutation of internal state. `ToolInvoker` deep-copies arguments at the tool execution boundary before passing them to `tool.execute()`. `MappingProxyType` wrapping is also used in `ToolRegistry` for its internal collections.
 
-**Permission checking (M3):** Each `BaseTool` carries a `category: ToolCategory` attribute used for access-level gating. `ToolInvoker` accepts an optional `ToolPermissionChecker` which enforces the agent's `ToolPermissions.access_level` (see §11.2). Permission checking occurs after tool lookup but before parameter validation:
+**Permission checking:** Each `BaseTool` carries a `category: ToolCategory` attribute used for access-level gating. `ToolInvoker` accepts an optional `ToolPermissionChecker` which enforces the agent's `ToolPermissions.access_level` (see §11.2). Permission checking occurs after tool lookup but before parameter validation:
 
 1. `get_permitted_definitions()` filters tool definitions sent to the LLM — the agent only sees tools it is permitted to use.
 2. At invocation time, denied tools return `ToolResult(is_error=True)` with a descriptive denial reason (defense-in-depth against LLM hallucinating unpresented tools).
 
-The `ToolPermissionChecker` resolves permissions using a priority-based system: denied list (highest) → allowed list → access-level categories → deny (default). `AgentEngine._make_tool_invoker()` creates a permission-aware invoker from the agent's `ToolPermissions` at the start of each `run()` call. Note: M3 implements category-level gating only; the granular sub-constraints described in §11.2 (workspace scope, network mode) are planned for when sandboxing is implemented.
+The `ToolPermissionChecker` resolves permissions using a priority-based system: denied list (highest) → allowed list → access-level categories → deny (default). `AgentEngine._make_tool_invoker()` creates a permission-aware invoker from the agent's `ToolPermissions` at the start of each `run()` call. Note: the current implementation provides category-level gating only; the granular sub-constraints described in §11.2 (workspace scope, network mode) are planned for when sandboxing is implemented.
 
-> **M3 implementation note — Built-in git tools:** Six workspace-scoped git tools are implemented in `tools/git_tools.py` with a shared `_BaseGitTool` base class in `tools/_git_base.py`: `GitStatusTool`, `GitLogTool`, `GitDiffTool`, `GitBranchTool`, `GitCommitTool`, and `GitCloneTool`. The base class enforces workspace boundary security (path traversal prevention via `resolve()` + `relative_to()`) and provides a common `_run_git()` helper using `asyncio.create_subprocess_exec` (never `shell=True`). Security hardening includes: `GIT_TERMINAL_PROMPT=0` to prevent credential prompts, `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=os.devnull`, and `GIT_PROTOCOL_FROM_USER=0` to restrict config/protocol attack surfaces, rejection of flag-like argument values (starting with `-`) for refs, branch names, author filters, date strings, and other git arguments, URL scheme validation on clone (only `https://`, `ssh://`, `git://`, and SCP-like syntax — plain `http://` rejected for security) with `--` separator before positional URL argument, and clone URLs starting with `-` are rejected. All tools return `ToolExecutionResult` for errors rather than raising exceptions. When a `SandboxBackend` is injected, `_run_git()` delegates subprocess management to the sandbox via `_run_git_sandboxed()` — the sandbox handles environment filtering and workspace-scoped cwd enforcement, while `_validate_path` independently enforces workspace boundaries for git path arguments. Git hardening env vars are passed as `env_overrides` to the sandbox, and `SandboxResult` is converted to `ToolExecutionResult` via `_sandbox_result_to_execution_result`. Without a sandbox, the direct-subprocess path is used (backward compatible). Both paths explicitly close the subprocess transport on Windows (via `tools/_process_cleanup.py`) to prevent `ResourceWarning` on `ProactorEventLoop`. **Future:** Consider adding host/IP allowlisting for clone URLs to prevent SSRF against internal networks (loopback, link-local, private ranges).
+> **Implementation note — Built-in git tools:** Six workspace-scoped git tools are implemented in `tools/git_tools.py` with a shared `_BaseGitTool` base class in `tools/_git_base.py`: `GitStatusTool`, `GitLogTool`, `GitDiffTool`, `GitBranchTool`, `GitCommitTool`, and `GitCloneTool`. The base class enforces workspace boundary security (path traversal prevention via `resolve()` + `relative_to()`) and provides a common `_run_git()` helper using `asyncio.create_subprocess_exec` (never `shell=True`). Security hardening includes: `GIT_TERMINAL_PROMPT=0` to prevent credential prompts, `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=os.devnull`, and `GIT_PROTOCOL_FROM_USER=0` to restrict config/protocol attack surfaces, rejection of flag-like argument values (starting with `-`) for refs, branch names, author filters, date strings, and other git arguments, URL scheme validation on clone (only `https://`, `ssh://`, `git://`, and SCP-like syntax — plain `http://` rejected for security) with `--` separator before positional URL argument, and clone URLs starting with `-` are rejected. All tools return `ToolExecutionResult` for errors rather than raising exceptions. When a `SandboxBackend` is injected, `_run_git()` delegates subprocess management to the sandbox via `_run_git_sandboxed()` — the sandbox handles environment filtering and workspace-scoped cwd enforcement, while `_validate_path` independently enforces workspace boundaries for git path arguments. Git hardening env vars are passed as `env_overrides` to the sandbox, and `SandboxResult` is converted to `ToolExecutionResult` via `_sandbox_result_to_execution_result`. Without a sandbox, the direct-subprocess path is used (backward compatible). Both paths explicitly close the subprocess transport on Windows (via `tools/_process_cleanup.py`) to prevent `ResourceWarning` on `ProactorEventLoop`. **Future:** Consider adding host/IP allowlisting for clone URLs to prevent SSRF against internal networks (loopback, link-local, private ranges).
 
 ### 11.1.2 Tool Sandboxing
 
@@ -2108,7 +2093,7 @@ Tool execution requires safety boundaries proportional to the risk of each tool 
 
 > **MVP: Subprocess sandbox for file/git tools. Docker optional for code execution.** K8s is future.
 >
-> **Decision ([ADR-002](docs/decisions/ADR-002-design-decisions-batch-1.md) D16):** Docker MVP only via `aiodocker` (async-native, Python 3.14 support). Pre-built image (Python 3.14 + Node.js LTS + basic utils, <500MB) + user-configurable via `docker.image` config. **Fail with clear error** if Docker unavailable — no unsafe subprocess fallback for code execution (file/git tools already use `SubprocessSandbox`). gVisor (`--runtime=runsc`) as free config-level hardening upgrade. Evaluate WASM/Firecracker post-M7. `SandboxBackend` protocol makes adding backends trivial.
+> **Decision ([ADR-002](docs/decisions/ADR-002-design-decisions-batch-1.md) D16):** Docker MVP only via `aiodocker` (async-native, Python 3.14 support). Pre-built image (Python 3.14 + Node.js LTS + basic utils, <500MB) + user-configurable via `docker.image` config. **Fail with clear error** if Docker unavailable — no unsafe subprocess fallback for code execution (file/git tools already use `SubprocessSandbox`). gVisor (`--runtime=runsc`) as free config-level hardening upgrade. WASM/Firecracker evaluation planned. `SandboxBackend` protocol makes adding backends trivial.
 
 #### Sandbox Backends
 
@@ -2235,13 +2220,13 @@ tool_access:
       description: "Per-agent custom configuration."
 ```
 
-> **M3 implementation note:** The current `ToolPermissionChecker` implements **category-level gating only** — each access level maps to a set of permitted `ToolCategory` values (e.g., `STANDARD` permits `file_system`, `code_execution`, `version_control`, `web`, `terminal`, `analytics`). `SubprocessSandbox` provides workspace-scoped cwd enforcement and env filtering (see §11.1.2). The granular sub-constraints shown above (network mode, containerization) are planned for Docker/K8s sandbox backends.
+> **Implementation note:** The current `ToolPermissionChecker` implements **category-level gating only** — each access level maps to a set of permitted `ToolCategory` values (e.g., `STANDARD` permits `file_system`, `code_execution`, `version_control`, `web`, `terminal`, `analytics`). `SubprocessSandbox` provides workspace-scoped cwd enforcement and env filtering (see §11.1.2). The granular sub-constraints shown above (network mode, containerization) are planned for Docker/K8s sandbox backends.
 
 ### 11.3 Progressive Trust
 
 Agents can earn higher tool access over time through configurable trust strategies. The trust system implements a `TrustStrategy` protocol, making it extensible. Multiple strategies are available, selectable via config.
 
-> **MVP: Disabled (static access).** Agents receive their configured access level at hire time — no automated trust evolution until M7. The `TrustStrategy` protocol ensures all strategies are pluggable.
+> **Current state:** All four strategies are implemented behind the `TrustStrategy` protocol: `DisabledTrustStrategy`, `WeightedTrustStrategy`, `PerCategoryTrustStrategy`, `MilestoneTrustStrategy`. Default is disabled (static access) — agents receive their configured access level at hire time.
 >
 > **Security invariant (all strategies):** The `standard_to_elevated` promotion **always** requires human approval. No agent can auto-gain production access regardless of trust strategy.
 
@@ -2448,7 +2433,7 @@ Policy selection is declarative via `SecurityConfig.output_scan_policy_type` (`O
 
 When an action requires human approval (per autonomy level in §12.2), the agent must wait. The framework provides configurable timeout policies that determine what happens when a human doesn't respond. All policies implement a `TimeoutPolicy` protocol. The policy is configurable per autonomy level and per action risk tier.
 
-> **MVP: Wait Forever only (Policy 1).** Other timeout policies are M5+.
+> **Current state:** All four timeout policies are implemented: `WaitForeverPolicy`, `AutoDenyPolicy`, `TieredPolicy`, `EscalationChainPolicy`. Park/resume service, risk tier classifier, and timeout checker are complete.
 
 During any wait — regardless of policy — the agent **parks** the blocked task (saving its full serialized `AgentContext` state: conversation, progress, accumulated cost, turn count — i.e., the complete persisted context, distinct from the compact `AgentContextSnapshot` used for telemetry) and picks up other available tasks from its queue. When approval eventually arrives, the agent **resumes** the original context exactly where it left off. This mirrors real company behavior: a junior developer starts another task while waiting for a code review, then returns to the original work when feedback arrives.
 
@@ -2526,7 +2511,7 @@ approval_timeout:
 
 > **Decisions ([ADR-002](docs/decisions/ADR-002-design-decisions-batch-1.md) D19, D20, D21):**
 >
-> - **D19 — Risk Tier Classification:** Pluggable `RiskTierClassifier` protocol. Initial: configurable YAML mapping — `RiskTierMapping` config model with `dict[str, ApprovalRiskLevel]`. Sensible defaults matching examples above (e.g. `code:write` → low, `deploy:production` → critical). Unknown action types default to HIGH (fail-safe). Hot-reloadable. Leaves door open for SecOps override in M7. Future strategies: SecOps-assigned, fixed-per-type.
+> - **D19 — Risk Tier Classification:** Pluggable `RiskTierClassifier` protocol. Initial: configurable YAML mapping — `RiskTierMapping` config model with `dict[str, ApprovalRiskLevel]`. Sensible defaults matching examples above (e.g. `code:write` → low, `deploy:production` → critical). Unknown action types default to HIGH (fail-safe). Hot-reloadable. Leaves door open for future SecOps override. Future strategies: SecOps-assigned, fixed-per-type.
 > - **D20 — Context Serialization:** Pydantic JSON via persistence backend. `ParkedContext` model with metadata columns (`execution_id`, `agent_id`, `task_id`, `parked_at`) + `context_json` blob. `ParkedContextRepository` protocol via existing `PersistenceBackend` (§7.6). Conversation stored **verbatim** — summarization is a context window management concern at resume time, not a persistence concern.
 > - **D21 — Resume Injection:** Tool result injection. Approval requests modeled as tool calls (`request_human_approval`). Approval decision returned as `ToolResult` — semantically correct (approval IS the tool's return value). LLM conversation protocol requires a tool result after a tool call. Fallback: system message injection for engine-initiated parking (exception path).
 
@@ -2765,7 +2750,7 @@ Circular inheritance is detected via chain tracking and raises `TemplateInherita
 
 ### 15.3 Project Structure
 
-Files marked with a milestone tag (e.g. `(M3)`) are planned but do not exist yet — only stub `__init__.py` files are present. All other files listed below exist in the codebase.
+Files marked with `(planned)` do not exist yet — only stub `__init__.py` files are present. All other files listed below exist in the codebase.
 
 ```text
 ai-company/
@@ -2944,7 +2929,7 @@ ai-company/
 │       │   │   └── structured_phases.py # StructuredPhasesProtocol implementation
 │       │   ├── messenger.py        # AgentMessenger per-agent facade
 │       │   └── subscription.py     # Subscription + DeliveryEnvelope models
-│       ├── memory/                  # Agent memory system — protocols, models, config, factory, retrieval pipeline (ranking, injection, context formatting, non-inferable filtering) (M5)
+│       ├── memory/                  # Agent memory system — protocols, models, config, factory, retrieval pipeline (ranking, injection, context formatting, non-inferable filtering)
 │       │   ├── __init__.py         # Re-exports
 │       │   ├── capabilities.py     # MemoryCapabilities protocol
 │       │   ├── config.py           # CompanyMemoryConfig, MemoryStorageConfig, MemoryOptionsConfig
@@ -2981,12 +2966,12 @@ ai-company/
 │       │       └── store.py      # OrgFactStore protocol, SQLiteOrgFactStore
 │       ├── persistence/             # Operational data persistence (§7.6)
 │       │   ├── __init__.py         # Package exports
-│       │   ├── protocol.py         # PersistenceBackend protocol (M5)
+│       │   ├── protocol.py         # PersistenceBackend protocol
 │       │   ├── repositories.py     # Repository protocols: TaskRepository, CostRecordRepository, MessageRepository, ParkedContextRepository, AuditRepository, UserRepository, ApiKeyRepository
-│       │   ├── config.py           # PersistenceConfig model (M5)
-│       │   ├── errors.py           # Persistence error hierarchy (M5)
-│       │   ├── factory.py          # create_backend() factory (M5)
-│       │   └── sqlite/             # SQLite backend (M5, initial)
+│       │   ├── config.py           # PersistenceConfig model
+│       │   ├── errors.py           # Persistence error hierarchy
+│       │   ├── factory.py          # create_backend() factory
+│       │   └── sqlite/             # SQLite backend (initial)
 │       │       ├── __init__.py    # Package exports
 │       │       ├── backend.py     # SQLitePersistenceBackend
 │       │       ├── repositories.py # SQLite repository implementations
@@ -3092,7 +3077,7 @@ ai-company/
 │       │   ├── _process_cleanup.py  # Subprocess transport cleanup utility (Windows ResourceWarning prevention)
 │       │   ├── git_tools.py        # Git operations — 6 built-in tools (sandbox-aware)
 │       │   ├── code_runner.py      # Code execution tool
-│       │   ├── web_tools.py        # HTTP, search (M7)
+│       │   ├── web_tools.py        # HTTP, search (planned)
 │       │   ├── sandbox/             # Sandbox backends subpackage
 │       │   │   ├── __init__.py    # Package exports
 │       │   │   ├── config.py      # Subprocess sandbox configuration
@@ -3178,12 +3163,12 @@ ai-company/
 │       │   ├── billing.py          # Billing period computation utilities
 │       │   ├── enforcer.py         # BudgetEnforcer service (pre-flight, in-flight, auto-downgrade)
 │       │   ├── errors.py           # BudgetExhaustedError, DailyLimitExceededError, QuotaExhaustedError
-│       │   ├── optimizer.py        # CostOptimizer service — anomaly detection, efficiency analysis, downgrade recommendations, approval decisions (M5)
-│       │   ├── optimizer_models.py # CostOptimizer domain models — anomaly, efficiency, downgrade, approval, config (M5)
+│       │   ├── optimizer.py        # CostOptimizer service — anomaly detection, efficiency analysis, downgrade recommendations, approval decisions
+│       │   ├── optimizer_models.py # CostOptimizer domain models — anomaly, efficiency, downgrade, approval, config
 │       │   ├── quota.py            # Quota/subscription models, degradation config, quota snapshots
 │       │   ├── quota_tracker.py    # QuotaTracker service: per-provider request/token quota enforcement
-│       │   └── reports.py          # Spending reports (M5)
-│       ├── api/                     # REST + WebSocket API (M6)
+│       │   └── reports.py          # Spending reports
+│       ├── api/                     # REST + WebSocket API
 │       │   ├── app.py              # Litestar application factory, lifecycle hooks
 │       │   ├── approval_store.py   # In-memory approval queue storage
 │       │   ├── auth/               # JWT + API key authentication subsystem
@@ -3285,36 +3270,36 @@ ai-company/
 
 ### 15.5 Engineering Conventions
 
-These conventions were established during the M0–M2+ review cycle. **Adopted** conventions are already used throughout the codebase. **Planned** conventions are approved design decisions for upcoming milestones but not yet implemented.
+These conventions are used throughout the codebase. **Adopted** conventions are already in use. **Planned** conventions are approved design decisions not yet implemented.
 
 | Convention | Status | Decision | Rationale |
 |------------|--------|----------|-----------|
 | **Immutability strategy** | Adopted | `copy.deepcopy()` at construction + `MappingProxyType` wrapping for non-Pydantic internal collections (registries, `BaseTool`). For Pydantic frozen models: `frozen=True` prevents field reassignment; `copy.deepcopy()` at system boundaries (tool execution, LLM provider serialization) prevents nested mutation. No MappingProxyType inside Pydantic models (serialization friction). | Deep-copy at construction fully isolates nested structures; `MappingProxyType` enforces read-only access. Boundary-copy for Pydantic models is simple, centralized, and Pydantic-native. A future CPython built-in immutable mapping type (e.g. `frozendict`) would provide zero-friction field-level immutability when available. |
-| **Config vs runtime split** | Adopted (M3) | Frozen models for config/identity; `model_copy(update=...)` for runtime state transitions | `TaskExecution` and `AgentContext` (in `engine/`) are frozen Pydantic models that use `model_copy(update=...)` for copy-on-write state transitions without re-running validators (per Pydantic `model_copy` semantics). Config layer (`AgentIdentity`, `Task`) remains unchanged. |
+| **Config vs runtime split** | Adopted | Frozen models for config/identity; `model_copy(update=...)` for runtime state transitions | `TaskExecution` and `AgentContext` (in `engine/`) are frozen Pydantic models that use `model_copy(update=...)` for copy-on-write state transitions without re-running validators (per Pydantic `model_copy` semantics). Config layer (`AgentIdentity`, `Task`) remains unchanged. |
 | **Derived fields** | Adopted | `@computed_field` instead of stored + validated | Eliminates redundant storage and impossible-to-fail validators. `TokenUsage.total_tokens` migrated from stored `Field` + `@model_validator` to `@computed_field` property. |
 | **String validation** | Adopted | `NotBlankStr` type from `core.types` for all identifiers | Eliminates per-model `@model_validator` boilerplate for whitespace checks. All identifier/name fields use `NotBlankStr`; optional identifiers use `NotBlankStr \| None`; tuple fields use `tuple[NotBlankStr, ...]` for per-element validation. |
-| **Shared field groups** | Adopted (M2.5) | Extracted common field sets into base models (e.g. `_SpendingTotals`) | Prevents field duplication across spending summary models. `_SpendingTotals` provides shared aggregation fields; `AgentSpending`, `DepartmentSpending`, `PeriodSpending` extend it. |
+| **Shared field groups** | Adopted | Extracted common field sets into base models (e.g. `_SpendingTotals`) | Prevents field duplication across spending summary models. `_SpendingTotals` provides shared aggregation fields; `AgentSpending`, `DepartmentSpending`, `PeriodSpending` extend it. |
 | **Event constants** | Adopted (per-domain) | Per-domain submodules under `events/` package (e.g. `events.provider`, `events.budget`). Import directly: `from ai_company.observability.events.<domain> import CONSTANT` | Split by domain for discoverability, co-location with domain logic, and reduced merge conflicts as constants grow. `__init__.py` serves as package marker with usage documentation; no re-exports. |
-| **Parallel tool execution** | Adopted (M2.5) | `asyncio.TaskGroup` in `ToolInvoker.invoke_all` with optional `max_concurrency` semaphore | Structured concurrency with proper cancellation semantics. Fatal errors collected via guarded wrapper and re-raised after all tasks complete. |
-| **Parallel agent execution** | Adopted (M3) | `ParallelExecutor` coordinates concurrent `AgentEngine.run()` calls via `asyncio.TaskGroup` + optional `Semaphore` concurrency limit + `_run_guarded()` error isolation. `ResourceLock` protocol with `InMemoryResourceLock` for exclusive file-path claims. Progress tracking via `ProgressCallback`. Shutdown-aware via `ShutdownManager` task registration. Fail-fast mode cancels sibling tasks on first failure; all errors are surfaced via `ParallelExecutionResult` outcomes. | Follows the `ToolInvoker.invoke_all()` pattern (parallel tool execution above). Composition over inheritance — wraps `AgentEngine`. Structured concurrency with proper cancellation. See §6.3 Parallel Execution. |
-| **Tool permission checking** | Adopted (M3) | `ToolPermissionChecker` enforces category-level gating based on `ToolAccessLevel` (sandboxed → restricted → standard → elevated, plus custom). Priority-based resolution: denied list → allowed list → level categories → deny. Case-insensitive name matching. `ToolInvoker` filters definitions for prompt and checks at invocation time. | Defense-in-depth: agents only see permitted tools in the LLM prompt, and invocations are re-checked at execution time. Explicit allow/deny lists provide per-agent overrides. See §11.1.1. |
-| **Tool sandboxing** | Adopted (M3, incremental) | File system tools use in-process `PathValidator` for workspace-scoped path validation (symlink resolution + containment check). `BaseFileSystemTool` ABC provides shared `ToolCategory.FILE_SYSTEM` and `PathValidator` integration — all file system tools extend this base. `SandboxBackend` protocol with `SubprocessSandbox` implemented — git tools accept optional `SandboxBackend` injection and delegate subprocess management to it (env filtering, workspace enforcement, timeout + process-group kill). `DockerSandbox` planned for code_runner, terminal, web, and database tools. `K8sSandbox` planned for future container deployments. Config-driven per-category backend selection planned for engine wiring. | File system tools use defence-in-depth path validation; subprocess sandbox provides lightweight isolation for git tools; heavier Docker/K8s isolation reserved for higher-risk tool categories (code execution, network). See §11.1.2. |
-| **Crash recovery** | Adopted (M3) | Pluggable `RecoveryStrategy` protocol. M3: `FailAndReassignStrategy` (catch at engine boundary, log snapshot, mark FAILED / eligible for reassignment). M4/M5: `CheckpointStrategy` (persist `AgentContext` per turn, resume from last checkpoint). | Immutable `model_copy` pattern makes checkpoint serialization trivial to add later. Fail-and-reassign is sufficient for short MVP tasks. See §6.6. |
-| **Personality compatibility scoring** | Adopted (M3) | Weighted composite: 60% Big Five similarity (openness, conscientiousness, agreeableness, stress_response → 1−\|diff\|; extraversion → tent-function peaking at 0.3 diff), 20% collaboration alignment (ordinal adjacency: INDEPENDENT↔PAIR↔TEAM), 20% conflict approach (constructive pairs score 1.0, destructive pairs 0.2, mixed 0.4–0.6). `itertools.combinations` for team-level averaging. Result clamped to [0, 1]. | Covers behavioral diversity (extraversion complement), task alignment (conscientiousness similarity), and interpersonal friction (conflict approach). Weights are configurable module constants. |
-| **Agent behavior testing** | Planned (M3) | Scripted `FakeProvider` for unit tests (deterministic turn sequences); behavioral outcome assertions for integration tests (task completed, tools called, cost within budget). | Leverages existing `FakeProvider` and `CompletionResponseFactory` fixtures. Precise engine testing without brittle response-matching at integration level. |
-| **LLM call analytics** | Adopted (incremental) | M3: proxy metrics (`turns_per_task`, `tokens_per_task`) — adopted. M4 data models: call categorization (`productive`, `coordination`, `system`), category analytics, coordination metrics, orchestration ratio — adopted. M4 runtime collection pipeline and M5+ full analytics: planned. | Append-only, never blocks execution. Builds on existing `CostRecord` infrastructure. Detects orchestration overhead early. See §10.5. |
-| **Cost tiers & quota tracking** | Adopted (M5) | Configurable `CostTierDefinition` definitions with merge/override semantics via `resolve_tiers(config: CostTiersConfig)`. `SubscriptionConfig` + `QuotaLimit` model per-provider subscription plans. `QuotaTracker` enforces per-provider request/token quotas with window-based rotation. `DegradationConfig` controls behavior when quotas are exhausted (default: `ALERT` — raise error; `FALLBACK` and `QUEUE` strategies defined but not yet implemented). | Enables cost classification without hardcoding vendor tiers. Quota tracking prevents surprise overages at the provider level. Window-based rotation aligns quota resets with billing periods. See §10.4. |
-| **Shared org memory** | Adopted (M5) | `OrgMemoryBackend` protocol (pluggable) with `HybridPromptRetrievalBackend` (Backend 1). `OrgFactStore` protocol with `SQLiteOrgFactStore` for persistent fact storage. Seniority-based write access control via `CategoryWriteRule`. Core policies injected into system prompts; extended facts retrieved on demand via `OrgMemoryQuery`. `OrgFact` model with `OrgFactAuthor` provenance tracking. Config-driven via `OrgMemoryConfig`. | Pluggable backend mirrors `MemoryBackend` pattern. Hybrid prompt+retrieval balances always-available core policies with on-demand extended knowledge. Seniority-based access control prevents junior agents from overwriting organizational knowledge. See §7.4. |
-| **Memory consolidation** | Adopted (M5) | `ConsolidationStrategy` protocol with `SimpleConsolidationStrategy` (deduplication + summarization). `RetentionEnforcer` for per-category age-based cleanup via `RetentionRule` policies. `ArchivalStore` protocol for cold storage before deletion. `MemoryConsolidationService` orchestrates retention → consolidation → max-memories enforcement pipeline. `ConsolidationResult` tracks statistics. Config-driven via `ConsolidationConfig` + `RetentionConfig` + `ArchivalConfig`. | Prevents unbounded memory growth. Pluggable strategy enables different consolidation approaches (simple dedup now, LLM-based summarization later). Retention + archival ensures compliance with data lifecycle policies. See §7.4. |
-| **State coordination** | Planned (M4) | Centralized single-writer: `TaskEngine` owns all task/project mutations via `asyncio.Queue`. Agents submit requests, engine applies `model_copy(update=...)` sequentially and publishes snapshots. `version: int` field on state models for future optimistic concurrency if multi-process scaling is needed. | Prevents lost updates by design. Trivial in single-threaded asyncio (no locks). Perfect audit trail. Industry consensus: MetaGPT, CrewAI, AutoGen all use prevention-by-design, not conflict resolution. See §6.8 State Coordination table. |
-| **Workspace isolation** | Adopted (M4 core) | Pluggable `WorkspaceIsolationStrategy` protocol. Default: planner + git worktrees. Each agent works in an isolated worktree; sequential merge on completion. Textual conflicts detected by git; semantic conflicts reviewed by agent or human. Runtime multi-agent coordination wiring remains M4 hardening work. | Industry standard (Codex, Cursor, Claude Code, VS Code). Maximum parallelism. Leverages mature git infrastructure. See §6.8. |
-| **Graceful shutdown** | Adopted (M3) | Pluggable `ShutdownStrategy` protocol. Default: cooperative with 30s timeout. Agents check shutdown event at turn boundaries. Force-cancel after timeout. `INTERRUPTED` status for force-cancelled tasks. M4/M5: upgrade to checkpoint-and-stop. | Cross-platform (Windows `signal.signal()` fallback). Bounded shutdown time. Mirrors cooperative shutdown in §6.7. |
-| **Template inheritance** | Adopted (M2.5) | `extends` field on `CompanyTemplate` triggers parent resolution at render time. `merge.py` merges configs by field type: scalars (child wins), config dicts (deep merge), agents (by `(role, department, merge_id)` key with `_remove` support), departments (by name). `_ParentEntry` dataclass tracks merge state. `DEFAULT_MERGE_DEPARTMENT = "engineering"` shared between merge and renderer. Circular chains detected via `frozenset` tracking; max depth = 10. | Enables template composition without copy-paste. Merge-by-key preserves parent order. `_remove` directive enables clean agent removal without workarounds. |
-| **Pydantic alias for YAML directives** | Adopted (M2.5) | `Field(alias="_remove")` in `TemplateAgentConfig` — YAML uses `_remove: true`, Python accesses `agent.remove`. Keeps the YAML-facing name (underscore prefix signals internal directive) separate from the Python attribute name. | Underscore-prefixed YAML keys signal merge directives vs regular fields. Pydantic alias bridges the naming convention gap cleanly. |
-| **Communication foundation** | Adopted (M4) | `MessageBus` protocol with `InMemoryMessageBus` backend (asyncio queues, pull-model `receive()` with shutdown signaling via `asyncio.Event`). `MessageDispatcher` routes to concurrent handlers via `asyncio.TaskGroup` with pre-allocated error collection. `AgentMessenger` per-agent facade auto-fills sender/timestamp/ID; deterministic direct-channel naming `@{sorted_a}:{sorted_b}`. `DeliveryEnvelope` for delivery tracking. `NotBlankStr` validation on all protocol boundary identifiers. | Pull-model avoids callback complexity and enables agents to consume at their own pace. Protocol + backend split enables future persistent/distributed bus implementations. Deterministic DM channel names prevent duplicates. See §5. |
-| **Delegation & loop prevention** | Adopted (M4) | `HierarchyResolver` resolves org hierarchy from `Company` at construction (cycle-detected, `MappingProxyType`-frozen). `AuthorityValidator` checks chain-of-command + role permissions. `DelegationGuard` orchestrates five mechanisms (ancestry, depth, dedup, rate limit, circuit breaker) in sequence, short-circuiting on first rejection. `DelegationService` is synchronous (CPU-only); messaging integration deferred. Stateful mechanisms use injectable clock for deterministic testing. Task model extended with `parent_task_id` and `delegation_chain` fields. | Synchronous delegation avoids async complexity for CPU-only validation. Five-mechanism guard provides defence-in-depth against all loop patterns. Injectable clocks enable deterministic testing. See §5.4, §5.5. |
-| **Task assignment** | Adopted (M4) | `TaskAssignmentStrategy` protocol with six concrete strategies: Manual (pre-designated), RoleBased (capability scoring via `AgentTaskScorer`), LoadBalanced (workload-aware with score tiebreaker), CostOptimized (cheapest-agent with score tiebreaker), Hierarchical (subordinate delegation via `HierarchyResolver`), Auction (bid = score × availability). `TaskAssignmentService` orchestrates with status validation, structured logging, and `STRATEGY_MAP` registry (`MappingProxyType`-wrapped singletons; five strategies — Hierarchical requires `build_strategy_map(hierarchy=...)`). Inactive agents filtered during scoring. | Pluggable strategies behind a protocol mirror the execution loop and conflict resolution patterns. Reuses `AgentTaskScorer` from routing subsystem. `MappingProxyType` registry matches existing immutability conventions. See §6.4. |
-| **Conflict resolution** | Adopted (M4) | `ConflictResolver` protocol with async `resolve()` + sync `build_dissent_records()` split (resolve may call LLM, dissent record is pure construction). Four strategies: `AuthorityResolver` (seniority comparison iterating all N positions, hierarchy proximity tiebreaker via `get_lowest_common_manager`), `DebateResolver` (LLM judge via `JudgeEvaluator` protocol, authority fallback when absent), `HumanEscalationResolver` (stub, returns `ESCALATED_TO_HUMAN`), `HybridResolver` (LLM review + ambiguity escalation/authority fallback). `ConflictResolutionService` follows `DelegationService` pattern (`__slots__`, keyword-only constructor, `MappingProxyType`-wrapped resolver mapping, audit trail). `DissentRecord` preserves losing agent's reasoning. `Conflict.is_cross_department` is a `@computed_field` derived from positions. `HierarchyResolver` extended with `get_lowest_common_manager()` and `get_delegation_depth()`. | Protocol + strategy pattern enables adding new resolution approaches without modifying existing code. Async resolve accommodates LLM calls; sync dissent record avoids unnecessary async overhead. Shared `find_losers` utility prevents code duplication across strategies. See §5.6. |
+| **Parallel tool execution** | Adopted | `asyncio.TaskGroup` in `ToolInvoker.invoke_all` with optional `max_concurrency` semaphore | Structured concurrency with proper cancellation semantics. Fatal errors collected via guarded wrapper and re-raised after all tasks complete. |
+| **Parallel agent execution** | Adopted | `ParallelExecutor` coordinates concurrent `AgentEngine.run()` calls via `asyncio.TaskGroup` + optional `Semaphore` concurrency limit + `_run_guarded()` error isolation. `ResourceLock` protocol with `InMemoryResourceLock` for exclusive file-path claims. Progress tracking via `ProgressCallback`. Shutdown-aware via `ShutdownManager` task registration. Fail-fast mode cancels sibling tasks on first failure; all errors are surfaced via `ParallelExecutionResult` outcomes. | Follows the `ToolInvoker.invoke_all()` pattern (parallel tool execution above). Composition over inheritance — wraps `AgentEngine`. Structured concurrency with proper cancellation. See §6.3 Parallel Execution. |
+| **Tool permission checking** | Adopted | `ToolPermissionChecker` enforces category-level gating based on `ToolAccessLevel` (sandboxed → restricted → standard → elevated, plus custom). Priority-based resolution: denied list → allowed list → level categories → deny. Case-insensitive name matching. `ToolInvoker` filters definitions for prompt and checks at invocation time. | Defense-in-depth: agents only see permitted tools in the LLM prompt, and invocations are re-checked at execution time. Explicit allow/deny lists provide per-agent overrides. See §11.1.1. |
+| **Tool sandboxing** | Adopted (incremental) | File system tools use in-process `PathValidator` for workspace-scoped path validation (symlink resolution + containment check). `BaseFileSystemTool` ABC provides shared `ToolCategory.FILE_SYSTEM` and `PathValidator` integration — all file system tools extend this base. `SandboxBackend` protocol with `SubprocessSandbox` implemented — git tools accept optional `SandboxBackend` injection and delegate subprocess management to it (env filtering, workspace enforcement, timeout + process-group kill). `DockerSandbox` planned for code_runner, terminal, web, and database tools. `K8sSandbox` planned for future container deployments. Config-driven per-category backend selection planned for engine wiring. | File system tools use defence-in-depth path validation; subprocess sandbox provides lightweight isolation for git tools; heavier Docker/K8s isolation reserved for higher-risk tool categories (code execution, network). See §11.1.2. |
+| **Crash recovery** | Adopted | Pluggable `RecoveryStrategy` protocol. Current: `FailAndReassignStrategy` (catch at engine boundary, log snapshot, mark FAILED / eligible for reassignment). Planned: `CheckpointStrategy` (persist `AgentContext` per turn, resume from last checkpoint). | Immutable `model_copy` pattern makes checkpoint serialization trivial to add later. Fail-and-reassign is sufficient for short tasks. See §6.6. |
+| **Personality compatibility scoring** | Adopted | Weighted composite: 60% Big Five similarity (openness, conscientiousness, agreeableness, stress_response → 1−\|diff\|; extraversion → tent-function peaking at 0.3 diff), 20% collaboration alignment (ordinal adjacency: INDEPENDENT↔PAIR↔TEAM), 20% conflict approach (constructive pairs score 1.0, destructive pairs 0.2, mixed 0.4–0.6). `itertools.combinations` for team-level averaging. Result clamped to [0, 1]. | Covers behavioral diversity (extraversion complement), task alignment (conscientiousness similarity), and interpersonal friction (conflict approach). Weights are configurable module constants. |
+| **Agent behavior testing** | Planned | Scripted `FakeProvider` for unit tests (deterministic turn sequences); behavioral outcome assertions for integration tests (task completed, tools called, cost within budget). | Leverages existing `FakeProvider` and `CompletionResponseFactory` fixtures. Precise engine testing without brittle response-matching at integration level. |
+| **LLM call analytics** | Adopted (incremental) | Proxy metrics (`turns_per_task`, `tokens_per_task`) — adopted. Data models for call categorization (`productive`, `coordination`, `system`), category analytics, coordination metrics, orchestration ratio — adopted. Runtime collection pipeline and full analytics: planned. | Append-only, never blocks execution. Builds on existing `CostRecord` infrastructure. Detects orchestration overhead early. See §10.5. |
+| **Cost tiers & quota tracking** | Adopted | Configurable `CostTierDefinition` definitions with merge/override semantics via `resolve_tiers(config: CostTiersConfig)`. `SubscriptionConfig` + `QuotaLimit` model per-provider subscription plans. `QuotaTracker` enforces per-provider request/token quotas with window-based rotation. `DegradationConfig` controls behavior when quotas are exhausted (default: `ALERT` — raise error; `FALLBACK` and `QUEUE` strategies defined but not yet implemented). | Enables cost classification without hardcoding vendor tiers. Quota tracking prevents surprise overages at the provider level. Window-based rotation aligns quota resets with billing periods. See §10.4. |
+| **Shared org memory** | Adopted | `OrgMemoryBackend` protocol (pluggable) with `HybridPromptRetrievalBackend` (Backend 1). `OrgFactStore` protocol with `SQLiteOrgFactStore` for persistent fact storage. Seniority-based write access control via `CategoryWriteRule`. Core policies injected into system prompts; extended facts retrieved on demand via `OrgMemoryQuery`. `OrgFact` model with `OrgFactAuthor` provenance tracking. Config-driven via `OrgMemoryConfig`. | Pluggable backend mirrors `MemoryBackend` pattern. Hybrid prompt+retrieval balances always-available core policies with on-demand extended knowledge. Seniority-based access control prevents junior agents from overwriting organizational knowledge. See §7.4. |
+| **Memory consolidation** | Adopted | `ConsolidationStrategy` protocol with `SimpleConsolidationStrategy` (deduplication + summarization). `RetentionEnforcer` for per-category age-based cleanup via `RetentionRule` policies. `ArchivalStore` protocol for cold storage before deletion. `MemoryConsolidationService` orchestrates retention → consolidation → max-memories enforcement pipeline. `ConsolidationResult` tracks statistics. Config-driven via `ConsolidationConfig` + `RetentionConfig` + `ArchivalConfig`. | Prevents unbounded memory growth. Pluggable strategy enables different consolidation approaches (simple dedup now, LLM-based summarization later). Retention + archival ensures compliance with data lifecycle policies. See §7.4. |
+| **State coordination** | Planned | Centralized single-writer: `TaskEngine` owns all task/project mutations via `asyncio.Queue`. Agents submit requests, engine applies `model_copy(update=...)` sequentially and publishes snapshots. `version: int` field on state models for future optimistic concurrency if multi-process scaling is needed. | Prevents lost updates by design. Trivial in single-threaded asyncio (no locks). Perfect audit trail. Industry consensus: MetaGPT, CrewAI, AutoGen all use prevention-by-design, not conflict resolution. See §6.8 State Coordination table. |
+| **Workspace isolation** | Adopted | Pluggable `WorkspaceIsolationStrategy` protocol. Default: planner + git worktrees. Each agent works in an isolated worktree; sequential merge on completion. Textual conflicts detected by git; semantic conflicts reviewed by agent or human. Runtime multi-agent coordination wiring is planned. | Industry standard (Codex, Cursor, Claude Code, VS Code). Maximum parallelism. Leverages mature git infrastructure. See §6.8. |
+| **Graceful shutdown** | Adopted | Pluggable `ShutdownStrategy` protocol. Default: cooperative with 30s timeout. Agents check shutdown event at turn boundaries. Force-cancel after timeout. `INTERRUPTED` status for force-cancelled tasks. Planned: upgrade to checkpoint-and-stop. | Cross-platform (Windows `signal.signal()` fallback). Bounded shutdown time. Mirrors cooperative shutdown in §6.7. |
+| **Template inheritance** | Adopted | `extends` field on `CompanyTemplate` triggers parent resolution at render time. `merge.py` merges configs by field type: scalars (child wins), config dicts (deep merge), agents (by `(role, department, merge_id)` key with `_remove` support), departments (by name). `_ParentEntry` dataclass tracks merge state. `DEFAULT_MERGE_DEPARTMENT = "engineering"` shared between merge and renderer. Circular chains detected via `frozenset` tracking; max depth = 10. | Enables template composition without copy-paste. Merge-by-key preserves parent order. `_remove` directive enables clean agent removal without workarounds. |
+| **Pydantic alias for YAML directives** | Adopted | `Field(alias="_remove")` in `TemplateAgentConfig` — YAML uses `_remove: true`, Python accesses `agent.remove`. Keeps the YAML-facing name (underscore prefix signals internal directive) separate from the Python attribute name. | Underscore-prefixed YAML keys signal merge directives vs regular fields. Pydantic alias bridges the naming convention gap cleanly. |
+| **Communication foundation** | Adopted | `MessageBus` protocol with `InMemoryMessageBus` backend (asyncio queues, pull-model `receive()` with shutdown signaling via `asyncio.Event`). `MessageDispatcher` routes to concurrent handlers via `asyncio.TaskGroup` with pre-allocated error collection. `AgentMessenger` per-agent facade auto-fills sender/timestamp/ID; deterministic direct-channel naming `@{sorted_a}:{sorted_b}`. `DeliveryEnvelope` for delivery tracking. `NotBlankStr` validation on all protocol boundary identifiers. | Pull-model avoids callback complexity and enables agents to consume at their own pace. Protocol + backend split enables future persistent/distributed bus implementations. Deterministic DM channel names prevent duplicates. See §5. |
+| **Delegation & loop prevention** | Adopted | `HierarchyResolver` resolves org hierarchy from `Company` at construction (cycle-detected, `MappingProxyType`-frozen). `AuthorityValidator` checks chain-of-command + role permissions. `DelegationGuard` orchestrates five mechanisms (ancestry, depth, dedup, rate limit, circuit breaker) in sequence, short-circuiting on first rejection. `DelegationService` is synchronous (CPU-only); messaging integration deferred. Stateful mechanisms use injectable clock for deterministic testing. Task model extended with `parent_task_id` and `delegation_chain` fields. | Synchronous delegation avoids async complexity for CPU-only validation. Five-mechanism guard provides defence-in-depth against all loop patterns. Injectable clocks enable deterministic testing. See §5.4, §5.5. |
+| **Task assignment** | Adopted | `TaskAssignmentStrategy` protocol with six concrete strategies: Manual (pre-designated), RoleBased (capability scoring via `AgentTaskScorer`), LoadBalanced (workload-aware with score tiebreaker), CostOptimized (cheapest-agent with score tiebreaker), Hierarchical (subordinate delegation via `HierarchyResolver`), Auction (bid = score × availability). `TaskAssignmentService` orchestrates with status validation, structured logging, and `STRATEGY_MAP` registry (`MappingProxyType`-wrapped singletons; five strategies — Hierarchical requires `build_strategy_map(hierarchy=...)`). Inactive agents filtered during scoring. | Pluggable strategies behind a protocol mirror the execution loop and conflict resolution patterns. Reuses `AgentTaskScorer` from routing subsystem. `MappingProxyType` registry matches existing immutability conventions. See §6.4. |
+| **Conflict resolution** | Adopted | `ConflictResolver` protocol with async `resolve()` + sync `build_dissent_records()` split (resolve may call LLM, dissent record is pure construction). Four strategies: `AuthorityResolver` (seniority comparison iterating all N positions, hierarchy proximity tiebreaker via `get_lowest_common_manager`), `DebateResolver` (LLM judge via `JudgeEvaluator` protocol, authority fallback when absent), `HumanEscalationResolver` (stub, returns `ESCALATED_TO_HUMAN`), `HybridResolver` (LLM review + ambiguity escalation/authority fallback). `ConflictResolutionService` follows `DelegationService` pattern (`__slots__`, keyword-only constructor, `MappingProxyType`-wrapped resolver mapping, audit trail). `DissentRecord` preserves losing agent's reasoning. `Conflict.is_cross_department` is a `@computed_field` derived from positions. `HierarchyResolver` extended with `get_lowest_common_manager()` and `get_delegation_depth()`. | Protocol + strategy pattern enables adding new resolution approaches without modifying existing code. Async resolve accommodates LLM calls; sync dissent record avoids unnecessary async overhead. Shared `find_losers` utility prevents code duplication across strategies. See §5.6. |
 
 ---
 
@@ -3417,7 +3402,7 @@ What we **plan to leverage** (not fork) — subject to evaluation:
 | 14 | Which memory layer library to use? | Medium | **Resolved** | Mem0 (initial) → custom stack (future) behind pluggable `MemoryBackend` protocol — see [ADR-001](docs/decisions/ADR-001-memory-layer.md) |
 | 15 | How to handle agent crashes mid-task? | High | **Resolved** | Pluggable `RecoveryStrategy` protocol — see §6.6 Agent Crash Recovery |
 | 16 | How to test non-deterministic agent behavior? | High | **Resolved** | Scripted providers for unit tests + behavioral assertions for integration — see §15.5 Engineering Conventions |
-| 17 | How to detect orchestration overhead? | Medium | **Resolved** | Incremental LLM call analytics with proxy metrics (M3) → full categorization (M4) — see §10.5 |
+| 17 | How to detect orchestration overhead? | Medium | **Resolved** | Incremental LLM call analytics with proxy metrics → full categorization — see §10.5 |
 
 ### 17.2 Technical Risks
 
@@ -3438,8 +3423,8 @@ What we **plan to leverage** (not fork) — subject to evaluation:
 | Over-engineering the MVP | High | Start with minimal viable company (3-5 agents), add complexity iteratively |
 | Config format becoming unwieldy | Medium | Good defaults, layered config (base + overrides), validation |
 | Agent execution bottlenecks | Medium | Async execution, parallel agent processing, queue-based |
-| Data loss on crash | Medium | WAL mode SQLite, `RecoveryStrategy` protocol (§6.6): fail-and-reassign in MVP, checkpoint recovery in M4/M5 |
-| Orchestration overhead exceeds productive work | Medium | LLM call analytics (§10.5): proxy metrics from M3, call categorization + orchestration ratio alerts from M4 |
+| Data loss on crash | Medium | WAL mode SQLite, `RecoveryStrategy` protocol (§6.6): fail-and-reassign implemented, checkpoint recovery planned |
+| Orchestration overhead exceeds productive work | Medium | LLM call analytics (§10.5): proxy metrics implemented, call categorization + orchestration ratio alerts planned |
 
 ---
 

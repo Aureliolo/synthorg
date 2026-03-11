@@ -2,7 +2,7 @@
 
 Provides async CRUD operations for ``ApprovalItem`` instances.
 Designed to be attached to ``AppState`` and replaced with a
-persistence-backed implementation in M7.
+persistence-backed implementation planned.
 """
 
 from collections.abc import Callable  # noqa: TC003

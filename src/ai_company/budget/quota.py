@@ -163,7 +163,7 @@ class DegradationAction(StrEnum):
 
     Members:
         FALLBACK: Route to a fallback provider.
-        QUEUE: Queue for later (not implemented in M5).
+        QUEUE: Queue for later (not yet implemented).
         ALERT: Raise error and alert user.
     """
 

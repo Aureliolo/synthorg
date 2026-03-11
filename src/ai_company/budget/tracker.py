@@ -5,7 +5,7 @@ aggregation queries consumed by the CFO agent and budget monitoring.
 
 Service layer for the cost tracking schema defined in DESIGN_SPEC Section 10.2.
 The current implementation is purely in-memory; persistence integration is
-planned as part of M5.
+planned.
 """
 
 import asyncio
