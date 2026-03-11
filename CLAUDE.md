@@ -179,7 +179,7 @@ src/ai_company/
   - Requires `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` secrets
   - Checks out PR head SHA (not merge commit) so build matches reported commit
   - Build job runs regardless (catches build failures); deploy job skips on fork PRs (no secrets access)
-  - Cleanup job deletes Cloudflare deployments on PR close (via Cloudflare API)
+  - Cleanup job deletes preview comment and Cloudflare deployments on PR close
   - Concurrency group cancels stale builds on rapid pushes
 - **Docker**: `.github/workflows/docker.yml` — builds backend + web images, pushes to GHCR, signs with cosign. Scans: Trivy (CRITICAL = hard fail, HIGH = warn-only) + Grype (critical cutoff). CVE triage via `.github/.trivyignore.yaml` and `.github/.grype.yaml`. Images only pushed after scans pass. Triggers on push to main and version tags (`v*`).
 - **Matrix**: Python 3.14

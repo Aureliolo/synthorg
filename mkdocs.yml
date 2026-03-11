@@ -102,6 +102,7 @@ nav:
   - Home: index.md
   - User Guide: user_guide.md
   - Developer Setup: getting_started.md
+  - Design Specification: design_spec.md
   - Architecture:
       - architecture/index.md
       - Design Decisions: architecture/decisions.md

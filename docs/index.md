@@ -14,7 +14,7 @@ SynthOrg lets you define agents with roles, hierarchy, budgets, and tools, then 
 
     ---
 
-    Install, pick a template, and run your first synthetic org.
+    Pick a template and run your first synthetic org via Docker.
 
     [:octicons-arrow-right-24: User Guide](user_guide.md)
 
@@ -57,5 +57,5 @@ SynthOrg lets you define agents with roles, hierarchy, budgets, and tools, then 
 ## Links
 
 - [GitHub Repository](https://github.com/Aureliolo/synthorg)
-- [Design Specification](https://github.com/Aureliolo/synthorg/blob/main/DESIGN_SPEC.md)
+- [Design Specification](design_spec.md)
 - [License](https://github.com/Aureliolo/synthorg/blob/main/LICENSE) (BSL 1.1 → Apache 2.0 on 2030-02-27)

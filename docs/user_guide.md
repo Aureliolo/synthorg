@@ -9,7 +9,7 @@ How to run SynthOrg.
 ## Quick Start
 
 ```bash
-git clone https://github.com/Aureliolo/synthorg.git
+git clone https://github.com/Aureliolo/synthorg
 cd synthorg
 docker compose -f docker/compose.yml up -d
 ```
@@ -43,4 +43,4 @@ docker compose -f docker/compose.yml down
 
 - Templates — Full list of pre-built configurations (coming soon)
 - REST API — Interact with your org via the API (coming soon)
-- [Design Specification](https://github.com/Aureliolo/synthorg/blob/main/DESIGN_SPEC.md) — Full architecture details
+- [Design Specification](design_spec.md) — Full architecture details
