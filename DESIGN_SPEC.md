@@ -3262,7 +3262,8 @@ synthorg/
 │   │   ├── dependency-review.yml   # License allow-list on PRs
 │   │   ├── release.yml             # Release Please (automated versioning + GitHub Releases)
 │   │   ├── secret-scan.yml         # Gitleaks on push/PR + weekly
-│   │   └── pages.yml               # Build Astro + MkDocs → deploy GitHub Pages
+│   │   ├── pages.yml               # Build Astro + MkDocs → deploy GitHub Pages
+│   │   └── zizmor.yml              # Workflow security analysis (zizmor)
 │   ├── actions/
 │   │   └── setup-python-uv/        # Composite action: Python + uv install
 │   ├── dependabot.yml              # uv + github-actions + docker updates

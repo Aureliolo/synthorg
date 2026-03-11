@@ -179,6 +179,7 @@ src/ai_company/
 - **Secret scanning**: gitleaks workflow on push/PR + weekly schedule
 - **Dependency review**: license allow-list (permissive only), PR comment summaries
 - **Coverage**: Codecov integration (replaces artifact-only uploads)
+- **Workflow security**: `.github/workflows/zizmor.yml` — zizmor static analysis of GitHub Actions workflows on push to main and PRs (triggers only when workflow files change), SARIF upload to Security tab on push events only (fork PRs lack `security-events: write`)
 - **Release**: `.github/workflows/release.yml` — Release Please (Google) auto-creates a release PR on every push to main. Merging the release PR creates a git tag (`vX.Y.Z`) + GitHub Release with changelog. Tag push triggers the Docker workflow to build version-tagged images. Uses `RELEASE_PLEASE_TOKEN` secret (PAT/GitHub App token) so tag creation triggers downstream workflows (GITHUB_TOKEN cannot). Config in `.github/release-please-config.json` and `.github/.release-please-manifest.json`.
 
 ## Dependencies
