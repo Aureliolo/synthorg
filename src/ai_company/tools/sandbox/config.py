@@ -1,5 +1,6 @@
 """Subprocess sandbox configuration model."""
 
+import os
 from pathlib import PurePath
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -73,6 +74,7 @@ class SubprocessSandboxConfig(BaseModel):
     @field_validator("extra_safe_path_prefixes")
     @classmethod
     def _validate_prefixes(cls, v: tuple[str, ...]) -> tuple[str, ...]:
+        sanitized: list[str] = []
         for prefix in v:
             if not prefix or not PurePath(prefix).is_absolute():
                 msg = (
@@ -80,4 +82,20 @@ class SubprocessSandboxConfig(BaseModel):
                     f"non-empty absolute paths, got: {prefix!r}"
                 )
                 raise ValueError(msg)
-        return v
+            if "\x00" in prefix:
+                msg = (
+                    "extra_safe_path_prefixes entries must not "
+                    f"contain null bytes, got: {prefix!r}"
+                )
+                raise ValueError(msg)
+            # Normalize to canonical form — collapses '..',
+            # redundant separators, and platform-specific quirks.
+            normalized = os.path.normpath(prefix)
+            if not PurePath(normalized).is_absolute():
+                msg = (
+                    "extra_safe_path_prefixes entries must resolve "
+                    f"to absolute paths, got: {prefix!r}"
+                )
+                raise ValueError(msg)
+            sanitized.append(normalized)
+        return tuple(sanitized)

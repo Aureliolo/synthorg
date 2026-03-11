@@ -161,7 +161,11 @@ class SubprocessSandbox:
             reason="no PATH entries matched safe prefixes; using safe defaults",
             original_entry_count=len(entries),
         )
-        safe_dirs = [p for p in safe_prefixes if Path(p).is_dir()]
+        # Fallback uses only hardcoded platform defaults — user-provided
+        # extra_safe_path_prefixes are excluded to prevent user-controlled
+        # data from reaching filesystem probes (CodeQL py/path-injection).
+        platform_defaults = self._get_platform_default_dirs()
+        safe_dirs = [p for p in platform_defaults if Path(p).is_dir()]
         if not safe_dirs:
             logger.error(
                 SANDBOX_PATH_FALLBACK,
@@ -191,24 +195,30 @@ class SubprocessSandbox:
                 return True
         return False
 
+    @staticmethod
+    def _get_platform_default_dirs() -> tuple[str, ...]:
+        """Return built-in safe PATH directories for the current platform.
+
+        These are hardcoded system directories — not influenced by
+        user-provided configuration.
+        """
+        if os.name == "nt":
+            system_root = os.environ.get("SYSTEMROOT", r"C:\WINDOWS")
+            return (
+                system_root,
+                str(Path(system_root) / "system32"),
+                r"C:\Program Files\Git",
+                r"C:\Program Files (x86)\Git",
+            )
+        return ("/usr/bin", "/usr/local/bin", "/bin", "/usr/sbin", "/sbin")
+
     def _get_safe_path_prefixes(self) -> tuple[str, ...]:
         """Return safe PATH prefixes for the current platform.
 
         Combines built-in platform defaults with any extra prefixes
         from ``SubprocessSandboxConfig.extra_safe_path_prefixes``.
         """
-        defaults: tuple[str, ...]
-        if os.name == "nt":
-            system_root = os.environ.get("SYSTEMROOT", r"C:\WINDOWS")
-            defaults = (
-                system_root,
-                str(Path(system_root) / "system32"),
-                r"C:\Program Files\Git",
-                r"C:\Program Files (x86)\Git",
-            )
-        else:
-            defaults = ("/usr/bin", "/usr/local/bin", "/bin", "/usr/sbin", "/sbin")
-        return defaults + self._config.extra_safe_path_prefixes
+        return self._get_platform_default_dirs() + self._config.extra_safe_path_prefixes
 
     def _build_filtered_env(
         self,

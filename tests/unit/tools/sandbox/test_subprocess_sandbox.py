@@ -520,3 +520,50 @@ class TestExtraSafePathPrefixes:
             SubprocessSandboxConfig(
                 extra_safe_path_prefixes=("relative/path",),
             )
+
+    def test_rejects_null_bytes(self) -> None:
+        prefix = (
+            "C:\\evil\x00\\bin" if os.name == "nt" else "/opt/evil\x00/bin"
+        )
+        with pytest.raises(ValidationError, match="null bytes"):
+            SubprocessSandboxConfig(
+                extra_safe_path_prefixes=(prefix,),
+            )
+
+    def test_normalizes_traversal(self) -> None:
+        """Paths with '..' are normalized to canonical form."""
+        if os.name == "nt":
+            raw = r"C:\opt\custom\..\tools"
+            expected = r"C:\opt\tools"
+        else:
+            raw = "/opt/custom/../tools"
+            expected = "/opt/tools"
+        config = SubprocessSandboxConfig(
+            extra_safe_path_prefixes=(raw,),
+        )
+        assert config.extra_safe_path_prefixes == (expected,)
+
+    def test_fallback_uses_platform_defaults_only(
+        self,
+        sandbox_workspace: Path,
+    ) -> None:
+        """PATH fallback excludes user-provided extra prefixes."""
+        extra = (r"C:\UserExtra",) if os.name == "nt" else ("/opt/user-extra",)
+        config = SubprocessSandboxConfig(
+            restricted_path=True,
+            extra_safe_path_prefixes=extra,
+        )
+        sandbox = SubprocessSandbox(
+            config=config,
+            workspace=sandbox_workspace,
+        )
+        # All PATH entries are fake so fallback triggers
+        with patch.dict(
+            os.environ,
+            {"PATH": "/totally/fake/dir"},
+            clear=True,
+        ):
+            env = sandbox._build_filtered_env()
+            path_val = env.get("PATH", "")
+            assert "user-extra" not in path_val.lower()
+            assert "userextra" not in path_val.lower()
