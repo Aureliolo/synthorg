@@ -282,9 +282,7 @@ class SubprocessSandbox:
 
         # Case-insensitive key check on Windows where env var names
         # are case-insensitive (e.g. "Path" vs "PATH").
-        if self._config.restricted_path and any(
-            k.upper() == "PATH" for k in env
-        ):
+        if self._config.restricted_path and any(k.upper() == "PATH" for k in env):
             path_keys = [k for k in env if k.upper() == "PATH"]
             path_val = next(
                 (env[k] for k in reversed(path_keys)),
