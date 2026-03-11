@@ -280,8 +280,19 @@ class SubprocessSandbox:
             else:
                 filtered_count += 1
 
-        if self._config.restricted_path and "PATH" in env:
-            env["PATH"] = self._filter_path(env["PATH"])
+        # Case-insensitive key check on Windows where env var names
+        # are case-insensitive (e.g. "Path" vs "PATH").
+        if self._config.restricted_path and any(
+            k.upper() == "PATH" for k in env
+        ):
+            path_keys = [k for k in env if k.upper() == "PATH"]
+            path_val = next(
+                (env[k] for k in reversed(path_keys)),
+                "",
+            )
+            for k in path_keys:
+                del env[k]
+            env["PATH"] = self._filter_path(path_val)
 
         if env_overrides:
             env.update(env_overrides)

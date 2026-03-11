@@ -213,7 +213,10 @@ class TestEnvironmentFiltering:
             clear=True,
         ):
             env = sandbox._build_filtered_env()
-            assert "/totally/fake/dir" not in env.get("PATH", "")
+            path_val = env.get("PATH", "")
+            assert "/totally/fake/dir" not in path_val
+            # Positive assertion: fallback must have populated PATH
+            assert path_val, "PATH should contain fallback safe directories"
 
 
 # ── Workspace boundary ───────────────────────────────────────────
