@@ -27,9 +27,13 @@ jobs:
           # MIT-0: cffi 2.0.0 — permissive (MIT variant, no attribution required)
           # LicenseRef-scancode-free-unknown: aiosqlite 0.21.0, aiodocker 0.26.0,
           #   pycparser 3.0, sse-starlette 3.3.2 — MIT per classifiers, scancode misdetects
+          # LGPL-*: @img/sharp-libvips-* (Astro image optimization, build-time only)
+          # BlueOak-1.0.0: lru-cache, sax (Astro transitive deps, permissive)
           allow-licenses: >-
             MIT, MIT-0, Apache-2.0, BSD-2-Clause, BSD-3-Clause,
             ISC, MPL-2.0, PSF-2.0, Unlicense, 0BSD,
             CC0-1.0, Python-2.0, Python-2.0.1,
-            LicenseRef-scancode-free-unknown
+            LicenseRef-scancode-free-unknown,
+            LGPL-2.0-only, LGPL-2.1-only, LGPL-3.0-only, LGPL-3.0-or-later,
+            BlueOak-1.0.0
           comment-summary-in-pr: always
