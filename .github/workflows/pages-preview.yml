@@ -262,7 +262,7 @@ jobs:
 
           # Paginate through all deployments for this branch
           # Note: Cloudflare prevents deleting the most recent deployment per project — that one will remain
-          # Cloudflare Pages API rejects per_page=100 with page param; use default (25)
+          # Cloudflare Pages API rejects per_page=100 with page param; explicitly use documented default page size (25)
           echo "Fetching deployments for branch ${BRANCH}..."
           PER_PAGE=25
           PAGE=1
