@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.1.1](https://github.com/Aureliolo/synthorg/compare/v0.1.0...v0.1.1) (2026-03-11)
+
+
+### Features
+
+* add PR preview deployments via Cloudflare Pages ([#302](https://github.com/Aureliolo/synthorg/issues/302)) ([b73c45a](https://github.com/Aureliolo/synthorg/commit/b73c45a806d3edc5f541263485cf9e922748ea17))
+
+
+### Bug Fixes
+
+* correct deploy-pages SHA and improve preview cleanup reliability ([#304](https://github.com/Aureliolo/synthorg/issues/304)) ([584d64a](https://github.com/Aureliolo/synthorg/commit/584d64a1f564a7ad75ad3ffaa9a44eabf788a707))
+* harden API key hashing with HMAC-SHA256 and clean up legacy changelog ([#292](https://github.com/Aureliolo/synthorg/issues/292)) ([5e85353](https://github.com/Aureliolo/synthorg/commit/5e85353c29b1748fb16034f2d9f92166fb5c0908))
+* upgrade upload-pages-artifact to v4 and add zizmor workflow linting ([#299](https://github.com/Aureliolo/synthorg/issues/299)) ([2eac571](https://github.com/Aureliolo/synthorg/commit/2eac571bc44273ff99a2e10448859561b90328f3))
+* use Cloudflare Pages API default per_page for pagination ([#305](https://github.com/Aureliolo/synthorg/issues/305)) ([9fec245](https://github.com/Aureliolo/synthorg/commit/9fec245e202ce58df4327ffd2055e501e53551a3))
+
+
+### Documentation
+
+* remove milestone references and rebrand to SynthOrg ([#289](https://github.com/Aureliolo/synthorg/issues/289)) ([57a03e0](https://github.com/Aureliolo/synthorg/commit/57a03e0193f17ca1b9f0064841201ded33eb70ea))
+* set up documentation site, release CI, and sandbox hardening ([#298](https://github.com/Aureliolo/synthorg/issues/298)) ([0dec9da](https://github.com/Aureliolo/synthorg/commit/0dec9da5ce88aa212a1b74d99340497f3d4bd843))
+* split DESIGN_SPEC.md into 7 focused design pages ([#308](https://github.com/Aureliolo/synthorg/issues/308)) ([9ea0788](https://github.com/Aureliolo/synthorg/commit/9ea078818cace13729adf27647a75d800571069c))
+
 ## [0.1.0](https://github.com/Aureliolo/ai-company/compare/v0.0.0...v0.1.0) (2026-03-11)
 
 
