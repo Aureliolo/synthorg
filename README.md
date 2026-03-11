@@ -11,46 +11,54 @@ SynthOrg lets you spin up a synthetic organization staffed entirely by AI agents
 ## What's Built
 
 ### Core Framework
+
 - Company config + core models — Pydantic validation, immutable config, runtime state
 - Provider layer — LiteLLM-based abstraction with routing, retry, rate limiting
 - Templates — built-in templates, inheritance/merge, personality presets
 - Persistence — pluggable `PersistenceBackend` protocol, SQLite backend, schema migrations
 
 ### Agent Engine
+
 - Single-agent execution — ReAct/Plan-Execute loops, fail-and-reassign recovery, graceful shutdown
 - Multi-agent orchestration — message bus, delegation, loop prevention, conflict resolution, meeting protocols
 - Task intelligence — decomposition, routing, assignment strategies, workspace isolation (git worktrees)
 - Coordination error taxonomy — post-execution classification (contradictions, drift, omissions)
 
 ### Communication
+
 - Message bus with dispatcher and channels
 - Delegation with loop prevention
 - Conflict resolution (4 strategies: authority+dissent, debate+judge, human escalation, hybrid)
 - Meeting protocols (round-robin, position papers, structured phases)
 
 ### Budget & Cost Management
+
 - Cost tracking — records, summaries, coordination analytics
 - Budget enforcement — pre-flight/in-flight checks, auto-downgrade, cost tiers, quota tracking
 - CFO optimization — anomaly detection, efficiency analysis, downgrade recommendations, spending reports
 
 ### Memory
+
 - Pluggable `MemoryBackend` protocol — capability discovery, retrieval pipeline (ranking, formatting, filtering)
 - Shared org memory — `OrgMemoryBackend` with hybrid prompt+retrieval backend
 - Consolidation/archival — pluggable strategies, retention enforcement
 
 ### Tool System
+
 - Built-in tools — file system, git, code runner
 - Sandboxing — subprocess (file/git) + Docker (code execution)
 - MCP bridge — Model Context Protocol integration
 - Permission gating — role-based access, category-level enforcement
 
 ### API & Human Interaction
+
 - REST API — Litestar, 15 controllers (company, agents, tasks, budget, approvals, analytics, messages, meetings, projects, departments, artifacts, providers, health, auth)
 - WebSocket — channel-based subscriptions, per-channel filters, message-bus bridge
 - Approval queue — submit/approve/reject, status filtering, WebSocket notifications
 - Route guards — role-based access control, 5 human roles
 
 ### Security
+
 - Authentication — JWT + API key, Argon2id hashing, first-run admin setup
 - SecOps agent — rule engine (soft-allow/hard-deny, fail-closed), audit log, output scanner, risk classifier
 - Progressive trust — 4 strategies behind `TrustStrategy` protocol
@@ -58,6 +66,7 @@ SynthOrg lets you spin up a synthetic organization staffed entirely by AI agents
 - Approval timeout policies — wait-forever/auto-deny/tiered/escalation-chain, task park/resume
 
 ### HR
+
 - Hiring pipeline — request, candidate generation, approval, instantiation
 - Onboarding checklists, offboarding pipeline (reassign, archive, notify, terminate)
 - Agent registry
@@ -65,6 +74,7 @@ SynthOrg lets you spin up a synthetic organization staffed entirely by AI agents
 - Promotion/demotion — criteria evaluation, approval strategies, model mapping
 
 ### Planned
+
 - Memory backend adapter — Mem0 initial ([ADR-001](docs/decisions/ADR-001-memory-layer.md)); GraphRAG, Temporal KG on roadmap
 - Approval workflow gates — integration with engine execution flow
 - CLI surface — `cli/` package is placeholder-only

@@ -1533,10 +1533,10 @@ persistence:
     wal_mode: true                    # WAL for concurrent read performance
     journal_size_limit: 67108864      # 64 MB WAL journal limit
   # postgresql:                       # future
-  #   url: "postgresql://user:pass@host:5432/ai_company"
+  #   url: "postgresql://user:pass@host:5432/synthorg"
   #   pool_size: 10
   # mariadb:                          # future
-  #   url: "mariadb://user:pass@host:3306/ai_company"
+  #   url: "mariadb://user:pass@host:3306/synthorg"
   #   pool_size: 10
 ```
 

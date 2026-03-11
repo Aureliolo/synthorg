@@ -1,4 +1,4 @@
-"""Core domain models for the AI company framework."""
+"""Core domain models for the SynthOrg framework."""
 
 from ai_company.core.agent import (
     AgentIdentity,

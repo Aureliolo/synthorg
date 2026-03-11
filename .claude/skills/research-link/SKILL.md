@@ -117,7 +117,7 @@ For each relevant concept, tool, or pattern found, assign exactly one verdict:
 - Every verdict must reference a specific part of the project (module, design section, convention)
 - **USE** and **REPLACE** require a license check against the repo's dependency review allow-list (see CI workflow and `CLAUDE.md` dependency notes; must be permissive and CI-compatible)
 - **RETHINK** must explain the scope of impact — is it one module or the whole architecture?
-- **LATER** must specify the trigger condition (e.g., "when we start M5 Memory & Budget")
+- **LATER** must specify the trigger condition (e.g., "when we add the memory and budget subsystems")
 - Be honest — most research produces ADAPT or LATER, not USE or RETHINK
 
 ## Phase 5: Present Results

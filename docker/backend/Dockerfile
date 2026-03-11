@@ -73,8 +73,8 @@ FROM cgr.dev/chainguard/python@sha256:308d2fda1d9ad9620454de97cb84fa407bd20e24dd
 # OCI image labels (https://github.com/opencontainers/image-spec/blob/main/annotations.md)
 LABEL org.opencontainers.image.title="synthorg-backend" \
       org.opencontainers.image.description="SynthOrg orchestration backend" \
-      org.opencontainers.image.url="https://github.com/Aureliolo/ai-company" \
-      org.opencontainers.image.source="https://github.com/Aureliolo/ai-company" \
+      org.opencontainers.image.url="https://github.com/Aureliolo/synthorg" \
+      org.opencontainers.image.source="https://github.com/Aureliolo/synthorg" \
       org.opencontainers.image.licenses="BUSL-1.1" \
       org.opencontainers.image.vendor="Aureliolo"
 

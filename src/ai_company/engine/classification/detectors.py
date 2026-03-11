@@ -4,8 +4,8 @@ Pure functions that analyse conversation histories to detect specific
 categories of coordination errors.  Each detector returns a tuple of
 ``ErrorFinding`` instances (empty when no errors are found).
 
-Detection heuristics are intentionally simple for the initial starting
-point — full semantic analysis is planned for future iterations.
+Detection heuristics are intentionally simple for the initial
+implementation — full semantic analysis is planned for future iterations.
 """
 
 import re

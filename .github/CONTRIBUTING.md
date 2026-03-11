@@ -85,9 +85,9 @@ uv run ruff format src/ tests/
 ## Running Tests
 
 ```bash
-uv run pytest tests/ -m unit               # unit tests (fast)
-uv run pytest tests/ -m integration        # integration tests
-uv run pytest tests/ -m e2e                # end-to-end tests
+uv run pytest tests/ -m unit -n auto        # unit tests (fast)
+uv run pytest tests/ -m integration -n auto # integration tests
+uv run pytest tests/ -m e2e -n auto         # end-to-end tests
 uv run pytest tests/ -n auto --cov=ai_company --cov-fail-under=80  # full suite + coverage
 ```
 

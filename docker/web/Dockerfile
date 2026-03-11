@@ -8,8 +8,8 @@ FROM nginxinc/nginx-unprivileged:1.29.5-alpine@sha256:aec540f08f99df3c830549d5dd
 
 LABEL org.opencontainers.image.title="synthorg-web" \
       org.opencontainers.image.description="SynthOrg web dashboard" \
-      org.opencontainers.image.url="https://github.com/Aureliolo/ai-company" \
-      org.opencontainers.image.source="https://github.com/Aureliolo/ai-company" \
+      org.opencontainers.image.url="https://github.com/Aureliolo/synthorg" \
+      org.opencontainers.image.source="https://github.com/Aureliolo/synthorg" \
       org.opencontainers.image.licenses="BUSL-1.1" \
       org.opencontainers.image.vendor="Aureliolo"
 

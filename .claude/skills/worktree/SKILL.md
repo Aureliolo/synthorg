@@ -41,7 +41,8 @@ Branch names auto-generated from description: `feat/delegation-loop-prevention`.
 Default branch type prefix is `feat/` unless the user specifies otherwise or the issue labels suggest a different type (e.g., `type:bug` → `fix/`, `type:refactor` → `refactor/`).
 
 **Mode 3 — Issue list only:**
-```
+
+```text
 /worktree setup --issues #26,#30,#133,#168
 ```
 Fetches issue titles from GitHub, groups by the user's worktree definitions (or asks for grouping via AskUserQuestion if not provided).
@@ -55,7 +56,7 @@ If no definitions are provided at all, ask the user via AskUserQuestion for:
 Directory suffix is auto-derived from the branch name:
 - `feat/delegation-loop-prevention` → `../synthorg-wt-delegation-loop-prevention`
 - Strip everything up to and including the first `/` in the branch name (covers `feat/`, `fix/`, `refactor/`, `chore/`, `docs/`, `test/`, `perf/`, `ci/`), then prepend `wt-`
-- Repo name extracted from the current working directory basename
+- Repo name extracted from the repository's canonical root metadata (e.g. `basename $(git rev-parse --show-toplevel)`), not the current working directory basename. If running inside a linked worktree, derive the base repo name from shared Git metadata before composing `../<repo-name>-wt-<slug>`
 
 ### Steps
 
@@ -321,7 +322,7 @@ Auto-generate a phase/dependency tree view from a set of issues.
 
 ### Input format
 
-```
+```text
 /worktree tree --issues #26,#30,#133,#168
 ```
 
@@ -339,8 +340,8 @@ If no issues specified, try to detect from current worktree branches or ask via 
 
 3. **Compute tiers** using topological sort:
    - Tier 0: issues with no open internal dependencies (all deps are closed or external)
-   - Tier 1: depends only on Tier 0 issues
-   - Tier N: depends on Tier N-1 issues
+   - Tier 1: all open internal dependencies are in Tier 0
+   - Tier N: all open internal dependencies are in earlier tiers; assign the tier as `1 + max(dependency tier)`
    - Flag circular dependencies as errors. When detected, report the cycle (e.g. "#12 → #17 → #12"), render the remaining non-circular issues in their tiers, and suggest: "Break the cycle by removing one dependency edge, or implement the circular group in a single worktree."
 
 4. **Identify current active worktrees** (if any):
@@ -435,7 +436,7 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
 - **Never force-remove** a worktree without asking the user first.
 - **Never delete branches** without checking PR merge status first.
 - **Always check `.claude/` local files exist** before copying — warn if missing.
-- **Repo name detection**: extract from the current directory basename (e.g. `synthorg`).
+- **Repo name detection**: extract from the repository's canonical root (`basename $(git rev-parse --show-toplevel)`), not the current directory basename. Strip any existing `wt-` prefix to avoid nested names when running from inside a linked worktree.
 - **Owner/repo detection**: extract from `git remote get-url origin`.
 - **Platform-aware paths**: derive worktree absolute paths dynamically at runtime. On Windows, convert to backslash paths for user-facing output. The `cd <path> && claude` instructions are for the user's own terminal, not Bash tool invocations.
 - Worktree directories are always siblings of the main repo directory (`../`).
@@ -450,7 +451,8 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
   - Directory paths: must not contain shell metacharacters (`;`, `|`, `&`, `$`, `` ` ``, `(`, `)`)
   - Reject and warn if any value fails validation — do not execute the command.
 - If `$ARGUMENTS` is empty or doesn't match a command, show a brief usage guide:
-  ```
+
+  ```text
   /worktree setup <definitions>   — Create worktrees with prompts
   /worktree setup --issues #26,#30  — Issue-aware setup
   /worktree cleanup                — Remove worktrees after merge

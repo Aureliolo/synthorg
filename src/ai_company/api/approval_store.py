@@ -1,8 +1,8 @@
 """In-memory approval store.
 
 Provides async CRUD operations for ``ApprovalItem`` instances.
-Designed to be attached to ``AppState`` and replaced with a
-persistence-backed implementation planned.
+Designed to be attached to ``AppState``. A persistence-backed
+implementation is planned.
 """
 
 from collections.abc import Callable  # noqa: TC003

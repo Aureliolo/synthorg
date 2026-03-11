@@ -37,7 +37,7 @@ uv sync
 Run the smoke tests to confirm everything is working:
 
 ```bash
-uv run pytest tests/ -m unit
+uv run pytest tests/ -m unit -n auto
 ```
 
 You should see all tests passing.

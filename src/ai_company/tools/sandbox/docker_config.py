@@ -5,6 +5,10 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.types import NotBlankStr  # noqa: TC001
+from ai_company.observability import get_logger
+from ai_company.observability.events.config import CONFIG_VALIDATION_FAILED
+
+logger = get_logger(__name__)
 
 _VALID_NETWORK_MODES = frozenset({"none", "bridge", "host"})
 
@@ -63,6 +67,7 @@ class DockerSandboxConfig(BaseModel):
         limit = self.memory_limit.strip().lower()
         if not limit:
             msg = "Memory limit must not be empty"
+            logger.warning(CONFIG_VALIDATION_FAILED, field="memory_limit", reason=msg)
             raise ValueError(msg)
         multipliers = {"k", "m", "g"}
         numeric_part = limit[:-1] if limit[-1] in multipliers else limit
@@ -70,9 +75,11 @@ class DockerSandboxConfig(BaseModel):
             value = int(numeric_part)
         except ValueError as exc:
             msg = f"Invalid memory_limit format: {self.memory_limit!r}"
+            logger.warning(CONFIG_VALIDATION_FAILED, field="memory_limit", reason=msg)
             raise ValueError(msg) from exc
         if value <= 0:
             msg = f"Memory limit must be positive, got: {self.memory_limit!r}"
+            logger.warning(CONFIG_VALIDATION_FAILED, field="memory_limit", reason=msg)
             raise ValueError(msg)
         return self
 
@@ -84,6 +91,12 @@ class DockerSandboxConfig(BaseModel):
                 msg = (
                     f"Invalid network mode {mode!r} for category "
                     f"{category!r}; must be one of {sorted(_VALID_NETWORK_MODES)}"
+                )
+                logger.warning(
+                    CONFIG_VALIDATION_FAILED,
+                    field="network_overrides",
+                    category=category,
+                    reason=msg,
                 )
                 raise ValueError(msg)
         return self

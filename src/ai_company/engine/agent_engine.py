@@ -594,7 +594,7 @@ class AgentEngine:
         prev_status = ctx.task_execution.status  # type: ignore[union-attr]
         ctx = ctx.with_task_transition(
             TaskStatus.COMPLETED,
-            reason="Auto-completed (no reviewers configured)",
+            reason="Auto-completed (review gate not implemented)",
         )
         logger.info(
             EXECUTION_ENGINE_TASK_TRANSITION,

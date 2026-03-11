@@ -1,4 +1,4 @@
-"""Domain enumerations for the AI company framework."""
+"""Domain enumerations for the SynthOrg framework."""
 
 from enum import StrEnum
 
