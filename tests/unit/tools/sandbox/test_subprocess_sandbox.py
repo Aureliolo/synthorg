@@ -566,7 +566,7 @@ class TestExtraSafePathPrefixes:
             ),
             patch.object(
                 SubprocessSandbox,
-                "_get_platform_default_dirs",
+                "_get_hardcoded_fallback_dirs",
                 return_value=(sentinel,),
             ),
             patch("ai_company.tools.sandbox.subprocess_sandbox.Path") as mock_path,

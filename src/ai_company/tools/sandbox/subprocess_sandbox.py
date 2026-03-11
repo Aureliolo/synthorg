@@ -161,11 +161,12 @@ class SubprocessSandbox:
             reason="no PATH entries matched safe prefixes; using safe defaults",
             original_entry_count=len(entries),
         )
-        # Fallback uses only hardcoded platform defaults — user-provided
-        # extra_safe_path_prefixes are excluded to prevent user-controlled
-        # data from reaching filesystem probes (CodeQL py/path-injection).
-        platform_defaults = self._get_platform_default_dirs()
-        safe_dirs = [p for p in platform_defaults if Path(p).is_dir()]
+        # Fallback uses fully hardcoded directories — no os.environ reads,
+        # no user-provided extra_safe_path_prefixes — so that the
+        # Path.is_dir() filesystem probe receives only compile-time
+        # constants (CodeQL py/path-injection).
+        fallback_dirs = self._get_hardcoded_fallback_dirs()
+        safe_dirs = [p for p in fallback_dirs if Path(p).is_dir()]
         if not safe_dirs:
             logger.error(
                 SANDBOX_PATH_FALLBACK,
@@ -214,6 +215,26 @@ class SubprocessSandbox:
             return (
                 system_root,
                 str(Path(system_root) / "system32"),
+                r"C:\Program Files\Git",
+                r"C:\Program Files (x86)\Git",
+            )
+        return ("/usr/bin", "/usr/local/bin", "/bin", "/usr/sbin", "/sbin")
+
+    @staticmethod
+    def _get_hardcoded_fallback_dirs() -> tuple[str, ...]:
+        """Return fully hardcoded safe PATH directories for fallback.
+
+        Unlike ``_get_platform_default_dirs``, this reads **no**
+        environment variables — every value is a compile-time constant.
+        Used only in the fallback branch of ``_filter_path`` where
+        ``Path.is_dir()`` probes the filesystem, so that no
+        ``os.environ`` data reaches a filesystem call
+        (CodeQL ``py/path-injection``).
+        """
+        if os.name == "nt":
+            return (
+                r"C:\WINDOWS",
+                r"C:\WINDOWS\system32",
                 r"C:\Program Files\Git",
                 r"C:\Program Files (x86)\Git",
             )
