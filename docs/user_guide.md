@@ -1,98 +1,46 @@
 # User Guide
 
-How to install and run SynthOrg.
+How to run SynthOrg.
 
-!!! warning "Under Construction"
-    SynthOrg is under active development. Some features described here may not be available yet.
+## Prerequisites
 
-## Quick Start with Docker
+- [Docker](https://docs.docker.com/get-docker/) and Docker Compose
 
-The fastest way to get running. Save a template config and start the containers:
+## Quick Start
 
 ```bash
 git clone https://github.com/Aureliolo/synthorg.git
 cd synthorg
-cp docker/.env.example docker/.env   # add your LLM API keys here
 docker compose -f docker/compose.yml up -d
 ```
 
-Verify it's running:
+The web dashboard is at [http://localhost:3000](http://localhost:3000).
 
-```bash
-curl http://localhost:8000/api/v1/health
-```
+All configuration — LLM provider keys, organization setup, templates — is managed through the dashboard.
 
-To stop:
+!!! danger "Work in Progress"
+    SynthOrg is under active development. The web dashboard, templates, and many features described here are **not yet available**. Check the [GitHub repository](https://github.com/Aureliolo/synthorg) for current status.
+
+## Templates
+
+Choose a pre-built organization template to get started quickly:
+
+| Template | Description |
+|----------|-------------|
+| `startup` | CEO + small engineering team |
+| `agency` | Project manager + specialists |
+| `research-lab` | Lead researcher + research assistants |
+
+Templates are selected through the dashboard. See [Templates](#) for the full list (coming soon).
+
+## Stop
 
 ```bash
 docker compose -f docker/compose.yml down
 ```
 
-## Install as a Python Package
-
-For programmatic use or integration into your own project:
-
-```bash
-pip install synthorg
-```
-
-Or with uv:
-
-```bash
-uv add synthorg
-```
-
-## Configure
-
-Pick a pre-built template or define your own organization:
-
-=== "Use a template"
-
-    ```python
-    from ai_company.templates import load_template
-
-    config = load_template("startup")  # startup, agency, research-lab, etc.
-    ```
-
-    See [Templates](#) for the full list of available configurations.
-
-=== "Custom YAML"
-
-    ```yaml
-    # company.yaml
-    company:
-      name: "My AI Company"
-
-    agents:
-      - role: ceo
-        name: "Chief Executive"
-        model: large
-
-      - role: engineer
-        name: "Backend Engineer"
-        model: medium
-        tools:
-          - file_system
-          - code_runner
-    ```
-
-## Run
-
-```python
-import asyncio
-
-from ai_company.engine.agent_engine import AgentEngine
-
-async def main():
-    engine = AgentEngine(config)  # from template or load_config("company.yaml")
-    result = await engine.run("Build a REST API for user management")
-    print(result)
-
-asyncio.run(main())
-```
-
 ## Next Steps
 
-- [Configuration Reference](#) — Full YAML schema (coming soon)
-- [Templates](#) — Pre-built company configurations (coming soon)
+- [Templates](#) — Full list of pre-built configurations (coming soon)
+- [REST API](#) — Interact with your org via the API (coming soon)
 - [Design Specification](https://github.com/Aureliolo/synthorg/blob/main/DESIGN_SPEC.md) — Full architecture details
