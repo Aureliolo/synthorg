@@ -19,37 +19,47 @@ uv add synthorg
 
 ## Configure
 
-Define your organization in a YAML file:
+Pick a pre-built template or define your own organization:
 
-```yaml
-# company.yaml
-company:
-  name: "My AI Company"
+=== "Use a template"
 
-agents:
-  - role: ceo
-    name: "Chief Executive"
-    model: large
+    ```python
+    from ai_company.templates import load_template
 
-  - role: engineer
-    name: "Backend Engineer"
-    model: medium
-    tools:
-      - file_system
-      - code_runner
-```
+    config = load_template("startup")  # startup, agency, research-lab, etc.
+    ```
+
+    See [Templates](#) for the full list of available configurations.
+
+=== "Custom YAML"
+
+    ```yaml
+    # company.yaml
+    company:
+      name: "My AI Company"
+
+    agents:
+      - role: ceo
+        name: "Chief Executive"
+        model: large
+
+      - role: engineer
+        name: "Backend Engineer"
+        model: medium
+        tools:
+          - file_system
+          - code_runner
+    ```
 
 ## Run
 
 ```python
 import asyncio
 
-from ai_company.config.loader import load_config
 from ai_company.engine.agent_engine import AgentEngine
 
 async def main():
-    config = load_config("company.yaml")
-    engine = AgentEngine(config)
+    engine = AgentEngine(config)  # from template or load_config("company.yaml")
     result = await engine.run("Build a REST API for user management")
     print(result)
 
