@@ -257,24 +257,46 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           BRANCH="pr-${PR_NUMBER}"
+          API_BASE="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/synthorg-pr-preview/deployments"
+
           # List deployments for this branch (per_page=100 to cover busy PRs)
-          # Note: Cloudflare prevents deleting the latest deployment per branch — that one will remain
-          DEPLOYMENTS=$(curl -sf \
-            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/synthorg-pr-preview/deployments?per_page=100" \
-            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            | jq -r ".result[] | select(.deployment_trigger.metadata.branch == \"${BRANCH}\") | .id") || true
-          if [ -z "$DEPLOYMENTS" ]; then
-            echo "No deployments found for branch ${BRANCH}"
+          # Note: Cloudflare prevents deleting the most recent deployment per project — that one will remain
+          echo "Fetching deployments for branch ${BRANCH}..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            "${API_BASE}?per_page=100" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          if [ "$HTTP_CODE" -ge 400 ]; then
+            echo "::warning::Failed to list deployments (HTTP ${HTTP_CODE})"
+            echo "$BODY" | jq -r '.errors[]?.message // empty' 2>/dev/null || true
             exit 0
           fi
+
+          # Wrangler direct-upload deployments store branch in deployment_trigger.metadata.branch
+          DEPLOYMENTS=$(echo "$BODY" | jq -r \
+            --arg branch "$BRANCH" \
+            '.result[] | select(.deployment_trigger.metadata.branch == $branch) | .id' 2>/dev/null) || true
+
+          if [ -z "$DEPLOYMENTS" ]; then
+            echo "No deployments found for branch ${BRANCH}"
+            echo "Available branches:"
+            echo "$BODY" | jq -r '[.result[].deployment_trigger.metadata.branch // "null"] | unique[]' 2>/dev/null || true
+            exit 0
+          fi
+
+          COUNT=0
           for DEPLOY_ID in $DEPLOYMENTS; do
             echo "Deleting deployment ${DEPLOY_ID}..."
-            RESPONSE=$(curl -s -w "\n%{http_code}" -X DELETE \
-              "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/synthorg-pr-preview/deployments/${DEPLOY_ID}?force=true" \
+            DEL_RESPONSE=$(curl -s -w "\n%{http_code}" -X DELETE \
+              "${API_BASE}/${DEPLOY_ID}?force=true" \
               -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
-            HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-            if [ "$HTTP_CODE" -ge 400 ]; then
-              echo "::warning::Failed to delete deployment ${DEPLOY_ID} (HTTP ${HTTP_CODE}) — may be the latest deployment (Cloudflare restriction)"
+            DEL_CODE=$(echo "$DEL_RESPONSE" | tail -1)
+            if [ "$DEL_CODE" -ge 400 ]; then
+              echo "::warning::Failed to delete deployment ${DEPLOY_ID} (HTTP ${DEL_CODE}) — may be the most recent deployment (Cloudflare restriction)"
+            else
+              COUNT=$((COUNT + 1))
             fi
           done
-          echo "Cleaned up preview deployments for ${BRANCH}"
+          echo "Deleted ${COUNT} preview deployments for ${BRANCH}"
