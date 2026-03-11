@@ -1,4 +1,4 @@
-"""Hybrid conflict resolution strategy (DESIGN_SPEC §5.6).
+"""Hybrid conflict resolution strategy (see Communication design page).
 
 Strategy 4: Combines automated review with optional human escalation.
 If a ``JudgeEvaluator`` is provided and returns a clear winner,

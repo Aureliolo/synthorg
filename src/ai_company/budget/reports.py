@@ -5,7 +5,7 @@ provider, model, and time-period comparison. Composes
 :class:`~ai_company.budget.tracker.CostTracker` and
 :class:`~ai_company.budget.config.BudgetConfig`.
 
-Service layer backing CFO reporting (DESIGN_SPEC Section 10.3).
+Service layer backing CFO reporting (see Operations design page).
 """
 
 import math

@@ -545,7 +545,7 @@ Strategy 3: Finish Current Tool
 
 Strategy 4: Checkpoint and Stop
 :   On shutdown signal, each agent persists its full `AgentContext` snapshot and
-    transitions to `SUSPENDED`. On restart, the engine loads checkpoints and
+    transitions to `INTERRUPTED`. On restart, the engine loads checkpoints and
     resumes execution. This naturally extends
     [Checkpoint Recovery](#agent-crash-recovery) -- the only difference is
     whether the checkpoint was written proactively (graceful shutdown) or loaded

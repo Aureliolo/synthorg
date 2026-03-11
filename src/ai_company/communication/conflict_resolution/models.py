@@ -1,4 +1,4 @@
-"""Conflict resolution domain models (DESIGN_SPEC §5.6).
+"""Conflict resolution domain models (see Communication design page).
 
 All models are frozen Pydantic v2 with ``NotBlankStr`` identifiers,
 following the patterns established in ``delegation/models.py``.

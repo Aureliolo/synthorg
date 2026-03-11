@@ -75,7 +75,7 @@ class ToolDefinition(BaseModel):
         arguments at the execution boundary, so no additional caller-side
         copying is needed for standard tool/provider workflows.  Direct
         consumers outside these paths should deep-copy if they intend to
-        modify the schema.  See DESIGN_SPEC.md section 15.5.
+        modify the schema.  See the tech stack page (docs/architecture/tech-stack.md).
 
     Attributes:
         name: Tool name.
@@ -101,7 +101,7 @@ class ToolCall(BaseModel):
         ``frozen=True`` — field reassignment is prevented but nested
         contents can still be mutated in place.  The ``ToolInvoker``
         deep-copies arguments before passing them to tool
-        implementations.  See DESIGN_SPEC.md section 15.5.
+        implementations.  See the tech stack page (docs/architecture/tech-stack.md).
 
     Attributes:
         id: Provider-assigned tool call identifier.

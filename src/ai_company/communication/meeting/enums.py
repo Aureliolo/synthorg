@@ -1,4 +1,4 @@
-"""Meeting protocol enumerations (DESIGN_SPEC Section 5.7)."""
+"""Meeting protocol enumerations (see Communication design page)."""
 
 from enum import StrEnum
 

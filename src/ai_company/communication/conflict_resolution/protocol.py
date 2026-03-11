@@ -1,4 +1,4 @@
-"""Conflict resolution protocol interfaces (DESIGN_SPEC §5.6).
+"""Conflict resolution protocol interfaces (see Communication design page).
 
 Defines the pluggable strategy interface that varies per resolution
 approach (``resolve`` + ``build_dissent_records``).  Detection logic

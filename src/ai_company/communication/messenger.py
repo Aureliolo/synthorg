@@ -1,4 +1,4 @@
-"""Per-agent messenger facade over the message bus (DESIGN_SPEC Section 5.4)."""
+"""Per-agent messenger facade over the message bus (see Communication design page)."""
 
 from datetime import UTC, datetime
 

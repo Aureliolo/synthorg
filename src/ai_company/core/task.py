@@ -47,7 +47,7 @@ class Task(BaseModel):
 
     Represents a task from creation through completion, with full
     lifecycle tracking, dependency modeling, and acceptance criteria.
-    Field schema matches DESIGN_SPEC Section 6.2.
+    Field schema matches the Engine design page.
 
     Attributes:
         id: Unique task identifier (e.g. ``"task-123"``).

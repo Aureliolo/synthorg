@@ -1,4 +1,4 @@
-"""Conflict resolution subsystem (DESIGN_SPEC §5.6).
+"""Conflict resolution subsystem (see Communication design page).
 
 Strategy implementations (``AuthorityResolver``, ``DebateResolver``,
 ``HumanEscalationResolver``, ``HybridResolver``) are imported directly

@@ -1,7 +1,7 @@
 """Trend detection strategy protocol.
 
 Defines the interface for pluggable trend detection strategies
-that analyze metric time series (DESIGN_SPEC §8.3, D12).
+that analyze metric time series (see Agents design page, D12).
 """
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable

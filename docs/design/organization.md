@@ -69,7 +69,7 @@ delegation rights, and typical model tier.
 
     ```yaml
     departments:
-      engineering:
+      - name: "engineering"
         head: "cto"
         budget_percent: 60
         teams:
@@ -79,21 +79,21 @@ delegation rights, and typical model tier.
           - name: "frontend"
             lead: "frontend_lead"
             members: ["sr_frontend_1", "mid_frontend_1"]
-      product:
+      - name: "product"
         head: "cpo"
         budget_percent: 20
         teams:
           - name: "core"
             lead: "pm_lead"
             members: ["pm_1", "ux_designer_1", "ui_designer_1"]
-      operations:
+      - name: "operations"
         head: "coo"
         budget_percent: 10
         teams:
           - name: "devops"
             lead: "devops_lead"
             members: ["sre_1"]
-      quality:
+      - name: "quality"
         head: "qa_lead"
         budget_percent: 10
         teams:
@@ -221,8 +221,9 @@ Scalars (`company_name`, `company_type`)
     defaults to an empty string, making the key `(role, department, "")`. The child template
     can override, append, or remove (`_remove: true`) parent agents.
 
-`departments` mapping
-:   Merged by key (case-insensitive). A child department replaces the parent entry entirely.
+`departments` list
+:   Merged by department `name` (case-insensitive). A child department with the same `name`
+    replaces the parent entry entirely; departments with new names are appended.
 
 `workflow_handoffs` and `escalation_paths`
 :   Child replaces entirely if present.

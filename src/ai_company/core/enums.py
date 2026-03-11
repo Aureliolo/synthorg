@@ -10,7 +10,7 @@ class SeniorityLevel(StrEnum):
     cost tier defined in ``ai_company.core.role_catalog.SENIORITY_INFO``.
     """
 
-    # DESIGN_SPEC §3.2 lists "Intern/Junior" — collapsed to JUNIOR (approved deviation).
+    # Agents page lists "Intern/Junior" — collapsed to JUNIOR.
     JUNIOR = "junior"
     MID = "mid"
     SENIOR = "senior"
@@ -347,7 +347,7 @@ class TaskStructure(StrEnum):
     """Classification of how a task's subtasks relate to each other.
 
     Used by the decomposition engine to determine coordination topology
-    and execution ordering. See DESIGN_SPEC Section 6.9.
+    and execution ordering. See the Engine design page.
     """
 
     SEQUENTIAL = "sequential"
@@ -359,7 +359,7 @@ class CoordinationTopology(StrEnum):
     """Coordination topology for multi-agent task execution.
 
     Determines how agents coordinate when executing decomposed subtasks.
-    See DESIGN_SPEC Section 6.9.
+    See the Engine design page.
     """
 
     SAS = "sas"
@@ -372,9 +372,9 @@ class CoordinationTopology(StrEnum):
 class ActionType(StrEnum):
     """Two-level action type taxonomy for security classification.
 
-    Used by autonomy presets (DESIGN_SPEC §12.2), SecOps validation
-    (§12.3), tiered timeout policies (§12.4), and progressive trust
-    (§11.3).  Values follow a ``category:action`` naming convention.
+    Used by autonomy presets (see Operations design page), SecOps
+    validation, tiered timeout policies, and progressive trust.
+    Values follow a ``category:action`` naming convention.
 
     Custom action type strings are also accepted by models that use
     ``str`` for ``action_type`` fields — these enum members are
@@ -460,7 +460,7 @@ class AutonomyLevel(StrEnum):
     """Autonomy level controlling approval routing for agents.
 
     Determines which actions an agent can execute autonomously vs.
-    which require human or security-agent approval (DESIGN_SPEC §12.2).
+    which require human or security-agent approval (see Operations design page).
     """
 
     FULL = "full"
@@ -503,7 +503,7 @@ class DowngradeReason(StrEnum):
 
 
 class TimeoutActionType(StrEnum):
-    """Action to take when an approval item times out (DESIGN_SPEC §12.4)."""
+    """Action to take when an approval item times out (see Operations design page)."""
 
     WAIT = "wait"
     APPROVE = "approve"

@@ -124,7 +124,7 @@ routing:
       fallback: "small"
     - role_level: "Junior"
       preferred_model: "small"
-      fallback: "local-small"
+      fallback: "local-coder"
     - task_type: "code_review"
       preferred_model: "medium"
     - task_type: "documentation"

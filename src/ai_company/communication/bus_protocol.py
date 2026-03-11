@@ -1,4 +1,4 @@
-"""Message bus protocol (DESIGN_SPEC Section 5.4).
+"""Message bus protocol (see Communication design page).
 
 Defines the swappable interface for message bus backends.  The
 default implementation is :class:`InMemoryMessageBus` in

@@ -1,4 +1,4 @@
-"""Communication configuration models (DESIGN_SPEC Sections 5.4, 5.5)."""
+"""Communication configuration models (see Communication design page)."""
 
 from collections import Counter
 from typing import Literal, Self
@@ -18,7 +18,7 @@ from ai_company.core.types import (
     validate_unique_strings,
 )
 
-# Default channels from DESIGN_SPEC Section 5.4.
+# Default channels from the Communication design page.
 _DEFAULT_CHANNELS: tuple[str, ...] = (
     "#all-hands",
     "#engineering",
@@ -49,7 +49,7 @@ class MessageRetentionConfig(BaseModel):
 class MessageBusConfig(BaseModel):
     """Message bus backend configuration.
 
-    Maps to DESIGN_SPEC Section 5.4 ``message_bus``.
+    Maps to the Communication design page ``message_bus``.
 
     Attributes:
         backend: Transport backend to use.
@@ -82,7 +82,7 @@ class MessageBusConfig(BaseModel):
 class MeetingTypeConfig(BaseModel):
     """Configuration for a single meeting type.
 
-    Maps to DESIGN_SPEC Section 5.4 ``meetings.types[]``.  Exactly one of
+    Maps to the Communication design page ``meetings.types[]``.  Exactly one of
     ``frequency`` or ``trigger`` must be set.
 
     Attributes:
@@ -139,7 +139,7 @@ class MeetingTypeConfig(BaseModel):
 class MeetingsConfig(BaseModel):
     """Meetings subsystem configuration.
 
-    Maps to DESIGN_SPEC Section 5.4 ``meetings``.
+    Maps to the Communication design page ``meetings``.
 
     Attributes:
         enabled: Whether the meetings subsystem is active.
@@ -168,7 +168,7 @@ class MeetingsConfig(BaseModel):
 class HierarchyConfig(BaseModel):
     """Hierarchy enforcement configuration.
 
-    Maps to DESIGN_SPEC Section 5.4 ``hierarchy``.
+    Maps to the Communication design page ``hierarchy``.
 
     Attributes:
         enforce_chain_of_command: Whether chain-of-command is enforced.
@@ -190,7 +190,7 @@ class HierarchyConfig(BaseModel):
 class RateLimitConfig(BaseModel):
     """Per-pair message rate limit configuration.
 
-    Maps to DESIGN_SPEC Section 5.5 ``rate_limit``.
+    Maps to the Communication design page ``rate_limit``.
 
     Attributes:
         max_per_pair_per_minute: Maximum messages per agent pair per minute.
@@ -214,7 +214,7 @@ class RateLimitConfig(BaseModel):
 class CircuitBreakerConfig(BaseModel):
     """Circuit breaker configuration for agent-pair communication.
 
-    Maps to DESIGN_SPEC Section 5.5 ``circuit_breaker``.
+    Maps to the Communication design page ``circuit_breaker``.
 
     Attributes:
         bounce_threshold: Bounce count before the circuit opens.
@@ -238,7 +238,7 @@ class CircuitBreakerConfig(BaseModel):
 class LoopPreventionConfig(BaseModel):
     """Loop prevention safeguards.
 
-    Maps to DESIGN_SPEC Section 5.5.  ``ancestry_tracking`` is always on
+    Maps to the Communication design page.  ``ancestry_tracking`` is always on
     and cannot be disabled.
 
     Attributes:
@@ -278,7 +278,7 @@ class LoopPreventionConfig(BaseModel):
 class CommunicationConfig(BaseModel):
     """Top-level communication configuration.
 
-    Aggregates DESIGN_SPEC Sections 5.4 and 5.5 under a single model.
+    Aggregates the Communication design page sections under a single model.
 
     Attributes:
         default_pattern: High-level communication pattern.
@@ -312,5 +312,5 @@ class CommunicationConfig(BaseModel):
     )
     conflict_resolution: ConflictResolutionConfig = Field(
         default_factory=ConflictResolutionConfig,
-        description="Conflict resolution configuration (DESIGN_SPEC §5.6)",
+        description="Conflict resolution configuration (see Communication design page)",
     )

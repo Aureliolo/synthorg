@@ -1,4 +1,4 @@
-"""Communication error hierarchy (DESIGN_SPEC Sections 5.4, 5.5, 5.6).
+"""Communication error hierarchy (see Communication design page).
 
 All communication errors carry an immutable context mapping for
 structured metadata, following the same pattern as ``ToolError``.

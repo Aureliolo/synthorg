@@ -1,4 +1,4 @@
-"""Meeting orchestrator — lifecycle manager (DESIGN_SPEC Section 5.7).
+"""Meeting orchestrator — lifecycle manager (see Communication design page).
 
 Manages the full meeting lifecycle: validates inputs, selects the
 configured protocol, executes the meeting, optionally creates tasks

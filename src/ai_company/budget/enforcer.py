@@ -3,7 +3,7 @@
 Composes :class:`~ai_company.budget.tracker.CostTracker` and
 :class:`~ai_company.budget.config.BudgetConfig` to provide pre-flight
 checks, in-flight budget checking, and task-boundary auto-downgrade
-as described in DESIGN_SPEC Section 10.4.
+as described in the Cost Controls section of the Operations design page.
 """
 
 from typing import TYPE_CHECKING, NamedTuple

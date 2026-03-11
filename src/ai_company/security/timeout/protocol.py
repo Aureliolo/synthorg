@@ -9,7 +9,7 @@ from ai_company.security.timeout.models import TimeoutAction  # noqa: TC001
 
 @runtime_checkable
 class TimeoutPolicy(Protocol):
-    """Protocol for approval timeout policies (DESIGN_SPEC §12.4).
+    """Protocol for approval timeout policies (see Operations design page).
 
     Implementations determine what happens when a human does not
     respond to an approval request within a configured timeframe.

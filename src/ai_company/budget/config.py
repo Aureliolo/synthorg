@@ -1,6 +1,6 @@
 """Budget configuration models.
 
-Implements DESIGN_SPEC Section 10.4: cost controls including alert
+Implements the Cost Controls section of the Operations design page: alert
 thresholds, per-task and per-agent limits, and automatic model downgrade.
 """
 
@@ -75,7 +75,7 @@ class AutoDowngradeConfig(BaseModel):
         threshold: Budget percent that triggers downgrade.
         downgrade_map: Ordered pairs of (from_alias, to_alias).
         boundary: When to apply downgrade (task_assignment only,
-            never mid-execution per DESIGN_SPEC §10.4).
+            never mid-execution per the Operations design page).
     """
 
     model_config = ConfigDict(frozen=True)

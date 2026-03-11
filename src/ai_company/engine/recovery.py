@@ -6,7 +6,7 @@ from its current status (typically ``IN_PROGRESS``) to ``FAILED``
 status, captures a redacted context snapshot, and reports whether the
 task can be reassigned (based on retry count vs max retries).
 
-See DESIGN_SPEC Section 6.6 for the full crash recovery design.
+See the Crash Recovery section of the Engine design page.
 """
 
 from typing import Final, Protocol, runtime_checkable

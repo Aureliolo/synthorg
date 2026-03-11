@@ -1,6 +1,6 @@
 """Message dispatcher — routes incoming messages to registered handlers.
 
-See DESIGN_SPEC Section 5.4.
+See the Communication design page.
 """
 
 import asyncio

@@ -1,4 +1,4 @@
-"""Meeting protocol subsystem (DESIGN_SPEC Section 5.7).
+"""Meeting protocol subsystem (see Communication design page).
 
 Provides pluggable meeting protocol strategies for structured
 multi-agent conversations:

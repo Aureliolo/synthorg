@@ -1,4 +1,4 @@
-"""Meeting protocol interface (DESIGN_SPEC Section 5.7).
+"""Meeting protocol interface (see Communication design page).
 
 Defines the ``MeetingProtocol`` protocol, the ``ConflictDetector``
 protocol, and the ``AgentCaller`` type alias used to invoke agents

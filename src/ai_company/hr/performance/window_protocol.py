@@ -1,7 +1,7 @@
 """Metrics window strategy protocol.
 
 Defines the interface for pluggable rolling-window aggregation
-strategies (DESIGN_SPEC §8.3, D11).
+strategies (see Agents design page, D11).
 """
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable

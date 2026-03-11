@@ -1,7 +1,7 @@
 """Quality scoring strategy protocol.
 
 Defines the interface for pluggable quality scoring strategies
-that evaluate task completion quality (DESIGN_SPEC §8.3, D2).
+that evaluate task completion quality (see Agents design page, D2).
 """
 
 from typing import Protocol, runtime_checkable

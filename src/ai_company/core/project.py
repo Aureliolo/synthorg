@@ -14,8 +14,8 @@ class Project(BaseModel):
     """A collection of related tasks with a shared goal, team, and deadline.
 
     Projects organize tasks into a coherent unit of work with budget
-    tracking and team assignment.  Per DESIGN_SPEC Section 2.1 glossary
-    and Section 2.2 entity relationship tree.
+    tracking and team assignment.  Per the Design Overview glossary
+    and entity relationship tree.
 
     Attributes:
         id: Unique project identifier (e.g. ``"proj-456"``).

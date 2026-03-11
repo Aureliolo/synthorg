@@ -31,7 +31,7 @@ import Base from "../layouts/Base.astro";
       </p>
 
       <!-- CTAs -->
-      <div class="flex flex-col sm:flex-row gap-4 justify-center">
+      <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
         <a
           href="/docs/user_guide/"
           class="px-8 py-3 bg-violet-600 hover:bg-violet-500 rounded-lg font-semibold transition-colors"
@@ -44,6 +44,7 @@ import Base from "../layouts/Base.astro";
         >
           See How It Works
         </a>
+        <a class="github-button" href="https://github.com/Aureliolo/synthorg" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star Aureliolo/synthorg on GitHub">Star</a>
       </div>
     </div>
   </section>
@@ -249,17 +250,18 @@ import Base from "../layouts/Base.astro";
     <div class="max-w-3xl mx-auto text-center">
       <h2 class="text-3xl md:text-4xl font-bold mb-6">Open Source</h2>
       <p class="text-gray-400 mb-8">
-        BSL 1.1 &mdash; converts to Apache 2.0 on 2030-02-27.
-        Our <a href="/docs/design/" class="text-teal-400 hover:underline">design specification</a> is public.
+        Everything is open &mdash; code, <a href="/docs/design/" class="text-teal-400 hover:underline">design spec</a>,
+        <a href="/docs/architecture/" class="text-teal-400 hover:underline">architecture docs</a>, and
+        <a href="/docs/roadmap/" class="text-teal-400 hover:underline">roadmap</a>.
+        Licensed under BSL 1.1, converting to Apache 2.0 on 2030-02-27.
       </p>
 
-      <div class="flex flex-col sm:flex-row gap-4 justify-center">
-        <a
-          href="https://github.com/Aureliolo/synthorg"
-          class="px-8 py-3 bg-white/10 hover:bg-white/15 rounded-lg font-semibold transition-colors"
-        >
-          Star on GitHub
-        </a>
+      <div class="flex flex-col sm:flex-row gap-4 items-center justify-center">
+        <!-- GitHub buttons -->
+        <div class="flex gap-3">
+          <a class="github-button" href="https://github.com/Aureliolo/synthorg" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star Aureliolo/synthorg on GitHub">Star</a>
+          <a class="github-button" href="https://github.com/Aureliolo/synthorg/fork" data-icon="octicon-repo-forked" data-size="large" data-show-count="true" aria-label="Fork Aureliolo/synthorg on GitHub">Fork</a>
+        </div>
         <a
           href="/docs/"
           class="px-8 py-3 border border-white/20 hover:bg-white/5 rounded-lg font-semibold transition-colors"
@@ -280,13 +282,39 @@ import Base from "../layouts/Base.astro";
         <span class="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-teal-400">like a team.</span>
       </h2>
 
-      <div class="bg-[#1a1f2e] rounded-xl p-4 max-w-lg mx-auto mb-8 border border-white/10">
-        <code class="font-['JetBrains_Mono',monospace] text-sm text-gray-300">
-          <span class="text-gray-500">$</span> git clone https://github.com/Aureliolo/synthorg<br>
-          <span class="text-gray-500">$</span> cd synthorg<br>
-          <span class="text-gray-500">$</span> docker compose -f docker/compose.yml up -d
-        </code>
+      <div class="relative bg-[#0d1117] rounded-xl max-w-2xl mx-auto mb-8 border border-white/10 text-left overflow-hidden">
+        <!-- Terminal header -->
+        <div class="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-white/10">
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-red-500/80"></span>
+            <span class="w-3 h-3 rounded-full bg-yellow-500/80"></span>
+            <span class="w-3 h-3 rounded-full bg-green-500/80"></span>
+            <span class="ml-2 text-xs text-gray-500 font-mono">terminal</span>
+          </div>
+          <button
+            id="copy-terminal"
+            class="text-xs text-gray-500 hover:text-gray-300 transition-colors px-2 py-1 rounded hover:bg-white/5"
+            aria-label="Copy to clipboard"
+          >
+            Copy
+          </button>
+        </div>
+        <!-- Terminal body -->
+        <pre class="p-4 text-sm font-['JetBrains_Mono',monospace] text-gray-300 overflow-x-auto leading-relaxed"><code id="terminal-code"><span class="text-gray-500">$</span> git clone https://github.com/Aureliolo/synthorg
+<span class="text-gray-500">$</span> cd synthorg
+<span class="text-gray-500">$</span> docker compose -f docker/compose.yml up -d</code></pre>
       </div>
+
+      <script>
+        document.getElementById('copy-terminal')?.addEventListener('click', function() {
+          const text = 'git clone https://github.com/Aureliolo/synthorg\ncd synthorg\ndocker compose -f docker/compose.yml up -d';
+          navigator.clipboard.writeText(text).then(() => {
+            const btn = this;
+            btn.textContent = 'Copied!';
+            setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+          });
+        });
+      </script>
 
       <a
         href="/docs/user_guide/"

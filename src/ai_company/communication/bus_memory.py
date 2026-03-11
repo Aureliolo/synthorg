@@ -1,4 +1,4 @@
-"""In-memory message bus implementation (DESIGN_SPEC Section 5.4).
+"""In-memory message bus implementation (see Communication design page).
 
 Default backend using asyncio primitives.  Suitable for single-process
 deployments and testing.

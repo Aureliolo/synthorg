@@ -1,4 +1,4 @@
-"""Meeting protocol configuration models (DESIGN_SPEC Section 5.7)."""
+"""Meeting protocol configuration models (see Communication design page)."""
 
 from pydantic import BaseModel, ConfigDict, Field
 

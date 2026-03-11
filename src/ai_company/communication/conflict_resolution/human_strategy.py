@@ -1,4 +1,4 @@
-"""Human escalation conflict resolution strategy (DESIGN_SPEC §5.6).
+"""Human escalation conflict resolution strategy (see Communication design page).
 
 Strategy 3: Escalate to human for resolution.  Returns a stub
 resolution with ``ESCALATED_TO_HUMAN`` outcome — actual human

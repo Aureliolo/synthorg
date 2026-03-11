@@ -122,11 +122,11 @@ graph TB
 | [Developer Setup](docs/getting_started.md) | Clone, test, lint, contribute |
 | [User Guide](docs/user_guide.md) | Install, configure, run via Docker |
 
-> **Contributors:** Read [`DESIGN_SPEC.md`](DESIGN_SPEC.md) before implementing any feature — it is the mandatory starting point for architecture, data models, and behavior.
+> **Contributors:** Start with the [Design Overview](docs/design/index.md) before implementing any feature — it is the mandatory starting point for architecture, data models, and behavior. [`DESIGN_SPEC.md`](DESIGN_SPEC.md) serves as a pointer to the full design set.
 
 ## Status
 
-Core framework complete — agent engine, multi-agent coordination, API, security, HR, memory, and budget systems are implemented. Remaining: Mem0 adapter backend, approval workflow gates, CLI, web dashboard. See the [roadmap](https://synthorg.io/docs/roadmap/) for details.
+Core framework complete — agent engine, multi-agent coordination, API, security, HR, memory, and budget systems are implemented. Remaining: Mem0 adapter backend, approval workflow gates, CLI, web dashboard. See the [roadmap](docs/roadmap/index.md) for details.
 
 ## License
 

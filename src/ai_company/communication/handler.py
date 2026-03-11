@@ -1,4 +1,4 @@
-"""Handler protocol, adapter, and registration (DESIGN_SPEC Section 5.4)."""
+"""Handler protocol, adapter, and registration (see Communication design page)."""
 
 import inspect
 from collections.abc import Awaitable, Callable

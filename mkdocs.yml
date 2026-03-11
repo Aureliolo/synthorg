@@ -143,6 +143,7 @@ nav:
       - Observability: api/observability.md
 
 extra:
+  homepage: /
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/Aureliolo/synthorg

@@ -1,7 +1,7 @@
 """Collaboration scoring strategy protocol.
 
 Defines the interface for pluggable collaboration scoring strategies
-that evaluate agent collaboration behavior (DESIGN_SPEC §8.3, D3).
+that evaluate agent collaboration behavior (see Agents design page, D3).
 """
 
 from typing import Protocol, runtime_checkable

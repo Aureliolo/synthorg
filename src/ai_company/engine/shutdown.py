@@ -1,7 +1,8 @@
 """Graceful shutdown strategy and manager.
 
-Implements DESIGN_SPEC §6.7 — cooperative timeout strategy for clean
-process shutdown.  When SIGINT/SIGTERM is received the framework signals
+Implements the Graceful Shutdown section of the Engine design page —
+cooperative timeout strategy for clean process shutdown.
+When SIGINT/SIGTERM is received the framework signals
 agents to exit at turn boundaries, waits a grace period, force-cancels
 stragglers, and runs cleanup callbacks.  The *engine* layer is responsible
 for transitioning tasks to INTERRUPTED (see ``AgentEngine``).
