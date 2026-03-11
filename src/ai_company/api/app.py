@@ -154,21 +154,14 @@ async def _init_persistence(
     persistence: PersistenceBackend,
     app_state: AppState,
 ) -> None:
-    """Connect persistence, run migrations, and resolve JWT secret.
+    """Run migrations and resolve JWT secret on an already-connected backend.
+
+    Must only be called after ``persistence.connect()`` has succeeded.
 
     Args:
-        persistence: Persistence backend to initialise.
+        persistence: Connected persistence backend.
         app_state: Application state for auth service injection.
     """
-    try:
-        await persistence.connect()
-    except Exception:
-        logger.exception(
-            API_APP_STARTUP,
-            error="Failed to connect persistence",
-        )
-        raise
-
     try:
         await persistence.migrate()
     except Exception:
@@ -214,8 +207,18 @@ async def _safe_startup(
     started_persistence = False
     try:
         if persistence is not None:
-            await _init_persistence(persistence, app_state)
+            try:
+                await persistence.connect()
+            except Exception:
+                logger.exception(
+                    API_APP_STARTUP,
+                    error="Failed to connect persistence",
+                )
+                raise
+            # Mark connected immediately so cleanup can disconnect
+            # if migrate() or JWT resolution fails below.
             started_persistence = True
+            await _init_persistence(persistence, app_state)
 
         if message_bus is not None:
             try:

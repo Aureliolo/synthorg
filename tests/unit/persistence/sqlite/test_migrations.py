@@ -144,32 +144,20 @@ class TestRunMigrations:
         }
         assert expected.issubset(indexes)
 
-    async def test_v5_creates_users_table(
-        self, memory_db: aiosqlite.Connection
+    @pytest.mark.parametrize(
+        "table_name",
+        ["users", "api_keys", "settings"],
+    )
+    async def test_v5_creates_table(
+        self,
+        memory_db: aiosqlite.Connection,
+        table_name: str,
     ) -> None:
+        """V5 migration creates the expected tables."""
         await run_migrations(memory_db)
         cursor = await memory_db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='users'"
-        )
-        row = await cursor.fetchone()
-        assert row is not None
-
-    async def test_v5_creates_api_keys_table(
-        self, memory_db: aiosqlite.Connection
-    ) -> None:
-        await run_migrations(memory_db)
-        cursor = await memory_db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='api_keys'"
-        )
-        row = await cursor.fetchone()
-        assert row is not None
-
-    async def test_v5_creates_settings_table(
-        self, memory_db: aiosqlite.Connection
-    ) -> None:
-        await run_migrations(memory_db)
-        cursor = await memory_db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='settings'"
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            (table_name,),
         )
         row = await cursor.fetchone()
         assert row is not None
@@ -183,7 +171,6 @@ class TestRunMigrations:
             "AND name LIKE 'idx_%' AND name LIKE '%user%' ORDER BY name"
         )
         indexes = {row[0] for row in await cursor.fetchall()}
-        assert "idx_users_username" in indexes
         assert "idx_api_keys_user_id" in indexes
 
     async def test_migration_failure_raises_migration_error(

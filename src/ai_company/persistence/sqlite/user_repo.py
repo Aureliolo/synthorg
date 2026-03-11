@@ -1,4 +1,9 @@
-"""SQLite repository implementations for User and ApiKey."""
+"""SQLite repository implementations for User and ApiKey.
+
+Provides ``SQLiteUserRepository`` and ``SQLiteApiKeyRepository``, which
+persist ``User`` and ``ApiKey`` domain models to SQLite via aiosqlite.
+Both use upsert semantics for ``save`` operations.
+"""
 
 import sqlite3
 from datetime import UTC, datetime
@@ -36,7 +41,17 @@ logger = get_logger(__name__)
 
 
 def _row_to_user(row: aiosqlite.Row) -> User:
-    """Reconstruct a User from a database row."""
+    """Reconstruct a ``User`` from a database row.
+
+    Converts SQLite-native types (integers, ISO strings) back into
+    the domain model's expected Python types.
+
+    Args:
+        row: A single database row with user columns.
+
+    Returns:
+        Validated ``User`` model instance.
+    """
     data = dict(row)
     data["must_change_password"] = bool(data["must_change_password"])
     data["role"] = HumanRole(data["role"])
@@ -46,7 +61,17 @@ def _row_to_user(row: aiosqlite.Row) -> User:
 
 
 def _row_to_api_key(row: aiosqlite.Row) -> ApiKey:
-    """Reconstruct an ApiKey from a database row."""
+    """Reconstruct an ``ApiKey`` from a database row.
+
+    Converts SQLite-native types (integers, ISO strings) back into
+    the domain model's expected Python types.
+
+    Args:
+        row: A single database row with API key columns.
+
+    Returns:
+        Validated ``ApiKey`` model instance.
+    """
     data = dict(row)
     data["revoked"] = bool(data["revoked"])
     data["role"] = HumanRole(data["role"])
@@ -57,17 +82,29 @@ def _row_to_api_key(row: aiosqlite.Row) -> ApiKey:
 
 
 class SQLiteUserRepository:
-    """SQLite implementation of the UserRepository protocol.
+    """SQLite-backed user repository.
+
+    Provides CRUD operations for ``User`` models using a shared
+    ``aiosqlite.Connection``.  All write operations commit
+    immediately.
 
     Args:
-        db: An open aiosqlite connection.
+        db: An open aiosqlite connection with ``row_factory``
+            set to ``aiosqlite.Row``.
     """
 
     def __init__(self, db: aiosqlite.Connection) -> None:
         self._db = db
 
     async def save(self, user: User) -> None:
-        """Persist a user (upsert semantics)."""
+        """Persist a user via upsert (insert or update on conflict).
+
+        Args:
+            user: User model to persist.
+
+        Raises:
+            QueryError: If the database operation fails.
+        """
         try:
             await self._db.execute(
                 """\
@@ -99,10 +136,20 @@ ON CONFLICT(id) DO UPDATE SET
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        logger.debug(PERSISTENCE_USER_SAVED, user_id=user.id)
+        logger.info(PERSISTENCE_USER_SAVED, user_id=user.id)
 
     async def get(self, user_id: NotBlankStr) -> User | None:
-        """Retrieve a user by ID."""
+        """Retrieve a user by primary key.
+
+        Args:
+            user_id: Unique user identifier.
+
+        Returns:
+            The matching ``User``, or ``None`` if not found.
+
+        Raises:
+            QueryError: If the database query or deserialization fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT * FROM users WHERE id = ?", (user_id,)
@@ -133,7 +180,17 @@ ON CONFLICT(id) DO UPDATE SET
         return user
 
     async def get_by_username(self, username: NotBlankStr) -> User | None:
-        """Retrieve a user by username."""
+        """Retrieve a user by their unique username.
+
+        Args:
+            username: Login username to look up.
+
+        Returns:
+            The matching ``User``, or ``None`` if not found.
+
+        Raises:
+            QueryError: If the database query or deserialization fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT * FROM users WHERE username = ?", (username,)
@@ -161,7 +218,14 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
 
     async def list_users(self) -> tuple[User, ...]:
-        """List all users."""
+        """List all users ordered by creation date.
+
+        Returns:
+            Tuple of all ``User`` records, oldest first.
+
+        Raises:
+            QueryError: If the database query or deserialization fails.
+        """
         try:
             cursor = await self._db.execute("SELECT * FROM users ORDER BY created_at")
             rows = await cursor.fetchall()
@@ -179,7 +243,14 @@ ON CONFLICT(id) DO UPDATE SET
         return users
 
     async def count(self) -> int:
-        """Count the number of users."""
+        """Return the total number of persisted users.
+
+        Returns:
+            Non-negative integer count.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             cursor = await self._db.execute("SELECT COUNT(*) FROM users")
             row = await cursor.fetchone()
@@ -192,7 +263,17 @@ ON CONFLICT(id) DO UPDATE SET
         return result
 
     async def delete(self, user_id: NotBlankStr) -> bool:
-        """Delete a user by ID."""
+        """Delete a user by primary key.
+
+        Args:
+            user_id: Unique user identifier.
+
+        Returns:
+            ``True`` if a row was deleted, ``False`` if not found.
+
+        Raises:
+            QueryError: If the database operation fails.
+        """
         try:
             cursor = await self._db.execute(
                 "DELETE FROM users WHERE id = ?", (user_id,)
@@ -207,22 +288,34 @@ ON CONFLICT(id) DO UPDATE SET
             )
             raise QueryError(msg) from exc
         deleted = cursor.rowcount > 0
-        logger.debug(PERSISTENCE_USER_DELETED, user_id=user_id, deleted=deleted)
+        logger.info(PERSISTENCE_USER_DELETED, user_id=user_id, deleted=deleted)
         return deleted
 
 
 class SQLiteApiKeyRepository:
-    """SQLite implementation of the ApiKeyRepository protocol.
+    """SQLite-backed API key repository.
+
+    Provides CRUD operations for ``ApiKey`` models using a shared
+    ``aiosqlite.Connection``.  All write operations commit
+    immediately.
 
     Args:
-        db: An open aiosqlite connection.
+        db: An open aiosqlite connection with ``row_factory``
+            set to ``aiosqlite.Row``.
     """
 
     def __init__(self, db: aiosqlite.Connection) -> None:
         self._db = db
 
     async def save(self, key: ApiKey) -> None:
-        """Persist an API key (upsert semantics)."""
+        """Persist an API key via upsert (insert or update on conflict).
+
+        Args:
+            key: API key model to persist.
+
+        Raises:
+            QueryError: If the database operation fails.
+        """
         try:
             await self._db.execute(
                 """\
@@ -260,10 +353,20 @@ ON CONFLICT(id) DO UPDATE SET
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        logger.debug(PERSISTENCE_API_KEY_SAVED, key_id=key.id)
+        logger.info(PERSISTENCE_API_KEY_SAVED, key_id=key.id)
 
     async def get(self, key_id: NotBlankStr) -> ApiKey | None:
-        """Retrieve an API key by ID."""
+        """Retrieve an API key by primary key.
+
+        Args:
+            key_id: Unique key identifier.
+
+        Returns:
+            The matching ``ApiKey``, or ``None`` if not found.
+
+        Raises:
+            QueryError: If the database query or deserialization fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT * FROM api_keys WHERE id = ?", (key_id,)
@@ -294,7 +397,17 @@ ON CONFLICT(id) DO UPDATE SET
         return key
 
     async def get_by_hash(self, key_hash: NotBlankStr) -> ApiKey | None:
-        """Retrieve an API key by its hash."""
+        """Retrieve an API key by its SHA-256 hash.
+
+        Args:
+            key_hash: Hex-encoded SHA-256 digest of the raw key.
+
+        Returns:
+            The matching ``ApiKey``, or ``None`` if not found.
+
+        Raises:
+            QueryError: If the database query or deserialization fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT * FROM api_keys WHERE key_hash = ?",
@@ -315,7 +428,17 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
 
     async def list_by_user(self, user_id: NotBlankStr) -> tuple[ApiKey, ...]:
-        """List API keys belonging to a user."""
+        """List all API keys belonging to a user, ordered by creation date.
+
+        Args:
+            user_id: Owner user identifier.
+
+        Returns:
+            Tuple of ``ApiKey`` records, oldest first.
+
+        Raises:
+            QueryError: If the database query or deserialization fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT * FROM api_keys WHERE user_id = ? ORDER BY created_at",
@@ -348,7 +471,17 @@ ON CONFLICT(id) DO UPDATE SET
         return keys
 
     async def delete(self, key_id: NotBlankStr) -> bool:
-        """Delete an API key by ID."""
+        """Delete an API key by primary key.
+
+        Args:
+            key_id: Unique key identifier.
+
+        Returns:
+            ``True`` if a row was deleted, ``False`` if not found.
+
+        Raises:
+            QueryError: If the database operation fails.
+        """
         try:
             cursor = await self._db.execute(
                 "DELETE FROM api_keys WHERE id = ?", (key_id,)
@@ -363,5 +496,5 @@ ON CONFLICT(id) DO UPDATE SET
             )
             raise QueryError(msg) from exc
         deleted = cursor.rowcount > 0
-        logger.debug(PERSISTENCE_API_KEY_DELETED, key_id=key_id, deleted=deleted)
+        logger.info(PERSISTENCE_API_KEY_DELETED, key_id=key_id, deleted=deleted)
         return deleted

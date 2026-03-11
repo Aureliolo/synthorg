@@ -9,6 +9,7 @@ from litestar.connection import ASGIConnection  # noqa: TC002
 from litestar.exceptions import PermissionDeniedException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from ai_company.api.auth.config import AuthConfig
 from ai_company.api.auth.models import AuthenticatedUser, User
 from ai_company.api.auth.service import AuthService  # noqa: TC001
 from ai_company.api.dto import ApiResponse
@@ -25,7 +26,17 @@ from ai_company.observability.events.api import (
 
 logger = get_logger(__name__)
 
-_MIN_PASSWORD_LENGTH = 12
+# Derive from AuthConfig default to prevent silent divergence.
+_MIN_PASSWORD_LENGTH: int = AuthConfig.model_fields["min_password_length"].default
+
+# Pre-computed Argon2id hash for constant-time rejection when the
+# username doesn't exist — prevents timing-based username enumeration.
+# The actual password is irrelevant; only the verification time matters.
+_DUMMY_ARGON2_HASH = (
+    "$argon2id$v=19$m=65536,t=3,p=4$"
+    "c2FsdHNhbHRzYWx0$"
+    "mB0bZKSNwOhSdxMQfsldT3qGmFyjVqbkntMkutMfdUs"
+)
 
 
 def _check_password_length(password: str) -> str:
@@ -272,9 +283,17 @@ class AuthController(Controller):
         persistence = app_state.persistence
 
         user = await persistence.users.get_by_username(data.username)
-        if user is None or not await auth_service.verify_password_async(
-            data.password, user.password_hash
-        ):
+        if user is not None:
+            password_valid = await auth_service.verify_password_async(
+                data.password, user.password_hash
+            )
+        else:
+            # Constant-time rejection: run verification against a
+            # dummy hash to prevent timing-based username enumeration.
+            await auth_service.verify_password_async(data.password, _DUMMY_ARGON2_HASH)
+            password_valid = False
+
+        if not password_valid:
             logger.warning(
                 API_AUTH_FAILED,
                 reason="invalid_credentials",

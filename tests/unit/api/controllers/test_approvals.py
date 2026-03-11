@@ -259,7 +259,7 @@ class TestApproveApproval:
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"]["status"] == "approved"
-        assert body["data"]["decided_by"] == "ceo"
+        assert body["data"]["decided_by"] == "test-ceo"
         assert body["data"]["decision_reason"] == "Looks good"
 
     async def test_approve_records_decided_by_from_header(
@@ -274,7 +274,7 @@ class TestApproveApproval:
             headers=make_auth_headers("manager"),
         )
         assert resp.status_code == 200
-        assert resp.json()["data"]["decided_by"] == "manager"
+        assert resp.json()["data"]["decided_by"] == "test-manager"
 
     def test_approve_not_found(self, test_client: TestClient[Any]) -> None:
         resp = test_client.post(
@@ -360,7 +360,7 @@ class TestRejectApproval:
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"]["status"] == "rejected"
-        assert body["data"]["decided_by"] == "ceo"
+        assert body["data"]["decided_by"] == "test-ceo"
         assert body["data"]["decision_reason"] == "Too risky"
 
     async def test_reject_requires_reason(

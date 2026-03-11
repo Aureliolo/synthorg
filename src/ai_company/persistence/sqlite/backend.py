@@ -109,6 +109,9 @@ class SQLitePersistenceBackend:
                 self._db = await aiosqlite.connect(self._config.path)
                 self._db.row_factory = aiosqlite.Row
 
+                # Enable foreign key enforcement (off by default in SQLite).
+                await self._db.execute("PRAGMA foreign_keys = ON")
+
                 if self._config.wal_mode:
                     await self._configure_wal()
 

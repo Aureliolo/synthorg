@@ -8,6 +8,7 @@ from litestar import Controller, Request, get, post
 from litestar.channels import ChannelsPlugin
 from litestar.datastructures import State  # noqa: TC002
 
+from ai_company.api.auth.models import AuthenticatedUser
 from ai_company.api.channels import CHANNEL_APPROVALS
 from ai_company.api.dto import (
     ApiResponse,
@@ -16,7 +17,7 @@ from ai_company.api.dto import (
     PaginatedResponse,
     RejectRequest,
 )
-from ai_company.api.errors import ConflictError, NotFoundError
+from ai_company.api.errors import ConflictError, NotFoundError, UnauthorizedError
 from ai_company.api.guards import require_read_access, require_write_access
 from ai_company.api.pagination import PaginationLimit, PaginationOffset, paginate
 from ai_company.api.state import AppState  # noqa: TC001
@@ -100,6 +101,46 @@ def _publish_approval_event(
             event_type=event_type.value,
             exc_info=True,
         )
+
+
+def _resolve_decision(
+    request: Request[Any, Any, Any],
+    item: ApprovalItem,
+    approval_id: str,
+) -> AuthenticatedUser:
+    """Validate that an approval item is pending and extract the auth user.
+
+    Performs the shared pre-checks for approve/reject operations:
+    look up the authenticated user, and verify the item is still
+    in PENDING status.
+
+    Args:
+        request: The incoming HTTP request.
+        item: The approval item to act on.
+        approval_id: Approval identifier (for log messages).
+
+    Returns:
+        The authenticated user making the decision.
+
+    Raises:
+        UnauthorizedError: If the user is missing from the request scope.
+        ConflictError: If the approval is not in PENDING status.
+    """
+    if item.status != ApprovalStatus.PENDING:
+        msg = f"Approval {approval_id!r} is {item.status.value}, not pending"
+        logger.warning(
+            API_APPROVAL_CONFLICT,
+            approval_id=approval_id,
+            current_status=item.status.value,
+        )
+        raise ConflictError(msg)
+
+    auth_user = request.scope.get("user")
+    if not isinstance(auth_user, AuthenticatedUser):
+        msg = "Authentication required"
+        raise UnauthorizedError(msg)
+
+    return auth_user
 
 
 class ApprovalsController(Controller):
@@ -237,7 +278,7 @@ class ApprovalsController(Controller):
         """Approve a pending approval item.
 
         The ``decided_by`` field is populated from the authenticated
-        user's role.
+        user's username.
 
         Args:
             state: Application state.
@@ -263,23 +304,13 @@ class ApprovalsController(Controller):
             )
             raise NotFoundError(msg)
 
-        if item.status != ApprovalStatus.PENDING:
-            msg = f"Approval {approval_id!r} is {item.status.value}, not pending"
-            logger.warning(
-                API_APPROVAL_CONFLICT,
-                approval_id=approval_id,
-                current_status=item.status.value,
-            )
-            raise ConflictError(msg)
-
-        auth_user = request.scope["user"]
-        role = auth_user.role.value
+        auth_user = _resolve_decision(request, item, approval_id)
         now = datetime.now(UTC)
         updated = item.model_copy(
             update={
                 "status": ApprovalStatus.APPROVED,
                 "decided_at": now,
-                "decided_by": role,
+                "decided_by": auth_user.username,
                 "decision_reason": data.comment,
             },
         )
@@ -302,7 +333,7 @@ class ApprovalsController(Controller):
         logger.info(
             API_APPROVAL_APPROVED,
             approval_id=approval_id,
-            decided_by=role,
+            decided_by=auth_user.username,
         )
         return ApiResponse(data=updated)
 
@@ -321,7 +352,7 @@ class ApprovalsController(Controller):
         """Reject a pending approval item.
 
         The ``decided_by`` field is populated from the authenticated
-        user's role.
+        user's username.
 
         Args:
             state: Application state.
@@ -347,23 +378,13 @@ class ApprovalsController(Controller):
             )
             raise NotFoundError(msg)
 
-        if item.status != ApprovalStatus.PENDING:
-            msg = f"Approval {approval_id!r} is {item.status.value}, not pending"
-            logger.warning(
-                API_APPROVAL_CONFLICT,
-                approval_id=approval_id,
-                current_status=item.status.value,
-            )
-            raise ConflictError(msg)
-
-        auth_user = request.scope["user"]
-        role = auth_user.role.value
+        auth_user = _resolve_decision(request, item, approval_id)
         now = datetime.now(UTC)
         updated = item.model_copy(
             update={
                 "status": ApprovalStatus.REJECTED,
                 "decided_at": now,
-                "decided_by": role,
+                "decided_by": auth_user.username,
                 "decision_reason": data.reason,
             },
         )
@@ -386,6 +407,6 @@ class ApprovalsController(Controller):
         logger.info(
             API_APPROVAL_REJECTED,
             approval_id=approval_id,
-            decided_by=role,
+            decided_by=auth_user.username,
         )
         return ApiResponse(data=updated)

@@ -1,5 +1,7 @@
 """Tests for AuthService."""
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from ai_company.api.auth.config import AuthConfig
@@ -19,8 +21,6 @@ def _make_user(
     role: HumanRole = HumanRole.CEO,
     must_change_password: bool = False,
 ) -> User:
-    from datetime import UTC, datetime
-
     now = datetime.now(UTC)
     svc = _make_service()
     return User(
@@ -91,8 +91,6 @@ class TestJWT:
         _token, _ = svc.create_token(user)
 
         # Manually create an expired token
-        from datetime import UTC, datetime, timedelta
-
         expired_payload = {
             "sub": user.id,
             "username": user.username,
@@ -127,8 +125,6 @@ class TestJWT:
         assert claims["must_change_password"] is True
 
     def test_decode_token_missing_sub_claim(self) -> None:
-        from datetime import UTC, datetime, timedelta
-
         import jwt as pyjwt
 
         svc = _make_service()
