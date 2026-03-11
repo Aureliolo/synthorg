@@ -51,6 +51,8 @@ jobs:
       contents: read
       packages: write
       id-token: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -162,6 +164,8 @@ jobs:
       contents: read
       packages: write
       id-token: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -263,3 +267,50 @@ jobs:
             exit 1
           fi
           cosign sign --yes ghcr.io/aureliolo/synthorg-web@${DIGEST}
+
+  # Append container image references to the GitHub Release (version tags only)
+  update-release:
+    name: Update Release Notes
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [version, build-backend, build-web]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Append container images to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.version.outputs.app_version }}
+          BACKEND_DIGEST: ${{ needs.build-backend.outputs.digest }}
+          WEB_DIGEST: ${{ needs.build-web.outputs.digest }}
+        run: |
+          EXISTING=$(gh release view "$TAG" --json body -q .body)
+          IMAGES=$(cat <<'BLOCK'
+
+          ## Container Images
+
+          | Image | Pull |
+          |-------|------|
+          | Backend | `docker pull ghcr.io/aureliolo/synthorg-backend:VERSION_PH` |
+          | Web | `docker pull ghcr.io/aureliolo/synthorg-web:VERSION_PH` |
+
+          **Digests** (for pinning):
+          - Backend: `ghcr.io/aureliolo/synthorg-backend@BACKEND_DIGEST_PH`
+          - Web: `ghcr.io/aureliolo/synthorg-web@WEB_DIGEST_PH`
+
+          All images are signed with [cosign](https://github.com/sigstore/cosign). Verify with:
+          ```bash
+          cosign verify ghcr.io/aureliolo/synthorg-backend:VERSION_PH \
+            --certificate-identity-regexp='github\.com/Aureliolo/synthorg' \
+            --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
+          ```
+          BLOCK
+          )
+          # Dedent (remove leading 10-space YAML indentation) and substitute placeholders
+          IMAGES=$(echo "$IMAGES" | sed 's/^          //')
+          IMAGES=${IMAGES//VERSION_PH/$VERSION}
+          IMAGES=${IMAGES//BACKEND_DIGEST_PH/$BACKEND_DIGEST}
+          IMAGES=${IMAGES//WEB_DIGEST_PH/$WEB_DIGEST}
+          gh release edit "$TAG" --notes "${EXISTING}${IMAGES}"
