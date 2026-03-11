@@ -38,7 +38,7 @@ uv run pytest tests/ -m integration -n auto # integration tests only
 uv run pytest tests/ -m e2e -n auto         # e2e tests only
 uv run pytest tests/ -n auto --cov=ai_company --cov-fail-under=80  # full suite + coverage
 uv run pre-commit run --all-files          # all pre-commit hooks
-uv run mkdocs build --strict --site-dir _site/docs  # build docs (output: _site/docs/)
+uv run mkdocs build --strict               # build docs (output: _site/docs/)
 uv run mkdocs serve                        # local docs preview (http://127.0.0.1:8000)
 ```
 

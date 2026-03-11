@@ -59,3 +59,7 @@ Tool system — base class, registry, invoker, built-in tools, and MCP bridge.
 ::: ai_company.tools.sandbox.config
 
 ::: ai_company.tools.sandbox.result
+
+::: ai_company.tools.sandbox.subprocess_sandbox
+
+::: ai_company.tools.sandbox.errors
