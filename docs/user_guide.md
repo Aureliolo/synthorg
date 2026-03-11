@@ -43,4 +43,4 @@ docker compose -f docker/compose.yml down
 
 - Templates — Full list of pre-built configurations (coming soon)
 - REST API — Interact with your org via the API (coming soon)
-- [Design Specification](design_spec.md) — Full architecture details
+- [Design Specification](design/index.md) — Full architecture details

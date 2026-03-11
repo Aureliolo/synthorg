@@ -118,8 +118,15 @@ Key constraints:
 
 ## Implementation
 
-- `mkdocs.yml` — MkDocs configuration
-- `docs/` — documentation source (index, architecture, API reference pages)
+- `mkdocs.yml` — MkDocs configuration (nav structure updated for design spec split)
+- `docs/` — documentation source:
+    - `docs/design/` — 7 design spec pages (split from monolithic `DESIGN_SPEC.md`)
+    - `docs/architecture/` — overview, tech stack, decision log
+    - `docs/roadmap/` — status, open questions, future vision
+    - `docs/reference/` — research and industry standards
+    - `docs/api/` — auto-generated API reference
+    - `docs/decisions/` — ADR files (detailed analysis)
+- `DESIGN_SPEC.md` — pointer file linking to the 7 design pages
 - `site/` — Astro landing page source
 - `.github/workflows/pages.yml` — multi-tool CI merge + GitHub Pages deployment
 - `pyproject.toml` — `docs` dependency group added

@@ -6,11 +6,11 @@
 - **Python**: 3.14+ (PEP 649 native lazy annotations)
 - **License**: BUSL-1.1 (converts to Apache 2.0 on 2030-02-27)
 - **Layout**: `src/ai_company/` (src layout), `tests/` (unit/integration/e2e)
-- **Design**: [DESIGN_SPEC.md](DESIGN_SPEC.md) (full high-level spec)
+- **Design**: [DESIGN_SPEC.md](DESIGN_SPEC.md) (pointer to `docs/design/` pages)
 
 ## Design Spec (MANDATORY)
 
-- **ALWAYS read `DESIGN_SPEC.md`** before implementing any feature or planning any issue
+- **ALWAYS read the relevant `docs/design/` page** before implementing any feature or planning any issue. [DESIGN_SPEC.md](DESIGN_SPEC.md) is a pointer file linking to the 7 design pages.
 - The design spec is the **starting point** for architecture, data models, and behavior
 - If implementation deviates from the spec (better approach found, scope evolved, etc.), **alert the user and explain why** — user decides whether to proceed or update the spec
 - Do NOT silently diverge — every deviation needs explicit user approval
@@ -45,11 +45,15 @@ uv run mkdocs serve                        # local docs preview (http://127.0.0.
 ## Documentation
 
 - **Docs source**: `docs/` (MkDocs markdown + mkdocstrings auto-generated API reference)
+- **Design spec**: `docs/design/` (7 pages: index, agents, organization, communication, engine, memory, operations)
+- **Architecture**: `docs/architecture/` (overview, tech-stack, decision log)
+- **Roadmap**: `docs/roadmap/` (status, open questions, future vision)
+- **Reference**: `docs/reference/` (research, standards)
 - **Landing page**: `site/` (Astro, Concept C hybrid design)
 - **Config**: `mkdocs.yml` at repo root
 - **API reference**: auto-generated from docstrings via mkdocstrings + Griffe (AST-based, no imports)
 - **CI**: `.github/workflows/pages.yml` — builds Astro landing + MkDocs docs, merges, deploys to GitHub Pages
-- **Architecture decision**: `docs/decisions/ADR-003-documentation-architecture.md`
+- **Architecture decisions**: `docs/decisions/` (ADR files) + `docs/architecture/decisions.md` (decision log)
 - **Dependencies**: `docs` group in `pyproject.toml` (`mkdocs-material`, `mkdocstrings[python]`, `griffe-pydantic`)
 
 ## Docker
