@@ -694,6 +694,9 @@ class AgentEngine:
             return
 
         try:
+            # Best-effort: discard return value intentionally — if the
+            # transition is rejected (e.g. parallel mutation moved the task),
+            # the exception handlers below log the failure.
             _ = await self._task_engine.transition_task(
                 task_id,
                 final_status,

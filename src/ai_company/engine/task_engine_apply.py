@@ -6,7 +6,6 @@ Extracted from ``task_engine.py`` to keep the main module focused on
 lifecycle, queue management, and the public API.
 """
 
-import copy
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -217,7 +216,9 @@ async def apply_update(
         )
 
     merged = task.model_dump()
-    merged.update(copy.deepcopy(mutation.updates))
+    # mutation.updates is already deep-copied + wrapped in MappingProxyType
+    # at construction time, so no second deep-copy needed here.
+    merged.update(mutation.updates)
     try:
         updated = Task.model_validate(merged)
     except PydanticValidationError as exc:

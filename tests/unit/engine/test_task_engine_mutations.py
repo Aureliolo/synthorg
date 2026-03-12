@@ -424,7 +424,7 @@ class TestListTasksSafetyCap:
             # Create a list longer than cap by repeating
             return result * 20_000 if result else result
 
-        persistence.tasks.list_tasks = oversized_list  # type: ignore[assignment,method-assign]
+        persistence.tasks.list_tasks = oversized_list  # type: ignore[method-assign]
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
         eng.start()
         try:

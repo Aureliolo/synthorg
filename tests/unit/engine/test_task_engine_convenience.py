@@ -69,7 +69,8 @@ class TestRaiseTypedErrorAllCodes:
         with pytest.raises(TaskMutationError, match="bad data"):
             TaskEngine._raise_typed_error(result)
 
-    def test_none_code_falls_through(self) -> None:
+    def test_validation_code_raises_mutation_error(self) -> None:
+        """Validation error_code falls through to generic TaskMutationError."""
         result = TaskMutationResult(
             request_id="r",
             success=False,
@@ -79,11 +80,12 @@ class TestRaiseTypedErrorAllCodes:
         with pytest.raises(TaskMutationError, match="generic"):
             TaskEngine._raise_typed_error(result)
 
-    def test_missing_error_uses_default_message(self) -> None:
+    def test_default_error_message_when_error_is_empty(self) -> None:
+        """Empty error string triggers the 'Mutation failed' default."""
         result = TaskMutationResult(
             request_id="r",
             success=False,
-            error="Mutation failed",
+            error="",
             error_code="validation",
         )
         with pytest.raises(TaskMutationError, match="Mutation failed"):

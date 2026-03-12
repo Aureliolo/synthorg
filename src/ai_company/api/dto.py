@@ -130,6 +130,7 @@ class UpdateTaskRequest(BaseModel):
         priority: New priority.
         assigned_to: New assignee.
         budget_limit: New budget limit.
+        expected_version: Optimistic concurrency guard.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -139,6 +140,11 @@ class UpdateTaskRequest(BaseModel):
     priority: Priority | None = None
     assigned_to: NotBlankStr | None = None
     budget_limit: float | None = Field(default=None, ge=0.0)
+    expected_version: int | None = Field(
+        default=None,
+        ge=1,
+        description="Optimistic concurrency version guard",
+    )
 
 
 class TransitionTaskRequest(BaseModel):
@@ -147,12 +153,33 @@ class TransitionTaskRequest(BaseModel):
     Attributes:
         target_status: The desired target status.
         assigned_to: Optional assignee override for the transition.
+        expected_version: Optimistic concurrency guard.
     """
 
     model_config = ConfigDict(frozen=True)
 
-    target_status: TaskStatus
+    target_status: TaskStatus = Field(description="Desired target status")
     assigned_to: NotBlankStr | None = None
+    expected_version: int | None = Field(
+        default=None,
+        ge=1,
+        description="Optimistic concurrency version guard",
+    )
+
+
+class CancelTaskRequest(BaseModel):
+    """Payload for cancelling a task.
+
+    Attributes:
+        reason: Reason for cancellation.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    reason: NotBlankStr = Field(
+        max_length=4096,
+        description="Reason for cancellation",
+    )
 
 
 # ── Approval request DTOs ──────────────────────────────────────

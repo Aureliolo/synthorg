@@ -1,5 +1,6 @@
 """Shared fakes and helpers for TaskEngine tests."""
 
+import copy
 from typing import TYPE_CHECKING
 
 from ai_company.core.task import Task  # noqa: TC001
@@ -13,16 +14,21 @@ if TYPE_CHECKING:
 
 
 class FakeTaskRepository:
-    """Minimal in-memory task repository for engine tests."""
+    """Minimal in-memory task repository for engine tests.
+
+    Deep-copies tasks on save/get to mirror real persistence
+    behaviour and prevent test isolation regressions.
+    """
 
     def __init__(self) -> None:
         self._tasks: dict[str, Task] = {}
 
     async def save(self, task: Task) -> None:
-        self._tasks[task.id] = task
+        self._tasks[task.id] = copy.deepcopy(task)
 
     async def get(self, task_id: str) -> Task | None:
-        return self._tasks.get(task_id)
+        task = self._tasks.get(task_id)
+        return copy.deepcopy(task) if task is not None else None
 
     async def list_tasks(
         self,

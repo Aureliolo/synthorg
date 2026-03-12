@@ -53,7 +53,8 @@ class TestInFlightResolution:
         await asyncio.sleep(0.05)
 
         # The processing loop should be in _process_one with _in_flight set
-        assert eng._in_flight is not None
+        in_flight_before = eng._in_flight
+        assert in_flight_before is not None
 
         # Stop with very short timeout — triggers _fail_remaining_futures
         await eng.stop(timeout=0.05)
@@ -62,7 +63,7 @@ class TestInFlightResolution:
         assert eng._in_flight is None
 
         # Release the block and clean up
-        block.set()  # type: ignore[unreachable]
+        block.set()
         blocked.cancel()
         with contextlib.suppress(Exception, asyncio.CancelledError):
             await blocked

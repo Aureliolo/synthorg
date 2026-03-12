@@ -50,6 +50,7 @@ from ai_company.observability.events.task_engine import (
     TASK_ENGINE_FUTURES_FAILED,
     TASK_ENGINE_LIST_CAPPED,
     TASK_ENGINE_LOOP_ERROR,
+    TASK_ENGINE_MUTATION_APPLIED,
     TASK_ENGINE_MUTATION_FAILED,
     TASK_ENGINE_MUTATION_RECEIVED,
     TASK_ENGINE_NOT_RUNNING,
@@ -115,6 +116,7 @@ class TaskEngine:
         self._processing_task: asyncio.Task[None] | None = None
         self._in_flight: _MutationEnvelope | None = None
         self._running = False
+        self._lifecycle_lock = asyncio.Lock()
         logger.debug(
             TASK_ENGINE_CREATED,
             max_queue_size=self._config.max_queue_size,
@@ -146,13 +148,17 @@ class TaskEngine:
     async def stop(self, *, timeout: float | None = None) -> None:  # noqa: ASYNC109
         """Stop the engine and drain pending mutations.
 
+        Acquires ``_lifecycle_lock`` to prevent a race with ``submit()``
+        where an envelope is enqueued after the processing loop exits.
+
         Args:
             timeout: Seconds to wait for drain.  Defaults to
                 ``config.drain_timeout_seconds``.
         """
-        if not self._running:
-            return
-        self._running = False
+        async with self._lifecycle_lock:
+            if not self._running:
+                return
+            self._running = False
         effective_timeout = (
             timeout if timeout is not None else self._config.drain_timeout_seconds
         )
@@ -165,7 +171,7 @@ class TaskEngine:
             )
             try:
                 await asyncio.wait_for(
-                    self._processing_task,
+                    asyncio.shield(self._processing_task),
                     timeout=effective_timeout,
                 )
                 logger.info(TASK_ENGINE_DRAIN_COMPLETE)
@@ -237,6 +243,10 @@ class TaskEngine:
     async def submit(self, mutation: TaskMutation) -> TaskMutationResult:
         """Submit a mutation and await its result.
 
+        Acquires ``_lifecycle_lock`` to prevent a race between
+        ``submit()`` and ``stop()`` where an envelope could be enqueued
+        after the processing loop has already drained and exited.
+
         Args:
             mutation: The mutation to apply.
 
@@ -247,27 +257,28 @@ class TaskEngine:
             TaskEngineNotRunningError: If the engine is not running.
             TaskEngineQueueFullError: If the queue is at capacity.
         """
-        if not self._running:
-            logger.warning(
-                TASK_ENGINE_NOT_RUNNING,
-                mutation_type=mutation.mutation_type,
-                request_id=mutation.request_id,
-            )
-            msg = "TaskEngine is not running"
-            raise TaskEngineNotRunningError(msg)
+        async with self._lifecycle_lock:
+            if not self._running:
+                logger.warning(
+                    TASK_ENGINE_NOT_RUNNING,
+                    mutation_type=mutation.mutation_type,
+                    request_id=mutation.request_id,
+                )
+                msg = "TaskEngine is not running"
+                raise TaskEngineNotRunningError(msg)
 
-        envelope = _MutationEnvelope(mutation=mutation)
-        try:
-            self._queue.put_nowait(envelope)
-        except asyncio.QueueFull:
-            logger.warning(
-                TASK_ENGINE_QUEUE_FULL,
-                mutation_type=mutation.mutation_type,
-                request_id=mutation.request_id,
-                queue_size=self._queue.qsize(),
-            )
-            msg = "TaskEngine queue is full"
-            raise TaskEngineQueueFullError(msg) from None
+            envelope = _MutationEnvelope(mutation=mutation)
+            try:
+                self._queue.put_nowait(envelope)
+            except asyncio.QueueFull:
+                logger.warning(
+                    TASK_ENGINE_QUEUE_FULL,
+                    mutation_type=mutation.mutation_type,
+                    request_id=mutation.request_id,
+                    queue_size=self._queue.qsize(),
+                )
+                msg = "TaskEngine queue is full"
+                raise TaskEngineQueueFullError(msg) from None
 
         return await envelope.future
 
@@ -291,11 +302,14 @@ class TaskEngine:
             TaskEngineQueueFullError: If the queue is at capacity.
             TaskMutationError: If the mutation fails.
         """
-        mutation = CreateTaskMutation(
-            request_id=uuid4().hex,
-            requested_by=requested_by,
-            task_data=data,
-        )
+        try:
+            mutation = CreateTaskMutation(
+                request_id=uuid4().hex,
+                requested_by=requested_by,
+                task_data=data,
+            )
+        except PydanticValidationError as exc:
+            raise TaskMutationError(str(exc)) from exc
         result = await self.submit(mutation)
         if not result.success:
             self._raise_typed_error(result)
@@ -422,11 +436,14 @@ class TaskEngine:
             TaskNotFoundError: If the task is not found.
             TaskMutationError: If the mutation fails.
         """
-        mutation = DeleteTaskMutation(
-            request_id=uuid4().hex,
-            requested_by=requested_by,
-            task_id=task_id,
-        )
+        try:
+            mutation = DeleteTaskMutation(
+                request_id=uuid4().hex,
+                requested_by=requested_by,
+                task_id=task_id,
+            )
+        except PydanticValidationError as exc:
+            raise TaskMutationError(str(exc)) from exc
         result = await self.submit(mutation)
         if not result.success:
             self._raise_typed_error(result)
@@ -455,12 +472,15 @@ class TaskEngine:
             TaskNotFoundError: If the task is not found.
             TaskMutationError: If the mutation fails.
         """
-        mutation = CancelTaskMutation(
-            request_id=uuid4().hex,
-            requested_by=requested_by,
-            task_id=task_id,
-            reason=reason,
-        )
+        try:
+            mutation = CancelTaskMutation(
+                request_id=uuid4().hex,
+                requested_by=requested_by,
+                task_id=task_id,
+                reason=reason,
+            )
+        except PydanticValidationError as exc:
+            raise TaskMutationError(str(exc)) from exc
         result = await self.submit(mutation)
         if not result.success:
             self._raise_typed_error(result)
@@ -627,6 +647,19 @@ class TaskEngine:
             )
             if not envelope.future.done():
                 envelope.future.set_result(result)
+            if result.success:
+                task_id = getattr(mutation, "task_id", None)
+                logger.info(
+                    TASK_ENGINE_MUTATION_APPLIED,
+                    mutation_type=mutation.mutation_type,
+                    request_id=mutation.request_id,
+                    task_id=task_id or (result.task.id if result.task else None),
+                    version=result.version,
+                    previous_status=(
+                        result.previous_status.value if result.previous_status else None
+                    ),
+                    new_status=(result.task.status.value if result.task else None),
+                )
             if result.success and self._config.publish_snapshots:
                 await self._publish_snapshot(mutation, result)
         except MemoryError, RecursionError:
@@ -674,11 +707,17 @@ class TaskEngine:
             new_status = None
 
         reason: str | None = getattr(mutation, "reason", None)
+        task_id: str | None = getattr(mutation, "task_id", None)
+        # For create mutations, task_id comes from the result
+        if task_id is None and result.task is not None:
+            task_id = result.task.id
+        effective_task_id = task_id or "unknown"
 
         event = TaskStateChanged(
             mutation_type=mutation.mutation_type,
             request_id=mutation.request_id,
             requested_by=mutation.requested_by,
+            task_id=effective_task_id,
             task=result.task,
             previous_status=result.previous_status,
             new_status=new_status,
@@ -686,8 +725,6 @@ class TaskEngine:
             reason=reason,
             timestamp=datetime.now(UTC),
         )
-
-        task_id = getattr(mutation, "task_id", None)
         try:
             # Deferred to break circular import:
             # communication -> engine -> communication

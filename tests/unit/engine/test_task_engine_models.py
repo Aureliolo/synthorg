@@ -311,6 +311,7 @@ class TestTaskStateChanged:
             mutation_type="create",
             request_id="req-1",
             requested_by="alice",
+            task_id="task-1",
             new_status=TaskStatus.CREATED,
             version=1,
         )
@@ -324,6 +325,7 @@ class TestTaskStateChanged:
             mutation_type="transition",
             request_id="req-2",
             requested_by="bob",
+            task_id="task-2",
             previous_status=TaskStatus.CREATED,
             new_status=TaskStatus.ASSIGNED,
             version=2,
@@ -336,6 +338,7 @@ class TestTaskStateChanged:
             mutation_type="delete",
             request_id="req-3",
             requested_by="charlie",
+            task_id="task-3",
             version=0,
         )
         assert event.task is None
@@ -347,6 +350,7 @@ class TestTaskStateChanged:
             mutation_type="transition",
             request_id="req-1",
             requested_by="alice",
+            task_id="task-1",
             previous_status=TaskStatus.ASSIGNED,
             new_status=TaskStatus.IN_PROGRESS,
             version=2,
@@ -359,6 +363,7 @@ class TestTaskStateChanged:
             mutation_type="create",
             request_id="req-1",
             requested_by="alice",
+            task_id="task-1",
             new_status=TaskStatus.CREATED,
             version=1,
         )
@@ -369,6 +374,7 @@ class TestTaskStateChanged:
             mutation_type="cancel",
             request_id="req-1",
             requested_by="alice",
+            task_id="task-1",
             previous_status=TaskStatus.ASSIGNED,
             new_status=TaskStatus.CANCELLED,
             version=3,
@@ -381,6 +387,7 @@ class TestTaskStateChanged:
             mutation_type="create",
             request_id="req-1",
             requested_by="alice",
+            task_id="task-1",
             new_status=TaskStatus.CREATED,
             version=1,
         )

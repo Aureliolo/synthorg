@@ -7,6 +7,7 @@ All mutation requests are frozen Pydantic models, discriminated by a
 
 import copy
 from datetime import UTC, datetime
+from types import MappingProxyType
 from typing import Final, Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
@@ -166,8 +167,12 @@ class UpdateTaskMutation(BaseModel):
 
     def __init__(self, **data: object) -> None:
         super().__init__(**data)
-        # Deep-copy mutable dict at system boundary per coding guidelines.
-        object.__setattr__(self, "updates", copy.deepcopy(self.updates))
+        # Deep-copy and wrap in MappingProxyType for full immutability.
+        object.__setattr__(
+            self,
+            "updates",
+            MappingProxyType(copy.deepcopy(dict(self.updates))),
+        )
 
 
 _IMMUTABLE_OVERRIDE_FIELDS: frozenset[str] = _ALWAYS_IMMUTABLE_FIELDS | {"status"}
@@ -223,8 +228,12 @@ class TransitionTaskMutation(BaseModel):
 
     def __init__(self, **data: object) -> None:
         super().__init__(**data)
-        # Deep-copy mutable dict at system boundary per coding guidelines.
-        object.__setattr__(self, "overrides", copy.deepcopy(self.overrides))
+        # Deep-copy and wrap in MappingProxyType for full immutability.
+        object.__setattr__(
+            self,
+            "overrides",
+            MappingProxyType(copy.deepcopy(dict(self.overrides))),
+        )
 
 
 class DeleteTaskMutation(BaseModel):
@@ -351,6 +360,7 @@ class TaskStateChanged(BaseModel):
     )
     request_id: NotBlankStr = Field(description="Originating request identifier")
     requested_by: NotBlankStr = Field(description="Identity of the requester")
+    task_id: NotBlankStr = Field(description="Task identifier (always present)")
     task: Task | None = Field(
         default=None,
         description="Task snapshot after mutation",

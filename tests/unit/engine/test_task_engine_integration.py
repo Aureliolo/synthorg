@@ -96,22 +96,22 @@ class TestSnapshotPublishing:
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
         eng.start()
 
-        # Submit concurrently without awaiting — items enter the queue
-        create_tasks = [
-            asyncio.create_task(
-                eng.create_task(make_create_data(), requested_by="alice")
-            )
-            for _ in range(5)
-        ]
+        # Submit concurrently using structured concurrency
+        async with asyncio.TaskGroup() as tg:
+            results = [
+                tg.create_task(
+                    eng.create_task(make_create_data(), requested_by="alice"),
+                )
+                for _ in range(5)
+            ]
 
-        # Yield to the event loop so the tasks can enqueue their mutations before stop()
+        # Yield to let processing complete before stopping
         await asyncio.sleep(0)
 
-        # Stop while tasks may still be in flight — drain timeout is generous
+        # Stop — drain remaining if any
         await eng.stop(timeout=5.0)
 
-        # All futures resolved (drained during stop or completed before stop)
-        results = await asyncio.gather(*create_tasks)
+        # All futures resolved
         assert len(results) == 5
         stored = await persistence.tasks.list_tasks()
         assert len(stored) == 5

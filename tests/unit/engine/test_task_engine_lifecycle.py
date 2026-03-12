@@ -20,11 +20,12 @@ class TestTaskEngineLifecycle:
         persistence: FakePersistence,
     ) -> None:
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        assert eng.is_running is False
+        initial = eng.is_running
+        assert not initial
         eng.start()
-        assert eng.is_running is True
+        assert eng.is_running
         await eng.stop(timeout=2.0)
-        assert eng.is_running is False
+        assert not eng.is_running
 
     async def test_double_start_raises(
         self,
@@ -53,7 +54,7 @@ class TestTaskEngineLifecycle:
         eng.start()
         await eng.stop(timeout=2.0)
         eng.start()
-        assert eng.is_running is True
+        assert eng.is_running
         await eng.stop(timeout=2.0)
 
 
@@ -124,10 +125,13 @@ class TestTaskEngineConfig:
         ],
     )
     def test_rejects_out_of_range(self, field: str, value: object) -> None:
+        from typing import Any
+
         from pydantic import ValidationError
 
+        kwargs: dict[str, Any] = {field: value}
         with pytest.raises(ValidationError):
-            TaskEngineConfig(**{field: value})
+            TaskEngineConfig(**kwargs)
 
     def test_zero_queue_size_allowed(self) -> None:
         """Zero means unbounded — should be accepted."""

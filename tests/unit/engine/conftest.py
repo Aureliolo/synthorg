@@ -450,6 +450,7 @@ async def engine_with_bus(
     config: TaskEngineConfig,
 ) -> AsyncIterator[TaskEngine]:
     """Create and start a TaskEngine with a message bus."""
+    await message_bus.start()
     eng = TaskEngine(
         persistence=persistence,  # type: ignore[arg-type]
         message_bus=message_bus,  # type: ignore[arg-type]
@@ -458,3 +459,4 @@ async def engine_with_bus(
     eng.start()
     yield eng
     await eng.stop(timeout=2.0)
+    await message_bus.stop()

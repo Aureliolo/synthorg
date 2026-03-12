@@ -6,6 +6,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from ai_company.api.dto import (
     ApiResponse,
+    CancelTaskRequest,
     CreateTaskRequest,
     PaginatedResponse,
     TransitionTaskRequest,
@@ -35,6 +36,7 @@ from ai_company.observability import get_logger
 from ai_company.observability.events.api import (
     API_AUTH_FALLBACK,
     API_RESOURCE_NOT_FOUND,
+    API_TASK_CANCELLED,
     API_TASK_CREATED_BY_MISMATCH,
     API_TASK_DELETED,
     API_TASK_MUTATION_FAILED,
@@ -182,7 +184,7 @@ class TaskController(Controller):
                 assigned_to=assigned_to,
                 project=project,
             )
-        except (TaskInternalError, TaskEngineNotRunningError) as exc:
+        except TaskInternalError as exc:
             raise _map_task_engine_errors(exc) from exc
         page, meta = paginate(tasks, offset=offset, limit=limit)
         return PaginatedResponse(data=page, pagination=meta)
@@ -208,7 +210,7 @@ class TaskController(Controller):
         app_state: AppState = state.app_state
         try:
             task = await app_state.task_engine.get_task(task_id)
-        except (TaskInternalError, TaskEngineNotRunningError) as exc:
+        except TaskInternalError as exc:
             raise _map_task_engine_errors(exc, task_id=task_id) from exc
         if task is None:
             msg = f"Task {task_id!r} not found"
@@ -245,7 +247,7 @@ class TaskController(Controller):
             budget_limit=data.budget_limit,
         )
         if data.created_by != requester:
-            logger.info(
+            logger.warning(
                 API_TASK_CREATED_BY_MISMATCH,
                 note="created_by differs from authenticated requester",
                 created_by=data.created_by,
@@ -293,12 +295,16 @@ class TaskController(Controller):
             NotFoundError: If the task is not found.
         """
         app_state: AppState = state.app_state
-        updates = data.model_dump(exclude_none=True)
+        updates = data.model_dump(
+            exclude_none=True,
+            exclude={"expected_version"},
+        )
         try:
             task = await app_state.task_engine.update_task(
                 task_id,
                 updates,
                 requested_by=_extract_requester(state),
+                expected_version=data.expected_version,
             )
         except PydanticValidationError as exc:
             raise ApiValidationError(str(exc)) from exc
@@ -347,7 +353,8 @@ class TaskController(Controller):
                 data.target_status,
                 requested_by=requester,
                 reason=f"API transition to {data.target_status.value}",
-                **overrides,  # type: ignore[arg-type]
+                expected_version=data.expected_version,
+                **overrides,
             )
         except PydanticValidationError as exc:
             raise ApiValidationError(str(exc)) from exc
@@ -402,3 +409,43 @@ class TaskController(Controller):
             raise _map_task_engine_errors(exc, task_id=task_id) from exc
         logger.info(API_TASK_DELETED, task_id=task_id)
         return ApiResponse(data=None)
+
+    @post("/{task_id:str}/cancel", guards=[require_write_access])
+    async def cancel_task(
+        self,
+        state: State,
+        task_id: str,
+        data: CancelTaskRequest,
+    ) -> ApiResponse[Task]:
+        """Cancel a task.
+
+        Args:
+            state: Application state.
+            task_id: Task identifier.
+            data: Cancellation payload with reason.
+
+        Returns:
+            Cancelled task envelope.
+
+        Raises:
+            NotFoundError: If the task is not found.
+        """
+        app_state: AppState = state.app_state
+        try:
+            task = await app_state.task_engine.cancel_task(
+                task_id,
+                requested_by=_extract_requester(state),
+                reason=data.reason,
+            )
+        except PydanticValidationError as exc:
+            raise ApiValidationError(str(exc)) from exc
+        except (
+            TaskEngineNotRunningError,
+            TaskEngineQueueFullError,
+            TaskNotFoundError,
+            TaskInternalError,
+            TaskMutationError,
+        ) as exc:
+            raise _map_task_engine_errors(exc, task_id=task_id) from exc
+        logger.info(API_TASK_CANCELLED, task_id=task_id)
+        return ApiResponse(data=task)
