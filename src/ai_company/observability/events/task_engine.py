@@ -1,0 +1,16 @@
+"""Task engine event constants."""
+
+from typing import Final
+
+TASK_ENGINE_STARTED: Final[str] = "task_engine.started"
+TASK_ENGINE_STOPPED: Final[str] = "task_engine.stopped"
+TASK_ENGINE_MUTATION_RECEIVED: Final[str] = "task_engine.mutation.received"
+TASK_ENGINE_MUTATION_APPLIED: Final[str] = "task_engine.mutation.applied"
+TASK_ENGINE_MUTATION_FAILED: Final[str] = "task_engine.mutation.failed"
+TASK_ENGINE_SNAPSHOT_PUBLISHED: Final[str] = "task_engine.snapshot.published"
+TASK_ENGINE_SNAPSHOT_PUBLISH_FAILED: Final[str] = "task_engine.snapshot.publish_failed"
+TASK_ENGINE_QUEUE_FULL: Final[str] = "task_engine.queue.full"
+TASK_ENGINE_DRAIN_START: Final[str] = "task_engine.drain.start"
+TASK_ENGINE_DRAIN_COMPLETE: Final[str] = "task_engine.drain.complete"
+TASK_ENGINE_DRAIN_TIMEOUT: Final[str] = "task_engine.drain.timeout"
+TASK_ENGINE_NOT_RUNNING: Final[str] = "task_engine.not_running"

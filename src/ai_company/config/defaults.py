@@ -40,4 +40,5 @@ def default_config_dict() -> dict[str, Any]:
         "security": {},
         "trust": {},
         "promotion": {},
+        "task_engine": {},
     }

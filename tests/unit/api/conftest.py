@@ -2,6 +2,7 @@
 
 import asyncio
 import uuid
+from collections.abc import Generator  # noqa: TC003
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -26,6 +27,7 @@ from ai_company.core.enums import (
     TaskStatus,
 )
 from ai_company.core.task import Task
+from ai_company.engine.task_engine import TaskEngine
 from ai_company.persistence.errors import DuplicateRecordError, QueryError
 from ai_company.security.models import AuditEntry, AuditVerdictStr  # noqa: TC001
 from ai_company.security.timeout.parked_context import ParkedContext  # noqa: TC001
@@ -605,6 +607,16 @@ def root_config() -> RootConfig:
 
 
 @pytest.fixture
+def fake_task_engine(
+    fake_persistence: FakePersistenceBackend,
+) -> TaskEngine:
+    """TaskEngine backed by the shared fake persistence."""
+    return TaskEngine(
+        persistence=fake_persistence,
+    )
+
+
+@pytest.fixture
 def test_client(  # noqa: PLR0913
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
@@ -612,7 +624,8 @@ def test_client(  # noqa: PLR0913
     approval_store: ApprovalStore,
     root_config: RootConfig,
     auth_service: AuthService,
-) -> TestClient[Any]:
+    fake_task_engine: TaskEngine,
+) -> Generator[TestClient[Any]]:
     # Pre-seed users for each role so JWT sub claims resolve
     _seed_test_users(fake_persistence, auth_service)
 
@@ -623,11 +636,12 @@ def test_client(  # noqa: PLR0913
         cost_tracker=cost_tracker,
         approval_store=approval_store,
         auth_service=auth_service,
+        task_engine=fake_task_engine,
     )
-    client = TestClient(app)
-    # Default: CEO token (most tests need write access)
-    client.headers.update(make_auth_headers("ceo"))
-    return client
+    with TestClient(app) as client:
+        # Default: CEO token (most tests need write access)
+        client.headers.update(make_auth_headers("ceo"))
+        yield client
 
 
 def _seed_test_users(

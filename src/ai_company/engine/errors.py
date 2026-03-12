@@ -80,3 +80,19 @@ class WorkspaceCleanupError(WorkspaceError):
 
 class WorkspaceLimitError(WorkspaceError):
     """Raised when maximum concurrent workspaces reached."""
+
+
+class TaskEngineError(EngineError):
+    """Base exception for all task engine errors."""
+
+
+class TaskEngineNotRunningError(TaskEngineError):
+    """Raised when a mutation is submitted to a stopped task engine."""
+
+
+class TaskMutationError(TaskEngineError):
+    """Raised when a task mutation fails (not found, validation, etc.)."""
+
+
+class TaskVersionConflictError(TaskMutationError):
+    """Raised when optimistic concurrency version does not match."""

@@ -1,6 +1,4 @@
-"""Task controller — full CRUD via TaskRepository."""
-
-from uuid import uuid4
+"""Task controller — full CRUD via TaskEngine."""
 
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
@@ -17,7 +15,9 @@ from ai_company.api.guards import require_read_access, require_write_access
 from ai_company.api.pagination import PaginationLimit, PaginationOffset, paginate
 from ai_company.api.state import AppState  # noqa: TC001
 from ai_company.core.enums import TaskStatus  # noqa: TC001
-from ai_company.core.task import Task
+from ai_company.core.task import Task  # noqa: TC001
+from ai_company.engine.errors import TaskMutationError
+from ai_company.engine.task_engine_models import CreateTaskData
 from ai_company.observability import get_logger
 from ai_company.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
@@ -33,7 +33,7 @@ logger = get_logger(__name__)
 
 
 class TaskController(Controller):
-    """Full CRUD for tasks via ``TaskRepository``."""
+    """Full CRUD for tasks via ``TaskEngine``."""
 
     path = "/tasks"
     tags = ("tasks",)
@@ -63,7 +63,7 @@ class TaskController(Controller):
             Paginated task list.
         """
         app_state: AppState = state.app_state
-        tasks = await app_state.persistence.tasks.list_tasks(
+        tasks = await app_state.task_engine.list_tasks(
             status=status,
             assigned_to=assigned_to,
             project=project,
@@ -90,7 +90,7 @@ class TaskController(Controller):
             NotFoundError: If the task is not found.
         """
         app_state: AppState = state.app_state
-        task = await app_state.persistence.tasks.get(task_id)
+        task = await app_state.task_engine.get_task(task_id)
         if task is None:
             msg = f"Task {task_id!r} not found"
             logger.warning(API_RESOURCE_NOT_FOUND, resource="task", id=task_id)
@@ -113,9 +113,7 @@ class TaskController(Controller):
             Created task envelope.
         """
         app_state: AppState = state.app_state
-        task_id = f"task-{uuid4().hex}"
-        task = Task(
-            id=task_id,
+        task_data = CreateTaskData(
             title=data.title,
             description=data.description,
             type=data.type,
@@ -126,7 +124,10 @@ class TaskController(Controller):
             estimated_complexity=data.estimated_complexity,
             budget_limit=data.budget_limit,
         )
-        await app_state.persistence.tasks.save(task)
+        task = await app_state.task_engine.create_task(
+            task_data,
+            requested_by=data.created_by,
+        )
         logger.info(
             TASK_CREATED,
             task_id=task.id,
@@ -155,17 +156,23 @@ class TaskController(Controller):
             NotFoundError: If the task is not found.
         """
         app_state: AppState = state.app_state
-        task = await app_state.persistence.tasks.get(task_id)
-        if task is None:
-            msg = f"Task {task_id!r} not found"
-            logger.warning(API_RESOURCE_NOT_FOUND, resource="task", id=task_id)
-            raise NotFoundError(msg)
-
         updates = data.model_dump(exclude_none=True)
-        if updates:
-            task = task.model_copy(update=updates)
-            await app_state.persistence.tasks.save(task)
-            logger.info(API_TASK_UPDATED, task_id=task_id, fields=list(updates))
+        try:
+            task = await app_state.task_engine.update_task(
+                task_id,
+                updates,
+                requested_by="api",
+            )
+        except TaskMutationError as exc:
+            if "not found" in str(exc):
+                logger.warning(
+                    API_RESOURCE_NOT_FOUND,
+                    resource="task",
+                    id=task_id,
+                )
+                raise NotFoundError(str(exc)) from exc
+            raise
+        logger.info(API_TASK_UPDATED, task_id=task_id, fields=list(updates))
         return ApiResponse(data=task)
 
     @post(
@@ -192,33 +199,35 @@ class TaskController(Controller):
             NotFoundError: If the task is not found.
         """
         app_state: AppState = state.app_state
-        task = await app_state.persistence.tasks.get(task_id)
-        if task is None:
-            msg = f"Task {task_id!r} not found"
-            logger.warning(API_RESOURCE_NOT_FOUND, resource="task", id=task_id)
-            raise NotFoundError(msg)
-
-        overrides: dict[str, object] = {}
-        if data.assigned_to is not None:
-            overrides["assigned_to"] = data.assigned_to
-
         try:
-            new_task = task.with_transition(data.target_status, **overrides)
-        except ValueError as exc:
+            task = await app_state.task_engine.transition_task(
+                task_id,
+                data.target_status,
+                requested_by="api",
+                reason=f"API transition to {data.target_status.value}",
+                assigned_to=data.assigned_to,
+            )
+        except TaskMutationError as exc:
+            error_str = str(exc)
+            if "not found" in error_str:
+                logger.warning(
+                    API_RESOURCE_NOT_FOUND,
+                    resource="task",
+                    id=task_id,
+                )
+                raise NotFoundError(error_str) from exc
             logger.warning(
                 TASK_STATUS_CHANGED,
                 task_id=task_id,
-                error=str(exc),
+                error=error_str,
             )
-            raise ApiValidationError(str(exc)) from exc
-        await app_state.persistence.tasks.save(new_task)
+            raise ApiValidationError(error_str) from exc
         logger.info(
             TASK_STATUS_CHANGED,
             task_id=task_id,
-            from_status=task.status.value,
-            to_status=new_task.status.value,
+            to_status=task.status.value,
         )
-        return ApiResponse(data=new_task)
+        return ApiResponse(data=task)
 
     @delete("/{task_id:str}", guards=[require_write_access], status_code=200)
     async def delete_task(
@@ -239,10 +248,20 @@ class TaskController(Controller):
             NotFoundError: If the task is not found.
         """
         app_state: AppState = state.app_state
-        deleted = await app_state.persistence.tasks.delete(task_id)
-        if not deleted:
-            msg = f"Task {task_id!r} not found"
-            logger.warning(API_RESOURCE_NOT_FOUND, resource="task", id=task_id)
-            raise NotFoundError(msg)
+        try:
+            await app_state.task_engine.delete_task(
+                task_id,
+                requested_by="api",
+            )
+        except TaskMutationError as exc:
+            if "not found" in str(exc):
+                msg = f"Task {task_id!r} not found"
+                logger.warning(
+                    API_RESOURCE_NOT_FOUND,
+                    resource="task",
+                    id=task_id,
+                )
+                raise NotFoundError(msg) from exc
+            raise
         logger.info(API_TASK_DELETED, task_id=task_id)
         return ApiResponse(data=None)

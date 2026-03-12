@@ -35,6 +35,7 @@ from ai_company.budget.tracker import CostTracker  # noqa: TC001
 from ai_company.communication.bus_protocol import MessageBus  # noqa: TC001
 from ai_company.config.schema import RootConfig
 from ai_company.core.approval import ApprovalItem  # noqa: TC001
+from ai_company.engine.task_engine import TaskEngine  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.api import (
     API_APP_SHUTDOWN,
@@ -102,6 +103,7 @@ def _build_lifecycle(
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
     bridge: MessageBusBridge | None,
+    task_engine: TaskEngine | None,
     app_state: AppState,
 ) -> tuple[
     Sequence[Callable[[], Awaitable[None]]],
@@ -115,11 +117,17 @@ def _build_lifecycle(
 
     async def on_startup() -> None:
         logger.info(API_APP_STARTUP, version=__version__)
-        await _safe_startup(persistence, message_bus, bridge, app_state)
+        await _safe_startup(
+            persistence,
+            message_bus,
+            bridge,
+            task_engine,
+            app_state,
+        )
 
     async def on_shutdown() -> None:
         logger.info(API_APP_SHUTDOWN, version=__version__)
-        await _safe_shutdown(bridge, message_bus, persistence)
+        await _safe_shutdown(bridge, task_engine, message_bus, persistence)
 
     return [on_startup], [on_shutdown]
 
@@ -196,9 +204,10 @@ async def _safe_startup(
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
     bridge: MessageBusBridge | None,
+    task_engine: TaskEngine | None,
     app_state: AppState,
 ) -> None:
-    """Connect persistence, resolve JWT secret, start message bus and bridge.
+    """Connect persistence, resolve JWT secret, start bus, bridge, task engine.
 
     Executes in order; on failure, cleans up already-started
     components in reverse order before re-raising.
@@ -239,6 +248,15 @@ async def _safe_startup(
                     error="Failed to start message bus bridge",
                 )
                 raise
+        if task_engine is not None:
+            try:
+                task_engine.start()
+            except Exception:
+                logger.exception(
+                    API_APP_STARTUP,
+                    error="Failed to start task engine",
+                )
+                raise
     except Exception:
         await _cleanup_on_failure(
             persistence=persistence,
@@ -251,10 +269,11 @@ async def _safe_startup(
 
 async def _safe_shutdown(
     bridge: MessageBusBridge | None,
+    task_engine: TaskEngine | None,
     message_bus: MessageBus | None,
     persistence: PersistenceBackend | None,
 ) -> None:
-    """Stop bridge, message bus and disconnect persistence."""
+    """Stop bridge, task engine, message bus and disconnect persistence."""
     if bridge is not None:
         try:
             await bridge.stop()
@@ -262,6 +281,14 @@ async def _safe_shutdown(
             logger.exception(
                 API_APP_SHUTDOWN,
                 error="Failed to stop message bus bridge",
+            )
+    if task_engine is not None:
+        try:
+            await task_engine.stop()
+        except Exception:
+            logger.exception(
+                API_APP_SHUTDOWN,
+                error="Failed to stop task engine",
             )
     if message_bus is not None:
         try:
@@ -289,6 +316,7 @@ def create_app(  # noqa: PLR0913
     cost_tracker: CostTracker | None = None,
     approval_store: ApprovalStore | None = None,
     auth_service: AuthService | None = None,
+    task_engine: TaskEngine | None = None,
 ) -> Litestar:
     """Create and configure the Litestar application.
 
@@ -302,6 +330,7 @@ def create_app(  # noqa: PLR0913
         cost_tracker: Cost tracking service.
         approval_store: Approval queue store.
         auth_service: Pre-built auth service (for testing).
+        task_engine: Centralized task state engine.
 
     Returns:
         Configured Litestar application.
@@ -330,6 +359,7 @@ def create_app(  # noqa: PLR0913
         cost_tracker=cost_tracker,
         approval_store=effective_approval_store,
         auth_service=auth_service,
+        task_engine=task_engine,
         startup_time=time.monotonic(),
     )
 
@@ -347,6 +377,7 @@ def create_app(  # noqa: PLR0913
         persistence,
         message_bus,
         bridge,
+        task_engine,
         app_state,
     )
 

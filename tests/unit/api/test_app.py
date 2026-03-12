@@ -63,7 +63,7 @@ class TestAppLifecycle:
         bus.start = failing_start  # type: ignore[method-assign]
 
         with pytest.raises(RuntimeError, match="bus boom"):
-            await _safe_startup(persistence, bus, None, app_state)
+            await _safe_startup(persistence, bus, None, None, app_state)
         # Persistence should have been disconnected during cleanup
         assert not persistence.is_connected
 
@@ -81,4 +81,4 @@ class TestAppLifecycle:
         persistence.disconnect = failing_disconnect  # type: ignore[method-assign]
 
         # Should not raise even when disconnect fails
-        await _safe_shutdown(None, None, persistence)
+        await _safe_shutdown(None, None, None, persistence)

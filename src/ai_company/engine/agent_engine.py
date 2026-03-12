@@ -84,6 +84,7 @@ if TYPE_CHECKING:
         ExecutionLoop,
         ShutdownChecker,
     )
+    from ai_company.engine.task_engine import TaskEngine
     from ai_company.providers.models import CompletionConfig
     from ai_company.providers.protocol import CompletionProvider
     from ai_company.security.config import SecurityConfig
@@ -133,6 +134,7 @@ class AgentEngine:
         budget_enforcer: BudgetEnforcer | None = None,
         security_config: SecurityConfig | None = None,
         approval_store: ApprovalStore | None = None,
+        task_engine: TaskEngine | None = None,
     ) -> None:
         self._provider = provider
         self._loop: ExecutionLoop = execution_loop or ReactLoop()
@@ -154,6 +156,7 @@ class AgentEngine:
             self._cost_tracker = cost_tracker
         self._security_config = security_config
         self._approval_store = approval_store
+        self._task_engine = task_engine
         self._recovery_strategy = recovery_strategy
         self._shutdown_checker = shutdown_checker
         self._error_taxonomy_config = error_taxonomy_config
@@ -336,7 +339,7 @@ class AgentEngine:
         agent_id: str,
         task_id: str,
     ) -> ExecutionResult:
-        """Record costs, apply transitions, run recovery and classify."""
+        """Record costs, apply transitions, report to TaskEngine."""
         await record_execution_costs(
             execution_result,
             identity,
@@ -349,6 +352,7 @@ class AgentEngine:
             agent_id,
             task_id,
         )
+        await self._report_to_task_engine(execution_result, agent_id, task_id)
         if execution_result.termination_reason == TerminationReason.ERROR:
             execution_result = await self._apply_recovery(
                 execution_result,
@@ -635,6 +639,54 @@ class AgentEngine:
                 error=f"Post-execution INTERRUPTED transition failed: {exc}",
             )
             return execution_result
+
+    async def _report_to_task_engine(
+        self,
+        execution_result: ExecutionResult,
+        agent_id: str,
+        task_id: str,
+    ) -> None:
+        """Report final execution status to the centralized TaskEngine.
+
+        Best-effort: failures are logged and swallowed.  If no
+        ``TaskEngine`` is configured, this is a no-op.
+        """
+        if self._task_engine is None:
+            return
+        ctx = execution_result.context
+        if ctx.task_execution is None:
+            return
+
+        final_status = ctx.task_execution.status
+        terminal = {
+            TaskStatus.COMPLETED,
+            TaskStatus.FAILED,
+            TaskStatus.INTERRUPTED,
+            TaskStatus.CANCELLED,
+        }
+        if final_status not in terminal:
+            return
+
+        try:
+            await self._task_engine.transition_task(
+                task_id,
+                final_status,
+                requested_by=agent_id,
+                reason=(
+                    "AgentEngine execution ended: "
+                    f"{execution_result.termination_reason.value}"
+                ),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error="Failed to report final status to TaskEngine",
+                exc_info=True,
+            )
 
     async def _apply_recovery(
         self,
