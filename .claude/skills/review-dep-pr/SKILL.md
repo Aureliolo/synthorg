@@ -13,6 +13,7 @@ allowed-tools:
   - AskUserQuestion
   - Agent
   - Task
+  - Skill
 ---
 
 # Review Dependency PR
@@ -36,8 +37,10 @@ Comprehensive review of dependency update PRs — whether CI actions, Python pac
 4. Also fetch CI status:
 
    ```bash
-   gh pr checks <number> --json name,status,conclusion
+   gh pr checks <number> --json name,state
    ```
+
+   Note: `gh pr checks` uses `state` (not `status` or `conclusion`). Values: `SUCCESS`, `FAILURE`, `PENDING`, `NEUTRAL`, `SKIPPED`.
 
 5. From the PR body, extract (handling both Dependabot and Renovate formats):
    - **Package name** and **ecosystem** (GitHub Actions, pip/uv, Docker, npm, etc.)
@@ -104,6 +107,8 @@ gh api repos/<owner>/<repo>/releases --paginate --jq '.[] | {tag: .tag_name, bod
 
 After fetching, apply semver-aware filtering in your reasoning step: parse each tag into numeric (major, minor, patch) components and select only releases within the from→to range. Do not rely on jq string comparison for version filtering — `"v2.10.0" >= "v2.9.0"` is false lexicographically but true semantically.
 
+**Detect missing intermediate releases:** Dependabot PR bodies often truncate release notes for multi-version jumps. Compare the tags in the from→to range against what's already in the PR body. Fetch individual release notes for any versions NOT covered in the PR body — these may contain important changes (features, deprecations, bugfixes) that were omitted from the truncated view.
+
 ### Strategy 3: WebFetch
 
 If the PR body has links to release notes or changelogs, fetch them:
@@ -115,12 +120,14 @@ If the PR body has links to release notes or changelogs, fetch them:
 
 If release notes are incomplete, search for `"<package> <version> changelog"` or `"<package> migration guide"`.
 
-### For major version bumps: ALWAYS fetch the migration guide
+### For major version bumps: check for a migration guide
 
-Major bumps almost always have breaking changes. Search for and fetch:
+Major bumps often have breaking changes. Check if a migration guide exists:
 - Migration/upgrade guide
 - Breaking changes document
 - Any "what's new in vN" blog post
+
+If all breaking changes are clearly internal API that we don't import or use (e.g., handler development API when we only configure via YAML), note this and skip the fetch. If any breaking change is ambiguous or potentially affects our usage, ALWAYS fetch and review the migration guide.
 
 ### Analysis
 
@@ -258,17 +265,27 @@ For each PR based on user's choice:
 1. Re-verify CI is passing right before merge (time may have passed since Phase 5):
 
    ```bash
-   gh pr checks <number> --json name,conclusion --jq '.[] | select(.conclusion != "success" and .conclusion != "skipped")'
+   gh pr checks <number> --json name,state
    ```
 
-   If any checks are not passing, inform the user and switch to the "Fix CI and merge" flow instead.
+   Inspect the JSON output — all checks should have `state: "SUCCESS"`, `"SKIPPED"`, or `"NEUTRAL"`. Do NOT use jq filters with `!=` (escaping breaks on Windows bash). If any checks are failing, inform the user and switch to the "Fix CI and merge" flow instead.
 2. Merge:
 
    ```bash
    gh pr merge <number> --squash --auto
    ```
 
+   Note: `--auto` may succeed silently with no stdout. Track which path was used: `auto` or `immediate`.
+
    If `--auto` fails (auto-merge not enabled on the repo or branch protection requirements not met), fall back to `gh pr merge <number> --squash` for immediate merge. If that also fails (e.g., required reviews not met), inform the user that manual approval is needed.
+3. Verify the merge:
+
+   ```bash
+   gh pr view <number> --json state,autoMergeRequest --jq '{state: .state, autoMerge: .autoMergeRequest}'
+   ```
+
+   - If **immediate** merge was used: confirm `state` is `MERGED`. If not, inform the user.
+   - If **auto** merge was enabled: `state` will be `OPEN` with `autoMergeRequest` present (auto-merge is asynchronous — it fires after required checks pass). Inform the user: "Auto-merge has been enabled; the PR will merge automatically when all required checks pass." No immediate state verification needed.
 
 ### Improve and merge
 
@@ -300,7 +317,7 @@ For each PR based on user's choice:
 gh pr close <number> --comment "Skipping: <reason from user>"
 ```
 
-After all merges complete, if any PRs were merged, remind the user to run `/post-merge-cleanup`.
+After all merges complete, if any PRs were merged, automatically run `/post-merge-cleanup` (do NOT just remind the user — execute it).
 
 ---
 
@@ -308,9 +325,9 @@ After all merges complete, if any PRs were merged, remind the user to run `/post
 
 - **NEVER skip changelog review** — every dependency update, regardless of type (CI action, Python package, Docker image), gets a full changelog analysis between the old and new versions.
 - **Be specific about what affects us** — don't just list changelog items, cross-reference each one against our actual config and code usage.
-- **Major version bumps get extra scrutiny** — always look for a migration guide.
+- **Major version bumps get extra scrutiny** — check for a migration guide. Always fetch it if breaking changes are ambiguous or potentially affect our usage; skip only when all breaking changes are clearly in internal APIs we don't use.
 - **Don't merge with failing CI** — if CI fails, investigate and fix first.
 - **Grouped updates (Dependabot groups)**: analyze each package in the group separately, then present as one combined report.
 - **Preserve existing config** — when making improvements, don't refactor unrelated config. Only touch what's relevant to the update.
 - **If you can't fetch release notes** (private repo, deleted releases, etc.), say so explicitly and recommend the user check manually before merging.
-- **After merging**: remind user to run `/post-merge-cleanup` to sync local branches.
+- **After merging**: automatically run `/post-merge-cleanup` to sync local branches — do not just remind the user.

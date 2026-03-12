@@ -190,7 +190,7 @@ src/ai_company/
 - **Dependabot**: daily uv + github-actions + docker updates, grouped minor/patch, no auto-merge. Use `/review-dep-pr` to review Dependabot PRs before merging
 - **Secret scanning**: gitleaks workflow on push/PR + weekly schedule
 - **Dependency review**: license allow-list (permissive only), PR comment summaries
-- **Coverage**: Codecov integration (replaces artifact-only uploads)
+- **Coverage**: Codecov integration — coverage upload via `codecov-action` + test results analytics via `test-results-action` (both best-effort, CI not gated on Codecov availability)
 - **Workflow security**: `.github/workflows/zizmor.yml` — zizmor static analysis of GitHub Actions workflows on push to main and PRs (triggers only when workflow files change), SARIF upload to Security tab on push events only (fork PRs lack `security-events: write`)
 - **Release**: `.github/workflows/release.yml` — Release Please (Google) auto-creates a release PR on every push to main. Merging the release PR creates a git tag (`vX.Y.Z`) + GitHub Release with changelog. Tag push triggers the Docker workflow to build version-tagged images. Uses `RELEASE_PLEASE_TOKEN` secret (PAT/GitHub App token) so tag creation triggers downstream workflows (GITHUB_TOKEN cannot). Config in `.github/release-please-config.json` and `.github/.release-please-manifest.json`.
 
