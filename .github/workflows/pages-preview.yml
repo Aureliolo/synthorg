@@ -8,6 +8,8 @@ on:
       - "docs/**"
       - "site/**"
       - "mkdocs.yml"
+      - "pyproject.toml"
+      - "uv.lock"
       - "src/ai_company/**"
       - ".github/workflows/pages-preview.yml"
 
