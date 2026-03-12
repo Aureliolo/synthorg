@@ -1,7 +1,8 @@
 """Factory for creating memory backends from configuration.
 
-Each company gets its own ``MemoryBackend`` instance.  Concrete
-backend registration happens in issue #41 (Mem0 adapter).
+Each company gets its own ``MemoryBackend`` instance.  The factory
+dispatches to concrete backend implementations based on
+``config.backend``.
 """
 
 from ai_company.memory.config import CompanyMemoryConfig  # noqa: TC001
@@ -9,7 +10,7 @@ from ai_company.memory.errors import MemoryConfigError
 from ai_company.memory.protocol import MemoryBackend  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.memory import (
-    MEMORY_BACKEND_NOT_IMPLEMENTED,
+    MEMORY_BACKEND_CREATED,
     MEMORY_BACKEND_UNKNOWN,
 )
 
@@ -19,30 +20,34 @@ logger = get_logger(__name__)
 def create_memory_backend(config: CompanyMemoryConfig) -> MemoryBackend:
     """Create a memory backend from configuration.
 
-    Currently a placeholder — raises ``MemoryConfigError`` for all
-    backends.  Concrete registration happens in #41.
-
     Args:
         config: Memory configuration (includes backend selection and
             backend-specific settings).
 
     Returns:
-        A new, disconnected backend instance.  Currently unreachable
-        — the function always raises while the Mem0 adapter (#41)
-        is pending.
+        A new, disconnected backend instance.  The caller must call
+        ``connect()`` before use.
 
     Raises:
-        MemoryConfigError: If the backend is not yet implemented or
-            not recognized.
+        MemoryConfigError: If the backend is not recognized.
     """
     if config.backend == "mem0":
-        msg = "mem0 backend not yet implemented"
-        logger.warning(
-            MEMORY_BACKEND_NOT_IMPLEMENTED,
-            backend="mem0",
-            reason=msg,
+        from ai_company.memory.backends.mem0 import Mem0MemoryBackend  # noqa: PLC0415
+        from ai_company.memory.backends.mem0.config import (  # noqa: PLC0415
+            build_config_from_company_config,
         )
-        raise MemoryConfigError(msg)
+
+        mem0_config = build_config_from_company_config(config)
+        backend = Mem0MemoryBackend(
+            mem0_config=mem0_config,
+            max_memories_per_agent=config.options.max_memories_per_agent,
+        )
+        logger.info(
+            MEMORY_BACKEND_CREATED,
+            backend="mem0",
+            data_dir=mem0_config.data_dir,
+        )
+        return backend
     # Defensive guard: config validation rejects unknown backends, so
     # this branch is unreachable under normal construction.  It exists
     # as a safety net for callers that bypass validation (e.g. via

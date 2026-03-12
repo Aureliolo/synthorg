@@ -16,6 +16,7 @@ class TestMemoryExports:
     def test_all_has_expected_names(self) -> None:
         expected = {
             "ArchivalStore",
+            "Mem0MemoryBackend",
             "CompanyMemoryConfig",
             "ConsolidationConfig",
             "ConsolidationResult",
