@@ -182,12 +182,15 @@ src/ai_company/
 - **Jobs**: lint (ruff) + type-check (mypy src/ tests/) + test (pytest + coverage) run in parallel → ci-pass (gate)
 - **Pages**: `.github/workflows/pages.yml` — exports OpenAPI schema (`scripts/export_openapi.py`), builds Astro landing + MkDocs docs, merges, deploys to GitHub Pages on push to main. Triggers on `docs/**`, `site/**`, `mkdocs.yml`, `pyproject.toml`, `uv.lock`, `src/ai_company/**`, `scripts/**`, workflow file changes, and `workflow_dispatch`.
 - **PR Preview**: `.github/workflows/pages-preview.yml`
-  - Builds site on PRs (same path triggers as Pages), injects "Development Preview" banner, deploys to Cloudflare Pages (`synthorg-pr-preview` project) via wrangler CLI
+  - Builds site on PRs (same path triggers as Pages) and on `workflow_dispatch` (with `pr_number` input, for Dependabot PRs that can't trigger `pull_request` with secrets)
+  - Dispatch runs resolve PR metadata (head SHA, state, same-repo check) via `gh pr view`; PR-triggered runs use event context directly
+  - Validates `pr_number` is a positive integer, rejects closed/cross-repo PRs on dispatch, and fails fast if HEAD SHA resolution fails
+  - Injects "Development Preview" banner, deploys to Cloudflare Pages (`synthorg-pr-preview` project) via wrangler CLI
   - Each PR gets a unique preview URL at `pr-<number>.synthorg-pr-preview.pages.dev`
   - Requires `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` secrets
   - Checks out PR head SHA (not merge commit) so build matches reported commit
-  - Build job runs regardless (catches build failures); deploy job skips on fork PRs (no secrets access)
-  - Cleanup job deletes preview comment and Cloudflare deployments on PR close
+  - Build job runs regardless (catches build failures); deploy job skips on fork PRs (same-repo check via job output)
+  - Cleanup job deletes preview comment and Cloudflare deployments on PR close (pull_request events only)
   - Concurrency group cancels stale builds on rapid pushes
 - **Docker**: `.github/workflows/docker.yml` — builds backend + web images, pushes to GHCR, signs with cosign. Scans: Trivy (CRITICAL = hard fail, HIGH = warn-only) + Grype (critical cutoff). CVE triage via `.github/.trivyignore.yaml` and `.github/.grype.yaml`. Images only pushed after scans pass. Triggers on push to main and version tags (`v*`).
 - **Matrix**: Python 3.14
