@@ -13,26 +13,49 @@ on:
       - "src/ai_company/**"
       - "scripts/**"
       - ".github/workflows/pages-preview.yml"
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to build and deploy a preview for (use for Dependabot PRs)"
+        required: true
+        type: string
 
 permissions: {}
 
 concurrency:
-  group: "pages-preview-${{ github.event.pull_request.number }}"
+  group: "pages-preview-${{ github.event.pull_request.number || github.event.inputs.pr_number }}"
   cancel-in-progress: true
 
 jobs:
   build:
     name: Build Preview
-    if: github.event.action != 'closed'
+    if: github.event_name == 'workflow_dispatch' || github.event.action != 'closed'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
+    outputs:
+      pr_number: ${{ steps.pr.outputs.pr_number }}
+      head_sha: ${{ steps.pr.outputs.head_sha }}
     steps:
+      - name: Resolve PR metadata
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number || github.event.inputs.pr_number }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            HEAD_SHA=$(gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json headRefOid -q .headRefOid)
+          else
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          fi
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ steps.pr.outputs.head_sha }}
 
       # --- MkDocs (documentation at /docs) ---
       - name: Set up Python
@@ -82,8 +105,8 @@ jobs:
       # --- Inject preview banner ---
       - name: Inject preview banner
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
         run: |
           python3 << 'PYEOF'
           import os, pathlib, re
@@ -144,7 +167,9 @@ jobs:
   deploy-preview:
     name: Deploy Preview
     needs: build
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     environment: cloudflare-preview
     timeout-minutes: 5
@@ -167,7 +192,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ needs.build.outputs.pr_number }}
         run: |
           npm i --no-save wrangler@3.114.17
           npx wrangler pages deploy _site --project-name=synthorg-pr-preview --branch="pr-${PR_NUMBER}"
@@ -175,11 +200,14 @@ jobs:
       - name: Comment preview URL
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
-          PREVIEW_URL: "https://pr-${{ github.event.pull_request.number }}.synthorg-pr-preview.pages.dev"
+          PREVIEW_URL: "https://pr-${{ needs.build.outputs.pr_number }}.synthorg-pr-preview.pages.dev"
+          PR_NUMBER: ${{ needs.build.outputs.pr_number }}
+          HEAD_SHA: ${{ needs.build.outputs.head_sha }}
         with:
           script: |
             const url = process.env.PREVIEW_URL;
-            const headSha = context.payload?.pull_request?.head?.sha || context.sha;
+            const headSha = process.env.HEAD_SHA;
+            const prNumber = parseInt(process.env.PR_NUMBER, 10);
             const marker = '<!-- synthorg-pr-preview -->';
             const body = [
               marker,
@@ -195,7 +223,7 @@ jobs:
               {
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: context.issue.number,
+                issue_number: prNumber,
                 per_page: 100,
               }
             );
@@ -213,7 +241,7 @@ jobs:
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: context.issue.number,
+                issue_number: prNumber,
                 body,
               });
             }
@@ -221,6 +249,7 @@ jobs:
   cleanup-preview:
     name: Cleanup Preview
     if: >-
+      github.event_name == 'pull_request' &&
       github.event.action == 'closed' &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
