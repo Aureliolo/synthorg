@@ -634,14 +634,14 @@ wheels = [
 
 [[package]]
 name = "griffe-pydantic"
-version = "1.1.2"
+version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "griffe" },
+    { name = "griffelib" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ca/9e/5242baf6e06adf7e9db6a0ef74728c34885325a461502695acba892a9a2f/griffe_pydantic-1.1.2.tar.gz", hash = "sha256:381eacd8854a85811522b4f6dc9a1ef0fb5931825081379d70ff3a425b0d4ea1", size = 38858, upload-time = "2025-02-18T00:13:26.995Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5a/bd/d2eaeaf3f9910c9cd72793af0de18ee3d3a3a27bb30ab01cfd7659c08dc4/griffe_pydantic-1.3.1.tar.gz", hash = "sha256:f7caedfa0effedb22893bf01cc411fd567614f7b4de7ce0c1f4293eb7acb5c44", size = 38176, upload-time = "2026-02-21T09:38:49.674Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/69/bb/2f4889c062f91ed809dbd14a2628365fa7f75b7fc3f8ce17d98b726563b0/griffe_pydantic-1.1.2-py3-none-any.whl", hash = "sha256:8ad53218ca6e9c24ccec83588eb435f562b30355f641fe336e81b1e00ea05f3c", size = 10450, upload-time = "2025-02-18T00:13:25.714Z" },
+    { url = "https://files.pythonhosted.org/packages/2d/88/17d656aa97406cd509e2be0e6eddcf81fc1666104bf81042b89721d4a44c/griffe_pydantic-1.3.1-py3-none-any.whl", hash = "sha256:475103794a1d5da3933d3968e82a2bd9d9a1fa507c06d5ee1a39ee1fadcca628", size = 15189, upload-time = "2026-02-20T11:34:14.965Z" },
 ]
 
 [[package]]
@@ -1152,7 +1152,7 @@ wheels = [
 
 [[package]]
 name = "mkdocs-material"
-version = "9.6.14"
+version = "9.7.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "babel" },
@@ -1167,9 +1167,9 @@ dependencies = [
     { name = "pymdown-extensions" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b3/fa/0101de32af88f87cf5cc23ad5f2e2030d00995f74e616306513431b8ab4b/mkdocs_material-9.6.14.tar.gz", hash = "sha256:39d795e90dce6b531387c255bd07e866e027828b7346d3eba5ac3de265053754", size = 3951707, upload-time = "2025-05-13T13:27:57.173Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/74/76/5c202fecdc45d53e83e03a85bae70c48b6c81e9f87f0bc19a9e9c723bdc0/mkdocs_material-9.7.5.tar.gz", hash = "sha256:f76bdab532bad1d9c57ca7187b37eccf64dd12e1586909307f8856db3be384ea", size = 4097749, upload-time = "2026-03-10T15:43:22.809Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3a/a1/7fdb959ad592e013c01558822fd3c22931a95a0f08cf0a7c36da13a5b2b5/mkdocs_material-9.6.14-py3-none-any.whl", hash = "sha256:3b9cee6d3688551bf7a8e8f41afda97a3c39a12f0325436d76c86706114b721b", size = 8703767, upload-time = "2025-05-13T13:27:54.089Z" },
+    { url = "https://files.pythonhosted.org/packages/45/e1/e8080dcfa95cca267662a6f4afe29237452bdeb5a2a6555ac83646d21915/mkdocs_material-9.7.5-py3-none-any.whl", hash = "sha256:7cf9df2ff121fd098ff6e05c732b0be3699afca9642e2dfe4926c40eb5873eec", size = 9305251, upload-time = "2026-03-10T15:43:19.089Z" },
 ]
 
 [[package]]
@@ -2111,8 +2111,8 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "commitizen", specifier = "==4.13.9" },
-    { name = "griffe-pydantic", specifier = "==1.1.2" },
-    { name = "mkdocs-material", specifier = "==9.6.14" },
+    { name = "griffe-pydantic", specifier = "==1.3.1" },
+    { name = "mkdocs-material", specifier = "==9.7.5" },
     { name = "mkdocstrings", extras = ["python"], specifier = "==1.0.3" },
     { name = "mypy", specifier = "==1.19.1" },
     { name = "polyfactory", specifier = "==3.3.0" },
@@ -2129,8 +2129,8 @@ dev = [
     { name = "types-pyyaml", specifier = "==6.0.12.20250915" },
 ]
 docs = [
-    { name = "griffe-pydantic", specifier = "==1.1.2" },
-    { name = "mkdocs-material", specifier = "==9.6.14" },
+    { name = "griffe-pydantic", specifier = "==1.3.1" },
+    { name = "mkdocs-material", specifier = "==9.7.5" },
     { name = "mkdocstrings", extras = ["python"], specifier = "==1.0.3" },
 ]
 test = [
