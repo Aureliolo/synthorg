@@ -50,7 +50,7 @@ Thumbs.db
 web/node_modules/
 web/dist/
 
-# Documentation build output (MkDocs)
+# Documentation build output (Zensical)
 _site/
 
 # Generated OpenAPI schema (built by scripts/export_openapi.py)

@@ -49,7 +49,7 @@ test = [
     "respx==0.22.0",
 ]
 docs = [
-    "mkdocs-material==9.7.5",
+    "zensical==0.0.26",
     "mkdocstrings[python]==1.0.3",
     "griffe-pydantic==1.3.1",
 ]

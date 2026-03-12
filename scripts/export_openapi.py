@@ -4,10 +4,10 @@ Used by CI (pages.yml, pages-preview.yml) to generate:
 - ``docs/_generated/openapi.json`` — raw OpenAPI schema
 - ``docs/_generated/api-reference.html`` — standalone Scalar UI page
 
-Both are generated before the MkDocs build so the docs site can
+Both are generated before the docs build so the docs site can
 link to the interactive API reference.
 
-Can also be run locally before ``mkdocs build`` to preview the
+Can also be run locally before ``zensical build`` to preview the
 API reference page (see Quick Commands in CLAUDE.md).
 """
 

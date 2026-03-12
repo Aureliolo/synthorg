@@ -80,13 +80,13 @@ All significant design and architecture decisions, organized by domain. Each ent
 | D22 | Remove tools section from system prompt | API's `tools` parameter injects richer definitions (with JSON schemas). Eliminates 200-400+ token redundancy per call. Both Anthropic and OpenAI inject tool definitions internally | Keep as-is (wastes tokens, contradicts provider best practices), replace with behavioral guidance (requires per-tool-set crafting). Evidence: arXiv 2602.11988 shows redundant context increases cost 20%+ with minimal benefit |
 | D23 | Pluggable `MemoryFilterStrategy`; initial: tag-based at write time | Zero retrieval cost. Uses existing `MemoryMetadata.tags`. Non-inferable tag convention enforced at `MemoryBackend.store()` boundary | LLM classification at retrieval (2K-10K extra tokens, adds latency, recursive problem), keyword heuristic (low accuracy), documentation only (no enforcement). Evidence: arXiv 2602.11988 confirms agents store inferable content without enforcement |
 
-## Documentation (2026-03-11)
+## Documentation (2026-03-12)
 
-**Decision:** MkDocs + Material + mkdocstrings for docs; Astro for landing page; build output embedding for Vue dashboard; single domain with CI merge.
+**Decision:** Zensical + mkdocstrings for docs; Astro for landing page; build output embedding for Vue dashboard; single domain with CI merge.
 
-**Rationale:** Best-in-class tools for each job. MkDocs with Griffe AST extraction is PEP 649 safe (no runtime imports). Astro produces zero-JS landing pages. Build output embedding means the same docs HTML serves both the public site and the Vue dashboard.
+**Rationale:** MkDocs has been unmaintained since August 2024. Material for MkDocs entered maintenance mode (v9.7.0 final, 12 months critical fixes only). Zensical is the designated successor by the same team (squidfunk), reads `mkdocs.yml` natively, and ships with the Material theme built-in. Griffe AST extraction for mkdocstrings remains PEP 649 safe. Zensical's `--strict` mode is not yet available ([zensical/backlog#72](https://github.com/zensical/backlog/issues/72)) — CI builds without strict validation until that ships.
 
-**Alternatives:** Sphinx (poor landing pages), VitePress/Docusaurus (no Python API docs), shared markdown with dual renderers (breaks mkdocstrings directives), subdomain split (higher maintenance), iframe embedding (poor UX with double scrollbars).
+**Alternatives:** Stay on MkDocs (unmaintained, accumulating CVEs and unresolved issues), Sphinx (poor landing pages, different ecosystem), VitePress/Docusaurus (no Python API docs).
 
 ## Overarching Pattern
 

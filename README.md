@@ -81,7 +81,7 @@ Built-in tools (file system, git, sandbox, code runner) plus MCP bridge for exte
 git clone https://github.com/Aureliolo/synthorg.git
 cd synthorg
 uv sync                  # install dev + test deps
-uv sync --group docs     # install docs toolchain (mkdocs)
+uv sync --group docs     # install docs toolchain (zensical)
 ```
 
 ### Docker Compose

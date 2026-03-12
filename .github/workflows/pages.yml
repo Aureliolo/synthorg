@@ -32,7 +32,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # --- MkDocs (documentation at /docs) ---
+      # --- Zensical (documentation at /docs) ---
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
@@ -48,8 +48,10 @@ jobs:
       - name: Export OpenAPI schema
         run: uv run python scripts/export_openapi.py
 
-      - name: Build MkDocs
-        run: uv run mkdocs build --strict
+      - name: Build docs
+        # TODO: Restore --strict once zensical supports it
+        # https://github.com/zensical/backlog/issues/72
+        run: uv run zensical build
 
       # --- Astro (landing page at /) ---
       - name: Set up Node.js
@@ -66,16 +68,16 @@ jobs:
         run: npm run build
 
       # --- Merge outputs ---
-      - name: Merge Astro + MkDocs into final output
+      - name: Merge Astro + Zensical into final output
         run: |
           # Guard against Astro accidentally producing a docs/ route
           if [ -d "site/dist/docs" ]; then
-            echo "::error::Astro output contains 'docs/' directory which would overwrite MkDocs output"
+            echo "::error::Astro output contains 'docs/' directory which would overwrite Zensical output"
             exit 1
           fi
           # Astro output goes to root (use /. to avoid glob edge cases)
           cp -r site/dist/. _site/
-          # MkDocs output is already at _site/docs/ from the build step
+          # Zensical output is already at _site/docs/ from the build step
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4

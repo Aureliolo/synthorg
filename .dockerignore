@@ -20,7 +20,7 @@ tests/
 docs/
 *.md
 
-# Documentation build output (MkDocs)
+# Documentation build output (Zensical)
 _site/
 
 # Astro / Node.js (landing page)

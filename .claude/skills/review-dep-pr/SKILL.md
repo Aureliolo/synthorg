@@ -158,7 +158,7 @@ For each non-IRRELEVANT changelog item, check our actual usage:
 
 ## Phase 4: Build Docs Site (for docs dependencies only)
 
-**Skip this phase** if the dependency is NOT related to documentation (MkDocs, mkdocstrings, griffe, etc.).
+**Skip this phase** if the dependency is NOT related to documentation (Zensical, mkdocstrings, griffe, etc.).
 
 For docs-related dependencies, actually build the docs to verify nothing breaks.
 
@@ -179,7 +179,7 @@ else
 
   # 4. Install deps and build
   uv sync --group docs
-  uv run mkdocs build --strict 2>&1
+  uv run zensical build 2>&1
 
   # 5. Return to original branch (trap handles this even on failure)
   trap - EXIT
