@@ -11,22 +11,40 @@ vi.mock('@/api/endpoints/agents', () => ({
 }))
 
 const mockAgent: AgentConfig = {
+  id: 'test-uuid-001',
   name: 'alice',
   role: 'Developer',
-  seniority: 'senior',
+  level: 'senior',
   department: 'engineering',
-  team: 'backend',
   status: 'active',
-  model: 'example-large-001',
+  model: {
+    provider: 'test-provider',
+    model_id: 'example-large-001',
+    temperature: 0.7,
+    max_tokens: 4096,
+    fallback_model: null,
+  },
   personality: {
+    traits: [],
+    communication_style: 'neutral',
     risk_tolerance: 'medium',
-    creativity_level: 'high',
-    decision_making_style: 'analytical',
-    collaboration_preference: 'team',
+    creativity: 'high',
+    description: '',
+    openness: 0.5,
+    conscientiousness: 0.5,
+    extraversion: 0.5,
+    agreeableness: 0.5,
+    stress_response: 0.5,
+    decision_making: 'analytical',
+    collaboration: 'team',
+    verbosity: 'balanced',
     conflict_approach: 'collaborate',
   },
-  tools: ['file_system', 'git'],
-  description: 'Backend developer',
+  skills: { primary: ['python'], secondary: ['go'] },
+  memory: { type: 'session', retention_days: null },
+  tools: { access_level: 'standard', allowed: ['file_system', 'git'], denied: [] },
+  autonomy_level: null,
+  hiring_date: '2026-03-01',
 }
 
 describe('useAgentStore', () => {

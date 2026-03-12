@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Sidebar from 'primevue/sidebar'
@@ -43,6 +43,10 @@ onMounted(async () => {
   await approvalStore.fetchApprovals()
 })
 
+onUnmounted(() => {
+  wsStore.offChannelEvent('approvals', approvalStore.handleWsEvent)
+})
+
 function openDetail(approval: ApprovalItem) {
   selected.value = approval
   detailVisible.value = true
@@ -53,6 +57,8 @@ async function handleApprove(id: string, comment: string) {
   if (result) {
     selected.value = result
     toast.add({ severity: 'success', summary: 'Approved', life: 3000 })
+  } else {
+    toast.add({ severity: 'error', summary: approvalStore.error ?? 'Approve failed', life: 5000 })
   }
 }
 
@@ -61,6 +67,8 @@ async function handleReject(id: string, reason: string) {
   if (result) {
     selected.value = result
     toast.add({ severity: 'info', summary: 'Rejected', life: 3000 })
+  } else {
+    toast.add({ severity: 'error', summary: approvalStore.error ?? 'Reject failed', life: 5000 })
   }
 }
 

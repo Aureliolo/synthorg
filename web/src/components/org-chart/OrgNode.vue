@@ -8,7 +8,7 @@ defineProps<{
     type: 'department' | 'team' | 'agent'
     status?: string
     role?: string
-    seniority?: string
+    level?: string
   }
 }>()
 </script>
@@ -26,7 +26,7 @@ defineProps<{
   >
     <p class="text-sm font-medium text-slate-200">{{ data.label }}</p>
     <p v-if="data.role" class="text-xs text-slate-400">{{ data.role }}</p>
-    <p v-if="data.seniority" class="text-xs text-slate-500">{{ formatLabel(data.seniority) }}</p>
+    <p v-if="data.level" class="text-xs text-slate-500">{{ formatLabel(data.level) }}</p>
     <StatusBadge v-if="data.status" :value="data.status" class="mt-1" />
     <span
       v-if="data.type === 'department'"

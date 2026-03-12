@@ -1,6 +1,6 @@
 import { ref, onUnmounted } from 'vue'
 import type { WsChannel, WsEvent, WsSubscribeMessage, WsUnsubscribeMessage } from '@/api/types'
-import { WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY } from '@/utils/constants'
+import { WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY, WS_MAX_RECONNECT_ATTEMPTS } from '@/utils/constants'
 
 export type WsEventHandler = (event: WsEvent) => void
 
@@ -13,6 +13,7 @@ export function useWebSocket() {
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let intentionalClose = false
   const eventHandlers = new Map<string, Set<WsEventHandler>>()
+  let pendingSubscriptions: { channels: WsChannel[]; filters?: Record<string, string> }[] = []
 
   function getWsUrl(): string {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -24,37 +25,52 @@ export function useWebSocket() {
     if (socket?.readyState === WebSocket.OPEN) return
 
     intentionalClose = false
+    // TODO: Replace with one-time WS ticket endpoint for production security.
+    // Currently passes JWT as query param which is logged in server/proxy/browser.
+    // Secure pattern: POST /api/v1/auth/ws-ticket -> single-use opaque ticket
     const url = `${getWsUrl()}?token=${encodeURIComponent(token)}`
     socket = new WebSocket(url)
 
     socket.onopen = () => {
       connected.value = true
       reconnectAttempts = 0
+      // Replay any subscriptions that were queued while disconnected
+      for (const pending of pendingSubscriptions) {
+        subscribe(pending.channels, pending.filters)
+      }
+      pendingSubscriptions = []
     }
 
     socket.onmessage = (event) => {
+      let data: unknown
       try {
-        const data = JSON.parse(event.data)
+        data = JSON.parse(event.data)
+      } catch (parseErr) {
+        console.error('Failed to parse WebSocket message:', parseErr)
+        return
+      }
 
-        // Handle ack messages
-        if (data.action === 'subscribed' || data.action === 'unsubscribed') {
-          subscribedChannels.value = [...data.channels]
-          return
-        }
+      const msg = data as Record<string, unknown>
 
-        // Handle error messages
-        if (data.error) {
-          console.error('WebSocket error:', data.error)
-          return
-        }
+      // Handle ack messages
+      if (msg.action === 'subscribed' || msg.action === 'unsubscribed') {
+        subscribedChannels.value = [...(msg.channels as WsChannel[])]
+        return
+      }
 
-        // Handle events
-        if (data.event_type && data.channel) {
-          const wsEvent = data as WsEvent
-          dispatchEvent(wsEvent)
+      // Handle error messages
+      if (msg.error) {
+        console.error('WebSocket error:', msg.error)
+        return
+      }
+
+      // Handle events — catch handler errors separately
+      if (msg.event_type && msg.channel) {
+        try {
+          dispatchEvent(msg as unknown as WsEvent)
+        } catch (handlerErr) {
+          console.error('WebSocket event handler error:', handlerErr, 'Event:', msg)
         }
-      } catch {
-        console.error('Failed to parse WebSocket message')
       }
     }
 
@@ -66,13 +82,18 @@ export function useWebSocket() {
       }
     }
 
-    socket.onerror = () => {
-      // onclose will fire after onerror
+    socket.onerror = (event) => {
+      console.error('WebSocket connection error:', event)
+      // onclose will fire after onerror, reconnect is handled there
     }
   }
 
   function scheduleReconnect(token: string) {
     if (reconnectTimer) clearTimeout(reconnectTimer)
+    if (reconnectAttempts >= WS_MAX_RECONNECT_ATTEMPTS) {
+      console.error('WebSocket: max reconnection attempts reached')
+      return
+    }
     const delay = Math.min(
       WS_RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts),
       WS_RECONNECT_MAX_DELAY,
@@ -93,10 +114,15 @@ export function useWebSocket() {
     }
     connected.value = false
     subscribedChannels.value = []
+    pendingSubscriptions = []
   }
 
   function subscribe(channels: WsChannel[], filters?: Record<string, string>) {
-    if (!socket || socket.readyState !== WebSocket.OPEN) return
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      // Queue for replay when connection opens
+      pendingSubscriptions.push({ channels, filters })
+      return
+    }
     const msg: WsSubscribeMessage = { action: 'subscribe', channels, filters }
     socket.send(JSON.stringify(msg))
   }

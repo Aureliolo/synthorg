@@ -21,7 +21,7 @@ defineEmits<{
       :status="status"
       :tasks="tasksByStatus[status] ?? []"
       @task-click="$emit('task-click', $event)"
-      @task-moved="$emit('task-moved', $event, status)"
+      @task-added="$emit('task-moved', $event, status)"
     />
   </div>
 </template>

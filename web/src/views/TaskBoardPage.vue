@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import Button from 'primevue/button'
 import { useToast } from 'primevue/usetoast'
 import AppShell from '@/components/layout/AppShell.vue'
@@ -49,6 +49,10 @@ onMounted(async () => {
   agentNames.value = agentStore.agents.map((a) => a.name)
 })
 
+onUnmounted(() => {
+  wsStore.offChannelEvent('tasks', taskStore.handleWsEvent)
+})
+
 function openDetail(task: Task) {
   selectedTask.value = task
   detailVisible.value = true
@@ -72,6 +76,8 @@ async function handleSave(taskId: string, data: { title?: string; description?: 
   if (result) {
     selectedTask.value = result
     toast.add({ severity: 'success', summary: 'Task updated', life: 3000 })
+  } else {
+    toast.add({ severity: 'error', summary: taskStore.error ?? 'Update failed', life: 5000 })
   }
 }
 
@@ -80,6 +86,8 @@ async function handleCancel(taskId: string, reason: string) {
   if (result) {
     selectedTask.value = result
     toast.add({ severity: 'info', summary: 'Task cancelled', life: 3000 })
+  } else {
+    toast.add({ severity: 'error', summary: taskStore.error ?? 'Cancel failed', life: 5000 })
   }
 }
 
@@ -88,6 +96,8 @@ async function handleCreate(data: CreateTaskRequest) {
   if (result) {
     createVisible.value = false
     toast.add({ severity: 'success', summary: 'Task created', life: 3000 })
+  } else {
+    toast.add({ severity: 'error', summary: taskStore.error ?? 'Create failed', life: 5000 })
   }
 }
 

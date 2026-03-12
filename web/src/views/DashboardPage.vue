@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import AppShell from '@/components/layout/AppShell.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import LoadingSkeleton from '@/components/common/LoadingSkeleton.vue'
@@ -41,7 +41,7 @@ onMounted(async () => {
 
   // Fetch initial data
   try {
-    const [healthResult] = await Promise.allSettled([
+    const results = await Promise.allSettled([
       getHealth(),
       analytics.fetchMetrics(),
       taskStore.fetchTasks({ limit: 10 }),
@@ -49,12 +49,22 @@ onMounted(async () => {
       budgetStore.fetchRecords({ limit: 100 }),
       approvalStore.fetchApprovals({ limit: 10 }),
     ])
-    if (healthResult.status === 'fulfilled') {
-      health.value = healthResult.value
+    if (results[0].status === 'fulfilled') {
+      health.value = results[0].value
+    }
+    const failures = results.filter((r) => r.status === 'rejected')
+    if (failures.length > 0) {
+      console.error('Dashboard initialization failures:', failures)
     }
   } finally {
     loading.value = false
   }
+})
+
+onUnmounted(() => {
+  wsStore.offChannelEvent('tasks', taskStore.handleWsEvent)
+  wsStore.offChannelEvent('budget', budgetStore.handleWsEvent)
+  wsStore.offChannelEvent('approvals', approvalStore.handleWsEvent)
 })
 </script>
 

@@ -25,6 +25,7 @@ describe('useAuthStore', () => {
 
   it('initializes with token from localStorage', () => {
     localStorage.setItem('auth_token', 'test-token')
+    localStorage.setItem('auth_token_expires_at', String(Date.now() + 3600_000))
     const store = useAuthStore()
     expect(store.token).toBe('test-token')
     expect(store.isAuthenticated).toBe(true)
@@ -32,6 +33,7 @@ describe('useAuthStore', () => {
 
   it('logout clears auth state', () => {
     localStorage.setItem('auth_token', 'test-token')
+    localStorage.setItem('auth_token_expires_at', String(Date.now() + 3600_000))
     const store = useAuthStore()
     store.logout()
     expect(store.token).toBeNull()

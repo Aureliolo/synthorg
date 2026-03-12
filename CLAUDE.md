@@ -5,7 +5,7 @@
 - **What**: Framework for building synthetic organizations — autonomous AI agents orchestrated as a virtual company
 - **Python**: 3.14+ (PEP 649 native lazy annotations)
 - **License**: BUSL-1.1 (converts to Apache 2.0 on 2030-02-27)
-- **Layout**: `src/ai_company/` (src layout), `tests/` (unit/integration/e2e)
+- **Layout**: `src/ai_company/` (src layout), `tests/` (unit/integration/e2e), `web/` (Vue 3 dashboard)
 - **Design**: [DESIGN_SPEC.md](DESIGN_SPEC.md) (pointer to `docs/design/` pages)
 
 ## Design Spec (MANDATORY)
@@ -43,6 +43,17 @@ uv run zensical build                      # build docs (output: _site/docs/) �
 uv run zensical serve                      # local docs preview (http://127.0.0.1:8000)
 ```
 
+### Web Dashboard
+
+```bash
+cd web && npm install                      # install frontend deps
+cd web && npm run dev                      # dev server (http://localhost:5173)
+cd web && npm run build                    # production build
+cd web && npm run lint                     # ESLint
+cd web && npm run type-check               # vue-tsc type checking
+cd web && npm run test                     # Vitest unit tests
+```
+
 ## Documentation
 
 - **Docs source**: `docs/` (Markdown, built with Zensical)
@@ -75,7 +86,7 @@ curl http://localhost:3000/api/v1/health   # backend (via web proxy)
 ```
 
 - **Backend**: 3-stage build (builder → setup → distroless runtime), Chainguard Python, non-root (UID 65532), CIS-hardened
-- **Web**: `nginxinc/nginx-unprivileged`, SPA routing, API/WebSocket proxy to backend
+- **Web**: `nginxinc/nginx-unprivileged`, Vue 3 SPA (PrimeVue + Tailwind CSS), SPA routing, API/WebSocket proxy to backend
 - **Config**: all Docker files in `docker/` — Dockerfiles, compose, `.env.example`
 - **CI**: `.github/workflows/docker.yml` — build → scan → push to GHCR + cosign sign (images only pushed after Trivy/Grype scans pass)
 - **Build context**: single root `.dockerignore` (both images build with `context: .`)
@@ -101,6 +112,17 @@ src/ai_company/
   security/       # SecOps agent, rule engine (soft-allow/hard-deny, fail-closed), audit log, output scanner, output scan response policies (redact/withhold/log-only/autonomy-tiered), risk classifier, risk tier classifier, action type registry, ToolInvoker security integration, progressive trust (4 strategies: disabled/weighted/per-category/milestone), autonomy levels (presets, resolver, change strategy), timeout policies (park/resume)
   templates/      # Pre-built company templates, personality presets, and builder
   tools/          # Tool registry, built-in tools (file_system/, git, sandbox/, code_runner), MCP bridge (mcp/), role-based access
+
+web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
+  src/
+    api/          # Axios client, endpoint modules, TypeScript types (mirrors backend Pydantic models)
+    components/   # Vue components organized by feature (agents/, budget/, tasks/, org-chart/, common/)
+    composables/  # Reusable composition functions (useAuth, useWebSocket, usePolling, useOptimisticUpdate)
+    router/       # Vue Router config with auth guards
+    stores/       # Pinia stores (auth, agents, tasks, budget, messages, approvals, websocket)
+    utils/        # Constants, formatters, error helpers
+    views/        # Page-level components (Dashboard, TaskBoard, AgentProfiles, BudgetPanel, etc.)
+  docker/         # nginx config for SPA routing + API/WebSocket proxy
 ```
 
 ## Shell Usage
@@ -206,3 +228,4 @@ src/ai_company/
 - **Pinned**: all versions use `==` in `pyproject.toml`
 - **Groups**: `test` (pytest + plugins), `dev` (includes test + ruff, mypy, pre-commit, commitizen)
 - **Install**: `uv sync` installs everything (dev group is default)
+- **Web dashboard**: Node.js 20+, dependencies in `web/package.json` (Vue 3, PrimeVue, Tailwind CSS, Pinia, VueFlow, Axios, Vitest, ESLint, vue-tsc)

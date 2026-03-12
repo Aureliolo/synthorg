@@ -34,6 +34,7 @@
     "@vue/test-utils": "^2",
     "@vue/tsconfig": "^0.7",
     "eslint": "^9",
+    "eslint-plugin-security": "^4.0.0",
     "eslint-plugin-vue": "^9",
     "jsdom": "^26",
     "typescript": "^5.7",

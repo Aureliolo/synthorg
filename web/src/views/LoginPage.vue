@@ -6,7 +6,7 @@ import Button from 'primevue/button'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '@/stores/auth'
 import { getErrorMessage } from '@/utils/errors'
-import { MIN_PASSWORD_LENGTH } from '@/utils/constants'
+import { MIN_PASSWORD_LENGTH, LOGIN_MAX_ATTEMPTS, LOGIN_LOCKOUT_MS } from '@/utils/constants'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -15,17 +15,42 @@ const toast = useToast()
 const username = ref('')
 const password = ref('')
 const error = ref<string | null>(null)
+const attempts = ref(0)
+const lockedUntil = ref<number | null>(null)
+
+function isLockedOut(): boolean {
+  if (lockedUntil.value && Date.now() < lockedUntil.value) {
+    return true
+  }
+  if (lockedUntil.value && Date.now() >= lockedUntil.value) {
+    lockedUntil.value = null
+    attempts.value = 0
+  }
+  return false
+}
 
 async function handleLogin() {
+  if (isLockedOut()) {
+    error.value = 'Too many failed attempts. Please wait before trying again.'
+    return
+  }
   error.value = null
   try {
     const result = await auth.login(username.value, password.value)
+    attempts.value = 0
     if (result.must_change_password) {
       toast.add({ severity: 'warn', summary: 'Password change required', life: 5000 })
     }
     router.push('/')
   } catch (err) {
-    error.value = getErrorMessage(err)
+    attempts.value++
+    if (attempts.value >= LOGIN_MAX_ATTEMPTS) {
+      lockedUntil.value = Date.now() + LOGIN_LOCKOUT_MS
+      attempts.value = 0
+      error.value = `Too many failed attempts. Please wait ${LOGIN_LOCKOUT_MS / 1000} seconds.`
+    } else {
+      error.value = getErrorMessage(err)
+    }
   }
 }
 
@@ -80,7 +105,7 @@ function goToSetup() {
           icon="pi pi-sign-in"
           class="w-full"
           :loading="auth.loading"
-          :disabled="!username || !password"
+          :disabled="!username || !password || isLockedOut()"
         />
       </form>
 

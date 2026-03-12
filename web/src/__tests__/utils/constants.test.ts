@@ -28,7 +28,7 @@ describe('VALID_TRANSITIONS', () => {
   })
 
   it('completed has no transitions', () => {
-    expect(VALID_TRANSITIONS['completed']).toBeUndefined()
+    expect(VALID_TRANSITIONS['completed']).toEqual([])
   })
 
   it('in_progress can go to in_review', () => {

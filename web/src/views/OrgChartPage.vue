@@ -11,6 +11,7 @@ import '@vue-flow/minimap/dist/style.css'
 import AppShell from '@/components/layout/AppShell.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import LoadingSkeleton from '@/components/common/LoadingSkeleton.vue'
+import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
 import OrgNode from '@/components/org-chart/OrgNode.vue'
 import { useCompanyStore } from '@/stores/company'
 import { useAgentStore } from '@/stores/agents'
@@ -20,9 +21,11 @@ const router = useRouter()
 const companyStore = useCompanyStore()
 const agentStore = useAgentStore()
 
-onMounted(async () => {
-  await Promise.all([companyStore.fetchDepartments(), agentStore.fetchAgents()])
-})
+function retryFetch() {
+  void Promise.all([companyStore.fetchDepartments(), agentStore.fetchAgents()])
+}
+
+onMounted(retryFetch)
 
 const nodes = computed<Node[]>(() => {
   const result: Node[] = []
@@ -49,7 +52,7 @@ const nodes = computed<Node[]>(() => {
       y += 100
 
       for (let i = 0; i < team.members.length; i++) {
-        const memberName = team.members[i]
+        const memberName = team.members[i] // eslint-disable-line security/detect-object-injection
         const agent = agentStore.agents.find((a) => a.name === memberName)
         result.push({
           id: `agent-${memberName}`,
@@ -59,7 +62,7 @@ const nodes = computed<Node[]>(() => {
             type: 'agent',
             status: agent?.status,
             role: agent?.role,
-            seniority: agent?.seniority,
+            level: agent?.level,
           },
           type: 'orgNode',
         })
@@ -109,20 +112,22 @@ function onNodeClick(event: { node: Node }) {
   <AppShell>
     <PageHeader title="Organization Chart" subtitle="Visual structure of departments, teams, and agents" />
 
-    <LoadingSkeleton v-if="companyStore.loading" :lines="6" />
-    <div v-else class="h-[calc(100vh-200px)] rounded-lg border border-slate-800 bg-slate-900">
-      <VueFlow
-        :nodes="nodes"
-        :edges="edges"
-        fit-view-on-init
-        @node-click="onNodeClick"
-      >
-        <template #node-orgNode="{ data }">
-          <OrgNode :data="data" />
-        </template>
-        <Controls />
-        <MiniMap />
-      </VueFlow>
-    </div>
+    <ErrorBoundary :error="companyStore.error ?? agentStore.error" @retry="retryFetch">
+      <LoadingSkeleton v-if="companyStore.loading" :lines="6" />
+      <div v-else class="h-[calc(100vh-200px)] rounded-lg border border-slate-800 bg-slate-900">
+        <VueFlow
+          :nodes="nodes"
+          :edges="edges"
+          fit-view-on-init
+          @node-click="onNodeClick"
+        >
+          <template #node-orgNode="{ data }">
+            <OrgNode :data="data" />
+          </template>
+          <Controls />
+          <MiniMap />
+        </VueFlow>
+      </div>
+    </ErrorBoundary>
   </AppShell>
 </template>

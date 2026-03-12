@@ -30,12 +30,12 @@ defineEmits<{
         <span class="text-slate-300">{{ formatLabel(agent.department) }}</span>
       </div>
       <div class="flex justify-between">
-        <span>Seniority</span>
-        <span class="text-slate-300">{{ formatLabel(agent.seniority) }}</span>
+        <span>Level</span>
+        <span class="text-slate-300">{{ formatLabel(agent.level) }}</span>
       </div>
       <div class="flex justify-between">
         <span>Model</span>
-        <span class="text-slate-300">{{ agent.model }}</span>
+        <span class="text-slate-300">{{ agent.model.model_id }}</span>
       </div>
     </div>
   </div>

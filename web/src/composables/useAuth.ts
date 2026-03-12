@@ -1,5 +1,6 @@
 import { computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { WRITE_ROLES } from '@/utils/constants'
 
 /** Auth state helpers for components. */
 export function useAuth() {
@@ -12,7 +13,7 @@ export function useAuth() {
 
   const canWrite = computed(() => {
     const role = store.userRole
-    return role === 'ceo' || role === 'manager' || role === 'board_member' || role === 'pair_programmer'
+    return role !== null && (WRITE_ROLES as readonly string[]).includes(role)
   })
 
   return {

@@ -121,7 +121,7 @@ synthorg/
     e2e/                # Full system tests
   docs/                 # Developer documentation
   docker/               # Dockerfiles, Compose, .env.example
-  web/                  # Web UI scaffold (nginx + placeholder)
+  web/                  # Vue 3 web dashboard (PrimeVue + Tailwind CSS)
   .github/              # CI workflows, dependabot, actions
   pyproject.toml        # Project config (deps, tools, linters)
   DESIGN_SPEC.md        # Pointer to design specification pages

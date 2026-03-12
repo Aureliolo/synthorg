@@ -933,7 +933,7 @@ future CLI tool are thin clients that call the API -- they contain no business l
                 |          |
         +-------v--+  +---v--------+
         |  Web UI   |  |  CLI Tool  |
-        | (Future)  |  |  (Future)  |
+        |  (Vue 3)  |  |  (Future)  |
         +----------+   +-----------+
 ```
 
@@ -966,10 +966,10 @@ future CLI tool are thin clients that call the API -- they contain no business l
 
 ### Web UI Features
 
-!!! warning "Planned"
+!!! info "Implemented"
 
-    The Web UI is a planned future component (Vue 3). The API is fully self-sufficient for
-    all operations.
+    The Web UI is implemented as a Vue 3 + PrimeVue + Tailwind CSS dashboard. The API
+    remains fully self-sufficient for all operations — the dashboard is a thin client.
 
 - **Dashboard**: Real-time company overview, active tasks, spending
 - **Org Chart**: Visual hierarchy, click to inspect any agent
