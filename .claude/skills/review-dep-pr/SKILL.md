@@ -299,7 +299,7 @@ For each PR based on user's choice:
    - Open a replacement PR targeting the original base branch, linking to the original PR in the description
    - Close the original Dependabot PR with a comment pointing to the replacement
    - **Use the replacement PR number for all remaining steps** (CI wait, merge)
-5. Wait for CI to pass using `gh pr checks <active-number> --watch --timeout 600` (10-minute timeout — if it expires, warn the user that CI may be stuck and ask how to proceed rather than hanging indefinitely). Use the replacement PR number if step 4 created one.
+5. Wait for CI to pass using `gh pr checks <active-number> --watch` (use the Bash tool's `timeout` parameter set to 600000ms to cap the wait — if it expires, warn the user that CI may be stuck and ask how to proceed). Use the replacement PR number if step 4 created one.
 6. Merge the active PR
 
 ### Fix CI and merge
@@ -308,7 +308,7 @@ For each PR based on user's choice:
 2. Investigate the CI failure
 3. Fix the issue
 4. Commit and push (same Dependabot fallback applies — if push fails, open a replacement PR and use that PR number for remaining steps)
-5. Wait for CI to pass using `gh pr checks <active-number> --watch --timeout 600` (10-minute timeout — if it expires, warn the user that CI may be stuck and ask how to proceed rather than hanging indefinitely)
+5. Wait for CI to pass using `gh pr checks <active-number> --watch` (use the Bash tool's `timeout` parameter set to 600000ms to cap the wait — if it expires, warn the user that CI may be stuck and ask how to proceed)
 6. Merge the active PR when green
 
 ### Close / Skip
