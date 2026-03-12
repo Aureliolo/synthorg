@@ -1,4 +1,4 @@
-"""Task status sync — AgentEngine ↔ TaskEngine integration.
+"""Task status sync — AgentEngine → TaskEngine integration.
 
 Module-level functions extracted from ``AgentEngine`` to keep the
 orchestrator file focused on execution flow.  Every function is
@@ -50,8 +50,13 @@ async def sync_to_task_engine(  # noqa: PLR0913
         task_id: Task identifier.
         agent_id: Agent performing the transition.
         reason: Human-readable reason for the transition.
-        critical: If ``True``, sync failure is logged at ERROR
-            (controls log severity only, not control flow).
+        critical: If ``True``, sync failure is logged at ERROR level
+            instead of WARNING (severity only — sync remains best-effort
+            regardless).
+
+    Raises:
+        MemoryError: Propagated unconditionally (non-recoverable).
+        RecursionError: Propagated unconditionally (non-recoverable).
     """
     if task_engine is None:
         return
@@ -93,13 +98,14 @@ async def sync_to_task_engine(  # noqa: PLR0913
             )
             return
         # Mutation was rejected (e.g. version conflict, invalid
-        # transition).
+        # transition, task not found).
         log(
             EXECUTION_ENGINE_SYNC_FAILED,
             agent_id=agent_id,
             task_id=task_id,
             target_status=target_status.value,
-            error=result.error,
+            error=result.error or "Mutation rejected (no error detail)",
+            error_code=result.error_code,
         )
 
 
@@ -141,6 +147,11 @@ async def apply_post_execution_transitions(
     SHUTDOWN triggers current status -> INTERRUPTED.
     Each transition is synced to TaskEngine incrementally.
     Transition failures are logged but never discard the result.
+    ``MemoryError`` and ``RecursionError`` propagate unconditionally.
+
+    Returns the original ``execution_result`` unchanged if no
+    transitions apply, or a copy with updated context reflecting
+    the furthest-reached state on success or partial failure.
     """
     ctx = execution_result.context
     if ctx.task_execution is None:
@@ -165,7 +176,8 @@ async def apply_post_execution_transitions(
             task_id=task_id,
             error=f"Post-execution transition failed: {exc}",
         )
-        return execution_result
+        # Return with whatever context _transition_to_complete reached
+        # so the caller reflects the furthest-synced state.
 
     return execution_result.model_copy(update={"context": ctx})
 
@@ -224,7 +236,7 @@ async def _transition_to_complete(
         task_id=task_id,
         task_engine=task_engine,
     )
-    # TODO: Replace auto-complete with review gate (§6.5)
+    # TODO: Replace auto-complete with review gate (engine.md, step 10)
     return await _transition_and_sync(
         ctx,
         target_status=TaskStatus.COMPLETED,

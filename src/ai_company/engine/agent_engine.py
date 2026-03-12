@@ -48,6 +48,7 @@ from ai_company.observability.events.execution import (
     EXECUTION_ENGINE_PROMPT_BUILT,
     EXECUTION_ENGINE_START,
     EXECUTION_ENGINE_TASK_METRICS,
+    EXECUTION_ENGINE_TASK_TRANSITION,
     EXECUTION_ENGINE_TIMEOUT,
     EXECUTION_RECOVERY_FAILED,
 )
@@ -372,10 +373,17 @@ class AgentEngine:
                 agent_id,
                 task_id,
             )
-            # Sync post-recovery status to TaskEngine (FAILED for
-            # default FailAndReassignStrategy).
+            # Sync post-recovery status to TaskEngine (typically FAILED,
+            # depends on recovery strategy).
             ctx = execution_result.context
             if ctx.task_execution is not None:
+                logger.info(
+                    EXECUTION_ENGINE_TASK_TRANSITION,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    from_status="recovery",
+                    to_status=ctx.task_execution.status.value,
+                )
                 await sync_to_task_engine(
                     self._task_engine,
                     target_status=ctx.task_execution.status,
@@ -394,12 +402,12 @@ class AgentEngine:
                 )
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     EXECUTION_ENGINE_ERROR,
                     agent_id=agent_id,
                     task_id=task_id,
-                    error="classification failed",
+                    error=f"classification failed: {type(exc).__name__}: {exc}",
                     exc_info=True,
                 )
         return execution_result
@@ -795,15 +803,22 @@ class AgentEngine:
                 error_msg,
                 ctx,
             )
-            # Sync post-recovery status to TaskEngine (best-effort).
+            # Sync fatal-error recovery status to TaskEngine (best-effort).
             error_ctx = error_execution.context
             if error_ctx.task_execution is not None:
+                logger.info(
+                    EXECUTION_ENGINE_TASK_TRANSITION,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    from_status="recovery",
+                    to_status=error_ctx.task_execution.status.value,
+                )
                 await sync_to_task_engine(
                     self._task_engine,
                     target_status=error_ctx.task_execution.status,
                     task_id=task_id,
                     agent_id=agent_id,
-                    reason=f"Fatal error recovery: {error_msg}",
+                    reason=f"Fatal error recovery: {type(exc).__name__}",
                 )
             error_prompt = build_error_prompt(
                 identity,

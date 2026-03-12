@@ -234,7 +234,7 @@ real-time visibility into execution progress and improves crash recovery
 (a crash mid-execution leaves the task at the last-reached stage, not stuck
 at `ASSIGNED`).
 
-**Transition sequences** (2–3 `submit()` calls per execution, bounded):
+**Transition sequences** (1–3 `submit()` calls per execution, bounded):
 
 | Path | Synced transitions |
 |------|--------------------|
@@ -249,8 +249,8 @@ at `ASSIGNED`).
   is never blocked by a TaskEngine issue. Each sync failure is isolated and
   does not prevent subsequent transitions.
 - **Critical IN_PROGRESS**: The initial `ASSIGNED → IN_PROGRESS` sync is
-  logged at `ERROR` on failure (all subsequent transitions depend on it).
-  Other sync failures log at `WARNING`.
+  logged at `ERROR` on failure (TaskEngine state coherence for all subsequent
+  transitions depends on it).  Other sync failures log at `WARNING`.
 - **Direct `submit()`**: Uses `TaskEngine.submit()` with
   `TransitionTaskMutation` directly (not the convenience `transition_task()`
   method) to inspect `TaskMutationResult` success/failure without exception
@@ -286,8 +286,8 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
 **Supporting models:**
 
 `TerminationReason`
-:   Enum: `COMPLETED`, `MAX_TURNS`, `BUDGET_EXHAUSTED`, `SHUTDOWN`, `ERROR`.
-    `max_turns` defaults to 20.
+:   Enum: `COMPLETED`, `MAX_TURNS`, `BUDGET_EXHAUSTED`, `SHUTDOWN`, `ERROR`,
+    `PARKED`.  `max_turns` defaults to 20.
 
 `TurnRecord`
 :   Frozen per-turn stats (tokens, cost, tool calls, finish reason).
