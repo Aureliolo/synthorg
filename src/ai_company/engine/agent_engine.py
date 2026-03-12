@@ -368,6 +368,12 @@ class AgentEngine:
             self._task_engine,
         )
         if execution_result.termination_reason == TerminationReason.ERROR:
+            pre_recovery_ctx = execution_result.context
+            pre_recovery_status = (
+                pre_recovery_ctx.task_execution.status
+                if pre_recovery_ctx.task_execution is not None
+                else None
+            )
             execution_result = await self._apply_recovery(
                 execution_result,
                 agent_id,
@@ -376,12 +382,12 @@ class AgentEngine:
             # Sync post-recovery status to TaskEngine (typically FAILED,
             # depends on recovery strategy).
             ctx = execution_result.context
-            if ctx.task_execution is not None:
+            if ctx.task_execution is not None and pre_recovery_status is not None:
                 logger.info(
                     EXECUTION_ENGINE_TASK_TRANSITION,
                     agent_id=agent_id,
                     task_id=task_id,
-                    from_status="recovery",
+                    from_status=pre_recovery_status.value,
                     to_status=ctx.task_execution.status.value,
                 )
                 await sync_to_task_engine(
@@ -794,6 +800,11 @@ class AgentEngine:
             error=error_msg,
         )
 
+        pre_fatal_status = (
+            ctx.task_execution.status
+            if ctx is not None and ctx.task_execution is not None
+            else None
+        )
         try:
             error_execution = await self._build_error_execution(
                 identity,
@@ -805,12 +816,12 @@ class AgentEngine:
             )
             # Sync fatal-error recovery status to TaskEngine (best-effort).
             error_ctx = error_execution.context
-            if error_ctx.task_execution is not None:
+            if error_ctx.task_execution is not None and pre_fatal_status is not None:
                 logger.info(
                     EXECUTION_ENGINE_TASK_TRANSITION,
                     agent_id=agent_id,
                     task_id=task_id,
-                    from_status="recovery",
+                    from_status=pre_fatal_status.value,
                     to_status=error_ctx.task_execution.status.value,
                 )
                 await sync_to_task_engine(

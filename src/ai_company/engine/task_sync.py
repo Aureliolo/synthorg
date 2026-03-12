@@ -6,6 +6,7 @@ best-effort: sync failures are logged and swallowed so agent
 execution is never blocked by a ``TaskEngine`` issue.
 """
 
+import asyncio
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -27,6 +28,16 @@ if TYPE_CHECKING:
     from ai_company.engine.task_engine import TaskEngine
 
 logger = get_logger(__name__)
+
+# Stepwise completion transitions: each (target_status, reason) pair
+# is applied in order.  ``apply_post_execution_transitions`` updates
+# ``ctx`` after each step so partial-failure always reflects the
+# furthest-reached state.
+_COMPLETION_STEPS: tuple[tuple[TaskStatus, str], ...] = (
+    (TaskStatus.IN_REVIEW, "Agent completed execution"),
+    # TODO: Replace auto-complete with review gate (engine.md, step 10)
+    (TaskStatus.COMPLETED, "Auto-completed (review gate not implemented)"),
+)
 
 
 async def sync_to_task_engine(  # noqa: PLR0913
@@ -57,6 +68,7 @@ async def sync_to_task_engine(  # noqa: PLR0913
     Raises:
         MemoryError: Propagated unconditionally (non-recoverable).
         RecursionError: Propagated unconditionally (non-recoverable).
+        asyncio.CancelledError: Propagated so shutdown can proceed.
     """
     if task_engine is None:
         return
@@ -71,7 +83,7 @@ async def sync_to_task_engine(  # noqa: PLR0913
             reason=reason,
         )
         result = await task_engine.submit(mutation)
-    except MemoryError, RecursionError:
+    except MemoryError, RecursionError, asyncio.CancelledError:
         raise
     except Exception as exc:
         error = (
@@ -167,17 +179,27 @@ async def apply_post_execution_transitions(
     if reason != TerminationReason.COMPLETED:
         return execution_result
 
-    try:
-        ctx = await _transition_to_complete(ctx, agent_id, task_id, task_engine)
-    except (ValueError, ExecutionStateError) as exc:
-        logger.exception(
-            EXECUTION_ENGINE_ERROR,
-            agent_id=agent_id,
-            task_id=task_id,
-            error=f"Post-execution transition failed: {exc}",
-        )
-        # Return with whatever context _transition_to_complete reached
-        # so the caller reflects the furthest-synced state.
+    # Apply IN_PROGRESS -> IN_REVIEW -> COMPLETED stepwise so that
+    # ``ctx`` always reflects the furthest-reached state, even when
+    # one step raises (partial-completion safety).
+    for target, step_reason in _COMPLETION_STEPS:
+        try:
+            ctx = await _transition_and_sync(
+                ctx,
+                target_status=target,
+                reason=step_reason,
+                agent_id=agent_id,
+                task_id=task_id,
+                task_engine=task_engine,
+            )
+        except (ValueError, ExecutionStateError) as exc:
+            logger.exception(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error=f"Post-execution transition failed: {exc}",
+            )
+            break
 
     return execution_result.model_copy(update={"context": ctx})
 
@@ -216,35 +238,6 @@ async def _transition_and_sync(  # noqa: PLR0913
         critical=critical,
     )
     return ctx
-
-
-async def _transition_to_complete(
-    ctx: AgentContext,
-    agent_id: str,
-    task_id: str,
-    task_engine: TaskEngine | None,
-) -> AgentContext:
-    """Transition IN_PROGRESS -> IN_REVIEW -> COMPLETED with logging.
-
-    Each step is synced to TaskEngine incrementally.
-    """
-    ctx = await _transition_and_sync(
-        ctx,
-        target_status=TaskStatus.IN_REVIEW,
-        reason="Agent completed execution",
-        agent_id=agent_id,
-        task_id=task_id,
-        task_engine=task_engine,
-    )
-    # TODO: Replace auto-complete with review gate (engine.md, step 10)
-    return await _transition_and_sync(
-        ctx,
-        target_status=TaskStatus.COMPLETED,
-        reason="Auto-completed (review gate not implemented)",
-        agent_id=agent_id,
-        task_id=task_id,
-        task_engine=task_engine,
-    )
 
 
 async def _transition_to_interrupted(

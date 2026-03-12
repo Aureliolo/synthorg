@@ -250,6 +250,23 @@ class TestSyncToTaskEngine:
             critical=True,
         )
 
+    async def test_cancelled_error_propagates(self) -> None:
+        """asyncio.CancelledError is never swallowed."""
+        import asyncio
+
+        mock_te = _make_mock_task_engine(
+            side_effect=asyncio.CancelledError(),
+        )
+
+        with pytest.raises(asyncio.CancelledError):
+            await sync_to_task_engine(
+                mock_te,
+                target_status=TaskStatus.IN_PROGRESS,
+                task_id="task-1",
+                agent_id="agent-1",
+                reason="test",
+            )
+
 
 # ===================================================================
 # transition_task_if_needed
@@ -480,18 +497,17 @@ class TestApplyPostExecutionTransitions:
 
         assert out is result
 
-    async def test_completed_partial_failure_does_not_crash(
+    async def test_completed_partial_failure_returns_furthest_state(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
         """Partial failure: IN_REVIEW succeeds locally, COMPLETED raises.
 
-        When ``_transition_to_complete`` raises partway through, the
-        caller catches the error and returns a result (not crash).
-        The ``ctx`` in ``apply_post_execution_transitions`` stays at
-        IN_PROGRESS because the intermediate state inside
-        ``_transition_to_complete`` can't propagate back through a raise.
+        The stepwise loop in ``apply_post_execution_transitions`` captures
+        the intermediate ``ctx`` after each successful step.  When the
+        second step raises, the returned context reflects IN_REVIEW
+        (the furthest-reached state), not the original IN_PROGRESS.
         """
         ctx = AgentContext.from_identity(
             sample_agent_with_personality,
@@ -529,11 +545,10 @@ class TestApplyPostExecutionTransitions:
                 task_engine=mock_te,
             )
 
-            # Function returns without crashing; context reflects the
-            # caller-level variable (IN_PROGRESS, since the assignment
-            # from _transition_to_complete was interrupted by the raise).
+            # Context reflects IN_REVIEW — the furthest-reached state
+            # before the second transition failed.
             assert out.context.task_execution is not None
-            assert out.context.task_execution.status == TaskStatus.IN_PROGRESS
+            assert out.context.task_execution.status == TaskStatus.IN_REVIEW
             # Result is a model_copy, not the bare original
             assert out is not result
         finally:
