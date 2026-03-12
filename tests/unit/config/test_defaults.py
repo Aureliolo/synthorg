@@ -1,5 +1,7 @@
 """Tests for config defaults."""
 
+from typing import Any
+
 import pytest
 
 from ai_company.config.defaults import default_config_dict
@@ -20,7 +22,7 @@ class TestDefaultConfigDict:
         assert result["company_type"] == "custom"
 
     def test_constructs_valid_root_config(self) -> None:
-        data = default_config_dict()
+        data: dict[str, Any] = default_config_dict()  # narrow for **unpacking
         cfg = RootConfig(**data)
         assert cfg.company_name == "SynthOrg"
         assert cfg.company_type.value == "custom"

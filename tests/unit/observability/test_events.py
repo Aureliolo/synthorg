@@ -210,6 +210,7 @@ class TestEventConstants:
             "security",
             "task",
             "task_assignment",
+            "task_engine",
             "task_routing",
             "template",
             "timeout",

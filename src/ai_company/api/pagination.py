@@ -28,6 +28,7 @@ def paginate[T](
     *,
     offset: int,
     limit: int,
+    total: int | None = None,
 ) -> tuple[tuple[T, ...], PaginationMeta]:
     """Slice a tuple and produce pagination metadata.
 
@@ -38,15 +39,19 @@ def paginate[T](
         items: Full collection to paginate.
         offset: Zero-based starting index.
         limit: Maximum items to return.
+        total: True total count when *items* has been truncated
+            upstream (e.g. by a safety cap).  Defaults to
+            ``len(items)``.
 
     Returns:
         A tuple of (page_items, pagination_meta).
     """
+    effective_total = total if total is not None else len(items)
     offset = max(0, min(offset, len(items)))
     limit = max(1, min(limit, MAX_LIMIT))
     page = items[offset : offset + limit]
     meta = PaginationMeta(
-        total=len(items),
+        total=effective_total,
         offset=offset,
         limit=limit,
     )

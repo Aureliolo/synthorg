@@ -1,8 +1,8 @@
 """Agent execution engine.
 
-Re-exports the public API for the agent orchestrator, run results,
-system prompt construction, runtime execution state, execution loops,
-and engine errors.
+Re-exports the public API for the agent orchestrator, task engine,
+run results, system prompt construction, runtime execution state,
+execution loops, and engine errors.
 """
 
 from ai_company.engine.agent_engine import AgentEngine
@@ -67,7 +67,14 @@ from ai_company.engine.errors import (
     PromptBuildError,
     ResourceConflictError,
     TaskAssignmentError,
+    TaskEngineError,
+    TaskEngineNotRunningError,
+    TaskEngineQueueFullError,
+    TaskInternalError,
+    TaskMutationError,
+    TaskNotFoundError,
     TaskRoutingError,
+    TaskVersionConflictError,
     WorkspaceCleanupError,
     WorkspaceError,
     WorkspaceLimitError,
@@ -128,6 +135,19 @@ from ai_company.engine.shutdown import (
     ShutdownResult,
     ShutdownStrategy,
 )
+from ai_company.engine.task_engine import TaskEngine
+from ai_company.engine.task_engine_config import TaskEngineConfig
+from ai_company.engine.task_engine_models import (
+    CancelTaskMutation,
+    CreateTaskData,
+    CreateTaskMutation,
+    DeleteTaskMutation,
+    TaskMutation,
+    TaskMutationResult,
+    TaskStateChanged,
+    TransitionTaskMutation,
+    UpdateTaskMutation,
+)
 from ai_company.engine.task_execution import StatusTransition, TaskExecution
 from ai_company.engine.workspace import (
     MergeConflict,
@@ -168,10 +188,13 @@ __all__ = [
     "AuctionAssignmentStrategy",
     "AutoTopologyConfig",
     "BudgetChecker",
+    "CancelTaskMutation",
     "ClassificationResult",
     "CleanupCallback",
     "CooperativeTimeoutStrategy",
     "CostOptimizedAssignmentStrategy",
+    "CreateTaskData",
+    "CreateTaskMutation",
     "DecompositionContext",
     "DecompositionCycleError",
     "DecompositionDepthError",
@@ -181,6 +204,7 @@ __all__ = [
     "DecompositionService",
     "DecompositionStrategy",
     "DefaultTokenEstimator",
+    "DeleteTaskMutation",
     "DependencyGraph",
     "EngineError",
     "ErrorFinding",
@@ -239,13 +263,27 @@ __all__ = [
     "TaskAssignmentService",
     "TaskAssignmentStrategy",
     "TaskCompletionMetrics",
+    "TaskEngine",
+    "TaskEngineConfig",
+    "TaskEngineError",
+    "TaskEngineNotRunningError",
+    "TaskEngineQueueFullError",
     "TaskExecution",
+    "TaskInternalError",
+    "TaskMutation",
+    "TaskMutationError",
+    "TaskMutationResult",
+    "TaskNotFoundError",
     "TaskRoutingError",
     "TaskRoutingService",
+    "TaskStateChanged",
     "TaskStructureClassifier",
+    "TaskVersionConflictError",
     "TerminationReason",
     "TopologySelector",
+    "TransitionTaskMutation",
     "TurnRecord",
+    "UpdateTaskMutation",
     "Workspace",
     "WorkspaceCleanupError",
     "WorkspaceError",

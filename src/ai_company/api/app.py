@@ -35,6 +35,7 @@ from ai_company.budget.tracker import CostTracker  # noqa: TC001
 from ai_company.communication.bus_protocol import MessageBus  # noqa: TC001
 from ai_company.config.schema import RootConfig
 from ai_company.core.approval import ApprovalItem  # noqa: TC001
+from ai_company.engine.task_engine import TaskEngine  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.api import (
     API_APP_SHUTDOWN,
@@ -87,7 +88,9 @@ def _make_expire_callback(
                 event.model_dump_json(),
                 channels=[CHANNEL_APPROVALS],
             )
-        except RuntimeError, OSError:
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
             logger.warning(
                 API_APPROVAL_PUBLISH_FAILED,
                 approval_id=item.id,
@@ -102,6 +105,7 @@ def _build_lifecycle(
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
     bridge: MessageBusBridge | None,
+    task_engine: TaskEngine | None,
     app_state: AppState,
 ) -> tuple[
     Sequence[Callable[[], Awaitable[None]]],
@@ -115,39 +119,76 @@ def _build_lifecycle(
 
     async def on_startup() -> None:
         logger.info(API_APP_STARTUP, version=__version__)
-        await _safe_startup(persistence, message_bus, bridge, app_state)
+        await _safe_startup(
+            persistence,
+            message_bus,
+            bridge,
+            task_engine,
+            app_state,
+        )
 
     async def on_shutdown() -> None:
         logger.info(API_APP_SHUTDOWN, version=__version__)
-        await _safe_shutdown(bridge, message_bus, persistence)
+        await _safe_shutdown(task_engine, bridge, message_bus, persistence)
 
     return [on_startup], [on_shutdown]
 
 
-async def _cleanup_on_failure(
+async def _try_stop(
+    coro: Awaitable[None],
+    event: str,
+    error_msg: str,
+) -> None:
+    """Await *coro* inside a safe try/except, logging failures.
+
+    ``MemoryError`` and ``RecursionError`` are re-raised immediately;
+    all other exceptions are logged and swallowed so that sibling
+    shutdown steps can still run.
+    """
+    try:
+        await coro
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.exception(event, error=error_msg)
+
+
+async def _cleanup_on_failure(  # noqa: PLR0913
     *,
     persistence: PersistenceBackend | None,
     started_persistence: bool,
     message_bus: MessageBus | None,
     started_bus: bool,
+    bridge: MessageBusBridge | None = None,
+    started_bridge: bool = False,
+    task_engine: TaskEngine | None = None,
+    started_task_engine: bool = False,
 ) -> None:
-    """Reverse cleanup of persistence and message bus on startup failure."""
+    """Reverse cleanup on startup failure (task engine, bridge, bus, persistence)."""
+    if started_task_engine and task_engine is not None:
+        await _try_stop(
+            task_engine.stop(),
+            API_APP_STARTUP,
+            "Cleanup: failed to stop task engine",
+        )
+    if started_bridge and bridge is not None:
+        await _try_stop(
+            bridge.stop(),
+            API_APP_STARTUP,
+            "Cleanup: failed to stop message bus bridge",
+        )
     if started_bus and message_bus is not None:
-        try:
-            await message_bus.stop()
-        except Exception:
-            logger.exception(
-                API_APP_STARTUP,
-                error="Cleanup: failed to stop message bus",
-            )
+        await _try_stop(
+            message_bus.stop(),
+            API_APP_STARTUP,
+            "Cleanup: failed to stop message bus",
+        )
     if started_persistence and persistence is not None:
-        try:
-            await persistence.disconnect()
-        except Exception:
-            logger.exception(
-                API_APP_STARTUP,
-                error="Cleanup: failed to disconnect persistence",
-            )
+        await _try_stop(
+            persistence.disconnect(),
+            API_APP_STARTUP,
+            "Cleanup: failed to disconnect persistence",
+        )
 
 
 async def _init_persistence(
@@ -196,15 +237,18 @@ async def _safe_startup(
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
     bridge: MessageBusBridge | None,
+    task_engine: TaskEngine | None,
     app_state: AppState,
 ) -> None:
-    """Connect persistence, resolve JWT secret, start message bus and bridge.
+    """Connect persistence, resolve JWT secret, start bus, bridge, task engine.
 
     Executes in order; on failure, cleans up already-started
     components in reverse order before re-raising.
     """
     started_bus = False
+    started_bridge = False
     started_persistence = False
+    started_task_engine = False
     try:
         if persistence is not None:
             try:
@@ -239,46 +283,67 @@ async def _safe_startup(
                     error="Failed to start message bus bridge",
                 )
                 raise
+            started_bridge = True
+        if task_engine is not None:
+            try:
+                task_engine.start()
+            except Exception:
+                logger.exception(
+                    API_APP_STARTUP,
+                    error="Failed to start task engine",
+                )
+                raise
+            started_task_engine = True
     except Exception:
         await _cleanup_on_failure(
             persistence=persistence,
             started_persistence=started_persistence,
             message_bus=message_bus,
             started_bus=started_bus,
+            bridge=bridge,
+            started_bridge=started_bridge,
+            task_engine=task_engine,
+            started_task_engine=started_task_engine,
         )
         raise
 
 
 async def _safe_shutdown(
+    task_engine: TaskEngine | None,
     bridge: MessageBusBridge | None,
     message_bus: MessageBus | None,
     persistence: PersistenceBackend | None,
 ) -> None:
-    """Stop bridge, message bus and disconnect persistence."""
+    """Stop task engine, bridge, message bus and disconnect persistence.
+
+    Mirrors ``_cleanup_on_failure`` reverse order: task engine first so it
+    can drain queued mutations and publish final snapshots through the
+    still-running bridge.
+    """
+    if task_engine is not None:
+        await _try_stop(
+            task_engine.stop(),
+            API_APP_SHUTDOWN,
+            "Failed to stop task engine",
+        )
     if bridge is not None:
-        try:
-            await bridge.stop()
-        except Exception:
-            logger.exception(
-                API_APP_SHUTDOWN,
-                error="Failed to stop message bus bridge",
-            )
+        await _try_stop(
+            bridge.stop(),
+            API_APP_SHUTDOWN,
+            "Failed to stop message bus bridge",
+        )
     if message_bus is not None:
-        try:
-            await message_bus.stop()
-        except Exception:
-            logger.exception(
-                API_APP_SHUTDOWN,
-                error="Failed to stop message bus",
-            )
+        await _try_stop(
+            message_bus.stop(),
+            API_APP_SHUTDOWN,
+            "Failed to stop message bus",
+        )
     if persistence is not None:
-        try:
-            await persistence.disconnect()
-        except Exception:
-            logger.exception(
-                API_APP_SHUTDOWN,
-                error="Failed to disconnect persistence",
-            )
+        await _try_stop(
+            persistence.disconnect(),
+            API_APP_SHUTDOWN,
+            "Failed to disconnect persistence",
+        )
 
 
 def create_app(  # noqa: PLR0913
@@ -289,6 +354,7 @@ def create_app(  # noqa: PLR0913
     cost_tracker: CostTracker | None = None,
     approval_store: ApprovalStore | None = None,
     auth_service: AuthService | None = None,
+    task_engine: TaskEngine | None = None,
 ) -> Litestar:
     """Create and configure the Litestar application.
 
@@ -302,6 +368,7 @@ def create_app(  # noqa: PLR0913
         cost_tracker: Cost tracking service.
         approval_store: Approval queue store.
         auth_service: Pre-built auth service (for testing).
+        task_engine: Centralized task state engine.
 
     Returns:
         Configured Litestar application.
@@ -309,11 +376,16 @@ def create_app(  # noqa: PLR0913
     effective_config = config or RootConfig(company_name="default")
     api_config = effective_config.api
 
-    if persistence is None or message_bus is None or cost_tracker is None:
+    if (
+        persistence is None
+        or message_bus is None
+        or cost_tracker is None
+        or task_engine is None
+    ):
         msg = (
             "create_app called without persistence, message_bus, "
-            "and/or cost_tracker — controllers accessing missing "
-            "services will return 503.  Use test fakes for testing."
+            "cost_tracker, and/or task_engine — controllers accessing "
+            "missing services will return 503.  Use test fakes for testing."
         )
         logger.warning(API_APP_STARTUP, note=msg)
 
@@ -330,6 +402,7 @@ def create_app(  # noqa: PLR0913
         cost_tracker=cost_tracker,
         approval_store=effective_approval_store,
         auth_service=auth_service,
+        task_engine=task_engine,
         startup_time=time.monotonic(),
     )
 
@@ -347,6 +420,7 @@ def create_app(  # noqa: PLR0913
         persistence,
         message_bus,
         bridge,
+        task_engine,
         app_state,
     )
 

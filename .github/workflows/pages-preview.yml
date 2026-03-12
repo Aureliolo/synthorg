@@ -88,6 +88,9 @@ jobs:
           echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
           echo "same_repo=$SAME_REPO" >> "$GITHUB_OUTPUT"
 
+      # zizmor: ignore[untrusted-checkout] — intentional: preview builds require
+      # PR code. Mitigated: no secrets in this job, contents:read + pull-requests:read
+      # only, persist-credentials:false. Deploy job uses artifacts, not checkout.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false

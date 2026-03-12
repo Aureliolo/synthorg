@@ -80,3 +80,41 @@ class WorkspaceCleanupError(WorkspaceError):
 
 class WorkspaceLimitError(WorkspaceError):
     """Raised when maximum concurrent workspaces reached."""
+
+
+class TaskEngineError(EngineError):
+    """Base exception for all task engine errors."""
+
+
+class TaskEngineNotRunningError(TaskEngineError):
+    """Raised when a mutation is submitted to a stopped task engine."""
+
+
+class TaskEngineQueueFullError(TaskEngineError):
+    """Raised when the task engine queue is at capacity."""
+
+
+class TaskMutationError(TaskEngineError):
+    """Raised when a task mutation fails (not found, validation, etc.)."""
+
+
+class TaskNotFoundError(TaskMutationError):
+    """Raised when a task is not found during mutation."""
+
+
+class TaskVersionConflictError(TaskMutationError):
+    """Raised when optimistic concurrency version does not match."""
+
+
+class TaskInternalError(TaskEngineError):
+    """Raised when a task mutation fails due to an internal engine error.
+
+    Unlike :class:`TaskMutationError` (which covers business-rule failures
+    such as validation or not-found), this signals an unexpected engine fault
+    that the caller cannot fix by changing the request. Maps to 5xx at the API
+    layer.
+
+    This is deliberately a sibling of ``TaskMutationError``, not a subtype,
+    so that broad ``except TaskMutationError`` handlers do not accidentally
+    catch internal engine faults.
+    """

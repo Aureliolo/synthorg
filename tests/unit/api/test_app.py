@@ -63,7 +63,7 @@ class TestAppLifecycle:
         bus.start = failing_start  # type: ignore[method-assign]
 
         with pytest.raises(RuntimeError, match="bus boom"):
-            await _safe_startup(persistence, bus, None, app_state)
+            await _safe_startup(persistence, bus, None, None, app_state)
         # Persistence should have been disconnected during cleanup
         assert not persistence.is_connected
 
@@ -81,4 +81,99 @@ class TestAppLifecycle:
         persistence.disconnect = failing_disconnect  # type: ignore[method-assign]
 
         # Should not raise even when disconnect fails
-        await _safe_shutdown(None, None, persistence)
+        await _safe_shutdown(None, None, None, persistence)
+
+    async def test_task_engine_failure_cleans_up(
+        self,
+        root_config: Any,
+    ) -> None:
+        """Task engine start fails → persistence + bus cleaned up."""
+        from unittest.mock import MagicMock
+
+        from ai_company.api.app import _safe_startup
+        from ai_company.api.approval_store import ApprovalStore
+        from ai_company.api.state import AppState
+        from tests.unit.api.conftest import (
+            FakeMessageBus,
+            FakePersistenceBackend,
+        )
+
+        persistence = FakePersistenceBackend()
+        bus = FakeMessageBus()
+        mock_te = MagicMock()
+        mock_te.start = MagicMock(side_effect=RuntimeError("engine boom"))
+        mock_te.stop = MagicMock()
+
+        app_state = AppState(
+            config=root_config,
+            approval_store=ApprovalStore(),
+            persistence=persistence,
+        )
+
+        with pytest.raises(RuntimeError, match="engine boom"):
+            await _safe_startup(persistence, bus, None, mock_te, app_state)
+
+        # Persistence and bus should be cleaned up
+        assert not persistence.is_connected
+        assert not bus.is_running
+
+    async def test_shutdown_task_engine_failure_does_not_propagate(self) -> None:
+        """Task engine stop failure during shutdown is logged, not raised."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from ai_company.api.app import _safe_shutdown
+
+        mock_te = MagicMock()
+        mock_te.stop = AsyncMock(side_effect=RuntimeError("stop boom"))
+
+        # Should not raise even when task engine stop fails
+        await _safe_shutdown(mock_te, None, None, None)
+
+
+@pytest.mark.unit
+class TestTryStop:
+    """Tests for the _try_stop helper."""
+
+    async def test_try_stop_success(self) -> None:
+        """Successful coroutine runs without error."""
+        from ai_company.api.app import _try_stop
+
+        called = False
+
+        async def noop() -> None:
+            nonlocal called
+            called = True
+
+        await _try_stop(noop(), "event", "error msg")
+        assert called is True
+
+    async def test_try_stop_exception_swallowed(self) -> None:
+        """Non-fatal exceptions are swallowed (logged)."""
+        from ai_company.api.app import _try_stop
+
+        async def fail() -> None:
+            msg = "boom"
+            raise RuntimeError(msg)
+
+        # Should not raise
+        await _try_stop(fail(), "event", "error msg")
+
+    async def test_try_stop_memory_error_reraises(self) -> None:
+        """MemoryError is re-raised immediately."""
+        from ai_company.api.app import _try_stop
+
+        async def oom() -> None:
+            raise MemoryError
+
+        with pytest.raises(MemoryError):
+            await _try_stop(oom(), "event", "error msg")
+
+    async def test_try_stop_recursion_error_reraises(self) -> None:
+        """RecursionError is re-raised immediately."""
+        from ai_company.api.app import _try_stop
+
+        async def recurse() -> None:
+            raise RecursionError
+
+        with pytest.raises(RecursionError):
+            await _try_stop(recurse(), "event", "error msg")

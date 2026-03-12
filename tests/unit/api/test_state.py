@@ -90,3 +90,47 @@ class TestAppStateAccessors:
         state = _make_state(auth_service=svc)
         with pytest.raises(RuntimeError, match="already configured"):
             state.set_auth_service(svc)
+
+
+@pytest.mark.unit
+class TestAppStateTaskEngine:
+    """Tests for task_engine property, has_task_engine, set_task_engine."""
+
+    def test_task_engine_raises_when_none(self) -> None:
+        state = _make_state(task_engine=None)
+        with pytest.raises(ServiceUnavailableError):
+            _ = state.task_engine
+
+    def test_task_engine_returns_when_set(self) -> None:
+        from unittest.mock import MagicMock
+
+        engine = MagicMock()
+        state = _make_state(task_engine=engine)
+        assert state.task_engine is engine
+
+    def test_has_task_engine_false_when_none(self) -> None:
+        state = _make_state(task_engine=None)
+        assert state.has_task_engine is False
+
+    def test_has_task_engine_true_when_set(self) -> None:
+        from unittest.mock import MagicMock
+
+        engine = MagicMock()
+        state = _make_state(task_engine=engine)
+        assert state.has_task_engine is True
+
+    def test_set_task_engine_succeeds_once(self) -> None:
+        from unittest.mock import MagicMock
+
+        engine = MagicMock()
+        state = _make_state()
+        state.set_task_engine(engine)
+        assert state.task_engine is engine
+
+    def test_set_task_engine_twice_raises(self) -> None:
+        from unittest.mock import MagicMock
+
+        engine = MagicMock()
+        state = _make_state(task_engine=engine)
+        with pytest.raises(RuntimeError, match="already configured"):
+            state.set_task_engine(engine)

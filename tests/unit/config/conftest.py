@@ -77,6 +77,7 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     departments = ()
     agents = ()
     custom_roles = ()
+    escalation_paths = ()
     providers: dict[str, ProviderConfig] = {}  # noqa: RUF012
     config = CompanyConfig()
     api = ApiConfig()

@@ -19,7 +19,11 @@ from ai_company.engine._validation import (
 from ai_company.engine.classification.pipeline import classify_execution_errors
 from ai_company.engine.context import DEFAULT_MAX_TURNS, AgentContext
 from ai_company.engine.cost_recording import record_execution_costs
-from ai_company.engine.errors import ExecutionStateError
+from ai_company.engine.errors import (
+    ExecutionStateError,
+    TaskEngineError,
+    TaskMutationError,
+)
 from ai_company.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
@@ -84,6 +88,7 @@ if TYPE_CHECKING:
         ExecutionLoop,
         ShutdownChecker,
     )
+    from ai_company.engine.task_engine import TaskEngine
     from ai_company.providers.models import CompletionConfig
     from ai_company.providers.protocol import CompletionProvider
     from ai_company.security.config import SecurityConfig
@@ -97,6 +102,23 @@ _PROMPT_TOKEN_RATIO_THRESHOLD: float = 0.3
 
 _DEFAULT_RECOVERY_STRATEGY = FailAndReassignStrategy()
 """Module-level default instance for the recovery strategy."""
+
+_REPORTABLE_STATUSES: frozenset[TaskStatus] = frozenset(
+    {
+        TaskStatus.COMPLETED,
+        TaskStatus.FAILED,
+        TaskStatus.INTERRUPTED,
+        TaskStatus.CANCELLED,
+    }
+)
+"""Statuses that trigger a report to the centralized TaskEngine.
+
+Evaluated after each AgentEngine run.
+
+Note: ``FAILED`` and ``INTERRUPTED`` are not strictly terminal in the task
+lifecycle (they can be reassigned), but represent final outcomes of this
+particular ``AgentEngine`` run that should be reported.
+"""
 
 
 class AgentEngine:
@@ -118,6 +140,10 @@ class AgentEngine:
         error_taxonomy_config: Post-execution error classification.
         budget_enforcer: Pre-flight checks, auto-downgrade, and
             enhanced in-flight budget checking.
+        security_config: Optional security subsystem configuration.
+        approval_store: Optional approval queue store.
+        task_engine: Optional centralized task engine for reporting
+            final execution status.
     """
 
     def __init__(  # noqa: PLR0913
@@ -133,6 +159,7 @@ class AgentEngine:
         budget_enforcer: BudgetEnforcer | None = None,
         security_config: SecurityConfig | None = None,
         approval_store: ApprovalStore | None = None,
+        task_engine: TaskEngine | None = None,
     ) -> None:
         self._provider = provider
         self._loop: ExecutionLoop = execution_loop or ReactLoop()
@@ -154,6 +181,7 @@ class AgentEngine:
             self._cost_tracker = cost_tracker
         self._security_config = security_config
         self._approval_store = approval_store
+        self._task_engine = task_engine
         self._recovery_strategy = recovery_strategy
         self._shutdown_checker = shutdown_checker
         self._error_taxonomy_config = error_taxonomy_config
@@ -336,7 +364,11 @@ class AgentEngine:
         agent_id: str,
         task_id: str,
     ) -> ExecutionResult:
-        """Record costs, apply transitions, run recovery and classify."""
+        """Post-execution: costs, transitions, TaskEngine, recovery, classify.
+
+        Best-effort: classification and reporting failures are logged,
+        never fatal.
+        """
         await record_execution_costs(
             execution_result,
             identity,
@@ -349,6 +381,7 @@ class AgentEngine:
             agent_id,
             task_id,
         )
+        await self._report_to_task_engine(execution_result, agent_id, task_id)
         if execution_result.termination_reason == TerminationReason.ERROR:
             execution_result = await self._apply_recovery(
                 execution_result,
@@ -635,6 +668,71 @@ class AgentEngine:
                 error=f"Post-execution INTERRUPTED transition failed: {exc}",
             )
             return execution_result
+
+    async def _report_to_task_engine(
+        self,
+        execution_result: ExecutionResult,
+        agent_id: str,
+        task_id: str,
+    ) -> None:
+        """Report final execution status to the centralized TaskEngine.
+
+        Only reports final execution outcomes (COMPLETED, FAILED,
+        INTERRUPTED, CANCELLED); other statuses are silently skipped.
+
+        Best-effort: failures are logged and swallowed.  If no
+        ``TaskEngine`` is configured, this is a no-op.
+        """
+        if self._task_engine is None:
+            return
+        ctx = execution_result.context
+        if ctx.task_execution is None:
+            return
+
+        final_status = ctx.task_execution.status
+        if final_status not in _REPORTABLE_STATUSES:
+            return
+
+        try:
+            # Best-effort: discard return value intentionally — if the
+            # transition is rejected (e.g. parallel mutation moved the task),
+            # the exception handlers below log the failure.
+            _ = await self._task_engine.transition_task(
+                task_id,
+                final_status,
+                requested_by=agent_id,
+                reason=(
+                    "AgentEngine execution ended: "
+                    f"{execution_result.termination_reason.value}"
+                ),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except TaskMutationError:
+            logger.warning(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error="Failed to report final status to TaskEngine (mutation rejected)",
+                exc_info=True,
+            )
+        except TaskEngineError:
+            logger.error(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error="TaskEngine unavailable for status report",
+                exc_info=True,
+            )
+        except Exception:
+            logger.error(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error="Unexpected error reporting to TaskEngine"
+                " -- state may be divergent",
+                exc_info=True,
+            )
 
     async def _apply_recovery(
         self,

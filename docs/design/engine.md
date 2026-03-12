@@ -166,6 +166,68 @@ exceptions on failure; scoring-based strategies return
 
 ---
 
+## TaskEngine — Centralized State Coordination
+
+All task state mutations flow through a single-writer `TaskEngine` that owns the
+authoritative task state. This eliminates race conditions when multiple agents
+attempt concurrent transitions on the same task.
+
+### Architecture
+
+```text
+Agent / API  ──submit()──▶  asyncio.Queue  ──▶  _processing_loop  ──▶  Persistence
+                                                    │
+                                                    ├──▶  Version tracking (optimistic concurrency)
+                                                    └──▶  Snapshot publishing (MessageBus)
+```
+
+- **Single writer**: A background `asyncio.Task` consumes `TaskMutation`
+  requests sequentially from an `asyncio.Queue`.
+- **Immutable-style updates**: Each mutation constructs a new `Task` instance
+  from the previous one (for example via
+  `Task.model_validate({**task.model_dump(), **updates})` or
+  `Task.with_transition(...)`); the existing instance is never mutated.
+- **Optimistic concurrency**: Per-task version counters held in-memory
+  (volatile).  An unknown task is seeded at version 1 on first access —
+  this is a heuristic baseline, **not** loaded from persistence.  Version
+  tracking resets on engine restart; durable persistence of versions is a
+  future enhancement.  Callers can pass `expected_version` to detect stale
+  writes; on mismatch the engine returns a failed `TaskMutationResult`
+  with `error_code="version_conflict"`.  Convenience methods raise
+  `TaskVersionConflictError`.
+- **Read-through**: `get_task()` and `list_tasks()` bypass the queue and
+  read directly from persistence — safe because TaskEngine is the sole writer.
+- **Snapshot publishing**: On success, a `TaskStateChanged` event is published
+  to the message bus for downstream consumers (WebSocket bridge, audit, etc.).
+
+### Mutation Types
+
+| Mutation | Description |
+|----------|-------------|
+| `CreateTaskMutation` | Generates a unique ID, persists, and returns the new task. |
+| `UpdateTaskMutation` | Applies field updates with immutable-field rejection (`id`, `status`, `created_by`) and re-validates via `model_validate`. |
+| `TransitionTaskMutation` | Validates status transition via `Task.with_transition()`, supports field overrides. |
+| `DeleteTaskMutation` | Removes from persistence and clears version tracking. |
+| `CancelTaskMutation` | Shortcut for transition to `CANCELLED`. |
+
+### Error Handling
+
+- **Typed errors**: `TaskNotFoundError` and `TaskVersionConflictError` provide
+  precise failure classification — API controllers catch these directly instead
+  of parsing error strings.
+- **Error sanitization**: Internal exception details (SQL paths, stack traces)
+  are replaced with a generic message before reaching callers.
+- **Queue full**: `TaskEngineQueueFullError` signals backpressure when the
+  queue is at capacity.
+
+### Lifecycle
+
+- **start()**: Spawns the background processing task.
+- **stop()**: Sets `_running = False`, drains the queue within a configurable
+  timeout, then cancels. Abandoned futures receive a failure result.
+
+---
+
 ## Agent Execution Loop
 
 The agent execution loop defines how an agent processes a task from start to
@@ -346,7 +408,7 @@ async run(
    alone when no enforcer is configured.
 8. **Delegate to loop** -- calls `ExecutionLoop.execute()` with context,
    provider, tool invoker, budget checker, and completion config. If
-   `timeout_seconds` is set, wraps the call in `asyncio.wait_for`; on expiry
+   `timeout_seconds` is set, wraps the call in `asyncio.wait`; on expiry
    the run returns with `TerminationReason.ERROR` but cost recording and
    post-execution processing still occur.
 9. **Record costs** -- records accumulated `TokenUsage` to `CostTracker` (if
@@ -619,7 +681,7 @@ These are complementary systems handling different types of shared state:
 
 | State Type | Coordination | Mechanism |
 |-----------|-------------|-----------|
-| Framework state (tasks, assignments, budget) | Centralized single-writer (`TaskEngine`) | `model_copy(update=...)` via async queue |
+| Framework state (tasks, assignments, budget) | Centralized single-writer (`TaskEngine`) | `model_validate` / `with_transition` via async queue |
 | Code and files (agent work output) | Workspace isolation (`WorkspaceIsolationStrategy`) | Git worktrees / branches |
 | Agent memory (personal) | Per-agent ownership | Each agent owns its memory exclusively |
 | Org memory (shared knowledge) | Single-writer (`OrgMemoryBackend`) | `OrgMemoryBackend` protocol with role-based write access control |

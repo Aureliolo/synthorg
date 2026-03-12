@@ -21,6 +21,7 @@ from ai_company.core.enums import AutonomyLevel, CompanyType, SeniorityLevel
 from ai_company.core.resilience_config import RateLimiterConfig, RetryConfig
 from ai_company.core.role import CustomRole  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
+from ai_company.engine.task_engine_config import TaskEngineConfig
 from ai_company.hr.promotion.config import PromotionConfig
 from ai_company.memory.config import CompanyMemoryConfig
 from ai_company.memory.org.config import OrgMemoryConfig
@@ -414,6 +415,7 @@ class RootConfig(BaseModel):
         security: Security subsystem configuration.
         trust: Progressive trust configuration.
         promotion: Promotion/demotion configuration.
+        task_engine: Task engine configuration.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -520,6 +522,10 @@ class RootConfig(BaseModel):
     promotion: PromotionConfig = Field(
         default_factory=PromotionConfig,
         description="Promotion/demotion configuration",
+    )
+    task_engine: TaskEngineConfig = Field(
+        default_factory=TaskEngineConfig,
+        description="Task engine configuration",
     )
 
     @model_validator(mode="after")
