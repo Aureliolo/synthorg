@@ -17,6 +17,8 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Never
 from uuid import uuid4
 
+from pydantic import ValidationError as PydanticValidationError
+
 from ai_company.engine.errors import (
     TaskEngineNotRunningError,
     TaskEngineQueueFullError,
@@ -312,13 +314,16 @@ class TaskEngine:
             TaskVersionConflictError: If ``expected_version`` doesn't match.
             TaskMutationError: If the mutation fails.
         """
-        mutation = UpdateTaskMutation(
-            request_id=uuid4().hex,
-            requested_by=requested_by,
-            task_id=task_id,
-            updates=updates,
-            expected_version=expected_version,
-        )
+        try:
+            mutation = UpdateTaskMutation(
+                request_id=uuid4().hex,
+                requested_by=requested_by,
+                task_id=task_id,
+                updates=updates,
+                expected_version=expected_version,
+            )
+        except PydanticValidationError as exc:
+            raise TaskMutationError(str(exc)) from exc
         result = await self.submit(mutation)
         if not result.success:
             self._raise_typed_error(result)
@@ -359,15 +364,18 @@ class TaskEngine:
             TaskMutationError: If the mutation fails.
         """
         effective_reason = reason or f"Transition to {target_status.value}"
-        mutation = TransitionTaskMutation(
-            request_id=uuid4().hex,
-            requested_by=requested_by,
-            task_id=task_id,
-            target_status=target_status,
-            reason=effective_reason,
-            overrides=dict(overrides),
-            expected_version=expected_version,
-        )
+        try:
+            mutation = TransitionTaskMutation(
+                request_id=uuid4().hex,
+                requested_by=requested_by,
+                task_id=task_id,
+                target_status=target_status,
+                reason=effective_reason,
+                overrides=dict(overrides),
+                expected_version=expected_version,
+            )
+        except PydanticValidationError as exc:
+            raise TaskMutationError(str(exc)) from exc
         result = await self.submit(mutation)
         if not result.success:
             self._raise_typed_error(result)

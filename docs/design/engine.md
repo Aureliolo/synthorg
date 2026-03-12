@@ -187,13 +187,14 @@ Agent / API  ──submit()──▶  asyncio.Queue  ──▶  _processing_loop
   from the previous one (for example via
   `Task.model_validate({**task.model_dump(), **updates})` or
   `Task.with_transition(...)`); the existing instance is never mutated.
-- **Optimistic concurrency**: Per-task version counters.  The persisted
-  task version is the source of truth; any in-memory cache is an
-  optimization that is seeded from persistence on task load and may be
-  invalid after a restart.  Callers can pass `expected_version` to detect
-  stale writes; on mismatch the engine returns a failed
-  `TaskMutationResult` with `error_code="version_conflict"`.  Convenience
-  methods raise `TaskVersionConflictError`.
+- **Optimistic concurrency**: Per-task version counters held in-memory
+  (volatile).  An unknown task is seeded at version 1 on first access —
+  this is a heuristic baseline, **not** loaded from persistence.  Version
+  tracking resets on engine restart; durable persistence of versions is a
+  future enhancement.  Callers can pass `expected_version` to detect stale
+  writes; on mismatch the engine returns a failed `TaskMutationResult`
+  with `error_code="version_conflict"`.  Convenience methods raise
+  `TaskVersionConflictError`.
 - **Read-through**: `get_task()` and `list_tasks()` bypass the queue and
   read directly from persistence — safe because TaskEngine is the sole writer.
 - **Snapshot publishing**: On success, a `TaskStateChanged` event is published

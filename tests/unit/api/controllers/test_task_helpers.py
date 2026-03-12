@@ -5,6 +5,7 @@ import pytest
 from ai_company.api.controllers.tasks import _extract_requester, _map_task_engine_errors
 from ai_company.api.errors import (
     ApiValidationError,
+    ConflictError,
     NotFoundError,
     ServiceUnavailableError,
 )
@@ -14,6 +15,7 @@ from ai_company.engine.errors import (
     TaskInternalError,
     TaskMutationError,
     TaskNotFoundError,
+    TaskVersionConflictError,
 )
 
 # ── _extract_requester ───────────────────────────────────────
@@ -81,6 +83,18 @@ class TestMapTaskEngineErrors:
         exc = TaskInternalError("internal fault")
         result = _map_task_engine_errors(exc)
         assert isinstance(result, ServiceUnavailableError)
+
+    def test_version_conflict_maps_to_conflict_error(self) -> None:
+        exc = TaskVersionConflictError("version mismatch")
+        result = _map_task_engine_errors(exc, task_id="task-1")
+        assert isinstance(result, ConflictError)
+        assert result.status_code == 409
+
+    def test_version_conflict_preserves_message(self) -> None:
+        exc = TaskVersionConflictError("expected 2, current 3")
+        result = _map_task_engine_errors(exc)
+        assert isinstance(result, ConflictError)
+        assert "expected 2, current 3" in str(result)
 
     def test_mutation_error_maps_to_validation_error(self) -> None:
         exc = TaskMutationError("bad input")

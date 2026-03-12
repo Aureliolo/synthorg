@@ -15,16 +15,18 @@ logger = get_logger(__name__)
 class VersionTracker:
     """In-memory per-task version counter for optimistic concurrency.
 
-    After a restart the tracker is empty.  The first time a persisted
-    task is encountered it is seeded at version 1 (it was created at
-    least once).  This makes subsequent optimistic-concurrency checks
-    work within the current engine lifetime.
+    After a restart the tracker is empty.  The first time an unknown
+    task is encountered during a ``check()`` call, it is seeded at
+    version 1 — a heuristic baseline, **not** loaded from persistence.
+    This makes subsequent optimistic-concurrency checks work within the
+    current engine lifetime but cannot detect conflicts that span
+    restarts.
 
     **Limitation:** version tracking is volatile — it resets on process
-    restart.  After a restart, the first optimistic-concurrency check
-    for any task will succeed regardless of the true version history
-    because the tracker seeds the version at 1.  Durable version
-    tracking (persisted alongside the task) is a future enhancement.
+    restart.  After a restart, the first ``expected_version=1`` check
+    for any task will pass even if the task was mutated many times in a
+    prior lifetime.  Durable version tracking (persisted alongside the
+    task) is a future enhancement.
 
     This class is designed for single-writer access from the
     ``TaskEngine`` processing loop and is **not** thread-safe.
@@ -71,8 +73,8 @@ class VersionTracker:
     ) -> None:
         """Raise ``TaskVersionConflictError`` if versions disagree.
 
-        Seeds the version from persistence if not yet tracked so that
-        optimistic concurrency survives engine restarts.
+        Seeds the version at 1 if the task is not yet tracked so that
+        optimistic concurrency works within the current engine lifetime.
         """
         if expected_version is None:
             return

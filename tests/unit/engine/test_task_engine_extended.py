@@ -20,6 +20,7 @@ from ai_company.engine.errors import (
     TaskInternalError,
     TaskMutationError,
     TaskNotFoundError,
+    TaskVersionConflictError,
 )
 from ai_company.engine.task_engine import TaskEngine, _MutationEnvelope
 from ai_company.engine.task_engine_models import (
@@ -37,6 +38,18 @@ from tests.unit.engine.task_engine_helpers import (
 
 if TYPE_CHECKING:
     from ai_company.engine.task_engine_config import TaskEngineConfig
+
+
+def _snapshot_content(bus: FakeMessageBus, index: int = 0) -> str:
+    """Extract the JSON content from a published snapshot message.
+
+    The ``FakeMessageBus`` stores items as ``object`` because the bus
+    protocol is generic; this helper performs the attribute access that
+    mypy would otherwise reject.
+    """
+    msg = bus.published[index]
+    return msg.content  # type: ignore[attr-defined,no-any-return]
+
 
 # ── FIFO ordering guarantee ─────────────────────────────────
 
@@ -162,9 +175,9 @@ class TestDeleteSnapshotEvent:
             await asyncio.sleep(0)  # let snapshot publish
 
             assert len(message_bus.published) == 1
-            msg = message_bus.published[0]
-            # The message content is JSON-serialized TaskStateChanged
-            event = TaskStateChanged.model_validate_json(msg.content)
+            event = TaskStateChanged.model_validate_json(
+                _snapshot_content(message_bus),
+            )
             assert event.mutation_type == "delete"
             assert event.new_status is None
             assert event.task is None
@@ -300,7 +313,7 @@ class TestSnapshotReasonPropagation:
 
             assert len(message_bus.published) == 1
             event = TaskStateChanged.model_validate_json(
-                message_bus.published[0].content,
+                _snapshot_content(message_bus),
             )
             assert event.reason == "Manager assigned"
         finally:
@@ -342,7 +355,7 @@ class TestSnapshotReasonPropagation:
 
             assert len(message_bus.published) == 1
             event = TaskStateChanged.model_validate_json(
-                message_bus.published[0].content,
+                _snapshot_content(message_bus),
             )
             assert event.reason == "Budget cut"
         finally:
@@ -369,7 +382,7 @@ class TestSnapshotReasonPropagation:
 
             assert len(message_bus.published) == 1
             event = TaskStateChanged.model_validate_json(
-                message_bus.published[0].content,
+                _snapshot_content(message_bus),
             )
             assert event.reason is None
         finally:
@@ -404,7 +417,7 @@ class TestSnapshotReasonPropagation:
 
             assert len(message_bus.published) == 1
             event = TaskStateChanged.model_validate_json(
-                message_bus.published[0].content,
+                _snapshot_content(message_bus),
             )
             assert event.reason is None
         finally:
@@ -614,3 +627,217 @@ class TestTransitionOverridesViaEngine:
         )
         assert prev2 == TaskStatus.ASSIGNED
         assert in_progress.status == TaskStatus.IN_PROGRESS
+
+
+# ── PydanticValidationError wrapping in convenience methods ──
+
+
+@pytest.mark.unit
+class TestConvenienceMethodValidationWrapping:
+    """Convenience methods wrap PydanticValidationError as TaskMutationError."""
+
+    async def test_update_task_wraps_pydantic_validation(
+        self,
+        engine: TaskEngine,
+    ) -> None:
+        """UpdateTaskMutation with immutable field raises TaskMutationError."""
+        task = await engine.create_task(
+            _make_create_data(),
+            requested_by="alice",
+        )
+        # 'id' is an immutable field rejected by model_validator
+        with pytest.raises(TaskMutationError):
+            await engine.update_task(
+                task.id,
+                {"id": "hacked"},
+                requested_by="alice",
+            )
+
+    async def test_transition_task_wraps_pydantic_validation(
+        self,
+        engine: TaskEngine,
+    ) -> None:
+        """TransitionTaskMutation with blank reason raises TaskMutationError."""
+        task = await engine.create_task(
+            _make_create_data(),
+            requested_by="alice",
+        )
+        # Blank requested_by should trigger NotBlankStr validation
+        with pytest.raises(TaskMutationError):
+            await engine.transition_task(
+                task.id,
+                TaskStatus.ASSIGNED,
+                requested_by="   ",
+                reason="Assigning",
+                assigned_to="bob",
+            )
+
+
+# ── Version conflict via convenience methods ─────────────────
+
+
+@pytest.mark.unit
+class TestVersionConflictViaConvenienceMethods:
+    """Convenience methods raise TaskVersionConflictError on version mismatch."""
+
+    async def test_update_task_version_conflict(
+        self,
+        engine: TaskEngine,
+    ) -> None:
+        task = await engine.create_task(
+            _make_create_data(),
+            requested_by="alice",
+        )
+        with pytest.raises(TaskVersionConflictError):
+            await engine.update_task(
+                task.id,
+                {"title": "New title"},
+                requested_by="alice",
+                expected_version=99,
+            )
+
+    async def test_transition_task_version_conflict(
+        self,
+        engine: TaskEngine,
+    ) -> None:
+        task = await engine.create_task(
+            _make_create_data(),
+            requested_by="alice",
+        )
+        with pytest.raises(TaskVersionConflictError):
+            await engine.transition_task(
+                task.id,
+                TaskStatus.ASSIGNED,
+                requested_by="alice",
+                reason="Assigning",
+                expected_version=99,
+                assigned_to="bob",
+            )
+
+
+# ── Cancel task not found ────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestCancelTaskNotFound:
+    """cancel_task raises TaskNotFoundError for missing tasks."""
+
+    async def test_cancel_nonexistent_raises_not_found(
+        self,
+        engine: TaskEngine,
+    ) -> None:
+        with pytest.raises(TaskNotFoundError):
+            await engine.cancel_task(
+                "task-nonexistent",
+                requested_by="alice",
+                reason="Cleanup",
+            )
+
+
+# ── Delete task not found ────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestDeleteTaskNotFound:
+    """delete_task raises TaskNotFoundError for missing tasks."""
+
+    async def test_delete_nonexistent_raises_not_found(
+        self,
+        engine: TaskEngine,
+    ) -> None:
+        with pytest.raises(TaskNotFoundError):
+            await engine.delete_task(
+                "task-nonexistent",
+                requested_by="alice",
+            )
+
+
+# ── Start when already running ────────────────────────────────
+
+
+@pytest.mark.unit
+class TestStartAlreadyRunning:
+    """Starting an already-running engine raises RuntimeError."""
+
+    async def test_double_start_raises(
+        self,
+        engine: TaskEngine,
+    ) -> None:
+        # engine fixture already called start()
+        with pytest.raises(RuntimeError, match="already running"):
+            engine.start()
+
+
+# ── Stop idempotency ─────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestStopIdempotency:
+    """Stopping an already-stopped engine is a no-op."""
+
+    async def test_stop_when_not_running(
+        self,
+        persistence: FakePersistence,
+    ) -> None:
+        eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
+        # Never started — stop should be safe
+        await eng.stop(timeout=1.0)
+
+    async def test_double_stop(
+        self,
+        engine: TaskEngine,
+    ) -> None:
+        await engine.stop(timeout=2.0)
+        # Second stop is a no-op
+        await engine.stop(timeout=1.0)
+
+
+# ── Submit when not running ───────────────────────────────────
+
+
+@pytest.mark.unit
+class TestSubmitWhenNotRunning:
+    """Submitting to a stopped engine raises TaskEngineNotRunningError."""
+
+    async def test_submit_after_stop(
+        self,
+        engine: TaskEngine,
+    ) -> None:
+        from ai_company.engine.errors import TaskEngineNotRunningError
+
+        await engine.stop(timeout=2.0)
+        mutation = CreateTaskMutation(
+            request_id="req-late",
+            requested_by="alice",
+            task_data=_make_create_data(),
+        )
+        with pytest.raises(TaskEngineNotRunningError):
+            await engine.submit(mutation)
+
+
+# ── is_running property ──────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestIsRunningProperty:
+    """is_running reflects engine lifecycle."""
+
+    async def test_running_after_start(
+        self,
+        engine: TaskEngine,
+    ) -> None:
+        assert engine.is_running is True
+
+    async def test_not_running_after_stop(
+        self,
+        engine: TaskEngine,
+    ) -> None:
+        await engine.stop(timeout=2.0)
+        assert engine.is_running is False
+
+    async def test_not_running_before_start(
+        self,
+        persistence: FakePersistence,
+    ) -> None:
+        eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
+        assert eng.is_running is False

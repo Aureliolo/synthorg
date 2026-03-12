@@ -285,9 +285,11 @@ class TestDrainTimeout:
         """Futures still in queue are failed when stop() times out."""
         # Block the processing loop with a slow save
         block = asyncio.Event()
+        entered_save = asyncio.Event()
         original_save = persistence.tasks.save
 
         async def slow_save(task: object) -> None:
+            entered_save.set()
             await block.wait()
             await original_save(task)  # type: ignore[arg-type]
 
@@ -308,8 +310,8 @@ class TestDrainTimeout:
             task_data=_make_create_data(),
         )
         envelope = _MutationEnvelope(mutation=mutation2)
-        # Give the engine a tick to start processing the first task
-        await asyncio.sleep(0.05)
+        # Wait until slow_save is entered before queuing the second task
+        await entered_save.wait()
         eng._queue.put_nowait(envelope)
 
         # Stop with a very short timeout — loop is blocked, so timeout fires

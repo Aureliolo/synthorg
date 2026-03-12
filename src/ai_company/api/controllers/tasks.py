@@ -13,6 +13,7 @@ from ai_company.api.dto import (
 )
 from ai_company.api.errors import (
     ApiValidationError,
+    ConflictError,
     NotFoundError,
     ServiceUnavailableError,
 )
@@ -27,6 +28,7 @@ from ai_company.engine.errors import (
     TaskInternalError,
     TaskMutationError,
     TaskNotFoundError,
+    TaskVersionConflictError,
 )
 from ai_company.engine.task_engine_models import CreateTaskData
 from ai_company.observability import get_logger
@@ -97,6 +99,8 @@ def _map_task_engine_errors(
             error_type="TaskInternalError",
         )
         return ServiceUnavailableError(str(exc))
+    if isinstance(exc, TaskVersionConflictError):
+        return ConflictError(str(exc))
     if isinstance(exc, TaskMutationError):
         return ApiValidationError(str(exc))
     return exc

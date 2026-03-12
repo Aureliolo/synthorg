@@ -40,6 +40,21 @@ logger = get_logger(__name__)
 # ── Helpers ──────────────────────────────────────────────────────
 
 
+def _format_validation_error(
+    prefix: str,
+    exc: PydanticValidationError,
+) -> str:
+    """Format a Pydantic validation error for external consumption.
+
+    Extracts field paths and messages without exposing raw input
+    values or internal Pydantic URL hints.
+    """
+    parts = [
+        f"{'.'.join(str(loc) for loc in e['loc'])}: {e['msg']}" for e in exc.errors()
+    ]
+    return f"{prefix}: {'; '.join(parts)}"
+
+
 def not_found_result(
     mutation_type: str,
     request_id: str,
@@ -120,7 +135,7 @@ async def apply_create(
             budget_limit=data.budget_limit,
         )
     except PydanticValidationError as exc:
-        error_msg = f"Invalid task data: {exc}"
+        error_msg = _format_validation_error("Invalid task data", exc)
         logger.warning(
             TASK_ENGINE_MUTATION_FAILED,
             mutation_type="create",
@@ -185,7 +200,7 @@ async def apply_update(
     try:
         updated = Task.model_validate(merged)
     except PydanticValidationError as exc:
-        error_msg = f"Invalid update data: {exc}"
+        error_msg = _format_validation_error("Invalid update data", exc)
         logger.warning(
             TASK_ENGINE_MUTATION_FAILED,
             mutation_type="update",
