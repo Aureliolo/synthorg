@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
@@ -85,7 +85,7 @@ function handleSubmit() {
   emit('create', data)
 }
 
-const isValid = () => title.value.trim() && description.value.trim() && project.value.trim() && createdBy.value.trim()
+const isValid = computed(() => !!title.value.trim() && !!description.value.trim() && !!project.value.trim() && !!createdBy.value.trim())
 </script>
 
 <template>
@@ -149,7 +149,7 @@ const isValid = () => title.value.trim() && description.value.trim() && project.
 
     <template #footer>
       <Button label="Cancel" text @click="$emit('update:visible', false)" />
-      <Button label="Create" icon="pi pi-plus" :disabled="!isValid()" @click="handleSubmit" />
+      <Button label="Create" icon="pi pi-plus" :disabled="!isValid" @click="handleSubmit" />
     </template>
   </Dialog>
 </template>

@@ -23,8 +23,13 @@ export function useOptimisticUpdate() {
       const result = await serverAction()
       return result
     } catch (err) {
-      rollback()
+      try {
+        rollback()
+      } catch (rollbackErr) {
+        console.error('Rollback failed:', rollbackErr)
+      }
       error.value = getErrorMessage(err)
+      console.error('Optimistic update failed:', err)
       return null
     } finally {
       pending.value = false

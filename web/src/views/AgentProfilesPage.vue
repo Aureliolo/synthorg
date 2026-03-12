@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -24,6 +24,10 @@ onMounted(async () => {
   wsStore.subscribe(['agents'])
   wsStore.onChannelEvent('agents', agentStore.handleWsEvent)
   await agentStore.fetchAgents()
+})
+
+onUnmounted(() => {
+  wsStore.offChannelEvent('agents', agentStore.handleWsEvent)
 })
 
 function openAgent(agent: AgentConfig) {

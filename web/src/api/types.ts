@@ -68,13 +68,32 @@ export type ProjectStatus =
   | 'completed'
   | 'cancelled'
 
+export type RiskTolerance = 'low' | 'medium' | 'high'
+
+export type CreativityLevel = 'low' | 'medium' | 'high'
+
+export type DecisionMakingStyle = 'analytical' | 'intuitive' | 'consultative' | 'directive'
+
+export type CollaborationPreference = 'independent' | 'pair' | 'team'
+
+export type CommunicationVerbosity = 'terse' | 'balanced' | 'verbose'
+
+export type ConflictApproach = 'avoid' | 'accommodate' | 'compete' | 'compromise' | 'collaborate'
+
+export type TaskStructure = 'sequential' | 'parallel' | 'mixed'
+
+export type CoordinationTopology = 'sas' | 'centralized' | 'decentralized' | 'context_dependent' | 'auto'
+
+export type ToolAccessLevel = 'standard' | 'elevated' | 'admin'
+
+export type MemoryLevel = 'persistent' | 'project' | 'session' | 'none'
+
 // ── Response Envelopes ───────────────────────────────────────
 
-export interface ApiResponse<T> {
-  data: T | null
-  error: string | null
-  success: boolean
-}
+/** Discriminated API response envelope. */
+export type ApiResponse<T> =
+  | { data: T; error: null; success: true }
+  | { data: null; error: string; success: false }
 
 export interface PaginationMeta {
   total: number
@@ -91,15 +110,16 @@ export interface PaginatedResponse<T> {
 
 // ── Auth ─────────────────────────────────────────────────────
 
-export interface SetupRequest {
+export interface CredentialsRequest {
   username: string
   password: string
 }
 
-export interface LoginRequest {
-  username: string
-  password: string
-}
+/** Alias for setup endpoint. */
+export type SetupRequest = CredentialsRequest
+
+/** Alias for login endpoint. */
+export type LoginRequest = CredentialsRequest
 
 export interface ChangePasswordRequest {
   current_password: string
@@ -121,6 +141,16 @@ export interface UserInfoResponse {
 
 // ── Tasks ────────────────────────────────────────────────────
 
+export interface AcceptanceCriterion {
+  description: string
+  met: boolean
+}
+
+export interface ExpectedArtifact {
+  name: string
+  type: string
+}
+
 export interface Task {
   id: string
   title: string
@@ -131,9 +161,19 @@ export interface Task {
   project: string
   created_by: string
   assigned_to: string | null
+  reviewers: string[]
+  dependencies: string[]
+  artifacts_expected: ExpectedArtifact[]
+  acceptance_criteria: AcceptanceCriterion[]
   estimated_complexity: Complexity
   budget_limit: number
   cost_usd: number
+  deadline: string | null
+  max_retries: number
+  parent_task_id: string | null
+  delegation_chain: string[]
+  task_structure: TaskStructure | null
+  coordination_topology: CoordinationTopology
   version: number
   created_at: string
   updated_at: string
@@ -228,45 +268,100 @@ export interface ApprovalFilters {
 // ── Agents ───────────────────────────────────────────────────
 
 export interface PersonalityConfig {
-  risk_tolerance: string
-  creativity_level: string
-  decision_making_style: string
-  collaboration_preference: string
-  conflict_approach: string
+  traits: string[]
+  communication_style: string
+  risk_tolerance: RiskTolerance
+  creativity: CreativityLevel
+  description: string
+  openness: number
+  conscientiousness: number
+  extraversion: number
+  agreeableness: number
+  stress_response: number
+  decision_making: DecisionMakingStyle
+  collaboration: CollaborationPreference
+  verbosity: CommunicationVerbosity
+  conflict_approach: ConflictApproach
 }
 
+export interface ModelConfig {
+  provider: string
+  model_id: string
+  temperature: number
+  max_tokens: number
+  fallback_model: string | null
+}
+
+export interface SkillSet {
+  primary: string[]
+  secondary: string[]
+}
+
+export interface MemoryConfig {
+  type: MemoryLevel
+  retention_days: number | null
+}
+
+export interface ToolPermissions {
+  access_level: ToolAccessLevel
+  allowed: string[]
+  denied: string[]
+}
+
+/**
+ * Agent identity as returned by the API.
+ * Field names match backend `AgentIdentity` model exactly.
+ */
 export interface AgentConfig {
+  id: string
   name: string
   role: string
-  seniority: SeniorityLevel
   department: DepartmentName
-  team: string | null
+  level: SeniorityLevel
   status: AgentStatus
-  model: string
   personality: PersonalityConfig
-  tools: string[]
-  description: string
+  model: ModelConfig
+  skills: SkillSet
+  memory: MemoryConfig
+  tools: ToolPermissions
+  autonomy_level: AutonomyLevel | null
+  hiring_date: string
 }
 
 // ── Budget ───────────────────────────────────────────────────
 
 export interface CostRecord {
-  id: string
   agent_id: string
-  task_id: string | null
+  task_id: string
+  provider: string
   model: string
   input_tokens: number
   output_tokens: number
   cost_usd: number
   timestamp: string
+  call_category: string | null
+}
+
+export interface BudgetAlertConfig {
+  warn_at: number
+  critical_at: number
+  hard_stop_at: number
+}
+
+export interface AutoDowngradeConfig {
+  enabled: boolean
+  threshold: number
+  downgrade_map: [string, string][]
+  boundary: 'task_assignment'
 }
 
 export interface BudgetConfig {
-  daily_limit_usd: number
-  monthly_limit_usd: number
-  per_task_limit_usd: number
-  per_agent_limit_usd: number
-  alert_threshold_percent: number
+  total_monthly: number
+  alerts: BudgetAlertConfig
+  per_task_limit: number
+  per_agent_daily_limit: number
+  auto_downgrade: AutoDowngradeConfig
+  reset_day: number
 }
 
 export interface AgentSpending {
@@ -278,7 +373,7 @@ export interface AgentSpending {
 
 export interface OverviewMetrics {
   total_tasks: number
-  tasks_by_status: Record<string, number>
+  tasks_by_status: Record<TaskStatus, number>
   total_agents: number
   total_cost_usd: number
 }

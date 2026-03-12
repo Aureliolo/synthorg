@@ -5,7 +5,7 @@ import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 import { useAuthStore } from '@/stores/auth'
 import { getErrorMessage } from '@/utils/errors'
-import { MIN_PASSWORD_LENGTH } from '@/utils/constants'
+import { MIN_PASSWORD_LENGTH, LOGIN_MAX_ATTEMPTS, LOGIN_LOCKOUT_MS } from '@/utils/constants'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -14,8 +14,25 @@ const username = ref('')
 const password = ref('')
 const confirmPassword = ref('')
 const error = ref<string | null>(null)
+const attempts = ref(0)
+const lockedUntil = ref<number | null>(null)
+
+function isLockedOut(): boolean {
+  if (lockedUntil.value && Date.now() < lockedUntil.value) {
+    return true
+  }
+  if (lockedUntil.value && Date.now() >= lockedUntil.value) {
+    lockedUntil.value = null
+    attempts.value = 0
+  }
+  return false
+}
 
 async function handleSetup() {
+  if (isLockedOut()) {
+    error.value = 'Too many failed attempts. Please wait before trying again.'
+    return
+  }
   error.value = null
   if (password.value !== confirmPassword.value) {
     error.value = 'Passwords do not match'
@@ -29,7 +46,14 @@ async function handleSetup() {
     await auth.setup(username.value, password.value)
     router.push('/')
   } catch (err) {
-    error.value = getErrorMessage(err)
+    attempts.value++
+    if (attempts.value >= LOGIN_MAX_ATTEMPTS) {
+      lockedUntil.value = Date.now() + LOGIN_LOCKOUT_MS
+      attempts.value = 0
+      error.value = `Too many failed attempts. Please wait ${LOGIN_LOCKOUT_MS / 1000} seconds.`
+    } else {
+      error.value = getErrorMessage(err)
+    }
   }
 }
 </script>
@@ -89,7 +113,7 @@ async function handleSetup() {
           icon="pi pi-check"
           class="w-full"
           :loading="auth.loading"
-          :disabled="!username || !password || !confirmPassword"
+          :disabled="!username || !password || !confirmPassword || isLockedOut()"
         />
       </form>
 

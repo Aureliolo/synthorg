@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, watch } from 'vue'
+import { onMounted, onUnmounted, watch } from 'vue'
 import AppShell from '@/components/layout/AppShell.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import LoadingSkeleton from '@/components/common/LoadingSkeleton.vue'
@@ -24,12 +24,20 @@ onMounted(async () => {
   await Promise.all([messageStore.fetchChannels(), messageStore.fetchMessages()])
 })
 
+onUnmounted(() => {
+  wsStore.offChannelEvent('messages', messageStore.handleWsEvent)
+})
+
 watch(
   () => messageStore.activeChannel,
   (channel) => {
     messageStore.fetchMessages(channel ?? undefined)
   },
 )
+
+function handleChannelChange(channel: string | null) {
+  messageStore.setActiveChannel(channel)
+}
 </script>
 
 <template>
@@ -37,8 +45,9 @@ watch(
     <PageHeader title="Messages" subtitle="Real-time communication feed">
       <template #actions>
         <ChannelSelector
-          v-model="messageStore.activeChannel"
+          :model-value="messageStore.activeChannel"
           :channels="messageStore.channels"
+          @update:model-value="handleChannelChange"
         />
       </template>
     </PageHeader>

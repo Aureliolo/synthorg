@@ -3,7 +3,7 @@
  */
 
 import axios, { type AxiosError, type AxiosResponse } from 'axios'
-import type { ApiResponse } from './types'
+import type { ApiResponse, PaginatedResponse } from './types'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
@@ -27,9 +27,10 @@ apiClient.interceptors.request.use((config) => {
 
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
-  (error: AxiosError<ApiResponse<unknown>>) => {
+  (error: AxiosError<{ error?: string; success?: boolean }>) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_token_expires_at')
       if (window.location.pathname !== '/login' && window.location.pathname !== '/setup') {
         window.location.href = '/login'
       }
@@ -52,13 +53,17 @@ export function unwrap<T>(response: AxiosResponse<ApiResponse<T>>): T {
 
 /**
  * Extract data from a paginated response.
+ * Validates the response structure to avoid cryptic TypeErrors.
  */
 export function unwrapPaginated<T>(
-  response: AxiosResponse,
+  response: AxiosResponse<PaginatedResponse<T>>,
 ): { data: T[]; total: number; offset: number; limit: number } {
   const body = response.data
   if (!body.success) {
     throw new Error(body.error ?? 'Unknown API error')
+  }
+  if (!body.pagination || !Array.isArray(body.data)) {
+    throw new Error('Unexpected API response format')
   }
   return {
     data: body.data,

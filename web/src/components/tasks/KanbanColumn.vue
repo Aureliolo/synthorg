@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { VueDraggable, type DraggableEvent } from 'vue-draggable-plus'
+import { VueDraggable } from 'vue-draggable-plus'
 import TaskCard from './TaskCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import type { Task } from '@/api/types'
@@ -11,14 +11,13 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'task-click': [task: Task]
-  'task-moved': [task: Task, targetStatus: string]
+  'task-added': [task: Task]
 }>()
 
-function handleDragEnd(event: DraggableEvent<Task>) {
-  const el = event.item as HTMLElement & { _underlying_vm_?: Task }
-  const task = el?._underlying_vm_
+function handleAdd(event: { item: HTMLElement & { _underlying_vm_?: Task } }) {
+  const task = event.item?._underlying_vm_
   if (task) {
-    emit('task-moved', task, props.status)
+    emit('task-added', task)
   }
 }
 </script>
@@ -35,7 +34,7 @@ function handleDragEnd(event: DraggableEvent<Task>) {
       item-key="id"
       class="flex-1 space-y-2 overflow-y-auto p-2"
       :style="{ minHeight: '100px' }"
-      @end="handleDragEnd"
+      @add="handleAdd"
     >
       <template #item="{ element }">
         <TaskCard :task="element" @click="emit('task-click', element)" />

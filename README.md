@@ -127,7 +127,7 @@ graph TB
 
 ## Status
 
-Core framework complete — agent engine, multi-agent coordination, API, security, HR, memory (including Mem0 backend adapter), and budget systems are implemented. Remaining: approval workflow gates, CLI, web dashboard. See the [roadmap](docs/roadmap/index.md) for details.
+Core framework complete — agent engine, multi-agent coordination, API, security, HR, memory (including Mem0 backend adapter), and budget systems are implemented. Web dashboard (Vue 3 + PrimeVue + Tailwind CSS) is built. Remaining: approval workflow gates, CLI. See the [roadmap](docs/roadmap/index.md) for details.
 
 ## License
 

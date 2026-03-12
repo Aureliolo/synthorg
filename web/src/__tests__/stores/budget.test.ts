@@ -10,14 +10,15 @@ vi.mock('@/api/endpoints/budget', () => ({
 }))
 
 const mockRecord: CostRecord = {
-  id: 'record-1',
   agent_id: 'alice',
   task_id: 'task-1',
+  provider: 'test-provider',
   model: 'example-large-001',
   input_tokens: 100,
   output_tokens: 50,
   cost_usd: 0.005,
   timestamp: '2026-03-12T10:00:00Z',
+  call_category: null,
 }
 
 describe('useBudgetStore', () => {

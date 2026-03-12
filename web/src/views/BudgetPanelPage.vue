@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import AppShell from '@/components/layout/AppShell.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import LoadingSkeleton from '@/components/common/LoadingSkeleton.vue'
@@ -22,6 +22,10 @@ onMounted(async () => {
   wsStore.subscribe(['budget'])
   wsStore.onChannelEvent('budget', budgetStore.handleWsEvent)
   await Promise.all([budgetStore.fetchConfig(), budgetStore.fetchRecords({ limit: 200 })])
+})
+
+onUnmounted(() => {
+  wsStore.offChannelEvent('budget', budgetStore.handleWsEvent)
 })
 </script>
 

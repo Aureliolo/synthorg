@@ -18,13 +18,18 @@ The SynthOrg core framework is complete. The following subsystems are built and 
 - Configuration (YAML loading, Pydantic validation, company templates with inheritance)
 - Container packaging (Docker, Chainguard distroless, CI/CD pipelines)
 
+## Current
+
+| Area | Description |
+|------|-------------|
+| **Web dashboard** | Vue 3 + PrimeVue + Tailwind CSS frontend for monitoring and managing the synthetic organization (implemented) |
+
 ## Remaining Work
 
 | Area | Description |
 |------|-------------|
 | **Approval workflow gates** | Runtime wiring for human-in-the-loop approval queues |
 | **CLI** | Terminal interface wrapping the REST API (may not be needed) |
-| **Web dashboard** | Vue 3 frontend for monitoring and managing the synthetic organization |
 
 ## Tracking
 

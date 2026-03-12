@@ -35,7 +35,8 @@ export const useBudgetStore = defineStore('budget', () => {
   async function fetchAgentSpending(agentId: string): Promise<AgentSpending | null> {
     try {
       return await budgetApi.getAgentSpending(agentId)
-    } catch {
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to load agent spending'
       return null
     }
   }
@@ -43,7 +44,7 @@ export const useBudgetStore = defineStore('budget', () => {
   function handleWsEvent(event: WsEvent) {
     if (event.event_type === 'budget.record_added') {
       const record = event.payload as unknown as CostRecord
-      if (record.id) {
+      if (record.agent_id) {
         records.value = [record, ...records.value]
         totalRecords.value++
       }
