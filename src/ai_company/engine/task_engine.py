@@ -50,7 +50,6 @@ from ai_company.observability.events.task_engine import (
     TASK_ENGINE_FUTURES_FAILED,
     TASK_ENGINE_LIST_CAPPED,
     TASK_ENGINE_LOOP_ERROR,
-    TASK_ENGINE_MUTATION_APPLIED,
     TASK_ENGINE_MUTATION_FAILED,
     TASK_ENGINE_MUTATION_RECEIVED,
     TASK_ENGINE_NOT_RUNNING,
@@ -187,7 +186,11 @@ class TaskEngine:
                 with contextlib.suppress(asyncio.CancelledError):
                     await self._processing_task
                 self._fail_remaining_futures(saved_in_flight)
-            self._processing_task = None
+            except BaseException:
+                self._fail_remaining_futures(self._in_flight)
+                raise
+            finally:
+                self._processing_task = None
 
         logger.info(TASK_ENGINE_STOPPED)
 
@@ -613,7 +616,9 @@ class TaskEngine:
                 continue
             try:
                 await self._process_one(envelope)
-            except MemoryError, RecursionError:
+            except (MemoryError, RecursionError) as exc:
+                if not envelope.future.done():
+                    envelope.future.set_exception(exc)
                 raise
             except Exception:
                 logger.exception(
@@ -647,19 +652,6 @@ class TaskEngine:
             )
             if not envelope.future.done():
                 envelope.future.set_result(result)
-            if result.success:
-                task_id = getattr(mutation, "task_id", None)
-                logger.info(
-                    TASK_ENGINE_MUTATION_APPLIED,
-                    mutation_type=mutation.mutation_type,
-                    request_id=mutation.request_id,
-                    task_id=task_id or (result.task.id if result.task else None),
-                    version=result.version,
-                    previous_status=(
-                        result.previous_status.value if result.previous_status else None
-                    ),
-                    new_status=(result.task.status.value if result.task else None),
-                )
             if result.success and self._config.publish_snapshots:
                 await self._publish_snapshot(mutation, result)
         except MemoryError, RecursionError:

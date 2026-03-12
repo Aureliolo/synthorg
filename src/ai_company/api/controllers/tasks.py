@@ -100,7 +100,7 @@ def _map_task_engine_errors(
                 id=task_id,
             )
         return NotFoundError(str(exc))
-    if isinstance(exc, TaskEngineNotRunningError | TaskEngineQueueFullError):
+    if isinstance(exc, (TaskEngineNotRunningError, TaskEngineQueueFullError)):
         logger.error(
             API_TASK_MUTATION_FAILED,
             resource="task",
@@ -312,6 +312,7 @@ class TaskController(Controller):
             TaskEngineNotRunningError,
             TaskEngineQueueFullError,
             TaskNotFoundError,
+            TaskVersionConflictError,
             TaskInternalError,
             TaskMutationError,
         ) as exc:
