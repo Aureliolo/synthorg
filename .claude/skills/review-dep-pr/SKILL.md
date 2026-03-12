@@ -157,26 +157,26 @@ For docs-related dependencies, actually build the docs to verify nothing breaks.
 **Before checkout:** Check for uncommitted changes. If the working tree is dirty (`git status --porcelain` has output), warn the user and skip the build step rather than risk losing work.
 
 ```bash
-# 1. Check for dirty working tree
+# 1. Check for dirty working tree — skip build (don't abort the whole skill)
 if [ -n "$(git status --porcelain)" ]; then
-  echo "ERROR: Working tree is dirty. Skipping docs build — please commit or stash changes first."
-  exit 1
+  echo "WARNING: Working tree is dirty. Skipping docs build — please commit or stash changes first."
+  # Continue to Phase 5 without docs build results
+else
+  # 2. Save current branch and set up cleanup trap
+  original_ref="$(git rev-parse --abbrev-ref HEAD)"
+  trap 'git checkout "$original_ref"' EXIT
+
+  # 3. Checkout the PR branch (gh pr checkout handles fetching automatically)
+  gh pr checkout <number>
+
+  # 4. Install deps and build
+  uv sync --group docs
+  uv run mkdocs build --strict 2>&1
+
+  # 5. Return to original branch (trap handles this even on failure)
+  trap - EXIT
+  git checkout "$original_ref"
 fi
-
-# 2. Save current branch and set up cleanup trap
-original_ref="$(git rev-parse --abbrev-ref HEAD)"
-trap 'git checkout "$original_ref"' EXIT
-
-# 3. Checkout the PR branch (gh pr checkout handles fetching automatically)
-gh pr checkout <number>
-
-# 4. Install deps and build
-uv sync --group docs
-uv run mkdocs build --strict 2>&1
-
-# 5. Return to original branch (trap handles this even on failure)
-trap - EXIT
-git checkout "$original_ref"
 ```
 
 If the build fails, capture the errors — they're likely from breaking changes that need fixing. The trap ensures the original branch is always restored, even on failure.
@@ -254,11 +254,20 @@ For each PR based on user's choice:
 
 ### Merge as-is
 
-```bash
-gh pr merge <number> --squash --auto
-```
+1. Re-verify CI is passing right before merge (time may have passed since Phase 5):
 
-If `--auto` fails (auto-merge not enabled on the repo or branch protection requirements not met), fall back to `gh pr merge <number> --squash` for immediate merge. If that also fails (e.g., required reviews not met), inform the user that manual approval is needed.
+   ```bash
+   gh pr checks <number> --json name,conclusion --jq '.[] | select(.conclusion != "success" and .conclusion != "skipped")'
+   ```
+
+   If any checks are not passing, inform the user and switch to the "Fix CI and merge" flow instead.
+2. Merge:
+
+   ```bash
+   gh pr merge <number> --squash --auto
+   ```
+
+   If `--auto` fails (auto-merge not enabled on the repo or branch protection requirements not met), fall back to `gh pr merge <number> --squash` for immediate merge. If that also fails (e.g., required reviews not met), inform the user that manual approval is needed.
 
 ### Improve and merge
 
@@ -267,8 +276,8 @@ If `--auto` fails (auto-merge not enabled on the repo or branch protection requi
 1. Check out the PR branch using `gh pr checkout <number>`
 2. Make the recommended changes (config improvements, workaround removal, etc.)
 3. Commit with descriptive message
-4. Push to the PR branch. **Note:** Dependabot branches may reject pushes depending on repo permissions. If push fails, create a new branch from the Dependabot branch, push there, and update the PR base.
-5. Wait for CI to pass using `gh pr checks <number> --watch`
+4. Push to the PR branch. **Note:** Dependabot branches may reject pushes depending on repo permissions. If push fails, create a new branch with your changes, push that branch, open a replacement PR targeting the original base branch, link to the original PR in the description, and close the original Dependabot PR with a comment pointing to the replacement.
+5. Wait for CI to pass using `gh pr checks <number> --watch --timeout 600` (10-minute timeout — if it expires, warn the user that CI may be stuck and ask how to proceed rather than hanging indefinitely)
 6. Merge
 
 ### Fix CI and merge
@@ -276,8 +285,8 @@ If `--auto` fails (auto-merge not enabled on the repo or branch protection requi
 1. Check out the PR branch using `gh pr checkout <number>` (same dirty-tree check as above)
 2. Investigate the CI failure
 3. Fix the issue
-4. Commit and push
-5. Wait for CI using `gh pr checks <number> --watch`
+4. Commit and push (same Dependabot fallback applies — if push fails, open a replacement PR)
+5. Wait for CI to pass using `gh pr checks <number> --watch --timeout 600` (10-minute timeout — if it expires, warn the user that CI may be stuck and ask how to proceed rather than hanging indefinitely)
 6. Merge when green
 
 ### Close / Skip
