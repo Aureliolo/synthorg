@@ -13,25 +13,88 @@ on:
       - "src/ai_company/**"
       - "scripts/**"
       - ".github/workflows/pages-preview.yml"
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to build and deploy a preview for (use for Dependabot PRs)"
+        required: true
+        type: string
 
 permissions: {}
 
 concurrency:
-  group: "pages-preview-${{ github.event.pull_request.number }}"
+  group: "pages-preview-${{ github.event.pull_request.number || github.event.inputs.pr_number }}"
   cancel-in-progress: true
 
 jobs:
   build:
     name: Build Preview
-    if: github.event.action != 'closed'
+    if: github.event_name == 'workflow_dispatch' || github.event.action != 'closed'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
+      pull-requests: read
+    outputs:
+      pr_number: ${{ steps.pr.outputs.pr_number }}
+      head_sha: ${{ steps.pr.outputs.head_sha }}
+      same_repo: ${{ steps.pr.outputs.same_repo }}
     steps:
+      - name: Resolve PR metadata
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_INPUT: ${{ github.event.inputs.pr_number }}
+          PR_EVENT_NUMBER: ${{ github.event.pull_request.number }}
+          PR_EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_EVENT_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          PR_NUMBER="${PR_EVENT_NUMBER:-$PR_INPUT}"
+          if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::PR number must be a positive integer, got: '$PR_NUMBER'"
+            exit 1
+          fi
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            PR_JSON=$(gh pr view "$PR_NUMBER" --repo "$GH_REPOSITORY" \
+              --json headRefOid,state,isCrossRepository)
+            if [ -z "$PR_JSON" ]; then
+              echo "::error::Failed to fetch metadata for PR #$PR_NUMBER"
+              exit 1
+            fi
+            HEAD_SHA=$(echo "$PR_JSON" | jq -r '.headRefOid')
+            PR_STATE=$(echo "$PR_JSON" | jq -r '.state')
+            IS_CROSS_REPO=$(echo "$PR_JSON" | jq -r '.isCrossRepository')
+
+            if [ "$PR_STATE" != "OPEN" ]; then
+              echo "::error::PR #$PR_NUMBER is $PR_STATE, not OPEN — cannot deploy preview"
+              exit 1
+            fi
+            SAME_REPO=$( [ "$IS_CROSS_REPO" = "false" ] && echo "true" || echo "false" )
+          else
+            HEAD_SHA="$PR_EVENT_HEAD_SHA"
+            SAME_REPO=$( [ "$PR_EVENT_HEAD_REPO" = "$GH_REPOSITORY" ] && echo "true" || echo "false" )
+          fi
+
+          if [ -z "$HEAD_SHA" ] || [ "$HEAD_SHA" = "null" ]; then
+            echo "::error::Failed to resolve HEAD SHA for PR #$PR_NUMBER"
+            exit 1
+          fi
+
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "same_repo=$SAME_REPO" >> "$GITHUB_OUTPUT"
+
+      # zizmor: ignore[untrusted-checkout] — intentional: preview builds require
+      # PR code. Mitigated: no secrets in this job, contents:read + pull-requests:read
+      # only, persist-credentials:false. Deploy job uses artifacts, not checkout.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
+          ref: ${{ steps.pr.outputs.head_sha }}
 
       # --- MkDocs (documentation at /docs) ---
       - name: Set up Python
@@ -81,8 +144,8 @@ jobs:
       # --- Inject preview banner ---
       - name: Inject preview banner
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
         run: |
           python3 << 'PYEOF'
           import os, pathlib, re
@@ -143,7 +206,7 @@ jobs:
   deploy-preview:
     name: Deploy Preview
     needs: build
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: needs.build.outputs.same_repo == 'true'
     runs-on: ubuntu-latest
     environment: cloudflare-preview
     timeout-minutes: 5
@@ -166,7 +229,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ needs.build.outputs.pr_number }}
         run: |
           npm i --no-save wrangler@3.114.17
           npx wrangler pages deploy _site --project-name=synthorg-pr-preview --branch="pr-${PR_NUMBER}"
@@ -174,11 +237,14 @@ jobs:
       - name: Comment preview URL
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
-          PREVIEW_URL: "https://pr-${{ github.event.pull_request.number }}.synthorg-pr-preview.pages.dev"
+          PREVIEW_URL: "https://pr-${{ needs.build.outputs.pr_number }}.synthorg-pr-preview.pages.dev"
+          PR_NUMBER: ${{ needs.build.outputs.pr_number }}
+          HEAD_SHA: ${{ needs.build.outputs.head_sha }}
         with:
           script: |
             const url = process.env.PREVIEW_URL;
-            const headSha = context.payload?.pull_request?.head?.sha || context.sha;
+            const headSha = process.env.HEAD_SHA;
+            const prNumber = parseInt(process.env.PR_NUMBER, 10);
             const marker = '<!-- synthorg-pr-preview -->';
             const body = [
               marker,
@@ -194,7 +260,7 @@ jobs:
               {
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: context.issue.number,
+                issue_number: prNumber,
                 per_page: 100,
               }
             );
@@ -212,7 +278,7 @@ jobs:
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: context.issue.number,
+                issue_number: prNumber,
                 body,
               });
             }
@@ -220,6 +286,7 @@ jobs:
   cleanup-preview:
     name: Cleanup Preview
     if: >-
+      github.event_name == 'pull_request' &&
       github.event.action == 'closed' &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
