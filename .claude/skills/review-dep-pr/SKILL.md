@@ -275,14 +275,17 @@ For each PR based on user's choice:
    gh pr merge <number> --squash --auto
    ```
 
-   Note: `--auto` may succeed silently with no stdout. If `--auto` fails (auto-merge not enabled on the repo or branch protection requirements not met), fall back to `gh pr merge <number> --squash` for immediate merge. If that also fails (e.g., required reviews not met), inform the user that manual approval is needed.
-3. Verify the merge succeeded:
+   Note: `--auto` may succeed silently with no stdout. Track which path was used: `auto` or `immediate`.
+
+   If `--auto` fails (auto-merge not enabled on the repo or branch protection requirements not met), fall back to `gh pr merge <number> --squash` for immediate merge. If that also fails (e.g., required reviews not met), inform the user that manual approval is needed.
+3. Verify the merge:
 
    ```bash
-   gh pr view <number> --json state --jq '.state'
+   gh pr view <number> --json state,autoMergeRequest --jq '{state: .state, autoMerge: .autoMergeRequest}'
    ```
 
-   Confirm the state is `MERGED`. If not, inform the user.
+   - If **immediate** merge was used: confirm `state` is `MERGED`. If not, inform the user.
+   - If **auto** merge was enabled: `state` will be `OPEN` with `autoMergeRequest` present (auto-merge is asynchronous — it fires after required checks pass). Inform the user: "Auto-merge has been enabled; the PR will merge automatically when all required checks pass." No immediate state verification needed.
 
 ### Improve and merge
 
