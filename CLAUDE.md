@@ -180,7 +180,7 @@ src/ai_company/
 ## CI
 
 - **Jobs**: lint (ruff) + type-check (mypy src/ tests/) + test (pytest + coverage) run in parallel → ci-pass (gate)
-- **Pages**: `.github/workflows/pages.yml` — exports OpenAPI schema (`scripts/export_openapi.py`), builds Astro landing + MkDocs docs, merges, deploys to GitHub Pages on push to main. Triggers on `docs/**`, `mkdocs.yml`, `src/ai_company/**`, `scripts/**`, and workflow file changes.
+- **Pages**: `.github/workflows/pages.yml` — exports OpenAPI schema (`scripts/export_openapi.py`), builds Astro landing + MkDocs docs, merges, deploys to GitHub Pages on push to main. Triggers on `docs/**`, `site/**`, `mkdocs.yml`, `pyproject.toml`, `uv.lock`, `src/ai_company/**`, `scripts/**`, and workflow file changes.
 - **PR Preview**: `.github/workflows/pages-preview.yml`
   - Builds site on PRs (same path triggers as Pages), injects "Development Preview" banner, deploys to Cloudflare Pages (`synthorg-pr-preview` project) via wrangler CLI
   - Each PR gets a unique preview URL at `pr-<number>.synthorg-pr-preview.pages.dev`

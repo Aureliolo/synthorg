@@ -27,6 +27,9 @@ conditions:
   - field: new_text
     operator: regex_match
     pattern: "^\\s*(?:async\\s+)?(?:def |class )"
+  - field: file_content
+    operator: not_contains
+    pattern: "get_logger"
 action: warn
 ---
 
