@@ -34,23 +34,58 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      pull-requests: read
     outputs:
       pr_number: ${{ steps.pr.outputs.pr_number }}
       head_sha: ${{ steps.pr.outputs.head_sha }}
+      same_repo: ${{ steps.pr.outputs.same_repo }}
     steps:
       - name: Resolve PR metadata
         id: pr
         env:
           GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_INPUT: ${{ github.event.inputs.pr_number }}
+          PR_EVENT_NUMBER: ${{ github.event.pull_request.number }}
+          PR_EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_EVENT_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          GH_REPOSITORY: ${{ github.repository }}
         run: |
-          PR_NUMBER="${{ github.event.pull_request.number || github.event.inputs.pr_number }}"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            HEAD_SHA=$(gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json headRefOid -q .headRefOid)
-          else
-            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          PR_NUMBER="${PR_EVENT_NUMBER:-$PR_INPUT}"
+          if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::PR number must be a positive integer, got: '$PR_NUMBER'"
+            exit 1
           fi
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            PR_JSON=$(gh pr view "$PR_NUMBER" --repo "$GH_REPOSITORY" \
+              --json headRefOid,state,isCrossRepository)
+            if [ -z "$PR_JSON" ]; then
+              echo "::error::Failed to fetch metadata for PR #$PR_NUMBER"
+              exit 1
+            fi
+            HEAD_SHA=$(echo "$PR_JSON" | jq -r '.headRefOid')
+            PR_STATE=$(echo "$PR_JSON" | jq -r '.state')
+            IS_CROSS_REPO=$(echo "$PR_JSON" | jq -r '.isCrossRepository')
+
+            if [ "$PR_STATE" != "OPEN" ]; then
+              echo "::error::PR #$PR_NUMBER is $PR_STATE, not OPEN — cannot deploy preview"
+              exit 1
+            fi
+            SAME_REPO=$( [ "$IS_CROSS_REPO" = "false" ] && echo "true" || echo "false" )
+          else
+            HEAD_SHA="$PR_EVENT_HEAD_SHA"
+            SAME_REPO=$( [ "$PR_EVENT_HEAD_REPO" = "$GH_REPOSITORY" ] && echo "true" || echo "false" )
+          fi
+
+          if [ -z "$HEAD_SHA" ]; then
+            echo "::error::Failed to resolve HEAD SHA for PR #$PR_NUMBER"
+            exit 1
+          fi
+
           echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
           echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "same_repo=$SAME_REPO" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -167,9 +202,7 @@ jobs:
   deploy-preview:
     name: Deploy Preview
     needs: build
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+    if: needs.build.outputs.same_repo == 'true'
     runs-on: ubuntu-latest
     environment: cloudflare-preview
     timeout-minutes: 5
