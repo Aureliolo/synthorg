@@ -187,7 +187,7 @@ src/ai_company/
   - Concurrency group cancels stale builds on rapid pushes
 - **Docker**: `.github/workflows/docker.yml` — builds backend + web images, pushes to GHCR, signs with cosign. Scans: Trivy (CRITICAL = hard fail, HIGH = warn-only) + Grype (critical cutoff). CVE triage via `.github/.trivyignore.yaml` and `.github/.grype.yaml`. Images only pushed after scans pass. Triggers on push to main and version tags (`v*`).
 - **Matrix**: Python 3.14
-- **Dependabot**: daily uv + github-actions + docker updates, grouped minor/patch, no auto-merge
+- **Dependabot**: daily uv + github-actions + docker updates, grouped minor/patch, no auto-merge. Use `/review-dep-pr` to review Dependabot PRs before merging
 - **Secret scanning**: gitleaks workflow on push/PR + weekly schedule
 - **Dependency review**: license allow-list (permissive only), PR comment summaries
 - **Coverage**: Codecov integration (replaces artifact-only uploads)
