@@ -30,9 +30,6 @@ _MAX_DESCRIPTION_LENGTH: Final[int] = 4096
 _VALID_TASK_FIELDS: frozenset[str] = frozenset(Task.model_fields)
 """Field names accepted by ``model_fields`` on :class:`Task`.
 
-Pydantic's ``model_fields`` excludes any ``@computed_field``
-properties by design.
-
 Used to reject unknown keys in :class:`UpdateTaskMutation` and
 :class:`TransitionTaskMutation` validators.
 """
@@ -107,7 +104,7 @@ class CreateTaskMutation(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    mutation_type: MutationType = "create"
+    mutation_type: Literal["create"] = "create"
     request_id: NotBlankStr = Field(description="Unique request identifier")
     requested_by: NotBlankStr = Field(description="Identity of the requester")
     task_data: CreateTaskData = Field(description="Task creation payload")
@@ -144,7 +141,7 @@ class UpdateTaskMutation(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    mutation_type: MutationType = "update"
+    mutation_type: Literal["update"] = "update"
     request_id: NotBlankStr = Field(description="Unique request identifier")
     requested_by: NotBlankStr = Field(description="Identity of the requester")
     task_id: NotBlankStr = Field(description="Target task identifier")
@@ -196,7 +193,7 @@ class TransitionTaskMutation(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    mutation_type: MutationType = "transition"
+    mutation_type: Literal["transition"] = "transition"
     request_id: NotBlankStr = Field(description="Unique request identifier")
     requested_by: NotBlankStr = Field(description="Identity of the requester")
     task_id: NotBlankStr = Field(description="Target task identifier")
@@ -242,7 +239,7 @@ class DeleteTaskMutation(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    mutation_type: MutationType = "delete"
+    mutation_type: Literal["delete"] = "delete"
     request_id: NotBlankStr = Field(description="Unique request identifier")
     requested_by: NotBlankStr = Field(description="Identity of the requester")
     task_id: NotBlankStr = Field(description="Target task identifier")
@@ -261,7 +258,7 @@ class CancelTaskMutation(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    mutation_type: MutationType = "cancel"
+    mutation_type: Literal["cancel"] = "cancel"
     request_id: NotBlankStr = Field(description="Unique request identifier")
     requested_by: NotBlankStr = Field(description="Identity of the requester")
     task_id: NotBlankStr = Field(description="Target task identifier")
@@ -319,6 +316,12 @@ class TaskMutationResult(BaseModel):
             raise ValueError(msg)
         if not self.success and self.error is None:
             msg = "Failed result must carry an error description"
+            raise ValueError(msg)
+        if self.success and self.error_code is not None:
+            msg = "Successful result must not carry an error_code"
+            raise ValueError(msg)
+        if not self.success and self.error_code is None:
+            msg = "Failed result must carry an error_code"
             raise ValueError(msg)
         return self
 

@@ -231,6 +231,7 @@ class TestVersionTracking:
         )
         result = await engine.submit(update)
         assert result.success is False
+        assert result.error_code == "version_conflict"
         assert "conflict" in (result.error or "").lower()
 
     async def test_version_reset_on_delete(
@@ -268,6 +269,7 @@ class TestVersionTracking:
         )
         result = await engine.submit(mutation)
         assert result.success is False
+        assert result.error_code == "version_conflict"
         assert "conflict" in (result.error or "").lower()
 
 

@@ -325,6 +325,117 @@ class TestReadThrough:
         assert len(assigned) == 1
 
 
+# ── Read-through error wrapping ────────────────────────────────
+
+
+@pytest.mark.unit
+class TestReadThroughErrorWrapping:
+    """Persistence errors in read-through methods raise TaskInternalError."""
+
+    async def test_get_task_wraps_persistence_error(
+        self,
+        persistence: FakePersistence,
+    ) -> None:
+        from ai_company.engine.errors import TaskInternalError
+
+        async def exploding_get(task_id: str) -> None:
+            msg = "disk I/O"
+            raise OSError(msg)
+
+        persistence.tasks.get = exploding_get  # type: ignore[method-assign]
+        eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
+        eng.start()
+        try:
+            with pytest.raises(TaskInternalError, match="Failed to read task"):
+                await eng.get_task("task-1")
+        finally:
+            await eng.stop(timeout=2.0)
+
+    async def test_list_tasks_wraps_persistence_error(
+        self,
+        persistence: FakePersistence,
+    ) -> None:
+        from ai_company.engine.errors import TaskInternalError
+
+        async def exploding_list(**kwargs: object) -> None:
+            msg = "connection refused"
+            raise ConnectionError(msg)
+
+        persistence.tasks.list_tasks = exploding_list  # type: ignore[assignment,method-assign]
+        eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
+        eng.start()
+        try:
+            with pytest.raises(TaskInternalError, match="Failed to list tasks"):
+                await eng.list_tasks()
+        finally:
+            await eng.stop(timeout=2.0)
+
+    async def test_get_task_lets_memory_error_propagate(
+        self,
+        persistence: FakePersistence,
+    ) -> None:
+        async def oom_get(task_id: str) -> None:
+            raise MemoryError
+
+        persistence.tasks.get = oom_get  # type: ignore[method-assign]
+        eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
+        eng.start()
+        try:
+            with pytest.raises(MemoryError):
+                await eng.get_task("task-1")
+        finally:
+            await eng.stop(timeout=2.0)
+
+    async def test_list_tasks_lets_memory_error_propagate(
+        self,
+        persistence: FakePersistence,
+    ) -> None:
+        async def oom_list(**kwargs: object) -> None:
+            raise MemoryError
+
+        persistence.tasks.list_tasks = oom_list  # type: ignore[assignment,method-assign]
+        eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
+        eng.start()
+        try:
+            with pytest.raises(MemoryError):
+                await eng.list_tasks()
+        finally:
+            await eng.stop(timeout=2.0)
+
+
+# ── list_tasks safety cap ─────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestListTasksSafetyCap:
+    """list_tasks caps results at _MAX_LIST_RESULTS."""
+
+    async def test_results_capped_at_max(
+        self,
+        persistence: FakePersistence,
+    ) -> None:
+        """When persistence returns more than cap, result is truncated."""
+
+        original_list = persistence.tasks.list_tasks
+
+        async def oversized_list(**kwargs: object) -> tuple[Task, ...]:
+            # Return a few real tasks, then monkey-patch to simulate > cap
+            result = await original_list(**kwargs)  # type: ignore[arg-type]
+            # Create a list longer than cap by repeating
+            return result * 20_000 if result else result
+
+        persistence.tasks.list_tasks = oversized_list  # type: ignore[assignment,method-assign]
+        eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
+        eng.start()
+        try:
+            # Create one task so the oversized list has data to repeat
+            await eng.create_task(make_create_data(), requested_by="alice")
+            tasks = await eng.list_tasks()
+            assert len(tasks) <= 10_000
+        finally:
+            await eng.stop(timeout=2.0)
+
+
 # ── Cancel not found ─────────────────────────────────────────
 
 

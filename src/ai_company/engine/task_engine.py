@@ -47,11 +47,14 @@ from ai_company.observability.events.task_engine import (
     TASK_ENGINE_DRAIN_COMPLETE,
     TASK_ENGINE_DRAIN_START,
     TASK_ENGINE_DRAIN_TIMEOUT,
+    TASK_ENGINE_FUTURES_FAILED,
+    TASK_ENGINE_LIST_CAPPED,
     TASK_ENGINE_LOOP_ERROR,
     TASK_ENGINE_MUTATION_FAILED,
     TASK_ENGINE_MUTATION_RECEIVED,
     TASK_ENGINE_NOT_RUNNING,
     TASK_ENGINE_QUEUE_FULL,
+    TASK_ENGINE_READ_FAILED,
     TASK_ENGINE_SNAPSHOT_PUBLISH_FAILED,
     TASK_ENGINE_SNAPSHOT_PUBLISHED,
     TASK_ENGINE_STARTED,
@@ -209,7 +212,7 @@ class TaskEngine:
                     failed_count += 1
         if failed_count:
             logger.warning(
-                TASK_ENGINE_DRAIN_TIMEOUT,
+                TASK_ENGINE_FUTURES_FAILED,
                 failed_futures=failed_count,
                 note="Resolved remaining futures with shutdown failure",
             )
@@ -507,7 +510,7 @@ class TaskEngine:
         except Exception as exc:
             msg = f"Failed to read task: {exc}"
             logger.exception(
-                TASK_ENGINE_MUTATION_FAILED,
+                TASK_ENGINE_READ_FAILED,
                 error=msg,
                 task_id=task_id,
             )
@@ -544,17 +547,15 @@ class TaskEngine:
         except Exception as exc:
             msg = f"Failed to list tasks: {exc}"
             logger.exception(
-                TASK_ENGINE_MUTATION_FAILED,
+                TASK_ENGINE_READ_FAILED,
                 error=msg,
             )
             raise TaskInternalError(msg) from exc
         if len(tasks) > self._MAX_LIST_RESULTS:
             logger.warning(
-                TASK_ENGINE_MUTATION_FAILED,
-                error=(
-                    f"list_tasks returned {len(tasks)} results, "
-                    f"capping at {self._MAX_LIST_RESULTS}"
-                ),
+                TASK_ENGINE_LIST_CAPPED,
+                returned=len(tasks),
+                cap=self._MAX_LIST_RESULTS,
             )
             return tasks[: self._MAX_LIST_RESULTS]
         return tasks

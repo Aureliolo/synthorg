@@ -35,8 +35,9 @@ from ai_company.observability import get_logger
 from ai_company.observability.events.api import (
     API_AUTH_FALLBACK,
     API_RESOURCE_NOT_FOUND,
+    API_TASK_CREATED_BY_MISMATCH,
     API_TASK_DELETED,
-    API_TASK_TRANSITION_FAILED,
+    API_TASK_MUTATION_FAILED,
     API_TASK_UPDATED,
 )
 from ai_company.observability.events.task import (
@@ -72,6 +73,22 @@ def _map_task_engine_errors(
     """Map a task-engine exception to the appropriate API error.
 
     Returns the API exception to raise (caller must ``raise`` it).
+
+    Mapping:
+        TaskNotFoundError           -> 404 NotFoundError
+        TaskEngineNotRunningError   -> 503 ServiceUnavailableError
+        TaskEngineQueueFullError    -> 503 ServiceUnavailableError
+        TaskInternalError           -> 503 ServiceUnavailableError
+        TaskVersionConflictError    -> 409 ConflictError
+        TaskMutationError           -> 422 ApiValidationError
+        Other                       -> 503 ServiceUnavailableError
+
+    Args:
+        exc: The engine exception to map.
+        task_id: Optional task identifier for log context.
+
+    Returns:
+        The API exception to raise.
     """
     if isinstance(exc, TaskNotFoundError):
         if task_id is not None:
@@ -83,7 +100,7 @@ def _map_task_engine_errors(
         return NotFoundError(str(exc))
     if isinstance(exc, TaskEngineNotRunningError | TaskEngineQueueFullError):
         logger.error(
-            API_TASK_TRANSITION_FAILED,
+            API_TASK_MUTATION_FAILED,
             resource="task",
             task_id=task_id,
             error=str(exc),
@@ -92,7 +109,7 @@ def _map_task_engine_errors(
         return ServiceUnavailableError("Service temporarily unavailable")
     if isinstance(exc, TaskInternalError):
         logger.error(
-            API_TASK_TRANSITION_FAILED,
+            API_TASK_MUTATION_FAILED,
             resource="task",
             task_id=task_id,
             error=str(exc),
@@ -101,7 +118,7 @@ def _map_task_engine_errors(
         return ServiceUnavailableError("Internal server error")
     if isinstance(exc, TaskVersionConflictError):
         logger.warning(
-            API_TASK_TRANSITION_FAILED,
+            API_TASK_MUTATION_FAILED,
             resource="task",
             task_id=task_id,
             error=str(exc),
@@ -110,7 +127,7 @@ def _map_task_engine_errors(
         return ConflictError(str(exc))
     if isinstance(exc, TaskMutationError):
         logger.warning(
-            API_TASK_TRANSITION_FAILED,
+            API_TASK_MUTATION_FAILED,
             resource="task",
             task_id=task_id,
             error=str(exc),
@@ -119,7 +136,7 @@ def _map_task_engine_errors(
         return ApiValidationError(str(exc))
     # Unknown error type — log and wrap to prevent leaking internals
     logger.error(
-        API_TASK_TRANSITION_FAILED,
+        API_TASK_MUTATION_FAILED,
         resource="task",
         task_id=task_id,
         error=str(exc),
@@ -159,11 +176,14 @@ class TaskController(Controller):
             Paginated task list.
         """
         app_state: AppState = state.app_state
-        tasks = await app_state.task_engine.list_tasks(
-            status=status,
-            assigned_to=assigned_to,
-            project=project,
-        )
+        try:
+            tasks = await app_state.task_engine.list_tasks(
+                status=status,
+                assigned_to=assigned_to,
+                project=project,
+            )
+        except (TaskInternalError, TaskEngineNotRunningError) as exc:
+            raise _map_task_engine_errors(exc) from exc
         page, meta = paginate(tasks, offset=offset, limit=limit)
         return PaginatedResponse(data=page, pagination=meta)
 
@@ -186,7 +206,10 @@ class TaskController(Controller):
             NotFoundError: If the task is not found.
         """
         app_state: AppState = state.app_state
-        task = await app_state.task_engine.get_task(task_id)
+        try:
+            task = await app_state.task_engine.get_task(task_id)
+        except (TaskInternalError, TaskEngineNotRunningError) as exc:
+            raise _map_task_engine_errors(exc, task_id=task_id) from exc
         if task is None:
             msg = f"Task {task_id!r} not found"
             logger.warning(API_RESOURCE_NOT_FOUND, resource="task", id=task_id)
@@ -223,7 +246,7 @@ class TaskController(Controller):
         )
         if data.created_by != requester:
             logger.info(
-                API_TASK_UPDATED,
+                API_TASK_CREATED_BY_MISMATCH,
                 note="created_by differs from authenticated requester",
                 created_by=data.created_by,
                 requester=requester,
@@ -333,14 +356,9 @@ class TaskController(Controller):
             TaskEngineQueueFullError,
             TaskNotFoundError,
             TaskInternalError,
+            TaskVersionConflictError,
+            TaskMutationError,
         ) as exc:
-            raise _map_task_engine_errors(exc, task_id=task_id) from exc
-        except TaskMutationError as exc:
-            logger.warning(
-                API_TASK_TRANSITION_FAILED,
-                task_id=task_id,
-                error=str(exc),
-            )
             raise _map_task_engine_errors(exc, task_id=task_id) from exc
         logger.info(
             TASK_STATUS_CHANGED,

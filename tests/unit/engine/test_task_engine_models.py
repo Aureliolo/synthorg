@@ -70,6 +70,49 @@ class TestCreateTaskData:
                 budget_limit=-1.0,
             )
 
+    def test_title_at_max_length(self) -> None:
+        data = CreateTaskData(
+            title="x" * 256,
+            description="desc",
+            type=TaskType.DEVELOPMENT,
+            project="proj",
+            created_by="alice",
+        )
+        assert len(data.title) == 256
+
+    def test_title_exceeds_max_length(self) -> None:
+        with pytest.raises(ValidationError, match="String should have at most 256"):
+            CreateTaskData(
+                title="x" * 257,
+                description="desc",
+                type=TaskType.DEVELOPMENT,
+                project="proj",
+                created_by="alice",
+            )
+
+    def test_description_at_max_length(self) -> None:
+        data = CreateTaskData(
+            title="Task",
+            description="d" * 4096,
+            type=TaskType.DEVELOPMENT,
+            project="proj",
+            created_by="alice",
+        )
+        assert len(data.description) == 4096
+
+    def test_description_exceeds_max_length(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="String should have at most 4096",
+        ):
+            CreateTaskData(
+                title="Task",
+                description="d" * 4097,
+                type=TaskType.DEVELOPMENT,
+                project="proj",
+                created_by="alice",
+            )
+
     def test_frozen(self) -> None:
         data = CreateTaskData(
             title="Task",
@@ -242,9 +285,11 @@ class TestTaskMutationResult:
             request_id="req-1",
             success=False,
             error="Not found",
+            error_code="not_found",
         )
         assert result.success is False
         assert result.error == "Not found"
+        assert result.error_code == "not_found"
         assert result.version == 0
 
     def test_frozen(self) -> None:

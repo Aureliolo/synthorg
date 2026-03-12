@@ -74,6 +74,7 @@ class TestRaiseTypedErrorAllCodes:
             request_id="r",
             success=False,
             error="generic",
+            error_code="validation",
         )
         with pytest.raises(TaskMutationError, match="generic"):
             TaskEngine._raise_typed_error(result)
@@ -83,6 +84,7 @@ class TestRaiseTypedErrorAllCodes:
             request_id="r",
             success=False,
             error="Mutation failed",
+            error_code="validation",
         )
         with pytest.raises(TaskMutationError, match="Mutation failed"):
             TaskEngine._raise_typed_error(result)

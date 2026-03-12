@@ -73,16 +73,19 @@ class TestMapTaskEngineErrors:
         exc = TaskEngineNotRunningError("not running")
         result = _map_task_engine_errors(exc)
         assert isinstance(result, ServiceUnavailableError)
+        assert "not running" not in str(result)
 
     def test_queue_full_maps_to_service_unavailable(self) -> None:
         exc = TaskEngineQueueFullError("queue full")
         result = _map_task_engine_errors(exc)
         assert isinstance(result, ServiceUnavailableError)
+        assert "queue full" not in str(result)
 
     def test_internal_error_maps_to_service_unavailable(self) -> None:
         exc = TaskInternalError("internal fault")
         result = _map_task_engine_errors(exc)
         assert isinstance(result, ServiceUnavailableError)
+        assert "internal fault" not in str(result)
 
     def test_version_conflict_maps_to_conflict_error(self) -> None:
         exc = TaskVersionConflictError("version mismatch")
