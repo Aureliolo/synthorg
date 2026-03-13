@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import TabView from 'primevue/tabview'
 import TabPanel from 'primevue/tabpanel'
@@ -17,6 +17,7 @@ import { useCompanyStore } from '@/stores/company'
 import { useProviderStore } from '@/stores/providers'
 import { getErrorMessage } from '@/utils/errors'
 import { MIN_PASSWORD_LENGTH } from '@/utils/constants'
+import { sanitizeForLog } from '@/utils/logging'
 import type { ProviderModelConfig } from '@/api/types'
 
 const route = useRoute()
@@ -27,8 +28,15 @@ const providerStore = useProviderStore()
 const loading = ref(true)
 
 const VALID_TABS = ['company', 'providers', 'user'] as const
-const tabParam = String(route.query.tab ?? 'company')
-const activeTab = ref(VALID_TABS.includes(tabParam as typeof VALID_TABS[number]) ? tabParam : 'company')
+function resolveTab(raw: unknown): string {
+  const s = String(raw ?? 'company')
+  return VALID_TABS.includes(s as typeof VALID_TABS[number]) ? s : 'company'
+}
+const activeTab = ref(resolveTab(route.query.tab))
+
+watch(() => route.query.tab, (tab) => {
+  activeTab.value = resolveTab(tab)
+})
 
 const providerEntries = computed(() =>
   Object.entries(providerStore.providers).map(([name, config]) => ({ name, config })),
@@ -43,6 +51,8 @@ async function retryFetch() {
   loading.value = true
   try {
     await Promise.all([companyStore.fetchConfig(), providerStore.fetchProviders()])
+  } catch (err) {
+    console.error('Settings data fetch failed:', sanitizeForLog(err))
   } finally {
     loading.value = false
   }
@@ -78,7 +88,7 @@ async function handleChangePassword() {
 
     <ErrorBoundary :error="companyStore.configError ?? providerStore.error" @retry="retryFetch">
     <LoadingSkeleton v-if="loading" :lines="6" />
-    <TabView v-else :value="activeTab">
+    <TabView v-else :value="activeTab" @update:value="activeTab = $event">
       <!-- Company Config -->
       <TabPanel header="Company" value="company">
         <div v-if="companyStore.config" class="space-y-4">

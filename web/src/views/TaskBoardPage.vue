@@ -83,7 +83,7 @@ async function handleTransition(taskId: string, targetStatus: TaskStatus, versio
   }
 }
 
-async function handleSave(taskId: string, data: { title?: string; description?: string }) {
+async function handleSave(taskId: string, data: { title?: string; description?: string; priority?: Priority }) {
   try {
     const result = await taskStore.updateTask(taskId, data)
     if (result) {

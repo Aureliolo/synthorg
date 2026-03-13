@@ -35,11 +35,11 @@ onMounted(async () => {
   try {
     if (authStore.token && !wsStore.connected) {
       wsStore.connect(authStore.token)
-      wsStore.subscribe(['tasks', 'budget', 'approvals'])
-      wsStore.onChannelEvent('tasks', taskStore.handleWsEvent)
-      wsStore.onChannelEvent('budget', budgetStore.handleWsEvent)
-      wsStore.onChannelEvent('approvals', approvalStore.handleWsEvent)
     }
+    wsStore.subscribe(['tasks', 'budget', 'approvals'])
+    wsStore.onChannelEvent('tasks', taskStore.handleWsEvent)
+    wsStore.onChannelEvent('budget', budgetStore.handleWsEvent)
+    wsStore.onChannelEvent('approvals', approvalStore.handleWsEvent)
   } catch (err) {
     console.error('WebSocket setup failed:', sanitizeForLog(err))
   }
