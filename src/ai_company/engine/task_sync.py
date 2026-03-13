@@ -73,7 +73,6 @@ async def sync_to_task_engine(  # noqa: PLR0913
     if task_engine is None:
         return
 
-    log = logger.error if critical else logger.warning
     try:
         mutation = TransitionTaskMutation(
             request_id=uuid4().hex,
@@ -86,39 +85,61 @@ async def sync_to_task_engine(  # noqa: PLR0913
     except MemoryError, RecursionError, asyncio.CancelledError:
         raise
     except Exception as exc:
-        error = (
-            "TaskEngine unavailable"
-            if isinstance(exc, TaskEngineError)
-            else "Unexpected error syncing to TaskEngine"
-        )
-        log(
-            EXECUTION_ENGINE_SYNC_FAILED,
+        _log_sync_issue(
+            critical=critical,
             agent_id=agent_id,
             task_id=task_id,
-            target_status=target_status.value,
-            error=error,
+            target_status=target_status,
+            error=(
+                "TaskEngine unavailable"
+                if isinstance(exc, TaskEngineError)
+                else "Unexpected error syncing to TaskEngine"
+            ),
             exc_info=True,
         )
-    else:
-        if result.success:
-            logger.debug(
-                EXECUTION_ENGINE_TASK_SYNCED,
-                agent_id=agent_id,
-                task_id=task_id,
-                target_status=target_status.value,
-                version=result.version,
-            )
-            return
-        # Mutation was rejected (e.g. version conflict, invalid
-        # transition, task not found).
-        log(
-            EXECUTION_ENGINE_SYNC_FAILED,
+        return
+
+    if result.success:
+        logger.debug(
+            EXECUTION_ENGINE_TASK_SYNCED,
             agent_id=agent_id,
             task_id=task_id,
             target_status=target_status.value,
-            error=result.error or "Mutation rejected (no error detail)",
-            error_code=result.error_code,
+            version=result.version,
         )
+        return
+
+    # Mutation was rejected (e.g. version conflict, invalid
+    # transition, task not found).
+    _log_sync_issue(
+        critical=critical,
+        agent_id=agent_id,
+        task_id=task_id,
+        target_status=target_status,
+        error=result.error or "Mutation rejected (no error detail)",
+        error_code=result.error_code,
+    )
+
+
+def _log_sync_issue(
+    *,
+    critical: bool,
+    agent_id: str,
+    task_id: str,
+    target_status: TaskStatus,
+    **extra: object,
+) -> None:
+    """Log a sync failure at ERROR (critical) or WARNING severity."""
+    common = {
+        "agent_id": agent_id,
+        "task_id": task_id,
+        "target_status": target_status.value,
+        **extra,
+    }
+    if critical:
+        logger.error(EXECUTION_ENGINE_SYNC_FAILED, **common)
+    else:
+        logger.warning(EXECUTION_ENGINE_SYNC_FAILED, **common)
 
 
 async def transition_task_if_needed(
@@ -201,6 +222,8 @@ async def apply_post_execution_transitions(
             )
             break
 
+    if ctx is execution_result.context:
+        return execution_result
     return execution_result.model_copy(update={"context": ctx})
 
 

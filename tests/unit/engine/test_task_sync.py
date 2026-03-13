@@ -1,7 +1,8 @@
 """Unit tests for task_sync module — AgentEngine → TaskEngine sync functions."""
 
+import asyncio
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -205,13 +206,26 @@ class TestSyncToTaskEngine:
             reason="test",
         )
 
-    async def test_memory_error_propagates(self) -> None:
-        """MemoryError is never swallowed."""
+    @pytest.mark.parametrize(
+        ("exc_class", "exc_args"),
+        [
+            (MemoryError, ("out of memory",)),
+            (RecursionError, ("maximum recursion depth exceeded",)),
+            (asyncio.CancelledError, ()),
+        ],
+        ids=["MemoryError", "RecursionError", "CancelledError"],
+    )
+    async def test_non_swallowed_exception_propagates(
+        self,
+        exc_class: type[BaseException],
+        exc_args: tuple[str, ...],
+    ) -> None:
+        """Non-recoverable and cancellation exceptions propagate."""
         mock_te = _make_mock_task_engine(
-            side_effect=MemoryError("out of memory"),
+            side_effect=exc_class(*exc_args),
         )
 
-        with pytest.raises(MemoryError, match="out of memory"):
+        with pytest.raises(exc_class):
             await sync_to_task_engine(
                 mock_te,
                 target_status=TaskStatus.IN_PROGRESS,
@@ -220,52 +234,24 @@ class TestSyncToTaskEngine:
                 reason="test",
             )
 
-    async def test_recursion_error_propagates(self) -> None:
-        """RecursionError is never swallowed."""
-        mock_te = _make_mock_task_engine(
-            side_effect=RecursionError("maximum recursion depth exceeded"),
-        )
-
-        with pytest.raises(RecursionError, match="maximum recursion depth exceeded"):
-            await sync_to_task_engine(
-                mock_te,
-                target_status=TaskStatus.IN_PROGRESS,
-                task_id="task-1",
-                agent_id="agent-1",
-                reason="test",
-            )
-
-    async def test_critical_flag_does_not_raise(self) -> None:
-        """critical=True changes log level but still swallows errors."""
+    async def test_critical_flag_logs_at_error_level(self) -> None:
+        """critical=True escalates log severity to ERROR."""
         mock_te = _make_mock_task_engine(
             side_effect=TaskEngineError("unavailable"),
         )
 
-        await sync_to_task_engine(
-            mock_te,
-            target_status=TaskStatus.IN_PROGRESS,
-            task_id="task-1",
-            agent_id="agent-1",
-            reason="test",
-            critical=True,
-        )
-
-    async def test_cancelled_error_propagates(self) -> None:
-        """asyncio.CancelledError is never swallowed."""
-        import asyncio
-
-        mock_te = _make_mock_task_engine(
-            side_effect=asyncio.CancelledError(),
-        )
-
-        with pytest.raises(asyncio.CancelledError):
+        with patch("ai_company.engine.task_sync.logger") as mock_logger:
             await sync_to_task_engine(
                 mock_te,
                 target_status=TaskStatus.IN_PROGRESS,
                 task_id="task-1",
                 agent_id="agent-1",
                 reason="test",
+                critical=True,
             )
+
+        mock_logger.error.assert_called_once()
+        mock_logger.warning.assert_not_called()
 
 
 # ===================================================================
@@ -453,40 +439,24 @@ class TestApplyPostExecutionTransitions:
         assert out.context.task_execution.status == TaskStatus.INTERRUPTED
         mock_te.submit.assert_awaited_once()
 
-    async def test_max_turns_returns_unchanged(
+    @pytest.mark.parametrize(
+        "reason",
+        [TerminationReason.MAX_TURNS, TerminationReason.BUDGET_EXHAUSTED],
+        ids=["MAX_TURNS", "BUDGET_EXHAUSTED"],
+    )
+    async def test_non_completion_reasons_return_unchanged(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
+        reason: TerminationReason,
     ) -> None:
-        """MAX_TURNS termination: no post-execution transitions."""
+        """Non-completion termination reasons leave task state unchanged."""
         ctx = AgentContext.from_identity(
             sample_agent_with_personality,
             task=sample_task_with_criteria,
         )
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
-        result = _make_execution_result(ctx, reason=TerminationReason.MAX_TURNS)
-
-        out = await apply_post_execution_transitions(
-            result,
-            agent_id=str(sample_agent_with_personality.id),
-            task_id=sample_task_with_criteria.id,
-            task_engine=None,
-        )
-
-        assert out is result
-
-    async def test_budget_exhausted_returns_unchanged(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-        sample_task_with_criteria: Task,
-    ) -> None:
-        """BUDGET_EXHAUSTED termination: no post-execution transitions."""
-        ctx = AgentContext.from_identity(
-            sample_agent_with_personality,
-            task=sample_task_with_criteria,
-        )
-        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
-        result = _make_execution_result(ctx, reason=TerminationReason.BUDGET_EXHAUSTED)
+        result = _make_execution_result(ctx, reason=reason)
 
         out = await apply_post_execution_transitions(
             result,

@@ -457,8 +457,10 @@ async run(
     - `ERROR` termination: recovery strategy is applied (default
       `FailAndReassignStrategy` transitions to FAILED;
       see [Crash Recovery](#agent-crash-recovery)).
-    - All other termination reasons (`MAX_TURNS`, `BUDGET_EXHAUSTED`) leave the
-      task in its current state.
+    - All other termination reasons (`MAX_TURNS`, `BUDGET_EXHAUSTED`, `PARKED`)
+      leave the task in its current state.  `PARKED` indicates the agent was
+      suspended by an approval-timeout policy; the task remains at its current
+      status until explicitly resumed.
     - Each transition is synced to TaskEngine incrementally (see
       [AgentEngine ↔ TaskEngine Incremental Sync](#agentengine--taskengine-incremental-sync)).
     - Transition failures are logged but do not discard the successful execution
