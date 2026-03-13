@@ -141,7 +141,7 @@ def handle_permission_denied(
 ) -> Response[ApiResponse[None]]:
     """Map ``PermissionDeniedException`` to 403."""
     _log_error(request, exc, status=403)
-    detail = exc.detail or "Forbidden"
+    detail = exc.detail or HTTPStatus.FORBIDDEN.phrase
     return Response(
         content=ApiResponse[None](error=detail),
         status_code=403,
@@ -168,7 +168,7 @@ def handle_not_authorized(
 ) -> Response[ApiResponse[None]]:
     """Map ``NotAuthorizedException`` to 401."""
     _log_error(request, exc, status=401)
-    detail = exc.detail or "Authentication required"
+    detail = exc.detail or HTTPStatus.UNAUTHORIZED.phrase
     return Response(
         content=ApiResponse[None](error=detail),
         status_code=401,
@@ -213,7 +213,11 @@ def handle_http_exception(
     if status >= _SERVER_ERROR_THRESHOLD:
         msg = "Internal server error"
     else:
-        msg = exc.detail or HTTPStatus(status).phrase
+        try:
+            fallback = HTTPStatus(status).phrase
+        except ValueError:
+            fallback = "Request error"
+        msg = exc.detail or fallback
     return Response(
         content=ApiResponse[None](error=msg),
         status_code=status,

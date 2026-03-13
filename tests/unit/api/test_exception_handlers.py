@@ -3,10 +3,9 @@
 from typing import Any
 
 import pytest
-from litestar import Litestar, get
+from litestar import Litestar, get, post
 from litestar.exceptions import (
     HTTPException,
-    MethodNotAllowedException,
     NotAuthorizedException,
     PermissionDeniedException,
     ValidationException,
@@ -244,11 +243,11 @@ class TestExceptionHandlers:
             assert body["error"] == "Validation error"
 
     def test_method_not_allowed_maps_to_405(self) -> None:
-        """MethodNotAllowedException returns 405 via HTTPException handler."""
+        """Router-level MethodNotAllowed returns 405 via HTTPException handler."""
 
-        @get("/test")
-        async def handler() -> None:
-            raise MethodNotAllowedException
+        @post("/test")
+        async def handler() -> str:
+            return "ok"
 
         with TestClient(_make_app(handler)) as client:
             resp = client.get("/test")
