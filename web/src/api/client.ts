@@ -41,7 +41,7 @@ apiClient.interceptors.response.use(
       }).catch(() => {
         // Fallback if store import fails: redirect directly
         if (window.location.pathname !== '/login' && window.location.pathname !== '/setup') {
-          window.location.href = '/login'
+          window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`
         }
       })
     }

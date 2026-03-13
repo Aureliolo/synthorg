@@ -74,11 +74,11 @@ export const useApprovalStore = defineStore('approvals', () => {
           isValidApprovalPayload(payload) &&
           !approvals.value.some((a) => a.id === payload.id)
         ) {
-          // Only insert into unfiltered views to keep list consistent
+          // Only insert + count into unfiltered views to keep list consistent
           if (!activeFilters.value) {
             approvals.value = [payload as unknown as ApprovalItem, ...approvals.value]
+            total.value++
           }
-          total.value++
         }
         break
       case 'approval.approved':

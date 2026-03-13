@@ -1,38 +1,21 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue'
+import { ref } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 import { useAuthStore } from '@/stores/auth'
 import { getErrorMessage } from '@/utils/errors'
-import { MIN_PASSWORD_LENGTH, LOGIN_MAX_ATTEMPTS, LOGIN_LOCKOUT_MS } from '@/utils/constants'
+import { MIN_PASSWORD_LENGTH } from '@/utils/constants'
+import { useLoginLockout } from '@/composables/useLoginLockout'
 
 const router = useRouter()
 const auth = useAuthStore()
+const { locked, checkAndClearLockout, recordFailure } = useLoginLockout()
 
 const username = ref('')
 const password = ref('')
 const confirmPassword = ref('')
 const error = ref<string | null>(null)
-// Client-side lockout is a UX hint only — it resets on page refresh.
-// Real brute-force protection is enforced server-side via rate limiting.
-const attempts = ref(0)
-const lockedUntil = ref<number | null>(null)
-
-// Reactive clock so `locked` re-evaluates when lockout expires
-const now = ref(Date.now())
-const clockTimer = setInterval(() => { now.value = Date.now() }, 1000)
-onUnmounted(() => clearInterval(clockTimer))
-
-const locked = computed(() => !!(lockedUntil.value && now.value < lockedUntil.value))
-
-function checkAndClearLockout(): boolean {
-  if (lockedUntil.value && Date.now() >= lockedUntil.value) {
-    lockedUntil.value = null
-    attempts.value = 0
-  }
-  return locked.value
-}
 
 async function handleSetup() {
   if (checkAndClearLockout()) {
@@ -52,21 +35,12 @@ async function handleSetup() {
     await auth.setup(username.value, password.value)
     router.push('/')
   } catch (err) {
-    const msg = getErrorMessage(err)
-    // Only count credential failures (4xx) toward lockout, not network/5xx errors
-    const isCredentialError = msg !== 'Network error. Please check your connection.' &&
-      msg !== 'A server error occurred. Please try again later.' &&
-      msg !== 'Service temporarily unavailable. Please try again later.'
-    if (isCredentialError) {
-      attempts.value++
-      if (attempts.value >= LOGIN_MAX_ATTEMPTS) {
-        lockedUntil.value = Date.now() + LOGIN_LOCKOUT_MS
-        attempts.value = 0
-        error.value = `Too many failed attempts. Please wait ${LOGIN_LOCKOUT_MS / 1000} seconds.`
-        return
-      }
+    const lockoutMsg = recordFailure(err)
+    if (lockoutMsg) {
+      error.value = lockoutMsg
+      return
     }
-    error.value = msg
+    error.value = getErrorMessage(err)
   }
 }
 </script>
