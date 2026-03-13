@@ -51,11 +51,7 @@ export const VALID_TRANSITIONS: Readonly<Record<TaskStatus, readonly TaskStatus[
 /** Write-capable human roles. */
 export const WRITE_ROLES = ['ceo', 'manager', 'board_member', 'pair_programmer'] as const
 
-/**
- * Sidebar navigation items.
- * Routes below '/' are registered in the page-views PR (PR 2).
- * Until then the catch-all redirect handles unregistered paths.
- */
+/** Sidebar navigation items. */
 export const NAV_ITEMS = [
   { label: 'Dashboard', icon: 'pi pi-home', to: '/' },
   { label: 'Org Chart', icon: 'pi pi-sitemap', to: '/org-chart' },

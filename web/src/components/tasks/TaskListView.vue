@@ -4,6 +4,7 @@ import Column from 'primevue/column'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import type { Task } from '@/api/types'
 import { formatDate } from '@/utils/format'
+import { DEFAULT_PAGE_SIZE } from '@/utils/constants'
 
 defineProps<{
   tasks: Task[]
@@ -22,7 +23,7 @@ defineEmits<{
     :value="tasks"
     :total-records="total"
     :loading="loading"
-    :rows="50"
+    :rows="DEFAULT_PAGE_SIZE"
     paginator
     striped-rows
     row-hover

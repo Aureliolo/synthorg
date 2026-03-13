@@ -3,11 +3,14 @@ import { ref } from 'vue'
 import Button from 'primevue/button'
 import Textarea from 'primevue/textarea'
 import { useConfirm } from 'primevue/useconfirm'
+import { useAuth } from '@/composables/useAuth'
 
 defineProps<{
   approvalId: string
   status: string
 }>()
+
+const { canWrite } = useAuth()
 
 const emit = defineEmits<{
   approve: [id: string, comment: string]
@@ -40,7 +43,7 @@ function handleReject(id: string) {
 </script>
 
 <template>
-  <div v-if="status === 'pending'" class="space-y-3">
+  <div v-if="status === 'pending' && canWrite" class="space-y-3">
     <div>
       <label class="mb-1 block text-xs text-slate-400">Comment (optional)</label>
       <Textarea v-model="comment" class="w-full" rows="2" placeholder="Add a comment..." />

@@ -65,6 +65,7 @@ async function handleSetup() {
             class="w-full"
             placeholder="Admin username"
             autocomplete="username"
+            :aria-describedby="error ? 'setup-error' : undefined"
           />
         </div>
         <div>
@@ -76,6 +77,7 @@ async function handleSetup() {
             class="w-full"
             :placeholder="`Min ${MIN_PASSWORD_LENGTH} characters`"
             autocomplete="new-password"
+            :aria-describedby="error ? 'setup-error' : undefined"
           />
         </div>
         <div>
@@ -87,10 +89,11 @@ async function handleSetup() {
             class="w-full"
             placeholder="Re-enter password"
             autocomplete="new-password"
+            :aria-describedby="error ? 'setup-error' : undefined"
           />
         </div>
 
-        <div v-if="error" role="alert" class="rounded bg-red-500/10 p-3 text-sm text-red-400">
+        <div v-if="error" id="setup-error" role="alert" class="rounded bg-red-500/10 p-3 text-sm text-red-400">
           {{ error }}
         </div>
 

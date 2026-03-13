@@ -16,6 +16,7 @@ import { useWebSocketStore } from '@/stores/websocket'
 import { useAuthStore } from '@/stores/auth'
 import { getHealth } from '@/api/endpoints/health'
 import { formatCurrency, formatNumber } from '@/utils/format'
+import { useToast } from 'primevue/usetoast'
 import type { HealthStatus } from '@/api/types'
 
 const analytics = useAnalyticsStore()
@@ -24,6 +25,7 @@ const budgetStore = useBudgetStore()
 const approvalStore = useApprovalStore()
 const wsStore = useWebSocketStore()
 const authStore = useAuthStore()
+const toast = useToast()
 const health = ref<HealthStatus | null>(null)
 const loading = ref(true)
 
@@ -52,9 +54,14 @@ onMounted(async () => {
     if (results[0].status === 'fulfilled') {
       health.value = results[0].value
     }
-    const failures = results.filter((r) => r.status === 'rejected')
-    if (failures.length > 0) {
-      console.error('Dashboard initialization failures:', failures)
+    const failureCount = results.filter((r) => r.status === 'rejected').length
+    if (failureCount > 0) {
+      toast.add({
+        severity: 'warn',
+        summary: 'Dashboard partially loaded',
+        detail: `${failureCount} data source(s) failed to load`,
+        life: 5000,
+      })
     }
   } finally {
     loading.value = false

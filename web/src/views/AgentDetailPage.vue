@@ -21,8 +21,9 @@ const agent = ref<AgentConfig | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
 
-onMounted(async () => {
+async function fetchAgentData() {
   loading.value = true
+  error.value = null
   try {
     agent.value = await agentStore.fetchAgent(props.name)
     if (!agent.value) {
@@ -33,7 +34,9 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(fetchAgentData)
 </script>
 
 <template>
@@ -48,7 +51,7 @@ onMounted(async () => {
       />
     </div>
 
-    <ErrorBoundary :error="error" @retry="router.go(0)">
+    <ErrorBoundary :error="error" @retry="fetchAgentData">
       <LoadingSkeleton v-if="loading" :lines="8" />
       <template v-else-if="agent">
         <PageHeader :title="agent.name" :subtitle="agent.role" />

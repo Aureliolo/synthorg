@@ -127,10 +127,10 @@ async function handleChangePassword() {
           <div class="rounded-lg border border-slate-800 p-4">
             <h4 class="mb-3 text-sm font-medium text-slate-300">Change Password</h4>
             <form class="space-y-3" @submit.prevent="handleChangePassword">
-              <InputText v-model="currentPassword" type="password" class="w-full" placeholder="Current password" />
-              <InputText v-model="newPassword" type="password" class="w-full" :placeholder="`New password (min ${MIN_PASSWORD_LENGTH} chars)`" />
-              <InputText v-model="confirmPassword" type="password" class="w-full" placeholder="Confirm new password" />
-              <div v-if="pwdError" class="rounded bg-red-500/10 p-2 text-sm text-red-400">{{ pwdError }}</div>
+              <InputText v-model="currentPassword" type="password" class="w-full" placeholder="Current password" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
+              <InputText v-model="newPassword" type="password" class="w-full" :placeholder="`New password (min ${MIN_PASSWORD_LENGTH} chars)`" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
+              <InputText v-model="confirmPassword" type="password" class="w-full" placeholder="Confirm new password" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
+              <div v-if="pwdError" id="pwd-error" role="alert" class="rounded bg-red-500/10 p-2 text-sm text-red-400">{{ pwdError }}</div>
               <Button
                 type="submit"
                 label="Change Password"

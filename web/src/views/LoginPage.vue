@@ -68,6 +68,7 @@ function goToSetup() {
             class="w-full"
             placeholder="Enter username"
             autocomplete="username"
+            :aria-describedby="error ? 'login-error' : undefined"
           />
         </div>
         <div>
@@ -79,10 +80,11 @@ function goToSetup() {
             class="w-full"
             :placeholder="`Password (min ${MIN_PASSWORD_LENGTH} chars)`"
             autocomplete="current-password"
+            :aria-describedby="error ? 'login-error' : undefined"
           />
         </div>
 
-        <div v-if="error" role="alert" class="rounded bg-red-500/10 p-3 text-sm text-red-400">
+        <div v-if="error" id="login-error" role="alert" class="rounded bg-red-500/10 p-3 text-sm text-red-400">
           {{ error }}
         </div>
 
