@@ -116,7 +116,7 @@ src/ai_company/
 web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
   src/
     api/          # Axios client, endpoint modules, TypeScript types (mirrors backend Pydantic models)
-    components/   # Vue components organized by feature (agents/, approvals/, budget/, common/, dashboard/, layout/, messages/, org-chart/, tasks/)
+    components/   # Vue components organized by feature (common/, layout/)
     composables/  # Reusable composition functions (useAuth, usePolling, useOptimisticUpdate)
     router/       # Vue Router config with auth guards
     stores/       # Pinia stores (auth, agents, tasks, budget, messages, approvals, websocket, analytics, company, providers)
@@ -181,8 +181,10 @@ web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
 
 - **Commits**: `<type>: <description>` — types: feat, fix, refactor, docs, test, chore, perf, ci
 - **Enforced by**: commitizen (commit-msg hook)
+- **Signed commits**: required on `main` via branch protection — all commits must be GPG/SSH signed
 - **Branches**: `<type>/<slug>` from main
-- **Pre-commit hooks**: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-json, check-merge-conflict, check-added-large-files, no-commit-to-branch (main), ruff check+format, gitleaks
+- **Pre-commit hooks**: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-json, check-merge-conflict, check-added-large-files, no-commit-to-branch (main), ruff check+format, gitleaks, hadolint (Dockerfile linting)
+- **Pre-push hooks**: mypy type-check + pytest unit tests (fast gate before push, skipped in pre-commit.ci — dedicated CI jobs already run these)
 - **GitHub issue queries**: use `gh issue list` via Bash (not MCP tools) — MCP `list_issues` has unreliable field data
 - **PR issue references**: preserve existing `Closes #NNN` references — never remove unless explicitly asked
 
@@ -202,7 +204,7 @@ web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
 
 ## CI
 
-- **Jobs**: lint (ruff) + type-check (mypy src/ tests/) + test (pytest + coverage) run in parallel → ci-pass (gate)
+- **Jobs**: lint (ruff) + type-check (mypy) + test (pytest + coverage) + python-audit (pip-audit) + dockerfile-lint (hadolint) + dashboard-lint/type-check/test/build/audit (npm) run in parallel → ci-pass (gate)
 - **Pages**: `.github/workflows/pages.yml` — exports OpenAPI schema (`scripts/export_openapi.py`), builds Astro landing + Zensical docs, merges, deploys to GitHub Pages on push to main. Triggers on `docs/**`, `site/**`, `mkdocs.yml`, `pyproject.toml`, `uv.lock`, `src/ai_company/**`, `scripts/**`, workflow file changes, and `workflow_dispatch`.
 - **PR Preview**: `.github/workflows/pages-preview.yml`
   - Builds site on PRs (same path triggers as Pages) and on `workflow_dispatch` (with `pr_number` input, for Dependabot PRs that can't trigger `pull_request` with secrets)
@@ -218,16 +220,22 @@ web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
 - **Docker**: `.github/workflows/docker.yml` — builds backend + web images, pushes to GHCR, signs with cosign. Scans: Trivy (CRITICAL = hard fail, HIGH = warn-only) + Grype (critical cutoff). CVE triage via `.github/.trivyignore.yaml` and `.github/.grype.yaml`. Images only pushed after scans pass. Triggers on push to main and version tags (`v*`).
 - **Matrix**: Python 3.14
 - **Dependabot**: daily uv + github-actions + docker updates, grouped minor/patch, no auto-merge. Use `/review-dep-pr` to review Dependabot PRs before merging
+- **Python audit**: `.github/workflows/python-audit.yml` — weekly pip-audit scan for Python dependency vulnerabilities (also runs per-PR via `python-audit` job in ci.yml)
+- **Dockerfile lint**: hadolint lints all 3 Dockerfiles (backend, web, sandbox) in CI via `dockerfile-lint` job + hadolint-docker pre-commit hook locally
+- **Dashboard audit**: npm audit (critical + high) runs per-PR via `dashboard-audit` job in ci.yml
 - **Secret scanning**: gitleaks workflow on push/PR + weekly schedule
 - **Dependency review**: license allow-list (permissive only), PR comment summaries
 - **Coverage**: Codecov integration — coverage upload via `codecov-action` + test results analytics via `test-results-action` (both best-effort, CI not gated on Codecov availability)
 - **Workflow security**: `.github/workflows/zizmor.yml` — zizmor static analysis of GitHub Actions workflows on push to main and PRs (triggers only when workflow files change), SARIF upload to Security tab on push events only (fork PRs lack `security-events: write`)
+- **OSSF Scorecard**: `.github/workflows/scorecard.yml` — supply chain maturity scoring on push to main + weekly schedule. SARIF upload to Security tab. Contributes to OpenSSF ecosystem data via `publish_results: true`.
+- **DAST**: `.github/workflows/dast.yml` — ZAP API scan against the backend OpenAPI spec on push to main + weekly schedule. Builds backend image locally, starts container, runs ZAP. Results available as workflow artifacts (no SARIF — action v0.10.0 lacks native SARIF output). Not on PRs (too slow).
+- **Socket.dev**: GitHub App — supply chain attack detection on PRs (typosquatting, malware, suspicious ownership changes, obfuscated code). No config file needed, auto-comments on PRs.
 - **Release**: `.github/workflows/release.yml` — Release Please (Google) auto-creates a release PR on every push to main. Merging the release PR creates a git tag (`vX.Y.Z`) + GitHub Release with changelog. Tag push triggers the Docker workflow to build version-tagged images. Uses `RELEASE_PLEASE_TOKEN` secret (PAT/GitHub App token) so tag creation triggers downstream workflows (GITHUB_TOKEN cannot). Config in `.github/release-please-config.json` and `.github/.release-please-manifest.json`.
 
 ## Dependencies
 
 - **Pinned**: all versions use `==` in `pyproject.toml`
-- **Groups**: `test` (pytest + plugins), `dev` (includes test + ruff, mypy, pre-commit, commitizen)
+- **Groups**: `test` (pytest + plugins), `dev` (includes test + ruff, mypy, pre-commit, commitizen, pip-audit)
 - **Required**: `mem0ai` (Mem0 memory backend — the default and currently only backend)
 - **Install**: `uv sync` installs everything (dev group is default)
 - **Web dashboard**: Node.js 20+, dependencies in `web/package.json` (Vue 3, PrimeVue, Tailwind CSS, Pinia, VueFlow, ECharts, Axios, vue-draggable-plus, Vitest, ESLint, vue-tsc)

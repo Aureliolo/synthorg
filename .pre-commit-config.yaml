@@ -3,9 +3,9 @@ ci:
   autofix_prs: true
   autofix_commit_msg: "style: auto-fix pre-commit hooks"
   autoupdate_commit_msg: "chore: update pre-commit hooks"
-  skip: [commitizen, gitleaks]
+  skip: [commitizen, gitleaks, hadolint-docker, mypy, pytest-unit]
 
-default_install_hook_types: [pre-commit, commit-msg]
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -40,3 +40,24 @@ repos:
     hooks:
       - id: commitizen
         stages: [commit-msg]
+
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy type-check
+        entry: uv run mypy src/ tests/
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: pytest-unit
+        name: pytest unit tests
+        entry: uv run pytest tests/ -m unit -n auto -q
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

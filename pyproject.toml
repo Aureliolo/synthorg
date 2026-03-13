@@ -58,6 +58,7 @@ dev = [
     "commitizen==4.13.9",
     "mypy==1.19.1",
     "pre-commit==4.5.1",
+    "pip-audit==2.9.0",
     "pre-commit-uv==4.2.1",
     "ruff==0.15.5",
     "types-pyyaml==6.0.12.20250915",
