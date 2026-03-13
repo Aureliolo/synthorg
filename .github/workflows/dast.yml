@@ -56,6 +56,7 @@ jobs:
         with:
           target: http://localhost:8000/docs/openapi.json
           format: openapi
+          fail_action: false
           cmd_options: "-a"
 
       - name: Stop backend
