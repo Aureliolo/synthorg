@@ -86,18 +86,90 @@ def parse_mem0_datetime(raw: str | None) -> AwareDatetime | None:
     return dt
 
 
-def normalize_relevance_score(score: float | None) -> float | None:
-    """Clamp a relevance score to [0.0, 1.0].
+def normalize_relevance_score(score: Any) -> float | None:
+    """Coerce and clamp a relevance score to [0.0, 1.0].
 
     Args:
-        score: Raw score from Mem0 (may exceed bounds).
+        score: Raw score from Mem0 (may be ``None``, numeric,
+            or a string representation of a number).
 
     Returns:
-        Clamped score, or ``None`` if input is ``None``.
+        Clamped score, or ``None`` if input is ``None`` or
+        cannot be converted to a float.
     """
     if score is None:
         return None
-    return max(0.0, min(1.0, score))
+    try:
+        numeric = float(score)
+    except ValueError, TypeError:
+        logger.warning(
+            MEMORY_MODEL_INVALID,
+            field="score",
+            raw_value=score,
+            reason="non-numeric relevance score, returning None",
+        )
+        return None
+    return max(0.0, min(1.0, numeric))
+
+
+def _coerce_confidence(raw_metadata: dict[str, Any]) -> float:
+    """Extract and clamp confidence from Mem0 metadata.
+
+    Returns a float in [0.0, 1.0], defaulting to 1.0 on failure.
+    """
+    raw = raw_metadata.get(f"{_PREFIX}confidence", 1.0)
+    try:
+        value = float(raw)
+    except ValueError, TypeError:
+        logger.warning(
+            MEMORY_MODEL_INVALID,
+            field="confidence",
+            raw_value=raw,
+            reason="non-numeric confidence, defaulting to 1.0",
+        )
+        return 1.0
+    return max(0.0, min(1.0, value))
+
+
+def _coerce_source(raw_metadata: dict[str, Any]) -> str | None:
+    """Extract and sanitize the source field from Mem0 metadata.
+
+    Returns ``None`` if the value is missing, non-string, or blank.
+    """
+    raw = raw_metadata.get(f"{_PREFIX}source")
+    if raw is None:
+        return None
+    coerced = str(raw).strip()
+    if not coerced:
+        logger.debug(
+            MEMORY_MODEL_INVALID,
+            field="source",
+            raw_value=raw,
+            reason="blank source after coercion, returning None",
+        )
+        return None
+    return coerced
+
+
+def _normalize_tags(
+    raw_metadata: dict[str, Any],
+) -> tuple[NotBlankStr, ...]:
+    """Extract and normalize tags from Mem0 metadata.
+
+    Handles string, list, tuple, and unexpected types gracefully.
+    """
+    raw_tags = raw_metadata.get(f"{_PREFIX}tags", ())
+    if isinstance(raw_tags, str):
+        raw_tags = [raw_tags]
+    elif not isinstance(raw_tags, (list, tuple)):
+        logger.debug(
+            MEMORY_MODEL_INVALID,
+            field="tags",
+            raw_value=type(raw_tags).__name__,
+            reason="unexpected tags type, ignoring",
+        )
+        raw_tags = ()
+    return tuple(NotBlankStr(str(t)) for t in raw_tags if t and str(t).strip())
 
 
 def parse_mem0_metadata(
@@ -139,32 +211,9 @@ def parse_mem0_metadata(
     else:
         category = MemoryCategory.WORKING
 
-    raw_confidence = raw_metadata.get(f"{_PREFIX}confidence", 1.0)
-    try:
-        confidence = float(raw_confidence)
-    except ValueError, TypeError:
-        logger.warning(
-            MEMORY_MODEL_INVALID,
-            field="confidence",
-            raw_value=raw_confidence,
-            reason="non-numeric confidence, defaulting to 1.0",
-        )
-        confidence = 1.0
-    confidence = max(0.0, min(1.0, confidence))
-    source = raw_metadata.get(f"{_PREFIX}source")
-    raw_tags = raw_metadata.get(f"{_PREFIX}tags", ())
-    if isinstance(raw_tags, str):
-        raw_tags = [raw_tags]
-    elif not isinstance(raw_tags, (list, tuple)):
-        logger.debug(
-            MEMORY_MODEL_INVALID,
-            field="tags",
-            raw_value=type(raw_tags).__name__,
-            reason="unexpected tags type, ignoring",
-        )
-        raw_tags = ()
-    tags = tuple(NotBlankStr(str(t)) for t in raw_tags if t and str(t).strip())
-
+    confidence = _coerce_confidence(raw_metadata)
+    source = _coerce_source(raw_metadata)
+    tags = _normalize_tags(raw_metadata)
     expires_at = parse_mem0_datetime(
         raw_metadata.get(f"{_PREFIX}expires_at"),
     )
@@ -337,11 +386,11 @@ def apply_post_filters(
 # ── Adapter helpers ──────────────────────────────────────────────────
 
 
-def validate_add_result(result: dict[str, Any], *, context: str) -> NotBlankStr:
+def validate_add_result(result: Any, *, context: str) -> NotBlankStr:
     """Extract and validate the memory ID from a Mem0 ``add`` result.
 
     Args:
-        result: Raw result dict from ``Memory.add()``.
+        result: Raw result from ``Memory.add()`` (expected dict).
         context: Human-readable context for error messages
             (e.g. ``"store"`` or ``"shared publish"``).
 
@@ -351,12 +400,24 @@ def validate_add_result(result: dict[str, Any], *, context: str) -> NotBlankStr:
     Raises:
         MemoryStoreError: If the result is missing or malformed.
     """
+    if not isinstance(result, dict):
+        msg = (
+            f"Mem0 add returned unexpected type for {context}: {type(result).__name__}"
+        )
+        logger.warning(MEMORY_ENTRY_STORE_FAILED, context=context, error=msg)
+        raise MemoryStoreError(msg)
     results_list = result.get("results")
     if not isinstance(results_list, list) or not results_list:
         msg = f"Mem0 add returned no results for {context}"
         logger.warning(MEMORY_ENTRY_STORE_FAILED, context=context, error=msg)
         raise MemoryStoreError(msg)
     first = results_list[0]
+    if not isinstance(first, dict):
+        msg = (
+            f"Mem0 add result item is not a dict for {context}: {type(first).__name__}"
+        )
+        logger.warning(MEMORY_ENTRY_STORE_FAILED, context=context, error=msg)
+        raise MemoryStoreError(msg)
     raw_id = first.get("id")
     if raw_id is None or not str(raw_id).strip():
         msg = (
@@ -397,12 +458,13 @@ def extract_publisher(raw: dict[str, Any]) -> str | None:
     """Extract the publisher agent ID from a shared memory dict.
 
     Returns ``None`` if the publisher key is missing, non-dict
-    metadata, or the value is blank after stripping.
+    metadata, or the value is blank after coercion and stripping.
     """
     metadata = raw.get("metadata", {})
     if not metadata or not isinstance(metadata, dict):
         return None
-    value: str | None = metadata.get(_PUBLISHER_KEY)
-    if value is not None and not str(value).strip():
+    value = metadata.get(_PUBLISHER_KEY)
+    if value is None:
         return None
-    return value
+    coerced = str(value).strip()
+    return coerced or None

@@ -91,10 +91,20 @@ def create_memory_backend(
                 error=msg,
             )
             raise MemoryConfigError(msg) from exc
-        backend = Mem0MemoryBackend(
-            mem0_config=mem0_config,
-            max_memories_per_agent=config.options.max_memories_per_agent,
-        )
+        try:
+            backend = Mem0MemoryBackend(
+                mem0_config=mem0_config,
+                max_memories_per_agent=config.options.max_memories_per_agent,
+            )
+        except Exception as exc:
+            msg = f"Failed to create Mem0 backend: {exc}"
+            logger.warning(
+                MEMORY_BACKEND_CONFIG_INVALID,
+                backend="mem0",
+                reason="backend_init_failed",
+                error=msg,
+            )
+            raise MemoryConfigError(msg) from exc
         logger.info(
             MEMORY_BACKEND_CREATED,
             backend="mem0",

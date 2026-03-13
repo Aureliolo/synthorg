@@ -168,6 +168,15 @@ class TestLifecycle:
         assert backend.is_connected is False
         assert backend._client is None
 
+    async def test_disconnect_does_not_call_reset(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """disconnect() must never call reset() — that wipes all data."""
+        await backend.disconnect()
+        mock_client.reset.assert_not_called()
+
     async def test_disconnect_when_not_connected(
         self,
         mem0_config: Mem0BackendConfig,

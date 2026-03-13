@@ -309,9 +309,10 @@ class TestGet:
         mock_client: MagicMock,
     ) -> None:
         """get() returns None when user_id doesn't match agent_id."""
-        result = mem0_get_result("mem-001")
-        result["user_id"] = "other-agent"
-        mock_client.get.return_value = result
+        mock_client.get.return_value = mem0_get_result(
+            "mem-001",
+            user_id="other-agent",
+        )
 
         entry = await backend.get("test-agent-001", "mem-001")
         assert entry is None
@@ -384,9 +385,10 @@ class TestDelete:
         mock_client: MagicMock,
     ) -> None:
         """delete() rejects entries belonging to the shared namespace."""
-        result = mem0_get_result("mem-001")
-        result["user_id"] = _SHARED_NAMESPACE
-        mock_client.get.return_value = result
+        mock_client.get.return_value = mem0_get_result(
+            "mem-001",
+            user_id=_SHARED_NAMESPACE,
+        )
 
         with pytest.raises(MemoryStoreError, match="shared namespace"):
             await backend.delete("test-agent-001", "mem-001")
@@ -397,9 +399,10 @@ class TestDelete:
         mock_client: MagicMock,
     ) -> None:
         """delete() rejects when user_id doesn't match agent_id."""
-        result = mem0_get_result("mem-001")
-        result["user_id"] = "other-agent"
-        mock_client.get.return_value = result
+        mock_client.get.return_value = mem0_get_result(
+            "mem-001",
+            user_id="other-agent",
+        )
 
         with pytest.raises(MemoryStoreError, match="cannot delete"):
             await backend.delete("test-agent-001", "mem-001")

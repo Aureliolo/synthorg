@@ -9,6 +9,12 @@ to avoid blocking the event loop.
 
 All methods re-raise ``builtins.MemoryError`` and ``RecursionError``
 immediately without wrapping, to avoid masking system-level failures.
+
+Note: This file exceeds the 800-line guideline because the single
+``Mem0MemoryBackend`` class implements three protocols cohesively
+(``MemoryBackend``, ``MemoryCapabilities``, ``SharedKnowledgeStore``).
+Splitting would fragment the unified client lifecycle and connection
+guard logic.
 """
 
 import asyncio
@@ -179,19 +185,10 @@ class Mem0MemoryBackend:
     async def disconnect(self) -> None:
         """Close the Mem0 connection.
 
-        Attempts to close the underlying client resources before
-        releasing the reference.  Safe to call even if not connected.
+        Releases the client reference so the garbage collector can
+        reclaim resources.  Safe to call even if not connected.
         """
         logger.info(MEMORY_BACKEND_DISCONNECTING, backend="mem0")
-        if self._client is not None:
-            try:
-                await asyncio.to_thread(self._client.reset)
-            except Exception:
-                logger.debug(
-                    MEMORY_BACKEND_DISCONNECTING,
-                    backend="mem0",
-                    note="reset failed during disconnect, ignoring",
-                )
         self._client = None
         self._connected = False
         logger.info(MEMORY_BACKEND_DISCONNECTED, backend="mem0")

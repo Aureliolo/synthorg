@@ -205,5 +205,5 @@ src/ai_company/
 
 - **Pinned**: all versions use `==` in `pyproject.toml`
 - **Groups**: `test` (pytest + plugins), `dev` (includes test + ruff, mypy, pre-commit, commitizen)
-- **Optional**: `mem0ai` (Mem0 memory backend — only needed when `backend: "mem0"` is configured)
+- **Required**: `mem0ai` (Mem0 memory backend — the default and currently only backend)
 - **Install**: `uv sync` installs everything (dev group is default)
