@@ -35,7 +35,7 @@ This project is designed to handle LLM API keys, sandboxed code execution, and a
 ### Application-Level Security
 
 - **Ruff bandit rules** (S category) check for common security issues in Python code
-- **CodeQL** static analysis — currently disabled pending repository rename cache reset (see [known issue](https://github.com/Aureliolo/synthorg/pull/290))
+- **CodeQL** performs static analysis to find potential vulnerabilities
 - **Secret scanning** and **push protection** enabled on the repository
 - **Gitleaks** pre-commit hook prevents committing secrets locally + weekly CI workflow
 
