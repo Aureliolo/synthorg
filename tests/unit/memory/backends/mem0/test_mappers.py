@@ -457,6 +457,14 @@ class TestExtractCategory:
         raw: dict[str, Any] = {"metadata": None}
         assert extract_category(raw) == MemoryCategory.WORKING
 
+    def test_list_metadata_defaults(self) -> None:
+        raw: dict[str, Any] = {"metadata": ["not", "a", "dict"]}
+        assert extract_category(raw) == MemoryCategory.WORKING
+
+    def test_string_metadata_defaults(self) -> None:
+        raw: dict[str, Any] = {"metadata": "oops"}
+        assert extract_category(raw) == MemoryCategory.WORKING
+
     def test_invalid_category_defaults(self) -> None:
         raw = {"metadata": {f"{_PREFIX}category": "nonexistent"}}
         assert extract_category(raw) == MemoryCategory.WORKING
@@ -488,4 +496,12 @@ class TestExtractPublisher:
 
     def test_no_publisher_key(self) -> None:
         raw = {"metadata": {"_synthorg_category": "semantic"}}
+        assert extract_publisher(raw) is None
+
+    def test_list_metadata_returns_none(self) -> None:
+        raw: dict[str, Any] = {"metadata": ["not", "a", "dict"]}
+        assert extract_publisher(raw) is None
+
+    def test_string_metadata_returns_none(self) -> None:
+        raw: dict[str, Any] = {"metadata": "oops"}
         assert extract_publisher(raw) is None

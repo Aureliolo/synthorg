@@ -111,7 +111,7 @@ def parse_mem0_metadata(
     Returns:
         Tuple of (category, metadata, expires_at).
     """
-    if not raw_metadata:
+    if not raw_metadata or not isinstance(raw_metadata, dict):
         return (
             MemoryCategory.WORKING,
             MemoryMetadata(),
@@ -204,6 +204,12 @@ def mem0_result_to_entry(
 
     created_at = parse_mem0_datetime(raw.get("created_at"))
     if created_at is None:
+        logger.debug(
+            MEMORY_MODEL_INVALID,
+            field="created_at",
+            memory_id=str(raw.get("id", "?")),
+            reason="missing or unparseable created_at, defaulting to now()",
+        )
         created_at = datetime.now(UTC)
     updated_at = parse_mem0_datetime(raw.get("updated_at"))
 
@@ -353,7 +359,7 @@ def extract_category(raw: dict[str, Any]) -> MemoryCategory:
     or unrecognised.
     """
     metadata = raw.get("metadata", {})
-    if not metadata:
+    if not metadata or not isinstance(metadata, dict):
         return MemoryCategory.WORKING
     cat_str = metadata.get(f"{_PREFIX}category")
     if cat_str:
@@ -374,7 +380,7 @@ def extract_category(raw: dict[str, Any]) -> MemoryCategory:
 def extract_publisher(raw: dict[str, Any]) -> str | None:
     """Extract the publisher agent ID from a shared memory dict."""
     metadata = raw.get("metadata", {})
-    if not metadata:
+    if not metadata or not isinstance(metadata, dict):
         return None
     value: str | None = metadata.get(_PUBLISHER_KEY)
     return value

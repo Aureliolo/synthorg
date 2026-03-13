@@ -158,6 +158,7 @@ class TestMem0RetrievalPipeline:
         # Content should include both memories (they pass min_relevance)
         combined = " ".join(m.content for m in messages if m.content)
         assert "concise responses" in combined
+        assert "code review" in combined
 
     async def test_shared_knowledge_flow(
         self,
