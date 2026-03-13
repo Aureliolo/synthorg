@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as providersApi from '@/api/endpoints/providers'
+import { getErrorMessage } from '@/utils/errors'
 import type { ProviderConfig } from '@/api/types'
 
 export const useProviderStore = defineStore('providers', () => {
@@ -14,7 +15,7 @@ export const useProviderStore = defineStore('providers', () => {
     try {
       providers.value = await providersApi.listProviders()
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to load providers'
+      error.value = getErrorMessage(err)
     } finally {
       loading.value = false
     }

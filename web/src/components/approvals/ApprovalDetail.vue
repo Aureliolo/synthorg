@@ -50,9 +50,9 @@ defineProps<{
       </div>
     </div>
 
-    <div v-if="approval.decision_comment" class="rounded-lg border border-slate-800 p-4">
+    <div v-if="approval.decision_reason" class="rounded-lg border border-slate-800 p-4">
       <p class="text-xs text-slate-500">Decision Comment</p>
-      <p class="mt-1 text-sm text-slate-300">{{ approval.decision_comment }}</p>
+      <p class="mt-1 text-sm text-slate-300">{{ approval.decision_reason }}</p>
     </div>
 
     <div v-if="Object.keys(approval.metadata).length > 0" class="rounded-lg border border-slate-800 p-4">

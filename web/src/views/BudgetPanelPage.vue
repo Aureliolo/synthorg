@@ -33,7 +33,7 @@ onUnmounted(() => {
   <AppShell>
     <PageHeader title="Budget" subtitle="Monitor spending and cost allocation" />
 
-    <ErrorBoundary :error="budgetStore.error" @retry="budgetStore.fetchRecords()">
+    <ErrorBoundary :error="budgetStore.error" @retry="budgetStore.fetchRecords({ limit: 200 })">
       <LoadingSkeleton v-if="budgetStore.loading && budgetStore.records.length === 0" :lines="6" />
       <template v-else>
         <div class="space-y-6">

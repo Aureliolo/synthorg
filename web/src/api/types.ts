@@ -84,7 +84,7 @@ export type TaskStructure = 'sequential' | 'parallel' | 'mixed'
 
 export type CoordinationTopology = 'sas' | 'centralized' | 'decentralized' | 'context_dependent' | 'auto'
 
-export type ToolAccessLevel = 'standard' | 'elevated' | 'admin'
+export type ToolAccessLevel = 'sandboxed' | 'restricted' | 'standard' | 'elevated' | 'custom'
 
 export type MemoryLevel = 'persistent' | 'project' | 'session' | 'none'
 
@@ -101,12 +101,10 @@ export interface PaginationMeta {
   limit: number
 }
 
-export interface PaginatedResponse<T> {
-  data: T[]
-  error: string | null
-  success: boolean
-  pagination: PaginationMeta
-}
+/** Discriminated paginated response envelope. */
+export type PaginatedResponse<T> =
+  | { data: T[]; error: null; success: true; pagination: PaginationMeta }
+  | { data: T[]; error: string; success: false; pagination: PaginationMeta }
 
 // ── Auth ─────────────────────────────────────────────────────
 
@@ -167,16 +165,16 @@ export interface Task {
   acceptance_criteria: AcceptanceCriterion[]
   estimated_complexity: Complexity
   budget_limit: number
-  cost_usd: number
+  cost_usd?: number
   deadline: string | null
   max_retries: number
   parent_task_id: string | null
   delegation_chain: string[]
   task_structure: TaskStructure | null
   coordination_topology: CoordinationTopology
-  version: number
-  created_at: string
-  updated_at: string
+  version?: number
+  created_at?: string
+  updated_at?: string
 }
 
 export interface CreateTaskRequest {
@@ -232,7 +230,7 @@ export interface ApprovalItem {
   task_id: string | null
   metadata: Record<string, string>
   decided_by: string | null
-  decision_comment: string | null
+  decision_reason: string | null
   created_at: string
   decided_at: string | null
   expires_at: string | null
@@ -310,13 +308,14 @@ export interface ToolPermissions {
 
 /**
  * Agent identity as returned by the API.
- * Field names match backend `AgentIdentity` model exactly.
+ * Mirrors backend AgentIdentity with serialization adaptations
+ * (UUIDs as strings, dates as ISO strings, authority omitted from listing response).
  */
 export interface AgentConfig {
   id: string
   name: string
   role: string
-  department: DepartmentName
+  department: string
   level: SeniorityLevel
   status: AgentStatus
   personality: PersonalityConfig
@@ -506,6 +505,10 @@ export interface WsAckMessage {
 export interface WsErrorMessage {
   error: string
 }
+
+// ── Event handler type ──────────────────────────────────────
+
+export type WsEventHandler = (event: WsEvent) => void
 
 // ── Pagination helpers ───────────────────────────────────────
 

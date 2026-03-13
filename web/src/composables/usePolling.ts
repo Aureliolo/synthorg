@@ -9,6 +9,7 @@ export function usePolling(fn: () => Promise<void>, intervalMs: number) {
   let timer: ReturnType<typeof setInterval> | null = null
 
   const safeFn = async () => {
+    if (!active.value) return
     try {
       await fn()
     } catch (err) {
@@ -19,7 +20,7 @@ export function usePolling(fn: () => Promise<void>, intervalMs: number) {
   function start() {
     if (active.value) return
     active.value = true
-    safeFn() // initial call with error handling
+    safeFn() // fetch immediately on start, don't wait for first interval
     timer = setInterval(safeFn, intervalMs)
   }
 

@@ -17,7 +17,7 @@ docker compose -f docker/compose.yml up -d
 
 The web dashboard is at [http://localhost:3000](http://localhost:3000).
 
-Container configuration (ports, storage paths, log level) is defined in `docker/.env`. Organization setup and templates will be configurable through the dashboard once available.
+Container configuration (ports, storage paths, log level) is defined in `docker/.env`. Organization setup is done via the dashboard. Template configuration through the UI is planned for a future release.
 
 !!! info "Active Development"
     SynthOrg is under active development. The web dashboard is available for monitoring and managing the organization. Templates and some features described here may evolve. Check the [GitHub repository](https://github.com/Aureliolo/synthorg) for current status.

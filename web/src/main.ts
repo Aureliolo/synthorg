@@ -19,12 +19,16 @@ app.use(ConfirmationService)
 
 // Global error handler for unhandled errors in components
 app.config.errorHandler = (err, _instance, info) => {
-  console.error('Unhandled Vue error:', err, 'Info:', info)
+  if (import.meta.env.DEV) {
+    console.error('Unhandled Vue error:', err, 'Info:', info)
+  }
 }
 
 // Catch unhandled promise rejections
 window.addEventListener('unhandledrejection', (event) => {
-  console.error('Unhandled promise rejection:', event.reason)
+  if (import.meta.env.DEV) {
+    console.error('Unhandled promise rejection:', event.reason)
+  }
 })
 
 app.mount('#app')

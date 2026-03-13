@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as agentsApi from '@/api/endpoints/agents'
+import { getErrorMessage } from '@/utils/errors'
 import type { AgentConfig, WsEvent } from '@/api/types'
 
 export const useAgentStore = defineStore('agents', () => {
@@ -17,7 +18,7 @@ export const useAgentStore = defineStore('agents', () => {
       agents.value = result.data
       total.value = result.total
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to load agents'
+      error.value = getErrorMessage(err)
     } finally {
       loading.value = false
     }
@@ -27,7 +28,7 @@ export const useAgentStore = defineStore('agents', () => {
     try {
       return await agentsApi.getAgent(name)
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to load agent'
+      error.value = getErrorMessage(err)
       return null
     }
   }

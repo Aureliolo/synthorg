@@ -14,8 +14,11 @@ defineEmits<{
 
 <template>
   <div
-    class="cursor-pointer rounded-lg border border-slate-800 bg-slate-900 p-4 transition-colors hover:border-slate-700"
+    role="button"
+    tabindex="0"
+    class="cursor-pointer rounded-lg border border-slate-800 bg-slate-900 p-4 transition-colors hover:border-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
     @click="$emit('click', approval)"
+    @keydown.enter="$emit('click', approval)"
   >
     <div class="mb-2 flex items-start justify-between">
       <h4 class="text-sm font-medium text-slate-200">{{ approval.title }}</h4>

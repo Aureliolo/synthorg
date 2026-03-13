@@ -1,7 +1,10 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as budgetApi from '@/api/endpoints/budget'
+import { getErrorMessage } from '@/utils/errors'
 import type { BudgetConfig, CostRecord, AgentSpending, WsEvent } from '@/api/types'
+
+const MAX_WS_RECORDS = 500
 
 export const useBudgetStore = defineStore('budget', () => {
   const config = ref<BudgetConfig | null>(null)
@@ -11,10 +14,13 @@ export const useBudgetStore = defineStore('budget', () => {
   const error = ref<string | null>(null)
 
   async function fetchConfig() {
+    loading.value = true
     try {
       config.value = await budgetApi.getBudgetConfig()
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to load budget config'
+      error.value = getErrorMessage(err)
+    } finally {
+      loading.value = false
     }
   }
 
@@ -26,7 +32,7 @@ export const useBudgetStore = defineStore('budget', () => {
       records.value = result.data
       totalRecords.value = result.total
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to load cost records'
+      error.value = getErrorMessage(err)
     } finally {
       loading.value = false
     }
@@ -36,7 +42,7 @@ export const useBudgetStore = defineStore('budget', () => {
     try {
       return await budgetApi.getAgentSpending(agentId)
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to load agent spending'
+      error.value = getErrorMessage(err)
       return null
     }
   }
@@ -45,7 +51,7 @@ export const useBudgetStore = defineStore('budget', () => {
     if (event.event_type === 'budget.record_added') {
       const record = event.payload as unknown as CostRecord
       if (record.agent_id) {
-        records.value = [record, ...records.value]
+        records.value = [record, ...records.value].slice(0, MAX_WS_RECORDS)
         totalRecords.value++
       }
     }

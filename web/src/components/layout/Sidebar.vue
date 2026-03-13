@@ -15,7 +15,8 @@ const route = useRoute()
 
 function isActive(to: string): boolean {
   if (to === '/') return route.path === '/'
-  return route.path.startsWith(to)
+  // Exact match or path segment match to avoid /agent matching /agents
+  return route.path === to || route.path.startsWith(to + '/')
 }
 
 function navigate(to: string) {

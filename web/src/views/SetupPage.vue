@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
@@ -17,19 +17,18 @@ const error = ref<string | null>(null)
 const attempts = ref(0)
 const lockedUntil = ref<number | null>(null)
 
-function isLockedOut(): boolean {
-  if (lockedUntil.value && Date.now() < lockedUntil.value) {
-    return true
-  }
+const locked = computed(() => !!(lockedUntil.value && Date.now() < lockedUntil.value))
+
+function checkAndClearLockout(): boolean {
   if (lockedUntil.value && Date.now() >= lockedUntil.value) {
     lockedUntil.value = null
     attempts.value = 0
   }
-  return false
+  return locked.value
 }
 
 async function handleSetup() {
-  if (isLockedOut()) {
+  if (checkAndClearLockout()) {
     error.value = 'Too many failed attempts. Please wait before trying again.'
     return
   }
@@ -113,7 +112,7 @@ async function handleSetup() {
           icon="pi pi-check"
           class="w-full"
           :loading="auth.loading"
-          :disabled="!username || !password || !confirmPassword || isLockedOut()"
+          :disabled="!username || !password || !confirmPassword || locked"
         />
       </form>
 

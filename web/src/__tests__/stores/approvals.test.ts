@@ -23,7 +23,7 @@ const mockApproval: ApprovalItem = {
   task_id: null,
   metadata: {},
   decided_by: null,
-  decision_comment: null,
+  decision_reason: null,
   created_at: '2026-03-12T10:00:00Z',
   decided_at: null,
   expires_at: '2026-03-12T11:00:00Z',

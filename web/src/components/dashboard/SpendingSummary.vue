@@ -10,9 +10,12 @@ const props = defineProps<{
 }>()
 
 const chartOption = computed(() => {
-  // Group records by hour for the spending chart
+  // Sort records by timestamp descending, then group by hour for the spending chart
+  const sorted = [...props.records].sort((a, b) =>
+    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+  )
   const hourlyData = new Map<string, number>()
-  for (const record of props.records) {
+  for (const record of sorted) {
     const date = new Date(record.timestamp)
     const hourKey = `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:00`
     hourlyData.set(hourKey, (hourlyData.get(hourKey) ?? 0) + record.cost_usd)

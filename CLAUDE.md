@@ -46,12 +46,12 @@ uv run zensical serve                      # local docs preview (http://127.0.0.
 ### Web Dashboard
 
 ```bash
-cd web && npm install                      # install frontend deps
-cd web && npm run dev                      # dev server (http://localhost:5173)
-cd web && npm run build                    # production build
-cd web && npm run lint                     # ESLint
-cd web && npm run type-check               # vue-tsc type checking
-cd web && npm run test                     # Vitest unit tests
+npm --prefix web install                   # install frontend deps
+npm --prefix web run dev                   # dev server (http://localhost:5173)
+npm --prefix web run build                 # production build
+npm --prefix web run lint                  # ESLint
+npm --prefix web run type-check            # vue-tsc type checking
+npm --prefix web run test                  # Vitest unit tests
 ```
 
 ## Documentation
@@ -116,13 +116,14 @@ src/ai_company/
 web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
   src/
     api/          # Axios client, endpoint modules, TypeScript types (mirrors backend Pydantic models)
-    components/   # Vue components organized by feature (agents/, budget/, tasks/, org-chart/, common/)
-    composables/  # Reusable composition functions (useAuth, useWebSocket, usePolling, useOptimisticUpdate)
+    components/   # Vue components organized by feature (agents/, approvals/, budget/, common/, dashboard/, layout/, messages/, org-chart/, tasks/)
+    composables/  # Reusable composition functions (useAuth, usePolling, useOptimisticUpdate)
     router/       # Vue Router config with auth guards
-    stores/       # Pinia stores (auth, agents, tasks, budget, messages, approvals, websocket)
+    stores/       # Pinia stores (auth, agents, tasks, budget, messages, approvals, websocket, analytics, company, providers)
+    styles/       # Global CSS and PrimeVue theme configuration
     utils/        # Constants, formatters, error helpers
     views/        # Page-level components (Dashboard, TaskBoard, AgentProfiles, BudgetPanel, etc.)
-  docker/         # nginx config for SPA routing + API/WebSocket proxy
+    __tests__/    # Vitest unit tests (organized by feature)
 ```
 
 ## Shell Usage
@@ -228,4 +229,4 @@ web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
 - **Pinned**: all versions use `==` in `pyproject.toml`
 - **Groups**: `test` (pytest + plugins), `dev` (includes test + ruff, mypy, pre-commit, commitizen)
 - **Install**: `uv sync` installs everything (dev group is default)
-- **Web dashboard**: Node.js 20+, dependencies in `web/package.json` (Vue 3, PrimeVue, Tailwind CSS, Pinia, VueFlow, Axios, Vitest, ESLint, vue-tsc)
+- **Web dashboard**: Node.js 20+, dependencies in `web/package.json` (Vue 3, PrimeVue, Tailwind CSS, Pinia, VueFlow, ECharts, Axios, vue-draggable-plus, Vitest, ESLint, vue-tsc)

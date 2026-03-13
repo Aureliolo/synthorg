@@ -23,7 +23,7 @@ apiClient.interceptors.request.use((config) => {
   return config
 })
 
-// ── Response interceptor: unwrap envelope + error handling ───
+// ── Response interceptor: 401 redirect + error passthrough ──
 
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,

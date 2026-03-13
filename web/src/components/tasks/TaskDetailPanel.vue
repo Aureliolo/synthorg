@@ -69,7 +69,7 @@ function saveEdit() {
 
 function handleTransition(status: TaskStatus) {
   if (!props.task) return
-  emit('transition', props.task.id, status, props.task.version)
+  emit('transition', props.task.id, status, props.task.version ?? 0)
 }
 
 function handleCancel() {
@@ -142,7 +142,7 @@ function handleCancel() {
         </div>
         <div>
           <p class="text-xs text-slate-500">Cost</p>
-          <p class="text-sm text-slate-300">{{ formatCurrency(task.cost_usd) }}</p>
+          <p class="text-sm text-slate-300">{{ formatCurrency(task.cost_usd ?? 0) }}</p>
         </div>
         <div>
           <p class="text-xs text-slate-500">Created</p>

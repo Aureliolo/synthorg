@@ -71,6 +71,7 @@ function resetForm() {
 }
 
 function handleSubmit() {
+  if (!isValid.value) return
   const data: CreateTaskRequest = {
     title: title.value,
     description: description.value,

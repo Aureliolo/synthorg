@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as approvalsApi from '@/api/endpoints/approvals'
+import { getErrorMessage } from '@/utils/errors'
 import type { ApprovalItem, ApprovalFilters, ApproveRequest, RejectRequest, WsEvent } from '@/api/types'
 
 export const useApprovalStore = defineStore('approvals', () => {
@@ -19,7 +20,7 @@ export const useApprovalStore = defineStore('approvals', () => {
       approvals.value = result.data
       total.value = result.total
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to load approvals'
+      error.value = getErrorMessage(err)
     } finally {
       loading.value = false
     }
@@ -31,7 +32,7 @@ export const useApprovalStore = defineStore('approvals', () => {
       approvals.value = approvals.value.map((a) => (a.id === id ? updated : a))
       return updated
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to approve'
+      error.value = getErrorMessage(err)
       return null
     }
   }
@@ -42,7 +43,7 @@ export const useApprovalStore = defineStore('approvals', () => {
       approvals.value = approvals.value.map((a) => (a.id === id ? updated : a))
       return updated
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to reject'
+      error.value = getErrorMessage(err)
       return null
     }
   }

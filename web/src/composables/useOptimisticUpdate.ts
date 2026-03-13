@@ -4,8 +4,9 @@ import { getErrorMessage } from '@/utils/errors'
 /**
  * Perform an optimistic UI update with rollback on failure.
  *
- * @param applyOptimistic - Function to apply the optimistic state, returns rollback function.
- * @param serverAction - The actual server request.
+ * Returns an `execute(applyOptimistic, serverAction)` function where
+ * `applyOptimistic` applies the optimistic state and returns a rollback function,
+ * and `serverAction` is the actual server request.
  */
 export function useOptimisticUpdate() {
   const pending = ref(false)
@@ -17,14 +18,15 @@ export function useOptimisticUpdate() {
   ): Promise<T | null> {
     pending.value = true
     error.value = null
-    const rollback = applyOptimistic()
+    let rollback: (() => void) | null = null
 
     try {
+      rollback = applyOptimistic()
       const result = await serverAction()
       return result
     } catch (err) {
       try {
-        rollback()
+        rollback?.()
       } catch (rollbackErr) {
         console.error('Rollback failed:', rollbackErr)
       }

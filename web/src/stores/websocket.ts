@@ -1,11 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { WsChannel, WsEvent } from '@/api/types'
-import type { WsEventHandler } from '@/composables/useWebSocket'
+import type { WsChannel, WsEvent, WsEventHandler } from '@/api/types'
 import { WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY, WS_MAX_RECONNECT_ATTEMPTS } from '@/utils/constants'
 
 export const useWebSocketStore = defineStore('websocket', () => {
   const connected = ref(false)
+  const reconnectExhausted = ref(false)
   const subscribedChannels = ref<WsChannel[]>([])
 
   let socket: WebSocket | null = null
@@ -23,7 +23,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
   }
 
   function connect(token: string) {
-    if (socket?.readyState === WebSocket.OPEN) return
+    if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return
+    reconnectExhausted.value = false
 
     currentToken = token
     intentionalClose = false
@@ -59,7 +60,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
       }
 
       if (msg.error) {
-        console.error('WebSocket error:', msg.error)
+        console.error('WebSocket error:', String(msg.error).slice(0, 200))
         return
       }
 
@@ -67,7 +68,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
         try {
           dispatchEvent(msg as unknown as WsEvent)
         } catch (handlerErr) {
-          console.error('WebSocket event handler error:', handlerErr, 'Event:', msg)
+          console.error('WebSocket event handler error:', handlerErr, 'Event type:', String(msg.event_type))
         }
       }
     }
@@ -90,6 +91,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     if (reconnectTimer) clearTimeout(reconnectTimer)
     if (reconnectAttempts >= WS_MAX_RECONNECT_ATTEMPTS) {
       console.error('WebSocket: max reconnection attempts reached')
+      reconnectExhausted.value = true
       return
     }
     const delay = Math.min(
@@ -150,6 +152,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
 
   return {
     connected,
+    reconnectExhausted,
     subscribedChannels,
     connect,
     disconnect,

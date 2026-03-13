@@ -1,7 +1,10 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as messagesApi from '@/api/endpoints/messages'
+import { getErrorMessage } from '@/utils/errors'
 import type { Channel, Message, WsEvent } from '@/api/types'
+
+const MAX_WS_MESSAGES = 500
 
 export const useMessageStore = defineStore('messages', () => {
   const messages = ref<Message[]>([])
@@ -9,13 +12,19 @@ export const useMessageStore = defineStore('messages', () => {
   const total = ref(0)
   const activeChannel = ref<string | null>(null)
   const loading = ref(false)
+  const channelsLoading = ref(false)
   const error = ref<string | null>(null)
+  const channelsError = ref<string | null>(null)
 
   async function fetchChannels() {
+    channelsLoading.value = true
+    channelsError.value = null
     try {
       channels.value = await messagesApi.listChannels()
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to load channels'
+      channelsError.value = getErrorMessage(err)
+    } finally {
+      channelsLoading.value = false
     }
   }
 
@@ -28,7 +37,7 @@ export const useMessageStore = defineStore('messages', () => {
       messages.value = result.data
       total.value = result.total
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to load messages'
+      error.value = getErrorMessage(err)
     } finally {
       loading.value = false
     }
@@ -42,7 +51,7 @@ export const useMessageStore = defineStore('messages', () => {
     if (event.event_type === 'message.sent') {
       const message = event.payload as unknown as Message
       if (message.id) {
-        messages.value = [...messages.value, message]
+        messages.value = [...messages.value, message].slice(-MAX_WS_MESSAGES)
         total.value++
       }
     }
@@ -54,7 +63,9 @@ export const useMessageStore = defineStore('messages', () => {
     total,
     activeChannel,
     loading,
+    channelsLoading,
     error,
+    channelsError,
     fetchChannels,
     fetchMessages,
     setActiveChannel,

@@ -94,6 +94,7 @@ export const useAuthStore = defineStore('auth', () => {
         clearAuth()
       } else {
         console.error('Failed to fetch user profile:', err)
+        throw err
       }
     }
   }

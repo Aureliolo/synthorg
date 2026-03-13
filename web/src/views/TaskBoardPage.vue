@@ -67,7 +67,7 @@ async function handleTransition(taskId: string, targetStatus: TaskStatus, versio
     selectedTask.value = result
     toast.add({ severity: 'success', summary: 'Task transitioned', life: 3000 })
   } else {
-    toast.add({ severity: 'error', summary: getErrorMessage(taskStore.error), life: 5000 })
+    toast.add({ severity: 'error', summary: taskStore.error ?? 'Transition failed', life: 5000 })
   }
 }
 
@@ -102,17 +102,17 @@ async function handleCreate(data: CreateTaskRequest) {
 }
 
 async function handleTaskMoved(task: Task, targetStatus: string) {
-  await handleTransition(task.id, targetStatus as TaskStatus, task.version)
+  await handleTransition(task.id, targetStatus as TaskStatus, task.version ?? 0)
 }
 
-function handleFilterUpdate(newFilters: TaskFilterType) {
+async function handleFilterUpdate(newFilters: TaskFilterType) {
   filters.value = { ...filters.value, ...newFilters }
-  taskStore.fetchTasks(filters.value)
+  await taskStore.fetchTasks(filters.value)
 }
 
-function handleFilterReset() {
+async function handleFilterReset() {
   filters.value = {}
-  taskStore.fetchTasks({})
+  await taskStore.fetchTasks({})
 }
 </script>
 

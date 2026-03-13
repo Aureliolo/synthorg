@@ -3,8 +3,10 @@ import { useAuthStore } from '@/stores/auth'
 
 /**
  * Navigation guard that redirects unauthenticated users to /login.
- * Allows /login and /setup routes without authentication.
- * Redirects authenticated users away from /login and /setup.
+ * Uses route.meta.requiresAuth to determine access control:
+ * - Routes with requiresAuth: false are public (login, setup)
+ * - All other routes require authentication
+ * Redirects authenticated users away from public auth pages.
  */
 export function authGuard(
   to: RouteLocationNormalized,
@@ -12,11 +14,10 @@ export function authGuard(
   next: NavigationGuardNext,
 ): void {
   const auth = useAuthStore()
-  const publicRoutes = ['/login', '/setup']
 
-  if (publicRoutes.includes(to.path)) {
-    // If already authenticated, redirect away from login and setup
-    if (auth.isAuthenticated && (to.path === '/login' || to.path === '/setup')) {
+  if (to.meta.requiresAuth === false) {
+    // If already authenticated, redirect away from login/setup
+    if (auth.isAuthenticated) {
       next('/')
       return
     }

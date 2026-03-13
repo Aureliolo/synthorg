@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import Menu from 'primevue/menu'
 import { useAuthStore } from '@/stores/auth'
+import { useWebSocketStore } from '@/stores/websocket'
 import ConnectionStatus from './ConnectionStatus.vue'
 
 defineEmits<{
@@ -12,6 +13,7 @@ defineEmits<{
 
 const router = useRouter()
 const auth = useAuthStore()
+const wsStore = useWebSocketStore()
 const userMenu = ref()
 const menuItems = ref([
   {
@@ -24,6 +26,7 @@ const menuItems = ref([
     label: 'Logout',
     icon: 'pi pi-sign-out',
     command: () => {
+      wsStore.disconnect()
       auth.logout()
       router.push('/login')
     },

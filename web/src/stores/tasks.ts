@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as tasksApi from '@/api/endpoints/tasks'
+import { getErrorMessage } from '@/utils/errors'
 import type {
   Task,
   TaskFilters,
@@ -36,7 +37,7 @@ export const useTaskStore = defineStore('tasks', () => {
       tasks.value = result.data
       total.value = result.total
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to load tasks'
+      error.value = getErrorMessage(err)
     } finally {
       loading.value = false
     }
@@ -49,7 +50,7 @@ export const useTaskStore = defineStore('tasks', () => {
       total.value++
       return task
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to create task'
+      error.value = getErrorMessage(err)
       return null
     }
   }
@@ -60,7 +61,7 @@ export const useTaskStore = defineStore('tasks', () => {
       tasks.value = tasks.value.map((t) => (t.id === taskId ? updated : t))
       return updated
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to update task'
+      error.value = getErrorMessage(err)
       return null
     }
   }
@@ -74,7 +75,7 @@ export const useTaskStore = defineStore('tasks', () => {
       tasks.value = tasks.value.map((t) => (t.id === taskId ? updated : t))
       return updated
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to transition task'
+      error.value = getErrorMessage(err)
       return null
     }
   }
@@ -85,7 +86,7 @@ export const useTaskStore = defineStore('tasks', () => {
       tasks.value = tasks.value.map((t) => (t.id === taskId ? updated : t))
       return updated
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to cancel task'
+      error.value = getErrorMessage(err)
       return null
     }
   }
