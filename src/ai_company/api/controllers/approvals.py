@@ -27,6 +27,7 @@ from ai_company.core.enums import (
     ApprovalRiskLevel,
     ApprovalStatus,
 )
+from ai_company.engine.approval_gate import ApprovalGate
 from ai_company.observability import get_logger
 from ai_company.observability.events.api import (
     API_APPROVAL_APPROVED,
@@ -35,6 +36,9 @@ from ai_company.observability.events.api import (
     API_APPROVAL_PUBLISH_FAILED,
     API_APPROVAL_REJECTED,
     API_RESOURCE_NOT_FOUND,
+)
+from ai_company.observability.events.approval_gate import (
+    APPROVAL_GATE_RESUME_TRIGGERED,
 )
 
 logger = get_logger(__name__)
@@ -113,8 +117,8 @@ def _resolve_decision(
     """Validate that an approval item is pending and extract the auth user.
 
     Performs the shared pre-checks for approve/reject operations:
-    look up the authenticated user, and verify the item is still
-    in PENDING status.
+    verify the item is still in PENDING status, and look up the
+    authenticated user.
 
     Args:
         request: The incoming HTTP request.
@@ -153,10 +157,9 @@ def _log_approval_decision(
 ) -> None:
     """Log the approval decision for observability.
 
-    The actual context resumption is handled by the agent scheduler
-    (out of scope for the approval controller).  The scheduler
-    observes the status change via WebSocket events or polling and
-    calls ``ApprovalGate.resume_context()`` when ready.
+    Context resumption is not handled by the approval controller.
+    A future scheduling component will observe status changes and
+    call ``ApprovalGate.resume_context()`` to resume the parked agent.
     """
     event = API_APPROVAL_APPROVED if approved else API_APPROVAL_REJECTED
     logger.info(
@@ -164,6 +167,62 @@ def _log_approval_decision(
         approval_id=approval_id,
         decided_by=decided_by,
     )
+
+
+async def _trigger_resume(
+    app_state: AppState,
+    approval_id: str,
+    *,
+    approved: bool,
+    decided_by: str,
+    decision_reason: str | None = None,
+) -> None:
+    """Best-effort resume of a parked agent context after a decision.
+
+    If an ``ApprovalGate`` is configured, loads the parked context,
+    builds a resume message, and publishes a WebSocket event.
+    Failures are logged at WARNING and never propagate to the caller.
+
+    Args:
+        app_state: Application state containing the approval gate.
+        approval_id: The approval item identifier.
+        approved: Whether the action was approved.
+        decided_by: Who made the decision.
+        decision_reason: Optional reason for the decision.
+    """
+    approval_gate = app_state.approval_gate
+    if approval_gate is None:
+        return
+
+    try:
+        result = await approval_gate.resume_context(approval_id)
+        if result is None:
+            return
+
+        _ctx, parked_id = result
+        resume_message = ApprovalGate.build_resume_message(
+            approval_id,
+            approved=approved,
+            decided_by=decided_by,
+            decision_reason=decision_reason,
+        )
+        logger.info(
+            APPROVAL_GATE_RESUME_TRIGGERED,
+            approval_id=approval_id,
+            parked_id=parked_id,
+            approved=approved,
+            decided_by=decided_by,
+            resume_message_length=len(resume_message),
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            APPROVAL_GATE_RESUME_TRIGGERED,
+            approval_id=approval_id,
+            note="Resume trigger failed — decision was saved successfully",
+            exc_info=True,
+        )
 
 
 class ApprovalsController(Controller):
@@ -348,16 +407,15 @@ class ApprovalsController(Controller):
                 "decision_reason": data.comment,
             },
         )
-        saved = await app_state.approval_store.save(updated)
+        saved = await app_state.approval_store.save_if_pending(updated)
         if saved is None:
+            msg = "Approval has already been decided by another request"
             logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="approval",
-                id=approval_id,
-                note="disappeared between get and save",
+                API_APPROVAL_CONFLICT,
+                approval_id=approval_id,
+                note=msg,
             )
-            msg = f"Approval {approval_id!r} not found"
-            raise NotFoundError(msg)
+            raise ConflictError(msg)
 
         _publish_approval_event(
             request,
@@ -368,6 +426,13 @@ class ApprovalsController(Controller):
             approval_id,
             approved=True,
             decided_by=auth_user.username,
+        )
+        await _trigger_resume(
+            app_state,
+            approval_id,
+            approved=True,
+            decided_by=auth_user.username,
+            decision_reason=data.comment,
         )
 
         return ApiResponse(data=updated)
@@ -423,16 +488,15 @@ class ApprovalsController(Controller):
                 "decision_reason": data.reason,
             },
         )
-        saved = await app_state.approval_store.save(updated)
+        saved = await app_state.approval_store.save_if_pending(updated)
         if saved is None:
+            msg = "Approval has already been decided by another request"
             logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="approval",
-                id=approval_id,
-                note="disappeared between get and save",
+                API_APPROVAL_CONFLICT,
+                approval_id=approval_id,
+                note=msg,
             )
-            msg = f"Approval {approval_id!r} not found"
-            raise NotFoundError(msg)
+            raise ConflictError(msg)
 
         _publish_approval_event(
             request,
@@ -443,6 +507,13 @@ class ApprovalsController(Controller):
             approval_id,
             approved=False,
             decided_by=auth_user.username,
+        )
+        await _trigger_resume(
+            app_state,
+            approval_id,
+            approved=False,
+            decided_by=auth_user.username,
+            decision_reason=data.reason,
         )
 
         return ApiResponse(data=updated)

@@ -15,6 +15,7 @@ from ai_company.observability import get_logger
 from ai_company.observability.events.approval_gate import (
     APPROVAL_GATE_ESCALATION_DETECTED,
     APPROVAL_GATE_ESCALATION_FAILED,
+    APPROVAL_GATE_RISK_CLASSIFIED,
 )
 
 from .base import BaseTool, ToolExecutionResult
@@ -119,6 +120,30 @@ class RequestHumanApprovalTool(BaseTool):
         risk_level = self._classify_risk(action_type)
         approval_id = f"approval-{uuid4().hex}"
 
+        store_error = await self._persist_item(
+            approval_id,
+            action_type,
+            title,
+            description,
+            risk_level,
+        )
+        if store_error is not None:
+            return store_error
+
+        return self._build_success(approval_id, action_type, risk_level, title)
+
+    async def _persist_item(
+        self,
+        approval_id: str,
+        action_type: str,
+        title: str,
+        description: str,
+        risk_level: ApprovalRiskLevel,
+    ) -> ToolExecutionResult | None:
+        """Create and persist the approval item.
+
+        Returns ``None`` on success, or an error result on failure.
+        """
         try:
             from ai_company.core.approval import ApprovalItem  # noqa: PLC0415
 
@@ -150,7 +175,16 @@ class RequestHumanApprovalTool(BaseTool):
                 ),
                 is_error=True,
             )
+        return None
 
+    def _build_success(
+        self,
+        approval_id: str,
+        action_type: str,
+        risk_level: ApprovalRiskLevel,
+        title: str,
+    ) -> ToolExecutionResult:
+        """Build the success result with parking metadata."""
         logger.info(
             APPROVAL_GATE_ESCALATION_DETECTED,
             approval_id=approval_id,
@@ -159,7 +193,6 @@ class RequestHumanApprovalTool(BaseTool):
             risk_level=risk_level.value,
             title=title,
         )
-
         return ToolExecutionResult(
             content=(
                 f"Approval request created (id={approval_id}). "
@@ -196,12 +229,23 @@ class RequestHumanApprovalTool(BaseTool):
     def _classify_risk(self, action_type: str) -> ApprovalRiskLevel:
         """Classify the risk level of the action.
 
-        Falls back to HIGH when no classifier is configured.
+        Falls back to HIGH when no classifier is configured or when
+        classification fails.
         """
         if self._risk_classifier is not None:
-            return self._risk_classifier.classify(action_type)
+            try:
+                return self._risk_classifier.classify(action_type)
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.exception(
+                    APPROVAL_GATE_RISK_CLASSIFIED,
+                    action_type=action_type,
+                    note="Risk classification failed — defaulting to HIGH",
+                )
+                return ApprovalRiskLevel.HIGH
         logger.debug(
-            APPROVAL_GATE_ESCALATION_DETECTED,
+            APPROVAL_GATE_RISK_CLASSIFIED,
             action_type=action_type,
             note="No risk classifier — defaulting to HIGH",
         )

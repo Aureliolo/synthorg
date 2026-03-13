@@ -37,10 +37,9 @@ class TestCreateApprovalRequestMetadata:
         many_keys = {f"k{i}": f"v{i}" for i in range(21)}
         with pytest.raises(ValueError, match="at most 20 keys"):
             CreateApprovalRequest(
-                action_type="deploy",
+                action_type="deploy:release",
                 title="Test",
                 description="Test desc",
-                requested_by="agent",
                 risk_level=ApprovalRiskLevel.LOW,
                 metadata=many_keys,
             )
@@ -49,10 +48,9 @@ class TestCreateApprovalRequestMetadata:
         long_key = "k" * 257
         with pytest.raises(ValueError, match="metadata key"):
             CreateApprovalRequest(
-                action_type="deploy",
+                action_type="deploy:release",
                 title="Test",
                 description="Test desc",
-                requested_by="agent",
                 risk_level=ApprovalRiskLevel.LOW,
                 metadata={long_key: "val"},
             )
@@ -61,20 +59,18 @@ class TestCreateApprovalRequestMetadata:
         long_val = "v" * 257
         with pytest.raises(ValueError, match="metadata value"):
             CreateApprovalRequest(
-                action_type="deploy",
+                action_type="deploy:release",
                 title="Test",
                 description="Test desc",
-                requested_by="agent",
                 risk_level=ApprovalRiskLevel.LOW,
                 metadata={"key": long_val},
             )
 
     def test_metadata_within_bounds(self) -> None:
         req = CreateApprovalRequest(
-            action_type="deploy",
+            action_type="deploy:release",
             title="Test",
             description="Test desc",
-            requested_by="agent",
             risk_level=ApprovalRiskLevel.LOW,
             metadata={"key": "value"},
         )

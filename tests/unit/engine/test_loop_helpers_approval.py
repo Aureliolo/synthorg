@@ -1,6 +1,6 @@
 """Tests for approval gate integration in loop helpers."""
 
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -60,7 +60,7 @@ def _make_tool_invoker(
     invoker.invoke_all = AsyncMock(
         return_value=(ToolResult(tool_call_id="tc-1", content="ok", is_error=False),),
     )
-    type(invoker).pending_escalations = PropertyMock(return_value=escalations)
+    invoker.pending_escalations = escalations
     return invoker
 
 
@@ -169,13 +169,13 @@ class TestExecuteToolCallsWithGate:
         assert call_kwargs[1]["metadata"]["approval_id"] == "approval-xyz"
 
     @patch("ai_company.engine.loop_helpers.build_result")
-    async def test_park_failure_still_returns_parked(
+    async def test_park_failure_returns_error(
         self,
         mock_build_result: MagicMock,
     ) -> None:
-        parked_result = MagicMock(spec=ExecutionResult)
-        parked_result.termination_reason = TerminationReason.PARKED
-        mock_build_result.return_value = parked_result
+        error_result = MagicMock(spec=ExecutionResult)
+        error_result.termination_reason = TerminationReason.ERROR
+        mock_build_result.return_value = error_result
 
         ctx = _make_context()
         escalation = _make_escalation()
@@ -196,7 +196,10 @@ class TestExecuteToolCallsWithGate:
             [],
             approval_gate=gate,
         )
-        assert result is parked_result
+        assert result is error_result
         mock_build_result.assert_called_once()
         call_kwargs = mock_build_result.call_args
-        assert call_kwargs[0][1] == TerminationReason.PARKED
+        assert call_kwargs[0][1] == TerminationReason.ERROR
+        assert call_kwargs[1]["metadata"]["approval_id"] == "approval-1"
+        assert call_kwargs[1]["metadata"]["parking_failed"] is True
+        assert "context parking failed" in call_kwargs[1]["error_message"]

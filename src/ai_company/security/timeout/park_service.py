@@ -40,7 +40,7 @@ class ParkService:
         context: AgentContext,
         approval_id: NotBlankStr,
         agent_id: NotBlankStr,
-        task_id: NotBlankStr,
+        task_id: NotBlankStr | None = None,
         metadata: dict[str, str] | None = None,
     ) -> ParkedContext:
         """Serialize and create a ``ParkedContext`` from an agent context.
@@ -49,7 +49,7 @@ class ParkService:
             context: The agent context to park.
             approval_id: The approval item that triggered parking.
             agent_id: Agent identifier.
-            task_id: Task identifier.
+            task_id: Task identifier, or ``None`` for taskless agents.
             metadata: Optional additional metadata.
 
         Returns:

@@ -122,6 +122,25 @@ class ApprovalStore:
         self._items[item.id] = item
         return item
 
+    async def save_if_pending(
+        self,
+        item: ApprovalItem,
+    ) -> ApprovalItem | None:
+        """Update only if the stored item is still PENDING.
+
+        Returns the saved item on success, or ``None`` if the stored
+        item is no longer PENDING (concurrent decision detected).
+        """
+        current = self._items.get(item.id)
+        if current is None:
+            return None
+        # Apply lazy expiration check before comparing status.
+        current = self._check_expiration(current)
+        if current.status != ApprovalStatus.PENDING:
+            return None
+        self._items[item.id] = item
+        return item
+
     def _check_expiration(self, item: ApprovalItem) -> ApprovalItem:
         """Lazily expire a pending item past its ``expires_at``.
 

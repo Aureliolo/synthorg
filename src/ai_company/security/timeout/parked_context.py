@@ -38,7 +38,9 @@ class ParkedContext(BaseModel):
     )
     execution_id: NotBlankStr = Field(description="Execution run identifier")
     agent_id: NotBlankStr = Field(description="Agent identifier")
-    task_id: NotBlankStr = Field(description="Task identifier")
+    task_id: NotBlankStr | None = Field(
+        default=None, description="Task identifier (None for taskless agents)"
+    )
     approval_id: NotBlankStr = Field(description="Approval item identifier")
     parked_at: AwareDatetime = Field(description="When the context was parked")
     context_json: str = Field(description="JSON-serialized AgentContext")

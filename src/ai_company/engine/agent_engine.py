@@ -10,6 +10,10 @@ import time
 from typing import TYPE_CHECKING
 
 from ai_company.budget.errors import BudgetExhaustedError
+from ai_company.engine._security_factory import (
+    make_security_interceptor,
+    registry_with_approval_tool,
+)
 from ai_company.engine._validation import (
     validate_agent,
     validate_run_inputs,
@@ -25,7 +29,6 @@ from ai_company.engine.checkpoint.resume import (
 from ai_company.engine.classification.pipeline import classify_execution_errors
 from ai_company.engine.context import DEFAULT_MAX_TURNS, AgentContext
 from ai_company.engine.cost_recording import record_execution_costs
-from ai_company.engine.errors import ExecutionStateError
 from ai_company.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
@@ -67,26 +70,10 @@ from ai_company.observability.events.execution import (
     EXECUTION_RESUME_START,
 )
 from ai_company.observability.events.prompt import PROMPT_TOKEN_RATIO_HIGH
-from ai_company.observability.events.security import SECURITY_DISABLED
 from ai_company.providers.enums import MessageRole
 from ai_company.providers.models import ChatMessage
 from ai_company.security.audit import AuditLog
 from ai_company.security.autonomy.models import EffectiveAutonomy  # noqa: TC001
-from ai_company.security.output_scanner import OutputScanner
-from ai_company.security.rules.credential_detector import CredentialDetector
-from ai_company.security.rules.data_leak_detector import DataLeakDetector
-from ai_company.security.rules.destructive_op_detector import (
-    DestructiveOpDetector,
-)
-from ai_company.security.rules.engine import RuleEngine
-from ai_company.security.rules.path_traversal_detector import (
-    PathTraversalDetector,
-)
-from ai_company.security.rules.policy_validator import PolicyValidator
-from ai_company.security.rules.protocol import SecurityRule  # noqa: TC001
-from ai_company.security.rules.risk_classifier import RiskClassifier
-from ai_company.security.service import SecOpsService
-from ai_company.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
 from ai_company.tools.invoker import ToolInvoker
 from ai_company.tools.permissions import ToolPermissionChecker
 
@@ -106,6 +93,7 @@ if TYPE_CHECKING:
     from ai_company.persistence.repositories import (
         CheckpointRepository,
         HeartbeatRepository,
+        ParkedContextRepository,
     )
     from ai_company.providers.models import CompletionConfig
     from ai_company.providers.protocol import CompletionProvider
@@ -161,6 +149,7 @@ class AgentEngine:
         budget_enforcer: BudgetEnforcer | None = None,
         security_config: SecurityConfig | None = None,
         approval_store: ApprovalStore | None = None,
+        parked_context_repo: ParkedContextRepository | None = None,
         task_engine: TaskEngine | None = None,
         checkpoint_repo: CheckpointRepository | None = None,
         heartbeat_repo: HeartbeatRepository | None = None,
@@ -168,6 +157,7 @@ class AgentEngine:
     ) -> None:
         self._provider = provider
         self._approval_store = approval_store
+        self._parked_context_repo = parked_context_repo
         self._approval_gate = self._make_approval_gate()
         self._loop: ExecutionLoop = execution_loop or self._make_default_loop()
         self._tool_registry = tool_registry
@@ -887,11 +877,6 @@ class AgentEngine:
 
         Returns ``None`` when no approval store is available — the
         execution loop skips approval-gate checks in that case.
-
-        Note:
-            No ``parked_context_repo`` is provided, so parked contexts
-            are not persisted.  Resume requires a persistence backend
-            to be wired in.
         """
         if self._approval_store is None:
             return None
@@ -902,6 +887,7 @@ class AgentEngine:
 
         return ApprovalGate(
             park_service=ParkService(),
+            parked_context_repo=self._parked_context_repo,
         )
 
     def _make_default_loop(self) -> ReactLoop:
@@ -912,63 +898,12 @@ class AgentEngine:
         self,
         effective_autonomy: EffectiveAutonomy | None = None,
     ) -> SecurityInterceptionStrategy | None:
-        """Build the SecOps security interceptor if configured.
-
-        Raises:
-            ExecutionStateError: If effective_autonomy is provided but
-                no SecurityConfig is configured — autonomy cannot be
-                enforced without the security subsystem.
-        """
-        if self._security_config is None:
-            if effective_autonomy is not None:
-                msg = (
-                    "effective_autonomy cannot be enforced without "
-                    "SecurityConfig — configure security or remove autonomy"
-                )
-                logger.error(SECURITY_DISABLED, note=msg)
-                raise ExecutionStateError(msg)
-            logger.warning(
-                SECURITY_DISABLED,
-                note="No SecurityConfig provided — all security checks skipped",
-            )
-            return None
-        if not self._security_config.enabled:
-            if effective_autonomy is not None:
-                msg = "effective_autonomy cannot be enforced when security is disabled"
-                logger.error(SECURITY_DISABLED, note=msg)
-                raise ExecutionStateError(msg)
-            return None
-
-        cfg = self._security_config
-        re_cfg = cfg.rule_engine
-        policy_validator = PolicyValidator(
-            hard_deny_action_types=frozenset(cfg.hard_deny_action_types),
-            auto_approve_action_types=frozenset(cfg.auto_approve_action_types),
-        )
-        # Build the detector list respecting config flags.
-        detectors: list[SecurityRule] = [policy_validator]
-        if re_cfg.credential_patterns_enabled:
-            detectors.append(CredentialDetector())
-        if re_cfg.path_traversal_detection_enabled:
-            detectors.append(PathTraversalDetector())
-        if re_cfg.destructive_op_detection_enabled:
-            detectors.append(DestructiveOpDetector())
-        if re_cfg.data_leak_detection_enabled:
-            detectors.append(DataLeakDetector())
-
-        rule_engine = RuleEngine(
-            rules=tuple(detectors),
-            risk_classifier=RiskClassifier(),
-            config=re_cfg,
-        )
-        return SecOpsService(
-            config=cfg,
-            rule_engine=rule_engine,
-            audit_log=self._audit_log,
-            output_scanner=OutputScanner(),
+        """Build the SecOps security interceptor if configured."""
+        return make_security_interceptor(
+            self._security_config,
+            self._audit_log,
             approval_store=self._approval_store,
             effective_autonomy=effective_autonomy,
-            risk_classifier=DefaultRiskTierClassifier(),
         )
 
     def _make_tool_invoker(
@@ -977,18 +912,13 @@ class AgentEngine:
         task_id: str | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
     ) -> ToolInvoker | None:
-        """Create a ToolInvoker with permission checking and security.
-
-        When an approval store is configured, registers the
-        ``request_human_approval`` tool so agents can explicitly
-        request human approval.
-
-        Returns None if no tool registry is configured.
-        """
+        """Create a ToolInvoker with permission checking and security."""
         if self._tool_registry is None:
             return None
 
-        registry = self._registry_with_approval_tool(
+        registry = registry_with_approval_tool(
+            self._tool_registry,
+            self._approval_store,
             identity,
             task_id=task_id,
         )
@@ -1001,39 +931,6 @@ class AgentEngine:
             agent_id=str(identity.id),
             task_id=task_id,
         )
-
-    def _registry_with_approval_tool(
-        self,
-        identity: AgentIdentity,
-        task_id: str | None = None,
-    ) -> ToolRegistry:
-        """Build a registry with the approval tool added if applicable.
-
-        Returns the original registry unchanged when no approval store
-        is configured.
-        """
-        if self._tool_registry is None:
-            msg = "Cannot build registry without _tool_registry"
-            raise ExecutionStateError(msg)
-
-        if self._approval_store is None:
-            return self._tool_registry
-
-        from ai_company.tools.approval_tool import (  # noqa: PLC0415
-            RequestHumanApprovalTool,
-        )
-        from ai_company.tools.registry import (  # noqa: PLC0415
-            ToolRegistry as _ToolRegistry,
-        )
-
-        approval_tool = RequestHumanApprovalTool(
-            approval_store=self._approval_store,
-            risk_classifier=DefaultRiskTierClassifier(),
-            agent_id=str(identity.id),
-            task_id=task_id,
-        )
-        existing = list(self._tool_registry.all_tools())
-        return _ToolRegistry([*existing, approval_tool])
 
     def _log_completion(
         self,

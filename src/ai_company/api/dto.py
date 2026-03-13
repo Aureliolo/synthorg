@@ -7,7 +7,14 @@ models because they omit server-generated fields).
 
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 from ai_company.core.enums import (
     ApprovalRiskLevel,
@@ -23,6 +30,7 @@ MAX_LIMIT: int = 200
 
 _MAX_METADATA_KEYS: int = 20
 _MAX_METADATA_STR_LEN: int = 256
+_ACTION_TYPE_PARTS: int = 2
 
 
 # ── Response envelopes ──────────────────────────────────────────
@@ -189,12 +197,13 @@ class CreateApprovalRequest(BaseModel):
     """Payload for creating a new approval item.
 
     Attributes:
-        action_type: Kind of action requiring approval.
+        action_type: Kind of action requiring approval
+            (``category:action`` format).
         title: Short summary.
         description: Detailed explanation.
-        requested_by: Agent or system requesting approval.
         risk_level: Assessed risk level.
-        ttl_seconds: Optional time-to-live in seconds (min 60).
+        ttl_seconds: Optional time-to-live in seconds
+            (min 60, max 604 800 = 7 days).
         task_id: Optional associated task.
         metadata: Additional key-value pairs.
     """
@@ -204,11 +213,23 @@ class CreateApprovalRequest(BaseModel):
     action_type: NotBlankStr = Field(max_length=128)
     title: NotBlankStr = Field(max_length=256)
     description: NotBlankStr = Field(max_length=4096)
-    requested_by: NotBlankStr = Field(max_length=128)
     risk_level: ApprovalRiskLevel
-    ttl_seconds: int | None = Field(default=None, ge=60)
+    ttl_seconds: int | None = Field(default=None, ge=60, le=604800)
     task_id: NotBlankStr | None = Field(default=None, max_length=128)
     metadata: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("action_type")
+    @classmethod
+    def _validate_action_type_format(cls, v: str) -> str:
+        parts = v.split(":")
+        if (
+            len(parts) != _ACTION_TYPE_PARTS
+            or not parts[0].strip()
+            or not parts[1].strip()
+        ):
+            msg = "action_type must use 'category:action' format"
+            raise ValueError(msg)
+        return v
 
     @model_validator(mode="after")
     def _validate_metadata_bounds(self) -> Self:
@@ -237,7 +258,7 @@ class ApproveRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    comment: NotBlankStr | None = None
+    comment: NotBlankStr | None = Field(default=None, max_length=4096)
 
 
 class RejectRequest(BaseModel):
