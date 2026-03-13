@@ -19,6 +19,7 @@ MEMORY_BACKEND_HEALTH_CHECK: Final[str] = "memory.backend.health_check"
 MEMORY_BACKEND_CREATED: Final[str] = "memory.backend.created"
 MEMORY_BACKEND_NOT_IMPLEMENTED: Final[str] = "memory.backend.not_implemented"
 MEMORY_BACKEND_UNKNOWN: Final[str] = "memory.backend.unknown"
+MEMORY_BACKEND_CONFIG_INVALID: Final[str] = "memory.backend.config_invalid"
 MEMORY_BACKEND_NOT_CONNECTED: Final[str] = "memory.backend.not_connected"
 
 # ── Entry operations ──────────────────────────────────────────────

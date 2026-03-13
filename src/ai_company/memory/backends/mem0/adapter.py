@@ -494,12 +494,19 @@ class Mem0MemoryBackend:
         Uses ``get_all()`` internally — O(n) in the agent's memory
         count.  Acceptable because ``count()`` is not on the hot path.
 
+        .. note::
+           Results are capped at ``max_memories_per_agent``.  If an
+           agent has more memories than this limit the count will be
+           an underestimate.  This is consistent with the adapter's
+           store/retrieve semantics which also respect the cap.
+
         Args:
             agent_id: Owning agent identifier.
             category: Optional category filter.
 
         Returns:
-            Number of matching entries.
+            Number of matching entries (capped at
+            ``max_memories_per_agent``).
 
         Raises:
             MemoryConnectionError: If the backend is not connected.
@@ -751,7 +758,14 @@ class Mem0MemoryBackend:
                 raise MemoryStoreError(msg)  # noqa: TRY301
 
             await asyncio.to_thread(self._client.delete, str(memory_id))
-        except MemoryStoreError:
+        except MemoryStoreError as exc:
+            logger.warning(
+                MEMORY_SHARED_RETRACT_FAILED,
+                agent_id=agent_id,
+                memory_id=memory_id,
+                error=str(exc),
+                error_type="MemoryStoreError",
+            )
             raise
         except MemoryError, RecursionError:
             raise

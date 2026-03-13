@@ -414,7 +414,7 @@ class TestStore:
             "results": [{"memory": "no id", "event": "ADD"}],
         }
 
-        with pytest.raises(MemoryStoreError, match="missing 'id'"):
+        with pytest.raises(MemoryStoreError, match="missing or blank 'id'"):
             await backend.store("test-agent-001", _make_store_request())
 
     async def test_store_exception_wraps(
@@ -777,7 +777,7 @@ class TestPublish:
             "results": [{"memory": "no id", "event": "ADD"}],
         }
 
-        with pytest.raises(MemoryStoreError, match="missing 'id'"):
+        with pytest.raises(MemoryStoreError, match="missing or blank 'id'"):
             await backend.publish("test-agent-001", _make_store_request())
 
 
@@ -950,3 +950,168 @@ class TestRetract:
 
         with pytest.raises(MemoryStoreError, match="Failed to retract"):
             await backend.retract("test-agent-001", "shared-001")
+
+    async def test_retract_reraises_memory_error(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """MemoryError is re-raised without wrapping."""
+        mock_client.get.side_effect = MemoryError("out of memory")
+        with pytest.raises(MemoryError):
+            await backend.retract("test-agent-001", "shared-001")
+
+    async def test_retract_delete_failure_wraps(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """Exception during delete phase wraps in MemoryStoreError."""
+        mock_client.get.return_value = {
+            "id": "shared-001",
+            "memory": "content",
+            "created_at": "2026-03-12T10:00:00+00:00",
+            "metadata": {_PUBLISHER_KEY: "test-agent-001"},
+        }
+        mock_client.delete.side_effect = RuntimeError("delete failed")
+
+        with pytest.raises(MemoryStoreError, match="Failed to retract"):
+            await backend.retract("test-agent-001", "shared-001")
+
+
+@pytest.mark.unit
+class TestAdditionalEdgeCases:
+    """Edge cases for improved coverage."""
+
+    async def test_store_blank_id_from_add_raises(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """Store result with blank ID raises MemoryStoreError."""
+        mock_client.add.return_value = {
+            "results": [{"id": "", "event": "ADD"}],
+        }
+        with pytest.raises(MemoryStoreError, match="missing or blank 'id'"):
+            await backend.store("test-agent-001", _make_store_request())
+
+    async def test_store_whitespace_id_from_add_raises(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """Store result with whitespace-only ID raises MemoryStoreError."""
+        mock_client.add.return_value = {
+            "results": [{"id": "   ", "event": "ADD"}],
+        }
+        with pytest.raises(MemoryStoreError, match="missing or blank 'id'"):
+            await backend.store("test-agent-001", _make_store_request())
+
+    async def test_get_reraises_memory_error(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """MemoryError is re-raised without wrapping in get()."""
+        mock_client.get.side_effect = MemoryError("out of memory")
+        with pytest.raises(MemoryError):
+            await backend.get("test-agent-001", "mem-001")
+
+    async def test_delete_reraises_memory_error(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """MemoryError is re-raised without wrapping in delete()."""
+        mock_client.get.side_effect = MemoryError("out of memory")
+        with pytest.raises(MemoryError):
+            await backend.delete("test-agent-001", "mem-001")
+
+    async def test_count_reraises_memory_error(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """MemoryError is re-raised without wrapping in count()."""
+        mock_client.get_all.side_effect = MemoryError("out of memory")
+        with pytest.raises(MemoryError):
+            await backend.count("test-agent-001")
+
+    async def test_publish_reraises_memory_error(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """MemoryError is re-raised without wrapping in publish()."""
+        mock_client.add.side_effect = MemoryError("out of memory")
+        with pytest.raises(MemoryError):
+            await backend.publish("test-agent-001", _make_store_request())
+
+    async def test_search_shared_reraises_memory_error(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """MemoryError is re-raised without wrapping in search_shared()."""
+        mock_client.search.side_effect = MemoryError("out of memory")
+        with pytest.raises(MemoryError):
+            await backend.search_shared(MemoryQuery(text="test"))
+
+    async def test_store_non_list_results_raises(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """Store result with non-list 'results' raises MemoryStoreError."""
+        mock_client.add.return_value = {"results": "not-a-list"}
+        with pytest.raises(MemoryStoreError, match="no results"):
+            await backend.store("test-agent-001", _make_store_request())
+
+    async def test_retrieve_invalid_entry_raises(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """Invalid entry in search results wraps as MemoryRetrievalError."""
+        mock_client.search.return_value = {
+            "results": [
+                {"id": "", "memory": "blank id", "metadata": {}},
+            ],
+        }
+        with pytest.raises(MemoryRetrievalError, match="missing or blank"):
+            await backend.retrieve(
+                "test-agent-001",
+                MemoryQuery(text="test"),
+            )
+
+    async def test_search_shared_no_publisher_uses_namespace(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """Entries without publisher metadata use the shared namespace."""
+        mock_client.search.return_value = _mem0_search_result(
+            [
+                {
+                    "id": "shared-1",
+                    "memory": "orphan fact",
+                    "score": 0.9,
+                    "created_at": "2026-03-12T10:00:00+00:00",
+                    "metadata": {"_synthorg_category": "semantic"},
+                },
+            ],
+        )
+
+        entries = await backend.search_shared(MemoryQuery(text="test"))
+        assert len(entries) == 1
+        assert entries[0].agent_id == _SHARED_NAMESPACE
+
+    async def test_count_empty_results(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """Count returns 0 for empty results."""
+        mock_client.get_all.return_value = {"results": []}
+        count = await backend.count("test-agent-001")
+        assert count == 0

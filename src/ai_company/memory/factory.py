@@ -15,6 +15,7 @@ from ai_company.memory.errors import MemoryConfigError
 from ai_company.memory.protocol import MemoryBackend  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.memory import (
+    MEMORY_BACKEND_CONFIG_INVALID,
     MEMORY_BACKEND_CREATED,
     MEMORY_BACKEND_UNKNOWN,
 )
@@ -57,8 +58,9 @@ def create_memory_backend(
                 "pass a Mem0EmbedderConfig instance"
             )
             logger.warning(
-                MEMORY_BACKEND_UNKNOWN,
+                MEMORY_BACKEND_CONFIG_INVALID,
                 backend="mem0",
+                reason="missing_embedder",
                 error=msg,
             )
             raise MemoryConfigError(msg)
@@ -67,8 +69,9 @@ def create_memory_backend(
                 f"embedder must be a Mem0EmbedderConfig, got {type(embedder).__name__}"
             )
             logger.warning(
-                MEMORY_BACKEND_UNKNOWN,
+                MEMORY_BACKEND_CONFIG_INVALID,
                 backend="mem0",
+                reason="invalid_embedder_type",
                 error=msg,
                 embedder_type=type(embedder).__name__,
             )

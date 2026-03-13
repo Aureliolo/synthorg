@@ -335,11 +335,15 @@ def validate_add_result(result: dict[str, Any], *, context: str) -> NotBlankStr:
         logger.warning(MEMORY_ENTRY_STORE_FAILED, context=context, error=msg)
         raise MemoryStoreError(msg)
     first = results_list[0]
-    if "id" not in first:
-        msg = f"Mem0 add result missing 'id' for {context}: keys={list(first.keys())}"
+    raw_id = first.get("id")
+    if raw_id is None or not str(raw_id).strip():
+        msg = (
+            f"Mem0 add result has missing or blank 'id' for {context}: "
+            f"keys={list(first.keys())}"
+        )
         logger.warning(MEMORY_ENTRY_STORE_FAILED, context=context, error=msg)
         raise MemoryStoreError(msg)
-    return NotBlankStr(str(first["id"]))
+    return NotBlankStr(str(raw_id))
 
 
 def extract_category(raw: dict[str, Any]) -> MemoryCategory:

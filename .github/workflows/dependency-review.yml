@@ -29,11 +29,24 @@ jobs:
           #   pycparser 3.0, sse-starlette 3.3.2 — MIT per classifiers, scancode misdetects
           # LGPL-*: @img/sharp-libvips-* (Astro image optimization, build-time only)
           # BlueOak-1.0.0: lru-cache, sax (Astro transitive deps, permissive)
+          # LicenseRef-scancode-protobuf: protobuf 5.29.6 (BSD-3-Clause AND scancode-protobuf, permissive)
+          # ZPL-2.1: pytz 2026.1 (MIT AND ZPL-2.1, Zope Public License — permissive)
+          # Null: mem0ai, numpy, qdrant-client, posthog — license metadata missing
+          #   from lockfile but all are permissive (Apache-2.0 / BSD-3-Clause / MIT)
           allow-licenses: >-
             MIT, MIT-0, Apache-2.0, BSD-2-Clause, BSD-3-Clause,
             ISC, MPL-2.0, PSF-2.0, Unlicense, 0BSD,
             CC0-1.0, Python-2.0, Python-2.0.1,
-            LicenseRef-scancode-free-unknown,
+            LicenseRef-scancode-free-unknown, LicenseRef-scancode-protobuf,
+            ZPL-2.1,
             LGPL-2.0-only, LGPL-2.1-only, LGPL-3.0-only, LGPL-3.0-or-later,
             BlueOak-1.0.0
+          # Packages with null/missing SPDX license metadata in lockfile.
+          # Verified manually: mem0ai (Apache-2.0), numpy (BSD-3-Clause),
+          # qdrant-client (Apache-2.0), posthog (MIT).
+          allow-dependencies-licenses: >-
+            pkg:pypi/mem0ai,
+            pkg:pypi/numpy,
+            pkg:pypi/qdrant-client,
+            pkg:pypi/posthog
           comment-summary-in-pr: always

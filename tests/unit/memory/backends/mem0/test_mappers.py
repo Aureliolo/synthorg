@@ -1,6 +1,7 @@
 """Tests for Mem0 mapping functions."""
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 
@@ -9,14 +10,17 @@ from ai_company.memory.backends.mem0.mappers import (
     _PREFIX,
     apply_post_filters,
     build_mem0_metadata,
+    extract_category,
+    extract_publisher,
     mem0_result_to_entry,
     normalize_relevance_score,
     parse_mem0_datetime,
     parse_mem0_metadata,
     query_to_mem0_getall_args,
     query_to_mem0_search_args,
+    validate_add_result,
 )
-from ai_company.memory.errors import MemoryRetrievalError
+from ai_company.memory.errors import MemoryRetrievalError, MemoryStoreError
 from ai_company.memory.models import (
     MemoryEntry,
     MemoryMetadata,
@@ -385,3 +389,103 @@ class TestApplyPostFilters:
         result = apply_post_filters(entries, query)
         assert len(result) == 1
         assert result[0].id == "m1"
+
+
+@pytest.mark.unit
+class TestValidateAddResult:
+    def test_valid_result(self) -> None:
+        result = {"results": [{"id": "mem-001", "event": "ADD"}]}
+        memory_id = validate_add_result(result, context="test")
+        assert memory_id == "mem-001"
+
+    def test_empty_results_raises(self) -> None:
+        result: dict[str, Any] = {"results": []}
+        with pytest.raises(MemoryStoreError, match="no results"):
+            validate_add_result(result, context="test")
+
+    def test_missing_results_key_raises(self) -> None:
+        result = {"data": "something"}
+        with pytest.raises(MemoryStoreError, match="no results"):
+            validate_add_result(result, context="test")
+
+    def test_non_list_results_raises(self) -> None:
+        result = {"results": "not-a-list"}
+        with pytest.raises(MemoryStoreError, match="no results"):
+            validate_add_result(result, context="test")
+
+    def test_missing_id_raises(self) -> None:
+        result = {"results": [{"memory": "no id"}]}
+        with pytest.raises(MemoryStoreError, match="missing or blank 'id'"):
+            validate_add_result(result, context="test")
+
+    def test_none_id_raises(self) -> None:
+        result = {"results": [{"id": None, "event": "ADD"}]}
+        with pytest.raises(MemoryStoreError, match="missing or blank 'id'"):
+            validate_add_result(result, context="test")
+
+    def test_blank_id_raises(self) -> None:
+        result = {"results": [{"id": "", "event": "ADD"}]}
+        with pytest.raises(MemoryStoreError, match="missing or blank 'id'"):
+            validate_add_result(result, context="test")
+
+    def test_whitespace_only_id_raises(self) -> None:
+        result = {"results": [{"id": "   ", "event": "ADD"}]}
+        with pytest.raises(MemoryStoreError, match="missing or blank 'id'"):
+            validate_add_result(result, context="test")
+
+    def test_numeric_id_coerced_to_string(self) -> None:
+        result = {"results": [{"id": 42, "event": "ADD"}]}
+        memory_id = validate_add_result(result, context="test")
+        assert memory_id == "42"
+
+
+@pytest.mark.unit
+class TestExtractCategory:
+    def test_valid_category(self) -> None:
+        raw = {"metadata": {f"{_PREFIX}category": "episodic"}}
+        assert extract_category(raw) == MemoryCategory.EPISODIC
+
+    def test_missing_metadata(self) -> None:
+        raw = {"id": "m1", "memory": "content"}
+        assert extract_category(raw) == MemoryCategory.WORKING
+
+    def test_empty_metadata(self) -> None:
+        raw: dict[str, Any] = {"metadata": {}}
+        assert extract_category(raw) == MemoryCategory.WORKING
+
+    def test_none_metadata(self) -> None:
+        raw: dict[str, Any] = {"metadata": None}
+        assert extract_category(raw) == MemoryCategory.WORKING
+
+    def test_invalid_category_defaults(self) -> None:
+        raw = {"metadata": {f"{_PREFIX}category": "nonexistent"}}
+        assert extract_category(raw) == MemoryCategory.WORKING
+
+    def test_missing_category_key(self) -> None:
+        raw = {"metadata": {f"{_PREFIX}confidence": 0.9}}
+        assert extract_category(raw) == MemoryCategory.WORKING
+
+
+@pytest.mark.unit
+class TestExtractPublisher:
+    def test_valid_publisher(self) -> None:
+        from ai_company.memory.backends.mem0.mappers import _PUBLISHER_KEY
+
+        raw = {"metadata": {_PUBLISHER_KEY: "test-agent-001"}}
+        assert extract_publisher(raw) == "test-agent-001"
+
+    def test_missing_metadata(self) -> None:
+        raw = {"id": "m1"}
+        assert extract_publisher(raw) is None
+
+    def test_empty_metadata(self) -> None:
+        raw: dict[str, Any] = {"metadata": {}}
+        assert extract_publisher(raw) is None
+
+    def test_none_metadata(self) -> None:
+        raw = {"metadata": None}
+        assert extract_publisher(raw) is None
+
+    def test_no_publisher_key(self) -> None:
+        raw = {"metadata": {"_synthorg_category": "semantic"}}
+        assert extract_publisher(raw) is None
