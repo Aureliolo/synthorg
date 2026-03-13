@@ -8,6 +8,7 @@ import pytest
 from ai_company.core.enums import MemoryCategory
 from ai_company.memory.backends.mem0.mappers import (
     _PREFIX,
+    _PUBLISHER_KEY,
     apply_post_filters,
     build_mem0_metadata,
     extract_category,
@@ -139,6 +140,15 @@ class TestNormalizeRelevanceScore:
         assert normalize_relevance_score(0.0) == 0.0
         assert normalize_relevance_score(1.0) == 1.0
 
+    def test_string_score_coerced(self) -> None:
+        assert normalize_relevance_score("0.82") == 0.82
+
+    def test_non_numeric_string_returns_none(self) -> None:
+        assert normalize_relevance_score("not-a-number") is None
+
+    def test_non_numeric_type_returns_none(self) -> None:
+        assert normalize_relevance_score(object()) is None
+
 
 @pytest.mark.unit
 class TestParseMem0Metadata:
@@ -184,6 +194,16 @@ class TestParseMem0Metadata:
         raw = {f"{_PREFIX}tags": ["valid", "", "  ", "also-valid"]}
         _category, metadata, _expires = parse_mem0_metadata(raw)
         assert metadata.tags == ("valid", "also-valid")
+
+    def test_blank_source_returns_none(self) -> None:
+        raw = {f"{_PREFIX}source": "   "}
+        _category, metadata, _expires = parse_mem0_metadata(raw)
+        assert metadata.source is None
+
+    def test_non_string_source_coerced(self) -> None:
+        raw = {f"{_PREFIX}source": 42}
+        _category, metadata, _expires = parse_mem0_metadata(raw)
+        assert metadata.source == "42"
 
 
 @pytest.mark.unit
@@ -438,6 +458,15 @@ class TestValidateAddResult:
         memory_id = validate_add_result(result, context="test")
         assert memory_id == "42"
 
+    def test_non_dict_result_raises(self) -> None:
+        with pytest.raises(MemoryStoreError, match="unexpected type"):
+            validate_add_result("not-a-dict", context="test")  # type: ignore[arg-type]
+
+    def test_non_dict_first_item_raises(self) -> None:
+        result: dict[str, Any] = {"results": ["not-a-dict"]}
+        with pytest.raises(MemoryStoreError, match="not a dict"):
+            validate_add_result(result, context="test")
+
 
 @pytest.mark.unit
 class TestExtractCategory:
@@ -504,4 +533,12 @@ class TestExtractPublisher:
 
     def test_string_metadata_returns_none(self) -> None:
         raw: dict[str, Any] = {"metadata": "oops"}
+        assert extract_publisher(raw) is None
+
+    def test_numeric_publisher_coerced_to_string(self) -> None:
+        raw: dict[str, Any] = {"metadata": {_PUBLISHER_KEY: 42}}
+        assert extract_publisher(raw) == "42"
+
+    def test_blank_publisher_returns_none(self) -> None:
+        raw: dict[str, Any] = {"metadata": {_PUBLISHER_KEY: "   "}}
         assert extract_publisher(raw) is None

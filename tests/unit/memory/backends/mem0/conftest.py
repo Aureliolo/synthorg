@@ -82,9 +82,18 @@ def mem0_search_result(
     return {"results": items}
 
 
-def mem0_get_result(memory_id: str = "mem-001") -> dict[str, Any]:
-    """Build a typical Mem0 get() return value."""
-    return {
+def mem0_get_result(
+    memory_id: str = "mem-001",
+    *,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    """Build a typical Mem0 get() return value.
+
+    Args:
+        memory_id: Memory identifier.
+        user_id: Optional owner ``user_id`` for ownership tests.
+    """
+    result: dict[str, Any] = {
         "id": memory_id,
         "memory": "stored content",
         "created_at": "2026-03-12T10:00:00+00:00",
@@ -94,6 +103,9 @@ def mem0_get_result(memory_id: str = "mem-001") -> dict[str, Any]:
             "_synthorg_confidence": 1.0,
         },
     }
+    if user_id is not None:
+        result["user_id"] = user_id
+    return result
 
 
 def make_store_request(
