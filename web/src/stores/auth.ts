@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as authApi from '@/api/endpoints/auth'
-import { isAxiosError } from '@/utils/errors'
+import { getErrorMessage, isAxiosError } from '@/utils/errors'
 import { router } from '@/router'
 import type { HumanRole, UserInfoResponse } from '@/api/types'
 
@@ -43,6 +43,10 @@ export const useAuthStore = defineStore('auth', () => {
   const userRole = computed<HumanRole | null>(() => user.value?.role ?? null)
 
   function setToken(newToken: string, expiresIn: number) {
+    if (expiresIn <= 0) {
+      console.error('setToken: invalid expiresIn', expiresIn)
+      return
+    }
     // Clear any existing expiry timer to prevent stale timer from killing new session
     if (expiryTimer) {
       clearTimeout(expiryTimer)
@@ -135,8 +139,7 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = result
       return result
     } catch (err) {
-      // Re-throw with normalized message so callers get a user-friendly error
-      throw err
+      throw new Error(getErrorMessage(err))
     } finally {
       loading.value = false
     }

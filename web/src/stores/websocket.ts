@@ -135,6 +135,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
   function disconnect() {
     intentionalClose = true
     currentToken = null
+    reconnectAttempts = 0
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
