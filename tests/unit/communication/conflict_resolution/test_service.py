@@ -20,7 +20,7 @@ from ai_company.communication.conflict_resolution.service import (
     ConflictResolutionService,
 )
 from ai_company.communication.delegation.hierarchy import (
-    HierarchyResolver,  # noqa: TC001
+    HierarchyResolver,
 )
 from ai_company.communication.enums import (
     ConflictResolutionStrategy,

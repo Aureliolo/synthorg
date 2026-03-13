@@ -2,7 +2,7 @@
 
 import asyncio
 import uuid
-from collections.abc import Generator  # noqa: TC003
+from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -15,10 +15,10 @@ from ai_company.api.auth.config import AuthConfig
 from ai_company.api.auth.models import ApiKey, User
 from ai_company.api.auth.service import AuthService
 from ai_company.api.guards import HumanRole
-from ai_company.budget.cost_record import CostRecord  # noqa: TC001
+from ai_company.budget.cost_record import CostRecord
 from ai_company.budget.tracker import CostTracker
-from ai_company.communication.channel import Channel  # noqa: TC001
-from ai_company.communication.message import Message  # noqa: TC001
+from ai_company.communication.channel import Channel
+from ai_company.communication.message import Message
 from ai_company.config.schema import RootConfig
 from ai_company.core.approval import ApprovalItem
 from ai_company.core.enums import (
@@ -28,15 +28,15 @@ from ai_company.core.enums import (
 )
 from ai_company.core.task import Task
 from ai_company.engine.task_engine import TaskEngine
-from ai_company.hr.enums import LifecycleEventType  # noqa: TC001
-from ai_company.hr.models import AgentLifecycleEvent  # noqa: TC001
-from ai_company.hr.performance.models import (  # noqa: TC001
+from ai_company.hr.enums import LifecycleEventType
+from ai_company.hr.models import AgentLifecycleEvent
+from ai_company.hr.performance.models import (
     CollaborationMetricRecord,
     TaskMetricRecord,
 )
 from ai_company.persistence.errors import DuplicateRecordError, QueryError
-from ai_company.security.models import AuditEntry, AuditVerdictStr  # noqa: TC001
-from ai_company.security.timeout.parked_context import ParkedContext  # noqa: TC001
+from ai_company.security.models import AuditEntry, AuditVerdictStr
+from ai_company.security.timeout.parked_context import ParkedContext
 
 # ── Test auth constants ───────────────────────────────────────
 

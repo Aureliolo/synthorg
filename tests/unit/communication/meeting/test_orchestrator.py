@@ -28,7 +28,7 @@ from ai_company.communication.meeting.orchestrator import (
 from ai_company.communication.meeting.position_papers import (
     PositionPapersProtocol,
 )
-from ai_company.communication.meeting.protocol import MeetingProtocol  # noqa: TC001
+from ai_company.communication.meeting.protocol import MeetingProtocol
 from ai_company.communication.meeting.round_robin import RoundRobinProtocol
 from ai_company.core.enums import Priority
 from tests.unit.communication.meeting.conftest import (

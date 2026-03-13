@@ -12,7 +12,7 @@ from ai_company.communication.conflict_resolution.models import (
 )
 from ai_company.communication.conflict_resolution.protocol import JudgeDecision
 from ai_company.communication.delegation.hierarchy import (
-    HierarchyResolver,  # noqa: TC001
+    HierarchyResolver,
 )
 from ai_company.communication.enums import ConflictResolutionStrategy
 from ai_company.communication.errors import (

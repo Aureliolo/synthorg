@@ -12,6 +12,7 @@
   <a href="https://github.com/Aureliolo/synthorg/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-BSL_1.1-blue" alt="License"></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.14%2B-blue" alt="Python"></a>
   <a href="https://synthorg.io/docs"><img src="https://img.shields.io/badge/docs-synthorg.io-purple" alt="Docs"></a>
+  <a href="https://securityscorecards.dev/viewer/?uri=github.com/Aureliolo/synthorg"><img src="https://api.securityscorecards.dev/projects/github.com/Aureliolo/synthorg/badge" alt="OpenSSF Scorecard"></a>
 </p>
 
 ---
@@ -127,7 +128,7 @@ graph TB
 
 ## Status
 
-Core framework complete — agent engine, multi-agent coordination, API, security, HR, memory, and budget systems are implemented. Remaining: Mem0 adapter backend, approval workflow gates, CLI, web dashboard. See the [roadmap](docs/roadmap/index.md) for details.
+Core framework complete — agent engine, multi-agent coordination, API, security, HR, memory (including Mem0 backend adapter), and budget systems are implemented. Web dashboard (Vue 3 + PrimeVue + Tailwind CSS) is built. Remaining: approval workflow gates, CLI. See the [roadmap](docs/roadmap/index.md) for details.
 
 ## License
 

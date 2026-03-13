@@ -9,7 +9,7 @@ from ai_company.core.enums import MemoryCategory, SeniorityLevel
 from ai_company.core.types import NotBlankStr
 from ai_company.hr.errors import MemoryArchivalError
 from ai_company.hr.full_snapshot_strategy import FullSnapshotStrategy
-from ai_company.memory.consolidation.models import ArchivalEntry  # noqa: TC001
+from ai_company.memory.consolidation.models import ArchivalEntry
 from ai_company.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
 from ai_company.memory.org.models import OrgFactAuthor, OrgFactWriteRequest
 

@@ -606,8 +606,12 @@ class TaskEngine:
     _SNAPSHOT_SENDER: str = "task-engine"
     """Sender identity used in snapshot ``Message`` envelopes."""
 
-    _SNAPSHOT_CHANNEL: str = "task_engine"
-    """Message bus channel for snapshot publication."""
+    _SNAPSHOT_CHANNEL: str = "tasks"
+    """Message bus channel for snapshot publication.
+
+    Must match ``CHANNEL_TASKS`` in ``api.channels`` so that events
+    reach the MessageBusBridge and WebSocket consumers.
+    """
 
     async def _processing_loop(self) -> None:
         """Background loop: dequeue and process mutations sequentially.

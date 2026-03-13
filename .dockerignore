@@ -68,5 +68,10 @@ logs/
 Thumbs.db
 .DS_Store
 
+# Web dashboard build artifacts
+web/node_modules/
+web/dist/
+web/.env
+
 # uv
 .python-version

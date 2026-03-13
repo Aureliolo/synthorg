@@ -1,0 +1,65 @@
+name: DAST
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 5 * * 1"  # Weekly Monday 5am UTC
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false  # Serialize — only one DAST scan at a time
+
+jobs:
+  zap-scan:
+    name: ZAP API Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write  # Required by API scan action to create issues for scan findings
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      # Create env file before any compose commands (compose requires env_file: .env)
+      - name: Create env file
+        run: cp docker/.env.example docker/.env
+
+      # Build backend image locally (no push, no registry credentials)
+      - name: Build backend image
+        run: docker compose -f docker/compose.yml build backend
+
+      # Start backend only (no web/nginx needed for API scan)
+      - name: Start backend
+        run: docker compose -f docker/compose.yml up -d backend
+
+      - name: Wait for healthy
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/api/v1/health > /dev/null 2>&1; then
+              echo "Backend healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Backend failed to start within 60s"
+          docker compose -f docker/compose.yml logs backend
+          exit 1
+
+      # -a enables alpha passive scan rules for broader coverage;
+      # findings are non-blocking (artifact-only, no SARIF gate)
+      - name: ZAP API Scan
+        uses: zaproxy/action-api-scan@5158fe4d9d8fcc75ea204db81317cce7f9e5453d # v0.10.0
+        with:
+          target: http://localhost:8000/docs/openapi.json
+          format: openapi
+          fail_action: false
+          cmd_options: "-a"
+
+      - name: Stop backend
+        if: always()
+        run: docker compose -f docker/compose.yml down

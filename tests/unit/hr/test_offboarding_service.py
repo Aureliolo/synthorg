@@ -5,10 +5,10 @@ from typing import Any
 
 import pytest
 
-from ai_company.communication.channel import Channel  # noqa: TC001
-from ai_company.communication.message import Message  # noqa: TC001
+from ai_company.communication.channel import Channel
+from ai_company.communication.message import Message
 from ai_company.core.enums import AgentStatus, TaskStatus
-from ai_company.core.task import Task  # noqa: TC001
+from ai_company.core.task import Task
 from ai_company.core.types import NotBlankStr
 from ai_company.hr.archival_protocol import ArchivalResult
 from ai_company.hr.errors import (
@@ -19,7 +19,7 @@ from ai_company.hr.errors import (
 )
 from ai_company.hr.models import OffboardingRecord
 from ai_company.hr.offboarding_service import OffboardingService
-from ai_company.hr.registry import AgentRegistryService  # noqa: TC001
+from ai_company.hr.registry import AgentRegistryService
 from tests.unit.hr.conftest import (
     make_agent_identity,
     make_firing_request,

@@ -1,6 +1,6 @@
 """Unit test configuration and fixtures for provider models."""
 
-from collections.abc import AsyncIterator  # noqa: TC003
+from collections.abc import AsyncIterator
 
 import pytest
 from polyfactory.factories.pydantic_factory import ModelFactory

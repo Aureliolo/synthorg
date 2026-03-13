@@ -99,10 +99,146 @@ jobs:
           name: test-results-${{ matrix.python-version }}
           path: junit.xml
 
+  dashboard-lint:
+    name: Dashboard Lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npm run lint
+        working-directory: web
+
+  dashboard-type-check:
+    name: Dashboard Type Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npm run type-check
+        working-directory: web
+
+  dashboard-test:
+    name: Dashboard Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npm run test -- --coverage
+        working-directory: web
+
+  dashboard-build:
+    name: Dashboard Build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - name: Production build
+        run: npm run build
+        working-directory: web
+
+  python-audit:
+    name: Python Security Audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python-uv
+
+      - name: pip-audit
+        run: uv run pip-audit
+
+  dockerfile-lint:
+    name: Dockerfile Lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Lint backend Dockerfile
+        uses: hadolint/hadolint-action@2332a7b74a6de0dda2e2221d575162eba76ba5e5 # v3.3.0
+        with:
+          dockerfile: docker/backend/Dockerfile
+
+      - name: Lint web Dockerfile
+        uses: hadolint/hadolint-action@2332a7b74a6de0dda2e2221d575162eba76ba5e5 # v3.3.0
+        with:
+          dockerfile: docker/web/Dockerfile
+
+      - name: Lint sandbox Dockerfile
+        uses: hadolint/hadolint-action@2332a7b74a6de0dda2e2221d575162eba76ba5e5 # v3.3.0
+        with:
+          dockerfile: docker/sandbox/Dockerfile
+
+  dashboard-audit:
+    name: Dashboard Security Audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - name: npm audit (critical + high)
+        run: npm audit --audit-level=high
+        working-directory: web
+
   ci-pass:
     name: CI Pass
     if: always()
-    needs: [lint, type-check, test]
+    needs: [lint, type-check, test, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit]
     runs-on: ubuntu-latest
     permissions: {}
     steps:
@@ -111,11 +247,25 @@ jobs:
           LINT_RESULT: ${{ needs.lint.result }}
           TYPE_CHECK_RESULT: ${{ needs.type-check.result }}
           TEST_RESULT: ${{ needs.test.result }}
+          PYTHON_AUDIT_RESULT: ${{ needs.python-audit.result }}
+          DOCKERFILE_LINT_RESULT: ${{ needs.dockerfile-lint.result }}
+          DASHBOARD_LINT_RESULT: ${{ needs.dashboard-lint.result }}
+          DASHBOARD_TYPE_CHECK_RESULT: ${{ needs.dashboard-type-check.result }}
+          DASHBOARD_TEST_RESULT: ${{ needs.dashboard-test.result }}
+          DASHBOARD_BUILD_RESULT: ${{ needs.dashboard-build.result }}
+          DASHBOARD_AUDIT_RESULT: ${{ needs.dashboard-audit.result }}
         run: |
           if [[ "$LINT_RESULT" != "success" || \
                 "$TYPE_CHECK_RESULT" != "success" || \
-                "$TEST_RESULT" != "success" ]]; then
-            echo "CI failed: lint=$LINT_RESULT, type-check=$TYPE_CHECK_RESULT, test=$TEST_RESULT"
+                "$TEST_RESULT" != "success" || \
+                "$PYTHON_AUDIT_RESULT" != "success" || \
+                "$DOCKERFILE_LINT_RESULT" != "success" || \
+                "$DASHBOARD_LINT_RESULT" != "success" || \
+                "$DASHBOARD_TYPE_CHECK_RESULT" != "success" || \
+                "$DASHBOARD_TEST_RESULT" != "success" || \
+                "$DASHBOARD_BUILD_RESULT" != "success" || \
+                "$DASHBOARD_AUDIT_RESULT" != "success" ]]; then
+            echo "CI failed: lint=$LINT_RESULT, type-check=$TYPE_CHECK_RESULT, test=$TEST_RESULT, python-audit=$PYTHON_AUDIT_RESULT, dockerfile-lint=$DOCKERFILE_LINT_RESULT, dashboard-lint=$DASHBOARD_LINT_RESULT, dashboard-type-check=$DASHBOARD_TYPE_CHECK_RESULT, dashboard-test=$DASHBOARD_TEST_RESULT, dashboard-build=$DASHBOARD_BUILD_RESULT, dashboard-audit=$DASHBOARD_AUDIT_RESULT"
             exit 1
           fi
           echo "All CI checks passed"

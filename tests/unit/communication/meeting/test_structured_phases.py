@@ -10,7 +10,7 @@ from ai_company.communication.meeting.enums import (
 from ai_company.communication.meeting.errors import (
     MeetingBudgetExhaustedError,
 )
-from ai_company.communication.meeting.models import MeetingAgenda  # noqa: TC001
+from ai_company.communication.meeting.models import MeetingAgenda
 from ai_company.communication.meeting.protocol import ConflictDetector, MeetingProtocol
 from ai_company.communication.meeting.structured_phases import (
     KeywordConflictDetector,

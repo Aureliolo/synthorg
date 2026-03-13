@@ -1,6 +1,6 @@
 """Tests for CompletionProvider protocol and BaseCompletionProvider ABC."""
 
-from collections.abc import AsyncIterator  # noqa: TC003
+from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest

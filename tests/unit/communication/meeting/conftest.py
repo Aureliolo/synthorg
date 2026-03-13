@@ -13,7 +13,7 @@ from ai_company.communication.meeting.models import (
     MeetingAgenda,
     MeetingAgendaItem,
 )
-from ai_company.communication.meeting.protocol import AgentCaller  # noqa: TC001
+from ai_company.communication.meeting.protocol import AgentCaller
 
 
 def make_agent_response(

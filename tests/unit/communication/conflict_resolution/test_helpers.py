@@ -9,7 +9,7 @@ from ai_company.communication.conflict_resolution._helpers import (
     pick_highest_seniority,
 )
 from ai_company.communication.delegation.hierarchy import (
-    HierarchyResolver,  # noqa: TC001
+    HierarchyResolver,
 )
 from ai_company.communication.errors import ConflictStrategyError
 from ai_company.core.enums import SeniorityLevel

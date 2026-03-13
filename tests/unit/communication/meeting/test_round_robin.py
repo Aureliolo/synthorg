@@ -10,7 +10,7 @@ from ai_company.communication.meeting.enums import (
 from ai_company.communication.meeting.errors import (
     MeetingBudgetExhaustedError,
 )
-from ai_company.communication.meeting.models import MeetingAgenda  # noqa: TC001
+from ai_company.communication.meeting.models import MeetingAgenda
 from ai_company.communication.meeting.protocol import MeetingProtocol
 from ai_company.communication.meeting.round_robin import RoundRobinProtocol
 from tests.unit.communication.meeting.conftest import (

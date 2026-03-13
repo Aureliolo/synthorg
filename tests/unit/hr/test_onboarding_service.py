@@ -5,8 +5,8 @@ import pytest
 from ai_company.core.enums import AgentStatus
 from ai_company.hr.enums import OnboardingStep
 from ai_company.hr.errors import OnboardingError
-from ai_company.hr.onboarding_service import OnboardingService  # noqa: TC001
-from ai_company.hr.registry import AgentRegistryService  # noqa: TC001
+from ai_company.hr.onboarding_service import OnboardingService
+from ai_company.hr.registry import AgentRegistryService
 from tests.unit.hr.conftest import make_agent_identity
 
 

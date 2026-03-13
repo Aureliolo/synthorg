@@ -9,7 +9,7 @@ import structlog.testing
 
 from ai_company.budget.coordination_config import ErrorTaxonomyConfig
 from ai_company.budget.tracker import CostTracker
-from ai_company.core.agent import AgentIdentity  # noqa: TC001
+from ai_company.core.agent import AgentIdentity
 from ai_company.core.enums import AgentStatus, Priority, TaskStatus, TaskType
 from ai_company.core.task import Task
 from ai_company.engine.agent_engine import AgentEngine
@@ -17,7 +17,6 @@ from ai_company.engine.context import AgentContext
 from ai_company.engine.errors import (
     ExecutionStateError,
     TaskEngineError,
-    TaskMutationError,
 )
 from ai_company.engine.loop_protocol import (
     ExecutionResult,
@@ -25,6 +24,7 @@ from ai_company.engine.loop_protocol import (
     TurnRecord,
 )
 from ai_company.engine.run_result import AgentRunResult
+from ai_company.engine.task_engine_models import TaskMutationResult
 from ai_company.observability.events.prompt import PROMPT_TOKEN_RATIO_HIGH
 from ai_company.providers.enums import FinishReason
 
@@ -937,9 +937,34 @@ class TestAgentEnginePromptTokenRatioWarning:
             assert len(warning_events) == 0
 
 
+def _make_sync_success(
+    request_id: str = "test",
+    version: int = 1,
+) -> TaskMutationResult:
+    """Build a successful TaskMutationResult for sync tests."""
+    return TaskMutationResult(
+        request_id=request_id,
+        success=True,
+        version=version,
+    )
+
+
+def _make_sync_failure(
+    request_id: str = "test",
+    error: str = "rejected",
+) -> TaskMutationResult:
+    """Build a failed TaskMutationResult for sync tests."""
+    return TaskMutationResult(
+        request_id=request_id,
+        success=False,
+        error=error,
+        error_code="validation",
+    )
+
+
 @pytest.mark.unit
-class TestReportToTaskEngine:
-    """Tests for _report_to_task_engine interaction."""
+class TestSyncToTaskEngine:
+    """Tests for incremental TaskEngine status sync."""
 
     async def test_no_task_engine_is_noop(
         self,
@@ -947,7 +972,7 @@ class TestReportToTaskEngine:
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """Without task_engine, run() succeeds and no reporting occurs."""
+        """Without task_engine, run() succeeds and no syncing occurs."""
         response = _make_completion_response()
         provider = mock_provider_factory([response])
         engine = AgentEngine(provider=provider, task_engine=None)
@@ -959,14 +984,157 @@ class TestReportToTaskEngine:
 
         assert result.is_success is True
 
-    async def test_nonterminal_status_skipped(
+    async def test_completed_path_produces_three_syncs(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """Non-terminal task status does not trigger TaskEngine call."""
-        # Build a mock loop that returns IN_PROGRESS (non-terminal)
+        """COMPLETED path syncs IN_PROGRESS, IN_REVIEW, COMPLETED."""
+        response = _make_completion_response()
+        provider = mock_provider_factory([response])
+
+        mock_te = MagicMock()
+        mock_te.submit = AsyncMock(return_value=_make_sync_success())
+
+        engine = AgentEngine(provider=provider, task_engine=mock_te)
+
+        result = await engine.run(
+            identity=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+
+        assert result.is_success is True
+        assert mock_te.submit.await_count == 3
+        synced_statuses = [
+            call.args[0].target_status for call in mock_te.submit.call_args_list
+        ]
+        assert synced_statuses == [
+            TaskStatus.IN_PROGRESS,
+            TaskStatus.IN_REVIEW,
+            TaskStatus.COMPLETED,
+        ]
+
+    async def test_shutdown_path_produces_two_syncs(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """SHUTDOWN path syncs IN_PROGRESS then INTERRUPTED."""
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        ctx = ctx.with_task_transition(
+            TaskStatus.IN_PROGRESS,
+            reason="Engine starting execution",
+        )
+        mock_result = ExecutionResult(
+            context=ctx,
+            termination_reason=TerminationReason.SHUTDOWN,
+            turns=(
+                TurnRecord(
+                    turn_number=1,
+                    input_tokens=10,
+                    output_tokens=5,
+                    cost_usd=0.001,
+                    finish_reason=FinishReason.STOP,
+                ),
+            ),
+        )
+        mock_loop = MagicMock()
+        mock_loop.execute = AsyncMock(return_value=mock_result)
+        mock_loop.get_loop_type = MagicMock(return_value="react")
+
+        mock_te = MagicMock()
+        mock_te.submit = AsyncMock(return_value=_make_sync_success())
+
+        provider = mock_provider_factory([])
+        engine = AgentEngine(
+            provider=provider,
+            execution_loop=mock_loop,
+            task_engine=mock_te,
+        )
+
+        await engine.run(
+            identity=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+
+        assert mock_te.submit.await_count == 2
+        synced_statuses = [
+            call.args[0].target_status for call in mock_te.submit.call_args_list
+        ]
+        assert synced_statuses == [
+            TaskStatus.IN_PROGRESS,
+            TaskStatus.INTERRUPTED,
+        ]
+
+    async def test_error_path_produces_two_syncs(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """ERROR path syncs IN_PROGRESS then FAILED (after recovery)."""
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        ctx = ctx.with_task_transition(
+            TaskStatus.IN_PROGRESS,
+            reason="Engine starting execution",
+        )
+        mock_result = ExecutionResult(
+            context=ctx,
+            termination_reason=TerminationReason.ERROR,
+            error_message="something broke",
+            turns=(
+                TurnRecord(
+                    turn_number=1,
+                    input_tokens=10,
+                    output_tokens=5,
+                    cost_usd=0.001,
+                    finish_reason=FinishReason.STOP,
+                ),
+            ),
+        )
+        mock_loop = MagicMock()
+        mock_loop.execute = AsyncMock(return_value=mock_result)
+        mock_loop.get_loop_type = MagicMock(return_value="react")
+
+        mock_te = MagicMock()
+        mock_te.submit = AsyncMock(return_value=_make_sync_success())
+
+        provider = mock_provider_factory([])
+        engine = AgentEngine(
+            provider=provider,
+            execution_loop=mock_loop,
+            task_engine=mock_te,
+        )
+
+        await engine.run(
+            identity=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+
+        assert mock_te.submit.await_count == 2
+        synced_statuses = [
+            call.args[0].target_status for call in mock_te.submit.call_args_list
+        ]
+        assert synced_statuses == [
+            TaskStatus.IN_PROGRESS,
+            TaskStatus.FAILED,
+        ]
+
+    async def test_max_turns_syncs_only_in_progress(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """MAX_TURNS path: only IN_PROGRESS is synced (no final transition)."""
         ctx = AgentContext.from_identity(
             sample_agent_with_personality,
             task=sample_task_with_criteria,
@@ -993,7 +1161,7 @@ class TestReportToTaskEngine:
         mock_loop.get_loop_type = MagicMock(return_value="react")
 
         mock_te = MagicMock()
-        mock_te.transition_task = AsyncMock()
+        mock_te.submit = AsyncMock(return_value=_make_sync_success())
 
         provider = mock_provider_factory([])
         engine = AgentEngine(
@@ -1008,66 +1176,65 @@ class TestReportToTaskEngine:
             task=sample_task_with_criteria,
         )
 
-        mock_te.transition_task.assert_not_awaited()
+        assert mock_te.submit.await_count == 1
+        assert (
+            mock_te.submit.call_args_list[0].args[0].target_status
+            == TaskStatus.IN_PROGRESS
+        )
 
-    async def test_terminal_status_reported(
+    async def test_sync_failure_isolated_from_subsequent_transitions(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """COMPLETED status is reported to TaskEngine."""
+        """A failed sync does not block subsequent transitions."""
         response = _make_completion_response()
         provider = mock_provider_factory([response])
 
+        # First call (IN_PROGRESS) fails, rest succeed
         mock_te = MagicMock()
-        mock_te.transition_task = AsyncMock()
-
-        engine = AgentEngine(
-            provider=provider,
-            task_engine=mock_te,
+        mock_te.submit = AsyncMock(
+            side_effect=[
+                _make_sync_failure(),
+                _make_sync_success(),
+                _make_sync_success(),
+            ],
         )
+
+        engine = AgentEngine(provider=provider, task_engine=mock_te)
 
         result = await engine.run(
             identity=sample_agent_with_personality,
             task=sample_task_with_criteria,
         )
 
+        # Run still succeeds despite first sync failure
         assert result.is_success is True
-        mock_te.transition_task.assert_awaited_once()
-        call_args = mock_te.transition_task.call_args
-        assert call_args.args[0] == sample_task_with_criteria.id
-        assert call_args.args[1] == TaskStatus.COMPLETED
-        assert call_args.kwargs["requested_by"] == str(
-            sample_agent_with_personality.id,
-        )
+        assert mock_te.submit.await_count == 3
 
-    async def test_mutation_error_swallowed(
+    async def test_task_engine_error_swallowed(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """TaskMutationError from TaskEngine is logged and swallowed."""
+        """TaskEngineError from submit() is logged and swallowed."""
         response = _make_completion_response()
         provider = mock_provider_factory([response])
 
         mock_te = MagicMock()
-        mock_te.transition_task = AsyncMock(
-            side_effect=TaskMutationError("rejected"),
+        mock_te.submit = AsyncMock(
+            side_effect=TaskEngineError("engine unavailable"),
         )
 
-        engine = AgentEngine(
-            provider=provider,
-            task_engine=mock_te,
-        )
+        engine = AgentEngine(provider=provider, task_engine=mock_te)
 
         result = await engine.run(
             identity=sample_agent_with_personality,
             task=sample_task_with_criteria,
         )
 
-        # Run still succeeds despite task engine failure
         assert result.is_success is True
 
     async def test_unexpected_error_swallowed(
@@ -1076,54 +1243,22 @@ class TestReportToTaskEngine:
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """Unexpected Exception from TaskEngine is logged and swallowed."""
+        """Unexpected Exception from submit() is logged and swallowed."""
         response = _make_completion_response()
         provider = mock_provider_factory([response])
 
         mock_te = MagicMock()
-        mock_te.transition_task = AsyncMock(
+        mock_te.submit = AsyncMock(
             side_effect=RuntimeError("connection lost"),
         )
 
-        engine = AgentEngine(
-            provider=provider,
-            task_engine=mock_te,
-        )
+        engine = AgentEngine(provider=provider, task_engine=mock_te)
 
         result = await engine.run(
             identity=sample_agent_with_personality,
             task=sample_task_with_criteria,
         )
 
-        # Run still succeeds despite task engine failure
-        assert result.is_success is True
-
-    async def test_task_engine_error_swallowed(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-        sample_task_with_criteria: Task,
-        mock_provider_factory: type[MockCompletionProvider],
-    ) -> None:
-        """TaskEngineError (non-mutation) from TaskEngine is logged and swallowed."""
-        response = _make_completion_response()
-        provider = mock_provider_factory([response])
-
-        mock_te = MagicMock()
-        mock_te.transition_task = AsyncMock(
-            side_effect=TaskEngineError("engine unavailable"),
-        )
-
-        engine = AgentEngine(
-            provider=provider,
-            task_engine=mock_te,
-        )
-
-        result = await engine.run(
-            identity=sample_agent_with_personality,
-            task=sample_task_with_criteria,
-        )
-
-        # Run still succeeds despite task engine failure
         assert result.is_success is True
 
     async def test_memory_error_propagates(
@@ -1132,22 +1267,51 @@ class TestReportToTaskEngine:
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """MemoryError from TaskEngine is re-raised, not swallowed."""
+        """MemoryError from submit() is re-raised, not swallowed."""
         response = _make_completion_response()
         provider = mock_provider_factory([response])
 
         mock_te = MagicMock()
-        mock_te.transition_task = AsyncMock(
+        mock_te.submit = AsyncMock(
             side_effect=MemoryError("out of memory"),
         )
 
-        engine = AgentEngine(
-            provider=provider,
-            task_engine=mock_te,
-        )
+        engine = AgentEngine(provider=provider, task_engine=mock_te)
 
         with pytest.raises(MemoryError, match="out of memory"):
             await engine.run(
                 identity=sample_agent_with_personality,
                 task=sample_task_with_criteria,
             )
+
+    async def test_recursion_error_propagates(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """RecursionError from submit() is re-raised, not swallowed."""
+        response = _make_completion_response()
+        provider = mock_provider_factory([response])
+
+        mock_te = MagicMock()
+        mock_te.submit = AsyncMock(
+            side_effect=RecursionError("maximum recursion depth exceeded"),
+        )
+
+        engine = AgentEngine(provider=provider, task_engine=mock_te)
+
+        with pytest.raises(RecursionError, match="maximum recursion depth exceeded"):
+            await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )
+
+
+@pytest.mark.unit
+def test_snapshot_channel_matches_api_channel() -> None:
+    """TaskEngine._SNAPSHOT_CHANNEL must match CHANNEL_TASKS in api.channels."""
+    from ai_company.api.channels import CHANNEL_TASKS
+    from ai_company.engine.task_engine import TaskEngine
+
+    assert TaskEngine._SNAPSHOT_CHANNEL == CHANNEL_TASKS

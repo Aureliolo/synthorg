@@ -3,7 +3,7 @@
 import copy
 from typing import TYPE_CHECKING
 
-from ai_company.core.task import Task  # noqa: TC001
+from ai_company.core.task import Task
 from ai_company.engine.task_engine_models import CreateTaskData
 
 if TYPE_CHECKING:

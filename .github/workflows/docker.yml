@@ -4,6 +4,16 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+  pull_request:
+    branches: [main]
+    paths:
+      - "docker/**"
+      - "web/**"
+      - "src/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".dockerignore"
+      - ".github/workflows/docker.yml"
   workflow_dispatch:
 
 permissions: {}
@@ -62,6 +72,7 @@ jobs:
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
       - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
         with:
           registry: ghcr.io
@@ -130,6 +141,7 @@ jobs:
       # ensures deterministic layer content, but the manifest digest differs due
       # to SBOM + provenance attestation layers added only on push.
       - name: Push image
+        if: github.event_name != 'pull_request'
         id: push
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
         with:
@@ -144,9 +156,11 @@ jobs:
           provenance: true
 
       - name: Install cosign
+        if: github.event_name != 'pull_request'
         uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
 
       - name: Sign image
+        if: github.event_name != 'pull_request'
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
         run: |
@@ -175,6 +189,7 @@ jobs:
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
       - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
         with:
           registry: ghcr.io
@@ -242,6 +257,7 @@ jobs:
       # NOTE: Separate build invocation; GHA cache ensures deterministic layers,
       # but manifest digest differs due to SBOM + provenance attestation layers.
       - name: Push image
+        if: github.event_name != 'pull_request'
         id: push
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
         with:
@@ -256,9 +272,11 @@ jobs:
           provenance: true
 
       - name: Install cosign
+        if: github.event_name != 'pull_request'
         uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
 
       - name: Sign image
+        if: github.event_name != 'pull_request'
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
         run: |
@@ -271,7 +289,7 @@ jobs:
   # Append container image references to the GitHub Release (version tags only)
   update-release:
     name: Update Release Notes
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request'
     needs: [version, build-backend, build-web]
     runs-on: ubuntu-latest
     permissions:

@@ -121,11 +121,24 @@ synthorg/
     e2e/                # Full system tests
   docs/                 # Developer documentation
   docker/               # Dockerfiles, Compose, .env.example
-  web/                  # Web UI scaffold (nginx + placeholder)
+  web/                  # Vue 3 web dashboard (PrimeVue + Tailwind CSS)
   .github/              # CI workflows, dependabot, actions
   pyproject.toml        # Project config (deps, tools, linters)
   DESIGN_SPEC.md        # Pointer to design specification pages
   CLAUDE.md             # AI assistant quick reference
+```
+
+## Web Dashboard Development
+
+The Vue 3 dashboard lives in `web/`. Prerequisites: **Node.js 20+**.
+
+```bash
+npm --prefix web install        # install frontend deps
+npm --prefix web run dev         # dev server at http://localhost:5173
+npm --prefix web run lint        # ESLint
+npm --prefix web run type-check  # vue-tsc type checking
+npm --prefix web run test        # Vitest unit tests
+npm --prefix web run build       # production build
 ```
 
 ## IDE Setup

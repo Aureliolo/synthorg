@@ -4,9 +4,9 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from litestar.testing import TestClient  # noqa: TC002
+from litestar.testing import TestClient
 
-from ai_company.api.approval_store import ApprovalStore  # noqa: TC001
+from ai_company.api.approval_store import ApprovalStore
 from ai_company.core.approval import ApprovalItem
 from ai_company.core.enums import ApprovalRiskLevel, ApprovalStatus
 from tests.unit.api.conftest import make_approval, make_auth_headers

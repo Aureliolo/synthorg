@@ -12,7 +12,7 @@ from ai_company.budget.category_analytics import (
 )
 from ai_company.budget.coordination_config import OrchestrationAlertThresholds
 from ai_company.budget.cost_record import CostRecord
-from ai_company.budget.tracker import CostTracker  # noqa: TC001
+from ai_company.budget.tracker import CostTracker
 
 pytestmark = pytest.mark.timeout(30)
 

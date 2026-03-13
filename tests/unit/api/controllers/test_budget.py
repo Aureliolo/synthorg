@@ -4,10 +4,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
-from litestar.testing import TestClient  # noqa: TC002
+from litestar.testing import TestClient
 
 from ai_company.budget.cost_record import CostRecord
-from ai_company.budget.tracker import CostTracker  # noqa: TC001
+from ai_company.budget.tracker import CostTracker
 from tests.unit.api.conftest import make_auth_headers
 
 _HEADERS = make_auth_headers("ceo")

@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from ai_company.budget.call_category import LLMCallCategory
 from ai_company.core.enums import Complexity, Priority, TaskStatus, TaskType
 from ai_company.core.task import Task
-from ai_company.engine.context import AgentContext  # noqa: TC001
+from ai_company.engine.context import AgentContext
 from ai_company.engine.loop_protocol import (
     ExecutionLoop,
     ExecutionResult,

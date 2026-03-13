@@ -3,7 +3,7 @@
 from typing import Any
 
 import pytest
-from litestar.testing import TestClient  # noqa: TC002
+from litestar.testing import TestClient
 
 from ai_company.api.middleware import (
     _API_CSP,

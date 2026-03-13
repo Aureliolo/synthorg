@@ -1,20 +1,14 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SynthOrg</title>
-  <link rel="stylesheet" href="/style.css">
-</head>
-<body>
-  <div class="container">
-    <h1>SynthOrg</h1>
-    <p class="subtitle">Dashboard &mdash; Coming Soon</p>
-    <div id="status" class="status status-checking" aria-live="polite">
-      <span class="status-dot"></span>
-      <span id="status-text">Checking backend...</span>
-    </div>
-  </div>
-  <script src="/app.js"></script>
-</body>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="SynthOrg — monitoring and management dashboard for synthetic organizations" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>SynthOrg Dashboard</title>
+  </head>
+  <body class="bg-slate-950 text-slate-200 antialiased">
+    <div id="app"><div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#94a3b8">Loading&hellip;</div></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
 </html>

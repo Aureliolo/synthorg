@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.engine.context import AgentContext  # noqa: TC001
+from ai_company.engine.context import AgentContext
 from ai_company.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,

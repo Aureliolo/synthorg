@@ -28,7 +28,7 @@ class TestAgentController:
         fake_message_bus: FakeMessageBus,
     ) -> None:
         from ai_company.api.app import create_app
-        from ai_company.api.auth.service import AuthService  # noqa: TC001
+        from ai_company.api.auth.service import AuthService
         from ai_company.budget.tracker import CostTracker
         from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
 

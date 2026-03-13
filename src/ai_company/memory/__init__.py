@@ -3,11 +3,16 @@
 Re-exports protocols (``MemoryBackend``, ``MemoryCapabilities``,
 ``SharedKnowledgeStore``, ``MemoryInjectionStrategy``,
 ``OrgMemoryBackend``, ``ConsolidationStrategy``, ``ArchivalStore``),
-domain models, config models, factory, retrieval pipeline,
-consolidation, org memory, and error hierarchy so consumers can
-import from ``ai_company.memory`` directly.
+concrete backends (``Mem0MemoryBackend``), domain models, config
+models, factory, retrieval pipeline, consolidation, org memory, and
+error hierarchy so consumers can import from ``ai_company.memory``
+directly.
 """
 
+from ai_company.memory.backends.mem0 import (
+    Mem0EmbedderConfig,
+    Mem0MemoryBackend,
+)
 from ai_company.memory.capabilities import MemoryCapabilities
 from ai_company.memory.config import (
     CompanyMemoryConfig,
@@ -74,6 +79,8 @@ __all__ = [
     "DefaultTokenEstimator",
     "InjectionPoint",
     "InjectionStrategy",
+    "Mem0EmbedderConfig",
+    "Mem0MemoryBackend",
     "MemoryBackend",
     "MemoryCapabilities",
     "MemoryCapabilityError",

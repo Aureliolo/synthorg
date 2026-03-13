@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 from litestar import Litestar
-from litestar.testing import TestClient  # noqa: TC002
+from litestar.testing import TestClient
 
 from ai_company.api.app import create_app
 

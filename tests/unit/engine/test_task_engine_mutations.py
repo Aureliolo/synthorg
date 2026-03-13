@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ai_company.core.enums import TaskStatus
-from ai_company.core.task import Task  # noqa: TC001
+from ai_company.core.task import Task
 from ai_company.engine.errors import (
     TaskMutationError,
     TaskNotFoundError,

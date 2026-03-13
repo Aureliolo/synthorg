@@ -1,7 +1,7 @@
 """Integration tests for subprocess sandbox with real git."""
 
 import os
-from pathlib import Path  # noqa: TC003 — used at runtime
+from pathlib import Path
 
 import pytest
 

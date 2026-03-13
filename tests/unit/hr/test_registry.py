@@ -4,7 +4,7 @@ import pytest
 
 from ai_company.core.enums import AgentStatus, SeniorityLevel
 from ai_company.hr.errors import AgentAlreadyRegisteredError, AgentNotFoundError
-from ai_company.hr.registry import AgentRegistryService  # noqa: TC001
+from ai_company.hr.registry import AgentRegistryService
 from tests.unit.hr.conftest import make_agent_identity
 
 

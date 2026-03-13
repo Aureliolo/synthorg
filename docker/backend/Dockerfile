@@ -20,19 +20,24 @@ COPY --from=ghcr.io/astral-sh/uv:0.10.9@sha256:10902f58a1606787602f303954cea0996
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 
+RUN addgroup --gid 10000 --system build \
+    && adduser --uid 10000 --system --ingroup build --home /home/build build \
+    && mkdir /app && chown build:build /app
+
 WORKDIR /app
 
 # Install dependencies first (layer cache — only invalidated on lock change)
-COPY pyproject.toml uv.lock ./
-RUN --mount=type=cache,target=/root/.cache/uv \
+COPY --chown=build:build pyproject.toml uv.lock ./
+USER build
+RUN --mount=type=cache,target=/home/build/.cache/uv,uid=10000,gid=10000 \
     uv sync --frozen --no-dev --no-install-project
 
 # Copy source and install project.
 # touch README.md: hatchling requires README.md for package metadata but
 # .dockerignore excludes it — create an empty file to satisfy the build.
 RUN touch README.md
-COPY src/ src/
-RUN --mount=type=cache,target=/root/.cache/uv \
+COPY --chown=build:build src/ src/
+RUN --mount=type=cache,target=/home/build/.cache/uv,uid=10000,gid=10000 \
     uv sync --frozen --no-dev
 
 # Strip __pycache__ from source (bytecode already compiled by uv into .venv)
@@ -61,6 +66,9 @@ RUN mkdir -p /data && chown 65532:65532 /data
 
 # Set final ownership
 RUN chown -R 65532:65532 /app
+
+# Drop root after setup — all stages must end as non-root
+USER 65532
 
 # ---------------------------------------------------------------------------
 # Stage 3 — Runtime (distroless: no shell, no uv, no package manager)

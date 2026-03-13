@@ -2,7 +2,7 @@
 
 import os
 import subprocess
-from pathlib import Path  # noqa: TC003 — pytest evaluates annotations
+from pathlib import Path
 
 import pytest
 

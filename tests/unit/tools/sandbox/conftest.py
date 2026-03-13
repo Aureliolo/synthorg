@@ -1,6 +1,6 @@
 """Fixtures for sandbox tests."""
 
-from pathlib import Path  # noqa: TC003 — pytest evaluates annotations
+from pathlib import Path
 
 import pytest
 

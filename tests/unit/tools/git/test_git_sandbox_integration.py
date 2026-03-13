@@ -1,6 +1,6 @@
 """Tests for git tools with sandbox integration."""
 
-from pathlib import Path  # noqa: TC003 — used at runtime
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest

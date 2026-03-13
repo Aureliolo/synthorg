@@ -21,6 +21,7 @@ dependencies = [
     "litellm==1.82.1",
     "litestar[standard,structlog,pydantic,brotli,prometheus]==2.21.1",
     "mcp==1.26.0",
+    "mem0ai==1.0.5",
     "pydantic==2.12.5",
     "pyjwt[crypto]==2.11.0",
     "pyyaml==6.0.3",
@@ -57,6 +58,7 @@ dev = [
     "commitizen==4.13.9",
     "mypy==1.19.1",
     "pre-commit==4.5.1",
+    "pip-audit==2.9.0",
     "pre-commit-uv==4.2.1",
     "ruff==0.15.5",
     "types-pyyaml==6.0.12.20250915",
@@ -134,6 +136,7 @@ convention = "google"
     "PLR2004", # magic values in tests
     "SLF001",  # private member access in tests
     "PLC0415", # local imports in test functions
+    "TC",      # type-checking imports (fixture type hints)
 ]
 "__init__.py" = ["F401"]
 "scripts/**/*.py" = [
@@ -182,6 +185,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "mcp.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "mem0.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

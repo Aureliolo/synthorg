@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ai_company.core.agent import AgentIdentity  # noqa: TC001
+from ai_company.core.agent import AgentIdentity
 from ai_company.core.enums import ToolCategory
 from ai_company.engine.context import AgentContext
 from ai_company.engine.loop_protocol import TerminationReason

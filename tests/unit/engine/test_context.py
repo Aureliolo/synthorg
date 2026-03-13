@@ -6,9 +6,9 @@ import pytest
 import structlog.testing
 from pydantic import ValidationError
 
-from ai_company.core.agent import AgentIdentity  # noqa: TC001
+from ai_company.core.agent import AgentIdentity
 from ai_company.core.enums import TaskStatus
-from ai_company.core.task import Task  # noqa: TC001
+from ai_company.core.task import Task
 from ai_company.engine.context import (
     DEFAULT_MAX_TURNS,
     AgentContext,
