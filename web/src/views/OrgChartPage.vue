@@ -22,11 +22,7 @@ const companyStore = useCompanyStore()
 const agentStore = useAgentStore()
 
 async function retryFetch() {
-  try {
-    await Promise.all([companyStore.fetchDepartments(), agentStore.fetchAgents()])
-  } catch {
-    // Errors are captured by individual stores
-  }
+  await Promise.all([companyStore.fetchDepartments(), agentStore.fetchAgents()])
 }
 
 onMounted(retryFetch)
@@ -34,6 +30,8 @@ onMounted(retryFetch)
 const nodes = computed<Node[]>(() => {
   const result: Node[] = []
   let y = 0
+
+  const agentIndex = new Map(agentStore.agents.map((a) => [a.name, a]))
 
   for (const dept of companyStore.departments) {
     const deptId = `dept-${dept.name}`
@@ -54,8 +52,6 @@ const nodes = computed<Node[]>(() => {
         type: 'orgNode',
       })
       y += 100
-
-      const agentIndex = new Map(agentStore.agents.map((a) => [a.name, a]))
       for (let i = 0; i < team.members.length; i++) {
         const memberName = team.members[i] // eslint-disable-line security/detect-object-injection
         const agent = agentIndex.get(memberName)

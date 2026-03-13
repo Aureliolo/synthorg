@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import TabView from 'primevue/tabview'
 import TabPanel from 'primevue/tabpanel'
 import InputText from 'primevue/inputtext'
@@ -10,11 +10,13 @@ import { useToast } from 'primevue/usetoast'
 import AppShell from '@/components/layout/AppShell.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import LoadingSkeleton from '@/components/common/LoadingSkeleton.vue'
+import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
 import { useProviderStore } from '@/stores/providers'
 import { getErrorMessage } from '@/utils/errors'
 import { MIN_PASSWORD_LENGTH } from '@/utils/constants'
+import type { ProviderModelConfig } from '@/api/types'
 
 const toast = useToast()
 const auth = useAuthStore()
@@ -22,18 +24,22 @@ const companyStore = useCompanyStore()
 const providerStore = useProviderStore()
 const loading = ref(true)
 
+const providerEntries = computed(() =>
+  Object.entries(providerStore.providers).map(([name, config]) => ({ name, config })),
+)
+
 const currentPassword = ref('')
 const newPassword = ref('')
 const confirmPassword = ref('')
 const pwdError = ref<string | null>(null)
 
-onMounted(async () => {
-  try {
-    await Promise.all([companyStore.fetchConfig(), providerStore.fetchProviders()])
-  } finally {
-    loading.value = false
-  }
-})
+async function retryFetch() {
+  loading.value = true
+  await Promise.all([companyStore.fetchConfig(), providerStore.fetchProviders()])
+  loading.value = false
+}
+
+onMounted(retryFetch)
 
 async function handleChangePassword() {
   pwdError.value = null
@@ -61,6 +67,7 @@ async function handleChangePassword() {
   <AppShell>
     <PageHeader title="Settings" subtitle="Manage your dashboard configuration" />
 
+    <ErrorBoundary :error="companyStore.error ?? providerStore.error" @retry="retryFetch">
     <LoadingSkeleton v-if="loading" :lines="6" />
     <TabView v-else value="company">
       <!-- Company Config -->
@@ -87,20 +94,13 @@ async function handleChangePassword() {
 
       <!-- Providers -->
       <TabPanel header="Providers" value="providers">
-        <DataTable :value="Object.values(providerStore.providers)" striped-rows class="text-sm">
+        <DataTable :value="providerEntries" striped-rows class="text-sm">
           <Column field="name" header="Provider" sortable />
-          <Column field="driver" header="Driver" />
-          <Column field="enabled" header="Enabled" style="width: 80px">
-            <template #body="{ data }">
-              <span :class="data.enabled ? 'text-green-400' : 'text-red-400'">
-                {{ data.enabled ? 'Yes' : 'No' }}
-              </span>
-            </template>
-          </Column>
+          <Column field="config.driver" header="Driver" />
           <Column header="Models" style="width: 200px">
             <template #body="{ data }">
               <span class="text-xs text-slate-400">
-                {{ data.models?.map((m: Record<string, string>) => m.name).join(', ') }}
+                {{ data.config.models?.map((m: ProviderModelConfig) => m.id).join(', ') }}
               </span>
             </template>
           </Column>
@@ -143,5 +143,6 @@ async function handleChangePassword() {
         </div>
       </TabPanel>
     </TabView>
+    </ErrorBoundary>
   </AppShell>
 </template>

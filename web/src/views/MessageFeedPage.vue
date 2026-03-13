@@ -30,8 +30,8 @@ onUnmounted(() => {
 
 watch(
   () => messageStore.activeChannel,
-  (channel) => {
-    messageStore.fetchMessages(channel ?? undefined)
+  async (channel) => {
+    await messageStore.fetchMessages(channel ?? undefined)
   },
 )
 

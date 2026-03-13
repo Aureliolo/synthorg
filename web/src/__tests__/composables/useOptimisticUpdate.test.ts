@@ -1,48 +1,93 @@
 import { describe, it, expect, vi } from 'vitest'
+import { useOptimisticUpdate } from '@/composables/useOptimisticUpdate'
 
-// Test the core optimistic update logic
-describe('optimistic update pattern', () => {
-  it('applies and rolls back on failure', async () => {
-    let state = 'original'
+vi.mock('@/utils/errors', () => ({
+  getErrorMessage: (err: unknown) => (err instanceof Error ? err.message : 'Unknown error'),
+}))
 
-    const applyOptimistic = () => {
-      const previous = state
-      state = 'optimistic'
-      return () => {
-        state = previous
-      }
-    }
-
-    const serverAction = vi.fn().mockRejectedValue(new Error('Server error'))
-
-    const rollback = applyOptimistic()
-    expect(state).toBe('optimistic')
-
-    try {
-      await serverAction()
-    } catch {
-      rollback()
-    }
-
-    expect(state).toBe('original')
+describe('useOptimisticUpdate', () => {
+  it('returns pending, error, and execute', () => {
+    const { pending, error, execute } = useOptimisticUpdate()
+    expect(pending.value).toBe(false)
+    expect(error.value).toBeNull()
+    expect(typeof execute).toBe('function')
   })
 
-  it('keeps optimistic state on success', async () => {
+  it('sets pending during execution and clears after', async () => {
+    const { pending, execute } = useOptimisticUpdate()
+    let pendingDuringAction = false
+
+    await execute(
+      () => () => {},
+      () => {
+        pendingDuringAction = pending.value
+        return Promise.resolve('done')
+      },
+    )
+
+    expect(pendingDuringAction).toBe(true)
+    expect(pending.value).toBe(false)
+  })
+
+  it('returns server action result on success', async () => {
+    const { execute } = useOptimisticUpdate()
+
+    const result = await execute(
+      () => () => {},
+      () => Promise.resolve({ id: '123' }),
+    )
+
+    expect(result).toEqual({ id: '123' })
+  })
+
+  it('rolls back and returns null on server action failure', async () => {
+    const { error, execute } = useOptimisticUpdate()
     let state = 'original'
 
-    const applyOptimistic = () => {
-      state = 'optimistic'
-      return () => {
-        state = 'original'
-      }
-    }
+    const result = await execute(
+      () => {
+        state = 'optimistic'
+        return () => {
+          state = 'original'
+        }
+      },
+      () => Promise.reject(new Error('Server error')),
+    )
 
-    const serverAction = vi.fn().mockResolvedValue({ success: true })
+    expect(result).toBeNull()
+    expect(state).toBe('original')
+    expect(error.value).toBe('Server error')
+  })
 
-    applyOptimistic()
-    expect(state).toBe('optimistic')
+  it('handles rollback failure gracefully', async () => {
+    const { error, execute } = useOptimisticUpdate()
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    await serverAction()
-    expect(state).toBe('optimistic')
+    await execute(
+      () => () => {
+        throw new Error('Rollback boom')
+      },
+      () => Promise.reject(new Error('Server error')),
+    )
+
+    expect(error.value).toBe('Server error')
+    expect(consoleSpy).toHaveBeenCalledWith('Rollback failed:', expect.any(Error))
+    consoleSpy.mockRestore()
+  })
+
+  it('clears error on next execution', async () => {
+    const { error, execute } = useOptimisticUpdate()
+
+    await execute(
+      () => () => {},
+      () => Promise.reject(new Error('fail')),
+    )
+    expect(error.value).toBe('fail')
+
+    await execute(
+      () => () => {},
+      () => Promise.resolve('ok'),
+    )
+    expect(error.value).toBeNull()
   })
 })

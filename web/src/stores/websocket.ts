@@ -55,7 +55,9 @@ export const useWebSocketStore = defineStore('websocket', () => {
       const msg = data as Record<string, unknown>
 
       if (msg.action === 'subscribed' || msg.action === 'unsubscribed') {
-        subscribedChannels.value = [...(msg.channels as WsChannel[])]
+        if (Array.isArray(msg.channels)) {
+          subscribedChannels.value = [...(msg.channels as WsChannel[])]
+        }
         return
       }
 
@@ -126,12 +128,21 @@ export const useWebSocketStore = defineStore('websocket', () => {
       pendingSubscriptions.push({ channels, filters })
       return
     }
-    socket.send(JSON.stringify({ action: 'subscribe', channels, filters }))
+    try {
+      socket.send(JSON.stringify({ action: 'subscribe', channels, filters }))
+    } catch {
+      // Socket may have transitioned to CLOSING — queue for replay
+      pendingSubscriptions.push({ channels, filters })
+    }
   }
 
   function unsubscribe(channels: WsChannel[]) {
     if (!socket || socket.readyState !== WebSocket.OPEN) return
-    socket.send(JSON.stringify({ action: 'unsubscribe', channels }))
+    try {
+      socket.send(JSON.stringify({ action: 'unsubscribe', channels }))
+    } catch {
+      // Socket transitioned to CLOSING — unsubscribe will happen on reconnect
+    }
   }
 
   function onChannelEvent(channel: string, handler: WsEventHandler) {

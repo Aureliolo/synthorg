@@ -8,6 +8,7 @@ import LoadingSkeleton from '@/components/common/LoadingSkeleton.vue'
 import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
 import AgentMetrics from '@/components/agents/AgentMetrics.vue'
 import { useAgentStore } from '@/stores/agents'
+import { getErrorMessage } from '@/utils/errors'
 import type { AgentConfig } from '@/api/types'
 
 const props = defineProps<{
@@ -27,8 +28,8 @@ onMounted(async () => {
     if (!agent.value) {
       error.value = `Agent "${props.name}" not found`
     }
-  } catch {
-    error.value = 'Failed to load agent'
+  } catch (err) {
+    error.value = getErrorMessage(err)
   } finally {
     loading.value = false
   }

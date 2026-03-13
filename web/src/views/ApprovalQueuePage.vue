@@ -72,8 +72,8 @@ async function handleReject(id: string, reason: string) {
   }
 }
 
-function filterByStatus() {
-  approvalStore.fetchApprovals({ status: statusFilter.value })
+async function filterByStatus() {
+  await approvalStore.fetchApprovals({ status: statusFilter.value })
 }
 </script>
 

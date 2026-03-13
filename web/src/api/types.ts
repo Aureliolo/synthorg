@@ -226,7 +226,6 @@ export interface ApprovalItem {
   requested_by: string
   risk_level: ApprovalRiskLevel
   status: ApprovalStatus
-  ttl_seconds: number | null
   task_id: string | null
   metadata: Record<string, string>
   decided_by: string | null
@@ -338,7 +337,7 @@ export interface CostRecord {
   output_tokens: number
   cost_usd: number
   timestamp: string
-  call_category: string | null
+  call_category: 'productive' | 'coordination' | 'system' | null
 }
 
 export interface BudgetAlertConfig {
@@ -399,33 +398,67 @@ export interface CompanyConfig {
 // ── Providers ────────────────────────────────────────────────
 
 export interface ProviderModelConfig {
-  name: string
-  aliases: string[]
-  input_cost_per_1k: number
-  output_cost_per_1k: number
+  id: string
+  alias: string | null
+  cost_per_1k_input: number
+  cost_per_1k_output: number
+  max_context: number
+  estimated_latency_ms: number | null
 }
 
 export interface ProviderConfig {
-  name: string
   driver: string
+  api_key: string | null
+  base_url: string | null
   models: ProviderModelConfig[]
-  enabled: boolean
 }
 
 // ── Messages ─────────────────────────────────────────────────
 
+export type MessageType =
+  | 'task_update'
+  | 'question'
+  | 'announcement'
+  | 'status_report'
+  | 'escalation'
+  | 'delegation'
+
+export type MessagePriority = 'low' | 'normal' | 'high' | 'urgent'
+
+export type AttachmentType = 'artifact' | 'file' | 'link'
+
+export interface Attachment {
+  type: AttachmentType
+  ref: string
+}
+
+export interface MessageMetadata {
+  task_id: string | null
+  project_id: string | null
+  tokens_used: number | null
+  cost_usd: number | null
+  extra: [string, string][]
+}
+
 export interface Message {
   id: string
-  channel: string
-  sender: string
-  content: string
   timestamp: string
-  metadata: Record<string, string>
+  sender: string
+  to: string
+  type: MessageType
+  priority: MessagePriority
+  channel: string
+  content: string
+  attachments: Attachment[]
+  metadata: MessageMetadata
 }
+
+export type ChannelType = 'topic' | 'direct' | 'broadcast'
 
 export interface Channel {
   name: string
-  description: string
+  type: ChannelType
+  subscribers: string[]
 }
 
 // ── Health ───────────────────────────────────────────────────

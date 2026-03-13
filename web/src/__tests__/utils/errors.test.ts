@@ -65,6 +65,28 @@ describe('getErrorMessage', () => {
     expect(getErrorMessage(axiosError)).toContain('Conflict')
   })
 
+  it('returns status-based message for 422', () => {
+    const axiosError = {
+      isAxiosError: true,
+      response: {
+        status: 422,
+        data: {},
+      },
+    }
+    expect(getErrorMessage(axiosError)).toBe('Validation error. Please check your input.')
+  })
+
+  it('returns status-based message for 429', () => {
+    const axiosError = {
+      isAxiosError: true,
+      response: {
+        status: 429,
+        data: {},
+      },
+    }
+    expect(getErrorMessage(axiosError)).toBe('Too many requests. Please try again in a moment.')
+  })
+
   it('returns network error for no response', () => {
     const axiosError = {
       isAxiosError: true,

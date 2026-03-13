@@ -14,7 +14,7 @@ export async function listTasks(filters?: TaskFilters) {
 }
 
 export async function getTask(taskId: string): Promise<Task> {
-  const response = await apiClient.get(`/tasks/${taskId}`)
+  const response = await apiClient.get(`/tasks/${encodeURIComponent(taskId)}`)
   return unwrap(response)
 }
 
@@ -24,20 +24,20 @@ export async function createTask(data: CreateTaskRequest): Promise<Task> {
 }
 
 export async function updateTask(taskId: string, data: UpdateTaskRequest): Promise<Task> {
-  const response = await apiClient.patch(`/tasks/${taskId}`, data)
+  const response = await apiClient.patch(`/tasks/${encodeURIComponent(taskId)}`, data)
   return unwrap(response)
 }
 
 export async function transitionTask(taskId: string, data: TransitionTaskRequest): Promise<Task> {
-  const response = await apiClient.post(`/tasks/${taskId}/transition`, data)
+  const response = await apiClient.post(`/tasks/${encodeURIComponent(taskId)}/transition`, data)
   return unwrap(response)
 }
 
 export async function cancelTask(taskId: string, data: CancelTaskRequest): Promise<Task> {
-  const response = await apiClient.post(`/tasks/${taskId}/cancel`, data)
+  const response = await apiClient.post(`/tasks/${encodeURIComponent(taskId)}/cancel`, data)
   return unwrap(response)
 }
 
 export async function deleteTask(taskId: string): Promise<void> {
-  await apiClient.delete(`/tasks/${taskId}`)
+  await apiClient.delete(`/tasks/${encodeURIComponent(taskId)}`)
 }

@@ -12,6 +12,6 @@ export async function listDepartments(params?: PaginationParams) {
 }
 
 export async function getDepartment(name: string): Promise<Department> {
-  const response = await apiClient.get(`/departments/${name}`)
+  const response = await apiClient.get(`/departments/${encodeURIComponent(name)}`)
   return unwrap(response)
 }

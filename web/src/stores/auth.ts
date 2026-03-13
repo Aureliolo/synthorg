@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as authApi from '@/api/endpoints/auth'
 import { isAxiosError } from '@/utils/errors'
+import { router } from '@/router'
 import type { HumanRole, UserInfoResponse } from '@/api/types'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -58,6 +59,10 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
     localStorage.removeItem('auth_token')
     localStorage.removeItem('auth_token_expires_at')
+    // Redirect to login if not already there
+    if (router.currentRoute.value.path !== '/login' && router.currentRoute.value.path !== '/setup') {
+      router.push('/login')
+    }
   }
 
   async function setup(username: string, password: string) {
@@ -82,8 +87,13 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const result = await authApi.login({ username, password })
       setToken(result.token, result.expires_in)
-      // Fetch full user info
-      await fetchUser()
+      // Fetch full user info — if this fails, clear auth to avoid half-authenticated state
+      try {
+        await fetchUser()
+      } catch {
+        clearAuth()
+        throw new Error('Login succeeded but failed to load user profile. Please try again.')
+      }
       return result
     } finally {
       loading.value = false

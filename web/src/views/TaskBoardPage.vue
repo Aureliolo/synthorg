@@ -151,7 +151,7 @@ async function handleFilterReset() {
       </template>
     </PageHeader>
 
-    <ErrorBoundary :error="taskStore.error" @retry="taskStore.fetchTasks()">
+    <ErrorBoundary :error="taskStore.error ?? agentStore.error" @retry="taskStore.fetchTasks()">
       <LoadingSkeleton v-if="taskStore.loading && taskStore.tasks.length === 0" :lines="8" />
       <template v-else>
         <KanbanBoard

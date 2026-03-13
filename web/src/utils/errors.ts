@@ -34,6 +34,10 @@ export function getErrorMessage(error: unknown): string {
         return 'The requested resource was not found.'
       case 409:
         return 'Conflict: the resource was modified by another user. Please refresh and try again.'
+      case 422:
+        return 'Validation error. Please check your input.'
+      case 429:
+        return 'Too many requests. Please try again in a moment.'
       case 503:
         return 'Service temporarily unavailable. Please try again later.'
       default:
