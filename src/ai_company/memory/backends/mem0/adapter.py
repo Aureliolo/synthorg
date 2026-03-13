@@ -758,14 +758,10 @@ class Mem0MemoryBackend:
                 raise MemoryStoreError(msg)  # noqa: TRY301
 
             await asyncio.to_thread(self._client.delete, str(memory_id))
-        except MemoryStoreError as exc:
-            logger.warning(
-                MEMORY_SHARED_RETRACT_FAILED,
-                agent_id=agent_id,
-                memory_id=memory_id,
-                error=str(exc),
-                error_type="MemoryStoreError",
-            )
+        except MemoryStoreError:
+            # Ownership-check MemoryStoreErrors are already logged
+            # with context (reason, publisher) above — re-raise
+            # without duplicate logging.
             raise
         except MemoryError, RecursionError:
             raise
