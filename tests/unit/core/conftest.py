@@ -95,6 +95,7 @@ class ToolPermissionsFactory(ModelFactory[ToolPermissions]):
 
 class AgentIdentityFactory(ModelFactory[AgentIdentity]):
     __model__ = AgentIdentity
+    level = SeniorityLevel.MID  # avoid JUNIOR+FULL autonomy validation conflict
     memory = MemoryConfigFactory
     tools = ToolPermissionsFactory
 
