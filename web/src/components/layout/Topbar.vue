@@ -32,7 +32,6 @@ const menuItems = ref([
         // Ensure logout completes even if WS disconnect fails
       }
       auth.logout()
-      router.push('/login')
     },
   },
 ])
