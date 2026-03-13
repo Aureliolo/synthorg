@@ -13,7 +13,7 @@ export async function listApprovals(filters?: ApprovalFilters) {
 }
 
 export async function getApproval(id: string): Promise<ApprovalItem> {
-  const response = await apiClient.get(`/approvals/${id}`)
+  const response = await apiClient.get(`/approvals/${encodeURIComponent(id)}`)
   return unwrap(response)
 }
 
@@ -23,11 +23,11 @@ export async function createApproval(data: CreateApprovalRequest): Promise<Appro
 }
 
 export async function approveApproval(id: string, data?: ApproveRequest): Promise<ApprovalItem> {
-  const response = await apiClient.post(`/approvals/${id}/approve`, data ?? {})
+  const response = await apiClient.post(`/approvals/${encodeURIComponent(id)}/approve`, data ?? {})
   return unwrap(response)
 }
 
 export async function rejectApproval(id: string, data: RejectRequest): Promise<ApprovalItem> {
-  const response = await apiClient.post(`/approvals/${id}/reject`, data)
+  const response = await apiClient.post(`/approvals/${encodeURIComponent(id)}/reject`, data)
   return unwrap(response)
 }

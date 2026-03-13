@@ -30,8 +30,13 @@ describe('formatRelativeTime', () => {
   })
 
   it('returns "just now" for recent timestamps', () => {
-    const now = new Date().toISOString()
-    expect(formatRelativeTime(now)).toBe('just now')
+    const recent = new Date(Date.now() - 5_000).toISOString()
+    expect(formatRelativeTime(recent)).toBe('just now')
+  })
+
+  it('returns "just now" for future dates', () => {
+    const future = new Date(Date.now() + 60_000).toISOString()
+    expect(formatRelativeTime(future)).toBe('just now')
   })
 })
 
@@ -44,6 +49,12 @@ describe('formatCurrency', () => {
     const result = formatCurrency(123.4567)
     expect(result).toContain('$')
     expect(result).toContain('123')
+  })
+
+  it('formats negative value', () => {
+    const result = formatCurrency(-45.67)
+    expect(result).toContain('$')
+    expect(result).toContain('45')
   })
 })
 

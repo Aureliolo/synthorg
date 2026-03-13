@@ -63,7 +63,10 @@ defineProps<{
     <!-- Tools -->
     <div class="rounded-lg border border-slate-800 p-4">
       <h4 class="mb-3 text-sm font-medium text-slate-300">Tools ({{ agent.tools.allowed.length }})</h4>
-      <div class="flex flex-wrap gap-2">
+      <div v-if="agent.tools.allowed.length === 0" class="text-sm text-slate-500">
+        No tools configured
+      </div>
+      <div v-else class="flex flex-wrap gap-2">
         <span
           v-for="tool in agent.tools.allowed"
           :key="tool"

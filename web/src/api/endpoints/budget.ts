@@ -14,6 +14,6 @@ export async function listCostRecords(
 }
 
 export async function getAgentSpending(agentId: string): Promise<AgentSpending> {
-  const response = await apiClient.get(`/budget/agents/${agentId}`)
+  const response = await apiClient.get(`/budget/agents/${encodeURIComponent(agentId)}`)
   return unwrap(response)
 }

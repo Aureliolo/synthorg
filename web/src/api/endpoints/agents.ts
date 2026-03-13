@@ -7,12 +7,12 @@ export async function listAgents(params?: PaginationParams) {
 }
 
 export async function getAgent(name: string): Promise<AgentConfig> {
-  const response = await apiClient.get(`/agents/${name}`)
+  const response = await apiClient.get(`/agents/${encodeURIComponent(name)}`)
   return unwrap(response)
 }
 
 export async function getAutonomy(agentId: string): Promise<AutonomyLevelResponse> {
-  const response = await apiClient.get(`/agents/${agentId}/autonomy`)
+  const response = await apiClient.get(`/agents/${encodeURIComponent(agentId)}/autonomy`)
   return unwrap(response)
 }
 
@@ -20,6 +20,6 @@ export async function setAutonomy(
   agentId: string,
   data: AutonomyLevelRequest,
 ): Promise<AutonomyLevelResponse> {
-  const response = await apiClient.post(`/agents/${agentId}/autonomy`, data)
+  const response = await apiClient.post(`/agents/${encodeURIComponent(agentId)}/autonomy`, data)
   return unwrap(response)
 }

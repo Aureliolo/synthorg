@@ -14,8 +14,12 @@ defineEmits<{
 
 <template>
   <div
-    class="cursor-pointer rounded-lg border border-slate-800 bg-slate-900 p-4 transition-colors hover:border-slate-700"
+    role="button"
+    tabindex="0"
+    class="cursor-pointer rounded-lg border border-slate-800 bg-slate-900 p-4 transition-colors hover:border-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
     @click="$emit('click', agent)"
+    @keydown.enter="$emit('click', agent)"
+    @keydown.space.prevent="$emit('click', agent)"
   >
     <div class="mb-3 flex items-start justify-between">
       <div>

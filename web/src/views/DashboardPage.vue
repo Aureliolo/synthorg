@@ -52,9 +52,11 @@ onMounted(async () => {
     if (results[0].status === 'fulfilled') {
       health.value = results[0].value
     }
-    const failures = results.filter((r) => r.status === 'rejected')
-    if (failures.length > 0) {
-      console.error('Dashboard initialization failures:', failures)
+    if (import.meta.env.DEV) {
+      const failures = results.filter((r) => r.status === 'rejected')
+      if (failures.length > 0) {
+        console.error('Dashboard initialization failures:', failures)
+      }
     }
   } finally {
     loading.value = false

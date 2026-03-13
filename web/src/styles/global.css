@@ -33,7 +33,13 @@
   --color-success-600: #16a34a;
 }
 
-/* Scrollbar styling */
+/* Scrollbar styling — Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-surface-300) var(--color-surface-50);
+}
+
+/* Scrollbar styling — WebKit/Blink */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

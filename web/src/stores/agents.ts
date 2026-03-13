@@ -44,8 +44,11 @@ export const useAgentStore = defineStore('agents', () => {
         break
       case 'agent.fired':
         if (payload.name) {
+          const prevLength = agents.value.length
           agents.value = agents.value.filter((a) => a.name !== payload.name)
-          total.value--
+          if (agents.value.length < prevLength) {
+            total.value--
+          }
         }
         break
       case 'agent.status_changed':

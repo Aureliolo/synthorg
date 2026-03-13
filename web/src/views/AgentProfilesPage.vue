@@ -31,7 +31,7 @@ onUnmounted(() => {
 })
 
 function openAgent(agent: AgentConfig) {
-  router.push(`/agents/${agent.name}`)
+  router.push(`/agents/${encodeURIComponent(agent.name)}`)
 }
 </script>
 

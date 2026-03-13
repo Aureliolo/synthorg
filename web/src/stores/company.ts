@@ -25,6 +25,7 @@ export const useCompanyStore = defineStore('company', () => {
 
   async function fetchDepartments() {
     departmentsLoading.value = true
+    error.value = null
     try {
       const result = await companyApi.listDepartments({ limit: 200 })
       departments.value = result.data

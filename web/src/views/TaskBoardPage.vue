@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import Button from 'primevue/button'
 import { useToast } from 'primevue/usetoast'
 import AppShell from '@/components/layout/AppShell.vue'
@@ -32,7 +32,7 @@ const detailVisible = ref(false)
 const createVisible = ref(false)
 const filters = ref<TaskFilterType>({})
 
-const agentNames = ref<string[]>([])
+const agentNames = computed(() => agentStore.agents.map((a) => a.name))
 
 onMounted(async () => {
   // Connect WS if not already connected
@@ -46,7 +46,6 @@ onMounted(async () => {
     taskStore.fetchTasks({ limit: 200 }),
     agentStore.fetchAgents(),
   ])
-  agentNames.value = agentStore.agents.map((a) => a.name)
 })
 
 onUnmounted(() => {

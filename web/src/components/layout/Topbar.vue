@@ -26,7 +26,11 @@ const menuItems = ref([
     label: 'Logout',
     icon: 'pi pi-sign-out',
     command: () => {
-      wsStore.disconnect()
+      try {
+        wsStore.disconnect()
+      } catch {
+        // Ensure logout completes even if WS disconnect fails
+      }
       auth.logout()
       router.push('/login')
     },

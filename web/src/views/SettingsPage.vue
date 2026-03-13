@@ -28,8 +28,11 @@ const confirmPassword = ref('')
 const pwdError = ref<string | null>(null)
 
 onMounted(async () => {
-  await Promise.all([companyStore.fetchConfig(), providerStore.fetchProviders()])
-  loading.value = false
+  try {
+    await Promise.all([companyStore.fetchConfig(), providerStore.fetchProviders()])
+  } finally {
+    loading.value = false
+  }
 })
 
 async function handleChangePassword() {

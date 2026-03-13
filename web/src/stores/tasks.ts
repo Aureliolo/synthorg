@@ -22,8 +22,12 @@ export const useTaskStore = defineStore('tasks', () => {
   const tasksByStatus = computed(() => {
     const grouped: Record<string, Task[]> = {}
     for (const task of tasks.value) {
-      const list = grouped[task.status] ?? []
-      grouped[task.status] = [...list, task]
+      const list = grouped[task.status]
+      if (list) {
+        list.push(task)
+      } else {
+        grouped[task.status] = [task]
+      }
     }
     return grouped
   })

@@ -7,11 +7,11 @@ export async function listProviders(): Promise<Record<string, ProviderConfig>> {
 }
 
 export async function getProvider(name: string): Promise<ProviderConfig> {
-  const response = await apiClient.get(`/providers/${name}`)
+  const response = await apiClient.get(`/providers/${encodeURIComponent(name)}`)
   return unwrap(response)
 }
 
 export async function getProviderModels(name: string): Promise<ProviderModelConfig[]> {
-  const response = await apiClient.get(`/providers/${name}/models`)
+  const response = await apiClient.get(`/providers/${encodeURIComponent(name)}/models`)
   return unwrap(response)
 }

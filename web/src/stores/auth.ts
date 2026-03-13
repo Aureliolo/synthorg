@@ -20,6 +20,13 @@ export const useAuthStore = defineStore('auth', () => {
 
   let expiryTimer: ReturnType<typeof setTimeout> | null = null
 
+  // Schedule expiry cleanup for restored token
+  if (initialToken && expiresAt > Date.now()) {
+    expiryTimer = setTimeout(() => {
+      clearAuth()
+    }, expiresAt - Date.now())
+  }
+
   const isAuthenticated = computed(() => !!token.value)
   const mustChangePassword = computed(() => user.value?.must_change_password ?? false)
   const userRole = computed<HumanRole | null>(() => user.value?.role ?? null)

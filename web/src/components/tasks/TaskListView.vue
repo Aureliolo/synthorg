@@ -23,7 +23,6 @@ defineEmits<{
     :total-records="total"
     :loading="loading"
     :rows="50"
-    lazy
     paginator
     striped-rows
     row-hover

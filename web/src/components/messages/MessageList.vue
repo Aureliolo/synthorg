@@ -14,7 +14,11 @@ watch(
   async () => {
     await nextTick()
     if (listRef.value) {
-      listRef.value.scrollTop = listRef.value.scrollHeight
+      const { scrollTop, scrollHeight, clientHeight } = listRef.value
+      const isNearBottom = scrollTop + clientHeight >= scrollHeight - 100
+      if (isNearBottom) {
+        listRef.value.scrollTop = listRef.value.scrollHeight
+      }
     }
   },
 )

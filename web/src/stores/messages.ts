@@ -51,7 +51,10 @@ export const useMessageStore = defineStore('messages', () => {
     if (event.event_type === 'message.sent') {
       const message = event.payload as unknown as Message
       if (message.id) {
-        messages.value = [...messages.value, message].slice(-MAX_WS_MESSAGES)
+        // Only append if message matches active channel (or no filter is set)
+        if (!activeChannel.value || message.channel === activeChannel.value) {
+          messages.value = [...messages.value, message].slice(-MAX_WS_MESSAGES)
+        }
         total.value++
       }
     }

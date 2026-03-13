@@ -19,6 +19,7 @@ defineEmits<{
     class="cursor-pointer rounded-lg border border-slate-700 bg-slate-800 p-3 transition-colors hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-brand-500"
     @click="$emit('click', task)"
     @keydown.enter="$emit('click', task)"
+    @keydown.space.prevent="$emit('click', task)"
   >
     <div class="mb-2 flex items-start justify-between gap-2">
       <p class="text-sm font-medium text-slate-200 line-clamp-2">{{ task.title }}</p>

@@ -19,7 +19,7 @@ export function getErrorMessage(error: unknown): string {
     const data = error.response?.data as { error?: string; success?: boolean } | undefined
 
     // For 4xx errors, surface the backend's validation message
-    if (data?.error && status !== undefined && status < 500) {
+    if (data?.error && typeof data.error === 'string' && status !== undefined && status < 500) {
       return data.error
     }
 

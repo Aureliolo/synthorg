@@ -161,7 +161,7 @@ function handleCancel() {
           <Button
             v-for="status in getTransitions()"
             :key="status"
-            :label="status.replace('_', ' ')"
+            :label="status.replaceAll('_', ' ')"
             size="small"
             outlined
             @click="handleTransition(status)"

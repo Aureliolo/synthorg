@@ -22,6 +22,7 @@ const chartOption = computed(() => {
     tooltip: {
       trigger: 'axis',
       formatter: (params: Array<{ name: string; value: number }>) => {
+        if (!params.length) return ''
         const p = params[0]
         return `${p.name}<br/>$${p.value.toFixed(4)}`
       },

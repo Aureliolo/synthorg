@@ -15,6 +15,7 @@ export const useBudgetStore = defineStore('budget', () => {
 
   async function fetchConfig() {
     loading.value = true
+    error.value = null
     try {
       config.value = await budgetApi.getBudgetConfig()
     } catch (err) {

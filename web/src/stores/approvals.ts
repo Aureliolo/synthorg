@@ -27,6 +27,7 @@ export const useApprovalStore = defineStore('approvals', () => {
   }
 
   async function approve(id: string, data?: ApproveRequest): Promise<ApprovalItem | null> {
+    error.value = null
     try {
       const updated = await approvalsApi.approveApproval(id, data)
       approvals.value = approvals.value.map((a) => (a.id === id ? updated : a))
@@ -38,6 +39,7 @@ export const useApprovalStore = defineStore('approvals', () => {
   }
 
   async function reject(id: string, data: RejectRequest): Promise<ApprovalItem | null> {
+    error.value = null
     try {
       const updated = await approvalsApi.rejectApproval(id, data)
       approvals.value = approvals.value.map((a) => (a.id === id ? updated : a))

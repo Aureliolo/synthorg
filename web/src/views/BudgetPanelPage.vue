@@ -27,13 +27,17 @@ onMounted(async () => {
 onUnmounted(() => {
   wsStore.offChannelEvent('budget', budgetStore.handleWsEvent)
 })
+
+function retryFetch() {
+  void Promise.all([budgetStore.fetchConfig(), budgetStore.fetchRecords({ limit: 200 })])
+}
 </script>
 
 <template>
   <AppShell>
     <PageHeader title="Budget" subtitle="Monitor spending and cost allocation" />
 
-    <ErrorBoundary :error="budgetStore.error" @retry="budgetStore.fetchRecords({ limit: 200 })">
+    <ErrorBoundary :error="budgetStore.error" @retry="retryFetch">
       <LoadingSkeleton v-if="budgetStore.loading && budgetStore.records.length === 0" :lines="6" />
       <template v-else>
         <div class="space-y-6">

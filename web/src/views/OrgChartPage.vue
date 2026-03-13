@@ -21,8 +21,12 @@ const router = useRouter()
 const companyStore = useCompanyStore()
 const agentStore = useAgentStore()
 
-function retryFetch() {
-  void Promise.all([companyStore.fetchDepartments(), agentStore.fetchAgents()])
+async function retryFetch() {
+  try {
+    await Promise.all([companyStore.fetchDepartments(), agentStore.fetchAgents()])
+  } catch {
+    // Errors are captured by individual stores
+  }
 }
 
 onMounted(retryFetch)
@@ -51,9 +55,10 @@ const nodes = computed<Node[]>(() => {
       })
       y += 100
 
+      const agentIndex = new Map(agentStore.agents.map((a) => [a.name, a]))
       for (let i = 0; i < team.members.length; i++) {
         const memberName = team.members[i] // eslint-disable-line security/detect-object-injection
-        const agent = agentStore.agents.find((a) => a.name === memberName)
+        const agent = agentIndex.get(memberName)
         result.push({
           id: `agent-${memberName}`,
           position: { x: 100 + i * 200, y },
@@ -103,7 +108,7 @@ const edges = computed<Edge[]>(() => {
 function onNodeClick(event: { node: Node }) {
   if (event.node.id.startsWith('agent-')) {
     const name = event.node.id.replace('agent-', '')
-    router.push(`/agents/${name}`)
+    router.push(`/agents/${encodeURIComponent(name)}`)
   }
 }
 </script>
@@ -113,7 +118,7 @@ function onNodeClick(event: { node: Node }) {
     <PageHeader title="Organization Chart" subtitle="Visual structure of departments, teams, and agents" />
 
     <ErrorBoundary :error="companyStore.error ?? agentStore.error" @retry="retryFetch">
-      <LoadingSkeleton v-if="companyStore.loading" :lines="6" />
+      <LoadingSkeleton v-if="companyStore.departmentsLoading || agentStore.loading" :lines="6" />
       <div v-else class="h-[calc(100vh-200px)] rounded-lg border border-slate-800 bg-slate-900">
         <VueFlow
           :nodes="nodes"
