@@ -66,45 +66,65 @@ function openDetail(task: Task) {
 }
 
 async function handleTransition(taskId: string, targetStatus: TaskStatus, version: number) {
-  const result = await taskStore.transitionTask(taskId, {
-    target_status: targetStatus,
-    expected_version: version,
-  })
-  if (result) {
-    selectedTask.value = result
-    toast.add({ severity: 'success', summary: 'Task transitioned', life: 3000 })
-  } else {
-    toast.add({ severity: 'error', summary: taskStore.error ?? 'Transition failed', life: 5000 })
+  try {
+    const result = await taskStore.transitionTask(taskId, {
+      target_status: targetStatus,
+      expected_version: version,
+    })
+    if (result) {
+      selectedTask.value = result
+      toast.add({ severity: 'success', summary: 'Task transitioned', life: 3000 })
+    } else {
+      toast.add({ severity: 'error', summary: taskStore.error ?? 'Transition failed', life: 5000 })
+    }
+  } catch (err) {
+    console.error('Task transition failed:', sanitizeForLog(err))
+    toast.add({ severity: 'error', summary: 'Transition failed', life: 5000 })
   }
 }
 
 async function handleSave(taskId: string, data: { title?: string; description?: string }) {
-  const result = await taskStore.updateTask(taskId, data)
-  if (result) {
-    selectedTask.value = result
-    toast.add({ severity: 'success', summary: 'Task updated', life: 3000 })
-  } else {
-    toast.add({ severity: 'error', summary: taskStore.error ?? 'Update failed', life: 5000 })
+  try {
+    const result = await taskStore.updateTask(taskId, data)
+    if (result) {
+      selectedTask.value = result
+      toast.add({ severity: 'success', summary: 'Task updated', life: 3000 })
+    } else {
+      toast.add({ severity: 'error', summary: taskStore.error ?? 'Update failed', life: 5000 })
+    }
+  } catch (err) {
+    console.error('Task update failed:', sanitizeForLog(err))
+    toast.add({ severity: 'error', summary: 'Update failed', life: 5000 })
   }
 }
 
 async function handleCancel(taskId: string, reason: string) {
-  const result = await taskStore.cancelTask(taskId, { reason })
-  if (result) {
-    selectedTask.value = result
-    toast.add({ severity: 'info', summary: 'Task cancelled', life: 3000 })
-  } else {
-    toast.add({ severity: 'error', summary: taskStore.error ?? 'Cancel failed', life: 5000 })
+  try {
+    const result = await taskStore.cancelTask(taskId, { reason })
+    if (result) {
+      selectedTask.value = result
+      toast.add({ severity: 'info', summary: 'Task cancelled', life: 3000 })
+    } else {
+      toast.add({ severity: 'error', summary: taskStore.error ?? 'Cancel failed', life: 5000 })
+    }
+  } catch (err) {
+    console.error('Task cancel failed:', sanitizeForLog(err))
+    toast.add({ severity: 'error', summary: 'Cancel failed', life: 5000 })
   }
 }
 
 async function handleCreate(data: CreateTaskRequest) {
-  const result = await taskStore.createTask(data)
-  if (result) {
-    createVisible.value = false
-    toast.add({ severity: 'success', summary: 'Task created', life: 3000 })
-  } else {
-    toast.add({ severity: 'error', summary: taskStore.error ?? 'Create failed', life: 5000 })
+  try {
+    const result = await taskStore.createTask(data)
+    if (result) {
+      createVisible.value = false
+      toast.add({ severity: 'success', summary: 'Task created', life: 3000 })
+    } else {
+      toast.add({ severity: 'error', summary: taskStore.error ?? 'Create failed', life: 5000 })
+    }
+  } catch (err) {
+    console.error('Task create failed:', sanitizeForLog(err))
+    toast.add({ severity: 'error', summary: 'Create failed', life: 5000 })
   }
 }
 

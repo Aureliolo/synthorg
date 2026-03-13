@@ -1,4 +1,6 @@
 FROM node:22-slim AS node-base
+# All stages must end as non-root
+USER node
 
 FROM python:3.14-slim
 
@@ -6,6 +8,8 @@ COPY --from=node-base /usr/local/bin/node /usr/local/bin/node
 COPY --from=node-base /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm
 
+# git version tracks base image; updated via Dependabot base image bumps
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends git \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 

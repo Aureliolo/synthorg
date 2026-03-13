@@ -42,8 +42,8 @@ onUnmounted(() => {
 async function retryFetch() {
   try {
     await Promise.all([budgetStore.fetchConfig(), budgetStore.fetchRecords({ limit: 200 })])
-  } catch {
-    // Stores handle errors internally — ErrorBoundary surfaces them
+  } catch (err) {
+    console.error('Budget data fetch failed:', sanitizeForLog(err))
   }
 }
 </script>

@@ -16,6 +16,7 @@ import OrgNode from '@/components/org-chart/OrgNode.vue'
 import { useCompanyStore } from '@/stores/company'
 import { useAgentStore } from '@/stores/agents'
 import { formatLabel } from '@/utils/format'
+import { sanitizeForLog } from '@/utils/logging'
 
 const router = useRouter()
 const companyStore = useCompanyStore()
@@ -24,8 +25,8 @@ const agentStore = useAgentStore()
 async function retryFetch() {
   try {
     await Promise.all([companyStore.fetchDepartments(), agentStore.fetchAgents()])
-  } catch {
-    // Stores handle errors internally — ErrorBoundary surfaces them
+  } catch (err) {
+    console.error('Org chart data fetch failed:', sanitizeForLog(err))
   }
 }
 

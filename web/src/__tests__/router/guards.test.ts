@@ -109,7 +109,7 @@ describe('authGuard', () => {
     expect(next).toHaveBeenCalledWith({ name: 'settings', query: { tab: 'user' } })
   })
 
-  it('allows settings page access when mustChangePassword is true', () => {
+  it('redirects settings without tab=user when mustChangePassword is true', () => {
     localStorage.setItem('auth_token', 'test-token')
     localStorage.setItem('auth_token_expires_at', String(Date.now() + 3600_000))
     setActivePinia(createPinia())
@@ -117,6 +117,20 @@ describe('authGuard', () => {
     store.user = { id: 'u1', username: 'ceo', role: 'ceo', must_change_password: true }
 
     const to = createRoute({ path: '/settings', name: 'settings' as never, meta: {} })
+    const from = createRoute()
+
+    authGuard(to, from, next)
+    expect(next).toHaveBeenCalledWith({ name: 'settings', query: { tab: 'user' } })
+  })
+
+  it('allows settings?tab=user when mustChangePassword is true', () => {
+    localStorage.setItem('auth_token', 'test-token')
+    localStorage.setItem('auth_token_expires_at', String(Date.now() + 3600_000))
+    setActivePinia(createPinia())
+    const store = useAuthStore()
+    store.user = { id: 'u1', username: 'ceo', role: 'ceo', must_change_password: true }
+
+    const to = createRoute({ path: '/settings', name: 'settings' as never, query: { tab: 'user' }, meta: {} })
     const from = createRoute()
 
     authGuard(to, from, next)

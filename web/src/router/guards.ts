@@ -32,8 +32,8 @@ export function authGuard(
     return
   }
 
-  // Enforce mustChangePassword — redirect to settings User tab (password form)
-  if (auth.mustChangePassword && to.name !== 'settings') {
+  // Enforce mustChangePassword — always normalize to settings?tab=user (password form)
+  if (auth.mustChangePassword && !(to.name === 'settings' && to.query.tab === 'user')) {
     next({ name: 'settings', query: { tab: 'user' } })
     return
   }

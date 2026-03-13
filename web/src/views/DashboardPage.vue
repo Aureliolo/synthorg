@@ -35,7 +35,7 @@ onMounted(async () => {
   try {
     if (authStore.token) {
       wsStore.connect(authStore.token)
-      wsStore.subscribe(['tasks', 'agents', 'budget', 'messages', 'system', 'approvals'])
+      wsStore.subscribe(['tasks', 'budget', 'approvals'])
       wsStore.onChannelEvent('tasks', taskStore.handleWsEvent)
       wsStore.onChannelEvent('budget', budgetStore.handleWsEvent)
       wsStore.onChannelEvent('approvals', approvalStore.handleWsEvent)
@@ -75,7 +75,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  wsStore.unsubscribe(['tasks', 'agents', 'budget', 'messages', 'system', 'approvals'])
+  wsStore.unsubscribe(['tasks', 'budget', 'approvals'])
   wsStore.offChannelEvent('tasks', taskStore.handleWsEvent)
   wsStore.offChannelEvent('budget', budgetStore.handleWsEvent)
   wsStore.offChannelEvent('approvals', approvalStore.handleWsEvent)
