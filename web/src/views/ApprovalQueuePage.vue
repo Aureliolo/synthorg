@@ -61,31 +61,43 @@ function openDetail(approval: ApprovalItem) {
   detailVisible.value = true
 }
 
+const actionLoading = ref(false)
+
 async function handleApprove(id: string, comment: string) {
-  const result = await approvalStore.approve(id, comment ? { comment } : undefined)
-  if (result) {
-    selected.value = result
-    toast.add({ severity: 'success', summary: 'Approved', life: 3000 })
-  } else {
-    toast.add({ severity: 'error', summary: approvalStore.error ?? 'Approve failed', life: 5000 })
+  actionLoading.value = true
+  try {
+    const result = await approvalStore.approve(id, comment ? { comment } : undefined)
+    if (result) {
+      selected.value = result
+      toast.add({ severity: 'success', summary: 'Approved', life: 3000 })
+    } else {
+      toast.add({ severity: 'error', summary: approvalStore.error ?? 'Approve failed', life: 5000 })
+    }
+  } finally {
+    actionLoading.value = false
   }
 }
 
 async function handleReject(id: string, reason: string) {
-  const result = await approvalStore.reject(id, { reason })
-  if (result) {
-    selected.value = result
-    toast.add({ severity: 'info', summary: 'Rejected', life: 3000 })
-  } else {
-    toast.add({ severity: 'error', summary: approvalStore.error ?? 'Reject failed', life: 5000 })
+  actionLoading.value = true
+  try {
+    const result = await approvalStore.reject(id, { reason })
+    if (result) {
+      selected.value = result
+      toast.add({ severity: 'info', summary: 'Rejected', life: 3000 })
+    } else {
+      toast.add({ severity: 'error', summary: approvalStore.error ?? 'Reject failed', life: 5000 })
+    }
+  } finally {
+    actionLoading.value = false
   }
 }
 
 async function filterByStatus() {
   try {
     await approvalStore.fetchApprovals({ status: statusFilter.value })
-  } catch {
-    // Store handles errors internally
+  } catch (err) {
+    console.error('Filter fetch failed:', sanitizeForLog(err))
   }
 }
 </script>
@@ -102,6 +114,7 @@ async function filterByStatus() {
           placeholder="All Statuses"
           show-clear
           class="w-40"
+          aria-label="Filter by status"
           @change="filterByStatus"
         />
       </template>
@@ -149,6 +162,7 @@ async function filterByStatus() {
         <ApprovalActions
           :approval-id="selected.id"
           :status="selected.status"
+          :loading="actionLoading"
           @approve="handleApprove"
           @reject="handleReject"
         />

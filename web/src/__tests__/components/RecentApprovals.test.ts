@@ -3,10 +3,8 @@ import { mount } from '@vue/test-utils'
 import RecentApprovals from '@/components/dashboard/RecentApprovals.vue'
 import type { ApprovalItem } from '@/api/types'
 
-const pushMock = vi.fn()
-
 vi.mock('vue-router', () => ({
-  useRouter: () => ({ push: pushMock }),
+  useRouter: () => ({ push: vi.fn() }),
   RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 }))
 
@@ -77,7 +75,6 @@ describe('RecentApprovals', () => {
   })
 
   it('navigates to /approvals when "View all" is clicked', async () => {
-    pushMock.mockClear()
     const wrapper = mount(RecentApprovals, {
       props: { approvals: [] },
     })

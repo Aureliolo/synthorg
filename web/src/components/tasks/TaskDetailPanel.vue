@@ -102,9 +102,18 @@ function handleCancel() {
         />
       </div>
       <div v-else class="space-y-3">
-        <InputText v-model="editTitle" class="w-full" />
-        <Textarea v-model="editDescription" class="w-full" rows="4" />
-        <Dropdown v-model="editPriority" :options="priorityOptions" option-label="label" option-value="value" class="w-full" />
+        <div>
+          <label for="edit-title" class="mb-1 block text-xs text-slate-400">Title</label>
+          <InputText id="edit-title" v-model="editTitle" class="w-full" />
+        </div>
+        <div>
+          <label for="edit-description" class="mb-1 block text-xs text-slate-400">Description</label>
+          <Textarea id="edit-description" v-model="editDescription" class="w-full" rows="4" />
+        </div>
+        <div>
+          <label for="edit-priority" class="mb-1 block text-xs text-slate-400">Priority</label>
+          <Dropdown id="edit-priority" v-model="editPriority" :options="priorityOptions" option-label="label" option-value="value" class="w-full" />
+        </div>
         <div class="flex gap-2">
           <Button label="Save" icon="pi pi-check" size="small" @click="saveEdit" />
           <Button label="Cancel" icon="pi pi-times" text size="small" @click="editing = false" />

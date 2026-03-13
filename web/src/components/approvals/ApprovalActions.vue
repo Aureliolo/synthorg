@@ -9,6 +9,7 @@ import type { ApprovalStatus } from '@/api/types'
 defineProps<{
   approvalId: string
   status: ApprovalStatus
+  loading?: boolean
 }>()
 
 const { canWrite } = useAuth()
@@ -56,6 +57,8 @@ function handleReject(id: string) {
         icon="pi pi-check"
         severity="success"
         size="small"
+        :disabled="loading"
+        :loading="loading"
         @click="handleApprove(approvalId)"
       />
       <Button
@@ -64,6 +67,7 @@ function handleReject(id: string) {
         severity="danger"
         outlined
         size="small"
+        :disabled="loading"
         @click="showReject = true"
       />
     </div>
@@ -77,7 +81,8 @@ function handleReject(id: string) {
           icon="pi pi-times"
           severity="danger"
           size="small"
-          :disabled="!rejectReason.trim()"
+          :disabled="!rejectReason.trim() || loading"
+          :loading="loading"
           @click="handleReject(approvalId)"
         />
         <Button label="Back" text size="small" @click="showReject = false" />

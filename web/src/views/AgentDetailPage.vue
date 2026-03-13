@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import AppShell from '@/components/layout/AppShell.vue'
@@ -43,7 +43,7 @@ async function fetchAgentData() {
   }
 }
 
-onMounted(fetchAgentData)
+watch(() => props.name, fetchAgentData, { immediate: true })
 </script>
 
 <template>

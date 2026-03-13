@@ -11,14 +11,14 @@ const listRef = ref<HTMLElement | null>(null)
 
 watch(
   () => props.messages.length,
-  async () => {
+  async (_newLen, _oldLen) => {
+    if (!listRef.value) return
+    // Capture scroll position BEFORE DOM update to avoid stale scrollHeight
+    const { scrollTop, scrollHeight, clientHeight } = listRef.value
+    const isNearBottom = scrollTop + clientHeight >= scrollHeight - 100
     await nextTick()
-    if (listRef.value) {
-      const { scrollTop, scrollHeight, clientHeight } = listRef.value
-      const isNearBottom = scrollTop + clientHeight >= scrollHeight - 100
-      if (isNearBottom) {
-        listRef.value.scrollTop = listRef.value.scrollHeight
-      }
+    if (isNearBottom && listRef.value) {
+      listRef.value.scrollTop = listRef.value.scrollHeight
     }
   },
 )

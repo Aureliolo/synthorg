@@ -12,7 +12,7 @@ const chartOption = computed(() => {
   const dailyData = new Map<string, number>()
   for (const record of props.records) {
     const date = new Date(record.timestamp)
-    const dayKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    const dayKey = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
     dailyData.set(dayKey, (dailyData.get(dayKey) ?? 0) + record.cost_usd)
   }
 

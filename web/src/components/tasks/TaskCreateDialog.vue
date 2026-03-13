@@ -101,11 +101,11 @@ const isValid = computed(() => !!title.value.trim() && !!description.value.trim(
     <form class="space-y-4" @submit.prevent="handleSubmit">
       <div>
         <label for="task-title" class="mb-1 block text-sm text-slate-300">Title</label>
-        <InputText id="task-title" v-model="title" class="w-full" placeholder="Task title" />
+        <InputText id="task-title" v-model="title" class="w-full" placeholder="Task title" aria-required="true" />
       </div>
       <div>
         <label for="task-description" class="mb-1 block text-sm text-slate-300">Description</label>
-        <Textarea id="task-description" v-model="description" class="w-full" rows="3" placeholder="Describe the task" />
+        <Textarea id="task-description" v-model="description" class="w-full" rows="3" placeholder="Describe the task" aria-required="true" />
       </div>
       <div class="grid grid-cols-2 gap-4">
         <div>
@@ -120,7 +120,7 @@ const isValid = computed(() => !!title.value.trim() && !!description.value.trim(
       <div class="grid grid-cols-2 gap-4">
         <div>
           <label for="task-project" class="mb-1 block text-sm text-slate-300">Project</label>
-          <InputText id="task-project" v-model="project" class="w-full" placeholder="Project ID" />
+          <InputText id="task-project" v-model="project" class="w-full" placeholder="Project ID" aria-required="true" />
         </div>
         <div>
           <span class="mb-1 block text-sm text-slate-300">Created By</span>

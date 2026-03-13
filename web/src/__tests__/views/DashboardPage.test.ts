@@ -74,7 +74,13 @@ vi.mock('@/components/dashboard/SystemStatus.vue', () => ({
 }))
 
 vi.mock('@/api/endpoints/health', () => ({
-  getHealth: vi.fn().mockResolvedValue({ status: 'healthy', version: '0.1.0' }),
+  getHealth: vi.fn().mockResolvedValue({
+    status: 'ok',
+    version: '0.1.0',
+    persistence: true,
+    message_bus: true,
+    uptime_seconds: 3600,
+  }),
 }))
 
 vi.mock('@/api/endpoints/analytics', () => ({
