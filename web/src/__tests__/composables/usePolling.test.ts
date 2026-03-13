@@ -45,7 +45,7 @@ describe('usePolling', () => {
     expect(fn).toHaveBeenCalledTimes(3)
   })
 
-  it('stop clears interval and sets active to false', async () => {
+  it('stop clears timer and sets active to false', async () => {
     vi.useFakeTimers()
     const fn = vi.fn().mockResolvedValue(undefined)
     const { active, start, stop } = usePolling(fn, 1000)
@@ -91,18 +91,22 @@ describe('usePolling', () => {
     consoleSpy.mockRestore()
   })
 
-  it('safeFn returns early when active is false', async () => {
+  it('does not overlap async calls (waits for previous to finish)', async () => {
     vi.useFakeTimers()
-    const fn = vi.fn().mockResolvedValue(undefined)
-    const { start, stop } = usePolling(fn, 1000)
+    let concurrentCalls = 0
+    let maxConcurrent = 0
+    const fn = vi.fn().mockImplementation(async () => {
+      concurrentCalls++
+      maxConcurrent = Math.max(maxConcurrent, concurrentCalls)
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      concurrentCalls--
+    })
+    const { start } = usePolling(fn, 100)
 
     start()
-    await vi.advanceTimersByTimeAsync(0) // immediate call
-    expect(fn).toHaveBeenCalledTimes(1)
-
-    stop()
-    // Even though the interval fires, safeFn checks active and returns early
-    await vi.advanceTimersByTimeAsync(1000)
-    expect(fn).toHaveBeenCalledTimes(1)
+    // Advance past several intervals — with setTimeout-based scheduling,
+    // next tick only starts after previous completes
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(maxConcurrent).toBe(1)
   })
 })

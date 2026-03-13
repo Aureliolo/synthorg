@@ -4,6 +4,17 @@ import * as providersApi from '@/api/endpoints/providers'
 import { getErrorMessage } from '@/utils/errors'
 import type { ProviderConfig } from '@/api/types'
 
+/** Strip any accidentally-serialized secrets before storing in reactive state. */
+function sanitizeProviders(raw: Record<string, ProviderConfig>): Record<string, ProviderConfig> {
+  const result: Record<string, ProviderConfig> = {}
+  for (const [key, provider] of Object.entries(raw)) {
+    // Destructure to omit api_key if the backend accidentally includes it
+    const { api_key: _discarded, ...safe } = provider as ProviderConfig & { api_key?: unknown }
+    result[key] = safe
+  }
+  return result
+}
+
 export const useProviderStore = defineStore('providers', () => {
   const providers = ref<Record<string, ProviderConfig>>({})
   const loading = ref(false)
@@ -13,7 +24,8 @@ export const useProviderStore = defineStore('providers', () => {
     loading.value = true
     error.value = null
     try {
-      providers.value = await providersApi.listProviders()
+      const raw = await providersApi.listProviders()
+      providers.value = sanitizeProviders(raw)
     } catch (err) {
       error.value = getErrorMessage(err)
     } finally {

@@ -116,10 +116,10 @@ describe('useAuthStore', () => {
     })
 
     it('sets loading during login', async () => {
+      const store = useAuthStore()
       let loadingDuringCall = false
       mockLogin.mockImplementation(() => {
-        // We need to access the store inside the mock to check loading
-        loadingDuringCall = true
+        loadingDuringCall = store.loading
         return Promise.resolve({
           token: 'new-token',
           expires_in: 3600,
@@ -133,7 +133,6 @@ describe('useAuthStore', () => {
         must_change_password: false,
       })
 
-      const store = useAuthStore()
       await store.login('admin', 'password123')
       expect(loadingDuringCall).toBe(true)
       expect(store.loading).toBe(false) // cleared in finally

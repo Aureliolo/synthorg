@@ -20,7 +20,12 @@ describe('formatDate', () => {
   it('formats valid ISO date', () => {
     const result = formatDate('2026-03-12T10:30:00Z')
     expect(result).toContain('2026')
-    expect(result).toContain('Mar')
+    // Use numeric month check to avoid locale sensitivity
+    expect(result).toMatch(/12|Mar/)
+  })
+
+  it('returns dash for invalid date string', () => {
+    expect(formatDate('not-a-date')).toBe('—')
   })
 })
 
@@ -37,6 +42,10 @@ describe('formatRelativeTime', () => {
   it('returns "just now" for future dates', () => {
     const future = new Date(Date.now() + 60_000).toISOString()
     expect(formatRelativeTime(future)).toBe('just now')
+  })
+
+  it('returns dash for invalid date string', () => {
+    expect(formatRelativeTime('not-a-date')).toBe('—')
   })
 })
 

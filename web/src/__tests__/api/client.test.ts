@@ -28,9 +28,14 @@ describe('unwrap', () => {
     expect(() => unwrap(response)).toThrow('Not found')
   })
 
-  it('throws on null data', () => {
+  it('throws on success:false with null data and null error', () => {
     const response = mockResponse({ data: null, error: null, success: false })
-    expect(() => unwrap(response)).toThrow()
+    expect(() => unwrap(response)).toThrow('Unknown API error')
+  })
+
+  it('throws on success:true with null data', () => {
+    const response = mockResponse({ data: null, error: null, success: true })
+    expect(() => unwrap(response)).toThrow('Unknown API error')
   })
 })
 
@@ -51,11 +56,31 @@ describe('unwrapPaginated', () => {
 
   it('throws on error', () => {
     const response = mockResponse({
-      data: [],
+      data: null,
       error: 'Server error',
       success: false,
-      pagination: { total: 0, offset: 0, limit: 50 },
+      pagination: null,
     })
     expect(() => unwrapPaginated(response)).toThrow('Server error')
+  })
+
+  it('throws on success with missing pagination', () => {
+    const response = mockResponse({
+      data: [{ id: '1' }],
+      error: null,
+      success: true,
+      pagination: null,
+    })
+    expect(() => unwrapPaginated(response)).toThrow('Unexpected API response format')
+  })
+
+  it('throws on success with non-array data', () => {
+    const response = mockResponse({
+      data: 'not-an-array',
+      error: null,
+      success: true,
+      pagination: { total: 0, offset: 0, limit: 50 },
+    })
+    expect(() => unwrapPaginated(response)).toThrow('Unexpected API response format')
   })
 })

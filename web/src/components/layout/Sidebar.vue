@@ -51,6 +51,7 @@ function navigate(to: string) {
             : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200',
         ]"
         :title="collapsed ? item.label : undefined"
+        :aria-label="item.label"
         @click="navigate(item.to)"
       >
         <i :class="[item.icon, 'text-base']" />
@@ -61,9 +62,10 @@ function navigate(to: string) {
     <!-- Collapse toggle -->
     <button
       class="flex items-center justify-center border-t border-slate-800 py-3 text-slate-400 hover:text-slate-200"
+      :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
       @click="$emit('toggle')"
     >
-      <i :class="collapsed ? 'pi pi-angle-right' : 'pi pi-angle-left'" />
+      <i :class="collapsed ? 'pi pi-angle-right' : 'pi pi-angle-left'" aria-hidden="true" />
     </button>
   </aside>
 </template>

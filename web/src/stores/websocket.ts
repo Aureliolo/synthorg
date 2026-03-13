@@ -3,6 +3,23 @@ import { ref } from 'vue'
 import type { WsChannel, WsEvent, WsEventHandler } from '@/api/types'
 import { WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY, WS_MAX_RECONNECT_ATTEMPTS } from '@/utils/constants'
 
+/** Strip all control characters and truncate for safe logging. */
+function sanitizeLogValue(value: unknown, max = 200): string {
+  return String(value).replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, max)
+}
+
+/** Build a stable deduplication key for a subscription (sorted channels + sorted filter keys). */
+function subscriptionKey(channels: WsChannel[], filters?: Record<string, string>): string {
+  const sortedChannels = [...channels].sort()
+  const sortedFilters: Record<string, string> = {}
+  if (filters) {
+    for (const key of Object.keys(filters).sort()) {
+      sortedFilters[key] = filters[key]
+    }
+  }
+  return JSON.stringify({ channels: sortedChannels, filters: sortedFilters })
+}
+
 export const useWebSocketStore = defineStore('websocket', () => {
   const connected = ref(false)
   const reconnectExhausted = ref(false)
@@ -38,7 +55,11 @@ export const useWebSocketStore = defineStore('websocket', () => {
     socket.onopen = () => {
       connected.value = true
       reconnectAttempts = 0
-      // Re-subscribe to previously active subscriptions (survives reconnect)
+      // Clear pending queue — activeSubscriptions is the single source of truth.
+      // Anything queued while disconnected was already added to activeSubscriptions
+      // by subscribe(), so replaying pendingSubscriptions would cause duplicate sends.
+      pendingSubscriptions = []
+      // Re-subscribe to all active subscriptions (covers both reconnect and first-connect)
       for (const sub of activeSubscriptions) {
         try {
           socket!.send(JSON.stringify({ action: 'subscribe', channels: sub.channels, filters: sub.filters }))
@@ -46,11 +67,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
           // Will be retried on next reconnect
         }
       }
-      // Replay any subscriptions that were queued while disconnected
-      for (const pending of pendingSubscriptions) {
-        subscribe(pending.channels, pending.filters)
-      }
-      pendingSubscriptions = []
     }
 
     socket.onmessage = (event: MessageEvent) => {
@@ -72,9 +88,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
       }
 
       if (msg.error) {
-        // Sanitize user-provided values before logging to prevent log injection
-        const sanitized = String(msg.error).slice(0, 200).replace(/[\n\r]/g, ' ')
-        console.error('WebSocket error:', sanitized)
+        console.error('WebSocket error:', sanitizeLogValue(msg.error))
         return
       }
 
@@ -82,8 +96,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
         try {
           dispatchEvent(msg as unknown as WsEvent)
         } catch (handlerErr) {
-          const sanitizedType = String(msg.event_type).slice(0, 100).replace(/[\n\r]/g, ' ')
-          console.error('WebSocket event handler error:', handlerErr, 'Event type:', sanitizedType)
+          console.error('WebSocket event handler error:', handlerErr, 'Event type:', sanitizeLogValue(msg.event_type, 100))
         }
       }
     }
@@ -136,20 +149,16 @@ export const useWebSocketStore = defineStore('websocket', () => {
     activeSubscriptions.length = 0
   }
 
-  function pendingKey(channels: WsChannel[], filters?: Record<string, string>): string {
-    return JSON.stringify({ channels: [...channels].sort(), filters: filters ?? {} })
-  }
-
   function subscribe(channels: WsChannel[], filters?: Record<string, string>) {
     // Track as active subscription for auto-re-subscribe on reconnect
-    const key = pendingKey(channels, filters)
-    if (!activeSubscriptions.some((s) => pendingKey(s.channels, s.filters) === key)) {
+    const key = subscriptionKey(channels, filters)
+    if (!activeSubscriptions.some((s) => subscriptionKey(s.channels, s.filters) === key)) {
       activeSubscriptions.push({ channels, filters })
     }
 
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       // Queue for replay when connection opens, with deduplication
-      if (!pendingSubscriptions.some((s) => pendingKey(s.channels, s.filters) === key)) {
+      if (!pendingSubscriptions.some((s) => subscriptionKey(s.channels, s.filters) === key)) {
         pendingSubscriptions.push({ channels, filters })
       }
       return
@@ -158,13 +167,26 @@ export const useWebSocketStore = defineStore('websocket', () => {
       socket.send(JSON.stringify({ action: 'subscribe', channels, filters }))
     } catch {
       // Socket may have transitioned to CLOSING — queue for replay
-      if (!pendingSubscriptions.some((s) => pendingKey(s.channels, s.filters) === key)) {
+      if (!pendingSubscriptions.some((s) => subscriptionKey(s.channels, s.filters) === key)) {
         pendingSubscriptions.push({ channels, filters })
       }
     }
   }
 
   function unsubscribe(channels: WsChannel[]) {
+    // Remove from tracked subscriptions so reconnect won't re-subscribe
+    const channelSet = new Set(channels)
+    for (let i = activeSubscriptions.length - 1; i >= 0; i--) {
+      if (activeSubscriptions[i].channels.every((c) => channelSet.has(c))) {
+        activeSubscriptions.splice(i, 1)
+      }
+    }
+    for (let i = pendingSubscriptions.length - 1; i >= 0; i--) {
+      if (pendingSubscriptions[i].channels.every((c) => channelSet.has(c))) {
+        pendingSubscriptions.splice(i, 1)
+      }
+    }
+
     if (!socket || socket.readyState !== WebSocket.OPEN) return
     try {
       socket.send(JSON.stringify({ action: 'unsubscribe', channels }))
@@ -185,8 +207,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
   }
 
   function dispatchEvent(event: WsEvent) {
-    channelHandlers.get(event.channel)?.forEach((h) => h(event))
-    channelHandlers.get('*')?.forEach((h) => h(event))
+    channelHandlers.get(event.channel)?.forEach((h) => { h(event) })
+    channelHandlers.get('*')?.forEach((h) => { h(event) })
   }
 
   return {

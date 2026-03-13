@@ -2,7 +2,7 @@
 import Button from 'primevue/button'
 
 defineProps<{
-  error: string | null
+  error?: string | null
 }>()
 
 defineEmits<{
@@ -12,7 +12,7 @@ defineEmits<{
 
 <template>
   <div v-if="error" role="alert" class="rounded-lg border border-red-500/20 bg-red-500/5 p-6 text-center">
-    <i class="pi pi-exclamation-triangle mb-3 text-3xl text-red-400" />
+    <i class="pi pi-exclamation-triangle mb-3 text-3xl text-red-400" aria-hidden="true" />
     <p class="text-sm text-red-300">{{ error }}</p>
     <Button
       label="Retry"

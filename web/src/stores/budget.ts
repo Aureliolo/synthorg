@@ -40,6 +40,7 @@ export const useBudgetStore = defineStore('budget', () => {
   }
 
   async function fetchAgentSpending(agentId: string): Promise<AgentSpending | null> {
+    error.value = null
     try {
       return await budgetApi.getAgentSpending(agentId)
     } catch (err) {

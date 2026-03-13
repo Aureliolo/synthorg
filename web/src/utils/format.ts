@@ -6,6 +6,7 @@
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return '—'
   return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
@@ -21,6 +22,7 @@ export function formatDate(iso: string | null | undefined): string {
 export function formatRelativeTime(iso: string | null | undefined): string {
   if (!iso) return '—'
   const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return '—'
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   if (diffMs < 0) return 'just now'

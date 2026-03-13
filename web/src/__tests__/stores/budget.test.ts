@@ -44,5 +44,6 @@ describe('useBudgetStore', () => {
     store.handleWsEvent(event)
     expect(store.records).toHaveLength(1)
     expect(store.records[0].cost_usd).toBe(0.005)
+    expect(store.totalRecords).toBe(1)
   })
 })

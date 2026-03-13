@@ -110,7 +110,7 @@ describe('useWebSocketStore', () => {
     )
   })
 
-  it('deduplicates pending subscriptions', () => {
+  it('deduplicates pending subscriptions', async () => {
     const store = useWebSocketStore()
     // Subscribe to same channels multiple times while disconnected
     store.subscribe(['tasks', 'agents'])
@@ -119,6 +119,13 @@ describe('useWebSocketStore', () => {
 
     // Connect and verify only one subscribe message is sent (not three)
     store.connect('test-token')
+    await vi.advanceTimersByTimeAsync(0)
+
+    const ws = mockInstances[0]
+    const subscribeCalls = ws.send.mock.calls.filter((call: unknown[]) =>
+      String(call[0]).includes('"action":"subscribe"'),
+    )
+    expect(subscribeCalls).toHaveLength(1)
   })
 
   it('disconnect sets state correctly', async () => {
@@ -297,6 +304,31 @@ describe('useWebSocketStore', () => {
     expect(ws2.send).toHaveBeenCalledWith(
       expect.stringContaining('"channels":["tasks"]'),
     )
+  })
+
+  it('unsubscribe removes channels from active subscriptions so reconnect does not re-subscribe', async () => {
+    const store = useWebSocketStore()
+    store.connect('test-token')
+    await vi.advanceTimersByTimeAsync(0)
+
+    // Subscribe then unsubscribe
+    store.subscribe(['tasks'])
+    store.unsubscribe(['tasks'])
+
+    // Simulate disconnect and reconnect
+    const ws1 = mockInstances[0]
+    ws1.readyState = MockWebSocket.CLOSED
+    ws1.onclose?.()
+    await vi.advanceTimersByTimeAsync(5_000) // trigger reconnect
+
+    const ws2 = mockInstances[mockInstances.length - 1]
+    await vi.advanceTimersByTimeAsync(0) // trigger onopen
+
+    // Should NOT re-subscribe to 'tasks' since it was unsubscribed
+    const subscribeCalls = ws2.send.mock.calls.filter((call: unknown[]) =>
+      String(call[0]).includes('"channels":["tasks"]'),
+    )
+    expect(subscribeCalls).toHaveLength(0)
   })
 
   it('sanitizes error messages from server', async () => {

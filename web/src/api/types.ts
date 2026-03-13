@@ -104,7 +104,7 @@ export interface PaginationMeta {
 /** Discriminated paginated response envelope. */
 export type PaginatedResponse<T> =
   | { data: T[]; error: null; success: true; pagination: PaginationMeta }
-  | { data: T[]; error: string; success: false; pagination: PaginationMeta }
+  | { data: null; error: string; success: false; pagination: null }
 
 // ── Auth ─────────────────────────────────────────────────────
 
@@ -406,9 +406,13 @@ export interface ProviderModelConfig {
   estimated_latency_ms: number | null
 }
 
+/**
+ * Provider configuration as returned by the listing endpoint.
+ * The backend MUST NOT serialize `api_key` to the frontend.
+ * If it does, the provider store strips it before storing.
+ */
 export interface ProviderConfig {
   driver: string
-  api_key: string | null
   base_url: string | null
   models: ProviderModelConfig[]
 }

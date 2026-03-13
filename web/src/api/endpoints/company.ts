@@ -6,7 +6,7 @@ export async function getCompanyConfig(): Promise<CompanyConfig> {
   return unwrap(response)
 }
 
-export async function listDepartments(params?: PaginationParams) {
+export async function listDepartments(params?: PaginationParams): Promise<{ data: Department[]; total: number; offset: number; limit: number }> {
   const response = await apiClient.get('/departments', { params })
   return unwrapPaginated<Department>(response)
 }

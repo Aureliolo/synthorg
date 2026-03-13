@@ -9,7 +9,6 @@ const mockCreateTask = vi.fn()
 const mockUpdateTask = vi.fn()
 const mockTransitionTask = vi.fn()
 const mockCancelTask = vi.fn()
-const mockDeleteTask = vi.fn()
 
 vi.mock('@/api/endpoints/tasks', () => ({
   listTasks: (...args: unknown[]) => mockListTasks(...args),
@@ -18,7 +17,6 @@ vi.mock('@/api/endpoints/tasks', () => ({
   updateTask: (...args: unknown[]) => mockUpdateTask(...args),
   transitionTask: (...args: unknown[]) => mockTransitionTask(...args),
   cancelTask: (...args: unknown[]) => mockCancelTask(...args),
-  deleteTask: (...args: unknown[]) => mockDeleteTask(...args),
 }))
 
 const mockTask: Task = {

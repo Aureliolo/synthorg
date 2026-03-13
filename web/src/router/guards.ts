@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth'
  * - Routes with requiresAuth: false are public (login, setup)
  * - All other routes require authentication
  * Redirects authenticated users away from public auth pages.
+ * Preserves intended destination via `redirect` query param.
  */
 export function authGuard(
   to: RouteLocationNormalized,
@@ -26,7 +27,8 @@ export function authGuard(
   }
 
   if (!auth.isAuthenticated) {
-    next('/login')
+    const redirect = to.fullPath !== '/' ? to.fullPath : undefined
+    next({ path: '/login', query: redirect ? { redirect } : undefined })
     return
   }
 

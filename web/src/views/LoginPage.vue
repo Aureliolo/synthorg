@@ -94,7 +94,7 @@ function goToSetup() {
           />
         </div>
 
-        <div v-if="error" class="rounded bg-red-500/10 p-3 text-sm text-red-400">
+        <div v-if="error" role="alert" class="rounded bg-red-500/10 p-3 text-sm text-red-400">
           {{ error }}
         </div>
 

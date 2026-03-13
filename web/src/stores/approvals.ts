@@ -54,7 +54,13 @@ export const useApprovalStore = defineStore('approvals', () => {
     const payload = event.payload as Partial<ApprovalItem> & { id?: string }
     switch (event.event_type) {
       case 'approval.submitted':
-        if (payload.id && !approvals.value.some((a) => a.id === payload.id)) {
+        if (
+          typeof payload.id === 'string' &&
+          payload.id &&
+          payload.action_type &&
+          payload.title &&
+          !approvals.value.some((a) => a.id === payload.id)
+        ) {
           approvals.value = [payload as ApprovalItem, ...approvals.value]
           total.value++
         }

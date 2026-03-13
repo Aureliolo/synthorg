@@ -44,11 +44,19 @@ describe('authGuard', () => {
   })
 
   it('redirects unauthenticated users to /login on protected routes', () => {
-    const to = createRoute({ path: '/dashboard', meta: {} })
+    const to = createRoute({ path: '/dashboard', fullPath: '/dashboard', meta: {} })
     const from = createRoute()
 
     authGuard(to, from, next)
-    expect(next).toHaveBeenCalledWith('/login')
+    expect(next).toHaveBeenCalledWith({ path: '/login', query: { redirect: '/dashboard' } })
+  })
+
+  it('does not add redirect query for root path', () => {
+    const to = createRoute({ path: '/', fullPath: '/', meta: {} })
+    const from = createRoute()
+
+    authGuard(to, from, next)
+    expect(next).toHaveBeenCalledWith({ path: '/login', query: undefined })
   })
 
   it('allows authenticated users to access protected routes', () => {

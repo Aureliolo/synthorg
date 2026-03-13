@@ -53,7 +53,13 @@ export function getErrorMessage(error: unknown): string {
   }
 
   if (error instanceof Error) {
-    return error.message
+    // Only surface messages from errors explicitly thrown by our own code.
+    // Errors from unknown sources could contain backend internals.
+    const msg = error.message
+    if (msg && msg.length < 200 && !/^\{/.test(msg)) {
+      return msg
+    }
+    return 'An unexpected error occurred.'
   }
 
   return 'An unexpected error occurred.'

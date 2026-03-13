@@ -28,6 +28,16 @@ export const useAuthStore = defineStore('auth', () => {
     }, expiresAt - Date.now())
   }
 
+  // Clean up timer during HMR to avoid stale timers on dev reloads
+  if (import.meta.hot) {
+    import.meta.hot.dispose(() => {
+      if (expiryTimer) {
+        clearTimeout(expiryTimer)
+        expiryTimer = null
+      }
+    })
+  }
+
   const isAuthenticated = computed(() => !!token.value)
   const mustChangePassword = computed(() => user.value?.must_change_password ?? false)
   const userRole = computed<HumanRole | null>(() => user.value?.role ?? null)
@@ -77,6 +87,11 @@ export const useAuthStore = defineStore('auth', () => {
         clearAuth()
         throw new Error('Setup succeeded but failed to load user profile. Please try again.')
       }
+      // If fetchUser silently cleared auth (e.g. 401), the flow should not succeed
+      if (!user.value) {
+        clearAuth()
+        throw new Error('Setup succeeded but failed to load user profile. Please try again.')
+      }
       return result
     } finally {
       loading.value = false
@@ -92,6 +107,11 @@ export const useAuthStore = defineStore('auth', () => {
       try {
         await fetchUser()
       } catch {
+        clearAuth()
+        throw new Error('Login succeeded but failed to load user profile. Please try again.')
+      }
+      // If fetchUser silently cleared auth (e.g. 401), the flow should not succeed
+      if (!user.value) {
         clearAuth()
         throw new Error('Login succeeded but failed to load user profile. Please try again.')
       }

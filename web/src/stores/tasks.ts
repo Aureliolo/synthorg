@@ -32,6 +32,13 @@ export const useTaskStore = defineStore('tasks', () => {
     return grouped
   })
 
+  /** Check whether any non-trivial filters are currently active. */
+  function hasActiveFilters(): boolean {
+    return Object.values(currentFilters.value).some(
+      (v) => v !== undefined && v !== null,
+    )
+  }
+
   async function fetchTasks(filters?: TaskFilters) {
     loading.value = true
     error.value = null
@@ -48,6 +55,7 @@ export const useTaskStore = defineStore('tasks', () => {
   }
 
   async function createTask(data: CreateTaskRequest): Promise<Task | null> {
+    error.value = null
     try {
       const task = await tasksApi.createTask(data)
       tasks.value = [...tasks.value, task]
@@ -60,6 +68,7 @@ export const useTaskStore = defineStore('tasks', () => {
   }
 
   async function updateTask(taskId: string, data: UpdateTaskRequest): Promise<Task | null> {
+    error.value = null
     try {
       const updated = await tasksApi.updateTask(taskId, data)
       tasks.value = tasks.value.map((t) => (t.id === taskId ? updated : t))
@@ -74,6 +83,7 @@ export const useTaskStore = defineStore('tasks', () => {
     taskId: string,
     data: TransitionTaskRequest,
   ): Promise<Task | null> {
+    error.value = null
     try {
       const updated = await tasksApi.transitionTask(taskId, data)
       tasks.value = tasks.value.map((t) => (t.id === taskId ? updated : t))
@@ -85,6 +95,7 @@ export const useTaskStore = defineStore('tasks', () => {
   }
 
   async function cancelTask(taskId: string, data: CancelTaskRequest): Promise<Task | null> {
+    error.value = null
     try {
       const updated = await tasksApi.cancelTask(taskId, data)
       tasks.value = tasks.value.map((t) => (t.id === taskId ? updated : t))
@@ -101,10 +112,7 @@ export const useTaskStore = defineStore('tasks', () => {
       case 'task.created':
         if (payload.id && !tasks.value.some((t) => t.id === payload.id)) {
           // Only append if no active filters — filtered views are kept accurate by REST fetches
-          const hasFilters = Object.values(currentFilters.value).some(
-            (v) => v !== undefined && v !== null,
-          )
-          if (!hasFilters) {
+          if (!hasActiveFilters()) {
             tasks.value = [...tasks.value, payload as Task]
             total.value++
           }
@@ -114,6 +122,8 @@ export const useTaskStore = defineStore('tasks', () => {
       case 'task.status_changed':
       case 'task.assigned':
         if (payload.id) {
+          // Only update tasks already in the list — if filters are active,
+          // tasks that no longer match will be cleaned up on next REST fetch
           tasks.value = tasks.value.map((t) => (t.id === payload.id ? { ...t, ...payload } : t))
         }
         break

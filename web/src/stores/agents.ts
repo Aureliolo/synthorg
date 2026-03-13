@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as agentsApi from '@/api/endpoints/agents'
 import { getErrorMessage } from '@/utils/errors'
+import { MAX_PAGE_SIZE } from '@/utils/constants'
 import type { AgentConfig, WsEvent } from '@/api/types'
 
 export const useAgentStore = defineStore('agents', () => {
@@ -14,7 +15,7 @@ export const useAgentStore = defineStore('agents', () => {
     loading.value = true
     error.value = null
     try {
-      const result = await agentsApi.listAgents({ limit: 200 })
+      const result = await agentsApi.listAgents({ limit: MAX_PAGE_SIZE })
       agents.value = result.data
       total.value = result.total
     } catch (err) {
@@ -37,9 +38,16 @@ export const useAgentStore = defineStore('agents', () => {
     const payload = event.payload as Partial<AgentConfig> & { name?: string }
     switch (event.event_type) {
       case 'agent.hired':
-        if (payload.name && !agents.value.some((a) => a.name === payload.name)) {
-          agents.value = [...agents.value, payload as AgentConfig]
-          total.value++
+        if (
+          typeof payload.name === 'string' &&
+          payload.name &&
+          !agents.value.some((a) => a.name === payload.name)
+        ) {
+          // Only append if payload has required fields
+          if (payload.id && payload.role && payload.department) {
+            agents.value = [...agents.value, payload as AgentConfig]
+            total.value++
+          }
         }
         break
       case 'agent.fired':

@@ -17,13 +17,15 @@ describe('EmptyState', () => {
     expect(wrapper.text()).toContain('Nothing here yet')
   })
 
-  it('renders icon when provided', () => {
+  it('renders icon with correct class and aria-hidden', () => {
     const wrapper = mount(EmptyState, {
       props: { title: 'Empty', icon: 'pi pi-inbox' },
     })
     const icon = wrapper.find('i')
     expect(icon.exists()).toBe(true)
     expect(icon.classes()).toContain('pi')
+    expect(icon.classes()).toContain('pi-inbox')
+    expect(icon.attributes('aria-hidden')).toBe('true')
   })
 
   it('does not render message when not provided', () => {

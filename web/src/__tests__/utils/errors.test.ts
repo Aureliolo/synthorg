@@ -94,4 +94,20 @@ describe('getErrorMessage', () => {
     }
     expect(getErrorMessage(axiosError)).toBe('Network error. Please check your connection.')
   })
+
+  it('returns generic message for 5xx responses (does not leak internals)', () => {
+    const axiosError = {
+      isAxiosError: true,
+      response: {
+        status: 500,
+        data: { error: 'Internal: database pool exhausted at line 42', success: false },
+      },
+    }
+    expect(getErrorMessage(axiosError)).toBe('A server error occurred. Please try again later.')
+  })
+
+  it('returns generic message for JSON-like Error.message', () => {
+    const err = new Error('{"stack":"at Object.<anonymous> (/app/server.js:15:7)"}')
+    expect(getErrorMessage(err)).toBe('An unexpected error occurred.')
+  })
 })

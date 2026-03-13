@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, RouterLink } from 'vue-router'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 import { useAuthStore } from '@/stores/auth'
@@ -102,7 +102,7 @@ async function handleSetup() {
           />
         </div>
 
-        <div v-if="error" class="rounded bg-red-500/10 p-3 text-sm text-red-400">
+        <div v-if="error" role="alert" class="rounded bg-red-500/10 p-3 text-sm text-red-400">
           {{ error }}
         </div>
 
@@ -117,12 +117,12 @@ async function handleSetup() {
       </form>
 
       <div class="mt-6 text-center">
-        <button
+        <RouterLink
+          to="/login"
           class="text-sm text-slate-500 hover:text-brand-400"
-          @click="router.push('/login')"
         >
           Already have an account? Sign in
-        </button>
+        </RouterLink>
       </div>
     </div>
   </div>

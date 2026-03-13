@@ -183,6 +183,32 @@ describe('useApprovalStore', () => {
       expect(store.approvals[0].status).toBe('approved')
     })
 
+    it('handles approval.rejected WS event', () => {
+      const store = useApprovalStore()
+      store.approvals = [mockApproval]
+      const event: WsEvent = {
+        event_type: 'approval.rejected',
+        channel: 'approvals',
+        timestamp: '2026-03-12T10:01:00Z',
+        payload: { id: 'approval-1', status: 'rejected', decided_by: 'admin', decision_reason: 'Too risky' },
+      }
+      store.handleWsEvent(event)
+      expect(store.approvals[0].status).toBe('rejected')
+    })
+
+    it('handles approval.expired WS event', () => {
+      const store = useApprovalStore()
+      store.approvals = [mockApproval]
+      const event: WsEvent = {
+        event_type: 'approval.expired',
+        channel: 'approvals',
+        timestamp: '2026-03-12T11:01:00Z',
+        payload: { id: 'approval-1', status: 'expired' },
+      }
+      store.handleWsEvent(event)
+      expect(store.approvals[0].status).toBe('expired')
+    })
+
     it('does not duplicate approvals on repeated events', () => {
       const store = useApprovalStore()
       store.approvals = [mockApproval]

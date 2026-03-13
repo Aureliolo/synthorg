@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as companyApi from '@/api/endpoints/company'
 import { getErrorMessage } from '@/utils/errors'
+import { MAX_PAGE_SIZE } from '@/utils/constants'
 import type { CompanyConfig, Department } from '@/api/types'
 
 export const useCompanyStore = defineStore('company', () => {
@@ -9,15 +10,16 @@ export const useCompanyStore = defineStore('company', () => {
   const departments = ref<Department[]>([])
   const loading = ref(false)
   const departmentsLoading = ref(false)
-  const error = ref<string | null>(null)
+  const configError = ref<string | null>(null)
+  const departmentsError = ref<string | null>(null)
 
   async function fetchConfig() {
     loading.value = true
-    error.value = null
+    configError.value = null
     try {
       config.value = await companyApi.getCompanyConfig()
     } catch (err) {
-      error.value = getErrorMessage(err)
+      configError.value = getErrorMessage(err)
     } finally {
       loading.value = false
     }
@@ -25,16 +27,25 @@ export const useCompanyStore = defineStore('company', () => {
 
   async function fetchDepartments() {
     departmentsLoading.value = true
-    error.value = null
+    departmentsError.value = null
     try {
-      const result = await companyApi.listDepartments({ limit: 200 })
+      const result = await companyApi.listDepartments({ limit: MAX_PAGE_SIZE })
       departments.value = result.data
     } catch (err) {
-      error.value = getErrorMessage(err)
+      departmentsError.value = getErrorMessage(err)
     } finally {
       departmentsLoading.value = false
     }
   }
 
-  return { config, departments, loading, departmentsLoading, error, fetchConfig, fetchDepartments }
+  return {
+    config,
+    departments,
+    loading,
+    departmentsLoading,
+    configError,
+    departmentsError,
+    fetchConfig,
+    fetchDepartments,
+  }
 })

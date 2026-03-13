@@ -2,32 +2,45 @@ import { ref, onUnmounted } from 'vue'
 
 /**
  * Poll a function at a fixed interval with cleanup on unmount.
- * Wraps the async function in error handling to prevent unhandled rejections.
+ * Uses setTimeout-based scheduling to prevent overlapping async calls.
  */
 export function usePolling(fn: () => Promise<void>, intervalMs: number) {
   const active = ref(false)
-  let timer: ReturnType<typeof setInterval> | null = null
+  let timer: ReturnType<typeof setTimeout> | null = null
 
-  const safeFn = async () => {
+  const scheduleTick = () => {
     if (!active.value) return
-    try {
-      await fn()
-    } catch (err) {
-      console.error('Polling error:', err)
-    }
+    timer = setTimeout(async () => {
+      if (!active.value) return
+      try {
+        await fn()
+      } catch (err) {
+        console.error('Polling error:', err)
+      }
+      scheduleTick()
+    }, intervalMs)
   }
 
   function start() {
     if (active.value) return
     active.value = true
-    safeFn() // fetch immediately on start, don't wait for first interval
-    timer = setInterval(safeFn, intervalMs)
+    // Fetch immediately on start, then schedule subsequent ticks
+    const immediate = async () => {
+      if (!active.value) return
+      try {
+        await fn()
+      } catch (err) {
+        console.error('Polling error:', err)
+      }
+      scheduleTick()
+    }
+    immediate()
   }
 
   function stop() {
     active.value = false
     if (timer) {
-      clearInterval(timer)
+      clearTimeout(timer)
       timer = null
     }
   }
