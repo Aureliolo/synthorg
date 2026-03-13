@@ -17,7 +17,7 @@ import { useWebSocketStore } from '@/stores/websocket'
 import { useAuthStore } from '@/stores/auth'
 import { useAuth } from '@/composables/useAuth'
 import { sanitizeForLog } from '@/utils/logging'
-import type { Task, TaskStatus, CreateTaskRequest, TaskFilters as TaskFilterType } from '@/api/types'
+import type { Task, TaskStatus, Priority, CreateTaskRequest, TaskFilters as TaskFilterType } from '@/api/types'
 
 const toast = useToast()
 const taskStore = useTaskStore()
