@@ -476,7 +476,6 @@ class TestEventConstants:
             ("MEMORY_BACKEND_DISCONNECTED", "memory.backend.disconnected"),
             ("MEMORY_BACKEND_HEALTH_CHECK", "memory.backend.health_check"),
             ("MEMORY_BACKEND_CREATED", "memory.backend.created"),
-            ("MEMORY_BACKEND_NOT_IMPLEMENTED", "memory.backend.not_implemented"),
             ("MEMORY_BACKEND_UNKNOWN", "memory.backend.unknown"),
             ("MEMORY_BACKEND_NOT_CONNECTED", "memory.backend.not_connected"),
             ("MEMORY_ENTRY_STORED", "memory.entry.stored"),
@@ -496,7 +495,6 @@ class TestEventConstants:
             ("MEMORY_SHARED_RETRACTED", "memory.shared.retracted"),
             ("MEMORY_SHARED_RETRACT_FAILED", "memory.shared.retract_failed"),
             ("MEMORY_MODEL_INVALID", "memory.model.invalid"),
-            ("MEMORY_CAPABILITY_UNSUPPORTED", "memory.capability.unsupported"),
         ],
     )
     def test_memory_events_exist(self, constant_name: str, expected: str) -> None:

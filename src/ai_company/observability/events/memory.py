@@ -17,9 +17,11 @@ MEMORY_BACKEND_DISCONNECTING: Final[str] = "memory.backend.disconnecting"
 MEMORY_BACKEND_DISCONNECTED: Final[str] = "memory.backend.disconnected"
 MEMORY_BACKEND_HEALTH_CHECK: Final[str] = "memory.backend.health_check"
 MEMORY_BACKEND_CREATED: Final[str] = "memory.backend.created"
-MEMORY_BACKEND_NOT_IMPLEMENTED: Final[str] = "memory.backend.not_implemented"
 MEMORY_BACKEND_UNKNOWN: Final[str] = "memory.backend.unknown"
+MEMORY_BACKEND_CONFIG_INVALID: Final[str] = "memory.backend.config_invalid"
 MEMORY_BACKEND_NOT_CONNECTED: Final[str] = "memory.backend.not_connected"
+MEMORY_BACKEND_AGENT_ID_REJECTED: Final[str] = "memory.backend.agent_id_rejected"
+MEMORY_BACKEND_SYSTEM_ERROR: Final[str] = "memory.backend.system_error"
 
 # ── Entry operations ──────────────────────────────────────────────
 
@@ -46,10 +48,6 @@ MEMORY_SHARED_RETRACT_FAILED: Final[str] = "memory.shared.retract_failed"
 # ── Validation ──────────────────────────────────────────────────
 
 MEMORY_MODEL_INVALID: Final[str] = "memory.model.invalid"
-
-# ── Capability checks ────────────────────────────────────────────
-
-MEMORY_CAPABILITY_UNSUPPORTED: Final[str] = "memory.capability.unsupported"
 
 # ── Retrieval pipeline ──────────────────────────────────────────
 

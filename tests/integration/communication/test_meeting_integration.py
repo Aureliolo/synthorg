@@ -26,8 +26,8 @@ from ai_company.communication.meeting.position_papers import (
     PositionPapersProtocol,
 )
 from ai_company.communication.meeting.protocol import (
-    AgentCaller,  # noqa: TC001
-    MeetingProtocol,  # noqa: TC001
+    AgentCaller,
+    MeetingProtocol,
 )
 from ai_company.communication.meeting.round_robin import RoundRobinProtocol
 from ai_company.communication.meeting.structured_phases import (

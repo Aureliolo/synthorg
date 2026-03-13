@@ -3,7 +3,7 @@
 import pytest
 
 from ai_company.communication.meeting.enums import MeetingProtocolType
-from ai_company.communication.meeting.models import (  # noqa: TC001
+from ai_company.communication.meeting.models import (
     MeetingAgenda,
     MeetingMinutes,
 )

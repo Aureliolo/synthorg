@@ -162,7 +162,7 @@ class MemoryQuery(BaseModel):
         tags: Filter by tags (AND semantics).
         min_relevance: Minimum relevance score threshold.
         limit: Maximum number of results.
-        since: Only memories created after this timestamp.
+        since: Only memories created at or after this timestamp.
         until: Only memories created before this timestamp.
     """
 
@@ -194,7 +194,7 @@ class MemoryQuery(BaseModel):
     )
     since: AwareDatetime | None = Field(
         default=None,
-        description="Only memories created after this timestamp",
+        description="Only memories created at or after this timestamp",
     )
     until: AwareDatetime | None = Field(
         default=None,

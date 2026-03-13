@@ -9,7 +9,7 @@ import structlog.testing
 
 from ai_company.budget.coordination_config import ErrorTaxonomyConfig
 from ai_company.budget.tracker import CostTracker
-from ai_company.core.agent import AgentIdentity  # noqa: TC001
+from ai_company.core.agent import AgentIdentity
 from ai_company.core.enums import AgentStatus, Priority, TaskStatus, TaskType
 from ai_company.core.task import Task
 from ai_company.engine.agent_engine import AgentEngine

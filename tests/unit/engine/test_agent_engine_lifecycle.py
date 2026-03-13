@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ai_company.core.agent import AgentIdentity  # noqa: TC001
+from ai_company.core.agent import AgentIdentity
 from ai_company.core.enums import TaskStatus
-from ai_company.core.task import Task  # noqa: TC001
+from ai_company.core.task import Task
 from ai_company.engine.agent_engine import AgentEngine
 from ai_company.engine.context import AgentContext
 from ai_company.engine.loop_protocol import (

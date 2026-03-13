@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.core.agent import AgentIdentity  # noqa: TC001
+from ai_company.core.agent import AgentIdentity
 from ai_company.core.enums import CoordinationTopology
 from ai_company.engine.routing.models import (
     AutoTopologyConfig,

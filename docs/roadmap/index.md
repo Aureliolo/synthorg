@@ -8,7 +8,7 @@ The SynthOrg core framework is complete. The following subsystems are built and 
 - Budget and cost management (tracking, enforcement, CFO optimization, quotas)
 - Agent engine (execution loops, parallel execution, task decomposition, routing, assignment, recovery, shutdown)
 - Communication layer (message bus, delegation, loop prevention, conflict resolution, meeting protocol)
-- Memory system (pluggable backend protocol, retrieval pipeline, shared org memory, consolidation)
+- Memory system (pluggable backend protocol, Mem0 adapter, retrieval pipeline, shared org memory, consolidation)
 - Security and approval system (rule engine, output scanning, progressive trust, autonomy levels, timeout policies)
 - Tool system (file system, git, code runner, MCP bridge, sandboxing, permissions)
 - HR engine (hiring, firing, onboarding, offboarding, registry, performance tracking, promotions)
@@ -22,7 +22,6 @@ The SynthOrg core framework is complete. The following subsystems are built and 
 
 | Area | Description |
 |------|-------------|
-| **Mem0 adapter** | Concrete `MemoryBackend` implementation using the Mem0 library |
 | **Approval workflow gates** | Runtime wiring for human-in-the-loop approval queues |
 | **CLI** | Terminal interface wrapping the REST API (may not be needed) |
 | **Web dashboard** | Vue 3 frontend for monitoring and managing the synthetic organization |

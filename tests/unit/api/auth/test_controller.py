@@ -3,7 +3,7 @@
 from typing import Any
 
 import pytest
-from litestar.testing import TestClient  # noqa: TC002
+from litestar.testing import TestClient
 
 from ai_company.api.guards import HumanRole
 from tests.unit.api.conftest import make_auth_headers
@@ -44,7 +44,7 @@ class TestSetup:
         from datetime import UTC, datetime
 
         from ai_company.api.auth.models import User
-        from ai_company.api.auth.service import AuthService  # noqa: TC001
+        from ai_company.api.auth.service import AuthService
         from ai_company.api.guards import HumanRole
 
         app_state = bare_client.app.state["app_state"]

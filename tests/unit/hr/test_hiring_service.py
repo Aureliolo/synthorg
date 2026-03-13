@@ -12,8 +12,8 @@ from ai_company.hr.errors import (
     InvalidCandidateError,
 )
 from ai_company.hr.hiring_service import HiringService
-from ai_company.hr.onboarding_service import OnboardingService  # noqa: TC001
-from ai_company.hr.registry import AgentRegistryService  # noqa: TC001
+from ai_company.hr.onboarding_service import OnboardingService
+from ai_company.hr.registry import AgentRegistryService
 from tests.unit.hr.conftest import make_candidate_card, make_hiring_request
 
 
