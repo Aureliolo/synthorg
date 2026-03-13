@@ -106,6 +106,28 @@ describe('getErrorMessage', () => {
     expect(getErrorMessage(axiosError)).toBe('A server error occurred. Please try again later.')
   })
 
+  it('returns status-based message for 404', () => {
+    const axiosError = {
+      isAxiosError: true,
+      response: {
+        status: 404,
+        data: {},
+      },
+    }
+    expect(getErrorMessage(axiosError)).toBe('The requested resource was not found.')
+  })
+
+  it('returns status-based message for 503', () => {
+    const axiosError = {
+      isAxiosError: true,
+      response: {
+        status: 503,
+        data: {},
+      },
+    }
+    expect(getErrorMessage(axiosError)).toBe('Service temporarily unavailable. Please try again later.')
+  })
+
   it('returns generic message for JSON-like Error.message', () => {
     const err = new Error('{"stack":"at Object.<anonymous> (/app/server.js:15:7)"}')
     expect(getErrorMessage(err)).toBe('An unexpected error occurred.')

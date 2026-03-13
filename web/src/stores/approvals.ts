@@ -52,14 +52,16 @@ export const useApprovalStore = defineStore('approvals', () => {
     }
   }
 
-  /** Runtime check for minimum required ApprovalItem fields. */
+  /** Runtime check for required ApprovalItem fields before insertion. */
   function isValidApprovalPayload(p: Record<string, unknown>): boolean {
     return (
       typeof p.id === 'string' && p.id !== '' &&
       typeof p.action_type === 'string' &&
       typeof p.title === 'string' &&
       typeof p.status === 'string' &&
-      typeof p.requested_by === 'string'
+      typeof p.requested_by === 'string' &&
+      typeof p.risk_level === 'string' &&
+      typeof p.created_at === 'string'
     )
   }
 

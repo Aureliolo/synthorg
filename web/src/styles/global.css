@@ -34,7 +34,7 @@
 }
 
 /* Scrollbar styling — Firefox */
-* {
+html {
   scrollbar-width: thin;
   scrollbar-color: var(--color-surface-300) var(--color-surface-50);
 }

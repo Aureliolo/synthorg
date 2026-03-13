@@ -12,6 +12,10 @@ describe('TASK_STATUS_ORDER', () => {
 })
 
 describe('TERMINAL_STATUSES', () => {
+  it('contains exactly 2 terminal statuses', () => {
+    expect(TERMINAL_STATUSES.size).toBe(2)
+  })
+
   it('contains completed and cancelled', () => {
     expect(TERMINAL_STATUSES.has('completed')).toBe(true)
     expect(TERMINAL_STATUSES.has('cancelled')).toBe(true)

@@ -62,6 +62,18 @@ describe('useMessageStore', () => {
     expect(store.total).toBe(0) // not incremented for filtered-out messages
   })
 
+  it('ignores message.sent with malformed payload', () => {
+    const store = useMessageStore()
+    const event: WsEvent = {
+      event_type: 'message.sent',
+      channel: 'messages',
+      timestamp: '2026-03-12T10:00:00Z',
+      payload: { id: 'msg-1' }, // missing channel, sender, content, timestamp
+    }
+    store.handleWsEvent(event)
+    expect(store.messages).toHaveLength(0)
+  })
+
   it('setActiveChannel updates state', () => {
     const store = useMessageStore()
     store.setActiveChannel('general')

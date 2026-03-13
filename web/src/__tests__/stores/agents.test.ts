@@ -73,7 +73,7 @@ describe('useAgentStore', () => {
 
   it('handles agent.fired WS event', () => {
     const store = useAgentStore()
-    store.agents = [mockAgent]
+    store.agents = [{ ...mockAgent }]
     store.total = 1
     const event: WsEvent = {
       event_type: 'agent.fired',
@@ -88,7 +88,7 @@ describe('useAgentStore', () => {
 
   it('handles agent.status_changed WS event', () => {
     const store = useAgentStore()
-    store.agents = [mockAgent]
+    store.agents = [{ ...mockAgent }]
     const event: WsEvent = {
       event_type: 'agent.status_changed',
       channel: 'agents',
@@ -101,7 +101,7 @@ describe('useAgentStore', () => {
 
   it('does not duplicate agents on repeated agent.hired events', () => {
     const store = useAgentStore()
-    store.agents = [mockAgent]
+    store.agents = [{ ...mockAgent }]
     store.total = 1
     const event: WsEvent = {
       event_type: 'agent.hired',

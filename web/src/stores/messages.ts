@@ -6,6 +6,17 @@ import type { Channel, Message, WsEvent } from '@/api/types'
 
 const MAX_WS_MESSAGES = 500
 
+/** Runtime check for minimum required Message fields on a WS payload. */
+function isValidMessagePayload(p: Record<string, unknown>): boolean {
+  return (
+    typeof p.id === 'string' && p.id !== '' &&
+    typeof p.channel === 'string' &&
+    typeof p.sender === 'string' &&
+    typeof p.content === 'string' &&
+    typeof p.timestamp === 'string'
+  )
+}
+
 export const useMessageStore = defineStore('messages', () => {
   const messages = ref<Message[]>([])
   const channels = ref<Channel[]>([])
@@ -33,6 +44,8 @@ export const useMessageStore = defineStore('messages', () => {
     const requestId = ++fetchRequestId
     loading.value = true
     error.value = null
+    // Sync the WS filter so handleWsEvent matches the fetched channel
+    activeChannel.value = channel ?? null
     try {
       const params = channel ? { channel, limit: 100 } : { limit: 100 }
       const result = await messagesApi.listMessages(params)
@@ -58,13 +71,14 @@ export const useMessageStore = defineStore('messages', () => {
 
   function handleWsEvent(event: WsEvent) {
     if (event.event_type === 'message.sent') {
-      const message = event.payload as unknown as Message
-      if (message.id) {
-        // Only append and count if message matches active channel (or no filter is set)
-        if (!activeChannel.value || message.channel === activeChannel.value) {
+      const payload = event.payload as Record<string, unknown> | null
+      if (!payload || typeof payload !== 'object') return
+      if (!isValidMessagePayload(payload)) return
+      const message = payload as unknown as Message
+      // Only append if message matches active channel (or no filter is set)
+      if (!activeChannel.value || message.channel === activeChannel.value) {
+        if (!messages.value.some((m) => m.id === message.id)) {
           messages.value = [...messages.value, message].slice(-MAX_WS_MESSAGES)
-          // Don't increment total — it tracks the server-side paginated count
-          // and is only set from the REST API response in fetchMessages()
         }
       }
     }

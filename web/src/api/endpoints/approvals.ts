@@ -20,16 +20,16 @@ export async function getApproval(id: string): Promise<ApprovalItem> {
 }
 
 export async function createApproval(data: CreateApprovalRequest): Promise<ApprovalItem> {
-  const response = await apiClient.post('/approvals', data)
+  const response = await apiClient.post<ApiResponse<ApprovalItem>>('/approvals', data)
   return unwrap(response)
 }
 
 export async function approveApproval(id: string, data?: ApproveRequest): Promise<ApprovalItem> {
-  const response = await apiClient.post(`/approvals/${encodeURIComponent(id)}/approve`, data ?? {})
+  const response = await apiClient.post<ApiResponse<ApprovalItem>>(`/approvals/${encodeURIComponent(id)}/approve`, data ?? {})
   return unwrap(response)
 }
 
 export async function rejectApproval(id: string, data: RejectRequest): Promise<ApprovalItem> {
-  const response = await apiClient.post(`/approvals/${encodeURIComponent(id)}/reject`, data)
+  const response = await apiClient.post<ApiResponse<ApprovalItem>>(`/approvals/${encodeURIComponent(id)}/reject`, data)
   return unwrap(response)
 }

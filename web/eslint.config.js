@@ -3,6 +3,9 @@ import pluginSecurity from 'eslint-plugin-security'
 import tsParser from '@typescript-eslint/parser'
 
 export default [
+  {
+    ignores: ['dist/**'],
+  },
   ...pluginVue.configs['flat/essential'],
   pluginSecurity.configs.recommended,
   {
@@ -29,8 +32,5 @@ export default [
     rules: {
       'vue/multi-word-component-names': 'off',
     },
-  },
-  {
-    ignores: ['dist/'],
   },
 ]

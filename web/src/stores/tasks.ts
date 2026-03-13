@@ -111,12 +111,15 @@ export const useTaskStore = defineStore('tasks', () => {
     }
   }
 
-  /** Runtime check for minimum required Task fields on a WS payload. */
+  /** Runtime check for required Task fields before insertion. */
   function isValidTaskPayload(p: Record<string, unknown>): boolean {
     return (
       typeof p.id === 'string' && p.id !== '' &&
       typeof p.title === 'string' &&
-      typeof p.status === 'string'
+      typeof p.status === 'string' &&
+      typeof p.type === 'string' &&
+      typeof p.priority === 'string' &&
+      typeof p.created_by === 'string'
     )
   }
 

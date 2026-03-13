@@ -33,15 +33,17 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('auth_token')
       localStorage.removeItem('auth_token_expires_at')
-      // Use router import for SPA-friendly navigation (preserves in-memory state)
-      if (window.location.pathname !== '/login' && window.location.pathname !== '/setup') {
-        // Dynamic import to avoid circular dependency with router -> stores -> api
-        import('@/router').then(({ router }) => {
-          router.push('/login')
-        }).catch(() => {
+      // Sync Pinia auth state — dynamic import avoids circular dependency
+      import('@/stores/auth').then(({ useAuthStore }) => {
+        const auth = useAuthStore()
+        // clearAuth() also handles redirect to /login
+        auth.logout()
+      }).catch(() => {
+        // Fallback if store import fails: redirect directly
+        if (window.location.pathname !== '/login' && window.location.pathname !== '/setup') {
           window.location.href = '/login'
-        })
-      }
+        }
+      })
     }
     return Promise.reject(error)
   },

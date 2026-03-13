@@ -2,18 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { WsChannel, WsEvent, WsEventHandler } from '@/api/types'
 import { WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY, WS_MAX_RECONNECT_ATTEMPTS } from '@/utils/constants'
-
-/** Strip all control characters and truncate for safe logging. */
-function sanitizeLogValue(value: unknown, max = 200): string {
-  const raw = String(value)
-  let result = ''
-  for (const ch of raw) {
-    const code = ch.charCodeAt(0)
-    result += (code >= 0x20 && code !== 0x7f) ? ch : ' '
-    if (result.length >= max) break
-  }
-  return result
-}
+import { sanitizeForLog } from '@/utils/logging'
 
 /** Build a stable deduplication key for a subscription (sorted channels + sorted filter keys). */
 function subscriptionKey(channels: WsChannel[], filters?: Record<string, string>): string {
@@ -95,7 +84,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
       }
 
       if (msg.error) {
-        console.error('WebSocket error:', sanitizeLogValue(msg.error))
+        console.error('WebSocket error:', sanitizeForLog(msg.error))
         return
       }
 
@@ -103,7 +92,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
         try {
           dispatchEvent(msg as unknown as WsEvent)
         } catch (handlerErr) {
-          console.error('WebSocket event handler error:', sanitizeLogValue(handlerErr), 'Event type:', sanitizeLogValue(msg.event_type, 100))
+          console.error('WebSocket event handler error:', sanitizeForLog(handlerErr), 'Event type:', sanitizeForLog(msg.event_type, 100))
         }
       }
     }
@@ -221,12 +210,12 @@ export const useWebSocketStore = defineStore('websocket', () => {
     // Wrap each handler in try/catch so one failing handler doesn't block others
     channelHandlers.get(event.channel)?.forEach((h) => {
       try { h(event) } catch (err) {
-        console.error('WebSocket channel handler error:', sanitizeLogValue(err))
+        console.error('WebSocket channel handler error:', sanitizeForLog(err))
       }
     })
     channelHandlers.get('*')?.forEach((h) => {
       try { h(event) } catch (err) {
-        console.error('WebSocket wildcard handler error:', sanitizeLogValue(err))
+        console.error('WebSocket wildcard handler error:', sanitizeForLog(err))
       }
     })
   }

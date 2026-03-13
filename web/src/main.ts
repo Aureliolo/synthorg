@@ -7,6 +7,7 @@ import ConfirmationService from 'primevue/confirmationservice'
 import App from './App.vue'
 import { router } from './router'
 import { primeVueOptions } from './primevue-preset'
+import { sanitizeForLog } from './utils/logging'
 import './styles/global.css'
 
 const app = createApp(App)
@@ -16,18 +17,6 @@ app.use(router)
 app.use(PrimeVue, primeVueOptions)
 app.use(ToastService)
 app.use(ConfirmationService)
-
-/** Sanitize a value for safe logging (strip control chars, truncate). */
-function sanitizeForLog(value: unknown, maxLen = 500): string {
-  const raw = value instanceof Error ? value.message : String(value)
-  let result = ''
-  for (const ch of raw) {
-    const code = ch.charCodeAt(0)
-    result += (code >= 0x20 && code !== 0x7f) ? ch : ' '
-    if (result.length >= maxLen) break
-  }
-  return result
-}
 
 // Global error handler for unhandled errors in components
 app.config.errorHandler = (err, _instance, info) => {

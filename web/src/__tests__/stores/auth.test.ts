@@ -109,7 +109,7 @@ describe('useAuthStore', () => {
 
       const store = useAuthStore()
       await expect(store.login('admin', 'password123')).rejects.toThrow(
-        'Login succeeded but failed to load user profile',
+        'Login succeeded but failed to load user profile. Please check your connection and try again.',
       )
       expect(store.token).toBeNull()
       expect(store.isAuthenticated).toBe(false)
@@ -174,7 +174,7 @@ describe('useAuthStore', () => {
 
       const store = useAuthStore()
       await expect(store.setup('admin', 'password123')).rejects.toThrow(
-        'Setup succeeded but failed to load user profile',
+        'Setup succeeded but failed to load user profile. Please check your connection and try again.',
       )
       expect(store.token).toBeNull()
       expect(store.isAuthenticated).toBe(false)
@@ -202,18 +202,21 @@ describe('useAuthStore', () => {
       localStorage.setItem('auth_token', 'test-token')
       localStorage.setItem('auth_token_expires_at', String(Date.now() + 3600_000))
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      const axiosError = Object.assign(new Error('Internal Server Error'), {
-        isAxiosError: true,
-        response: { status: 500 },
-      })
-      mockGetMe.mockRejectedValue(axiosError)
+      try {
+        const axiosError = Object.assign(new Error('Internal Server Error'), {
+          isAxiosError: true,
+          response: { status: 500 },
+        })
+        mockGetMe.mockRejectedValue(axiosError)
 
-      const store = useAuthStore()
-      await expect(store.fetchUser()).rejects.toThrow('Internal Server Error')
+        const store = useAuthStore()
+        await expect(store.fetchUser()).rejects.toThrow('Internal Server Error')
 
-      expect(store.token).toBe('test-token')
-      expect(store.isAuthenticated).toBe(true)
-      consoleSpy.mockRestore()
+        expect(store.token).toBe('test-token')
+        expect(store.isAuthenticated).toBe(true)
+      } finally {
+        consoleSpy.mockRestore()
+      }
     })
 
     it('does nothing without token', async () => {

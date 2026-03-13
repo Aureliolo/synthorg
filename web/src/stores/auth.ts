@@ -90,9 +90,18 @@ export const useAuthStore = defineStore('auth', () => {
       setToken(result.token, result.expires_in)
       try {
         await fetchUser()
-      } catch {
+      } catch (fetchErr) {
+        // fetchUser already clears auth on 401 (invalid token) and doesn't throw.
+        // If we get here, it's a transient error (network/5xx) — the token may be
+        // valid but we can't load the profile. Clear auth since the app can't
+        // function without user data, but use a distinct error message.
+        if (isAxiosError(fetchErr) && fetchErr.response?.status === 401) {
+          // 401 during fetchUser means the just-issued token is already invalid
+          clearAuth()
+          throw new Error(`${flowName} failed: invalid session. Please try again.`)
+        }
         clearAuth()
-        throw new Error(`${flowName} succeeded but failed to load user profile. Please try again.`)
+        throw new Error(`${flowName} succeeded but failed to load user profile. Please check your connection and try again.`)
       }
       // If fetchUser silently cleared auth (e.g. 401), the flow should not succeed
       if (!user.value) {

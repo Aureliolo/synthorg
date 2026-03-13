@@ -26,11 +26,15 @@ export const useBudgetStore = defineStore('budget', () => {
   const config = ref<BudgetConfig | null>(null)
   const records = ref<CostRecord[]>([])
   const totalRecords = ref(0)
+  const configLoading = ref(false)
+  const recordsLoading = ref(false)
+  const spendingLoading = ref(false)
   const loading = ref(false)
   const error = ref<string | null>(null)
   let lastFetchParams: { agent_id?: string; task_id?: string; limit?: number } | undefined
 
   async function fetchConfig() {
+    configLoading.value = true
     loading.value = true
     error.value = null
     try {
@@ -38,11 +42,13 @@ export const useBudgetStore = defineStore('budget', () => {
     } catch (err) {
       error.value = getErrorMessage(err)
     } finally {
-      loading.value = false
+      configLoading.value = false
+      if (!recordsLoading.value && !spendingLoading.value) loading.value = false
     }
   }
 
   async function fetchRecords(params?: { agent_id?: string; task_id?: string; limit?: number }) {
+    recordsLoading.value = true
     loading.value = true
     error.value = null
     lastFetchParams = params ? { ...params } : undefined
@@ -53,11 +59,13 @@ export const useBudgetStore = defineStore('budget', () => {
     } catch (err) {
       error.value = getErrorMessage(err)
     } finally {
-      loading.value = false
+      recordsLoading.value = false
+      if (!configLoading.value && !spendingLoading.value) loading.value = false
     }
   }
 
   async function fetchAgentSpending(agentId: string): Promise<AgentSpending | null> {
+    spendingLoading.value = true
     loading.value = true
     error.value = null
     try {
@@ -66,7 +74,8 @@ export const useBudgetStore = defineStore('budget', () => {
       error.value = getErrorMessage(err)
       return null
     } finally {
-      loading.value = false
+      spendingLoading.value = false
+      if (!configLoading.value && !recordsLoading.value) loading.value = false
     }
   }
 
@@ -87,6 +96,9 @@ export const useBudgetStore = defineStore('budget', () => {
     config,
     records,
     totalRecords,
+    configLoading,
+    recordsLoading,
+    spendingLoading,
     loading,
     error,
     fetchConfig,

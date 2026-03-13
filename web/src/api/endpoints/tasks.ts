@@ -21,22 +21,22 @@ export async function getTask(taskId: string): Promise<Task> {
 }
 
 export async function createTask(data: CreateTaskRequest): Promise<Task> {
-  const response = await apiClient.post('/tasks', data)
+  const response = await apiClient.post<ApiResponse<Task>>('/tasks', data)
   return unwrap(response)
 }
 
 export async function updateTask(taskId: string, data: UpdateTaskRequest): Promise<Task> {
-  const response = await apiClient.patch(`/tasks/${encodeURIComponent(taskId)}`, data)
+  const response = await apiClient.patch<ApiResponse<Task>>(`/tasks/${encodeURIComponent(taskId)}`, data)
   return unwrap(response)
 }
 
 export async function transitionTask(taskId: string, data: TransitionTaskRequest): Promise<Task> {
-  const response = await apiClient.post(`/tasks/${encodeURIComponent(taskId)}/transition`, data)
+  const response = await apiClient.post<ApiResponse<Task>>(`/tasks/${encodeURIComponent(taskId)}/transition`, data)
   return unwrap(response)
 }
 
 export async function cancelTask(taskId: string, data: CancelTaskRequest): Promise<Task> {
-  const response = await apiClient.post(`/tasks/${encodeURIComponent(taskId)}/cancel`, data)
+  const response = await apiClient.post<ApiResponse<Task>>(`/tasks/${encodeURIComponent(taskId)}/cancel`, data)
   return unwrap(response)
 }
 
