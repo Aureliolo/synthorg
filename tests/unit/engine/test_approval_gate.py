@@ -45,7 +45,8 @@ def park_service() -> MagicMock:
 @pytest.fixture
 def parked_mock(park_service: MagicMock) -> MagicMock:
     """The default parked context returned by park_service.park()."""
-    return park_service.park.return_value
+    result: MagicMock = park_service.park.return_value
+    return result
 
 
 @pytest.fixture
