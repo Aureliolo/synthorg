@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.1.3](https://github.com/Aureliolo/synthorg/compare/v0.1.2...v0.1.3) (2026-03-13)
+
+
+### Features
+
+* add Mem0 memory backend adapter ([#345](https://github.com/Aureliolo/synthorg/issues/345)) ([2788db8](https://github.com/Aureliolo/synthorg/commit/2788db881f85a4e9e211b834b396943b3c588edf)), closes [#206](https://github.com/Aureliolo/synthorg/issues/206)
+* centralized single-writer TaskEngine with full CRUD API ([#328](https://github.com/Aureliolo/synthorg/issues/328)) ([9c1a3e1](https://github.com/Aureliolo/synthorg/commit/9c1a3e150082ec4263148b4fcc71e5ba7c7a072d))
+* incremental AgentEngine → TaskEngine status sync ([#331](https://github.com/Aureliolo/synthorg/issues/331)) ([7a68d34](https://github.com/Aureliolo/synthorg/commit/7a68d34a815efc20dbe409a597a93b9820b2227b)), closes [#323](https://github.com/Aureliolo/synthorg/issues/323)
+* web dashboard pages — views, components, tests, and review fixes ([#354](https://github.com/Aureliolo/synthorg/issues/354)) ([b165ec4](https://github.com/Aureliolo/synthorg/commit/b165ec4d5d3e2a70852ef952a417fbcb053129c2))
+* web dashboard with Vue 3 + PrimeVue + Tailwind CSS ([#347](https://github.com/Aureliolo/synthorg/issues/347)) ([06416b1](https://github.com/Aureliolo/synthorg/commit/06416b1d876528754db5a1363d5ebb58bde1bf2a))
+
+
+### Bug Fixes
+
+* harden coordination pipeline with validators, logging, and fail-fast ([#333](https://github.com/Aureliolo/synthorg/issues/333)) ([2f10d49](https://github.com/Aureliolo/synthorg/commit/2f10d495df099ba7d8eaaceb0cd717670fad7748)), closes [#205](https://github.com/Aureliolo/synthorg/issues/205)
+* repo-wide security hardening from ZAP, Scorecard, and CodeQL audit ([#357](https://github.com/Aureliolo/synthorg/issues/357)) ([27eb288](https://github.com/Aureliolo/synthorg/commit/27eb28840ecffaa34a030e99d19add3af00a38f0))
+
+
+### CI/CD
+
+* add pip-audit, hadolint, OSSF Scorecard, ZAP DAST, and pre-push hooks ([#350](https://github.com/Aureliolo/synthorg/issues/350)) ([2802d20](https://github.com/Aureliolo/synthorg/commit/2802d20d16897582021b516fb3742495ff3fc30e))
+* add workflow_dispatch trigger to PR Preview for Dependabot PRs ([#326](https://github.com/Aureliolo/synthorg/issues/326)) ([4c7b6d9](https://github.com/Aureliolo/synthorg/commit/4c7b6d935ef842ced3269ecad0a9e7b011adbf3b))
+* bump astral-sh/setup-uv from 7.4.0 to 7.5.0 in the minor-and-patch group ([#335](https://github.com/Aureliolo/synthorg/issues/335)) ([98dd8ca](https://github.com/Aureliolo/synthorg/commit/98dd8caa30f60ad99e6cf46fa7d116db5e61a5b6))
+
+
+### Maintenance
+
+* bump the minor-and-patch group across 1 directory with 3 updates ([#352](https://github.com/Aureliolo/synthorg/issues/352)) ([031b1c9](https://github.com/Aureliolo/synthorg/commit/031b1c95fc069d38134e070d92ae121164e18233))
+* **deps:** bump devalue from 5.6.3 to 5.6.4 in /site in the npm_and_yarn group across 1 directory ([#324](https://github.com/Aureliolo/synthorg/issues/324)) ([9a9c600](https://github.com/Aureliolo/synthorg/commit/9a9c600509d2d77c3487082521a8c3496cd3d6c1))
+* migrate docs build from MkDocs to Zensical ([#330](https://github.com/Aureliolo/synthorg/issues/330)) ([fa8bf1d](https://github.com/Aureliolo/synthorg/commit/fa8bf1dfcc129e334d1b426dd5f9560aec0a6e81)), closes [#329](https://github.com/Aureliolo/synthorg/issues/329)
+
 ## [0.1.2](https://github.com/Aureliolo/synthorg/compare/v0.1.1...v0.1.2) (2026-03-12)
 
 
