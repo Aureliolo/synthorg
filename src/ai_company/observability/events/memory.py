@@ -21,6 +21,7 @@ MEMORY_BACKEND_UNKNOWN: Final[str] = "memory.backend.unknown"
 MEMORY_BACKEND_CONFIG_INVALID: Final[str] = "memory.backend.config_invalid"
 MEMORY_BACKEND_NOT_CONNECTED: Final[str] = "memory.backend.not_connected"
 MEMORY_BACKEND_AGENT_ID_REJECTED: Final[str] = "memory.backend.agent_id_rejected"
+MEMORY_BACKEND_SYSTEM_ERROR: Final[str] = "memory.backend.system_error"
 
 # ── Entry operations ──────────────────────────────────────────────
 

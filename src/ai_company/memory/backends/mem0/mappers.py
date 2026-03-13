@@ -11,7 +11,10 @@ from typing import TYPE_CHECKING, Any
 
 from ai_company.core.enums import MemoryCategory
 from ai_company.core.types import NotBlankStr
-from ai_company.memory.errors import MemoryRetrievalError, MemoryStoreError
+from ai_company.memory.errors import (
+    MemoryRetrievalError,
+    MemoryStoreError,
+)
 from ai_company.memory.models import (
     MemoryEntry,
     MemoryMetadata,
@@ -20,6 +23,8 @@ from ai_company.memory.models import (
 )
 from ai_company.observability import get_logger
 from ai_company.observability.events.memory import (
+    MEMORY_ENTRY_DELETE_FAILED,
+    MEMORY_ENTRY_RETRIEVAL_FAILED,
     MEMORY_ENTRY_STORE_FAILED,
     MEMORY_MODEL_INVALID,
 )
@@ -34,7 +39,12 @@ _PREFIX = "_synthorg_"
 
 # Metadata key to track who published a shared memory.
 # Public because the adapter module needs it for ownership tracking.
-PUBLISHER_KEY: str = "_synthorg_publisher"
+PUBLISHER_KEY: str = f"{_PREFIX}publisher"
+
+# Reserved user_id for the shared knowledge namespace.
+# All shared memories are stored under this Mem0 ``user_id`` so they
+# are isolated from per-agent memories and can be queried centrally.
+SHARED_NAMESPACE: str = "__synthorg_shared__"
 
 
 def build_mem0_metadata(request: MemoryStoreRequest) -> dict[str, Any]:
@@ -192,8 +202,9 @@ def _normalize_tags(
         raw_tags = ()
     valid: list[NotBlankStr] = []
     for t in raw_tags:
-        if t and str(t).strip():
-            valid.append(NotBlankStr(str(t)))
+        stripped = str(t).strip() if t else ""
+        if stripped:
+            valid.append(NotBlankStr(stripped))
         else:
             logger.debug(
                 MEMORY_MODEL_INVALID,
@@ -231,20 +242,8 @@ def parse_mem0_metadata(
             None,
         )
 
-    category_str = raw_metadata.get(f"{_PREFIX}category")
-    if category_str:
-        try:
-            category = MemoryCategory(category_str)
-        except ValueError:
-            logger.warning(
-                MEMORY_MODEL_INVALID,
-                field="category",
-                raw_value=category_str,
-                reason="unrecognized category, defaulting to WORKING",
-            )
-            category = MemoryCategory.WORKING
-    else:
-        category = MemoryCategory.WORKING
+    # Delegate to extract_category for consistent fallback logic.
+    category = extract_category({"metadata": raw_metadata})
 
     confidence = _coerce_confidence(raw_metadata)
     source = _coerce_source(raw_metadata)
@@ -259,6 +258,45 @@ def parse_mem0_metadata(
         tags=tags,
     )
     return category, metadata, expires_at
+
+
+def _resolve_created_at(
+    raw: dict[str, Any],
+    *,
+    updated_at: AwareDatetime | None,
+    expires_at: AwareDatetime | None,
+) -> AwareDatetime:
+    """Pick the best fallback when ``created_at`` is missing.
+
+    Uses the earliest available candidate to avoid violating
+    ``MemoryEntry`` invariants (``updated_at >= created_at``,
+    ``expires_at >= created_at``).
+    """
+    candidates: list[datetime] = []
+    if updated_at is not None:
+        candidates.append(updated_at)
+    if expires_at is not None:
+        candidates.append(expires_at)
+    if candidates:
+        fallback = min(candidates)
+        sources = []
+        if updated_at is not None:
+            sources.append("updated_at")
+        if expires_at is not None:
+            sources.append("expires_at")
+        fallback_source = (
+            f"min({', '.join(sources)})" if len(sources) > 1 else sources[0]
+        )
+    else:
+        fallback = datetime.now(UTC)
+        fallback_source = "now()"
+    logger.warning(
+        MEMORY_MODEL_INVALID,
+        field="created_at",
+        memory_id=str(raw.get("id", "?")),
+        reason=f"missing or unparseable created_at, defaulting to {fallback_source}",
+    )
+    return fallback
 
 
 def mem0_result_to_entry(
@@ -306,26 +344,11 @@ def mem0_result_to_entry(
     category, metadata, expires_at = parse_mem0_metadata(raw_metadata)
 
     if created_at is None:
-        # Pick the best available fallback to avoid violating the
-        # MemoryEntry invariants (updated_at >= created_at,
-        # expires_at >= created_at).
-        if updated_at is not None:
-            fallback = updated_at
-            fallback_source = "updated_at"
-        elif expires_at is not None:
-            fallback = expires_at
-            fallback_source = "expires_at"
-        else:
-            fallback = datetime.now(UTC)
-            fallback_source = "now()"
-        logger.warning(
-            MEMORY_MODEL_INVALID,
-            field="created_at",
-            memory_id=str(raw.get("id", "?")),
-            reason=f"missing or unparseable created_at, "
-            f"defaulting to {fallback_source}",
+        created_at = _resolve_created_at(
+            raw,
+            updated_at=updated_at,
+            expires_at=expires_at,
         )
-        created_at = fallback
 
     raw_score = raw.get("score")
     relevance_score = normalize_relevance_score(raw_score)
@@ -344,7 +367,7 @@ def mem0_result_to_entry(
 
 
 def query_to_mem0_search_args(
-    agent_id: str,
+    agent_id: NotBlankStr,
     query: MemoryQuery,
 ) -> dict[str, Any]:
     """Convert a ``MemoryQuery`` to ``Memory.search()`` kwargs.
@@ -370,13 +393,13 @@ def query_to_mem0_search_args(
         raise ValueError(msg)
     return {
         "query": query.text,
-        "user_id": agent_id,
+        "user_id": str(agent_id),
         "limit": query.limit,
     }
 
 
 def query_to_mem0_getall_args(
-    agent_id: str,
+    agent_id: NotBlankStr,
     query: MemoryQuery,
 ) -> dict[str, Any]:
     """Convert a ``MemoryQuery`` to ``Memory.get_all()`` kwargs.
@@ -389,7 +412,7 @@ def query_to_mem0_getall_args(
         Dict of kwargs for ``Memory.get_all()``.
     """
     return {
-        "user_id": agent_id,
+        "user_id": str(agent_id),
         "limit": query.limit,
     }
 
@@ -417,6 +440,7 @@ def apply_post_filters(
         Filtered entries (order preserved).
     """
     now = datetime.now(UTC)
+    pre_count = len(entries)
     result: list[MemoryEntry] = []
     for entry in entries:
         if entry.expires_at is not None and entry.expires_at <= now:
@@ -436,6 +460,22 @@ def apply_post_filters(
         ):
             continue
         result.append(entry)
+    post_count = len(result)
+    if pre_count > 0 and post_count == 0:
+        logger.warning(
+            MEMORY_MODEL_INVALID,
+            field="post_filter",
+            reason="all entries filtered out by post-filters",
+            pre_filter_count=pre_count,
+        )
+    elif pre_count != post_count:
+        logger.debug(
+            MEMORY_MODEL_INVALID,
+            field="post_filter",
+            pre_filter_count=pre_count,
+            post_filter_count=post_count,
+            reason="entries filtered by post-filters",
+        )
     return tuple(result)
 
 
@@ -493,6 +533,12 @@ def extract_category(raw: dict[str, Any]) -> MemoryCategory:
     """
     metadata = raw.get("metadata", {})
     if not metadata or not isinstance(metadata, dict):
+        logger.debug(
+            MEMORY_MODEL_INVALID,
+            field="category",
+            raw_value=type(metadata).__name__ if metadata else None,
+            reason="missing or non-dict metadata, defaulting to WORKING",
+        )
         return MemoryCategory.WORKING
     cat_str = metadata.get(f"{_PREFIX}category")
     if cat_str:
@@ -507,10 +553,86 @@ def extract_category(raw: dict[str, Any]) -> MemoryCategory:
                 "defaulting to WORKING",
             )
             return MemoryCategory.WORKING
+    logger.debug(
+        MEMORY_MODEL_INVALID,
+        field="category",
+        reason="category key absent from metadata, defaulting to WORKING",
+    )
     return MemoryCategory.WORKING
 
 
-def extract_publisher(raw: dict[str, Any]) -> str | None:
+def validate_mem0_result(
+    raw_result: Any,
+    *,
+    context: str,
+) -> list[dict[str, Any]]:
+    """Validate and extract the results list from a Mem0 response.
+
+    Args:
+        raw_result: Raw return value from a Mem0 SDK call.
+        context: Human-readable context for error messages.
+
+    Returns:
+        The ``"results"`` list from the response.
+
+    Raises:
+        MemoryRetrievalError: If the response is not a dict or
+            ``"results"`` is not a list.
+    """
+    if not isinstance(raw_result, dict):
+        msg = (
+            f"Unexpected Mem0 response type for {context}: "
+            f"{type(raw_result).__name__}, expected dict"
+        )
+        logger.warning(
+            MEMORY_ENTRY_RETRIEVAL_FAILED,
+            context=context,
+            error=msg,
+        )
+        raise MemoryRetrievalError(msg)
+    if "results" not in raw_result:
+        msg = (
+            f"Mem0 response missing 'results' key for {context}: "
+            f"keys={list(raw_result.keys())}"
+        )
+        logger.warning(
+            MEMORY_ENTRY_RETRIEVAL_FAILED,
+            context=context,
+            error=msg,
+        )
+        raise MemoryRetrievalError(msg)
+    raw_list = raw_result["results"]
+    if not isinstance(raw_list, list):
+        msg = (
+            f"Unexpected Mem0 results type for {context}: "
+            f"{type(raw_list).__name__}, expected list"
+        )
+        logger.warning(
+            MEMORY_ENTRY_RETRIEVAL_FAILED,
+            context=context,
+            error=msg,
+        )
+        raise MemoryRetrievalError(msg)
+    return raw_list
+
+
+def resolve_publisher(item: dict[str, Any]) -> str:
+    """Extract publisher from a shared memory, defaulting to namespace.
+
+    Logs at DEBUG when publisher metadata is missing.
+    """
+    publisher = extract_publisher(item)
+    if publisher is None:
+        logger.debug(
+            MEMORY_MODEL_INVALID,
+            memory_id=item.get("id", "?"),
+            reason="no publisher metadata — attributing to shared namespace",
+        )
+        return SHARED_NAMESPACE
+    return publisher
+
+
+def extract_publisher(raw: dict[str, Any]) -> NotBlankStr | None:
     """Extract the publisher agent ID from a shared memory dict.
 
     Returns ``None`` if the publisher key is missing, non-dict
@@ -523,4 +645,53 @@ def extract_publisher(raw: dict[str, Any]) -> str | None:
     if value is None:
         return None
     coerced = str(value).strip()
-    return coerced or None
+    return NotBlankStr(coerced) if coerced else None
+
+
+def check_delete_ownership(
+    existing: dict[str, Any],
+    agent_id: NotBlankStr,
+    memory_id: NotBlankStr,
+) -> None:
+    """Verify the caller owns this private memory entry.
+
+    Raises:
+        MemoryStoreError: If ownership cannot be verified
+            (missing user_id, shared namespace entry, or
+            ownership mismatch).
+    """
+    owner = existing.get("user_id")
+    if owner is None:
+        msg = (
+            f"Memory {memory_id} has no user_id — ownership "
+            f"unverifiable, refusing deletion"
+        )
+        logger.warning(
+            MEMORY_ENTRY_DELETE_FAILED,
+            agent_id=agent_id,
+            memory_id=memory_id,
+            reason="unverifiable_ownership",
+        )
+        raise MemoryStoreError(msg)
+    if str(owner) == SHARED_NAMESPACE:
+        msg = (
+            f"Memory {memory_id} belongs to the shared namespace — "
+            f"use retract() to remove shared entries"
+        )
+        logger.warning(
+            MEMORY_ENTRY_DELETE_FAILED,
+            agent_id=agent_id,
+            memory_id=memory_id,
+            reason="shared namespace entry",
+        )
+        raise MemoryStoreError(msg)
+    if str(owner) != str(agent_id):
+        msg = f"Agent {agent_id} cannot delete memory {memory_id} owned by {owner}"
+        logger.warning(
+            MEMORY_ENTRY_DELETE_FAILED,
+            agent_id=agent_id,
+            memory_id=memory_id,
+            reason="ownership mismatch",
+            actual_owner=str(owner),
+        )
+        raise MemoryStoreError(msg)

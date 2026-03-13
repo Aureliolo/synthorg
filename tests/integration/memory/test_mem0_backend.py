@@ -11,15 +11,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from ai_company.core.enums import MemoryCategory
-from ai_company.memory.backends.mem0.adapter import (
-    _SHARED_NAMESPACE,
-    Mem0MemoryBackend,
-)
+from ai_company.memory.backends.mem0.adapter import Mem0MemoryBackend
 from ai_company.memory.backends.mem0.config import (
     Mem0BackendConfig,
     Mem0EmbedderConfig,
 )
-from ai_company.memory.backends.mem0.mappers import PUBLISHER_KEY
+from ai_company.memory.backends.mem0.mappers import PUBLISHER_KEY, SHARED_NAMESPACE
 from ai_company.memory.models import MemoryQuery, MemoryStoreRequest
 from ai_company.memory.retrieval_config import MemoryRetrievalConfig
 from ai_company.memory.retriever import ContextInjectionStrategy
@@ -216,7 +213,7 @@ class TestMem0RetrievalPipeline:
             "id": "shared-001",
             "memory": "company policy: always test code",
             "created_at": datetime.now(UTC).isoformat(),
-            "user_id": _SHARED_NAMESPACE,
+            "user_id": SHARED_NAMESPACE,
             "metadata": {PUBLISHER_KEY: "test-agent-001"},
         }
         mock_client.delete.return_value = None

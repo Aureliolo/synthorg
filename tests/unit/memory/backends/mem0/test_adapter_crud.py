@@ -6,10 +6,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from ai_company.core.enums import MemoryCategory
-from ai_company.memory.backends.mem0.adapter import (
-    _SHARED_NAMESPACE,
-    Mem0MemoryBackend,
-    _validate_mem0_result,
+from ai_company.memory.backends.mem0.adapter import Mem0MemoryBackend
+from ai_company.memory.backends.mem0.mappers import (
+    SHARED_NAMESPACE,
+    validate_mem0_result,
 )
 from ai_company.memory.errors import (
     MemoryRetrievalError,
@@ -135,7 +135,7 @@ class TestStore:
     ) -> None:
         """Storing with the shared namespace agent ID is rejected."""
         with pytest.raises(MemoryStoreError, match="reserved shared namespace"):
-            await backend.store(_SHARED_NAMESPACE, make_store_request())
+            await backend.store(SHARED_NAMESPACE, make_store_request())
         mock_client.add.assert_not_called()
 
     async def test_store_reraises_recursion_error(
@@ -270,7 +270,7 @@ class TestRetrieve:
         """retrieve() rejects the shared namespace with MemoryRetrievalError."""
         with pytest.raises(MemoryRetrievalError, match="reserved shared namespace"):
             await backend.retrieve(
-                _SHARED_NAMESPACE,
+                SHARED_NAMESPACE,
                 MemoryQuery(text="test"),
             )
 
@@ -360,7 +360,7 @@ class TestGet:
     ) -> None:
         """get() rejects the shared namespace with MemoryRetrievalError."""
         with pytest.raises(MemoryRetrievalError, match="reserved shared namespace"):
-            await backend.get(_SHARED_NAMESPACE, "mem-001")
+            await backend.get(SHARED_NAMESPACE, "mem-001")
 
     async def test_get_ownership_mismatch_returns_none(
         self,
@@ -473,7 +473,7 @@ class TestDelete:
         """delete() rejects entries belonging to the shared namespace."""
         mock_client.get.return_value = mem0_get_result(
             "mem-001",
-            user_id=_SHARED_NAMESPACE,
+            user_id=SHARED_NAMESPACE,
         )
 
         with pytest.raises(MemoryStoreError, match="shared namespace"):
@@ -511,7 +511,7 @@ class TestDelete:
     ) -> None:
         """delete() rejects the shared namespace as agent_id."""
         with pytest.raises(MemoryStoreError, match="reserved shared namespace"):
-            await backend.delete(_SHARED_NAMESPACE, "mem-001")
+            await backend.delete(SHARED_NAMESPACE, "mem-001")
 
 
 # ── Count ─────────────────────────────────────────────────────────
@@ -599,7 +599,7 @@ class TestCount:
     ) -> None:
         """count() rejects the shared namespace with MemoryRetrievalError."""
         with pytest.raises(MemoryRetrievalError, match="reserved shared namespace"):
-            await backend.count(_SHARED_NAMESPACE)
+            await backend.count(SHARED_NAMESPACE)
 
     async def test_count_exception_wraps(
         self,
@@ -659,7 +659,7 @@ class TestCount:
             await backend.count("test-agent-001")
 
 
-# ── _validate_mem0_result ────────────────────────────────────────
+# ── validate_mem0_result ────────────────────────────────────────
 
 
 @pytest.mark.unit
@@ -667,30 +667,30 @@ class TestValidateMem0Result:
     def test_non_dict_raises(self) -> None:
         """Non-dict response raises MemoryRetrievalError."""
         with pytest.raises(MemoryRetrievalError, match="Unexpected Mem0 response type"):
-            _validate_mem0_result("not-a-dict", context="test")
+            validate_mem0_result("not-a-dict", context="test")
 
     def test_missing_results_key_raises(self) -> None:
         """Dict without 'results' key raises MemoryRetrievalError."""
         with pytest.raises(MemoryRetrievalError, match="missing 'results' key"):
-            _validate_mem0_result({"data": []}, context="test")
+            validate_mem0_result({"data": []}, context="test")
 
     def test_non_list_results_raises(self) -> None:
         """Non-list 'results' value raises MemoryRetrievalError."""
         with pytest.raises(MemoryRetrievalError, match="Unexpected Mem0 results type"):
-            _validate_mem0_result({"results": "not-a-list"}, context="test")
+            validate_mem0_result({"results": "not-a-list"}, context="test")
 
     def test_valid_response(self) -> None:
         """Valid response returns the results list."""
         items = [{"id": "m1"}]
-        result = _validate_mem0_result({"results": items}, context="test")
+        result = validate_mem0_result({"results": items}, context="test")
         assert result == items
 
     def test_empty_results(self) -> None:
         """Empty results list is valid."""
-        result = _validate_mem0_result({"results": []}, context="test")
+        result = validate_mem0_result({"results": []}, context="test")
         assert result == []
 
     def test_none_raises(self) -> None:
         """None response raises MemoryRetrievalError."""
         with pytest.raises(MemoryRetrievalError, match="Unexpected Mem0 response type"):
-            _validate_mem0_result(None, context="test")
+            validate_mem0_result(None, context="test")

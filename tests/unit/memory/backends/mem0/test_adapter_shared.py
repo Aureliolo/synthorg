@@ -5,11 +5,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ai_company.memory.backends.mem0.adapter import (
-    _SHARED_NAMESPACE,
-    Mem0MemoryBackend,
-)
-from ai_company.memory.backends.mem0.mappers import PUBLISHER_KEY
+from ai_company.memory.backends.mem0.adapter import Mem0MemoryBackend
+from ai_company.memory.backends.mem0.mappers import PUBLISHER_KEY, SHARED_NAMESPACE
 from ai_company.memory.errors import (
     MemoryRetrievalError,
     MemoryStoreError,
@@ -44,7 +41,7 @@ class TestPublish:
 
         assert memory_id == "shared-mem-001"
         call_kwargs = mock_client.add.call_args[1]
-        assert call_kwargs["user_id"] == _SHARED_NAMESPACE
+        assert call_kwargs["user_id"] == SHARED_NAMESPACE
         assert PUBLISHER_KEY in call_kwargs["metadata"]
         assert call_kwargs["metadata"][PUBLISHER_KEY] == "test-agent-001"
 
@@ -97,7 +94,7 @@ class TestPublish:
     ) -> None:
         """publish() rejects the shared namespace as agent_id."""
         with pytest.raises(MemoryStoreError, match="reserved shared namespace"):
-            await backend.publish(_SHARED_NAMESPACE, make_store_request())
+            await backend.publish(SHARED_NAMESPACE, make_store_request())
 
     async def test_publish_reraises_recursion_error(
         self,
@@ -142,7 +139,7 @@ class TestSearchShared:
         assert entries[0].agent_id == "test-agent-002"
         mock_client.search.assert_called_once()
         call_kwargs = mock_client.search.call_args[1]
-        assert call_kwargs["user_id"] == _SHARED_NAMESPACE
+        assert call_kwargs["user_id"] == SHARED_NAMESPACE
 
     async def test_search_shared_without_text(
         self,
@@ -273,7 +270,7 @@ class TestSearchShared:
         ):
             await backend.search_shared(
                 MemoryQuery(text="test"),
-                exclude_agent=_SHARED_NAMESPACE,
+                exclude_agent=SHARED_NAMESPACE,
             )
 
     async def test_search_shared_reraises_recursion_error(
@@ -306,7 +303,7 @@ class TestSearchShared:
 
         entries = await backend.search_shared(MemoryQuery(text="test"))
         assert len(entries) == 1
-        assert entries[0].agent_id == _SHARED_NAMESPACE
+        assert entries[0].agent_id == SHARED_NAMESPACE
 
 
 # ── Retract ──────────────────────────────────────────────────────
@@ -323,7 +320,7 @@ class TestRetract:
             "id": "shared-001",
             "memory": "shared content",
             "created_at": "2026-03-12T10:00:00+00:00",
-            "user_id": _SHARED_NAMESPACE,
+            "user_id": SHARED_NAMESPACE,
             "metadata": {PUBLISHER_KEY: "test-agent-001"},
         }
         mock_client.delete.return_value = None
@@ -353,7 +350,7 @@ class TestRetract:
             "id": "shared-001",
             "memory": "content",
             "created_at": "2026-03-12T10:00:00+00:00",
-            "user_id": _SHARED_NAMESPACE,
+            "user_id": SHARED_NAMESPACE,
             "metadata": {PUBLISHER_KEY: "test-agent-002"},
         }
 
@@ -369,7 +366,7 @@ class TestRetract:
             "id": "not-shared-001",
             "memory": "private content",
             "created_at": "2026-03-12T10:00:00+00:00",
-            "user_id": _SHARED_NAMESPACE,
+            "user_id": SHARED_NAMESPACE,
             "metadata": {},
         }
 
@@ -402,7 +399,7 @@ class TestRetract:
     ) -> None:
         """retract() rejects the shared namespace as agent_id."""
         with pytest.raises(MemoryStoreError, match="reserved shared namespace"):
-            await backend.retract(_SHARED_NAMESPACE, "shared-001")
+            await backend.retract(SHARED_NAMESPACE, "shared-001")
 
     async def test_retract_reraises_recursion_error(
         self,
@@ -441,7 +438,7 @@ class TestRetract:
             "id": "shared-001",
             "memory": "content",
             "created_at": "2026-03-12T10:00:00+00:00",
-            "user_id": _SHARED_NAMESPACE,
+            "user_id": SHARED_NAMESPACE,
             "metadata": {PUBLISHER_KEY: "test-agent-001"},
         }
         mock_client.delete.side_effect = RuntimeError("delete failed")

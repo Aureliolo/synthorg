@@ -1,20 +1,10 @@
 """Mem0 memory backend adapter.
 
-Implements ``MemoryBackend``, ``MemoryCapabilities``, and
-``SharedKnowledgeStore`` protocols using Mem0 as the storage layer
-(default: Qdrant (embedded by default) + SQLite).
+Implements ``MemoryBackend`` and ``MemoryCapabilities`` protocols.
+``SharedKnowledgeStore`` methods delegate to ``shared.py``.
 
-All Mem0 calls are synchronous — they run in ``asyncio.to_thread()``
-to avoid blocking the event loop.
-
-All methods re-raise ``builtins.MemoryError`` and ``RecursionError``
-immediately without wrapping, to avoid masking system-level failures.
-
-Note: This file exceeds the 800-line guideline because the single
-``Mem0MemoryBackend`` class implements three protocols cohesively
-(``MemoryBackend``, ``MemoryCapabilities``, ``SharedKnowledgeStore``).
-Splitting would fragment the unified client lifecycle and connection
-guard logic.
+All Mem0 SDK calls run in ``asyncio.to_thread()``.
+``builtins.MemoryError`` / ``RecursionError`` re-raise immediately.
 """
 
 import asyncio
@@ -28,15 +18,21 @@ from ai_company.memory.backends.mem0.config import (
     build_mem0_config_dict,
 )
 from ai_company.memory.backends.mem0.mappers import (
-    PUBLISHER_KEY,
+    SHARED_NAMESPACE,
     apply_post_filters,
     build_mem0_metadata,
+    check_delete_ownership,
     extract_category,
-    extract_publisher,
     mem0_result_to_entry,
     query_to_mem0_getall_args,
     query_to_mem0_search_args,
     validate_add_result,
+    validate_mem0_result,
+)
+from ai_company.memory.backends.mem0.shared import (
+    publish_shared,
+    retract_shared,
+    search_shared_memories,
 )
 from ai_company.memory.errors import (
     MemoryConnectionError,
@@ -56,6 +52,7 @@ from ai_company.observability.events.memory import (
     MEMORY_BACKEND_DISCONNECTING,
     MEMORY_BACKEND_HEALTH_CHECK,
     MEMORY_BACKEND_NOT_CONNECTED,
+    MEMORY_BACKEND_SYSTEM_ERROR,
     MEMORY_ENTRY_COUNT_FAILED,
     MEMORY_ENTRY_COUNTED,
     MEMORY_ENTRY_DELETE_FAILED,
@@ -66,12 +63,6 @@ from ai_company.observability.events.memory import (
     MEMORY_ENTRY_RETRIEVED,
     MEMORY_ENTRY_STORE_FAILED,
     MEMORY_ENTRY_STORED,
-    MEMORY_SHARED_PUBLISH_FAILED,
-    MEMORY_SHARED_PUBLISHED,
-    MEMORY_SHARED_RETRACT_FAILED,
-    MEMORY_SHARED_RETRACTED,
-    MEMORY_SHARED_SEARCH_FAILED,
-    MEMORY_SHARED_SEARCHED,
 )
 
 if TYPE_CHECKING:
@@ -84,111 +75,16 @@ if TYPE_CHECKING:
     )
 
     class Mem0Client(Protocol):
-        """Structural type for the Mem0 ``Memory`` client.
+        """Subset of ``Memory`` methods used by the adapter."""
 
-        Defines the subset of ``Memory`` methods that the adapter
-        uses, so the rest of the codebase does not depend on
-        ``Any``.
-        """
-
-        def add(self, **kwargs: Any) -> dict[str, Any]:
-            """Add a memory entry."""
-            ...
-
-        def search(self, **kwargs: Any) -> dict[str, Any]:
-            """Search memories."""
-            ...
-
-        def get_all(self, **kwargs: Any) -> dict[str, Any]:
-            """Get all memories for a user."""
-            ...
-
-        def get(self, memory_id: str) -> dict[str, Any] | None:
-            """Get a single memory by ID."""
-            ...
-
-        def delete(self, memory_id: str) -> None:
-            """Delete a memory by ID."""
-            ...
+        def add(self, **kwargs: Any) -> dict[str, Any]: ...  # noqa: D102
+        def search(self, **kwargs: Any) -> dict[str, Any]: ...  # noqa: D102
+        def get_all(self, **kwargs: Any) -> dict[str, Any]: ...  # noqa: D102
+        def get(self, memory_id: str) -> dict[str, Any] | None: ...  # noqa: D102
+        def delete(self, memory_id: str) -> None: ...  # noqa: D102
 
 
 logger = get_logger(__name__)
-
-# Reserved user_id for the shared knowledge namespace.
-# All shared memories are stored under this Mem0 ``user_id`` so they
-# are isolated from per-agent memories and can be queried centrally.
-_SHARED_NAMESPACE: str = "__synthorg_shared__"
-
-
-def _validate_mem0_result(
-    raw_result: Any,
-    *,
-    context: str,
-) -> list[dict[str, Any]]:
-    """Validate and extract the results list from a Mem0 response.
-
-    Args:
-        raw_result: Raw return value from a Mem0 SDK call.
-        context: Human-readable context for error messages.
-
-    Returns:
-        The ``"results"`` list from the response.
-
-    Raises:
-        MemoryRetrievalError: If the response is not a dict or
-            ``"results"`` is not a list.
-    """
-    if not isinstance(raw_result, dict):
-        msg = (
-            f"Unexpected Mem0 response type for {context}: "
-            f"{type(raw_result).__name__}, expected dict"
-        )
-        logger.warning(
-            MEMORY_ENTRY_RETRIEVAL_FAILED,
-            context=context,
-            error=msg,
-        )
-        raise MemoryRetrievalError(msg)
-    if "results" not in raw_result:
-        msg = (
-            f"Mem0 response missing 'results' key for {context}: "
-            f"keys={list(raw_result.keys())}"
-        )
-        logger.warning(
-            MEMORY_ENTRY_RETRIEVAL_FAILED,
-            context=context,
-            error=msg,
-        )
-        raise MemoryRetrievalError(msg)
-    raw_list = raw_result["results"]
-    if not isinstance(raw_list, list):
-        msg = (
-            f"Unexpected Mem0 results type for {context}: "
-            f"{type(raw_list).__name__}, expected list"
-        )
-        logger.warning(
-            MEMORY_ENTRY_RETRIEVAL_FAILED,
-            context=context,
-            error=msg,
-        )
-        raise MemoryRetrievalError(msg)
-    return raw_list
-
-
-def _resolve_publisher(item: dict[str, Any]) -> str:
-    """Extract publisher from a shared memory, defaulting to namespace.
-
-    Logs at DEBUG when publisher metadata is missing.
-    """
-    publisher = extract_publisher(item)
-    if publisher is None:
-        logger.debug(
-            MEMORY_SHARED_SEARCHED,
-            memory_id=item.get("id", "?"),
-            reason="no publisher metadata — attributing to shared namespace",
-        )
-        return _SHARED_NAMESPACE
-    return publisher
 
 
 class Mem0MemoryBackend:
@@ -208,6 +104,9 @@ class Mem0MemoryBackend:
         mem0_config: Mem0BackendConfig,
         max_memories_per_agent: int = 10_000,
     ) -> None:
+        if max_memories_per_agent < 1:
+            msg = f"max_memories_per_agent must be >= 1, got {max_memories_per_agent}"
+            raise ValueError(msg)
         self._mem0_config = mem0_config
         self._max_memories_per_agent = max_memories_per_agent
         self._client: Mem0Client | None = None
@@ -250,7 +149,13 @@ class Mem0MemoryBackend:
             try:
                 config_dict = build_mem0_config_dict(self._mem0_config)
                 client = await asyncio.to_thread(Memory.from_config, config_dict)
-            except builtins.MemoryError, RecursionError:
+            except (builtins.MemoryError, RecursionError) as exc:
+                logger.exception(
+                    MEMORY_BACKEND_SYSTEM_ERROR,
+                    operation="connect",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
                 raise
             except Exception as exc:
                 logger.warning(
@@ -274,6 +179,13 @@ class Mem0MemoryBackend:
         in-progress ``connect()`` call.
         """
         async with self._connect_lock:
+            if not self._connected and self._client is None:
+                logger.debug(
+                    MEMORY_BACKEND_DISCONNECTED,
+                    backend="mem0",
+                    reason="already disconnected — no-op",
+                )
+                return
             logger.info(MEMORY_BACKEND_DISCONNECTING, backend="mem0")
             self._client = None
             self._connected = False
@@ -299,10 +211,16 @@ class Mem0MemoryBackend:
         try:
             await asyncio.to_thread(
                 self._client.get_all,
-                user_id=_SHARED_NAMESPACE,
+                user_id=SHARED_NAMESPACE,
                 limit=1,
             )
-        except builtins.MemoryError, RecursionError:
+        except (builtins.MemoryError, RecursionError) as exc:
+            logger.exception(
+                MEMORY_BACKEND_SYSTEM_ERROR,
+                operation="health_check",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
             raise
         except Exception as exc:
             logger.warning(
@@ -396,11 +314,11 @@ class Mem0MemoryBackend:
 
         Raises:
             MemoryStoreError: If ``agent_id`` collides with
-                ``_SHARED_NAMESPACE`` (default).
+                ``SHARED_NAMESPACE`` (default).
             MemoryRetrievalError: If ``error_cls`` was set to
                 ``MemoryRetrievalError``.
         """
-        if str(agent_id) == _SHARED_NAMESPACE:
+        if str(agent_id) == SHARED_NAMESPACE:
             logger.warning(
                 MEMORY_BACKEND_AGENT_ID_REJECTED,
                 agent_id=agent_id,
@@ -408,7 +326,7 @@ class Mem0MemoryBackend:
             )
             msg = (
                 f"agent_id must not be the reserved shared namespace: "
-                f"{_SHARED_NAMESPACE!r}"
+                f"{SHARED_NAMESPACE!r}"
             )
             raise error_cls(msg)
 
@@ -453,7 +371,13 @@ class Mem0MemoryBackend:
                 error_type="MemoryStoreError",
             )
             raise
-        except builtins.MemoryError, RecursionError:
+        except (builtins.MemoryError, RecursionError) as exc:
+            logger.exception(
+                MEMORY_BACKEND_SYSTEM_ERROR,
+                operation="store",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
             raise
         except Exception as exc:
             logger.warning(
@@ -504,7 +428,7 @@ class Mem0MemoryBackend:
             else:
                 kwargs = query_to_mem0_getall_args(str(agent_id), query)
                 raw_result = await asyncio.to_thread(client.get_all, **kwargs)
-            raw_list = _validate_mem0_result(raw_result, context="retrieve")
+            raw_list = validate_mem0_result(raw_result, context="retrieve")
             entries = tuple(mem0_result_to_entry(item, agent_id) for item in raw_list)
             entries = apply_post_filters(entries, query)
         except MemoryRetrievalError as exc:
@@ -515,7 +439,13 @@ class Mem0MemoryBackend:
                 error_type="MemoryRetrievalError",
             )
             raise
-        except builtins.MemoryError, RecursionError:
+        except (builtins.MemoryError, RecursionError) as exc:
+            logger.exception(
+                MEMORY_BACKEND_SYSTEM_ERROR,
+                operation="retrieve",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
             raise
         except Exception as exc:
             logger.warning(
@@ -579,7 +509,7 @@ class Mem0MemoryBackend:
                 )
                 return None
             if str(owner) != str(agent_id):
-                logger.debug(
+                logger.info(
                     MEMORY_ENTRY_FETCHED,
                     agent_id=agent_id,
                     memory_id=memory_id,
@@ -598,7 +528,13 @@ class Mem0MemoryBackend:
                 error_type="MemoryRetrievalError",
             )
             raise
-        except builtins.MemoryError, RecursionError:
+        except (builtins.MemoryError, RecursionError) as exc:
+            logger.exception(
+                MEMORY_BACKEND_SYSTEM_ERROR,
+                operation="get",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
             raise
         except Exception as exc:
             logger.warning(
@@ -644,8 +580,6 @@ class Mem0MemoryBackend:
         client = self._require_connected()
         self._validate_agent_id(agent_id)
         try:
-            # Check existence first — Mem0 delete doesn't indicate
-            # whether the entry existed.
             existing = await asyncio.to_thread(client.get, str(memory_id))
             if existing is None:
                 logger.debug(
@@ -655,50 +589,17 @@ class Mem0MemoryBackend:
                     found=False,
                 )
                 return False
-            # Block deletion of shared-namespace entries — use retract().
-            owner = existing.get("user_id")
-            if owner is None:
-                msg = (
-                    f"Memory {memory_id} has no user_id — ownership "
-                    f"unverifiable, refusing deletion"
-                )
-                logger.warning(
-                    MEMORY_ENTRY_DELETE_FAILED,
-                    agent_id=agent_id,
-                    memory_id=memory_id,
-                    reason="unverifiable_ownership",
-                )
-                raise MemoryStoreError(msg)  # noqa: TRY301
-            if str(owner) == _SHARED_NAMESPACE:
-                msg = (
-                    f"Memory {memory_id} belongs to the shared namespace — "
-                    f"use retract() to remove shared entries"
-                )
-                logger.warning(
-                    MEMORY_ENTRY_DELETE_FAILED,
-                    agent_id=agent_id,
-                    memory_id=memory_id,
-                    reason="shared namespace entry",
-                )
-                raise MemoryStoreError(msg)  # noqa: TRY301
-            # Verify ownership — reject cross-agent deletion.
-            if str(owner) != str(agent_id):
-                msg = (
-                    f"Agent {agent_id} cannot delete memory "
-                    f"{memory_id} owned by {owner}"
-                )
-                logger.warning(
-                    MEMORY_ENTRY_DELETE_FAILED,
-                    agent_id=agent_id,
-                    memory_id=memory_id,
-                    reason="ownership mismatch",
-                    actual_owner=str(owner),
-                )
-                raise MemoryStoreError(msg)  # noqa: TRY301
+            check_delete_ownership(existing, agent_id, memory_id)
             await asyncio.to_thread(client.delete, str(memory_id))
         except MemoryStoreError:
             raise
-        except builtins.MemoryError, RecursionError:
+        except (builtins.MemoryError, RecursionError) as exc:
+            logger.exception(
+                MEMORY_BACKEND_SYSTEM_ERROR,
+                operation="delete",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
             raise
         except Exception as exc:
             logger.warning(
@@ -760,7 +661,7 @@ class Mem0MemoryBackend:
                 user_id=str(agent_id),
                 limit=self._max_memories_per_agent,
             )
-            raw_list = _validate_mem0_result(raw_result, context="count")
+            raw_list = validate_mem0_result(raw_result, context="count")
             if category is None:
                 total = len(raw_list)
             else:
@@ -775,7 +676,13 @@ class Mem0MemoryBackend:
                 error_type="MemoryRetrievalError",
             )
             raise
-        except builtins.MemoryError, RecursionError:
+        except (builtins.MemoryError, RecursionError) as exc:
+            logger.exception(
+                MEMORY_BACKEND_SYSTEM_ERROR,
+                operation="count",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
             raise
         except Exception as exc:
             logger.warning(
@@ -809,6 +716,9 @@ class Mem0MemoryBackend:
             return total
 
     # ── SharedKnowledgeStore ──────────────────────────────────────
+    # Implementations live in shared.py to keep this file under
+    # the 800-line guideline.  These methods validate preconditions
+    # (connection, agent ID) and delegate to the standalone functions.
 
     async def publish(
         self,
@@ -816,9 +726,6 @@ class Mem0MemoryBackend:
         request: MemoryStoreRequest,
     ) -> NotBlankStr:
         """Publish a memory to the shared knowledge store.
-
-        Uses a reserved namespace (``__synthorg_shared__``) and
-        records the publisher in metadata for ownership tracking.
 
         Args:
             agent_id: Publishing agent identifier.
@@ -833,47 +740,7 @@ class Mem0MemoryBackend:
         """
         client = self._require_connected()
         self._validate_agent_id(agent_id)
-        try:
-            metadata = {
-                **build_mem0_metadata(request),
-                PUBLISHER_KEY: str(agent_id),
-            }
-            kwargs = {
-                "messages": [
-                    {"role": "user", "content": request.content},
-                ],
-                "user_id": _SHARED_NAMESPACE,
-                "metadata": metadata,
-                "infer": False,
-            }
-            result = await asyncio.to_thread(client.add, **kwargs)
-            memory_id = validate_add_result(result, context="shared publish")
-        except MemoryStoreError as exc:
-            logger.warning(
-                MEMORY_SHARED_PUBLISH_FAILED,
-                agent_id=agent_id,
-                error=str(exc),
-                error_type="MemoryStoreError",
-            )
-            raise
-        except builtins.MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            logger.warning(
-                MEMORY_SHARED_PUBLISH_FAILED,
-                agent_id=agent_id,
-                error=str(exc),
-                error_type=type(exc).__name__,
-            )
-            msg = f"Failed to publish shared memory: {exc}"
-            raise MemoryStoreError(msg) from exc
-        else:
-            logger.info(
-                MEMORY_SHARED_PUBLISHED,
-                agent_id=agent_id,
-                memory_id=memory_id,
-            )
-            return memory_id
+        return await publish_shared(client, agent_id, request)
 
     async def search_shared(
         self,
@@ -895,77 +762,11 @@ class Mem0MemoryBackend:
             MemoryRetrievalError: If the search fails.
         """
         client = self._require_connected()
-        if exclude_agent is not None and str(exclude_agent) == _SHARED_NAMESPACE:
-            msg = (
-                "exclude_agent must not be the reserved shared namespace: "
-                f"{_SHARED_NAMESPACE!r}"
-            )
-            logger.warning(
-                MEMORY_BACKEND_AGENT_ID_REJECTED,
-                agent_id=exclude_agent,
-                reason="reserved shared namespace used as exclude_agent",
-            )
-            raise MemoryRetrievalError(msg)
-        try:
-            if query.text is not None:
-                raw_result = await asyncio.to_thread(
-                    client.search,
-                    query=str(query.text),
-                    user_id=_SHARED_NAMESPACE,
-                    limit=query.limit,
-                )
-            else:
-                raw_result = await asyncio.to_thread(
-                    client.get_all,
-                    user_id=_SHARED_NAMESPACE,
-                    limit=query.limit,
-                )
-            raw_list = _validate_mem0_result(
-                raw_result,
-                context="search_shared",
-            )
-
-            raw_entries = tuple(
-                mem0_result_to_entry(
-                    item,
-                    NotBlankStr(
-                        _resolve_publisher(item),
-                    ),
-                )
-                for item in raw_list
-            )
-            filtered = apply_post_filters(raw_entries, query)
-
-            if exclude_agent is not None:
-                filtered = tuple(e for e in filtered if e.agent_id != exclude_agent)
-        except MemoryRetrievalError as exc:
-            logger.warning(
-                MEMORY_SHARED_SEARCH_FAILED,
-                error=str(exc),
-                error_type="MemoryRetrievalError",
-                query_text=query.text,
-                exclude_agent=exclude_agent,
-            )
-            raise
-        except builtins.MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            logger.warning(
-                MEMORY_SHARED_SEARCH_FAILED,
-                error=str(exc),
-                error_type=type(exc).__name__,
-                query_text=query.text,
-                exclude_agent=exclude_agent,
-            )
-            msg = f"Failed to search shared knowledge: {exc}"
-            raise MemoryRetrievalError(msg) from exc
-        else:
-            logger.info(
-                MEMORY_SHARED_SEARCHED,
-                count=len(filtered),
-                exclude_agent=exclude_agent,
-            )
-            return filtered
+        return await search_shared_memories(
+            client,
+            query,
+            exclude_agent=exclude_agent,
+        )
 
     async def retract(
         self,
@@ -990,84 +791,4 @@ class Mem0MemoryBackend:
         """
         client = self._require_connected()
         self._validate_agent_id(agent_id)
-        try:
-            raw = await asyncio.to_thread(client.get, str(memory_id))
-            if raw is None:
-                logger.debug(
-                    MEMORY_SHARED_RETRACTED,
-                    agent_id=agent_id,
-                    memory_id=memory_id,
-                    found=False,
-                )
-                return False
-
-            # Verify this memory belongs to the shared namespace.
-            owner_ns = raw.get("user_id")
-            if owner_ns != _SHARED_NAMESPACE:
-                logger.warning(
-                    MEMORY_SHARED_RETRACT_FAILED,
-                    agent_id=agent_id,
-                    memory_id=memory_id,
-                    reason="not in shared namespace",
-                    actual_namespace=str(owner_ns),
-                )
-                msg = (
-                    f"Memory {memory_id} is not in the shared namespace — "
-                    f"use delete() to remove private entries"
-                )
-                raise MemoryStoreError(msg)  # noqa: TRY301
-
-            publisher = extract_publisher(raw)
-            if publisher is None:
-                logger.warning(
-                    MEMORY_SHARED_RETRACT_FAILED,
-                    agent_id=agent_id,
-                    memory_id=memory_id,
-                    reason="not a shared memory entry (no publisher)",
-                )
-                msg = (
-                    f"Memory {memory_id} is not a shared memory entry "
-                    f"(no publisher metadata)"
-                )
-                raise MemoryStoreError(msg)  # noqa: TRY301
-
-            if publisher != str(agent_id):
-                logger.warning(
-                    MEMORY_SHARED_RETRACT_FAILED,
-                    agent_id=agent_id,
-                    memory_id=memory_id,
-                    reason="ownership mismatch",
-                    publisher=publisher,
-                )
-                msg = (
-                    f"Agent {agent_id} cannot retract memory "
-                    f"{memory_id} published by {publisher}"
-                )
-                raise MemoryStoreError(msg)  # noqa: TRY301
-
-            await asyncio.to_thread(client.delete, str(memory_id))
-        except MemoryStoreError:
-            # Ownership-check MemoryStoreErrors are already logged
-            # with context (reason, publisher) above — re-raise
-            # without duplicate logging.
-            raise
-        except builtins.MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            logger.warning(
-                MEMORY_SHARED_RETRACT_FAILED,
-                agent_id=agent_id,
-                memory_id=memory_id,
-                error=str(exc),
-                error_type=type(exc).__name__,
-            )
-            msg = f"Failed to retract shared memory {memory_id}: {exc}"
-            raise MemoryStoreError(msg) from exc
-        else:
-            logger.info(
-                MEMORY_SHARED_RETRACTED,
-                agent_id=agent_id,
-                memory_id=memory_id,
-                found=True,
-            )
-            return True
+        return await retract_shared(client, agent_id, memory_id)

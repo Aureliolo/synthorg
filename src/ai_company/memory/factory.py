@@ -5,6 +5,7 @@ dispatches to concrete backend implementations based on
 ``config.backend``.
 """
 
+import builtins
 from typing import TYPE_CHECKING
 
 from ai_company.memory.config import CompanyMemoryConfig  # noqa: TC001
@@ -17,6 +18,7 @@ from ai_company.observability import get_logger
 from ai_company.observability.events.memory import (
     MEMORY_BACKEND_CONFIG_INVALID,
     MEMORY_BACKEND_CREATED,
+    MEMORY_BACKEND_SYSTEM_ERROR,
     MEMORY_BACKEND_UNKNOWN,
 )
 
@@ -77,6 +79,14 @@ def _create_mem0_backend(
             config,
             embedder=embedder,
         )
+    except (builtins.MemoryError, RecursionError) as exc:
+        logger.exception(
+            MEMORY_BACKEND_SYSTEM_ERROR,
+            operation="create_mem0_backend",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+        raise
     except Exception as exc:
         msg = f"Invalid Mem0 configuration: {exc}"
         logger.warning(
@@ -92,6 +102,14 @@ def _create_mem0_backend(
             mem0_config=mem0_config,
             max_memories_per_agent=config.options.max_memories_per_agent,
         )
+    except (builtins.MemoryError, RecursionError) as exc:
+        logger.exception(
+            MEMORY_BACKEND_SYSTEM_ERROR,
+            operation="create_mem0_backend",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+        raise
     except Exception as exc:
         msg = f"Failed to create Mem0 backend: {exc}"
         logger.warning(

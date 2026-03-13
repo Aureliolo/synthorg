@@ -76,7 +76,11 @@ class Mem0BackendConfig(BaseModel):
 
     @model_validator(mode="after")
     def _reject_traversal(self) -> Self:
-        """Reject parent-directory traversal to prevent path escapes.
+        """Reject parent-directory traversal and Windows paths.
+
+        The Mem0 backend targets Linux/Docker containers where paths
+        must be POSIX.  Windows-style paths (drive letters, backslashes)
+        are rejected to prevent accidental host-path leaks.
 
         Note: ``build_config_from_company_config`` passes ``data_dir``
         from ``CompanyMemoryConfig``, so this check also protects
@@ -87,6 +91,21 @@ class Mem0BackendConfig(BaseModel):
         )
         if ".." in parts:
             msg = "data_dir must not contain parent-directory traversal (..)"
+            logger.warning(
+                MEMORY_BACKEND_CONFIG_INVALID,
+                backend="mem0",
+                field="data_dir",
+                value=self.data_dir,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        if "\\" in self.data_dir or (
+            len(self.data_dir) >= 2 and self.data_dir[1] == ":"  # noqa: PLR2004  # drive-letter check
+        ):
+            msg = (
+                "data_dir must be a POSIX path (no backslashes or "
+                "drive letters) — the Mem0 backend targets Linux containers"
+            )
             logger.warning(
                 MEMORY_BACKEND_CONFIG_INVALID,
                 backend="mem0",

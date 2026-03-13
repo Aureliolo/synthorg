@@ -64,8 +64,8 @@ Memory persistence is configurable per agent, from no persistence to fully persi
       backend: "mem0"               # mem0 | custom | cognee | graphiti (future) -- see Decision Log
       storage:
         data_dir: "/data/memory"    # mounted Docker volume path
-        vector_store: "qdrant"      # qdrant (embedded), qdrant-external, etc.
-        history_store: "sqlite"     # sqlite, postgresql
+        vector_store: "qdrant"      # hardcoded to embedded qdrant in Mem0 backend
+        history_store: "sqlite"     # hardcoded to sqlite in Mem0 backend
       options:
         retention_days: null         # null = forever
         max_memories_per_agent: 10000
@@ -292,8 +292,8 @@ memory:
   level: "persistent"              # none, session, project, persistent (default: session)
   storage:
     data_dir: "/data/memory"
-    vector_store: "qdrant"
-    history_store: "sqlite"
+    vector_store: "qdrant"          # hardcoded to embedded qdrant in Mem0 backend
+    history_store: "sqlite"         # hardcoded to sqlite in Mem0 backend
   options:
     retention_days: null            # null = forever
     max_memories_per_agent: 10000
