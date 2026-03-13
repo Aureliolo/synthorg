@@ -21,14 +21,12 @@ dependencies = [
     "litellm==1.82.1",
     "litestar[standard,structlog,pydantic,brotli,prometheus]==2.21.1",
     "mcp==1.26.0",
+    "mem0ai==1.0.5",
     "pydantic==2.12.5",
     "pyjwt[crypto]==2.11.0",
     "pyyaml==6.0.3",
     "structlog==25.5.0",
 ]
-
-[project.optional-dependencies]
-mem0 = ["mem0ai==1.0.5"]
 
 [build-system]
 requires = ["hatchling==1.29.0"]

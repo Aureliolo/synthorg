@@ -9,13 +9,10 @@ error hierarchy so consumers can import from ``ai_company.memory``
 directly.
 """
 
-import contextlib
-
-with contextlib.suppress(ImportError):  # mem0ai is optional
-    from ai_company.memory.backends.mem0 import (
-        Mem0EmbedderConfig,
-        Mem0MemoryBackend,
-    )
+from ai_company.memory.backends.mem0 import (
+    Mem0EmbedderConfig,
+    Mem0MemoryBackend,
+)
 from ai_company.memory.capabilities import MemoryCapabilities
 from ai_company.memory.config import (
     CompanyMemoryConfig,
