@@ -39,6 +39,10 @@ class TestCreateApp:
             ("X-Frame-Options", "DENY"),
             ("Referrer-Policy", "strict-origin-when-cross-origin"),
             ("Permissions-Policy", "geolocation=(), camera=(), microphone=()"),
+            (
+                "Strict-Transport-Security",
+                "max-age=63072000; includeSubDomains",
+            ),
             ("Cross-Origin-Resource-Policy", "same-origin"),
             ("Cache-Control", "no-store"),
         ],

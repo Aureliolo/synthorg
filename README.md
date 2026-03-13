@@ -121,6 +121,7 @@ graph TB
 | [Architecture](docs/architecture/index.md) | System overview, tech stack, decision log |
 | [API Reference](docs/rest-api.md) | REST API reference (Scalar/OpenAPI) |
 | [Library Reference](docs/api/index.md) | Auto-generated from docstrings |
+| [Security](docs/security.md) | Security architecture, hardening, CI/CD security |
 | [Developer Setup](docs/getting_started.md) | Clone, test, lint, contribute |
 | [User Guide](docs/user_guide.md) | Install, configure, run via Docker |
 

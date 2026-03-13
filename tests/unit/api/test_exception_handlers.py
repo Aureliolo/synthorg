@@ -4,6 +4,12 @@ from typing import Any
 
 import pytest
 from litestar import Litestar, get
+from litestar.exceptions import (
+    MethodNotAllowedException,
+    NotAuthorizedException,
+    PermissionDeniedException,
+    ValidationException,
+)
 from litestar.testing import TestClient
 
 from ai_company.api.errors import (
@@ -167,3 +173,59 @@ class TestExceptionHandlers:
             body = resp.json()
             assert body["success"] is False
             assert body["error"] == "Not found"
+
+    def test_litestar_permission_denied_maps_to_403(self) -> None:
+        """Litestar PermissionDeniedException returns static 403."""
+
+        @get("/test")
+        async def handler() -> None:
+            raise PermissionDeniedException
+
+        with TestClient(_make_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 403
+            body = resp.json()
+            assert body["success"] is False
+            assert body["error"] == "Forbidden"
+
+    def test_litestar_not_authorized_maps_to_401(self) -> None:
+        """Litestar NotAuthorizedException returns static 401."""
+
+        @get("/test")
+        async def handler() -> None:
+            raise NotAuthorizedException
+
+        with TestClient(_make_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 401
+            body = resp.json()
+            assert body["success"] is False
+            assert body["error"] == "Authentication required"
+
+    def test_litestar_validation_exception_maps_to_400(self) -> None:
+        """Litestar ValidationException returns static 400."""
+
+        @get("/test")
+        async def handler() -> None:
+            raise ValidationException
+
+        with TestClient(_make_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 400
+            body = resp.json()
+            assert body["success"] is False
+            assert body["error"] == "Validation error"
+
+    def test_method_not_allowed_maps_to_405(self) -> None:
+        """MethodNotAllowedException returns 405 via HTTPException handler."""
+
+        @get("/test")
+        async def handler() -> None:
+            raise MethodNotAllowedException
+
+        with TestClient(_make_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 405
+            body = resp.json()
+            assert body["success"] is False
+            assert body["error"] == "Method Not Allowed"

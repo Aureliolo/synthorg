@@ -5,10 +5,12 @@ appropriate HTTP status code and a **scrubbed** user-facing error
 message.  Detailed error context is logged server-side only.
 """
 
+from http import HTTPStatus
 from typing import Any, Final
 
 from litestar import Request, Response
 from litestar.exceptions import (
+    HTTPException,
     NotAuthorizedException,
     NotFoundException,
     PermissionDeniedException,
@@ -18,7 +20,10 @@ from litestar.exceptions import (
 from ai_company.api.dto import ApiResponse
 from ai_company.api.errors import ApiError
 from ai_company.observability import get_logger
-from ai_company.observability.events.api import API_REQUEST_ERROR
+from ai_company.observability.events.api import (
+    API_REQUEST_ERROR,
+    API_ROUTE_NOT_FOUND,
+)
 from ai_company.persistence.errors import (
     DuplicateRecordError,
     PersistenceError,
@@ -134,9 +139,8 @@ def handle_permission_denied(
 ) -> Response[ApiResponse[None]]:
     """Map ``PermissionDeniedException`` to 403."""
     _log_error(request, exc, status=403)
-    detail = exc.detail or "Forbidden"
     return Response(
-        content=ApiResponse[None](error=detail),
+        content=ApiResponse[None](error="Forbidden"),
         status_code=403,
     )
 
@@ -161,9 +165,8 @@ def handle_not_authorized(
 ) -> Response[ApiResponse[None]]:
     """Map ``NotAuthorizedException`` to 401."""
     _log_error(request, exc, status=401)
-    detail = exc.detail or "Authentication required"
     return Response(
-        content=ApiResponse[None](error=detail),
+        content=ApiResponse[None](error="Authentication required"),
         status_code=401,
     )
 
@@ -174,17 +177,47 @@ def handle_not_found(
 ) -> Response[ApiResponse[None]]:
     """Map Litestar ``NotFoundException`` to 404.
 
-    Without this handler the catch-all ``handle_unexpected`` would
-    return 500 for unmatched routes, which ZAP flags as a security
-    issue.
+    Ensures unmatched routes return 404 instead of falling through
+    to ``handle_unexpected`` (which returns 500), which ZAP flags
+    as a security misconfiguration.
     """
-    _log_error(request, exc, status=404)
+    logger.warning(
+        API_ROUTE_NOT_FOUND,
+        method=request.method,
+        path=str(request.url.path),
+        status_code=404,
+        error_type=type(exc).__qualname__,
+    )
     return Response(
         content=ApiResponse[None](error="Not found"),
         status_code=404,
     )
 
 
+def handle_http_exception(
+    request: Request[Any, Any, Any],
+    exc: HTTPException,
+) -> Response[ApiResponse[None]]:
+    """Catch-all for unhandled Litestar ``HTTPException`` subclasses.
+
+    Preserves the correct status code (e.g. 405, 429) instead of
+    letting them fall through to ``handle_unexpected`` as 500.
+    """
+    status = exc.status_code
+    _log_error(request, exc, status=status)
+    if status >= _SERVER_ERROR_THRESHOLD:
+        msg = "Internal server error"
+    else:
+        msg = exc.detail or HTTPStatus(status).phrase
+    return Response(
+        content=ApiResponse[None](error=msg),
+        status_code=status,
+    )
+
+
+# Litestar resolves exception handlers by walking the raised exception's
+# MRO — the first matching type found in this dict wins.  Dict insertion
+# order does NOT affect resolution priority.
 EXCEPTION_HANDLERS: dict[type[Exception], object] = {
     RecordNotFoundError: handle_record_not_found,
     DuplicateRecordError: handle_duplicate_record,
@@ -193,6 +226,7 @@ EXCEPTION_HANDLERS: dict[type[Exception], object] = {
     PermissionDeniedException: handle_permission_denied,
     ValidationException: handle_validation_error,
     NotFoundException: handle_not_found,
+    HTTPException: handle_http_exception,
     ApiError: handle_api_error,
     Exception: handle_unexpected,
 }
