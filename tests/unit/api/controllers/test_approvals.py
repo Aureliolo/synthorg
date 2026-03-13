@@ -20,10 +20,9 @@ def _create_payload(
     **overrides: Any,
 ) -> dict[str, Any]:
     defaults: dict[str, Any] = {
-        "action_type": "code_merge",
+        "action_type": "code:merge",
         "title": "Merge PR #42",
         "description": "Merging feature branch",
-        "requested_by": "agent-dev",
         "risk_level": "medium",
     }
     defaults.update(overrides)

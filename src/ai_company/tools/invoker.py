@@ -450,7 +450,13 @@ class ToolInvoker:
             return self._schema_error_result(tool_call, exc.message)
         except jsonschema.ValidationError as exc:
             return self._param_error_result(tool_call, exc.message)
-        except MemoryError, RecursionError:
+        except (MemoryError, RecursionError) as exc:
+            logger.exception(
+                TOOL_INVOKE_NON_RECOVERABLE,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                error=f"{type(exc).__name__}: {exc}",
+            )
             raise
         except Exception as exc:
             error_msg = str(exc) or f"{type(exc).__name__} (no message)"
@@ -603,36 +609,47 @@ class ToolInvoker:
         Tools like ``request_human_approval`` signal parking via
         ``ToolExecutionResult.metadata``.  Only tracks when both
         ``requires_parking=True`` and ``approval_id`` are present.
-        """
-        if result.metadata.get("requires_parking") is True and result.metadata.get(
-            "approval_id"
-        ):
-            try:
-                from ai_company.engine.approval_gate_models import (  # noqa: PLC0415
-                    EscalationInfo as _EscalationInfo,
-                )
 
-                self._pending_escalations.append(
-                    _EscalationInfo(
-                        approval_id=str(result.metadata["approval_id"]),
-                        tool_call_id=tool_call.id,
-                        tool_name=tool.name,
-                        action_type=tool.action_type,
-                        risk_level=ApprovalRiskLevel(
-                            result.metadata.get("risk_level", "high"),
-                        ),
-                        reason="Agent requested human approval",
-                    ),
-                )
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
-                logger.exception(
-                    TOOL_INVOKE_EXECUTION_ERROR,
+        Raises:
+            ToolExecutionError: If escalation tracking fails — the caller
+                must treat this as a tool execution failure so the agent
+                does not silently bypass the approval gate.
+        """
+        if result.metadata.get("requires_parking") is not True:
+            return
+        if not result.metadata.get("approval_id"):
+            return
+        try:
+            from ai_company.engine.approval_gate_models import (  # noqa: PLC0415
+                EscalationInfo as _EscalationInfo,
+            )
+
+            self._pending_escalations.append(
+                _EscalationInfo(
+                    approval_id=str(result.metadata["approval_id"]),
                     tool_call_id=tool_call.id,
                     tool_name=tool.name,
-                    note="Failed to track parking metadata — escalation not recorded",
-                )
+                    action_type=tool.action_type,
+                    risk_level=ApprovalRiskLevel(
+                        result.metadata.get("risk_level", "high"),
+                    ),
+                    reason="Agent requested human approval",
+                ),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                TOOL_INVOKE_EXECUTION_ERROR,
+                tool_call_id=tool_call.id,
+                tool_name=tool.name,
+                note="Failed to track parking metadata — re-raising to block execution",
+            )
+            msg = f"Approval escalation tracking failed: {exc}"
+            raise ToolExecutionError(
+                msg,
+                context={"tool": tool.name},
+            ) from exc
 
     def _build_result(
         self,
@@ -753,4 +770,12 @@ class ToolInvoker:
         )
 
         self._raise_fatal_errors(fatal_errors)
+
+        # Sort escalations by tool-call index for deterministic ordering.
+        if len(self._pending_escalations) > 1:
+            call_id_order = {tc.id: idx for idx, tc in enumerate(calls)}
+            self._pending_escalations.sort(
+                key=lambda e: call_id_order.get(e.tool_call_id, len(calls)),
+            )
+
         return tuple(results[i] for i in range(len(calls)))

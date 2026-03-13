@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import axios from 'axios'
 import * as approvalsApi from '@/api/endpoints/approvals'
 import { getErrorMessage } from '@/utils/errors'
 import type { ApprovalItem, ApprovalFilters, ApproveRequest, RejectRequest, WsEvent } from '@/api/types'
@@ -59,42 +60,66 @@ export const useApprovalStore = defineStore('approvals', () => {
    * For new submissions, we fetch the full item from the API.
    * For status changes, we update the local status and re-fetch for
    * the complete updated item.
+   *
+   * This function is synchronous to satisfy the ``WsEventHandler`` type
+   * contract.  Async work runs inside a void IIFE.
    */
-  async function handleWsEvent(event: WsEvent) {
+  function handleWsEvent(event: WsEvent): void {
     const payload = event.payload as Record<string, unknown> | null
     if (!payload || typeof payload !== 'object') return
     const approvalId = payload.approval_id
     if (typeof approvalId !== 'string' || !approvalId) return
 
-    switch (event.event_type) {
-      case 'approval.submitted':
-        if (!approvals.value.some((a) => a.id === approvalId)) {
-          try {
-            const item = await approvalsApi.getApproval(approvalId)
-            if (!activeFilters.value) {
-              approvals.value = [item, ...approvals.value]
-              total.value++
+    void (async () => {
+      try {
+        switch (event.event_type) {
+          case 'approval.submitted':
+            if (!approvals.value.some((a) => a.id === approvalId)) {
+              try {
+                const item = await approvalsApi.getApproval(approvalId)
+                if (activeFilters.value) {
+                  // Filters are active — item may not match; just bump total
+                  total.value++
+                } else {
+                  approvals.value = [item, ...approvals.value]
+                  total.value++
+                }
+              } catch (err) {
+                if (axios.isAxiosError(err) && (err.response?.status === 404 || err.response?.status === 410)) {
+                  // Item genuinely gone — skip
+                } else {
+                  console.warn('Failed to fetch approval:', approvalId, err)
+                }
+              }
             }
-          } catch {
-            // Item may have been deleted or expired between event and fetch
-          }
+            break
+          case 'approval.approved':
+          case 'approval.rejected':
+          case 'approval.expired':
+            try {
+              const updated = await approvalsApi.getApproval(approvalId)
+              approvals.value = approvals.value.map((a) =>
+                a.id === approvalId ? updated : a,
+              )
+            } catch (err) {
+              if (axios.isAxiosError(err) && (err.response?.status === 404 || err.response?.status === 410)) {
+                // Item genuinely gone — remove from local list
+                const lengthBefore = approvals.value.length
+                approvals.value = approvals.value.filter((a) => a.id !== approvalId)
+                const removed = lengthBefore - approvals.value.length
+                if (removed > 0) {
+                  total.value = Math.max(0, total.value - removed)
+                }
+              } else {
+                console.warn('Failed to fetch approval:', approvalId, err)
+              }
+            }
+            break
         }
-        break
-      case 'approval.approved':
-      case 'approval.rejected':
-      case 'approval.expired':
-        try {
-          const updated = await approvalsApi.getApproval(approvalId)
-          approvals.value = approvals.value.map((a) =>
-            a.id === approvalId ? updated : a,
-          )
-        } catch {
-          // Item may have been deleted — remove from local list
-          approvals.value = approvals.value.filter((a) => a.id !== approvalId)
-          total.value = Math.max(0, total.value - 1)
-        }
-        break
-    }
+      } catch (err) {
+        console.warn('Unexpected error in WS event handler:', err)
+      }
+    })()
   }
 
   return {

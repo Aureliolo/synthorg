@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from ai_company.observability import get_logger
 from ai_company.observability.events.approval_gate import (
     APPROVAL_GATE_CONTEXT_PARK_FAILED,
+    APPROVAL_GATE_CONTEXT_PARKED,
 )
 from ai_company.observability.events.execution import (
     EXECUTION_LOOP_BUDGET_EXHAUSTED,
@@ -348,11 +349,12 @@ async def _park_for_approval(
     approval_gate: ApprovalGate,
     turns: list[TurnRecord],
 ) -> ExecutionResult:
-    """Park the context for approval and return a PARKED result.
+    """Park the context for approval and return a PARKED or ERROR result.
 
-    If parking fails (serialization error), a PARKED result is still
-    returned — the agent should not continue executing. The failure
-    is logged for operational alerting.
+    On success, returns PARKED with the approval_id in metadata.
+    On failure (serialization/persistence error), returns ERROR — the
+    agent should not continue, and the caller should treat this as a
+    non-resumable failure.
 
     Args:
         ctx: Current agent context.
@@ -361,21 +363,20 @@ async def _park_for_approval(
         turns: Accumulated turn records.
 
     Returns:
-        An ``ExecutionResult`` with PARKED termination reason.
+        An ``ExecutionResult`` with PARKED or ERROR termination reason.
     """
     agent_id = str(ctx.identity.id)
-    task_id = ""
+    task_id: str | None = None
     if ctx.task_execution is not None:
         task_id = ctx.task_execution.task.id
     else:
         logger.debug(
-            APPROVAL_GATE_CONTEXT_PARK_FAILED,
+            APPROVAL_GATE_CONTEXT_PARKED,
             approval_id=escalation.approval_id,
             agent_id=agent_id,
-            note="No task_execution on context — using empty task_id",
+            note="No task_execution on context — task_id will be None",
         )
 
-    parking_failed = False
     try:
         await approval_gate.park_context(
             escalation=escalation,
@@ -386,13 +387,25 @@ async def _park_for_approval(
     except MemoryError, RecursionError:
         raise
     except Exception:
-        parking_failed = True
         logger.exception(
             APPROVAL_GATE_CONTEXT_PARK_FAILED,
             approval_id=escalation.approval_id,
             agent_id=agent_id,
             task_id=task_id,
-            note="Parking failed — still returning PARKED to stop execution",
+            note="Parking failed — returning ERROR (non-resumable)",
+        )
+        return build_result(
+            ctx,
+            TerminationReason.ERROR,
+            turns,
+            error_message=(
+                f"Approval escalation detected (id={escalation.approval_id}) "
+                f"but context parking failed — cannot resume"
+            ),
+            metadata={
+                "approval_id": escalation.approval_id,
+                "parking_failed": True,
+            },
         )
 
     return build_result(
@@ -401,7 +414,7 @@ async def _park_for_approval(
         turns,
         metadata={
             "approval_id": escalation.approval_id,
-            "parking_failed": str(parking_failed),
+            "parking_failed": False,
         },
     )
 
