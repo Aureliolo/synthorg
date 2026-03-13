@@ -600,6 +600,11 @@ class ContextDependentDispatcher:
         if not needs_isolation:
             return (), group
 
+        # Unreachable: narrowed by needs_isolation check above
+        if workspace_service is None:  # pragma: no cover
+            msg = "workspace_service required when isolation is enabled"
+            raise CoordinationError(msg)
+
         wave_requests = tuple(
             WorkspaceRequest(
                 task_id=a.task.id,
@@ -800,6 +805,7 @@ def select_dispatcher(topology: CoordinationTopology) -> TopologyDispatcher:
     Raises:
         ValueError: If AUTO topology is passed (must be resolved first).
     """
+    dispatcher: TopologyDispatcher
     match topology:
         case CoordinationTopology.SAS:
             dispatcher = SasDispatcher()
