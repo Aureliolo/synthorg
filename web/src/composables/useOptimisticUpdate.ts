@@ -26,15 +26,24 @@ export function useOptimisticUpdate() {
     if (pending.value) return null
     pending.value = true
     error.value = null
-    let rollback: (() => void) | null = null
 
+    // Capture rollback before any mutation so a partial throw is still reversible
+    let rollback: (() => void) | null = null
     try {
       rollback = applyOptimistic()
+    } catch (prepareErr) {
+      pending.value = false
+      error.value = getErrorMessage(prepareErr)
+      console.error('Optimistic prepare failed:', error.value)
+      return null
+    }
+
+    try {
       const result = await serverAction()
       return result
     } catch (err) {
       try {
-        rollback?.()
+        rollback()
       } catch (rollbackErr) {
         console.error('Rollback failed:', getErrorMessage(rollbackErr))
       }

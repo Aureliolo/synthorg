@@ -9,12 +9,14 @@ export const useApprovalStore = defineStore('approvals', () => {
   const total = ref(0)
   const loading = ref(false)
   const error = ref<string | null>(null)
+  const activeFilters = ref<ApprovalFilters | undefined>(undefined)
 
   const pendingCount = computed(() => approvals.value.filter((a) => a.status === 'pending').length)
 
   async function fetchApprovals(filters?: ApprovalFilters) {
     loading.value = true
     error.value = null
+    activeFilters.value = filters ? { ...filters } : undefined
     try {
       const result = await approvalsApi.listApprovals(filters)
       approvals.value = result.data
@@ -50,27 +52,39 @@ export const useApprovalStore = defineStore('approvals', () => {
     }
   }
 
+  /** Runtime check for minimum required ApprovalItem fields. */
+  function isValidApprovalPayload(p: Record<string, unknown>): boolean {
+    return (
+      typeof p.id === 'string' && p.id !== '' &&
+      typeof p.action_type === 'string' &&
+      typeof p.title === 'string' &&
+      typeof p.status === 'string' &&
+      typeof p.requested_by === 'string'
+    )
+  }
+
   function handleWsEvent(event: WsEvent) {
-    const payload = event.payload as Partial<ApprovalItem> & { id?: string }
+    const payload = event.payload as Record<string, unknown> | null
+    if (!payload || typeof payload !== 'object') return
     switch (event.event_type) {
       case 'approval.submitted':
         if (
-          typeof payload.id === 'string' &&
-          payload.id &&
-          payload.action_type &&
-          payload.title &&
+          isValidApprovalPayload(payload) &&
           !approvals.value.some((a) => a.id === payload.id)
         ) {
-          approvals.value = [payload as ApprovalItem, ...approvals.value]
+          // Only insert into unfiltered views to keep list consistent
+          if (!activeFilters.value) {
+            approvals.value = [payload as unknown as ApprovalItem, ...approvals.value]
+          }
           total.value++
         }
         break
       case 'approval.approved':
       case 'approval.rejected':
       case 'approval.expired':
-        if (payload.id) {
+        if (typeof payload.id === 'string' && payload.id) {
           approvals.value = approvals.value.map((a) =>
-            a.id === payload.id ? { ...a, ...payload } : a,
+            a.id === payload.id ? { ...a, ...(payload as Partial<ApprovalItem>) } : a,
           )
         }
         break

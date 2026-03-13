@@ -46,7 +46,7 @@ describe('EmptyState', () => {
     expect(button.text()).toBe('Create Item')
   })
 
-  it('does not render action container when slot is empty', () => {
+  it('does not render action container when slot is not provided', () => {
     const wrapper = mount(EmptyState, {
       props: { title: 'Empty' },
     })

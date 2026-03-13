@@ -13,7 +13,7 @@ export function useAuth() {
 
   const canWrite = computed(() => {
     const role = userRole.value
-    return role !== null && (WRITE_ROLES as readonly string[]).includes(role)
+    return role !== null && (WRITE_ROLES as ReadonlyArray<string>).includes(role)
   })
 
   return {

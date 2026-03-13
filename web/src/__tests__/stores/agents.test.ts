@@ -98,4 +98,32 @@ describe('useAgentStore', () => {
     store.handleWsEvent(event)
     expect(store.agents[0].status).toBe('on_leave')
   })
+
+  it('does not duplicate agents on repeated agent.hired events', () => {
+    const store = useAgentStore()
+    store.agents = [mockAgent]
+    store.total = 1
+    const event: WsEvent = {
+      event_type: 'agent.hired',
+      channel: 'agents',
+      timestamp: '2026-03-12T10:01:00Z',
+      payload: { ...mockAgent },
+    }
+    store.handleWsEvent(event)
+    expect(store.agents).toHaveLength(1)
+    expect(store.total).toBe(1)
+  })
+
+  it('ignores agent.hired with malformed payload', () => {
+    const store = useAgentStore()
+    const event: WsEvent = {
+      event_type: 'agent.hired',
+      channel: 'agents',
+      timestamp: '2026-03-12T10:01:00Z',
+      payload: { name: 'bob' }, // missing id, role, department
+    }
+    store.handleWsEvent(event)
+    expect(store.agents).toHaveLength(0)
+    expect(store.total).toBe(0)
+  })
 })

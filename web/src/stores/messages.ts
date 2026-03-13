@@ -15,6 +15,7 @@ export const useMessageStore = defineStore('messages', () => {
   const channelsLoading = ref(false)
   const error = ref<string | null>(null)
   const channelsError = ref<string | null>(null)
+  let fetchRequestId = 0
 
   async function fetchChannels() {
     channelsLoading.value = true
@@ -29,17 +30,25 @@ export const useMessageStore = defineStore('messages', () => {
   }
 
   async function fetchMessages(channel?: string) {
+    const requestId = ++fetchRequestId
     loading.value = true
     error.value = null
     try {
       const params = channel ? { channel, limit: 100 } : { limit: 100 }
       const result = await messagesApi.listMessages(params)
-      messages.value = result.data
-      total.value = result.total
+      // Only commit if this is still the latest request (prevent stale overwrites)
+      if (requestId === fetchRequestId) {
+        messages.value = result.data
+        total.value = result.total
+      }
     } catch (err) {
-      error.value = getErrorMessage(err)
+      if (requestId === fetchRequestId) {
+        error.value = getErrorMessage(err)
+      }
     } finally {
-      loading.value = false
+      if (requestId === fetchRequestId) {
+        loading.value = false
+      }
     }
   }
 

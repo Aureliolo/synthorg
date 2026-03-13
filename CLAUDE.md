@@ -122,7 +122,7 @@ web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
     stores/       # Pinia stores (auth, agents, tasks, budget, messages, approvals, websocket, analytics, company, providers)
     styles/       # Global CSS and PrimeVue theme configuration
     utils/        # Constants, formatters, error helpers
-    views/        # Page-level components (Dashboard, TaskBoard, AgentProfiles, BudgetPanel, etc.)
+    views/        # Page-level components (LoginPage, SetupPage, PlaceholderHome; feature pages in PR 2)
     __tests__/    # Vitest unit tests (organized by feature)
 ```
 

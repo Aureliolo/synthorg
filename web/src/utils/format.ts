@@ -58,6 +58,7 @@ export function formatNumber(value: number): string {
  * Format seconds as a human-readable uptime string.
  */
 export function formatUptime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) seconds = 0
   const days = Math.floor(seconds / 86400)
   const hours = Math.floor((seconds % 86400) / 3600)
   const mins = Math.floor((seconds % 3600) / 60)

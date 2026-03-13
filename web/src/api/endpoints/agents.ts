@@ -20,6 +20,6 @@ export async function setAutonomy(
   agentId: string,
   data: AutonomyLevelRequest,
 ): Promise<AutonomyLevelResponse> {
-  const response = await apiClient.post(`/agents/${encodeURIComponent(agentId)}/autonomy`, data)
+  const response = await apiClient.post<ApiResponse<AutonomyLevelResponse>>(`/agents/${encodeURIComponent(agentId)}/autonomy`, data)
   return unwrap(response)
 }

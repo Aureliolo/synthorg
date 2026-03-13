@@ -1,3 +1,9 @@
+<!--
+  ErrorBoundary — error display wrapper (not a Vue error-capture boundary).
+  Expects an `error` prop from the parent; when set it renders an error message
+  with a retry button. When `error` is falsy it renders the default slot.
+  Does NOT use onErrorCaptured — child component errors must be caught externally.
+-->
 <script setup lang="ts">
 import Button from 'primevue/button'
 

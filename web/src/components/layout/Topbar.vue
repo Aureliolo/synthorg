@@ -49,6 +49,7 @@ function toggleUserMenu(event: Event) {
         text
         severity="secondary"
         class="lg:hidden"
+        aria-label="Toggle sidebar"
         @click="$emit('toggleSidebar')"
       />
     </div>
@@ -62,6 +63,7 @@ function toggleUserMenu(event: Event) {
         text
         severity="secondary"
         class="text-slate-300"
+        :aria-label="auth.user?.username ?? 'Open user menu'"
         @click="toggleUserMenu"
       />
       <Menu ref="userMenu" :model="menuItems" :popup="true" />

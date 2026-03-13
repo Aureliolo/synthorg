@@ -32,5 +32,9 @@ export function authGuard(
     return
   }
 
+  // TODO(#346): Enforce mustChangePassword redirect when
+  // /change-password route and page are added in the page-views PR.
+  // Currently only surfaced as a toast in LoginPage.vue.
+
   next()
 }

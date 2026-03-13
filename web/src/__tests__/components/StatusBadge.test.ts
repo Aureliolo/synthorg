@@ -29,6 +29,7 @@ describe('StatusBadge', () => {
       props: { value: 'completed' },
     })
     const tag = wrapper.find('.p-tag')
+    expect(tag.exists()).toBe(true)
     expect(tag.classes()).toContain('bg-green-600')
     expect(tag.classes()).toContain('text-green-100')
   })
@@ -38,6 +39,7 @@ describe('StatusBadge', () => {
       props: { value: 'high', type: 'priority' },
     })
     const tag = wrapper.find('.p-tag')
+    expect(tag.exists()).toBe(true)
     expect(tag.classes()).toContain('bg-orange-600')
     expect(tag.classes()).toContain('text-orange-100')
   })
@@ -47,6 +49,7 @@ describe('StatusBadge', () => {
       props: { value: 'unknown_status' },
     })
     const tag = wrapper.find('.p-tag')
+    expect(tag.exists()).toBe(true)
     expect(tag.classes()).toContain('bg-slate-600')
     expect(tag.classes()).toContain('text-slate-200')
   })

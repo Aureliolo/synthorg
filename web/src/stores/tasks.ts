@@ -42,8 +42,9 @@ export const useTaskStore = defineStore('tasks', () => {
   async function fetchTasks(filters?: TaskFilters) {
     loading.value = true
     error.value = null
+    // Always update filters — passing undefined clears previous filters
+    currentFilters.value = filters ? { ...filters } : {}
     try {
-      if (filters) currentFilters.value = { ...filters }
       const result = await tasksApi.listTasks(currentFilters.value)
       tasks.value = result.data
       total.value = result.total
@@ -58,8 +59,9 @@ export const useTaskStore = defineStore('tasks', () => {
     error.value = null
     try {
       const task = await tasksApi.createTask(data)
-      // Guard against race with WS task.created event
-      if (!tasks.value.some((t) => t.id === task.id)) {
+      // Only append to local list if no filters are active (filtered views are kept
+      // accurate by REST fetches) and guard against race with WS task.created event
+      if (!hasActiveFilters() && !tasks.value.some((t) => t.id === task.id)) {
         tasks.value = [...tasks.value, task]
         total.value++
       }
@@ -109,14 +111,27 @@ export const useTaskStore = defineStore('tasks', () => {
     }
   }
 
+  /** Runtime check for minimum required Task fields on a WS payload. */
+  function isValidTaskPayload(p: Record<string, unknown>): boolean {
+    return (
+      typeof p.id === 'string' && p.id !== '' &&
+      typeof p.title === 'string' &&
+      typeof p.status === 'string'
+    )
+  }
+
   function handleWsEvent(event: WsEvent) {
-    const payload = event.payload as Partial<Task> & { id?: string }
+    const payload = event.payload as Record<string, unknown> | null
+    if (!payload || typeof payload !== 'object') return
     switch (event.event_type) {
       case 'task.created':
-        if (payload.id && !tasks.value.some((t) => t.id === payload.id)) {
+        if (
+          isValidTaskPayload(payload) &&
+          !tasks.value.some((t) => t.id === payload.id)
+        ) {
           // Only append if no active filters — filtered views are kept accurate by REST fetches
           if (!hasActiveFilters()) {
-            tasks.value = [...tasks.value, payload as Task]
+            tasks.value = [...tasks.value, payload as unknown as Task]
             total.value++
           }
         }
@@ -124,10 +139,12 @@ export const useTaskStore = defineStore('tasks', () => {
       case 'task.updated':
       case 'task.status_changed':
       case 'task.assigned':
-        if (payload.id) {
+        if (typeof payload.id === 'string' && payload.id) {
           // Only update tasks already in the list — if filters are active,
           // tasks that no longer match will be cleaned up on next REST fetch
-          tasks.value = tasks.value.map((t) => (t.id === payload.id ? { ...t, ...payload } : t))
+          tasks.value = tasks.value.map((t) =>
+            t.id === payload.id ? { ...t, ...(payload as Partial<Task>) } : t,
+          )
         }
         break
     }

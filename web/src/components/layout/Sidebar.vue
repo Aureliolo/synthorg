@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
-import { NAV_ITEMS } from '@/utils/constants'
+import { APP_NAME, NAV_ITEMS } from '@/utils/constants'
 
 defineProps<{
   collapsed: boolean
@@ -36,7 +36,7 @@ function navigate(to: string) {
       <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold text-white">
         S
       </div>
-      <span v-if="!collapsed" class="text-lg font-semibold text-slate-100">SynthOrg</span>
+      <span v-if="!collapsed" class="text-lg font-semibold text-slate-100">{{ APP_NAME }}</span>
     </div>
 
     <!-- Navigation -->
