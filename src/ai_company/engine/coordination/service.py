@@ -137,18 +137,17 @@ class MultiAgentCoordinator:
             self._validate_routing(routing_result, phases)
 
             # Phase 5: Dispatch (workspace setup → execute → merge)
-            dispatcher = select_dispatcher(topology)
-            dispatch_result = await dispatcher.dispatch(
-                decomposition_result=decomp_result,
-                routing_result=routing_result,
-                parallel_executor=self._parallel_executor,
-                workspace_service=self._workspace_service,
-                config=context.config,
+            dispatch_result = await self._phase_dispatch(
+                topology,
+                decomp_result,
+                routing_result,
+                context,
+                phases,
             )
             phases.extend(dispatch_result.phases)
 
             # Phase 6: Rollup
-            rollup = self._phase_rollup(context, dispatch_result, phases)
+            rollup = self._phase_rollup(context, dispatch_result, decomp_result, phases)
 
             # Phase 7: Update parent task
             await self._phase_update_parent(context, rollup, phases)
@@ -208,6 +207,8 @@ class MultiAgentCoordinator:
             result = await self._decomposition_service.decompose_task(
                 context.task, context.decomposition_context
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             elapsed = time.monotonic() - start
             logger.warning(
@@ -262,6 +263,8 @@ class MultiAgentCoordinator:
                 context.available_agents,
                 context.task,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             elapsed = time.monotonic() - start
             logger.warning(
@@ -358,13 +361,64 @@ class MultiAgentCoordinator:
                 partial_phases=tuple(phases),
             )
 
+    async def _phase_dispatch(
+        self,
+        topology: CoordinationTopology,
+        decomp_result: DecompositionResult,
+        routing_result: RoutingResult,
+        context: CoordinationContext,
+        phases: list[CoordinationPhaseResult],
+    ) -> DispatchResult:
+        """Run dispatch phase with error wrapping."""
+        start = time.monotonic()
+        phase_name = "dispatch"
+
+        logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
+        try:
+            dispatcher = select_dispatcher(topology)
+            return await dispatcher.dispatch(
+                decomposition_result=decomp_result,
+                routing_result=routing_result,
+                parallel_executor=self._parallel_executor,
+                workspace_service=self._workspace_service,
+                config=context.config,
+            )
+        except CoordinationPhaseError:
+            raise
+        except Exception as exc:
+            elapsed = time.monotonic() - start
+            logger.warning(
+                COORDINATION_PHASE_FAILED,
+                phase=phase_name,
+                error=str(exc),
+            )
+            phase = CoordinationPhaseResult(
+                phase=phase_name,
+                success=False,
+                duration_seconds=elapsed,
+                error=str(exc),
+            )
+            phases.append(phase)
+            msg = f"Dispatch failed: {exc}"
+            raise CoordinationPhaseError(
+                msg,
+                phase=phase_name,
+                partial_phases=tuple(phases),
+            ) from exc
+
     def _phase_rollup(
         self,
         context: CoordinationContext,
         dispatch_result: DispatchResult,
+        decomp_result: DecompositionResult,
         phases: list[CoordinationPhaseResult],
     ) -> SubtaskStatusRollup | None:
-        """Compute status rollup from execution outcomes."""
+        """Compute status rollup from execution outcomes.
+
+        Includes all expected subtasks — those missing from waves
+        (unroutable, blocked by prerequisites, or skipped by
+        fail-fast) are counted as BLOCKED.
+        """
         start = time.monotonic()
         phase_name = "rollup"
 
@@ -382,6 +436,13 @@ class MultiAgentCoordinator:
                         statuses.append(TaskStatus.COMPLETED)
                     else:
                         statuses.append(TaskStatus.FAILED)
+
+            # Fill missing subtasks as BLOCKED (unroutable,
+            # blocked prerequisites, or fail-fast skipped)
+            expected_count = len(decomp_result.plan.subtasks)
+            missing_count = expected_count - len(statuses)
+            if missing_count > 0:
+                statuses.extend(TaskStatus.BLOCKED for _ in range(missing_count))
 
             rollup = self._decomposition_service.rollup_status(
                 context.task.id,

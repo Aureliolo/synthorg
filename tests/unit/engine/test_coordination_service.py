@@ -522,7 +522,7 @@ class TestMultiAgentCoordinator:
             available_agents=(make_assignment_agent("alice"),),
         )
 
-        with pytest.raises(CoordinationPhaseError):
+        with pytest.raises(MemoryError):
             await coordinator.coordinate(ctx)
 
     @pytest.mark.unit
@@ -787,4 +787,90 @@ class TestMultiAgentCoordinator:
         # Only one wave executed (fail_fast stopped before wave 1)
         assert len(result.waves) == 1
         assert result.status_rollup is not None
+        assert result.status_rollup.total == 2
         assert result.status_rollup.failed == 1
+        assert result.status_rollup.blocked == 1
+
+    @pytest.mark.unit
+    async def test_rollup_includes_blocked_subtasks(self) -> None:
+        """Rollup counts unroutable/skipped subtasks as BLOCKED."""
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b")
+        decomp = make_decomposition((sub_a, sub_b))
+        # Only route sub-a; sub-b is unroutable
+        routing = make_routing(
+            [("sub-a", "alice")],
+            unroutable=("sub-b",),
+        )
+        agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
+
+        coordinator = _make_coordinator(
+            decomp_result=decomp,
+            routing_result=routing,
+            exec_results=[
+                make_exec_result("wave-0", [("sub-a", agent_id)]),
+            ],
+        )
+
+        ctx = CoordinationContext(
+            task=make_assignment_task(id="parent-1"),
+            available_agents=(make_assignment_agent("alice"),),
+        )
+
+        result = await coordinator.coordinate(ctx)
+
+        assert result.status_rollup is not None
+        # 1 completed + 1 blocked = 2 total
+        assert result.status_rollup.total == 2
+        assert result.status_rollup.completed == 1
+        assert result.status_rollup.blocked == 1
+
+    @pytest.mark.unit
+    async def test_dispatch_error_wrapped_as_phase_error(self) -> None:
+        """Dispatch failure produces a phase error with partial phases."""
+        from ai_company.engine.decomposition.models import (
+            DecompositionPlan,
+        )
+        from ai_company.engine.decomposition.models import (
+            DecompositionResult as DecompResult,
+        )
+
+        sub_a = make_subtask("sub-a")
+        plan = DecompositionPlan(
+            parent_task_id="parent-1",
+            subtasks=(sub_a,),
+            task_structure=TaskStructure.PARALLEL,
+            coordination_topology=CoordinationTopology.CENTRALIZED,
+        )
+        # Bypass validators: created_tasks has wrong ID
+        decomp = DecompResult.model_construct(
+            plan=plan,
+            created_tasks=(
+                make_assignment_task(
+                    id="sub-x",
+                    title="Wrong task",
+                    description="Wrong task desc",
+                    parent_task_id="parent-1",
+                ),
+            ),
+            dependency_edges=(),
+        )
+        # Routing targets sub-a, but created_tasks has sub-x
+        routing = make_routing([("sub-a", "alice")])
+
+        coordinator = _make_coordinator(
+            decomp_result=decomp,
+            routing_result=routing,
+            exec_results=[],
+        )
+
+        ctx = CoordinationContext(
+            task=make_assignment_task(id="parent-1"),
+            available_agents=(make_assignment_agent("alice"),),
+        )
+
+        with pytest.raises(CoordinationPhaseError) as exc_info:
+            await coordinator.coordinate(ctx)
+
+        assert exc_info.value.phase == "dispatch"
+        assert len(exc_info.value.partial_phases) >= 3

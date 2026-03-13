@@ -75,15 +75,33 @@ def build_execution_waves(
     routing_lookup = _build_routing_lookup(routing_result)
     workspace_lookup = _build_workspace_lookup(workspaces)
     task_lookup = {t.id: t for t in decomposition_result.created_tasks}
+    dep_map = {s.id: s.dependencies for s in plan.subtasks}
 
     groups: list[ParallelExecutionGroup] = []
+    blocked_ids: set[str] = set()
 
     for wave_idx, subtask_ids in enumerate(parallel_groups):
         assignments: list[AgentAssignment] = []
 
         for subtask_id in subtask_ids:
+            # Block subtasks whose prerequisites are blocked
+            deps = dep_map.get(subtask_id, ())
+            blocked_deps = set(deps) & blocked_ids
+            if blocked_deps:
+                blocked_ids.add(subtask_id)
+                logger.debug(
+                    COORDINATION_WAVE_BUILT,
+                    wave_index=wave_idx,
+                    subtask_id=subtask_id,
+                    skipped=True,
+                    reason="blocked by unroutable prerequisite",
+                    blocked_dependencies=sorted(blocked_deps),
+                )
+                continue
+
             decision = routing_lookup.get(subtask_id)
             if decision is None:
+                blocked_ids.add(subtask_id)
                 logger.debug(
                     COORDINATION_WAVE_BUILT,
                     wave_index=wave_idx,

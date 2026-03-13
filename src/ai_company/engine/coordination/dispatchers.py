@@ -119,6 +119,28 @@ def _build_workspace_requests(
     )
 
 
+def _validate_routing_against_decomposition(
+    decomposition_result: DecompositionResult,
+    routing_result: RoutingResult,
+) -> None:
+    """Validate all routed subtask IDs exist in created tasks.
+
+    Must be called before workspace setup to avoid creating
+    workspaces for nonexistent subtasks.
+
+    Raises:
+        CoordinationError: If a routed subtask has no created task.
+    """
+    created_ids = {t.id for t in decomposition_result.created_tasks}
+    for decision in routing_result.decisions:
+        if decision.subtask_id not in created_ids:
+            msg = (
+                f"Routed subtask {decision.subtask_id!r} has no "
+                "corresponding created task in decomposition"
+            )
+            raise CoordinationError(msg)
+
+
 async def _setup_workspaces(
     workspace_service: WorkspaceIsolationService,
     routing_result: RoutingResult,
@@ -389,6 +411,8 @@ class CentralizedDispatcher:
         config: CoordinationConfig,
     ) -> DispatchResult:
         """Execute waves with workspace isolation and post-merge."""
+        _validate_routing_against_decomposition(decomposition_result, routing_result)
+
         all_phases: list[CoordinationPhaseResult] = []
         workspaces: tuple[Workspace, ...] = ()
         merge_result: WorkspaceGroupResult | None = None
@@ -460,6 +484,8 @@ class DecentralizedDispatcher:
         config: CoordinationConfig,
     ) -> DispatchResult:
         """Execute subtasks with mandatory workspace isolation."""
+        _validate_routing_against_decomposition(decomposition_result, routing_result)
+
         if workspace_service is None or not config.enable_workspace_isolation:
             msg = (
                 "Decentralized topology requires workspace isolation "

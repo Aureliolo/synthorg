@@ -800,7 +800,7 @@ The `MultiAgentCoordinator` orchestrates the end-to-end pipeline that transforms
 a parent task into parallel agent work:
 
 ```text
-decompose → route → resolve topology → dispatch → rollup → update parent
+decompose → route → resolve topology → validate → dispatch → rollup → update parent
 ```
 
 **Pipeline phases:**

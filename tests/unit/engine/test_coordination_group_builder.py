@@ -225,6 +225,60 @@ class TestBuildExecutionWaves:
         assert waves[0].assignments[0].task.id == "sub-a"
 
     @pytest.mark.unit
+    def test_unroutable_blocks_descendants(self) -> None:
+        """Unroutable prerequisite blocks its descendant subtasks."""
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b", dependencies=("sub-a",))
+        decomp = make_decomposition(
+            (sub_a, sub_b),
+            structure=TaskStructure.SEQUENTIAL,
+        )
+        # Only route sub-b, sub-a is unroutable
+        routing = RoutingResult(
+            parent_task_id="parent-1",
+            decisions=(_make_routing_decision("sub-b", "bob"),),
+            unroutable=("sub-a",),
+        )
+
+        waves = build_execution_waves(
+            decomposition_result=decomp,
+            routing_result=routing,
+            config=CoordinationConfig(),
+        )
+
+        # sub-b depends on sub-a which is unroutable → sub-b is blocked
+        assert len(waves) == 0
+
+    @pytest.mark.unit
+    def test_unroutable_blocks_transitive_descendants(self) -> None:
+        """Unroutable subtask blocks entire downstream chain."""
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b", dependencies=("sub-a",))
+        sub_c = make_subtask("sub-c", dependencies=("sub-b",))
+        decomp = make_decomposition(
+            (sub_a, sub_b, sub_c),
+            structure=TaskStructure.SEQUENTIAL,
+        )
+        # Route sub-b and sub-c, but sub-a is unroutable
+        routing = RoutingResult(
+            parent_task_id="parent-1",
+            decisions=(
+                _make_routing_decision("sub-b", "bob"),
+                _make_routing_decision("sub-c", "charlie"),
+            ),
+            unroutable=("sub-a",),
+        )
+
+        waves = build_execution_waves(
+            decomposition_result=decomp,
+            routing_result=routing,
+            config=CoordinationConfig(),
+        )
+
+        # All downstream of sub-a is blocked
+        assert len(waves) == 0
+
+    @pytest.mark.unit
     def test_all_unroutable_empty_waves(self) -> None:
         """All unroutable subtasks produce no waves."""
         sub_a = make_subtask("sub-a")
