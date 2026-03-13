@@ -91,6 +91,14 @@ class TestPublish:
         with pytest.raises(builtins.MemoryError):
             await backend.publish("test-agent-001", make_store_request())
 
+    async def test_publish_rejects_shared_namespace_agent_id(
+        self,
+        backend: Mem0MemoryBackend,
+    ) -> None:
+        """publish() rejects the shared namespace as agent_id."""
+        with pytest.raises(MemoryStoreError, match="reserved shared namespace"):
+            await backend.publish(_SHARED_NAMESPACE, make_store_request())
+
     async def test_publish_reraises_recursion_error(
         self,
         backend: Mem0MemoryBackend,
@@ -387,6 +395,14 @@ class TestRetract:
         mock_client.get.side_effect = builtins.MemoryError("out of memory")
         with pytest.raises(builtins.MemoryError):
             await backend.retract("test-agent-001", "shared-001")
+
+    async def test_retract_rejects_shared_namespace_agent_id(
+        self,
+        backend: Mem0MemoryBackend,
+    ) -> None:
+        """retract() rejects the shared namespace as agent_id."""
+        with pytest.raises(MemoryStoreError, match="reserved shared namespace"):
+            await backend.retract(_SHARED_NAMESPACE, "shared-001")
 
     async def test_retract_reraises_recursion_error(
         self,

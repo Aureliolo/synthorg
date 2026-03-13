@@ -505,6 +505,14 @@ class TestDelete:
             await backend.delete("test-agent-001", "mem-001")
         mock_client.delete.assert_not_called()
 
+    async def test_delete_rejects_shared_namespace_agent_id(
+        self,
+        backend: Mem0MemoryBackend,
+    ) -> None:
+        """delete() rejects the shared namespace as agent_id."""
+        with pytest.raises(MemoryStoreError, match="reserved shared namespace"):
+            await backend.delete(_SHARED_NAMESPACE, "mem-001")
+
 
 # ── Count ─────────────────────────────────────────────────────────
 

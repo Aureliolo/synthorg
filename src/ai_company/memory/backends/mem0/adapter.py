@@ -175,6 +175,22 @@ def _validate_mem0_result(
     return raw_list
 
 
+def _resolve_publisher(item: dict[str, Any]) -> str:
+    """Extract publisher from a shared memory, defaulting to namespace.
+
+    Logs at DEBUG when publisher metadata is missing.
+    """
+    publisher = extract_publisher(item)
+    if publisher is None:
+        logger.debug(
+            MEMORY_SHARED_SEARCHED,
+            memory_id=item.get("id", "?"),
+            reason="no publisher metadata — attributing to shared namespace",
+        )
+        return _SHARED_NAMESPACE
+    return publisher
+
+
 class Mem0MemoryBackend:
     """Mem0-backed agent memory backend.
 
@@ -194,7 +210,7 @@ class Mem0MemoryBackend:
     ) -> None:
         self._mem0_config = mem0_config
         self._max_memories_per_agent = max_memories_per_agent
-        self._client: Any = None
+        self._client: Mem0Client | None = None
         self._connected = False
         self._connect_lock = asyncio.Lock()
 
@@ -348,8 +364,12 @@ class Mem0MemoryBackend:
 
     # ── Guards ────────────────────────────────────────────────────
 
-    def _require_connected(self) -> None:
-        """Raise ``MemoryConnectionError`` if not connected."""
+    def _require_connected(self) -> Mem0Client:
+        """Return the client or raise ``MemoryConnectionError``.
+
+        Returns:
+            The connected Mem0 client (enables mypy type narrowing).
+        """
         if not self._connected or self._client is None:
             logger.warning(
                 MEMORY_BACKEND_NOT_CONNECTED,
@@ -357,6 +377,7 @@ class Mem0MemoryBackend:
             )
             msg = "Not connected — call connect() first"
             raise MemoryConnectionError(msg)
+        return self._client
 
     def _validate_agent_id(
         self,
@@ -411,7 +432,7 @@ class Mem0MemoryBackend:
             MemoryConnectionError: If the backend is not connected.
             MemoryStoreError: If the store operation fails.
         """
-        self._require_connected()
+        client = self._require_connected()
         self._validate_agent_id(agent_id)
         try:
             kwargs = {
@@ -422,7 +443,7 @@ class Mem0MemoryBackend:
                 "metadata": build_mem0_metadata(request),
                 "infer": False,
             }
-            result = await asyncio.to_thread(self._client.add, **kwargs)
+            result = await asyncio.to_thread(client.add, **kwargs)
             memory_id = validate_add_result(result, context="store")
         except MemoryStoreError as exc:
             logger.warning(
@@ -474,15 +495,15 @@ class Mem0MemoryBackend:
             MemoryConnectionError: If the backend is not connected.
             MemoryRetrievalError: If the retrieval fails.
         """
-        self._require_connected()
+        client = self._require_connected()
         self._validate_agent_id(agent_id, error_cls=MemoryRetrievalError)
         try:
             if query.text is not None:
                 kwargs = query_to_mem0_search_args(str(agent_id), query)
-                raw_result = await asyncio.to_thread(self._client.search, **kwargs)
+                raw_result = await asyncio.to_thread(client.search, **kwargs)
             else:
                 kwargs = query_to_mem0_getall_args(str(agent_id), query)
-                raw_result = await asyncio.to_thread(self._client.get_all, **kwargs)
+                raw_result = await asyncio.to_thread(client.get_all, **kwargs)
             raw_list = _validate_mem0_result(raw_result, context="retrieve")
             entries = tuple(mem0_result_to_entry(item, agent_id) for item in raw_list)
             entries = apply_post_filters(entries, query)
@@ -534,10 +555,10 @@ class Mem0MemoryBackend:
             MemoryConnectionError: If the backend is not connected.
             MemoryRetrievalError: If the backend query fails.
         """
-        self._require_connected()
+        client = self._require_connected()
         self._validate_agent_id(agent_id, error_cls=MemoryRetrievalError)
         try:
-            raw = await asyncio.to_thread(self._client.get, str(memory_id))
+            raw = await asyncio.to_thread(client.get, str(memory_id))
             if raw is None:
                 logger.debug(
                     MEMORY_ENTRY_FETCHED,
@@ -620,12 +641,12 @@ class Mem0MemoryBackend:
             MemoryStoreError: If the delete operation fails or
                 ownership verification fails.
         """
-        self._require_connected()
+        client = self._require_connected()
         self._validate_agent_id(agent_id)
         try:
             # Check existence first — Mem0 delete doesn't indicate
             # whether the entry existed.
-            existing = await asyncio.to_thread(self._client.get, str(memory_id))
+            existing = await asyncio.to_thread(client.get, str(memory_id))
             if existing is None:
                 logger.debug(
                     MEMORY_ENTRY_DELETED,
@@ -648,7 +669,7 @@ class Mem0MemoryBackend:
                     reason="unverifiable_ownership",
                 )
                 raise MemoryStoreError(msg)  # noqa: TRY301
-            if owner is not None and str(owner) == _SHARED_NAMESPACE:
+            if str(owner) == _SHARED_NAMESPACE:
                 msg = (
                     f"Memory {memory_id} belongs to the shared namespace — "
                     f"use retract() to remove shared entries"
@@ -661,7 +682,7 @@ class Mem0MemoryBackend:
                 )
                 raise MemoryStoreError(msg)  # noqa: TRY301
             # Verify ownership — reject cross-agent deletion.
-            if owner is not None and str(owner) != str(agent_id):
+            if str(owner) != str(agent_id):
                 msg = (
                     f"Agent {agent_id} cannot delete memory "
                     f"{memory_id} owned by {owner}"
@@ -674,7 +695,7 @@ class Mem0MemoryBackend:
                     actual_owner=str(owner),
                 )
                 raise MemoryStoreError(msg)  # noqa: TRY301
-            await asyncio.to_thread(self._client.delete, str(memory_id))
+            await asyncio.to_thread(client.delete, str(memory_id))
         except MemoryStoreError:
             raise
         except builtins.MemoryError, RecursionError:
@@ -731,11 +752,11 @@ class Mem0MemoryBackend:
             MemoryConnectionError: If the backend is not connected.
             MemoryRetrievalError: If the count query fails.
         """
-        self._require_connected()
+        client = self._require_connected()
         self._validate_agent_id(agent_id, error_cls=MemoryRetrievalError)
         try:
             raw_result = await asyncio.to_thread(
-                self._client.get_all,
+                client.get_all,
                 user_id=str(agent_id),
                 limit=self._max_memories_per_agent,
             )
@@ -810,7 +831,7 @@ class Mem0MemoryBackend:
             MemoryConnectionError: If the backend is not connected.
             MemoryStoreError: If the publish operation fails.
         """
-        self._require_connected()
+        client = self._require_connected()
         self._validate_agent_id(agent_id)
         try:
             metadata = {
@@ -825,7 +846,7 @@ class Mem0MemoryBackend:
                 "metadata": metadata,
                 "infer": False,
             }
-            result = await asyncio.to_thread(self._client.add, **kwargs)
+            result = await asyncio.to_thread(client.add, **kwargs)
             memory_id = validate_add_result(result, context="shared publish")
         except MemoryStoreError as exc:
             logger.warning(
@@ -873,24 +894,29 @@ class Mem0MemoryBackend:
             MemoryConnectionError: If the backend is not connected.
             MemoryRetrievalError: If the search fails.
         """
-        self._require_connected()
+        client = self._require_connected()
         if exclude_agent is not None and str(exclude_agent) == _SHARED_NAMESPACE:
             msg = (
                 "exclude_agent must not be the reserved shared namespace: "
                 f"{_SHARED_NAMESPACE!r}"
             )
+            logger.warning(
+                MEMORY_BACKEND_AGENT_ID_REJECTED,
+                agent_id=exclude_agent,
+                reason="reserved shared namespace used as exclude_agent",
+            )
             raise MemoryRetrievalError(msg)
         try:
             if query.text is not None:
                 raw_result = await asyncio.to_thread(
-                    self._client.search,
+                    client.search,
                     query=str(query.text),
                     user_id=_SHARED_NAMESPACE,
                     limit=query.limit,
                 )
             else:
                 raw_result = await asyncio.to_thread(
-                    self._client.get_all,
+                    client.get_all,
                     user_id=_SHARED_NAMESPACE,
                     limit=query.limit,
                 )
@@ -899,21 +925,15 @@ class Mem0MemoryBackend:
                 context="search_shared",
             )
 
-            entries_list: list[MemoryEntry] = []
-            for item in raw_list:
-                publisher = extract_publisher(item)
-                if publisher is None:
-                    logger.debug(
-                        MEMORY_SHARED_SEARCHED,
-                        memory_id=item.get("id", "?"),
-                        reason="no publisher metadata — "
-                        "attributing to shared namespace",
-                    )
-                    publisher = _SHARED_NAMESPACE
-                entries_list.append(
-                    mem0_result_to_entry(item, NotBlankStr(publisher)),
+            raw_entries = tuple(
+                mem0_result_to_entry(
+                    item,
+                    NotBlankStr(
+                        _resolve_publisher(item),
+                    ),
                 )
-            raw_entries = tuple(entries_list)
+                for item in raw_list
+            )
             filtered = apply_post_filters(raw_entries, query)
 
             if exclude_agent is not None:
@@ -968,10 +988,10 @@ class Mem0MemoryBackend:
             MemoryStoreError: If the retraction operation fails or
                 ownership verification fails.
         """
-        self._require_connected()
+        client = self._require_connected()
         self._validate_agent_id(agent_id)
         try:
-            raw = await asyncio.to_thread(self._client.get, str(memory_id))
+            raw = await asyncio.to_thread(client.get, str(memory_id))
             if raw is None:
                 logger.debug(
                     MEMORY_SHARED_RETRACTED,
@@ -1025,7 +1045,7 @@ class Mem0MemoryBackend:
                 )
                 raise MemoryStoreError(msg)  # noqa: TRY301
 
-            await asyncio.to_thread(self._client.delete, str(memory_id))
+            await asyncio.to_thread(client.delete, str(memory_id))
         except MemoryStoreError:
             # Ownership-check MemoryStoreErrors are already logged
             # with context (reason, publisher) above — re-raise

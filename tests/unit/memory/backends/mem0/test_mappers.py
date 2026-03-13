@@ -180,6 +180,13 @@ class TestParseMem0Metadata:
         assert category == MemoryCategory.WORKING
         assert metadata.confidence == 1.0
 
+    def test_non_dict_truthy_metadata(self) -> None:
+        """Non-dict truthy metadata (e.g. string) uses defaults."""
+        category, metadata, expires_at = parse_mem0_metadata("not-a-dict")  # type: ignore[arg-type]
+        assert category == MemoryCategory.WORKING
+        assert metadata.confidence == 1.0
+        assert expires_at is None
+
     def test_full_metadata(self) -> None:
         raw = {
             f"{_PREFIX}category": "semantic",
@@ -268,6 +275,27 @@ class TestMem0ResultToEntry:
         after = datetime.now(UTC)
 
         assert before <= entry.created_at <= after
+
+    def test_missing_created_at_falls_back_to_updated_at(self) -> None:
+        """When created_at is missing, falls back to updated_at."""
+        raw = {
+            "id": "no-created",
+            "memory": "content",
+            "updated_at": "2026-03-10T08:00:00+00:00",
+            "metadata": {},
+        }
+        entry = mem0_result_to_entry(raw, "test-agent-001")
+        assert entry.created_at == datetime(2026, 3, 10, 8, 0, 0, tzinfo=UTC)
+
+    def test_missing_created_at_falls_back_to_expires_at(self) -> None:
+        """When created_at and updated_at are missing, falls back to expires_at."""
+        raw = {
+            "id": "no-created",
+            "memory": "content",
+            "metadata": {"_synthorg_expires_at": "2026-04-01T00:00:00+00:00"},
+        }
+        entry = mem0_result_to_entry(raw, "test-agent-001")
+        assert entry.created_at == datetime(2026, 4, 1, 0, 0, 0, tzinfo=UTC)
 
     def test_no_metadata(self) -> None:
         raw = {

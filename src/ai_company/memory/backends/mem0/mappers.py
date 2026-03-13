@@ -190,7 +190,18 @@ def _normalize_tags(
             reason="unexpected tags type, ignoring",
         )
         raw_tags = ()
-    return tuple(NotBlankStr(str(t)) for t in raw_tags if t and str(t).strip())
+    valid: list[NotBlankStr] = []
+    for t in raw_tags:
+        if t and str(t).strip():
+            valid.append(NotBlankStr(str(t)))
+        else:
+            logger.debug(
+                MEMORY_MODEL_INVALID,
+                field="tags",
+                raw_value=t,
+                reason="blank or falsy tag dropped",
+            )
+    return tuple(valid)
 
 
 def parse_mem0_metadata(
@@ -205,13 +216,15 @@ def parse_mem0_metadata(
         Tuple of (category, metadata, expires_at).
     """
     if not raw_metadata or not isinstance(raw_metadata, dict):
-        log_fn = logger.warning if raw_metadata is not None else logger.debug
-        log_fn(
-            MEMORY_MODEL_INVALID,
-            field="metadata",
-            raw_value=type(raw_metadata).__name__ if raw_metadata else None,
-            reason="missing or non-dict metadata, using defaults",
-        )
+        log_kwargs = {
+            "field": "metadata",
+            "raw_value": type(raw_metadata).__name__ if raw_metadata else None,
+            "reason": "missing or non-dict metadata, using defaults",
+        }
+        if raw_metadata is not None:
+            logger.warning(MEMORY_MODEL_INVALID, **log_kwargs)
+        else:
+            logger.debug(MEMORY_MODEL_INVALID, **log_kwargs)
         return (
             MemoryCategory.WORKING,
             MemoryMetadata(),
@@ -412,9 +425,9 @@ def apply_post_filters(
             continue
         if query.tags and not all(tag in entry.metadata.tags for tag in query.tags):
             continue
-        if query.since and entry.created_at < query.since:
+        if query.since is not None and entry.created_at < query.since:
             continue
-        if query.until and entry.created_at >= query.until:
+        if query.until is not None and entry.created_at >= query.until:
             continue
         if (
             query.min_relevance > 0.0

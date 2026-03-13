@@ -7,8 +7,6 @@ dispatches to concrete backend implementations based on
 
 from typing import TYPE_CHECKING
 
-from pydantic import ValidationError
-
 from ai_company.memory.config import CompanyMemoryConfig  # noqa: TC001
 
 if TYPE_CHECKING:
@@ -79,13 +77,14 @@ def _create_mem0_backend(
             config,
             embedder=embedder,
         )
-    except (ValueError, ValidationError) as exc:
+    except Exception as exc:
         msg = f"Invalid Mem0 configuration: {exc}"
         logger.warning(
             MEMORY_BACKEND_CONFIG_INVALID,
             backend="mem0",
             reason="config_build_failed",
             error=msg,
+            error_type=type(exc).__name__,
         )
         raise MemoryConfigError(msg) from exc
     try:
@@ -93,13 +92,14 @@ def _create_mem0_backend(
             mem0_config=mem0_config,
             max_memories_per_agent=config.options.max_memories_per_agent,
         )
-    except (ValueError, ValidationError) as exc:
+    except Exception as exc:
         msg = f"Failed to create Mem0 backend: {exc}"
         logger.warning(
             MEMORY_BACKEND_CONFIG_INVALID,
             backend="mem0",
             reason="backend_init_failed",
             error=msg,
+            error_type=type(exc).__name__,
         )
         raise MemoryConfigError(msg) from exc
     logger.info(
