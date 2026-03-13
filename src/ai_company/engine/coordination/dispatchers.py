@@ -138,6 +138,12 @@ def _validate_routing_against_decomposition(
                 f"Routed subtask {decision.subtask_id!r} has no "
                 "corresponding created task in decomposition"
             )
+            logger.warning(
+                COORDINATION_PHASE_FAILED,
+                phase="validate_routing",
+                subtask_id=decision.subtask_id,
+                error=msg,
+            )
             raise CoordinationError(msg)
 
 

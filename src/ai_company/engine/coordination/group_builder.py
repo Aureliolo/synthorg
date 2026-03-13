@@ -117,6 +117,12 @@ def build_execution_waves(
                     f"Subtask {subtask_id!r} has a routing decision "
                     "but no corresponding created task in decomposition"
                 )
+                logger.warning(
+                    COORDINATION_WAVE_BUILT,
+                    wave_index=wave_idx,
+                    subtask_id=subtask_id,
+                    error=msg,
+                )
                 raise CoordinationError(msg)
             candidate = decision.selected_candidate
 

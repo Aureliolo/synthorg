@@ -307,9 +307,28 @@ class MultiAgentCoordinator:
         self,
         routing_result: RoutingResult,
     ) -> CoordinationTopology:
-        """Resolve the coordination topology from routing decisions."""
+        """Resolve the coordination topology from routing decisions.
+
+        Validates that all routing decisions agree on one topology.
+        """
         if routing_result.decisions:
             topology = routing_result.decisions[0].topology
+            mixed = {d.topology for d in routing_result.decisions} - {topology}
+            if mixed:
+                extra = ", ".join(t.value for t in sorted(mixed, key=lambda t: t.value))
+                msg = (
+                    f"Inconsistent topologies in routing decisions: "
+                    f"expected {topology.value!r}, also found {extra}"
+                )
+                logger.warning(
+                    COORDINATION_PHASE_FAILED,
+                    phase="resolve_topology",
+                    error=msg,
+                )
+                raise CoordinationPhaseError(
+                    msg,
+                    phase="resolve_topology",
+                )
         else:
             topology = CoordinationTopology.SAS
 
