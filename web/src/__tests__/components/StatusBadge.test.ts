@@ -23,4 +23,31 @@ describe('StatusBadge', () => {
     })
     expect(wrapper.text()).toContain('High')
   })
+
+  it('applies correct color classes for known status', () => {
+    const wrapper = mount(StatusBadge, {
+      props: { value: 'completed' },
+    })
+    const tag = wrapper.find('.p-tag')
+    expect(tag.classes()).toContain('bg-green-600')
+    expect(tag.classes()).toContain('text-green-100')
+  })
+
+  it('applies correct color classes for priority', () => {
+    const wrapper = mount(StatusBadge, {
+      props: { value: 'high', type: 'priority' },
+    })
+    const tag = wrapper.find('.p-tag')
+    expect(tag.classes()).toContain('bg-orange-600')
+    expect(tag.classes()).toContain('text-orange-100')
+  })
+
+  it('falls back to slate for unknown value', () => {
+    const wrapper = mount(StatusBadge, {
+      props: { value: 'unknown_status' },
+    })
+    const tag = wrapper.find('.p-tag')
+    expect(tag.classes()).toContain('bg-slate-600')
+    expect(tag.classes()).toContain('text-slate-200')
+  })
 })

@@ -47,7 +47,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
 
     currentToken = token
     intentionalClose = false
-    // TODO: Replace with one-time WS ticket endpoint for production security.
+    // TODO(#343): Replace with one-time WS ticket endpoint for production security.
     // Currently passes JWT as query param which is logged in server/proxy/browser.
     const url = `${getWsUrl()}?token=${encodeURIComponent(token)}`
     socket = new WebSocket(url)
@@ -96,7 +96,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
         try {
           dispatchEvent(msg as unknown as WsEvent)
         } catch (handlerErr) {
-          console.error('WebSocket event handler error:', handlerErr, 'Event type:', sanitizeLogValue(msg.event_type, 100))
+          console.error('WebSocket event handler error:', sanitizeLogValue(handlerErr), 'Event type:', sanitizeLogValue(msg.event_type, 100))
         }
       }
     }
@@ -147,13 +147,14 @@ export const useWebSocketStore = defineStore('websocket', () => {
     subscribedChannels.value = []
     pendingSubscriptions = []
     activeSubscriptions.length = 0
+    channelHandlers.clear()
   }
 
   function subscribe(channels: WsChannel[], filters?: Record<string, string>) {
     // Track as active subscription for auto-re-subscribe on reconnect
     const key = subscriptionKey(channels, filters)
     if (!activeSubscriptions.some((s) => subscriptionKey(s.channels, s.filters) === key)) {
-      activeSubscriptions.push({ channels, filters })
+      activeSubscriptions.push({ channels: [...channels], filters: filters ? { ...filters } : undefined })
     }
 
     if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -174,7 +175,9 @@ export const useWebSocketStore = defineStore('websocket', () => {
   }
 
   function unsubscribe(channels: WsChannel[]) {
-    // Remove from tracked subscriptions so reconnect won't re-subscribe
+    // Remove from tracked subscriptions so reconnect won't re-subscribe.
+    // Uses every() — only removes subscriptions whose channels are fully
+    // covered by the unsubscribe set. Partial overlap is intentionally kept.
     const channelSet = new Set(channels)
     for (let i = activeSubscriptions.length - 1; i >= 0; i--) {
       if (activeSubscriptions[i].channels.every((c) => channelSet.has(c))) {

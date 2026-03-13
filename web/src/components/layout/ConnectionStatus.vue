@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { getHealth } from '@/api/endpoints/health'
 import { useWebSocketStore } from '@/stores/websocket'
+import { usePolling } from '@/composables/usePolling'
 import { HEALTH_POLL_INTERVAL } from '@/utils/constants'
 import type { HealthStatus } from '@/api/types'
 
 const wsStore = useWebSocketStore()
 const health = ref<HealthStatus | null>(null)
 const healthError = ref(false)
-let pollTimer: ReturnType<typeof setInterval> | null = null
 
 async function checkHealth() {
   try {
@@ -20,14 +20,8 @@ async function checkHealth() {
   }
 }
 
-onMounted(() => {
-  checkHealth()
-  pollTimer = setInterval(checkHealth, HEALTH_POLL_INTERVAL)
-})
-
-onUnmounted(() => {
-  if (pollTimer) clearInterval(pollTimer)
-})
+const { start } = usePolling(checkHealth, HEALTH_POLL_INTERVAL)
+onMounted(start)
 </script>
 
 <template>

@@ -1,10 +1,15 @@
 import { ref, onUnmounted } from 'vue'
 
+const MIN_POLL_INTERVAL = 100
+
 /**
  * Poll a function at a fixed interval with cleanup on unmount.
  * Uses setTimeout-based scheduling to prevent overlapping async calls.
  */
 export function usePolling(fn: () => Promise<void>, intervalMs: number) {
+  if (!Number.isFinite(intervalMs) || intervalMs < MIN_POLL_INTERVAL) {
+    throw new Error(`usePolling: intervalMs must be a finite number >= ${MIN_POLL_INTERVAL}, got ${intervalMs}`)
+  }
   const active = ref(false)
   let timer: ReturnType<typeof setTimeout> | null = null
 

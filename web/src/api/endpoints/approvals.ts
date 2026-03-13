@@ -1,19 +1,21 @@
 import { apiClient, unwrap, unwrapPaginated } from '../client'
 import type {
+  ApiResponse,
   ApprovalFilters,
   ApprovalItem,
   ApproveRequest,
   CreateApprovalRequest,
+  PaginatedResponse,
   RejectRequest,
 } from '../types'
 
 export async function listApprovals(filters?: ApprovalFilters) {
-  const response = await apiClient.get('/approvals', { params: filters })
+  const response = await apiClient.get<PaginatedResponse<ApprovalItem>>('/approvals', { params: filters })
   return unwrapPaginated<ApprovalItem>(response)
 }
 
 export async function getApproval(id: string): Promise<ApprovalItem> {
-  const response = await apiClient.get(`/approvals/${encodeURIComponent(id)}`)
+  const response = await apiClient.get<ApiResponse<ApprovalItem>>(`/approvals/${encodeURIComponent(id)}`)
   return unwrap(response)
 }
 

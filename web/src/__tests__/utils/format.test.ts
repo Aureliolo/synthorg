@@ -39,9 +39,12 @@ describe('formatRelativeTime', () => {
     expect(formatRelativeTime(recent)).toBe('just now')
   })
 
-  it('returns "just now" for future dates', () => {
+  it('returns formatted date for future timestamps', () => {
     const future = new Date(Date.now() + 60_000).toISOString()
-    expect(formatRelativeTime(future)).toBe('just now')
+    // Future dates fall through to formatDate instead of 'just now'
+    const result = formatRelativeTime(future)
+    expect(result).not.toBe('just now')
+    expect(result).not.toBe('—')
   })
 
   it('returns dash for invalid date string', () => {
@@ -86,8 +89,16 @@ describe('formatUptime', () => {
     expect(formatUptime(3720)).toBe('1h 2m')
   })
 
+  it('formats round hours without trailing 0m', () => {
+    expect(formatUptime(3600)).toBe('1h')
+  })
+
   it('formats days hours and minutes', () => {
     expect(formatUptime(90060)).toBe('1d 1h 1m')
+  })
+
+  it('formats zero seconds as 0m', () => {
+    expect(formatUptime(0)).toBe('0m')
   })
 })
 

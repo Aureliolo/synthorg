@@ -1,14 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { defineComponent, h } from 'vue'
 import { authGuard } from './guards'
-
-// Minimal placeholder — page views added in feat/web-dashboard-pages
-const PlaceholderHome = defineComponent({
-  name: 'PlaceholderHome',
-  render() {
-    return h('div', { class: 'flex items-center justify-center h-full text-slate-400' }, 'Dashboard loading…')
-  },
-})
+import PlaceholderHome from '@/views/PlaceholderHome.vue'
 
 const router = createRouter({
   history: createWebHistory(),

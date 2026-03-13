@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
@@ -17,7 +17,12 @@ const error = ref<string | null>(null)
 const attempts = ref(0)
 const lockedUntil = ref<number | null>(null)
 
-const locked = computed(() => !!(lockedUntil.value && Date.now() < lockedUntil.value))
+// Reactive clock so `locked` re-evaluates when lockout expires
+const now = ref(Date.now())
+const clockTimer = setInterval(() => { now.value = Date.now() }, 1000)
+onUnmounted(() => clearInterval(clockTimer))
+
+const locked = computed(() => !!(lockedUntil.value && now.value < lockedUntil.value))
 
 function checkAndClearLockout(): boolean {
   if (lockedUntil.value && Date.now() >= lockedUntil.value) {

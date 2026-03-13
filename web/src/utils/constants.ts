@@ -64,3 +64,6 @@ export const NAV_ITEMS = [
   { label: 'Artifacts', icon: 'pi pi-file', to: '/artifacts' },
   { label: 'Settings', icon: 'pi pi-cog', to: '/settings' },
 ] as const
+
+/** Type of a single navigation item derived from NAV_ITEMS. */
+export type NavItem = (typeof NAV_ITEMS)[number]

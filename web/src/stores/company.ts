@@ -13,28 +13,46 @@ export const useCompanyStore = defineStore('company', () => {
   const configError = ref<string | null>(null)
   const departmentsError = ref<string | null>(null)
 
+  let configGen = 0
+  let departmentsGen = 0
+
   async function fetchConfig() {
+    const gen = ++configGen
     loading.value = true
     configError.value = null
     try {
-      config.value = await companyApi.getCompanyConfig()
+      const result = await companyApi.getCompanyConfig()
+      if (gen === configGen) {
+        config.value = result
+      }
     } catch (err) {
-      configError.value = getErrorMessage(err)
+      if (gen === configGen) {
+        configError.value = getErrorMessage(err)
+      }
     } finally {
-      loading.value = false
+      if (gen === configGen) {
+        loading.value = false
+      }
     }
   }
 
   async function fetchDepartments() {
+    const gen = ++departmentsGen
     departmentsLoading.value = true
     departmentsError.value = null
     try {
       const result = await companyApi.listDepartments({ limit: MAX_PAGE_SIZE })
-      departments.value = result.data
+      if (gen === departmentsGen) {
+        departments.value = result.data
+      }
     } catch (err) {
-      departmentsError.value = getErrorMessage(err)
+      if (gen === departmentsGen) {
+        departmentsError.value = getErrorMessage(err)
+      }
     } finally {
-      departmentsLoading.value = false
+      if (gen === departmentsGen) {
+        departmentsLoading.value = false
+      }
     }
   }
 

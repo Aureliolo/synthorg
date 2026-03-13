@@ -35,7 +35,7 @@ export const useTaskStore = defineStore('tasks', () => {
   /** Check whether any non-trivial filters are currently active. */
   function hasActiveFilters(): boolean {
     return Object.values(currentFilters.value).some(
-      (v) => v !== undefined && v !== null,
+      (v) => v !== undefined && v !== null && !(typeof v === 'string' && v.trim() === ''),
     )
   }
 
@@ -58,8 +58,11 @@ export const useTaskStore = defineStore('tasks', () => {
     error.value = null
     try {
       const task = await tasksApi.createTask(data)
-      tasks.value = [...tasks.value, task]
-      total.value++
+      // Guard against race with WS task.created event
+      if (!tasks.value.some((t) => t.id === task.id)) {
+        tasks.value = [...tasks.value, task]
+        total.value++
+      }
       return task
     } catch (err) {
       error.value = getErrorMessage(err)

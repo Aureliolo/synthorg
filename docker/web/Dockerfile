@@ -10,9 +10,11 @@ FROM node:22-alpine@sha256:3a4802e64ab5181c7870d6ddd8c824c2efc42873baae37d197145
 RUN addgroup -S build && adduser -S build -G build
 WORKDIR /app
 COPY --chown=build:build web/package.json web/package-lock.json ./
+# Run npm ci as build user so node_modules (including .vite cache) is owned by
+# the same user that runs the build — avoids permission errors in Vite.
+USER build
 RUN npm ci
 COPY --chown=build:build web/ ./
-USER build
 RUN npm run build
 
 # Stage 2: Serve with nginx

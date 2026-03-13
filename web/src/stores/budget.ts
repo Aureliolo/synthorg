@@ -6,6 +6,13 @@ import type { BudgetConfig, CostRecord, AgentSpending, WsEvent } from '@/api/typ
 
 const MAX_WS_RECORDS = 500
 
+/** Runtime type guard for CostRecord-shaped payloads. */
+function isCostRecord(payload: unknown): payload is CostRecord {
+  if (typeof payload !== 'object' || payload === null) return false
+  const p = payload as Record<string, unknown>
+  return typeof p.agent_id === 'string' && typeof p.cost_usd === 'number'
+}
+
 export const useBudgetStore = defineStore('budget', () => {
   const config = ref<BudgetConfig | null>(null)
   const records = ref<CostRecord[]>([])
@@ -40,20 +47,22 @@ export const useBudgetStore = defineStore('budget', () => {
   }
 
   async function fetchAgentSpending(agentId: string): Promise<AgentSpending | null> {
+    loading.value = true
     error.value = null
     try {
       return await budgetApi.getAgentSpending(agentId)
     } catch (err) {
       error.value = getErrorMessage(err)
       return null
+    } finally {
+      loading.value = false
     }
   }
 
   function handleWsEvent(event: WsEvent) {
     if (event.event_type === 'budget.record_added') {
-      const record = event.payload as unknown as CostRecord
-      if (record.agent_id) {
-        records.value = [record, ...records.value].slice(0, MAX_WS_RECORDS)
+      if (isCostRecord(event.payload)) {
+        records.value = [event.payload, ...records.value].slice(0, MAX_WS_RECORDS)
         totalRecords.value++
       }
     }

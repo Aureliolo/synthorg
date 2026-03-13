@@ -1,18 +1,18 @@
 import { apiClient, unwrap, unwrapPaginated } from '../client'
-import type { AgentConfig, AutonomyLevelRequest, AutonomyLevelResponse, PaginationParams } from '../types'
+import type { AgentConfig, ApiResponse, AutonomyLevelRequest, AutonomyLevelResponse, PaginatedResponse, PaginationParams } from '../types'
 
 export async function listAgents(params?: PaginationParams) {
-  const response = await apiClient.get('/agents', { params })
+  const response = await apiClient.get<PaginatedResponse<AgentConfig>>('/agents', { params })
   return unwrapPaginated<AgentConfig>(response)
 }
 
 export async function getAgent(name: string): Promise<AgentConfig> {
-  const response = await apiClient.get(`/agents/${encodeURIComponent(name)}`)
+  const response = await apiClient.get<ApiResponse<AgentConfig>>(`/agents/${encodeURIComponent(name)}`)
   return unwrap(response)
 }
 
 export async function getAutonomy(agentId: string): Promise<AutonomyLevelResponse> {
-  const response = await apiClient.get(`/agents/${encodeURIComponent(agentId)}/autonomy`)
+  const response = await apiClient.get<ApiResponse<AutonomyLevelResponse>>(`/agents/${encodeURIComponent(agentId)}/autonomy`)
   return unwrap(response)
 }
 

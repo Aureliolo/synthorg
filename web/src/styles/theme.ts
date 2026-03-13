@@ -32,8 +32,12 @@ export const colors = {
   success: { 500: '#22c55e', 600: '#16a34a' },
 } as const
 
+export type Status = 'created' | 'assigned' | 'in_progress' | 'in_review' | 'completed' | 'blocked' | 'failed' | 'interrupted' | 'cancelled' | 'pending' | 'approved' | 'rejected' | 'expired'
+export type Priority = 'critical' | 'high' | 'medium' | 'low'
+export type RiskLevel = 'critical' | 'high' | 'medium' | 'low'
+
 /** Status color mapping for task/approval badges. */
-export const statusColors: Record<string, string> = {
+export const statusColors: Record<Status, string> = {
   created: 'bg-slate-600 text-slate-200',
   assigned: 'bg-blue-600 text-blue-100',
   in_progress: 'bg-amber-600 text-amber-100',
@@ -50,7 +54,7 @@ export const statusColors: Record<string, string> = {
 }
 
 /** Priority color mapping. */
-export const priorityColors: Record<string, string> = {
+export const priorityColors: Record<Priority, string> = {
   critical: 'bg-red-600 text-red-100',
   high: 'bg-orange-600 text-orange-100',
   medium: 'bg-yellow-600 text-yellow-100',
@@ -58,7 +62,7 @@ export const priorityColors: Record<string, string> = {
 }
 
 /** Risk level color mapping. */
-export const riskColors: Record<string, string> = {
+export const riskColors: Record<RiskLevel, string> = {
   critical: 'bg-red-600 text-red-100',
   high: 'bg-orange-600 text-orange-100',
   medium: 'bg-yellow-600 text-yellow-100',

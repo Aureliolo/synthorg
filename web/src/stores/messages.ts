@@ -54,7 +54,8 @@ export const useMessageStore = defineStore('messages', () => {
         // Only append and count if message matches active channel (or no filter is set)
         if (!activeChannel.value || message.channel === activeChannel.value) {
           messages.value = [...messages.value, message].slice(-MAX_WS_MESSAGES)
-          total.value++
+          // Don't increment total — it tracks the server-side paginated count
+          // and is only set from the REST API response in fetchMessages()
         }
       }
     }

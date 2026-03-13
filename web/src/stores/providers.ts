@@ -4,10 +4,13 @@ import * as providersApi from '@/api/endpoints/providers'
 import { getErrorMessage } from '@/utils/errors'
 import type { ProviderConfig } from '@/api/types'
 
+const UNSAFE_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
+
 /** Strip any accidentally-serialized secrets before storing in reactive state. */
 function sanitizeProviders(raw: Record<string, ProviderConfig>): Record<string, ProviderConfig> {
-  const result: Record<string, ProviderConfig> = {}
+  const result = Object.create(null) as Record<string, ProviderConfig>
   for (const [key, provider] of Object.entries(raw)) {
+    if (UNSAFE_KEYS.has(key)) continue
     // Destructure to omit api_key if the backend accidentally includes it
     const { api_key: _discarded, ...safe } = provider as ProviderConfig & { api_key?: unknown }
     result[key] = safe

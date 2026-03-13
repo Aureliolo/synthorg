@@ -1,7 +1,9 @@
 import { apiClient, unwrap, unwrapPaginated } from '../client'
 import type {
+  ApiResponse,
   CancelTaskRequest,
   CreateTaskRequest,
+  PaginatedResponse,
   Task,
   TaskFilters,
   TransitionTaskRequest,
@@ -9,12 +11,12 @@ import type {
 } from '../types'
 
 export async function listTasks(filters?: TaskFilters) {
-  const response = await apiClient.get('/tasks', { params: filters })
+  const response = await apiClient.get<PaginatedResponse<Task>>('/tasks', { params: filters })
   return unwrapPaginated<Task>(response)
 }
 
 export async function getTask(taskId: string): Promise<Task> {
-  const response = await apiClient.get(`/tasks/${encodeURIComponent(taskId)}`)
+  const response = await apiClient.get<ApiResponse<Task>>(`/tasks/${encodeURIComponent(taskId)}`)
   return unwrap(response)
 }
 

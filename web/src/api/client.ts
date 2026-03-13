@@ -5,7 +5,9 @@
 import axios, { type AxiosError, type AxiosResponse } from 'axios'
 import type { ApiResponse, PaginatedResponse } from './types'
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
+// Normalize: strip trailing slashes and any existing /api/v1 suffix
+const RAW_BASE = (import.meta.env.VITE_API_BASE_URL as string) || ''
+const BASE_URL = RAW_BASE.replace(/\/+$/, '').replace(/\/api\/v1\/?$/, '')
 
 export const apiClient = axios.create({
   baseURL: `${BASE_URL}/api/v1`,
@@ -36,6 +38,8 @@ apiClient.interceptors.response.use(
         // Dynamic import to avoid circular dependency with router -> stores -> api
         import('@/router').then(({ router }) => {
           router.push('/login')
+        }).catch(() => {
+          window.location.href = '/login'
         })
       }
     }

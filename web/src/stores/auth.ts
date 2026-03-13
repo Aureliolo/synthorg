@@ -75,22 +75,25 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function setup(username: string, password: string) {
+  /** Common post-auth flow: set token, fetch user profile, handle failures. */
+  async function performAuthFlow(
+    authFn: () => Promise<{ token: string; expires_in: number }>,
+    flowName: string,
+  ) {
     loading.value = true
     try {
-      const result = await authApi.setup({ username, password })
+      const result = await authFn()
       setToken(result.token, result.expires_in)
-      // Fetch full user info — mirrors login() pattern to avoid stale id/role
       try {
         await fetchUser()
       } catch {
         clearAuth()
-        throw new Error('Setup succeeded but failed to load user profile. Please try again.')
+        throw new Error(`${flowName} succeeded but failed to load user profile. Please try again.`)
       }
       // If fetchUser silently cleared auth (e.g. 401), the flow should not succeed
       if (!user.value) {
         clearAuth()
-        throw new Error('Setup succeeded but failed to load user profile. Please try again.')
+        throw new Error(`${flowName} succeeded but failed to load user profile. Please try again.`)
       }
       return result
     } finally {
@@ -98,27 +101,12 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function setup(username: string, password: string) {
+    return performAuthFlow(() => authApi.setup({ username, password }), 'Setup')
+  }
+
   async function login(username: string, password: string) {
-    loading.value = true
-    try {
-      const result = await authApi.login({ username, password })
-      setToken(result.token, result.expires_in)
-      // Fetch full user info — if this fails, clear auth to avoid half-authenticated state
-      try {
-        await fetchUser()
-      } catch {
-        clearAuth()
-        throw new Error('Login succeeded but failed to load user profile. Please try again.')
-      }
-      // If fetchUser silently cleared auth (e.g. 401), the flow should not succeed
-      if (!user.value) {
-        clearAuth()
-        throw new Error('Login succeeded but failed to load user profile. Please try again.')
-      }
-      return result
-    } finally {
-      loading.value = false
-    }
+    return performAuthFlow(() => authApi.login({ username, password }), 'Login')
   }
 
   async function fetchUser() {
@@ -146,6 +134,9 @@ export const useAuthStore = defineStore('auth', () => {
       })
       user.value = result
       return result
+    } catch (err) {
+      // Re-throw with normalized message so callers get a user-friendly error
+      throw err
     } finally {
       loading.value = false
     }

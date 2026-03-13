@@ -7,6 +7,9 @@ import { getErrorMessage } from '@/utils/errors'
  * Returns an `execute(applyOptimistic, serverAction)` function where
  * `applyOptimistic` applies the optimistic state and returns a rollback function,
  * and `serverAction` is the actual server request.
+ *
+ * Callers must check `error.value` when the return is `null` — a `null` return
+ * indicates a server error (error.value is set), not a legitimate `null` result.
  */
 export function useOptimisticUpdate() {
   const pending = ref(false)
@@ -16,6 +19,7 @@ export function useOptimisticUpdate() {
     applyOptimistic: () => () => void,
     serverAction: () => Promise<T>,
   ): Promise<T | null> {
+    if (pending.value) return null
     pending.value = true
     error.value = null
     let rollback: (() => void) | null = null
@@ -28,10 +32,10 @@ export function useOptimisticUpdate() {
       try {
         rollback?.()
       } catch (rollbackErr) {
-        console.error('Rollback failed:', rollbackErr)
+        console.error('Rollback failed:', getErrorMessage(rollbackErr))
       }
       error.value = getErrorMessage(err)
-      console.error('Optimistic update failed:', err)
+      console.error('Optimistic update failed:', error.value)
       return null
     } finally {
       pending.value = false

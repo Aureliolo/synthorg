@@ -21,8 +21,13 @@ export default [
   },
   {
     rules: {
-      'vue/multi-word-component-names': 'off',
       'vue/no-v-html': 'warn',
+    },
+  },
+  {
+    files: ['src/App.vue', 'src/components/layout/Sidebar.vue', 'src/components/layout/Topbar.vue'],
+    rules: {
+      'vue/multi-word-component-names': 'off',
     },
   },
   {

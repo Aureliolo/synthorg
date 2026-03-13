@@ -35,4 +35,23 @@ describe('EmptyState', () => {
     const paragraphs = wrapper.findAll('p')
     expect(paragraphs).toHaveLength(0)
   })
+
+  it('renders action slot when provided', () => {
+    const wrapper = mount(EmptyState, {
+      props: { title: 'Empty' },
+      slots: { action: '<button>Create Item</button>' },
+    })
+    const button = wrapper.find('button')
+    expect(button.exists()).toBe(true)
+    expect(button.text()).toBe('Create Item')
+  })
+
+  it('does not render action container when slot is empty', () => {
+    const wrapper = mount(EmptyState, {
+      props: { title: 'Empty' },
+    })
+    // The mt-4 div should not render when no action slot is provided
+    const actionDivs = wrapper.findAll('.mt-4')
+    expect(actionDivs).toHaveLength(0)
+  })
 })

@@ -3,10 +3,14 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useBudgetStore } from '@/stores/budget'
 import type { CostRecord, WsEvent } from '@/api/types'
 
+const mockGetBudgetConfig = vi.fn()
+const mockListCostRecords = vi.fn()
+const mockGetAgentSpending = vi.fn()
+
 vi.mock('@/api/endpoints/budget', () => ({
-  getBudgetConfig: vi.fn(),
-  listCostRecords: vi.fn(),
-  getAgentSpending: vi.fn(),
+  getBudgetConfig: (...args: unknown[]) => mockGetBudgetConfig(...args),
+  listCostRecords: (...args: unknown[]) => mockListCostRecords(...args),
+  getAgentSpending: (...args: unknown[]) => mockGetAgentSpending(...args),
 }))
 
 const mockRecord: CostRecord = {
@@ -24,6 +28,7 @@ const mockRecord: CostRecord = {
 describe('useBudgetStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    vi.clearAllMocks()
   })
 
   it('initializes with empty state', () => {
@@ -31,19 +36,108 @@ describe('useBudgetStore', () => {
     expect(store.config).toBeNull()
     expect(store.records).toEqual([])
     expect(store.totalRecords).toBe(0)
+    expect(store.loading).toBe(false)
+    expect(store.error).toBeNull()
   })
 
-  it('handles budget.record_added WS event', () => {
-    const store = useBudgetStore()
-    const event: WsEvent = {
-      event_type: 'budget.record_added',
-      channel: 'budget',
-      timestamp: '2026-03-12T10:00:00Z',
-      payload: { ...mockRecord },
-    }
-    store.handleWsEvent(event)
-    expect(store.records).toHaveLength(1)
-    expect(store.records[0].cost_usd).toBe(0.005)
-    expect(store.totalRecords).toBe(1)
+  describe('fetchConfig', () => {
+    it('sets config on success', async () => {
+      const mockConfig = { daily_limit: 100, total_budget: 1000 }
+      mockGetBudgetConfig.mockResolvedValue(mockConfig)
+
+      const store = useBudgetStore()
+      await store.fetchConfig()
+
+      expect(store.config).toEqual(mockConfig)
+      expect(store.loading).toBe(false)
+      expect(store.error).toBeNull()
+    })
+
+    it('sets error on failure', async () => {
+      mockGetBudgetConfig.mockRejectedValue(new Error('Unauthorized'))
+
+      const store = useBudgetStore()
+      await store.fetchConfig()
+
+      expect(store.config).toBeNull()
+      expect(store.error).toBe('Unauthorized')
+      expect(store.loading).toBe(false)
+    })
+  })
+
+  describe('fetchRecords', () => {
+    it('sets records on success', async () => {
+      mockListCostRecords.mockResolvedValue({ data: [mockRecord], total: 1 })
+
+      const store = useBudgetStore()
+      await store.fetchRecords()
+
+      expect(store.records).toEqual([mockRecord])
+      expect(store.totalRecords).toBe(1)
+      expect(store.loading).toBe(false)
+    })
+
+    it('sets error on failure', async () => {
+      mockListCostRecords.mockRejectedValue(new Error('Server error'))
+
+      const store = useBudgetStore()
+      await store.fetchRecords()
+
+      expect(store.records).toEqual([])
+      expect(store.error).toBe('Server error')
+    })
+  })
+
+  describe('fetchAgentSpending', () => {
+    it('returns spending on success', async () => {
+      const mockSpending = { agent_id: 'alice', total_cost: 1.5 }
+      mockGetAgentSpending.mockResolvedValue(mockSpending)
+
+      const store = useBudgetStore()
+      const result = await store.fetchAgentSpending('alice')
+
+      expect(result).toEqual(mockSpending)
+      expect(store.loading).toBe(false)
+      expect(store.error).toBeNull()
+    })
+
+    it('returns null and sets error on failure', async () => {
+      mockGetAgentSpending.mockRejectedValue(new Error('Not found'))
+
+      const store = useBudgetStore()
+      const result = await store.fetchAgentSpending('alice')
+
+      expect(result).toBeNull()
+      expect(store.error).toBe('Not found')
+    })
+  })
+
+  describe('WS events', () => {
+    it('handles budget.record_added WS event', () => {
+      const store = useBudgetStore()
+      const event: WsEvent = {
+        event_type: 'budget.record_added',
+        channel: 'budget',
+        timestamp: '2026-03-12T10:00:00Z',
+        payload: { ...mockRecord },
+      }
+      store.handleWsEvent(event)
+      expect(store.records).toHaveLength(1)
+      expect(store.records[0].cost_usd).toBe(0.005)
+      expect(store.totalRecords).toBe(1)
+    })
+
+    it('ignores WS event with invalid payload', () => {
+      const store = useBudgetStore()
+      const event: WsEvent = {
+        event_type: 'budget.record_added',
+        channel: 'budget',
+        timestamp: '2026-03-12T10:00:00Z',
+        payload: { not_a_record: true },
+      }
+      store.handleWsEvent(event)
+      expect(store.records).toHaveLength(0)
+      expect(store.totalRecords).toBe(0)
+    })
   })
 })

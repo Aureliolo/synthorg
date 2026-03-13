@@ -37,7 +37,8 @@ describe('useMessageStore', () => {
     }
     store.handleWsEvent(event)
     expect(store.messages).toHaveLength(1)
-    expect(store.total).toBe(1)
+    // total is only updated from REST API, not WS events
+    expect(store.total).toBe(0)
   })
 
   it('does not increment total for messages filtered by activeChannel', () => {

@@ -44,6 +44,7 @@ function navigate(to: string) {
       <button
         v-for="item in NAV_ITEMS"
         :key="item.to"
+        type="button"
         :class="[
           'flex w-full items-center gap-3 px-4 py-2.5 text-sm transition-colors',
           isActive(item.to)
@@ -61,6 +62,7 @@ function navigate(to: string) {
 
     <!-- Collapse toggle -->
     <button
+      type="button"
       class="flex items-center justify-center border-t border-slate-800 py-3 text-slate-400 hover:text-slate-200"
       :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
       @click="$emit('toggle')"

@@ -12,7 +12,7 @@ export function useAuth() {
   const mustChangePassword = computed(() => store.mustChangePassword)
 
   const canWrite = computed(() => {
-    const role = store.userRole
+    const role = userRole.value
     return role !== null && (WRITE_ROLES as readonly string[]).includes(role)
   })
 

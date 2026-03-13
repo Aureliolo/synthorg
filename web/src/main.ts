@@ -32,6 +32,7 @@ app.config.errorHandler = (err, _instance, info) => {
 
 // Catch unhandled promise rejections
 window.addEventListener('unhandledrejection', (event) => {
+  event.preventDefault()
   console.error('Unhandled promise rejection:', sanitizeForLog(event.reason))
 })
 

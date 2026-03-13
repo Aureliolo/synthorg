@@ -71,7 +71,8 @@ describe('useOptimisticUpdate', () => {
     )
 
     expect(error.value).toBe('Server error')
-    expect(consoleSpy).toHaveBeenCalledWith('Rollback failed:', expect.any(Error))
+    // Rollback errors are logged via getErrorMessage (string), not raw Error
+    expect(consoleSpy).toHaveBeenCalledWith('Rollback failed:', 'Rollback boom')
     consoleSpy.mockRestore()
   })
 

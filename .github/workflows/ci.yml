@@ -100,7 +100,7 @@ jobs:
           path: junit.xml
 
   dashboard-lint:
-    name: Dashboard Lint & Type Check
+    name: Dashboard Lint
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -116,6 +116,23 @@ jobs:
       - run: npm ci
         working-directory: web
       - run: npm run lint
+        working-directory: web
+
+  dashboard-type-check:
+    name: Dashboard Type Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
         working-directory: web
       - run: npm run type-check
         working-directory: web
@@ -182,7 +199,7 @@ jobs:
   ci-pass:
     name: CI Pass
     if: always()
-    needs: [lint, type-check, test, dashboard-lint, dashboard-test, dashboard-build, dashboard-audit]
+    needs: [lint, type-check, test, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit]
     runs-on: ubuntu-latest
     permissions: {}
     steps:
@@ -192,6 +209,7 @@ jobs:
           TYPE_CHECK_RESULT: ${{ needs.type-check.result }}
           TEST_RESULT: ${{ needs.test.result }}
           DASHBOARD_LINT_RESULT: ${{ needs.dashboard-lint.result }}
+          DASHBOARD_TYPE_CHECK_RESULT: ${{ needs.dashboard-type-check.result }}
           DASHBOARD_TEST_RESULT: ${{ needs.dashboard-test.result }}
           DASHBOARD_BUILD_RESULT: ${{ needs.dashboard-build.result }}
           DASHBOARD_AUDIT_RESULT: ${{ needs.dashboard-audit.result }}
@@ -200,10 +218,11 @@ jobs:
                 "$TYPE_CHECK_RESULT" != "success" || \
                 "$TEST_RESULT" != "success" || \
                 "$DASHBOARD_LINT_RESULT" != "success" || \
+                "$DASHBOARD_TYPE_CHECK_RESULT" != "success" || \
                 "$DASHBOARD_TEST_RESULT" != "success" || \
                 "$DASHBOARD_BUILD_RESULT" != "success" || \
                 "$DASHBOARD_AUDIT_RESULT" != "success" ]]; then
-            echo "CI failed: lint=$LINT_RESULT, type-check=$TYPE_CHECK_RESULT, test=$TEST_RESULT, dashboard-lint=$DASHBOARD_LINT_RESULT, dashboard-test=$DASHBOARD_TEST_RESULT, dashboard-build=$DASHBOARD_BUILD_RESULT, dashboard-audit=$DASHBOARD_AUDIT_RESULT"
+            echo "CI failed: lint=$LINT_RESULT, type-check=$TYPE_CHECK_RESULT, test=$TEST_RESULT, dashboard-lint=$DASHBOARD_LINT_RESULT, dashboard-type-check=$DASHBOARD_TYPE_CHECK_RESULT, dashboard-test=$DASHBOARD_TEST_RESULT, dashboard-build=$DASHBOARD_BUILD_RESULT, dashboard-audit=$DASHBOARD_AUDIT_RESULT"
             exit 1
           fi
           echo "All CI checks passed"

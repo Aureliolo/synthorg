@@ -1,12 +1,12 @@
 /** Error utilities and user-friendly messages. */
 
-import type { AxiosError } from 'axios'
+import axios, { type AxiosError } from 'axios'
 
 /**
  * Check if an error is an Axios error.
  */
 export function isAxiosError(error: unknown): error is AxiosError {
-  return (error as AxiosError)?.isAxiosError === true
+  return axios.isAxiosError(error)
 }
 
 /**

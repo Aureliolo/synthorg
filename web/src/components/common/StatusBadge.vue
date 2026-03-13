@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import Tag from 'primevue/tag'
-import { statusColors, priorityColors, riskColors } from '@/styles/theme'
+import { statusColors, priorityColors, riskColors, type Status, type Priority, type RiskLevel } from '@/styles/theme'
 import { formatLabel } from '@/utils/format'
+
+const FALLBACK = 'bg-slate-600 text-slate-200'
 
 const props = defineProps<{
   value: string
@@ -11,11 +13,11 @@ const props = defineProps<{
 function getColorClass(): string {
   switch (props.type) {
     case 'priority':
-      return priorityColors[props.value] ?? 'bg-slate-600 text-slate-200'
+      return priorityColors[props.value as Priority] ?? FALLBACK
     case 'risk':
-      return riskColors[props.value] ?? 'bg-slate-600 text-slate-200'
+      return riskColors[props.value as RiskLevel] ?? FALLBACK
     default:
-      return statusColors[props.value] ?? 'bg-slate-600 text-slate-200'
+      return statusColors[props.value as Status] ?? FALLBACK
   }
 }
 </script>

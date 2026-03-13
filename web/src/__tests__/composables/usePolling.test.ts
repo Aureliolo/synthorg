@@ -109,4 +109,13 @@ describe('usePolling', () => {
     await vi.advanceTimersByTimeAsync(2000)
     expect(maxConcurrent).toBe(1)
   })
+
+  it('throws on interval below minimum', () => {
+    expect(() => usePolling(vi.fn(), 50)).toThrow('intervalMs must be a finite number >= 100')
+  })
+
+  it('throws on non-finite interval', () => {
+    expect(() => usePolling(vi.fn(), NaN)).toThrow('intervalMs must be a finite number >= 100')
+    expect(() => usePolling(vi.fn(), Infinity)).toThrow('intervalMs must be a finite number >= 100')
+  })
 })

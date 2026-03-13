@@ -4,7 +4,6 @@ import { useTaskStore } from '@/stores/tasks'
 import type { Task, WsEvent } from '@/api/types'
 
 const mockListTasks = vi.fn()
-const mockGetTask = vi.fn()
 const mockCreateTask = vi.fn()
 const mockUpdateTask = vi.fn()
 const mockTransitionTask = vi.fn()
@@ -12,7 +11,6 @@ const mockCancelTask = vi.fn()
 
 vi.mock('@/api/endpoints/tasks', () => ({
   listTasks: (...args: unknown[]) => mockListTasks(...args),
-  getTask: (...args: unknown[]) => mockGetTask(...args),
   createTask: (...args: unknown[]) => mockCreateTask(...args),
   updateTask: (...args: unknown[]) => mockUpdateTask(...args),
   transitionTask: (...args: unknown[]) => mockTransitionTask(...args),
@@ -169,6 +167,21 @@ describe('useTaskStore', () => {
       expect(result).toEqual(transitioned)
       expect(store.tasks[0].status).toBe('assigned')
     })
+
+    it('returns null and sets error on failure', async () => {
+      mockTransitionTask.mockRejectedValue(new Error('Version conflict'))
+
+      const store = useTaskStore()
+      store.tasks = [mockTask]
+      const result = await store.transitionTask('task-1', {
+        target_status: 'assigned',
+        expected_version: 1,
+      })
+
+      expect(result).toBeNull()
+      expect(store.error).toBe('Version conflict')
+      expect(store.tasks[0].status).toBe('created')
+    })
   })
 
   describe('cancelTask', () => {
@@ -182,6 +195,18 @@ describe('useTaskStore', () => {
 
       expect(result).toEqual(cancelled)
       expect(store.tasks[0].status).toBe('cancelled')
+    })
+
+    it('returns null and sets error on failure', async () => {
+      mockCancelTask.mockRejectedValue(new Error('Forbidden'))
+
+      const store = useTaskStore()
+      store.tasks = [mockTask]
+      const result = await store.cancelTask('task-1', { reason: 'done' })
+
+      expect(result).toBeNull()
+      expect(store.error).toBe('Forbidden')
+      expect(store.tasks[0].status).toBe('created')
     })
   })
 
