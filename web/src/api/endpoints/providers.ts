@@ -10,8 +10,10 @@ function stripSecrets(raw: ProviderConfig & { api_key?: unknown }): ProviderConf
 export async function listProviders(): Promise<Record<string, ProviderConfig>> {
   const response = await apiClient.get<ApiResponse<Record<string, ProviderConfig & { api_key?: unknown }>>>('/providers')
   const raw = unwrap<Record<string, ProviderConfig & { api_key?: unknown }>>(response)
-  const result: Record<string, ProviderConfig> = {}
+  const result: Record<string, ProviderConfig> = Object.create(null) as Record<string, ProviderConfig>
   for (const [key, provider] of Object.entries(raw)) {
+    // Skip prototype-polluting keys
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue
     result[key] = stripSecrets(provider)
   }
   return result

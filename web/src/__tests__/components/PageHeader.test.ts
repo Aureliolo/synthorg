@@ -24,4 +24,13 @@ describe('PageHeader', () => {
     const paragraphs = wrapper.findAll('p')
     expect(paragraphs).toHaveLength(0)
   })
+
+  it('renders actions slot', () => {
+    const wrapper = mount(PageHeader, {
+      props: { title: 'Dashboard' },
+      slots: { actions: '<button>Action</button>' },
+    })
+    expect(wrapper.find('button').exists()).toBe(true)
+    expect(wrapper.find('button').text()).toBe('Action')
+  })
 })

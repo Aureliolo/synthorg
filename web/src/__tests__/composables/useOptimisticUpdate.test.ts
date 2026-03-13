@@ -63,17 +63,20 @@ describe('useOptimisticUpdate', () => {
     const { error, execute } = useOptimisticUpdate()
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    await execute(
-      () => () => {
-        throw new Error('Rollback boom')
-      },
-      () => Promise.reject(new Error('Server error')),
-    )
+    try {
+      await execute(
+        () => () => {
+          throw new Error('Rollback boom')
+        },
+        () => Promise.reject(new Error('Server error')),
+      )
 
-    expect(error.value).toBe('Server error')
-    // Rollback errors are logged via getErrorMessage (string), not raw Error
-    expect(consoleSpy).toHaveBeenCalledWith('Rollback failed:', 'Rollback boom')
-    consoleSpy.mockRestore()
+      expect(error.value).toBe('Server error')
+      // Rollback errors are logged via getErrorMessage (string), not raw Error
+      expect(consoleSpy).toHaveBeenCalledWith('Rollback failed:', 'Rollback boom')
+    } finally {
+      consoleSpy.mockRestore()
+    }
   })
 
   it('clears error on next execution', async () => {

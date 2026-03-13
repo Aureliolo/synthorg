@@ -41,9 +41,18 @@ export const useCompanyStore = defineStore('company', () => {
     departmentsLoading.value = true
     departmentsError.value = null
     try {
-      const result = await companyApi.listDepartments({ limit: MAX_PAGE_SIZE })
+      let allDepts: Department[] = []
+      let offset = 0
+      // Paginate until all departments are fetched
+      while (true) {
+        const result = await companyApi.listDepartments({ limit: MAX_PAGE_SIZE, offset })
+        if (gen !== departmentsGen) return // Stale request — abort
+        allDepts = [...allDepts, ...result.data]
+        if (allDepts.length >= result.total) break
+        offset += MAX_PAGE_SIZE
+      }
       if (gen === departmentsGen) {
-        departments.value = result.data
+        departments.value = allDepts
       }
     } catch (err) {
       if (gen === departmentsGen) {

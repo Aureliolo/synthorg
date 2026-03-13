@@ -221,6 +221,7 @@ describe('useApprovalStore', () => {
       }
       store.handleWsEvent(event)
       expect(store.approvals).toHaveLength(1)
+      expect(store.total).toBe(1)
     })
   })
 })

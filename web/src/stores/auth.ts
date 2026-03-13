@@ -123,7 +123,7 @@ export const useAuthStore = defineStore('auth', () => {
       if (isAxiosError(err) && err.response?.status === 401) {
         clearAuth()
       } else {
-        console.error('Failed to fetch user profile:', err)
+        console.error('Failed to fetch user profile:', getErrorMessage(err))
         throw err
       }
     }

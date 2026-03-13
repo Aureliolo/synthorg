@@ -26,6 +26,7 @@ export const useAgentStore = defineStore('agents', () => {
   }
 
   async function fetchAgent(name: string): Promise<AgentConfig | null> {
+    error.value = null
     try {
       return await agentsApi.getAgent(name)
     } catch (err) {
@@ -34,24 +35,31 @@ export const useAgentStore = defineStore('agents', () => {
     }
   }
 
+  /** Runtime check for minimum required AgentConfig fields. */
+  function isValidAgentPayload(p: Record<string, unknown>): boolean {
+    return (
+      typeof p.id === 'string' && p.id !== '' &&
+      typeof p.name === 'string' && p.name !== '' &&
+      typeof p.role === 'string' && p.role !== '' &&
+      typeof p.department === 'string' && p.department !== ''
+    )
+  }
+
   function handleWsEvent(event: WsEvent) {
-    const payload = event.payload as Partial<AgentConfig> & { name?: string }
+    const payload = event.payload as Record<string, unknown> | null
+    if (!payload || typeof payload !== 'object') return
     switch (event.event_type) {
       case 'agent.hired':
         if (
-          typeof payload.name === 'string' &&
-          payload.name &&
+          isValidAgentPayload(payload) &&
           !agents.value.some((a) => a.name === payload.name)
         ) {
-          // Only append if payload has required fields
-          if (payload.id && payload.role && payload.department) {
-            agents.value = [...agents.value, payload as AgentConfig]
-            total.value++
-          }
+          agents.value = [...agents.value, payload as unknown as AgentConfig]
+          total.value++
         }
         break
       case 'agent.fired':
-        if (payload.name) {
+        if (typeof payload.name === 'string' && payload.name) {
           const prevLength = agents.value.length
           agents.value = agents.value.filter((a) => a.name !== payload.name)
           if (agents.value.length < prevLength) {
@@ -60,9 +68,9 @@ export const useAgentStore = defineStore('agents', () => {
         }
         break
       case 'agent.status_changed':
-        if (payload.name) {
+        if (typeof payload.name === 'string' && payload.name) {
           agents.value = agents.value.map((a) =>
-            a.name === payload.name ? { ...a, ...payload } : a,
+            a.name === payload.name ? { ...a, ...(payload as Partial<AgentConfig>) } : a,
           )
         }
         break

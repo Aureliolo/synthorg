@@ -25,9 +25,12 @@ onMounted(start)
 </script>
 
 <template>
-  <div class="flex items-center gap-3 text-xs">
+  <div class="flex items-center gap-3 text-xs" role="status" aria-live="polite">
     <!-- API Status -->
-    <div class="flex items-center gap-1.5">
+    <div
+      class="flex items-center gap-1.5"
+      :aria-label="'API: ' + (healthError ? 'error' : health?.status ?? 'unknown')"
+    >
       <span
         :class="[
           'inline-block h-2 w-2 rounded-full',
@@ -39,17 +42,22 @@ onMounted(start)
                 ? 'bg-yellow-500'
                 : 'bg-gray-500',
         ]"
+        aria-hidden="true"
       />
       <span class="text-slate-400">API</span>
     </div>
 
     <!-- WebSocket Status -->
-    <div class="flex items-center gap-1.5">
+    <div
+      class="flex items-center gap-1.5"
+      :aria-label="'WebSocket: ' + (wsStore.connected ? 'connected' : 'disconnected')"
+    >
       <span
         :class="[
           'inline-block h-2 w-2 rounded-full',
           wsStore.connected ? 'bg-green-500' : 'bg-red-500',
         ]"
+        aria-hidden="true"
       />
       <span class="text-slate-400">WS</span>
     </div>

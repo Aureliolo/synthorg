@@ -15,6 +15,8 @@ const toast = useToast()
 const username = ref('')
 const password = ref('')
 const error = ref<string | null>(null)
+// Client-side lockout is a UX hint only — it resets on page refresh.
+// Real brute-force protection is enforced server-side via rate limiting.
 const attempts = ref(0)
 const lockedUntil = ref<number | null>(null)
 
@@ -47,14 +49,21 @@ async function handleLogin() {
     }
     router.push('/')
   } catch (err) {
-    attempts.value++
-    if (attempts.value >= LOGIN_MAX_ATTEMPTS) {
-      lockedUntil.value = Date.now() + LOGIN_LOCKOUT_MS
-      attempts.value = 0
-      error.value = `Too many failed attempts. Please wait ${LOGIN_LOCKOUT_MS / 1000} seconds.`
-    } else {
-      error.value = getErrorMessage(err)
+    const msg = getErrorMessage(err)
+    // Only count credential failures (4xx) toward lockout, not network/5xx errors
+    const isCredentialError = msg !== 'Network error. Please check your connection.' &&
+      msg !== 'A server error occurred. Please try again later.' &&
+      msg !== 'Service temporarily unavailable. Please try again later.'
+    if (isCredentialError) {
+      attempts.value++
+      if (attempts.value >= LOGIN_MAX_ATTEMPTS) {
+        lockedUntil.value = Date.now() + LOGIN_LOCKOUT_MS
+        attempts.value = 0
+        error.value = `Too many failed attempts. Please wait ${LOGIN_LOCKOUT_MS / 1000} seconds.`
+        return
+      }
     }
+    error.value = msg
   }
 }
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useBudgetStore } from '@/stores/budget'
-import type { CostRecord, WsEvent } from '@/api/types'
+import type { BudgetConfig, CostRecord, AgentSpending, WsEvent } from '@/api/types'
 
 const mockGetBudgetConfig = vi.fn()
 const mockListCostRecords = vi.fn()
@@ -42,7 +42,14 @@ describe('useBudgetStore', () => {
 
   describe('fetchConfig', () => {
     it('sets config on success', async () => {
-      const mockConfig = { daily_limit: 100, total_budget: 1000 }
+      const mockConfig: BudgetConfig = {
+        total_monthly: 1000,
+        alerts: { warn_at: 0.8, critical_at: 0.95, hard_stop_at: 1.0 },
+        per_task_limit: 10,
+        per_agent_daily_limit: 100,
+        auto_downgrade: { enabled: false, threshold: 0.9, downgrade_map: [], boundary: 'task_assignment' },
+        reset_day: 1,
+      }
       mockGetBudgetConfig.mockResolvedValue(mockConfig)
 
       const store = useBudgetStore()
@@ -90,7 +97,7 @@ describe('useBudgetStore', () => {
 
   describe('fetchAgentSpending', () => {
     it('returns spending on success', async () => {
-      const mockSpending = { agent_id: 'alice', total_cost: 1.5 }
+      const mockSpending: AgentSpending = { agent_id: 'alice', total_cost_usd: 1.5 }
       mockGetAgentSpending.mockResolvedValue(mockSpending)
 
       const store = useBudgetStore()

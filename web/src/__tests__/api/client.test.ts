@@ -21,26 +21,26 @@ describe('request interceptor', () => {
     return { headers: new AxiosHeaders() } as InternalAxiosRequestConfig
   }
 
+  function getInterceptor() {
+    const handlers = (apiClient.interceptors.request as unknown as { handlers: Array<{ fulfilled?: (c: InternalAxiosRequestConfig) => InternalAxiosRequestConfig }> }).handlers
+    const interceptor = handlers?.[0]?.fulfilled
+    expect(typeof interceptor).toBe('function')
+    return interceptor!
+  }
+
   it('attaches JWT token to request headers', () => {
     localStorage.setItem('auth_token', 'test-jwt-token')
     const config = makeConfig()
-    // Access the request interceptor directly
-    const handlers = (apiClient.interceptors.request as unknown as { handlers: Array<{ fulfilled?: (c: InternalAxiosRequestConfig) => InternalAxiosRequestConfig }> }).handlers
-    const interceptor = handlers?.[0]?.fulfilled
-    if (interceptor) {
-      const result = interceptor(config)
-      expect(result.headers.get('Authorization')).toBe('Bearer test-jwt-token')
-    }
+    const interceptor = getInterceptor()
+    const result = interceptor(config)
+    expect(result.headers.get('Authorization')).toBe('Bearer test-jwt-token')
   })
 
   it('does not attach Authorization when no token', () => {
     const config = makeConfig()
-    const handlers = (apiClient.interceptors.request as unknown as { handlers: Array<{ fulfilled?: (c: InternalAxiosRequestConfig) => InternalAxiosRequestConfig }> }).handlers
-    const interceptor = handlers?.[0]?.fulfilled
-    if (interceptor) {
-      const result = interceptor(config)
-      expect(result.headers.get('Authorization')).toBeUndefined()
-    }
+    const interceptor = getInterceptor()
+    const result = interceptor(config)
+    expect(result.headers.get('Authorization')).toBeUndefined()
   })
 })
 

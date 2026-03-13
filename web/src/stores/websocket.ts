@@ -5,7 +5,14 @@ import { WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY, WS_MAX_RECONNECT_ATTEM
 
 /** Strip all control characters and truncate for safe logging. */
 function sanitizeLogValue(value: unknown, max = 200): string {
-  return String(value).replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, max)
+  const raw = String(value)
+  let result = ''
+  for (const ch of raw) {
+    const code = ch.charCodeAt(0)
+    result += (code >= 0x20 && code !== 0x7f) ? ch : ' '
+    if (result.length >= max) break
+  }
+  return result
 }
 
 /** Build a stable deduplication key for a subscription (sorted channels + sorted filter keys). */
@@ -211,8 +218,17 @@ export const useWebSocketStore = defineStore('websocket', () => {
   }
 
   function dispatchEvent(event: WsEvent) {
-    channelHandlers.get(event.channel)?.forEach((h) => { h(event) })
-    channelHandlers.get('*')?.forEach((h) => { h(event) })
+    // Wrap each handler in try/catch so one failing handler doesn't block others
+    channelHandlers.get(event.channel)?.forEach((h) => {
+      try { h(event) } catch (err) {
+        console.error('WebSocket channel handler error:', sanitizeLogValue(err))
+      }
+    })
+    channelHandlers.get('*')?.forEach((h) => {
+      try { h(event) } catch (err) {
+        console.error('WebSocket wildcard handler error:', sanitizeLogValue(err))
+      }
+    })
   }
 
   return {

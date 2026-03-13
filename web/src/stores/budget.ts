@@ -6,11 +6,20 @@ import type { BudgetConfig, CostRecord, AgentSpending, WsEvent } from '@/api/typ
 
 const MAX_WS_RECORDS = 500
 
-/** Runtime type guard for CostRecord-shaped payloads. */
+/** Runtime type guard for CostRecord-shaped payloads — validates all required fields. */
 function isCostRecord(payload: unknown): payload is CostRecord {
   if (typeof payload !== 'object' || payload === null) return false
   const p = payload as Record<string, unknown>
-  return typeof p.agent_id === 'string' && typeof p.cost_usd === 'number'
+  return (
+    typeof p.agent_id === 'string' &&
+    typeof p.task_id === 'string' &&
+    typeof p.provider === 'string' &&
+    typeof p.model === 'string' &&
+    typeof p.cost_usd === 'number' &&
+    typeof p.input_tokens === 'number' &&
+    typeof p.output_tokens === 'number' &&
+    typeof p.timestamp === 'string'
+  )
 }
 
 export const useBudgetStore = defineStore('budget', () => {
@@ -19,6 +28,7 @@ export const useBudgetStore = defineStore('budget', () => {
   const totalRecords = ref(0)
   const loading = ref(false)
   const error = ref<string | null>(null)
+  let lastFetchParams: { agent_id?: string; task_id?: string; limit?: number } | undefined
 
   async function fetchConfig() {
     loading.value = true
@@ -35,6 +45,7 @@ export const useBudgetStore = defineStore('budget', () => {
   async function fetchRecords(params?: { agent_id?: string; task_id?: string; limit?: number }) {
     loading.value = true
     error.value = null
+    lastFetchParams = params ? { ...params } : undefined
     try {
       const result = await budgetApi.listCostRecords(params)
       records.value = result.data
@@ -62,7 +73,11 @@ export const useBudgetStore = defineStore('budget', () => {
   function handleWsEvent(event: WsEvent) {
     if (event.event_type === 'budget.record_added') {
       if (isCostRecord(event.payload)) {
-        records.value = [event.payload, ...records.value].slice(0, MAX_WS_RECORDS)
+        // Skip if active filters don't match this record
+        if (lastFetchParams?.agent_id && event.payload.agent_id !== lastFetchParams.agent_id) return
+        if (lastFetchParams?.task_id && event.payload.task_id !== lastFetchParams.task_id) return
+        const limit = lastFetchParams?.limit ?? MAX_WS_RECORDS
+        records.value = [event.payload, ...records.value].slice(0, limit)
         totalRecords.value++
       }
     }
