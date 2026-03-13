@@ -6,7 +6,7 @@
 # =============================================================================
 
 # Stage 1: Build Vue dashboard (non-root for defense-in-depth)
-FROM node:22-alpine@sha256:3a4802e64ab5181c7870d6ddd8c824c2efc42873baae37d1971451668659483b AS builder
+FROM node:25-alpine@sha256:5209bcaca9836eb3448b650396213dbe9d9a34d31840c2ae1f206cb2986a8543 AS builder
 RUN addgroup -S build && adduser -S build -G build && mkdir /app && chown build:build /app
 WORKDIR /app
 COPY --chown=build:build web/package.json web/package-lock.json ./
