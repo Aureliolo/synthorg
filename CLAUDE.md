@@ -94,7 +94,7 @@ src/ai_company/
   core/           # Shared domain models, base classes, and resilience config (RetryConfig, RateLimiterConfig)
   engine/         # Agent orchestration, execution loops, parallel execution, task decomposition, routing, task assignment, centralized single-writer task state engine (TaskEngine), task lifecycle, recovery, shutdown, workspace isolation, coordination error classification, prompt policy validation, and AgentEngine-TaskEngine incremental status sync
   hr/             # HR engine: hiring, firing, onboarding, offboarding, agent registry, performance tracking (task metrics, collaboration scoring, trend detection), promotion/demotion (criteria evaluation, approval strategies, model mapping)
-  memory/         # Persistent agent memory (Mem0 initial, custom stack future — see Decision Log), retrieval pipeline (ranking, injection, context formatting, non-inferable filtering), shared org memory (org/), consolidation/archival (consolidation/)
+  memory/         # Persistent agent memory (pluggable MemoryBackend protocol), backends/ (Mem0 adapter: backends/mem0/), retrieval pipeline (ranking, injection, context formatting, non-inferable filtering), shared org memory (org/), consolidation/archival (consolidation/)
   persistence/    # Operational data persistence — pluggable PersistenceBackend protocol, SQLite initial (see Memory & Persistence design page)
   observability/  # Structured logging, correlation tracking, log sinks
   providers/      # LLM provider abstraction (LiteLLM adapter)
@@ -205,4 +205,5 @@ src/ai_company/
 
 - **Pinned**: all versions use `==` in `pyproject.toml`
 - **Groups**: `test` (pytest + plugins), `dev` (includes test + ruff, mypy, pre-commit, commitizen)
+- **Optional**: `mem0ai` (Mem0 memory backend — only needed when `backend: "mem0"` is configured)
 - **Install**: `uv sync` installs everything (dev group is default)

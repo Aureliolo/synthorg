@@ -51,4 +51,4 @@ class TestCreateMemoryBackend:
     def test_mem0_wrong_embedder_type_raises(self) -> None:
         config = CompanyMemoryConfig(backend="mem0")
         with pytest.raises(MemoryConfigError, match="must be a Mem0EmbedderConfig"):
-            create_memory_backend(config, embedder="not-a-config")
+            create_memory_backend(config, embedder="not-a-config")  # type: ignore[arg-type]

@@ -93,17 +93,19 @@ class TestMem0BackendConfig:
         with pytest.raises(ValidationError):
             config.data_dir = "/other"  # type: ignore[misc]
 
-    def test_rejects_parent_traversal_unix(self) -> None:
+    @pytest.mark.parametrize(
+        "data_dir",
+        [
+            "/data/../escape",
+            "C:\\data\\..\\escape",
+            "data/../../escape",
+        ],
+        ids=["unix", "windows", "relative"],
+    )
+    def test_rejects_parent_traversal(self, data_dir: str) -> None:
         with pytest.raises(ValidationError, match="parent-directory traversal"):
             Mem0BackendConfig(
-                data_dir="/data/../escape",
-                embedder=_embedder(),
-            )
-
-    def test_rejects_parent_traversal_windows(self) -> None:
-        with pytest.raises(ValidationError, match="parent-directory traversal"):
-            Mem0BackendConfig(
-                data_dir="C:\\data\\..\\escape",
+                data_dir=data_dir,
                 embedder=_embedder(),
             )
 

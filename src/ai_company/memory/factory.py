@@ -5,9 +5,12 @@ dispatches to concrete backend implementations based on
 ``config.backend``.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING
 
 from ai_company.memory.config import CompanyMemoryConfig  # noqa: TC001
+
+if TYPE_CHECKING:
+    from ai_company.memory.backends.mem0.config import Mem0EmbedderConfig
 from ai_company.memory.errors import MemoryConfigError
 from ai_company.memory.protocol import MemoryBackend  # noqa: TC001
 from ai_company.observability import get_logger
@@ -22,7 +25,7 @@ logger = get_logger(__name__)
 def create_memory_backend(
     config: CompanyMemoryConfig,
     *,
-    embedder: Any = None,
+    embedder: Mem0EmbedderConfig | None = None,
 ) -> MemoryBackend:
     """Create a memory backend from configuration.
 
@@ -53,10 +56,21 @@ def create_memory_backend(
                 "Mem0 backend requires an embedder configuration — "
                 "pass a Mem0EmbedderConfig instance"
             )
+            logger.warning(
+                MEMORY_BACKEND_UNKNOWN,
+                backend="mem0",
+                error=msg,
+            )
             raise MemoryConfigError(msg)
         if not isinstance(embedder, Mem0EmbedderConfig):
-            msg = (
+            msg = (  # type: ignore[unreachable]
                 f"embedder must be a Mem0EmbedderConfig, got {type(embedder).__name__}"
+            )
+            logger.warning(
+                MEMORY_BACKEND_UNKNOWN,
+                backend="mem0",
+                error=msg,
+                embedder_type=type(embedder).__name__,
             )
             raise MemoryConfigError(msg)
 

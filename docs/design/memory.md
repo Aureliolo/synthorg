@@ -30,7 +30,7 @@ configuration without modifying application code.
 +----------+----------+-----------+---------------+
 |            Storage Backend                      |
 |   SQLite / PostgreSQL / File-based              |
-|   + Mem0 (initial) / Custom Stack (future)      |
+|   + Mem0 (initial, implemented) / Custom (future)|
 |     See Decision Log                             |
 +-------------------------------------------------+
 ```

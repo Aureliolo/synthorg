@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from ai_company.core.enums import MemoryCategory
 from ai_company.core.types import NotBlankStr
-from ai_company.memory.errors import MemoryRetrievalError
+from ai_company.memory.errors import MemoryRetrievalError, MemoryStoreError
 from ai_company.memory.models import (
     MemoryEntry,
     MemoryMetadata,
@@ -18,7 +18,10 @@ from ai_company.memory.models import (
     MemoryStoreRequest,
 )
 from ai_company.observability import get_logger
-from ai_company.observability.events.memory import MEMORY_MODEL_INVALID
+from ai_company.observability.events.memory import (
+    MEMORY_ENTRY_STORE_FAILED,
+    MEMORY_MODEL_INVALID,
+)
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
@@ -27,6 +30,9 @@ logger = get_logger(__name__)
 
 # Metadata prefix avoids collisions with Mem0's own keys.
 _PREFIX = "_synthorg_"
+
+# Metadata key to track who published a shared memory.
+_PUBLISHER_KEY: str = "_synthorg_publisher"
 
 
 def build_mem0_metadata(request: MemoryStoreRequest) -> dict[str, Any]:
@@ -67,7 +73,7 @@ def parse_mem0_datetime(raw: str | None) -> AwareDatetime | None:
         return None
     try:
         dt = datetime.fromisoformat(raw)
-    except ValueError:
+    except ValueError, TypeError:
         logger.warning(
             MEMORY_MODEL_INVALID,
             field="datetime",
@@ -127,9 +133,23 @@ def parse_mem0_metadata(
     else:
         category = MemoryCategory.WORKING
 
-    confidence = raw_metadata.get(f"{_PREFIX}confidence", 1.0)
+    raw_confidence = raw_metadata.get(f"{_PREFIX}confidence", 1.0)
+    try:
+        confidence = float(raw_confidence)
+    except ValueError, TypeError:
+        logger.warning(
+            MEMORY_MODEL_INVALID,
+            field="confidence",
+            raw_value=raw_confidence,
+            reason="non-numeric confidence, defaulting to 1.0",
+        )
+        confidence = 1.0
     source = raw_metadata.get(f"{_PREFIX}source")
     raw_tags = raw_metadata.get(f"{_PREFIX}tags", ())
+    if isinstance(raw_tags, str):
+        raw_tags = [raw_tags]
+    elif not isinstance(raw_tags, (list, tuple)):
+        raw_tags = ()
     tags = tuple(NotBlankStr(t) for t in raw_tags if t and str(t).strip())
 
     expires_at = parse_mem0_datetime(
@@ -158,14 +178,27 @@ def mem0_result_to_entry(
     Returns:
         Domain ``MemoryEntry``.
     """
-    if "id" not in raw:
-        msg = f"Mem0 result missing required 'id' field: keys={list(raw.keys())}"
+    raw_id = raw.get("id")
+    if raw_id is None or not str(raw_id).strip():
+        msg = f"Mem0 result has missing or blank 'id': keys={list(raw.keys())}"
+        logger.warning(
+            MEMORY_MODEL_INVALID,
+            field="id",
+            raw_value=raw_id,
+            reason=msg,
+        )
         raise MemoryRetrievalError(msg)
-    memory_id = NotBlankStr(str(raw["id"]))
+    memory_id = NotBlankStr(str(raw_id))
 
     raw_content = raw.get("memory") or raw.get("data")
     if not raw_content or not str(raw_content).strip():
         msg = f"Mem0 result {raw.get('id', '?')} has empty content"
+        logger.warning(
+            MEMORY_MODEL_INVALID,
+            field="content",
+            raw_value=raw_content,
+            reason=msg,
+        )
         raise MemoryRetrievalError(msg)
     content = NotBlankStr(str(raw_content))
 
@@ -211,6 +244,12 @@ def query_to_mem0_search_args(
     """
     if query.text is None:
         msg = "search requires query.text to be set"
+        logger.warning(
+            MEMORY_MODEL_INVALID,
+            field="query.text",
+            raw_value=None,
+            reason=msg,
+        )
         raise ValueError(msg)
     return {
         "query": query.text,
@@ -271,3 +310,67 @@ def apply_post_filters(
             continue
         result.append(entry)
     return tuple(result)
+
+
+# ── Adapter helpers (moved here to keep adapter.py under 800 lines) ──
+
+
+def validate_add_result(result: dict[str, Any], *, context: str) -> NotBlankStr:
+    """Extract and validate the memory ID from a Mem0 ``add`` result.
+
+    Args:
+        result: Raw result dict from ``Memory.add()``.
+        context: Human-readable context for error messages
+            (e.g. ``"store"`` or ``"shared publish"``).
+
+    Returns:
+        The backend-assigned memory ID.
+
+    Raises:
+        MemoryStoreError: If the result is missing or malformed.
+    """
+    results_list = result.get("results")
+    if not isinstance(results_list, list) or not results_list:
+        msg = f"Mem0 add returned no results for {context}"
+        logger.warning(MEMORY_ENTRY_STORE_FAILED, context=context, error=msg)
+        raise MemoryStoreError(msg)
+    first = results_list[0]
+    if "id" not in first:
+        msg = f"Mem0 add result missing 'id' for {context}: keys={list(first.keys())}"
+        logger.warning(MEMORY_ENTRY_STORE_FAILED, context=context, error=msg)
+        raise MemoryStoreError(msg)
+    return NotBlankStr(str(first["id"]))
+
+
+def extract_category(raw: dict[str, Any]) -> MemoryCategory:
+    """Extract the memory category from a Mem0 result dict.
+
+    Returns ``MemoryCategory.WORKING`` if the category is missing
+    or unrecognised.
+    """
+    metadata = raw.get("metadata", {})
+    if not metadata:
+        return MemoryCategory.WORKING
+    cat_str = metadata.get(f"{_PREFIX}category")
+    if cat_str:
+        try:
+            return MemoryCategory(cat_str)
+        except ValueError:
+            logger.warning(
+                MEMORY_MODEL_INVALID,
+                field="category",
+                raw_value=cat_str,
+                reason="unrecognized category in extract_category, "
+                "defaulting to WORKING",
+            )
+            return MemoryCategory.WORKING
+    return MemoryCategory.WORKING
+
+
+def extract_publisher(raw: dict[str, Any]) -> str | None:
+    """Extract the publisher agent ID from a shared memory dict."""
+    metadata = raw.get("metadata", {})
+    if not metadata:
+        return None
+    value: str | None = metadata.get(_PUBLISHER_KEY)
+    return value

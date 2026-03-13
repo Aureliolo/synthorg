@@ -18,11 +18,15 @@ from ai_company.memory.backends.mem0.config import (
     build_mem0_config_dict,
 )
 from ai_company.memory.backends.mem0.mappers import (
+    _PUBLISHER_KEY,
     apply_post_filters,
     build_mem0_metadata,
+    extract_category,
+    extract_publisher,
     mem0_result_to_entry,
     query_to_mem0_getall_args,
     query_to_mem0_search_args,
+    validate_add_result,
 )
 from ai_company.memory.errors import (
     MemoryConnectionError,
@@ -37,6 +41,7 @@ if TYPE_CHECKING:
         MemoryQuery,
         MemoryStoreRequest,
     )
+
 from ai_company.observability.events.memory import (
     MEMORY_BACKEND_CONNECTED,
     MEMORY_BACKEND_CONNECTING,
@@ -55,7 +60,6 @@ from ai_company.observability.events.memory import (
     MEMORY_ENTRY_RETRIEVED,
     MEMORY_ENTRY_STORE_FAILED,
     MEMORY_ENTRY_STORED,
-    MEMORY_MODEL_INVALID,
     MEMORY_SHARED_PUBLISH_FAILED,
     MEMORY_SHARED_PUBLISHED,
     MEMORY_SHARED_RETRACT_FAILED,
@@ -68,34 +72,6 @@ logger = get_logger(__name__)
 
 # Reserved user_id for the shared knowledge namespace.
 _SHARED_NAMESPACE: str = "__synthorg_shared__"
-
-# Metadata key to track who published a shared memory.
-_PUBLISHER_KEY: str = "_synthorg_publisher"
-
-
-def _validate_add_result(result: dict[str, Any], *, context: str) -> NotBlankStr:
-    """Extract and validate the memory ID from a Mem0 ``add`` result.
-
-    Args:
-        result: Raw result dict from ``Memory.add()``.
-        context: Human-readable context for error messages
-            (e.g. ``"store"`` or ``"shared publish"``).
-
-    Returns:
-        The backend-assigned memory ID.
-
-    Raises:
-        MemoryStoreError: If the result is missing or malformed.
-    """
-    results_list = result.get("results", [])
-    if not results_list:
-        msg = f"Mem0 add returned no results for {context}"
-        raise MemoryStoreError(msg)
-    first = results_list[0]
-    if "id" not in first:
-        msg = f"Mem0 add result missing 'id' for {context}: keys={list(first.keys())}"
-        raise MemoryStoreError(msg)
-    return NotBlankStr(str(first["id"]))
 
 
 class Mem0MemoryBackend:
@@ -146,6 +122,8 @@ class Mem0MemoryBackend:
         try:
             config_dict = build_mem0_config_dict(self._mem0_config)
             client = await asyncio.to_thread(Memory.from_config, config_dict)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 MEMORY_BACKEND_CONNECTION_FAILED,
@@ -192,8 +170,10 @@ class Mem0MemoryBackend:
                 user_id=_SHARED_NAMESPACE,
                 limit=1,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception:
-            logger.debug(
+            logger.warning(
                 MEMORY_BACKEND_HEALTH_CHECK,
                 backend="mem0",
                 healthy=False,
@@ -291,14 +271,16 @@ class Mem0MemoryBackend:
                 "infer": False,
             }
             result = await asyncio.to_thread(self._client.add, **kwargs)
-            memory_id = _validate_add_result(result, context="store")
-        except MemoryStoreError:
+            memory_id = validate_add_result(result, context="store")
+        except MemoryStoreError as exc:
             logger.warning(
                 MEMORY_ENTRY_STORE_FAILED,
                 agent_id=agent_id,
-                error="Mem0 add returned no results or missing id",
+                error=str(exc),
                 error_type="MemoryStoreError",
             )
+            raise
+        except MemoryError, RecursionError:
             raise
         except Exception as exc:
             logger.warning(
@@ -325,6 +307,9 @@ class Mem0MemoryBackend:
     ) -> tuple[MemoryEntry, ...]:
         """Retrieve memories for an agent, ordered by relevance.
 
+        Uses ``search()`` when ``query.text`` is set, otherwise falls
+        back to ``get_all()`` for unfiltered retrieval.
+
         Args:
             agent_id: Owning agent identifier.
             query: Retrieval parameters.
@@ -349,13 +334,15 @@ class Mem0MemoryBackend:
                 mem0_result_to_entry(item, str(agent_id)) for item in raw_list
             )
             entries = apply_post_filters(entries, query)
-        except MemoryRetrievalError:
+        except MemoryRetrievalError as exc:
             logger.warning(
                 MEMORY_ENTRY_RETRIEVAL_FAILED,
                 agent_id=agent_id,
-                error="retrieval error during result mapping",
+                error=str(exc),
                 error_type="MemoryRetrievalError",
             )
+            raise
+        except MemoryError, RecursionError:
             raise
         except Exception as exc:
             logger.warning(
@@ -404,14 +391,16 @@ class Mem0MemoryBackend:
                 )
                 return None
             entry = mem0_result_to_entry(raw, str(agent_id))
-        except MemoryRetrievalError:
+        except MemoryRetrievalError as exc:
             logger.warning(
                 MEMORY_ENTRY_FETCH_FAILED,
                 agent_id=agent_id,
                 memory_id=memory_id,
-                error="retrieval error during result mapping",
+                error=str(exc),
                 error_type="MemoryRetrievalError",
             )
+            raise
+        except MemoryError, RecursionError:
             raise
         except Exception as exc:
             logger.warning(
@@ -464,14 +453,16 @@ class Mem0MemoryBackend:
                 )
                 return False
             await asyncio.to_thread(self._client.delete, str(memory_id))
-        except MemoryStoreError:
+        except MemoryStoreError as exc:
             logger.warning(
                 MEMORY_ENTRY_DELETE_FAILED,
                 agent_id=agent_id,
                 memory_id=memory_id,
-                error="delete operation failed",
+                error=str(exc),
                 error_type="MemoryStoreError",
             )
+            raise
+        except MemoryError, RecursionError:
             raise
         except Exception as exc:
             logger.warning(
@@ -526,15 +517,17 @@ class Mem0MemoryBackend:
                 total = len(raw_list)
             else:
                 total = sum(
-                    1 for item in raw_list if _extract_category(item) == category
+                    1 for item in raw_list if extract_category(item) == category
                 )
-        except MemoryRetrievalError:
+        except MemoryRetrievalError as exc:
             logger.warning(
                 MEMORY_ENTRY_COUNT_FAILED,
                 agent_id=agent_id,
-                error="count query failed",
+                error=str(exc),
                 error_type="MemoryRetrievalError",
             )
+            raise
+        except MemoryError, RecursionError:
             raise
         except Exception as exc:
             logger.warning(
@@ -592,14 +585,16 @@ class Mem0MemoryBackend:
                 "infer": False,
             }
             result = await asyncio.to_thread(self._client.add, **kwargs)
-            memory_id = _validate_add_result(result, context="shared publish")
-        except MemoryStoreError:
+            memory_id = validate_add_result(result, context="shared publish")
+        except MemoryStoreError as exc:
             logger.warning(
                 MEMORY_SHARED_PUBLISH_FAILED,
                 agent_id=agent_id,
-                error="publish operation returned no results or missing id",
+                error=str(exc),
                 error_type="MemoryStoreError",
             )
+            raise
+        except MemoryError, RecursionError:
             raise
         except Exception as exc:
             logger.warning(
@@ -657,7 +652,7 @@ class Mem0MemoryBackend:
             raw_entries = tuple(
                 mem0_result_to_entry(
                     item,
-                    _extract_publisher(item) or _SHARED_NAMESPACE,
+                    extract_publisher(item) or _SHARED_NAMESPACE,
                 )
                 for item in raw_list
             )
@@ -665,18 +660,24 @@ class Mem0MemoryBackend:
 
             if exclude_agent is not None:
                 filtered = tuple(e for e in filtered if e.agent_id != exclude_agent)
-        except MemoryRetrievalError:
+        except MemoryRetrievalError as exc:
             logger.warning(
                 MEMORY_SHARED_SEARCH_FAILED,
-                error="search failed during result mapping",
+                error=str(exc),
                 error_type="MemoryRetrievalError",
+                query_text=query.text,
+                exclude_agent=exclude_agent,
             )
+            raise
+        except MemoryError, RecursionError:
             raise
         except Exception as exc:
             logger.warning(
                 MEMORY_SHARED_SEARCH_FAILED,
                 error=str(exc),
                 error_type=type(exc).__name__,
+                query_text=query.text,
+                exclude_agent=exclude_agent,
             )
             msg = f"Failed to search shared knowledge: {exc}"
             raise MemoryRetrievalError(msg) from exc
@@ -721,7 +722,7 @@ class Mem0MemoryBackend:
                 )
                 return False
 
-            publisher = _extract_publisher(raw)
+            publisher = extract_publisher(raw)
             if publisher is None:
                 logger.warning(
                     MEMORY_SHARED_RETRACT_FAILED,
@@ -752,6 +753,8 @@ class Mem0MemoryBackend:
             await asyncio.to_thread(self._client.delete, str(memory_id))
         except MemoryStoreError:
             raise
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 MEMORY_SHARED_RETRACT_FAILED,
@@ -770,40 +773,3 @@ class Mem0MemoryBackend:
                 found=True,
             )
             return True
-
-
-# ── Module-level helpers ──────────────────────────────────────────
-
-
-def _extract_category(raw: dict[str, Any]) -> MemoryCategory:
-    """Extract the memory category from a Mem0 result dict.
-
-    Returns ``MemoryCategory.WORKING`` if the category is missing
-    or unrecognised.
-    """
-    metadata = raw.get("metadata", {})
-    if not metadata:
-        return MemoryCategory.WORKING
-    cat_str = metadata.get("_synthorg_category")
-    if cat_str:
-        try:
-            return MemoryCategory(cat_str)
-        except ValueError:
-            logger.warning(
-                MEMORY_MODEL_INVALID,
-                field="category",
-                raw_value=cat_str,
-                reason="unrecognized category in _extract_category, "
-                "defaulting to WORKING",
-            )
-            return MemoryCategory.WORKING
-    return MemoryCategory.WORKING
-
-
-def _extract_publisher(raw: dict[str, Any]) -> str | None:
-    """Extract the publisher agent ID from a shared memory dict."""
-    metadata = raw.get("metadata", {})
-    if not metadata:
-        return None
-    value: str | None = metadata.get(_PUBLISHER_KEY)
-    return value

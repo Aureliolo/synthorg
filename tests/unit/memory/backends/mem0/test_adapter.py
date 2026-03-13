@@ -1,5 +1,6 @@
 """Tests for the Mem0 memory backend adapter."""
 
+import sys
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -7,7 +8,6 @@ import pytest
 
 from ai_company.core.enums import MemoryCategory
 from ai_company.memory.backends.mem0.adapter import (
-    _PUBLISHER_KEY,
     _SHARED_NAMESPACE,
     Mem0MemoryBackend,
 )
@@ -15,6 +15,7 @@ from ai_company.memory.backends.mem0.config import (
     Mem0BackendConfig,
     Mem0EmbedderConfig,
 )
+from ai_company.memory.backends.mem0.mappers import _PUBLISHER_KEY
 from ai_company.memory.errors import (
     MemoryConnectionError,
     MemoryRetrievalError,
@@ -278,6 +279,28 @@ class TestLifecycle:
         mock_client.get_all.side_effect = RuntimeError("backend down")
         assert await backend.health_check() is False
 
+    async def test_connect_import_error_raises(
+        self,
+        mem0_config: Mem0BackendConfig,
+    ) -> None:
+        """ImportError when mem0 package is not installed."""
+        b = Mem0MemoryBackend(mem0_config=mem0_config)
+        with (
+            patch.dict(sys.modules, {"mem0": None}),
+            pytest.raises(MemoryConnectionError, match="not installed"),
+        ):
+            await b.connect()
+
+    async def test_health_check_reraises_memory_error(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """MemoryError propagates through health_check."""
+        mock_client.get_all.side_effect = MemoryError("out of memory")
+        with pytest.raises(MemoryError):
+            await backend.health_check()
+
 
 # ── Connection guard ──────────────────────────────────────────────
 
@@ -406,6 +429,16 @@ class TestStore:
 
         assert exc_info.value.__cause__ is not None
 
+    async def test_store_reraises_memory_error(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """MemoryError is re-raised without wrapping."""
+        mock_client.add.side_effect = MemoryError("out of memory")
+        with pytest.raises(MemoryError):
+            await backend.store("test-agent-001", _make_store_request())
+
 
 # ── Retrieve ──────────────────────────────────────────────────────
 
@@ -490,6 +523,19 @@ class TestRetrieve:
         mock_client.search.side_effect = RuntimeError("search failed")
 
         with pytest.raises(MemoryRetrievalError, match="Failed to retrieve"):
+            await backend.retrieve(
+                "test-agent-001",
+                MemoryQuery(text="test"),
+            )
+
+    async def test_retrieve_reraises_memory_error(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """MemoryError is re-raised without wrapping."""
+        mock_client.search.side_effect = MemoryError("out of memory")
+        with pytest.raises(MemoryError):
             await backend.retrieve(
                 "test-agent-001",
                 MemoryQuery(text="test"),
@@ -719,6 +765,19 @@ class TestPublish:
         mock_client.add.side_effect = RuntimeError("network error")
 
         with pytest.raises(MemoryStoreError, match="Failed to publish"):
+            await backend.publish("test-agent-001", _make_store_request())
+
+    async def test_publish_missing_id_raises(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """Publish result missing 'id' raises MemoryStoreError."""
+        mock_client.add.return_value = {
+            "results": [{"memory": "no id", "event": "ADD"}],
+        }
+
+        with pytest.raises(MemoryStoreError, match="missing 'id'"):
             await backend.publish("test-agent-001", _make_store_request())
 
 

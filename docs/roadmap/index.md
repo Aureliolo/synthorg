@@ -22,7 +22,6 @@ The SynthOrg core framework is complete. The following subsystems are built and 
 
 | Area | Description |
 |------|-------------|
-| **Mem0 adapter** | Concrete `MemoryBackend` implementation using the Mem0 library |
 | **Approval workflow gates** | Runtime wiring for human-in-the-loop approval queues |
 | **CLI** | Terminal interface wrapping the REST API (may not be needed) |
 | **Web dashboard** | Vue 3 frontend for monitoring and managing the synthetic organization |

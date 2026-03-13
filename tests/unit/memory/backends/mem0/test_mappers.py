@@ -241,7 +241,7 @@ class TestMem0ResultToEntry:
 
     def test_missing_id_raises(self) -> None:
         raw = {"memory": "no id here", "metadata": {}}
-        with pytest.raises(MemoryRetrievalError, match="missing required 'id'"):
+        with pytest.raises(MemoryRetrievalError, match="missing or blank 'id'"):
             mem0_result_to_entry(raw, "test-agent-001")
 
     def test_empty_content_raises(self) -> None:

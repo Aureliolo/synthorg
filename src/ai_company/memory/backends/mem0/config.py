@@ -103,6 +103,7 @@ def build_mem0_config_dict(config: Mem0BackendConfig) -> dict[str, Any]:
             },
         },
         "history_db_path": f"{config.data_dir}/history.db",
+        # Mem0 config schema version — required by Memory.from_config().
         "version": "v1.1",
     }
 

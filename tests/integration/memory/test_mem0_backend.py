@@ -11,14 +11,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from ai_company.core.enums import MemoryCategory
-from ai_company.memory.backends.mem0.adapter import (
-    _PUBLISHER_KEY,
-    Mem0MemoryBackend,
-)
+from ai_company.memory.backends.mem0.adapter import Mem0MemoryBackend
 from ai_company.memory.backends.mem0.config import (
     Mem0BackendConfig,
     Mem0EmbedderConfig,
 )
+from ai_company.memory.backends.mem0.mappers import _PUBLISHER_KEY
 from ai_company.memory.models import MemoryQuery, MemoryStoreRequest
 from ai_company.memory.retrieval_config import MemoryRetrievalConfig
 from ai_company.memory.retriever import ContextInjectionStrategy
