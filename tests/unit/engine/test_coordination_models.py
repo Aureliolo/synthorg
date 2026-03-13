@@ -350,3 +350,57 @@ class TestCoordinationResult:
                 phases=(),
                 total_duration_seconds=0.0,
             )
+
+    @pytest.mark.unit
+    def test_auto_topology_rejected(self) -> None:
+        """AUTO topology is rejected in CoordinationResult."""
+        with pytest.raises(
+            ValidationError,
+            match="resolved, not AUTO",
+        ):
+            CoordinationResult(
+                parent_task_id="task-1",
+                topology=CoordinationTopology.AUTO,
+                phases=(
+                    CoordinationPhaseResult(
+                        phase="decompose",
+                        success=True,
+                        duration_seconds=0.0,
+                    ),
+                ),
+                total_duration_seconds=0.0,
+            )
+
+    @pytest.mark.unit
+    def test_mismatched_parent_task_id_accepted(self) -> None:
+        """Mismatched parent_task_id in result vs rollup is accepted.
+
+        Documents current behavior: CoordinationResult does not
+        cross-validate parent_task_id against nested models.
+        """
+        rollup = SubtaskStatusRollup(
+            parent_task_id="other-task",
+            total=1,
+            completed=1,
+            failed=0,
+            in_progress=0,
+            blocked=0,
+            cancelled=0,
+        )
+        result = CoordinationResult(
+            parent_task_id="task-1",
+            topology=CoordinationTopology.CENTRALIZED,
+            phases=(
+                CoordinationPhaseResult(
+                    phase="rollup",
+                    success=True,
+                    duration_seconds=0.01,
+                ),
+            ),
+            status_rollup=rollup,
+            total_duration_seconds=1.0,
+        )
+        # Mismatched IDs are accepted (no cross-validation)
+        assert result.parent_task_id == "task-1"
+        assert result.status_rollup is not None
+        assert result.status_rollup.parent_task_id == "other-task"

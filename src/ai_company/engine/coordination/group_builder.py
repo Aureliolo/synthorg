@@ -7,6 +7,7 @@ Translates decomposition results and routing decisions into
 from typing import TYPE_CHECKING
 
 from ai_company.engine.decomposition.dag import DependencyGraph
+from ai_company.engine.errors import CoordinationError
 from ai_company.engine.parallel_models import (
     AgentAssignment,
     ParallelExecutionGroup,
@@ -92,7 +93,13 @@ def build_execution_waves(
                 )
                 continue
 
-            task = task_lookup[subtask_id]
+            task = task_lookup.get(subtask_id)
+            if task is None:
+                msg = (
+                    f"Subtask {subtask_id!r} has a routing decision "
+                    "but no corresponding created task in decomposition"
+                )
+                raise CoordinationError(msg)
             candidate = decision.selected_candidate
 
             resource_claims: tuple[str, ...] = ()

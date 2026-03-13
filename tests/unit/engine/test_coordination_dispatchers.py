@@ -1,6 +1,7 @@
 """Tests for coordination dispatchers."""
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
 import pytest
@@ -16,169 +17,22 @@ from ai_company.engine.coordination.dispatchers import (
     TopologyDispatcher,
     select_dispatcher,
 )
-from ai_company.engine.decomposition.models import (
-    DecompositionPlan,
-    DecompositionResult,
-    SubtaskDefinition,
-)
-from ai_company.engine.parallel_models import (
-    AgentOutcome,
-    ParallelExecutionResult,
-)
-from ai_company.engine.routing.models import (
-    RoutingCandidate,
-    RoutingDecision,
-    RoutingResult,
-)
-from ai_company.engine.run_result import AgentRunResult
 from ai_company.engine.workspace.models import (
     MergeResult,
     Workspace,
     WorkspaceGroupResult,
 )
-from tests.unit.engine.conftest import make_assignment_agent, make_assignment_task
+from tests.unit.engine.conftest import (
+    make_decomposition,
+    make_exec_result,
+    make_routing,
+    make_subtask,
+)
+
+if TYPE_CHECKING:
+    from ai_company.engine.parallel_models import ParallelExecutionResult
 
 # ── Helpers ─────────────────────────────────────────────────────
-
-
-def _make_subtask(
-    subtask_id: str,
-    *,
-    dependencies: tuple[str, ...] = (),
-) -> SubtaskDefinition:
-    return SubtaskDefinition(
-        id=subtask_id,
-        title=f"Subtask {subtask_id}",
-        description=f"Description for {subtask_id}",
-        dependencies=dependencies,
-    )
-
-
-def _make_decomposition(
-    subtasks: tuple[SubtaskDefinition, ...],
-    *,
-    parent_task_id: str = "parent-1",
-    structure: TaskStructure = TaskStructure.PARALLEL,
-) -> DecompositionResult:
-    plan = DecompositionPlan(
-        parent_task_id=parent_task_id,
-        subtasks=subtasks,
-        task_structure=structure,
-        coordination_topology=CoordinationTopology.CENTRALIZED,
-    )
-    created_tasks = tuple(
-        make_assignment_task(
-            id=s.id,
-            title=s.title,
-            description=s.description,
-            parent_task_id=parent_task_id,
-            dependencies=s.dependencies,
-        )
-        for s in subtasks
-    )
-    edges: list[tuple[str, str]] = []
-    for s in subtasks:
-        edges.extend((dep, s.id) for dep in s.dependencies)
-    return DecompositionResult(
-        plan=plan,
-        created_tasks=created_tasks,
-        dependency_edges=tuple(edges),
-    )
-
-
-def _make_routing(
-    subtask_agent_pairs: list[tuple[str, str]],
-    *,
-    parent_task_id: str = "parent-1",
-) -> RoutingResult:
-    decisions: list[RoutingDecision] = []
-    for subtask_id, agent_name in subtask_agent_pairs:
-        agent = make_assignment_agent(agent_name)
-        decisions.append(
-            RoutingDecision(
-                subtask_id=subtask_id,
-                selected_candidate=RoutingCandidate(
-                    agent_identity=agent,
-                    score=0.9,
-                    reason="Good match",
-                ),
-                topology=CoordinationTopology.CENTRALIZED,
-            )
-        )
-    return RoutingResult(
-        parent_task_id=parent_task_id,
-        decisions=tuple(decisions),
-    )
-
-
-def _make_exec_result(
-    group_id: str,
-    task_agent_pairs: list[tuple[str, str]],
-    *,
-    all_succeed: bool = True,
-) -> ParallelExecutionResult:
-    """Build a ParallelExecutionResult with given outcomes."""
-    outcomes: list[AgentOutcome] = []
-    for task_id, agent_id in task_agent_pairs:
-        if all_succeed:
-            run_result = _build_run_result(task_id, agent_id)
-            outcomes.append(
-                AgentOutcome(
-                    task_id=task_id,
-                    agent_id=agent_id,
-                    result=run_result,
-                )
-            )
-        else:
-            outcomes.append(
-                AgentOutcome(
-                    task_id=task_id,
-                    agent_id=agent_id,
-                    error="Test failure",
-                )
-            )
-
-    return ParallelExecutionResult(
-        group_id=group_id,
-        outcomes=tuple(outcomes),
-        total_duration_seconds=1.0,
-    )
-
-
-def _build_run_result(
-    task_id: str,
-    agent_id: str,
-) -> AgentRunResult:
-    """Build a minimal AgentRunResult for testing."""
-    from ai_company.core.enums import TaskStatus
-    from ai_company.engine.context import AgentContext
-    from ai_company.engine.loop_protocol import ExecutionResult, TerminationReason
-    from ai_company.engine.prompt import SystemPrompt
-
-    identity = make_assignment_agent("test-agent")
-    task = make_assignment_task(
-        id=task_id,
-        assigned_to=agent_id,
-        status=TaskStatus.ASSIGNED,
-    )
-    ctx = AgentContext.from_identity(identity, task=task)
-    execution_result = ExecutionResult(
-        context=ctx,
-        termination_reason=TerminationReason.COMPLETED,
-    )
-    return AgentRunResult(
-        execution_result=execution_result,
-        system_prompt=SystemPrompt(
-            content="test",
-            template_version="1.0",
-            estimated_tokens=1,
-            sections=("identity",),
-            metadata={"agent_id": agent_id},
-        ),
-        duration_seconds=0.5,
-        agent_id=agent_id,
-        task_id=task_id,
-    )
 
 
 def _mock_executor(
@@ -266,13 +120,13 @@ class TestSasDispatcher:
     @pytest.mark.unit
     async def test_sequential_execution(self) -> None:
         """SAS executes subtasks as sequential waves."""
-        sub_a = _make_subtask("sub-a")
-        sub_b = _make_subtask("sub-b", dependencies=("sub-a",))
-        decomp = _make_decomposition(
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b", dependencies=("sub-a",))
+        decomp = make_decomposition(
             (sub_a, sub_b),
             structure=TaskStructure.SEQUENTIAL,
         )
-        routing = _make_routing(
+        routing = make_routing(
             [
                 ("sub-a", "alice"),
                 ("sub-b", "alice"),
@@ -284,8 +138,8 @@ class TestSasDispatcher:
         agent_id_b = str(routing.decisions[1].selected_candidate.agent_identity.id)
         executor = _mock_executor(
             [
-                _make_exec_result("wave-0", [("sub-a", agent_id_a)]),
-                _make_exec_result("wave-1", [("sub-b", agent_id_b)]),
+                make_exec_result("wave-0", [("sub-a", agent_id_a)]),
+                make_exec_result("wave-1", [("sub-b", agent_id_b)]),
             ]
         )
 
@@ -306,15 +160,15 @@ class TestSasDispatcher:
     @pytest.mark.unit
     async def test_no_workspace_isolation(self) -> None:
         """SAS does not use workspace isolation."""
-        sub_a = _make_subtask("sub-a")
-        decomp = _make_decomposition((sub_a,))
-        routing = _make_routing([("sub-a", "alice")])
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
+        routing = make_routing([("sub-a", "alice")])
         agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
 
         ws_service = _mock_workspace_service()
         executor = _mock_executor(
             [
-                _make_exec_result("wave-0", [("sub-a", agent_id)]),
+                make_exec_result("wave-0", [("sub-a", agent_id)]),
             ]
         )
 
@@ -338,10 +192,10 @@ class TestCentralizedDispatcher:
     @pytest.mark.unit
     async def test_parallel_waves_with_isolation(self) -> None:
         """Centralized uses DAG waves and workspace isolation."""
-        sub_a = _make_subtask("sub-a")
-        sub_b = _make_subtask("sub-b")
-        decomp = _make_decomposition((sub_a, sub_b))
-        routing = _make_routing(
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b")
+        decomp = make_decomposition((sub_a, sub_b))
+        routing = make_routing(
             [
                 ("sub-a", "alice"),
                 ("sub-b", "bob"),
@@ -375,7 +229,7 @@ class TestCentralizedDispatcher:
         )
         executor = _mock_executor(
             [
-                _make_exec_result(
+                make_exec_result(
                     "wave-0",
                     [
                         ("sub-a", agent_id_a),
@@ -403,14 +257,14 @@ class TestCentralizedDispatcher:
     @pytest.mark.unit
     async def test_no_workspace_service(self) -> None:
         """Centralized works without workspace service."""
-        sub_a = _make_subtask("sub-a")
-        decomp = _make_decomposition((sub_a,))
-        routing = _make_routing([("sub-a", "alice")])
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
+        routing = make_routing([("sub-a", "alice")])
         agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
 
         executor = _mock_executor(
             [
-                _make_exec_result("wave-0", [("sub-a", agent_id)]),
+                make_exec_result("wave-0", [("sub-a", agent_id)]),
             ]
         )
 
@@ -429,15 +283,15 @@ class TestCentralizedDispatcher:
     @pytest.mark.unit
     async def test_workspace_isolation_disabled(self) -> None:
         """Centralized skips isolation when disabled in config."""
-        sub_a = _make_subtask("sub-a")
-        decomp = _make_decomposition((sub_a,))
-        routing = _make_routing([("sub-a", "alice")])
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
+        routing = make_routing([("sub-a", "alice")])
         agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
 
         ws_service = _mock_workspace_service()
         executor = _mock_executor(
             [
-                _make_exec_result("wave-0", [("sub-a", agent_id)]),
+                make_exec_result("wave-0", [("sub-a", agent_id)]),
             ]
         )
 
@@ -456,9 +310,9 @@ class TestCentralizedDispatcher:
     @pytest.mark.unit
     async def test_teardown_on_execution_error(self) -> None:
         """Workspaces are torn down even if execution raises."""
-        sub_a = _make_subtask("sub-a")
-        decomp = _make_decomposition((sub_a,))
-        routing = _make_routing([("sub-a", "alice")])
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
+        routing = make_routing([("sub-a", "alice")])
 
         ws_a = Workspace(
             workspace_id="ws-a",
@@ -498,9 +352,9 @@ class TestDecentralizedDispatcher:
         """DecentralizedDispatcher raises when workspace_service is None."""
         from ai_company.engine.errors import CoordinationError
 
-        sub_a = _make_subtask("sub-a")
-        decomp = _make_decomposition((sub_a,))
-        routing = _make_routing([("sub-a", "alice")])
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
+        routing = make_routing([("sub-a", "alice")])
 
         dispatcher = DecentralizedDispatcher()
         with pytest.raises(CoordinationError, match="workspace isolation"):
@@ -517,9 +371,9 @@ class TestDecentralizedDispatcher:
         """DecentralizedDispatcher raises when isolation is disabled."""
         from ai_company.engine.errors import CoordinationError
 
-        sub_a = _make_subtask("sub-a")
-        decomp = _make_decomposition((sub_a,))
-        routing = _make_routing([("sub-a", "alice")])
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
+        routing = make_routing([("sub-a", "alice")])
 
         dispatcher = DecentralizedDispatcher()
         with pytest.raises(CoordinationError, match="workspace isolation"):
@@ -534,10 +388,10 @@ class TestDecentralizedDispatcher:
     @pytest.mark.unit
     async def test_single_wave_all_parallel(self) -> None:
         """Decentralized puts everything in parallel waves per DAG."""
-        sub_a = _make_subtask("sub-a")
-        sub_b = _make_subtask("sub-b")
-        decomp = _make_decomposition((sub_a, sub_b))
-        routing = _make_routing(
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b")
+        decomp = make_decomposition((sub_a, sub_b))
+        routing = make_routing(
             [
                 ("sub-a", "alice"),
                 ("sub-b", "bob"),
@@ -569,7 +423,7 @@ class TestDecentralizedDispatcher:
 
         executor = _mock_executor(
             [
-                _make_exec_result(
+                make_exec_result(
                     "wave-0",
                     [
                         ("sub-a", agent_id_a),
@@ -601,15 +455,15 @@ class TestContextDependentDispatcher:
     @pytest.mark.unit
     async def test_single_subtask_wave_no_isolation(self) -> None:
         """Single-subtask waves skip workspace isolation."""
-        sub_a = _make_subtask("sub-a")
-        decomp = _make_decomposition((sub_a,))
-        routing = _make_routing([("sub-a", "alice")])
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
+        routing = make_routing([("sub-a", "alice")])
         agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
 
         ws_service = _mock_workspace_service()
         executor = _mock_executor(
             [
-                _make_exec_result("wave-0", [("sub-a", agent_id)]),
+                make_exec_result("wave-0", [("sub-a", agent_id)]),
             ]
         )
 
@@ -629,10 +483,10 @@ class TestContextDependentDispatcher:
     @pytest.mark.unit
     async def test_multi_subtask_wave_uses_isolation(self) -> None:
         """Multi-subtask waves use workspace isolation."""
-        sub_a = _make_subtask("sub-a")
-        sub_b = _make_subtask("sub-b")
-        decomp = _make_decomposition((sub_a, sub_b))
-        routing = _make_routing(
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b")
+        decomp = make_decomposition((sub_a, sub_b))
+        routing = make_routing(
             [
                 ("sub-a", "alice"),
                 ("sub-b", "bob"),
@@ -664,7 +518,7 @@ class TestContextDependentDispatcher:
 
         executor = _mock_executor(
             [
-                _make_exec_result(
+                make_exec_result(
                     "wave-0",
                     [
                         ("sub-a", agent_id_a),
@@ -695,9 +549,9 @@ class TestCentralizedWorkspaceFailure:
     @pytest.mark.unit
     async def test_workspace_setup_failure_returns_early(self) -> None:
         """CentralizedDispatcher returns early when workspace setup fails."""
-        sub_a = _make_subtask("sub-a")
-        decomp = _make_decomposition((sub_a,))
-        routing = _make_routing([("sub-a", "alice")])
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
+        routing = make_routing([("sub-a", "alice")])
 
         ws_service = AsyncMock()
         ws_service.setup_group.side_effect = RuntimeError("setup failed")
@@ -726,19 +580,19 @@ class TestContextDependentFailFast:
     @pytest.mark.unit
     async def test_fail_fast_stops_on_wave_failure(self) -> None:
         """fail_fast=True stops after first failed wave."""
-        sub_a = _make_subtask("sub-a")
-        sub_b = _make_subtask("sub-b", dependencies=("sub-a",))
-        decomp = _make_decomposition(
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b", dependencies=("sub-a",))
+        decomp = make_decomposition(
             (sub_a, sub_b),
             structure=TaskStructure.SEQUENTIAL,
         )
-        routing = _make_routing([("sub-a", "alice"), ("sub-b", "alice")])
+        routing = make_routing([("sub-a", "alice"), ("sub-b", "alice")])
         agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
 
         executor = _mock_executor(
             [
-                _make_exec_result("wave-0", [("sub-a", agent_id)], all_succeed=False),
-                _make_exec_result("wave-1", [("sub-b", agent_id)]),
+                make_exec_result("wave-0", [("sub-a", agent_id)], all_succeed=False),
+                make_exec_result("wave-1", [("sub-b", agent_id)]),
             ]
         )
 
@@ -758,10 +612,10 @@ class TestContextDependentFailFast:
     @pytest.mark.unit
     async def test_setup_failure_skips_wave(self) -> None:
         """CDD skips wave when workspace setup fails (fail_fast=False)."""
-        sub_a = _make_subtask("sub-a")
-        sub_b = _make_subtask("sub-b")
-        decomp = _make_decomposition((sub_a, sub_b))
-        routing = _make_routing([("sub-a", "alice"), ("sub-b", "bob")])
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b")
+        decomp = make_decomposition((sub_a, sub_b))
+        routing = make_routing([("sub-a", "alice"), ("sub-b", "bob")])
 
         ws_service = AsyncMock()
         ws_service.setup_group.side_effect = RuntimeError("setup failed")
@@ -789,10 +643,10 @@ class TestContextDependentFailFast:
     @pytest.mark.unit
     async def test_fail_fast_stops_on_setup_failure(self) -> None:
         """fail_fast=True stops when workspace setup fails."""
-        sub_a = _make_subtask("sub-a")
-        sub_b = _make_subtask("sub-b")
-        decomp = _make_decomposition((sub_a, sub_b))
-        routing = _make_routing([("sub-a", "alice"), ("sub-b", "bob")])
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b")
+        decomp = make_decomposition((sub_a, sub_b))
+        routing = make_routing([("sub-a", "alice"), ("sub-b", "bob")])
 
         ws_service = AsyncMock()
         ws_service.setup_group.side_effect = RuntimeError("setup failed")
@@ -815,6 +669,147 @@ class TestContextDependentFailFast:
         assert len(setup_phases) == 1
         assert not setup_phases[0].success
         executor.execute_group.assert_not_called()
+
+
+class TestDecentralizedWorkspaceSetupFailure:
+    """DecentralizedDispatcher workspace setup failure tests."""
+
+    @pytest.mark.unit
+    async def test_workspace_setup_failure_returns_early(self) -> None:
+        """DecentralizedDispatcher returns early on workspace setup failure."""
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
+        routing = make_routing([("sub-a", "alice")])
+
+        ws_service = AsyncMock()
+        ws_service.setup_group.side_effect = RuntimeError("setup failed")
+
+        executor = _mock_executor()
+
+        dispatcher = DecentralizedDispatcher()
+        result = await dispatcher.dispatch(
+            decomposition_result=decomp,
+            routing_result=routing,
+            parallel_executor=executor,
+            workspace_service=ws_service,
+            config=CoordinationConfig(),
+        )
+
+        assert len(result.phases) == 1
+        assert result.phases[0].phase == "workspace_setup"
+        assert not result.phases[0].success
+        executor.execute_group.assert_not_called()
+        assert len(result.waves) == 0
+
+
+class TestExecuteWavesExceptionContinuation:
+    """Tests for _execute_waves exception handling with fail_fast=False."""
+
+    @pytest.mark.unit
+    async def test_exception_with_fail_fast_off_continues(self) -> None:
+        """Exception in a wave with fail_fast=False continues to next wave."""
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b", dependencies=("sub-a",))
+        decomp = make_decomposition(
+            (sub_a, sub_b),
+            structure=TaskStructure.SEQUENTIAL,
+        )
+        routing = make_routing([("sub-a", "alice"), ("sub-b", "alice")])
+        agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
+
+        executor = AsyncMock()
+        # Wave 0 raises an exception, wave 1 succeeds
+        executor.execute_group.side_effect = [
+            RuntimeError("boom"),
+            make_exec_result("wave-1", [("sub-b", agent_id)]),
+        ]
+
+        dispatcher = SasDispatcher()
+        result = await dispatcher.dispatch(
+            decomposition_result=decomp,
+            routing_result=routing,
+            parallel_executor=executor,
+            workspace_service=None,
+            config=CoordinationConfig(fail_fast=False),
+        )
+
+        # Both waves attempted
+        assert len(result.waves) == 2
+        assert executor.execute_group.call_count == 2
+        # First wave has no execution_result (exception)
+        assert result.waves[0].execution_result is None
+        # Second wave succeeded
+        assert result.waves[1].execution_result is not None
+
+    @pytest.mark.unit
+    async def test_exception_with_fail_fast_on_stops(self) -> None:
+        """Exception in a wave with fail_fast=True stops pipeline."""
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b", dependencies=("sub-a",))
+        decomp = make_decomposition(
+            (sub_a, sub_b),
+            structure=TaskStructure.SEQUENTIAL,
+        )
+        routing = make_routing([("sub-a", "alice"), ("sub-b", "alice")])
+
+        executor = AsyncMock()
+        executor.execute_group.side_effect = RuntimeError("boom")
+
+        dispatcher = SasDispatcher()
+        result = await dispatcher.dispatch(
+            decomposition_result=decomp,
+            routing_result=routing,
+            parallel_executor=executor,
+            workspace_service=None,
+            config=CoordinationConfig(fail_fast=True),
+        )
+
+        # Only first wave attempted
+        assert len(result.waves) == 1
+        assert executor.execute_group.call_count == 1
+        assert result.waves[0].execution_result is None
+
+
+class TestMergeGating:
+    """Tests for merge gating — merge skipped when waves fail."""
+
+    @pytest.mark.unit
+    async def test_centralized_skips_merge_on_wave_failure(self) -> None:
+        """CentralizedDispatcher skips merge when wave fails."""
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
+        routing = make_routing([("sub-a", "alice")])
+        agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
+
+        ws_a = Workspace(
+            workspace_id="ws-a",
+            task_id="sub-a",
+            agent_id=agent_id,
+            branch_name="workspace/sub-a",
+            worktree_path="fake/ws-a",
+            base_branch="main",
+            created_at=datetime.now(UTC),
+        )
+        ws_service = _mock_workspace_service(workspaces=(ws_a,))
+
+        executor = _mock_executor(
+            [make_exec_result("wave-0", [("sub-a", agent_id)], all_succeed=False)]
+        )
+
+        dispatcher = CentralizedDispatcher()
+        result = await dispatcher.dispatch(
+            decomposition_result=decomp,
+            routing_result=routing,
+            parallel_executor=executor,
+            workspace_service=ws_service,
+            config=CoordinationConfig(),
+        )
+
+        # Merge NOT called because wave failed
+        ws_service.merge_group.assert_not_called()
+        # Teardown still called
+        ws_service.teardown_group.assert_called_once()
+        assert result.workspace_merge is None
 
 
 class TestDispatchResult:

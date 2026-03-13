@@ -1,9 +1,13 @@
 """Tests for MultiAgentCoordinator service."""
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+if TYPE_CHECKING:
+    from ai_company.engine.decomposition.models import DecompositionResult
 
 from ai_company.core.enums import (
     CoordinationTopology,
@@ -15,19 +19,12 @@ from ai_company.engine.coordination.models import (
     CoordinationContext,
 )
 from ai_company.engine.coordination.service import MultiAgentCoordinator
-from ai_company.engine.decomposition.models import (
-    DecompositionPlan,
-    DecompositionResult,
-    SubtaskDefinition,
-)
 from ai_company.engine.errors import CoordinationPhaseError
 from ai_company.engine.parallel_models import (
     AgentOutcome,
     ParallelExecutionResult,
 )
 from ai_company.engine.routing.models import (
-    RoutingCandidate,
-    RoutingDecision,
     RoutingResult,
 )
 from ai_company.engine.run_result import AgentRunResult
@@ -37,146 +34,17 @@ from ai_company.engine.workspace.models import (
     Workspace,
     WorkspaceGroupResult,
 )
-from tests.unit.engine.conftest import make_assignment_agent, make_assignment_task
+from tests.unit.engine.conftest import (
+    build_run_result,
+    make_assignment_agent,
+    make_assignment_task,
+    make_decomposition,
+    make_exec_result,
+    make_routing,
+    make_subtask,
+)
 
 # ── Helpers ─────────────────────────────────────────────────────
-
-
-def _make_subtask(
-    subtask_id: str,
-    *,
-    dependencies: tuple[str, ...] = (),
-) -> SubtaskDefinition:
-    return SubtaskDefinition(
-        id=subtask_id,
-        title=f"Subtask {subtask_id}",
-        description=f"Description for {subtask_id}",
-        dependencies=dependencies,
-    )
-
-
-def _make_decomposition(
-    subtasks: tuple[SubtaskDefinition, ...],
-    *,
-    parent_task_id: str = "parent-1",
-    topology: CoordinationTopology = CoordinationTopology.CENTRALIZED,
-    structure: TaskStructure = TaskStructure.PARALLEL,
-) -> DecompositionResult:
-    plan = DecompositionPlan(
-        parent_task_id=parent_task_id,
-        subtasks=subtasks,
-        task_structure=structure,
-        coordination_topology=topology,
-    )
-    created_tasks = tuple(
-        make_assignment_task(
-            id=s.id,
-            title=s.title,
-            description=s.description,
-            parent_task_id=parent_task_id,
-            dependencies=s.dependencies,
-        )
-        for s in subtasks
-    )
-    edges: list[tuple[str, str]] = []
-    for s in subtasks:
-        edges.extend((dep, s.id) for dep in s.dependencies)
-    return DecompositionResult(
-        plan=plan,
-        created_tasks=created_tasks,
-        dependency_edges=tuple(edges),
-    )
-
-
-def _make_routing(
-    subtask_agent_pairs: list[tuple[str, str]],
-    *,
-    parent_task_id: str = "parent-1",
-    topology: CoordinationTopology = CoordinationTopology.CENTRALIZED,
-    unroutable: tuple[str, ...] = (),
-) -> RoutingResult:
-    decisions: list[RoutingDecision] = []
-    for subtask_id, agent_name in subtask_agent_pairs:
-        agent = make_assignment_agent(agent_name)
-        decisions.append(
-            RoutingDecision(
-                subtask_id=subtask_id,
-                selected_candidate=RoutingCandidate(
-                    agent_identity=agent,
-                    score=0.9,
-                    reason="Good match",
-                ),
-                topology=topology,
-            )
-        )
-    return RoutingResult(
-        parent_task_id=parent_task_id,
-        decisions=tuple(decisions),
-        unroutable=unroutable,
-    )
-
-
-def _build_run_result(task_id: str, agent_id: str) -> AgentRunResult:
-    """Build a minimal AgentRunResult for testing."""
-    from ai_company.engine.context import AgentContext
-    from ai_company.engine.loop_protocol import ExecutionResult, TerminationReason
-    from ai_company.engine.prompt import SystemPrompt
-
-    identity = make_assignment_agent("test-agent")
-    task = make_assignment_task(
-        id=task_id,
-        assigned_to=agent_id,
-        status=TaskStatus.ASSIGNED,
-    )
-    ctx = AgentContext.from_identity(identity, task=task)
-    execution_result = ExecutionResult(
-        context=ctx,
-        termination_reason=TerminationReason.COMPLETED,
-    )
-    return AgentRunResult(
-        execution_result=execution_result,
-        system_prompt=SystemPrompt(
-            content="test",
-            template_version="1.0",
-            estimated_tokens=1,
-            sections=("identity",),
-            metadata={"agent_id": agent_id},
-        ),
-        duration_seconds=0.5,
-        agent_id=agent_id,
-        task_id=task_id,
-    )
-
-
-def _make_exec_result(
-    group_id: str,
-    task_agent_pairs: list[tuple[str, str]],
-    *,
-    all_succeed: bool = True,
-) -> ParallelExecutionResult:
-    outcomes: list[AgentOutcome] = []
-    for task_id, agent_id in task_agent_pairs:
-        if all_succeed:
-            outcomes.append(
-                AgentOutcome(
-                    task_id=task_id,
-                    agent_id=agent_id,
-                    result=_build_run_result(task_id, agent_id),
-                )
-            )
-        else:
-            outcomes.append(
-                AgentOutcome(
-                    task_id=task_id,
-                    agent_id=agent_id,
-                    error="Test failure",
-                )
-            )
-    return ParallelExecutionResult(
-        group_id=group_id,
-        outcomes=tuple(outcomes),
-        total_duration_seconds=1.0,
-    )
 
 
 def _make_coordinator(  # noqa: PLR0913
@@ -229,10 +97,10 @@ class TestMultiAgentCoordinator:
     @pytest.mark.unit
     async def test_happy_path_two_parallel_subtasks(self) -> None:
         """Full pipeline with 2 parallel subtasks succeeds."""
-        sub_a = _make_subtask("sub-a")
-        sub_b = _make_subtask("sub-b")
-        decomp = _make_decomposition((sub_a, sub_b))
-        routing = _make_routing(
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b")
+        decomp = make_decomposition((sub_a, sub_b))
+        routing = make_routing(
             [
                 ("sub-a", "alice"),
                 ("sub-b", "bob"),
@@ -246,7 +114,7 @@ class TestMultiAgentCoordinator:
             decomp_result=decomp,
             routing_result=routing,
             exec_results=[
-                _make_exec_result(
+                make_exec_result(
                     "wave-0",
                     [
                         ("sub-a", agent_id_a),
@@ -278,14 +146,14 @@ class TestMultiAgentCoordinator:
     @pytest.mark.unit
     async def test_sas_topology_single_agent(self) -> None:
         """SAS topology with sequential subtasks."""
-        sub_a = _make_subtask("sub-a")
-        sub_b = _make_subtask("sub-b", dependencies=("sub-a",))
-        decomp = _make_decomposition(
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b", dependencies=("sub-a",))
+        decomp = make_decomposition(
             (sub_a, sub_b),
             topology=CoordinationTopology.SAS,
             structure=TaskStructure.SEQUENTIAL,
         )
-        routing = _make_routing(
+        routing = make_routing(
             [("sub-a", "alice"), ("sub-b", "alice")],
             topology=CoordinationTopology.SAS,
         )
@@ -296,8 +164,8 @@ class TestMultiAgentCoordinator:
             decomp_result=decomp,
             routing_result=routing,
             exec_results=[
-                _make_exec_result("wave-0", [("sub-a", agent_id)]),
-                _make_exec_result("wave-1", [("sub-b", agent_id)]),
+                make_exec_result("wave-0", [("sub-a", agent_id)]),
+                make_exec_result("wave-1", [("sub-b", agent_id)]),
             ],
         )
 
@@ -333,8 +201,8 @@ class TestMultiAgentCoordinator:
     @pytest.mark.unit
     async def test_route_failure_raises_phase_error(self) -> None:
         """Route failure raises CoordinationPhaseError."""
-        sub_a = _make_subtask("sub-a")
-        decomp = _make_decomposition((sub_a,))
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
 
         coordinator = _make_coordinator(
             decomp_result=decomp,
@@ -356,8 +224,8 @@ class TestMultiAgentCoordinator:
     @pytest.mark.unit
     async def test_all_unroutable_raises_phase_error(self) -> None:
         """All unroutable subtasks raises CoordinationPhaseError."""
-        sub_a = _make_subtask("sub-a")
-        decomp = _make_decomposition((sub_a,))
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
         routing = RoutingResult(
             parent_task_id="parent-1",
             unroutable=("sub-a",),
@@ -381,13 +249,13 @@ class TestMultiAgentCoordinator:
     @pytest.mark.unit
     async def test_partial_execution_fail_fast_off(self) -> None:
         """With fail_fast=False, failed waves don't stop execution."""
-        sub_a = _make_subtask("sub-a")
-        sub_b = _make_subtask("sub-b", dependencies=("sub-a",))
-        decomp = _make_decomposition(
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b", dependencies=("sub-a",))
+        decomp = make_decomposition(
             (sub_a, sub_b),
             structure=TaskStructure.SEQUENTIAL,
         )
-        routing = _make_routing(
+        routing = make_routing(
             [
                 ("sub-a", "alice"),
                 ("sub-b", "bob"),
@@ -402,9 +270,9 @@ class TestMultiAgentCoordinator:
             routing_result=routing,
             exec_results=[
                 # Wave 0 fails
-                _make_exec_result("wave-0", [("sub-a", agent_id_a)], all_succeed=False),
+                make_exec_result("wave-0", [("sub-a", agent_id_a)], all_succeed=False),
                 # Wave 1 succeeds
-                _make_exec_result("wave-1", [("sub-b", agent_id_b)], all_succeed=True),
+                make_exec_result("wave-1", [("sub-b", agent_id_b)], all_succeed=True),
             ],
         )
 
@@ -430,9 +298,9 @@ class TestMultiAgentCoordinator:
     @pytest.mark.unit
     async def test_task_engine_parent_update(self) -> None:
         """Parent task is updated via TaskEngine when provided."""
-        sub_a = _make_subtask("sub-a")
-        decomp = _make_decomposition((sub_a,))
-        routing = _make_routing([("sub-a", "alice")])
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
+        routing = make_routing([("sub-a", "alice")])
         agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
 
         task_engine = AsyncMock()
@@ -451,7 +319,7 @@ class TestMultiAgentCoordinator:
             decomp_result=decomp,
             routing_result=routing,
             exec_results=[
-                _make_exec_result("wave-0", [("sub-a", agent_id)]),
+                make_exec_result("wave-0", [("sub-a", agent_id)]),
             ],
             task_engine=task_engine,
         )
@@ -469,16 +337,16 @@ class TestMultiAgentCoordinator:
     @pytest.mark.unit
     async def test_no_task_engine_skips_update(self) -> None:
         """Without TaskEngine, parent update is skipped."""
-        sub_a = _make_subtask("sub-a")
-        decomp = _make_decomposition((sub_a,))
-        routing = _make_routing([("sub-a", "alice")])
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
+        routing = make_routing([("sub-a", "alice")])
         agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
 
         coordinator = _make_coordinator(
             decomp_result=decomp,
             routing_result=routing,
             exec_results=[
-                _make_exec_result("wave-0", [("sub-a", agent_id)]),
+                make_exec_result("wave-0", [("sub-a", agent_id)]),
             ],
         )
 
@@ -497,10 +365,10 @@ class TestMultiAgentCoordinator:
     @pytest.mark.unit
     async def test_status_rollup_correctness(self) -> None:
         """Status rollup accurately reflects execution outcomes."""
-        sub_a = _make_subtask("sub-a")
-        sub_b = _make_subtask("sub-b")
-        decomp = _make_decomposition((sub_a, sub_b))
-        routing = _make_routing(
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b")
+        decomp = make_decomposition((sub_a, sub_b))
+        routing = make_routing(
             [
                 ("sub-a", "alice"),
                 ("sub-b", "bob"),
@@ -515,7 +383,7 @@ class TestMultiAgentCoordinator:
             AgentOutcome(
                 task_id="sub-a",
                 agent_id=agent_id_a,
-                result=_build_run_result("sub-a", agent_id_a),
+                result=build_run_result("sub-a", agent_id_a),
             ),
             AgentOutcome(
                 task_id="sub-b",
@@ -554,10 +422,10 @@ class TestMultiAgentCoordinator:
     @pytest.mark.unit
     async def test_workspace_lifecycle(self) -> None:
         """Workspace setup → execute → merge → teardown lifecycle."""
-        sub_a = _make_subtask("sub-a")
-        sub_b = _make_subtask("sub-b")
-        decomp = _make_decomposition((sub_a, sub_b))
-        routing = _make_routing(
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b")
+        decomp = make_decomposition((sub_a, sub_b))
+        routing = make_routing(
             [
                 ("sub-a", "alice"),
                 ("sub-b", "bob"),
@@ -614,7 +482,7 @@ class TestMultiAgentCoordinator:
             decomp_result=decomp,
             routing_result=routing,
             exec_results=[
-                _make_exec_result(
+                make_exec_result(
                     "wave-0",
                     [
                         ("sub-a", agent_id_a),
@@ -660,9 +528,9 @@ class TestMultiAgentCoordinator:
     @pytest.mark.unit
     async def test_auto_topology_resolves_to_centralized(self) -> None:
         """AUTO topology falls back to CENTRALIZED."""
-        sub_a = _make_subtask("sub-a")
-        decomp = _make_decomposition((sub_a,), topology=CoordinationTopology.AUTO)
-        routing = _make_routing(
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,), topology=CoordinationTopology.AUTO)
+        routing = make_routing(
             [("sub-a", "alice")],
             topology=CoordinationTopology.AUTO,
         )
@@ -672,7 +540,7 @@ class TestMultiAgentCoordinator:
             decomp_result=decomp,
             routing_result=routing,
             exec_results=[
-                _make_exec_result("wave-0", [("sub-a", agent_id)]),
+                make_exec_result("wave-0", [("sub-a", agent_id)]),
             ],
         )
 
@@ -687,9 +555,9 @@ class TestMultiAgentCoordinator:
     @pytest.mark.unit
     async def test_update_parent_submit_fails(self) -> None:
         """Failed task engine submit is captured as phase failure."""
-        sub_a = _make_subtask("sub-a")
-        decomp = _make_decomposition((sub_a,))
-        routing = _make_routing([("sub-a", "alice")])
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
+        routing = make_routing([("sub-a", "alice")])
         agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
 
         task_engine = AsyncMock()
@@ -705,7 +573,7 @@ class TestMultiAgentCoordinator:
             decomp_result=decomp,
             routing_result=routing,
             exec_results=[
-                _make_exec_result("wave-0", [("sub-a", agent_id)]),
+                make_exec_result("wave-0", [("sub-a", agent_id)]),
             ],
             task_engine=task_engine,
         )
@@ -723,9 +591,9 @@ class TestMultiAgentCoordinator:
     @pytest.mark.unit
     async def test_update_parent_exception_captured(self) -> None:
         """TaskEngine exception is captured, not propagated."""
-        sub_a = _make_subtask("sub-a")
-        decomp = _make_decomposition((sub_a,))
-        routing = _make_routing([("sub-a", "alice")])
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
+        routing = make_routing([("sub-a", "alice")])
         agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
 
         task_engine = AsyncMock()
@@ -735,7 +603,7 @@ class TestMultiAgentCoordinator:
             decomp_result=decomp,
             routing_result=routing,
             exec_results=[
-                _make_exec_result("wave-0", [("sub-a", agent_id)]),
+                make_exec_result("wave-0", [("sub-a", agent_id)]),
             ],
             task_engine=task_engine,
         )
@@ -755,9 +623,9 @@ class TestMultiAgentCoordinator:
     @pytest.mark.unit
     async def test_rollup_error_captured(self) -> None:
         """Rollup error is captured, not propagated."""
-        sub_a = _make_subtask("sub-a")
-        decomp = _make_decomposition((sub_a,))
-        routing = _make_routing([("sub-a", "alice")])
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
+        routing = make_routing([("sub-a", "alice")])
         agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
 
         decomp_service = AsyncMock()
@@ -771,7 +639,7 @@ class TestMultiAgentCoordinator:
 
         executor = AsyncMock()
         executor.execute_group.side_effect = [
-            _make_exec_result("wave-0", [("sub-a", agent_id)]),
+            make_exec_result("wave-0", [("sub-a", agent_id)]),
         ]
 
         coordinator = MultiAgentCoordinator(
@@ -796,19 +664,19 @@ class TestMultiAgentCoordinator:
         """total_cost_usd sums costs from all waves."""
         from ai_company.providers.models import TokenUsage
 
-        sub_a = _make_subtask("sub-a")
-        sub_b = _make_subtask("sub-b", dependencies=("sub-a",))
-        decomp = _make_decomposition(
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b", dependencies=("sub-a",))
+        decomp = make_decomposition(
             (sub_a, sub_b),
             structure=TaskStructure.SEQUENTIAL,
         )
-        routing = _make_routing(
+        routing = make_routing(
             [("sub-a", "alice"), ("sub-b", "alice")],
         )
         agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
 
         # Build run results with non-zero costs
-        run_a = _build_run_result("sub-a", agent_id)
+        run_a = build_run_result("sub-a", agent_id)
         ctx_a = run_a.execution_result.context.model_copy(
             update={
                 "accumulated_cost": TokenUsage(
@@ -829,7 +697,7 @@ class TestMultiAgentCoordinator:
             task_id=run_a.task_id,
         )
 
-        run_b = _build_run_result("sub-b", agent_id)
+        run_b = build_run_result("sub-b", agent_id)
         ctx_b = run_b.execution_result.context.model_copy(
             update={
                 "accumulated_cost": TokenUsage(
@@ -884,3 +752,39 @@ class TestMultiAgentCoordinator:
 
         result = await coordinator.coordinate(ctx)
         assert result.total_cost_usd == pytest.approx(0.08)
+
+    @pytest.mark.unit
+    async def test_fail_fast_stops_after_failed_wave(self) -> None:
+        """fail_fast=True stops pipeline after first failed wave."""
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b", dependencies=("sub-a",))
+        decomp = make_decomposition(
+            (sub_a, sub_b),
+            structure=TaskStructure.SEQUENTIAL,
+        )
+        routing = make_routing(
+            [("sub-a", "alice"), ("sub-b", "alice")],
+        )
+        agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
+
+        coordinator = _make_coordinator(
+            decomp_result=decomp,
+            routing_result=routing,
+            exec_results=[
+                # Wave 0 fails — should stop before wave 1
+                make_exec_result("wave-0", [("sub-a", agent_id)], all_succeed=False),
+            ],
+        )
+
+        ctx = CoordinationContext(
+            task=make_assignment_task(id="parent-1"),
+            available_agents=(make_assignment_agent("alice"),),
+            config=CoordinationConfig(fail_fast=True),
+        )
+
+        result = await coordinator.coordinate(ctx)
+
+        # Only one wave executed (fail_fast stopped before wave 1)
+        assert len(result.waves) == 1
+        assert result.status_rollup is not None
+        assert result.status_rollup.failed == 1

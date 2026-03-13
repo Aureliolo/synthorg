@@ -210,6 +210,11 @@ class MultiAgentCoordinator:
             )
         except Exception as exc:
             elapsed = time.monotonic() - start
+            logger.warning(
+                COORDINATION_PHASE_FAILED,
+                phase=phase_name,
+                error=str(exc),
+            )
             phase = CoordinationPhaseResult(
                 phase=phase_name,
                 success=False,
@@ -259,6 +264,11 @@ class MultiAgentCoordinator:
             )
         except Exception as exc:
             elapsed = time.monotonic() - start
+            logger.warning(
+                COORDINATION_PHASE_FAILED,
+                phase=phase_name,
+                error=str(exc),
+            )
             phase = CoordinationPhaseResult(
                 phase=phase_name,
                 success=False,
@@ -358,6 +368,7 @@ class MultiAgentCoordinator:
         start = time.monotonic()
         phase_name = "rollup"
 
+        logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
         try:
             # Collect statuses from wave outcomes
             statuses: list[TaskStatus] = []
@@ -401,6 +412,11 @@ class MultiAgentCoordinator:
                 duration_seconds=elapsed,
             )
         )
+        logger.info(
+            COORDINATION_PHASE_COMPLETED,
+            phase=phase_name,
+            duration_seconds=elapsed,
+        )
         return rollup
 
     async def _phase_update_parent(
@@ -416,6 +432,7 @@ class MultiAgentCoordinator:
         start = time.monotonic()
         phase_name = "update_parent"
 
+        logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
         try:
             mutation = TransitionTaskMutation(
                 request_id=str(uuid4()),
@@ -431,7 +448,13 @@ class MultiAgentCoordinator:
             result = await self._task_engine.submit(mutation)
             elapsed = time.monotonic() - start
 
-            if not result.success:
+            if result.success:
+                logger.info(
+                    COORDINATION_PHASE_COMPLETED,
+                    phase=phase_name,
+                    duration_seconds=elapsed,
+                )
+            else:
                 logger.warning(
                     COORDINATION_PHASE_FAILED,
                     phase=phase_name,

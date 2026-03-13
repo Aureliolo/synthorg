@@ -16,17 +16,34 @@ from ai_company.core.company import Company, CompanyConfig, Department
 from ai_company.core.enums import (
     AgentStatus,
     Complexity,
+    CoordinationTopology,
     CreativityLevel,
     DepartmentName,
     Priority,
     RiskTolerance,
     SeniorityLevel,
     TaskStatus,
+    TaskStructure,
     TaskType,
 )
 from ai_company.core.role import Authority, Role
 from ai_company.core.task import AcceptanceCriterion, Task
 from ai_company.engine.context import AgentContext
+from ai_company.engine.decomposition.models import (
+    DecompositionPlan,
+    DecompositionResult,
+    SubtaskDefinition,
+)
+from ai_company.engine.parallel_models import (
+    AgentOutcome,
+    ParallelExecutionResult,
+)
+from ai_company.engine.routing.models import (
+    RoutingCandidate,
+    RoutingDecision,
+    RoutingResult,
+)
+from ai_company.engine.run_result import AgentRunResult
 from ai_company.engine.task_engine import TaskEngine
 from ai_company.engine.task_engine_config import TaskEngineConfig
 from ai_company.engine.task_execution import TaskExecution
@@ -460,3 +477,150 @@ async def engine_with_bus(
     yield eng
     await eng.stop(timeout=2.0)
     await message_bus.stop()
+
+
+# ---------------------------------------------------------------------------
+# Coordination helpers (shared across coordination test files)
+# ---------------------------------------------------------------------------
+
+
+def make_subtask(
+    subtask_id: str,
+    *,
+    dependencies: tuple[str, ...] = (),
+) -> SubtaskDefinition:
+    """Build a SubtaskDefinition with defaults."""
+    return SubtaskDefinition(
+        id=subtask_id,
+        title=f"Subtask {subtask_id}",
+        description=f"Description for {subtask_id}",
+        dependencies=dependencies,
+    )
+
+
+def make_decomposition(
+    subtasks: tuple[SubtaskDefinition, ...],
+    *,
+    parent_task_id: str = "parent-1",
+    topology: CoordinationTopology = CoordinationTopology.CENTRALIZED,
+    structure: TaskStructure = TaskStructure.PARALLEL,
+) -> DecompositionResult:
+    """Build a DecompositionResult with created tasks from subtask defs."""
+    plan = DecompositionPlan(
+        parent_task_id=parent_task_id,
+        subtasks=subtasks,
+        task_structure=structure,
+        coordination_topology=topology,
+    )
+    created_tasks = tuple(
+        make_assignment_task(
+            id=s.id,
+            title=s.title,
+            description=s.description,
+            parent_task_id=parent_task_id,
+            dependencies=s.dependencies,
+        )
+        for s in subtasks
+    )
+    edges: list[tuple[str, str]] = []
+    for s in subtasks:
+        edges.extend((dep, s.id) for dep in s.dependencies)
+    return DecompositionResult(
+        plan=plan,
+        created_tasks=created_tasks,
+        dependency_edges=tuple(edges),
+    )
+
+
+def make_routing(
+    subtask_agent_pairs: list[tuple[str, str]],
+    *,
+    parent_task_id: str = "parent-1",
+    topology: CoordinationTopology = CoordinationTopology.CENTRALIZED,
+    unroutable: tuple[str, ...] = (),
+) -> RoutingResult:
+    """Build a RoutingResult from subtask-agent pairs."""
+    decisions: list[RoutingDecision] = []
+    for subtask_id, agent_name in subtask_agent_pairs:
+        agent = make_assignment_agent(agent_name)
+        decisions.append(
+            RoutingDecision(
+                subtask_id=subtask_id,
+                selected_candidate=RoutingCandidate(
+                    agent_identity=agent,
+                    score=0.9,
+                    reason="Good match",
+                ),
+                topology=topology,
+            )
+        )
+    return RoutingResult(
+        parent_task_id=parent_task_id,
+        decisions=tuple(decisions),
+        unroutable=unroutable,
+    )
+
+
+def build_run_result(task_id: str, agent_id: str) -> AgentRunResult:
+    """Build a minimal AgentRunResult for testing."""
+    from ai_company.engine.loop_protocol import ExecutionResult, TerminationReason
+    from ai_company.engine.prompt import SystemPrompt
+
+    identity = make_assignment_agent("test-agent")
+    task = make_assignment_task(
+        id=task_id,
+        assigned_to=agent_id,
+        status=TaskStatus.ASSIGNED,
+    )
+    ctx = AgentContext.from_identity(identity, task=task)
+    execution_result = ExecutionResult(
+        context=ctx,
+        termination_reason=TerminationReason.COMPLETED,
+    )
+    return AgentRunResult(
+        execution_result=execution_result,
+        system_prompt=SystemPrompt(
+            content="test",
+            template_version="1.0",
+            estimated_tokens=1,
+            sections=("identity",),
+            metadata={"agent_id": agent_id},
+        ),
+        duration_seconds=0.5,
+        agent_id=agent_id,
+        task_id=task_id,
+    )
+
+
+def make_exec_result(
+    group_id: str,
+    task_agent_pairs: list[tuple[str, str]],
+    *,
+    all_succeed: bool = True,
+) -> ParallelExecutionResult:
+    """Build a ParallelExecutionResult with given outcomes."""
+    outcomes: list[AgentOutcome] = []
+    for task_id, agent_id in task_agent_pairs:
+        if all_succeed:
+            run_result = build_run_result(task_id, agent_id)
+            outcomes.append(
+                AgentOutcome(
+                    task_id=task_id,
+                    agent_id=agent_id,
+                    result=run_result,
+                )
+            )
+        else:
+            outcomes.append(
+                AgentOutcome(
+                    task_id=task_id,
+                    agent_id=agent_id,
+                    error="Test failure",
+                )
+            )
+
+    return ParallelExecutionResult(
+        group_id=group_id,
+        outcomes=tuple(outcomes),
+        total_duration_seconds=1.0,
+    )

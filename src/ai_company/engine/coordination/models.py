@@ -9,7 +9,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from ai_company.core.agent import AgentIdentity  # noqa: TC001
-from ai_company.core.enums import CoordinationTopology  # noqa: TC001
+from ai_company.core.enums import CoordinationTopology
 from ai_company.core.task import Task  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.engine.coordination.config import CoordinationConfig
@@ -180,6 +180,14 @@ class CoordinationResult(BaseModel):
         ge=0.0,
         description="Total cost in USD",
     )
+
+    @model_validator(mode="after")
+    def _validate_topology_resolved(self) -> Self:
+        """Ensure topology is resolved (not AUTO) in final result."""
+        if self.topology == CoordinationTopology.AUTO:
+            msg = "CoordinationResult topology must be resolved, not AUTO"
+            raise ValueError(msg)
+        return self
 
     @computed_field(  # type: ignore[prop-decorator]
         description="Whether all phases succeeded",

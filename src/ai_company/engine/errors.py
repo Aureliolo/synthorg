@@ -132,12 +132,13 @@ class CoordinationError(EngineError):
 class CoordinationPhaseError(CoordinationError):
     """Raised when a coordination pipeline phase fails.
 
-    Carries the failing phase name and any phases that completed
-    before the failure, enabling partial-result inspection.
+    Carries the failing phase name and all phase results accumulated
+    up to and including the failure, enabling partial-result inspection.
 
     Attributes:
         phase: Name of the phase that failed.
-        partial_phases: Phases completed before this failure.
+        partial_phases: Phase results accumulated before and including
+            this failure.
     """
 
     def __init__(

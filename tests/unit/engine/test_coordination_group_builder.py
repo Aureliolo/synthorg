@@ -5,11 +5,6 @@ import pytest
 from ai_company.core.enums import CoordinationTopology, TaskStructure
 from ai_company.engine.coordination.config import CoordinationConfig
 from ai_company.engine.coordination.group_builder import build_execution_waves
-from ai_company.engine.decomposition.models import (
-    DecompositionPlan,
-    DecompositionResult,
-    SubtaskDefinition,
-)
 from ai_company.engine.routing.models import (
     RoutingCandidate,
     RoutingDecision,
@@ -17,58 +12,10 @@ from ai_company.engine.routing.models import (
 )
 from tests.unit.engine.conftest import (
     make_assignment_agent,
-    make_assignment_task,
+    make_decomposition,
+    make_subtask,
     make_workspace,
 )
-
-
-def _make_subtask(
-    subtask_id: str,
-    *,
-    dependencies: tuple[str, ...] = (),
-) -> SubtaskDefinition:
-    """Build a SubtaskDefinition with defaults."""
-    return SubtaskDefinition(
-        id=subtask_id,
-        title=f"Subtask {subtask_id}",
-        description=f"Description for {subtask_id}",
-        dependencies=dependencies,
-    )
-
-
-def _make_decomposition(
-    subtasks: tuple[SubtaskDefinition, ...],
-    *,
-    parent_task_id: str = "parent-1",
-    structure: TaskStructure = TaskStructure.PARALLEL,
-) -> DecompositionResult:
-    """Build a DecompositionResult with created tasks from subtask defs."""
-    plan = DecompositionPlan(
-        parent_task_id=parent_task_id,
-        subtasks=subtasks,
-        task_structure=structure,
-        coordination_topology=CoordinationTopology.CENTRALIZED,
-    )
-    created_tasks = tuple(
-        make_assignment_task(
-            id=s.id,
-            title=s.title,
-            description=s.description,
-            parent_task_id=parent_task_id,
-            dependencies=s.dependencies,
-        )
-        for s in subtasks
-    )
-
-    edges: list[tuple[str, str]] = []
-    for s in subtasks:
-        edges.extend((dep, s.id) for dep in s.dependencies)
-
-    return DecompositionResult(
-        plan=plan,
-        created_tasks=created_tasks,
-        dependency_edges=tuple(edges),
-    )
 
 
 def _make_routing_decision(
@@ -94,8 +41,8 @@ class TestBuildExecutionWaves:
     @pytest.mark.unit
     def test_single_subtask_one_group(self) -> None:
         """Single subtask produces 1 group with 1 assignment."""
-        sub_a = _make_subtask("sub-a")
-        decomp = _make_decomposition((sub_a,))
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
         routing = RoutingResult(
             parent_task_id="parent-1",
             decisions=(_make_routing_decision("sub-a", "alice"),),
@@ -115,9 +62,9 @@ class TestBuildExecutionWaves:
     @pytest.mark.unit
     def test_two_independent_subtasks_one_wave(self) -> None:
         """Two independent subtasks produce 1 wave with 2 assignments."""
-        sub_a = _make_subtask("sub-a")
-        sub_b = _make_subtask("sub-b")
-        decomp = _make_decomposition((sub_a, sub_b))
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b")
+        decomp = make_decomposition((sub_a, sub_b))
         routing = RoutingResult(
             parent_task_id="parent-1",
             decisions=(
@@ -138,9 +85,9 @@ class TestBuildExecutionWaves:
     @pytest.mark.unit
     def test_sequential_chain_two_waves(self) -> None:
         """A→B dependency chain produces 2 waves of 1 each."""
-        sub_a = _make_subtask("sub-a")
-        sub_b = _make_subtask("sub-b", dependencies=("sub-a",))
-        decomp = _make_decomposition(
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b", dependencies=("sub-a",))
+        decomp = make_decomposition(
             (sub_a, sub_b),
             structure=TaskStructure.SEQUENTIAL,
         )
@@ -165,10 +112,10 @@ class TestBuildExecutionWaves:
     @pytest.mark.unit
     def test_diamond_dag(self) -> None:
         """Diamond A→C, B→C produces 2 waves: [A,B] then [C]."""
-        sub_a = _make_subtask("sub-a")
-        sub_b = _make_subtask("sub-b")
-        sub_c = _make_subtask("sub-c", dependencies=("sub-a", "sub-b"))
-        decomp = _make_decomposition(
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b")
+        sub_c = make_subtask("sub-c", dependencies=("sub-a", "sub-b"))
+        decomp = make_decomposition(
             (sub_a, sub_b, sub_c),
             structure=TaskStructure.MIXED,
         )
@@ -196,8 +143,8 @@ class TestBuildExecutionWaves:
     @pytest.mark.unit
     def test_max_concurrency_propagated(self) -> None:
         """max_concurrency_per_wave is propagated to groups."""
-        sub_a = _make_subtask("sub-a")
-        decomp = _make_decomposition((sub_a,))
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
         routing = RoutingResult(
             parent_task_id="parent-1",
             decisions=(_make_routing_decision("sub-a", "alice"),),
@@ -214,8 +161,8 @@ class TestBuildExecutionWaves:
     @pytest.mark.unit
     def test_fail_fast_propagated(self) -> None:
         """fail_fast is propagated to groups."""
-        sub_a = _make_subtask("sub-a")
-        decomp = _make_decomposition((sub_a,))
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
         routing = RoutingResult(
             parent_task_id="parent-1",
             decisions=(_make_routing_decision("sub-a", "alice"),),
@@ -232,8 +179,8 @@ class TestBuildExecutionWaves:
     @pytest.mark.unit
     def test_workspace_resource_claims_mapped(self) -> None:
         """Workspace worktree_path is mapped to resource_claims."""
-        sub_a = _make_subtask("sub-a")
-        decomp = _make_decomposition((sub_a,))
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
         routing = RoutingResult(
             parent_task_id="parent-1",
             decisions=(_make_routing_decision("sub-a", "alice"),),
@@ -257,9 +204,9 @@ class TestBuildExecutionWaves:
     @pytest.mark.unit
     def test_unroutable_subtasks_skipped(self) -> None:
         """Unroutable subtasks are silently skipped."""
-        sub_a = _make_subtask("sub-a")
-        sub_b = _make_subtask("sub-b")
-        decomp = _make_decomposition((sub_a, sub_b))
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b")
+        decomp = make_decomposition((sub_a, sub_b))
         # Only route sub-a, sub-b is unroutable
         routing = RoutingResult(
             parent_task_id="parent-1",
@@ -280,8 +227,8 @@ class TestBuildExecutionWaves:
     @pytest.mark.unit
     def test_all_unroutable_empty_waves(self) -> None:
         """All unroutable subtasks produce no waves."""
-        sub_a = _make_subtask("sub-a")
-        decomp = _make_decomposition((sub_a,))
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
         routing = RoutingResult(
             parent_task_id="parent-1",
             unroutable=("sub-a",),
@@ -298,8 +245,8 @@ class TestBuildExecutionWaves:
     @pytest.mark.unit
     def test_no_workspace_no_resource_claims(self) -> None:
         """Without workspaces, resource_claims is empty."""
-        sub_a = _make_subtask("sub-a")
-        decomp = _make_decomposition((sub_a,))
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
         routing = RoutingResult(
             parent_task_id="parent-1",
             decisions=(_make_routing_decision("sub-a", "alice"),),
@@ -312,3 +259,58 @@ class TestBuildExecutionWaves:
         )
 
         assert waves[0].assignments[0].resource_claims == ()
+
+    @pytest.mark.unit
+    def test_missing_created_task_raises(self) -> None:
+        """Routing decision with no corresponding created task raises.
+
+        Uses model_construct to bypass DecompositionResult validators
+        (which enforce ID matching), testing the defensive guard in
+        build_execution_waves.
+        """
+        from ai_company.engine.decomposition.models import (
+            DecompositionPlan,
+            DecompositionResult,
+        )
+        from ai_company.engine.errors import CoordinationError
+        from tests.unit.engine.conftest import make_assignment_task
+
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b")
+        plan = DecompositionPlan(
+            parent_task_id="parent-1",
+            subtasks=(sub_a, sub_b),
+            task_structure=TaskStructure.PARALLEL,
+            coordination_topology=CoordinationTopology.CENTRALIZED,
+        )
+        # Bypass validation: created_tasks only has sub-a, not sub-b
+        decomp = DecompositionResult.model_construct(
+            plan=plan,
+            created_tasks=(
+                make_assignment_task(
+                    id="sub-a",
+                    title="Subtask sub-a",
+                    description="Description for sub-a",
+                    parent_task_id="parent-1",
+                ),
+            ),
+            dependency_edges=(),
+        )
+
+        routing = RoutingResult(
+            parent_task_id="parent-1",
+            decisions=(
+                _make_routing_decision("sub-a", "alice"),
+                _make_routing_decision("sub-b", "bob"),
+            ),
+        )
+
+        with pytest.raises(
+            CoordinationError,
+            match="no corresponding created task",
+        ):
+            build_execution_waves(
+                decomposition_result=decomp,
+                routing_result=routing,
+                config=CoordinationConfig(),
+            )

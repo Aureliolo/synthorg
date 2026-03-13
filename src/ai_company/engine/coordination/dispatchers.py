@@ -11,17 +11,12 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field
 
 from ai_company.core.enums import CoordinationTopology
-from ai_company.core.types import NotBlankStr
 from ai_company.engine.coordination.group_builder import build_execution_waves
 from ai_company.engine.coordination.models import (
     CoordinationPhaseResult,
     CoordinationWave,
 )
 from ai_company.engine.errors import CoordinationError
-from ai_company.engine.parallel_models import (
-    AgentAssignment,
-    ParallelExecutionGroup,
-)
 from ai_company.engine.workspace.models import (
     Workspace,
     WorkspaceGroupResult,
@@ -44,6 +39,7 @@ if TYPE_CHECKING:
     from ai_company.engine.coordination.config import CoordinationConfig
     from ai_company.engine.decomposition.models import DecompositionResult
     from ai_company.engine.parallel import ParallelExecutor
+    from ai_company.engine.parallel_models import ParallelExecutionGroup
     from ai_company.engine.routing.models import RoutingResult
     from ai_company.engine.workspace.service import WorkspaceIsolationService
 
@@ -169,10 +165,11 @@ async def _setup_workspaces(
 async def _merge_workspaces(
     workspace_service: WorkspaceIsolationService,
     workspaces: tuple[Workspace, ...],
+    *,
+    phase_name: str = "merge",
 ) -> tuple[WorkspaceGroupResult | None, CoordinationPhaseResult]:
     """Merge workspaces and return result with a phase result."""
     start = time.monotonic()
-    phase_name = "merge"
 
     logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
     try:
@@ -245,7 +242,7 @@ async def _execute_waves(
     for wave_idx, group in enumerate(groups):
         start = time.monotonic()
         phase_name = f"execute_wave_{wave_idx}"
-        subtask_ids = tuple(NotBlankStr(a.task.id) for a in group.assignments)
+        subtask_ids = tuple(a.task.id for a in group.assignments)
 
         logger.info(
             COORDINATION_WAVE_STARTED,
@@ -279,13 +276,22 @@ async def _execute_waves(
                 )
             )
 
-            logger.info(
-                COORDINATION_WAVE_COMPLETED,
-                wave_index=wave_idx,
-                succeeded=exec_result.agents_succeeded,
-                failed=exec_result.agents_failed,
-                duration_seconds=elapsed,
-            )
+            if success:
+                logger.info(
+                    COORDINATION_WAVE_COMPLETED,
+                    wave_index=wave_idx,
+                    succeeded=exec_result.agents_succeeded,
+                    failed=exec_result.agents_failed,
+                    duration_seconds=elapsed,
+                )
+            else:
+                logger.warning(
+                    COORDINATION_WAVE_COMPLETED,
+                    wave_index=wave_idx,
+                    succeeded=exec_result.agents_succeeded,
+                    failed=exec_result.agents_failed,
+                    duration_seconds=elapsed,
+                )
 
             if not success and fail_fast:
                 break
@@ -324,32 +330,20 @@ def _rebuild_group_with_workspaces(
     """Rebuild an execution group with workspace resource claims."""
     ws_lookup = {ws.task_id: ws.worktree_path for ws in wave_workspaces}
     new_assignments = tuple(
-        AgentAssignment(
-            identity=a.identity,
-            task=a.task,
-            resource_claims=(ws_lookup[a.task.id],)
-            if a.task.id in ws_lookup
-            else a.resource_claims,
-            max_turns=a.max_turns,
-            timeout_seconds=a.timeout_seconds,
-            memory_messages=a.memory_messages,
-            completion_config=a.completion_config,
-        )
+        a.model_copy(update={"resource_claims": (ws_lookup[a.task.id],)})
+        if a.task.id in ws_lookup
+        else a
         for a in group.assignments
     )
-    return ParallelExecutionGroup(
-        group_id=group.group_id,
-        assignments=new_assignments,
-        max_concurrency=group.max_concurrency,
-        fail_fast=group.fail_fast,
-    )
+    return group.model_copy(update={"assignments": new_assignments})
 
 
 class SasDispatcher:
-    """Single-Agent-Step dispatcher.
+    """SAS (Single-Agent-Step) dispatcher.
 
-    Sequential waves of 1 subtask each. No workspace isolation.
-    Single agent runs all subtasks.
+    Waves from DAG parallel groups. No workspace isolation.
+    Designed for single-agent scenarios where the routing layer
+    assigns all subtasks to one agent.
     """
 
     async def dispatch(
@@ -423,12 +417,19 @@ class CentralizedDispatcher:
             )
             all_phases.extend(exec_phases)
 
-            # Merge workspaces after all waves
-            if workspaces and workspace_service is not None:
+            # Merge only if all waves succeeded
+            all_succeeded = all(p.success for p in exec_phases)
+            if workspaces and workspace_service is not None and all_succeeded:
                 merge_result, merge_phase = await _merge_workspaces(
                     workspace_service, workspaces
                 )
                 all_phases.append(merge_phase)
+            elif workspaces and workspace_service is not None:
+                logger.warning(
+                    COORDINATION_PHASE_FAILED,
+                    phase="merge",
+                    error="Skipped merge: one or more waves failed",
+                )
 
             return DispatchResult(
                 waves=tuple(waves),
@@ -444,9 +445,9 @@ class CentralizedDispatcher:
 class DecentralizedDispatcher:
     """Decentralized dispatcher.
 
-    Single wave with all subtasks in parallel. Mandatory workspace
-    isolation — raises ``CoordinationError`` if workspace service
-    is unavailable or isolation is disabled.
+    Waves from DAG parallel groups. Mandatory workspace isolation
+    — raises ``CoordinationError`` if workspace service is
+    unavailable or isolation is disabled.
     """
 
     async def dispatch(
@@ -458,11 +459,16 @@ class DecentralizedDispatcher:
         workspace_service: WorkspaceIsolationService | None,
         config: CoordinationConfig,
     ) -> DispatchResult:
-        """Execute all subtasks in a single parallel wave."""
+        """Execute subtasks with mandatory workspace isolation."""
         if workspace_service is None or not config.enable_workspace_isolation:
             msg = (
                 "Decentralized topology requires workspace isolation "
                 "but workspace_service is unavailable or isolation is disabled"
+            )
+            logger.warning(
+                COORDINATION_PHASE_FAILED,
+                phase="decentralized_precondition",
+                error=msg,
             )
             raise CoordinationError(msg)
 
@@ -492,11 +498,19 @@ class DecentralizedDispatcher:
             )
             all_phases.extend(exec_phases)
 
-            if workspaces:
+            # Merge only if all waves succeeded
+            all_succeeded = all(p.success for p in exec_phases)
+            if workspaces and all_succeeded:
                 merge_result, merge_phase = await _merge_workspaces(
                     workspace_service, workspaces
                 )
                 all_phases.append(merge_phase)
+            elif workspaces:
+                logger.warning(
+                    COORDINATION_PHASE_FAILED,
+                    phase="merge",
+                    error="Skipped merge: one or more waves failed",
+                )
 
             return DispatchResult(
                 waves=tuple(waves),
@@ -583,7 +597,7 @@ class ContextDependentDispatcher:
             and config.enable_workspace_isolation
         )
 
-        if not needs_isolation or workspace_service is None:
+        if not needs_isolation:
             return (), group
 
         wave_requests = tuple(
@@ -646,7 +660,7 @@ class ContextDependentDispatcher:
             True if the wave failed, False if it succeeded.
         """
         start = time.monotonic()
-        subtask_ids = tuple(NotBlankStr(a.task.id) for a in group.assignments)
+        subtask_ids = tuple(a.task.id for a in group.assignments)
         wave_failed = False
 
         logger.info(
@@ -683,12 +697,22 @@ class ContextDependentDispatcher:
                 )
             )
 
-            logger.info(
-                COORDINATION_WAVE_COMPLETED,
-                wave_index=wave_idx,
-                succeeded=exec_result.agents_succeeded,
-                failed=exec_result.agents_failed,
-            )
+            if success:
+                logger.info(
+                    COORDINATION_WAVE_COMPLETED,
+                    wave_index=wave_idx,
+                    succeeded=exec_result.agents_succeeded,
+                    failed=exec_result.agents_failed,
+                    duration_seconds=elapsed,
+                )
+            else:
+                logger.warning(
+                    COORDINATION_WAVE_COMPLETED,
+                    wave_index=wave_idx,
+                    succeeded=exec_result.agents_succeeded,
+                    failed=exec_result.agents_failed,
+                    duration_seconds=elapsed,
+                )
 
         except Exception as exc:
             elapsed = time.monotonic() - start
@@ -715,12 +739,23 @@ class ContextDependentDispatcher:
             )
         finally:
             if wave_workspaces and workspace_service is not None:
-                merge_result, merge_phase = await _merge_workspaces(
-                    workspace_service, wave_workspaces
-                )
-                all_phases.append(merge_phase)
-                if merge_result is not None:
-                    merge_results.append(merge_result)
+                # Only merge if the wave succeeded
+                if not wave_failed:
+                    merge_phase_name = f"merge_wave_{wave_idx}"
+                    merge_result, merge_phase = await _merge_workspaces(
+                        workspace_service,
+                        wave_workspaces,
+                        phase_name=merge_phase_name,
+                    )
+                    all_phases.append(merge_phase)
+                    if merge_result is not None:
+                        merge_results.append(merge_result)
+                else:
+                    logger.warning(
+                        COORDINATION_PHASE_FAILED,
+                        phase=f"merge_wave_{wave_idx}",
+                        error="Skipped merge: wave failed",
+                    )
                 await _teardown_workspaces(workspace_service, wave_workspaces)
 
         return wave_failed
@@ -765,17 +800,15 @@ def select_dispatcher(topology: CoordinationTopology) -> TopologyDispatcher:
     Raises:
         ValueError: If AUTO topology is passed (must be resolved first).
     """
-    logger.debug(COORDINATION_TOPOLOGY_RESOLVED, topology=topology.value)
-
     match topology:
         case CoordinationTopology.SAS:
-            return SasDispatcher()
+            dispatcher = SasDispatcher()
         case CoordinationTopology.CENTRALIZED:
-            return CentralizedDispatcher()
+            dispatcher = CentralizedDispatcher()
         case CoordinationTopology.DECENTRALIZED:
-            return DecentralizedDispatcher()
+            dispatcher = DecentralizedDispatcher()
         case CoordinationTopology.CONTEXT_DEPENDENT:
-            return ContextDependentDispatcher()
+            dispatcher = ContextDependentDispatcher()
         case _:
             msg = (
                 f"Cannot dispatch topology {topology.value!r}: "
@@ -788,3 +821,6 @@ def select_dispatcher(topology: CoordinationTopology) -> TopologyDispatcher:
                 error=msg,
             )
             raise ValueError(msg)
+
+    logger.debug(COORDINATION_TOPOLOGY_RESOLVED, topology=topology.value)
+    return dispatcher
