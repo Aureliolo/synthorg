@@ -37,6 +37,28 @@ describe('useMessageStore', () => {
     }
     store.handleWsEvent(event)
     expect(store.messages).toHaveLength(1)
+    expect(store.total).toBe(1)
+  })
+
+  it('does not increment total for messages filtered by activeChannel', () => {
+    const store = useMessageStore()
+    store.setActiveChannel('engineering')
+    const event: WsEvent = {
+      event_type: 'message.sent',
+      channel: 'messages',
+      timestamp: '2026-03-12T10:00:00Z',
+      payload: {
+        id: 'msg-1',
+        channel: 'general', // does not match activeChannel 'engineering'
+        sender: 'alice',
+        content: 'Hello world',
+        timestamp: '2026-03-12T10:00:00Z',
+        metadata: {},
+      },
+    }
+    store.handleWsEvent(event)
+    expect(store.messages).toHaveLength(0)
+    expect(store.total).toBe(0) // not incremented for filtered-out messages
   })
 
   it('setActiveChannel updates state', () => {

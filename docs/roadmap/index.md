@@ -22,7 +22,7 @@ The SynthOrg core framework is complete. The following subsystems are built and 
 
 | Area | Description |
 |------|-------------|
-| **Web dashboard** | Vue 3 + PrimeVue + Tailwind CSS frontend for monitoring and managing the synthetic organization (implemented) |
+| **Web dashboard** | Vue 3 + PrimeVue + Tailwind CSS frontend for monitoring and managing the synthetic organization (in progress — core infrastructure merged, page views pending) |
 
 ## Remaining Work
 

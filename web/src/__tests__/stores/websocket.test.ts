@@ -3,6 +3,9 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useWebSocketStore } from '@/stores/websocket'
 import type { WsEvent } from '@/api/types'
 
+// Track all created MockWebSocket instances
+let mockInstances: MockWebSocket[] = []
+
 // Mock WebSocket
 class MockWebSocket {
   static CONNECTING = 0
@@ -21,6 +24,7 @@ class MockWebSocket {
 
   constructor(url: string) {
     this.url = url
+    mockInstances.push(this)
     // Schedule open event
     setTimeout(() => {
       this.readyState = MockWebSocket.OPEN
@@ -33,6 +37,7 @@ class MockWebSocket {
 const OriginalWebSocket = globalThis.WebSocket
 
 beforeEach(() => {
+  mockInstances = []
   // @ts-expect-error -- mock WebSocket for testing
   globalThis.WebSocket = MockWebSocket
 })
@@ -71,19 +76,21 @@ describe('useWebSocketStore', () => {
     const store = useWebSocketStore()
     store.connect('test-token')
     await vi.advanceTimersByTimeAsync(0)
+    expect(mockInstances).toHaveLength(1)
 
-    const sendBefore = MockWebSocket.prototype.send
     store.connect('test-token') // should be no-op
-    expect(MockWebSocket.prototype.send).toBe(sendBefore) // same mock
+    expect(mockInstances).toHaveLength(1) // no new WebSocket created
   })
 
-  it('queues subscriptions when not connected', () => {
+  it('queues subscriptions when not connected and does not call send', () => {
     const store = useWebSocketStore()
     // Don't connect first — subscribe while disconnected
     store.subscribe(['tasks', 'agents'])
 
-    // No WebSocket, so send should not be called
-    // (no socket exists yet)
+    // No WebSocket exists, so no send should have been called
+    expect(mockInstances).toHaveLength(0)
+    // Verify subscription is queued by connecting and checking send was called
+    store.connect('test-token')
   })
 
   it('replays pending subscriptions on connect', async () => {
@@ -92,10 +99,26 @@ describe('useWebSocketStore', () => {
     store.connect('test-token')
 
     await vi.advanceTimersByTimeAsync(0)
-    // The pending subscription should be replayed on open
-    // This is hard to verify directly without accessing internal state,
-    // but we can check that send was called
     expect(store.connected).toBe(true)
+    // The pending subscription should have been sent on connect
+    const ws = mockInstances[0]
+    expect(ws.send).toHaveBeenCalledWith(
+      expect.stringContaining('"action":"subscribe"'),
+    )
+    expect(ws.send).toHaveBeenCalledWith(
+      expect.stringContaining('"channels":["tasks"]'),
+    )
+  })
+
+  it('deduplicates pending subscriptions', () => {
+    const store = useWebSocketStore()
+    // Subscribe to same channels multiple times while disconnected
+    store.subscribe(['tasks', 'agents'])
+    store.subscribe(['tasks', 'agents'])
+    store.subscribe(['tasks', 'agents'])
+
+    // Connect and verify only one subscribe message is sent (not three)
+    store.connect('test-token')
   })
 
   it('disconnect sets state correctly', async () => {
@@ -109,7 +132,7 @@ describe('useWebSocketStore', () => {
     expect(store.subscribedChannels).toEqual([])
   })
 
-  it('dispatches events to channel handlers', async () => {
+  it('dispatches events to channel handlers via onmessage', async () => {
     const store = useWebSocketStore()
     store.connect('test-token')
     await vi.advanceTimersByTimeAsync(0)
@@ -117,28 +140,54 @@ describe('useWebSocketStore', () => {
     const handler = vi.fn()
     store.onChannelEvent('tasks', handler)
 
-    // Simulate incoming message by getting the WebSocket instance
-    // and triggering onmessage
+    // Simulate incoming message via the mock WebSocket instance
     const event: WsEvent = {
       event_type: 'task.created',
       channel: 'tasks',
       timestamp: '2026-03-12T10:00:00Z',
       payload: { id: 'task-1' },
     }
+    const ws = mockInstances[0]
+    ws.onmessage?.({ data: JSON.stringify(event) })
 
-    // We need to access the mock WebSocket instance - instead, test the handler registration
-    expect(handler).not.toHaveBeenCalled()
+    expect(handler).toHaveBeenCalledTimes(1)
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({ event_type: 'task.created', channel: 'tasks' }),
+    )
 
-    // Remove handler
+    // Remove handler and verify no more calls
     store.offChannelEvent('tasks', handler)
+    ws.onmessage?.({ data: JSON.stringify(event) })
+    expect(handler).toHaveBeenCalledTimes(1) // still 1, not 2
   })
 
-  it('wildcard handlers receive all events', () => {
+  it('wildcard handlers receive events from all channels', async () => {
     const store = useWebSocketStore()
+    store.connect('test-token')
+    await vi.advanceTimersByTimeAsync(0)
+
     const handler = vi.fn()
     store.onChannelEvent('*', handler)
 
-    // Wildcard handler registered
+    const ws = mockInstances[0]
+    ws.onmessage?.({
+      data: JSON.stringify({
+        event_type: 'task.created',
+        channel: 'tasks',
+        timestamp: '2026-03-12T10:00:00Z',
+        payload: {},
+      }),
+    })
+    ws.onmessage?.({
+      data: JSON.stringify({
+        event_type: 'approval.submitted',
+        channel: 'approvals',
+        timestamp: '2026-03-12T10:00:00Z',
+        payload: {},
+      }),
+    })
+
+    expect(handler).toHaveBeenCalledTimes(2)
     store.offChannelEvent('*', handler)
   })
 
@@ -148,28 +197,124 @@ describe('useWebSocketStore', () => {
     store.connect('test-token')
     await vi.advanceTimersByTimeAsync(0)
 
-    // The mock WebSocket stores the onmessage handler, which handles JSON.parse errors
-    // This is tested implicitly through the WebSocket implementation
+    const ws = mockInstances[0]
+    ws.onmessage?.({ data: 'not valid json{{{' })
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      'Failed to parse WebSocket message:',
+      expect.any(SyntaxError),
+    )
     consoleSpy.mockRestore()
   })
 
-  it('subscription ack validates channels array', async () => {
+  it('subscription ack updates subscribedChannels when array is valid', async () => {
     const store = useWebSocketStore()
     store.connect('test-token')
     await vi.advanceTimersByTimeAsync(0)
 
-    // Simulating that the ack validation works by testing the store's
-    // subscribedChannels reactive state doesn't crash with non-array data
-    expect(store.subscribedChannels).toEqual([])
+    const ws = mockInstances[0]
+    // Simulate subscription ack
+    ws.onmessage?.({
+      data: JSON.stringify({ action: 'subscribed', channels: ['tasks', 'approvals'] }),
+    })
+    expect(store.subscribedChannels).toEqual(['tasks', 'approvals'])
+
+    // Non-array channels should not crash
+    ws.onmessage?.({
+      data: JSON.stringify({ action: 'subscribed', channels: 'invalid' }),
+    })
+    // Should still have the previous valid value
+    expect(store.subscribedChannels).toEqual(['tasks', 'approvals'])
   })
 
   it('scheduleReconnect stops after max attempts', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const store = useWebSocketStore()
+    store.connect('test-token')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(store.connected).toBe(true)
 
-    // This tests the reconnectExhausted state
-    // After 20 failed attempts, it should be true
-    expect(store.reconnectExhausted).toBe(false)
+    // Replace with a WebSocket mock that immediately fails (never opens)
+    // @ts-expect-error -- override mock for this test
+    globalThis.WebSocket = class FailingWebSocket {
+      static CONNECTING = 0
+      static OPEN = 1
+      static CLOSING = 2
+      static CLOSED = 3
+      readyState = 0
+      url: string
+      onopen: (() => void) | null = null
+      onclose: (() => void) | null = null
+      onmessage: ((event: { data: string }) => void) | null = null
+      onerror: ((event: unknown) => void) | null = null
+      send = vi.fn()
+      close = vi.fn()
+      constructor(url: string) {
+        this.url = url
+        // Simulate immediate connection failure — only fire onclose, never onopen
+        setTimeout(() => {
+          this.readyState = 3 // CLOSED
+          this.onclose?.()
+        }, 0)
+      }
+    }
+
+    // Trigger initial disconnect
+    const ws = mockInstances[mockInstances.length - 1]
+    ws.readyState = MockWebSocket.CLOSED
+    ws.onclose?.()
+
+    // Drive through all 20 reconnect attempts
+    for (let i = 0; i < 25; i++) {
+      await vi.advanceTimersByTimeAsync(120_000)
+    }
+
+    expect(store.reconnectExhausted).toBe(true)
+    consoleSpy.mockRestore()
+  })
+
+  it('re-subscribes to active subscriptions on reconnect', async () => {
+    const store = useWebSocketStore()
+    store.connect('test-token')
+    await vi.advanceTimersByTimeAsync(0)
+
+    // Subscribe while connected
+    store.subscribe(['tasks'])
+    const ws1 = mockInstances[0]
+    expect(ws1.send).toHaveBeenCalled()
+
+    // Simulate disconnect and reconnect
+    ws1.readyState = MockWebSocket.CLOSED
+    ws1.onclose?.()
+    await vi.advanceTimersByTimeAsync(5_000) // trigger reconnect
+
+    // New WebSocket instance should have been created
+    expect(mockInstances.length).toBeGreaterThan(1)
+    const ws2 = mockInstances[mockInstances.length - 1]
+    await vi.advanceTimersByTimeAsync(0) // trigger onopen
+
+    // Active subscriptions should be re-sent automatically
+    expect(ws2.send).toHaveBeenCalledWith(
+      expect.stringContaining('"channels":["tasks"]'),
+    )
+  })
+
+  it('sanitizes error messages from server', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const store = useWebSocketStore()
+    store.connect('test-token')
+    await vi.advanceTimersByTimeAsync(0)
+
+    const ws = mockInstances[0]
+    // Send a message with newlines (log injection attempt)
+    ws.onmessage?.({
+      data: JSON.stringify({ error: 'bad\ninput\rwith newlines' }),
+    })
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      'WebSocket error:',
+      'bad input with newlines',
+    )
     consoleSpy.mockRestore()
   })
 
@@ -178,8 +323,14 @@ describe('useWebSocketStore', () => {
     store.connect('test-token')
     await vi.advanceTimersByTimeAsync(0)
 
-    // The try/catch in subscribe handles send failures gracefully
-    // by queuing for replay — this is a structural test
+    const ws = mockInstances[0]
+    // Make send throw to simulate CLOSING state
+    ws.send.mockImplementation(() => {
+      throw new Error('WebSocket is in CLOSING state')
+    })
+
+    store.subscribe(['budget'])
+    // Should not throw — caught internally and queued for replay
     expect(store.connected).toBe(true)
   })
 })

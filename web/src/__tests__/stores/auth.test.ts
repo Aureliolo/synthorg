@@ -141,10 +141,16 @@ describe('useAuthStore', () => {
   })
 
   describe('setup', () => {
-    it('sets token and user as ceo', async () => {
+    it('sets token and fetches user on success', async () => {
       mockSetup.mockResolvedValue({
         token: 'setup-token',
         expires_in: 3600,
+        must_change_password: true,
+      })
+      mockGetMe.mockResolvedValue({
+        id: 'user-1',
+        username: 'admin',
+        role: 'ceo',
         must_change_password: true,
       })
 
@@ -153,8 +159,26 @@ describe('useAuthStore', () => {
 
       expect(result.token).toBe('setup-token')
       expect(store.token).toBe('setup-token')
+      expect(store.user?.id).toBe('user-1')
       expect(store.user?.role).toBe('ceo')
       expect(store.mustChangePassword).toBe(true)
+      expect(mockGetMe).toHaveBeenCalled()
+    })
+
+    it('clears auth if fetchUser fails after setup', async () => {
+      mockSetup.mockResolvedValue({
+        token: 'setup-token',
+        expires_in: 3600,
+        must_change_password: true,
+      })
+      mockGetMe.mockRejectedValue(new Error('Network error'))
+
+      const store = useAuthStore()
+      await expect(store.setup('admin', 'password123')).rejects.toThrow(
+        'Setup succeeded but failed to load user profile',
+      )
+      expect(store.token).toBeNull()
+      expect(store.isAuthenticated).toBe(false)
     })
   })
 

@@ -70,11 +70,12 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const result = await authApi.setup({ username, password })
       setToken(result.token, result.expires_in)
-      user.value = {
-        id: '',
-        username,
-        role: 'ceo',
-        must_change_password: result.must_change_password,
+      // Fetch full user info — mirrors login() pattern to avoid stale id/role
+      try {
+        await fetchUser()
+      } catch {
+        clearAuth()
+        throw new Error('Setup succeeded but failed to load user profile. Please try again.')
       }
       return result
     } finally {

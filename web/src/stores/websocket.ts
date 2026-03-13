@@ -15,6 +15,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
   let currentToken: string | null = null
   const channelHandlers = new Map<string, Set<WsEventHandler>>()
   let pendingSubscriptions: { channels: WsChannel[]; filters?: Record<string, string> }[] = []
+  // Track active subscriptions so reconnect can re-subscribe automatically
+  const activeSubscriptions: { channels: WsChannel[]; filters?: Record<string, string> }[] = []
 
   function getWsUrl(): string {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -36,6 +38,14 @@ export const useWebSocketStore = defineStore('websocket', () => {
     socket.onopen = () => {
       connected.value = true
       reconnectAttempts = 0
+      // Re-subscribe to previously active subscriptions (survives reconnect)
+      for (const sub of activeSubscriptions) {
+        try {
+          socket!.send(JSON.stringify({ action: 'subscribe', channels: sub.channels, filters: sub.filters }))
+        } catch {
+          // Will be retried on next reconnect
+        }
+      }
       // Replay any subscriptions that were queued while disconnected
       for (const pending of pendingSubscriptions) {
         subscribe(pending.channels, pending.filters)
@@ -62,7 +72,9 @@ export const useWebSocketStore = defineStore('websocket', () => {
       }
 
       if (msg.error) {
-        console.error('WebSocket error:', String(msg.error).slice(0, 200))
+        // Sanitize user-provided values before logging to prevent log injection
+        const sanitized = String(msg.error).slice(0, 200).replace(/[\n\r]/g, ' ')
+        console.error('WebSocket error:', sanitized)
         return
       }
 
@@ -70,7 +82,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
         try {
           dispatchEvent(msg as unknown as WsEvent)
         } catch (handlerErr) {
-          console.error('WebSocket event handler error:', handlerErr, 'Event type:', String(msg.event_type))
+          const sanitizedType = String(msg.event_type).slice(0, 100).replace(/[\n\r]/g, ' ')
+          console.error('WebSocket event handler error:', handlerErr, 'Event type:', sanitizedType)
         }
       }
     }
@@ -120,19 +133,34 @@ export const useWebSocketStore = defineStore('websocket', () => {
     connected.value = false
     subscribedChannels.value = []
     pendingSubscriptions = []
+    activeSubscriptions.length = 0
+  }
+
+  function pendingKey(channels: WsChannel[], filters?: Record<string, string>): string {
+    return JSON.stringify({ channels: [...channels].sort(), filters: filters ?? {} })
   }
 
   function subscribe(channels: WsChannel[], filters?: Record<string, string>) {
+    // Track as active subscription for auto-re-subscribe on reconnect
+    const key = pendingKey(channels, filters)
+    if (!activeSubscriptions.some((s) => pendingKey(s.channels, s.filters) === key)) {
+      activeSubscriptions.push({ channels, filters })
+    }
+
     if (!socket || socket.readyState !== WebSocket.OPEN) {
-      // Queue for replay when connection opens
-      pendingSubscriptions.push({ channels, filters })
+      // Queue for replay when connection opens, with deduplication
+      if (!pendingSubscriptions.some((s) => pendingKey(s.channels, s.filters) === key)) {
+        pendingSubscriptions.push({ channels, filters })
+      }
       return
     }
     try {
       socket.send(JSON.stringify({ action: 'subscribe', channels, filters }))
     } catch {
       // Socket may have transitioned to CLOSING — queue for replay
-      pendingSubscriptions.push({ channels, filters })
+      if (!pendingSubscriptions.some((s) => pendingKey(s.channels, s.filters) === key)) {
+        pendingSubscriptions.push({ channels, filters })
+      }
     }
   }
 

@@ -227,5 +227,20 @@ describe('useTaskStore', () => {
       store.handleWsEvent(event)
       expect(store.tasks).toHaveLength(1)
     })
+
+    it('skips task.created WS events when filters are active', () => {
+      const store = useTaskStore()
+      store.currentFilters = { status: 'in_progress' }
+      const event: WsEvent = {
+        event_type: 'task.created',
+        channel: 'tasks',
+        timestamp: '2026-03-12T10:00:00Z',
+        payload: { ...mockTask, id: 'task-new', status: 'created' },
+      }
+      store.handleWsEvent(event)
+      // Should NOT append — filters are active, let next fetch sync the list
+      expect(store.tasks).toHaveLength(0)
+      expect(store.total).toBe(0)
+    })
   })
 })

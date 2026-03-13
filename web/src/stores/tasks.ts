@@ -100,8 +100,14 @@ export const useTaskStore = defineStore('tasks', () => {
     switch (event.event_type) {
       case 'task.created':
         if (payload.id && !tasks.value.some((t) => t.id === payload.id)) {
-          tasks.value = [...tasks.value, payload as Task]
-          total.value++
+          // Only append if no active filters — filtered views are kept accurate by REST fetches
+          const hasFilters = Object.values(currentFilters.value).some(
+            (v) => v !== undefined && v !== null,
+          )
+          if (!hasFilters) {
+            tasks.value = [...tasks.value, payload as Task]
+            total.value++
+          }
         }
         break
       case 'task.updated':

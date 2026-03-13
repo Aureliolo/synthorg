@@ -5,12 +5,14 @@
 # CIS hardening applied via compose.yml (no-new-privileges, drop caps, etc.)
 # =============================================================================
 
-# Stage 1: Build Vue dashboard
-FROM node:22-alpine AS builder
+# Stage 1: Build Vue dashboard (non-root for defense-in-depth)
+FROM node:22-alpine@sha256:3a4802e64ab5181c7870d6ddd8c824c2efc42873baae37d1971451668659483b AS builder
+RUN addgroup -S build && adduser -S build -G build
 WORKDIR /app
-COPY web/package.json web/package-lock.json ./
+COPY --chown=build:build web/package.json web/package-lock.json ./
 RUN npm ci
-COPY web/ ./
+COPY --chown=build:build web/ ./
+USER build
 RUN npm run build
 
 # Stage 2: Serve with nginx
