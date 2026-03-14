@@ -1,6 +1,6 @@
 ---
-import Base from "../layouts/Base.astro";
-import Footer from "../components/Footer.astro";
+import Base from "../../layouts/Base.astro";
+import Footer from "../../components/Footer.astro";
 ---
 
 <Base title="Get SynthOrg — Install the CLI">
@@ -104,7 +104,7 @@ import Footer from "../components/Footer.astro";
 <span class="text-gray-500">$</span> synthorg start     <span class="text-gray-600"># pull images + start containers</span></code></pre>
         </div>
         <p class="text-xs text-gray-500 mt-3">
-          The web dashboard opens at <code class="text-gray-400">http://localhost:3000</code> (default).
+          The web dashboard opens at <a href="http://localhost:3000" class="text-gray-400 hover:text-white transition-colors"><code>http://localhost:3000</code></a> (default).
         </p>
       </div>
     </div>
@@ -131,17 +131,13 @@ import Footer from "../components/Footer.astro";
           </p>
           <div class="flex flex-wrap gap-2">
             <a
-              href="/get/install.sh"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="/get/view/install-sh/"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600/10 border border-teal-500/30 rounded-lg text-teal-400 text-xs hover:bg-teal-600/20 transition-colors"
             >
               View install.sh
             </a>
             <a
-              href="/get/install.ps1"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="/get/view/install-ps1/"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600/10 border border-teal-500/30 rounded-lg text-teal-400 text-xs hover:bg-teal-600/20 transition-colors"
             >
               View install.ps1
