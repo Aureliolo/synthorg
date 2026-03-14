@@ -169,4 +169,4 @@ Technically, no — BSL 1.1 is not OSI-approved. It is "source available." Howev
 
 ### Can I use SynthOrg for a hackathon, course, or workshop?
 
-**Yes**, always. Non-production use is unrestricted regardless of organization size.
+**Yes** for learning, prototyping, and evaluation — these are non-production use and always permitted. If your hackathon project goes into production (e.g., deployed as a live service), the normal Additional Use Grant conditions apply.

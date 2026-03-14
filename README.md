@@ -155,4 +155,4 @@ Core framework complete — agent engine, multi-agent coordination, API, securit
 
 ## License
 
-[Business Source License 1.1](LICENSE) — free production use for non-competing organizations with fewer than 500 employees and contractors. Converts to Apache 2.0 on 2030-02-27. See [licensing details](https://synthorg.io/docs/licensing/) for the full rationale and what's permitted.
+[Business Source License 1.1](LICENSE) — free production use for non-competing organizations with fewer than 500 employees and contractors. Each version converts to Apache 2.0 three years after release. See [licensing details](https://synthorg.io/docs/licensing/) for the full rationale and what's permitted.

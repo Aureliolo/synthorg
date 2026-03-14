@@ -35,7 +35,7 @@ jobs:
       - name: Update BSL Change Date (release + 3 years)
         if: steps.release.outputs.pr != ''
         run: |
-          new_date=$(LC_TIME=C date -d "+3 years" "+%B %-d, %Y")
+          new_date=$(LC_TIME=C date -d "+3 years" "+%B %-d, %Y")  # GNU date (ubuntu-latest)
           echo "Updating Change Date to: $new_date"
           sed -i "s/^Change Date:          .*/Change Date:          $new_date/" LICENSE
           grep -q "^Change Date:.*$new_date" LICENSE || { echo "ERROR: sed pattern did not match; Change Date was not updated"; exit 1; }

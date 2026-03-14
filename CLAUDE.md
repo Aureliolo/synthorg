@@ -4,7 +4,7 @@
 
 - **What**: Framework for building synthetic organizations — autonomous AI agents orchestrated as a virtual company
 - **Python**: 3.14+ (PEP 649 native lazy annotations)
-- **License**: BUSL-1.1 with narrowed Additional Use Grant (free production use for non-competing small orgs; converts to Apache 2.0 on 2030-02-27)
+- **License**: BUSL-1.1 with narrowed Additional Use Grant (free production use for non-competing small orgs; converts to Apache 2.0 three years after release)
 - **Layout**: `src/ai_company/` (src layout), `tests/` (unit/integration/e2e), `web/` (Vue 3 dashboard), `cli/` (Go CLI binary)
 - **Design**: [DESIGN_SPEC.md](DESIGN_SPEC.md) (pointer to `docs/design/` pages)
 
