@@ -7,10 +7,10 @@ import Footer from "../components/Footer.astro";
   <!-- ============================================================ -->
   <!-- HERO (compact) -->
   <!-- ============================================================ -->
-  <section class="relative pt-20 pb-10 px-6">
+  <section class="relative pt-16 pb-8 px-6">
     <div class="absolute inset-0 bg-gradient-to-b from-[#0F1219] via-[#1a1025] to-[#0F1219]"></div>
     <div class="relative z-10 max-w-3xl mx-auto text-center">
-      <h1 class="text-4xl md:text-6xl font-bold leading-tight mb-4">
+      <h1 class="text-4xl md:text-5xl font-bold leading-tight mb-3">
         Get
         <span class="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-teal-400">
           SynthOrg
@@ -25,12 +25,12 @@ import Footer from "../components/Footer.astro";
   <!-- ============================================================ -->
   <!-- QUICK INSTALL (CLI) -->
   <!-- ============================================================ -->
-  <section class="py-12 px-6">
-    <div class="max-w-5xl mx-auto">
+  <section class="py-10 px-6">
+    <div class="max-w-7xl mx-auto">
       <h2 class="text-2xl md:text-3xl font-bold mb-6 text-center">Quick Install</h2>
 
       <!-- Side-by-side terminals: stacked on mobile, side-by-side on md+ -->
-      <div class="grid md:grid-cols-2 gap-5 mb-6">
+      <div class="grid lg:grid-cols-2 gap-5 mb-6">
         <!-- Linux / macOS -->
         <div>
           <p class="text-sm text-gray-400 mb-2 font-mono">Linux / macOS</p>
@@ -43,9 +43,10 @@ import Footer from "../components/Footer.astro";
                 <span class="ml-2 text-xs text-gray-500 font-mono">bash</span>
               </div>
               <button
+                type="button"
                 class="copy-btn text-xs text-gray-500 hover:text-gray-300 transition-colors px-2 py-1 rounded hover:bg-white/5"
                 data-code="curl -sSfL https://synthorg.io/get/install.sh | bash"
-                aria-label="Copy to clipboard"
+                aria-label="Copy Linux/macOS install command"
               >
                 Copy
               </button>
@@ -62,9 +63,10 @@ import Footer from "../components/Footer.astro";
               <span class="text-xs text-gray-500 font-mono">PowerShell</span>
               <div class="flex items-center gap-3">
                 <button
+                  type="button"
                   class="copy-btn text-xs text-gray-500 hover:text-gray-300 transition-colors px-2 py-1 rounded hover:bg-white/5"
                   data-code="irm https://synthorg.io/get/install.ps1 | iex"
-                  aria-label="Copy to clipboard"
+                  aria-label="Copy PowerShell install command"
                 >
                   Copy
                 </button>
@@ -90,9 +92,10 @@ import Footer from "../components/Footer.astro";
               <span class="text-xs text-gray-500 font-mono">terminal</span>
             </div>
             <button
+              type="button"
               class="copy-btn text-xs text-gray-500 hover:text-gray-300 transition-colors px-2 py-1 rounded hover:bg-white/5"
               data-code="synthorg init&#10;synthorg start"
-              aria-label="Copy to clipboard"
+              aria-label="Copy post-install commands"
             >
               Copy
             </button>
@@ -110,11 +113,11 @@ import Footer from "../components/Footer.astro";
   <!-- ============================================================ -->
   <!-- OTHER OPTIONS (side-by-side grid) -->
   <!-- ============================================================ -->
-  <section class="py-16 px-6">
-    <div class="max-w-5xl mx-auto">
+  <section class="py-10 px-6">
+    <div class="max-w-7xl mx-auto">
       <h2 class="text-2xl md:text-3xl font-bold mb-8 text-center">Other Options</h2>
 
-      <div class="grid sm:grid-cols-2 xl:grid-cols-4 gap-5">
+      <div class="grid sm:grid-cols-2 2xl:grid-cols-4 gap-6">
         <!-- Audit the scripts -->
         <div class="bg-[#0F1219] rounded-xl p-6 border border-teal-500/20 flex flex-col">
           <div class="flex items-center gap-3 mb-3">
@@ -129,12 +132,16 @@ import Footer from "../components/Footer.astro";
           <div class="flex flex-wrap gap-2">
             <a
               href="/get/install.sh"
+              target="_blank"
+              rel="noopener noreferrer"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600/10 border border-teal-500/30 rounded-lg text-teal-400 text-xs hover:bg-teal-600/20 transition-colors"
             >
               View install.sh
             </a>
             <a
               href="/get/install.ps1"
+              target="_blank"
+              rel="noopener noreferrer"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600/10 border border-teal-500/30 rounded-lg text-teal-400 text-xs hover:bg-teal-600/20 transition-colors"
             >
               View install.ps1
