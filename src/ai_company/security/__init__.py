@@ -7,7 +7,8 @@ Public API:
 - ``SecurityVerdict`` / ``SecurityVerdictType`` — evaluation results.
 - ``SecurityContext`` — tool invocation context for evaluation.
 - ``AuditEntry`` / ``AuditLog`` — audit recording.
-- ``OutputScanResult`` / ``OutputScanner`` — post-tool output scanning.
+- ``OutputScanResult`` / ``ScanOutcome`` / ``OutputScanner``
+  — post-tool output scanning.
 - ``OutputScanResponsePolicy`` — protocol for output scan policies.
 - ``RedactPolicy`` / ``WithholdPolicy`` / ``LogOnlyPolicy``
   / ``AutonomyTieredPolicy`` — policy implementations.
@@ -32,6 +33,7 @@ from ai_company.security.config import (
 from ai_company.security.models import (
     AuditEntry,
     OutputScanResult,
+    ScanOutcome,
     SecurityContext,
     SecurityVerdict,
     SecurityVerdictType,
@@ -66,6 +68,7 @@ __all__ = [
     "RedactPolicy",
     "RuleEngine",
     "RuleEngineConfig",
+    "ScanOutcome",
     "SecOpsService",
     "SecurityConfig",
     "SecurityContext",

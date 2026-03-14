@@ -4,7 +4,7 @@ import pytest
 
 from ai_company.core.enums import AutonomyLevel, ToolCategory
 from ai_company.security.autonomy.models import EffectiveAutonomy
-from ai_company.security.models import OutputScanResult, SecurityContext
+from ai_company.security.models import OutputScanResult, ScanOutcome, SecurityContext
 from ai_company.security.output_scan_policy import (
     _DEFAULT_AUTONOMY_POLICY_MAP,
     AutonomyTieredPolicy,
@@ -36,6 +36,7 @@ def _sensitive_result() -> OutputScanResult:
         has_sensitive_data=True,
         findings=("API key detected",),
         redacted_content="output with [REDACTED]",
+        outcome=ScanOutcome.REDACTED,
     )
 
 
@@ -58,6 +59,7 @@ class TestRedactPolicy:
 
         assert transformed == result
         assert transformed.redacted_content == "output with [REDACTED]"
+        assert transformed.outcome == ScanOutcome.REDACTED
 
     def test_clean_result_passes_through(self) -> None:
         policy = RedactPolicy()
@@ -84,6 +86,7 @@ class TestWithholdPolicy:
 
         assert transformed.has_sensitive_data is True
         assert transformed.redacted_content is None
+        assert transformed.outcome == ScanOutcome.WITHHELD
         # Original result is not mutated (immutability contract).
         assert result.redacted_content == "output with [REDACTED]"
 
@@ -120,6 +123,7 @@ class TestLogOnlyPolicy:
         assert transformed.has_sensitive_data is False
         assert transformed.findings == ()
         assert transformed.redacted_content is None
+        assert transformed.outcome == ScanOutcome.LOG_ONLY
 
     def test_clean_result_returns_empty(self) -> None:
         policy = LogOnlyPolicy()
@@ -128,6 +132,7 @@ class TestLogOnlyPolicy:
         transformed = policy.apply(result, _make_context())
 
         assert transformed == OutputScanResult()
+        assert transformed.outcome == ScanOutcome.CLEAN
 
 
 # ── TestAutonomyTieredPolicy ─────────────────────────────────────
@@ -154,8 +159,9 @@ class TestAutonomyTieredPolicy:
 
         transformed = policy.apply(result, _make_context())
 
-        # LogOnlyPolicy returns empty result.
+        # LogOnlyPolicy returns empty result with LOG_ONLY outcome.
         assert transformed.has_sensitive_data is False
+        assert transformed.outcome == ScanOutcome.LOG_ONLY
 
     def test_semi_autonomy_uses_redact(self) -> None:
         """SEMI level delegates to RedactPolicy (default map)."""
@@ -179,6 +185,7 @@ class TestAutonomyTieredPolicy:
         # WithholdPolicy clears redacted_content.
         assert transformed.has_sensitive_data is True
         assert transformed.redacted_content is None
+        assert transformed.outcome == ScanOutcome.WITHHELD
 
     def test_no_autonomy_falls_back_to_redact(self) -> None:
         """When effective_autonomy is None, falls back to RedactPolicy."""

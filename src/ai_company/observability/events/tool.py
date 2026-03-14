@@ -44,6 +44,7 @@ TOOL_FS_NOOP: Final[str] = "tool.fs.noop"
 TOOL_SECURITY_DENIED: Final[str] = "tool.security.denied"
 TOOL_SECURITY_ESCALATED: Final[str] = "tool.security.escalated"
 TOOL_OUTPUT_REDACTED: Final[str] = "tool.output.redacted"
+TOOL_OUTPUT_WITHHELD: Final[str] = "tool.output.withheld"
 
 # ── Subprocess utility events ───────────────────────────────────
 TOOL_SUBPROCESS_TRANSPORT_CLOSE_FAILED: Final[str] = (

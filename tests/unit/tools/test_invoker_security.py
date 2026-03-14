@@ -10,6 +10,7 @@ from ai_company.core.enums import ApprovalRiskLevel, ToolCategory
 from ai_company.providers.models import ToolCall
 from ai_company.security.models import (
     OutputScanResult,
+    ScanOutcome,
     SecurityContext,
     SecurityVerdict,
     SecurityVerdictType,
@@ -48,6 +49,38 @@ class _SecurityTestTool(BaseTool):
     ) -> ToolExecutionResult:
         return ToolExecutionResult(
             content=f"executed: {arguments.get('cmd', 'default')}",
+        )
+
+
+class _FailingSecurityTool(_SecurityTestTool):
+    """Tool that raises RuntimeError from execute."""
+
+    def __init__(self) -> None:
+        super().__init__(name="failing_tool")
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        msg = "intentional failure"
+        raise RuntimeError(msg)
+
+
+class _SoftErrorSecurityTool(_SecurityTestTool):
+    """Tool that returns is_error=True with sensitive content."""
+
+    def __init__(self) -> None:
+        super().__init__(name="soft_error_tool")
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        return ToolExecutionResult(
+            is_error=True,
+            content="error: API_KEY=AKIA1234567890EXAMPLE",
         )
 
 
@@ -333,6 +366,7 @@ class TestOutputScanRedaction:
                 has_sensitive_data=True,
                 findings=("API key detected",),
                 redacted_content="executed: [REDACTED]",
+                outcome=ScanOutcome.REDACTED,
             ),
         )
         invoker = ToolInvoker(
@@ -377,18 +411,19 @@ class TestOutputScanRedaction:
         await invoker.invoke(tool_call)
         interceptor.scan_output.assert_awaited_once()
 
-    async def test_sensitive_but_no_redacted_content_fails_closed(
+    async def test_withheld_outcome_returns_policy_message(
         self,
         security_registry: ToolRegistry,
         tool_call: ToolCall,
     ) -> None:
-        """If has_sensitive_data=True but redacted_content is None, fail-closed."""
+        """WITHHELD outcome returns explicit policy message (not fail-closed)."""
         interceptor = _make_interceptor(
             pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
             scan_result=OutputScanResult(
                 has_sensitive_data=True,
                 findings=("potential leak",),
                 redacted_content=None,
+                outcome=ScanOutcome.WITHHELD,
             ),
         )
         invoker = ToolInvoker(
@@ -397,7 +432,7 @@ class TestOutputScanRedaction:
         )
         result = await invoker.invoke(tool_call)
         assert result.is_error is True
-        assert "fail-closed" in result.content.lower()
+        assert "withheld by security policy" in result.content.lower()
         assert "executed:" not in result.content
 
 
@@ -571,49 +606,6 @@ class TestSecurityContextConstruction:
         assert pre_ctx.task_id == scan_ctx.task_id
 
 
-# ── Helper tools for gap tests ───────────────────────────────────
-
-
-class _SecurityFailingTool(BaseTool):
-    """Tool that raises RuntimeError from execute."""
-
-    def __init__(self) -> None:
-        super().__init__(
-            name="failing_tool",
-            description="Tool that always fails",
-            category=ToolCategory.FILE_SYSTEM,
-        )
-
-    async def execute(
-        self,
-        *,
-        arguments: dict[str, Any],
-    ) -> ToolExecutionResult:
-        msg = "intentional failure"
-        raise RuntimeError(msg)
-
-
-class _SecuritySoftErrorTool(BaseTool):
-    """Tool that returns is_error=True with sensitive content."""
-
-    def __init__(self) -> None:
-        super().__init__(
-            name="soft_error_tool",
-            description="Tool returning soft error",
-            category=ToolCategory.FILE_SYSTEM,
-        )
-
-    async def execute(
-        self,
-        *,
-        arguments: dict[str, Any],
-    ) -> ToolExecutionResult:
-        return ToolExecutionResult(
-            is_error=True,
-            content="error: API_KEY=AKIA1234567890EXAMPLE",
-        )
-
-
 # ── Gap 1: Non-recoverable errors from scan propagate ────────────
 
 
@@ -656,8 +648,7 @@ class TestOutputScanSkippedOnToolError:
     """When tool.execute() raises, scan_output is not called."""
 
     async def test_tool_execution_error_skips_output_scan(self) -> None:
-        failing_tool = _SecurityFailingTool()
-        registry = ToolRegistry([failing_tool])
+        registry = ToolRegistry([_FailingSecurityTool()])
         interceptor = _make_interceptor(
             pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
         )
@@ -740,6 +731,7 @@ class TestInvokeAllOutputScanning:
                 has_sensitive_data=True,
                 findings=("secret",),
                 redacted_content="[REDACTED]",
+                outcome=ScanOutcome.REDACTED,
             ),
         )
         invoker = ToolInvoker(
@@ -766,12 +758,12 @@ class TestOutputScanOnSoftError:
 
     async def test_soft_error_content_is_scanned(self) -> None:
         """When tool returns is_error=True, scan_output is still called."""
-        soft_tool = _SecuritySoftErrorTool()
-        registry = ToolRegistry([soft_tool])
+        registry = ToolRegistry([_SoftErrorSecurityTool()])
         scan_result = OutputScanResult(
             has_sensitive_data=True,
             findings=("API key",),
             redacted_content="error: [REDACTED]",
+            outcome=ScanOutcome.REDACTED,
         )
         interceptor = _make_interceptor(
             pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
@@ -791,8 +783,7 @@ class TestOutputScanOnSoftError:
 
     async def test_soft_error_scan_receives_error_content(self) -> None:
         """Verify scan_output receives the error content string."""
-        soft_tool = _SecuritySoftErrorTool()
-        registry = ToolRegistry([soft_tool])
+        registry = ToolRegistry([_SoftErrorSecurityTool()])
         interceptor = _make_interceptor(
             pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
         )

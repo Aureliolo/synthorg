@@ -13,7 +13,7 @@ from ai_company.observability.events.security import (
     SECURITY_OUTPUT_SCAN_FINDING,
     SECURITY_OUTPUT_SCAN_START,
 )
-from ai_company.security.models import OutputScanResult
+from ai_company.security.models import OutputScanResult, ScanOutcome
 from ai_company.security.rules.credential_detector import CREDENTIAL_PATTERNS
 from ai_company.security.rules.data_leak_detector import PII_PATTERNS
 
@@ -67,4 +67,5 @@ class OutputScanner:
             has_sensitive_data=True,
             findings=tuple(sorted(set(findings))),
             redacted_content=redacted,
+            outcome=ScanOutcome.REDACTED,
         )

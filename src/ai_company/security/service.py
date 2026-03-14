@@ -284,8 +284,10 @@ class SecOpsService:
                 SECURITY_INTERCEPTOR_ERROR,
                 tool_name=context.tool_name,
                 policy=policy_name,
+                fallback_outcome=result.outcome.value,
                 note="Output scan policy application failed "
-                "— returning raw scan result",
+                "— returning raw scan result "
+                "(may be less strict than intended policy)",
             )
 
         return result

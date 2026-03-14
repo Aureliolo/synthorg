@@ -2,6 +2,7 @@
 
 import pytest
 
+from ai_company.security.models import ScanOutcome
 from ai_company.security.output_scanner import OutputScanner
 
 pytestmark = pytest.mark.timeout(30)
@@ -27,6 +28,7 @@ class TestOutputScannerClean:
         assert result.has_sensitive_data is False
         assert result.findings == ()
         assert result.redacted_content is None
+        assert result.outcome == ScanOutcome.CLEAN
 
     def test_empty_string_no_findings(self) -> None:
         result = _scanner().scan("")
@@ -73,6 +75,7 @@ class TestOutputScannerCredentials:
 
         assert result.has_sensitive_data is True
         assert len(result.findings) >= 1
+        assert result.outcome == ScanOutcome.REDACTED
 
     def test_aws_key_in_findings(self) -> None:
         result = _scanner().scan("AKIAIOSFODNN7EXAMPLE is the key")

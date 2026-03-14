@@ -17,6 +17,7 @@ from ai_company.security.autonomy.models import EffectiveAutonomy
 from ai_company.security.config import SecurityConfig
 from ai_company.security.models import (
     OutputScanResult,
+    ScanOutcome,
     SecurityContext,
     SecurityVerdict,
     SecurityVerdictType,
@@ -343,6 +344,7 @@ class TestSecOpsScanOutput:
             has_sensitive_data=True,
             findings=("provider access key",),
             redacted_content="[REDACTED]",
+            outcome=ScanOutcome.REDACTED,
         )
         service = _make_service(scan_result=finding_result)
         ctx = _make_context()
@@ -366,6 +368,7 @@ class TestSecOpsScanOutput:
             has_sensitive_data=True,
             findings=("Bearer token",),
             redacted_content="[REDACTED]",
+            outcome=ScanOutcome.REDACTED,
         )
         service = _make_service(scan_result=finding_result)
         ctx = _make_context()
@@ -641,6 +644,7 @@ class TestSecOpsScanOutputAuditFailure:
             has_sensitive_data=True,
             findings=("API key detected",),
             redacted_content="[REDACTED]",
+            outcome=ScanOutcome.REDACTED,
         )
         service = self._make_service_with_failing_audit(finding)
         ctx = _make_context()
@@ -656,6 +660,7 @@ class TestSecOpsScanOutputAuditFailure:
             has_sensitive_data=True,
             findings=("secret",),
             redacted_content="[REDACTED]",
+            outcome=ScanOutcome.REDACTED,
         )
         service = self._make_service_with_failing_audit(finding)
         ctx = _make_context()
@@ -702,6 +707,7 @@ class TestSecOpsScanOutputPolicy:
             has_sensitive_data=True,
             findings=("token",),
             redacted_content="[REDACTED]",
+            outcome=ScanOutcome.REDACTED,
         )
         service = self._make_service_with_policy(
             scan_result=finding,
@@ -722,6 +728,7 @@ class TestSecOpsScanOutputPolicy:
             has_sensitive_data=True,
             findings=("key",),
             redacted_content="redacted output",
+            outcome=ScanOutcome.REDACTED,
         )
         service = self._make_service_with_policy(
             scan_result=finding,
@@ -759,6 +766,7 @@ class TestSecOpsScanOutputPolicy:
             has_sensitive_data=True,
             findings=("secret",),
             redacted_content="[REDACTED]",
+            outcome=ScanOutcome.REDACTED,
         )
         service = self._make_service_with_policy(
             scan_result=finding,
@@ -780,6 +788,7 @@ class TestSecOpsScanOutputPolicy:
             has_sensitive_data=True,
             findings=("token",),
             redacted_content="[REDACTED]",
+            outcome=ScanOutcome.REDACTED,
         )
         service = self._make_service_with_policy(
             scan_result=finding,
@@ -812,6 +821,7 @@ class TestSecOpsScanOutputPolicy:
             has_sensitive_data=True,
             findings=("key",),
             redacted_content="[REDACTED]",
+            outcome=ScanOutcome.REDACTED,
         )
         service = self._make_service_with_policy(
             scan_result=finding,
@@ -830,6 +840,7 @@ class TestSecOpsScanOutputPolicy:
             has_sensitive_data=True,
             findings=("Bearer token",),
             redacted_content="[REDACTED]",
+            outcome=ScanOutcome.REDACTED,
         )
         service = self._make_service_with_policy(
             scan_result=finding,
