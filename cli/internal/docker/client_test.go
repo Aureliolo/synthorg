@@ -82,7 +82,7 @@ func TestRunCmdStderr(t *testing.T) {
 }
 
 func TestComposeExecOutputFailure(t *testing.T) {
-	info := Info{ComposePath: "nonexistent-compose-12345"}
+	info := Info{ComposeCmd: []string{"nonexistent-compose-12345"}, ComposePath: "nonexistent-compose-12345"}
 	_, err := ComposeExecOutput(context.Background(), info, ".", "ps")
 	if err == nil {
 		t.Fatal("expected error for nonexistent compose")
@@ -90,7 +90,7 @@ func TestComposeExecOutputFailure(t *testing.T) {
 }
 
 func TestComposeExecFailure(t *testing.T) {
-	info := Info{ComposePath: "nonexistent-compose-12345"}
+	info := Info{ComposeCmd: []string{"nonexistent-compose-12345"}, ComposePath: "nonexistent-compose-12345"}
 	err := ComposeExec(context.Background(), info, ".", "ps")
 	if err == nil {
 		t.Fatal("expected error for nonexistent compose")
@@ -98,8 +98,8 @@ func TestComposeExecFailure(t *testing.T) {
 }
 
 func TestComposeExecOutputParsesCommand(t *testing.T) {
-	// "docker compose" should be split into two parts.
-	info := Info{ComposePath: "go version"}
+	// "docker compose" equivalent using ComposeCmd slice.
+	info := Info{ComposeCmd: []string{"go", "version"}, ComposePath: "go version"}
 	out, err := ComposeExecOutput(context.Background(), info, ".")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -113,6 +113,7 @@ func TestInfoStruct(t *testing.T) {
 	info := Info{
 		DockerPath:     "/usr/bin/docker",
 		DockerVersion:  "24.0.7",
+		ComposeCmd:     []string{"docker", "compose"},
 		ComposePath:    "docker compose",
 		ComposeVersion: "2.23.0",
 		ComposeV2:      true,
@@ -122,5 +123,55 @@ func TestInfoStruct(t *testing.T) {
 	}
 	if !info.ComposeV2 {
 		t.Error("ComposeV2 should be true")
+	}
+}
+
+func TestCheckMinVersions(t *testing.T) {
+	tests := []struct {
+		name           string
+		dockerVersion  string
+		composeVersion string
+		wantWarnings   int
+	}{
+		{"both ok", "27.5.1", "2.32.1", 0},
+		{"docker too old", "19.3.0", "2.32.1", 1},
+		{"compose too old", "27.5.1", "1.29.0", 1},
+		{"both too old", "19.3.0", "1.29.0", 2},
+		{"exact minimum", "20.10.0", "2.0.0", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := Info{
+				DockerVersion:  tt.dockerVersion,
+				ComposeVersion: tt.composeVersion,
+			}
+			warnings := CheckMinVersions(info)
+			if len(warnings) != tt.wantWarnings {
+				t.Errorf("got %d warnings, want %d: %v", len(warnings), tt.wantWarnings, warnings)
+			}
+		})
+	}
+}
+
+func TestVersionAtLeast(t *testing.T) {
+	tests := []struct {
+		got  string
+		min  string
+		want bool
+	}{
+		{"27.5.1", "20.10.0", true},
+		{"20.10.0", "20.10.0", true},
+		{"20.10.1", "20.10.0", true},
+		{"20.9.0", "20.10.0", false},
+		{"19.3.0", "20.10.0", false},
+		{"v2.32.1", "2.0.0", true},
+		{"1.29.0", "2.0.0", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.got+">="+tt.min, func(t *testing.T) {
+			if got := versionAtLeast(tt.got, tt.min); got != tt.want {
+				t.Errorf("versionAtLeast(%q, %q) = %v, want %v", tt.got, tt.min, got, tt.want)
+			}
+		})
 	}
 }

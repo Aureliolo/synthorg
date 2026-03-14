@@ -12,7 +12,7 @@ import (
 func TestWaitForHealthySuccess(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"data":{"status":"ok"}}`))
+		_, _ = w.Write([]byte(`{"data":{"status":"ok"}}`))
 	}))
 	defer srv.Close()
 
@@ -25,7 +25,7 @@ func TestWaitForHealthySuccess(t *testing.T) {
 func TestWaitForHealthyDegraded(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"data":{"status":"degraded"}}`))
+		_, _ = w.Write([]byte(`{"data":{"status":"degraded"}}`))
 	}))
 	defer srv.Close()
 
@@ -59,7 +59,7 @@ func TestWaitForHealthyEventualSuccess(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"data":{"status":"ok"}}`))
+		_, _ = w.Write([]byte(`{"data":{"status":"ok"}}`))
 	}))
 	defer srv.Close()
 
@@ -72,7 +72,7 @@ func TestWaitForHealthyEventualSuccess(t *testing.T) {
 func TestWaitForHealthyWithInitialDelay(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"data":{"status":"ok"}}`))
+		_, _ = w.Write([]byte(`{"data":{"status":"ok"}}`))
 	}))
 	defer srv.Close()
 
@@ -91,7 +91,7 @@ func TestWaitForHealthyWithInitialDelay(t *testing.T) {
 func TestWaitForHealthyCancelledDuringDelay(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"data":{"status":"ok"}}`))
+		_, _ = w.Write([]byte(`{"data":{"status":"ok"}}`))
 	}))
 	defer srv.Close()
 
@@ -108,7 +108,7 @@ func TestWaitForHealthyCancelledDuringDelay(t *testing.T) {
 func TestCheckOnceSuccess(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"data":{"status":"ok"}}`))
+		_, _ = w.Write([]byte(`{"data":{"status":"ok"}}`))
 	}))
 	defer srv.Close()
 
@@ -120,7 +120,7 @@ func TestCheckOnceSuccess(t *testing.T) {
 func TestCheckOnceUnhealthy(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"data":{"status":"down"}}`))
+		_, _ = w.Write([]byte(`{"data":{"status":"down"}}`))
 	}))
 	defer srv.Close()
 
@@ -132,7 +132,7 @@ func TestCheckOnceUnhealthy(t *testing.T) {
 
 func TestCheckOnceInvalidJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not json"))
+		_, _ = w.Write([]byte("not json"))
 	}))
 	defer srv.Close()
 
@@ -157,7 +157,7 @@ func TestCheckOnceHTTPError(t *testing.T) {
 func TestWaitForHealthyTimeoutWithLastError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"data":{"status":"down"}}`))
+		_, _ = w.Write([]byte(`{"data":{"status":"down"}}`))
 	}))
 	defer srv.Close()
 

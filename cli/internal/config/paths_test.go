@@ -83,7 +83,9 @@ func TestEnsureDir(t *testing.T) {
 func TestEnsureDirIdempotent(t *testing.T) {
 	tmp := t.TempDir()
 	target := filepath.Join(tmp, "existing")
-	os.MkdirAll(target, 0o700)
+	if err := os.MkdirAll(target, 0o700); err != nil {
+		t.Fatalf("MkdirAll setup: %v", err)
+	}
 
 	if err := EnsureDir(target); err != nil {
 		t.Fatalf("EnsureDir on existing dir: %v", err)

@@ -93,13 +93,27 @@ func TestSaveFilePermissions(t *testing.T) {
 	}
 
 	// Verify the file is valid JSON.
-	data, err := os.ReadFile(StatePath(tmp))
+	path := StatePath(tmp)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var loaded State
 	if err := json.Unmarshal(data, &loaded); err != nil {
 		t.Fatalf("saved file is not valid JSON: %v", err)
+	}
+
+	// Verify file permissions (0600 — owner read/write only).
+	// Skip on Windows where Unix permissions are not enforced.
+	if os.Getenv("OS") != "Windows_NT" {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		perm := info.Mode().Perm()
+		if perm != 0o600 {
+			t.Errorf("file permissions = %o, want 0600", perm)
+		}
 	}
 }
 

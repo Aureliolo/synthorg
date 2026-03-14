@@ -933,16 +933,17 @@ future CLI tool are thin clients that call the API -- they contain no business l
                 |          |
         +-------v--+  +---v--------+
         |  Web UI   |  |  CLI Tool  |
-        |  (Vue 3)  |  |  (Future)  |
+        |  (Vue 3)  |  |  (Go)      |
         +----------+   +-----------+
 ```
 
-!!! note "CLI Tool (Future)"
+!!! info "CLI Tool (Implemented)"
 
-    If needed, a thin CLI utility wrapping the REST API with terminal formatting (Typer + Rich
-    or similar). Not a priority -- the API is fully self-sufficient. To be determined whether a
-    dedicated CLI is warranted or whether `curl`/`httpie` and the interactive Scalar docs at
-    `/docs/api` (Scalar UI) and `/docs/openapi.json` (OpenAPI schema) suffice.
+    Cross-platform Go binary (`cli/`) for Docker lifecycle management. Commands: `init`
+    (interactive setup wizard), `start`, `stop`, `status`, `logs`, `update` (self-update from
+    GitHub Releases), `doctor` (diagnostics + bug report URL), `uninstall`, `version`.
+    Built with Cobra + charmbracelet/huh. Distributed via GoReleaser (Homebrew tap, Scoop
+    bucket, `curl | sh` / `irm | iex` install scripts).
 
 ### API Surface
 

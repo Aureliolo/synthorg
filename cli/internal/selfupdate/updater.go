@@ -70,61 +70,78 @@ func Check(ctx context.Context) (CheckResult, error) {
 func CheckFromURL(ctx context.Context, url string) (CheckResult, error) {
 	result := CheckResult{CurrentVersion: version.Version}
 
+	release, err := fetchRelease(ctx, url)
+	if err != nil {
+		return result, err
+	}
+
+	result.LatestVersion = release.TagName
+	result.UpdateAvail = isUpdateAvailable(version.Version, release.TagName)
+
+	assetURL, checksumURL, err := findAssets(release)
+	if err != nil {
+		return result, err
+	}
+	result.AssetURL = assetURL
+	result.ChecksumURL = checksumURL
+
+	return result, nil
+}
+
+func fetchRelease(ctx context.Context, url string) (Release, error) {
 	client := &http.Client{Timeout: 30 * time.Second}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return result, err
+		return Release{}, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return result, fmt.Errorf("querying GitHub releases: %w", err)
+		return Release{}, fmt.Errorf("querying GitHub releases: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return result, fmt.Errorf("GitHub API returned %d", resp.StatusCode)
+		return Release{}, fmt.Errorf("github API returned %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAPIResponseBytes))
 	if err != nil {
-		return result, fmt.Errorf("reading API response: %w", err)
+		return Release{}, fmt.Errorf("reading API response: %w", err)
 	}
 
 	var release Release
 	if err := json.Unmarshal(body, &release); err != nil {
-		return result, fmt.Errorf("decoding release: %w", err)
+		return Release{}, fmt.Errorf("decoding release: %w", err)
 	}
+	return release, nil
+}
 
-	result.LatestVersion = release.TagName
+func isUpdateAvailable(current, latest string) bool {
+	cur := strings.TrimPrefix(current, "v")
+	lat := strings.TrimPrefix(latest, "v")
+	return cur == "dev" || cur != lat
+}
 
-	// Compare versions (strip 'v' prefix).
-	current := strings.TrimPrefix(version.Version, "v")
-	latest := strings.TrimPrefix(release.TagName, "v")
-	if current == "dev" || current != latest {
-		result.UpdateAvail = true
-	}
-
-	// Find matching asset and validate URLs.
+func findAssets(release Release) (assetURL, checksumURL string, err error) {
 	archiveName := assetName()
 	for _, a := range release.Assets {
 		if a.Name == archiveName {
 			if !strings.HasPrefix(a.BrowserDownloadURL, expectedURLPrefix) {
-				return result, fmt.Errorf("asset URL %q does not match expected prefix", a.BrowserDownloadURL)
+				return "", "", fmt.Errorf("asset URL %q does not match expected prefix", a.BrowserDownloadURL)
 			}
-			result.AssetURL = a.BrowserDownloadURL
+			assetURL = a.BrowserDownloadURL
 		}
 		if a.Name == "checksums.txt" {
 			if !strings.HasPrefix(a.BrowserDownloadURL, expectedURLPrefix) {
-				return result, fmt.Errorf("checksum URL %q does not match expected prefix", a.BrowserDownloadURL)
+				return "", "", fmt.Errorf("checksum URL %q does not match expected prefix", a.BrowserDownloadURL)
 			}
-			result.ChecksumURL = a.BrowserDownloadURL
+			checksumURL = a.BrowserDownloadURL
 		}
 	}
-
-	return result, nil
+	return assetURL, checksumURL, nil
 }
 
 // Download fetches the release asset and verifies its SHA-256 checksum.
@@ -192,11 +209,19 @@ func ReplaceAt(binaryData []byte, execPath string) error {
 	}
 	tmpFile.Close()
 
-	oldPath := execPath + ".old"
-
 	// On Windows, we can't overwrite the running binary — rename first.
+	// Use a random suffix to avoid predictable paths.
+	var oldPath string
 	if runtime.GOOS == "windows" {
-		_ = os.Remove(oldPath) // Clean up from previous update.
+		oldFile, err := os.CreateTemp(dir, binaryName+".old.*.tmp")
+		if err != nil {
+			os.Remove(tmpPath)
+			return fmt.Errorf("creating temp file for old binary: %w", err)
+		}
+		oldPath = oldFile.Name()
+		oldFile.Close()
+		os.Remove(oldPath) // Remove so Rename can use the path.
+
 		if err := os.Rename(execPath, oldPath); err != nil {
 			os.Remove(tmpPath)
 			return fmt.Errorf("renaming current binary: %w", err)
@@ -205,7 +230,7 @@ func ReplaceAt(binaryData []byte, execPath string) error {
 
 	if err := os.Rename(tmpPath, execPath); err != nil {
 		// Attempt rollback on Windows.
-		if runtime.GOOS == "windows" {
+		if runtime.GOOS == "windows" && oldPath != "" {
 			_ = os.Rename(oldPath, execPath)
 		}
 		os.Remove(tmpPath)
@@ -213,7 +238,9 @@ func ReplaceAt(binaryData []byte, execPath string) error {
 	}
 
 	// Clean up old binary (best-effort).
-	_ = os.Remove(oldPath)
+	if oldPath != "" {
+		_ = os.Remove(oldPath)
+	}
 
 	return nil
 }
@@ -237,15 +264,9 @@ func httpGetWithClient(ctx context.Context, client *http.Client, url string, max
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)
+		return nil, fmt.Errorf("http %d from %s", resp.StatusCode, url)
 	}
 	return io.ReadAll(io.LimitReader(resp.Body, maxBytes))
-}
-
-// httpGet is a convenience wrapper for tests and simple use cases.
-func httpGet(ctx context.Context, url string) ([]byte, error) {
-	client := &http.Client{Timeout: 30 * time.Second}
-	return httpGetWithClient(ctx, client, url, maxAPIResponseBytes)
 }
 
 func verifyChecksum(archiveData, checksumData []byte, assetName string) error {

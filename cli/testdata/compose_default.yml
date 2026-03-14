@@ -14,6 +14,7 @@ services:
       AI_COMPANY_DB_PATH: "/data/synthorg.db"
       AI_COMPANY_MEMORY_DIR: "/data/memory"
       AI_COMPANY_LOG_LEVEL: "info"
+    user: "65532:65532"
     # CIS Docker Benchmark v1.6.0 hardening (5.3, 5.12, 5.25)
     security_opt:
       - no-new-privileges:true
@@ -23,6 +24,11 @@ services:
     tmpfs:
       - /tmp:noexec,nosuid,size=64m
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
     healthcheck:
       test: ["/usr/bin/python", "-c", "import json,urllib.request,sys; r=urllib.request.urlopen('http://localhost:8000/api/v1/health'); d=json.loads(r.read()); sys.exit(0 if d.get('data',{}).get('status')=='ok' else 1)"]
       interval: 10s
@@ -37,6 +43,7 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    user: "101:101"
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -47,6 +54,11 @@ services:
       - /var/cache/nginx:size=32m
       - /var/run:size=1m
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.5"
 
 volumes:
   synthorg-data:

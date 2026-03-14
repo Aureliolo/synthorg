@@ -62,7 +62,7 @@ The SynthOrg engine is structured as a set of loosely coupled subsystems. Each b
 | **Agent Communication** | A2A Protocol compatible | Future-proof inter-agent communication. See [Industry Standards](../reference/standards.md). |
 | **Authentication** | PyJWT + argon2-cffi | JWT (HMAC HS256/384/512) for session tokens, Argon2id for password hashing, HMAC-SHA256 for API key storage (keyed with server secret). |
 | **Config Format** | YAML + Pydantic validation | Human-readable config with strict validation. |
-| **CLI** | TBD | Thin wrapper around the REST API for terminal use. Interactive Scalar docs at `/docs/api` and `curl`/`httpie` may suffice. |
+| **CLI** | Go (Cobra + charmbracelet/huh) | Cross-platform binary for Docker lifecycle management: `init`, `start`, `stop`, `status`, `logs`, `update`, `doctor`, `uninstall`, `version`. Distributed via GoReleaser (Homebrew, Scoop, install scripts). |
 
 ---
 

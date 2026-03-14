@@ -68,7 +68,8 @@ func Collect(ctx context.Context, state config.State) Report {
 	// Health endpoint.
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort)
 	client := &http.Client{Timeout: 5 * time.Second}
-	if resp, err := client.Get(healthURL); err != nil {
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
+	if resp, err := client.Do(req); err != nil {
 		r.HealthStatus = "unreachable"
 		r.Errors = append(r.Errors, fmt.Sprintf("health: %v", err))
 	} else {
@@ -110,7 +111,7 @@ func (r Report) FormatText() string {
 	fmt.Fprintf(&b, "--- Containers ---\n%s\n\n", r.ContainerPS)
 	fmt.Fprintf(&b, "--- Config (redacted) ---\n%s\n\n", r.ConfigRedacted)
 	fmt.Fprintf(&b, "--- Disk ---\n%s\n\n", r.DiskInfo)
-	fmt.Fprintf(&b, "--- Recent Logs ---\n%s\n\n", r.RecentLogs)
+	fmt.Fprintf(&b, "--- Recent Logs (may contain sensitive data — review before sharing) ---\n%s\n\n", r.RecentLogs)
 
 	if len(r.Errors) > 0 {
 		fmt.Fprintf(&b, "--- Errors ---\n")
