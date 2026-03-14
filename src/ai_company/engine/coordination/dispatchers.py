@@ -161,6 +161,11 @@ async def _setup_workspaces(
         requests = _build_workspace_requests(routing_result, config)
         workspaces = await workspace_service.setup_group(requests=requests)
     except MemoryError, RecursionError:
+        # Bare re-raise: logging is intentionally omitted because
+        # emitting logs may itself trigger MemoryError/RecursionError.
+        # These are built-in exceptions (not ai_company.memory.errors.MemoryError).
+        # Same pattern applies to all MemoryError/RecursionError guards
+        # in this module.
         raise
     except Exception as exc:
         elapsed = time.monotonic() - start

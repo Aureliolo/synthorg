@@ -100,6 +100,12 @@ def _build_decomposition_strategy(
             f"Decomposition requires both provider and decomposition_model, "
             f"but only {given} was supplied (missing {missing})"
         )
+        logger.warning(
+            DECOMPOSITION_FAILED,
+            note="Mismatched decomposition dependencies",
+            given=given,
+            missing=missing,
+        )
         raise ValueError(msg)
     return _NoProviderDecompositionStrategy()
 
@@ -137,6 +143,12 @@ def _build_workspace_service(
         msg = (
             f"Workspace isolation requires both workspace_strategy and "
             f"workspace_config, but only {given} was supplied (missing {missing})"
+        )
+        logger.warning(
+            COORDINATION_FACTORY_BUILT,
+            note="Mismatched workspace dependencies",
+            given=given,
+            missing=missing,
         )
         raise ValueError(msg)
     return None
@@ -182,14 +194,6 @@ def build_coordinator(  # noqa: PLR0913
     Returns:
         A fully constructed ``MultiAgentCoordinator``.
     """
-    logger.debug(
-        COORDINATION_FACTORY_BUILT,
-        note="Building coordinator from config",
-        topology=config.topology.value,
-        has_provider=provider is not None,
-        has_workspace=workspace_strategy is not None,
-    )
-
     classifier = TaskStructureClassifier()
     strategy = _build_decomposition_strategy(provider, decomposition_model)
     decomposition_service = DecompositionService(strategy, classifier)
@@ -203,7 +207,7 @@ def build_coordinator(  # noqa: PLR0913
         shutdown_manager=shutdown_manager,
     )
 
-    return MultiAgentCoordinator(
+    coordinator = MultiAgentCoordinator(
         decomposition_service=decomposition_service,
         routing_service=routing_service,
         parallel_executor=parallel_executor,
@@ -212,3 +216,12 @@ def build_coordinator(  # noqa: PLR0913
         ),
         task_engine=task_engine,
     )
+
+    logger.debug(
+        COORDINATION_FACTORY_BUILT,
+        topology=config.topology.value,
+        has_provider=provider is not None,
+        has_workspace=workspace_strategy is not None,
+    )
+
+    return coordinator

@@ -1,5 +1,6 @@
 """Coordination controller — multi-agent coordination endpoint."""
 
+import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -313,9 +314,11 @@ class CoordinationController(Controller):
         registry = app_state.agent_registry
 
         if data.agent_names is not None:
+            results = await asyncio.gather(
+                *(registry.get_by_name(name) for name in data.agent_names)
+            )
             agents: list[AgentIdentity] = []
-            for name in data.agent_names:
-                agent = await registry.get_by_name(name)
+            for name, agent in zip(data.agent_names, results, strict=True):
                 if agent is None:
                     logger.warning(
                         API_COORDINATION_AGENT_RESOLVE_FAILED,

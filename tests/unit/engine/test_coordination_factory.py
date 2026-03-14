@@ -13,7 +13,10 @@ from ai_company.engine.coordination.section_config import (
     CoordinationSectionConfig,
 )
 from ai_company.engine.coordination.service import MultiAgentCoordinator
+from ai_company.engine.decomposition.service import DecompositionService
 from ai_company.engine.errors import DecompositionError
+from ai_company.engine.parallel import ParallelExecutor
+from ai_company.engine.routing.service import TaskRoutingService
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -36,6 +39,7 @@ class TestBuildCoordinator:
         assert isinstance(coordinator, MultiAgentCoordinator)
 
     def test_with_provider_and_model(self) -> None:
+        """Provider and model are wired into decomposition strategy."""
         provider = AsyncMock()
         coordinator = build_coordinator(
             config=CoordinationSectionConfig(),
@@ -45,17 +49,23 @@ class TestBuildCoordinator:
             decomposition_model="test-model-001",
         )
         assert isinstance(coordinator, MultiAgentCoordinator)
+        # Verify LLM strategy is used (not the placeholder)
+        decomp = coordinator._decomposition_service
+        assert isinstance(decomp, DecompositionService)
+        assert not isinstance(decomp._strategy, _NoProviderDecompositionStrategy)
 
     def test_without_provider_uses_placeholder(self) -> None:
+        """No provider/model → placeholder strategy."""
         coordinator = build_coordinator(
             config=CoordinationSectionConfig(),
             engine=_mock_engine(),
             task_assignment_config=TaskAssignmentConfig(),
         )
-        # Coordinator is built — the placeholder strategy is internal
-        assert isinstance(coordinator, MultiAgentCoordinator)
+        decomp = coordinator._decomposition_service
+        assert isinstance(decomp._strategy, _NoProviderDecompositionStrategy)
 
     def test_with_task_engine(self) -> None:
+        """task_engine is wired into the coordinator."""
         task_engine = AsyncMock()
         coordinator = build_coordinator(
             config=CoordinationSectionConfig(),
@@ -63,42 +73,54 @@ class TestBuildCoordinator:
             task_assignment_config=TaskAssignmentConfig(),
             task_engine=task_engine,
         )
-        assert isinstance(coordinator, MultiAgentCoordinator)
+        assert coordinator._task_engine is task_engine
 
     def test_with_workspace_deps(self) -> None:
+        """workspace_strategy + workspace_config produce a workspace service."""
         from ai_company.engine.workspace.config import (
             WorkspaceIsolationConfig,
         )
+        from ai_company.engine.workspace.service import (
+            WorkspaceIsolationService,
+        )
 
-        strategy = MagicMock()
-        config = WorkspaceIsolationConfig()
+        ws_strategy = MagicMock()
+        ws_config = WorkspaceIsolationConfig()
         coordinator = build_coordinator(
             config=CoordinationSectionConfig(),
             engine=_mock_engine(),
             task_assignment_config=TaskAssignmentConfig(),
-            workspace_strategy=strategy,
-            workspace_config=config,
+            workspace_strategy=ws_strategy,
+            workspace_config=ws_config,
         )
-        assert isinstance(coordinator, MultiAgentCoordinator)
+        ws_service = coordinator._workspace_service
+        assert isinstance(ws_service, WorkspaceIsolationService)
 
     def test_custom_min_score(self) -> None:
-        """min_score from TaskAssignmentConfig is used for scorer."""
+        """min_score from TaskAssignmentConfig is forwarded to the scorer."""
         coordinator = build_coordinator(
             config=CoordinationSectionConfig(),
             engine=_mock_engine(),
             task_assignment_config=TaskAssignmentConfig(min_score=0.5),
         )
-        assert isinstance(coordinator, MultiAgentCoordinator)
+        routing = coordinator._routing_service
+        assert isinstance(routing, TaskRoutingService)
+        assert routing._scorer._min_score == 0.5
 
     def test_shutdown_manager_passed_to_executor(self) -> None:
+        """shutdown_manager is forwarded to the parallel executor."""
         shutdown_mgr = MagicMock()
+        engine = _mock_engine()
         coordinator = build_coordinator(
             config=CoordinationSectionConfig(),
-            engine=_mock_engine(),
+            engine=engine,
             task_assignment_config=TaskAssignmentConfig(),
             shutdown_manager=shutdown_mgr,
         )
-        assert isinstance(coordinator, MultiAgentCoordinator)
+        executor = coordinator._parallel_executor
+        assert isinstance(executor, ParallelExecutor)
+        assert executor._shutdown_manager is shutdown_mgr
+        assert executor._engine is engine
 
     def test_provider_only_raises_value_error(self) -> None:
         """Provider without model raises ValueError."""
@@ -108,7 +130,6 @@ class TestBuildCoordinator:
                 engine=_mock_engine(),
                 task_assignment_config=TaskAssignmentConfig(),
                 provider=AsyncMock(),
-                # decomposition_model not provided
             )
 
     def test_model_only_raises_value_error(self) -> None:
@@ -119,7 +140,30 @@ class TestBuildCoordinator:
                 engine=_mock_engine(),
                 task_assignment_config=TaskAssignmentConfig(),
                 decomposition_model="test-model-001",
-                # provider not provided
+            )
+
+    def test_workspace_strategy_only_raises_value_error(self) -> None:
+        """workspace_strategy without workspace_config raises ValueError."""
+        with pytest.raises(ValueError, match="missing workspace_config"):
+            build_coordinator(
+                config=CoordinationSectionConfig(),
+                engine=_mock_engine(),
+                task_assignment_config=TaskAssignmentConfig(),
+                workspace_strategy=MagicMock(),
+            )
+
+    def test_workspace_config_only_raises_value_error(self) -> None:
+        """workspace_config without workspace_strategy raises ValueError."""
+        from ai_company.engine.workspace.config import (
+            WorkspaceIsolationConfig,
+        )
+
+        with pytest.raises(ValueError, match="missing workspace_strategy"):
+            build_coordinator(
+                config=CoordinationSectionConfig(),
+                engine=_mock_engine(),
+                task_assignment_config=TaskAssignmentConfig(),
+                workspace_config=WorkspaceIsolationConfig(),
             )
 
 
