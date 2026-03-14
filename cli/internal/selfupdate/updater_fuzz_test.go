@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -72,6 +73,9 @@ func FuzzVerifyChecksum(f *testing.F) {
 	f.Add([]byte("abcd1234  \n"), "")
 	f.Add([]byte("abc  def  ghi\n"), "def")
 
+	// Pre-compute the expected hash for invariant checks.
+	expectedHash := hex.EncodeToString(hash[:])
+
 	f.Fuzz(func(t *testing.T, checksumData []byte, assetName string) {
 		// Must not panic — either returns nil or error.
 		err := verifyChecksum(fuzzArchiveData, checksumData, assetName)
@@ -80,7 +84,18 @@ func FuzzVerifyChecksum(f *testing.F) {
 		}
 		// If verification passed, the checksumData must contain a line
 		// with the correct SHA-256 hash for fuzzArchiveData paired with
-		// a matching asset name.
+		// the matching asset name (format: "<hash>  <assetName>").
+		found := false
+		for _, line := range strings.Split(string(checksumData), "\n") {
+			parts := strings.Fields(line)
+			if len(parts) == 2 && parts[0] == expectedHash && parts[1] == assetName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("verifyChecksum returned nil but checksumData does not contain %s paired with %q", expectedHash, assetName)
+		}
 	})
 }
 
@@ -104,7 +119,11 @@ func FuzzExtractFromTarGz(f *testing.F) {
 	}
 	f.Add(gzBuf.Bytes())
 
-	// Seed: tar.gz with path-traversal entry name.
+	// Seed: tar.gz with path-traversal entry name. extractFromTarGz uses
+	// filepath.Base(hdr.Name) for matching, so "../../synthorg" resolves to
+	// "synthorg" and is intentionally extracted — the security property is
+	// that extracted bytes are returned to the caller, never written to a
+	// path derived from the entry name.
 	traversalArchive := buildTarGzWithName(f, "../../synthorg")
 	f.Add(traversalArchive)
 
@@ -140,7 +159,8 @@ func FuzzExtractFromZip(f *testing.F) {
 	// Seed: minimal PK header but invalid.
 	f.Add([]byte("PK\x03\x04garbage"))
 
-	// Seed: zip with path-traversal entry name.
+	// Seed: zip with path-traversal entry name. Same as tar.gz — basename
+	// matching means traversal entries are extracted safely.
 	traversalZip := buildZipWithName(f, "../../synthorg.exe")
 	f.Add(traversalZip)
 

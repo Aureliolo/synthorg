@@ -201,9 +201,11 @@ jobs:
 
       - name: Report fuzz outcome
         if: always()
+        env:
+          FUZZ_OUTCOME: ${{ steps.fuzz_run.outcome }}
         run: |
-          if [ "${{ steps.fuzz_run.outcome }}" = "failure" ]; then
-            echo "::warning::Fuzz target in ${{ matrix.package }} reported failures"
+          if [ "$FUZZ_OUTCOME" = "failure" ]; then
+            echo "::warning::Fuzz target reported failures"
           fi
 
   # ── Gate: all CLI checks must pass ──
