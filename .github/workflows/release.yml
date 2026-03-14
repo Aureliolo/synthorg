@@ -27,7 +27,7 @@ jobs:
       # of the release PR, so it goes through normal review + merge flow.
       - name: Checkout Release PR branch
         if: steps.release.outputs.pr != ''
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           ref: release-please--branches--main
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
@@ -35,7 +35,7 @@ jobs:
       - name: Update BSL Change Date (release + 3 years)
         if: steps.release.outputs.pr != ''
         run: |
-          new_date=$(date -d "+3 years" "+%B %-d, %Y")
+          new_date=$(LC_TIME=C date -d "+3 years" "+%B %-d, %Y")
           echo "Updating Change Date to: $new_date"
           sed -i "s/^Change Date:          .*/Change Date:          $new_date/" LICENSE
           git config user.name "github-actions[bot]"

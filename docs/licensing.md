@@ -97,7 +97,7 @@ The number 500 is a convention borrowed from other BSL projects and roughly alig
 
 Every released version of SynthOrg converts to Apache 2.0 automatically. The conversion happens on the **earlier** of:
 
-1. The **Change Date** specified in the LICENSE file (updated with each release to 3 years ahead)
+1. The **Change Date** specified in the LICENSE file (automatically set to 3 years ahead with each release)
 2. The **4th anniversary** of that specific version's first public release (built into BSL 1.1 terms)
 
 This means:
