@@ -28,7 +28,7 @@ Run this after squash-merging a PR to clean up the local repo.
    git branch -D <branch-name>
    ```
 
-   Do NOT use a piped `xargs` command — it triggers unnecessary permission prompts. Use separate `git branch -D` calls for each gone branch (can be combined in one call: `git branch -D branch1 branch2`).
+   Avoid piped bulk deletion (e.g., via `xargs`) to reduce the risk of accidental destructive operations. Use explicit `git branch -D branch1 branch2` calls instead.
 
 4. Check for any remaining non-main local branches and report them. Do NOT delete branches that still have a remote — only report them.
 

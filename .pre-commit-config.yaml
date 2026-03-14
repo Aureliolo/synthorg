@@ -71,7 +71,15 @@ repos:
         language: system
         files: ^cli/.*\.go$
         pass_filenames: false
-        stages: [pre-push]
+        stages: [pre-commit, pre-push]
+
+      - id: go-vet
+        name: go vet (CLI)
+        entry: bash -c 'cd cli && go vet ./...'
+        language: system
+        files: ^cli/.*\.go$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
 
       - id: go-test
         name: go test (CLI)

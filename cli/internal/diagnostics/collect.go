@@ -51,26 +51,25 @@ func Collect(ctx context.Context, state config.State) Report {
 		r.Errors = append(r.Errors, fmt.Sprintf("path: %v", pathErr))
 	}
 
-	// Docker info (requires valid safeDir for compose commands).
+	// Docker info.
 	info, err := docker.Detect(ctx)
 	if err != nil {
 		r.Errors = append(r.Errors, fmt.Sprintf("docker: %v", err))
-	} else if pathErr == nil {
-		r.DockerVersion = info.DockerVersion
-		r.ComposeVersion = info.ComposeVersion
-
-		// Container states.
-		if ps, err := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "--format", "json"); err == nil {
-			r.ContainerPS = strings.TrimSpace(ps)
-		}
-
-		// Recent logs (last 50 lines).
-		if logs, err := docker.ComposeExecOutput(ctx, info, safeDir, "logs", "--tail", "50", "--no-color"); err == nil {
-			r.RecentLogs = truncate(logs, 4000)
-		}
 	} else {
 		r.DockerVersion = info.DockerVersion
 		r.ComposeVersion = info.ComposeVersion
+
+		if pathErr == nil {
+			// Container states.
+			if ps, err := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "--format", "json"); err == nil {
+				r.ContainerPS = strings.TrimSpace(ps)
+			}
+
+			// Recent logs (last 50 lines).
+			if logs, err := docker.ComposeExecOutput(ctx, info, safeDir, "logs", "--tail", "50", "--no-color"); err == nil {
+				r.RecentLogs = truncate(logs, 4000)
+			}
+		}
 	}
 
 	// Health endpoint.

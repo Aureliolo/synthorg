@@ -21,8 +21,10 @@ func DataDir() string {
 		// Fallback to absolute CWD so SecurePath's absolute-path check passes.
 		if cwd, cwdErr := os.Getwd(); cwdErr == nil {
 			home = cwd
+		} else if runtime.GOOS == "windows" {
+			home = os.TempDir() // last resort on Windows
 		} else {
-			home = "/" // last resort — will be valid on Unix, best-effort on Windows
+			home = "/" // last resort on Unix
 		}
 	}
 	return dataDirForOS(runtime.GOOS, home, os.Getenv("LOCALAPPDATA"), os.Getenv("XDG_DATA_HOME"))

@@ -35,18 +35,23 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
+	safeDir, err := safeStateDir(state)
+	if err != nil {
+		return err
+	}
+
 	// Stop containers and optionally remove volumes.
 	info, dockerErr := docker.Detect(ctx)
 	if dockerErr != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: Docker not available, cannot stop containers: %v\n", dockerErr)
 	} else {
-		if err := stopAndRemoveVolumes(cmd, info, state); err != nil {
+		if err := stopAndRemoveVolumes(cmd, info, safeDir); err != nil {
 			return err
 		}
 	}
 
 	// Remove data directory.
-	if err := confirmAndRemoveData(cmd, state); err != nil {
+	if err := confirmAndRemoveData(cmd, safeDir); err != nil {
 		return err
 	}
 
@@ -59,12 +64,8 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, state config.State) error {
+func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, dataDir string) error {
 	ctx := cmd.Context()
-	safeDir, err := safeStateDir(state)
-	if err != nil {
-		return err
-	}
 
 	var removeVolumes bool
 	form := huh.NewForm(
@@ -89,19 +90,19 @@ func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, state config.Sta
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Removing volumes...")
 	}
 
-	if err := composeRun(ctx, cmd, info, safeDir, downArgs...); err != nil {
+	if err := composeRun(ctx, cmd, info, dataDir, downArgs...); err != nil {
 		return fmt.Errorf("stopping containers: %w", err)
 	}
 
 	return nil
 }
 
-func confirmAndRemoveData(cmd *cobra.Command, state config.State) error {
+func confirmAndRemoveData(cmd *cobra.Command, dataDir string) error {
 	var removeData bool
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewConfirm().
-				Title(fmt.Sprintf("Remove data directory? (%s)", state.DataDir)).
+				Title(fmt.Sprintf("Remove data directory? (%s)", dataDir)).
 				Value(&removeData),
 		),
 	)
@@ -110,13 +111,10 @@ func confirmAndRemoveData(cmd *cobra.Command, state config.State) error {
 	}
 
 	if removeData {
-		dir, err := safeStateDir(state)
-		if err != nil {
-			return err
-		}
+		dir := dataDir
 		// Safety: refuse to remove root, home, or empty paths.
 		home, _ := os.UserHomeDir()
-		if dir == "" || dir == "/" || dir == home || (len(dir) == 3 && dir[1] == ':' && dir[2] == '\\') {
+		if dir == "/" || dir == home || (len(dir) == 3 && dir[1] == ':' && dir[2] == '\\') {
 			return fmt.Errorf("refusing to remove %q — does not look like an app data directory", dir)
 		}
 		if err := os.RemoveAll(dir); err != nil {
