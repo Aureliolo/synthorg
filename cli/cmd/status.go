@@ -113,7 +113,7 @@ func printHealthStatus(ctx context.Context, out io.Writer, state config.State) {
 		fmt.Fprintf(out, "  Backend: unreachable (%v)\n", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 	if readErr != nil {

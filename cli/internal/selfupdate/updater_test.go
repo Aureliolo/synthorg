@@ -391,14 +391,14 @@ func TestReplace(t *testing.T) {
 
 	if runtime.GOOS == "windows" {
 		oldPath := fakeBinary + ".old"
-		os.Remove(oldPath)
+		_ = os.Remove(oldPath)
 		if err := os.Rename(fakeBinary, oldPath); err != nil {
 			t.Fatalf("rename current to old: %v", err)
 		}
 		if err := os.Rename(newPath, fakeBinary); err != nil {
 			t.Fatalf("rename new to current: %v", err)
 		}
-		os.Remove(oldPath)
+		_ = os.Remove(oldPath)
 	} else {
 		if err := os.Rename(newPath, fakeBinary); err != nil {
 			t.Fatalf("rename new to current: %v", err)

@@ -43,36 +43,36 @@ func runStart(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Docker %s, Compose %s\n", info.DockerVersion, info.ComposeVersion)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Docker %s, Compose %s\n", info.DockerVersion, info.ComposeVersion)
 
 	// Check minimum versions.
 	for _, w := range docker.CheckMinVersions(info) {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: %s\n", w)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: %s\n", w)
 	}
 
 	// Pull latest images.
-	fmt.Fprintln(cmd.OutOrStdout(), "Pulling images...")
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Pulling images...")
 	if err := composeRun(ctx, cmd, info, state.DataDir, "pull"); err != nil {
 		return fmt.Errorf("pulling images: %w", err)
 	}
 
 	// Start containers.
-	fmt.Fprintln(cmd.OutOrStdout(), "Starting containers...")
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Starting containers...")
 	if err := composeRun(ctx, cmd, info, state.DataDir, "up", "-d"); err != nil {
 		return fmt.Errorf("starting containers: %w", err)
 	}
 
 	// Wait for health.
-	fmt.Fprintln(cmd.OutOrStdout(), "Waiting for backend to become healthy...")
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Waiting for backend to become healthy...")
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort)
 	if err := health.WaitForHealthy(ctx, healthURL, 90*time.Second, 2*time.Second, 5*time.Second); err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Containers are running but health check failed. Run 'synthorg doctor' for diagnostics.\n")
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Containers are running but health check failed. Run 'synthorg doctor' for diagnostics.\n")
 		return fmt.Errorf("health check did not pass: %w", err)
 	}
 
-	fmt.Fprintln(cmd.OutOrStdout(), "SynthOrg is running!")
-	fmt.Fprintf(cmd.OutOrStdout(), "  API:       http://localhost:%d/api/v1/health\n", state.BackendPort)
-	fmt.Fprintf(cmd.OutOrStdout(), "  Dashboard: http://localhost:%d\n", state.WebPort)
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "SynthOrg is running!")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  API:       http://localhost:%d/api/v1/health\n", state.BackendPort)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  Dashboard: http://localhost:%d\n", state.WebPort)
 	return nil
 }
 
