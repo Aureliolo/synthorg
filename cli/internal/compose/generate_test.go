@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Aureliolo/synthorg/cli/internal/config"
 )
 
 func TestGenerateDefault(t *testing.T) {
@@ -21,7 +23,7 @@ func TestGenerateDefault(t *testing.T) {
 	}
 	yaml := string(out)
 
-	// Verify key elements
+	// Verify key elements.
 	assertContains(t, yaml, "ghcr.io/aureliolo/synthorg-backend:latest")
 	assertContains(t, yaml, "ghcr.io/aureliolo/synthorg-web:latest")
 	assertContains(t, yaml, `"8000:8000"`)
@@ -31,18 +33,18 @@ func TestGenerateDefault(t *testing.T) {
 	assertContains(t, yaml, "read_only: true")
 	assertContains(t, yaml, "service_healthy")
 	assertContains(t, yaml, "'ok'") // healthcheck checks for 'ok'
+	assertContains(t, yaml, "synthorg-data:")
 
-	// No sandbox by default
+	// No sandbox by default.
 	if strings.Contains(yaml, "sandbox") {
 		t.Error("default output should not contain sandbox service")
 	}
 
-	// No JWT secret by default
+	// No JWT secret by default.
 	if strings.Contains(yaml, "JWT_SECRET") {
 		t.Error("default output should not contain JWT_SECRET")
 	}
 
-	// Golden file comparison
 	compareGolden(t, "compose_default.yml", out)
 }
 
@@ -88,6 +90,65 @@ func TestGenerateWithSandbox(t *testing.T) {
 
 	assertContains(t, yaml, "synthorg-sandbox:latest")
 	assertContains(t, yaml, "/var/run/docker.sock:/var/run/docker.sock:ro")
+	assertContains(t, yaml, "no-new-privileges:true")
+}
+
+func TestGenerateHardeningPresent(t *testing.T) {
+	p := Params{
+		CLIVersion:  "dev",
+		ImageTag:    "latest",
+		BackendPort: 8000,
+		WebPort:     3000,
+		LogLevel:    "info",
+	}
+	out, err := Generate(p)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	yaml := string(out)
+
+	// CIS hardening elements must be present.
+	hardening := []string{
+		"no-new-privileges:true",
+		"cap_drop:",
+		"- ALL",
+		"read_only: true",
+		"tmpfs:",
+		"restart: unless-stopped",
+	}
+	for _, h := range hardening {
+		assertContains(t, yaml, h)
+	}
+}
+
+func TestParamsFromState(t *testing.T) {
+	s := config.State{
+		DataDir:     "/tmp/test",
+		ImageTag:    "v1.0.0",
+		BackendPort: 9000,
+		WebPort:     4000,
+		LogLevel:    "debug",
+		JWTSecret:   "secret",
+		Sandbox:     true,
+		DockerSock:  "/var/run/docker.sock",
+	}
+	p := ParamsFromState(s)
+
+	if p.ImageTag != "v1.0.0" {
+		t.Errorf("ImageTag = %q, want v1.0.0", p.ImageTag)
+	}
+	if p.BackendPort != 9000 {
+		t.Errorf("BackendPort = %d, want 9000", p.BackendPort)
+	}
+	if p.WebPort != 4000 {
+		t.Errorf("WebPort = %d, want 4000", p.WebPort)
+	}
+	if !p.Sandbox {
+		t.Error("Sandbox should be true")
+	}
+	if p.DockerSock != "/var/run/docker.sock" {
+		t.Errorf("DockerSock = %q", p.DockerSock)
+	}
 }
 
 func assertContains(t *testing.T, s, substr string) {

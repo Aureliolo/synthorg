@@ -67,14 +67,18 @@ jobs:
           version: latest
           working-directory: cli
 
-  # ── Test ──
+  # ── Test (multi-platform) ──
   cli-test:
-    name: CLI Test
+    name: CLI Test (${{ matrix.os }})
     needs: cli-changes
     if: needs.cli-changes.outputs.changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -89,7 +93,7 @@ jobs:
         run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Upload coverage
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && matrix.os == 'ubuntu-latest' }}
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           name: cli-coverage

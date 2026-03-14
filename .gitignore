@@ -74,6 +74,7 @@ site/.astro/
 cli/synthorg
 cli/synthorg.exe
 cli/dist/
+cli/cover.out
 
 # uv
 .python-version

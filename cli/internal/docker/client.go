@@ -28,27 +28,27 @@ func Detect(ctx context.Context) (Info, error) {
 	// 1. Check Docker binary.
 	dockerPath, err := exec.LookPath("docker")
 	if err != nil {
-		return info, fmt.Errorf("docker not found on PATH: %w\n\n%s", err, installHint())
+		return info, fmt.Errorf("docker not found on PATH: %w\n\n%s", err, InstallHint(runtime.GOOS))
 	}
 	info.DockerPath = dockerPath
 
 	// 2. Verify daemon is running.
-	ver, err := runCmd(ctx, "docker", "info", "--format", "{{.ServerVersion}}")
+	ver, err := RunCmd(ctx, "docker", "info", "--format", "{{.ServerVersion}}")
 	if err != nil {
-		return info, fmt.Errorf("docker daemon is not running: %w\n\n%s", err, daemonHint())
+		return info, fmt.Errorf("docker daemon is not running: %w\n\n%s", err, DaemonHint(runtime.GOOS))
 	}
 	info.DockerVersion = strings.TrimSpace(ver)
 
 	// 3. Try Compose V2 plugin first, then fall back to standalone.
-	if cver, err := runCmd(ctx, "docker", "compose", "version", "--short"); err == nil {
+	if cver, err := RunCmd(ctx, "docker", "compose", "version", "--short"); err == nil {
 		info.ComposePath = "docker compose"
 		info.ComposeVersion = strings.TrimSpace(cver)
 		info.ComposeV2 = true
-	} else if cver, err := runCmd(ctx, "docker-compose", "version", "--short"); err == nil {
+	} else if cver, err := RunCmd(ctx, "docker-compose", "version", "--short"); err == nil {
 		info.ComposePath = "docker-compose"
 		info.ComposeVersion = strings.TrimSpace(cver)
 	} else {
-		return info, fmt.Errorf("docker compose not found (tried V2 plugin and standalone)\n\n%s", installHint())
+		return info, fmt.Errorf("docker compose not found (tried V2 plugin and standalone)\n\n%s", InstallHint(runtime.GOOS))
 	}
 
 	return info, nil
@@ -78,7 +78,8 @@ func ComposeExecOutput(ctx context.Context, info Info, dir string, args ...strin
 	return string(out), err
 }
 
-func runCmd(ctx context.Context, name string, args ...string) (string, error) {
+// RunCmd executes a command and returns stdout. Exported for testing.
+func RunCmd(ctx context.Context, name string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -89,8 +90,9 @@ func runCmd(ctx context.Context, name string, args ...string) (string, error) {
 	return stdout.String(), nil
 }
 
-func installHint() string {
-	switch runtime.GOOS {
+// InstallHint returns platform-specific Docker installation guidance.
+func InstallHint(goos string) string {
+	switch goos {
 	case "darwin":
 		return "Install Docker Desktop: https://docs.docker.com/desktop/install/mac-install/"
 	case "windows":
@@ -100,8 +102,9 @@ func installHint() string {
 	}
 }
 
-func daemonHint() string {
-	switch runtime.GOOS {
+// DaemonHint returns platform-specific guidance for starting the Docker daemon.
+func DaemonHint(goos string) string {
+	switch goos {
 	case "darwin", "windows":
 		return "Start Docker Desktop and try again."
 	default:

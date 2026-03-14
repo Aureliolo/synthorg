@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -19,6 +20,9 @@ func TestDefaultState(t *testing.T) {
 	}
 	if s.LogLevel != "info" {
 		t.Errorf("LogLevel = %q, want info", s.LogLevel)
+	}
+	if s.DataDir == "" {
+		t.Error("DataDir should not be empty")
 	}
 }
 
@@ -51,6 +55,52 @@ func TestSaveAndLoad(t *testing.T) {
 	if loaded.JWTSecret != s.JWTSecret {
 		t.Errorf("JWTSecret = %q, want %q", loaded.JWTSecret, s.JWTSecret)
 	}
+	if loaded.WebPort != s.WebPort {
+		t.Errorf("WebPort = %d, want %d", loaded.WebPort, s.WebPort)
+	}
+	if loaded.LogLevel != s.LogLevel {
+		t.Errorf("LogLevel = %q, want %q", loaded.LogLevel, s.LogLevel)
+	}
+}
+
+func TestSaveCreatesDirectory(t *testing.T) {
+	tmp := t.TempDir()
+	nested := filepath.Join(tmp, "nested", "deep")
+	s := State{
+		DataDir:     nested,
+		ImageTag:    "latest",
+		BackendPort: 8000,
+		WebPort:     3000,
+		LogLevel:    "info",
+	}
+
+	if err := Save(s); err != nil {
+		t.Fatalf("Save to nested dir: %v", err)
+	}
+
+	// Verify the file exists.
+	if _, err := os.Stat(StatePath(nested)); err != nil {
+		t.Fatalf("config file should exist: %v", err)
+	}
+}
+
+func TestSaveFilePermissions(t *testing.T) {
+	tmp := t.TempDir()
+	s := State{DataDir: tmp, ImageTag: "latest", BackendPort: 8000, WebPort: 3000, LogLevel: "info", JWTSecret: "secret"}
+
+	if err := Save(s); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// Verify the file is valid JSON.
+	data, err := os.ReadFile(StatePath(tmp))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var loaded State
+	if err := json.Unmarshal(data, &loaded); err != nil {
+		t.Fatalf("saved file is not valid JSON: %v", err)
+	}
 }
 
 func TestLoadMissing(t *testing.T) {
@@ -59,7 +109,7 @@ func TestLoadMissing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load missing file: %v", err)
 	}
-	// Should return defaults
+	// Should return defaults.
 	if s.BackendPort != 8000 {
 		t.Errorf("expected default BackendPort 8000, got %d", s.BackendPort)
 	}
@@ -73,5 +123,45 @@ func TestLoadInvalid(t *testing.T) {
 	_, err := Load(tmp)
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
+	}
+}
+
+func TestStatePath(t *testing.T) {
+	path := StatePath("/some/dir")
+	if filepath.Base(path) != stateFileName {
+		t.Errorf("StatePath base = %q, want %q", filepath.Base(path), stateFileName)
+	}
+}
+
+func TestSaveLoadRoundTrip(t *testing.T) {
+	tmp := t.TempDir()
+	original := State{
+		DataDir:     tmp,
+		ImageTag:    "v2.0.0",
+		BackendPort: 8080,
+		WebPort:     3030,
+		Sandbox:     true,
+		DockerSock:  "/custom/docker.sock",
+		LogLevel:    "warn",
+		JWTSecret:   "super-secret-key",
+	}
+
+	if err := Save(original); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	loaded, err := Load(tmp)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if loaded.DataDir != original.DataDir {
+		t.Errorf("DataDir = %q, want %q", loaded.DataDir, original.DataDir)
+	}
+	if loaded.Sandbox != original.Sandbox {
+		t.Errorf("Sandbox = %v, want %v", loaded.Sandbox, original.Sandbox)
+	}
+	if loaded.DockerSock != original.DockerSock {
+		t.Errorf("DockerSock = %q, want %q", loaded.DockerSock, original.DockerSock)
 	}
 }

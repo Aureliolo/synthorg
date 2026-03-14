@@ -22,8 +22,9 @@ import (
 )
 
 const (
-	releasesURL = "https://api.github.com/repos/Aureliolo/synthorg/releases/latest"
-	binaryName  = "synthorg"
+	// DefaultReleasesURL is the GitHub API endpoint for latest releases.
+	DefaultReleasesURL = "https://api.github.com/repos/Aureliolo/synthorg/releases/latest"
+	binaryName         = "synthorg"
 )
 
 // Release represents a GitHub release.
@@ -48,10 +49,17 @@ type CheckResult struct {
 }
 
 // Check queries GitHub for the latest release and compares versions.
+// Uses DefaultReleasesURL.
 func Check(ctx context.Context) (CheckResult, error) {
+	return CheckFromURL(ctx, DefaultReleasesURL)
+}
+
+// CheckFromURL queries the given releases URL and compares versions.
+// This is the testable core of Check.
+func CheckFromURL(ctx context.Context, url string) (CheckResult, error) {
 	result := CheckResult{CurrentVersion: version.Version}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, releasesURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return result, err
 	}
@@ -124,7 +132,13 @@ func Replace(binaryData []byte) error {
 	if err != nil {
 		return fmt.Errorf("finding executable path: %w", err)
 	}
-	execPath, err = filepath.EvalSymlinks(execPath)
+	return ReplaceAt(binaryData, execPath)
+}
+
+// ReplaceAt swaps the binary at the given path with new content.
+// This is the testable core of Replace.
+func ReplaceAt(binaryData []byte, execPath string) error {
+	execPath, err := filepath.EvalSymlinks(execPath)
 	if err != nil {
 		return fmt.Errorf("resolving symlinks: %w", err)
 	}

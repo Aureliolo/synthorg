@@ -67,3 +67,118 @@ func TestWaitForHealthyEventualSuccess(t *testing.T) {
 		t.Fatalf("expected eventual success, got: %v", err)
 	}
 }
+
+func TestWaitForHealthyWithInitialDelay(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":{"status":"ok"}}`))
+	}))
+	defer srv.Close()
+
+	start := time.Now()
+	err := WaitForHealthy(context.Background(), srv.URL, 5*time.Second, 100*time.Millisecond, 200*time.Millisecond)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("expected healthy, got: %v", err)
+	}
+	if elapsed < 200*time.Millisecond {
+		t.Errorf("initial delay not respected: elapsed %v", elapsed)
+	}
+}
+
+func TestWaitForHealthyCancelledDuringDelay(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":{"status":"ok"}}`))
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	// Initial delay is longer than context timeout.
+	err := WaitForHealthy(ctx, srv.URL, 5*time.Second, 100*time.Millisecond, 1*time.Second)
+	if err == nil {
+		t.Fatal("expected context cancellation error")
+	}
+}
+
+func TestCheckOnceSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":{"status":"ok"}}`))
+	}))
+	defer srv.Close()
+
+	if err := checkOnce(context.Background(), srv.URL); err != nil {
+		t.Fatalf("checkOnce: %v", err)
+	}
+}
+
+func TestCheckOnceUnhealthy(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":{"status":"down"}}`))
+	}))
+	defer srv.Close()
+
+	err := checkOnce(context.Background(), srv.URL)
+	if err == nil {
+		t.Fatal("expected error for unhealthy status")
+	}
+}
+
+func TestCheckOnceInvalidJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("not json"))
+	}))
+	defer srv.Close()
+
+	err := checkOnce(context.Background(), srv.URL)
+	if err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+}
+
+func TestCheckOnceHTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	err := checkOnce(context.Background(), srv.URL)
+	if err == nil {
+		t.Fatal("expected error for 500")
+	}
+}
+
+func TestWaitForHealthyTimeoutWithLastError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":{"status":"down"}}`))
+	}))
+	defer srv.Close()
+
+	err := WaitForHealthy(context.Background(), srv.URL, 300*time.Millisecond, 50*time.Millisecond, 0)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	// Should include "last error" in the message.
+	if !contains(err.Error(), "last error") {
+		t.Errorf("error should mention last error: %v", err)
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && searchString(s, substr)
+}
+
+func searchString(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}

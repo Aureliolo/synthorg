@@ -15,21 +15,24 @@ const appDirName = "synthorg"
 //   - macOS:   ~/Library/Application Support/synthorg
 //   - Windows: %LOCALAPPDATA%\synthorg
 func DataDir() string {
-	switch runtime.GOOS {
+	home, _ := os.UserHomeDir()
+	return dataDirForOS(runtime.GOOS, home, os.Getenv("LOCALAPPDATA"), os.Getenv("XDG_DATA_HOME"))
+}
+
+// dataDirForOS is the testable core of DataDir.
+func dataDirForOS(goos, home, localAppData, xdgDataHome string) string {
+	switch goos {
 	case "darwin":
-		home, _ := os.UserHomeDir()
 		return filepath.Join(home, "Library", "Application Support", appDirName)
 	case "windows":
-		if dir := os.Getenv("LOCALAPPDATA"); dir != "" {
-			return filepath.Join(dir, appDirName)
+		if localAppData != "" {
+			return filepath.Join(localAppData, appDirName)
 		}
-		home, _ := os.UserHomeDir()
 		return filepath.Join(home, "AppData", "Local", appDirName)
 	default: // linux and others
-		if dir := os.Getenv("XDG_DATA_HOME"); dir != "" {
-			return filepath.Join(dir, appDirName)
+		if xdgDataHome != "" {
+			return filepath.Join(xdgDataHome, appDirName)
 		}
-		home, _ := os.UserHomeDir()
 		return filepath.Join(home, ".local", "share", appDirName)
 	}
 }

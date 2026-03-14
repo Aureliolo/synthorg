@@ -2,7 +2,7 @@ ci:
   autoupdate_schedule: never
   autofix_prs: true
   autofix_commit_msg: "style: auto-fix pre-commit hooks"
-  skip: [commitizen, gitleaks, hadolint-docker, mypy, pytest-unit, go-vet, go-test]
+  skip: [commitizen, gitleaks, hadolint-docker, mypy, pytest-unit, golangci-lint, go-vet, go-test]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -48,6 +48,14 @@ repos:
     rev: v2.14.0
     hooks:
       - id: hadolint-docker
+
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v2.11.3
+    hooks:
+      - id: golangci-lint
+        args: [--config=cli/.golangci.yml]
+        files: ^cli/.*\.go$
+        stages: [pre-push]
 
   - repo: local
     hooks:
