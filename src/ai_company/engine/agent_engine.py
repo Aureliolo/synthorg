@@ -45,7 +45,7 @@ from ai_company.engine.task_sync import (
 )
 from ai_company.observability import get_logger
 from ai_company.observability.events.approval_gate import (
-    APPROVAL_GATE_INITIALIZED,
+    APPROVAL_GATE_LOOP_WIRING_WARNING,
 )
 from ai_company.observability.events.execution import (
     EXECUTION_ENGINE_BUDGET_STOPPED,
@@ -144,7 +144,7 @@ class AgentEngine:
         self._approval_gate = self._make_approval_gate()
         if execution_loop is not None and self._approval_gate is not None:
             logger.warning(
-                APPROVAL_GATE_INITIALIZED,
+                APPROVAL_GATE_LOOP_WIRING_WARNING,
                 note=(
                     "execution_loop provided externally — approval_gate "
                     "will NOT be wired automatically. Configure the loop "

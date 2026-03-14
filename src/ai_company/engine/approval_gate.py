@@ -265,7 +265,6 @@ class ApprovalGate:
         """Delete the parked record after successful deserialization."""
         if self._parked_context_repo is None:  # pragma: no cover
             return
-        deleted = False
         try:
             deleted = await self._parked_context_repo.delete(parked.id)
         except MemoryError, RecursionError:
@@ -277,6 +276,7 @@ class ApprovalGate:
                 parked_id=parked.id,
                 note="Context resumed but parked record not cleaned up",
             )
+            return
 
         if not deleted:
             logger.warning(
