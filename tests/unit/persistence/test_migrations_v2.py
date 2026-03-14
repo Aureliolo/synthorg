@@ -1,4 +1,4 @@
-"""Tests for v2 schema migration (HR persistence tables)."""
+"""Tests for v2+ schema migrations."""
 
 from typing import TYPE_CHECKING
 
@@ -16,6 +16,8 @@ from ai_company.persistence.sqlite.migrations import (
     set_user_version,
 )
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.fixture
 async def memory_db() -> AsyncGenerator[aiosqlite.Connection]:
@@ -26,7 +28,6 @@ async def memory_db() -> AsyncGenerator[aiosqlite.Connection]:
     await conn.close()
 
 
-@pytest.mark.unit
 class TestSchemaMigrations:
     async def test_schema_version_is_seven(self) -> None:
         assert SCHEMA_VERSION == 7

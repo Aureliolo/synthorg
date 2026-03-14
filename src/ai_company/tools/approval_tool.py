@@ -112,14 +112,27 @@ class RequestHumanApprovalTool(BaseTool):
             metadata on success, or an error result on failure.
         """
         try:
-            action_type = str(arguments["action_type"])
-            title = str(arguments["title"])
-            description = str(arguments["description"])
+            action_type = arguments["action_type"]
+            title = arguments["title"]
+            description = arguments["description"]
         except KeyError as exc:
             return ToolExecutionResult(
                 content=(
                     f"Missing required argument: {exc}. "
                     f"Required: action_type, title, description"
+                ),
+                is_error=True,
+            )
+
+        if (
+            not isinstance(action_type, str)
+            or not isinstance(title, str)
+            or not isinstance(description, str)
+        ):
+            return ToolExecutionResult(
+                content=(
+                    "Arguments action_type, title, and description "
+                    "must be non-empty strings"
                 ),
                 is_error=True,
             )

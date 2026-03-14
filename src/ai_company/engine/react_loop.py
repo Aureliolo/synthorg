@@ -66,6 +66,9 @@ class ReactLoop:
     Args:
         checkpoint_callback: Optional async callback invoked after each
             completed turn; the callback itself decides whether to persist.
+        approval_gate: Optional gate that checks for pending escalations
+            after tool execution and parks the agent when approval is
+            required.  ``None`` disables approval checks.
     """
 
     def __init__(

@@ -82,6 +82,13 @@ class PlanExecuteLoop:
 
     Decomposes a task into steps via LLM planning, then executes each
     step with a mini-ReAct sub-loop. Supports re-planning on failure.
+
+    Args:
+        config: Loop configuration.  Defaults to ``PlanExecuteConfig()``.
+        checkpoint_callback: Optional per-turn checkpoint callback.
+        approval_gate: Optional gate that checks for pending escalations
+            after tool execution and parks the agent when approval is
+            required.  ``None`` disables approval checks.
     """
 
     def __init__(

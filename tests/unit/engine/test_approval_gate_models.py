@@ -131,6 +131,17 @@ class TestResumePayload:
         with pytest.raises(ValidationError):
             ResumePayload(**kwargs)  # type: ignore[arg-type]
 
+    @pytest.mark.parametrize("field", ["approval_id", "decided_by"])
+    def test_empty_string_rejected(self, field: str) -> None:
+        kwargs = {
+            "approval_id": "approval-1",
+            "approved": True,
+            "decided_by": "admin",
+        }
+        kwargs[field] = ""
+        with pytest.raises(ValidationError):
+            ResumePayload(**kwargs)  # type: ignore[arg-type]
+
     def test_blank_decision_reason_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ResumePayload(
