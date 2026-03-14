@@ -29,7 +29,7 @@ jobs:
         if: steps.release.outputs.pr != ''
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          ref: release-please--branches--main  # must match the repo default branch name
+          ref: release-please--branches--main--components--synthorg
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
 
       - name: Update BSL Change Date (release + 3 years)
