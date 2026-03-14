@@ -307,7 +307,7 @@ class ToolInvoker:
             return ToolExecutionResult(
                 content="Output scan failed (fail-closed). Tool output withheld.",
                 is_error=True,
-                metadata={"output_scan_failed": True},
+                metadata={**result.metadata, "output_scan_failed": True},
             )
 
         if scan_result.has_sensitive_data:
