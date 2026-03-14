@@ -357,7 +357,7 @@ class CoordinationResultResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    parent_task_id: NotBlankStr
+    parent_task_id: NotBlankStr = Field(max_length=128)
     topology: NotBlankStr
     total_duration_seconds: float = Field(ge=0.0)
     total_cost_usd: float = Field(ge=0.0)

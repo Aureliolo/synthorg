@@ -220,7 +220,7 @@ class TestCoordinateTaskRequest:
     )
     def test_bounds_rejected(self, field: str, value: int) -> None:
         with pytest.raises(ValidationError):
-            CoordinateTaskRequest(**{field: value})
+            CoordinateTaskRequest(**{field: value})  # type: ignore[arg-type]
 
     @pytest.mark.parametrize(
         ("field", "value"),
@@ -232,7 +232,7 @@ class TestCoordinateTaskRequest:
         ],
     )
     def test_bounds_accepted(self, field: str, value: int) -> None:
-        req = CoordinateTaskRequest(**{field: value})
+        req = CoordinateTaskRequest(**{field: value})  # type: ignore[arg-type]
         assert getattr(req, field) == value
 
 

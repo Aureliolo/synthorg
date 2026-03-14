@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from ai_company.engine.coordination.service import MultiAgentCoordinator
 from ai_company.engine.decomposition.classifier import TaskStructureClassifier
+from ai_company.engine.decomposition.protocol import DecompositionStrategy
 from ai_company.engine.decomposition.service import DecompositionService
 from ai_company.engine.errors import DecompositionError
 from ai_company.engine.parallel import ParallelExecutor
@@ -33,7 +34,6 @@ if TYPE_CHECKING:
         DecompositionContext,
         DecompositionPlan,
     )
-    from ai_company.engine.decomposition.protocol import DecompositionStrategy
     from ai_company.engine.shutdown import ShutdownManager
     from ai_company.engine.task_engine import TaskEngine
     from ai_company.engine.workspace.config import WorkspaceIsolationConfig
@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class _NoProviderDecompositionStrategy:
+class _NoProviderDecompositionStrategy(DecompositionStrategy):
     """Placeholder strategy that raises when no LLM provider is available.
 
     Used when the factory is called without a provider, so that the

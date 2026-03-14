@@ -248,6 +248,15 @@ class CoordinationController(Controller):
                 },
             )
             raise ApiValidationError(client_msg) from exc
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            _publish_ws_event(
+                request,
+                WsEventType.COORDINATION_FAILED,
+                {"task_id": task_id, "error": "Unexpected coordination error"},
+            )
+            raise
 
         ws_event_type = (
             WsEventType.COORDINATION_COMPLETED
@@ -267,7 +276,8 @@ class CoordinationController(Controller):
         log_event = (
             API_COORDINATION_COMPLETED if result.is_success else API_COORDINATION_FAILED
         )
-        logger.info(
+        log_fn = logger.info if result.is_success else logger.warning
+        log_fn(
             log_event,
             task_id=task_id,
             topology=result.topology.value,

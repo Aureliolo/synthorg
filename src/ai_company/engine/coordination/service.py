@@ -177,6 +177,11 @@ class MultiAgentCoordinator:
         except CoordinationPhaseError:
             raise
         except MemoryError, RecursionError:
+            logger.warning(
+                COORDINATION_FAILED,
+                parent_task_id=task.id,
+                error="Fatal: MemoryError or RecursionError",
+            )
             raise
         except Exception as exc:
             logger.exception(

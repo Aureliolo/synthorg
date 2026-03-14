@@ -138,6 +138,80 @@ def _seed_test_users(
 
 
 @pytest.mark.integration
+class TestBuildCoordinatorFactory:
+    """Verify build_coordinator() wires real services from config."""
+
+    def test_build_coordinator_with_defaults(self) -> None:
+        """Factory produces a coordinator from default config."""
+        from unittest.mock import AsyncMock
+
+        from ai_company.config.schema import TaskAssignmentConfig
+        from ai_company.engine.coordination.factory import build_coordinator
+        from ai_company.engine.coordination.section_config import (
+            CoordinationSectionConfig,
+        )
+        from ai_company.engine.coordination.service import (
+            MultiAgentCoordinator,
+        )
+
+        config = CoordinationSectionConfig()
+        engine = AsyncMock()
+        task_assignment_config = TaskAssignmentConfig()
+
+        coordinator = build_coordinator(
+            config=config,
+            engine=engine,
+            task_assignment_config=task_assignment_config,
+        )
+
+        assert isinstance(coordinator, MultiAgentCoordinator)
+
+    async def test_build_coordinator_no_provider_decomposition_raises(
+        self,
+    ) -> None:
+        """Coordinator built without provider raises on decomposition."""
+        from unittest.mock import AsyncMock
+
+        from ai_company.config.schema import TaskAssignmentConfig
+        from ai_company.engine.coordination.factory import build_coordinator
+        from ai_company.engine.coordination.section_config import (
+            CoordinationSectionConfig,
+        )
+        from ai_company.engine.errors import DecompositionError
+
+        config = CoordinationSectionConfig()
+        engine = AsyncMock()
+        task_assignment_config = TaskAssignmentConfig()
+
+        coordinator = build_coordinator(
+            config=config,
+            engine=engine,
+            task_assignment_config=task_assignment_config,
+        )
+
+        # Decomposition should fail since no provider was given
+        from ai_company.core.enums import Priority, TaskType
+        from ai_company.core.task import Task
+        from ai_company.engine.decomposition.models import (
+            DecompositionContext,
+        )
+
+        task = Task(
+            id="test-task-001",
+            title="test",
+            description="test task",
+            type=TaskType.DEVELOPMENT,
+            priority=Priority.MEDIUM,
+            project="test",
+            created_by="test-agent",
+        )
+        context = DecompositionContext(max_subtasks=5)
+
+        with pytest.raises(DecompositionError, match="No LLM provider"):
+            await coordinator._decomposition_service.decompose_task(task, context)
+
+
+@pytest.mark.integration
 class TestCoordinationWiring:
     """Full bootstrap → API → coordination integration test."""
 
