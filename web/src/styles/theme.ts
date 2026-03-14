@@ -1,8 +1,8 @@
 /** Dark theme color tokens used throughout the application. */
 
-import type { TaskStatus, ApprovalStatus, AgentStatus, Priority as ApiPriority, ApprovalRiskLevel } from '@/api/types'
+import type { TaskStatus, ApprovalStatus, AgentStatus, MeetingStatus, Priority as ApiPriority, ApprovalRiskLevel } from '@/api/types'
 
-export type Status = TaskStatus | ApprovalStatus | AgentStatus
+export type Status = TaskStatus | ApprovalStatus | AgentStatus | MeetingStatus
 export type Priority = ApiPriority
 export type RiskLevel = ApprovalRiskLevel
 
@@ -57,6 +57,8 @@ export const statusColors: Record<Status, string> = {
   onboarding: 'bg-blue-600 text-blue-100',
   on_leave: 'bg-yellow-600 text-yellow-100',
   terminated: 'bg-gray-600 text-gray-200',
+  scheduled: 'bg-indigo-600 text-indigo-100',
+  budget_exhausted: 'bg-orange-700 text-orange-100',
 }
 
 /** Priority color mapping. */

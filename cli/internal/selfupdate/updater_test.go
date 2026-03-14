@@ -391,14 +391,14 @@ func TestReplace(t *testing.T) {
 
 	if runtime.GOOS == "windows" {
 		oldPath := fakeBinary + ".old"
-		os.Remove(oldPath)
+		_ = os.Remove(oldPath)
 		if err := os.Rename(fakeBinary, oldPath); err != nil {
 			t.Fatalf("rename current to old: %v", err)
 		}
 		if err := os.Rename(newPath, fakeBinary); err != nil {
 			t.Fatalf("rename new to current: %v", err)
 		}
-		os.Remove(oldPath)
+		_ = os.Remove(oldPath)
 	} else {
 		if err := os.Rename(newPath, fakeBinary); err != nil {
 			t.Fatalf("rename new to current: %v", err)
@@ -559,7 +559,7 @@ func TestDownloadChecksumMismatch(t *testing.T) {
 				t.Logf("write error: %v", err)
 			}
 		case "/checksums":
-			if _, err := w.Write([]byte(fmt.Sprintf("deadbeefdeadbeef  %s\n", assetName()))); err != nil {
+			if _, err := fmt.Fprintf(w, "deadbeefdeadbeef  %s\n", assetName()); err != nil {
 				t.Logf("write error: %v", err)
 			}
 		default:

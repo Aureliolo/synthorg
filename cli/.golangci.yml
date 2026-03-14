@@ -10,9 +10,7 @@ linters:
     - ineffassign
     - staticcheck
     - unused
-    - gosimple
     - gocritic
-    - gofmt
     - bodyclose
     - errname
     - errorlint
@@ -20,6 +18,10 @@ linters:
     - prealloc
     - unconvert
     - unparam
+
+formatters:
+  enable:
+    - gofmt
 
 issues:
   max-issues-per-linter: 50

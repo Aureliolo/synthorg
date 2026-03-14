@@ -47,7 +47,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	// Warn if re-initializing over existing config (JWT secret will change).
 	// isInteractive() is already checked at function entry, so prompt is safe.
 	if existing := config.StatePath(state.DataDir); fileExists(existing) {
-		fmt.Fprintf(cmd.ErrOrStderr(),
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
 			"Warning: existing config at %s will be overwritten.\n"+
 				"A new JWT secret will be generated — running containers will need a restart.\n", existing)
 		var proceed bool
@@ -67,11 +67,11 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	}
 
 	composePath := filepath.Join(state.DataDir, "compose.yml")
-	fmt.Fprintf(cmd.OutOrStdout(), "\nSynthOrg initialized in %s\n", state.DataDir)
-	fmt.Fprintf(cmd.OutOrStdout(), "  Compose file: %s\n", composePath)
-	fmt.Fprintf(cmd.OutOrStdout(), "  Config:       %s\n", config.StatePath(state.DataDir))
-	fmt.Fprintf(cmd.OutOrStdout(), "\nKeep compose.yml and config.json private — they contain your JWT secret.\n")
-	fmt.Fprintf(cmd.OutOrStdout(), "Run 'synthorg start' to launch.\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\nSynthOrg initialized in %s\n", state.DataDir)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  Compose file: %s\n", composePath)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  Config:       %s\n", config.StatePath(state.DataDir))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\nKeep compose.yml and config.json private — they contain your JWT secret.\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Run 'synthorg start' to launch.\n")
 
 	return nil
 }

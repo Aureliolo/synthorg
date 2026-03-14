@@ -34,8 +34,8 @@ const (
 	expectedURLPrefix = "https://github.com/" + repoSlug + "/releases/download/"
 
 	maxAPIResponseBytes  = 1 * 1024 * 1024   // 1 MiB for API/checksums
-	maxBinaryBytes       = 256 * 1024 * 1024  // 256 MiB for binary archives
-	maxArchiveEntryBytes = 128 * 1024 * 1024  // 128 MiB per archive entry
+	maxBinaryBytes       = 256 * 1024 * 1024 // 256 MiB for binary archives
+	maxArchiveEntryBytes = 128 * 1024 * 1024 // 128 MiB per archive entry
 
 	httpTimeout = 5 * time.Minute
 )
@@ -103,7 +103,7 @@ func fetchRelease(ctx context.Context, url string) (Release, error) {
 	if err != nil {
 		return Release{}, fmt.Errorf("querying GitHub releases: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return Release{}, fmt.Errorf("github API returned %d", resp.StatusCode)
@@ -236,22 +236,22 @@ func ReplaceAt(binaryData []byte, execPath string) error {
 	tmpPath := tmpFile.Name()
 
 	if _, err := tmpFile.Write(binaryData); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath)
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("writing new binary: %w", err)
 	}
 	if err := tmpFile.Chmod(0o755); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath)
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("setting permissions: %w", err)
 	}
 	if err := tmpFile.Sync(); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath)
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("syncing new binary: %w", err)
 	}
 	if err := tmpFile.Close(); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("closing new binary: %w", err)
 	}
 
@@ -261,15 +261,15 @@ func ReplaceAt(binaryData []byte, execPath string) error {
 	if runtime.GOOS == "windows" {
 		oldFile, err := os.CreateTemp(dir, binaryName+".old.*.tmp")
 		if err != nil {
-			os.Remove(tmpPath)
+			_ = os.Remove(tmpPath)
 			return fmt.Errorf("creating temp file for old binary: %w", err)
 		}
 		oldPath = oldFile.Name()
-		oldFile.Close()
-		os.Remove(oldPath) // Remove so Rename can use the path.
+		_ = oldFile.Close()
+		_ = os.Remove(oldPath) // Remove so Rename can use the path.
 
 		if err := os.Rename(execPath, oldPath); err != nil {
-			os.Remove(tmpPath)
+			_ = os.Remove(tmpPath)
 			return fmt.Errorf("renaming current binary: %w", err)
 		}
 	}
@@ -279,7 +279,7 @@ func ReplaceAt(binaryData []byte, execPath string) error {
 		if runtime.GOOS == "windows" && oldPath != "" {
 			_ = os.Rename(oldPath, execPath)
 		}
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("replacing binary: %w", err)
 	}
 
@@ -304,8 +304,8 @@ func assetName() string {
 // Exported for test injection.
 var AllowedDownloadHosts = map[string]bool{
 	"github.com":                            true,
-	"objects.githubusercontent.com":          true,
-	"github-releases.githubusercontent.com":  true,
+	"objects.githubusercontent.com":         true,
+	"github-releases.githubusercontent.com": true,
 }
 
 func httpGetWithClient(ctx context.Context, client *http.Client, rawURL string, maxBytes int64) ([]byte, error) {
@@ -317,7 +317,7 @@ func httpGetWithClient(ctx context.Context, client *http.Client, rawURL string, 
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Validate final URL after redirects stays within GitHub's domain.
 	if finalHost := resp.Request.URL.Hostname(); !AllowedDownloadHosts[finalHost] {
@@ -360,7 +360,7 @@ func extractFromTarGz(data []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening gzip: %w", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 
 	tr := tar.NewReader(gz)
 	for {
@@ -397,7 +397,7 @@ func extractFromZip(data []byte) ([]byte, error) {
 				return nil, err
 			}
 			result, readErr := io.ReadAll(io.LimitReader(rc, maxArchiveEntryBytes))
-			rc.Close()
+			_ = rc.Close()
 			return result, readErr
 		}
 	}

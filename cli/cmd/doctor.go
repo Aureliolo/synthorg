@@ -34,7 +34,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	fmt.Fprintln(out, "Collecting diagnostics...")
+	_, _ = fmt.Fprintln(out, "Collecting diagnostics...")
 	report := diagnostics.Collect(ctx, state)
 	text := report.FormatText()
 
@@ -42,12 +42,12 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	filename := fmt.Sprintf("synthorg-diagnostic-%s.txt", time.Now().Format("20060102-150405"))
 	savePath := filepath.Join(state.DataDir, filename)
 	if err := os.WriteFile(savePath, []byte(text), 0o600); err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not save diagnostic file: %v\n", err)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not save diagnostic file: %v\n", err)
 	} else {
-		fmt.Fprintf(out, "Saved to: %s\n\n", savePath)
+		_, _ = fmt.Fprintf(out, "Saved to: %s\n\n", savePath)
 	}
 
-	fmt.Fprintln(out, text)
+	_, _ = fmt.Fprintln(out, text)
 
 	// Generate GitHub issue URL (exclude logs — may contain secrets).
 	issueTitle := fmt.Sprintf("[CLI] Bug report — %s/%s, CLI %s", report.OS, report.Arch, report.CLIVersion)
@@ -78,7 +78,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		encodedBody,
 	)
 
-	fmt.Fprintf(out, "File a bug report:\n  %s\n", issueURL)
+	_, _ = fmt.Fprintf(out, "File a bug report:\n  %s\n", issueURL)
 
 	return nil
 }

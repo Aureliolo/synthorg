@@ -20,19 +20,19 @@ import (
 
 // Report contains collected diagnostic information.
 type Report struct {
-	Timestamp      string `json:"timestamp"`
-	OS             string `json:"os"`
-	Arch           string `json:"arch"`
-	CLIVersion     string `json:"cli_version"`
-	CLICommit      string `json:"cli_commit"`
-	DockerVersion  string `json:"docker_version,omitempty"`
-	ComposeVersion string `json:"compose_version,omitempty"`
-	HealthStatus   string `json:"health_status,omitempty"`
-	HealthBody     string `json:"health_body,omitempty"`
-	ContainerPS    string `json:"container_ps,omitempty"`
-	RecentLogs     string `json:"recent_logs,omitempty"`
-	ConfigRedacted string `json:"config_redacted,omitempty"`
-	DiskInfo       string `json:"disk_info,omitempty"`
+	Timestamp      string   `json:"timestamp"`
+	OS             string   `json:"os"`
+	Arch           string   `json:"arch"`
+	CLIVersion     string   `json:"cli_version"`
+	CLICommit      string   `json:"cli_commit"`
+	DockerVersion  string   `json:"docker_version,omitempty"`
+	ComposeVersion string   `json:"compose_version,omitempty"`
+	HealthStatus   string   `json:"health_status,omitempty"`
+	HealthBody     string   `json:"health_body,omitempty"`
+	ContainerPS    string   `json:"container_ps,omitempty"`
+	RecentLogs     string   `json:"recent_logs,omitempty"`
+	ConfigRedacted string   `json:"config_redacted,omitempty"`
+	DiskInfo       string   `json:"disk_info,omitempty"`
 	Errors         []string `json:"errors,omitempty"`
 }
 
@@ -76,7 +76,7 @@ func Collect(ctx context.Context, state config.State) Report {
 		r.HealthStatus = "unreachable"
 		r.Errors = append(r.Errors, fmt.Sprintf("health: %v", err))
 	} else {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 		if readErr != nil {
 			r.Errors = append(r.Errors, fmt.Sprintf("health read: %v", readErr))
