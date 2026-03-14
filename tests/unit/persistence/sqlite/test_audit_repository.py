@@ -7,13 +7,13 @@ from uuid import uuid4
 
 import pytest
 
-from ai_company.core.enums import ApprovalRiskLevel, ToolCategory
-from ai_company.persistence.errors import DuplicateRecordError, QueryError
-from ai_company.persistence.repositories import AuditRepository
-from ai_company.persistence.sqlite.audit_repository import (
+from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.persistence.errors import DuplicateRecordError, QueryError
+from synthorg.persistence.repositories import AuditRepository
+from synthorg.persistence.sqlite.audit_repository import (
     SQLiteAuditRepository,
 )
-from ai_company.security.models import AuditEntry, AuditVerdictStr
+from synthorg.security.models import AuditEntry, AuditVerdictStr
 
 if TYPE_CHECKING:
     import aiosqlite

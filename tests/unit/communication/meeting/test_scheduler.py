@@ -5,22 +5,22 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ai_company.communication.config import MeetingsConfig, MeetingTypeConfig
-from ai_company.communication.meeting.enums import (
+from synthorg.communication.config import MeetingsConfig, MeetingTypeConfig
+from synthorg.communication.meeting.enums import (
     MeetingProtocolType,
     MeetingStatus,
 )
-from ai_company.communication.meeting.errors import (
+from synthorg.communication.meeting.errors import (
     NoParticipantsResolvedError,
     SchedulerAlreadyRunningError,
 )
-from ai_company.communication.meeting.frequency import MeetingFrequency
-from ai_company.communication.meeting.models import (
+from synthorg.communication.meeting.frequency import MeetingFrequency
+from synthorg.communication.meeting.models import (
     MeetingAgenda,
     MeetingMinutes,
     MeetingRecord,
 )
-from ai_company.communication.meeting.scheduler import MeetingScheduler
+from synthorg.communication.meeting.scheduler import MeetingScheduler
 
 
 def _make_minutes() -> MeetingMinutes:

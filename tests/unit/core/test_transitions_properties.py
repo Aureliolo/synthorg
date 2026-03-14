@@ -4,8 +4,8 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from ai_company.core.enums import TaskStatus
-from ai_company.core.task_transitions import VALID_TRANSITIONS, validate_transition
+from synthorg.core.enums import TaskStatus
+from synthorg.core.task_transitions import VALID_TRANSITIONS, validate_transition
 
 pytestmark = pytest.mark.unit
 

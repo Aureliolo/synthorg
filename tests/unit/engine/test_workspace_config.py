@@ -3,8 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import ConflictEscalation, MergeOrder
-from ai_company.engine.workspace.config import (
+from synthorg.core.enums import ConflictEscalation, MergeOrder
+from synthorg.engine.workspace.config import (
     PlannerWorktreesConfig,
     WorkspaceIsolationConfig,
 )

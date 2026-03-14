@@ -2,15 +2,15 @@
 
 import pytest
 
-from ai_company.core.enums import OrgFactCategory, SeniorityLevel
-from ai_company.memory.org.access_control import (
+from synthorg.core.enums import OrgFactCategory, SeniorityLevel
+from synthorg.memory.org.access_control import (
     CategoryWriteRule,
     WriteAccessConfig,
     check_write_access,
     require_write_access,
 )
-from ai_company.memory.org.errors import OrgMemoryAccessDeniedError
-from ai_company.memory.org.models import OrgFactAuthor
+from synthorg.memory.org.errors import OrgMemoryAccessDeniedError
+from synthorg.memory.org.models import OrgFactAuthor
 
 pytestmark = pytest.mark.timeout(30)
 

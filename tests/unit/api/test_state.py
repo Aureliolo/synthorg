@@ -2,10 +2,10 @@
 
 import pytest
 
-from ai_company.api.approval_store import ApprovalStore
-from ai_company.api.errors import ServiceUnavailableError
-from ai_company.api.state import AppState
-from ai_company.config.schema import RootConfig
+from synthorg.api.approval_store import ApprovalStore
+from synthorg.api.errors import ServiceUnavailableError
+from synthorg.api.state import AppState
+from synthorg.config.schema import RootConfig
 from tests.unit.api.conftest import (
     FakeMessageBus,
     FakePersistenceBackend,
@@ -51,7 +51,7 @@ class TestAppStateAccessors:
         assert state.message_bus is bus
 
     def test_cost_tracker_returns_when_set(self) -> None:
-        from ai_company.budget.tracker import CostTracker
+        from synthorg.budget.tracker import CostTracker
 
         tracker = CostTracker()
         state = _make_state(cost_tracker=tracker)
@@ -63,8 +63,8 @@ class TestAppStateAccessors:
             _ = state.auth_service
 
     def test_auth_service_returns_when_set(self) -> None:
-        from ai_company.api.auth.config import AuthConfig
-        from ai_company.api.auth.service import AuthService
+        from synthorg.api.auth.config import AuthConfig
+        from synthorg.api.auth.service import AuthService
 
         secret = "test-secret-that-is-at-least-32-characters-long"
         svc = AuthService(AuthConfig(jwt_secret=secret))
@@ -72,8 +72,8 @@ class TestAppStateAccessors:
         assert state.auth_service is svc
 
     def test_set_auth_service_succeeds_once(self) -> None:
-        from ai_company.api.auth.config import AuthConfig
-        from ai_company.api.auth.service import AuthService
+        from synthorg.api.auth.config import AuthConfig
+        from synthorg.api.auth.service import AuthService
 
         secret = "test-secret-that-is-at-least-32-characters-long"
         svc = AuthService(AuthConfig(jwt_secret=secret))
@@ -82,8 +82,8 @@ class TestAppStateAccessors:
         assert state.auth_service is svc
 
     def test_set_auth_service_twice_raises(self) -> None:
-        from ai_company.api.auth.config import AuthConfig
-        from ai_company.api.auth.service import AuthService
+        from synthorg.api.auth.config import AuthConfig
+        from synthorg.api.auth.service import AuthService
 
         secret = "test-secret-that-is-at-least-32-characters-long"
         svc = AuthService(AuthConfig(jwt_secret=secret))
@@ -174,7 +174,7 @@ class TestAppStateAgentRegistry:
             _ = state.agent_registry
 
     def test_agent_registry_returns_when_set(self) -> None:
-        from ai_company.hr.registry import AgentRegistryService
+        from synthorg.hr.registry import AgentRegistryService
 
         registry = AgentRegistryService()
         state = _make_state(agent_registry=registry)
@@ -185,7 +185,7 @@ class TestAppStateAgentRegistry:
         assert state.has_agent_registry is False
 
     def test_has_agent_registry_true_when_set(self) -> None:
-        from ai_company.hr.registry import AgentRegistryService
+        from synthorg.hr.registry import AgentRegistryService
 
         registry = AgentRegistryService()
         state = _make_state(agent_registry=registry)

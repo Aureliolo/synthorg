@@ -9,70 +9,70 @@ Persistent agent memory — protocol, retrieval pipeline, shared org memory, con
 
 ## Protocol
 
-::: ai_company.memory.protocol
+::: synthorg.memory.protocol
 
 ## Config
 
-::: ai_company.memory.config
+::: synthorg.memory.config
 
 ## Models
 
-::: ai_company.memory.models
+::: synthorg.memory.models
 
 ## Capabilities
 
-::: ai_company.memory.capabilities
+::: synthorg.memory.capabilities
 
 ## Errors
 
-::: ai_company.memory.errors
+::: synthorg.memory.errors
 
 ## Factory
 
-::: ai_company.memory.factory
+::: synthorg.memory.factory
 
 ## Retriever
 
-::: ai_company.memory.retriever
+::: synthorg.memory.retriever
 
 ## Retrieval Config
 
-::: ai_company.memory.retrieval_config
+::: synthorg.memory.retrieval_config
 
 ## Ranking
 
-::: ai_company.memory.ranking
+::: synthorg.memory.ranking
 
 ## Filter
 
-::: ai_company.memory.filter
+::: synthorg.memory.filter
 
 ## Formatter
 
-::: ai_company.memory.formatter
+::: synthorg.memory.formatter
 
 ## Injection
 
-::: ai_company.memory.injection
+::: synthorg.memory.injection
 
 ## Org Memory
 
-::: ai_company.memory.org.protocol
+::: synthorg.memory.org.protocol
 
-::: ai_company.memory.org.config
+::: synthorg.memory.org.config
 
-::: ai_company.memory.org.models
+::: synthorg.memory.org.models
 
-::: ai_company.memory.org.store
+::: synthorg.memory.org.store
 
-::: ai_company.memory.org.access_control
+::: synthorg.memory.org.access_control
 
 ## Consolidation
 
-::: ai_company.memory.consolidation.config
+::: synthorg.memory.consolidation.config
 
-::: ai_company.memory.consolidation.models
+::: synthorg.memory.consolidation.models
 
-::: ai_company.memory.consolidation.strategy
+::: synthorg.memory.consolidation.strategy
 
-::: ai_company.memory.consolidation.service
+::: synthorg.memory.consolidation.service

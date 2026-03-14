@@ -7,7 +7,7 @@ import pytest
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ai_company.tools.file_system.delete_file import DeleteFileTool
+    from synthorg.tools.file_system.delete_file import DeleteFileTool
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -73,7 +73,7 @@ class TestDeleteFileExecution:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """PermissionError during deletion is handled gracefully."""
-        from ai_company.tools.file_system import delete_file as mod
+        from synthorg.tools.file_system import delete_file as mod
 
         def _fake_delete_sync(resolved: Path) -> int:
             raise PermissionError
@@ -92,7 +92,7 @@ class TestDeleteFileExecution:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Generic OSError during deletion is handled gracefully."""
-        from ai_company.tools.file_system import delete_file as mod
+        from synthorg.tools.file_system import delete_file as mod
 
         def _fake_delete_sync(resolved: Path) -> int:
             raise OSError

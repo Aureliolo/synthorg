@@ -85,7 +85,7 @@ uv run ruff format --check src/ tests/
 uv run mypy src/ tests/
 
 # Tests with coverage
-uv run pytest tests/ -n auto --cov=ai_company --cov-fail-under=80
+uv run pytest tests/ -n auto --cov=synthorg --cov-fail-under=80
 ```
 
 To auto-fix lint issues and reformat:
@@ -99,7 +99,7 @@ uv run ruff format src/ tests/
 
 ```text
 synthorg/
-  src/ai_company/       # Main package (src layout)
+  src/synthorg/       # Main package (src layout)
     api/                # Litestar REST + WebSocket routes
     budget/             # Cost tracking and spending controls
     cli/                # Python CLI module (see top-level cli/ for Go CLI)

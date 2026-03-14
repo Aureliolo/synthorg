@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import aiosqlite
 import pytest
 
-from ai_company.persistence.sqlite.migrations import run_migrations
+from synthorg.persistence.sqlite.migrations import run_migrations
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator

@@ -6,7 +6,7 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.agent import (
+from synthorg.core.agent import (
     AgentIdentity,
     MemoryConfig,
     ModelConfig,
@@ -14,7 +14,7 @@ from ai_company.core.agent import (
     SkillSet,
     ToolPermissions,
 )
-from ai_company.core.enums import (
+from synthorg.core.enums import (
     AgentStatus,
     CollaborationPreference,
     CommunicationVerbosity,
@@ -25,7 +25,7 @@ from ai_company.core.enums import (
     RiskTolerance,
     SeniorityLevel,
 )
-from ai_company.core.role import Authority
+from synthorg.core.role import Authority
 
 from .conftest import (
     AgentIdentityFactory,

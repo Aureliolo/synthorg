@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.api.auth.config import AuthConfig
+from synthorg.api.auth.config import AuthConfig
 
 
 @pytest.mark.unit

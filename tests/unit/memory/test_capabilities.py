@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.core.enums import MemoryCategory
-from ai_company.memory.capabilities import MemoryCapabilities
+from synthorg.core.enums import MemoryCategory
+from synthorg.memory.capabilities import MemoryCapabilities
 
 pytestmark = pytest.mark.timeout(30)
 

@@ -5,19 +5,19 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from ai_company.engine.checkpoint.models import CheckpointConfig
-from ai_company.engine.checkpoint.resume import (
+from synthorg.engine.checkpoint.models import CheckpointConfig
+from synthorg.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
     deserialize_and_reconcile,
     make_loop_with_callback,
 )
-from ai_company.engine.plan_execute_loop import PlanExecuteLoop
-from ai_company.engine.react_loop import ReactLoop
-from ai_company.providers.enums import MessageRole
+from synthorg.engine.plan_execute_loop import PlanExecuteLoop
+from synthorg.engine.react_loop import ReactLoop
+from synthorg.providers.enums import MessageRole
 
 if TYPE_CHECKING:
-    from ai_company.core.agent import AgentIdentity
-    from ai_company.core.task import Task
+    from synthorg.core.agent import AgentIdentity
+    from synthorg.core.task import Task
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -34,7 +34,7 @@ def _make_ctx_json(
     turn_count: int = 3,
 ) -> str:
     """Build a serialized AgentContext JSON string."""
-    from ai_company.engine.context import AgentContext
+    from synthorg.engine.context import AgentContext
 
     ctx = AgentContext.from_identity(agent, task=task)
     ctx = ctx.model_copy(update={"turn_count": turn_count})
@@ -74,7 +74,7 @@ class TestDeserializeAndReconcileSuccess:
             agent_id="agent-1",
             task_id="task-1",
         )
-        from ai_company.engine.context import AgentContext
+        from synthorg.engine.context import AgentContext
 
         assert isinstance(result, AgentContext)
 
@@ -215,7 +215,7 @@ class TestMakeLoopWithCallbackInjection:
         assert result is not original
 
     def test_plan_execute_loop_preserves_config(self) -> None:
-        from ai_company.engine.plan_models import PlanExecuteConfig
+        from synthorg.engine.plan_models import PlanExecuteConfig
 
         cp_repo, hb_repo = _make_repos()
         config = PlanExecuteConfig(max_replans=5)

@@ -9,12 +9,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from ai_company.providers.enums import FinishReason, StreamEventType
-from ai_company.providers.models import (
+from synthorg.providers.enums import FinishReason, StreamEventType
+from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
 )
-from ai_company.providers.registry import ProviderRegistry
+from synthorg.providers.registry import ProviderRegistry
 
 from .conftest import (
     async_iter_chunks,
@@ -27,7 +27,7 @@ from .conftest import (
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
 
-_PATCH_TARGET = "ai_company.providers.drivers.litellm_driver._litellm.acompletion"
+_PATCH_TARGET = "synthorg.providers.drivers.litellm_driver._litellm.acompletion"
 
 
 # ── Happy-path: config → registry → complete ─────────────────────

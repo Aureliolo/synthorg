@@ -48,9 +48,9 @@ Configuration is in `docker/.env` (copy from `docker/.env.example`):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AI_COMPANY_JWT_SECRET` | *(auto-generated)* | JWT signing secret. Auto-generated and persisted on first run. Set explicitly only for multi-instance deployments. Must be >= 32 characters if set. |
-| `AI_COMPANY_DB_PATH` | `/data/synthorg.db` | SQLite database path (inside container). |
-| `AI_COMPANY_MEMORY_DIR` | `/data/memory` | Agent memory storage directory (inside container). |
+| `SYNTHORG_JWT_SECRET` | *(auto-generated)* | JWT signing secret. Auto-generated and persisted on first run. Set explicitly only for multi-instance deployments. Must be >= 32 characters if set. |
+| `SYNTHORG_DB_PATH` | `/data/synthorg.db` | SQLite database path (inside container). |
+| `SYNTHORG_MEMORY_DIR` | `/data/memory` | Agent memory storage directory (inside container). |
 | `BACKEND_PORT` | `8000` | Host port for the backend API. |
 | `WEB_PORT` | `3000` | Host port for the web dashboard. |
 | `DOCKER_HOST` | *(unset)* | Docker socket for agent code execution sandbox (optional). |

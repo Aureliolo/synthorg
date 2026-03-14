@@ -6,10 +6,10 @@ from datetime import UTC, datetime
 import pytest
 import structlog.testing
 
-from ai_company.budget.config import BudgetAlertConfig, BudgetConfig
-from ai_company.budget.enums import BudgetAlertLevel
-from ai_company.budget.tracker import CostTracker
-from ai_company.observability.events.budget import (
+from synthorg.budget.config import BudgetAlertConfig, BudgetConfig
+from synthorg.budget.enums import BudgetAlertLevel
+from synthorg.budget.tracker import CostTracker
+from synthorg.observability.events.budget import (
     BUDGET_DEPARTMENT_RESOLVE_FAILED,
     BUDGET_RECORD_ADDED,
     BUDGET_SUMMARY_BUILT,

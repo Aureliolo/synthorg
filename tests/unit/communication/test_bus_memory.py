@@ -5,25 +5,25 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ai_company.communication.bus_memory import InMemoryMessageBus
-from ai_company.communication.bus_protocol import MessageBus
-from ai_company.communication.channel import Channel
-from ai_company.communication.config import (
+from synthorg.communication.bus_memory import InMemoryMessageBus
+from synthorg.communication.bus_protocol import MessageBus
+from synthorg.communication.channel import Channel
+from synthorg.communication.config import (
     MessageBusConfig,
     MessageRetentionConfig,
 )
-from ai_company.communication.enums import (
+from synthorg.communication.enums import (
     ChannelType,
     MessageType,
 )
-from ai_company.communication.errors import (
+from synthorg.communication.errors import (
     ChannelAlreadyExistsError,
     ChannelNotFoundError,
     MessageBusAlreadyRunningError,
     MessageBusNotRunningError,
     NotSubscribedError,
 )
-from ai_company.communication.message import Message
+from synthorg.communication.message import Message
 
 pytestmark = pytest.mark.timeout(30)
 

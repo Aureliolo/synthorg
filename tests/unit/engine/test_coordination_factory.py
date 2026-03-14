@@ -4,19 +4,19 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ai_company.config.schema import TaskAssignmentConfig
-from ai_company.engine.coordination.factory import (
+from synthorg.config.schema import TaskAssignmentConfig
+from synthorg.engine.coordination.factory import (
     _NoProviderDecompositionStrategy,
     build_coordinator,
 )
-from ai_company.engine.coordination.section_config import (
+from synthorg.engine.coordination.section_config import (
     CoordinationSectionConfig,
 )
-from ai_company.engine.coordination.service import MultiAgentCoordinator
-from ai_company.engine.decomposition.service import DecompositionService
-from ai_company.engine.errors import DecompositionError
-from ai_company.engine.parallel import ParallelExecutor
-from ai_company.engine.routing.service import TaskRoutingService
+from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.decomposition.service import DecompositionService
+from synthorg.engine.errors import DecompositionError
+from synthorg.engine.parallel import ParallelExecutor
+from synthorg.engine.routing.service import TaskRoutingService
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -77,10 +77,10 @@ class TestBuildCoordinator:
 
     def test_with_workspace_deps(self) -> None:
         """workspace_strategy + workspace_config produce a workspace service."""
-        from ai_company.engine.workspace.config import (
+        from synthorg.engine.workspace.config import (
             WorkspaceIsolationConfig,
         )
-        from ai_company.engine.workspace.service import (
+        from synthorg.engine.workspace.service import (
             WorkspaceIsolationService,
         )
 
@@ -154,7 +154,7 @@ class TestBuildCoordinator:
 
     def test_workspace_config_only_raises_value_error(self) -> None:
         """workspace_config without workspace_strategy raises ValueError."""
-        from ai_company.engine.workspace.config import (
+        from synthorg.engine.workspace.config import (
             WorkspaceIsolationConfig,
         )
 

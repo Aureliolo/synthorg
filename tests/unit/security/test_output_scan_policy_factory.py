@@ -2,16 +2,16 @@
 
 import pytest
 
-from ai_company.core.enums import AutonomyLevel
-from ai_company.security.autonomy.models import EffectiveAutonomy
-from ai_company.security.config import OutputScanPolicyType
-from ai_company.security.output_scan_policy import (
+from synthorg.core.enums import AutonomyLevel
+from synthorg.security.autonomy.models import EffectiveAutonomy
+from synthorg.security.config import OutputScanPolicyType
+from synthorg.security.output_scan_policy import (
     AutonomyTieredPolicy,
     LogOnlyPolicy,
     RedactPolicy,
     WithholdPolicy,
 )
-from ai_company.security.output_scan_policy_factory import (
+from synthorg.security.output_scan_policy_factory import (
     build_output_scan_policy,
 )
 

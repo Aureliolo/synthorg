@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.communication.loop_prevention.ancestry import (
+from synthorg.communication.loop_prevention.ancestry import (
     check_ancestry,
 )
 

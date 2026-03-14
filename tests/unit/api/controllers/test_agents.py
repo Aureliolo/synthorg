@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
-from ai_company.config.schema import AgentConfig, RootConfig
+from synthorg.config.schema import AgentConfig, RootConfig
 from tests.unit.api.conftest import (
     FakeMessageBus,
     FakePersistenceBackend,
@@ -27,9 +27,9 @@ class TestAgentController:
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        from ai_company.api.app import create_app
-        from ai_company.api.auth.service import AuthService
-        from ai_company.budget.tracker import CostTracker
+        from synthorg.api.app import create_app
+        from synthorg.api.auth.service import AuthService
+        from synthorg.budget.tracker import CostTracker
         from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
 
         config = RootConfig(

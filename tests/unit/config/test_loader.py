@@ -9,12 +9,12 @@ import structlog
 if TYPE_CHECKING:
     from .conftest import ConfigFileFactory
 
-from ai_company.config.errors import (
+from synthorg.config.errors import (
     ConfigFileNotFoundError,
     ConfigParseError,
     ConfigValidationError,
 )
-from ai_company.config.loader import (
+from synthorg.config.loader import (
     _build_line_map,
     _parse_yaml_file,
     _parse_yaml_string,
@@ -25,8 +25,8 @@ from ai_company.config.loader import (
     load_config,
     load_config_from_string,
 )
-from ai_company.config.schema import RootConfig
-from ai_company.observability.events.config import (
+from synthorg.config.schema import RootConfig
+from synthorg.observability.events.config import (
     CONFIG_LOADED,
     CONFIG_PARSE_FAILED,
     CONFIG_VALIDATION_FAILED,

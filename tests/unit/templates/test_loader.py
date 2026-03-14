@@ -6,12 +6,12 @@ from unittest.mock import patch
 
 import pytest
 
-from ai_company.templates.errors import (
+from synthorg.templates.errors import (
     TemplateNotFoundError,
     TemplateRenderError,
     TemplateValidationError,
 )
-from ai_company.templates.loader import (
+from synthorg.templates.loader import (
     BUILTIN_TEMPLATES,
     LoadedTemplate,
     TemplateInfo,
@@ -134,7 +134,7 @@ class TestListTemplates:
         (user_dir / "solo_founder.yaml").write_text(user_yaml, encoding="utf-8")
 
         with patch(
-            "ai_company.templates.loader._USER_TEMPLATES_DIR",
+            "synthorg.templates.loader._USER_TEMPLATES_DIR",
             user_dir,
         ):
             templates = list_templates()
@@ -176,7 +176,7 @@ class TestLoadTemplate:
         )
 
         with patch(
-            "ai_company.templates.loader._USER_TEMPLATES_DIR",
+            "synthorg.templates.loader._USER_TEMPLATES_DIR",
             user_dir,
         ):
             loaded = load_template("solo_founder")
@@ -266,11 +266,11 @@ class TestListTemplatesEdgeCases:
 
         with (
             patch(
-                "ai_company.templates.loader._USER_TEMPLATES_DIR",
+                "synthorg.templates.loader._USER_TEMPLATES_DIR",
                 user_dir,
             ),
             patch(
-                "ai_company.templates.loader._load_from_file",
+                "synthorg.templates.loader._load_from_file",
                 side_effect=OSError("disk error"),
             ),
         ):
@@ -287,11 +287,11 @@ class TestListTemplatesEdgeCases:
 
         with (
             patch(
-                "ai_company.templates.loader._USER_TEMPLATES_DIR",
+                "synthorg.templates.loader._USER_TEMPLATES_DIR",
                 user_dir,
             ),
             patch(
-                "ai_company.templates.loader._load_from_file",
+                "synthorg.templates.loader._load_from_file",
                 side_effect=TemplateRenderError("bad template"),
             ),
         ):
@@ -302,7 +302,7 @@ class TestListTemplatesEdgeCases:
     def test_defective_builtin_skipped(self) -> None:
         """A defective built-in template is skipped without crashing."""
         with patch(
-            "ai_company.templates.loader._load_builtin",
+            "synthorg.templates.loader._load_builtin",
             side_effect=TemplateRenderError("broken builtin"),
         ):
             templates = list_templates()

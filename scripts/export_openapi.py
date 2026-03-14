@@ -90,7 +90,7 @@ STANDALONE_HTML = """\
 def main() -> int:
     """Instantiate the app, extract the OpenAPI schema, and write files."""
     try:
-        from ai_company.api.app import create_app
+        from synthorg.api.app import create_app
 
         app = create_app()
         schema_dict = app.openapi_schema.to_schema()

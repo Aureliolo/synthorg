@@ -3,13 +3,13 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import ConsolidationInterval, MemoryLevel
-from ai_company.memory.config import (
+from synthorg.core.enums import ConsolidationInterval, MemoryLevel
+from synthorg.memory.config import (
     CompanyMemoryConfig,
     MemoryOptionsConfig,
     MemoryStorageConfig,
 )
-from ai_company.memory.retrieval_config import MemoryRetrievalConfig
+from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 
 pytestmark = pytest.mark.timeout(30)
 

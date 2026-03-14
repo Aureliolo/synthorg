@@ -6,18 +6,18 @@ from uuid import uuid4
 
 import pytest
 
-from ai_company.budget.coordination_config import ErrorCategory, ErrorTaxonomyConfig
-from ai_company.core.agent import AgentIdentity, ModelConfig
-from ai_company.engine.classification.models import ErrorSeverity
-from ai_company.engine.classification.pipeline import classify_execution_errors
-from ai_company.engine.context import AgentContext
-from ai_company.engine.loop_protocol import (
+from synthorg.budget.coordination_config import ErrorCategory, ErrorTaxonomyConfig
+from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.engine.classification.models import ErrorSeverity
+from synthorg.engine.classification.pipeline import classify_execution_errors
+from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
     TurnRecord,
 )
-from ai_company.providers.enums import FinishReason, MessageRole
-from ai_company.providers.models import ChatMessage, ToolResult
+from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.models import ChatMessage, ToolResult
 
 
 def _identity() -> AgentIdentity:
@@ -127,7 +127,7 @@ class TestClassifyExecutionErrors:
         """Pipeline catches regular exceptions and returns None."""
         config = ErrorTaxonomyConfig(enabled=True)
         with patch(
-            "ai_company.engine.classification.pipeline._run_detectors",
+            "synthorg.engine.classification.pipeline._run_detectors",
             side_effect=RuntimeError("injected"),
         ):
             result = await classify_execution_errors(
@@ -143,7 +143,7 @@ class TestClassifyExecutionErrors:
         config = ErrorTaxonomyConfig(enabled=True)
         with (
             patch(
-                "ai_company.engine.classification.pipeline._run_detectors",
+                "synthorg.engine.classification.pipeline._run_detectors",
                 side_effect=MemoryError,
             ),
             pytest.raises(MemoryError),
@@ -160,7 +160,7 @@ class TestClassifyExecutionErrors:
         config = ErrorTaxonomyConfig(enabled=True)
         with (
             patch(
-                "ai_company.engine.classification.pipeline._run_detectors",
+                "synthorg.engine.classification.pipeline._run_detectors",
                 side_effect=RecursionError,
             ),
             pytest.raises(RecursionError),
@@ -235,7 +235,7 @@ class TestClassifyExecutionErrors:
             ),
         )
         with patch(
-            "ai_company.engine.classification.pipeline.detect_logical_contradictions",
+            "synthorg.engine.classification.pipeline.detect_logical_contradictions",
             side_effect=RuntimeError("detector crash"),
         ):
             result = await classify_execution_errors(
@@ -263,8 +263,7 @@ class TestClassifyExecutionErrors:
         )
         with (
             patch(
-                "ai_company.engine.classification.pipeline"
-                ".detect_logical_contradictions",
+                "synthorg.engine.classification.pipeline.detect_logical_contradictions",
                 side_effect=MemoryError,
             ),
             pytest.raises(MemoryError),

@@ -4,15 +4,15 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ai_company.core.enums import MemoryCategory
-from ai_company.memory.filter import (
+from synthorg.core.enums import MemoryCategory
+from synthorg.memory.filter import (
     NON_INFERABLE_TAG,
     MemoryFilterStrategy,
     PassthroughMemoryFilter,
     TagBasedMemoryFilter,
 )
-from ai_company.memory.models import MemoryEntry, MemoryMetadata
-from ai_company.memory.ranking import ScoredMemory
+from synthorg.memory.models import MemoryEntry, MemoryMetadata
+from synthorg.memory.ranking import ScoredMemory
 
 pytestmark = pytest.mark.timeout(30)
 

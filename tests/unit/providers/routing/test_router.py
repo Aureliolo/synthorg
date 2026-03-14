@@ -3,19 +3,19 @@
 import pytest
 import structlog
 
-from ai_company.config.schema import ProviderConfig, RoutingConfig
-from ai_company.core.enums import SeniorityLevel
-from ai_company.observability.events.routing import (
+from synthorg.config.schema import ProviderConfig, RoutingConfig
+from synthorg.core.enums import SeniorityLevel
+from synthorg.observability.events.routing import (
     ROUTING_DECISION_MADE,
     ROUTING_ROUTER_BUILT,
 )
-from ai_company.providers.routing.errors import (
+from synthorg.providers.routing.errors import (
     ModelResolutionError,
     NoAvailableModelError,
     UnknownStrategyError,
 )
-from ai_company.providers.routing.models import RoutingRequest
-from ai_company.providers.routing.router import ModelRouter
+from synthorg.providers.routing.models import RoutingRequest
+from synthorg.providers.routing.router import ModelRouter
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -166,7 +166,7 @@ class TestModelRouterRoute:
         three_model_provider: dict[str, ProviderConfig],
     ) -> None:
         """When route() raises, a warning log should be emitted."""
-        from ai_company.observability.events.routing import ROUTING_SELECTION_FAILED
+        from synthorg.observability.events.routing import ROUTING_SELECTION_FAILED
 
         config = RoutingConfig(strategy="manual")
         router = ModelRouter(config, three_model_provider)

@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ai_company.core.types import NotBlankStr
-from ai_company.hr.enums import TrendDirection
-from ai_company.hr.performance.models import (
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.enums import TrendDirection
+from synthorg.hr.performance.models import (
     CollaborationMetricRecord,
     CollaborationScoreResult,
     QualityScoreResult,
@@ -15,10 +15,10 @@ from ai_company.hr.performance.models import (
     TrendResult,
     WindowMetrics,
 )
-from ai_company.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.performance.tracker import PerformanceTracker
 
 if TYPE_CHECKING:
-    from ai_company.hr.performance.config import PerformanceConfig
+    from synthorg.hr.performance.config import PerformanceConfig
 
 from .conftest import make_acceptance_criterion, make_collab_metric, make_task_metric
 

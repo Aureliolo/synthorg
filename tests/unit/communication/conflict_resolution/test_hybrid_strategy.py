@@ -2,23 +2,23 @@
 
 import pytest
 
-from ai_company.communication.conflict_resolution.config import HybridConfig
-from ai_company.communication.conflict_resolution.human_strategy import (
+from synthorg.communication.conflict_resolution.config import HybridConfig
+from synthorg.communication.conflict_resolution.human_strategy import (
     HumanEscalationResolver,
 )
-from ai_company.communication.conflict_resolution.hybrid_strategy import (
+from synthorg.communication.conflict_resolution.hybrid_strategy import (
     HybridResolver,
 )
-from ai_company.communication.conflict_resolution.models import (
+from synthorg.communication.conflict_resolution.models import (
     Conflict,
     ConflictResolutionOutcome,
 )
-from ai_company.communication.conflict_resolution.protocol import JudgeDecision
-from ai_company.communication.delegation.hierarchy import (
+from synthorg.communication.conflict_resolution.protocol import JudgeDecision
+from synthorg.communication.delegation.hierarchy import (
     HierarchyResolver,
 )
-from ai_company.communication.enums import ConflictResolutionStrategy
-from ai_company.core.enums import SeniorityLevel
+from synthorg.communication.enums import ConflictResolutionStrategy
+from synthorg.core.enums import SeniorityLevel
 
 from .conftest import make_conflict, make_position
 

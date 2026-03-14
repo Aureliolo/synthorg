@@ -4,23 +4,23 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ai_company.communication.conflict_resolution.config import (
+from synthorg.communication.conflict_resolution.config import (
     ConflictResolutionConfig,
     DebateConfig,
     HybridConfig,
 )
-from ai_company.communication.conflict_resolution.models import (
+from synthorg.communication.conflict_resolution.models import (
     Conflict,
     ConflictPosition,
     ConflictResolution,
     ConflictResolutionOutcome,
 )
-from ai_company.communication.delegation.hierarchy import HierarchyResolver
-from ai_company.communication.enums import (
+from synthorg.communication.delegation.hierarchy import HierarchyResolver
+from synthorg.communication.enums import (
     ConflictType,
 )
-from ai_company.core.company import Company, CompanyConfig, Department, Team
-from ai_company.core.enums import SeniorityLevel
+from synthorg.core.company import Company, CompanyConfig, Department, Team
+from synthorg.core.enums import SeniorityLevel
 
 _NOW = datetime(2026, 3, 8, 12, 0, tzinfo=UTC)
 

@@ -5,9 +5,9 @@ from unittest.mock import patch
 import pytest
 import structlog
 
-from ai_company.core.enums import TaskStatus
-from ai_company.core.task_transitions import VALID_TRANSITIONS, validate_transition
-from ai_company.observability.events.task import TASK_TRANSITION_INVALID
+from synthorg.core.enums import TaskStatus
+from synthorg.core.task_transitions import VALID_TRANSITIONS, validate_transition
+from synthorg.observability.events.task import TASK_TRANSITION_INVALID
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -170,7 +170,7 @@ class TestTransitionGuardEdgeCases:
         """validate_transition raises ValueError when current status is absent."""
         with (
             patch.dict(
-                "ai_company.core.task_transitions.VALID_TRANSITIONS",
+                "synthorg.core.task_transitions.VALID_TRANSITIONS",
                 clear=True,
             ),
             pytest.raises(ValueError, match="has no entry"),

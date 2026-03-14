@@ -8,14 +8,14 @@ from typing import Any
 
 import pytest
 
-from ai_company.core.enums import TaskStatus
-from ai_company.engine.agent_engine import AgentEngine
-from ai_company.engine.shutdown import (
+from synthorg.core.enums import TaskStatus
+from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.shutdown import (
     CooperativeTimeoutStrategy,
     ShutdownManager,
 )
-from ai_company.providers.enums import FinishReason
-from ai_company.providers.models import (
+from synthorg.providers.enums import FinishReason
+from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
     CompletionResponse,
@@ -72,7 +72,7 @@ class _ShutdownTriggeringProvider:
         raise NotImplementedError(msg)
 
     async def get_model_capabilities(self, model: str) -> Any:
-        from ai_company.providers.capabilities import ModelCapabilities
+        from synthorg.providers.capabilities import ModelCapabilities
 
         return ModelCapabilities(
             model_id=model,
@@ -104,14 +104,14 @@ class TestGracefulShutdownFlow:
         from datetime import date
         from uuid import uuid4
 
-        from ai_company.core.agent import AgentIdentity, ModelConfig
-        from ai_company.core.enums import (
+        from synthorg.core.agent import AgentIdentity, ModelConfig
+        from synthorg.core.enums import (
             Complexity,
             Priority,
             SeniorityLevel,
             TaskType,
         )
-        from ai_company.core.task import Task
+        from synthorg.core.task import Task
 
         identity = AgentIdentity(
             id=uuid4(),
@@ -167,14 +167,14 @@ class TestGracefulShutdownFlow:
         from datetime import date
         from uuid import uuid4
 
-        from ai_company.core.agent import AgentIdentity, ModelConfig
-        from ai_company.core.enums import (
+        from synthorg.core.agent import AgentIdentity, ModelConfig
+        from synthorg.core.enums import (
             Complexity,
             Priority,
             SeniorityLevel,
             TaskType,
         )
-        from ai_company.core.task import Task
+        from synthorg.core.task import Task
 
         identity = AgentIdentity(
             id=uuid4(),
@@ -214,7 +214,7 @@ class TestGracefulShutdownFlow:
             return check_count > 2
 
         # Provider returns tool-use on first call so the loop iterates
-        from ai_company.providers.models import ToolCall
+        from synthorg.providers.models import ToolCall
 
         responses = [
             CompletionResponse(
@@ -251,7 +251,7 @@ class TestGracefulShutdownFlow:
                 raise NotImplementedError
 
             async def get_model_capabilities(self, model: str) -> Any:
-                from ai_company.providers.capabilities import ModelCapabilities
+                from synthorg.providers.capabilities import ModelCapabilities
 
                 return ModelCapabilities(
                     model_id=model,
@@ -264,9 +264,9 @@ class TestGracefulShutdownFlow:
                     cost_per_1k_output=0.03,
                 )
 
-        from ai_company.core.enums import ToolCategory
-        from ai_company.tools.base import BaseTool, ToolExecutionResult
-        from ai_company.tools.registry import ToolRegistry
+        from synthorg.core.enums import ToolCategory
+        from synthorg.tools.base import BaseTool, ToolExecutionResult
+        from synthorg.tools.registry import ToolRegistry
 
         class _EchoTool(BaseTool):
             def __init__(self) -> None:

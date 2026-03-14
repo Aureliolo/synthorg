@@ -6,20 +6,20 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.agent import AgentIdentity, ModelConfig
-from ai_company.core.enums import Priority, SeniorityLevel, TaskStatus, TaskType
-from ai_company.core.task import Task
-from ai_company.engine.context import AgentContext
-from ai_company.engine.loop_protocol import (
+from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.enums import Priority, SeniorityLevel, TaskStatus, TaskType
+from synthorg.core.task import Task
+from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
     TurnRecord,
     make_budget_checker,
 )
-from ai_company.engine.prompt import SystemPrompt, format_task_instruction
-from ai_company.engine.run_result import AgentRunResult
-from ai_company.providers.enums import FinishReason, MessageRole
-from ai_company.providers.models import ChatMessage, TokenUsage, ToolCall
+from synthorg.engine.prompt import SystemPrompt, format_task_instruction
+from synthorg.engine.run_result import AgentRunResult
+from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.models import ChatMessage, TokenUsage, ToolCall
 
 
 def _test_identity() -> AgentIdentity:

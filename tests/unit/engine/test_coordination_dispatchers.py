@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from ai_company.core.enums import CoordinationTopology, TaskStructure
-from ai_company.engine.coordination.config import CoordinationConfig
-from ai_company.engine.coordination.dispatchers import (
+from synthorg.core.enums import CoordinationTopology, TaskStructure
+from synthorg.engine.coordination.config import CoordinationConfig
+from synthorg.engine.coordination.dispatchers import (
     CentralizedDispatcher,
     ContextDependentDispatcher,
     DecentralizedDispatcher,
@@ -17,7 +17,7 @@ from ai_company.engine.coordination.dispatchers import (
     TopologyDispatcher,
     select_dispatcher,
 )
-from ai_company.engine.workspace.models import (
+from synthorg.engine.workspace.models import (
     MergeResult,
     Workspace,
     WorkspaceGroupResult,
@@ -30,7 +30,7 @@ from tests.unit.engine.conftest import (
 )
 
 if TYPE_CHECKING:
-    from ai_company.engine.parallel_models import ParallelExecutionResult
+    from synthorg.engine.parallel_models import ParallelExecutionResult
 
 # ── Helpers ─────────────────────────────────────────────────────
 
@@ -350,7 +350,7 @@ class TestDecentralizedDispatcher:
     @pytest.mark.unit
     async def test_no_workspace_service_raises(self) -> None:
         """DecentralizedDispatcher raises when workspace_service is None."""
-        from ai_company.engine.errors import CoordinationError
+        from synthorg.engine.errors import CoordinationError
 
         sub_a = make_subtask("sub-a")
         decomp = make_decomposition((sub_a,))
@@ -369,7 +369,7 @@ class TestDecentralizedDispatcher:
     @pytest.mark.unit
     async def test_isolation_disabled_raises(self) -> None:
         """DecentralizedDispatcher raises when isolation is disabled."""
-        from ai_company.engine.errors import CoordinationError
+        from synthorg.engine.errors import CoordinationError
 
         sub_a = make_subtask("sub-a")
         decomp = make_decomposition((sub_a,))

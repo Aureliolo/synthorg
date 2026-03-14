@@ -5,8 +5,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import MemoryCategory
-from ai_company.memory.models import (
+from synthorg.core.enums import MemoryCategory
+from synthorg.memory.models import (
     MemoryEntry,
     MemoryMetadata,
     MemoryQuery,

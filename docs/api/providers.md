@@ -9,48 +9,48 @@ LLM provider abstraction — protocol, base class, drivers, capabilities, routin
 
 ## Protocol
 
-::: ai_company.providers.protocol
+::: synthorg.providers.protocol
 
 ## Base Provider
 
-::: ai_company.providers.base
+::: synthorg.providers.base
 
 ## Models
 
-::: ai_company.providers.models
+::: synthorg.providers.models
 
 ## Enums
 
-::: ai_company.providers.enums
+::: synthorg.providers.enums
 
 ## Errors
 
-::: ai_company.providers.errors
+::: synthorg.providers.errors
 
 ## Capabilities
 
-::: ai_company.providers.capabilities
+::: synthorg.providers.capabilities
 
 ## Registry
 
-::: ai_company.providers.registry
+::: synthorg.providers.registry
 
 ## LiteLLM Driver
 
-::: ai_company.providers.drivers.litellm_driver
+::: synthorg.providers.drivers.litellm_driver
 
 ## Routing
 
-::: ai_company.providers.routing.models
+::: synthorg.providers.routing.models
 
-::: ai_company.providers.routing.router
+::: synthorg.providers.routing.router
 
-::: ai_company.providers.routing.strategies
+::: synthorg.providers.routing.strategies
 
 ## Resilience
 
-::: ai_company.providers.resilience.retry
+::: synthorg.providers.resilience.retry
 
-::: ai_company.providers.resilience.rate_limiter
+::: synthorg.providers.resilience.rate_limiter
 
-::: ai_company.providers.resilience.errors
+::: synthorg.providers.resilience.errors

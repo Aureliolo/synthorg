@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.memory.errors import (
+from synthorg.memory.errors import (
     MemoryCapabilityError,
     MemoryConfigError,
     MemoryConnectionError,

@@ -3,8 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.communication.config import MeetingTypeConfig
-from ai_company.communication.meeting.frequency import MeetingFrequency
+from synthorg.communication.config import MeetingTypeConfig
+from synthorg.communication.meeting.frequency import MeetingFrequency
 
 
 @pytest.mark.unit

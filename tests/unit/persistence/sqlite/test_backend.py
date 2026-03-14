@@ -5,11 +5,11 @@ import sqlite3
 import aiosqlite
 import pytest
 
-from ai_company.persistence.config import SQLiteConfig
-from ai_company.persistence.errors import PersistenceConnectionError
-from ai_company.persistence.protocol import PersistenceBackend
-from ai_company.persistence.sqlite.backend import SQLitePersistenceBackend
-from ai_company.persistence.sqlite.repositories import (
+from synthorg.persistence.config import SQLiteConfig
+from synthorg.persistence.errors import PersistenceConnectionError
+from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
+from synthorg.persistence.sqlite.repositories import (
     SQLiteCostRecordRepository,
     SQLiteMessageRepository,
     SQLiteTaskRepository,

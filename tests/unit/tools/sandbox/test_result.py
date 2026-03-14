@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.tools.sandbox.result import SandboxResult
+from synthorg.tools.sandbox.result import SandboxResult
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

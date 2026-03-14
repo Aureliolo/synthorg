@@ -15,13 +15,13 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ai_company.core.enums import TaskStatus
-from ai_company.engine.errors import (
+from synthorg.core.enums import TaskStatus
+from synthorg.engine.errors import (
     TaskInternalError,
     TaskMutationError,
 )
-from ai_company.engine.task_engine import TaskEngine, _MutationEnvelope
-from ai_company.engine.task_engine_models import (
+from synthorg.engine.task_engine import TaskEngine, _MutationEnvelope
+from synthorg.engine.task_engine_models import (
     CancelTaskMutation,
     CreateTaskMutation,
     TaskMutationResult,
@@ -35,7 +35,7 @@ from tests.unit.engine.task_engine_helpers import (
 )
 
 if TYPE_CHECKING:
-    from ai_company.engine.task_engine_config import TaskEngineConfig
+    from synthorg.engine.task_engine_config import TaskEngineConfig
 
 
 def _snapshot_content(bus: FakeMessageBus, index: int = 0) -> str:

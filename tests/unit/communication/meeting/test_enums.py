@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.communication.meeting.enums import (
+from synthorg.communication.meeting.enums import (
     MeetingPhase,
     MeetingProtocolType,
     MeetingStatus,

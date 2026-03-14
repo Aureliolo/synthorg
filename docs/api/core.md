@@ -9,52 +9,52 @@ Shared domain models, base types, and enums used across the framework.
 
 ## Types
 
-::: ai_company.core.types
+::: synthorg.core.types
 
 ## Enums
 
-::: ai_company.core.enums
+::: synthorg.core.enums
 
 ## Agent
 
-::: ai_company.core.agent
+::: synthorg.core.agent
 
 ## Company
 
-::: ai_company.core.company
+::: synthorg.core.company
 
 ## Role
 
-::: ai_company.core.role
+::: synthorg.core.role
 
 ## Role Catalog
 
-::: ai_company.core.role_catalog
+::: synthorg.core.role_catalog
 
 ## Task
 
-::: ai_company.core.task
+::: synthorg.core.task
 
 ## Task Transitions
 
-::: ai_company.core.task_transitions
+::: synthorg.core.task_transitions
 
 ## Project
 
-::: ai_company.core.project
+::: synthorg.core.project
 
 ## Approval
 
-::: ai_company.core.approval
+::: synthorg.core.approval
 
 ## Artifact
 
-::: ai_company.core.artifact
+::: synthorg.core.artifact
 
 ## Personality
 
-::: ai_company.core.personality
+::: synthorg.core.personality
 
 ## Resilience Config
 
-::: ai_company.core.resilience_config
+::: synthorg.core.resilience_config

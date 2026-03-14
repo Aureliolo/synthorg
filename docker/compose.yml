@@ -9,10 +9,10 @@ services:
       - synthorg-data:/data
     env_file: .env
     environment:
-      AI_COMPANY_HOST: "0.0.0.0"
-      AI_COMPANY_PORT: "8000"
-      AI_COMPANY_DB_PATH: "/data/synthorg.db"
-      AI_COMPANY_MEMORY_DIR: "/data/memory"
+      SYNTHORG_HOST: "0.0.0.0"
+      SYNTHORG_PORT: "8000"
+      SYNTHORG_DB_PATH: "/data/synthorg.db"
+      SYNTHORG_MEMORY_DIR: "/data/memory"
     # CIS Docker Benchmark v1.6.0 hardening (5.3, 5.12, 5.25)
     security_opt:
       - no-new-privileges:true

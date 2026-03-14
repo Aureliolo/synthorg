@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.communication.config import (
+from synthorg.communication.config import (
     _DEFAULT_CHANNELS,
     CircuitBreakerConfig,
     CommunicationConfig,
@@ -14,11 +14,11 @@ from ai_company.communication.config import (
     MessageBusConfig,
     RateLimitConfig,
 )
-from ai_company.communication.enums import (
+from synthorg.communication.enums import (
     CommunicationPattern,
     MessageBusBackend,
 )
-from ai_company.communication.meeting.frequency import MeetingFrequency
+from synthorg.communication.meeting.frequency import MeetingFrequency
 
 pytestmark = pytest.mark.timeout(30)
 

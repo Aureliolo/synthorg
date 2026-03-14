@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.security.models import ScanOutcome
-from ai_company.security.output_scanner import OutputScanner
+from synthorg.security.models import ScanOutcome
+from synthorg.security.output_scanner import OutputScanner
 
 pytestmark = pytest.mark.timeout(30)
 

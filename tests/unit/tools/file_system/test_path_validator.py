@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ai_company.tools.file_system._path_validator import PathValidator
+from synthorg.tools.file_system._path_validator import PathValidator
 
 if TYPE_CHECKING:
     from pathlib import Path

@@ -4,13 +4,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ai_company.core.enums import ApprovalRiskLevel
-from ai_company.engine.approval_gate import ApprovalGate
-from ai_company.engine.approval_gate_models import EscalationInfo
-from ai_company.engine.loop_helpers import execute_tool_calls
-from ai_company.engine.loop_protocol import ExecutionResult, TerminationReason
-from ai_company.providers.enums import FinishReason
-from ai_company.providers.models import (
+from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.engine.approval_gate import ApprovalGate
+from synthorg.engine.approval_gate_models import EscalationInfo
+from synthorg.engine.loop_helpers import execute_tool_calls
+from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
+from synthorg.providers.enums import FinishReason
+from synthorg.providers.models import (
     ZERO_TOKEN_USAGE,
     CompletionResponse,
     ToolCall,
@@ -104,7 +104,7 @@ class TestExecuteToolCallsWithGate:
         assert not isinstance(result, ExecutionResult)
         gate.should_park.assert_called_once()
 
-    @patch("ai_company.engine.loop_helpers.build_result")
+    @patch("synthorg.engine.loop_helpers.build_result")
     async def test_escalation_returns_parked_result(
         self,
         mock_build_result: MagicMock,
@@ -137,7 +137,7 @@ class TestExecuteToolCallsWithGate:
         assert call_kwargs[0][1] == TerminationReason.PARKED
         assert call_kwargs[1]["metadata"]["approval_id"] == "approval-1"
 
-    @patch("ai_company.engine.loop_helpers.build_result")
+    @patch("synthorg.engine.loop_helpers.build_result")
     async def test_parked_result_has_approval_id_in_metadata(
         self,
         mock_build_result: MagicMock,
@@ -168,7 +168,7 @@ class TestExecuteToolCallsWithGate:
         call_kwargs = mock_build_result.call_args
         assert call_kwargs[1]["metadata"]["approval_id"] == "approval-xyz"
 
-    @patch("ai_company.engine.loop_helpers.build_result")
+    @patch("synthorg.engine.loop_helpers.build_result")
     async def test_park_failure_returns_error(
         self,
         mock_build_result: MagicMock,
@@ -204,7 +204,7 @@ class TestExecuteToolCallsWithGate:
         assert call_kwargs[1]["metadata"]["parking_failed"] is True
         assert "context parking failed" in call_kwargs[1]["error_message"]
 
-    @patch("ai_company.engine.loop_helpers.build_result")
+    @patch("synthorg.engine.loop_helpers.build_result")
     async def test_park_without_task_execution(
         self,
         mock_build_result: MagicMock,
@@ -239,7 +239,7 @@ class TestExecuteToolCallsWithGate:
         call_kwargs = gate.park_context.call_args
         assert call_kwargs.kwargs.get("task_id") is None
 
-    @patch("ai_company.engine.loop_helpers.build_result")
+    @patch("synthorg.engine.loop_helpers.build_result")
     async def test_park_failure_with_io_error(
         self,
         mock_build_result: MagicMock,

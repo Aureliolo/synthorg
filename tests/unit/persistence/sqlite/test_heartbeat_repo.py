@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ai_company.engine.checkpoint.models import Heartbeat
-from ai_company.persistence.sqlite.heartbeat_repo import (
+from synthorg.engine.checkpoint.models import Heartbeat
+from synthorg.persistence.sqlite.heartbeat_repo import (
     SQLiteHeartbeatRepository,
 )
 
@@ -201,7 +201,7 @@ class TestSQLiteHeartbeatRepositoryErrors:
     async def test_save_raises_query_error_on_db_error(
         self, memory_db: aiosqlite.Connection
     ) -> None:
-        from ai_company.persistence.errors import QueryError
+        from synthorg.persistence.errors import QueryError
 
         repo = SQLiteHeartbeatRepository(memory_db)
         hb = _make_heartbeat()
@@ -211,7 +211,7 @@ class TestSQLiteHeartbeatRepositoryErrors:
     async def test_get_raises_query_error_on_db_error(
         self, memory_db: aiosqlite.Connection
     ) -> None:
-        from ai_company.persistence.errors import QueryError
+        from synthorg.persistence.errors import QueryError
 
         repo = SQLiteHeartbeatRepository(memory_db)
         with pytest.raises(QueryError, match="Failed to query"):
@@ -220,7 +220,7 @@ class TestSQLiteHeartbeatRepositoryErrors:
     async def test_get_stale_raises_query_error_on_db_error(
         self, memory_db: aiosqlite.Connection
     ) -> None:
-        from ai_company.persistence.errors import QueryError
+        from synthorg.persistence.errors import QueryError
 
         repo = SQLiteHeartbeatRepository(memory_db)
         threshold = datetime.now(UTC) - timedelta(minutes=5)
@@ -230,7 +230,7 @@ class TestSQLiteHeartbeatRepositoryErrors:
     async def test_delete_raises_query_error_on_db_error(
         self, memory_db: aiosqlite.Connection
     ) -> None:
-        from ai_company.persistence.errors import QueryError
+        from synthorg.persistence.errors import QueryError
 
         repo = SQLiteHeartbeatRepository(memory_db)
         with pytest.raises(QueryError, match="Failed to delete"):
@@ -239,7 +239,7 @@ class TestSQLiteHeartbeatRepositoryErrors:
     async def test_row_to_model_raises_query_error_on_invalid_row(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        from ai_company.persistence.errors import QueryError
+        from synthorg.persistence.errors import QueryError
 
         repo = SQLiteHeartbeatRepository(migrated_db)
         # Insert row with invalid timestamp

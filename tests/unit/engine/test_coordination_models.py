@@ -3,16 +3,16 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import CoordinationTopology, TaskStatus
-from ai_company.engine.coordination.config import CoordinationConfig
-from ai_company.engine.coordination.models import (
+from synthorg.core.enums import CoordinationTopology, TaskStatus
+from synthorg.engine.coordination.config import CoordinationConfig
+from synthorg.engine.coordination.models import (
     CoordinationContext,
     CoordinationPhaseResult,
     CoordinationResult,
     CoordinationWave,
 )
-from ai_company.engine.decomposition.models import SubtaskStatusRollup
-from ai_company.engine.parallel_models import (
+from synthorg.engine.decomposition.models import SubtaskStatusRollup
+from synthorg.engine.parallel_models import (
     AgentOutcome,
     ParallelExecutionResult,
 )

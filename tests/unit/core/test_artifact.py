@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.artifact import Artifact, ExpectedArtifact
-from ai_company.core.enums import ArtifactType
+from synthorg.core.artifact import Artifact, ExpectedArtifact
+from synthorg.core.enums import ArtifactType
 
 pytestmark = pytest.mark.timeout(30)
 

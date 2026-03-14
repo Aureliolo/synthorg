@@ -3,8 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import SeniorityLevel
-from ai_company.hr.promotion.config import (
+from synthorg.core.enums import SeniorityLevel
+from synthorg.hr.promotion.config import (
     ModelMappingConfig,
     PromotionApprovalConfig,
     PromotionConfig,

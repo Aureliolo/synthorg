@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from ai_company.tools.git_tools import GitStatusTool
-from ai_company.tools.sandbox.config import SubprocessSandboxConfig
-from ai_company.tools.sandbox.errors import SandboxError
-from ai_company.tools.sandbox.subprocess_sandbox import SubprocessSandbox
+from synthorg.tools.git_tools import GitStatusTool
+from synthorg.tools.sandbox.config import SubprocessSandboxConfig
+from synthorg.tools.sandbox.errors import SandboxError
+from synthorg.tools.sandbox.subprocess_sandbox import SubprocessSandbox
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
 

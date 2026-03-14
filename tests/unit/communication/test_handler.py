@@ -6,14 +6,14 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from ai_company.communication.enums import MessagePriority, MessageType
-from ai_company.communication.handler import (
+from synthorg.communication.enums import MessagePriority, MessageType
+from synthorg.communication.handler import (
     FunctionHandler,
     HandlerRegistration,
     MessageHandler,
     priority_at_least,
 )
-from ai_company.communication.message import Message
+from synthorg.communication.message import Message
 
 pytestmark = pytest.mark.timeout(30)
 

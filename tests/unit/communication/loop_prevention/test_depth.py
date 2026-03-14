@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.communication.loop_prevention.depth import (
+from synthorg.communication.loop_prevention.depth import (
     check_delegation_depth,
 )
 

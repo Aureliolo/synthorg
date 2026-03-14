@@ -2,21 +2,21 @@
 
 import pytest
 
-from ai_company.core.artifact import ExpectedArtifact
-from ai_company.core.enums import (
+from synthorg.core.artifact import ExpectedArtifact
+from synthorg.core.enums import (
     ArtifactType,
     CoordinationTopology,
     Priority,
     TaskStructure,
     TaskType,
 )
-from ai_company.core.task import Task
-from ai_company.engine.decomposition.models import (
+from synthorg.core.task import Task
+from synthorg.engine.decomposition.models import (
     DecompositionPlan,
     SubtaskDefinition,
 )
-from ai_company.engine.routing.models import AutoTopologyConfig
-from ai_company.engine.routing.topology_selector import TopologySelector
+from synthorg.engine.routing.models import AutoTopologyConfig
+from synthorg.engine.routing.topology_selector import TopologySelector
 
 
 def _make_task(

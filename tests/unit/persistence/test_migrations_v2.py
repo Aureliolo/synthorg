@@ -8,7 +8,7 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
-from ai_company.persistence.sqlite.migrations import (
+from synthorg.persistence.sqlite.migrations import (
     SCHEMA_VERSION,
     _apply_v1,
     get_user_version,

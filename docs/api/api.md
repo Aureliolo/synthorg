@@ -9,42 +9,42 @@ Litestar REST + WebSocket API — controllers, authentication, guards, and chann
 
 ## App
 
-::: ai_company.api.app
+::: synthorg.api.app
 
 ## Config
 
-::: ai_company.api.config
+::: synthorg.api.config
 
 ## DTOs
 
-::: ai_company.api.dto
+::: synthorg.api.dto
 
 ## Errors
 
-::: ai_company.api.errors
+::: synthorg.api.errors
 
 ## Guards
 
-::: ai_company.api.guards
+::: synthorg.api.guards
 
 ## Middleware
 
-::: ai_company.api.middleware
+::: synthorg.api.middleware
 
 ## Pagination
 
-::: ai_company.api.pagination
+::: synthorg.api.pagination
 
 ## WebSocket Models
 
-::: ai_company.api.ws_models
+::: synthorg.api.ws_models
 
 ## Auth
 
-::: ai_company.api.auth.config
+::: synthorg.api.auth.config
 
-::: ai_company.api.auth.models
+::: synthorg.api.auth.models
 
-::: ai_company.api.auth.service
+::: synthorg.api.auth.service
 
-::: ai_company.api.auth.middleware
+::: synthorg.api.auth.middleware

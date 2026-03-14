@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.persistence.errors import (
+from synthorg.persistence.errors import (
     DuplicateRecordError,
     MigrationError,
     PersistenceConnectionError,

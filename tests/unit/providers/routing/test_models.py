@@ -3,8 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import SeniorityLevel
-from ai_company.providers.routing.models import (
+from synthorg.core.enums import SeniorityLevel
+from synthorg.providers.routing.models import (
     ResolvedModel,
     RoutingDecision,
     RoutingRequest,

@@ -10,16 +10,16 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ai_company.core.enums import MemoryCategory
-from ai_company.memory.backends.mem0.adapter import Mem0MemoryBackend
-from ai_company.memory.backends.mem0.config import (
+from synthorg.core.enums import MemoryCategory
+from synthorg.memory.backends.mem0.adapter import Mem0MemoryBackend
+from synthorg.memory.backends.mem0.config import (
     Mem0BackendConfig,
     Mem0EmbedderConfig,
 )
-from ai_company.memory.backends.mem0.mappers import PUBLISHER_KEY, SHARED_NAMESPACE
-from ai_company.memory.models import MemoryQuery, MemoryStoreRequest
-from ai_company.memory.retrieval_config import MemoryRetrievalConfig
-from ai_company.memory.retriever import ContextInjectionStrategy
+from synthorg.memory.backends.mem0.mappers import PUBLISHER_KEY, SHARED_NAMESPACE
+from synthorg.memory.models import MemoryQuery, MemoryStoreRequest
+from synthorg.memory.retrieval_config import MemoryRetrievalConfig
+from synthorg.memory.retriever import ContextInjectionStrategy
 
 pytestmark = pytest.mark.timeout(30)
 

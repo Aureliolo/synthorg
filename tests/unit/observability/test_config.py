@@ -3,13 +3,13 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.observability.config import (
+from synthorg.observability.config import (
     DEFAULT_SINKS,
     LogConfig,
     RotationConfig,
     SinkConfig,
 )
-from ai_company.observability.enums import LogLevel, RotationStrategy, SinkType
+from synthorg.observability.enums import LogLevel, RotationStrategy, SinkType
 
 from .conftest import LogConfigFactory, RotationConfigFactory, SinkConfigFactory
 
@@ -189,7 +189,7 @@ class TestLogConfig:
     def test_custom_values(self) -> None:
         cfg = LogConfig(
             root_level=LogLevel.WARNING,
-            logger_levels=(("ai_company.engine", LogLevel.DEBUG),),
+            logger_levels=(("synthorg.engine", LogLevel.DEBUG),),
             sinks=(_console_sink(),),
             enable_correlation=False,
             log_dir="custom_logs",
@@ -208,8 +208,8 @@ class TestLogConfig:
             LogConfig(
                 sinks=(_console_sink(),),
                 logger_levels=(
-                    ("ai_company.engine", LogLevel.DEBUG),
-                    ("ai_company.engine", LogLevel.INFO),
+                    ("synthorg.engine", LogLevel.DEBUG),
+                    ("synthorg.engine", LogLevel.INFO),
                 ),
             )
 
@@ -260,7 +260,7 @@ class TestLogConfig:
     def test_json_roundtrip(self) -> None:
         cfg = LogConfig(
             sinks=(_console_sink(),),
-            logger_levels=(("ai_company.core", LogLevel.WARNING),),
+            logger_levels=(("synthorg.core", LogLevel.WARNING),),
         )
         restored = LogConfig.model_validate_json(cfg.model_dump_json())
         assert restored == cfg

@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.memory.org.errors import (
+from synthorg.memory.org.errors import (
     OrgMemoryAccessDeniedError,
     OrgMemoryConfigError,
     OrgMemoryConnectionError,

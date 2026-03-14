@@ -6,32 +6,32 @@ enforcement, and orchestrator coordination.
 
 import pytest
 
-from ai_company.communication.meeting.config import (
+from synthorg.communication.meeting.config import (
     MeetingProtocolConfig,
     PositionPapersConfig,
     RoundRobinConfig,
     StructuredPhasesConfig,
 )
-from ai_company.communication.meeting.enums import (
+from synthorg.communication.meeting.enums import (
     MeetingProtocolType,
     MeetingStatus,
 )
-from ai_company.communication.meeting.frequency import MeetingFrequency
-from ai_company.communication.meeting.models import (
+from synthorg.communication.meeting.frequency import MeetingFrequency
+from synthorg.communication.meeting.models import (
     AgentResponse,
     MeetingAgenda,
     MeetingAgendaItem,
 )
-from ai_company.communication.meeting.orchestrator import MeetingOrchestrator
-from ai_company.communication.meeting.position_papers import (
+from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
+from synthorg.communication.meeting.position_papers import (
     PositionPapersProtocol,
 )
-from ai_company.communication.meeting.protocol import (
+from synthorg.communication.meeting.protocol import (
     AgentCaller,
     MeetingProtocol,
 )
-from ai_company.communication.meeting.round_robin import RoundRobinProtocol
-from ai_company.communication.meeting.structured_phases import (
+from synthorg.communication.meeting.round_robin import RoundRobinProtocol
+from synthorg.communication.meeting.structured_phases import (
     StructuredPhasesProtocol,
 )
 
@@ -417,7 +417,7 @@ class TestMeetingTypeConfigIntegration:
     """Tests for MeetingTypeConfig with protocol_config field."""
 
     def test_meeting_type_config_has_protocol_config(self) -> None:
-        from ai_company.communication.config import MeetingTypeConfig
+        from synthorg.communication.config import MeetingTypeConfig
 
         config = MeetingTypeConfig(
             name="standup",
@@ -428,7 +428,7 @@ class TestMeetingTypeConfigIntegration:
         assert config.protocol_config.protocol == MeetingProtocolType.ROUND_ROBIN
 
     def test_meeting_type_config_custom_protocol(self) -> None:
-        from ai_company.communication.config import MeetingTypeConfig
+        from synthorg.communication.config import MeetingTypeConfig
 
         config = MeetingTypeConfig(
             name="design_review",
@@ -450,7 +450,7 @@ class TestCommunicationReExports:
     """Tests that meeting types are accessible from the communication package."""
 
     def test_meeting_types_importable(self) -> None:
-        from ai_company.communication import (
+        from synthorg.communication import (
             MeetingError,
             MeetingProtocolType,
         )
@@ -460,6 +460,6 @@ class TestCommunicationReExports:
         assert issubclass(MeetingError, Exception)
 
     def test_message_type_meeting_contribution(self) -> None:
-        from ai_company.communication import MessageType
+        from synthorg.communication import MessageType
 
         assert MessageType.MEETING_CONTRIBUTION.value == "meeting_contribution"

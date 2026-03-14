@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.config.errors import ConfigLocation
-from ai_company.templates.errors import (
+from synthorg.config.errors import ConfigLocation
+from synthorg.templates.errors import (
     TemplateNotFoundError,
     TemplateRenderError,
     TemplateValidationError,

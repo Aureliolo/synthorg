@@ -2,24 +2,24 @@
 
 import pytest
 
-from ai_company.communication.conflict_resolution.config import DebateConfig
-from ai_company.communication.conflict_resolution.debate_strategy import (
+from synthorg.communication.conflict_resolution.config import DebateConfig
+from synthorg.communication.conflict_resolution.debate_strategy import (
     DebateResolver,
 )
-from ai_company.communication.conflict_resolution.models import (
+from synthorg.communication.conflict_resolution.models import (
     Conflict,
     ConflictResolutionOutcome,
 )
-from ai_company.communication.conflict_resolution.protocol import JudgeDecision
-from ai_company.communication.delegation.hierarchy import (
+from synthorg.communication.conflict_resolution.protocol import JudgeDecision
+from synthorg.communication.delegation.hierarchy import (
     HierarchyResolver,
 )
-from ai_company.communication.enums import ConflictResolutionStrategy
-from ai_company.communication.errors import (
+from synthorg.communication.enums import ConflictResolutionStrategy
+from synthorg.communication.errors import (
     ConflictHierarchyError,
     ConflictStrategyError,
 )
-from ai_company.core.enums import SeniorityLevel
+from synthorg.core.enums import SeniorityLevel
 
 from .conftest import make_conflict, make_position
 

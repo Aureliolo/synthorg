@@ -4,14 +4,14 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ai_company.core.types import NotBlankStr
-from ai_company.hr.persistence_protocol import (
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.persistence_protocol import (
     CollaborationMetricRepository,
     LifecycleEventRepository,
     TaskMetricRepository,
 )
-from ai_company.persistence.protocol import PersistenceBackend
-from ai_company.persistence.repositories import (
+from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.repositories import (
     ApiKeyRepository,
     AuditRepository,
     CheckpointRepository,
@@ -26,19 +26,19 @@ from ai_company.persistence.repositories import (
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
 
-    from ai_company.api.auth.models import ApiKey, User
-    from ai_company.budget.cost_record import CostRecord
-    from ai_company.communication.message import Message
-    from ai_company.core.enums import ApprovalRiskLevel, TaskStatus
-    from ai_company.core.task import Task
-    from ai_company.engine.checkpoint.models import Checkpoint, Heartbeat
-    from ai_company.hr.models import AgentLifecycleEvent
-    from ai_company.hr.performance.models import (
+    from synthorg.api.auth.models import ApiKey, User
+    from synthorg.budget.cost_record import CostRecord
+    from synthorg.communication.message import Message
+    from synthorg.core.enums import ApprovalRiskLevel, TaskStatus
+    from synthorg.core.task import Task
+    from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
+    from synthorg.hr.models import AgentLifecycleEvent
+    from synthorg.hr.performance.models import (
         CollaborationMetricRecord,
         TaskMetricRecord,
     )
-    from ai_company.security.models import AuditEntry, AuditVerdictStr
-    from ai_company.security.timeout.parked_context import ParkedContext
+    from synthorg.security.models import AuditEntry, AuditVerdictStr
+    from synthorg.security.timeout.parked_context import ParkedContext
 
 
 class _FakeTaskRepository:

@@ -5,31 +5,31 @@ from datetime import date
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
-from ai_company.core.enums import (
+from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
+from synthorg.core.enums import (
     Complexity,
     Priority,
     SeniorityLevel,
     TaskStatus,
     TaskType,
 )
-from ai_company.core.task import Task
-from ai_company.engine.context import DEFAULT_MAX_TURNS, AgentContext
-from ai_company.engine.loop_protocol import (
+from synthorg.core.task import Task
+from synthorg.engine.context import DEFAULT_MAX_TURNS, AgentContext
+from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
-from ai_company.engine.parallel_models import (
+from synthorg.engine.parallel_models import (
     AgentAssignment,
     AgentOutcome,
     ParallelExecutionGroup,
     ParallelExecutionResult,
     ParallelProgress,
 )
-from ai_company.engine.prompt import SystemPrompt
-from ai_company.engine.run_result import AgentRunResult
-from ai_company.providers.enums import MessageRole
-from ai_company.providers.models import ChatMessage
+from synthorg.engine.prompt import SystemPrompt
+from synthorg.engine.run_result import AgentRunResult
+from synthorg.providers.enums import MessageRole
+from synthorg.providers.models import ChatMessage
 
 
 def _make_identity(

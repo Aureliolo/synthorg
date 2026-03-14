@@ -6,8 +6,8 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
-from ai_company.budget.cost_record import CostRecord
-from ai_company.budget.tracker import CostTracker
+from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.tracker import CostTracker
 from tests.unit.api.conftest import make_auth_headers
 
 _HEADERS = make_auth_headers("ceo")

@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.engine.plan_models import (
+from synthorg.engine.plan_models import (
     ExecutionPlan,
     PlanExecuteConfig,
     PlanStep,

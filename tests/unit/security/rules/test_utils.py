@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.security.rules._utils import walk_string_values
+from synthorg.security.rules._utils import walk_string_values
 
 pytestmark = pytest.mark.timeout(30)
 

@@ -6,9 +6,9 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
-from ai_company.api.approval_store import ApprovalStore
-from ai_company.core.approval import ApprovalItem
-from ai_company.core.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.api.approval_store import ApprovalStore
+from synthorg.core.approval import ApprovalItem
+from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from tests.unit.api.conftest import make_approval, make_auth_headers
 
 _BASE = "/api/v1/approvals"

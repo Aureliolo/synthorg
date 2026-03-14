@@ -4,8 +4,8 @@ from typing import Any
 
 import pytest
 
-from ai_company.config.defaults import default_config_dict
-from ai_company.config.schema import RootConfig
+from synthorg.config.defaults import default_config_dict
+from synthorg.config.schema import RootConfig
 
 
 @pytest.mark.unit

@@ -4,22 +4,22 @@ from datetime import date
 
 import pytest
 
-from ai_company.communication.config import HierarchyConfig
-from ai_company.communication.delegation.authority import (
+from synthorg.communication.config import HierarchyConfig
+from synthorg.communication.delegation.authority import (
     AuthorityValidator,
 )
-from ai_company.communication.delegation.hierarchy import (
+from synthorg.communication.delegation.hierarchy import (
     HierarchyResolver,
 )
-from ai_company.core.agent import AgentIdentity, ModelConfig
-from ai_company.core.company import (
+from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.company import (
     Company,
     CompanyConfig,
     Department,
     Team,
 )
-from ai_company.core.enums import SeniorityLevel
-from ai_company.core.role import Authority
+from synthorg.core.enums import SeniorityLevel
+from synthorg.core.role import Authority
 
 pytestmark = pytest.mark.timeout(30)
 

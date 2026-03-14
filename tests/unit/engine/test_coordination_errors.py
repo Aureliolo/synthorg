@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.engine.errors import (
+from synthorg.engine.errors import (
     CoordinationError,
     CoordinationPhaseError,
     EngineError,
@@ -35,7 +35,7 @@ class TestCoordinationErrors:
     @pytest.mark.unit
     def test_phase_error_carries_partial_phases(self) -> None:
         """CoordinationPhaseError stores partial phases."""
-        from ai_company.engine.coordination.models import CoordinationPhaseResult
+        from synthorg.engine.coordination.models import CoordinationPhaseResult
 
         partial = (
             CoordinationPhaseResult(

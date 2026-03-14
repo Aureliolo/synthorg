@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.communication.meeting._token_tracker import TokenTracker
+from synthorg.communication.meeting._token_tracker import TokenTracker
 
 pytestmark = pytest.mark.timeout(30)
 

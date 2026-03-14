@@ -2,17 +2,17 @@
 
 import pytest
 
-from ai_company.core.enums import Priority, TaskStatus, TaskStructure, TaskType
-from ai_company.core.task import Task
-from ai_company.engine.decomposition.classifier import TaskStructureClassifier
-from ai_company.engine.decomposition.manual import ManualDecompositionStrategy
-from ai_company.engine.decomposition.models import (
+from synthorg.core.enums import Priority, TaskStatus, TaskStructure, TaskType
+from synthorg.core.task import Task
+from synthorg.engine.decomposition.classifier import TaskStructureClassifier
+from synthorg.engine.decomposition.manual import ManualDecompositionStrategy
+from synthorg.engine.decomposition.models import (
     DecompositionContext,
     DecompositionPlan,
     SubtaskDefinition,
 )
-from ai_company.engine.decomposition.service import DecompositionService
-from ai_company.engine.errors import DecompositionCycleError
+from synthorg.engine.decomposition.service import DecompositionService
+from synthorg.engine.errors import DecompositionCycleError
 
 
 def _make_task(
@@ -215,7 +215,7 @@ class TestDecompositionService:
     @pytest.mark.unit
     async def test_decompose_uses_subtask_complexity(self) -> None:
         """Child tasks use subtask's estimated_complexity, not parent's."""
-        from ai_company.core.enums import Complexity
+        from synthorg.core.enums import Complexity
 
         task = Task(
             id="task-svc-1",

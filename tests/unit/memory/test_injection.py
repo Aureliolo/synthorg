@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.memory.injection import (
+from synthorg.memory.injection import (
     DefaultTokenEstimator,
     InjectionPoint,
     InjectionStrategy,

@@ -6,9 +6,9 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from ai_company.communication.dispatcher import DispatchResult, MessageDispatcher
-from ai_company.communication.enums import MessagePriority, MessageType
-from ai_company.communication.message import Message
+from synthorg.communication.dispatcher import DispatchResult, MessageDispatcher
+from synthorg.communication.enums import MessagePriority, MessageType
+from synthorg.communication.message import Message
 
 pytestmark = pytest.mark.timeout(30)
 

@@ -5,9 +5,9 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import ToolCategory
-from ai_company.providers.models import ToolDefinition
-from ai_company.tools.base import BaseTool, ToolExecutionResult
+from synthorg.core.enums import ToolCategory
+from synthorg.providers.models import ToolDefinition
+from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 pytestmark = pytest.mark.timeout(30)
 

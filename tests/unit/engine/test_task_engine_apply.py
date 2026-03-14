@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.core.enums import TaskStatus
-from ai_company.engine.task_engine_apply import (
+from synthorg.core.enums import TaskStatus
+from synthorg.engine.task_engine_apply import (
     apply_cancel,
     apply_create,
     apply_delete,
@@ -11,7 +11,7 @@ from ai_company.engine.task_engine_apply import (
     apply_update,
     dispatch,
 )
-from ai_company.engine.task_engine_models import (
+from synthorg.engine.task_engine_models import (
     CancelTaskMutation,
     CreateTaskMutation,
     DeleteTaskMutation,
@@ -19,7 +19,7 @@ from ai_company.engine.task_engine_models import (
     TransitionTaskMutation,
     UpdateTaskMutation,
 )
-from ai_company.engine.task_engine_version import VersionTracker
+from synthorg.engine.task_engine_version import VersionTracker
 from tests.unit.engine.task_engine_helpers import FakePersistence, make_create_data
 
 

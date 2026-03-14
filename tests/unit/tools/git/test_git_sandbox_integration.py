@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from ai_company.tools.git_tools import (
+from synthorg.tools.git_tools import (
     GitBranchTool,
     GitCloneTool,
     GitCommitTool,
@@ -13,9 +13,9 @@ from ai_company.tools.git_tools import (
     GitLogTool,
     GitStatusTool,
 )
-from ai_company.tools.sandbox.errors import SandboxError
-from ai_company.tools.sandbox.result import SandboxResult
-from ai_company.tools.sandbox.subprocess_sandbox import SubprocessSandbox
+from synthorg.tools.sandbox.errors import SandboxError
+from synthorg.tools.sandbox.result import SandboxResult
+from synthorg.tools.sandbox.subprocess_sandbox import SubprocessSandbox
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

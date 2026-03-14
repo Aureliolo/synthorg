@@ -5,7 +5,7 @@ event: file
 conditions:
   - field: file_path
     operator: regex_match
-    pattern: "src/ai_company/.*\\.py$"
+    pattern: "src/synthorg/.*\\.py$"
   - field: file_path
     operator: not_contains
     pattern: "__init__"
@@ -33,4 +33,4 @@ conditions:
 action: warn
 ---
 
-Missing logger: modules with functions/classes in `src/ai_company/` must have `from ai_company.observability import get_logger` and `logger = get_logger(__name__)`.
+Missing logger: modules with functions/classes in `src/synthorg/` must have `from synthorg.observability import get_logger` and `logger = get_logger(__name__)`.

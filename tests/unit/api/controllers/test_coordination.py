@@ -9,22 +9,22 @@ from uuid import uuid4
 import pytest
 from litestar.testing import TestClient
 
-from ai_company.api.app import create_app
-from ai_company.api.auth.service import AuthService
-from ai_company.budget.tracker import CostTracker
-from ai_company.config.schema import RootConfig
-from ai_company.core.agent import AgentIdentity, ModelConfig
-from ai_company.core.enums import (
+from synthorg.api.app import create_app
+from synthorg.api.auth.service import AuthService
+from synthorg.budget.tracker import CostTracker
+from synthorg.config.schema import RootConfig
+from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.enums import (
     AgentStatus,
     CoordinationTopology,
     SeniorityLevel,
 )
-from ai_company.engine.coordination.models import (
+from synthorg.engine.coordination.models import (
     CoordinationPhaseResult,
     CoordinationResult,
 )
-from ai_company.engine.errors import CoordinationPhaseError
-from ai_company.hr.registry import AgentRegistryService
+from synthorg.engine.errors import CoordinationPhaseError
+from synthorg.hr.registry import AgentRegistryService
 from tests.unit.api.conftest import (
     FakeMessageBus,
     FakePersistenceBackend,
@@ -94,8 +94,8 @@ def coordination_client(
 
     _seed_test_users(fake_persistence, auth_service)
 
-    from ai_company.engine.task_engine import TaskEngine
-    from ai_company.engine.task_engine_config import (
+    from synthorg.engine.task_engine import TaskEngine
+    from synthorg.engine.task_engine_config import (
         TaskEngineConfig,
     )
     from tests.unit.engine.task_engine_helpers import (

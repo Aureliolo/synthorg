@@ -5,22 +5,22 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from ai_company.api.approval_store import ApprovalStore
-from ai_company.core.enums import ToolAccessLevel
-from ai_company.core.types import NotBlankStr
-from ai_company.security.trust.disabled_strategy import DisabledTrustStrategy
-from ai_company.security.trust.enums import TrustChangeReason
-from ai_company.security.trust.errors import TrustEvaluationError
-from ai_company.security.trust.models import (
+from synthorg.api.approval_store import ApprovalStore
+from synthorg.core.enums import ToolAccessLevel
+from synthorg.core.types import NotBlankStr
+from synthorg.security.trust.disabled_strategy import DisabledTrustStrategy
+from synthorg.security.trust.enums import TrustChangeReason
+from synthorg.security.trust.errors import TrustEvaluationError
+from synthorg.security.trust.models import (
     TrustEvaluationResult,
     TrustState,
 )
-from ai_company.security.trust.service import TrustService
-from ai_company.security.trust.weighted_strategy import WeightedTrustStrategy
+from synthorg.security.trust.service import TrustService
+from synthorg.security.trust.weighted_strategy import WeightedTrustStrategy
 from tests.unit.security.trust.conftest import make_performance_snapshot
 
 if TYPE_CHECKING:
-    from ai_company.security.trust.config import TrustConfig
+    from synthorg.security.trust.config import TrustConfig
 
 pytestmark = pytest.mark.timeout(30)
 

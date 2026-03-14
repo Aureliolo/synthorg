@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ai_company.core.enums import ToolCategory
-from ai_company.tools.code_runner import CodeRunnerTool
-from ai_company.tools.sandbox.result import SandboxResult
+from synthorg.core.enums import ToolCategory
+from synthorg.tools.code_runner import CodeRunnerTool
+from synthorg.tools.sandbox.result import SandboxResult
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

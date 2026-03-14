@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from ai_company.tools.base import ToolExecutionResult
-from ai_company.tools.mcp.cache import MCPResultCache, _make_hashable
+from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.mcp.cache import MCPResultCache, _make_hashable
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -63,7 +63,7 @@ class TestCacheTTL:
 
         # Mock time to simulate expiry
         original_time = time.monotonic()
-        with patch("ai_company.tools.mcp.cache.time") as mock_time:
+        with patch("synthorg.tools.mcp.cache.time") as mock_time:
             mock_time.monotonic.return_value = original_time + 1.0
             assert cache.get("tool", {}) is None
 

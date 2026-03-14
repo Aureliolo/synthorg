@@ -9,7 +9,7 @@ import pytest
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ai_company.tools.file_system.write_file import WriteFileTool
+    from synthorg.tools.file_system.write_file import WriteFileTool
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -98,7 +98,7 @@ class TestWriteFileExecution:
         self, write_tool: WriteFileTool
     ) -> None:
         """Content exceeding MAX_WRITE_SIZE_BYTES is rejected."""
-        from ai_company.tools.file_system.write_file import MAX_WRITE_SIZE_BYTES
+        from synthorg.tools.file_system.write_file import MAX_WRITE_SIZE_BYTES
 
         big = "x" * (MAX_WRITE_SIZE_BYTES + 100)
         result = await write_tool.execute(
@@ -118,7 +118,7 @@ class TestWriteFileErrors:
     ) -> None:
         """IsADirectoryError from _write_sync is caught."""
         with patch(
-            "ai_company.tools.file_system.write_file._write_sync",
+            "synthorg.tools.file_system.write_file._write_sync",
             side_effect=IsADirectoryError("is a directory"),
         ):
             result = await write_tool.execute(
@@ -130,7 +130,7 @@ class TestWriteFileErrors:
     async def test_oserror_from_write_sync(self, write_tool: WriteFileTool) -> None:
         """Generic OSError from _write_sync is caught."""
         with patch(
-            "ai_company.tools.file_system.write_file._write_sync",
+            "synthorg.tools.file_system.write_file._write_sync",
             side_effect=OSError("disk full"),
         ):
             result = await write_tool.execute(

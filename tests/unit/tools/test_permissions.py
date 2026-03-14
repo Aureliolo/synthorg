@@ -4,12 +4,12 @@ from typing import Any
 
 import pytest
 
-from ai_company.core.agent import ToolPermissions
-from ai_company.core.enums import ToolAccessLevel, ToolCategory
-from ai_company.tools.base import BaseTool, ToolExecutionResult
-from ai_company.tools.errors import ToolPermissionDeniedError
-from ai_company.tools.permissions import ToolPermissionChecker
-from ai_company.tools.registry import ToolRegistry
+from synthorg.core.agent import ToolPermissions
+from synthorg.core.enums import ToolAccessLevel, ToolCategory
+from synthorg.tools.base import BaseTool, ToolExecutionResult
+from synthorg.tools.errors import ToolPermissionDeniedError
+from synthorg.tools.permissions import ToolPermissionChecker
+from synthorg.tools.registry import ToolRegistry
 
 pytestmark = pytest.mark.timeout(30)
 

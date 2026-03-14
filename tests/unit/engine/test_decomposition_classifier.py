@@ -2,15 +2,15 @@
 
 import pytest
 
-from ai_company.core.artifact import ExpectedArtifact
-from ai_company.core.enums import (
+from synthorg.core.artifact import ExpectedArtifact
+from synthorg.core.enums import (
     ArtifactType,
     Priority,
     TaskStructure,
     TaskType,
 )
-from ai_company.core.task import AcceptanceCriterion, Task
-from ai_company.engine.decomposition.classifier import TaskStructureClassifier
+from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 
 
 def _make_task(

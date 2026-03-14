@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.providers.errors import (
+from synthorg.providers.errors import (
     AuthenticationError,
     ContentFilterError,
     InvalidRequestError,

@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.tools.errors import (
+from synthorg.tools.errors import (
     ToolError,
     ToolExecutionError,
     ToolNotFoundError,

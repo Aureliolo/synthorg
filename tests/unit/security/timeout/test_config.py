@@ -3,8 +3,8 @@
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from ai_company.core.enums import TimeoutActionType
-from ai_company.security.timeout.config import (
+from synthorg.core.enums import TimeoutActionType
+from synthorg.security.timeout.config import (
     ApprovalTimeoutConfig,
     DenyOnTimeoutConfig,
     EscalationChainConfig,
@@ -13,7 +13,7 @@ from ai_company.security.timeout.config import (
     TieredTimeoutConfig,
     WaitForeverConfig,
 )
-from ai_company.security.timeout.models import TimeoutAction
+from synthorg.security.timeout.models import TimeoutAction
 
 _adapter: TypeAdapter[ApprovalTimeoutConfig] = TypeAdapter(ApprovalTimeoutConfig)
 

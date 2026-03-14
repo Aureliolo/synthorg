@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.providers.errors import ProviderError, RateLimitError
-from ai_company.providers.resilience.errors import RetryExhaustedError
+from synthorg.providers.errors import ProviderError, RateLimitError
+from synthorg.providers.resilience.errors import RetryExhaustedError
 
 pytestmark = pytest.mark.timeout(30)
 

@@ -13,62 +13,62 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ai_company.communication.config import (
+from synthorg.communication.config import (
     CircuitBreakerConfig,
     HierarchyConfig,
     LoopPreventionConfig,
     RateLimitConfig,
 )
-from ai_company.communication.delegation.authority import AuthorityValidator
-from ai_company.communication.delegation.hierarchy import HierarchyResolver
-from ai_company.communication.delegation.models import DelegationRequest
-from ai_company.communication.delegation.service import DelegationService
-from ai_company.communication.loop_prevention.guard import DelegationGuard
-from ai_company.core.agent import AgentIdentity, ModelConfig, SkillSet
-from ai_company.core.company import (
+from synthorg.communication.delegation.authority import AuthorityValidator
+from synthorg.communication.delegation.hierarchy import HierarchyResolver
+from synthorg.communication.delegation.models import DelegationRequest
+from synthorg.communication.delegation.service import DelegationService
+from synthorg.communication.loop_prevention.guard import DelegationGuard
+from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
+from synthorg.core.company import (
     Company,
     CompanyConfig,
     Department,
     Team,
 )
-from ai_company.core.enums import (
+from synthorg.core.enums import (
     Complexity,
     SeniorityLevel,
     TaskStatus,
     TaskStructure,
     TaskType,
 )
-from ai_company.core.role import Authority
-from ai_company.core.task import Task
-from ai_company.engine.agent_engine import AgentEngine
-from ai_company.engine.assignment.models import (
+from synthorg.core.role import Authority
+from synthorg.core.task import Task
+from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.assignment.models import (
     AgentWorkload,
     AssignmentRequest,
 )
-from ai_company.engine.assignment.service import TaskAssignmentService
-from ai_company.engine.assignment.strategies import (
+from synthorg.engine.assignment.service import TaskAssignmentService
+from synthorg.engine.assignment.strategies import (
     LoadBalancedAssignmentStrategy,
     RoleBasedAssignmentStrategy,
 )
-from ai_company.engine.decomposition.classifier import TaskStructureClassifier
-from ai_company.engine.decomposition.manual import ManualDecompositionStrategy
-from ai_company.engine.decomposition.models import (
+from synthorg.engine.decomposition.classifier import TaskStructureClassifier
+from synthorg.engine.decomposition.manual import ManualDecompositionStrategy
+from synthorg.engine.decomposition.models import (
     DecompositionContext,
     DecompositionPlan,
     SubtaskDefinition,
 )
-from ai_company.engine.decomposition.service import DecompositionService
-from ai_company.engine.parallel import ParallelExecutor
-from ai_company.engine.parallel_models import (
+from synthorg.engine.decomposition.service import DecompositionService
+from synthorg.engine.parallel import ParallelExecutor
+from synthorg.engine.parallel_models import (
     AgentAssignment,
     ParallelExecutionGroup,
     ParallelProgress,
 )
-from ai_company.engine.routing.scorer import AgentTaskScorer
-from ai_company.engine.routing.service import TaskRoutingService
-from ai_company.engine.routing.topology_selector import TopologySelector
-from ai_company.providers.enums import FinishReason
-from ai_company.providers.models import (
+from synthorg.engine.routing.scorer import AgentTaskScorer
+from synthorg.engine.routing.service import TaskRoutingService
+from synthorg.engine.routing.topology_selector import TopologySelector
+from synthorg.providers.enums import FinishReason
+from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
     CompletionResponse,
@@ -80,7 +80,7 @@ from ai_company.providers.models import (
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from ai_company.providers.capabilities import ModelCapabilities
+    from synthorg.providers.capabilities import ModelCapabilities
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
 
@@ -168,7 +168,7 @@ class _DeterministicProvider:
         model: str,
     ) -> ModelCapabilities:
         """Return minimal capabilities."""
-        from ai_company.providers.capabilities import ModelCapabilities
+        from synthorg.providers.capabilities import ModelCapabilities
 
         return ModelCapabilities(
             model_id=model,

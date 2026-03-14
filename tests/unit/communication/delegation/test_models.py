@@ -5,13 +5,13 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from ai_company.communication.delegation.models import (
+from synthorg.communication.delegation.models import (
     DelegationRecord,
     DelegationRequest,
     DelegationResult,
 )
-from ai_company.core.enums import TaskType
-from ai_company.core.task import Task
+from synthorg.core.enums import TaskType
+from synthorg.core.task import Task
 
 pytestmark = pytest.mark.timeout(30)
 

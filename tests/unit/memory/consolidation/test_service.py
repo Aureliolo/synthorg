@@ -6,15 +6,15 @@ from unittest.mock import AsyncMock
 import pytest
 import structlog.testing
 
-from ai_company.core.enums import MemoryCategory
-from ai_company.memory.consolidation.config import (
+from synthorg.core.enums import MemoryCategory
+from synthorg.memory.consolidation.config import (
     ArchivalConfig,
     ConsolidationConfig,
     RetentionConfig,
 )
-from ai_company.memory.consolidation.models import ConsolidationResult
-from ai_company.memory.consolidation.service import MemoryConsolidationService
-from ai_company.memory.models import MemoryEntry, MemoryMetadata
+from synthorg.memory.consolidation.models import ConsolidationResult
+from synthorg.memory.consolidation.service import MemoryConsolidationService
+from synthorg.memory.models import MemoryEntry, MemoryMetadata
 
 pytestmark = pytest.mark.timeout(30)
 

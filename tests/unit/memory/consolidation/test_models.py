@@ -5,13 +5,13 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import MemoryCategory
-from ai_company.memory.consolidation.models import (
+from synthorg.core.enums import MemoryCategory
+from synthorg.memory.consolidation.models import (
     ArchivalEntry,
     ConsolidationResult,
     RetentionRule,
 )
-from ai_company.memory.models import MemoryMetadata
+from synthorg.memory.models import MemoryMetadata
 
 pytestmark = pytest.mark.timeout(30)
 

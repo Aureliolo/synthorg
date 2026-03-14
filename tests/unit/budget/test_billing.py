@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ai_company.budget.billing import billing_period_start, daily_period_start
+from synthorg.budget.billing import billing_period_start, daily_period_start
 
 pytestmark = pytest.mark.timeout(30)
 

@@ -2,12 +2,12 @@
 
 import pytest
 
-from ai_company.communication.meeting.enums import MeetingProtocolType
-from ai_company.communication.meeting.models import (
+from synthorg.communication.meeting.enums import MeetingProtocolType
+from synthorg.communication.meeting.models import (
     MeetingAgenda,
     MeetingMinutes,
 )
-from ai_company.communication.meeting.protocol import (
+from synthorg.communication.meeting.protocol import (
     AgentCaller,
     ConflictDetector,
     MeetingProtocol,

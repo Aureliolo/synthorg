@@ -2,15 +2,15 @@
 
 import pytest
 
-from ai_company.core.enums import ToolAccessLevel
-from ai_company.core.types import NotBlankStr
-from ai_company.security.trust.config import (
+from synthorg.core.enums import ToolAccessLevel
+from synthorg.core.types import NotBlankStr
+from synthorg.security.trust.config import (
     CategoryTrustCriteria,
     TrustConfig,
 )
-from ai_company.security.trust.enums import TrustStrategyType
-from ai_company.security.trust.models import TrustState
-from ai_company.security.trust.per_category_strategy import (
+from synthorg.security.trust.enums import TrustStrategyType
+from synthorg.security.trust.models import TrustState
+from synthorg.security.trust.per_category_strategy import (
     PerCategoryTrustStrategy,
 )
 from tests.unit.security.trust.conftest import make_performance_snapshot
@@ -229,7 +229,7 @@ class TestPerCategoryTrustStrategy:
         """quality=None is accepted when quality_score_min is 0.0."""
         from datetime import UTC, datetime
 
-        from ai_company.hr.performance.models import (
+        from synthorg.hr.performance.models import (
             AgentPerformanceSnapshot,
             WindowMetrics,
         )

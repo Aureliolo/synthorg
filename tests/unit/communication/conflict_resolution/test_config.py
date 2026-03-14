@@ -3,12 +3,12 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.communication.conflict_resolution.config import (
+from synthorg.communication.conflict_resolution.config import (
     ConflictResolutionConfig,
     DebateConfig,
     HybridConfig,
 )
-from ai_company.communication.enums import ConflictResolutionStrategy
+from synthorg.communication.enums import ConflictResolutionStrategy
 
 pytestmark = pytest.mark.timeout(30)
 

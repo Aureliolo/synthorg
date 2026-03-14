@@ -4,7 +4,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from ai_company.core.enums import (
+from synthorg.core.enums import (
     AutonomyLevel,
     SeniorityLevel,
     compare_autonomy,

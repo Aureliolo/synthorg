@@ -18,10 +18,10 @@ from litellm.types.utils import (  # type: ignore[attr-defined]
     Usage,
 )
 
-from ai_company.config.schema import ProviderConfig, ProviderModelConfig
-from ai_company.core.resilience_config import RetryConfig
-from ai_company.providers.enums import MessageRole
-from ai_company.providers.models import (
+from synthorg.config.schema import ProviderConfig, ProviderModelConfig
+from synthorg.core.resilience_config import RetryConfig
+from synthorg.providers.enums import MessageRole
+from synthorg.providers.models import (
     ChatMessage,
     ToolDefinition,
 )

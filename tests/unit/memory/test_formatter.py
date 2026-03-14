@@ -4,19 +4,19 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ai_company.core.enums import MemoryCategory
-from ai_company.memory.formatter import (
+from synthorg.core.enums import MemoryCategory
+from synthorg.memory.formatter import (
     MEMORY_BLOCK_END,
     MEMORY_BLOCK_START,
     format_memory_context,
 )
-from ai_company.memory.injection import (
+from synthorg.memory.injection import (
     DefaultTokenEstimator,
     InjectionPoint,
 )
-from ai_company.memory.models import MemoryEntry, MemoryMetadata
-from ai_company.memory.ranking import ScoredMemory
-from ai_company.providers.enums import MessageRole
+from synthorg.memory.models import MemoryEntry, MemoryMetadata
+from synthorg.memory.ranking import ScoredMemory
+from synthorg.providers.enums import MessageRole
 
 pytestmark = pytest.mark.timeout(30)
 

@@ -5,21 +5,21 @@ from typing import TYPE_CHECKING
 import pytest
 import structlog.testing
 
-from ai_company.core.enums import TaskStatus, TaskType
-from ai_company.core.task import Task
-from ai_company.engine.context import AgentContext
+from synthorg.core.enums import TaskStatus, TaskType
+from synthorg.core.task import Task
+from synthorg.engine.context import AgentContext
 
 if TYPE_CHECKING:
-    from ai_company.core.agent import AgentIdentity
+    from synthorg.core.agent import AgentIdentity
 
 from pydantic import ValidationError
 
-from ai_company.engine.recovery import (
+from synthorg.engine.recovery import (
     FailAndReassignStrategy,
     RecoveryResult,
     RecoveryStrategy,
 )
-from ai_company.observability.events.execution import (
+from synthorg.observability.events.execution import (
     EXECUTION_RECOVERY_COMPLETE,
     EXECUTION_RECOVERY_SNAPSHOT,
     EXECUTION_RECOVERY_START,

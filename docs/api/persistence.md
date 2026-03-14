@@ -9,26 +9,26 @@ Pluggable operational data persistence — protocol, configuration, and SQLite b
 
 ## Protocol
 
-::: ai_company.persistence.protocol
+::: synthorg.persistence.protocol
 
 ## Config
 
-::: ai_company.persistence.config
+::: synthorg.persistence.config
 
 ## Repositories
 
-::: ai_company.persistence.repositories
+::: synthorg.persistence.repositories
 
 ## Factory
 
-::: ai_company.persistence.factory
+::: synthorg.persistence.factory
 
 ## Errors
 
-::: ai_company.persistence.errors
+::: synthorg.persistence.errors
 
 ## SQLite Backend
 
-::: ai_company.persistence.sqlite.backend
+::: synthorg.persistence.sqlite.backend
 
-::: ai_company.persistence.sqlite.repositories
+::: synthorg.persistence.sqlite.repositories

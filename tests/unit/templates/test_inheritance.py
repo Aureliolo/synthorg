@@ -8,17 +8,17 @@ if TYPE_CHECKING:
 
 import pytest
 
-from ai_company.config.schema import RootConfig
-from ai_company.core.enums import CompanyType
-from ai_company.templates.errors import TemplateInheritanceError
-from ai_company.templates.loader import load_template, load_template_file
-from ai_company.templates.merge import (
+from synthorg.config.schema import RootConfig
+from synthorg.core.enums import CompanyType
+from synthorg.templates.errors import TemplateInheritanceError
+from synthorg.templates.loader import load_template, load_template_file
+from synthorg.templates.merge import (
     _merge_agents,
     _merge_departments,
     merge_template_configs,
 )
-from ai_company.templates.renderer import _collect_parent_variables, render_template
-from ai_company.templates.schema import (
+from synthorg.templates.renderer import _collect_parent_variables, render_template
+from synthorg.templates.schema import (
     CompanyTemplate,
     TemplateAgentConfig,
     TemplateMetadata,
@@ -363,7 +363,7 @@ template:
 
         # Patch user templates dir so child_b is found by name.
         with patch(
-            "ai_company.templates.loader._USER_TEMPLATES_DIR",
+            "synthorg.templates.loader._USER_TEMPLATES_DIR",
             tmp_path,
         ):
             loaded = load_template_file(child_a_path)
@@ -387,7 +387,7 @@ class TestCircularDetection:
         path.write_text(CIRCULAR_SELF_YAML, encoding="utf-8")
 
         with patch(
-            "ai_company.templates.loader._USER_TEMPLATES_DIR",
+            "synthorg.templates.loader._USER_TEMPLATES_DIR",
             tmp_path,
         ):
             loaded = load_template_file(path)
@@ -442,7 +442,7 @@ template:
         (tmp_path / "template_b.yaml").write_text(b_yaml, encoding="utf-8")
 
         with patch(
-            "ai_company.templates.loader._USER_TEMPLATES_DIR",
+            "synthorg.templates.loader._USER_TEMPLATES_DIR",
             tmp_path,
         ):
             loaded = load_template("template_a")
@@ -482,7 +482,7 @@ template:
             (tmp_path / f"chain_{i}.yaml").write_text(yaml_content, encoding="utf-8")
 
         with patch(
-            "ai_company.templates.loader._USER_TEMPLATES_DIR",
+            "synthorg.templates.loader._USER_TEMPLATES_DIR",
             tmp_path,
         ):
             loaded = load_template("chain_11")

@@ -4,17 +4,17 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from ai_company.budget._optimizer_helpers import _find_cheaper_model
-from ai_company.budget.config import (
+from synthorg.budget._optimizer_helpers import _find_cheaper_model
+from synthorg.budget.config import (
     AutoDowngradeConfig,
     BudgetAlertConfig,
     BudgetConfig,
 )
-from ai_company.budget.enums import BudgetAlertLevel
-from ai_company.budget.optimizer import CostOptimizer
-from ai_company.budget.optimizer_models import CostOptimizerConfig
-from ai_company.budget.tracker import CostTracker
-from ai_company.providers.routing.models import ResolvedModel
+from synthorg.budget.enums import BudgetAlertLevel
+from synthorg.budget.optimizer import CostOptimizer
+from synthorg.budget.optimizer_models import CostOptimizerConfig
+from synthorg.budget.tracker import CostTracker
+from synthorg.providers.routing.models import ResolvedModel
 from tests.unit.budget.conftest import (
     OPT_END,
     OPT_START,
@@ -434,7 +434,7 @@ class TestEdgeCases:
 
     async def test_budget_pressure_percent_reflects_spending(self) -> None:
         """budget_pressure_percent reflects actual spend vs budget."""
-        from ai_company.budget.billing import billing_period_start
+        from synthorg.budget.billing import billing_period_start
 
         resolver = make_resolver()
         bc = BudgetConfig(total_monthly=100.0)
@@ -514,7 +514,7 @@ class TestEdgeCases:
 
     async def test_no_resolver_returns_real_budget_pressure(self) -> None:
         """recommend_downgrades without resolver still reports real pressure."""
-        from ai_company.budget.billing import billing_period_start
+        from synthorg.budget.billing import billing_period_start
 
         bc = BudgetConfig(total_monthly=100.0)
         tracker = CostTracker(budget_config=bc)

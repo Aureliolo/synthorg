@@ -6,7 +6,7 @@ import pytest
 from litestar import Litestar
 from litestar.testing import TestClient
 
-from ai_company.api.app import create_app
+from synthorg.api.app import create_app
 
 
 @pytest.mark.unit
@@ -64,9 +64,9 @@ class TestAppLifecycle:
         root_config: Any,
     ) -> None:
         """Persistence ok, bus fails → persistence cleaned up."""
-        from ai_company.api.app import _safe_startup
-        from ai_company.api.approval_store import ApprovalStore
-        from ai_company.api.state import AppState
+        from synthorg.api.app import _safe_startup
+        from synthorg.api.approval_store import ApprovalStore
+        from synthorg.api.state import AppState
         from tests.unit.api.conftest import (
             FakeMessageBus,
             FakePersistenceBackend,
@@ -93,7 +93,7 @@ class TestAppLifecycle:
 
     async def test_shutdown_error_handling(self) -> None:
         """Shutdown errors are logged but don't propagate."""
-        from ai_company.api.app import _safe_shutdown
+        from synthorg.api.app import _safe_shutdown
         from tests.unit.api.conftest import FakePersistenceBackend
 
         persistence = FakePersistenceBackend()
@@ -114,9 +114,9 @@ class TestAppLifecycle:
         """Task engine start fails → persistence + bus cleaned up."""
         from unittest.mock import MagicMock
 
-        from ai_company.api.app import _safe_startup
-        from ai_company.api.approval_store import ApprovalStore
-        from ai_company.api.state import AppState
+        from synthorg.api.app import _safe_startup
+        from synthorg.api.approval_store import ApprovalStore
+        from synthorg.api.state import AppState
         from tests.unit.api.conftest import (
             FakeMessageBus,
             FakePersistenceBackend,
@@ -145,7 +145,7 @@ class TestAppLifecycle:
         """Task engine stop failure during shutdown is logged, not raised."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from ai_company.api.app import _safe_shutdown
+        from synthorg.api.app import _safe_shutdown
 
         mock_te = MagicMock()
         mock_te.stop = AsyncMock(side_effect=RuntimeError("stop boom"))
@@ -160,9 +160,9 @@ class TestAppLifecycle:
         """Meeting scheduler start/stop are called during lifecycle."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from ai_company.api.app import _safe_shutdown, _safe_startup
-        from ai_company.api.approval_store import ApprovalStore
-        from ai_company.api.state import AppState
+        from synthorg.api.app import _safe_shutdown, _safe_startup
+        from synthorg.api.approval_store import ApprovalStore
+        from synthorg.api.state import AppState
         from tests.unit.api.conftest import (
             FakeMessageBus,
             FakePersistenceBackend,
@@ -200,7 +200,7 @@ class TestTryStop:
 
     async def test_try_stop_success(self) -> None:
         """Successful coroutine runs without error."""
-        from ai_company.api.app import _try_stop
+        from synthorg.api.app import _try_stop
 
         called = False
 
@@ -213,7 +213,7 @@ class TestTryStop:
 
     async def test_try_stop_exception_swallowed(self) -> None:
         """Non-fatal exceptions are swallowed (logged)."""
-        from ai_company.api.app import _try_stop
+        from synthorg.api.app import _try_stop
 
         async def fail() -> None:
             msg = "boom"
@@ -224,7 +224,7 @@ class TestTryStop:
 
     async def test_try_stop_memory_error_reraises(self) -> None:
         """MemoryError is re-raised immediately."""
-        from ai_company.api.app import _try_stop
+        from synthorg.api.app import _try_stop
 
         async def oom() -> None:
             raise MemoryError
@@ -234,7 +234,7 @@ class TestTryStop:
 
     async def test_try_stop_recursion_error_reraises(self) -> None:
         """RecursionError is re-raised immediately."""
-        from ai_company.api.app import _try_stop
+        from synthorg.api.app import _try_stop
 
         async def recurse() -> None:
             raise RecursionError

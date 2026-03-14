@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
-from ai_company.core.enums import TaskStatus
+from synthorg.core.enums import TaskStatus
 from tests.unit.api.conftest import make_auth_headers
 
 _HEADERS = make_auth_headers("ceo")

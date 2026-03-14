@@ -2,20 +2,20 @@
 
 import pytest
 
-from ai_company.config.schema import (
+from synthorg.config.schema import (
     ProviderConfig,
     ProviderModelConfig,
     RoutingConfig,
     RoutingRuleConfig,
 )
-from ai_company.core.enums import SeniorityLevel
-from ai_company.providers.routing.errors import (
+from synthorg.core.enums import SeniorityLevel
+from synthorg.providers.routing.errors import (
     ModelResolutionError,
     NoAvailableModelError,
 )
-from ai_company.providers.routing.models import RoutingRequest
-from ai_company.providers.routing.resolver import ModelResolver
-from ai_company.providers.routing.strategies import (
+from synthorg.providers.routing.models import RoutingRequest
+from synthorg.providers.routing.resolver import ModelResolver
+from synthorg.providers.routing.strategies import (
     STRATEGY_MAP,
     CostAwareStrategy,
     FastestStrategy,

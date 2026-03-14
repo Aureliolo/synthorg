@@ -2,10 +2,10 @@
 
 import pytest
 
-from ai_company.engine.errors import TaskEngineNotRunningError
-from ai_company.engine.task_engine import TaskEngine
-from ai_company.engine.task_engine_config import TaskEngineConfig
-from ai_company.engine.task_engine_models import CreateTaskMutation
+from synthorg.engine.errors import TaskEngineNotRunningError
+from synthorg.engine.task_engine import TaskEngine
+from synthorg.engine.task_engine_config import TaskEngineConfig
+from synthorg.engine.task_engine_models import CreateTaskMutation
 from tests.unit.engine.task_engine_helpers import FakePersistence, make_create_data
 
 # ── Lifecycle tests ───────────────────────────────────────────

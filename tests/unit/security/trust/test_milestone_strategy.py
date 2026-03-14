@@ -4,16 +4,16 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from ai_company.core.enums import ToolAccessLevel
-from ai_company.core.types import NotBlankStr
-from ai_company.security.trust.config import (
+from synthorg.core.enums import ToolAccessLevel
+from synthorg.core.types import NotBlankStr
+from synthorg.security.trust.config import (
     MilestoneCriteria,
     ReVerificationConfig,
     TrustConfig,
 )
-from ai_company.security.trust.enums import TrustStrategyType
-from ai_company.security.trust.milestone_strategy import MilestoneTrustStrategy
-from ai_company.security.trust.models import TrustState
+from synthorg.security.trust.enums import TrustStrategyType
+from synthorg.security.trust.milestone_strategy import MilestoneTrustStrategy
+from synthorg.security.trust.models import TrustState
 from tests.unit.security.trust.conftest import make_performance_snapshot
 
 pytestmark = pytest.mark.timeout(30)

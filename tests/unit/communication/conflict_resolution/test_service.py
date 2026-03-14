@@ -4,30 +4,30 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ai_company.communication.conflict_resolution.authority_strategy import (
+from synthorg.communication.conflict_resolution.authority_strategy import (
     AuthorityResolver,
 )
-from ai_company.communication.conflict_resolution.config import (
+from synthorg.communication.conflict_resolution.config import (
     ConflictResolutionConfig,
 )
-from ai_company.communication.conflict_resolution.human_strategy import (
+from synthorg.communication.conflict_resolution.human_strategy import (
     HumanEscalationResolver,
 )
-from ai_company.communication.conflict_resolution.models import (
+from synthorg.communication.conflict_resolution.models import (
     ConflictResolutionOutcome,
 )
-from ai_company.communication.conflict_resolution.service import (
+from synthorg.communication.conflict_resolution.service import (
     ConflictResolutionService,
 )
-from ai_company.communication.delegation.hierarchy import (
+from synthorg.communication.delegation.hierarchy import (
     HierarchyResolver,
 )
-from ai_company.communication.enums import (
+from synthorg.communication.enums import (
     ConflictResolutionStrategy,
     ConflictType,
 )
-from ai_company.communication.errors import ConflictResolutionError
-from ai_company.core.enums import SeniorityLevel
+from synthorg.communication.errors import ConflictResolutionError
+from synthorg.core.enums import SeniorityLevel
 
 from .conftest import make_position
 

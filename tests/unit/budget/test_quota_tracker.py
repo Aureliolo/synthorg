@@ -5,12 +5,12 @@ from unittest.mock import patch
 
 import pytest
 
-from ai_company.budget.quota import (
+from synthorg.budget.quota import (
     QuotaLimit,
     QuotaWindow,
     SubscriptionConfig,
 )
-from ai_company.budget.quota_tracker import QuotaTracker
+from synthorg.budget.quota_tracker import QuotaTracker
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -146,7 +146,7 @@ class TestRecordUsage:
         # Force window rotation by mocking time to next hour
         next_hour = datetime(2099, 1, 1, 1, 0, 0, tzinfo=UTC)
         with patch(
-            "ai_company.budget.quota_tracker.datetime",
+            "synthorg.budget.quota_tracker.datetime",
         ) as mock_dt:
             mock_dt.now.return_value = next_hour
             mock_dt.side_effect = datetime
@@ -266,7 +266,7 @@ class TestCheckQuota:
         # Check in next hour (window rotated — check sees fresh window)
         next_hour = datetime(2099, 1, 1, 1, 0, 0, tzinfo=UTC)
         with patch(
-            "ai_company.budget.quota_tracker.datetime",
+            "synthorg.budget.quota_tracker.datetime",
         ) as mock_dt:
             mock_dt.now.return_value = next_hour
             mock_dt.side_effect = datetime
@@ -333,7 +333,7 @@ class TestGetSnapshot:
         # Query in next hour
         next_hour = datetime(2099, 1, 1, 1, 0, 0, tzinfo=UTC)
         with patch(
-            "ai_company.budget.quota_tracker.datetime",
+            "synthorg.budget.quota_tracker.datetime",
         ) as mock_dt:
             mock_dt.now.return_value = next_hour
             mock_dt.side_effect = datetime

@@ -2,15 +2,15 @@
 
 import pytest
 
-from ai_company.core.enums import Complexity, SeniorityLevel
-from ai_company.engine.assignment.models import (
+from synthorg.core.enums import Complexity, SeniorityLevel
+from synthorg.engine.assignment.models import (
     AgentWorkload,
     AssignmentRequest,
 )
-from ai_company.engine.assignment.strategies import (
+from synthorg.engine.assignment.strategies import (
     AuctionAssignmentStrategy,
 )
-from ai_company.engine.routing.scorer import AgentTaskScorer
+from synthorg.engine.routing.scorer import AgentTaskScorer
 
 from .conftest import make_assignment_agent, make_assignment_task
 

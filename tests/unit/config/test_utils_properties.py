@@ -7,7 +7,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from ai_company.config.utils import deep_merge, to_float
+from synthorg.config.utils import deep_merge, to_float
 
 pytestmark = pytest.mark.unit
 

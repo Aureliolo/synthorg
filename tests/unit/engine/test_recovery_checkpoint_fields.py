@@ -4,16 +4,16 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ai_company.core.enums import TaskStatus
-from ai_company.engine.context import AgentContext
-from ai_company.engine.recovery import (
+from synthorg.core.enums import TaskStatus
+from synthorg.engine.context import AgentContext
+from synthorg.engine.recovery import (
     FailAndReassignStrategy,
     RecoveryResult,
 )
 
 if TYPE_CHECKING:
-    from ai_company.core.agent import AgentIdentity
-    from ai_company.core.task import Task
+    from synthorg.core.agent import AgentIdentity
+    from synthorg.core.task import Task
 
 pytestmark = pytest.mark.timeout(30)
 

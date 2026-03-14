@@ -6,29 +6,29 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ai_company.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
-from ai_company.core.enums import (
+from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
+from synthorg.core.enums import (
     Complexity,
     Priority,
     SeniorityLevel,
     TaskStatus,
     TaskType,
 )
-from ai_company.core.task import Task
-from ai_company.engine.context import AgentContext
-from ai_company.engine.errors import ParallelExecutionError, ResourceConflictError
-from ai_company.engine.loop_protocol import ExecutionResult, TerminationReason
-from ai_company.engine.parallel import ParallelExecutor
-from ai_company.engine.parallel_models import (
+from synthorg.core.task import Task
+from synthorg.engine.context import AgentContext
+from synthorg.engine.errors import ParallelExecutionError, ResourceConflictError
+from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
+from synthorg.engine.parallel import ParallelExecutor
+from synthorg.engine.parallel_models import (
     AgentAssignment,
     ParallelExecutionGroup,
     ParallelProgress,
 )
-from ai_company.engine.prompt import SystemPrompt
-from ai_company.engine.resource_lock import InMemoryResourceLock
-from ai_company.engine.run_result import AgentRunResult
-from ai_company.engine.shutdown import ShutdownManager
-from ai_company.observability.events.parallel import PARALLEL_AGENT_CANCELLED
+from synthorg.engine.prompt import SystemPrompt
+from synthorg.engine.resource_lock import InMemoryResourceLock
+from synthorg.engine.run_result import AgentRunResult
+from synthorg.engine.shutdown import ShutdownManager
+from synthorg.observability.events.parallel import PARALLEL_AGENT_CANCELLED
 
 
 def _make_identity(

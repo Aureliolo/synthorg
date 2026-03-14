@@ -3,19 +3,19 @@
 import pytest
 from polyfactory.factories.pydantic_factory import ModelFactory
 
-from ai_company.config.schema import (
+from synthorg.config.schema import (
     ProviderConfig,
     ProviderModelConfig,
     RoutingConfig,
     RoutingRuleConfig,
 )
-from ai_company.core.enums import SeniorityLevel
-from ai_company.providers.routing.models import (
+from synthorg.core.enums import SeniorityLevel
+from synthorg.providers.routing.models import (
     ResolvedModel,
     RoutingDecision,
     RoutingRequest,
 )
-from ai_company.providers.routing.resolver import (
+from synthorg.providers.routing.resolver import (
     ModelResolver,
 )
 

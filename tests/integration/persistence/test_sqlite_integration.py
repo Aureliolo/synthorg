@@ -5,8 +5,8 @@ from pathlib import Path
 import aiosqlite
 import pytest
 
-from ai_company.persistence.config import SQLiteConfig
-from ai_company.persistence.sqlite.backend import SQLitePersistenceBackend
+from synthorg.persistence.config import SQLiteConfig
+from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from tests.unit.persistence.conftest import make_message, make_task
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
@@ -60,7 +60,7 @@ class TestSQLiteOnDisk:
         """Tasks, cost records, and messages all persist together."""
         from datetime import UTC, datetime
 
-        from ai_company.budget.cost_record import CostRecord
+        from synthorg.budget.cost_record import CostRecord
 
         backend = on_disk_backend
 

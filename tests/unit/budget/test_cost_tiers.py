@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.budget.cost_tiers import (
+from synthorg.budget.cost_tiers import (
     BUILTIN_TIERS,
     CostTierDefinition,
     CostTiersConfig,

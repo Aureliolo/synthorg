@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.core.enums import ActionType, ApprovalRiskLevel
-from ai_company.security.rules.risk_classifier import RiskClassifier
+from synthorg.core.enums import ActionType, ApprovalRiskLevel
+from synthorg.security.rules.risk_classifier import RiskClassifier
 
 pytestmark = pytest.mark.timeout(30)
 

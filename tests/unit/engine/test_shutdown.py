@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
-from ai_company.config.schema import GracefulShutdownConfig
-from ai_company.engine.shutdown import (
+from synthorg.config.schema import GracefulShutdownConfig
+from synthorg.engine.shutdown import (
     CooperativeTimeoutStrategy,
     ShutdownManager,
     ShutdownResult,

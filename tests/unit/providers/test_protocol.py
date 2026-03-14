@@ -5,12 +5,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ai_company.constants import BUDGET_ROUNDING_PRECISION
-from ai_company.providers.base import BaseCompletionProvider
-from ai_company.providers.capabilities import ModelCapabilities
-from ai_company.providers.enums import FinishReason, MessageRole, StreamEventType
-from ai_company.providers.errors import InvalidRequestError, RateLimitError
-from ai_company.providers.models import (
+from synthorg.constants import BUDGET_ROUNDING_PRECISION
+from synthorg.providers.base import BaseCompletionProvider
+from synthorg.providers.capabilities import ModelCapabilities
+from synthorg.providers.enums import FinishReason, MessageRole, StreamEventType
+from synthorg.providers.errors import InvalidRequestError, RateLimitError
+from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
     CompletionResponse,
@@ -18,8 +18,8 @@ from ai_company.providers.models import (
     TokenUsage,
     ToolDefinition,
 )
-from ai_company.providers.protocol import CompletionProvider
-from ai_company.providers.resilience.rate_limiter import RateLimiter
+from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.resilience.rate_limiter import RateLimiter
 
 from .conftest import FakeProvider, ModelCapabilitiesFactory, TokenUsageFactory
 
@@ -450,7 +450,7 @@ class TestBaseCompletionProviderResilience:
 
     async def test_rate_limited_call_releases_on_non_rate_limit_error(self) -> None:
         """Semaphore slot is released even when a non-RateLimitError is raised."""
-        from ai_company.providers.errors import ProviderTimeoutError
+        from synthorg.providers.errors import ProviderTimeoutError
 
         mock_limiter = MagicMock(spec=RateLimiter)
         mock_limiter.acquire = AsyncMock()

@@ -5,20 +5,20 @@ from typing import Any
 
 import pytest
 
-from ai_company.core.agent import AgentIdentity, ModelConfig
-from ai_company.core.enums import (
+from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.enums import (
     AgentStatus,
     SeniorityLevel,
     TaskStatus,
     TaskType,
 )
-from ai_company.core.task import Task
-from ai_company.core.types import NotBlankStr
-from ai_company.hr.enums import FiringReason, HiringRequestStatus
-from ai_company.hr.hiring_service import HiringService
-from ai_company.hr.models import CandidateCard, FiringRequest, HiringRequest
-from ai_company.hr.onboarding_service import OnboardingService
-from ai_company.hr.registry import AgentRegistryService
+from synthorg.core.task import Task
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.enums import FiringReason, HiringRequestStatus
+from synthorg.hr.hiring_service import HiringService
+from synthorg.hr.models import CandidateCard, FiringRequest, HiringRequest
+from synthorg.hr.onboarding_service import OnboardingService
+from synthorg.hr.registry import AgentRegistryService
 
 # ── Model Config Helper ────────────────────────────────────────
 

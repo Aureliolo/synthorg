@@ -5,13 +5,13 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import (
+from synthorg.core.enums import (
     CostTier,
     DepartmentName,
     SeniorityLevel,
 )
-from ai_company.core.role import Role, SeniorityInfo
-from ai_company.core.role_catalog import (
+from synthorg.core.role import Role, SeniorityInfo
+from synthorg.core.role_catalog import (
     BUILTIN_ROLES,
     SENIORITY_INFO,
     get_builtin_role,
@@ -226,7 +226,7 @@ class TestGetSeniorityInfo:
         """Verify LookupError when the internal map is empty."""
         with (
             patch.dict(
-                "ai_company.core.role_catalog._SENIORITY_INFO_BY_LEVEL",
+                "synthorg.core.role_catalog._SENIORITY_INFO_BY_LEVEL",
                 {},
                 clear=True,
             ),

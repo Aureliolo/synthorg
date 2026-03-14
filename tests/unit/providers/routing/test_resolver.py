@@ -2,9 +2,9 @@
 
 import pytest
 
-from ai_company.config.schema import ProviderConfig, ProviderModelConfig
-from ai_company.providers.routing.errors import ModelResolutionError
-from ai_company.providers.routing.resolver import ModelResolver
+from synthorg.config.schema import ProviderConfig, ProviderModelConfig
+from synthorg.providers.routing.errors import ModelResolutionError
+from synthorg.providers.routing.resolver import ModelResolver
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

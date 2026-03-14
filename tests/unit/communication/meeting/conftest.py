@@ -2,18 +2,18 @@
 
 import pytest
 
-from ai_company.communication.meeting.config import (
+from synthorg.communication.meeting.config import (
     MeetingProtocolConfig,
     PositionPapersConfig,
     RoundRobinConfig,
     StructuredPhasesConfig,
 )
-from ai_company.communication.meeting.models import (
+from synthorg.communication.meeting.models import (
     AgentResponse,
     MeetingAgenda,
     MeetingAgendaItem,
 )
-from ai_company.communication.meeting.protocol import AgentCaller
+from synthorg.communication.meeting.protocol import AgentCaller
 
 
 def make_agent_response(

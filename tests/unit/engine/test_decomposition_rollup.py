@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.core.enums import TaskStatus
-from ai_company.engine.decomposition.rollup import StatusRollup
+from synthorg.core.enums import TaskStatus
+from synthorg.engine.decomposition.rollup import StatusRollup
 
 
 class TestStatusRollup:

@@ -4,15 +4,15 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ai_company.core.enums import TaskStatus
-from ai_company.core.task import Task
-from ai_company.engine.errors import (
+from synthorg.core.enums import TaskStatus
+from synthorg.core.task import Task
+from synthorg.engine.errors import (
     TaskMutationError,
     TaskNotFoundError,
     TaskVersionConflictError,
 )
-from ai_company.engine.task_engine import TaskEngine
-from ai_company.engine.task_engine_models import (
+from synthorg.engine.task_engine import TaskEngine
+from synthorg.engine.task_engine_models import (
     CancelTaskMutation,
     CreateTaskMutation,
     TransitionTaskMutation,
@@ -25,7 +25,7 @@ from tests.unit.engine.task_engine_helpers import (
 )
 
 if TYPE_CHECKING:
-    from ai_company.engine.task_engine_config import TaskEngineConfig
+    from synthorg.engine.task_engine_config import TaskEngineConfig
 
 # ── Create mutation ───────────────────────────────────────────
 
@@ -338,7 +338,7 @@ class TestReadThroughErrorWrapping:
         self,
         persistence: FakePersistence,
     ) -> None:
-        from ai_company.engine.errors import TaskInternalError
+        from synthorg.engine.errors import TaskInternalError
 
         async def exploding_get(task_id: str) -> None:
             msg = "disk I/O"
@@ -357,7 +357,7 @@ class TestReadThroughErrorWrapping:
         self,
         persistence: FakePersistence,
     ) -> None:
-        from ai_company.engine.errors import TaskInternalError
+        from synthorg.engine.errors import TaskInternalError
 
         async def exploding_list(**kwargs: object) -> None:
             msg = "connection refused"
@@ -675,7 +675,7 @@ class TestMutationResultConsistency:
         """Successful result must not carry an error."""
         from pydantic import ValidationError
 
-        from ai_company.engine.task_engine_models import TaskMutationResult
+        from synthorg.engine.task_engine_models import TaskMutationResult
 
         with pytest.raises(ValidationError, match="error"):
             TaskMutationResult(
@@ -688,7 +688,7 @@ class TestMutationResultConsistency:
         """Failed result must carry an error description."""
         from pydantic import ValidationError
 
-        from ai_company.engine.task_engine_models import TaskMutationResult
+        from synthorg.engine.task_engine_models import TaskMutationResult
 
         with pytest.raises(ValidationError, match="error"):
             TaskMutationResult(

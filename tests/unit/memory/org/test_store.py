@@ -6,14 +6,14 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from ai_company.core.enums import OrgFactCategory, SeniorityLevel
-from ai_company.memory.org.errors import (
+from synthorg.core.enums import OrgFactCategory, SeniorityLevel
+from synthorg.memory.org.errors import (
     OrgMemoryConnectionError,
     OrgMemoryQueryError,
     OrgMemoryWriteError,
 )
-from ai_company.memory.org.models import OrgFact, OrgFactAuthor
-from ai_company.memory.org.store import SQLiteOrgFactStore, _row_to_org_fact
+from synthorg.memory.org.models import OrgFact, OrgFactAuthor
+from synthorg.memory.org.store import SQLiteOrgFactStore, _row_to_org_fact
 
 pytestmark = pytest.mark.timeout(30)
 

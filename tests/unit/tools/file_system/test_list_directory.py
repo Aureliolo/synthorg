@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ai_company.tools.file_system.list_directory import (
+from synthorg.tools.file_system.list_directory import (
     MAX_ENTRIES,
     ListDirectoryTool,
 )
@@ -196,7 +196,7 @@ class TestListDirectoryEdgeCases:
     async def test_oserror_during_iteration(self, list_tool: ListDirectoryTool) -> None:
         """OSError from asyncio.to_thread is caught and reported."""
         with patch(
-            "ai_company.tools.file_system.list_directory.asyncio.to_thread",
+            "synthorg.tools.file_system.list_directory.asyncio.to_thread",
             side_effect=OSError("disk error"),
         ):
             result = await list_tool.execute(arguments={"path": "."})
@@ -228,7 +228,7 @@ class TestListDirectoryEdgeCases:
     ) -> None:
         """Non-symlink entries resolving outside workspace are excluded."""
 
-        from ai_company.tools.file_system.list_directory import _classify_entry
+        from synthorg.tools.file_system.list_directory import _classify_entry
 
         # Create a mock entry that resolves outside workspace
         # but is not a symlink

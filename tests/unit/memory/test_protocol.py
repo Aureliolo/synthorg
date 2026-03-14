@@ -5,15 +5,15 @@ from uuid import uuid4
 
 import pytest
 
-from ai_company.core.enums import MemoryCategory
-from ai_company.core.types import NotBlankStr
-from ai_company.memory.models import (
+from synthorg.core.enums import MemoryCategory
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.models import (
     MemoryEntry,
     MemoryMetadata,
     MemoryQuery,
     MemoryStoreRequest,
 )
-from ai_company.memory.protocol import MemoryBackend
+from synthorg.memory.protocol import MemoryBackend
 
 pytestmark = pytest.mark.timeout(30)
 

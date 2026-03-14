@@ -6,19 +6,19 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from ai_company.engine.errors import (
+from synthorg.engine.errors import (
     WorkspaceCleanupError,
     WorkspaceLimitError,
     WorkspaceMergeError,
     WorkspaceSetupError,
 )
-from ai_company.engine.workspace.config import PlannerWorktreesConfig
-from ai_company.engine.workspace.git_worktree import PlannerWorktreeStrategy
-from ai_company.engine.workspace.models import (
+from synthorg.engine.workspace.config import PlannerWorktreesConfig
+from synthorg.engine.workspace.git_worktree import PlannerWorktreeStrategy
+from synthorg.engine.workspace.models import (
     Workspace,
     WorkspaceRequest,
 )
-from ai_company.engine.workspace.protocol import (
+from synthorg.engine.workspace.protocol import (
     WorkspaceIsolationStrategy,
 )
 
@@ -707,7 +707,7 @@ class TestRunGitCancelledError:
                     return_value=FakeProc(),
                 ),
                 patch(
-                    "ai_company.engine.workspace.git_worktree.asyncio.wait_for",
+                    "synthorg.engine.workspace.git_worktree.asyncio.wait_for",
                     side_effect=mock_wait_for,
                 ),
                 pytest.raises(asyncio.CancelledError),

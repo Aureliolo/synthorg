@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.config.utils import deep_merge
+from synthorg.config.utils import deep_merge
 
 
 @pytest.mark.unit

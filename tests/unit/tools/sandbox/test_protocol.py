@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from ai_company.core.types import NotBlankStr
-from ai_company.tools.sandbox.docker_sandbox import DockerSandbox
-from ai_company.tools.sandbox.protocol import SandboxBackend
-from ai_company.tools.sandbox.result import SandboxResult
-from ai_company.tools.sandbox.subprocess_sandbox import SubprocessSandbox
+from synthorg.core.types import NotBlankStr
+from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
+from synthorg.tools.sandbox.protocol import SandboxBackend
+from synthorg.tools.sandbox.result import SandboxResult
+from synthorg.tools.sandbox.subprocess_sandbox import SubprocessSandbox
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

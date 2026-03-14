@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.api.dto import (
+from synthorg.api.dto import (
     ApiResponse,
     ApproveRequest,
     CoordinateTaskRequest,
@@ -11,7 +11,7 @@ from ai_company.api.dto import (
     CoordinationResultResponse,
     CreateApprovalRequest,
 )
-from ai_company.core.enums import ApprovalRiskLevel
+from synthorg.core.enums import ApprovalRiskLevel
 
 
 @pytest.mark.unit

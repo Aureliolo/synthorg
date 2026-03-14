@@ -11,14 +11,14 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-from ai_company.config.schema import ProviderConfig, ProviderModelConfig
-from ai_company.providers.drivers.litellm_driver import LiteLLMDriver
-from ai_company.providers.enums import (
+from synthorg.config.schema import ProviderConfig, ProviderModelConfig
+from synthorg.providers.drivers.litellm_driver import LiteLLMDriver
+from synthorg.providers.enums import (
     FinishReason,
     MessageRole,
     StreamEventType,
 )
-from ai_company.providers.errors import (
+from synthorg.providers.errors import (
     AuthenticationError,
     ContentFilterError,
     InvalidRequestError,
@@ -29,7 +29,7 @@ from ai_company.providers.errors import (
     ProviderTimeoutError,
     RateLimitError,
 )
-from ai_company.providers.models import (
+from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
     StreamChunk,
@@ -47,10 +47,8 @@ from .conftest import (
 
 # ── Helpers ──────────────────────────────────────────────────────
 
-_PATCH_ACOMPLETION = "ai_company.providers.drivers.litellm_driver._litellm.acompletion"
-_PATCH_MODEL_INFO = (
-    "ai_company.providers.drivers.litellm_driver._litellm.get_model_info"
-)
+_PATCH_ACOMPLETION = "synthorg.providers.drivers.litellm_driver._litellm.acompletion"
+_PATCH_MODEL_INFO = "synthorg.providers.drivers.litellm_driver._litellm.get_model_info"
 
 
 def _make_driver(
@@ -452,7 +450,7 @@ class TestDoStream:
 
     async def test_tool_call_arguments_length_limit(self) -> None:
         """Tool call arguments exceeding 1 MiB are truncated."""
-        from ai_company.providers.drivers.litellm_driver import _ToolCallAccumulator
+        from synthorg.providers.drivers.litellm_driver import _ToolCallAccumulator
 
         acc = _ToolCallAccumulator()
         acc.id = "call_001"

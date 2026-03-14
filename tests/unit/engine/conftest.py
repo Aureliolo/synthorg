@@ -6,14 +6,14 @@ from uuid import uuid4
 
 import pytest
 
-from ai_company.core.agent import (
+from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
     PersonalityConfig,
     SkillSet,
 )
-from ai_company.core.company import Company, CompanyConfig, Department
-from ai_company.core.enums import (
+from synthorg.core.company import Company, CompanyConfig, Department
+from synthorg.core.enums import (
     AgentStatus,
     Complexity,
     CoordinationTopology,
@@ -26,30 +26,30 @@ from ai_company.core.enums import (
     TaskStructure,
     TaskType,
 )
-from ai_company.core.role import Authority, Role
-from ai_company.core.task import AcceptanceCriterion, Task
-from ai_company.engine.context import AgentContext
-from ai_company.engine.decomposition.models import (
+from synthorg.core.role import Authority, Role
+from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.engine.context import AgentContext
+from synthorg.engine.decomposition.models import (
     DecompositionPlan,
     DecompositionResult,
     SubtaskDefinition,
 )
-from ai_company.engine.parallel_models import (
+from synthorg.engine.parallel_models import (
     AgentOutcome,
     ParallelExecutionResult,
 )
-from ai_company.engine.routing.models import (
+from synthorg.engine.routing.models import (
     RoutingCandidate,
     RoutingDecision,
     RoutingResult,
 )
-from ai_company.engine.run_result import AgentRunResult
-from ai_company.engine.task_engine import TaskEngine
-from ai_company.engine.task_engine_config import TaskEngineConfig
-from ai_company.engine.task_execution import TaskExecution
-from ai_company.providers.capabilities import ModelCapabilities
-from ai_company.providers.enums import FinishReason
-from ai_company.providers.models import (
+from synthorg.engine.run_result import AgentRunResult
+from synthorg.engine.task_engine import TaskEngine
+from synthorg.engine.task_engine_config import TaskEngineConfig
+from synthorg.engine.task_execution import TaskExecution
+from synthorg.providers.capabilities import ModelCapabilities
+from synthorg.providers.enums import FinishReason
+from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
     CompletionResponse,
@@ -62,8 +62,8 @@ from tests.unit.engine.task_engine_helpers import FakeMessageBus, FakePersistenc
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from ai_company.core.enums import ConflictEscalation
-    from ai_company.engine.workspace.models import (
+    from synthorg.core.enums import ConflictEscalation
+    from synthorg.engine.workspace.models import (
         MergeConflict,
         MergeResult,
         Workspace,
@@ -334,7 +334,7 @@ def make_workspace(  # noqa: PLR0913
     created_at: datetime | None = None,
 ) -> Workspace:
     """Build a ``Workspace`` with sensible defaults."""
-    from ai_company.engine.workspace.models import Workspace
+    from synthorg.engine.workspace.models import Workspace
 
     return Workspace(
         workspace_id=workspace_id,
@@ -358,7 +358,7 @@ def make_merge_result(  # noqa: PLR0913
     escalation: ConflictEscalation | None = None,
 ) -> MergeResult:
     """Build a ``MergeResult`` with sensible defaults."""
-    from ai_company.engine.workspace.models import MergeResult
+    from synthorg.engine.workspace.models import MergeResult
 
     if merged_commit_sha is None and success:
         merged_commit_sha = "abc123"
@@ -563,8 +563,8 @@ def make_routing(
 
 def build_run_result(task_id: str, agent_id: str) -> AgentRunResult:
     """Build a minimal AgentRunResult for testing."""
-    from ai_company.engine.loop_protocol import ExecutionResult, TerminationReason
-    from ai_company.engine.prompt import SystemPrompt
+    from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
+    from synthorg.engine.prompt import SystemPrompt
 
     identity = make_assignment_agent("test-agent")
     task = make_assignment_task(

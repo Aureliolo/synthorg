@@ -5,23 +5,23 @@ from uuid import uuid4
 
 import pytest
 
-from ai_company.core.agent import AgentIdentity, ModelConfig, SkillSet
-from ai_company.core.enums import (
+from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
+from synthorg.core.enums import (
     AgentStatus,
     Complexity,
     Priority,
     SeniorityLevel,
     TaskType,
 )
-from ai_company.core.task import Task
-from ai_company.engine.decomposition.models import (
+from synthorg.core.task import Task
+from synthorg.engine.decomposition.models import (
     DecompositionPlan,
     DecompositionResult,
     SubtaskDefinition,
 )
-from ai_company.engine.routing.scorer import AgentTaskScorer
-from ai_company.engine.routing.service import TaskRoutingService
-from ai_company.engine.routing.topology_selector import TopologySelector
+from synthorg.engine.routing.scorer import AgentTaskScorer
+from synthorg.engine.routing.service import TaskRoutingService
+from synthorg.engine.routing.topology_selector import TopologySelector
 
 
 def _make_agent(  # noqa: PLR0913

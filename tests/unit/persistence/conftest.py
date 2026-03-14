@@ -3,10 +3,10 @@
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from ai_company.communication.enums import MessagePriority, MessageType
-from ai_company.communication.message import Message, MessageMetadata
-from ai_company.core.enums import Priority, TaskStatus, TaskType
-from ai_company.core.task import Task
+from synthorg.communication.enums import MessagePriority, MessageType
+from synthorg.communication.message import Message, MessageMetadata
+from synthorg.core.enums import Priority, TaskStatus, TaskType
+from synthorg.core.task import Task
 
 if TYPE_CHECKING:
     from uuid import UUID

@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 import pytest
 from polyfactory.factories.pydantic_factory import ModelFactory
 
-from ai_company.communication.channel import Channel
-from ai_company.communication.config import (
+from synthorg.communication.channel import Channel
+from synthorg.communication.config import (
     CircuitBreakerConfig,
     CommunicationConfig,
     HierarchyConfig,
@@ -17,20 +17,20 @@ from ai_company.communication.config import (
     MessageRetentionConfig,
     RateLimitConfig,
 )
-from ai_company.communication.conflict_resolution.config import (
+from synthorg.communication.conflict_resolution.config import (
     ConflictResolutionConfig,
     DebateConfig,
     HybridConfig,
 )
-from ai_company.communication.enums import (
+from synthorg.communication.enums import (
     AttachmentType,
     ChannelType,
     MessagePriority,
     MessageType,
 )
-from ai_company.communication.meeting.frequency import MeetingFrequency
-from ai_company.communication.message import Attachment, Message, MessageMetadata
-from ai_company.communication.subscription import DeliveryEnvelope, Subscription
+from synthorg.communication.meeting.frequency import MeetingFrequency
+from synthorg.communication.message import Attachment, Message, MessageMetadata
+from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 
 # ── Factories ──────────────────────────────────────────────────────
 

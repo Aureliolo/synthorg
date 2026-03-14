@@ -107,7 +107,7 @@ jobs:
         run: |
           uv run pytest tests/ \
             -n auto \
-            --cov=ai_company \
+            --cov=synthorg \
             --cov-report=term-missing \
             --cov-report=xml:coverage.xml \
             --cov-fail-under=80 \

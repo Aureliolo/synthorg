@@ -4,9 +4,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from ai_company.core.enums import ApprovalRiskLevel, ToolCategory
-from ai_company.security.audit import AuditLog
-from ai_company.security.models import AuditEntry, AuditVerdictStr
+from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.security.audit import AuditLog
+from synthorg.security.models import AuditEntry, AuditVerdictStr
 
 pytestmark = pytest.mark.timeout(30)
 

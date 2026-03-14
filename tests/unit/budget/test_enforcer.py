@@ -11,22 +11,22 @@ if TYPE_CHECKING:
 
 import pytest
 
-from ai_company.budget.config import (
+from synthorg.budget.config import (
     AutoDowngradeConfig,
     BudgetAlertConfig,
     BudgetConfig,
 )
-from ai_company.budget.enforcer import BudgetEnforcer
-from ai_company.budget.errors import BudgetExhaustedError, DailyLimitExceededError
-from ai_company.budget.tracker import CostTracker
-from ai_company.core.agent import AgentIdentity, ModelConfig
-from ai_company.core.enums import TaskStatus, TaskType
-from ai_company.core.task import Task
-from ai_company.engine.context import AgentContext
-from ai_company.observability.events.budget import BUDGET_ALERT_THRESHOLD_CROSSED
-from ai_company.providers.models import TokenUsage
-from ai_company.providers.routing.models import ResolvedModel
-from ai_company.providers.routing.resolver import ModelResolver
+from synthorg.budget.enforcer import BudgetEnforcer
+from synthorg.budget.errors import BudgetExhaustedError, DailyLimitExceededError
+from synthorg.budget.tracker import CostTracker
+from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.enums import TaskStatus, TaskType
+from synthorg.core.task import Task
+from synthorg.engine.context import AgentContext
+from synthorg.observability.events.budget import BUDGET_ALERT_THRESHOLD_CROSSED
+from synthorg.providers.models import TokenUsage
+from synthorg.providers.routing.models import ResolvedModel
+from synthorg.providers.routing.resolver import ModelResolver
 
 from .conftest import make_cost_record
 
@@ -142,11 +142,11 @@ def _patch_periods() -> Iterator[None]:
     """Patch billing and daily period starts to fixed test timestamps."""
     with (
         patch(
-            "ai_company.budget.enforcer.billing_period_start",
+            "synthorg.budget.enforcer.billing_period_start",
             return_value=_BILLING_START,
         ),
         patch(
-            "ai_company.budget.enforcer.daily_period_start",
+            "synthorg.budget.enforcer.daily_period_start",
             return_value=_DAY_START,
         ),
     ):
@@ -885,7 +885,7 @@ class TestMakeBudgetChecker:
 
         # First call at 75% → should emit WARNING
         with patch(
-            "ai_company.budget.enforcer.logger",
+            "synthorg.budget.enforcer.logger",
         ) as mock_logger:
             checker(ctx_warning)
             warn_calls = [
@@ -897,7 +897,7 @@ class TestMakeBudgetChecker:
 
         # Second call at same level → should NOT emit again
         with patch(
-            "ai_company.budget.enforcer.logger",
+            "synthorg.budget.enforcer.logger",
         ) as mock_logger2:
             checker(ctx_warning)
             warn_calls2 = [

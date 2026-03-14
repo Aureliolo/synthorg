@@ -6,18 +6,18 @@ import pytest
 import structlog.testing
 from pydantic import ValidationError
 
-from ai_company.core.enums import TaskStatus
-from ai_company.core.task import Task
-from ai_company.engine.errors import ExecutionStateError
-from ai_company.engine.task_execution import StatusTransition, TaskExecution
-from ai_company.observability.events.execution import (
+from synthorg.core.enums import TaskStatus
+from synthorg.core.task import Task
+from synthorg.engine.errors import ExecutionStateError
+from synthorg.engine.task_execution import StatusTransition, TaskExecution
+from synthorg.observability.events.execution import (
     EXECUTION_COST_ON_TERMINAL,
     EXECUTION_COST_RECORDED,
     EXECUTION_TASK_CREATED,
     EXECUTION_TASK_TRANSITION,
     EXECUTION_TASK_TRANSITION_FAILED,
 )
-from ai_company.providers.models import (
+from synthorg.providers.models import (
     ZERO_TOKEN_USAGE,
     TokenUsage,
     add_token_usage,

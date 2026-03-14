@@ -2,9 +2,9 @@
 
 import pytest
 
-from ai_company.core.enums import ApprovalRiskLevel, ToolCategory
-from ai_company.security.models import SecurityContext, SecurityVerdictType
-from ai_company.security.rules.credential_detector import CredentialDetector
+from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.security.models import SecurityContext, SecurityVerdictType
+from synthorg.security.rules.credential_detector import CredentialDetector
 
 pytestmark = pytest.mark.timeout(30)
 

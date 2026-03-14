@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.observability.enums import LogLevel, RotationStrategy, SinkType
+from synthorg.observability.enums import LogLevel, RotationStrategy, SinkType
 
 pytestmark = pytest.mark.timeout(30)
 

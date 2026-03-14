@@ -6,28 +6,28 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ai_company.core.enums import TaskStatus
-from ai_company.engine.context import AgentContext
-from ai_company.engine.errors import ExecutionStateError, TaskEngineError
-from ai_company.engine.loop_protocol import (
+from synthorg.core.enums import TaskStatus
+from synthorg.engine.context import AgentContext
+from synthorg.engine.errors import ExecutionStateError, TaskEngineError
+from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
     TurnRecord,
 )
-from ai_company.engine.task_engine_models import (
+from synthorg.engine.task_engine_models import (
     TaskErrorCode,
     TaskMutationResult,
 )
-from ai_company.engine.task_sync import (
+from synthorg.engine.task_sync import (
     apply_post_execution_transitions,
     sync_to_task_engine,
     transition_task_if_needed,
 )
-from ai_company.providers.enums import FinishReason
+from synthorg.providers.enums import FinishReason
 
 if TYPE_CHECKING:
-    from ai_company.core.agent import AgentIdentity
-    from ai_company.core.task import Task
+    from synthorg.core.agent import AgentIdentity
+    from synthorg.core.task import Task
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -240,7 +240,7 @@ class TestSyncToTaskEngine:
             side_effect=TaskEngineError("unavailable"),
         )
 
-        with patch("ai_company.engine.task_sync.logger") as mock_logger:
+        with patch("synthorg.engine.task_sync.logger") as mock_logger:
             await sync_to_task_engine(
                 mock_te,
                 target_status=TaskStatus.IN_PROGRESS,

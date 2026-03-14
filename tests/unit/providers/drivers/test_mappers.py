@@ -2,14 +2,14 @@
 
 import pytest
 
-from ai_company.providers.drivers.mappers import (
+from synthorg.providers.drivers.mappers import (
     extract_tool_calls,
     map_finish_reason,
     messages_to_dicts,
     tools_to_dicts,
 )
-from ai_company.providers.enums import FinishReason, MessageRole
-from ai_company.providers.models import (
+from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.models import (
     ChatMessage,
     ToolCall,
     ToolDefinition,

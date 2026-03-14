@@ -4,15 +4,15 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ai_company.budget.call_category import LLMCallCategory, OrchestrationAlertLevel
-from ai_company.budget.category_analytics import (
+from synthorg.budget.call_category import LLMCallCategory, OrchestrationAlertLevel
+from synthorg.budget.category_analytics import (
     CategoryBreakdown,
     build_category_breakdown,
     compute_orchestration_ratio,
 )
-from ai_company.budget.coordination_config import OrchestrationAlertThresholds
-from ai_company.budget.cost_record import CostRecord
-from ai_company.budget.tracker import CostTracker
+from synthorg.budget.coordination_config import OrchestrationAlertThresholds
+from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.tracker import CostTracker
 
 pytestmark = pytest.mark.timeout(30)
 

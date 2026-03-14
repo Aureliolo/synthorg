@@ -26,15 +26,15 @@ from litellm.exceptions import (
     Timeout as LiteLLMTimeout,
 )
 
-from ai_company.providers import errors
-from ai_company.providers.registry import ProviderRegistry
+from synthorg.providers import errors
+from synthorg.providers.registry import ProviderRegistry
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from ai_company.config.schema import ProviderConfig
-    from ai_company.providers.base import BaseCompletionProvider
-    from ai_company.providers.models import ChatMessage
+    from synthorg.config.schema import ProviderConfig
+    from synthorg.providers.base import BaseCompletionProvider
+    from synthorg.providers.models import ChatMessage
 
 from .conftest import (
     build_content_chunk,
@@ -43,7 +43,7 @@ from .conftest import (
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
 
-_PATCH_TARGET = "ai_company.providers.drivers.litellm_driver._litellm.acompletion"
+_PATCH_TARGET = "synthorg.providers.drivers.litellm_driver._litellm.acompletion"
 
 
 def _make_driver() -> tuple[BaseCompletionProvider, dict[str, ProviderConfig]]:

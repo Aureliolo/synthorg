@@ -6,22 +6,22 @@ from uuid import uuid4
 
 import pytest
 
-from ai_company.core.agent import (
+from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
     PersonalityConfig,
     ToolPermissions,
 )
-from ai_company.core.enums import (
+from synthorg.core.enums import (
     Priority,
     SeniorityLevel,
     TaskStatus,
     TaskType,
 )
-from ai_company.core.task import Task
-from ai_company.providers.capabilities import ModelCapabilities
-from ai_company.providers.enums import FinishReason
-from ai_company.providers.models import (
+from synthorg.core.task import Task
+from synthorg.providers.capabilities import ModelCapabilities
+from synthorg.providers.enums import FinishReason
+from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
     CompletionResponse,
@@ -30,7 +30,7 @@ from ai_company.providers.models import (
     ToolCall,
     ToolDefinition,
 )
-from ai_company.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator

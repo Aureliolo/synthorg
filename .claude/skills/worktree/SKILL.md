@@ -153,20 +153,20 @@ Directory suffix is auto-derived from the branch name:
    b. **Parse dependencies** from each issue body: look for the `## Dependencies` section, extract `#<number>` references. For each dependency that is a closed issue, note it as satisfied. For open dependencies within this worktree, determine implementation order.
 
    c. **Match spec labels to source directories.** From each issue's labels, map `spec:*` labels to source directories:
-   - `spec:communication` → `src/ai_company/communication/`
-   - `spec:agent-system` → `src/ai_company/engine/`, `src/ai_company/core/`
-   - `spec:task-workflow` → `src/ai_company/engine/`
-   - `spec:company-structure` → `src/ai_company/core/`, `src/ai_company/config/`
-   - `spec:templates` → `src/ai_company/templates/`
-   - `spec:providers` → `src/ai_company/providers/`
-   - `spec:budget` → `src/ai_company/budget/`
-   - `spec:tools` → `src/ai_company/tools/`
-   - `spec:hr` → `src/ai_company/core/`
-   - `spec:human-interaction` → `src/ai_company/api/`, `src/ai_company/cli/`
-   - `spec:memory` → `src/ai_company/memory/`
-   - `spec:security` → `src/ai_company/security/`
-   - `spec:architecture` → `src/ai_company/core/`, `src/ai_company/config/`
-   - `spec:providers-scope` → `src/ai_company/providers/`
+   - `spec:communication` → `src/synthorg/communication/`
+   - `spec:agent-system` → `src/synthorg/engine/`, `src/synthorg/core/`
+   - `spec:task-workflow` → `src/synthorg/engine/`
+   - `spec:company-structure` → `src/synthorg/core/`, `src/synthorg/config/`
+   - `spec:templates` → `src/synthorg/templates/`
+   - `spec:providers` → `src/synthorg/providers/`
+   - `spec:budget` → `src/synthorg/budget/`
+   - `spec:tools` → `src/synthorg/tools/`
+   - `spec:hr` → `src/synthorg/core/`
+   - `spec:human-interaction` → `src/synthorg/api/`, `src/synthorg/cli/`
+   - `spec:memory` → `src/synthorg/memory/`
+   - `spec:security` → `src/synthorg/security/`
+   - `spec:architecture` → `src/synthorg/core/`, `src/synthorg/config/`
+   - `spec:providers-scope` → `src/synthorg/providers/`
 
    **Note:** This mapping is repository-specific. Update it when new `spec:*` labels are added or when the directory structure changes.
 

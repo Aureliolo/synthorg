@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.core.agent import PersonalityConfig
-from ai_company.templates.presets import (
+from synthorg.core.agent import PersonalityConfig
+from synthorg.templates.presets import (
     _AUTO_NAMES,
     PERSONALITY_PRESETS,
     generate_auto_name,
@@ -121,7 +121,7 @@ class TestGenerateAutoName:
 class TestAutoNameCoverage:
     def test_auto_names_cover_all_builtin_roles(self) -> None:
         """Every role in BUILTIN_ROLES has an auto-name pool."""
-        from ai_company.core.role_catalog import BUILTIN_ROLES
+        from synthorg.core.role_catalog import BUILTIN_ROLES
 
         pool_keys = {k for k in _AUTO_NAMES if k != "_default"}
         role_keys = {r.name.lower() for r in BUILTIN_ROLES}

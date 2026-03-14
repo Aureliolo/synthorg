@@ -5,23 +5,23 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from ai_company.budget.config import (
+from synthorg.budget.config import (
     BudgetAlertConfig,
     BudgetConfig,
 )
-from ai_company.budget.enforcer import BudgetEnforcer
-from ai_company.budget.errors import (
+from synthorg.budget.enforcer import BudgetEnforcer
+from synthorg.budget.errors import (
     BudgetExhaustedError,
     DailyLimitExceededError,
     QuotaExhaustedError,
 )
-from ai_company.budget.tracker import CostTracker
-from ai_company.engine.agent_engine import AgentEngine
-from ai_company.engine.loop_protocol import TerminationReason
+from synthorg.budget.tracker import CostTracker
+from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.loop_protocol import TerminationReason
 
 if TYPE_CHECKING:
-    from ai_company.core.agent import AgentIdentity
-    from ai_company.core.task import Task
+    from synthorg.core.agent import AgentIdentity
+    from synthorg.core.task import Task
 
 from .conftest import (
     MockCompletionProvider,

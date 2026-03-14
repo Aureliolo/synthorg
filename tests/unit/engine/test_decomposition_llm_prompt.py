@@ -5,15 +5,15 @@ from typing import Any
 
 import pytest
 
-from ai_company.core.enums import (
+from synthorg.core.enums import (
     Complexity,
     CoordinationTopology,
     Priority,
     TaskStructure,
     TaskType,
 )
-from ai_company.core.task import AcceptanceCriterion, Task
-from ai_company.engine.decomposition.llm_prompt import (
+from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.engine.decomposition.llm_prompt import (
     build_decomposition_tool,
     build_retry_message,
     build_system_message,
@@ -21,13 +21,13 @@ from ai_company.engine.decomposition.llm_prompt import (
     parse_content_response,
     parse_tool_call_response,
 )
-from ai_company.engine.decomposition.models import (
+from synthorg.engine.decomposition.models import (
     DecompositionContext,
     DecompositionPlan,
 )
-from ai_company.engine.errors import DecompositionError
-from ai_company.providers.enums import FinishReason, MessageRole
-from ai_company.providers.models import (
+from synthorg.engine.errors import DecompositionError
+from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.models import (
     CompletionResponse,
     TokenUsage,
     ToolCall,

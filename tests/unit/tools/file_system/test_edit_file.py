@@ -7,7 +7,7 @@ import pytest
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ai_company.tools.file_system.edit_file import EditFileTool
+    from synthorg.tools.file_system.edit_file import EditFileTool
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -165,7 +165,7 @@ class TestEditFileExecution:
         self, workspace: Path, edit_tool: EditFileTool
     ) -> None:
         """Files exceeding the size guard are rejected."""
-        from ai_company.tools.file_system.edit_file import MAX_EDIT_FILE_SIZE_BYTES
+        from synthorg.tools.file_system.edit_file import MAX_EDIT_FILE_SIZE_BYTES
 
         big = "x" * (MAX_EDIT_FILE_SIZE_BYTES + 100)
         (workspace / "huge.txt").write_text(big, encoding="utf-8")

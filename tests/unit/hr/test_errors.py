@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.hr.errors import (
+from synthorg.hr.errors import (
     AgentAlreadyRegisteredError,
     AgentNotFoundError,
     AgentRegistryError,

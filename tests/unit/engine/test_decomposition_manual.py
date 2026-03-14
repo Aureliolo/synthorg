@@ -2,16 +2,16 @@
 
 import pytest
 
-from ai_company.core.enums import Priority, TaskType
-from ai_company.core.task import Task
-from ai_company.engine.decomposition.manual import ManualDecompositionStrategy
-from ai_company.engine.decomposition.models import (
+from synthorg.core.enums import Priority, TaskType
+from synthorg.core.task import Task
+from synthorg.engine.decomposition.manual import ManualDecompositionStrategy
+from synthorg.engine.decomposition.models import (
     DecompositionContext,
     DecompositionPlan,
     SubtaskDefinition,
 )
-from ai_company.engine.decomposition.protocol import DecompositionStrategy
-from ai_company.engine.errors import DecompositionDepthError, DecompositionError
+from synthorg.engine.decomposition.protocol import DecompositionStrategy
+from synthorg.engine.errors import DecompositionDepthError, DecompositionError
 
 
 def _make_task(task_id: str = "task-manual-1") -> Task:

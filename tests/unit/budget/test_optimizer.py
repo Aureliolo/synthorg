@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.budget._optimizer_helpers import _classify_severity
-from ai_company.budget.optimizer_models import (
+from synthorg.budget._optimizer_helpers import _classify_severity
+from synthorg.budget.optimizer_models import (
     AnomalySeverity,
     CostOptimizerConfig,
 )

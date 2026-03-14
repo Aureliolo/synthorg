@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from ai_company.hr.performance.multi_window_strategy import MultiWindowStrategy
+from synthorg.hr.performance.multi_window_strategy import MultiWindowStrategy
 
 from .conftest import make_task_metric
 

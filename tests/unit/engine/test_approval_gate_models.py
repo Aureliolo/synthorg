@@ -3,8 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import ApprovalRiskLevel
-from ai_company.engine.approval_gate_models import EscalationInfo, ResumePayload
+from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.engine.approval_gate_models import EscalationInfo, ResumePayload
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

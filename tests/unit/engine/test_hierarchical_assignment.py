@@ -2,14 +2,14 @@
 
 import pytest
 
-from ai_company.communication.delegation.hierarchy import HierarchyResolver
-from ai_company.core.company import Company, Department, Team
-from ai_company.core.enums import Complexity, SeniorityLevel
-from ai_company.engine.assignment.models import AssignmentRequest
-from ai_company.engine.assignment.strategies import (
+from synthorg.communication.delegation.hierarchy import HierarchyResolver
+from synthorg.core.company import Company, Department, Team
+from synthorg.core.enums import Complexity, SeniorityLevel
+from synthorg.engine.assignment.models import AssignmentRequest
+from synthorg.engine.assignment.strategies import (
     HierarchicalAssignmentStrategy,
 )
-from ai_company.engine.routing.scorer import AgentTaskScorer
+from synthorg.engine.routing.scorer import AgentTaskScorer
 
 from .conftest import make_assignment_agent, make_assignment_task
 

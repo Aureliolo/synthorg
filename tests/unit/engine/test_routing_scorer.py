@@ -5,10 +5,10 @@ from uuid import uuid4
 
 import pytest
 
-from ai_company.core.agent import AgentIdentity, ModelConfig, SkillSet
-from ai_company.core.enums import AgentStatus, Complexity, SeniorityLevel
-from ai_company.engine.decomposition.models import SubtaskDefinition
-from ai_company.engine.routing.scorer import AgentTaskScorer
+from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
+from synthorg.core.enums import AgentStatus, Complexity, SeniorityLevel
+from synthorg.engine.decomposition.models import SubtaskDefinition
+from synthorg.engine.routing.scorer import AgentTaskScorer
 
 
 def _make_agent(

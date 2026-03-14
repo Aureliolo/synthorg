@@ -9,12 +9,12 @@ services:
     volumes:
       - synthorg-data:/data
     environment:
-      AI_COMPANY_HOST: "0.0.0.0"
-      AI_COMPANY_PORT: "8000"
-      AI_COMPANY_DB_PATH: "/data/synthorg.db"
-      AI_COMPANY_MEMORY_DIR: "/data/memory"
-      AI_COMPANY_LOG_LEVEL: "debug"
-      AI_COMPANY_JWT_SECRET: "test-secret-value"
+      SYNTHORG_HOST: "0.0.0.0"
+      SYNTHORG_PORT: "8000"
+      SYNTHORG_DB_PATH: "/data/synthorg.db"
+      SYNTHORG_MEMORY_DIR: "/data/memory"
+      SYNTHORG_LOG_LEVEL: "debug"
+      SYNTHORG_JWT_SECRET: "test-secret-value"
     user: "65532:65532"
     # CIS Docker Benchmark v1.6.0 hardening (5.3, 5.12, 5.25)
     security_opt:

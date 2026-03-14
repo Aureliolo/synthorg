@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.budget.coordination_config import (
+from synthorg.budget.coordination_config import (
     CoordinationMetricName,
     CoordinationMetricsConfig,
     ErrorCategory,

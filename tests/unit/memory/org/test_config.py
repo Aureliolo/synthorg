@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.memory.org.config import (
+from synthorg.memory.org.config import (
     ExtendedStoreConfig,
     OrgMemoryConfig,
 )

@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.budget.config import (
+from synthorg.budget.config import (
     AutoDowngradeConfig,
     BudgetAlertConfig,
     BudgetConfig,

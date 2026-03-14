@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.communication.config import RateLimitConfig
-from ai_company.communication.loop_prevention.rate_limit import (
+from synthorg.communication.config import RateLimitConfig
+from synthorg.communication.loop_prevention.rate_limit import (
     DelegationRateLimiter,
 )
 

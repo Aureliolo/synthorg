@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from ai_company.engine.checkpoint.models import (
+from synthorg.engine.checkpoint.models import (
     Checkpoint,
     CheckpointConfig,
     Heartbeat,

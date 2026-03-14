@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from ai_company.core.enums import MemoryCategory
-from ai_company.memory.consolidation.simple_strategy import (
+from synthorg.core.enums import MemoryCategory
+from synthorg.memory.consolidation.simple_strategy import (
     SimpleConsolidationStrategy,
 )
-from ai_company.memory.models import MemoryEntry, MemoryMetadata
+from synthorg.memory.models import MemoryEntry, MemoryMetadata
 
 pytestmark = pytest.mark.timeout(30)
 

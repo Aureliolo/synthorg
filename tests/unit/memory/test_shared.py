@@ -5,13 +5,13 @@ from uuid import uuid4
 
 import pytest
 
-from ai_company.core.enums import MemoryCategory
-from ai_company.memory.models import (
+from synthorg.core.enums import MemoryCategory
+from synthorg.memory.models import (
     MemoryEntry,
     MemoryQuery,
     MemoryStoreRequest,
 )
-from ai_company.memory.shared import SharedKnowledgeStore
+from synthorg.memory.shared import SharedKnowledgeStore
 
 pytestmark = pytest.mark.timeout(30)
 

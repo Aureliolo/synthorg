@@ -4,9 +4,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from ai_company.core.types import NotBlankStr
-from ai_company.hr.enums import TrendDirection
-from ai_company.hr.performance.theil_sen_strategy import TheilSenTrendStrategy
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.enums import TrendDirection
+from synthorg.hr.performance.theil_sen_strategy import TheilSenTrendStrategy
 
 NOW = datetime(2026, 3, 10, 12, 0, 0, tzinfo=UTC)
 

@@ -88,7 +88,7 @@ uv run ruff format src/ tests/
 uv run pytest tests/ -m unit -n auto        # unit tests (fast)
 uv run pytest tests/ -m integration -n auto # integration tests
 uv run pytest tests/ -m e2e -n auto         # end-to-end tests
-uv run pytest tests/ -n auto --cov=ai_company --cov-fail-under=80  # full suite + coverage
+uv run pytest tests/ -n auto --cov=synthorg --cov-fail-under=80  # full suite + coverage
 ```
 
 All tests must pass and coverage must remain at or above 80%.
@@ -126,7 +126,7 @@ Code conventions (type hints, docstrings, immutability, line length, etc.) are d
 ## Project Structure
 
 ```text
-src/ai_company/       # Main package
+src/synthorg/       # Main package
   api/  budget/  cli/  communication/  config/  core/
   engine/  hr/  memory/  observability/  persistence/
   providers/  security/  templates/  tools/

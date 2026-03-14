@@ -2,14 +2,14 @@
 
 import pytest
 
-from ai_company.core.enums import ActionType, AutonomyLevel, SeniorityLevel
-from ai_company.security.action_types import ActionTypeRegistry
-from ai_company.security.autonomy.models import (
+from synthorg.core.enums import ActionType, AutonomyLevel, SeniorityLevel
+from synthorg.security.action_types import ActionTypeRegistry
+from synthorg.security.autonomy.models import (
     BUILTIN_PRESETS,
     AutonomyConfig,
     AutonomyPreset,
 )
-from ai_company.security.autonomy.resolver import AutonomyResolver
+from synthorg.security.autonomy.resolver import AutonomyResolver
 
 
 def _make_resolver(

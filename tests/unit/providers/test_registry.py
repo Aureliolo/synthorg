@@ -5,29 +5,29 @@ from typing import TYPE_CHECKING
 import pytest
 import structlog
 
-from ai_company.config.schema import ProviderConfig, ProviderModelConfig
-from ai_company.observability.events.provider import (
+from synthorg.config.schema import ProviderConfig, ProviderModelConfig
+from synthorg.observability.events.provider import (
     PROVIDER_DRIVER_NOT_REGISTERED,
     PROVIDER_REGISTRY_BUILT,
 )
-from ai_company.providers.base import BaseCompletionProvider
+from synthorg.providers.base import BaseCompletionProvider
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from ai_company.providers.capabilities import ModelCapabilities
-    from ai_company.providers.models import (
+    from synthorg.providers.capabilities import ModelCapabilities
+    from synthorg.providers.models import (
         ChatMessage,
         CompletionConfig,
         CompletionResponse,
         StreamChunk,
         ToolDefinition,
     )
-from ai_company.providers.errors import (
+from synthorg.providers.errors import (
     DriverFactoryNotFoundError,
     DriverNotRegisteredError,
 )
-from ai_company.providers.registry import ProviderRegistry
+from synthorg.providers.registry import ProviderRegistry
 
 # ── Helpers ──────────────────────────────────────────────────────
 
@@ -255,7 +255,7 @@ class TestRegistryFromConfig:
 
     def test_from_config_uses_litellm_by_default(self) -> None:
         """Default driver='litellm' resolves to LiteLLMDriver factory."""
-        from ai_company.providers.drivers.litellm_driver import LiteLLMDriver
+        from synthorg.providers.drivers.litellm_driver import LiteLLMDriver
 
         config = _make_config(driver="litellm")
         providers = {"example-provider": config}

@@ -5,13 +5,13 @@ from typing import TYPE_CHECKING, Protocol
 import pytest
 from polyfactory.factories.pydantic_factory import ModelFactory
 
-from ai_company.api.config import ApiConfig
-from ai_company.budget.config import BudgetConfig
-from ai_company.budget.coordination_config import CoordinationMetricsConfig
-from ai_company.budget.cost_tiers import CostTiersConfig
-from ai_company.budget.quota import DegradationConfig, SubscriptionConfig
-from ai_company.communication.config import CommunicationConfig
-from ai_company.config.schema import (
+from synthorg.api.config import ApiConfig
+from synthorg.budget.config import BudgetConfig
+from synthorg.budget.coordination_config import CoordinationMetricsConfig
+from synthorg.budget.cost_tiers import CostTiersConfig
+from synthorg.budget.quota import DegradationConfig, SubscriptionConfig
+from synthorg.communication.config import CommunicationConfig
+from synthorg.config.schema import (
     AgentConfig,
     ProviderConfig,
     ProviderModelConfig,
@@ -20,17 +20,17 @@ from ai_company.config.schema import (
     RoutingRuleConfig,
     TaskAssignmentConfig,
 )
-from ai_company.core.company import CompanyConfig
-from ai_company.core.resilience_config import RateLimiterConfig, RetryConfig
-from ai_company.engine.coordination.section_config import CoordinationSectionConfig
-from ai_company.hr.promotion.config import PromotionConfig
-from ai_company.memory.config import CompanyMemoryConfig
-from ai_company.memory.org.config import OrgMemoryConfig
-from ai_company.persistence.config import PersistenceConfig
-from ai_company.security.config import SecurityConfig
-from ai_company.security.trust.config import TrustConfig
-from ai_company.tools.mcp.config import MCPConfig
-from ai_company.tools.sandbox.sandboxing_config import SandboxingConfig
+from synthorg.core.company import CompanyConfig
+from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
+from synthorg.engine.coordination.section_config import CoordinationSectionConfig
+from synthorg.hr.promotion.config import PromotionConfig
+from synthorg.memory.config import CompanyMemoryConfig
+from synthorg.memory.org.config import OrgMemoryConfig
+from synthorg.persistence.config import PersistenceConfig
+from synthorg.security.config import SecurityConfig
+from synthorg.security.trust.config import TrustConfig
+from synthorg.tools.mcp.config import MCPConfig
+from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
 
 if TYPE_CHECKING:
     from pathlib import Path

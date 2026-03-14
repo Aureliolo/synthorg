@@ -5,13 +5,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ai_company.memory.backends.mem0.adapter import Mem0MemoryBackend
-from ai_company.memory.backends.mem0.mappers import PUBLISHER_KEY, SHARED_NAMESPACE
-from ai_company.memory.errors import (
+from synthorg.memory.backends.mem0.adapter import Mem0MemoryBackend
+from synthorg.memory.backends.mem0.mappers import PUBLISHER_KEY, SHARED_NAMESPACE
+from synthorg.memory.errors import (
     MemoryRetrievalError,
     MemoryStoreError,
 )
-from ai_company.memory.models import MemoryQuery
+from synthorg.memory.models import MemoryQuery
 
 from .conftest import (
     make_store_request,
@@ -251,7 +251,7 @@ class TestSearchShared:
             ],
         )
 
-        from ai_company.core.enums import MemoryCategory
+        from synthorg.core.enums import MemoryCategory
 
         query = MemoryQuery(
             text="test",

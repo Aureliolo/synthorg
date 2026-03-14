@@ -9,35 +9,35 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
-from ai_company.api.app import create_app
-from ai_company.api.approval_store import ApprovalStore
-from ai_company.api.auth.config import AuthConfig
-from ai_company.api.auth.models import ApiKey, User
-from ai_company.api.auth.service import AuthService
-from ai_company.api.guards import HumanRole
-from ai_company.budget.cost_record import CostRecord
-from ai_company.budget.tracker import CostTracker
-from ai_company.communication.channel import Channel
-from ai_company.communication.message import Message
-from ai_company.config.schema import RootConfig
-from ai_company.core.approval import ApprovalItem
-from ai_company.core.enums import (
+from synthorg.api.app import create_app
+from synthorg.api.approval_store import ApprovalStore
+from synthorg.api.auth.config import AuthConfig
+from synthorg.api.auth.models import ApiKey, User
+from synthorg.api.auth.service import AuthService
+from synthorg.api.guards import HumanRole
+from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.tracker import CostTracker
+from synthorg.communication.channel import Channel
+from synthorg.communication.message import Message
+from synthorg.config.schema import RootConfig
+from synthorg.core.approval import ApprovalItem
+from synthorg.core.enums import (
     ApprovalRiskLevel,
     ApprovalStatus,
     TaskStatus,
 )
-from ai_company.core.task import Task
-from ai_company.engine.checkpoint.models import Checkpoint, Heartbeat
-from ai_company.engine.task_engine import TaskEngine
-from ai_company.hr.enums import LifecycleEventType
-from ai_company.hr.models import AgentLifecycleEvent
-from ai_company.hr.performance.models import (
+from synthorg.core.task import Task
+from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
+from synthorg.engine.task_engine import TaskEngine
+from synthorg.hr.enums import LifecycleEventType
+from synthorg.hr.models import AgentLifecycleEvent
+from synthorg.hr.performance.models import (
     CollaborationMetricRecord,
     TaskMetricRecord,
 )
-from ai_company.persistence.errors import DuplicateRecordError, QueryError
-from ai_company.security.models import AuditEntry, AuditVerdictStr
-from ai_company.security.timeout.parked_context import ParkedContext
+from synthorg.persistence.errors import DuplicateRecordError, QueryError
+from synthorg.security.models import AuditEntry, AuditVerdictStr
+from synthorg.security.timeout.parked_context import ParkedContext
 
 # ── Test auth constants ───────────────────────────────────────
 
@@ -765,7 +765,7 @@ def make_task(  # noqa: PLR0913
     assigned_to: str | None = None,
 ) -> Task:
     """Build a Task with sensible defaults."""
-    from ai_company.core.enums import TaskType
+    from synthorg.core.enums import TaskType
 
     if assigned_to is None and status in {
         TaskStatus.ASSIGNED,

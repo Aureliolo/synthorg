@@ -4,12 +4,12 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ai_company.providers.models import ToolDefinition
-from ai_company.tools.errors import ToolNotFoundError
-from ai_company.tools.registry import ToolRegistry
+from synthorg.providers.models import ToolDefinition
+from synthorg.tools.errors import ToolNotFoundError
+from synthorg.tools.registry import ToolRegistry
 
 if TYPE_CHECKING:
-    from ai_company.tools.base import BaseTool
+    from synthorg.tools.base import BaseTool
 
 pytestmark = pytest.mark.timeout(30)
 

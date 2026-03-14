@@ -4,24 +4,24 @@ from datetime import date
 
 import pytest
 
-from ai_company.core.agent import AgentIdentity, ModelConfig, SkillSet
-from ai_company.core.enums import (
+from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
+from synthorg.core.enums import (
     Complexity,
     SeniorityLevel,
     TaskStatus,
     TaskType,
 )
-from ai_company.core.task import Task
-from ai_company.engine.assignment.models import (
+from synthorg.core.task import Task
+from synthorg.engine.assignment.models import (
     AssignmentRequest,
 )
-from ai_company.engine.assignment.service import TaskAssignmentService
-from ai_company.engine.assignment.strategies import (
+from synthorg.engine.assignment.service import TaskAssignmentService
+from synthorg.engine.assignment.strategies import (
     ManualAssignmentStrategy,
     RoleBasedAssignmentStrategy,
 )
-from ai_company.engine.errors import TaskAssignmentError
-from ai_company.engine.routing.scorer import AgentTaskScorer
+from synthorg.engine.errors import TaskAssignmentError
+from synthorg.engine.routing.scorer import AgentTaskScorer
 
 pytestmark = pytest.mark.unit
 

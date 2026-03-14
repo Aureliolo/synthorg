@@ -3,21 +3,21 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.budget.call_category import LLMCallCategory
-from ai_company.core.enums import Complexity, Priority, TaskStatus, TaskType
-from ai_company.core.task import Task
-from ai_company.engine.context import AgentContext
-from ai_company.engine.loop_protocol import (
+from synthorg.budget.call_category import LLMCallCategory
+from synthorg.core.enums import Complexity, Priority, TaskStatus, TaskType
+from synthorg.core.task import Task
+from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_protocol import (
     ExecutionLoop,
     ExecutionResult,
     TerminationReason,
     TurnRecord,
     make_budget_checker,
 )
-from ai_company.engine.plan_execute_loop import PlanExecuteLoop
-from ai_company.engine.react_loop import ReactLoop
-from ai_company.providers.enums import FinishReason, MessageRole
-from ai_company.providers.models import ChatMessage, TokenUsage
+from synthorg.engine.plan_execute_loop import PlanExecuteLoop
+from synthorg.engine.react_loop import ReactLoop
+from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.models import ChatMessage, TokenUsage
 
 
 @pytest.mark.unit

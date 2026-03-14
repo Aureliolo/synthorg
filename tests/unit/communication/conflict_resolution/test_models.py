@@ -3,15 +3,15 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.communication.conflict_resolution.models import (
+from synthorg.communication.conflict_resolution.models import (
     ConflictResolutionOutcome,
     DissentRecord,
 )
-from ai_company.communication.enums import (
+from synthorg.communication.enums import (
     ConflictResolutionStrategy,
     ConflictType,
 )
-from ai_company.core.enums import SeniorityLevel
+from synthorg.core.enums import SeniorityLevel
 
 from .conftest import make_conflict, make_position, make_resolution
 

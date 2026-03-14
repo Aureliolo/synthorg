@@ -4,8 +4,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ai_company.budget.coordination_config import ErrorCategory
-from ai_company.engine.classification.models import (
+from synthorg.budget.coordination_config import ErrorCategory
+from synthorg.engine.classification.models import (
     ClassificationResult,
     ErrorFinding,
     ErrorSeverity,

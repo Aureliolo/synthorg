@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.communication.errors import CommunicationError
-from ai_company.communication.meeting.errors import (
+from synthorg.communication.errors import CommunicationError
+from synthorg.communication.meeting.errors import (
     MeetingAgentError,
     MeetingBudgetExhaustedError,
     MeetingError,

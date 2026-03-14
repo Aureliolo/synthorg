@@ -4,11 +4,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ai_company.tools.file_system.delete_file import DeleteFileTool
-from ai_company.tools.file_system.edit_file import EditFileTool
-from ai_company.tools.file_system.list_directory import ListDirectoryTool
-from ai_company.tools.file_system.read_file import ReadFileTool
-from ai_company.tools.file_system.write_file import WriteFileTool
+from synthorg.tools.file_system.delete_file import DeleteFileTool
+from synthorg.tools.file_system.edit_file import EditFileTool
+from synthorg.tools.file_system.list_directory import ListDirectoryTool
+from synthorg.tools.file_system.read_file import ReadFileTool
+from synthorg.tools.file_system.write_file import WriteFileTool
 
 if TYPE_CHECKING:
     from pathlib import Path

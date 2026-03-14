@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.core.enums import SeniorityLevel
-from ai_company.engine.prompt_template import (
+from synthorg.core.enums import SeniorityLevel
+from synthorg.engine.prompt_template import (
     AUTONOMY_INSTRUCTIONS,
     DEFAULT_TEMPLATE,
 )

@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.observability.processors import sanitize_sensitive_fields
+from synthorg.observability.processors import sanitize_sensitive_fields
 
 pytestmark = pytest.mark.timeout(30)
 

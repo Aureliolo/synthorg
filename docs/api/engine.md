@@ -9,84 +9,84 @@ Agent orchestration, execution loops, task decomposition, routing, and parallel 
 
 ## Agent Engine
 
-::: ai_company.engine.agent_engine
+::: synthorg.engine.agent_engine
 
 ## Execution Loop Protocol
 
-::: ai_company.engine.loop_protocol
+::: synthorg.engine.loop_protocol
 
 ## ReAct Loop
 
-::: ai_company.engine.react_loop
+::: synthorg.engine.react_loop
 
 ## Plan-and-Execute Loop
 
-::: ai_company.engine.plan_execute_loop
+::: synthorg.engine.plan_execute_loop
 
 ## Plan Models
 
-::: ai_company.engine.plan_models
+::: synthorg.engine.plan_models
 
 ## Execution Context
 
-::: ai_company.engine.context
+::: synthorg.engine.context
 
 ## Prompt Builder
 
-::: ai_company.engine.prompt
+::: synthorg.engine.prompt
 
 ## Task Execution
 
-::: ai_company.engine.task_execution
+::: synthorg.engine.task_execution
 
 ## Parallel Execution
 
-::: ai_company.engine.parallel
+::: synthorg.engine.parallel
 
 ## Run Result
 
-::: ai_company.engine.run_result
+::: synthorg.engine.run_result
 
 ## Metrics
 
-::: ai_company.engine.metrics
+::: synthorg.engine.metrics
 
 ## Errors
 
-::: ai_company.engine.errors
+::: synthorg.engine.errors
 
 ## Task Decomposition
 
-::: ai_company.engine.decomposition.protocol
+::: synthorg.engine.decomposition.protocol
 
-::: ai_company.engine.decomposition.models
+::: synthorg.engine.decomposition.models
 
-::: ai_company.engine.decomposition.service
+::: synthorg.engine.decomposition.service
 
 ## Task Routing
 
-::: ai_company.engine.routing.models
+::: synthorg.engine.routing.models
 
-::: ai_company.engine.routing.service
+::: synthorg.engine.routing.service
 
 ## Task Assignment
 
-::: ai_company.engine.assignment.protocol
+::: synthorg.engine.assignment.protocol
 
-::: ai_company.engine.assignment.models
+::: synthorg.engine.assignment.models
 
-::: ai_company.engine.assignment.service
+::: synthorg.engine.assignment.service
 
 ## Error Classification
 
-::: ai_company.engine.classification.models
+::: synthorg.engine.classification.models
 
-::: ai_company.engine.classification.pipeline
+::: synthorg.engine.classification.pipeline
 
 ## Workspace Isolation
 
-::: ai_company.engine.workspace.protocol
+::: synthorg.engine.workspace.protocol
 
-::: ai_company.engine.workspace.models
+::: synthorg.engine.workspace.models
 
-::: ai_company.engine.workspace.service
+::: synthorg.engine.workspace.service

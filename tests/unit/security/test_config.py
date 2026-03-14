@@ -3,14 +3,14 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import ApprovalRiskLevel
-from ai_company.security.config import (
+from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.security.config import (
     OutputScanPolicyType,
     RuleEngineConfig,
     SecurityConfig,
     SecurityPolicyRule,
 )
-from ai_company.security.models import SecurityVerdictType
+from synthorg.security.models import SecurityVerdictType
 
 pytestmark = pytest.mark.timeout(30)
 

@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.core.resilience_config import RateLimiterConfig, RetryConfig
-from ai_company.providers.errors import (
+from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
+from synthorg.providers.errors import (
     AuthenticationError,
     ProviderConnectionError,
     ProviderInternalError,

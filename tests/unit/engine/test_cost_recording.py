@@ -4,18 +4,18 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ai_company.budget.call_category import LLMCallCategory
-from ai_company.engine.cost_recording import record_execution_costs
-from ai_company.engine.loop_protocol import (
+from synthorg.budget.call_category import LLMCallCategory
+from synthorg.engine.cost_recording import record_execution_costs
+from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
     TurnRecord,
 )
-from ai_company.providers.enums import FinishReason
+from synthorg.providers.enums import FinishReason
 
 if TYPE_CHECKING:
-    from ai_company.budget.cost_record import CostRecord
-    from ai_company.core.agent import AgentIdentity
+    from synthorg.budget.cost_record import CostRecord
+    from synthorg.core.agent import AgentIdentity
 
 
 def _turn(
@@ -38,7 +38,7 @@ def _turn(
 
 def _result(turns: tuple[TurnRecord, ...]) -> ExecutionResult:
     """Minimal ExecutionResult wrapping the given turns."""
-    from ai_company.engine.context import AgentContext
+    from synthorg.engine.context import AgentContext
 
     ctx = AgentContext.from_identity(_identity())
     return ExecutionResult(
@@ -52,7 +52,7 @@ def _identity() -> AgentIdentity:
     from datetime import date
     from uuid import uuid4
 
-    from ai_company.core.agent import AgentIdentity, ModelConfig
+    from synthorg.core.agent import AgentIdentity, ModelConfig
 
     return AgentIdentity(
         id=uuid4(),

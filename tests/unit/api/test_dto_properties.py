@@ -5,13 +5,13 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
-from ai_company.api.dto import (
+from synthorg.api.dto import (
     _MAX_METADATA_KEYS,
     _MAX_METADATA_STR_LEN,
     CoordinateTaskRequest,
     CreateApprovalRequest,
 )
-from ai_company.core.enums import ApprovalRiskLevel
+from synthorg.core.enums import ApprovalRiskLevel
 
 pytestmark = pytest.mark.unit
 

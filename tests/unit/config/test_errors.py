@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.config.errors import (
+from synthorg.config.errors import (
     ConfigError,
     ConfigFileNotFoundError,
     ConfigLocation,

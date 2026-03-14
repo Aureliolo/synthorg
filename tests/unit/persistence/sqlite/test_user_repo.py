@@ -9,10 +9,10 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
-from ai_company.api.auth.models import ApiKey, User
-from ai_company.api.guards import HumanRole
-from ai_company.persistence.sqlite.migrations import run_migrations
-from ai_company.persistence.sqlite.user_repo import (
+from synthorg.api.auth.models import ApiKey, User
+from synthorg.api.guards import HumanRole
+from synthorg.persistence.sqlite.migrations import run_migrations
+from synthorg.persistence.sqlite.user_repo import (
     SQLiteApiKeyRepository,
     SQLiteUserRepository,
 )

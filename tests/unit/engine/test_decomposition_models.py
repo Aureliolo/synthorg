@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ai_company.core.enums import (
+from synthorg.core.enums import (
     Complexity,
     CoordinationTopology,
     Priority,
@@ -14,8 +14,8 @@ from ai_company.core.enums import (
 )
 
 if TYPE_CHECKING:
-    from ai_company.core.task import Task
-from ai_company.engine.decomposition.models import (
+    from synthorg.core.task import Task
+from synthorg.engine.decomposition.models import (
     DecompositionContext,
     DecompositionPlan,
     DecompositionResult,
@@ -177,7 +177,7 @@ class TestDecompositionPlan:
 
 def _make_result_task(subtask_id: str) -> Task:
     """Helper to create a minimal task for result construction."""
-    from ai_company.core.task import Task
+    from synthorg.core.task import Task
 
     return Task(
         id=subtask_id,

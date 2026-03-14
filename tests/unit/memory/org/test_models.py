@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import OrgFactCategory, SeniorityLevel
-from ai_company.memory.org.models import (
+from synthorg.core.enums import OrgFactCategory, SeniorityLevel
+from synthorg.memory.org.models import (
     OrgFact,
     OrgFactAuthor,
     OrgFactWriteRequest,

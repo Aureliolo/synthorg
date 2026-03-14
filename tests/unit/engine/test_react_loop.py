@@ -5,22 +5,22 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ai_company.core.agent import AgentIdentity
-from ai_company.core.enums import ToolCategory
-from ai_company.engine.context import AgentContext
-from ai_company.engine.loop_protocol import TerminationReason
-from ai_company.engine.react_loop import ReactLoop
-from ai_company.providers.enums import FinishReason, MessageRole
-from ai_company.providers.models import (
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.enums import ToolCategory
+from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.engine.react_loop import ReactLoop
+from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
     CompletionResponse,
     TokenUsage,
     ToolCall,
 )
-from ai_company.tools.base import BaseTool, ToolExecutionResult
-from ai_company.tools.invoker import ToolInvoker
-from ai_company.tools.registry import ToolRegistry
+from synthorg.tools.base import BaseTool, ToolExecutionResult
+from synthorg.tools.invoker import ToolInvoker
+from synthorg.tools.registry import ToolRegistry
 
 if TYPE_CHECKING:
     from .conftest import MockCompletionProvider

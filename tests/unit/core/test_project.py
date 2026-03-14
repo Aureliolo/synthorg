@@ -3,8 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import ProjectStatus
-from ai_company.core.project import Project
+from synthorg.core.enums import ProjectStatus
+from synthorg.core.project import Project
 from tests.unit.core.conftest import ProjectFactory
 
 pytestmark = pytest.mark.timeout(30)

@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.budget.coordination_metrics import (
+from synthorg.budget.coordination_metrics import (
     CoordinationEfficiency,
     CoordinationMetrics,
     CoordinationOverhead,

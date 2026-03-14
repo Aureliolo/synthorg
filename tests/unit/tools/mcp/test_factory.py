@@ -4,11 +4,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ai_company.tools.mcp.bridge_tool import MCPBridgeTool
-from ai_company.tools.mcp.client import MCPClient
-from ai_company.tools.mcp.config import MCPConfig, MCPServerConfig
-from ai_company.tools.mcp.factory import MCPToolFactory
-from ai_company.tools.mcp.models import MCPToolInfo
+from synthorg.tools.mcp.bridge_tool import MCPBridgeTool
+from synthorg.tools.mcp.client import MCPClient
+from synthorg.tools.mcp.config import MCPConfig, MCPServerConfig
+from synthorg.tools.mcp.factory import MCPToolFactory
+from synthorg.tools.mcp.models import MCPToolInfo
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

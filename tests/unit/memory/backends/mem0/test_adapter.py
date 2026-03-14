@@ -6,14 +6,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ai_company.core.enums import MemoryCategory
-from ai_company.memory.backends.mem0.adapter import Mem0MemoryBackend
-from ai_company.memory.backends.mem0.config import Mem0BackendConfig
-from ai_company.memory.capabilities import MemoryCapabilities
-from ai_company.memory.errors import MemoryConnectionError
-from ai_company.memory.models import MemoryQuery
-from ai_company.memory.protocol import MemoryBackend
-from ai_company.memory.shared import SharedKnowledgeStore
+from synthorg.core.enums import MemoryCategory
+from synthorg.memory.backends.mem0.adapter import Mem0MemoryBackend
+from synthorg.memory.backends.mem0.config import Mem0BackendConfig
+from synthorg.memory.capabilities import MemoryCapabilities
+from synthorg.memory.errors import MemoryConnectionError
+from synthorg.memory.models import MemoryQuery
+from synthorg.memory.protocol import MemoryBackend
+from synthorg.memory.shared import SharedKnowledgeStore
 
 from .conftest import make_store_request
 
@@ -142,7 +142,7 @@ class TestLifecycle:
         b = Mem0MemoryBackend(mem0_config=mem0_config)
         mock_memory = MagicMock()
         with patch(
-            "ai_company.memory.backends.mem0.adapter.asyncio.to_thread",
+            "synthorg.memory.backends.mem0.adapter.asyncio.to_thread",
             return_value=mock_memory,
         ):
             await b.connect()
@@ -158,7 +158,7 @@ class TestLifecycle:
         # Calling connect() again should not re-create client
         original_client = backend._client
         with patch(
-            "ai_company.memory.backends.mem0.adapter.asyncio.to_thread",
+            "synthorg.memory.backends.mem0.adapter.asyncio.to_thread",
         ) as mock_to_thread:
             await backend.connect()
         mock_to_thread.assert_not_called()
@@ -171,7 +171,7 @@ class TestLifecycle:
         b = Mem0MemoryBackend(mem0_config=mem0_config)
         with (
             patch(
-                "ai_company.memory.backends.mem0.adapter.asyncio.to_thread",
+                "synthorg.memory.backends.mem0.adapter.asyncio.to_thread",
                 side_effect=RuntimeError("connection failed"),
             ),
             pytest.raises(MemoryConnectionError, match="Failed to connect"),
@@ -254,7 +254,7 @@ class TestLifecycle:
         b = Mem0MemoryBackend(mem0_config=mem0_config)
         with (
             patch(
-                "ai_company.memory.backends.mem0.adapter.asyncio.to_thread",
+                "synthorg.memory.backends.mem0.adapter.asyncio.to_thread",
                 side_effect=builtins.MemoryError("out of memory"),
             ),
             pytest.raises(builtins.MemoryError),
@@ -269,7 +269,7 @@ class TestLifecycle:
         b = Mem0MemoryBackend(mem0_config=mem0_config)
         with (
             patch(
-                "ai_company.memory.backends.mem0.adapter.asyncio.to_thread",
+                "synthorg.memory.backends.mem0.adapter.asyncio.to_thread",
                 side_effect=RecursionError("infinite loop"),
             ),
             pytest.raises(RecursionError),

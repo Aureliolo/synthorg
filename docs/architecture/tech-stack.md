@@ -107,7 +107,7 @@ These conventions are used throughout the codebase. For full details on each, se
 | **Derived fields** | Adopted | `@computed_field` instead of stored + validated redundant fields. |
 | **String validation** | Adopted | `NotBlankStr` type from `core.types` for all identifier/name fields, eliminating per-model validator boilerplate. |
 | **Shared field groups** | Adopted | Common field sets extracted into base models (e.g., `_SpendingTotals`) to prevent duplication. |
-| **Event constants** | Adopted | Per-domain submodules under `observability/events/`. Direct imports: `from ai_company.observability.events.<domain> import CONSTANT`. |
+| **Event constants** | Adopted | Per-domain submodules under `observability/events/`. Direct imports: `from synthorg.observability.events.<domain> import CONSTANT`. |
 | **Parallel tool execution** | Adopted | `asyncio.TaskGroup` in `ToolInvoker.invoke_all` with optional `max_concurrency` semaphore and structured error collection. |
 | **Parallel agent execution** | Adopted | `ParallelExecutor` with `TaskGroup` + `Semaphore` concurrency limits, `ResourceLock` for exclusive file-path claims, progress tracking, and shutdown awareness. |
 | **Tool permission checking** | Adopted | Category-level gating based on `ToolAccessLevel`. Priority-based resolution: denied list, allowed list, level categories, then deny. |

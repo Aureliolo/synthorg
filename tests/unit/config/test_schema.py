@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.config.schema import (
+from synthorg.config.schema import (
     AgentConfig,
     ProviderConfig,
     ProviderModelConfig,
@@ -12,7 +12,7 @@ from ai_company.config.schema import (
     RoutingRuleConfig,
     TaskAssignmentConfig,
 )
-from ai_company.core.enums import CompanyType, SeniorityLevel
+from synthorg.core.enums import CompanyType, SeniorityLevel
 
 from .conftest import (
     AgentConfigFactory,
@@ -334,7 +334,7 @@ class TestRootConfig:
         assert cfg.persistence.sqlite.wal_mode is True
 
     def test_persistence_custom_path(self) -> None:
-        from ai_company.persistence.config import PersistenceConfig, SQLiteConfig
+        from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
 
         cfg = RootConfig(
             company_name="X",

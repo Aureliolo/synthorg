@@ -3,13 +3,13 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.memory.backends.mem0.config import (
+from synthorg.memory.backends.mem0.config import (
     Mem0BackendConfig,
     Mem0EmbedderConfig,
     build_config_from_company_config,
     build_mem0_config_dict,
 )
-from ai_company.memory.config import CompanyMemoryConfig, MemoryStorageConfig
+from synthorg.memory.config import CompanyMemoryConfig, MemoryStorageConfig
 
 pytestmark = pytest.mark.timeout(30)
 

@@ -6,20 +6,20 @@ from typing import TYPE_CHECKING
 import aiosqlite
 import pytest
 
-from ai_company.core.enums import Complexity, TaskType
-from ai_company.core.types import NotBlankStr
-from ai_company.hr.enums import LifecycleEventType
-from ai_company.hr.models import AgentLifecycleEvent
-from ai_company.hr.performance.models import (
+from synthorg.core.enums import Complexity, TaskType
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.enums import LifecycleEventType
+from synthorg.hr.models import AgentLifecycleEvent
+from synthorg.hr.performance.models import (
     CollaborationMetricRecord,
     TaskMetricRecord,
 )
-from ai_company.persistence.sqlite.hr_repositories import (
+from synthorg.persistence.sqlite.hr_repositories import (
     SQLiteCollaborationMetricRepository,
     SQLiteLifecycleEventRepository,
     SQLiteTaskMetricRepository,
 )
-from ai_company.persistence.sqlite.migrations import run_migrations
+from synthorg.persistence.sqlite.migrations import run_migrations
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator

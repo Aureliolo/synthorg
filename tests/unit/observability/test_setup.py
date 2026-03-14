@@ -10,10 +10,10 @@ import structlog
 if TYPE_CHECKING:
     from pathlib import Path
 
-from ai_company.observability.config import LogConfig, SinkConfig
-from ai_company.observability.correlation import bind_correlation_id
-from ai_company.observability.enums import LogLevel, SinkType
-from ai_company.observability.setup import _DEFAULT_LOGGER_LEVELS, configure_logging
+from synthorg.observability.config import LogConfig, SinkConfig
+from synthorg.observability.correlation import bind_correlation_id
+from synthorg.observability.enums import LogLevel, SinkType
+from synthorg.observability.setup import _DEFAULT_LOGGER_LEVELS, configure_logging
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -95,10 +95,10 @@ class TestConfigureLogging:
                     json_format=False,
                 ),
             ),
-            logger_levels=(("ai_company.engine", LogLevel.CRITICAL),),
+            logger_levels=(("synthorg.engine", LogLevel.CRITICAL),),
         )
         configure_logging(config)
-        logger = logging.getLogger("ai_company.engine")
+        logger = logging.getLogger("synthorg.engine")
         assert logger.level == logging.CRITICAL
 
     def test_none_config_uses_defaults(self) -> None:
@@ -152,9 +152,9 @@ class TestDefaultLoggerLevels:
     def test_has_twelve_entries(self) -> None:
         assert len(_DEFAULT_LOGGER_LEVELS) == 12
 
-    def test_all_start_with_ai_company(self) -> None:
+    def test_all_start_with_synthorg(self) -> None:
         for name, _ in _DEFAULT_LOGGER_LEVELS:
-            assert name.startswith("ai_company."), name
+            assert name.startswith("synthorg."), name
 
     def test_all_levels_are_valid(self) -> None:
         for _, level in _DEFAULT_LOGGER_LEVELS:

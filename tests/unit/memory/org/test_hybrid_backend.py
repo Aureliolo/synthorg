@@ -5,23 +5,23 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from ai_company.core.enums import OrgFactCategory, SeniorityLevel
-from ai_company.memory.org.access_control import WriteAccessConfig
-from ai_company.memory.org.errors import (
+from synthorg.core.enums import OrgFactCategory, SeniorityLevel
+from synthorg.memory.org.access_control import WriteAccessConfig
+from synthorg.memory.org.errors import (
     OrgMemoryAccessDeniedError,
     OrgMemoryConnectionError,
     OrgMemoryWriteError,
 )
-from ai_company.memory.org.hybrid_backend import HybridPromptRetrievalBackend
-from ai_company.memory.org.models import (
+from synthorg.memory.org.hybrid_backend import HybridPromptRetrievalBackend
+from synthorg.memory.org.models import (
     OrgFactAuthor,
     OrgFactWriteRequest,
     OrgMemoryQuery,
 )
-from ai_company.memory.org.store import SQLiteOrgFactStore
+from synthorg.memory.org.store import SQLiteOrgFactStore
 
 if TYPE_CHECKING:
-    from ai_company.core.types import NotBlankStr
+    from synthorg.core.types import NotBlankStr
 
 pytestmark = pytest.mark.timeout(30)
 

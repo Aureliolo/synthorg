@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.providers.enums import FinishReason, MessageRole, StreamEventType
+from synthorg.providers.enums import FinishReason, MessageRole, StreamEventType
 
 pytestmark = pytest.mark.timeout(30)
 

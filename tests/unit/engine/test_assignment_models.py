@@ -5,13 +5,13 @@ from datetime import date
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.agent import AgentIdentity, ModelConfig, SkillSet
-from ai_company.core.enums import (
+from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
+from synthorg.core.enums import (
     SeniorityLevel,
     TaskType,
 )
-from ai_company.core.task import Task
-from ai_company.engine.assignment.models import (
+from synthorg.core.task import Task
+from synthorg.engine.assignment.models import (
     AgentWorkload,
     AssignmentCandidate,
     AssignmentRequest,

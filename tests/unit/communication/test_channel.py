@@ -3,8 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.communication.channel import Channel
-from ai_company.communication.enums import ChannelType
+from synthorg.communication.channel import Channel
+from synthorg.communication.enums import ChannelType
 
 pytestmark = pytest.mark.timeout(30)
 

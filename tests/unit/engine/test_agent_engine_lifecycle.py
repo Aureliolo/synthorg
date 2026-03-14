@@ -6,12 +6,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ai_company.core.agent import AgentIdentity
-from ai_company.core.enums import TaskStatus
-from ai_company.core.task import Task
-from ai_company.engine.agent_engine import AgentEngine
-from ai_company.engine.context import AgentContext
-from ai_company.engine.loop_protocol import (
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.enums import TaskStatus
+from synthorg.core.task import Task
+from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
@@ -382,7 +382,7 @@ class TestAgentEngineCompletionMetrics:
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """Successful run computes and logs TaskCompletionMetrics."""
-        from ai_company.engine.metrics import TaskCompletionMetrics
+        from synthorg.engine.metrics import TaskCompletionMetrics
 
         response = _make_completion_response(
             input_tokens=400,

@@ -13,15 +13,15 @@ import pytest
 if TYPE_CHECKING:
     from pathlib import Path
 
-from ai_company.budget.tracker import CostTracker
-from ai_company.core.agent import ToolPermissions
-from ai_company.core.enums import TaskStatus, ToolAccessLevel
-from ai_company.engine.agent_engine import AgentEngine
-from ai_company.engine.loop_protocol import TerminationReason
-from ai_company.providers.enums import MessageRole
-from ai_company.providers.models import ToolCall
-from ai_company.tools.file_system.write_file import WriteFileTool
-from ai_company.tools.registry import ToolRegistry
+from synthorg.budget.tracker import CostTracker
+from synthorg.core.agent import ToolPermissions
+from synthorg.core.enums import TaskStatus, ToolAccessLevel
+from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.providers.enums import MessageRole
+from synthorg.providers.models import ToolCall
+from synthorg.tools.file_system.write_file import WriteFileTool
+from synthorg.tools.registry import ToolRegistry
 
 from .conftest import (
     ScriptedProvider,

@@ -89,7 +89,7 @@ For each tool/library/framework mentioned:
 Cross-reference findings against the SynthOrg project. Search these in parallel:
 
 1. **DESIGN_SPEC.md** — Grep for related sections (memory, providers, communication, agents, etc.)
-2. **Source code** — Grep `src/ai_company/` for overlapping implementations or modules
+2. **Source code** — Grep `src/synthorg/` for overlapping implementations or modules
 3. **CLAUDE.md** — Check for relevant conventions, decisions, or constraints
 4. **Memory files** — Grep the project's auto memory directory (the path is in your system context) for prior research on same or related topics
 5. **pyproject.toml** — Check current dependencies for overlap or conflict

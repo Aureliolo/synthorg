@@ -7,29 +7,29 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 if TYPE_CHECKING:
-    from ai_company.engine.decomposition.models import DecompositionResult
+    from synthorg.engine.decomposition.models import DecompositionResult
 
-from ai_company.core.enums import (
+from synthorg.core.enums import (
     CoordinationTopology,
     TaskStatus,
     TaskStructure,
 )
-from ai_company.engine.coordination.config import CoordinationConfig
-from ai_company.engine.coordination.models import (
+from synthorg.engine.coordination.config import CoordinationConfig
+from synthorg.engine.coordination.models import (
     CoordinationContext,
 )
-from ai_company.engine.coordination.service import MultiAgentCoordinator
-from ai_company.engine.errors import CoordinationPhaseError
-from ai_company.engine.parallel_models import (
+from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.errors import CoordinationPhaseError
+from synthorg.engine.parallel_models import (
     AgentOutcome,
     ParallelExecutionResult,
 )
-from ai_company.engine.routing.models import (
+from synthorg.engine.routing.models import (
     RoutingResult,
 )
-from ai_company.engine.run_result import AgentRunResult
-from ai_company.engine.task_engine_models import TaskMutationResult
-from ai_company.engine.workspace.models import (
+from synthorg.engine.run_result import AgentRunResult
+from synthorg.engine.task_engine_models import TaskMutationResult
+from synthorg.engine.workspace.models import (
     MergeResult,
     Workspace,
     WorkspaceGroupResult,
@@ -65,7 +65,7 @@ def _make_coordinator(  # noqa: PLR0913
         decomp_service.decompose_task.return_value = decomp_result
     decomp_service.rollup_status = MagicMock()
     if decomp_result:
-        from ai_company.engine.decomposition.rollup import StatusRollup
+        from synthorg.engine.decomposition.rollup import StatusRollup
 
         decomp_service.rollup_status.side_effect = StatusRollup.compute
 
@@ -662,7 +662,7 @@ class TestMultiAgentCoordinator:
     @pytest.mark.unit
     async def test_total_cost_aggregated(self) -> None:
         """total_cost_usd sums costs from all waves."""
-        from ai_company.providers.models import TokenUsage
+        from synthorg.providers.models import TokenUsage
 
         sub_a = make_subtask("sub-a")
         sub_b = make_subtask("sub-b", dependencies=("sub-a",))
@@ -684,7 +684,7 @@ class TestMultiAgentCoordinator:
                 )
             }
         )
-        from ai_company.engine.loop_protocol import ExecutionResult
+        from synthorg.engine.loop_protocol import ExecutionResult
 
         run_a = AgentRunResult(
             execution_result=ExecutionResult(
@@ -828,10 +828,10 @@ class TestMultiAgentCoordinator:
     @pytest.mark.unit
     async def test_dispatch_error_wrapped_as_phase_error(self) -> None:
         """Dispatch failure produces a phase error with partial phases."""
-        from ai_company.engine.decomposition.models import (
+        from synthorg.engine.decomposition.models import (
             DecompositionPlan,
         )
-        from ai_company.engine.decomposition.models import (
+        from synthorg.engine.decomposition.models import (
             DecompositionResult as DecompResult,
         )
 

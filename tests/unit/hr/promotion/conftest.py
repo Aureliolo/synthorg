@@ -4,21 +4,21 @@ from datetime import UTC, date, datetime
 
 import pytest
 
-from ai_company.core.agent import AgentIdentity, ModelConfig
-from ai_company.core.enums import SeniorityLevel
-from ai_company.core.types import NotBlankStr
-from ai_company.hr.performance.models import (
+from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.enums import SeniorityLevel
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.performance.models import (
     AgentPerformanceSnapshot,
     WindowMetrics,
 )
-from ai_company.hr.performance.tracker import PerformanceTracker
-from ai_company.hr.promotion.config import (
+from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.promotion.config import (
     ModelMappingConfig,
     PromotionApprovalConfig,
     PromotionConfig,
     PromotionCriteriaConfig,
 )
-from ai_company.hr.registry import AgentRegistryService
+from synthorg.hr.registry import AgentRegistryService
 
 # ── Builder Functions ───────────────────────────────────────────
 

@@ -2,12 +2,12 @@
 
 import pytest
 
-from ai_company.core.enums import CoordinationTopology
-from ai_company.engine.coordination.config import CoordinationConfig
-from ai_company.engine.coordination.section_config import (
+from synthorg.core.enums import CoordinationTopology
+from synthorg.engine.coordination.config import CoordinationConfig
+from synthorg.engine.coordination.section_config import (
     CoordinationSectionConfig,
 )
-from ai_company.engine.routing.models import AutoTopologyConfig
+from synthorg.engine.routing.models import AutoTopologyConfig
 
 pytestmark = pytest.mark.timeout(30)
 

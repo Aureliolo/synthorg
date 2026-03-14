@@ -2,10 +2,10 @@
 
 import pytest
 
-from ai_company.core.enums import ToolAccessLevel
-from ai_company.core.types import NotBlankStr
-from ai_company.security.trust.disabled_strategy import DisabledTrustStrategy
-from ai_company.security.trust.models import TrustState
+from synthorg.core.enums import ToolAccessLevel
+from synthorg.core.types import NotBlankStr
+from synthorg.security.trust.disabled_strategy import DisabledTrustStrategy
+from synthorg.security.trust.models import TrustState
 from tests.unit.security.trust.conftest import make_performance_snapshot
 
 pytestmark = pytest.mark.timeout(30)

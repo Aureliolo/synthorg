@@ -5,14 +5,14 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ai_company.core.enums import ToolAccessLevel
-from ai_company.core.types import NotBlankStr
-from ai_company.security.trust.models import TrustState
-from ai_company.security.trust.weighted_strategy import WeightedTrustStrategy
+from synthorg.core.enums import ToolAccessLevel
+from synthorg.core.types import NotBlankStr
+from synthorg.security.trust.models import TrustState
+from synthorg.security.trust.weighted_strategy import WeightedTrustStrategy
 from tests.unit.security.trust.conftest import make_performance_snapshot
 
 if TYPE_CHECKING:
-    from ai_company.security.trust.config import TrustConfig
+    from synthorg.security.trust.config import TrustConfig
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -189,7 +189,7 @@ class TestWeightedTrustStrategy:
         weighted_config: TrustConfig,
     ) -> None:
         """Agent with no quality score (None) gets 0.0 difficulty factor."""
-        from ai_company.hr.performance.models import (
+        from synthorg.hr.performance.models import (
             AgentPerformanceSnapshot,
             WindowMetrics,
         )
@@ -229,7 +229,7 @@ class TestWeightedTrustStrategy:
         weighted_config: TrustConfig,
     ) -> None:
         """Snapshot with no windows produces minimal score."""
-        from ai_company.hr.performance.models import AgentPerformanceSnapshot
+        from synthorg.hr.performance.models import AgentPerformanceSnapshot
 
         strategy = WeightedTrustStrategy(config=weighted_config)
         state = TrustState(

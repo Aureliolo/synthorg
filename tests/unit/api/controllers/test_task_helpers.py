@@ -2,14 +2,14 @@
 
 import pytest
 
-from ai_company.api.controllers.tasks import _extract_requester, _map_task_engine_errors
-from ai_company.api.errors import (
+from synthorg.api.controllers.tasks import _extract_requester, _map_task_engine_errors
+from synthorg.api.errors import (
     ApiValidationError,
     ConflictError,
     NotFoundError,
     ServiceUnavailableError,
 )
-from ai_company.engine.errors import (
+from synthorg.engine.errors import (
     TaskEngineNotRunningError,
     TaskEngineQueueFullError,
     TaskInternalError,

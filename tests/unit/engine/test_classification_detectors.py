@@ -2,17 +2,17 @@
 
 import pytest
 
-from ai_company.budget.coordination_config import ErrorCategory
-from ai_company.engine.classification.detectors import (
+from synthorg.budget.coordination_config import ErrorCategory
+from synthorg.engine.classification.detectors import (
     detect_context_omissions,
     detect_coordination_failures,
     detect_logical_contradictions,
     detect_numerical_drift,
 )
-from ai_company.engine.classification.models import ErrorSeverity
-from ai_company.engine.loop_protocol import TurnRecord
-from ai_company.providers.enums import FinishReason, MessageRole
-from ai_company.providers.models import ChatMessage, ToolResult
+from synthorg.engine.classification.models import ErrorSeverity
+from synthorg.engine.loop_protocol import TurnRecord
+from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.models import ChatMessage, ToolResult
 
 
 def _assistant(content: str) -> ChatMessage:

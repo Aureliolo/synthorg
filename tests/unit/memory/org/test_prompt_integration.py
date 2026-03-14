@@ -4,10 +4,10 @@ from datetime import date
 
 import pytest
 
-from ai_company.core.agent import AgentIdentity, ModelConfig
-from ai_company.core.enums import SeniorityLevel
-from ai_company.engine.prompt import build_system_prompt
-from ai_company.engine.prompt_template import PROMPT_TEMPLATE_VERSION
+from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.enums import SeniorityLevel
+from synthorg.engine.prompt import build_system_prompt
+from synthorg.engine.prompt_template import PROMPT_TEMPLATE_VERSION
 
 pytestmark = pytest.mark.timeout(30)
 

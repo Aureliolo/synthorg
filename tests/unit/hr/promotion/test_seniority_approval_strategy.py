@@ -4,11 +4,11 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ai_company.core.enums import SeniorityLevel
-from ai_company.hr.enums import PromotionDirection
-from ai_company.hr.promotion.config import PromotionApprovalConfig
-from ai_company.hr.promotion.models import PromotionEvaluation
-from ai_company.hr.promotion.seniority_approval_strategy import (
+from synthorg.core.enums import SeniorityLevel
+from synthorg.hr.enums import PromotionDirection
+from synthorg.hr.promotion.config import PromotionApprovalConfig
+from synthorg.hr.promotion.models import PromotionEvaluation
+from synthorg.hr.promotion.seniority_approval_strategy import (
     SeniorityApprovalStrategy,
 )
 

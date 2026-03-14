@@ -4,19 +4,19 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ai_company.core.enums import ToolAccessLevel
-from ai_company.hr.performance.models import (
+from synthorg.core.enums import ToolAccessLevel
+from synthorg.hr.performance.models import (
     AgentPerformanceSnapshot,
     WindowMetrics,
 )
-from ai_company.security.trust.config import (
+from synthorg.security.trust.config import (
     MilestoneCriteria,
     ReVerificationConfig,
     TrustConfig,
     TrustThreshold,
     WeightedTrustWeights,
 )
-from ai_company.security.trust.enums import TrustStrategyType
+from synthorg.security.trust.enums import TrustStrategyType
 
 
 def make_performance_snapshot(

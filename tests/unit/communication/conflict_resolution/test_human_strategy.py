@@ -2,13 +2,13 @@
 
 import pytest
 
-from ai_company.communication.conflict_resolution.human_strategy import (
+from synthorg.communication.conflict_resolution.human_strategy import (
     HumanEscalationResolver,
 )
-from ai_company.communication.conflict_resolution.models import (
+from synthorg.communication.conflict_resolution.models import (
     ConflictResolutionOutcome,
 )
-from ai_company.communication.enums import ConflictResolutionStrategy
+from synthorg.communication.enums import ConflictResolutionStrategy
 
 from .conftest import make_conflict
 

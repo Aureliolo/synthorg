@@ -7,12 +7,12 @@ import time
 import pytest
 import structlog
 
-from ai_company.core.resilience_config import RateLimiterConfig
-from ai_company.observability.events.provider import (
+from synthorg.core.resilience_config import RateLimiterConfig
+from synthorg.observability.events.provider import (
     PROVIDER_RATE_LIMITER_PAUSED,
     PROVIDER_RATE_LIMITER_THROTTLED,
 )
-from ai_company.providers.resilience.rate_limiter import RateLimiter
+from synthorg.providers.resilience.rate_limiter import RateLimiter
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -176,7 +176,7 @@ class TestRateLimiterRPMThrottling:
 
         # Fill the single RPM slot
         with mock.patch(
-            "ai_company.providers.resilience.rate_limiter.time.monotonic",
+            "synthorg.providers.resilience.rate_limiter.time.monotonic",
             time_fn,
         ):
             await limiter.acquire()
@@ -184,11 +184,11 @@ class TestRateLimiterRPMThrottling:
         # Second acquire must sleep (budget exhausted)
         with (
             mock.patch(
-                "ai_company.providers.resilience.rate_limiter.time.monotonic",
+                "synthorg.providers.resilience.rate_limiter.time.monotonic",
                 time_fn,
             ),
             mock.patch(
-                "ai_company.providers.resilience.rate_limiter.asyncio.sleep",
+                "synthorg.providers.resilience.rate_limiter.asyncio.sleep",
                 instant_sleep,
             ),
         ):
@@ -214,18 +214,18 @@ class TestRateLimiterRPMThrottling:
             return base_t if not slept else base_t + 61.0
 
         with mock.patch(
-            "ai_company.providers.resilience.rate_limiter.time.monotonic",
+            "synthorg.providers.resilience.rate_limiter.time.monotonic",
             time_fn,
         ):
             await limiter.acquire()
 
         with (
             mock.patch(
-                "ai_company.providers.resilience.rate_limiter.time.monotonic",
+                "synthorg.providers.resilience.rate_limiter.time.monotonic",
                 time_fn,
             ),
             mock.patch(
-                "ai_company.providers.resilience.rate_limiter.asyncio.sleep",
+                "synthorg.providers.resilience.rate_limiter.asyncio.sleep",
                 instant_sleep,
             ),
             structlog.testing.capture_logs() as cap,

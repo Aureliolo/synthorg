@@ -6,12 +6,12 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from ai_company.communication.enums import (
+from synthorg.communication.enums import (
     AttachmentType,
     MessagePriority,
     MessageType,
 )
-from ai_company.communication.message import Attachment, Message, MessageMetadata
+from synthorg.communication.message import Attachment, Message, MessageMetadata
 
 pytestmark = pytest.mark.timeout(30)
 

@@ -5,21 +5,21 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ai_company.core.enums import TaskStatus, TaskType
-from ai_company.core.task import Task
-from ai_company.engine.checkpoint.models import Checkpoint, CheckpointConfig
-from ai_company.engine.checkpoint.strategy import CheckpointRecoveryStrategy
-from ai_company.engine.context import AgentContext
-from ai_company.engine.recovery import (
+from synthorg.core.enums import TaskStatus, TaskType
+from synthorg.core.task import Task
+from synthorg.engine.checkpoint.models import Checkpoint, CheckpointConfig
+from synthorg.engine.checkpoint.strategy import CheckpointRecoveryStrategy
+from synthorg.engine.context import AgentContext
+from synthorg.engine.recovery import (
     FailAndReassignStrategy,
     RecoveryResult,
     RecoveryStrategy,
 )
-from ai_company.persistence.errors import QueryError
+from synthorg.persistence.errors import QueryError
 
 if TYPE_CHECKING:
-    from ai_company.core.agent import AgentIdentity
-    from ai_company.engine.task_execution import TaskExecution
+    from synthorg.core.agent import AgentIdentity
+    from synthorg.engine.task_execution import TaskExecution
 
 pytestmark = pytest.mark.timeout(30)
 

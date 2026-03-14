@@ -4,15 +4,15 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ai_company.core.enums import ActionType, ApprovalRiskLevel, ToolCategory
-from ai_company.security.config import RuleEngineConfig
-from ai_company.security.models import (
+from synthorg.core.enums import ActionType, ApprovalRiskLevel, ToolCategory
+from synthorg.security.config import RuleEngineConfig
+from synthorg.security.models import (
     SecurityContext,
     SecurityVerdict,
     SecurityVerdictType,
 )
-from ai_company.security.rules.engine import RuleEngine
-from ai_company.security.rules.risk_classifier import RiskClassifier
+from synthorg.security.rules.engine import RuleEngine
+from synthorg.security.rules.risk_classifier import RiskClassifier
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -321,7 +321,7 @@ class TestRuleEngineSoftAllow:
     """Soft-allow from policy_validator does not short-circuit."""
 
     def test_soft_allow_continues_to_next_rule(self) -> None:
-        from ai_company.security.rules.policy_validator import (
+        from synthorg.security.rules.policy_validator import (
             _RULE_NAME as POLICY_VALIDATOR_NAME,
         )
 
@@ -345,7 +345,7 @@ class TestRuleEngineSoftAllow:
         assert deny_rule.called
 
     def test_soft_allow_used_when_no_deny(self) -> None:
-        from ai_company.security.rules.policy_validator import (
+        from synthorg.security.rules.policy_validator import (
             _RULE_NAME as POLICY_VALIDATOR_NAME,
         )
 

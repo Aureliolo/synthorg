@@ -5,23 +5,23 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from ai_company.budget.call_category import LLMCallCategory
-from ai_company.core.agent import AgentIdentity
-from ai_company.core.enums import ToolCategory
-from ai_company.engine.context import AgentContext
-from ai_company.engine.loop_protocol import TerminationReason
-from ai_company.engine.plan_execute_loop import PlanExecuteLoop
-from ai_company.engine.plan_models import PlanExecuteConfig
-from ai_company.providers.enums import FinishReason, MessageRole
-from ai_company.providers.models import (
+from synthorg.budget.call_category import LLMCallCategory
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.enums import ToolCategory
+from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.engine.plan_execute_loop import PlanExecuteLoop
+from synthorg.engine.plan_models import PlanExecuteConfig
+from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.models import (
     ChatMessage,
     CompletionResponse,
     TokenUsage,
     ToolCall,
 )
-from ai_company.tools.base import BaseTool, ToolExecutionResult
-from ai_company.tools.invoker import ToolInvoker
-from ai_company.tools.registry import ToolRegistry
+from synthorg.tools.base import BaseTool, ToolExecutionResult
+from synthorg.tools.invoker import ToolInvoker
+from synthorg.tools.registry import ToolRegistry
 
 if TYPE_CHECKING:
     from .conftest import MockCompletionProvider
@@ -733,7 +733,7 @@ class TestPlanExecuteLoopProtocol:
     """Protocol conformance."""
 
     def test_is_execution_loop(self) -> None:
-        from ai_company.engine.loop_protocol import ExecutionLoop
+        from synthorg.engine.loop_protocol import ExecutionLoop
 
         loop = PlanExecuteLoop()
         assert isinstance(loop, ExecutionLoop)
@@ -809,7 +809,7 @@ class TestReactVsPlanExecuteComparison:
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """Both loops reach COMPLETED on a simple task."""
-        from ai_company.engine.react_loop import ReactLoop
+        from synthorg.engine.react_loop import ReactLoop
 
         ctx = _ctx_with_user_msg(sample_agent_context)
 

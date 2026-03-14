@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.tools.file_system._base_fs_tool import _map_os_error
+from synthorg.tools.file_system._base_fs_tool import _map_os_error
 
 pytestmark = pytest.mark.timeout(30)
 

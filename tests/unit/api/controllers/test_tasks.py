@@ -36,7 +36,7 @@ class TestTaskController:
         test_client: TestClient[Any],
         fake_persistence: FakePersistenceBackend,
     ) -> None:
-        from ai_company.core.enums import TaskStatus
+        from synthorg.core.enums import TaskStatus
 
         t1 = make_task(task_id="t1")
         t2 = make_task(

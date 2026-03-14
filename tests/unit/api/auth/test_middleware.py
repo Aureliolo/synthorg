@@ -6,11 +6,11 @@ import pytest
 from litestar import Litestar, get
 from litestar.testing import TestClient
 
-from ai_company.api.auth.config import AuthConfig
-from ai_company.api.auth.middleware import create_auth_middleware_class
-from ai_company.api.auth.models import ApiKey, User
-from ai_company.api.auth.service import AuthService
-from ai_company.api.guards import HumanRole
+from synthorg.api.auth.config import AuthConfig
+from synthorg.api.auth.middleware import create_auth_middleware_class
+from synthorg.api.auth.models import ApiKey, User
+from synthorg.api.auth.service import AuthService
+from synthorg.api.guards import HumanRole
 from tests.unit.api.conftest import _TEST_JWT_SECRET as _SECRET
 from tests.unit.api.conftest import FakePersistenceBackend
 
@@ -364,7 +364,7 @@ class TestExtractBearerToken:
         header: str,
         expected: str | None,
     ) -> None:
-        from ai_company.api.auth.middleware import _extract_bearer_token
+        from synthorg.api.auth.middleware import _extract_bearer_token
 
         assert _extract_bearer_token(header) == expected
 

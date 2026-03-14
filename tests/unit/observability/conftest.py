@@ -9,8 +9,8 @@ if TYPE_CHECKING:
 import structlog
 from polyfactory.factories.pydantic_factory import ModelFactory
 
-from ai_company.observability.config import LogConfig, RotationConfig, SinkConfig
-from ai_company.observability.enums import LogLevel, RotationStrategy, SinkType
+from synthorg.observability.config import LogConfig, RotationConfig, SinkConfig
+from synthorg.observability.enums import LogLevel, RotationStrategy, SinkType
 from tests.conftest import clear_logging_state
 
 # -- Factories --------------------------------------------------------------

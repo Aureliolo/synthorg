@@ -7,8 +7,8 @@ import pytest
 import structlog.testing
 from pydantic import ValidationError
 
-from ai_company.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
-from ai_company.core.enums import (
+from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
+from synthorg.core.enums import (
     AutonomyLevel,
     CollaborationPreference,
     CommunicationVerbosity,
@@ -18,29 +18,29 @@ from ai_company.core.enums import (
     RiskTolerance,
     SeniorityLevel,
 )
-from ai_company.engine.errors import PromptBuildError
-from ai_company.engine.prompt import (
+from synthorg.engine.errors import PromptBuildError
+from synthorg.engine.prompt import (
     DefaultTokenEstimator,
     SystemPrompt,
     build_error_prompt,
     build_system_prompt,
 )
-from ai_company.engine.prompt_template import (
+from synthorg.engine.prompt_template import (
     AUTONOMY_INSTRUCTIONS,
     PROMPT_TEMPLATE_VERSION,
 )
-from ai_company.observability.events.prompt import (
+from synthorg.observability.events.prompt import (
     PROMPT_BUILD_START,
     PROMPT_BUILD_SUCCESS,
     PROMPT_BUILD_TOKEN_TRIMMED,
 )
-from ai_company.security.autonomy.models import EffectiveAutonomy
+from synthorg.security.autonomy.models import EffectiveAutonomy
 
 if TYPE_CHECKING:
-    from ai_company.core.company import Company
-    from ai_company.core.role import Role
-    from ai_company.core.task import Task
-    from ai_company.providers.models import ToolDefinition
+    from synthorg.core.company import Company
+    from synthorg.core.role import Role
+    from synthorg.core.task import Task
+    from synthorg.providers.models import ToolDefinition
 
 
 # ── TestBuildSystemPrompt ────────────────────────────────────────
@@ -496,7 +496,7 @@ class TestPolicyValidationIntegration:
         from unittest.mock import patch
 
         with patch(
-            "ai_company.engine.prompt.validate_policy_quality",
+            "synthorg.engine.prompt.validate_policy_quality",
             side_effect=RuntimeError("boom"),
         ):
             result = build_system_prompt(
@@ -801,8 +801,8 @@ class TestDefaultAgentPrompt:
     @pytest.mark.unit
     def test_task_with_zero_budget_and_no_deadline(self) -> None:
         """Task with zero budget and no deadline omits those sections."""
-        from ai_company.core.enums import Complexity, Priority, TaskStatus, TaskType
-        from ai_company.core.task import Task
+        from synthorg.core.enums import Complexity, Priority, TaskStatus, TaskType
+        from synthorg.core.task import Task
 
         task = Task(
             id="task-zero-001",
@@ -930,7 +930,7 @@ class TestCatchAllExceptionWrapping:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Non-PromptBuildError exceptions are wrapped with context."""
-        from ai_company.engine import prompt as prompt_module
+        from synthorg.engine import prompt as prompt_module
 
         def _broken_render(*_args: object, **_kwargs: object) -> None:
             msg = "simulated failure"

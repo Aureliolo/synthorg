@@ -5,7 +5,7 @@ import uuid
 import pytest
 import structlog
 
-from ai_company.observability.correlation import (
+from synthorg.observability.correlation import (
     bind_correlation_id,
     clear_correlation_ids,
     generate_correlation_id,

@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
-from ai_company.api.middleware import (
+from synthorg.api.middleware import (
     _API_CSP,
     _DOCS_CSP,
     CSPMiddleware,

@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.core.types import NotBlankStr
-from ai_company.hr.performance.ci_quality_strategy import CISignalQualityStrategy
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.performance.ci_quality_strategy import CISignalQualityStrategy
 
 from .conftest import make_acceptance_criterion, make_task_metric
 

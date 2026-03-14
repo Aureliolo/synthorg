@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ai_company.api.ws_models import WsEvent, WsEventType
+from synthorg.api.ws_models import WsEvent, WsEventType
 
 
 @pytest.mark.unit

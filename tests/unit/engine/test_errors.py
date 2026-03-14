@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.budget.errors import BudgetExhaustedError
-from ai_company.engine.errors import (
+from synthorg.budget.errors import BudgetExhaustedError
+from synthorg.engine.errors import (
     EngineError,
     ExecutionStateError,
     LoopExecutionError,

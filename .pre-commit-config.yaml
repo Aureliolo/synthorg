@@ -13,7 +13,7 @@ repos:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
-        exclude: ^(src/ai_company/templates/builtins/|mkdocs\.yml$)
+        exclude: ^(src/synthorg/templates/builtins/|mkdocs\.yml$)
       - id: check-yaml
         name: check-yaml (mkdocs, unsafe for !!python tags)
         args: [--unsafe]

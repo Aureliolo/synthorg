@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.core.enums import ActionType, ToolCategory
-from ai_company.security.action_type_mapping import DEFAULT_CATEGORY_ACTION_MAP
+from synthorg.core.enums import ActionType, ToolCategory
+from synthorg.security.action_type_mapping import DEFAULT_CATEGORY_ACTION_MAP
 
 pytestmark = pytest.mark.timeout(30)
 

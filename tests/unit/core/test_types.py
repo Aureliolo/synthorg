@@ -3,7 +3,7 @@
 import pytest
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from ai_company.core.types import NotBlankStr, validate_unique_strings
+from synthorg.core.types import NotBlankStr, validate_unique_strings
 
 pytestmark = pytest.mark.timeout(30)
 

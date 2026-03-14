@@ -3,17 +3,17 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.engine.context import AgentContext
-from ai_company.engine.loop_protocol import (
+from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
     TurnRecord,
 )
-from ai_company.engine.metrics import TaskCompletionMetrics
-from ai_company.engine.prompt import SystemPrompt
-from ai_company.engine.run_result import AgentRunResult
-from ai_company.providers.enums import FinishReason
-from ai_company.providers.models import TokenUsage
+from synthorg.engine.metrics import TaskCompletionMetrics
+from synthorg.engine.prompt import SystemPrompt
+from synthorg.engine.run_result import AgentRunResult
+from synthorg.providers.enums import FinishReason
+from synthorg.providers.models import TokenUsage
 
 
 @pytest.mark.unit

@@ -5,32 +5,32 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ai_company.communication.meeting.config import (
+from synthorg.communication.meeting.config import (
     MeetingProtocolConfig,
 )
-from ai_company.communication.meeting.enums import (
+from synthorg.communication.meeting.enums import (
     MeetingProtocolType,
     MeetingStatus,
 )
-from ai_company.communication.meeting.errors import (
+from synthorg.communication.meeting.errors import (
     MeetingParticipantError,
     MeetingProtocolNotFoundError,
 )
-from ai_company.communication.meeting.models import (
+from synthorg.communication.meeting.models import (
     ActionItem,
     MeetingAgenda,
     MeetingMinutes,
 )
-from ai_company.communication.meeting.orchestrator import (
+from synthorg.communication.meeting.orchestrator import (
     MeetingOrchestrator,
     _format_exception,
 )
-from ai_company.communication.meeting.position_papers import (
+from synthorg.communication.meeting.position_papers import (
     PositionPapersProtocol,
 )
-from ai_company.communication.meeting.protocol import MeetingProtocol
-from ai_company.communication.meeting.round_robin import RoundRobinProtocol
-from ai_company.core.enums import Priority
+from synthorg.communication.meeting.protocol import MeetingProtocol
+from synthorg.communication.meeting.round_robin import RoundRobinProtocol
+from synthorg.core.enums import Priority
 from tests.unit.communication.meeting.conftest import (
     make_mock_agent_caller,
 )

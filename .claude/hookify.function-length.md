@@ -5,7 +5,7 @@ event: file
 conditions:
   - field: file_path
     operator: regex_match
-    pattern: "src/ai_company/.*\\.py$"
+    pattern: "src/synthorg/.*\\.py$"
   - field: new_text
     operator: regex_match
     pattern: "^\\s*(?:async\\s+)?def "

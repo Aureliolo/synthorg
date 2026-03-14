@@ -4,10 +4,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ai_company.api.bus_bridge import MessageBusBridge
-from ai_company.api.ws_models import WsEventType
-from ai_company.communication.enums import MessagePriority, MessageType
-from ai_company.communication.message import Message
+from synthorg.api.bus_bridge import MessageBusBridge
+from synthorg.api.ws_models import WsEventType
+from synthorg.communication.enums import MessagePriority, MessageType
+from synthorg.communication.message import Message
 
 
 @pytest.mark.unit
@@ -52,7 +52,7 @@ class TestBridgeLifecycle:
         from litestar.channels import ChannelsPlugin
         from litestar.channels.backends.memory import MemoryChannelsBackend
 
-        from ai_company.api.channels import ALL_CHANNELS
+        from synthorg.api.channels import ALL_CHANNELS
         from tests.unit.api.conftest import FakeMessageBus
 
         bus = FakeMessageBus()
@@ -71,7 +71,7 @@ class TestBridgeLifecycle:
         from litestar.channels import ChannelsPlugin
         from litestar.channels.backends.memory import MemoryChannelsBackend
 
-        from ai_company.api.channels import ALL_CHANNELS
+        from synthorg.api.channels import ALL_CHANNELS
         from tests.unit.api.conftest import FakeMessageBus
 
         bus = FakeMessageBus()
@@ -90,7 +90,7 @@ class TestBridgeLifecycle:
         from litestar.channels import ChannelsPlugin
         from litestar.channels.backends.memory import MemoryChannelsBackend
 
-        from ai_company.api.channels import ALL_CHANNELS
+        from synthorg.api.channels import ALL_CHANNELS
         from tests.unit.api.conftest import FakeMessageBus
 
         bus = FakeMessageBus()
@@ -110,7 +110,7 @@ class TestBridgeLifecycle:
         from litestar.channels import ChannelsPlugin
         from litestar.channels.backends.memory import MemoryChannelsBackend
 
-        from ai_company.api.channels import ALL_CHANNELS
+        from synthorg.api.channels import ALL_CHANNELS
         from tests.unit.api.conftest import FakeMessageBus
 
         bus = FakeMessageBus()
@@ -141,8 +141,8 @@ class TestPollChannel:
         from litestar.channels import ChannelsPlugin
         from litestar.channels.backends.memory import MemoryChannelsBackend
 
-        from ai_company.api.bus_bridge import _MAX_CONSECUTIVE_ERRORS
-        from ai_company.api.channels import ALL_CHANNELS
+        from synthorg.api.bus_bridge import _MAX_CONSECUTIVE_ERRORS
+        from synthorg.api.channels import ALL_CHANNELS
         from tests.unit.api.conftest import FakeMessageBus
 
         bus = FakeMessageBus()
@@ -169,6 +169,6 @@ class TestPollChannel:
         )
         bridge = MessageBusBridge(bus, plugin)
         # Patch _POLL_TIMEOUT to 0 so sleeps between errors are instant
-        with patch("ai_company.api.bus_bridge._POLL_TIMEOUT", 0.0):
+        with patch("synthorg.api.bus_bridge._POLL_TIMEOUT", 0.0):
             await bridge._poll_channel("tasks")
         assert call_count >= _MAX_CONSECUTIVE_ERRORS

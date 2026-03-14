@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from ai_company.security.timeout.parked_context import ParkedContext
+from synthorg.security.timeout.parked_context import ParkedContext
 
 pytestmark = pytest.mark.timeout(30)
 

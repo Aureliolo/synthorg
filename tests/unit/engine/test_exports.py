@@ -2,7 +2,7 @@
 
 import pytest
 
-import ai_company.engine as engine_mod
+import synthorg.engine as engine_mod
 
 
 @pytest.mark.unit

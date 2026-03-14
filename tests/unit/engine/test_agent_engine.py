@@ -7,26 +7,26 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import structlog.testing
 
-from ai_company.budget.coordination_config import ErrorTaxonomyConfig
-from ai_company.budget.tracker import CostTracker
-from ai_company.core.agent import AgentIdentity
-from ai_company.core.enums import AgentStatus, Priority, TaskStatus, TaskType
-from ai_company.core.task import Task
-from ai_company.engine.agent_engine import AgentEngine
-from ai_company.engine.context import AgentContext
-from ai_company.engine.errors import (
+from synthorg.budget.coordination_config import ErrorTaxonomyConfig
+from synthorg.budget.tracker import CostTracker
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.enums import AgentStatus, Priority, TaskStatus, TaskType
+from synthorg.core.task import Task
+from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.context import AgentContext
+from synthorg.engine.errors import (
     ExecutionStateError,
     TaskEngineError,
 )
-from ai_company.engine.loop_protocol import (
+from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
     TurnRecord,
 )
-from ai_company.engine.run_result import AgentRunResult
-from ai_company.engine.task_engine_models import TaskMutationResult
-from ai_company.observability.events.prompt import PROMPT_TOKEN_RATIO_HIGH
-from ai_company.providers.enums import FinishReason
+from synthorg.engine.run_result import AgentRunResult
+from synthorg.engine.task_engine_models import TaskMutationResult
+from synthorg.observability.events.prompt import PROMPT_TOKEN_RATIO_HIGH
+from synthorg.providers.enums import FinishReason
 
 if TYPE_CHECKING:
     from .conftest import MockCompletionProvider
@@ -327,9 +327,9 @@ class TestAgentEngineWithTools:
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        from ai_company.core.enums import ToolCategory
-        from ai_company.tools.base import BaseTool, ToolExecutionResult
-        from ai_company.tools.registry import ToolRegistry
+        from synthorg.core.enums import ToolCategory
+        from synthorg.tools.base import BaseTool, ToolExecutionResult
+        from synthorg.tools.registry import ToolRegistry
 
         class EchoTool(BaseTool):
             async def execute(
@@ -795,7 +795,7 @@ class TestAgentEngineClassification:
         )
 
         with patch(
-            "ai_company.engine.agent_engine.classify_execution_errors",
+            "synthorg.engine.agent_engine.classify_execution_errors",
         ) as mock_classify:
             result = await engine.run(
                 identity=sample_agent_with_personality,
@@ -821,7 +821,7 @@ class TestAgentEngineClassification:
         )
 
         with patch(
-            "ai_company.engine.agent_engine.classify_execution_errors",
+            "synthorg.engine.agent_engine.classify_execution_errors",
             new_callable=AsyncMock,
             return_value=None,
         ) as mock_classify:
@@ -850,7 +850,7 @@ class TestAgentEngineClassification:
 
         with (
             patch(
-                "ai_company.engine.agent_engine.classify_execution_errors",
+                "synthorg.engine.agent_engine.classify_execution_errors",
                 new_callable=AsyncMock,
                 side_effect=MemoryError,
             ),
@@ -899,7 +899,7 @@ class TestAgentEnginePromptTokenRatioWarning:
         Injects a fixed ``estimated_tokens`` via mock to isolate the
         threshold-check logic from the live prompt estimator.
         """
-        from ai_company.engine.prompt import SystemPrompt
+        from synthorg.engine.prompt import SystemPrompt
 
         response = _make_completion_response(
             input_tokens=input_tokens,
@@ -919,7 +919,7 @@ class TestAgentEnginePromptTokenRatioWarning:
 
         with (
             patch(
-                "ai_company.engine.agent_engine.build_system_prompt",
+                "synthorg.engine.agent_engine.build_system_prompt",
                 return_value=fixed_prompt,
             ),
             structlog.testing.capture_logs() as logs,
@@ -1311,8 +1311,8 @@ class TestSyncToTaskEngine:
 @pytest.mark.unit
 def test_snapshot_channel_matches_api_channel() -> None:
     """TaskEngine._SNAPSHOT_CHANNEL must match CHANNEL_TASKS in api.channels."""
-    from ai_company.api.channels import CHANNEL_TASKS
-    from ai_company.engine.task_engine import TaskEngine
+    from synthorg.api.channels import CHANNEL_TASKS
+    from synthorg.engine.task_engine import TaskEngine
 
     assert TaskEngine._SNAPSHOT_CHANNEL == CHANNEL_TASKS
 

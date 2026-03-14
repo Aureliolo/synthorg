@@ -2,9 +2,9 @@
 
 import pytest
 
-from ai_company.core.enums import ApprovalRiskLevel, ToolCategory
-from ai_company.security.models import SecurityContext, SecurityVerdictType
-from ai_company.security.rules.data_leak_detector import DataLeakDetector
+from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.security.models import SecurityContext, SecurityVerdictType
+from synthorg.security.rules.data_leak_detector import DataLeakDetector
 
 pytestmark = pytest.mark.timeout(30)
 

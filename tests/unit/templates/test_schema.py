@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import CompanyType, SeniorityLevel
-from ai_company.templates.schema import (
+from synthorg.core.enums import CompanyType, SeniorityLevel
+from synthorg.templates.schema import (
     CompanyTemplate,
     TemplateAgentConfig,
     TemplateDepartmentConfig,

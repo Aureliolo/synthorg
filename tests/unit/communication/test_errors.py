@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.communication.errors import (
+from synthorg.communication.errors import (
     ChannelAlreadyExistsError,
     ChannelNotFoundError,
     CommunicationError,

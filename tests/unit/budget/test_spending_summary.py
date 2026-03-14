@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from ai_company.budget.enums import BudgetAlertLevel
-from ai_company.budget.spending_summary import (
+from synthorg.budget.enums import BudgetAlertLevel
+from synthorg.budget.spending_summary import (
     AgentSpending,
     DepartmentSpending,
     PeriodSpending,

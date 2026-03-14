@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 from polyfactory.factories.pydantic_factory import ModelFactory
 
-from ai_company.core.agent import (
+from synthorg.core.agent import (
     AgentIdentity,
     MemoryConfig,
     ModelConfig,
@@ -14,8 +14,8 @@ from ai_company.core.agent import (
     SkillSet,
     ToolPermissions,
 )
-from ai_company.core.artifact import Artifact, ExpectedArtifact
-from ai_company.core.company import (
+from synthorg.core.artifact import Artifact, ExpectedArtifact
+from synthorg.core.company import (
     ApprovalChain,
     Company,
     CompanyConfig,
@@ -28,7 +28,7 @@ from ai_company.core.company import (
     Team,
     WorkflowHandoff,
 )
-from ai_company.core.enums import (
+from synthorg.core.enums import (
     ArtifactType,
     Complexity,
     DepartmentName,
@@ -40,11 +40,11 @@ from ai_company.core.enums import (
     TaskStatus,
     TaskType,
 )
-from ai_company.core.project import Project
-from ai_company.core.role import Authority, CustomRole, Role, SeniorityInfo, Skill
-from ai_company.core.task import AcceptanceCriterion, Task
-from ai_company.security.autonomy.models import AutonomyConfig
-from ai_company.security.timeout.config import WaitForeverConfig
+from synthorg.core.project import Project
+from synthorg.core.role import Authority, CustomRole, Role, SeniorityInfo, Skill
+from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.security.autonomy.models import AutonomyConfig
+from synthorg.security.timeout.config import WaitForeverConfig
 
 # ── Factories ──────────────────────────────────────────────────────
 

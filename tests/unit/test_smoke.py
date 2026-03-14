@@ -13,16 +13,16 @@ SEMVER_PATTERN = re.compile(
 
 @pytest.mark.unit
 def test_package_importable() -> None:
-    """Verify the ai_company package can be imported."""
-    import ai_company
+    """Verify the synthorg package can be imported."""
+    import synthorg
 
-    assert hasattr(ai_company, "__version__")
+    assert hasattr(synthorg, "__version__")
 
 
 @pytest.mark.unit
 def test_version_format() -> None:
     """Verify version string matches MAJOR.MINOR.PATCH format."""
-    from ai_company import __version__
+    from synthorg import __version__
 
     assert SEMVER_PATTERN.match(__version__), (
         f"Version {__version__!r} is not valid semver"

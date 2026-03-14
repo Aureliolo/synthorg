@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.core.enums import AutonomyLevel, DowngradeReason
-from ai_company.security.autonomy.change_strategy import HumanOnlyPromotionStrategy
+from synthorg.core.enums import AutonomyLevel, DowngradeReason
+from synthorg.security.autonomy.change_strategy import HumanOnlyPromotionStrategy
 
 
 class TestPromotion:

@@ -2,9 +2,9 @@
 
 import pytest
 
-from ai_company.core.enums import AgentStatus, SeniorityLevel
-from ai_company.hr.errors import AgentAlreadyRegisteredError, AgentNotFoundError
-from ai_company.hr.registry import AgentRegistryService
+from synthorg.core.enums import AgentStatus, SeniorityLevel
+from synthorg.hr.errors import AgentAlreadyRegisteredError, AgentNotFoundError
+from synthorg.hr.registry import AgentRegistryService
 from tests.unit.hr.conftest import make_agent_identity
 
 

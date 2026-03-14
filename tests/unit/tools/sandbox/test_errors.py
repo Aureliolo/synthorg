@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.tools.errors import ToolError
-from ai_company.tools.sandbox.errors import (
+from synthorg.tools.errors import ToolError
+from synthorg.tools.sandbox.errors import (
     SandboxError,
     SandboxStartError,
     SandboxTimeoutError,

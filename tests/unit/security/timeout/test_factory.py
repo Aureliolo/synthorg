@@ -2,16 +2,16 @@
 
 import pytest
 
-from ai_company.core.enums import TimeoutActionType
-from ai_company.security.timeout.config import (
+from synthorg.core.enums import TimeoutActionType
+from synthorg.security.timeout.config import (
     DenyOnTimeoutConfig,
     EscalationChainConfig,
     EscalationStep,
     TieredTimeoutConfig,
     WaitForeverConfig,
 )
-from ai_company.security.timeout.factory import create_timeout_policy
-from ai_company.security.timeout.policies import (
+from synthorg.security.timeout.factory import create_timeout_policy
+from synthorg.security.timeout.policies import (
     DenyOnTimeoutPolicy,
     EscalationChainPolicy,
     TieredTimeoutPolicy,

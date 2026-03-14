@@ -8,12 +8,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from litestar.testing import TestClient
 
-from ai_company.api.app import create_app
-from ai_company.communication.meeting.enums import (
+from synthorg.api.app import create_app
+from synthorg.communication.meeting.enums import (
     MeetingProtocolType,
     MeetingStatus,
 )
-from ai_company.communication.meeting.models import (
+from synthorg.communication.meeting.models import (
     MeetingAgenda,
     MeetingMinutes,
     MeetingRecord,
@@ -88,16 +88,16 @@ def meeting_client(
     mock_scheduler: MagicMock,
 ) -> Iterator[TestClient[Any]]:
     """Test client with meeting orchestrator and scheduler configured."""
-    from ai_company.api.approval_store import ApprovalStore
-    from ai_company.api.auth.service import AuthService
-    from ai_company.budget.tracker import CostTracker
-    from ai_company.config.schema import RootConfig
+    from synthorg.api.approval_store import ApprovalStore
+    from synthorg.api.auth.service import AuthService
+    from synthorg.budget.tracker import CostTracker
+    from synthorg.config.schema import RootConfig
 
     persistence = FakePersistenceBackend()
     bus = FakeMessageBus()
     auth_service = AuthService(
         __import__(
-            "ai_company.api.auth.config",
+            "synthorg.api.auth.config",
             fromlist=["AuthConfig"],
         ).AuthConfig(jwt_secret="test-secret-that-is-at-least-32-characters-long"),
     )
@@ -217,7 +217,7 @@ class TestTriggerMeetingRequestValidation:
     """Tests for TriggerMeetingRequest input validation bounds."""
 
     def test_valid_request(self) -> None:
-        from ai_company.api.controllers.meetings import TriggerMeetingRequest
+        from synthorg.api.controllers.meetings import TriggerMeetingRequest
 
         req = TriggerMeetingRequest(
             event_name="deploy_complete",
@@ -226,20 +226,20 @@ class TestTriggerMeetingRequestValidation:
         assert req.event_name == "deploy_complete"
 
     def test_rejects_blank_event_name(self) -> None:
-        from ai_company.api.controllers.meetings import TriggerMeetingRequest
+        from synthorg.api.controllers.meetings import TriggerMeetingRequest
 
         with pytest.raises(ValueError, match="whitespace"):
             TriggerMeetingRequest(event_name="   ", context={})
 
     def test_rejects_too_many_context_keys(self) -> None:
-        from ai_company.api.controllers.meetings import TriggerMeetingRequest
+        from synthorg.api.controllers.meetings import TriggerMeetingRequest
 
         ctx: dict[str, str | list[str]] = {f"key-{i}": "val" for i in range(21)}
         with pytest.raises(ValueError, match="at most 20 keys"):
             TriggerMeetingRequest(event_name="evt", context=ctx)
 
     def test_rejects_oversized_context_key(self) -> None:
-        from ai_company.api.controllers.meetings import TriggerMeetingRequest
+        from synthorg.api.controllers.meetings import TriggerMeetingRequest
 
         with pytest.raises(ValueError, match="key must be at most"):
             TriggerMeetingRequest(
@@ -248,7 +248,7 @@ class TestTriggerMeetingRequestValidation:
             )
 
     def test_rejects_oversized_context_value(self) -> None:
-        from ai_company.api.controllers.meetings import TriggerMeetingRequest
+        from synthorg.api.controllers.meetings import TriggerMeetingRequest
 
         with pytest.raises(ValueError, match="value must be at most"):
             TriggerMeetingRequest(
@@ -257,7 +257,7 @@ class TestTriggerMeetingRequestValidation:
             )
 
     def test_rejects_oversized_context_list_item(self) -> None:
-        from ai_company.api.controllers.meetings import TriggerMeetingRequest
+        from synthorg.api.controllers.meetings import TriggerMeetingRequest
 
         with pytest.raises(ValueError, match="list item must be at most"):
             TriggerMeetingRequest(
@@ -266,7 +266,7 @@ class TestTriggerMeetingRequestValidation:
             )
 
     def test_rejects_too_many_context_list_items(self) -> None:
-        from ai_company.api.controllers.meetings import TriggerMeetingRequest
+        from synthorg.api.controllers.meetings import TriggerMeetingRequest
 
         with pytest.raises(ValueError, match="list must have at most"):
             TriggerMeetingRequest(
@@ -275,7 +275,7 @@ class TestTriggerMeetingRequestValidation:
             )
 
     def test_accepts_boundary_context(self) -> None:
-        from ai_company.api.controllers.meetings import TriggerMeetingRequest
+        from synthorg.api.controllers.meetings import TriggerMeetingRequest
 
         ctx: dict[str, str | list[str]] = {f"k{i}": "v" for i in range(20)}
         req = TriggerMeetingRequest(event_name="evt", context=ctx)
@@ -283,7 +283,7 @@ class TestTriggerMeetingRequestValidation:
 
     def test_accepts_exact_max_key_and_value_lengths(self) -> None:
         """Exact boundary: key=256 chars, value=1024 chars accepted."""
-        from ai_company.api.controllers.meetings import TriggerMeetingRequest
+        from synthorg.api.controllers.meetings import TriggerMeetingRequest
 
         key = "k" * 256
         value = "v" * 1024
@@ -294,15 +294,15 @@ class TestTriggerMeetingRequestValidation:
 
 def _create_app_without_meetings() -> Any:
     """Create app without meeting services for 503 testing."""
-    from ai_company.api.approval_store import ApprovalStore
-    from ai_company.api.auth.service import AuthService
-    from ai_company.budget.tracker import CostTracker
-    from ai_company.config.schema import RootConfig
+    from synthorg.api.approval_store import ApprovalStore
+    from synthorg.api.auth.service import AuthService
+    from synthorg.budget.tracker import CostTracker
+    from synthorg.config.schema import RootConfig
 
     persistence = FakePersistenceBackend()
     bus = FakeMessageBus()
     auth_config = __import__(
-        "ai_company.api.auth.config",
+        "synthorg.api.auth.config",
         fromlist=["AuthConfig"],
     ).AuthConfig(jwt_secret="test-secret-that-is-at-least-32-characters-long")
     auth_service = AuthService(auth_config)

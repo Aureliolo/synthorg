@@ -6,9 +6,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ai_company.core.enums import ToolCategory
-from ai_company.tools._git_base import _sanitize_command
-from ai_company.tools.git_tools import (
+from synthorg.core.enums import ToolCategory
+from synthorg.tools._git_base import _sanitize_command
+from synthorg.tools.git_tools import (
     GitBranchTool,
     GitCloneTool,
     GitCommitTool,

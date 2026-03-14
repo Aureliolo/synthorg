@@ -33,10 +33,10 @@ requires = ["hatchling==1.29.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
-path = "src/ai_company/__init__.py"
+path = "src/synthorg/__init__.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/ai_company"]
+packages = ["src/synthorg"]
 
 [dependency-groups]
 test = [
@@ -147,7 +147,7 @@ convention = "google"
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["ai_company"]
+known-first-party = ["synthorg"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "__future__.annotations".msg = "Python 3.14+ has native lazy annotations (PEP 649). Do not use `from __future__ import annotations`."
@@ -242,7 +242,7 @@ filterwarnings = [
 # coverage — test coverage reporting
 # ---------------------------------------------------------------------------
 [tool.coverage.run]
-source = ["ai_company"]
+source = ["synthorg"]
 branch = true
 parallel = true
 

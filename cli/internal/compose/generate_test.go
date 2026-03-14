@@ -66,7 +66,7 @@ func TestGenerateCustomPorts(t *testing.T) {
 	assertContains(t, yaml, `"9000:8000"`)
 	assertContains(t, yaml, `"4000:8080"`)
 	assertContains(t, yaml, "synthorg-backend:v0.2.0")
-	assertContains(t, yaml, "AI_COMPANY_JWT_SECRET")
+	assertContains(t, yaml, "SYNTHORG_JWT_SECRET")
 	assertContains(t, yaml, "test-secret-value")
 
 	compareGolden(t, "compose_custom_ports.yml", out)

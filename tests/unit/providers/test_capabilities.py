@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.providers.capabilities import ModelCapabilities
+from synthorg.providers.capabilities import ModelCapabilities
 
 from .conftest import ModelCapabilitiesFactory
 

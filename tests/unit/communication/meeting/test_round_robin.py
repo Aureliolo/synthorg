@@ -2,17 +2,17 @@
 
 import pytest
 
-from ai_company.communication.meeting.config import RoundRobinConfig
-from ai_company.communication.meeting.enums import (
+from synthorg.communication.meeting.config import RoundRobinConfig
+from synthorg.communication.meeting.enums import (
     MeetingPhase,
     MeetingProtocolType,
 )
-from ai_company.communication.meeting.errors import (
+from synthorg.communication.meeting.errors import (
     MeetingBudgetExhaustedError,
 )
-from ai_company.communication.meeting.models import MeetingAgenda
-from ai_company.communication.meeting.protocol import MeetingProtocol
-from ai_company.communication.meeting.round_robin import RoundRobinProtocol
+from synthorg.communication.meeting.models import MeetingAgenda
+from synthorg.communication.meeting.protocol import MeetingProtocol
+from synthorg.communication.meeting.round_robin import RoundRobinProtocol
 from tests.unit.communication.meeting.conftest import (
     make_mock_agent_caller,
 )

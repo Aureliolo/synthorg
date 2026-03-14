@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, PropertyMock
 
 import pytest
 
-from ai_company.tools._process_cleanup import close_subprocess_transport
+from synthorg.tools._process_cleanup import close_subprocess_transport
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

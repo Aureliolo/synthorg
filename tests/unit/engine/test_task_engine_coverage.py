@@ -9,10 +9,10 @@ import contextlib
 
 import pytest
 
-from ai_company.engine.errors import TaskInternalError
-from ai_company.engine.task_engine import TaskEngine, _MutationEnvelope
-from ai_company.engine.task_engine_config import TaskEngineConfig
-from ai_company.engine.task_engine_models import (
+from synthorg.engine.errors import TaskInternalError
+from synthorg.engine.task_engine import TaskEngine, _MutationEnvelope
+from synthorg.engine.task_engine_config import TaskEngineConfig
+from synthorg.engine.task_engine_models import (
     CreateTaskMutation,
     TaskMutationResult,
 )

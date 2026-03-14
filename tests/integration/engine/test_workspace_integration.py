@@ -9,14 +9,14 @@ from pathlib import Path
 
 import pytest
 
-from ai_company.engine.errors import WorkspaceLimitError
-from ai_company.engine.workspace.config import (
+from synthorg.engine.errors import WorkspaceLimitError
+from synthorg.engine.workspace.config import (
     PlannerWorktreesConfig,
 )
-from ai_company.engine.workspace.git_worktree import (
+from synthorg.engine.workspace.git_worktree import (
     PlannerWorktreeStrategy,
 )
-from ai_company.engine.workspace.models import WorkspaceRequest
+from synthorg.engine.workspace.models import WorkspaceRequest
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
 

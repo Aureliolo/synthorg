@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.core.enums import (
+from synthorg.core.enums import (
     ActionType,
     AgentStatus,
     ArtifactType,
@@ -391,7 +391,7 @@ class TestCompareSeniority:
 @pytest.mark.unit
 class TestCoreExports:
     def test_all_exports_importable(self) -> None:
-        import ai_company.core as core_module
+        import synthorg.core as core_module
 
         for name in core_module.__all__:
             assert hasattr(core_module, name), f"{name} in __all__ but not importable"

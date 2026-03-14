@@ -4,15 +4,15 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ai_company.core.enums import SeniorityLevel
-from ai_company.core.types import NotBlankStr
-from ai_company.hr.enums import PromotionDirection
-from ai_company.hr.promotion.threshold_evaluator import ThresholdEvaluator
+from synthorg.core.enums import SeniorityLevel
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.enums import PromotionDirection
+from synthorg.hr.promotion.threshold_evaluator import ThresholdEvaluator
 
 from .conftest import make_performance_snapshot
 
 if TYPE_CHECKING:
-    from ai_company.hr.promotion.config import PromotionCriteriaConfig
+    from synthorg.hr.promotion.config import PromotionCriteriaConfig
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

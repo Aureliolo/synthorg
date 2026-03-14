@@ -4,18 +4,18 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from ai_company.core.enums import ConflictType
-from ai_company.engine.errors import WorkspaceCleanupError, WorkspaceSetupError
-from ai_company.engine.workspace.config import (
+from synthorg.core.enums import ConflictType
+from synthorg.engine.errors import WorkspaceCleanupError, WorkspaceSetupError
+from synthorg.engine.workspace.config import (
     WorkspaceIsolationConfig,
 )
-from ai_company.engine.workspace.models import (
+from synthorg.engine.workspace.models import (
     MergeConflict,
     MergeResult,
     WorkspaceGroupResult,
     WorkspaceRequest,
 )
-from ai_company.engine.workspace.service import (
+from synthorg.engine.workspace.service import (
     WorkspaceIsolationService,
 )
 

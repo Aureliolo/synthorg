@@ -10,13 +10,13 @@ from uuid import uuid4
 
 import pytest
 
-from ai_company.core.agent import (
+from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
     PersonalityConfig,
     ToolPermissions,
 )
-from ai_company.core.enums import (
+from synthorg.core.enums import (
     Priority,
     SeniorityLevel,
     TaskStatus,
@@ -24,11 +24,11 @@ from ai_company.core.enums import (
     ToolAccessLevel,
     ToolCategory,
 )
-from ai_company.core.task import Task
-from ai_company.engine.agent_engine import AgentEngine
-from ai_company.engine.loop_protocol import TerminationReason
-from ai_company.providers.enums import FinishReason
-from ai_company.providers.models import (
+from synthorg.core.task import Task
+from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.providers.enums import FinishReason
+from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
     CompletionResponse,
@@ -37,13 +37,13 @@ from ai_company.providers.models import (
     ToolCall,
     ToolDefinition,
 )
-from ai_company.tools.base import BaseTool, ToolExecutionResult
-from ai_company.tools.registry import ToolRegistry
+from synthorg.tools.base import BaseTool, ToolExecutionResult
+from synthorg.tools.registry import ToolRegistry
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from ai_company.providers.capabilities import ModelCapabilities
+    from synthorg.providers.capabilities import ModelCapabilities
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
 
@@ -122,7 +122,7 @@ class _ToolCallingProvider:
 
     async def get_model_capabilities(self, model: str) -> ModelCapabilities:
         """Return minimal capabilities."""
-        from ai_company.providers.capabilities import ModelCapabilities
+        from synthorg.providers.capabilities import ModelCapabilities
 
         return ModelCapabilities(
             model_id=model,
@@ -296,7 +296,7 @@ class TestAgentEngineFullLifecycle:
         assert len(result.completion_summary) > 0
 
         # Verify TaskCompletionMetrics computable
-        from ai_company.engine.metrics import TaskCompletionMetrics
+        from synthorg.engine.metrics import TaskCompletionMetrics
 
         metrics = TaskCompletionMetrics.from_run_result(result)
         assert metrics.turns_per_task > 0

@@ -5,12 +5,12 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from ai_company.communication.enums import (
+from synthorg.communication.enums import (
     MessagePriority,
     MessageType,
 )
-from ai_company.communication.message import Message
-from ai_company.communication.subscription import DeliveryEnvelope, Subscription
+from synthorg.communication.message import Message
+from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

@@ -97,8 +97,8 @@ COPY --from=setup --chown=65532:65532 /data /data
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    AI_COMPANY_HOST="0.0.0.0" \
-    AI_COMPANY_PORT="8000"
+    SYNTHORG_HOST="0.0.0.0" \
+    SYNTHORG_PORT="8000"
 
 USER 65532
 
@@ -111,5 +111,5 @@ HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=15s \
 # Reset Chainguard base entrypoint (/usr/bin/python) so CMD runs uvicorn
 # directly instead of being passed as Python arguments.
 ENTRYPOINT []
-CMD ["/app/.venv/bin/uvicorn", "ai_company.api.app:create_app", "--factory", \
+CMD ["/app/.venv/bin/uvicorn", "synthorg.api.app:create_app", "--factory", \
      "--host", "0.0.0.0", "--port", "8000"]

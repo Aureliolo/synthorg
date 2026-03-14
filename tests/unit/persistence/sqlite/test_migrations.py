@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from ai_company.persistence.errors import MigrationError
-from ai_company.persistence.sqlite.migrations import (
+from synthorg.persistence.errors import MigrationError
+from synthorg.persistence.sqlite.migrations import (
     SCHEMA_VERSION,
     get_user_version,
     run_migrations,
@@ -182,7 +182,7 @@ class TestRunMigrations:
         )
         with (
             patch(
-                "ai_company.persistence.sqlite.migrations._MIGRATIONS",
+                "synthorg.persistence.sqlite.migrations._MIGRATIONS",
                 [(1, failing_fn)],
             ),
             pytest.raises(MigrationError, match="Migration to version"),

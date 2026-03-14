@@ -7,12 +7,12 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from ai_company.communication.enums import (
+from synthorg.communication.enums import (
     AttachmentType,
     MessagePriority,
     MessageType,
 )
-from ai_company.communication.message import Attachment, Message, MessageMetadata
+from synthorg.communication.message import Attachment, Message, MessageMetadata
 
 pytestmark = pytest.mark.unit
 

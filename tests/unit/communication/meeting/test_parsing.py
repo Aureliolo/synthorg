@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.communication.meeting._parsing import (
+from synthorg.communication.meeting._parsing import (
     parse_action_items,
     parse_decisions,
 )

@@ -6,8 +6,8 @@ import pytest
 from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
-from ai_company.config.errors import ConfigParseError, ConfigValidationError
-from ai_company.config.loader import _parse_yaml_string, _substitute_env_vars
+from synthorg.config.errors import ConfigParseError, ConfigValidationError
+from synthorg.config.loader import _parse_yaml_string, _substitute_env_vars
 
 pytestmark = pytest.mark.unit
 

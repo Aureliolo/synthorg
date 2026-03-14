@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from mcp.types import TextContent
 
-from ai_company.tools.base import ToolExecutionResult
-from ai_company.tools.mcp.bridge_tool import MCPBridgeTool
-from ai_company.tools.mcp.cache import MCPResultCache
-from ai_company.tools.mcp.client import MCPClient
-from ai_company.tools.mcp.config import MCPServerConfig
+from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.mcp.bridge_tool import MCPBridgeTool
+from synthorg.tools.mcp.cache import MCPResultCache
+from synthorg.tools.mcp.client import MCPClient
+from synthorg.tools.mcp.config import MCPServerConfig
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
 

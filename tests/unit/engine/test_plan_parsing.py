@@ -4,9 +4,9 @@ import json
 
 import pytest
 
-from ai_company.engine.plan_parsing import parse_plan
-from ai_company.providers.enums import FinishReason
-from ai_company.providers.models import CompletionResponse, TokenUsage
+from synthorg.engine.plan_parsing import parse_plan
+from synthorg.providers.enums import FinishReason
+from synthorg.providers.models import CompletionResponse, TokenUsage
 
 pytestmark = pytest.mark.timeout(30)
 

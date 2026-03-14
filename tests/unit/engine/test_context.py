@@ -6,16 +6,16 @@ import pytest
 import structlog.testing
 from pydantic import ValidationError
 
-from ai_company.core.agent import AgentIdentity
-from ai_company.core.enums import TaskStatus
-from ai_company.core.task import Task
-from ai_company.engine.context import (
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.enums import TaskStatus
+from synthorg.core.task import Task
+from synthorg.engine.context import (
     DEFAULT_MAX_TURNS,
     AgentContext,
     AgentContextSnapshot,
 )
-from ai_company.engine.errors import ExecutionStateError, MaxTurnsExceededError
-from ai_company.observability.events.execution import (
+from synthorg.engine.errors import ExecutionStateError, MaxTurnsExceededError
+from synthorg.observability.events.execution import (
     EXECUTION_CONTEXT_CREATED,
     EXECUTION_CONTEXT_NO_TASK,
     EXECUTION_CONTEXT_SNAPSHOT,
@@ -23,8 +23,8 @@ from ai_company.observability.events.execution import (
     EXECUTION_CONTEXT_TURN,
     EXECUTION_MAX_TURNS_EXCEEDED,
 )
-from ai_company.providers.enums import MessageRole
-from ai_company.providers.models import ChatMessage, TokenUsage
+from synthorg.providers.enums import MessageRole
+from synthorg.providers.models import ChatMessage, TokenUsage
 
 
 def _make_assistant_msg(text: str = "hello") -> ChatMessage:

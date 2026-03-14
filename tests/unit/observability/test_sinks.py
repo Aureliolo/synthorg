@@ -9,9 +9,9 @@ import pytest
 import structlog
 from structlog.stdlib import ProcessorFormatter
 
-from ai_company.observability.config import RotationConfig, SinkConfig
-from ai_company.observability.enums import LogLevel, RotationStrategy, SinkType
-from ai_company.observability.sinks import _build_file_handler, build_handler
+from synthorg.observability.config import RotationConfig, SinkConfig
+from synthorg.observability.enums import LogLevel, RotationStrategy, SinkType
+from synthorg.observability.sinks import _build_file_handler, build_handler
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

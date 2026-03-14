@@ -4,9 +4,9 @@ from unittest.mock import patch
 
 import pytest
 
-from ai_company.config.loader import bootstrap_logging
-from ai_company.config.schema import RootConfig
-from ai_company.observability.config import DEFAULT_SINKS, LogConfig
+from synthorg.config.loader import bootstrap_logging
+from synthorg.config.schema import RootConfig
+from synthorg.observability.config import DEFAULT_SINKS, LogConfig
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -15,7 +15,7 @@ pytestmark = pytest.mark.timeout(30)
 class TestBootstrapLogging:
     def test_calls_configure_logging_with_none(self) -> None:
         with patch(
-            "ai_company.observability.configure_logging",
+            "synthorg.observability.configure_logging",
         ) as mock_configure:
             bootstrap_logging(None)
         mock_configure.assert_called_once_with(None)
@@ -27,14 +27,14 @@ class TestBootstrapLogging:
             logging=log_cfg,
         )
         with patch(
-            "ai_company.observability.configure_logging",
+            "synthorg.observability.configure_logging",
         ) as mock_configure:
             bootstrap_logging(config)
         mock_configure.assert_called_once_with(log_cfg)
 
     def test_forwards_each_call_to_configure_logging(self) -> None:
         with patch(
-            "ai_company.observability.configure_logging",
+            "synthorg.observability.configure_logging",
         ) as mock_configure:
             bootstrap_logging(None)
             bootstrap_logging(None)

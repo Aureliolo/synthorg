@@ -5,7 +5,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from pydantic import BaseModel, ValidationError
 
-from ai_company.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr
 
 pytestmark = pytest.mark.unit
 

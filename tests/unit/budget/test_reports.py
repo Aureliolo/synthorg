@@ -4,8 +4,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from ai_company.budget.config import BudgetConfig
-from ai_company.budget.reports import (
+from synthorg.budget.config import BudgetConfig
+from synthorg.budget.reports import (
     ModelDistribution,
     PeriodComparison,
     ProviderDistribution,
@@ -13,8 +13,8 @@ from ai_company.budget.reports import (
     SpendingReport,
     TaskSpending,
 )
-from ai_company.budget.spending_summary import SpendingSummary
-from ai_company.budget.tracker import CostTracker
+from synthorg.budget.spending_summary import SpendingSummary
+from synthorg.budget.tracker import CostTracker
 from tests.unit.budget.conftest import make_cost_record
 
 # ── Helpers ───────────────────────────────────────────────────────
@@ -352,7 +352,7 @@ class TestReportGenerator:
 
 def _make_summary() -> SpendingSummary:
     """Build a minimal SpendingSummary for validator tests."""
-    from ai_company.budget.spending_summary import PeriodSpending
+    from synthorg.budget.spending_summary import PeriodSpending
 
     return SpendingSummary(
         period=PeriodSpending(

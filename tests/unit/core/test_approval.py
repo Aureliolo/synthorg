@@ -4,8 +4,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from ai_company.core.approval import ApprovalItem
-from ai_company.core.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.core.approval import ApprovalItem
+from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 
 
 def _now() -> datetime:

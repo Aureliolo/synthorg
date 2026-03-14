@@ -9,12 +9,12 @@ import pytest
 if TYPE_CHECKING:
     import aiosqlite
 
-from ai_company.budget.cost_record import CostRecord
-from ai_company.communication.message import (
+from synthorg.budget.cost_record import CostRecord
+from synthorg.communication.message import (
     Message,
     MessageMetadata,
 )
-from ai_company.core.enums import (
+from synthorg.core.enums import (
     ArtifactType,
     Complexity,
     CoordinationTopology,
@@ -23,9 +23,9 @@ from ai_company.core.enums import (
     TaskStructure,
     TaskType,
 )
-from ai_company.core.task import AcceptanceCriterion, Task
-from ai_company.persistence.errors import DuplicateRecordError
-from ai_company.persistence.sqlite.repositories import (
+from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.persistence.errors import DuplicateRecordError
+from synthorg.persistence.sqlite.repositories import (
     SQLiteCostRecordRepository,
     SQLiteMessageRepository,
     SQLiteTaskRepository,
@@ -148,7 +148,7 @@ class TestSQLiteTaskRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Verify complex nested fields survive serialization."""
-        from ai_company.core.artifact import ExpectedArtifact
+        from synthorg.core.artifact import ExpectedArtifact
 
         task = Task(
             id="task-complex",
@@ -308,7 +308,7 @@ class TestSQLiteCostRecordRepository:
     async def test_round_trip_with_call_category(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        from ai_company.budget.call_category import LLMCallCategory
+        from synthorg.budget.call_category import LLMCallCategory
 
         record = CostRecord(
             agent_id="alice",
@@ -423,7 +423,7 @@ class TestSQLiteMessageRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Verify nested JSON fields round-trip correctly."""
-        from ai_company.communication.enums import AttachmentType
+        from synthorg.communication.enums import AttachmentType
 
         msg = make_message(
             metadata=MessageMetadata(
@@ -466,7 +466,7 @@ class TestSQLiteMessageRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Negative or zero limit raises QueryError."""
-        from ai_company.persistence.errors import QueryError
+        from synthorg.persistence.errors import QueryError
 
         repo = SQLiteMessageRepository(migrated_db)
         with pytest.raises(QueryError, match="positive integer"):
@@ -482,7 +482,7 @@ class TestSQLiteRepoProtocolCompliance:
     async def test_task_repo_implements_protocol(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        from ai_company.persistence.repositories import TaskRepository
+        from synthorg.persistence.repositories import TaskRepository
 
         repo = SQLiteTaskRepository(migrated_db)
         assert isinstance(repo, TaskRepository)
@@ -490,7 +490,7 @@ class TestSQLiteRepoProtocolCompliance:
     async def test_cost_record_repo_implements_protocol(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        from ai_company.persistence.repositories import CostRecordRepository
+        from synthorg.persistence.repositories import CostRecordRepository
 
         repo = SQLiteCostRecordRepository(migrated_db)
         assert isinstance(repo, CostRecordRepository)
@@ -498,7 +498,7 @@ class TestSQLiteRepoProtocolCompliance:
     async def test_message_repo_implements_protocol(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        from ai_company.persistence.repositories import MessageRepository
+        from synthorg.persistence.repositories import MessageRepository
 
         repo = SQLiteMessageRepository(migrated_db)
         assert isinstance(repo, MessageRepository)
@@ -512,7 +512,7 @@ class TestDeserializationFailures:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Corrupt JSON in a tuple field raises QueryError."""
-        from ai_company.persistence.errors import QueryError
+        from synthorg.persistence.errors import QueryError
 
         await migrated_db.execute(
             """\
@@ -534,7 +534,7 @@ INSERT INTO tasks (
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """Corrupt JSON in attachments raises QueryError."""
-        from ai_company.persistence.errors import QueryError
+        from synthorg.persistence.errors import QueryError
 
         await migrated_db.execute(
             """\

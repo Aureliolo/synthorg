@@ -6,37 +6,37 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from ai_company.api.approval_store import ApprovalStore
-from ai_company.core.enums import (
+from synthorg.api.approval_store import ApprovalStore
+from synthorg.core.enums import (
     ApprovalStatus,
     Complexity,
     SeniorityLevel,
     TaskType,
 )
-from ai_company.core.types import NotBlankStr
-from ai_company.hr.errors import (
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.errors import (
     PromotionApprovalRequiredError,
     PromotionCooldownError,
     PromotionError,
 )
-from ai_company.hr.performance.models import TaskMetricRecord
-from ai_company.hr.promotion.config import (
+from synthorg.hr.performance.models import TaskMetricRecord
+from synthorg.hr.promotion.config import (
     PromotionConfig,
 )
-from ai_company.hr.promotion.seniority_approval_strategy import (
+from synthorg.hr.promotion.seniority_approval_strategy import (
     SeniorityApprovalStrategy,
 )
-from ai_company.hr.promotion.seniority_model_mapping import (
+from synthorg.hr.promotion.seniority_model_mapping import (
     SeniorityModelMapping,
 )
-from ai_company.hr.promotion.service import PromotionService
-from ai_company.hr.promotion.threshold_evaluator import ThresholdEvaluator
+from synthorg.hr.promotion.service import PromotionService
+from synthorg.hr.promotion.threshold_evaluator import ThresholdEvaluator
 
 from .conftest import make_agent_identity
 
 if TYPE_CHECKING:
-    from ai_company.hr.performance.tracker import PerformanceTracker
-    from ai_company.hr.registry import AgentRegistryService
+    from synthorg.hr.performance.tracker import PerformanceTracker
+    from synthorg.hr.registry import AgentRegistryService
 
 # ── Helpers ──────────────────────────────────────────────────────
 
@@ -436,23 +436,23 @@ class TestLevelHelpers:
 
     def test_next_level_at_c_suite_returns_none(self) -> None:
         """C_SUITE is the maximum level — _next_level returns None."""
-        from ai_company.hr.promotion.service import _next_level
+        from synthorg.hr.promotion.service import _next_level
 
         assert _next_level(SeniorityLevel.C_SUITE) is None
 
     def test_next_level_junior_returns_mid(self) -> None:
-        from ai_company.hr.promotion.service import _next_level
+        from synthorg.hr.promotion.service import _next_level
 
         assert _next_level(SeniorityLevel.JUNIOR) == SeniorityLevel.MID
 
     def test_prev_level_at_junior_returns_none(self) -> None:
         """JUNIOR is the minimum level — _prev_level returns None."""
-        from ai_company.hr.promotion.service import _prev_level
+        from synthorg.hr.promotion.service import _prev_level
 
         assert _prev_level(SeniorityLevel.JUNIOR) is None
 
     def test_prev_level_mid_returns_junior(self) -> None:
-        from ai_company.hr.promotion.service import _prev_level
+        from synthorg.hr.promotion.service import _prev_level
 
         assert _prev_level(SeniorityLevel.MID) == SeniorityLevel.JUNIOR
 

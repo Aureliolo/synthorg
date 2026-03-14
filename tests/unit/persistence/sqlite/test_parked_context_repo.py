@@ -6,11 +6,11 @@ from uuid import uuid4
 
 import pytest
 
-from ai_company.persistence.errors import QueryError
-from ai_company.persistence.sqlite.parked_context_repo import (
+from synthorg.persistence.errors import QueryError
+from synthorg.persistence.sqlite.parked_context_repo import (
     SQLiteParkedContextRepository,
 )
-from ai_company.security.timeout.parked_context import ParkedContext
+from synthorg.security.timeout.parked_context import ParkedContext
 
 if TYPE_CHECKING:
     import aiosqlite

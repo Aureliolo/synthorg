@@ -7,9 +7,9 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
-from ai_company.tools.sandbox.config import SubprocessSandboxConfig
-from ai_company.tools.sandbox.errors import SandboxError, SandboxStartError
-from ai_company.tools.sandbox.subprocess_sandbox import SubprocessSandbox
+from synthorg.tools.sandbox.config import SubprocessSandboxConfig
+from synthorg.tools.sandbox.errors import SandboxError, SandboxStartError
+from synthorg.tools.sandbox.subprocess_sandbox import SubprocessSandbox
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

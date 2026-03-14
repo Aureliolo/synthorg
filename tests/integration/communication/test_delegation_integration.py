@@ -4,37 +4,37 @@ from datetime import date
 
 import pytest
 
-from ai_company.communication.config import (
+from synthorg.communication.config import (
     CircuitBreakerConfig,
     HierarchyConfig,
     LoopPreventionConfig,
     RateLimitConfig,
 )
-from ai_company.communication.delegation.authority import (
+from synthorg.communication.delegation.authority import (
     AuthorityValidator,
 )
-from ai_company.communication.delegation.hierarchy import (
+from synthorg.communication.delegation.hierarchy import (
     HierarchyResolver,
 )
-from ai_company.communication.delegation.models import (
+from synthorg.communication.delegation.models import (
     DelegationRequest,
 )
-from ai_company.communication.delegation.service import (
+from synthorg.communication.delegation.service import (
     DelegationService,
 )
-from ai_company.communication.loop_prevention.guard import (
+from synthorg.communication.loop_prevention.guard import (
     DelegationGuard,
 )
-from ai_company.core.agent import AgentIdentity, ModelConfig
-from ai_company.core.company import (
+from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.company import (
     Company,
     CompanyConfig,
     Department,
     Team,
 )
-from ai_company.core.enums import SeniorityLevel, TaskStatus, TaskType
-from ai_company.core.role import Authority
-from ai_company.core.task import Task
+from synthorg.core.enums import SeniorityLevel, TaskStatus, TaskType
+from synthorg.core.role import Authority
+from synthorg.core.task import Task
 
 pytestmark = pytest.mark.timeout(30)
 

@@ -6,18 +6,18 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from ai_company.core.enums import ApprovalRiskLevel, ToolCategory
-from ai_company.providers.models import ToolCall
-from ai_company.security.models import (
+from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.providers.models import ToolCall
+from synthorg.security.models import (
     OutputScanResult,
     ScanOutcome,
     SecurityContext,
     SecurityVerdict,
     SecurityVerdictType,
 )
-from ai_company.tools.base import BaseTool, ToolExecutionResult
-from ai_company.tools.invoker import ToolInvoker
-from ai_company.tools.registry import ToolRegistry
+from synthorg.tools.base import BaseTool, ToolExecutionResult
+from synthorg.tools.invoker import ToolInvoker
+from synthorg.tools.registry import ToolRegistry
 
 pytestmark = pytest.mark.timeout(30)
 

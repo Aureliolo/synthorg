@@ -5,16 +5,16 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ai_company.communication.bus_protocol import MessageBus
-from ai_company.communication.dispatcher import MessageDispatcher
-from ai_company.communication.enums import (
+from synthorg.communication.bus_protocol import MessageBus
+from synthorg.communication.dispatcher import MessageDispatcher
+from synthorg.communication.enums import (
     MessagePriority,
     MessageType,
 )
-from ai_company.communication.errors import ChannelNotFoundError
-from ai_company.communication.message import Message
-from ai_company.communication.messenger import AgentMessenger
-from ai_company.communication.subscription import Subscription
+from synthorg.communication.errors import ChannelNotFoundError
+from synthorg.communication.message import Message
+from synthorg.communication.messenger import AgentMessenger
+from synthorg.communication.subscription import Subscription
 
 pytestmark = pytest.mark.timeout(30)
 

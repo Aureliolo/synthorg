@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from ai_company.tools.sandbox.config import SubprocessSandboxConfig
-from ai_company.tools.sandbox.subprocess_sandbox import SubprocessSandbox
+from synthorg.tools.sandbox.config import SubprocessSandboxConfig
+from synthorg.tools.sandbox.subprocess_sandbox import SubprocessSandbox
 
 
 @pytest.fixture

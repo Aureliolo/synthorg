@@ -9,35 +9,35 @@ Structured logging, event constants, correlation tracking, and log sinks.
 
 ## Logger
 
-::: ai_company.observability
+::: synthorg.observability
     options:
       members:
         - get_logger
 
 ## Config
 
-::: ai_company.observability.config
+::: synthorg.observability.config
 
 ## Correlation
 
-::: ai_company.observability.correlation
+::: synthorg.observability.correlation
 
 ## Setup
 
-::: ai_company.observability.setup
+::: synthorg.observability.setup
 
 ## Processors
 
-::: ai_company.observability.processors
+::: synthorg.observability.processors
 
 ## Sinks
 
-::: ai_company.observability.sinks
+::: synthorg.observability.sinks
 
 ## Enums
 
-::: ai_company.observability.enums
+::: synthorg.observability.enums
 
 ## Events
 
-::: ai_company.observability.events
+::: synthorg.observability.events

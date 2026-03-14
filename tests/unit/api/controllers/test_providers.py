@@ -31,8 +31,8 @@ class TestProviderApiKeySecurity:
         root_config: Any,
     ) -> None:
         """Verify api_key is stripped from provider responses."""
-        from ai_company.api.controllers.providers import _safe_provider
-        from ai_company.config.schema import ProviderConfig
+        from synthorg.api.controllers.providers import _safe_provider
+        from synthorg.config.schema import ProviderConfig
 
         provider = ProviderConfig(
             driver="test-driver",

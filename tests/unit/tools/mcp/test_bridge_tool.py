@@ -5,16 +5,16 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from ai_company.core.enums import ToolCategory
-from ai_company.tools.base import ToolExecutionResult
-from ai_company.tools.mcp.bridge_tool import MCPBridgeTool
-from ai_company.tools.mcp.client import MCPClient
-from ai_company.tools.mcp.config import MCPServerConfig
-from ai_company.tools.mcp.errors import MCPInvocationError
-from ai_company.tools.mcp.models import MCPToolInfo
+from synthorg.core.enums import ToolCategory
+from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.mcp.bridge_tool import MCPBridgeTool
+from synthorg.tools.mcp.client import MCPClient
+from synthorg.tools.mcp.config import MCPServerConfig
+from synthorg.tools.mcp.errors import MCPInvocationError
+from synthorg.tools.mcp.models import MCPToolInfo
 
 if TYPE_CHECKING:
-    from ai_company.tools.mcp.cache import MCPResultCache
+    from synthorg.tools.mcp.cache import MCPResultCache
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

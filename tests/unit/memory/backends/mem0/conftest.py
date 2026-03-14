@@ -5,13 +5,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ai_company.core.enums import MemoryCategory
-from ai_company.memory.backends.mem0.adapter import Mem0MemoryBackend
-from ai_company.memory.backends.mem0.config import (
+from synthorg.core.enums import MemoryCategory
+from synthorg.memory.backends.mem0.adapter import Mem0MemoryBackend
+from synthorg.memory.backends.mem0.config import (
     Mem0BackendConfig,
     Mem0EmbedderConfig,
 )
-from ai_company.memory.models import MemoryStoreRequest
+from synthorg.memory.models import MemoryStoreRequest
 
 
 def _test_embedder() -> Mem0EmbedderConfig:

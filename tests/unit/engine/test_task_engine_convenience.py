@@ -5,15 +5,15 @@ Split from ``test_task_engine_extended.py`` to keep files under 800 lines.
 
 import pytest
 
-from ai_company.core.enums import TaskStatus
-from ai_company.engine.errors import (
+from synthorg.core.enums import TaskStatus
+from synthorg.engine.errors import (
     TaskInternalError,
     TaskMutationError,
     TaskNotFoundError,
     TaskVersionConflictError,
 )
-from ai_company.engine.task_engine import TaskEngine
-from ai_company.engine.task_engine_models import (
+from synthorg.engine.task_engine import TaskEngine
+from synthorg.engine.task_engine_models import (
     CreateTaskMutation,
     TaskMutationResult,
 )
@@ -321,7 +321,7 @@ class TestSubmitWhenNotRunning:
         self,
         engine: TaskEngine,
     ) -> None:
-        from ai_company.engine.errors import TaskEngineNotRunningError
+        from synthorg.engine.errors import TaskEngineNotRunningError
 
         await engine.stop(timeout=2.0)
         mutation = CreateTaskMutation(

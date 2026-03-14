@@ -5,15 +5,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ai_company.tools.mcp.client import MCPClient
-from ai_company.tools.mcp.config import MCPServerConfig
-from ai_company.tools.mcp.errors import (
+from synthorg.tools.mcp.client import MCPClient
+from synthorg.tools.mcp.config import MCPServerConfig
+from synthorg.tools.mcp.errors import (
     MCPConnectionError,
     MCPDiscoveryError,
     MCPInvocationError,
     MCPTimeoutError,
 )
-from ai_company.tools.mcp.models import MCPToolInfo
+from synthorg.tools.mcp.models import MCPToolInfo
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -45,10 +45,10 @@ class TestMCPClientConnection:
 
         with (
             patch(
-                "ai_company.tools.mcp.client.stdio_client",
+                "synthorg.tools.mcp.client.stdio_client",
             ) as mock_stdio,
             patch(
-                "ai_company.tools.mcp.client.ClientSession",
+                "synthorg.tools.mcp.client.ClientSession",
             ) as mock_cls,
         ):
             mock_cm = AsyncMock()
@@ -98,7 +98,7 @@ class TestMCPClientConnection:
         client = MCPClient(stdio_server_config)
         with (
             patch(
-                "ai_company.tools.mcp.client.stdio_client",
+                "synthorg.tools.mcp.client.stdio_client",
                 side_effect=OSError("connection refused"),
             ),
             pytest.raises(MCPConnectionError, match="refused"),
@@ -344,10 +344,10 @@ class TestMCPClientHTTPTransport:
 
         with (
             patch(
-                "ai_company.tools.mcp.client.streamablehttp_client",
+                "synthorg.tools.mcp.client.streamablehttp_client",
             ) as mock_http,
             patch(
-                "ai_company.tools.mcp.client.ClientSession",
+                "synthorg.tools.mcp.client.ClientSession",
             ) as mock_cls,
         ):
             mock_cm = AsyncMock()

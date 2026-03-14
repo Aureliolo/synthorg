@@ -5,10 +5,10 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import Complexity, TaskType
-from ai_company.core.types import NotBlankStr
-from ai_company.hr.enums import TrendDirection
-from ai_company.hr.performance.models import (
+from synthorg.core.enums import Complexity, TaskType
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.enums import TrendDirection
+from synthorg.hr.performance.models import (
     AgentPerformanceSnapshot,
     CollaborationMetricRecord,
     CollaborationScoreResult,

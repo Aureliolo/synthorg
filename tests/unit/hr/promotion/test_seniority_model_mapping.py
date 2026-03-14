@@ -2,9 +2,9 @@
 
 import pytest
 
-from ai_company.core.enums import SeniorityLevel
-from ai_company.hr.promotion.config import ModelMappingConfig
-from ai_company.hr.promotion.seniority_model_mapping import (
+from synthorg.core.enums import SeniorityLevel
+from synthorg.hr.promotion.config import ModelMappingConfig
+from synthorg.hr.promotion.seniority_model_mapping import (
     SeniorityModelMapping,
 )
 

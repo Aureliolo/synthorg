@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 import pytest
 
-from ai_company.core.enums import MemoryCategory
-from ai_company.memory.backends.mem0.mappers import (
+from synthorg.core.enums import MemoryCategory
+from synthorg.memory.backends.mem0.mappers import (
     _PREFIX,
     PUBLISHER_KEY,
     _coerce_confidence,
@@ -24,8 +24,8 @@ from ai_company.memory.backends.mem0.mappers import (
     query_to_mem0_search_args,
     validate_add_result,
 )
-from ai_company.memory.errors import MemoryRetrievalError, MemoryStoreError
-from ai_company.memory.models import (
+from synthorg.memory.errors import MemoryRetrievalError, MemoryStoreError
+from synthorg.memory.models import (
     MemoryEntry,
     MemoryMetadata,
     MemoryQuery,
@@ -459,7 +459,7 @@ class TestApplyPostFilters:
         entries = (_make_entry(memory_id="m1", created_at=past, expires_at=fixed_now),)
         query = MemoryQuery()
         with patch(
-            "ai_company.memory.backends.mem0.mappers.datetime",
+            "synthorg.memory.backends.mem0.mappers.datetime",
         ) as mock_dt:
             mock_dt.now.return_value = fixed_now
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)  # noqa: DTZ001, PLW0108
@@ -565,7 +565,7 @@ class TestExtractCategory:
 @pytest.mark.unit
 class TestExtractPublisher:
     def test_valid_publisher(self) -> None:
-        from ai_company.memory.backends.mem0.mappers import PUBLISHER_KEY
+        from synthorg.memory.backends.mem0.mappers import PUBLISHER_KEY
 
         raw = {"metadata": {PUBLISHER_KEY: "test-agent-001"}}
         assert extract_publisher(raw) == "test-agent-001"

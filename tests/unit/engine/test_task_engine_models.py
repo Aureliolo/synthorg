@@ -3,8 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import Complexity, Priority, TaskStatus, TaskType
-from ai_company.engine.task_engine_models import (
+from synthorg.core.enums import Complexity, Priority, TaskStatus, TaskType
+from synthorg.engine.task_engine_models import (
     CancelTaskMutation,
     CreateTaskData,
     CreateTaskMutation,

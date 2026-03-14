@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.tools.sandbox.docker_config import DockerSandboxConfig
+from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

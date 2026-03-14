@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from ai_company.core.enums import MemoryCategory
-from ai_company.memory.consolidation.config import RetentionConfig
-from ai_company.memory.consolidation.models import RetentionRule
-from ai_company.memory.consolidation.retention import RetentionEnforcer
-from ai_company.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
+from synthorg.core.enums import MemoryCategory
+from synthorg.memory.consolidation.config import RetentionConfig
+from synthorg.memory.consolidation.models import RetentionRule
+from synthorg.memory.consolidation.retention import RetentionEnforcer
+from synthorg.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
 
 pytestmark = pytest.mark.timeout(30)
 

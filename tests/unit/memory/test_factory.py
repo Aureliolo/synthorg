@@ -5,15 +5,15 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
-from ai_company.memory.backends.mem0.adapter import Mem0MemoryBackend
-from ai_company.memory.backends.mem0.config import Mem0EmbedderConfig
-from ai_company.memory.config import (
+from synthorg.memory.backends.mem0.adapter import Mem0MemoryBackend
+from synthorg.memory.backends.mem0.config import Mem0EmbedderConfig
+from synthorg.memory.config import (
     CompanyMemoryConfig,
     MemoryOptionsConfig,
     MemoryStorageConfig,
 )
-from ai_company.memory.errors import MemoryConfigError
-from ai_company.memory.factory import create_memory_backend
+from synthorg.memory.errors import MemoryConfigError
+from synthorg.memory.factory import create_memory_backend
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -78,7 +78,7 @@ class TestCreateMemoryBackend:
         config = CompanyMemoryConfig(backend="mem0")
         with (
             patch(
-                "ai_company.memory.backends.mem0.Mem0MemoryBackend",
+                "synthorg.memory.backends.mem0.Mem0MemoryBackend",
                 side_effect=ValueError("init boom"),
             ),
             pytest.raises(MemoryConfigError, match="Failed to create Mem0"),
@@ -100,7 +100,7 @@ class TestCreateMemoryBackend:
         config = CompanyMemoryConfig(backend="mem0")
         with (
             patch(
-                "ai_company.memory.backends.mem0.Mem0MemoryBackend",
+                "synthorg.memory.backends.mem0.Mem0MemoryBackend",
                 side_effect=side_effect,
             ),
             pytest.raises(MemoryConfigError, match="Failed to create Mem0"),

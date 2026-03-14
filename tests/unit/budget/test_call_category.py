@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.budget.call_category import LLMCallCategory, OrchestrationAlertLevel
+from synthorg.budget.call_category import LLMCallCategory, OrchestrationAlertLevel
 
 pytestmark = pytest.mark.timeout(30)
 

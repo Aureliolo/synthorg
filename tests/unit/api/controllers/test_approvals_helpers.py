@@ -4,16 +4,16 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ai_company.api.controllers.approvals import (
+from synthorg.api.controllers.approvals import (
     _log_approval_decision,
     _publish_approval_event,
     _resolve_decision,
     _signal_resume_intent,
 )
-from ai_company.api.errors import ConflictError, UnauthorizedError
-from ai_company.api.state import AppState
-from ai_company.core.approval import ApprovalItem
-from ai_company.core.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.api.errors import ConflictError, UnauthorizedError
+from synthorg.api.state import AppState
+from synthorg.core.approval import ApprovalItem
+from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -41,7 +41,7 @@ def _make_request(*, user: object = None) -> MagicMock:
 
 
 def _make_auth_user(username: str = "admin") -> MagicMock:
-    from ai_company.api.auth.models import AuthenticatedUser
+    from synthorg.api.auth.models import AuthenticatedUser
 
     user = MagicMock(spec=AuthenticatedUser)
     user.username = username
@@ -139,7 +139,7 @@ class TestPublishApprovalEvent:
     """_publish_approval_event() best-effort WebSocket publishing."""
 
     def test_logs_warning_when_no_channels_plugin(self) -> None:
-        from ai_company.api.ws_models import WsEventType
+        from synthorg.api.ws_models import WsEventType
 
         request = _make_request()
         request.app.plugins = []  # No ChannelsPlugin
@@ -154,7 +154,7 @@ class TestPublishApprovalEvent:
     def test_publishes_when_plugin_available(self) -> None:
         from litestar.channels import ChannelsPlugin
 
-        from ai_company.api.ws_models import WsEventType
+        from synthorg.api.ws_models import WsEventType
 
         plugin = MagicMock(spec=ChannelsPlugin)
         request = _make_request()
@@ -171,7 +171,7 @@ class TestPublishApprovalEvent:
     def test_logs_warning_when_publish_fails(self) -> None:
         from litestar.channels import ChannelsPlugin
 
-        from ai_company.api.ws_models import WsEventType
+        from synthorg.api.ws_models import WsEventType
 
         plugin = MagicMock(spec=ChannelsPlugin)
         plugin.publish.side_effect = RuntimeError("not started")

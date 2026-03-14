@@ -4,11 +4,11 @@ import pytest
 import structlog.testing
 from pydantic import ValidationError
 
-from ai_company.engine.policy_validation import (
+from synthorg.engine.policy_validation import (
     PolicyQualityIssue,
     validate_policy_quality,
 )
-from ai_company.observability.events.prompt import PROMPT_POLICY_QUALITY_ISSUE
+from synthorg.observability.events.prompt import PROMPT_POLICY_QUALITY_ISSUE
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

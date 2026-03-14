@@ -4,8 +4,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ai_company.core.types import NotBlankStr
-from ai_company.hr.performance.behavioral_collaboration_strategy import (
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.performance.behavioral_collaboration_strategy import (
     BehavioralTelemetryStrategy,
 )
 

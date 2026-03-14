@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.budget.errors import (
+from synthorg.budget.errors import (
     BudgetExhaustedError,
     DailyLimitExceededError,
     QuotaExhaustedError,
@@ -37,7 +37,7 @@ class TestBudgetErrorHierarchy:
 
     def test_budget_exhausted_not_engine_error(self) -> None:
         """Budget errors are independent of the engine error hierarchy."""
-        from ai_company.engine.errors import EngineError
+        from synthorg.engine.errors import EngineError
 
         assert not issubclass(BudgetExhaustedError, EngineError)
         assert not issubclass(DailyLimitExceededError, EngineError)

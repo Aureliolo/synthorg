@@ -5,10 +5,10 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import ToolAccessLevel
-from ai_company.core.types import NotBlankStr
-from ai_company.security.trust.enums import TrustChangeReason
-from ai_company.security.trust.models import (
+from synthorg.core.enums import ToolAccessLevel
+from synthorg.core.types import NotBlankStr
+from synthorg.security.trust.enums import TrustChangeReason
+from synthorg.security.trust.models import (
     TrustChangeRecord,
     TrustEvaluationResult,
     TrustState,

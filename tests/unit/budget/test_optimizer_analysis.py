@@ -4,7 +4,7 @@ from datetime import timedelta
 
 import pytest
 
-from ai_company.budget.optimizer_models import (
+from synthorg.budget.optimizer_models import (
     AnomalySeverity,
     AnomalyType,
     CostOptimizerConfig,

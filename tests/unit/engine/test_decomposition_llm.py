@@ -5,25 +5,25 @@ from typing import Any
 
 import pytest
 
-from ai_company.core.enums import (
+from synthorg.core.enums import (
     CoordinationTopology,
     Priority,
     TaskStructure,
     TaskType,
 )
-from ai_company.core.task import AcceptanceCriterion, Task
-from ai_company.engine.decomposition.llm import (
+from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.engine.decomposition.llm import (
     LlmDecompositionConfig,
     LlmDecompositionStrategy,
 )
-from ai_company.engine.decomposition.models import (
+from synthorg.engine.decomposition.models import (
     DecompositionContext,
     DecompositionPlan,
 )
-from ai_company.engine.decomposition.protocol import DecompositionStrategy
-from ai_company.engine.errors import DecompositionDepthError, DecompositionError
-from ai_company.providers.enums import FinishReason
-from ai_company.providers.models import (
+from synthorg.engine.decomposition.protocol import DecompositionStrategy
+from synthorg.engine.errors import DecompositionDepthError, DecompositionError
+from synthorg.providers.enums import FinishReason
+from synthorg.providers.models import (
     CompletionResponse,
     TokenUsage,
     ToolCall,

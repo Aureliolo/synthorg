@@ -9,17 +9,17 @@ if TYPE_CHECKING:
 
 import pytest
 
-from ai_company.budget.config import BudgetAlertConfig, BudgetConfig
-from ai_company.budget.enforcer import BudgetEnforcer
-from ai_company.budget.errors import QuotaExhaustedError
-from ai_company.budget.quota import (
+from synthorg.budget.config import BudgetAlertConfig, BudgetConfig
+from synthorg.budget.enforcer import BudgetEnforcer
+from synthorg.budget.errors import QuotaExhaustedError
+from synthorg.budget.quota import (
     QuotaCheckResult,
     QuotaLimit,
     QuotaWindow,
     SubscriptionConfig,
 )
-from ai_company.budget.quota_tracker import QuotaTracker
-from ai_company.budget.tracker import CostTracker
+from synthorg.budget.quota_tracker import QuotaTracker
+from synthorg.budget.tracker import CostTracker
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -65,11 +65,11 @@ def _patch_periods() -> tuple[
     """Patch billing and daily period starts."""
     return (
         patch(
-            "ai_company.budget.enforcer.billing_period_start",
+            "synthorg.budget.enforcer.billing_period_start",
             return_value=_BILLING_START,
         ),
         patch(
-            "ai_company.budget.enforcer.daily_period_start",
+            "synthorg.budget.enforcer.daily_period_start",
             return_value=_DAY_START,
         ),
     )

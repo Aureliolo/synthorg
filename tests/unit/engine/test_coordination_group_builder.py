@@ -2,10 +2,10 @@
 
 import pytest
 
-from ai_company.core.enums import CoordinationTopology, TaskStructure
-from ai_company.engine.coordination.config import CoordinationConfig
-from ai_company.engine.coordination.group_builder import build_execution_waves
-from ai_company.engine.routing.models import (
+from synthorg.core.enums import CoordinationTopology, TaskStructure
+from synthorg.engine.coordination.config import CoordinationConfig
+from synthorg.engine.coordination.group_builder import build_execution_waves
+from synthorg.engine.routing.models import (
     RoutingCandidate,
     RoutingDecision,
     RoutingResult,
@@ -322,11 +322,11 @@ class TestBuildExecutionWaves:
         (which enforce ID matching), testing the defensive guard in
         build_execution_waves.
         """
-        from ai_company.engine.decomposition.models import (
+        from synthorg.engine.decomposition.models import (
             DecompositionPlan,
             DecompositionResult,
         )
-        from ai_company.engine.errors import CoordinationError
+        from synthorg.engine.errors import CoordinationError
         from tests.unit.engine.conftest import make_assignment_task
 
         sub_a = make_subtask("sub-a")

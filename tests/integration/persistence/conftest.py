@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ai_company.persistence.config import SQLiteConfig
-from ai_company.persistence.sqlite.backend import SQLitePersistenceBackend
+from synthorg.persistence.config import SQLiteConfig
+from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator

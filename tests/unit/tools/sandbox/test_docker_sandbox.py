@@ -11,16 +11,16 @@ if TYPE_CHECKING:
 
 import pytest
 
-from ai_company.tools.sandbox.docker_config import DockerSandboxConfig
-from ai_company.tools.sandbox.docker_sandbox import (
+from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
+from synthorg.tools.sandbox.docker_sandbox import (
     DockerSandbox,
     _to_posix_bind_path,
 )
-from ai_company.tools.sandbox.errors import SandboxError, SandboxStartError
+from synthorg.tools.sandbox.errors import SandboxError, SandboxStartError
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-_DOCKER_MODULE = "ai_company.tools.sandbox.docker_sandbox.aiodocker"
+_DOCKER_MODULE = "synthorg.tools.sandbox.docker_sandbox.aiodocker"
 
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -483,7 +483,7 @@ class TestWindowsPathConversion:
 
     def test_unix_path_unchanged(self) -> None:
         with patch(
-            "ai_company.tools.sandbox.docker_sandbox.platform.system",
+            "synthorg.tools.sandbox.docker_sandbox.platform.system",
             return_value="Linux",
         ):
             # Use PurePosixPath to avoid Windows path normalisation
@@ -493,7 +493,7 @@ class TestWindowsPathConversion:
 
     def test_windows_path_converted(self) -> None:
         with patch(
-            "ai_company.tools.sandbox.docker_sandbox.platform.system",
+            "synthorg.tools.sandbox.docker_sandbox.platform.system",
             return_value="Windows",
         ):
             win_path = Path("C:/Users/test/workspace")
@@ -504,7 +504,7 @@ class TestWindowsPathConversion:
 
     def test_windows_path_lowercase_drive(self) -> None:
         with patch(
-            "ai_company.tools.sandbox.docker_sandbox.platform.system",
+            "synthorg.tools.sandbox.docker_sandbox.platform.system",
             return_value="Windows",
         ):
             win_path = Path("D:/Projects/app")

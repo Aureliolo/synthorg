@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.core.validation import is_valid_action_type
+from synthorg.core.validation import is_valid_action_type
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

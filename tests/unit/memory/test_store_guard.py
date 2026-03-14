@@ -3,11 +3,11 @@
 import pytest
 import structlog.testing
 
-from ai_company.core.enums import MemoryCategory
-from ai_company.memory.filter import NON_INFERABLE_TAG
-from ai_company.memory.models import MemoryMetadata, MemoryStoreRequest
-from ai_company.memory.store_guard import validate_memory_tags
-from ai_company.observability.events.memory import (
+from synthorg.core.enums import MemoryCategory
+from synthorg.memory.filter import NON_INFERABLE_TAG
+from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
+from synthorg.memory.store_guard import validate_memory_tags
+from synthorg.observability.events.memory import (
     MEMORY_FILTER_STORE_MISSING_TAG,
 )
 

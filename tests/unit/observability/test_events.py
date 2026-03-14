@@ -6,14 +6,14 @@ import re
 
 import pytest
 
-from ai_company.observability import events
-from ai_company.observability.events.budget import BUDGET_RECORD_ADDED
-from ai_company.observability.events.checkpoint import (
+from synthorg.observability import events
+from synthorg.observability.events.budget import BUDGET_RECORD_ADDED
+from synthorg.observability.events.checkpoint import (
     CHECKPOINT_RECOVERY_START,
     CHECKPOINT_SAVED,
     HEARTBEAT_UPDATED,
 )
-from ai_company.observability.events.classification import (
+from synthorg.observability.events.classification import (
     CLASSIFICATION_COMPLETE,
     CLASSIFICATION_ERROR,
     CLASSIFICATION_FINDING,
@@ -23,7 +23,7 @@ from ai_company.observability.events.classification import (
     DETECTOR_ERROR,
     DETECTOR_START,
 )
-from ai_company.observability.events.communication import (
+from synthorg.observability.events.communication import (
     COMM_BUS_ALREADY_RUNNING,
     COMM_BUS_NOT_RUNNING,
     COMM_BUS_STARTED,
@@ -31,12 +31,12 @@ from ai_company.observability.events.communication import (
     COMM_HANDLER_DEREGISTER_MISS,
     COMM_MESSAGE_PUBLISHED,
 )
-from ai_company.observability.events.config import (
+from synthorg.observability.events.config import (
     CONFIG_LOADED,
     CONFIG_PARSE_FAILED,
     CONFIG_VALIDATION_FAILED,
 )
-from ai_company.observability.events.conflict import (
+from synthorg.observability.events.conflict import (
     CONFLICT_AMBIGUOUS_RESULT,
     CONFLICT_AUTHORITY_DECIDED,
     CONFLICT_AUTHORITY_FALLBACK,
@@ -59,7 +59,7 @@ from ai_company.observability.events.conflict import (
     CONFLICT_STRATEGY_ERROR,
     CONFLICT_VALIDATION_ERROR,
 )
-from ai_company.observability.events.delegation import (
+from synthorg.observability.events.delegation import (
     DELEGATION_CREATED,
     DELEGATION_HIERARCHY_BUILT,
     DELEGATION_HIERARCHY_CYCLE,
@@ -68,8 +68,8 @@ from ai_company.observability.events.delegation import (
     DELEGATION_REQUESTED,
     DELEGATION_RESULT_SENT,
 )
-from ai_company.observability.events.execution import EXECUTION_TASK_CREATED
-from ai_company.observability.events.git import (
+from synthorg.observability.events.execution import EXECUTION_TASK_CREATED
+from synthorg.observability.events.git import (
     GIT_CLONE_URL_REJECTED,
     GIT_COMMAND_FAILED,
     GIT_COMMAND_START,
@@ -78,14 +78,14 @@ from ai_company.observability.events.git import (
     GIT_REF_INJECTION_BLOCKED,
     GIT_WORKSPACE_VIOLATION,
 )
-from ai_company.observability.events.prompt import PROMPT_BUILD_START
-from ai_company.observability.events.provider import (
+from synthorg.observability.events.prompt import PROMPT_BUILD_START
+from synthorg.observability.events.provider import (
     PROVIDER_CALL_START,
     PROVIDER_REGISTRY_BUILT,
 )
-from ai_company.observability.events.role import ROLE_LOOKUP_MISS
-from ai_company.observability.events.routing import ROUTING_DECISION_MADE
-from ai_company.observability.events.sandbox import (
+from synthorg.observability.events.role import ROLE_LOOKUP_MISS
+from synthorg.observability.events.routing import ROUTING_DECISION_MADE
+from synthorg.observability.events.sandbox import (
     SANDBOX_CLEANUP,
     SANDBOX_ENV_FILTERED,
     SANDBOX_EXECUTE_FAILED,
@@ -98,8 +98,8 @@ from ai_company.observability.events.sandbox import (
     SANDBOX_SPAWN_FAILED,
     SANDBOX_WORKSPACE_VIOLATION,
 )
-from ai_company.observability.events.task import TASK_STATUS_CHANGED
-from ai_company.observability.events.task_assignment import (
+from synthorg.observability.events.task import TASK_STATUS_CHANGED
+from synthorg.observability.events.task_assignment import (
     TASK_ASSIGNMENT_AGENT_SCORED,
     TASK_ASSIGNMENT_AGENT_SELECTED,
     TASK_ASSIGNMENT_COMPLETE,
@@ -109,12 +109,12 @@ from ai_company.observability.events.task_assignment import (
     TASK_ASSIGNMENT_STARTED,
     TASK_ASSIGNMENT_WORKLOAD_BALANCED,
 )
-from ai_company.observability.events.template import (
+from synthorg.observability.events.template import (
     TEMPLATE_RENDER_START,
     TEMPLATE_RENDER_SUCCESS,
 )
-from ai_company.observability.events.tool import TOOL_INVOKE_START
-from ai_company.observability.events.workspace import (
+from synthorg.observability.events.tool import TOOL_INVOKE_START
+from synthorg.observability.events.workspace import (
     WORKSPACE_GROUP_MERGE_COMPLETE,
     WORKSPACE_GROUP_MERGE_START,
     WORKSPACE_GROUP_SETUP_COMPLETE,
@@ -146,7 +146,7 @@ def _all_event_names() -> list[tuple[str, str]]:
     """Return (attr_name, value) for every public string constant."""
     result: list[tuple[str, str]] = []
     for info in pkgutil.iter_modules(events.__path__):
-        mod = importlib.import_module(f"ai_company.observability.events.{info.name}")
+        mod = importlib.import_module(f"synthorg.observability.events.{info.name}")
         for attr in dir(mod):
             if attr.startswith("_"):
                 continue
@@ -341,7 +341,7 @@ class TestEventConstants:
         assert TOOL_INVOKE_START == "tool.invoke.start"
 
     def test_meeting_events_exist(self) -> None:
-        from ai_company.observability.events.meeting import (
+        from synthorg.observability.events.meeting import (
             MEETING_ACTION_ITEM_EXTRACTED,
             MEETING_AGENT_CALLED,
             MEETING_AGENT_RESPONDED,
@@ -438,7 +438,7 @@ class TestEventConstants:
         constant_name: str,
         expected: str,
     ) -> None:
-        from ai_company.observability.events import consolidation as mod
+        from synthorg.observability.events import consolidation as mod
 
         assert getattr(mod, constant_name) == expected
 
@@ -473,7 +473,7 @@ class TestEventConstants:
         constant_name: str,
         expected: str,
     ) -> None:
-        from ai_company.observability.events import org_memory as mod
+        from synthorg.observability.events import org_memory as mod
 
         assert getattr(mod, constant_name) == expected
 
@@ -509,7 +509,7 @@ class TestEventConstants:
         ],
     )
     def test_memory_events_exist(self, constant_name: str, expected: str) -> None:
-        from ai_company.observability.events import memory as mod
+        from synthorg.observability.events import memory as mod
 
         assert getattr(mod, constant_name) == expected
 
@@ -557,12 +557,12 @@ class TestEventConstants:
         ],
     )
     def test_persistence_events_exist(self, constant_name: str, expected: str) -> None:
-        from ai_company.observability.events import persistence as mod
+        from synthorg.observability.events import persistence as mod
 
         assert getattr(mod, constant_name) == expected
 
     def test_autonomy_events_exist(self) -> None:
-        from ai_company.observability.events.autonomy import (
+        from synthorg.observability.events.autonomy import (
             AUTONOMY_ACTION_AUTO_APPROVED,
             AUTONOMY_ACTION_HUMAN_REQUIRED,
             AUTONOMY_DOWNGRADE_TRIGGERED,
@@ -585,7 +585,7 @@ class TestEventConstants:
         assert AUTONOMY_ACTION_HUMAN_REQUIRED == "autonomy.action.human_required"
 
     def test_timeout_events_exist(self) -> None:
-        from ai_company.observability.events.timeout import (
+        from synthorg.observability.events.timeout import (
             TIMEOUT_AUTO_APPROVED,
             TIMEOUT_AUTO_DENIED,
             TIMEOUT_CONTEXT_PARKED,
@@ -606,7 +606,7 @@ class TestEventConstants:
         assert TIMEOUT_UNKNOWN_ACTION_TYPE == "timeout.unknown_action_type"
 
     def test_parked_context_persistence_events_exist(self) -> None:
-        from ai_company.observability.events.persistence import (
+        from synthorg.observability.events.persistence import (
             PERSISTENCE_PARKED_CONTEXT_DELETED,
             PERSISTENCE_PARKED_CONTEXT_DESERIALIZE_FAILED,
             PERSISTENCE_PARKED_CONTEXT_NOT_FOUND,
@@ -641,7 +641,7 @@ class TestEventConstants:
         )
 
     def test_coordination_events_exist(self) -> None:
-        from ai_company.observability.events.coordination import (
+        from synthorg.observability.events.coordination import (
             COORDINATION_CLEANUP_COMPLETED,
             COORDINATION_CLEANUP_FAILED,
             COORDINATION_CLEANUP_STARTED,

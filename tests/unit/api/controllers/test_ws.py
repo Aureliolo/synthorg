@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from ai_company.api.controllers.ws import _handle_message
+from synthorg.api.controllers.ws import _handle_message
 
 
 @pytest.mark.unit

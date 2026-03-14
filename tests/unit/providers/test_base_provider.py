@@ -5,19 +5,19 @@ from typing import TYPE_CHECKING
 import pytest
 import structlog
 
-from ai_company.observability.events.provider import (
+from synthorg.observability.events.provider import (
     PROVIDER_CALL_ERROR,
     PROVIDER_CALL_START,
     PROVIDER_CALL_SUCCESS,
     PROVIDER_STREAM_START,
 )
-from ai_company.providers.base import BaseCompletionProvider
+from synthorg.providers.base import BaseCompletionProvider
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from ai_company.providers.capabilities import ModelCapabilities
-    from ai_company.providers.models import (
+    from synthorg.providers.capabilities import ModelCapabilities
+    from synthorg.providers.models import (
         ChatMessage,
         CompletionConfig,
         CompletionResponse,
@@ -25,9 +25,9 @@ if TYPE_CHECKING:
         ToolDefinition,
     )
 
-from ai_company.providers.enums import FinishReason, MessageRole
-from ai_company.providers.errors import InvalidRequestError
-from ai_company.providers.models import (
+from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.errors import InvalidRequestError
+from synthorg.providers.models import (
     ChatMessage,
     CompletionResponse,
     TokenUsage,

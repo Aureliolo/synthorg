@@ -2,17 +2,17 @@
 
 import pytest
 
-from ai_company.communication.meeting.config import StructuredPhasesConfig
-from ai_company.communication.meeting.enums import (
+from synthorg.communication.meeting.config import StructuredPhasesConfig
+from synthorg.communication.meeting.enums import (
     MeetingPhase,
     MeetingProtocolType,
 )
-from ai_company.communication.meeting.errors import (
+from synthorg.communication.meeting.errors import (
     MeetingBudgetExhaustedError,
 )
-from ai_company.communication.meeting.models import MeetingAgenda
-from ai_company.communication.meeting.protocol import ConflictDetector, MeetingProtocol
-from ai_company.communication.meeting.structured_phases import (
+from synthorg.communication.meeting.models import MeetingAgenda
+from synthorg.communication.meeting.protocol import ConflictDetector, MeetingProtocol
+from synthorg.communication.meeting.structured_phases import (
     KeywordConflictDetector,
     StructuredPhasesProtocol,
 )

@@ -2,10 +2,10 @@
 
 import pytest
 
-from ai_company.providers.models import ToolCall, ToolDefinition
-from ai_company.tools.examples.echo import EchoTool
-from ai_company.tools.invoker import ToolInvoker
-from ai_company.tools.registry import ToolRegistry
+from synthorg.providers.models import ToolCall, ToolDefinition
+from synthorg.tools.examples.echo import EchoTool
+from synthorg.tools.invoker import ToolInvoker
+from synthorg.tools.registry import ToolRegistry
 
 pytestmark = pytest.mark.timeout(30)
 

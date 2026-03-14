@@ -4,7 +4,7 @@ import logging
 
 import pytest
 
-from ai_company.observability.sinks import _SINK_ROUTING, _LoggerNameFilter
+from synthorg.observability.sinks import _SINK_ROUTING, _LoggerNameFilter
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -27,63 +27,63 @@ class TestLoggerNameFilter:
     def test_no_filters_accepts_all(self) -> None:
         f = _LoggerNameFilter()
         assert f.filter(_make_record("anything"))
-        assert f.filter(_make_record("ai_company.core.task"))
+        assert f.filter(_make_record("synthorg.core.task"))
 
     def test_include_accepts_matching(self) -> None:
         f = _LoggerNameFilter(
-            include_prefixes=("ai_company.security.",),
+            include_prefixes=("synthorg.security.",),
         )
-        assert f.filter(_make_record("ai_company.security.audit"))
-        assert not f.filter(_make_record("ai_company.core.task"))
+        assert f.filter(_make_record("synthorg.security.audit"))
+        assert not f.filter(_make_record("synthorg.core.task"))
 
     def test_include_rejects_non_matching(self) -> None:
         f = _LoggerNameFilter(
-            include_prefixes=("ai_company.budget.",),
+            include_prefixes=("synthorg.budget.",),
         )
-        assert not f.filter(_make_record("ai_company.engine.run"))
+        assert not f.filter(_make_record("synthorg.engine.run"))
 
     def test_exclude_rejects_matching(self) -> None:
         f = _LoggerNameFilter(
-            exclude_prefixes=("ai_company.noisy.",),
+            exclude_prefixes=("synthorg.noisy.",),
         )
-        assert not f.filter(_make_record("ai_company.noisy.debug"))
-        assert f.filter(_make_record("ai_company.core.task"))
+        assert not f.filter(_make_record("synthorg.noisy.debug"))
+        assert f.filter(_make_record("synthorg.core.task"))
 
     def test_exclude_takes_precedence_over_include(self) -> None:
         f = _LoggerNameFilter(
-            include_prefixes=("ai_company.",),
-            exclude_prefixes=("ai_company.noisy.",),
+            include_prefixes=("synthorg.",),
+            exclude_prefixes=("synthorg.noisy.",),
         )
-        assert not f.filter(_make_record("ai_company.noisy.debug"))
-        assert f.filter(_make_record("ai_company.core.task"))
+        assert not f.filter(_make_record("synthorg.noisy.debug"))
+        assert f.filter(_make_record("synthorg.core.task"))
 
     def test_multiple_include_prefixes(self) -> None:
         f = _LoggerNameFilter(
-            include_prefixes=("ai_company.budget.", "ai_company.providers."),
+            include_prefixes=("synthorg.budget.", "synthorg.providers."),
         )
-        assert f.filter(_make_record("ai_company.budget.tracker"))
-        assert f.filter(_make_record("ai_company.providers.litellm"))
-        assert not f.filter(_make_record("ai_company.core.task"))
+        assert f.filter(_make_record("synthorg.budget.tracker"))
+        assert f.filter(_make_record("synthorg.providers.litellm"))
+        assert not f.filter(_make_record("synthorg.core.task"))
 
 
 @pytest.mark.unit
 class TestSinkRoutingTable:
     def test_audit_routes_security(self) -> None:
         assert "audit.log" in _SINK_ROUTING
-        assert "ai_company.security." in _SINK_ROUTING["audit.log"]
+        assert "synthorg.security." in _SINK_ROUTING["audit.log"]
 
     def test_cost_usage_routes_budget_and_providers(self) -> None:
         assert "cost_usage.log" in _SINK_ROUTING
         prefixes = _SINK_ROUTING["cost_usage.log"]
-        assert "ai_company.budget." in prefixes
-        assert "ai_company.providers." in prefixes
+        assert "synthorg.budget." in prefixes
+        assert "synthorg.providers." in prefixes
 
     def test_agent_activity_routes_engine_and_core(self) -> None:
         assert "agent_activity.log" in _SINK_ROUTING
         prefixes = _SINK_ROUTING["agent_activity.log"]
-        assert "ai_company.engine." in prefixes
-        assert "ai_company.core." in prefixes
+        assert "synthorg.engine." in prefixes
+        assert "synthorg.core." in prefixes
 
     def test_catchall_sinks_not_in_routing(self) -> None:
-        for name in ("ai_company.log", "errors.log", "debug.log"):
+        for name in ("synthorg.log", "errors.log", "debug.log"):
             assert name not in _SINK_ROUTING

@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ai_company.tools.base import ToolExecutionResult
-from ai_company.tools.mcp.cache import MCPResultCache
-from ai_company.tools.mcp.client import MCPClient
-from ai_company.tools.mcp.config import MCPConfig, MCPServerConfig
-from ai_company.tools.mcp.models import MCPRawResult, MCPToolInfo
+from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.mcp.cache import MCPResultCache
+from synthorg.tools.mcp.client import MCPClient
+from synthorg.tools.mcp.config import MCPConfig, MCPServerConfig
+from synthorg.tools.mcp.models import MCPRawResult, MCPToolInfo
 
 # ── Sample configs ───────────────────────────────────────────────
 

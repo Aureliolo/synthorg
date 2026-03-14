@@ -4,9 +4,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ai_company.core.enums import MemoryCategory
-from ai_company.memory.consolidation.archival import ArchivalStore
-from ai_company.memory.consolidation.models import ArchivalEntry
+from synthorg.core.enums import MemoryCategory
+from synthorg.memory.consolidation.archival import ArchivalStore
+from synthorg.memory.consolidation.models import ArchivalEntry
 
 pytestmark = pytest.mark.timeout(30)
 

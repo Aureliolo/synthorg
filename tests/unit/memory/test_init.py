@@ -2,7 +2,7 @@
 
 import pytest
 
-import ai_company.memory as memory_module
+import synthorg.memory as memory_module
 
 pytestmark = pytest.mark.timeout(30)
 

@@ -2,10 +2,10 @@
 
 import pytest
 
-from ai_company.core.enums import AutonomyLevel, ToolCategory
-from ai_company.security.autonomy.models import EffectiveAutonomy
-from ai_company.security.models import OutputScanResult, ScanOutcome, SecurityContext
-from ai_company.security.output_scan_policy import (
+from synthorg.core.enums import AutonomyLevel, ToolCategory
+from synthorg.security.autonomy.models import EffectiveAutonomy
+from synthorg.security.models import OutputScanResult, ScanOutcome, SecurityContext
+from synthorg.security.output_scan_policy import (
     _DEFAULT_AUTONOMY_POLICY_MAP,
     AutonomyTieredPolicy,
     LogOnlyPolicy,

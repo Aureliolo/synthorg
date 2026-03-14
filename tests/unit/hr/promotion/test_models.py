@@ -5,9 +5,9 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import ApprovalStatus, SeniorityLevel
-from ai_company.hr.enums import PromotionDirection
-from ai_company.hr.promotion.models import (
+from synthorg.core.enums import ApprovalStatus, SeniorityLevel
+from synthorg.hr.enums import PromotionDirection
+from synthorg.hr.promotion.models import (
     CriterionResult,
     PromotionApprovalDecision,
     PromotionEvaluation,

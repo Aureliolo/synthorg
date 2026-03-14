@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from ai_company.engine.resource_lock import InMemoryResourceLock, ResourceLock
+from synthorg.engine.resource_lock import InMemoryResourceLock, ResourceLock
 
 
 @pytest.mark.unit

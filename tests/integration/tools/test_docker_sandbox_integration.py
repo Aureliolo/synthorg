@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ai_company.tools.sandbox.docker_config import DockerSandboxConfig
-from ai_company.tools.sandbox.docker_sandbox import DockerSandbox
+from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
+from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
 
 if TYPE_CHECKING:
     from pathlib import Path

@@ -9,17 +9,17 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from ai_company.config.schema import ProviderConfig, ProviderModelConfig
-from ai_company.core.resilience_config import RateLimiterConfig, RetryConfig
-from ai_company.providers.drivers.litellm_driver import LiteLLMDriver
-from ai_company.providers.enums import MessageRole
-from ai_company.providers.errors import (
+from synthorg.config.schema import ProviderConfig, ProviderModelConfig
+from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
+from synthorg.providers.drivers.litellm_driver import LiteLLMDriver
+from synthorg.providers.enums import MessageRole
+from synthorg.providers.errors import (
     AuthenticationError,
     ProviderTimeoutError,
     RateLimitError,
 )
-from ai_company.providers.models import ChatMessage
-from ai_company.providers.resilience.errors import RetryExhaustedError
+from synthorg.providers.models import ChatMessage
+from synthorg.providers.resilience.errors import RetryExhaustedError
 
 from .conftest import build_model_response
 
@@ -189,7 +189,7 @@ class TestStreamRetryIntegration:
 
     async def test_stream_succeeds_after_transient_connection_error(self) -> None:
         """Stream setup is retried on transient failure; success on second attempt."""
-        from ai_company.providers.enums import StreamEventType
+        from synthorg.providers.enums import StreamEventType
 
         driver = _make_driver()
         import litellm as _litellm

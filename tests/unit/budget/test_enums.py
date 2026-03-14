@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.budget.enums import BudgetAlertLevel
+from synthorg.budget.enums import BudgetAlertLevel
 
 pytestmark = pytest.mark.timeout(30)
 

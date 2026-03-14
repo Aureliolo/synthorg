@@ -6,37 +6,37 @@ from typing import TYPE_CHECKING
 import pytest
 from polyfactory.factories.pydantic_factory import ModelFactory
 
-from ai_company.budget.config import (
+from synthorg.budget.config import (
     AutoDowngradeConfig,
     BudgetAlertConfig,
     BudgetConfig,
 )
-from ai_company.budget.cost_record import CostRecord
-from ai_company.budget.cost_tiers import CostTierDefinition, CostTiersConfig
-from ai_company.budget.enums import BudgetAlertLevel
-from ai_company.budget.hierarchy import (
+from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.cost_tiers import CostTierDefinition, CostTiersConfig
+from synthorg.budget.enums import BudgetAlertLevel
+from synthorg.budget.hierarchy import (
     BudgetHierarchy,
     DepartmentBudget,
     TeamBudget,
 )
-from ai_company.budget.optimizer import CostOptimizer
-from ai_company.budget.optimizer_models import CostOptimizerConfig
-from ai_company.budget.quota import (
+from synthorg.budget.optimizer import CostOptimizer
+from synthorg.budget.optimizer_models import CostOptimizerConfig
+from synthorg.budget.quota import (
     QuotaLimit,
     QuotaWindow,
     SubscriptionConfig,
 )
-from ai_company.budget.quota_tracker import QuotaTracker
-from ai_company.budget.reports import ReportGenerator
-from ai_company.budget.spending_summary import (
+from synthorg.budget.quota_tracker import QuotaTracker
+from synthorg.budget.reports import ReportGenerator
+from synthorg.budget.spending_summary import (
     AgentSpending,
     DepartmentSpending,
     PeriodSpending,
     SpendingSummary,
 )
-from ai_company.budget.tracker import CostTracker
-from ai_company.providers.routing.models import ResolvedModel
-from ai_company.providers.routing.resolver import ModelResolver
+from synthorg.budget.tracker import CostTracker
+from synthorg.providers.routing.models import ResolvedModel
+from synthorg.providers.routing.resolver import ModelResolver
 
 if TYPE_CHECKING:
     from collections.abc import Callable

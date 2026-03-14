@@ -171,7 +171,7 @@ Run these sequentially, fixing as we go:
 5. **Test + coverage:**
 
    ```bash
-   uv run pytest tests/ -n auto --cov=ai_company --cov-fail-under=80
+   uv run pytest tests/ -n auto --cov=synthorg --cov-fail-under=80
    ```
 
 **Web dashboard checks (steps 6-9):** Run only if `web_src` or `web_test` files changed.
@@ -256,11 +256,11 @@ This captures committed-but-unpushed changes AND any uncommitted/untracked work 
 | **logging-audit** | Any `src_py` changed | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **resilience-audit** | Any `src_py` changed | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **conventions-enforcer** | Any `src_py` or `test_py` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **security-reviewer** | Files in `src/ai_company/api/`, `src/ai_company/security/`, `src/ai_company/tools/`, `src/ai_company/config/`, `src/ai_company/persistence/`, `src/ai_company/engine/` changed, OR any `web_src` changed, OR diff contains `subprocess`, `eval`, `exec`, `pickle`, `yaml.load`, `sql`, auth/credential patterns | `everything-claude-code:security-reviewer` |
+| **security-reviewer** | Files in `src/synthorg/api/`, `src/synthorg/security/`, `src/synthorg/tools/`, `src/synthorg/config/`, `src/synthorg/persistence/`, `src/synthorg/engine/` changed, OR any `web_src` changed, OR diff contains `subprocess`, `eval`, `exec`, `pickle`, `yaml.load`, `sql`, auth/credential patterns | `everything-claude-code:security-reviewer` |
 | **frontend-reviewer** | Any `web_src` or `web_test` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **api-contract-drift** | Any file in `src/ai_company/api/` OR `web/src/api/` OR `src/ai_company/core/enums.py` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
+| **api-contract-drift** | Any file in `src/synthorg/api/` OR `web/src/api/` OR `src/synthorg/core/enums.py` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **infra-reviewer** | Any `docker`, `ci`, or `infra_config` file | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **persistence-reviewer** | Any file in `src/ai_company/persistence/` | `everything-claude-code:database-reviewer` |
+| **persistence-reviewer** | Any file in `src/synthorg/persistence/` | `everything-claude-code:database-reviewer` |
 | **test-quality-reviewer** | Any `test_py` or `web_test` | `pr-review-toolkit:pr-test-analyzer` (custom prompt below) |
 | **async-concurrency-reviewer** | Diff contains `async def`, `await`, `asyncio`, `TaskGroup`, `create_task`, `aiosqlite` in `src_py` files | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **go-reviewer** | Any `cli_go` | `everything-claude-code:go-reviewer` |
@@ -309,7 +309,7 @@ The docs-consistency agent ensures project documentation never drifts from the c
 Read the current `CLAUDE.md` and `README.md` in full, plus the relevant `docs/design/` pages (see `docs/DESIGN_SPEC.md` for the index). Then compare them against the PR diff and the actual current state of the codebase. Flag anything that is now inaccurate, incomplete, or missing.
 
 **Design pages in `docs/design/` (CRITICAL — these are the project's source of truth):**
-1. §15.3 Project Structure — does it match the actual files/directories under `src/ai_company/`? Any new modules missing? Any listed files that no longer exist? (CRITICAL)
+1. §15.3 Project Structure — does it match the actual files/directories under `src/synthorg/`? Any new modules missing? Any listed files that no longer exist? (CRITICAL)
 2. §3.1 Agent Identity Card — does the config/runtime split documentation match the actual model code? (MAJOR)
 3. §15.4 Key Design Decisions — are technology choices and rationale still accurate? (MAJOR)
 4. §15.5 Pydantic Model Conventions — do the documented conventions match how models are actually written in code? Are "Adopted" vs "Planned" labels still accurate? (MAJOR)
@@ -481,7 +481,7 @@ The api-contract-drift agent checks for consistency between backend API and fron
 Read the relevant backend and frontend files, then cross-reference:
 
 **Endpoint consistency (CRITICAL):**
-1. Frontend API calls (`web/src/api/`) that reference endpoints not defined in backend controllers (`src/ai_company/api/controllers/`) (CRITICAL)
+1. Frontend API calls (`web/src/api/`) that reference endpoints not defined in backend controllers (`src/synthorg/api/controllers/`) (CRITICAL)
 2. Backend endpoints that changed URL path, HTTP method, or query parameters without corresponding frontend updates (CRITICAL)
 3. Backend response schema changes (added/removed/renamed fields in DTOs) not reflected in frontend types (`web/src/api/types.ts`) (CRITICAL)
 
@@ -731,7 +731,7 @@ Run automated checks again (same conditional gating as Phase 2):
 1. `uv run ruff check src/ tests/`
 2. `uv run ruff format src/ tests/`
 3. `uv run mypy src/ tests/`
-4. `uv run pytest tests/ -n auto --cov=ai_company --cov-fail-under=80`
+4. `uv run pytest tests/ -n auto --cov=synthorg --cov-fail-under=80`
 
 **Web dashboard checks (steps 5-7):** Run only if `web_src` or `web_test` files were changed or modified during Phase 7.
 
@@ -752,7 +752,7 @@ git add -A
 1. Launch `pr-review-toolkit:code-simplifier` on all modified files
 2. If it suggests improvements, apply them
 3. Re-run verification (same conditional gating as Phase 8):
-   - If `src_py` or `test_py` changed: `uv run ruff check src/ tests/` + `uv run ruff format src/ tests/` + `uv run mypy src/ tests/` + `uv run pytest tests/ -n auto --cov=ai_company --cov-fail-under=80`
+   - If `src_py` or `test_py` changed: `uv run ruff check src/ tests/` + `uv run ruff format src/ tests/` + `uv run mypy src/ tests/` + `uv run pytest tests/ -n auto --cov=synthorg --cov-fail-under=80`
    - If `web_src` or `web_test` changed: `npm --prefix web run lint` + `npm --prefix web run type-check` + `npm --prefix web run test`
 
 ## Phase 10: Commit + Push + Create PR

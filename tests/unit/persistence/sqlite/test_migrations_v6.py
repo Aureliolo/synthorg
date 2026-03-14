@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ai_company.persistence.sqlite.migrations import (
+from synthorg.persistence.sqlite.migrations import (
     SCHEMA_VERSION,
     run_migrations,
 )

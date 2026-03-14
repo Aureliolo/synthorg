@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.hr.enums import (
+from synthorg.hr.enums import (
     FiringReason,
     HiringRequestStatus,
     LifecycleEventType,

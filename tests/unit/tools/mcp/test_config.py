@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.tools.mcp.config import MCPConfig, MCPServerConfig
+from synthorg.tools.mcp.config import MCPConfig, MCPServerConfig
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

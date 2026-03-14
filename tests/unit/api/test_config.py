@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.api.config import (
+from synthorg.api.config import (
     ApiConfig,
     CorsConfig,
     RateLimitConfig,

@@ -4,9 +4,9 @@ from typing import Any
 
 import pytest
 
-from ai_company.core.enums import ActionType, ToolCategory
-from ai_company.security.action_type_mapping import DEFAULT_CATEGORY_ACTION_MAP
-from ai_company.tools.base import BaseTool, ToolExecutionResult
+from synthorg.core.enums import ActionType, ToolCategory
+from synthorg.security.action_type_mapping import DEFAULT_CATEGORY_ACTION_MAP
+from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 pytestmark = pytest.mark.timeout(30)
 

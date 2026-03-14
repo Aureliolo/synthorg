@@ -3,8 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.providers.enums import FinishReason, MessageRole, StreamEventType
-from ai_company.providers.models import (
+from synthorg.providers.enums import FinishReason, MessageRole, StreamEventType
+from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
     CompletionResponse,
@@ -562,7 +562,7 @@ class TestExports:
     """Verify that __all__ matches the importable public API."""
 
     def test_all_exports_are_importable(self) -> None:
-        import ai_company.providers as pkg
+        import synthorg.providers as pkg
 
         for name in pkg.__all__:
             assert hasattr(pkg, name), f"{name} in __all__ but not importable"

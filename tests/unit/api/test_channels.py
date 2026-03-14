@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.api.channels import (
+from synthorg.api.channels import (
     ALL_CHANNELS,
     CHANNEL_AGENTS,
     CHANNEL_APPROVALS,

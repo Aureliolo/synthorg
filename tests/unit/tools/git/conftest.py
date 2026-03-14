@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-import ai_company.tools.git_tools as git_tools_module
-from ai_company.tools._git_base import _GIT_DISCOVERY_VARS
-from ai_company.tools.git_tools import (
+import synthorg.tools.git_tools as git_tools_module
+from synthorg.tools._git_base import _GIT_DISCOVERY_VARS
+from synthorg.tools.git_tools import (
     GitBranchTool,
     GitCloneTool,
     GitCommitTool,

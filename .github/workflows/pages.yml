@@ -9,7 +9,7 @@ on:
       - "mkdocs.yml"
       - "pyproject.toml"
       - "uv.lock"
-      - "src/ai_company/**"
+      - "src/synthorg/**"
       - "scripts/**"
       - "cli/scripts/install.sh"
       - "cli/scripts/install.ps1"

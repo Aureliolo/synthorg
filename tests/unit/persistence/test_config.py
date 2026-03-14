@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.persistence.config import PersistenceConfig, SQLiteConfig
+from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
 
 
 @pytest.mark.unit

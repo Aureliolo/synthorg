@@ -4,11 +4,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ai_company.engine._security_factory import (
+from synthorg.engine._security_factory import (
     make_security_interceptor,
     registry_with_approval_tool,
 )
-from ai_company.engine.errors import ExecutionStateError
+from synthorg.engine.errors import ExecutionStateError
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -63,7 +63,7 @@ class TestMakeSecurityInterceptor:
             )
 
     def test_returns_interceptor_when_enabled(self) -> None:
-        from ai_company.security.config import (
+        from synthorg.security.config import (
             RuleEngineConfig,
             SecurityConfig,
         )
@@ -76,7 +76,7 @@ class TestMakeSecurityInterceptor:
         assert result is not None
 
     def test_returns_interceptor_with_all_detectors(self) -> None:
-        from ai_company.security.config import (
+        from synthorg.security.config import (
             RuleEngineConfig,
             SecurityConfig,
         )

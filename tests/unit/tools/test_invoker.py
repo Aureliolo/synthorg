@@ -5,13 +5,13 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ai_company.providers.models import ToolCall, ToolResult
+from synthorg.providers.models import ToolCall, ToolResult
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from ai_company.tools.invoker import ToolInvoker
-    from ai_company.tools.registry import ToolRegistry
+    from synthorg.tools.invoker import ToolInvoker
+    from synthorg.tools.registry import ToolRegistry
 
     from .conftest import _ConcurrencyTrackingTool
 
@@ -385,7 +385,7 @@ class TestInvokeDeepcopyFailure:
 
         call = ToolCall(id="c_dc", name="mutating", arguments={"key": "val"})
         monkeypatch.setattr(
-            "ai_company.tools.invoker.copy.deepcopy",
+            "synthorg.tools.invoker.copy.deepcopy",
             _fail_on_execute,
         )
         result = await extended_invoker.invoke(call)
@@ -414,7 +414,7 @@ class TestInvokeDeepcopyFailure:
 
         call = ToolCall(id="c_rec", name="mutating", arguments={"key": "val"})
         monkeypatch.setattr(
-            "ai_company.tools.invoker.copy.deepcopy",
+            "synthorg.tools.invoker.copy.deepcopy",
             _fail_on_execute,
         )
         with pytest.raises(RecursionError, match="maximum recursion depth"):

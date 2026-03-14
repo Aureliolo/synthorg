@@ -8,18 +8,18 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from ai_company.core.enums import MemoryCategory
-from ai_company.memory.formatter import MEMORY_BLOCK_END, MEMORY_BLOCK_START
-from ai_company.memory.injection import DefaultTokenEstimator
-from ai_company.memory.models import (
+from synthorg.core.enums import MemoryCategory
+from synthorg.memory.formatter import MEMORY_BLOCK_END, MEMORY_BLOCK_START
+from synthorg.memory.injection import DefaultTokenEstimator
+from synthorg.memory.models import (
     MemoryEntry,
     MemoryMetadata,
     MemoryQuery,
     MemoryStoreRequest,
 )
-from ai_company.memory.retrieval_config import MemoryRetrievalConfig
-from ai_company.memory.retriever import ContextInjectionStrategy
-from ai_company.providers.enums import MessageRole
+from synthorg.memory.retrieval_config import MemoryRetrievalConfig
+from synthorg.memory.retriever import ContextInjectionStrategy
+from synthorg.providers.enums import MessageRole
 
 pytestmark = pytest.mark.timeout(30)
 

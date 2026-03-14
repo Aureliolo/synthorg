@@ -3,13 +3,13 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.communication.meeting.config import (
+from synthorg.communication.meeting.config import (
     MeetingProtocolConfig,
     PositionPapersConfig,
     RoundRobinConfig,
     StructuredPhasesConfig,
 )
-from ai_company.communication.meeting.enums import MeetingProtocolType
+from synthorg.communication.meeting.enums import MeetingProtocolType
 
 pytestmark = pytest.mark.timeout(30)
 

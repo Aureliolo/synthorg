@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.engine.coordination.config import CoordinationConfig
+from synthorg.engine.coordination.config import CoordinationConfig
 
 
 class TestCoordinationConfig:

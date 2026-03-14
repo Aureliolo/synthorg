@@ -4,10 +4,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ai_company.api.approval_store import ApprovalStore
-from ai_company.core.enums import ApprovalRiskLevel
-from ai_company.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
-from ai_company.tools.approval_tool import RequestHumanApprovalTool
+from synthorg.api.approval_store import ApprovalStore
+from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
+from synthorg.tools.approval_tool import RequestHumanApprovalTool
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

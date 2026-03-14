@@ -5,10 +5,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ai_company.observability._logger import get_logger
-from ai_company.observability.config import LogConfig, SinkConfig
-from ai_company.observability.enums import LogLevel, SinkType
-from ai_company.observability.setup import configure_logging
+from synthorg.observability._logger import get_logger
+from synthorg.observability.config import LogConfig, SinkConfig
+from synthorg.observability.enums import LogLevel, SinkType
+from synthorg.observability.setup import configure_logging
 
 if TYPE_CHECKING:
     from pathlib import Path

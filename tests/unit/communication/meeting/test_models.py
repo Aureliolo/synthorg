@@ -5,12 +5,12 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from ai_company.communication.meeting.enums import (
+from synthorg.communication.meeting.enums import (
     MeetingPhase,
     MeetingProtocolType,
     MeetingStatus,
 )
-from ai_company.communication.meeting.models import (
+from synthorg.communication.meeting.models import (
     ActionItem,
     AgentResponse,
     MeetingAgenda,
@@ -19,7 +19,7 @@ from ai_company.communication.meeting.models import (
     MeetingMinutes,
     MeetingRecord,
 )
-from ai_company.core.enums import Priority
+from synthorg.core.enums import Priority
 
 _NOW = datetime(2026, 3, 8, 10, 0, tzinfo=UTC)
 _LATER = datetime(2026, 3, 8, 10, 30, tzinfo=UTC)

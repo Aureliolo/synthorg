@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from ai_company.budget.quota import (
+from synthorg.budget.quota import (
     DegradationAction,
     DegradationConfig,
     ProviderCostModel,

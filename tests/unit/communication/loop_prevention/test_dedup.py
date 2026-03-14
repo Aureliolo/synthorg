@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.communication.loop_prevention.dedup import (
+from synthorg.communication.loop_prevention.dedup import (
     DelegationDeduplicator,
 )
 

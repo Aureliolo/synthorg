@@ -10,14 +10,14 @@ from typing import Any
 
 import pytest
 
-from ai_company.core.enums import TaskStatus
-from ai_company.engine.errors import (
+from synthorg.core.enums import TaskStatus
+from synthorg.engine.errors import (
     TaskEngineNotRunningError,
     TaskMutationError,
 )
-from ai_company.engine.task_engine import TaskEngine
-from ai_company.engine.task_engine_config import TaskEngineConfig
-from ai_company.engine.task_engine_models import (
+from synthorg.engine.task_engine import TaskEngine
+from synthorg.engine.task_engine_config import TaskEngineConfig
+from synthorg.engine.task_engine_models import (
     CreateTaskMutation,
     TaskMutationResult,
     TaskStateChanged,
@@ -467,7 +467,7 @@ class TestErrorMessageSanitization:
     """503 responses don't leak internal error details."""
 
     def test_not_running_sanitizes_message(self) -> None:
-        from ai_company.api.controllers.tasks import _map_task_engine_errors
+        from synthorg.api.controllers.tasks import _map_task_engine_errors
 
         exc = TaskEngineNotRunningError("internal detail about engine state")
         result = _map_task_engine_errors(exc)
@@ -475,8 +475,8 @@ class TestErrorMessageSanitization:
         assert "temporarily unavailable" in str(result).lower()
 
     def test_queue_full_sanitizes_message(self) -> None:
-        from ai_company.api.controllers.tasks import _map_task_engine_errors
-        from ai_company.engine.errors import TaskEngineQueueFullError
+        from synthorg.api.controllers.tasks import _map_task_engine_errors
+        from synthorg.engine.errors import TaskEngineQueueFullError
 
         exc = TaskEngineQueueFullError("queue has 1000 items")
         result = _map_task_engine_errors(exc)
@@ -497,7 +497,7 @@ class TestConvenienceMethodTaskNoneGuard:
         """create_task raises TaskInternalError if result.task is None."""
         from unittest.mock import AsyncMock
 
-        from ai_company.engine.errors import TaskInternalError
+        from synthorg.engine.errors import TaskInternalError
 
         bogus = TaskMutationResult(request_id="r", success=True)
         engine.submit = AsyncMock(return_value=bogus)  # type: ignore[method-assign]
@@ -513,7 +513,7 @@ class TestConvenienceMethodTaskNoneGuard:
         """update_task raises TaskInternalError if result.task is None."""
         from unittest.mock import AsyncMock
 
-        from ai_company.engine.errors import TaskInternalError
+        from synthorg.engine.errors import TaskInternalError
 
         bogus = TaskMutationResult(request_id="r", success=True)
         engine.submit = AsyncMock(return_value=bogus)  # type: ignore[method-assign]
@@ -529,7 +529,7 @@ class TestConvenienceMethodTaskNoneGuard:
         """transition_task raises TaskInternalError if result.task is None."""
         from unittest.mock import AsyncMock
 
-        from ai_company.engine.errors import TaskInternalError
+        from synthorg.engine.errors import TaskInternalError
 
         bogus = TaskMutationResult(request_id="r", success=True)
         engine.submit = AsyncMock(return_value=bogus)  # type: ignore[method-assign]
@@ -550,7 +550,7 @@ class TestConvenienceMethodTaskNoneGuard:
         """cancel_task raises TaskInternalError if result.task is None."""
         from unittest.mock import AsyncMock
 
-        from ai_company.engine.errors import TaskInternalError
+        from synthorg.engine.errors import TaskInternalError
 
         bogus = TaskMutationResult(request_id="r", success=True)
         engine.submit = AsyncMock(return_value=bogus)  # type: ignore[method-assign]
@@ -705,7 +705,7 @@ class TestCancelTaskLifecycle:
         engine: TaskEngine,
     ) -> None:
         """cancel_task for missing task raises TaskNotFoundError."""
-        from ai_company.engine.errors import TaskNotFoundError
+        from synthorg.engine.errors import TaskNotFoundError
 
         with pytest.raises(TaskNotFoundError):
             await engine.cancel_task(

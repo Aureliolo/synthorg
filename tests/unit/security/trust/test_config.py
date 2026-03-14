@@ -5,8 +5,8 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import ToolAccessLevel
-from ai_company.security.trust.config import (
+from synthorg.core.enums import ToolAccessLevel
+from synthorg.security.trust.config import (
     CategoryTrustCriteria,
     MilestoneCriteria,
     ReVerificationConfig,
@@ -14,7 +14,7 @@ from ai_company.security.trust.config import (
     TrustThreshold,
     WeightedTrustWeights,
 )
-from ai_company.security.trust.enums import TrustStrategyType
+from synthorg.security.trust.enums import TrustStrategyType
 
 pytestmark = pytest.mark.timeout(30)
 

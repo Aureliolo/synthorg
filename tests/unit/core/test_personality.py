@@ -2,12 +2,12 @@
 
 import pytest
 
-from ai_company.core.agent import PersonalityConfig
-from ai_company.core.enums import (
+from synthorg.core.agent import PersonalityConfig
+from synthorg.core.enums import (
     CollaborationPreference,
     ConflictApproach,
 )
-from ai_company.core.personality import (
+from synthorg.core.personality import (
     compute_compatibility,
     compute_team_compatibility,
 )

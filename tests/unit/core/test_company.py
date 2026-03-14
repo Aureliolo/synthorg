@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.company import (
+from synthorg.core.company import (
     ApprovalChain,
     Company,
     CompanyConfig,
@@ -16,8 +16,8 @@ from ai_company.core.company import (
     Team,
     WorkflowHandoff,
 )
-from ai_company.core.enums import AutonomyLevel, CompanyType
-from ai_company.security.timeout.config import (
+from synthorg.core.enums import AutonomyLevel, CompanyType
+from synthorg.security.timeout.config import (
     DenyOnTimeoutConfig,
     WaitForeverConfig,
 )

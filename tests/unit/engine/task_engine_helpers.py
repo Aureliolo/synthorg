@@ -3,11 +3,11 @@
 import copy
 from typing import TYPE_CHECKING
 
-from ai_company.core.task import Task
-from ai_company.engine.task_engine_models import CreateTaskData
+from synthorg.core.task import Task
+from synthorg.engine.task_engine_models import CreateTaskData
 
 if TYPE_CHECKING:
-    from ai_company.core.enums import TaskStatus
+    from synthorg.core.enums import TaskStatus
 
 
 # ── Fakes ─────────────────────────────────────────────────────
@@ -95,7 +95,7 @@ class FailingMessageBus(FakeMessageBus):
 
 def make_create_data(**overrides: object) -> CreateTaskData:
     """Build a CreateTaskData with sensible defaults."""
-    from ai_company.core.enums import TaskType
+    from synthorg.core.enums import TaskType
 
     defaults: dict[str, object] = {
         "title": "Test task",

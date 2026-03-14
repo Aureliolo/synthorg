@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.engine.errors import TaskVersionConflictError
-from ai_company.engine.task_engine_version import VersionTracker
+from synthorg.engine.errors import TaskVersionConflictError
+from synthorg.engine.task_engine_version import VersionTracker
 
 
 @pytest.mark.unit

@@ -2,17 +2,17 @@
 
 import pytest
 
-from ai_company.communication.conflict_resolution._helpers import (
+from synthorg.communication.conflict_resolution._helpers import (
     find_losers,
     find_position,
     find_position_or_raise,
     pick_highest_seniority,
 )
-from ai_company.communication.delegation.hierarchy import (
+from synthorg.communication.delegation.hierarchy import (
     HierarchyResolver,
 )
-from ai_company.communication.errors import ConflictStrategyError
-from ai_company.core.enums import SeniorityLevel
+from synthorg.communication.errors import ConflictStrategyError
+from synthorg.core.enums import SeniorityLevel
 
 from .conftest import make_conflict, make_position, make_resolution
 

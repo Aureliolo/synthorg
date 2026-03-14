@@ -9,58 +9,58 @@ Inter-agent messaging — bus, dispatcher, delegation, loop prevention, conflict
 
 ## Message
 
-::: ai_company.communication.message
+::: synthorg.communication.message
 
 ## Messenger
 
-::: ai_company.communication.messenger
+::: synthorg.communication.messenger
 
 ## Dispatcher
 
-::: ai_company.communication.dispatcher
+::: synthorg.communication.dispatcher
 
 ## Bus Protocol
 
-::: ai_company.communication.bus_protocol
+::: synthorg.communication.bus_protocol
 
 ## Config
 
-::: ai_company.communication.config
+::: synthorg.communication.config
 
 ## Errors
 
-::: ai_company.communication.errors
+::: synthorg.communication.errors
 
 ## Delegation
 
-::: ai_company.communication.delegation.models
+::: synthorg.communication.delegation.models
 
-::: ai_company.communication.delegation.service
+::: synthorg.communication.delegation.service
 
-::: ai_company.communication.delegation.authority
+::: synthorg.communication.delegation.authority
 
 ## Loop Prevention
 
-::: ai_company.communication.loop_prevention.guard
+::: synthorg.communication.loop_prevention.guard
 
-::: ai_company.communication.loop_prevention.models
+::: synthorg.communication.loop_prevention.models
 
 ## Conflict Resolution
 
-::: ai_company.communication.conflict_resolution.protocol
+::: synthorg.communication.conflict_resolution.protocol
 
-::: ai_company.communication.conflict_resolution.config
+::: synthorg.communication.conflict_resolution.config
 
-::: ai_company.communication.conflict_resolution.models
+::: synthorg.communication.conflict_resolution.models
 
-::: ai_company.communication.conflict_resolution.service
+::: synthorg.communication.conflict_resolution.service
 
 ## Meeting Protocol
 
-::: ai_company.communication.meeting.protocol
+::: synthorg.communication.meeting.protocol
 
-::: ai_company.communication.meeting.config
+::: synthorg.communication.meeting.config
 
-::: ai_company.communication.meeting.models
+::: synthorg.communication.meeting.models
 
-::: ai_company.communication.meeting.orchestrator
+::: synthorg.communication.meeting.orchestrator

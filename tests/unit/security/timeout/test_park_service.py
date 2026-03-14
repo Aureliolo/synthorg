@@ -6,10 +6,10 @@ from uuid import uuid4
 
 import pytest
 
-from ai_company.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
-from ai_company.core.enums import SeniorityLevel
-from ai_company.engine.context import AgentContext
-from ai_company.security.timeout.park_service import ParkService
+from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
+from synthorg.core.enums import SeniorityLevel
+from synthorg.engine.context import AgentContext
+from synthorg.security.timeout.park_service import ParkService
 
 pytestmark = pytest.mark.timeout(30)
 

@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from ai_company.budget.call_category import LLMCallCategory
-from ai_company.budget.cost_record import CostRecord
+from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.cost_record import CostRecord
 
 from .conftest import CostRecordFactory
 

@@ -2,11 +2,11 @@
 
 import pytest
 
-from ai_company.communication.delegation.hierarchy import (
+from synthorg.communication.delegation.hierarchy import (
     HierarchyResolver,
 )
-from ai_company.communication.errors import HierarchyResolutionError
-from ai_company.core.company import (
+from synthorg.communication.errors import HierarchyResolutionError
+from synthorg.core.company import (
     Company,
     CompanyConfig,
     Department,

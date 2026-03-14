@@ -2,11 +2,11 @@
 
 import pytest
 
-from ai_company.persistence.config import PersistenceConfig, SQLiteConfig
-from ai_company.persistence.errors import PersistenceConnectionError
-from ai_company.persistence.factory import create_backend
-from ai_company.persistence.protocol import PersistenceBackend
-from ai_company.persistence.sqlite.backend import SQLitePersistenceBackend
+from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
+from synthorg.persistence.errors import PersistenceConnectionError
+from synthorg.persistence.factory import create_backend
+from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 
 
 @pytest.mark.unit

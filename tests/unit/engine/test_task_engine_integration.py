@@ -5,11 +5,11 @@ import contextlib
 
 import pytest
 
-from ai_company.core.enums import TaskStatus
-from ai_company.engine.errors import TaskEngineQueueFullError
-from ai_company.engine.task_engine import TaskEngine, _MutationEnvelope
-from ai_company.engine.task_engine_config import TaskEngineConfig
-from ai_company.engine.task_engine_models import (
+from synthorg.core.enums import TaskStatus
+from synthorg.engine.errors import TaskEngineQueueFullError
+from synthorg.engine.task_engine import TaskEngine, _MutationEnvelope
+from synthorg.engine.task_engine_config import TaskEngineConfig
+from synthorg.engine.task_engine_models import (
     CreateTaskMutation,
     DeleteTaskMutation,
     TransitionTaskMutation,

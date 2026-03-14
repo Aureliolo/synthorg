@@ -5,7 +5,7 @@ from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
-from ai_company.budget.config import (
+from synthorg.budget.config import (
     AutoDowngradeConfig,
     BudgetAlertConfig,
     BudgetConfig,

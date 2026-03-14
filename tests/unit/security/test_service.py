@@ -6,29 +6,29 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ai_company.core.enums import (
+from synthorg.core.enums import (
     ApprovalRiskLevel,
     ApprovalStatus,
     AutonomyLevel,
     ToolCategory,
 )
-from ai_company.security.audit import AuditLog
-from ai_company.security.autonomy.models import EffectiveAutonomy
-from ai_company.security.config import SecurityConfig
-from ai_company.security.models import (
+from synthorg.security.audit import AuditLog
+from synthorg.security.autonomy.models import EffectiveAutonomy
+from synthorg.security.config import SecurityConfig
+from synthorg.security.models import (
     OutputScanResult,
     ScanOutcome,
     SecurityContext,
     SecurityVerdict,
     SecurityVerdictType,
 )
-from ai_company.security.output_scan_policy import LogOnlyPolicy, WithholdPolicy
-from ai_company.security.output_scanner import OutputScanner
-from ai_company.security.rules.engine import RuleEngine
-from ai_company.security.service import SecOpsService
+from synthorg.security.output_scan_policy import LogOnlyPolicy, WithholdPolicy
+from synthorg.security.output_scanner import OutputScanner
+from synthorg.security.rules.engine import RuleEngine
+from synthorg.security.service import SecOpsService
 
 if TYPE_CHECKING:
-    from ai_company.security.output_scan_policy import OutputScanResponsePolicy
+    from synthorg.security.output_scan_policy import OutputScanResponsePolicy
 
 pytestmark = pytest.mark.timeout(30)
 

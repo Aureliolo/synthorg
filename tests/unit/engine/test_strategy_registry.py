@@ -4,14 +4,14 @@ from types import MappingProxyType
 
 import pytest
 
-from ai_company.communication.delegation.hierarchy import HierarchyResolver
-from ai_company.core.company import Company, Department, Team
-from ai_company.engine.assignment.protocol import TaskAssignmentStrategy
-from ai_company.engine.assignment.registry import (
+from synthorg.communication.delegation.hierarchy import HierarchyResolver
+from synthorg.core.company import Company, Department, Team
+from synthorg.engine.assignment.protocol import TaskAssignmentStrategy
+from synthorg.engine.assignment.registry import (
     STRATEGY_MAP,
     build_strategy_map,
 )
-from ai_company.engine.assignment.strategies import (
+from synthorg.engine.assignment.strategies import (
     STRATEGY_NAME_AUCTION,
     STRATEGY_NAME_COST_OPTIMIZED,
     STRATEGY_NAME_HIERARCHICAL,
@@ -25,7 +25,7 @@ from ai_company.engine.assignment.strategies import (
     ManualAssignmentStrategy,
     RoleBasedAssignmentStrategy,
 )
-from ai_company.engine.routing.scorer import AgentTaskScorer
+from synthorg.engine.routing.scorer import AgentTaskScorer
 
 pytestmark = pytest.mark.unit
 

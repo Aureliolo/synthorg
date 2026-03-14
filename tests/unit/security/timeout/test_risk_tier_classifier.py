@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.core.enums import ActionType, ApprovalRiskLevel
-from ai_company.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
+from synthorg.core.enums import ActionType, ApprovalRiskLevel
+from synthorg.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
 
 
 class TestDefaultMapping:

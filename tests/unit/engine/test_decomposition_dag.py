@@ -2,9 +2,9 @@
 
 import pytest
 
-from ai_company.engine.decomposition.dag import DependencyGraph
-from ai_company.engine.decomposition.models import SubtaskDefinition
-from ai_company.engine.errors import DecompositionCycleError, DecompositionError
+from synthorg.engine.decomposition.dag import DependencyGraph
+from synthorg.engine.decomposition.models import SubtaskDefinition
+from synthorg.engine.errors import DecompositionCycleError, DecompositionError
 
 
 def _sub(

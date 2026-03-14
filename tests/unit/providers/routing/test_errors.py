@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.providers.errors import ProviderError
-from ai_company.providers.routing.errors import (
+from synthorg.providers.errors import ProviderError
+from synthorg.providers.routing.errors import (
     ModelResolutionError,
     NoAvailableModelError,
     RoutingError,

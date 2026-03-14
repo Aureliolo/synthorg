@@ -3,7 +3,7 @@
 import pytest
 import structlog
 
-from ai_company.observability.correlation import with_correlation_async
+from synthorg.observability.correlation import with_correlation_async
 
 pytestmark = pytest.mark.timeout(30)
 

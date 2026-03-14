@@ -5,25 +5,25 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ai_company.core.agent import AgentIdentity
-from ai_company.core.enums import TaskStatus
-from ai_company.core.task import Task
-from ai_company.engine.agent_engine import AgentEngine
-from ai_company.engine.context import AgentContext
-from ai_company.engine.loop_protocol import (
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.enums import TaskStatus
+from synthorg.core.task import Task
+from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
     TurnRecord,
 )
-from ai_company.engine.recovery import (
+from synthorg.engine.recovery import (
     FailAndReassignStrategy,
     RecoveryResult,
 )
-from ai_company.providers.enums import FinishReason, MessageRole
-from ai_company.providers.models import ChatMessage
+from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.models import ChatMessage
 
 if TYPE_CHECKING:
-    from ai_company.engine.task_execution import TaskExecution
+    from synthorg.engine.task_execution import TaskExecution
 
     from .conftest import MockCompletionProvider
 
@@ -64,7 +64,7 @@ class TestAgentEngineErrorHandling:
         engine = AgentEngine(provider=provider)
 
         with patch(
-            "ai_company.engine.agent_engine.build_system_prompt",
+            "synthorg.engine.agent_engine.build_system_prompt",
             side_effect=RuntimeError("template broken"),
         ):
             result = await engine.run(
@@ -91,7 +91,7 @@ class TestAgentEngineNonRecoverable:
 
         with (
             patch(
-                "ai_company.engine.agent_engine.build_system_prompt",
+                "synthorg.engine.agent_engine.build_system_prompt",
                 side_effect=MemoryError("out of memory"),
             ),
             pytest.raises(MemoryError),
@@ -112,7 +112,7 @@ class TestAgentEngineNonRecoverable:
 
         with (
             patch(
-                "ai_company.engine.agent_engine.build_system_prompt",
+                "synthorg.engine.agent_engine.build_system_prompt",
                 side_effect=RecursionError("too deep"),
             ),
             pytest.raises(RecursionError),
@@ -248,7 +248,7 @@ class TestAgentEngineFatalErrorResult:
         engine = AgentEngine(provider=provider)
 
         with patch(
-            "ai_company.engine.agent_engine.build_system_prompt",
+            "synthorg.engine.agent_engine.build_system_prompt",
             side_effect=RuntimeError("LLM is down"),
         ):
             result = await engine.run(
@@ -276,11 +276,11 @@ class TestAgentEngineFatalErrorResult:
 
         with (
             patch(
-                "ai_company.engine.agent_engine.build_system_prompt",
+                "synthorg.engine.agent_engine.build_system_prompt",
                 side_effect=RuntimeError("original error"),
             ),
             patch(
-                "ai_company.engine.agent_engine.AgentContext.from_identity",
+                "synthorg.engine.agent_engine.AgentContext.from_identity",
                 side_effect=ValueError("secondary failure"),
             ),
             pytest.raises(RuntimeError, match="original error") as exc_info,
@@ -310,11 +310,11 @@ class TestAgentEngineFatalErrorNonRecoverable:
 
         with (
             patch(
-                "ai_company.engine.agent_engine.build_system_prompt",
+                "synthorg.engine.agent_engine.build_system_prompt",
                 side_effect=RuntimeError("trigger fatal path"),
             ),
             patch(
-                "ai_company.engine.agent_engine.AgentContext.from_identity",
+                "synthorg.engine.agent_engine.AgentContext.from_identity",
                 side_effect=MemoryError("OOM in error build"),
             ),
             pytest.raises(MemoryError, match="OOM in error build"),

@@ -6,14 +6,14 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import SeniorityLevel
-from ai_company.hr.enums import (
+from synthorg.core.enums import SeniorityLevel
+from synthorg.hr.enums import (
     FiringReason,
     HiringRequestStatus,
     LifecycleEventType,
     OnboardingStep,
 )
-from ai_company.hr.models import (
+from synthorg.hr.models import (
     AgentLifecycleEvent,
     OffboardingRecord,
     OnboardingChecklist,
@@ -189,7 +189,7 @@ class TestFiringRequest:
         """completed_at before created_at is rejected."""
         now = datetime.now(UTC)
         before = now - timedelta(hours=1)
-        from ai_company.hr.models import FiringRequest
+        from synthorg.hr.models import FiringRequest
 
         with pytest.raises(ValidationError, match="completed_at"):
             FiringRequest(

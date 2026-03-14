@@ -9,17 +9,17 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from ai_company.providers.enums import FinishReason
-from ai_company.providers.registry import ProviderRegistry
+from synthorg.providers.enums import FinishReason
+from synthorg.providers.registry import ProviderRegistry
 
 if TYPE_CHECKING:
-    from ai_company.providers.models import ChatMessage
+    from synthorg.providers.models import ChatMessage
 
 from .conftest import build_model_response, make_ollama_config
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
 
-_PATCH_TARGET = "ai_company.providers.drivers.litellm_driver._litellm.acompletion"
+_PATCH_TARGET = "synthorg.providers.drivers.litellm_driver._litellm.acompletion"
 
 
 async def test_no_api_key(

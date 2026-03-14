@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.core.enums import ActionType
-from ai_company.security.action_types import ActionTypeCategory, ActionTypeRegistry
+from synthorg.core.enums import ActionType
+from synthorg.security.action_types import ActionTypeCategory, ActionTypeRegistry
 
 pytestmark = pytest.mark.timeout(30)
 

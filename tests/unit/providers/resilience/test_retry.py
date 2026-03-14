@@ -5,22 +5,22 @@ from unittest.mock import AsyncMock
 import pytest
 import structlog
 
-from ai_company.core.resilience_config import RetryConfig
-from ai_company.observability.events.provider import (
+from synthorg.core.resilience_config import RetryConfig
+from synthorg.observability.events.provider import (
     PROVIDER_CALL_ERROR,
     PROVIDER_RETRY_ATTEMPT,
     PROVIDER_RETRY_EXHAUSTED,
     PROVIDER_RETRY_SKIPPED,
 )
-from ai_company.providers.errors import (
+from synthorg.providers.errors import (
     AuthenticationError,
     ProviderConnectionError,
     ProviderInternalError,
     ProviderTimeoutError,
     RateLimitError,
 )
-from ai_company.providers.resilience.errors import RetryExhaustedError
-from ai_company.providers.resilience.retry import RetryHandler
+from synthorg.providers.resilience.errors import RetryExhaustedError
+from synthorg.providers.resilience.retry import RetryHandler
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -137,7 +137,7 @@ class TestRetryHandlerDisabled:
 
     async def test_zero_retries_non_retryable_raises_unwrapped(self) -> None:
         handler = RetryHandler(_fast_config(max_retries=0))
-        from ai_company.providers.errors import AuthenticationError
+        from synthorg.providers.errors import AuthenticationError
 
         error = AuthenticationError("bad key")
         func = AsyncMock(side_effect=error)

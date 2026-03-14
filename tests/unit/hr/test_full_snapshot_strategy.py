@@ -5,13 +5,13 @@ from unittest.mock import patch
 
 import pytest
 
-from ai_company.core.enums import MemoryCategory, SeniorityLevel
-from ai_company.core.types import NotBlankStr
-from ai_company.hr.errors import MemoryArchivalError
-from ai_company.hr.full_snapshot_strategy import FullSnapshotStrategy
-from ai_company.memory.consolidation.models import ArchivalEntry
-from ai_company.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
-from ai_company.memory.org.models import OrgFactAuthor, OrgFactWriteRequest
+from synthorg.core.enums import MemoryCategory, SeniorityLevel
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.errors import MemoryArchivalError
+from synthorg.hr.full_snapshot_strategy import FullSnapshotStrategy
+from synthorg.memory.consolidation.models import ArchivalEntry
+from synthorg.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
+from synthorg.memory.org.models import OrgFactAuthor, OrgFactWriteRequest
 
 # ── Fake Backends ──────────────────────────────────────────────
 
@@ -157,7 +157,7 @@ class TestFullSnapshotStrategy:
         )
         strategy = FullSnapshotStrategy()
         with patch(
-            "ai_company.hr.full_snapshot_strategy.OrgFactAuthor",
+            "synthorg.hr.full_snapshot_strategy.OrgFactAuthor",
             return_value=stub_author,
         ):
             result = await strategy.archive(

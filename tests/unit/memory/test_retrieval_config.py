@@ -3,8 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.memory.injection import InjectionPoint, InjectionStrategy
-from ai_company.memory.retrieval_config import MemoryRetrievalConfig
+from synthorg.memory.injection import InjectionPoint, InjectionStrategy
+from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 
 pytestmark = pytest.mark.timeout(30)
 

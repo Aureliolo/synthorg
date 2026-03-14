@@ -2,12 +2,12 @@
 
 import pytest
 
-from ai_company.communication.config import (
+from synthorg.communication.config import (
     CircuitBreakerConfig,
     LoopPreventionConfig,
     RateLimitConfig,
 )
-from ai_company.communication.loop_prevention.guard import (
+from synthorg.communication.loop_prevention.guard import (
     DelegationGuard,
 )
 

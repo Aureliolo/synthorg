@@ -5,10 +5,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ai_company.budget.call_category import LLMCallCategory
-from ai_company.core.enums import ToolCategory
-from ai_company.engine.context import AgentContext
-from ai_company.engine.loop_helpers import (
+from synthorg.budget.call_category import LLMCallCategory
+from synthorg.core.enums import ToolCategory
+from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_helpers import (
     build_result,
     call_provider,
     check_budget,
@@ -20,17 +20,17 @@ from ai_company.engine.loop_helpers import (
     make_turn_record,
     response_to_message,
 )
-from ai_company.engine.loop_protocol import TerminationReason, TurnRecord
-from ai_company.providers.enums import FinishReason, MessageRole
-from ai_company.providers.models import (
+from synthorg.engine.loop_protocol import TerminationReason, TurnRecord
+from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.models import (
     CompletionConfig,
     CompletionResponse,
     TokenUsage,
     ToolCall,
 )
-from ai_company.tools.base import BaseTool, ToolExecutionResult
-from ai_company.tools.invoker import ToolInvoker
-from ai_company.tools.registry import ToolRegistry
+from synthorg.tools.base import BaseTool, ToolExecutionResult
+from synthorg.tools.invoker import ToolInvoker
+from synthorg.tools.registry import ToolRegistry
 
 
 def _usage(
@@ -91,7 +91,7 @@ def _make_invoker(*tool_names: str) -> ToolInvoker:
 
 
 def _ctx_with_user_msg(ctx: AgentContext) -> AgentContext:
-    from ai_company.providers.models import ChatMessage
+    from synthorg.providers.models import ChatMessage
 
     msg = ChatMessage(role=MessageRole.USER, content="Do something")
     return ctx.with_message(msg)
@@ -273,7 +273,7 @@ class TestCallProvider:
             1,
             [],
         )
-        from ai_company.engine.loop_protocol import ExecutionResult
+        from synthorg.engine.loop_protocol import ExecutionResult
 
         assert isinstance(result, ExecutionResult)
         assert result.termination_reason == TerminationReason.ERROR
@@ -397,7 +397,7 @@ class TestExecuteToolCalls:
             1,
             [],
         )
-        from ai_company.engine.loop_protocol import ExecutionResult
+        from synthorg.engine.loop_protocol import ExecutionResult
 
         assert isinstance(result, ExecutionResult)
         assert result.termination_reason == TerminationReason.ERROR
@@ -441,7 +441,7 @@ class TestExecuteToolCalls:
             1,
             [],
         )
-        from ai_company.engine.loop_protocol import ExecutionResult
+        from synthorg.engine.loop_protocol import ExecutionResult
 
         assert isinstance(result, ExecutionResult)
         assert "Tool execution failed" in (result.error_message or "")

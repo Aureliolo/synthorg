@@ -4,11 +4,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ai_company.core.enums import ApprovalRiskLevel
-from ai_company.engine.approval_gate import ApprovalGate
-from ai_company.engine.approval_gate_models import EscalationInfo
-from ai_company.persistence.repositories import ParkedContextRepository
-from ai_company.security.timeout.park_service import ParkService
+from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.engine.approval_gate import ApprovalGate
+from synthorg.engine.approval_gate_models import EscalationInfo
+from synthorg.persistence.repositories import ParkedContextRepository
+from synthorg.security.timeout.park_service import ParkService
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 

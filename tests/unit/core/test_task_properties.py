@@ -7,14 +7,14 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
-from ai_company.core.enums import (
+from synthorg.core.enums import (
     Complexity,
     Priority,
     TaskStatus,
     TaskType,
 )
-from ai_company.core.task import Task
-from ai_company.core.task_transitions import VALID_TRANSITIONS
+from synthorg.core.task import Task
+from synthorg.core.task_transitions import VALID_TRANSITIONS
 
 pytestmark = pytest.mark.unit
 

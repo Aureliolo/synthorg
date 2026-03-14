@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ai_company.core.enums import ToolCategory
-from ai_company.tools.file_system.read_file import MAX_FILE_SIZE_BYTES, ReadFileTool
+from synthorg.core.enums import ToolCategory
+from synthorg.tools.file_system.read_file import MAX_FILE_SIZE_BYTES, ReadFileTool
 
 if TYPE_CHECKING:
     from pathlib import Path

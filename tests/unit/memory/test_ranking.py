@@ -6,15 +6,15 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import MemoryCategory
-from ai_company.memory.models import MemoryEntry, MemoryMetadata
-from ai_company.memory.ranking import (
+from synthorg.core.enums import MemoryCategory
+from synthorg.memory.models import MemoryEntry, MemoryMetadata
+from synthorg.memory.ranking import (
     ScoredMemory,
     compute_combined_score,
     compute_recency_score,
     rank_memories,
 )
-from ai_company.memory.retrieval_config import MemoryRetrievalConfig
+from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 
 pytestmark = pytest.mark.timeout(30)
 

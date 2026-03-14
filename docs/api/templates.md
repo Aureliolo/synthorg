@@ -9,24 +9,24 @@ Pre-built company templates, personality presets, and template builder.
 
 ## Schema
 
-::: ai_company.templates.schema
+::: synthorg.templates.schema
 
 ## Loader
 
-::: ai_company.templates.loader
+::: synthorg.templates.loader
 
 ## Renderer
 
-::: ai_company.templates.renderer
+::: synthorg.templates.renderer
 
 ## Merge
 
-::: ai_company.templates.merge
+::: synthorg.templates.merge
 
 ## Presets
 
-::: ai_company.templates.presets
+::: synthorg.templates.presets
 
 ## Errors
 
-::: ai_company.templates.errors
+::: synthorg.templates.errors

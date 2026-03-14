@@ -4,16 +4,16 @@ import pytest
 import structlog
 from pydantic import ValidationError
 
-from ai_company.core.artifact import ExpectedArtifact
-from ai_company.core.enums import (
+from synthorg.core.artifact import ExpectedArtifact
+from synthorg.core.enums import (
     ArtifactType,
     Complexity,
     Priority,
     TaskStatus,
     TaskType,
 )
-from ai_company.core.task import AcceptanceCriterion, Task
-from ai_company.observability.events.task import TASK_STATUS_CHANGED
+from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.observability.events.task import TASK_STATUS_CHANGED
 
 pytestmark = pytest.mark.timeout(30)
 

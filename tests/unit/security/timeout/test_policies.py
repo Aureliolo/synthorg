@@ -4,16 +4,16 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ai_company.core.approval import ApprovalItem
-from ai_company.core.enums import ApprovalRiskLevel, ApprovalStatus, TimeoutActionType
-from ai_company.security.timeout.config import EscalationStep, TierConfig
-from ai_company.security.timeout.policies import (
+from synthorg.core.approval import ApprovalItem
+from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus, TimeoutActionType
+from synthorg.security.timeout.config import EscalationStep, TierConfig
+from synthorg.security.timeout.policies import (
     DenyOnTimeoutPolicy,
     EscalationChainPolicy,
     TieredTimeoutPolicy,
     WaitForeverPolicy,
 )
-from ai_company.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
+from synthorg.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
 
 
 def _make_item(

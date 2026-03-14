@@ -5,8 +5,8 @@ from uuid import uuid4
 
 import pytest
 
-from ai_company.communication.meeting.errors import NoParticipantsResolvedError
-from ai_company.communication.meeting.participant import (
+from synthorg.communication.meeting.errors import NoParticipantsResolvedError
+from synthorg.communication.meeting.participant import (
     RegistryParticipantResolver,
 )
 

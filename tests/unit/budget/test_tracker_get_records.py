@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from ai_company.budget.tracker import CostTracker
+from synthorg.budget.tracker import CostTracker
 from tests.unit.budget.conftest import make_cost_record
 
 

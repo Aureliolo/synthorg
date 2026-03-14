@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.security.trust.enums import TrustChangeReason, TrustStrategyType
+from synthorg.security.trust.enums import TrustChangeReason, TrustStrategyType
 
 pytestmark = pytest.mark.timeout(30)
 

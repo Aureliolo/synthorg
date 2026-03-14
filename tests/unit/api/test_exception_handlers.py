@@ -12,15 +12,15 @@ from litestar.exceptions import (
 )
 from litestar.testing import TestClient
 
-from ai_company.api.errors import (
+from synthorg.api.errors import (
     ApiValidationError,
     ConflictError,
     ForbiddenError,
     NotFoundError,
     UnauthorizedError,
 )
-from ai_company.api.exception_handlers import EXCEPTION_HANDLERS
-from ai_company.persistence.errors import (
+from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
+from synthorg.persistence.errors import (
     DuplicateRecordError,
     PersistenceError,
     RecordNotFoundError,
@@ -291,7 +291,7 @@ class TestExceptionHandlers:
         """Non-standard status code falls back to generic message."""
         from unittest.mock import MagicMock
 
-        from ai_company.api.exception_handlers import handle_http_exception
+        from synthorg.api.exception_handlers import handle_http_exception
 
         exc = MagicMock(spec=HTTPException)
         exc.status_code = 499

@@ -4,8 +4,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ai_company.budget.enums import BudgetAlertLevel
-from ai_company.budget.optimizer_models import (
+from synthorg.budget.enums import BudgetAlertLevel
+from synthorg.budget.optimizer_models import (
     AgentEfficiency,
     AnomalyDetectionResult,
     AnomalySeverity,

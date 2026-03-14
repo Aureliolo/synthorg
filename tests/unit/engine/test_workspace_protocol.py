@@ -4,10 +4,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ai_company.engine.workspace.protocol import WorkspaceIsolationStrategy
+from synthorg.engine.workspace.protocol import WorkspaceIsolationStrategy
 
 if TYPE_CHECKING:
-    from ai_company.engine.workspace.models import (
+    from synthorg.engine.workspace.models import (
         MergeResult,
         Workspace,
         WorkspaceRequest,

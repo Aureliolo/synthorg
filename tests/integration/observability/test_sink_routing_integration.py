@@ -8,9 +8,9 @@ import pytest
 if TYPE_CHECKING:
     from pathlib import Path
 
-from ai_company.observability.config import LogConfig, SinkConfig
-from ai_company.observability.enums import LogLevel, SinkType
-from ai_company.observability.setup import configure_logging
+from synthorg.observability.config import LogConfig, SinkConfig
+from synthorg.observability.enums import LogLevel, SinkType
+from synthorg.observability.setup import configure_logging
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -44,27 +44,27 @@ class TestSinkRoutingIntegration:
                 SinkConfig(
                     sink_type=SinkType.FILE,
                     level=LogLevel.DEBUG,
-                    file_path="ai_company.log",
+                    file_path="synthorg.log",
                     json_format=True,
                 ),
             ),
         )
         configure_logging(config)
 
-        security_logger = logging.getLogger("ai_company.security.audit")
-        core_logger = logging.getLogger("ai_company.core.task")
+        security_logger = logging.getLogger("synthorg.security.audit")
+        core_logger = logging.getLogger("synthorg.core.task")
 
         security_logger.info("security event")
         core_logger.info("core event")
 
         audit_content = _read_log(log_dir / "audit.log")
-        main_content = _read_log(log_dir / "ai_company.log")
+        main_content = _read_log(log_dir / "synthorg.log")
 
         # Security event should be in audit.log
         assert "security event" in audit_content
         # Core event should NOT be in audit.log
         assert "core event" not in audit_content
-        # Both should be in the catch-all ai_company.log
+        # Both should be in the catch-all synthorg.log
         assert "security event" in main_content
         assert "core event" in main_content
 
@@ -83,8 +83,8 @@ class TestSinkRoutingIntegration:
         )
         configure_logging(config)
 
-        budget_logger = logging.getLogger("ai_company.budget.tracker")
-        engine_logger = logging.getLogger("ai_company.engine.run")
+        budget_logger = logging.getLogger("synthorg.budget.tracker")
+        engine_logger = logging.getLogger("synthorg.engine.run")
 
         budget_logger.info("cost recorded")
         engine_logger.info("engine event")
@@ -108,9 +108,9 @@ class TestSinkRoutingIntegration:
         )
         configure_logging(config)
 
-        engine_logger = logging.getLogger("ai_company.engine.runner")
-        core_logger = logging.getLogger("ai_company.core.task")
-        security_logger = logging.getLogger("ai_company.security.ops")
+        engine_logger = logging.getLogger("synthorg.engine.runner")
+        core_logger = logging.getLogger("synthorg.core.task")
+        security_logger = logging.getLogger("synthorg.security.ops")
 
         engine_logger.info("agent ran")
         core_logger.info("task created")
@@ -136,7 +136,7 @@ class TestSinkRoutingIntegration:
         )
         configure_logging(config)
 
-        test_logger = logging.getLogger("ai_company.test")
+        test_logger = logging.getLogger("synthorg.test")
         test_logger.info("info message")
         test_logger.warning("warning message")
         test_logger.error("error message")

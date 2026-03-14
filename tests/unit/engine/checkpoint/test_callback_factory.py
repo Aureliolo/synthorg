@@ -6,12 +6,12 @@ from uuid import uuid4
 
 import pytest
 
-from ai_company.core.agent import AgentIdentity, ModelConfig, SkillSet
-from ai_company.core.enums import SeniorityLevel, TaskStatus, TaskType
-from ai_company.core.task import Task
-from ai_company.engine.checkpoint.callback_factory import make_checkpoint_callback
-from ai_company.engine.checkpoint.models import CheckpointConfig
-from ai_company.engine.context import AgentContext
+from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
+from synthorg.core.enums import SeniorityLevel, TaskStatus, TaskType
+from synthorg.core.task import Task
+from synthorg.engine.checkpoint.callback_factory import make_checkpoint_callback
+from synthorg.engine.checkpoint.models import CheckpointConfig
+from synthorg.engine.context import AgentContext
 
 pytestmark = pytest.mark.timeout(30)
 

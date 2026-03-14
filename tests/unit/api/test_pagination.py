@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.api.dto import MAX_LIMIT
-from ai_company.api.pagination import paginate
+from synthorg.api.dto import MAX_LIMIT
+from synthorg.api.pagination import paginate
 
 
 @pytest.mark.unit

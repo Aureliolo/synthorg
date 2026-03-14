@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.communication.meeting.frequency import (
+from synthorg.communication.meeting.frequency import (
     MeetingFrequency,
     frequency_to_seconds,
 )

@@ -9,16 +9,16 @@ YAML company configuration loading and validation.
 
 ## Schema
 
-::: ai_company.config.schema
+::: synthorg.config.schema
 
 ## Loader
 
-::: ai_company.config.loader
+::: synthorg.config.loader
 
 ## Defaults
 
-::: ai_company.config.defaults
+::: synthorg.config.defaults
 
 ## Errors
 
-::: ai_company.config.errors
+::: synthorg.config.errors

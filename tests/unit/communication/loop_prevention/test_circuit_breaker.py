@@ -2,8 +2,8 @@
 
 import pytest
 
-from ai_company.communication.config import CircuitBreakerConfig
-from ai_company.communication.loop_prevention.circuit_breaker import (
+from synthorg.communication.config import CircuitBreakerConfig
+from synthorg.communication.loop_prevention.circuit_breaker import (
     CircuitBreakerState,
     DelegationCircuitBreaker,
 )

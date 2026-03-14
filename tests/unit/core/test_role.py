@@ -3,13 +3,13 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import (
+from synthorg.core.enums import (
     DepartmentName,
     ProficiencyLevel,
     SeniorityLevel,
     SkillCategory,
 )
-from ai_company.core.role import Authority, CustomRole, Role, SeniorityInfo, Skill
+from synthorg.core.role import Authority, CustomRole, Role, SeniorityInfo, Skill
 
 from .conftest import (
     AuthorityFactory,

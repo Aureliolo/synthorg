@@ -16,23 +16,23 @@ from uuid import uuid4
 import pytest
 from litestar.testing import TestClient
 
-from ai_company.api.app import create_app
-from ai_company.api.auth.config import AuthConfig
-from ai_company.api.auth.service import AuthService
-from ai_company.budget.tracker import CostTracker
-from ai_company.config.schema import RootConfig
-from ai_company.core.agent import AgentIdentity, ModelConfig, SkillSet
-from ai_company.core.enums import (
+from synthorg.api.app import create_app
+from synthorg.api.auth.config import AuthConfig
+from synthorg.api.auth.service import AuthService
+from synthorg.budget.tracker import CostTracker
+from synthorg.config.schema import RootConfig
+from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
+from synthorg.core.enums import (
     AgentStatus,
     CoordinationTopology,
     SeniorityLevel,
 )
-from ai_company.core.role import Authority
-from ai_company.engine.task_engine import TaskEngine
-from ai_company.engine.task_engine_config import TaskEngineConfig
-from ai_company.hr.registry import AgentRegistryService
-from ai_company.providers.enums import FinishReason
-from ai_company.providers.models import (
+from synthorg.core.role import Authority
+from synthorg.engine.task_engine import TaskEngine
+from synthorg.engine.task_engine_config import TaskEngineConfig
+from synthorg.hr.registry import AgentRegistryService
+from synthorg.providers.enums import FinishReason
+from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
     CompletionResponse,
@@ -145,12 +145,12 @@ class TestBuildCoordinatorFactory:
         """Factory produces a coordinator from default config."""
         from unittest.mock import AsyncMock
 
-        from ai_company.config.schema import TaskAssignmentConfig
-        from ai_company.engine.coordination.factory import build_coordinator
-        from ai_company.engine.coordination.section_config import (
+        from synthorg.config.schema import TaskAssignmentConfig
+        from synthorg.engine.coordination.factory import build_coordinator
+        from synthorg.engine.coordination.section_config import (
             CoordinationSectionConfig,
         )
-        from ai_company.engine.coordination.service import (
+        from synthorg.engine.coordination.service import (
             MultiAgentCoordinator,
         )
 
@@ -172,12 +172,12 @@ class TestBuildCoordinatorFactory:
         """Coordinator built without provider raises on decomposition."""
         from unittest.mock import AsyncMock
 
-        from ai_company.config.schema import TaskAssignmentConfig
-        from ai_company.engine.coordination.factory import build_coordinator
-        from ai_company.engine.coordination.section_config import (
+        from synthorg.config.schema import TaskAssignmentConfig
+        from synthorg.engine.coordination.factory import build_coordinator
+        from synthorg.engine.coordination.section_config import (
             CoordinationSectionConfig,
         )
-        from ai_company.engine.errors import DecompositionError
+        from synthorg.engine.errors import DecompositionError
 
         config = CoordinationSectionConfig()
         engine = AsyncMock()
@@ -190,9 +190,9 @@ class TestBuildCoordinatorFactory:
         )
 
         # Decomposition should fail since no provider was given
-        from ai_company.core.enums import Priority, TaskType
-        from ai_company.core.task import Task
-        from ai_company.engine.decomposition.models import (
+        from synthorg.core.enums import Priority, TaskType
+        from synthorg.core.task import Task
+        from synthorg.engine.decomposition.models import (
             DecompositionContext,
         )
 
@@ -224,7 +224,7 @@ class TestCoordinationWiring:
         # a task-id-aware manual strategy so decomposition succeeds
         from unittest.mock import AsyncMock
 
-        from ai_company.engine.coordination.models import (
+        from synthorg.engine.coordination.models import (
             CoordinationPhaseResult,
             CoordinationResult,
         )

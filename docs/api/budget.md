@@ -9,56 +9,56 @@ Cost tracking, budget enforcement, auto-downgrade, quota management, and CFO opt
 
 ## Config
 
-::: ai_company.budget.config
+::: synthorg.budget.config
 
 ## Cost Record
 
-::: ai_company.budget.cost_record
+::: synthorg.budget.cost_record
 
 ## Spending Summary
 
-::: ai_company.budget.spending_summary
+::: synthorg.budget.spending_summary
 
 ## Cost Tiers
 
-::: ai_company.budget.cost_tiers
+::: synthorg.budget.cost_tiers
 
 ## Hierarchy
 
-::: ai_company.budget.hierarchy
+::: synthorg.budget.hierarchy
 
 ## Tracker
 
-::: ai_company.budget.tracker
+::: synthorg.budget.tracker
 
 ## Enforcer
 
-::: ai_company.budget.enforcer
+::: synthorg.budget.enforcer
 
 ## Quota
 
-::: ai_company.budget.quota
+::: synthorg.budget.quota
 
-::: ai_company.budget.quota_tracker
+::: synthorg.budget.quota_tracker
 
 ## Billing
 
-::: ai_company.budget.billing
+::: synthorg.budget.billing
 
 ## Optimizer
 
-::: ai_company.budget.optimizer
+::: synthorg.budget.optimizer
 
-::: ai_company.budget.optimizer_models
+::: synthorg.budget.optimizer_models
 
 ## Reports
 
-::: ai_company.budget.reports
+::: synthorg.budget.reports
 
 ## Enums
 
-::: ai_company.budget.enums
+::: synthorg.budget.enums
 
 ## Errors
 
-::: ai_company.budget.errors
+::: synthorg.budget.errors
