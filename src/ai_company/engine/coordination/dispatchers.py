@@ -174,6 +174,7 @@ async def _setup_workspaces(
             COORDINATION_PHASE_FAILED,
             phase=phase_name,
             error=str(exc),
+            exc_info=True,
         )
         return (), phase
     else:
@@ -220,6 +221,7 @@ async def _merge_workspaces(
             COORDINATION_PHASE_FAILED,
             phase=phase_name,
             error=str(exc),
+            exc_info=True,
         )
         return None, phase
     else:
@@ -255,6 +257,7 @@ async def _teardown_workspaces(
             COORDINATION_CLEANUP_FAILED,
             workspace_count=len(workspaces),
             error=str(exc),
+            exc_info=True,
         )
     else:
         logger.info(
@@ -339,6 +342,7 @@ async def _execute_waves(
                 phase=phase_name,
                 wave_index=wave_idx,
                 error=str(exc),
+                exc_info=True,
             )
             wave = CoordinationWave(
                 wave_index=wave_idx,
@@ -666,6 +670,7 @@ class ContextDependentDispatcher:
                 COORDINATION_PHASE_FAILED,
                 phase=f"workspace_setup_wave_{wave_idx}",
                 error=str(exc),
+                exc_info=True,
             )
             all_phases.append(
                 CoordinationPhaseResult(
@@ -771,6 +776,7 @@ class ContextDependentDispatcher:
                 phase=f"execute_wave_{wave_idx}",
                 wave_index=wave_idx,
                 error=str(exc),
+                exc_info=True,
             )
             all_waves.append(
                 CoordinationWave(

@@ -288,6 +288,7 @@ class CoordinateTaskRequest(BaseModel):
     agent_names: tuple[NotBlankStr, ...] | None = Field(
         default=None,
         min_length=1,
+        max_length=50,
         description="Agent names to coordinate with (None = all active)",
     )
     max_subtasks: int = Field(default=10, ge=1, le=50)
@@ -327,7 +328,7 @@ class CoordinationPhaseResponse(BaseModel):
     phase: NotBlankStr
     success: bool
     duration_seconds: float = Field(ge=0.0)
-    error: str | None = None
+    error: NotBlankStr | None = None
 
     @model_validator(mode="after")
     def _validate_success_error_consistency(self) -> Self:

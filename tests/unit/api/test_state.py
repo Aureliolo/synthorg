@@ -179,3 +179,14 @@ class TestAppStateAgentRegistry:
         registry = AgentRegistryService()
         state = _make_state(agent_registry=registry)
         assert state.agent_registry is registry
+
+    def test_has_agent_registry_false_when_none(self) -> None:
+        state = _make_state(agent_registry=None)
+        assert state.has_agent_registry is False
+
+    def test_has_agent_registry_true_when_set(self) -> None:
+        from ai_company.hr.registry import AgentRegistryService
+
+        registry = AgentRegistryService()
+        state = _make_state(agent_registry=registry)
+        assert state.has_agent_registry is True

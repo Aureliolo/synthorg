@@ -964,6 +964,7 @@ future CLI tool are thin clients that call the API -- they contain no business l
 | `/api/v1/departments` | Department management |
 | `/api/v1/projects` | Project CRUD |
 | `/api/v1/tasks` | Task management |
+| `POST /api/v1/tasks/{task_id}/coordinate` | Trigger multi-agent coordination |
 | `/api/v1/messages` | Communication log |
 | `/api/v1/meetings` | Schedule, view meeting outputs |
 | `/api/v1/artifacts` | Browse produced artifacts (code, docs, etc.) |

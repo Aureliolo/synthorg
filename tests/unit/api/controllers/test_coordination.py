@@ -194,6 +194,12 @@ class TestCoordinationControllerHappyPath:
         assert resp.status_code == 200
         assert resp.json()["success"] is True
 
+        # Verify the coordinator received the resolved agent
+        mock_coordinator.coordinate.assert_awaited_once()
+        call_context = mock_coordinator.coordinate.call_args[0][0]
+        resolved_names = [a.name for a in call_context.available_agents]
+        assert resolved_names == ["alice"]
+
     async def test_coordinate_with_failed_phases(
         self,
         coordination_client: TestClient[Any],
@@ -319,7 +325,7 @@ class TestCoordinationControllerErrors:
             json={},
         )
         assert resp.status_code == 422
-        assert "decomposition failed" in resp.json()["error"].lower()
+        assert "coordination failed at phase" in resp.json()["error"].lower()
 
 
 @pytest.mark.unit

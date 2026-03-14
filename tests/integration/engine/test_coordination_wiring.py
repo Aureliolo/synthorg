@@ -1,8 +1,8 @@
 """Integration test: coordinator runtime wiring.
 
-Validates the full bootstrap-to-API path:
+Validates the bootstrap-to-API wiring path:
 1. Create RootConfig with coordination section
-2. Build coordinator via build_coordinator() with ManualDecompositionStrategy
+2. Create a mock coordinator (real build_coordinator() is unit-tested separately)
 3. Create TaskEngine with mock persistence
 4. Create AgentRegistryService and register test agents
 5. Build app via create_app() with coordinator + agent_registry

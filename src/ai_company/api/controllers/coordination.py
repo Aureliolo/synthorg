@@ -4,10 +4,9 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from litestar import Controller, Request, post
-from litestar.channels import ChannelsPlugin
 from litestar.datastructures import State  # noqa: TC002
 
-from ai_company.api.channels import CHANNEL_TASKS
+from ai_company.api.channels import CHANNEL_TASKS, get_channels_plugin
 from ai_company.api.dto import (
     ApiResponse,
     CoordinateTaskRequest,
@@ -43,15 +42,14 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_MAX_TASK_ID_LEN: int = 128
 
-def _get_channels_plugin(
-    request: Request[Any, Any, Any],
-) -> ChannelsPlugin | None:
-    """Extract the ChannelsPlugin from the application, or None."""
-    for plugin in request.app.plugins:
-        if isinstance(plugin, ChannelsPlugin):
-            return plugin
-    return None
+
+def _validate_task_id(task_id: str) -> None:
+    """Reject oversized task IDs at the API boundary."""
+    if len(task_id) > _MAX_TASK_ID_LEN:
+        msg = "Task ID too long"
+        raise ApiValidationError(msg)
 
 
 def _publish_ws_event(
@@ -60,7 +58,7 @@ def _publish_ws_event(
     payload: dict[str, object],
 ) -> None:
     """Best-effort publish a coordination event to the tasks channel."""
-    channels_plugin = _get_channels_plugin(request)
+    channels_plugin = get_channels_plugin(request)
     if channels_plugin is None:
         return
 
@@ -148,6 +146,15 @@ class CoordinationController(Controller):
             msg = "Coordinator not configured"
             raise ServiceUnavailableError(msg)
 
+        if not app_state.has_agent_registry:
+            logger.warning(
+                API_COORDINATION_FAILED,
+                error="Agent registry not configured",
+            )
+            msg = "Agent registry not configured"
+            raise ServiceUnavailableError(msg)
+
+        _validate_task_id(task_id)
         task = await self._get_task(app_state, task_id)
         agents = await self._resolve_agents(app_state, data, task_id)
         context = self._build_context(app_state, task, agents, data)
@@ -230,16 +237,17 @@ class CoordinationController(Controller):
                 phase=exc.phase,
                 error=str(exc),
             )
+            client_msg = f"Coordination failed at phase {exc.phase!r}"
             _publish_ws_event(
                 request,
                 WsEventType.COORDINATION_FAILED,
                 {
                     "task_id": task_id,
                     "phase": exc.phase,
-                    "error": str(exc),
+                    "error": client_msg,
                 },
             )
-            raise ApiValidationError(str(exc)) from exc
+            raise ApiValidationError(client_msg) from exc
 
         ws_event_type = (
             WsEventType.COORDINATION_COMPLETED
@@ -256,8 +264,11 @@ class CoordinationController(Controller):
                 "total_duration_seconds": result.total_duration_seconds,
             },
         )
+        log_event = (
+            API_COORDINATION_COMPLETED if result.is_success else API_COORDINATION_FAILED
+        )
         logger.info(
-            API_COORDINATION_COMPLETED,
+            log_event,
             task_id=task_id,
             topology=result.topology.value,
             is_success=result.is_success,

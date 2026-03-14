@@ -26,8 +26,9 @@ class AppState:
     """Typed application state container.
 
     Service fields (``persistence``, ``message_bus``, ``cost_tracker``,
-    ``auth_service``, ``task_engine``) accept ``None`` at construction
-    time for dev/test mode.  Property
+    ``auth_service``, ``task_engine``, ``coordinator``,
+    ``agent_registry``) accept ``None`` at construction time for
+    dev/test mode.  Property
     accessors raise ``ServiceUnavailableError`` (HTTP 503) when the
     service is not configured, producing a clear error instead of an
     opaque ``AttributeError``.
@@ -162,6 +163,11 @@ class AppState:
     def agent_registry(self) -> AgentRegistryService:
         """Return agent registry or raise 503."""
         return self._require_service(self._agent_registry, "agent_registry")
+
+    @property
+    def has_agent_registry(self) -> bool:
+        """Check whether the agent registry is configured."""
+        return self._agent_registry is not None
 
     @property
     def has_auth_service(self) -> bool:

@@ -5,11 +5,11 @@ from typing import Any
 from uuid import uuid4
 
 from litestar import Controller, Request, get, post
-from litestar.channels import ChannelsPlugin
+from litestar.channels import ChannelsPlugin  # noqa: TC002
 from litestar.datastructures import State  # noqa: TC002
 
 from ai_company.api.auth.models import AuthenticatedUser
-from ai_company.api.channels import CHANNEL_APPROVALS
+from ai_company.api.channels import CHANNEL_APPROVALS, get_channels_plugin
 from ai_company.api.dto import (
     ApiResponse,
     ApproveRequest,
@@ -44,7 +44,7 @@ from ai_company.observability.events.approval_gate import (
 logger = get_logger(__name__)
 
 
-def _get_channels_plugin(
+def _require_channels_plugin(
     request: Request[Any, Any, Any],
 ) -> ChannelsPlugin:
     """Extract the ChannelsPlugin from the application.
@@ -58,12 +58,12 @@ def _get_channels_plugin(
     Raises:
         RuntimeError: If no ChannelsPlugin is registered on the app.
     """
-    for plugin in request.app.plugins:
-        if isinstance(plugin, ChannelsPlugin):
-            return plugin
-    msg = "ChannelsPlugin not registered"
-    logger.error(API_APPROVAL_PUBLISH_FAILED, error=msg)
-    raise RuntimeError(msg)
+    plugin = get_channels_plugin(request)
+    if plugin is None:
+        msg = "ChannelsPlugin not registered"
+        logger.error(API_APPROVAL_PUBLISH_FAILED, error=msg)
+        raise RuntimeError(msg)
+    return plugin
 
 
 def _publish_approval_event(
@@ -93,7 +93,7 @@ def _publish_approval_event(
         },
     )
     try:
-        channels_plugin = _get_channels_plugin(request)
+        channels_plugin = _require_channels_plugin(request)
         channels_plugin.publish(
             event.model_dump_json(),
             channels=[CHANNEL_APPROVALS],

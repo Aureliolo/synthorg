@@ -16,7 +16,10 @@ from ai_company.engine.routing.service import TaskRoutingService
 from ai_company.engine.routing.topology_selector import TopologySelector
 from ai_company.observability import get_logger
 from ai_company.observability.events.coordination import (
-    COORDINATION_STARTED,
+    COORDINATION_FACTORY_BUILT,
+)
+from ai_company.observability.events.decomposition import (
+    DECOMPOSITION_FAILED,
 )
 
 if TYPE_CHECKING:
@@ -65,10 +68,44 @@ class _NoProviderDecompositionStrategy:
             "to enable LLM-based task decomposition."
         )
         logger.warning(
-            COORDINATION_STARTED,
+            DECOMPOSITION_FAILED,
             note="Decomposition attempted without LLM provider",
         )
         raise DecompositionError(msg)
+
+
+def _build_decomposition_strategy(
+    provider: CompletionProvider | None,
+    decomposition_model: str | None,
+) -> DecompositionStrategy:
+    """Select the decomposition strategy based on available deps."""
+    if provider is not None and decomposition_model is not None:
+        from ai_company.engine.decomposition.llm import (  # noqa: PLC0415
+            LlmDecompositionStrategy,
+        )
+
+        return LlmDecompositionStrategy(
+            provider=provider,
+            model=decomposition_model,
+        )
+    return _NoProviderDecompositionStrategy()
+
+
+def _build_workspace_service(
+    workspace_strategy: WorkspaceIsolationStrategy | None,
+    workspace_config: WorkspaceIsolationConfig | None,
+) -> WorkspaceIsolationService | None:
+    """Build workspace isolation service if both deps are provided."""
+    if workspace_strategy is not None and workspace_config is not None:
+        from ai_company.engine.workspace.service import (  # noqa: PLC0415
+            WorkspaceIsolationService,
+        )
+
+        return WorkspaceIsolationService(
+            strategy=workspace_strategy,
+            config=workspace_config,
+        )
+    return None
 
 
 def build_coordinator(  # noqa: PLR0913
@@ -112,65 +149,32 @@ def build_coordinator(  # noqa: PLR0913
         A fully constructed ``MultiAgentCoordinator``.
     """
     logger.debug(
-        COORDINATION_STARTED,
+        COORDINATION_FACTORY_BUILT,
         note="Building coordinator from config",
         topology=config.topology.value,
         has_provider=provider is not None,
         has_workspace=workspace_strategy is not None,
     )
 
-    # 1. Classifier
     classifier = TaskStructureClassifier()
-
-    # 2. Decomposition strategy
-    strategy: DecompositionStrategy
-    if provider is not None and decomposition_model is not None:
-        from ai_company.engine.decomposition.llm import (  # noqa: PLC0415
-            LlmDecompositionStrategy,
-        )
-
-        strategy = LlmDecompositionStrategy(
-            provider=provider,
-            model=decomposition_model,
-        )
-    else:
-        strategy = _NoProviderDecompositionStrategy()
-
-    # 3. Decomposition service
+    strategy = _build_decomposition_strategy(provider, decomposition_model)
     decomposition_service = DecompositionService(strategy, classifier)
 
-    # 4. Scorer
     scorer = AgentTaskScorer(min_score=task_assignment_config.min_score)
-
-    # 5. Topology selector
     topology_selector = TopologySelector(config.auto_topology_rules)
-
-    # 6. Routing service
     routing_service = TaskRoutingService(scorer, topology_selector)
 
-    # 7. Parallel executor
     parallel_executor = ParallelExecutor(
         engine=engine,
         shutdown_manager=shutdown_manager,
     )
 
-    # 8. Workspace isolation service (optional)
-    workspace_service: WorkspaceIsolationService | None = None
-    if workspace_strategy is not None and workspace_config is not None:
-        from ai_company.engine.workspace.service import (  # noqa: PLC0415
-            WorkspaceIsolationService,
-        )
-
-        workspace_service = WorkspaceIsolationService(
-            strategy=workspace_strategy,
-            config=workspace_config,
-        )
-
-    # 9. Coordinator
     return MultiAgentCoordinator(
         decomposition_service=decomposition_service,
         routing_service=routing_service,
         parallel_executor=parallel_executor,
-        workspace_service=workspace_service,
+        workspace_service=_build_workspace_service(
+            workspace_strategy, workspace_config
+        ),
         task_engine=task_engine,
     )

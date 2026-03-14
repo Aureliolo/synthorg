@@ -408,6 +408,9 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
 composes the execution loop with prompt construction, context management, tool
 invocation, and cost tracking into a single `run()` call.
 
+The engine also exposes an optional ``coordinate()`` method that delegates to a
+``MultiAgentCoordinator`` when one is configured (see :doc:`coordination`).
+
 **Signature:**
 
 ```python
@@ -787,6 +790,10 @@ coordination:
     parallel_default: "centralized"
     # mixed tasks -> SAS backbone for sequential phases, delegates parallel sub-tasks
     mixed_default: "context_dependent"  # hybrid: not a single topology -- engine selects per-phase
+  max_concurrency_per_wave: null      # None = unlimited
+  fail_fast: false
+  enable_workspace_isolation: true
+  base_branch: main
 ```
 
 The auto-selector uses task structure, artifact count, and (when available from

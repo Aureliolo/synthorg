@@ -143,6 +143,8 @@ class AgentEngine:
         task_engine: Optional centralized task engine for real-time
             status sync (incremental transitions at each lifecycle
             point, best-effort).
+        coordinator: Optional multi-agent coordinator for delegated
+            coordination via :meth:`coordinate`.
     """
 
     def __init__(  # noqa: PLR0913

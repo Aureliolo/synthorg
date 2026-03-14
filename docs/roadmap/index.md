@@ -6,7 +6,7 @@ The SynthOrg core framework is complete. The following subsystems are built and 
 
 - Provider abstraction layer (LiteLLM adapter, routing, resilience)
 - Budget and cost management (tracking, enforcement, CFO optimization, quotas)
-- Agent engine (execution loops, parallel execution, task decomposition, routing, assignment, recovery, shutdown)
+- Agent engine (execution loops, parallel execution, task decomposition, routing, assignment, recovery, shutdown, multi-agent coordination)
 - Communication layer (message bus, delegation, loop prevention, conflict resolution, meeting protocol)
 - Memory system (pluggable backend protocol, Mem0 adapter, retrieval pipeline, shared org memory, consolidation)
 - Security and approval system (rule engine, output scanning, progressive trust, autonomy levels, timeout policies)

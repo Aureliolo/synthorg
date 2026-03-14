@@ -54,9 +54,11 @@ class MultiAgentCoordinator:
     parallel execution, workspace isolation, task engine) into
     an end-to-end coordination pipeline.
 
-    The coordinator is a **peer** to ``AgentEngine``, not embedded
-    in it. It operates at a higher level, composing existing services
-    via dependency injection.
+    The coordinator is available both as a peer service (via
+    ``AppState``) and as an optional dependency of ``AgentEngine``
+    (which exposes a ``coordinate()`` convenience method). It
+    operates at a higher level, composing existing services via
+    dependency injection.
 
     Args:
         decomposition_service: Service to decompose tasks into subtasks.
@@ -516,9 +518,11 @@ class MultiAgentCoordinator:
             return
         if rollup is None:
             logger.info(
-                COORDINATION_PHASE_STARTED,
+                COORDINATION_PHASE_COMPLETED,
                 phase="update_parent",
                 note="Skipped — rollup is None (rollup phase failed)",
+                success=True,
+                duration_seconds=0.0,
             )
             return
 
