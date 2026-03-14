@@ -236,3 +236,68 @@ class TestSQLiteCheckpointRepository:
 
         assert await repo.get_latest(execution_id="exec-keep") is not None
         assert await repo.get_latest(execution_id="exec-delete") is None
+
+
+@pytest.mark.unit
+class TestSQLiteCheckpointRepositoryErrors:
+    """Error paths raise QueryError."""
+
+    async def test_save_raises_query_error_on_db_error(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        """save() wraps sqlite errors into QueryError."""
+        from ai_company.persistence.errors import QueryError
+
+        # No migrations → table doesn't exist → sqlite error
+        repo = SQLiteCheckpointRepository(memory_db)
+        cp = _make_checkpoint()
+        with pytest.raises(QueryError, match="Failed to save"):
+            await repo.save(cp)
+
+    async def test_get_latest_raises_query_error_on_db_error(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        """get_latest() wraps sqlite errors into QueryError."""
+        from ai_company.persistence.errors import QueryError
+
+        repo = SQLiteCheckpointRepository(memory_db)
+        with pytest.raises(QueryError, match="Failed to query"):
+            await repo.get_latest(execution_id="exec-001")
+
+    async def test_delete_raises_query_error_on_db_error(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        """delete_by_execution() wraps sqlite errors into QueryError."""
+        from ai_company.persistence.errors import QueryError
+
+        repo = SQLiteCheckpointRepository(memory_db)
+        with pytest.raises(QueryError, match="Failed to delete"):
+            await repo.delete_by_execution("exec-001")
+
+    async def test_row_to_model_raises_query_error_on_invalid_row(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """_row_to_model() wraps ValidationError into QueryError."""
+        from ai_company.persistence.errors import QueryError
+
+        repo = SQLiteCheckpointRepository(migrated_db)
+        # Manually insert a row with invalid data (missing required fields)
+        await migrated_db.execute(
+            "INSERT INTO checkpoints "
+            "(id, execution_id, agent_id, task_id, turn_number, "
+            "context_json, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                "cp-bad",
+                "exec-bad",
+                "agent-bad",
+                "task-bad",
+                1,
+                "not-valid-json",
+                "2026-01-01T00:00:00+00:00",
+            ),
+        )
+        await migrated_db.commit()
+
+        with pytest.raises(QueryError, match="Failed to deserialize"):
+            await repo.get_latest(execution_id="exec-bad")

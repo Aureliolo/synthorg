@@ -395,8 +395,7 @@ class AgentEngine:
         # Costs are recorded BEFORE recovery intentionally — the
         # pre-recovery execution's cost (including partial turns that
         # led to the error) should be tracked.  The resumed execution
-        # will have its own cost recording when it completes through
-        # the normal pipeline.
+        # records its own costs inside _finalize_resume.
         await record_execution_costs(
             execution_result,
             identity,
@@ -419,6 +418,7 @@ class AgentEngine:
             )
             execution_result = await self._apply_recovery(
                 execution_result,
+                identity,
                 agent_id,
                 task_id,
                 completion_config=completion_config,
@@ -620,9 +620,10 @@ class AgentEngine:
 
     # ── Helpers ──────────────────────────────────────────────────
 
-    async def _apply_recovery(
+    async def _apply_recovery(  # noqa: PLR0913
         self,
         execution_result: ExecutionResult,
+        identity: AgentIdentity,
         agent_id: str,
         task_id: str,
         *,
@@ -654,6 +655,7 @@ class AgentEngine:
             if recovery_result.can_resume:
                 return await self._resume_from_checkpoint(
                     recovery_result,
+                    identity,
                     agent_id,
                     task_id,
                     completion_config=completion_config,
@@ -677,28 +679,13 @@ class AgentEngine:
             )
             return execution_result
 
-    async def _resume_from_checkpoint(
+    def _validate_checkpoint_json(
         self,
         recovery_result: RecoveryResult,
         agent_id: str,
         task_id: str,
-        *,
-        completion_config: CompletionConfig | None = None,
-        effective_autonomy: EffectiveAutonomy | None = None,
-    ) -> ExecutionResult:
-        """Resume execution from a checkpoint.
-
-        Delegates to ``deserialize_and_reconcile`` for context
-        reconstruction and ``cleanup_checkpoint_artifacts`` for
-        post-resume housekeeping.  Budget checking is constructed
-        ad-hoc (same approach as ``_execute``).
-
-        Policy: resumed executions run without a wall-clock timeout.
-        The original deadline is not available after deserialization,
-        and applying a fresh full-duration timeout could mask issues.
-        The loop's per-turn budget and max_turns still constrain
-        execution.
-        """
+    ) -> str:
+        """Return checkpoint JSON or raise if unexpectedly absent."""
         if recovery_result.checkpoint_context_json is None:
             logger.error(
                 EXECUTION_RESUME_FAILED,
@@ -708,7 +695,29 @@ class AgentEngine:
             )
             msg = "checkpoint_context_json is None but can_resume was True"
             raise RuntimeError(msg)
+        return recovery_result.checkpoint_context_json
 
+    async def _resume_from_checkpoint(  # noqa: PLR0913
+        self,
+        recovery_result: RecoveryResult,
+        identity: AgentIdentity,
+        agent_id: str,
+        task_id: str,
+        *,
+        completion_config: CompletionConfig | None = None,
+        effective_autonomy: EffectiveAutonomy | None = None,
+    ) -> ExecutionResult:
+        """Resume execution from a checkpoint.
+
+        Policy: resumed executions run without a wall-clock timeout.
+        The loop's per-turn budget and max_turns still constrain
+        execution.
+        """
+        checkpoint_json = self._validate_checkpoint_json(
+            recovery_result,
+            agent_id,
+            task_id,
+        )
         logger.info(
             EXECUTION_RESUME_START,
             agent_id=agent_id,
@@ -718,7 +727,7 @@ class AgentEngine:
 
         try:
             result, execution_id = await self._reconstruct_and_run_resume(
-                recovery_result.checkpoint_context_json,
+                checkpoint_json,
                 recovery_result.error_message,
                 agent_id,
                 task_id,
@@ -736,13 +745,13 @@ class AgentEngine:
             )
             raise
         else:
-            await self._finalize_resume(
+            return await self._finalize_resume(
                 result,
+                identity,
                 execution_id,
                 agent_id,
                 task_id,
             )
-            return result
 
     async def _reconstruct_and_run_resume(  # noqa: PLR0913
         self,
@@ -815,11 +824,32 @@ class AgentEngine:
     async def _finalize_resume(
         self,
         result: ExecutionResult,
+        identity: AgentIdentity,
         execution_id: str,
         agent_id: str,
         task_id: str,
-    ) -> None:
-        """Log completion and clean up after a successful resume."""
+    ) -> ExecutionResult:
+        """Record costs, apply transitions, and clean up after resume.
+
+        The resumed execution bypasses the normal pipeline's
+        ``record_execution_costs`` and ``apply_post_execution_transitions``
+        (those ran on the pre-crash result).  This method applies them
+        to the resumed result so costs are tracked and task state is
+        correctly transitioned.
+        """
+        await record_execution_costs(
+            result,
+            identity,
+            agent_id,
+            task_id,
+            tracker=self._cost_tracker,
+        )
+        result = await apply_post_execution_transitions(
+            result,
+            agent_id,
+            task_id,
+            self._task_engine,
+        )
         logger.info(
             EXECUTION_RESUME_COMPLETE,
             agent_id=agent_id,
@@ -834,6 +864,7 @@ class AgentEngine:
                 self._heartbeat_repo,
                 execution_id,
             )
+        return result
 
     def _make_security_interceptor(
         self,
@@ -1127,6 +1158,7 @@ class AgentEngine:
         )
         return await self._apply_recovery(
             error_execution,
+            identity,
             agent_id,
             task_id,
             completion_config=completion_config,

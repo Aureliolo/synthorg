@@ -14,6 +14,7 @@ from ai_company.engine.checkpoint.models import (
 from ai_company.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
     deserialize_and_reconcile,
+    make_loop_with_callback,
 )
 from ai_company.engine.checkpoint.strategy import CheckpointRecoveryStrategy
 
@@ -26,4 +27,5 @@ __all__ = [
     "cleanup_checkpoint_artifacts",
     "deserialize_and_reconcile",
     "make_checkpoint_callback",
+    "make_loop_with_callback",
 ]

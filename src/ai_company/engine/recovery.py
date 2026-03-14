@@ -228,6 +228,7 @@ class FailAndReassignStrategy:
 
     async def finalize(self, execution_id: str) -> None:
         """No-op -- fail-and-reassign has no post-resume state."""
+        _ = execution_id
 
     def get_strategy_type(self) -> str:
         """Return the strategy type identifier."""

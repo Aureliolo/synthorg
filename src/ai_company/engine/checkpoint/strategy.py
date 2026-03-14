@@ -173,7 +173,13 @@ class CheckpointRecoveryStrategy:
         execution_id: str,
         task_id: str,
     ) -> Checkpoint | None:
-        """Load the latest checkpoint, returning ``None`` on failure."""
+        """Load the latest checkpoint, returning ``None`` on failure.
+
+        Only ``PersistenceError`` is swallowed (returns ``None`` to
+        trigger fallback).  Other exceptions (e.g. ``ValueError``)
+        propagate — they indicate programming errors, not transient
+        storage failures.
+        """
         try:
             checkpoint = await self._checkpoint_repo.get_latest(
                 execution_id=execution_id,

@@ -125,28 +125,24 @@ class TestDeserializeAndReconcileSuccess:
 class TestDeserializeAndReconcileError:
     """Error path — invalid JSON raises ValueError."""
 
-    def test_invalid_json_raises_value_error(self) -> None:
-        with pytest.raises(ValueError, match="validation error"):
-            deserialize_and_reconcile(
-                checkpoint_json="{not valid json}",
-                error_message="crash",
-                agent_id="agent-1",
-                task_id="task-1",
-            )
+    @pytest.mark.parametrize(
+        ("label", "checkpoint_json"),
+        [
+            ("invalid_json", "{not valid json}"),
+            ("empty_string", ""),
+            ("wrong_schema", '{"not": "an AgentContext"}'),
+        ],
+    )
+    def test_invalid_checkpoint_json_raises(
+        self,
+        label: str,
+        checkpoint_json: str,
+    ) -> None:
+        from pydantic import ValidationError
 
-    def test_empty_string_raises(self) -> None:
-        with pytest.raises(ValueError, match="validation error"):
+        with pytest.raises(ValidationError):
             deserialize_and_reconcile(
-                checkpoint_json="",
-                error_message="crash",
-                agent_id="agent-1",
-                task_id="task-1",
-            )
-
-    def test_valid_json_but_wrong_schema_raises(self) -> None:
-        with pytest.raises(ValueError, match="validation error"):
-            deserialize_and_reconcile(
-                checkpoint_json='{"not": "an AgentContext"}',
+                checkpoint_json=checkpoint_json,
                 error_message="crash",
                 agent_id="agent-1",
                 task_id="task-1",

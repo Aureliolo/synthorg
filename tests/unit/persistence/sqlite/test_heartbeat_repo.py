@@ -192,3 +192,64 @@ class TestSQLiteHeartbeatRepository:
 
         assert await repo.get("exec-keep") is not None
         assert await repo.get("exec-delete") is None
+
+
+@pytest.mark.unit
+class TestSQLiteHeartbeatRepositoryErrors:
+    """Error paths raise QueryError."""
+
+    async def test_save_raises_query_error_on_db_error(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        from ai_company.persistence.errors import QueryError
+
+        repo = SQLiteHeartbeatRepository(memory_db)
+        hb = _make_heartbeat()
+        with pytest.raises(QueryError, match="Failed to save"):
+            await repo.save(hb)
+
+    async def test_get_raises_query_error_on_db_error(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        from ai_company.persistence.errors import QueryError
+
+        repo = SQLiteHeartbeatRepository(memory_db)
+        with pytest.raises(QueryError, match="Failed to query"):
+            await repo.get("exec-001")
+
+    async def test_get_stale_raises_query_error_on_db_error(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        from ai_company.persistence.errors import QueryError
+
+        repo = SQLiteHeartbeatRepository(memory_db)
+        threshold = datetime.now(UTC) - timedelta(minutes=5)
+        with pytest.raises(QueryError, match="Failed to query"):
+            await repo.get_stale(threshold)
+
+    async def test_delete_raises_query_error_on_db_error(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        from ai_company.persistence.errors import QueryError
+
+        repo = SQLiteHeartbeatRepository(memory_db)
+        with pytest.raises(QueryError, match="Failed to delete"):
+            await repo.delete("exec-001")
+
+    async def test_row_to_model_raises_query_error_on_invalid_row(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        from ai_company.persistence.errors import QueryError
+
+        repo = SQLiteHeartbeatRepository(migrated_db)
+        # Insert row with invalid timestamp
+        await migrated_db.execute(
+            "INSERT INTO heartbeats "
+            "(execution_id, agent_id, task_id, last_heartbeat_at) "
+            "VALUES (?, ?, ?, ?)",
+            ("exec-bad", "agent-bad", "task-bad", "not-a-timestamp"),
+        )
+        await migrated_db.commit()
+
+        with pytest.raises(QueryError, match="Failed to deserialize"):
+            await repo.get("exec-bad")
