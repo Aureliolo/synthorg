@@ -25,7 +25,7 @@
     "tailwindcss": "^4",
     "vue": "^3.5",
     "vue-draggable-plus": "^0.6",
-    "vue-echarts": "^7",
+    "vue-echarts": "^8",
     "vue-router": "^4"
   },
   "devDependencies": {
