@@ -126,10 +126,17 @@ class ApprovalStore:
         self,
         item: ApprovalItem,
     ) -> ApprovalItem | None:
-        """Update only if the stored item is still PENDING.
+        """Conditionally update an approval item if it is still pending.
 
-        Returns the saved item on success, or ``None`` if the stored
-        item is no longer PENDING (concurrent decision detected).
+        A lazy expiration check is applied before comparing status.
+
+        Returns:
+            The saved item on success, or ``None`` if:
+
+            * no item with the given ID exists in the store,
+            * the stored item has expired, or
+            * the stored item is no longer ``PENDING`` (e.g. a
+              concurrent decision was made).
         """
         current = self._items.get(item.id)
         if current is None:

@@ -28,7 +28,7 @@ async def memory_db() -> AsyncGenerator[aiosqlite.Connection]:
 
 @pytest.mark.unit
 class TestSchemaMigrations:
-    async def test_schema_version_is_five(self) -> None:
+    async def test_schema_version_is_six(self) -> None:
         assert SCHEMA_VERSION == 6
 
     async def test_fresh_db_creates_all_v2_tables(
@@ -94,3 +94,80 @@ class TestSchemaMigrations:
             "idx_cm_recorded_at",
         }
         assert expected_v2.issubset(indexes)
+
+    async def test_v6_makes_task_id_nullable(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        """V6 migration makes parked_contexts.task_id nullable."""
+        # Simulate a pre-v6 database with NOT NULL task_id
+        await memory_db.execute("""\
+CREATE TABLE parked_contexts (
+    id TEXT PRIMARY KEY,
+    execution_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    approval_id TEXT NOT NULL,
+    parked_at TEXT NOT NULL,
+    context_json TEXT NOT NULL,
+    metadata TEXT NOT NULL DEFAULT '{}'
+)""")
+        await set_user_version(memory_db, 5)
+        await memory_db.commit()
+
+        # Verify task_id is NOT NULL before migration
+        cursor = await memory_db.execute("PRAGMA table_info('parked_contexts')")
+        cols = {row[1]: row[3] for row in await cursor.fetchall()}
+        assert cols["task_id"] == 1  # notnull=1
+
+        # Run migrations (applies v6)
+        await run_migrations(memory_db)
+        assert await get_user_version(memory_db) == 6
+
+        # Verify task_id is now nullable
+        cursor = await memory_db.execute("PRAGMA table_info('parked_contexts')")
+        cols = {row[1]: row[3] for row in await cursor.fetchall()}
+        assert cols["task_id"] == 0  # notnull=0
+
+    async def test_v6_preserves_existing_data(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        """V6 migration preserves existing parked_contexts rows."""
+        await memory_db.execute("""\
+CREATE TABLE parked_contexts (
+    id TEXT PRIMARY KEY,
+    execution_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    approval_id TEXT NOT NULL,
+    parked_at TEXT NOT NULL,
+    context_json TEXT NOT NULL,
+    metadata TEXT NOT NULL DEFAULT '{}'
+)""")
+        await set_user_version(memory_db, 5)
+
+        # Insert a row with NOT NULL task_id
+        await memory_db.execute(
+            "INSERT INTO parked_contexts "
+            "(id, execution_id, agent_id, task_id, approval_id, "
+            "parked_at, context_json, metadata) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "pc-1",
+                "exec-1",
+                "agent-1",
+                "task-1",
+                "approval-1",
+                "2026-03-14T10:00:00Z",
+                '{"key": "value"}',
+                "{}",
+            ),
+        )
+        await memory_db.commit()
+
+        await run_migrations(memory_db)
+
+        cursor = await memory_db.execute("SELECT id, task_id FROM parked_contexts")
+        rows = await cursor.fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == "pc-1"
+        assert rows[0][1] == "task-1"

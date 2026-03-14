@@ -401,7 +401,7 @@ class ApprovalsController(Controller):
         )
         saved = await app_state.approval_store.save_if_pending(updated)
         if saved is None:
-            msg = "Approval has already been decided by another request"
+            msg = "Approval is no longer pending (already decided or expired)"
             logger.warning(
                 API_APPROVAL_CONFLICT,
                 approval_id=approval_id,
@@ -482,7 +482,7 @@ class ApprovalsController(Controller):
         )
         saved = await app_state.approval_store.save_if_pending(updated)
         if saved is None:
-            msg = "Approval has already been decided by another request"
+            msg = "Approval is no longer pending (already decided or expired)"
             logger.warning(
                 API_APPROVAL_CONFLICT,
                 approval_id=approval_id,

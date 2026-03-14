@@ -234,9 +234,19 @@ CREATE TABLE IF NOT EXISTS parked_contexts_new (
     context_json TEXT NOT NULL,
     metadata TEXT NOT NULL DEFAULT '{}'
 )""",
-    "INSERT OR IGNORE INTO parked_contexts_new SELECT * FROM parked_contexts",
-    "DROP TABLE IF EXISTS parked_contexts",
+    """\
+INSERT OR IGNORE INTO parked_contexts_new (
+    id, execution_id, agent_id, task_id, approval_id,
+    parked_at, context_json, metadata
+)
+SELECT
+    id, execution_id, agent_id, task_id, approval_id,
+    parked_at, context_json, metadata
+FROM parked_contexts
+""",
+    "ALTER TABLE parked_contexts RENAME TO parked_contexts_old",
     "ALTER TABLE parked_contexts_new RENAME TO parked_contexts",
+    "DROP TABLE IF EXISTS parked_contexts_old",
     "CREATE INDEX IF NOT EXISTS idx_pc_agent_id ON parked_contexts(agent_id)",
     "CREATE INDEX IF NOT EXISTS idx_pc_approval_id ON parked_contexts(approval_id)",
 )
