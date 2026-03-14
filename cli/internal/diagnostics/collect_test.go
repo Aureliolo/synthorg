@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 )
@@ -72,11 +73,14 @@ func TestReportFormatTextWithErrors(t *testing.T) {
 
 func TestCollectDoesNotPanic(t *testing.T) {
 	// Collect should never panic even with a bad state.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	state := config.State{
 		DataDir:     t.TempDir(),
 		BackendPort: 99999, // unreachable port
 	}
-	report := Collect(context.Background(), state)
+	report := Collect(ctx, state)
 
 	if report.OS == "" {
 		t.Error("OS should be set")

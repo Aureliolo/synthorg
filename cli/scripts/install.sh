@@ -32,7 +32,14 @@ esac
 
 if [ -z "${SYNTHORG_VERSION:-}" ]; then
     echo "Fetching latest release..."
-    SYNTHORG_VERSION="$(curl -sSf "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | cut -d '"' -f 4)"
+    API_RESPONSE="$(curl -sSf "https://api.github.com/repos/${REPO}/releases/latest")"
+    if command -v jq >/dev/null 2>&1; then
+        SYNTHORG_VERSION="$(printf '%s' "$API_RESPONSE" | jq -r '.tag_name')"
+    elif command -v python3 >/dev/null 2>&1; then
+        SYNTHORG_VERSION="$(printf '%s' "$API_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["tag_name"])')"
+    else
+        SYNTHORG_VERSION="$(printf '%s' "$API_RESPONSE" | grep '"tag_name"' | cut -d '"' -f 4)"
+    fi
 fi
 
 # Validate version string to prevent injection.
@@ -89,7 +96,10 @@ echo "Extracting..."
 tar -xzf "${TMP_DIR}/${ARCHIVE_NAME}" -C "$TMP_DIR"
 
 echo "Installing to ${INSTALL_DIR}/${BINARY_NAME}..."
-if [ -w "$INSTALL_DIR" ] || [ -w "$(dirname "$INSTALL_DIR")" ]; then
+if [ -d "$INSTALL_DIR" ] && [ -w "$INSTALL_DIR" ]; then
+    mv "${TMP_DIR}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
+    chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
+elif [ ! -d "$INSTALL_DIR" ] && [ -w "$(dirname "$INSTALL_DIR")" ]; then
     mkdir -p "$INSTALL_DIR"
     mv "${TMP_DIR}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
     chmod +x "${INSTALL_DIR}/${BINARY_NAME}"

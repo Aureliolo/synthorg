@@ -59,7 +59,17 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		report.DockerVersion, report.ComposeVersion, report.HealthStatus,
 	)
 
+	// Truncate body if URL would exceed browser limits (~4000 chars).
 	encodedBody := url.QueryEscape(issueBody)
+	if len(encodedBody) > 3500 {
+		issueBody = fmt.Sprintf(
+			"## Environment\n\nOS: %s/%s\nCLI: %s\nDocker: %s\nHealth: %s\n\n"+
+				"> Attach the full diagnostics file from `synthorg doctor` output\n",
+			report.OS, report.Arch, report.CLIVersion,
+			report.DockerVersion, report.HealthStatus,
+		)
+		encodedBody = url.QueryEscape(issueBody)
+	}
 
 	issueURL := fmt.Sprintf(
 		"%s/issues/new?title=%s&labels=type%%3Abug&body=%s",

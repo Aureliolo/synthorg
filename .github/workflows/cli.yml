@@ -5,12 +5,14 @@ on:
     branches: [main]
     paths:
       - "cli/**"
+      - ".github/workflows/cli.yml"
     tags:
       - "v*"
   pull_request:
     branches: [main]
     paths:
       - "cli/**"
+      - ".github/workflows/cli.yml"
   workflow_dispatch:
 
 permissions: {}
@@ -248,12 +250,12 @@ jobs:
 
           **Linux / macOS:**
           \`\`\`bash
-          curl -sSfL https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.sh | bash
+          curl -sSfL https://raw.githubusercontent.com/Aureliolo/synthorg/${TAG}/cli/scripts/install.sh | SYNTHORG_VERSION=${TAG} bash
           \`\`\`
 
           **Windows (PowerShell):**
           \`\`\`powershell
-          irm https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.ps1 | iex
+          \\\$env:SYNTHORG_VERSION='${TAG}'; irm https://raw.githubusercontent.com/Aureliolo/synthorg/${TAG}/cli/scripts/install.ps1 | iex
           \`\`\`
 
           ### Checksums (SHA-256)

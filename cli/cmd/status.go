@@ -126,10 +126,10 @@ func printHealthStatus(ctx context.Context, out io.Writer, state config.State) {
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			fmt.Fprintf(out, "  Backend: %s\n", prettyJSON(hr))
 		} else {
-			fmt.Fprintf(out, "  Backend: %s (HTTP %d)\n", prettyJSON(hr), resp.StatusCode)
+			fmt.Fprintf(out, "  Backend: unhealthy — %s (HTTP %d)\n", prettyJSON(hr), resp.StatusCode)
 		}
 	} else {
-		fmt.Fprintf(out, "  Backend: %s (HTTP %d)\n", string(body), resp.StatusCode)
+		fmt.Fprintf(out, "  Backend: unhealthy — %s (HTTP %d)\n", string(body), resp.StatusCode)
 	}
 }
 

@@ -728,6 +728,12 @@ func TestIsUpdateAvailable(t *testing.T) {
 		{"dev", "v1.0.0", true},
 		{"v1.0.0", "v1.0.0", false},
 		{"v1.0.0", "v1.1.0", true},
+		{"v1.0.0", "v2.0.0", true},
+		{"v1.0.0", "v1.0.1", true},
+		{"v2.0.0", "v1.0.0", false},  // downgrade prevented
+		{"v1.1.0", "v1.0.0", false},  // downgrade prevented
+		{"v1.0.1", "v1.0.0", false},  // downgrade prevented
+		{"v1.10.0", "v1.9.0", false}, // multi-digit minor downgrade
 	}
 	for _, tt := range tests {
 		t.Run(tt.current+"->"+tt.latest, func(t *testing.T) {

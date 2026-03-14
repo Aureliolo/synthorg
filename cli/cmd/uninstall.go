@@ -86,7 +86,7 @@ func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, state config.Sta
 	}
 
 	if err := composeRun(ctx, cmd, info, state.DataDir, downArgs...); err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: stopping containers may have failed: %v\n", err)
+		return fmt.Errorf("stopping containers: %w", err)
 	}
 
 	return nil

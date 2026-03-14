@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -122,8 +123,38 @@ func fetchRelease(ctx context.Context, url string) (Release, error) {
 
 func isUpdateAvailable(current, latest string) bool {
 	cur := strings.TrimPrefix(current, "v")
+	if cur == "dev" {
+		return true
+	}
 	lat := strings.TrimPrefix(latest, "v")
-	return cur == "dev" || cur != lat
+	// Only offer update when latest is strictly greater than current.
+	return compareSemver(lat, cur) > 0
+}
+
+// compareSemver returns >0 if a > b, 0 if equal, <0 if a < b.
+// Compares major.minor.patch numerically; ignores pre-release.
+func compareSemver(a, b string) int {
+	aParts := strings.SplitN(a, ".", 3)
+	bParts := strings.SplitN(b, ".", 3)
+	for i := range 3 {
+		var av, bv int
+		if i < len(aParts) {
+			numStr := strings.FieldsFunc(aParts[i], func(r rune) bool { return r < '0' || r > '9' })
+			if len(numStr) > 0 {
+				av, _ = strconv.Atoi(numStr[0])
+			}
+		}
+		if i < len(bParts) {
+			numStr := strings.FieldsFunc(bParts[i], func(r rune) bool { return r < '0' || r > '9' })
+			if len(numStr) > 0 {
+				bv, _ = strconv.Atoi(numStr[0])
+			}
+		}
+		if av != bv {
+			return av - bv
+		}
+	}
+	return 0
 }
 
 func findAssets(release Release) (assetURL, checksumURL string, err error) {

@@ -66,6 +66,8 @@ func updateCLI(cmd *cobra.Command) error {
 		if !proceed {
 			return nil
 		}
+	} else {
+		fmt.Fprintf(out, "Non-interactive mode: auto-applying update to %s\n", result.LatestVersion)
 	}
 
 	fmt.Fprintln(out, "Downloading...")

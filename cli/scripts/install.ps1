@@ -31,7 +31,12 @@ Write-Host "Installing SynthOrg CLI $Version..."
 
 # --- Detect architecture ---
 
-$WinArch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq [System.Runtime.InteropServices.Architecture]::Arm64) { "arm64" } else { "amd64" }
+$OsArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+$WinArch = switch ($OsArch) {
+    ([System.Runtime.InteropServices.Architecture]::X64)   { "amd64" }
+    ([System.Runtime.InteropServices.Architecture]::Arm64) { "arm64" }
+    default { Write-Error "Unsupported architecture: $OsArch"; exit 1 }
+}
 
 # --- Download ---
 
