@@ -111,5 +111,4 @@ HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=15s \
 # Reset Chainguard base entrypoint (/usr/bin/python) so CMD runs uvicorn
 # directly instead of being passed as Python arguments.
 ENTRYPOINT []
-CMD ["/app/.venv/bin/uvicorn", "synthorg.api.app:create_app", "--factory", \
-     "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/bin/sh", "-c", "exec /app/.venv/bin/uvicorn synthorg.api.app:create_app --factory --host ${SYNTHORG_HOST} --port ${SYNTHORG_PORT}"]
