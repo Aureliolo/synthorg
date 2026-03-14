@@ -1,10 +1,10 @@
 """Meeting controller — list, get, and trigger meetings."""
 
-from typing import Any
+from typing import Self
 
 from litestar import Controller, Response, get, post
 from litestar.datastructures import State  # noqa: TC002
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.api.dto import ApiResponse, PaginatedResponse
 from ai_company.api.guards import require_read_access, require_write_access
@@ -13,8 +13,16 @@ from ai_company.communication.meeting.enums import MeetingStatus  # noqa: TC001
 from ai_company.communication.meeting.models import MeetingRecord
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.observability import get_logger
+from ai_company.observability.events.meeting import (
+    MEETING_EVENT_TRIGGERED,
+    MEETING_SCHEDULER_ERROR,
+)
 
 logger = get_logger(__name__)
+
+_MAX_CONTEXT_KEYS: int = 20
+_MAX_CONTEXT_KEY_LEN: int = 256
+_MAX_CONTEXT_VAL_LEN: int = 1024
 
 
 class TriggerMeetingRequest(BaseModel):
@@ -30,10 +38,25 @@ class TriggerMeetingRequest(BaseModel):
     event_name: NotBlankStr = Field(
         description="Event trigger name",
     )
-    context: dict[str, Any] = Field(
+    context: dict[str, str] = Field(
         default_factory=dict,
         description="Event context for participant resolution and agenda",
     )
+
+    @model_validator(mode="after")
+    def _validate_context_bounds(self) -> Self:
+        """Limit context size to prevent abuse."""
+        if len(self.context) > _MAX_CONTEXT_KEYS:
+            msg = f"context must have at most {_MAX_CONTEXT_KEYS} keys"
+            raise ValueError(msg)
+        for k, v in self.context.items():
+            if len(k) > _MAX_CONTEXT_KEY_LEN:
+                msg = f"context key must be at most {_MAX_CONTEXT_KEY_LEN} characters"
+                raise ValueError(msg)
+            if len(v) > _MAX_CONTEXT_VAL_LEN:
+                msg = f"context value must be at most {_MAX_CONTEXT_VAL_LEN} characters"
+                raise ValueError(msg)
+        return self
 
 
 class MeetingController(Controller):
@@ -103,6 +126,11 @@ class MeetingController(Controller):
                     status_code=200,
                 )
 
+        logger.warning(
+            MEETING_SCHEDULER_ERROR,
+            meeting_id=meeting_id,
+            note="meeting not found",
+        )
         return Response(
             content=ApiResponse[MeetingRecord](
                 error=f"Meeting {meeting_id!r} not found",
@@ -129,6 +157,12 @@ class MeetingController(Controller):
             Tuple of meeting records for all triggered meetings.
         """
         scheduler = state.app_state.meeting_scheduler
+
+        logger.info(
+            MEETING_EVENT_TRIGGERED,
+            event_name=data.event_name,
+            source="api",
+        )
         records = await scheduler.trigger_event(
             data.event_name,
             context=data.context or None,

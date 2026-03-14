@@ -60,6 +60,24 @@ export const useMeetingStore = defineStore('meetings', () => {
     }
   }
 
+  /** Re-fetch a single meeting and update or append it in the local list. */
+  async function _refreshMeeting(meetingId: string) {
+    try {
+      const fresh = await meetingsApi.getMeeting(meetingId)
+      const idx = meetings.value.findIndex((m) => m.meeting_id === meetingId)
+      if (idx >= 0) {
+        meetings.value = meetings.value.map((m) =>
+          m.meeting_id === meetingId ? fresh : m,
+        )
+      } else {
+        meetings.value = [...meetings.value, fresh]
+        total.value++
+      }
+    } catch {
+      // Best-effort refresh — log silently
+    }
+  }
+
   function handleWsEvent(event: WsEvent) {
     const payload = event.payload as Record<string, unknown> | null
     if (!payload || typeof payload !== 'object') return
@@ -70,15 +88,8 @@ export const useMeetingStore = defineStore('meetings', () => {
       case 'meeting.failed': {
         const meetingId = payload.meeting_id
         if (typeof meetingId === 'string' && meetingId) {
-          // Update existing record or trigger a refresh
-          const idx = meetings.value.findIndex((m) => m.meeting_id === meetingId)
-          if (idx >= 0 && typeof payload.status === 'string') {
-            meetings.value = meetings.value.map((m) =>
-              m.meeting_id === meetingId
-                ? { ...m, status: payload.status as MeetingRecord['status'] }
-                : m,
-            )
-          }
+          // Re-fetch the full record to get minutes/error details
+          void _refreshMeeting(meetingId)
         }
         break
       }

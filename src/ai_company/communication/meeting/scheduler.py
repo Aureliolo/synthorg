@@ -96,6 +96,10 @@ class MeetingScheduler:
             SchedulerAlreadyRunningError: If the scheduler is already running.
         """
         if self._running:
+            logger.warning(
+                MEETING_SCHEDULER_ERROR,
+                reason="already_running",
+            )
             msg = "Meeting scheduler is already running"
             raise SchedulerAlreadyRunningError(msg)
 
@@ -194,11 +198,18 @@ class MeetingScheduler:
         """Infinite loop: sleep for the interval, then execute the meeting.
 
         Catches ``CancelledError`` to exit cleanly on stop.
+        Catches ``Exception`` inside the loop body so transient
+        errors do not kill the periodic task.
 
         Args:
             meeting_type: The meeting type configuration.
         """
-        assert meeting_type.frequency is not None  # noqa: S101
+        if meeting_type.frequency is None:
+            msg = (
+                f"_run_periodic called with non-scheduled "
+                f"meeting type {meeting_type.name!r}"
+            )
+            raise TypeError(msg)
         interval = frequency_to_seconds(meeting_type.frequency)
 
         try:
@@ -209,7 +220,14 @@ class MeetingScheduler:
                     meeting_type=meeting_type.name,
                     interval_seconds=interval,
                 )
-                await self._execute_meeting(meeting_type)
+                try:
+                    await self._execute_meeting(meeting_type)
+                except Exception:
+                    logger.exception(
+                        MEETING_SCHEDULER_ERROR,
+                        meeting_type=meeting_type.name,
+                        note="periodic execution failed",
+                    )
         except asyncio.CancelledError:
             return
 
@@ -230,35 +248,10 @@ class MeetingScheduler:
         Returns:
             Meeting record on success, None if skipped or on error.
         """
-        record: MeetingRecord | None = None
         try:
             resolved = await self._resolver.resolve(
                 meeting_type.participants,
                 context,
-            )
-
-            if len(resolved) < _MIN_PARTICIPANTS:
-                logger.warning(
-                    MEETING_NO_PARTICIPANTS,
-                    meeting_type=meeting_type.name,
-                    resolved_count=len(resolved),
-                    min_required=_MIN_PARTICIPANTS,
-                )
-                return None
-
-            # First participant becomes leader, rest are participants.
-            leader_id = resolved[0]
-            participant_ids = resolved[1:]
-
-            agenda = self._build_default_agenda(meeting_type, context)
-
-            record = await self._orchestrator.run_meeting(
-                meeting_type_name=meeting_type.name,
-                protocol_config=meeting_type.protocol_config,
-                agenda=agenda,
-                leader_id=leader_id,
-                participant_ids=tuple(participant_ids),
-                token_budget=meeting_type.duration_tokens,
             )
         except NoParticipantsResolvedError:
             logger.warning(
@@ -270,10 +263,54 @@ class MeetingScheduler:
             logger.exception(
                 MEETING_SCHEDULER_ERROR,
                 meeting_type=meeting_type.name,
+                note="participant resolution failed",
             )
             return None
 
-        if self._event_publisher is not None:
+        if len(resolved) < _MIN_PARTICIPANTS:
+            logger.warning(
+                MEETING_NO_PARTICIPANTS,
+                meeting_type=meeting_type.name,
+                resolved_count=len(resolved),
+                min_required=_MIN_PARTICIPANTS,
+            )
+            return None
+
+        leader_id = resolved[0]
+        participant_ids = resolved[1:]
+        agenda = self._build_default_agenda(meeting_type, context)
+
+        try:
+            record = await self._orchestrator.run_meeting(
+                meeting_type_name=meeting_type.name,
+                protocol_config=meeting_type.protocol_config,
+                agenda=agenda,
+                leader_id=leader_id,
+                participant_ids=tuple(participant_ids),
+                token_budget=meeting_type.duration_tokens,
+            )
+        except Exception:
+            logger.exception(
+                MEETING_SCHEDULER_ERROR,
+                meeting_type=meeting_type.name,
+                note="orchestrator execution failed",
+            )
+            return None
+
+        self._publish_meeting_event(record)
+        return record
+
+    def _publish_meeting_event(self, record: MeetingRecord) -> None:
+        """Publish a WebSocket event for a meeting result.
+
+        Best-effort: publish errors are logged and swallowed.
+
+        Args:
+            record: The completed meeting record.
+        """
+        if self._event_publisher is None:
+            return
+        try:
             self._event_publisher(
                 f"meeting.{record.status.value}",
                 {
@@ -282,8 +319,16 @@ class MeetingScheduler:
                     "status": record.status.value,
                 },
             )
-
-        return record
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                MEETING_SCHEDULER_ERROR,
+                meeting_id=record.meeting_id,
+                meeting_type=record.meeting_type_name,
+                note="event publisher failed",
+                exc_info=True,
+            )
 
     @staticmethod
     def _build_default_agenda(
@@ -300,6 +345,7 @@ class MeetingScheduler:
             A meeting agenda with title and optional context items.
         """
         items: list[MeetingAgendaItem] = []
+        parts: list[str] = []
 
         if context:
             for key, value in context.items():
@@ -309,13 +355,10 @@ class MeetingScheduler:
                         description=str(value),
                     ),
                 )
-
-        context_str = ""
-        if context:
-            context_str = ", ".join(f"{k}: {v}" for k, v in context.items())
+                parts.append(f"{key}: {value}")
 
         return MeetingAgenda(
             title=meeting_type.name,
-            context=context_str,
+            context=", ".join(parts),
             items=tuple(items),
         )

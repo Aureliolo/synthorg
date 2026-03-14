@@ -89,12 +89,16 @@ async function handleTrigger() {
         summary: `Triggered ${result.length} meeting(s)`,
         life: 3000,
       })
+      triggerDialogVisible.value = false
+      triggerEventName.value = ''
     } else if (result && result.length === 0) {
       toast.add({
         severity: 'info',
         summary: 'No matching meeting types',
         life: 3000,
       })
+      triggerDialogVisible.value = false
+      triggerEventName.value = ''
     } else {
       toast.add({
         severity: 'error',
@@ -102,8 +106,6 @@ async function handleTrigger() {
         life: 5000,
       })
     }
-    triggerDialogVisible.value = false
-    triggerEventName.value = ''
   } catch (err) {
     console.error('Trigger failed:', sanitizeForLog(err))
     toast.add({ severity: 'error', summary: 'Trigger failed', life: 5000 })

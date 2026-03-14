@@ -139,9 +139,4 @@ class RegistryParticipantResolver:
             return [str(agent.id)]
 
         # 5. Pass-through as literal ID
-        logger.debug(
-            MEETING_PARTICIPANTS_RESOLVED,
-            entry=entry,
-            resolution="pass_through",
-        )
         return [entry]

@@ -39,6 +39,11 @@ _FREQUENCY_SECONDS: dict[MeetingFrequency, float] = {
     MeetingFrequency.MONTHLY: _SECONDS_PER_MONTH,
 }
 
+# Ensure every enum member has a mapping entry.
+assert set(_FREQUENCY_SECONDS) == set(MeetingFrequency), (  # noqa: S101
+    f"Missing frequency mapping for: {set(MeetingFrequency) - set(_FREQUENCY_SECONDS)}"
+)
+
 
 def frequency_to_seconds(freq: MeetingFrequency) -> float:
     """Convert a frequency enum to its interval in seconds.

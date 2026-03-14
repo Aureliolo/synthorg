@@ -514,10 +514,19 @@ export interface MeetingAgenda {
   items: MeetingAgendaItem[]
 }
 
+export type MeetingPhase =
+  | 'agenda_broadcast'
+  | 'round_robin_turn'
+  | 'position_paper'
+  | 'input_gathering'
+  | 'discussion'
+  | 'synthesis'
+  | 'summary'
+
 export interface MeetingContribution {
   agent_id: string
   content: string
-  phase: string
+  phase: MeetingPhase
   turn_number: number
   input_tokens: number
   output_tokens: number

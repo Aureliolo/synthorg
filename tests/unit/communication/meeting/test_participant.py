@@ -63,7 +63,7 @@ class TestRegistryParticipantResolver:
         result = await resolver.resolve(("engineering",))
 
         assert result == ("eng-1",)
-        registry.list_by_department.assert_awaited_with("engineering")
+        registry.list_by_department.assert_awaited_once_with("engineering")
 
     async def test_resolve_agent_name(
         self,
@@ -76,7 +76,7 @@ class TestRegistryParticipantResolver:
         result = await resolver.resolve(("Alice",))
 
         assert result == ("alice-id",)
-        registry.get_by_name.assert_awaited_with("Alice")
+        registry.get_by_name.assert_awaited_once_with("Alice")
 
     async def test_context_takes_priority(
         self,

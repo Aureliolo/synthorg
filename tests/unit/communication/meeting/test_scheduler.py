@@ -220,7 +220,7 @@ class TestMeetingScheduler:
         ctx = {"author": "agent-123"}
         await scheduler.trigger_event("code_review_complete", context=ctx)
 
-        resolver.resolve.assert_awaited_with(
+        resolver.resolve.assert_awaited_once_with(
             trigger_type.participants,
             ctx,
         )
@@ -272,7 +272,28 @@ class TestMeetingScheduler:
 
         assert len(records) == 0
 
-    async def test_build_default_agenda(self) -> None:
+    async def test_execute_handles_no_participants_resolved_error(
+        self,
+        orchestrator: MagicMock,
+        resolver: MagicMock,
+    ) -> None:
+        from ai_company.communication.meeting.errors import (
+            NoParticipantsResolvedError,
+        )
+
+        resolver.resolve.side_effect = NoParticipantsResolvedError(
+            "no participants",
+        )
+        trigger_type = _make_trigger_type()
+        config = _make_config(types=(trigger_type,))
+        scheduler = self._make_scheduler(config, orchestrator, resolver)
+
+        records = await scheduler.trigger_event("code_review_complete")
+
+        assert len(records) == 0
+        orchestrator.run_meeting.assert_not_awaited()
+
+    def test_build_default_agenda(self) -> None:
         meeting_type = _make_trigger_type(name="code_review")
         agenda = MeetingScheduler._build_default_agenda(
             meeting_type,
@@ -283,7 +304,7 @@ class TestMeetingScheduler:
         assert len(agenda.items) == 1
         assert agenda.items[0].title == "pr_url"
 
-    async def test_build_default_agenda_no_context(self) -> None:
+    def test_build_default_agenda_no_context(self) -> None:
         meeting_type = _make_trigger_type(name="standup")
         agenda = MeetingScheduler._build_default_agenda(
             meeting_type,
