@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
@@ -105,10 +106,16 @@ func confirmAndRemoveData(cmd *cobra.Command, state config.State) error {
 	}
 
 	if removeData {
-		if err := os.RemoveAll(state.DataDir); err != nil {
+		dir := state.DataDir
+		// Safety: refuse to remove root, home, or empty paths.
+		home, _ := os.UserHomeDir()
+		if dir == "" || dir == "/" || dir == home || (len(dir) == 3 && dir[1] == ':' && dir[2] == '\\') {
+			return fmt.Errorf("refusing to remove %q — does not look like an app data directory", dir)
+		}
+		if err := os.RemoveAll(dir); err != nil {
 			return fmt.Errorf("removing data directory: %w", err)
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "Removed %s\n", state.DataDir)
+		fmt.Fprintf(cmd.OutOrStdout(), "Removed %s\n", dir)
 	}
 	return nil
 }
@@ -131,6 +138,10 @@ func confirmAndRemoveBinary(cmd *cobra.Command) error {
 		execPath, err := os.Executable()
 		if err != nil {
 			return fmt.Errorf("finding executable: %w", err)
+		}
+		// Resolve symlinks so we remove the actual binary.
+		if resolved, err := filepath.EvalSymlinks(execPath); err == nil {
+			execPath = resolved
 		}
 		if err := os.Remove(execPath); err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not remove binary: %v\n", err)

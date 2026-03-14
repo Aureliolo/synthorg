@@ -9,6 +9,7 @@ import (
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/diagnostics"
+	"github.com/Aureliolo/synthorg/cli/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -61,7 +62,8 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	encodedBody := url.QueryEscape(issueBody)
 
 	issueURL := fmt.Sprintf(
-		"https://github.com/Aureliolo/synthorg/issues/new?title=%s&labels=type%%3Abug&body=%s",
+		"%s/issues/new?title=%s&labels=type%%3Abug&body=%s",
+		version.RepoURL,
 		url.QueryEscape(issueTitle),
 		encodedBody,
 	)

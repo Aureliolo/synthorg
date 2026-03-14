@@ -66,6 +66,9 @@ services:
 
   sandbox:
     image: ghcr.io/aureliolo/synthorg-sandbox:{{.ImageTag}}
+    depends_on:
+      backend:
+        condition: service_healthy
     volumes:
       - "{{.DockerSock}}:/var/run/docker.sock:ro"
     user: "65532:65532"

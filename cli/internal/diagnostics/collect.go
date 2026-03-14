@@ -68,8 +68,11 @@ func Collect(ctx context.Context, state config.State) Report {
 	// Health endpoint.
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort)
 	client := &http.Client{Timeout: 5 * time.Second}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
-	if resp, err := client.Do(req); err != nil {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
+	if err != nil {
+		r.HealthStatus = "unreachable"
+		r.Errors = append(r.Errors, fmt.Sprintf("health request: %v", err))
+	} else if resp, err := client.Do(req); err != nil {
 		r.HealthStatus = "unreachable"
 		r.Errors = append(r.Errors, fmt.Sprintf("health: %v", err))
 	} else {
@@ -91,8 +94,8 @@ func Collect(ctx context.Context, state config.State) Report {
 		r.ConfigRedacted = string(b)
 	}
 
-	// Disk space (best-effort).
-	r.DiskInfo = diskInfo(ctx)
+	// Disk space for data directory (best-effort).
+	r.DiskInfo = diskInfo(ctx, state.DataDir)
 
 	return r
 }
@@ -130,17 +133,28 @@ func truncate(s string, max int) string {
 	return s[:max] + "\n... (truncated)"
 }
 
-func diskInfo(ctx context.Context) string {
+func diskInfo(ctx context.Context, dataDir string) string {
 	var name string
 	var args []string
+
+	// Check the partition containing the data directory rather than root.
+	target := dataDir
+	if target == "" {
+		target = "/"
+	}
+
 	switch runtime.GOOS {
 	case "windows":
-		// Use fsutil (available on all Windows versions) instead of deprecated wmic.
+		// Use fsutil on the drive letter of the data dir (or C: as fallback).
+		drive := "C:"
+		if len(target) >= 2 && target[1] == ':' {
+			drive = target[:2]
+		}
 		name = "fsutil"
-		args = []string{"volume", "diskfree", "C:"}
+		args = []string{"volume", "diskfree", drive}
 	default:
 		name = "df"
-		args = []string{"-h", "/"}
+		args = []string{"-h", target}
 	}
 	cmd := exec.CommandContext(ctx, name, args...)
 	var out bytes.Buffer

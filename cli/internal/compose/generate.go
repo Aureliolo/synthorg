@@ -89,7 +89,13 @@ func validateParams(p Params) error {
 	if p.WebPort < 1 || p.WebPort > 65535 {
 		return fmt.Errorf("invalid web port %d: must be 1-65535", p.WebPort)
 	}
-	if p.Sandbox && p.DockerSock != "" {
+	if p.BackendPort == p.WebPort {
+		return fmt.Errorf("backend and web ports must be different (both set to %d)", p.BackendPort)
+	}
+	if p.Sandbox {
+		if p.DockerSock == "" {
+			return fmt.Errorf("docker socket path must be set when sandbox is enabled")
+		}
 		if strings.ContainsAny(p.DockerSock, "\"'`$\n\r{}[]") {
 			return fmt.Errorf("docker socket path %q contains unsafe characters", p.DockerSock)
 		}

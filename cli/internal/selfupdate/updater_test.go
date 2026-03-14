@@ -19,6 +19,13 @@ import (
 	"testing"
 )
 
+func TestMain(m *testing.M) {
+	// Allow localhost for httptest servers in redirect host validation.
+	AllowedDownloadHosts["127.0.0.1"] = true
+	AllowedDownloadHosts["localhost"] = true
+	os.Exit(m.Run())
+}
+
 func TestAssetName(t *testing.T) {
 	name := assetName()
 	if name == "" {

@@ -46,12 +46,18 @@ func Load(dataDir string) (State, error) {
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			defaults := DefaultState()
-			defaults.DataDir = dataDir
+			// Normalize the dataDir the same way we validate loaded paths.
+			clean := filepath.Clean(dataDir)
+			if !filepath.IsAbs(clean) {
+				return State{}, fmt.Errorf("data_dir must be an absolute path, got %q", dataDir)
+			}
+			defaults.DataDir = clean
 			return defaults, nil
 		}
 		return State{}, err
 	}
-	var s State
+	// Unmarshal onto defaults so missing fields retain default values.
+	s := DefaultState()
 	if err := json.Unmarshal(data, &s); err != nil {
 		return State{}, err
 	}

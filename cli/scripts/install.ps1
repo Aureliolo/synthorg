@@ -51,7 +51,7 @@ try {
 
     Write-Host "Verifying checksum..."
     $line = Get-Content (Join-Path $TmpDir "checksums.txt") | Where-Object { ($_ -split '\s+')[1] -eq $ArchiveName }
-    $ExpectedHash = ($line -split '\s+')[0]
+    $ExpectedHash = ($line -split '\s+')[0].Trim().ToLower()
 
     if (-not $ExpectedHash) {
         throw "No checksum found for $ArchiveName. Aborting."

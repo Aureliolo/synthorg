@@ -34,6 +34,7 @@ body:
         - Linux (amd64)
         - Linux (arm64)
         - Windows (amd64)
+        - Windows (arm64)
     validations:
       required: true
 

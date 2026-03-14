@@ -89,10 +89,12 @@ echo "Extracting..."
 tar -xzf "${TMP_DIR}/${ARCHIVE_NAME}" -C "$TMP_DIR"
 
 echo "Installing to ${INSTALL_DIR}/${BINARY_NAME}..."
-if [ -w "$INSTALL_DIR" ]; then
+if [ -w "$INSTALL_DIR" ] || [ -w "$(dirname "$INSTALL_DIR")" ]; then
+    mkdir -p "$INSTALL_DIR"
     mv "${TMP_DIR}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
     chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
 else
+    sudo mkdir -p "$INSTALL_DIR"
     sudo mv "${TMP_DIR}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
     sudo chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
 fi

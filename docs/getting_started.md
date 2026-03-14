@@ -102,7 +102,7 @@ synthorg/
   src/ai_company/       # Main package (src layout)
     api/                # Litestar REST + WebSocket routes
     budget/             # Cost tracking and spending controls
-    cli/                # Go CLI binary (container lifecycle management)
+    cli/                # Python CLI module (see top-level cli/ for Go CLI)
     communication/      # Inter-agent message bus
     config/             # YAML config loading and validation
     core/               # Shared domain models

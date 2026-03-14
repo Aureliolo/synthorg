@@ -55,7 +55,7 @@ jobs:
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version-file: cli/go.mod
-          cache-dependency-path: cli/go.sum
+          cache: false
 
       - name: go vet
         working-directory: cli
@@ -86,7 +86,7 @@ jobs:
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version-file: cli/go.mod
-          cache-dependency-path: cli/go.sum
+          cache: false
 
       - name: Run tests with race detector and coverage
         working-directory: cli
@@ -118,7 +118,7 @@ jobs:
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version-file: cli/go.mod
-          cache-dependency-path: cli/go.sum
+          cache: false
 
       - name: Build
         working-directory: cli
@@ -143,10 +143,10 @@ jobs:
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version-file: cli/go.mod
-          cache-dependency-path: cli/go.sum
+          cache: false
 
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
 
       - name: Run govulncheck
         working-directory: cli

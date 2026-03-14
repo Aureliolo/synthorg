@@ -53,6 +53,21 @@ func updateCLI(cmd *cobra.Command) error {
 
 	fmt.Fprintf(out, "New version available: %s (current: %s)\n", result.LatestVersion, result.CurrentVersion)
 
+	if isInteractive() {
+		var proceed bool
+		form := huh.NewForm(huh.NewGroup(
+			huh.NewConfirm().
+				Title(fmt.Sprintf("Update CLI from %s to %s?", result.CurrentVersion, result.LatestVersion)).
+				Value(&proceed),
+		))
+		if err := form.Run(); err != nil {
+			return err
+		}
+		if !proceed {
+			return nil
+		}
+	}
+
 	fmt.Fprintln(out, "Downloading...")
 	binary, err := selfupdate.Download(ctx, result.AssetURL, result.ChecksumURL)
 	if err != nil {
@@ -113,7 +128,7 @@ func updateContainerImages(cmd *cobra.Command) error {
 
 	fmt.Fprintln(out, "Restarting...")
 	if err := composeRun(ctx, cmd, info, state.DataDir, "down"); err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: stopping containers failed: %v\n", err)
+		return fmt.Errorf("stopping containers: %w", err)
 	}
 	if err := composeRun(ctx, cmd, info, state.DataDir, "up", "-d"); err != nil {
 		return fmt.Errorf("restarting containers: %w", err)

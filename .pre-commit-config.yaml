@@ -51,15 +51,6 @@ repos:
 
   - repo: local
     hooks:
-      - id: golangci-lint
-        name: golangci-lint (CLI)
-        entry: bash -c 'cd cli && golangci-lint run'
-        language: system
-        files: ^cli/.*\.go$
-        pass_filenames: false
-        stages: [pre-push]
-
-
       - id: mypy
         name: mypy type-check
         entry: uv run mypy src/ tests/
@@ -71,6 +62,14 @@ repos:
         name: pytest unit tests
         entry: uv run pytest tests/ -m unit -n auto -q
         language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: golangci-lint
+        name: golangci-lint (CLI)
+        entry: bash -c 'cd cli && golangci-lint run'
+        language: system
+        files: ^cli/.*\.go$
         pass_filenames: false
         stages: [pre-push]
 

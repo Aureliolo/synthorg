@@ -90,7 +90,7 @@ func TestCollectDoesNotPanic(t *testing.T) {
 }
 
 func TestDiskInfo(t *testing.T) {
-	info := diskInfo(context.Background())
+	info := diskInfo(context.Background(), t.TempDir())
 	// Should return something (even "unavailable: ...")
 	if info == "" {
 		t.Error("diskInfo returned empty")

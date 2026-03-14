@@ -12,6 +12,7 @@ import (
 
 	"github.com/Aureliolo/synthorg/cli/internal/compose"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
+	"github.com/Aureliolo/synthorg/cli/internal/version"
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 )
@@ -27,7 +28,11 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 }
 
-func runInit(cmd *cobra.Command, args []string) error {
+func runInit(cmd *cobra.Command, _ []string) error {
+	if !isInteractive() {
+		return fmt.Errorf("synthorg init requires an interactive terminal")
+	}
+
 	answers, err := runSetupForm()
 	if err != nil {
 		return err
@@ -36,6 +41,25 @@ func runInit(cmd *cobra.Command, args []string) error {
 	state, err := buildState(answers)
 	if err != nil {
 		return err
+	}
+
+	// Warn if re-initializing over existing config (JWT secret will change).
+	if existing := config.StatePath(state.DataDir); fileExists(existing) {
+		fmt.Fprintf(cmd.ErrOrStderr(),
+			"Warning: existing config at %s will be overwritten.\n"+
+				"A new JWT secret will be generated — running containers will need a restart.\n", existing)
+		if isInteractive() {
+			var proceed bool
+			form := huh.NewForm(huh.NewGroup(
+				huh.NewConfirm().Title("Overwrite existing configuration?").Value(&proceed),
+			))
+			if err := form.Run(); err != nil {
+				return err
+			}
+			if !proceed {
+				return nil
+			}
+		}
 	}
 
 	if err := writeInitFiles(state); err != nil {
@@ -93,6 +117,7 @@ func runSetupForm() (setupAnswers, error) {
 				huh.NewOption("Debug", "debug"),
 				huh.NewOption("Info", "info"),
 				huh.NewOption("Warning", "warn"),
+				huh.NewOption("Error", "error"),
 			).Value(&a.logLevel),
 			huh.NewConfirm().Title("Generate JWT secret?").
 				Description("Recommended for API authentication").Value(&a.genJWT),
@@ -136,9 +161,16 @@ func buildState(a setupAnswers) (config.State, error) {
 		jwtSecret = secret
 	}
 
+	// Use the CLI's build version as the default image tag.
+	// Fall back to "latest" for dev builds.
+	imageTag := version.Version
+	if imageTag == "" || imageTag == "dev" {
+		imageTag = "latest"
+	}
+
 	return config.State{
 		DataDir:     dir,
-		ImageTag:    "latest",
+		ImageTag:    imageTag,
 		BackendPort: backendPort,
 		WebPort:     webPort,
 		Sandbox:     a.sandbox,
@@ -193,6 +225,11 @@ func generateSecret(n int) (string, error) {
 		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(b), nil
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func parsePort(s, name string) (int, error) {

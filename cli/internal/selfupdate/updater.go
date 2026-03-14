@@ -25,11 +25,12 @@ import (
 
 const (
 	// DefaultReleasesURL is the GitHub API endpoint for latest releases.
-	DefaultReleasesURL = "https://api.github.com/repos/Aureliolo/synthorg/releases/latest"
+	DefaultReleasesURL = "https://api.github.com/repos/" + repoSlug + "/releases/latest"
 	binaryName         = "synthorg"
+	repoSlug           = "Aureliolo/synthorg"
 
 	// expectedURLPrefix validates that asset download URLs point to the expected domain.
-	expectedURLPrefix = "https://github.com/Aureliolo/synthorg/releases/download/"
+	expectedURLPrefix = "https://github.com/" + repoSlug + "/releases/download/"
 
 	maxAPIResponseBytes  = 1 * 1024 * 1024   // 1 MiB for API/checksums
 	maxBinaryBytes       = 256 * 1024 * 1024  // 256 MiB for binary archives
@@ -213,7 +214,15 @@ func ReplaceAt(binaryData []byte, execPath string) error {
 		os.Remove(tmpPath)
 		return fmt.Errorf("setting permissions: %w", err)
 	}
-	tmpFile.Close()
+	if err := tmpFile.Sync(); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("syncing new binary: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("closing new binary: %w", err)
+	}
 
 	// On Windows, we can't overwrite the running binary — rename first.
 	// Use a random suffix to avoid predictable paths.
@@ -259,8 +268,17 @@ func assetName() string {
 	return fmt.Sprintf("synthorg_%s_%s%s", runtime.GOOS, runtime.GOARCH, ext)
 }
 
-func httpGetWithClient(ctx context.Context, client *http.Client, url string, maxBytes int64) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+// AllowedDownloadHosts are the domains GitHub may redirect release asset
+// downloads to. Requests that end up elsewhere are rejected.
+// Exported for test injection.
+var AllowedDownloadHosts = map[string]bool{
+	"github.com":                            true,
+	"objects.githubusercontent.com":          true,
+	"github-releases.githubusercontent.com":  true,
+}
+
+func httpGetWithClient(ctx context.Context, client *http.Client, rawURL string, maxBytes int64) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -269,8 +287,14 @@ func httpGetWithClient(ctx context.Context, client *http.Client, url string, max
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	// Validate final URL after redirects stays within GitHub's domain.
+	if finalHost := resp.Request.URL.Hostname(); !AllowedDownloadHosts[finalHost] {
+		return nil, fmt.Errorf("download redirected to unexpected host %q", finalHost)
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("http %d from %s", resp.StatusCode, url)
+		return nil, fmt.Errorf("http %d from %s", resp.StatusCode, rawURL)
 	}
 	return io.ReadAll(io.LimitReader(resp.Body, maxBytes))
 }

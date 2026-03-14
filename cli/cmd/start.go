@@ -66,14 +66,13 @@ func runStart(cmd *cobra.Command, args []string) error {
 	fmt.Fprintln(cmd.OutOrStdout(), "Waiting for backend to become healthy...")
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort)
 	if err := health.WaitForHealthy(ctx, healthURL, 90*time.Second, 2*time.Second, 5*time.Second); err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: health check did not pass: %v\n", err)
-		fmt.Fprintln(cmd.ErrOrStderr(), "Containers are running. Run 'synthorg doctor' for diagnostics.")
-	} else {
-		fmt.Fprintln(cmd.OutOrStdout(), "SynthOrg is running!")
-		fmt.Fprintf(cmd.OutOrStdout(), "  API:       http://localhost:%d/api/v1/health\n", state.BackendPort)
-		fmt.Fprintf(cmd.OutOrStdout(), "  Dashboard: http://localhost:%d\n", state.WebPort)
+		fmt.Fprintf(cmd.ErrOrStderr(), "Containers are running but health check failed. Run 'synthorg doctor' for diagnostics.\n")
+		return fmt.Errorf("health check did not pass: %w", err)
 	}
 
+	fmt.Fprintln(cmd.OutOrStdout(), "SynthOrg is running!")
+	fmt.Fprintf(cmd.OutOrStdout(), "  API:       http://localhost:%d/api/v1/health\n", state.BackendPort)
+	fmt.Fprintf(cmd.OutOrStdout(), "  Dashboard: http://localhost:%d\n", state.WebPort)
 	return nil
 }
 

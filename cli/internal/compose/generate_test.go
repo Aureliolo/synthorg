@@ -163,6 +163,9 @@ func compareGolden(t *testing.T, name string, actual []byte) {
 	golden := filepath.Join("..", "..", "testdata", name)
 
 	if os.Getenv("UPDATE_GOLDEN") == "1" {
+		if err := os.MkdirAll(filepath.Dir(golden), 0o755); err != nil {
+			t.Fatalf("create testdata dir: %v", err)
+		}
 		if err := os.WriteFile(golden, actual, 0o644); err != nil {
 			t.Fatalf("update golden: %v", err)
 		}
@@ -171,15 +174,7 @@ func compareGolden(t *testing.T, name string, actual []byte) {
 
 	expected, err := os.ReadFile(golden)
 	if err != nil {
-		// Golden doesn't exist yet — create it.
-		if err := os.MkdirAll(filepath.Dir(golden), 0o755); err != nil {
-			t.Fatalf("create testdata dir: %v", err)
-		}
-		if err := os.WriteFile(golden, actual, 0o644); err != nil {
-			t.Fatalf("write golden: %v", err)
-		}
-		t.Logf("created golden file %s", golden)
-		return
+		t.Fatalf("golden file %s missing: %v\nRun with UPDATE_GOLDEN=1 to create", golden, err)
 	}
 
 	if string(expected) != string(actual) {

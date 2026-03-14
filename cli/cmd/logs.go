@@ -58,7 +58,7 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	// Validate --tail value.
 	tail := strings.TrimSpace(logTail)
 	if tail != "all" {
-		if n, err := strconv.Atoi(tail); err != nil || n < 0 {
+		if n, err := strconv.Atoi(tail); err != nil || n <= 0 {
 			return fmt.Errorf("--tail must be a positive integer or 'all', got %q", logTail)
 		}
 	}

@@ -32,7 +32,7 @@ func init() {
 func resolveDataDir() string {
 	dir := dataDir
 	if dir == "" {
-		return config.DataDir()
+		dir = config.DataDir()
 	}
 	// Resolve symlinks to prevent traversal.
 	if resolved, err := filepath.EvalSymlinks(dir); err == nil {

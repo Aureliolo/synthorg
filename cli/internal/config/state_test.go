@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -105,7 +106,7 @@ func TestSaveFilePermissions(t *testing.T) {
 
 	// Verify file permissions (0600 — owner read/write only).
 	// Skip on Windows where Unix permissions are not enforced.
-	if os.Getenv("OS") != "Windows_NT" {
+	if runtime.GOOS != "windows" {
 		info, err := os.Stat(path)
 		if err != nil {
 			t.Fatal(err)
