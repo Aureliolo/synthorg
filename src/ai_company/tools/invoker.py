@@ -364,7 +364,7 @@ class ToolInvoker:
         self._pending_escalations.clear()
         return await self._invoke_single(tool_call)
 
-    async def _invoke_single(self, tool_call: ToolCall) -> ToolResult:
+    async def _invoke_single(self, tool_call: ToolCall) -> ToolResult:  # noqa: PLR0911
         """Core invoke logic without clearing escalations.
 
         Used by both ``invoke`` (after clearing) and ``invoke_all``
@@ -401,7 +401,15 @@ class ToolInvoker:
             return exec_result
 
         # Detect parking metadata from tools like request_human_approval.
-        self._track_parking_metadata(exec_result, tool_or_error, tool_call)
+        # Returns an error ToolResult if tracking fails, preventing the
+        # agent from silently bypassing the approval gate.
+        parking_error = self._track_parking_metadata(
+            exec_result,
+            tool_or_error,
+            tool_call,
+        )
+        if parking_error is not None:
+            return parking_error
 
         if security_context is not None:
             exec_result = await self._scan_output(
@@ -603,22 +611,22 @@ class ToolInvoker:
         result: ToolExecutionResult,
         tool: BaseTool,
         tool_call: ToolCall,
-    ) -> None:
+    ) -> ToolResult | None:
         """Detect ``requires_parking`` metadata and add to escalations.
 
         Tools like ``request_human_approval`` signal parking via
         ``ToolExecutionResult.metadata``.  Only tracks when both
         ``requires_parking=True`` and ``approval_id`` are present.
 
-        Raises:
-            ToolExecutionError: If escalation tracking fails — the caller
-                must treat this as a tool execution failure so the agent
-                does not silently bypass the approval gate.
+        Returns:
+            ``None`` on success, or an error ``ToolResult`` if tracking
+            fails — ensures the agent does not silently bypass the
+            approval gate.
         """
         if result.metadata.get("requires_parking") is not True:
-            return
+            return None
         if not result.metadata.get("approval_id"):
-            return
+            return None
         try:
             from ai_company.engine.approval_gate_models import (  # noqa: PLC0415
                 EscalationInfo as _EscalationInfo,
@@ -643,13 +651,14 @@ class ToolInvoker:
                 TOOL_INVOKE_EXECUTION_ERROR,
                 tool_call_id=tool_call.id,
                 tool_name=tool.name,
-                note="Failed to track parking metadata — re-raising to block execution",
+                note="Failed to track parking metadata",
             )
-            msg = f"Approval escalation tracking failed: {exc}"
-            raise ToolExecutionError(
-                msg,
-                context={"tool": tool.name},
-            ) from exc
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                content=f"Approval escalation tracking failed: {exc}",
+                is_error=True,
+            )
+        return None
 
     def _build_result(
         self,
