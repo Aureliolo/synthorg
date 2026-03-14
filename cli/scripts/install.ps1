@@ -1,5 +1,5 @@
 # SynthOrg CLI installer for Windows.
-# Usage: irm https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.ps1 | iex
+# Usage: irm https://synthorg.io/get/install.ps1 | iex
 #
 # Environment variables:
 #   SYNTHORG_VERSION  — specific version to install (default: latest)

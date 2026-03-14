@@ -1,5 +1,6 @@
 ---
 import Base from "../layouts/Base.astro";
+import Footer from "../components/Footer.astro";
 ---
 
 <Base title="SynthOrg — Build Synthetic Organizations">
@@ -33,7 +34,7 @@ import Base from "../layouts/Base.astro";
       <!-- CTAs -->
       <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
         <a
-          href="/docs/user_guide/"
+          href="/get/"
           class="px-8 py-3 bg-violet-600 hover:bg-violet-500 rounded-lg font-semibold transition-colors"
         >
           Start Building
@@ -405,14 +406,14 @@ import Base from "../layouts/Base.astro";
           </button>
         </div>
         <!-- Terminal body -->
-        <pre class="p-4 text-sm font-['JetBrains_Mono',monospace] text-gray-300 overflow-x-auto leading-relaxed"><code id="terminal-code"><span class="text-gray-500">$</span> git clone https://github.com/Aureliolo/synthorg
-<span class="text-gray-500">$</span> cd synthorg
-<span class="text-gray-500">$</span> docker compose -f docker/compose.yml up -d</code></pre>
+        <pre class="p-4 text-sm font-['JetBrains_Mono',monospace] text-gray-300 overflow-x-auto leading-relaxed"><code id="terminal-code"><span class="text-gray-500">$</span> curl -sSfL https://synthorg.io/get/install.sh | bash
+<span class="text-gray-500">$</span> synthorg init
+<span class="text-gray-500">$</span> synthorg start</code></pre>
       </div>
 
       <script>
         document.getElementById('copy-terminal')?.addEventListener('click', function() {
-          const text = 'git clone https://github.com/Aureliolo/synthorg\ncd synthorg\ndocker compose -f docker/compose.yml up -d';
+          const text = 'curl -sSfL https://synthorg.io/get/install.sh | bash\nsynthorg init\nsynthorg start';
           navigator.clipboard.writeText(text).then(() => {
             const btn = this;
             btn.textContent = 'Copied!';
@@ -422,7 +423,7 @@ import Base from "../layouts/Base.astro";
       </script>
 
       <a
-        href="/docs/user_guide/"
+        href="/get/"
         class="inline-block px-10 py-4 bg-violet-600 hover:bg-violet-500 rounded-lg font-semibold text-lg transition-colors"
       >
         Get Started
@@ -433,43 +434,5 @@ import Base from "../layouts/Base.astro";
   <!-- ============================================================ -->
   <!-- FOOTER -->
   <!-- ============================================================ -->
-  <footer class="py-12 px-6 border-t border-white/10">
-    <div class="max-w-6xl mx-auto grid sm:grid-cols-4 gap-8 text-sm">
-      <div>
-        <p class="font-semibold mb-3">Framework</p>
-        <ul class="space-y-2 text-gray-400">
-          <li><a href="/docs/api/core/" class="hover:text-white transition-colors">Core Models</a></li>
-          <li><a href="/docs/api/engine/" class="hover:text-white transition-colors">Engine</a></li>
-          <li><a href="/docs/api/providers/" class="hover:text-white transition-colors">Providers</a></li>
-          <li><a href="/docs/api/tools/" class="hover:text-white transition-colors">Tools</a></li>
-        </ul>
-      </div>
-      <div>
-        <p class="font-semibold mb-3">Learn</p>
-        <ul class="space-y-2 text-gray-400">
-          <li><a href="/docs/" class="hover:text-white transition-colors">Documentation</a></li>
-          <li><a href="/docs/user_guide/" class="hover:text-white transition-colors">User Guide</a></li>
-          <li><a href="/docs/architecture/" class="hover:text-white transition-colors">Architecture</a></li>
-          <li><a href="/docs/design/" class="hover:text-white transition-colors">Design Spec</a></li>
-          <li><a href="/docs/security/" class="hover:text-white transition-colors">Security</a></li>
-        </ul>
-      </div>
-      <div>
-        <p class="font-semibold mb-3">Community</p>
-        <ul class="space-y-2 text-gray-400">
-          <li><a href="https://github.com/Aureliolo/synthorg" class="hover:text-white transition-colors">GitHub</a></li>
-          <li><a href="https://github.com/Aureliolo/synthorg/blob/main/.github/CHANGELOG.md" class="hover:text-white transition-colors">Changelog</a></li>
-        </ul>
-      </div>
-      <div>
-        <p class="font-semibold mb-3">Legal</p>
-        <ul class="space-y-2 text-gray-400">
-          <li><a href="/docs/licensing/" class="hover:text-white transition-colors">License & Usage (BSL 1.1)</a></li>
-        </ul>
-      </div>
-    </div>
-    <div class="max-w-6xl mx-auto mt-8 pt-8 border-t border-white/10 text-center text-gray-500 text-xs">
-      &copy; 2026 SynthOrg. Built with Astro.
-    </div>
-  </footer>
+  <Footer />
 </Base>

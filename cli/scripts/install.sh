@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SynthOrg CLI installer for Linux and macOS.
-# Usage: curl -sSfL https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.sh | bash
+# Usage: curl -sSfL https://synthorg.io/get/install.sh | bash
 #
 # Environment variables:
 #   SYNTHORG_VERSION  — specific version to install (default: latest)

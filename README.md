@@ -80,12 +80,12 @@ Built-in tools (file system, git, sandbox, code runner) plus MCP bridge for exte
 
 ```bash
 # Linux / macOS
-curl -sSfL https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.sh | bash
+curl -sSfL https://synthorg.io/get/install.sh | bash
 ```
 
 ```powershell
 # Windows (PowerShell)
-irm https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.ps1 | iex
+irm https://synthorg.io/get/install.ps1 | iex
 ```
 
 ### Setup & Run

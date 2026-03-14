@@ -12,6 +12,8 @@ on:
       - "uv.lock"
       - "src/ai_company/**"
       - "scripts/**"
+      - "cli/scripts/install.sh"
+      - "cli/scripts/install.ps1"
       - ".github/workflows/pages-preview.yml"
   workflow_dispatch:
     inputs:
@@ -130,6 +132,12 @@ jobs:
       - name: Build Astro
         working-directory: site
         run: npm run build
+
+      # --- Copy install scripts into /get/ ---
+      - name: Copy CLI install scripts into Astro output
+        run: |
+          cp cli/scripts/install.sh site/dist/get/install.sh
+          cp cli/scripts/install.ps1 site/dist/get/install.ps1
 
       # --- Merge outputs ---
       - name: Merge Astro + Zensical into final output
