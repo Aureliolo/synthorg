@@ -6,7 +6,27 @@ How to run SynthOrg.
 
 - [Docker](https://docs.docker.com/get-docker/) and Docker Compose
 
-## Quick Start
+## Quick Start (CLI)
+
+The recommended way to run SynthOrg is via the CLI:
+
+```bash
+# Install CLI (Linux/macOS)
+curl -sSfL https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.sh | sh
+
+# Set up and start
+synthorg init     # Interactive setup wizard
+synthorg start    # Pull images + start containers
+synthorg status   # Show container health and versions
+```
+
+The web dashboard is at [http://localhost:3000](http://localhost:3000) (default port).
+
+Other CLI commands: `synthorg stop`, `synthorg logs`, `synthorg update`, `synthorg doctor`, `synthorg uninstall`.
+
+## Quick Start (Docker Compose — manual)
+
+For development or if you prefer manual Docker Compose:
 
 ```bash
 git clone https://github.com/Aureliolo/synthorg
@@ -14,8 +34,6 @@ cd synthorg
 cp docker/.env.example docker/.env
 docker compose -f docker/compose.yml up -d
 ```
-
-The web dashboard is at [http://localhost:3000](http://localhost:3000).
 
 Container configuration (ports, storage paths, log level) is defined in `docker/.env`. Organization setup is done via the dashboard. Custom template editing through the UI is planned for a future release.
 

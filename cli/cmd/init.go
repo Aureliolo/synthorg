@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -16,9 +15,6 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 )
-
-// imageTagPattern validates image tags to prevent YAML injection.
-var imageTagPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 
 var initCmd = &cobra.Command{
 	Use:   "init",
@@ -32,111 +28,131 @@ func init() {
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
-	defaults := config.DefaultState()
+	answers, err := runSetupForm()
+	if err != nil {
+		return err
+	}
 
-	dir := defaults.DataDir
-	backendPortStr := fmt.Sprintf("%d", defaults.BackendPort)
-	webPortStr := fmt.Sprintf("%d", defaults.WebPort)
-	sandbox := false
-	dockerSock := defaultDockerSock()
-	logLevel := defaults.LogLevel
-	genJWT := true
+	state, err := buildState(answers)
+	if err != nil {
+		return err
+	}
+
+	if err := writeInitFiles(state); err != nil {
+		return err
+	}
+
+	composePath := filepath.Join(state.DataDir, "compose.yml")
+	fmt.Fprintf(cmd.OutOrStdout(), "\nSynthOrg initialized in %s\n", state.DataDir)
+	fmt.Fprintf(cmd.OutOrStdout(), "  Compose file: %s\n", composePath)
+	fmt.Fprintf(cmd.OutOrStdout(), "  Config:       %s\n", config.StatePath(state.DataDir))
+	fmt.Fprintf(cmd.OutOrStdout(), "\nKeep compose.yml and config.json private — they contain your JWT secret.\n")
+	fmt.Fprintf(cmd.OutOrStdout(), "Run 'synthorg start' to launch.\n")
+
+	return nil
+}
+
+// setupAnswers holds raw form input before validation.
+type setupAnswers struct {
+	dir            string
+	backendPortStr string
+	webPortStr     string
+	sandbox        bool
+	dockerSock     string
+	logLevel       string
+	genJWT         bool
+}
+
+func runSetupForm() (setupAnswers, error) {
+	defaults := config.DefaultState()
+	a := setupAnswers{
+		dir:            defaults.DataDir,
+		backendPortStr: fmt.Sprintf("%d", defaults.BackendPort),
+		webPortStr:     fmt.Sprintf("%d", defaults.WebPort),
+		dockerSock:     defaultDockerSock(),
+		logLevel:       defaults.LogLevel,
+		genJWT:         true,
+	}
 
 	form := huh.NewForm(
 		huh.NewGroup(
-			huh.NewInput().
-				Title("Data directory").
-				Description("Where SynthOrg stores its data").
-				Value(&dir),
-
-			huh.NewInput().
-				Title("Backend API port").
-				Description("Port for the REST/WebSocket API").
-				Value(&backendPortStr),
-
-			huh.NewInput().
-				Title("Web dashboard port").
-				Description("Port for the web UI").
-				Value(&webPortStr),
-
-			huh.NewConfirm().
-				Title("Enable agent code sandbox?").
-				Description("Mounts Docker socket for sandboxed code execution").
-				Value(&sandbox),
+			huh.NewInput().Title("Data directory").
+				Description("Where SynthOrg stores its data").Value(&a.dir),
+			huh.NewInput().Title("Backend API port").
+				Description("Port for the REST/WebSocket API").Value(&a.backendPortStr),
+			huh.NewInput().Title("Web dashboard port").
+				Description("Port for the web UI").Value(&a.webPortStr),
+			huh.NewConfirm().Title("Enable agent code sandbox?").
+				Description("Mounts Docker socket for sandboxed code execution").Value(&a.sandbox),
 		),
 		huh.NewGroup(
-			huh.NewInput().
-				Title("Docker socket path").
-				Value(&dockerSock),
-		).WithHideFunc(func() bool { return !sandbox }),
+			huh.NewInput().Title("Docker socket path").Value(&a.dockerSock),
+		).WithHideFunc(func() bool { return !a.sandbox }),
 		huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("Log level").
-				Options(
-					huh.NewOption("Debug", "debug"),
-					huh.NewOption("Info", "info"),
-					huh.NewOption("Warning", "warn"),
-				).
-				Value(&logLevel),
-
-			huh.NewConfirm().
-				Title("Generate JWT secret?").
-				Description("Recommended for API authentication").
-				Value(&genJWT),
+			huh.NewSelect[string]().Title("Log level").Options(
+				huh.NewOption("Debug", "debug"),
+				huh.NewOption("Info", "info"),
+				huh.NewOption("Warning", "warn"),
+			).Value(&a.logLevel),
+			huh.NewConfirm().Title("Generate JWT secret?").
+				Description("Recommended for API authentication").Value(&a.genJWT),
 		),
 	)
 
 	if err := form.Run(); err != nil {
-		return err
+		return a, err
+	}
+	return a, nil
+}
+
+func buildState(a setupAnswers) (config.State, error) {
+	dir := strings.TrimSpace(a.dir)
+	if !filepath.IsAbs(dir) {
+		return config.State{}, fmt.Errorf("data directory must be an absolute path, got %q", dir)
 	}
 
-	// Trim whitespace from user input.
-	dir = strings.TrimSpace(dir)
-
-	// Parse and validate ports.
-	backendPort, err := parsePort(backendPortStr, "backend")
+	backendPort, err := parsePort(a.backendPortStr, "backend")
 	if err != nil {
-		return err
+		return config.State{}, err
 	}
-	webPort, err := parsePort(webPortStr, "web")
+	webPort, err := parsePort(a.webPortStr, "web")
 	if err != nil {
-		return err
+		return config.State{}, err
 	}
 
-	// Validate docker socket path (must be absolute, no YAML-special chars).
-	if sandbox {
-		dockerSock = strings.TrimSpace(dockerSock)
-		if !filepath.IsAbs(dockerSock) && !strings.HasPrefix(dockerSock, "//") {
-			return fmt.Errorf("docker socket must be an absolute path, got %q", dockerSock)
+	dockerSock := strings.TrimSpace(a.dockerSock)
+	if a.sandbox {
+		if err := validateDockerSock(dockerSock); err != nil {
+			return config.State{}, err
 		}
 	}
 
 	var jwtSecret string
-	if genJWT {
+	if a.genJWT {
 		secret, err := generateSecret(48)
 		if err != nil {
-			return fmt.Errorf("generating JWT secret: %w", err)
+			return config.State{}, fmt.Errorf("generating JWT secret: %w", err)
 		}
 		jwtSecret = secret
 	}
 
-	state := config.State{
+	return config.State{
 		DataDir:     dir,
 		ImageTag:    "latest",
 		BackendPort: backendPort,
 		WebPort:     webPort,
-		Sandbox:     sandbox,
+		Sandbox:     a.sandbox,
 		DockerSock:  dockerSock,
-		LogLevel:    logLevel,
+		LogLevel:    a.logLevel,
 		JWTSecret:   jwtSecret,
-	}
+	}, nil
+}
 
-	// Create data directory.
+func writeInitFiles(state config.State) error {
 	if err := config.EnsureDir(state.DataDir); err != nil {
 		return fmt.Errorf("creating data directory: %w", err)
 	}
 
-	// Generate compose file.
 	params := compose.ParamsFromState(state)
 	composeYAML, err := compose.Generate(params)
 	if err != nil {
@@ -148,17 +164,19 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("writing compose file: %w", err)
 	}
 
-	// Save config.
 	if err := config.Save(state); err != nil {
 		return fmt.Errorf("saving config: %w", err)
 	}
+	return nil
+}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "\nSynthOrg initialized in %s\n", state.DataDir)
-	fmt.Fprintf(cmd.OutOrStdout(), "  Compose file: %s\n", composePath)
-	fmt.Fprintf(cmd.OutOrStdout(), "  Config:       %s\n", config.StatePath(state.DataDir))
-	fmt.Fprintf(cmd.OutOrStdout(), "\nKeep compose.yml and config.json private — they contain your JWT secret.\n")
-	fmt.Fprintf(cmd.OutOrStdout(), "Run 'synthorg start' to launch.\n")
-
+func validateDockerSock(path string) error {
+	if !filepath.IsAbs(path) && !strings.HasPrefix(path, "//") {
+		return fmt.Errorf("docker socket must be an absolute path, got %q", path)
+	}
+	if strings.ContainsAny(path, "\"'`$\n\r{}[]") {
+		return fmt.Errorf("docker socket path %q contains unsafe characters", path)
+	}
 	return nil
 }
 

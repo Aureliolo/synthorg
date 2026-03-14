@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -30,7 +31,7 @@ func runStop(cmd *cobra.Command, args []string) error {
 	}
 
 	composePath := filepath.Join(state.DataDir, "compose.yml")
-	if _, err := os.Stat(composePath); os.IsNotExist(err) {
+	if _, err := os.Stat(composePath); errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("compose.yml not found in %s — run 'synthorg init' first", state.DataDir)
 	}
 
@@ -40,7 +41,7 @@ func runStop(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Fprintln(cmd.OutOrStdout(), "Stopping containers...")
-	if err := composeRun(ctx, info, state.DataDir, "down"); err != nil {
+	if err := composeRun(ctx, cmd, info, state.DataDir, "down"); err != nil {
 		return fmt.Errorf("stopping containers: %w", err)
 	}
 

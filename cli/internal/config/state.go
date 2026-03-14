@@ -38,14 +38,16 @@ func StatePath(dataDir string) string {
 	return filepath.Join(dataDir, stateFileName)
 }
 
-// Load reads State from disk. Returns the default state and a nil error if the
-// file does not exist.
+// Load reads State from disk. Returns a default state with the given dataDir
+// if the file does not exist (so --data-dir is respected on bootstrap).
 func Load(dataDir string) (State, error) {
 	path := StatePath(dataDir)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return DefaultState(), nil
+			defaults := DefaultState()
+			defaults.DataDir = dataDir
+			return defaults, nil
 		}
 		return State{}, err
 	}

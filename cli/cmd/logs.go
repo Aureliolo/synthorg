@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -16,6 +18,10 @@ var (
 	logFollow bool
 	logTail   string
 )
+
+// serviceNamePattern validates service names to prevent command injection via
+// compose arguments (only alphanumeric, hyphens, and underscores).
+var serviceNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 var logsCmd = &cobra.Command{
 	Use:   "logs [service]",
@@ -40,7 +46,7 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	}
 
 	composePath := filepath.Join(state.DataDir, "compose.yml")
-	if _, err := os.Stat(composePath); os.IsNotExist(err) {
+	if _, err := os.Stat(composePath); errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("compose.yml not found in %s — run 'synthorg init' first", state.DataDir)
 	}
 
@@ -57,11 +63,20 @@ func runLogs(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Validate service name arguments.
+	for _, svc := range args {
+		if !serviceNamePattern.MatchString(svc) {
+			return fmt.Errorf("invalid service name %q: must be alphanumeric, hyphens, or underscores", svc)
+		}
+	}
+
 	composeArgs := []string{"logs", "--tail", tail}
 	if logFollow {
 		composeArgs = append(composeArgs, "-f")
 	}
+	// Use -- separator to prevent service names from being parsed as flags.
+	composeArgs = append(composeArgs, "--")
 	composeArgs = append(composeArgs, args...)
 
-	return composeRun(ctx, info, state.DataDir, composeArgs...)
+	return composeRun(ctx, cmd, info, state.DataDir, composeArgs...)
 }

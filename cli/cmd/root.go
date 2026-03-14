@@ -3,15 +3,13 @@ package cmd
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
-var (
-	dataDir string
-	verbose bool
-)
+var dataDir string
 
 var rootCmd = &cobra.Command{
 	Use:   "synthorg",
@@ -26,16 +24,20 @@ to launch the backend and web dashboard containers.`,
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&dataDir, "data-dir", "", "data directory (default: platform-appropriate)")
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
 }
 
 // resolveDataDir returns the effective data directory, using the flag value or
-// the platform default.
+// the platform default. Symlinks are resolved to prevent traversal issues.
 func resolveDataDir() string {
-	if dataDir != "" {
-		return dataDir
+	dir := dataDir
+	if dir == "" {
+		return config.DataDir()
 	}
-	return config.DataDir()
+	// Resolve symlinks to prevent traversal.
+	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+		return resolved
+	}
+	return dir
 }
 
 // Execute runs the root command.

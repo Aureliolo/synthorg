@@ -20,7 +20,7 @@ func init() {
 	rootCmd.AddCommand(uninstallCmd)
 }
 
-func runUninstall(cmd *cobra.Command, args []string) error {
+func runUninstall(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	dir := resolveDataDir()
 	out := cmd.OutOrStdout()
@@ -30,20 +30,33 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	// Stop containers.
-	dockerAvailable := false
-	info, err := docker.Detect(ctx)
-	if err == nil {
-		dockerAvailable = true
-		fmt.Fprintln(out, "Stopping containers...")
-		if err := composeRun(ctx, info, state.DataDir, "down"); err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not stop containers: %v\n", err)
-		}
+	// Stop containers and optionally remove volumes.
+	info, dockerErr := docker.Detect(ctx)
+	if dockerErr != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: Docker not available, cannot stop containers: %v\n", dockerErr)
 	} else {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: Docker not available, cannot stop containers: %v\n", err)
+		if err := stopAndRemoveVolumes(cmd, info, state); err != nil {
+			return err
+		}
 	}
 
-	// Confirm volume removal.
+	// Remove data directory.
+	if err := confirmAndRemoveData(cmd, state); err != nil {
+		return err
+	}
+
+	// Optionally remove CLI binary.
+	if err := confirmAndRemoveBinary(cmd); err != nil {
+		return err
+	}
+
+	fmt.Fprintln(out, "SynthOrg uninstalled.")
+	return nil
+}
+
+func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, state config.State) error {
+	ctx := cmd.Context()
+
 	var removeVolumes bool
 	form := huh.NewForm(
 		huh.NewGroup(
@@ -57,20 +70,26 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	fmt.Fprintln(cmd.OutOrStdout(), "Stopping containers...")
+
+	// Use "down -v" if removing volumes (handles both stop and volume removal
+	// in a single command), otherwise just "down".
+	downArgs := []string{"down"}
 	if removeVolumes {
-		if dockerAvailable {
-			fmt.Fprintln(out, "Removing volumes...")
-			if err := composeRun(ctx, info, state.DataDir, "down", "-v"); err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: volume removal may have failed: %v\n", err)
-			}
-		} else {
-			fmt.Fprintln(cmd.ErrOrStderr(), "Warning: Docker not available, cannot remove volumes. Remove them manually.")
-		}
+		downArgs = append(downArgs, "-v")
+		fmt.Fprintln(cmd.OutOrStdout(), "Removing volumes...")
 	}
 
-	// Remove data directory.
+	if err := composeRun(ctx, cmd, info, state.DataDir, downArgs...); err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: stopping containers may have failed: %v\n", err)
+	}
+
+	return nil
+}
+
+func confirmAndRemoveData(cmd *cobra.Command, state config.State) error {
 	var removeData bool
-	form = huh.NewForm(
+	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewConfirm().
 				Title(fmt.Sprintf("Remove data directory? (%s)", state.DataDir)).
@@ -85,12 +104,14 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		if err := os.RemoveAll(state.DataDir); err != nil {
 			return fmt.Errorf("removing data directory: %w", err)
 		}
-		fmt.Fprintf(out, "Removed %s\n", state.DataDir)
+		fmt.Fprintf(cmd.OutOrStdout(), "Removed %s\n", state.DataDir)
 	}
+	return nil
+}
 
-	// Optionally remove CLI binary.
+func confirmAndRemoveBinary(cmd *cobra.Command) error {
 	var removeBinary bool
-	form = huh.NewForm(
+	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewConfirm().
 				Title("Remove CLI binary?").
@@ -109,12 +130,10 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		}
 		if err := os.Remove(execPath); err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not remove binary: %v\n", err)
-			fmt.Fprintf(out, "Manually remove: %s\n", execPath)
+			fmt.Fprintf(cmd.OutOrStdout(), "Manually remove: %s\n", execPath)
 		} else {
-			fmt.Fprintln(out, "CLI binary removed.")
+			fmt.Fprintln(cmd.OutOrStdout(), "CLI binary removed.")
 		}
 	}
-
-	fmt.Fprintln(out, "SynthOrg uninstalled.")
 	return nil
 }

@@ -29,7 +29,6 @@ The SynthOrg core framework is complete. The following subsystems are built and 
 | Area | Description |
 |------|-------------|
 | **Approval workflow gates** | Runtime wiring for human-in-the-loop approval queues |
-| **CLI** | Terminal interface wrapping the REST API (may not be needed) |
 
 ## Tracking
 

@@ -80,16 +80,19 @@ func TestVerifyChecksum(t *testing.T) {
 	}
 }
 
-func TestHttpGet(t *testing.T) {
+func TestHTTPGetWithClient(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("hello"))
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			if _, err := w.Write([]byte("hello")); err != nil {
+				t.Logf("write error: %v", err)
+			}
 		}))
 		defer srv.Close()
 
-		data, err := httpGet(context.Background(), srv.URL)
+		client := &http.Client{}
+		data, err := httpGetWithClient(context.Background(), client, srv.URL, maxAPIResponseBytes)
 		if err != nil {
-			t.Fatalf("httpGet: %v", err)
+			t.Fatalf("httpGetWithClient: %v", err)
 		}
 		if string(data) != "hello" {
 			t.Errorf("got %q, want hello", data)
@@ -97,31 +100,34 @@ func TestHttpGet(t *testing.T) {
 	})
 
 	t.Run("404", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
 		}))
 		defer srv.Close()
 
-		_, err := httpGet(context.Background(), srv.URL)
+		client := &http.Client{}
+		_, err := httpGetWithClient(context.Background(), client, srv.URL, maxAPIResponseBytes)
 		if err == nil {
 			t.Fatal("expected error for 404")
 		}
 	})
 
 	t.Run("500", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}))
 		defer srv.Close()
 
-		_, err := httpGet(context.Background(), srv.URL)
+		client := &http.Client{}
+		_, err := httpGetWithClient(context.Background(), client, srv.URL, maxAPIResponseBytes)
 		if err == nil {
 			t.Fatal("expected error for 500")
 		}
 	})
 
 	t.Run("invalid url", func(t *testing.T) {
-		_, err := httpGet(context.Background(), "http://127.0.0.1:0/nonexistent")
+		client := &http.Client{}
+		_, err := httpGetWithClient(context.Background(), client, "http://127.0.0.1:0/nonexistent", maxAPIResponseBytes)
 		if err == nil {
 			t.Fatal("expected error for invalid URL")
 		}
@@ -146,8 +152,12 @@ func TestExtractFromTarGz(t *testing.T) {
 	if _, err := tw.Write(content); err != nil {
 		t.Fatal(err)
 	}
-	tw.Close()
-	gw.Close()
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gw.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	extracted, err := extractFromTarGz(buf.Bytes())
 	if err != nil {
@@ -167,10 +177,18 @@ func TestExtractFromTarGzNestedPath(t *testing.T) {
 
 	// Binary in a subdirectory — extractFromTarGz checks filepath.Base.
 	hdr := &tar.Header{Name: "synthorg_linux_amd64/synthorg", Mode: 0o755, Size: int64(len(content))}
-	tw.WriteHeader(hdr)
-	tw.Write(content)
-	tw.Close()
-	gw.Close()
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gw.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	extracted, err := extractFromTarGz(buf.Bytes())
 	if err != nil {
@@ -187,10 +205,18 @@ func TestExtractFromTarGzMissing(t *testing.T) {
 	tw := tar.NewWriter(gw)
 
 	hdr := &tar.Header{Name: "other-binary", Mode: 0o755, Size: 3}
-	tw.WriteHeader(hdr)
-	tw.Write([]byte("abc"))
-	tw.Close()
-	gw.Close()
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write([]byte("abc")); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gw.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := extractFromTarGz(buf.Bytes())
 	if err == nil {
@@ -214,8 +240,12 @@ func TestExtractFromZip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fw.Write(content)
-	zw.Close()
+	if _, err := fw.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	extracted, err := extractFromZip(buf.Bytes())
 	if err != nil {
@@ -231,9 +261,16 @@ func TestExtractFromZipPlainName(t *testing.T) {
 
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
-	fw, _ := zw.Create("synthorg")
-	fw.Write(content)
-	zw.Close()
+	fw, err := zw.Create("synthorg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fw.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	extracted, err := extractFromZip(buf.Bytes())
 	if err != nil {
@@ -247,11 +284,18 @@ func TestExtractFromZipPlainName(t *testing.T) {
 func TestExtractFromZipMissing(t *testing.T) {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
-	fw, _ := zw.Create("other.exe")
-	fw.Write([]byte("abc"))
-	zw.Close()
+	fw, err := zw.Create("other.exe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fw.Write([]byte("abc")); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
 
-	_, err := extractFromZip(buf.Bytes())
+	_, err = extractFromZip(buf.Bytes())
 	if err == nil {
 		t.Fatal("expected error for missing binary")
 	}
@@ -271,9 +315,16 @@ func TestExtractBinary(t *testing.T) {
 		// On Windows, extractBinary calls extractFromZip.
 		var buf bytes.Buffer
 		zw := zip.NewWriter(&buf)
-		fw, _ := zw.Create("synthorg.exe")
-		fw.Write(content)
-		zw.Close()
+		fw, err := zw.Create("synthorg.exe")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := fw.Write(content); err != nil {
+			t.Fatal(err)
+		}
+		if err := zw.Close(); err != nil {
+			t.Fatal(err)
+		}
 
 		extracted, err := extractBinary(buf.Bytes())
 		if err != nil {
@@ -288,10 +339,18 @@ func TestExtractBinary(t *testing.T) {
 		gw := gzip.NewWriter(&buf)
 		tw := tar.NewWriter(gw)
 		hdr := &tar.Header{Name: "synthorg", Mode: 0o755, Size: int64(len(content))}
-		tw.WriteHeader(hdr)
-		tw.Write(content)
-		tw.Close()
-		gw.Close()
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write(content); err != nil {
+			t.Fatal(err)
+		}
+		if err := tw.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := gw.Close(); err != nil {
+			t.Fatal(err)
+		}
 
 		extracted, err := extractBinary(buf.Bytes())
 		if err != nil {
@@ -357,18 +416,24 @@ func TestCheckWithMockServer(t *testing.T) {
 			{Name: "checksums.txt", BrowserDownloadURL: "https://example.com/checksums"},
 		},
 	}
-	body, _ := json.Marshal(release)
+	body, err := json.Marshal(release)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(body)
+		if _, err := w.Write(body); err != nil {
+			t.Logf("write error: %v", err)
+		}
 	}))
 	defer srv.Close()
 
 	t.Run("parse release JSON", func(t *testing.T) {
-		data, err := httpGet(context.Background(), srv.URL)
+		client := &http.Client{}
+		data, err := httpGetWithClient(context.Background(), client, srv.URL, maxAPIResponseBytes)
 		if err != nil {
-			t.Fatalf("httpGet: %v", err)
+			t.Fatalf("httpGetWithClient: %v", err)
 		}
 		var r Release
 		if err := json.Unmarshal(data, &r); err != nil {
@@ -383,9 +448,15 @@ func TestCheckWithMockServer(t *testing.T) {
 	})
 
 	t.Run("asset matching", func(t *testing.T) {
-		data, _ := httpGet(context.Background(), srv.URL)
+		client := &http.Client{}
+		data, err := httpGetWithClient(context.Background(), client, srv.URL, maxAPIResponseBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
 		var r Release
-		json.Unmarshal(data, &r)
+		if err := json.Unmarshal(data, &r); err != nil {
+			t.Fatal(err)
+		}
 
 		var assetURL, checksumURL string
 		for _, a := range r.Assets {
@@ -413,19 +484,34 @@ func TestDownloadWithMockServer(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		var buf bytes.Buffer
 		zw := zip.NewWriter(&buf)
-		fw, _ := zw.Create("synthorg.exe")
-		fw.Write(binaryContent)
-		zw.Close()
+		fw, err := zw.Create("synthorg.exe")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := fw.Write(binaryContent); err != nil {
+			t.Fatal(err)
+		}
+		if err := zw.Close(); err != nil {
+			t.Fatal(err)
+		}
 		archive = buf.Bytes()
 	} else {
 		var buf bytes.Buffer
 		gw := gzip.NewWriter(&buf)
 		tw := tar.NewWriter(gw)
 		hdr := &tar.Header{Name: "synthorg", Mode: 0o755, Size: int64(len(binaryContent))}
-		tw.WriteHeader(hdr)
-		tw.Write(binaryContent)
-		tw.Close()
-		gw.Close()
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write(binaryContent); err != nil {
+			t.Fatal(err)
+		}
+		if err := tw.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := gw.Close(); err != nil {
+			t.Fatal(err)
+		}
 		archive = buf.Bytes()
 	}
 
@@ -436,9 +522,13 @@ func TestDownloadWithMockServer(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/asset":
-			w.Write(archive)
+			if _, err := w.Write(archive); err != nil {
+				t.Logf("write error: %v", err)
+			}
 		case "/checksums":
-			w.Write([]byte(checksumLine))
+			if _, err := w.Write([]byte(checksumLine)); err != nil {
+				t.Logf("write error: %v", err)
+			}
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -458,9 +548,13 @@ func TestDownloadChecksumMismatch(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/asset":
-			w.Write([]byte("some archive data"))
+			if _, err := w.Write([]byte("some archive data")); err != nil {
+				t.Logf("write error: %v", err)
+			}
 		case "/checksums":
-			w.Write([]byte(fmt.Sprintf("deadbeefdeadbeef  %s\n", assetName())))
+			if _, err := w.Write([]byte(fmt.Sprintf("deadbeefdeadbeef  %s\n", assetName()))); err != nil {
+				t.Logf("write error: %v", err)
+			}
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -482,11 +576,16 @@ func TestCheckFromURL(t *testing.T) {
 			{Name: "other_file.txt", BrowserDownloadURL: "https://example.com/other"},
 		},
 	}
-	body, _ := json.Marshal(release)
+	body, err := json.Marshal(release)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(body)
+		if _, err := w.Write(body); err != nil {
+			t.Logf("write error: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -511,7 +610,7 @@ func TestCheckFromURL(t *testing.T) {
 }
 
 func TestCheckFromURLNotFound(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
@@ -523,8 +622,10 @@ func TestCheckFromURLNotFound(t *testing.T) {
 }
 
 func TestCheckFromURLInvalidJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not json"))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if _, err := w.Write([]byte("not json")); err != nil {
+			t.Logf("write error: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -541,10 +642,15 @@ func TestCheckFromURLNoMatchingAsset(t *testing.T) {
 			{Name: "synthorg_other_platform.tar.gz", BrowserDownloadURL: "https://example.com/other"},
 		},
 	}
-	body, _ := json.Marshal(release)
+	body, err := json.Marshal(release)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(body)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if _, err := w.Write(body); err != nil {
+			t.Logf("write error: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -589,8 +695,10 @@ func TestReplaceAtNonexistentPath(t *testing.T) {
 }
 
 func TestDownloadNoChecksumRefused(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("archive data"))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if _, err := w.Write([]byte("archive data")); err != nil {
+			t.Logf("write error: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -601,5 +709,24 @@ func TestDownloadNoChecksumRefused(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "refusing to install unverified binary") {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestIsUpdateAvailable(t *testing.T) {
+	tests := []struct {
+		current string
+		latest  string
+		want    bool
+	}{
+		{"dev", "v1.0.0", true},
+		{"v1.0.0", "v1.0.0", false},
+		{"v1.0.0", "v1.1.0", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.current+"->"+tt.latest, func(t *testing.T) {
+			if got := isUpdateAvailable(tt.current, tt.latest); got != tt.want {
+				t.Errorf("isUpdateAvailable(%q, %q) = %v, want %v", tt.current, tt.latest, got, tt.want)
+			}
+		})
 	}
 }

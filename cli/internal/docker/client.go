@@ -7,14 +7,23 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
+)
+
+const (
+	// MinDockerVersion is the minimum supported Docker Engine version.
+	MinDockerVersion = "20.10.0"
+	// MinComposeVersion is the minimum supported Docker Compose version.
+	MinComposeVersion = "2.0.0"
 )
 
 // Info holds detected Docker environment details.
 type Info struct {
 	DockerPath     string
 	DockerVersion  string
-	ComposePath    string // "docker compose" or "docker-compose"
+	ComposeCmd     []string // exec-safe command: ["docker", "compose"] or ["docker-compose"]
+	ComposePath    string   // human-readable display string
 	ComposeVersion string
 	ComposeV2      bool // true if using Compose V2 plugin
 }
@@ -41,10 +50,12 @@ func Detect(ctx context.Context) (Info, error) {
 
 	// 3. Try Compose V2 plugin first, then fall back to standalone.
 	if cver, err := RunCmd(ctx, "docker", "compose", "version", "--short"); err == nil {
+		info.ComposeCmd = []string{"docker", "compose"}
 		info.ComposePath = "docker compose"
 		info.ComposeVersion = strings.TrimSpace(cver)
 		info.ComposeV2 = true
 	} else if cver, err := RunCmd(ctx, "docker-compose", "version", "--short"); err == nil {
+		info.ComposeCmd = []string{"docker-compose"}
 		info.ComposePath = "docker-compose"
 		info.ComposeVersion = strings.TrimSpace(cver)
 	} else {
@@ -54,25 +65,42 @@ func Detect(ctx context.Context) (Info, error) {
 	return info, nil
 }
 
-// ComposeExec runs `docker compose` (or `docker-compose`) with the given
-// arguments, forwarding stdout/stderr to the provided writers.
-func ComposeExec(ctx context.Context, info Info, dir string, args ...string) error {
-	parts := strings.Fields(info.ComposePath)
-	parts = append(parts, args...)
+// CheckMinVersions returns warnings for Docker/Compose versions below minimum.
+func CheckMinVersions(info Info) []string {
+	var warnings []string
+	if !versionAtLeast(info.DockerVersion, MinDockerVersion) {
+		warnings = append(warnings, fmt.Sprintf("Docker %s is below minimum %s", info.DockerVersion, MinDockerVersion))
+	}
+	if !versionAtLeast(info.ComposeVersion, MinComposeVersion) {
+		warnings = append(warnings, fmt.Sprintf("Docker Compose %s is below minimum %s", info.ComposeVersion, MinComposeVersion))
+	}
+	return warnings
+}
 
-	cmd := exec.CommandContext(ctx, parts[0], parts[1:]...)
+// composeArgs builds the full argument list for a compose command by prepending
+// the compose sub-command parts (e.g. ["compose"]) to the caller's args.
+func composeArgs(info Info, args ...string) (string, []string) {
+	name := info.ComposeCmd[0]
+	fullArgs := make([]string, 0, len(info.ComposeCmd)-1+len(args))
+	fullArgs = append(fullArgs, info.ComposeCmd[1:]...)
+	fullArgs = append(fullArgs, args...)
+	return name, fullArgs
+}
+
+// ComposeExec runs a compose command, discarding stdout/stderr.
+func ComposeExec(ctx context.Context, info Info, dir string, args ...string) error {
+	name, fullArgs := composeArgs(info, args...)
+
+	cmd := exec.CommandContext(ctx, name, fullArgs...)
 	cmd.Dir = dir
-	cmd.Stdout = nil // caller should capture if needed
-	cmd.Stderr = nil
 	return cmd.Run()
 }
 
 // ComposeExecOutput runs a compose command and returns combined output.
 func ComposeExecOutput(ctx context.Context, info Info, dir string, args ...string) (string, error) {
-	parts := strings.Fields(info.ComposePath)
-	parts = append(parts, args...)
+	name, fullArgs := composeArgs(info, args...)
 
-	cmd := exec.CommandContext(ctx, parts[0], parts[1:]...)
+	cmd := exec.CommandContext(ctx, name, fullArgs...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -110,4 +138,36 @@ func DaemonHint(goos string) string {
 	default:
 		return "Start the Docker daemon: sudo systemctl start docker"
 	}
+}
+
+// versionAtLeast returns true if got >= min using semver-like comparison.
+func versionAtLeast(got, min string) bool {
+	got = strings.TrimPrefix(got, "v")
+	min = strings.TrimPrefix(min, "v")
+
+	gParts := strings.SplitN(got, ".", 3)
+	mParts := strings.SplitN(min, ".", 3)
+
+	for i := range 3 {
+		var g, m int
+		if i < len(gParts) {
+			// Strip non-numeric suffixes (e.g. "1-rc1").
+			numStr := strings.FieldsFunc(gParts[i], func(r rune) bool {
+				return r < '0' || r > '9'
+			})
+			if len(numStr) > 0 {
+				g, _ = strconv.Atoi(numStr[0])
+			}
+		}
+		if i < len(mParts) {
+			m, _ = strconv.Atoi(mParts[i])
+		}
+		if g > m {
+			return true
+		}
+		if g < m {
+			return false
+		}
+	}
+	return true // equal
 }

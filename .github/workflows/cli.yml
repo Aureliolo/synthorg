@@ -199,4 +199,95 @@ jobs:
           # If GORELEASER_TAP_TOKEN is not set, tap/bucket updates are
           # skipped (GoReleaser handles this gracefully).
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GORELEASER_KEY: ${{ secrets.GORELEASER_TAP_TOKEN }}
+          GORELEASER_TAP_TOKEN: ${{ secrets.GORELEASER_TAP_TOKEN }}
+
+      - name: Pin checksums in install scripts and update release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+
+          # Download checksums from the release we just published.
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "checksums.txt" --dir /tmp
+
+          # Extract per-platform checksums.
+          get_checksum() { awk -v name="$1" '$2 == name { print $1 }' /tmp/checksums.txt; }
+          CS_linux_amd64="$(get_checksum synthorg_linux_amd64.tar.gz)"
+          CS_linux_arm64="$(get_checksum synthorg_linux_arm64.tar.gz)"
+          CS_darwin_amd64="$(get_checksum synthorg_darwin_amd64.tar.gz)"
+          CS_darwin_arm64="$(get_checksum synthorg_darwin_arm64.tar.gz)"
+          CS_windows_amd64="$(get_checksum synthorg_windows_amd64.zip)"
+          CS_windows_arm64="$(get_checksum synthorg_windows_arm64.zip)"
+
+          # ── Update install.sh ──
+          sed -i "s/^PINNED_VERSION=.*/PINNED_VERSION=\"${TAG}\"/" cli/scripts/install.sh
+          sed -i "s/^CHECKSUM_linux_amd64=.*/CHECKSUM_linux_amd64=\"${CS_linux_amd64}\"/" cli/scripts/install.sh
+          sed -i "s/^CHECKSUM_linux_arm64=.*/CHECKSUM_linux_arm64=\"${CS_linux_arm64}\"/" cli/scripts/install.sh
+          sed -i "s/^CHECKSUM_darwin_amd64=.*/CHECKSUM_darwin_amd64=\"${CS_darwin_amd64}\"/" cli/scripts/install.sh
+          sed -i "s/^CHECKSUM_darwin_arm64=.*/CHECKSUM_darwin_arm64=\"${CS_darwin_arm64}\"/" cli/scripts/install.sh
+
+          # ── Update install.ps1 ──
+          sed -i "s/^\\\$PinnedVersion = .*/\$PinnedVersion = \"${TAG}\"/" cli/scripts/install.ps1
+          sed -i "s/^\\\$Checksum_windows_amd64 = .*/\$Checksum_windows_amd64 = \"${CS_windows_amd64}\"/" cli/scripts/install.ps1
+          sed -i "s/^\\\$Checksum_windows_arm64 = .*/\$Checksum_windows_arm64 = \"${CS_windows_arm64}\"/" cli/scripts/install.ps1
+
+          # ── Commit and push pinned scripts to main ──
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git checkout main
+          git add cli/scripts/install.sh cli/scripts/install.ps1
+          git commit -m "chore: pin install scripts to ${TAG} checksums [skip ci]" || echo "No changes to commit"
+          git push origin main
+
+          # ── Append installation section to release notes ──
+          INSTALL_NOTES="$(cat <<NOTES
+
+          ---
+
+          ## Installation
+
+          **Linux / macOS (curl):**
+          \`\`\`bash
+          curl -sSfL https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.sh | sh
+          \`\`\`
+
+          **Windows (PowerShell):**
+          \`\`\`powershell
+          irm https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.ps1 | iex
+          \`\`\`
+
+          **Homebrew:**
+          \`\`\`bash
+          brew install Aureliolo/tap/synthorg
+          \`\`\`
+
+          **Scoop:**
+          \`\`\`powershell
+          scoop bucket add aureliolo https://github.com/Aureliolo/scoop-bucket && scoop install synthorg
+          \`\`\`
+
+          ### Checksums (SHA-256)
+
+          | Archive | SHA-256 |
+          |---------|---------|
+          | \`synthorg_linux_amd64.tar.gz\` | \`${CS_linux_amd64}\` |
+          | \`synthorg_linux_arm64.tar.gz\` | \`${CS_linux_arm64}\` |
+          | \`synthorg_darwin_amd64.tar.gz\` | \`${CS_darwin_amd64}\` |
+          | \`synthorg_darwin_arm64.tar.gz\` | \`${CS_darwin_arm64}\` |
+          | \`synthorg_windows_amd64.zip\` | \`${CS_windows_amd64}\` |
+          | \`synthorg_windows_arm64.zip\` | \`${CS_windows_arm64}\` |
+          NOTES
+          )"
+
+          # Fetch existing body and append.
+          EXISTING_BODY="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body)"
+          FULL_BODY="${EXISTING_BODY}${INSTALL_NOTES}"
+
+          tmpfile="$(mktemp)"
+          printf '%s' "$FULL_BODY" > "$tmpfile"
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$tmpfile"
+          rm -f "$tmpfile"
+
+          echo "✓ Install scripts pinned to ${TAG} and release notes updated."

@@ -4,6 +4,9 @@ package compose
 import (
 	"bytes"
 	_ "embed"
+	"fmt"
+	"regexp"
+	"strings"
 	"text/template"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
@@ -12,6 +15,17 @@ import (
 
 //go:embed compose.yml.tmpl
 var composeTmpl string
+
+// imageTagPattern validates image tags to prevent YAML injection.
+var imageTagPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
+
+// allowedLogLevels restricts log level values to a known safe set.
+var allowedLogLevels = map[string]bool{
+	"debug": true,
+	"info":  true,
+	"warn":  true,
+	"error": true,
+}
 
 // Params are the template parameters for compose generation.
 type Params struct {
@@ -40,8 +54,17 @@ func ParamsFromState(s config.State) Params {
 }
 
 // Generate renders the compose template with the given parameters.
+// It validates all string parameters before rendering to prevent YAML injection.
 func Generate(p Params) ([]byte, error) {
-	tmpl, err := template.New("compose").Parse(composeTmpl)
+	if err := validateParams(p); err != nil {
+		return nil, err
+	}
+
+	funcMap := template.FuncMap{
+		"yamlStr": yamlStr,
+	}
+
+	tmpl, err := template.New("compose").Funcs(funcMap).Parse(composeTmpl)
 	if err != nil {
 		return nil, err
 	}
@@ -50,4 +73,40 @@ func Generate(p Params) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// validateParams checks all template parameters for safe values.
+func validateParams(p Params) error {
+	if !imageTagPattern.MatchString(p.ImageTag) {
+		return fmt.Errorf("invalid image tag %q: must match %s", p.ImageTag, imageTagPattern.String())
+	}
+	if p.LogLevel != "" && !allowedLogLevels[p.LogLevel] {
+		return fmt.Errorf("invalid log level %q: must be one of debug, info, warn, error", p.LogLevel)
+	}
+	if p.BackendPort < 1 || p.BackendPort > 65535 {
+		return fmt.Errorf("invalid backend port %d: must be 1-65535", p.BackendPort)
+	}
+	if p.WebPort < 1 || p.WebPort > 65535 {
+		return fmt.Errorf("invalid web port %d: must be 1-65535", p.WebPort)
+	}
+	if p.Sandbox && p.DockerSock != "" {
+		if strings.ContainsAny(p.DockerSock, "\"'`$\n\r{}[]") {
+			return fmt.Errorf("docker socket path %q contains unsafe characters", p.DockerSock)
+		}
+	}
+	return nil
+}
+
+// yamlStr safely quotes a string value for YAML, escaping special characters.
+func yamlStr(s string) string {
+	// If the string contains YAML-special characters, double-quote and escape.
+	if strings.ContainsAny(s, ":#{}[]|>&*!%@`\"'\\\n\r\t") {
+		escaped := strings.ReplaceAll(s, `\`, `\\`)
+		escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+		escaped = strings.ReplaceAll(escaped, "\n", `\n`)
+		escaped = strings.ReplaceAll(escaped, "\r", `\r`)
+		escaped = strings.ReplaceAll(escaped, "\t", `\t`)
+		return `"` + escaped + `"`
+	}
+	return `"` + s + `"`
 }

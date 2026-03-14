@@ -2,11 +2,11 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
@@ -35,7 +35,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 
 	composePath := filepath.Join(state.DataDir, "compose.yml")
-	if _, err := os.Stat(composePath); os.IsNotExist(err) {
+	if _, err := os.Stat(composePath); errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("compose.yml not found in %s — run 'synthorg init' first", state.DataDir)
 	}
 
@@ -45,15 +45,20 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Docker %s, Compose %s\n", info.DockerVersion, info.ComposeVersion)
 
+	// Check minimum versions.
+	for _, w := range docker.CheckMinVersions(info) {
+		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: %s\n", w)
+	}
+
 	// Pull latest images.
 	fmt.Fprintln(cmd.OutOrStdout(), "Pulling images...")
-	if err := composeRun(ctx, info, state.DataDir, "pull"); err != nil {
+	if err := composeRun(ctx, cmd, info, state.DataDir, "pull"); err != nil {
 		return fmt.Errorf("pulling images: %w", err)
 	}
 
 	// Start containers.
 	fmt.Fprintln(cmd.OutOrStdout(), "Starting containers...")
-	if err := composeRun(ctx, info, state.DataDir, "up", "-d"); err != nil {
+	if err := composeRun(ctx, cmd, info, state.DataDir, "up", "-d"); err != nil {
 		return fmt.Errorf("starting containers: %w", err)
 	}
 
@@ -72,13 +77,14 @@ func runStart(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func composeRun(ctx context.Context, info docker.Info, dir string, args ...string) error {
-	parts := strings.Fields(info.ComposePath)
-	parts = append(parts, args...)
+func composeRun(ctx context.Context, cobraCmd *cobra.Command, info docker.Info, dir string, args ...string) error {
+	fullArgs := make([]string, 0, len(info.ComposeCmd)-1+len(args))
+	fullArgs = append(fullArgs, info.ComposeCmd[1:]...)
+	fullArgs = append(fullArgs, args...)
 
-	c := exec.CommandContext(ctx, parts[0], parts[1:]...)
+	c := exec.CommandContext(ctx, info.ComposeCmd[0], fullArgs...)
 	c.Dir = dir
-	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
+	c.Stdout = cobraCmd.OutOrStdout()
+	c.Stderr = cobraCmd.ErrOrStderr()
 	return c.Run()
 }
