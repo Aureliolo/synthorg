@@ -626,7 +626,20 @@ class ToolInvoker:
         if result.metadata.get("requires_parking") is not True:
             return None
         if not result.metadata.get("approval_id"):
-            return None
+            logger.error(
+                TOOL_INVOKE_EXECUTION_ERROR,
+                tool_call_id=tool_call.id,
+                tool_name=tool.name,
+                note="requires_parking=True but approval_id missing",
+            )
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                content=(
+                    "Tool signalled requires_parking=True but did not "
+                    "provide an approval_id — cannot track escalation"
+                ),
+                is_error=True,
+            )
         try:
             from ai_company.engine.approval_gate_models import (  # noqa: PLC0415
                 EscalationInfo as _EscalationInfo,

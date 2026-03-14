@@ -110,12 +110,12 @@ class TestApprovalStore:
     async def test_list_with_action_type_filter(self) -> None:
         store = ApprovalStore()
         await store.add(
-            _make_item(approval_id="a1", action_type="code_merge"),
+            _make_item(approval_id="a1", action_type="code:merge"),
         )
         await store.add(
-            _make_item(approval_id="a2", action_type="deployment"),
+            _make_item(approval_id="a2", action_type="deploy:staging"),
         )
-        merges = await store.list_items(action_type="code_merge")
+        merges = await store.list_items(action_type="code:merge")
         assert len(merges) == 1
         assert merges[0].id == "a1"
 
@@ -124,7 +124,7 @@ class TestApprovalStore:
         now = _now()
         item = ApprovalItem(
             id="exp-001",
-            action_type="code_merge",
+            action_type="code:merge",
             title="Test",
             description="desc",
             requested_by="agent-dev",
@@ -162,7 +162,7 @@ class TestApprovalStore:
         now = _now()
         item = ApprovalItem(
             id="nonexistent",
-            action_type="code_merge",
+            action_type="code:merge",
             title="Test",
             description="desc",
             requested_by="agent-dev",
@@ -223,7 +223,7 @@ class TestSaveIfPending:
         now = _now()
         item = ApprovalItem(
             id="exp-001",
-            action_type="code_merge",
+            action_type="code:merge",
             title="Test",
             description="desc",
             requested_by="agent-dev",
@@ -311,7 +311,7 @@ class TestOnExpireCallback:
         now = _now()
         item = ApprovalItem(
             id="exp-001",
-            action_type="code_merge",
+            action_type="code:merge",
             title="Test",
             description="desc",
             requested_by="agent-dev",
@@ -331,7 +331,7 @@ class TestOnExpireCallback:
         now = _now()
         item = ApprovalItem(
             id="exp-001",
-            action_type="code_merge",
+            action_type="code:merge",
             title="Test",
             description="desc",
             requested_by="agent-dev",
@@ -350,7 +350,7 @@ class TestOnExpireCallback:
         live = _make_item(approval_id="live")
         expired = ApprovalItem(
             id="expired",
-            action_type="code_merge",
+            action_type="code:merge",
             title="Test",
             description="desc",
             requested_by="agent-dev",

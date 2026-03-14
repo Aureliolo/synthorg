@@ -95,11 +95,11 @@ class TestSchemaMigrations:
         }
         assert expected_v2.issubset(indexes)
 
-    async def test_v6_makes_task_id_nullable(
+    async def test_v7_makes_task_id_nullable(
         self, memory_db: aiosqlite.Connection
     ) -> None:
-        """V7 migration makes parked_contexts.task_id nullable."""
-        # Simulate a pre-v6 database with NOT NULL task_id
+        """v7 migration makes parked_contexts.task_id nullable."""
+        # Simulate a pre-v7 database with NOT NULL task_id
         await memory_db.execute("""\
 CREATE TABLE parked_contexts (
     id TEXT PRIMARY KEY,
@@ -119,7 +119,7 @@ CREATE TABLE parked_contexts (
         cols = {row[1]: row[3] for row in await cursor.fetchall()}
         assert cols["task_id"] == 1  # notnull=1
 
-        # Run migrations (applies v6)
+        # Run migrations (applies v7)
         await run_migrations(memory_db)
         assert await get_user_version(memory_db) == 7
 
@@ -128,10 +128,10 @@ CREATE TABLE parked_contexts (
         cols = {row[1]: row[3] for row in await cursor.fetchall()}
         assert cols["task_id"] == 0  # notnull=0
 
-    async def test_v6_preserves_existing_data(
+    async def test_v7_preserves_existing_data(
         self, memory_db: aiosqlite.Connection
     ) -> None:
-        """V7 migration preserves existing parked_contexts rows."""
+        """v7 migration preserves existing parked_contexts rows."""
         await memory_db.execute("""\
 CREATE TABLE parked_contexts (
     id TEXT PRIMARY KEY,

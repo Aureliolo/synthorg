@@ -152,7 +152,7 @@ CREATE TABLE IF NOT EXISTS parked_contexts (
     id TEXT PRIMARY KEY,
     execution_id TEXT NOT NULL,
     agent_id TEXT NOT NULL,
-    task_id TEXT,
+    task_id TEXT NOT NULL,
     approval_id TEXT NOT NULL,
     parked_at TEXT NOT NULL,
     context_json TEXT NOT NULL,
@@ -255,9 +255,7 @@ CREATE TABLE IF NOT EXISTS heartbeats (
     "CREATE INDEX IF NOT EXISTS idx_hb_last_heartbeat ON heartbeats(last_heartbeat_at)",
 )
 
-_V7_STATEMENTS: Sequence[str] = (
-    # ── Make parked_contexts.task_id nullable ─────────────
-    """\
+_V7_NEW_TABLE_DDL: str = """\
 CREATE TABLE IF NOT EXISTS parked_contexts_new (
     id TEXT PRIMARY KEY,
     execution_id TEXT NOT NULL,
@@ -267,8 +265,9 @@ CREATE TABLE IF NOT EXISTS parked_contexts_new (
     parked_at TEXT NOT NULL,
     context_json TEXT NOT NULL,
     metadata TEXT NOT NULL DEFAULT '{}'
-)""",
-    """\
+)"""
+
+_V7_COPY_ROWS: str = """\
 INSERT OR IGNORE INTO parked_contexts_new (
     id, execution_id, agent_id, task_id, approval_id,
     parked_at, context_json, metadata
@@ -276,14 +275,7 @@ INSERT OR IGNORE INTO parked_contexts_new (
 SELECT
     id, execution_id, agent_id, task_id, approval_id,
     parked_at, context_json, metadata
-FROM parked_contexts
-""",
-    "ALTER TABLE parked_contexts RENAME TO parked_contexts_old",
-    "ALTER TABLE parked_contexts_new RENAME TO parked_contexts",
-    "DROP TABLE IF EXISTS parked_contexts_old",
-    "CREATE INDEX IF NOT EXISTS idx_pc_agent_id ON parked_contexts(agent_id)",
-    "CREATE INDEX IF NOT EXISTS idx_pc_approval_id ON parked_contexts(approval_id)",
-)
+FROM {source}"""
 
 _MigrateFn = Callable[[aiosqlite.Connection], Coroutine[Any, Any, None]]
 
@@ -353,10 +345,59 @@ async def _apply_v6(db: aiosqlite.Connection) -> None:
         await db.execute(stmt)
 
 
+async def _table_exists(db: aiosqlite.Connection, name: str) -> bool:
+    """Check whether a table exists in the database."""
+    cursor = await db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (name,),
+    )
+    return await cursor.fetchone() is not None
+
+
 async def _apply_v7(db: aiosqlite.Connection) -> None:
-    """Apply schema v7: make parked_contexts.task_id nullable."""
-    for stmt in _V7_STATEMENTS:
-        await db.execute(stmt)
+    """Apply schema v7: make parked_contexts.task_id nullable.
+
+    Crash-safe: handles three intermediate states:
+    1. Normal (parked_contexts exists) — create new, copy, rename, drop.
+    2. Mid-crash (parked_contexts_old exists, parked_contexts gone) —
+       skip copy, just rename new → parked_contexts and drop old.
+    3. Already done (parked_contexts exists, no _new or _old) — no-op
+       via IF NOT EXISTS + OR IGNORE guards.
+    """
+    has_original = await _table_exists(db, "parked_contexts")
+    has_old = await _table_exists(db, "parked_contexts_old")
+    has_new = await _table_exists(db, "parked_contexts_new")
+
+    # Step 1: create the new table (idempotent).
+    await db.execute(_V7_NEW_TABLE_DDL)
+
+    # Step 2: copy rows from the surviving source table.
+    if has_original and not has_new:
+        await db.execute(_V7_COPY_ROWS.format(source="parked_contexts"))
+    elif has_old and not has_original:
+        # Crash happened after rename — copy from backup.
+        await db.execute(_V7_COPY_ROWS.format(source="parked_contexts_old"))
+
+    # Step 3: rename original → _old (skip if already gone).
+    if has_original and not has_old:
+        await db.execute(
+            "ALTER TABLE parked_contexts RENAME TO parked_contexts_old",
+        )
+
+    # Step 4: rename new → parked_contexts.
+    if await _table_exists(db, "parked_contexts_new"):
+        await db.execute(
+            "ALTER TABLE parked_contexts_new RENAME TO parked_contexts",
+        )
+
+    # Step 5: clean up.
+    await db.execute("DROP TABLE IF EXISTS parked_contexts_old")
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pc_agent_id ON parked_contexts(agent_id)",
+    )
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pc_approval_id ON parked_contexts(approval_id)",
+    )
 
 
 # Ordered list of (target_version, migration_function) pairs. Each migration
