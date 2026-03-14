@@ -236,14 +236,16 @@ jobs:
           # "Report fuzz outcome" step.
           echo "All CLI checks passed (some may have been skipped due to path filters)"
 
-  # ── Release (GoReleaser, only on version tags) ──
-  cli-release:
-    name: CLI Release
+  # ── Release Build (GoReleaser, only on version tags) ──
+  cli-release-build:
+    name: CLI Release Build
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [cli-lint, cli-test, cli-build, cli-vuln]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      hashes: ${{ steps.hash.outputs.hashes }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -281,9 +283,42 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Append install instructions and checksums to release notes
+      - name: Generate subject hashes for SLSA provenance
+        id: hash
+        working-directory: cli/dist
+        run: |
+          # GoReleaser writes checksums.txt in SLSA subjects format (hash  filename).
+          HASHES=$(cat checksums.txt | base64 -w0)
+          echo "hashes=$HASHES" >> "$GITHUB_OUTPUT"
+
+  # ── Release Provenance (SLSA Level 3, only on version tags) ──
+  cli-release-provenance:
+    name: CLI Release Provenance
+    needs: [cli-lint, cli-test, cli-build, cli-vuln, cli-release-build]
+    if: startsWith(github.ref, 'refs/tags/v') && needs.cli-release-build.result == 'success'
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: "${{ needs.cli-release-build.outputs.hashes }}"
+      upload-assets: true
+      provenance-name: cli-provenance.intoto.jsonl
+
+  # ── Release Notes (appended after build + provenance) ──
+  cli-release-notes:
+    name: CLI Release Notes
+    needs: [cli-release-build, cli-release-provenance]
+    if: always() && needs.cli-release-build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Append install instructions, checksums, and provenance to release notes
         env:
           GH_TOKEN: ${{ github.token }}
+          PROVENANCE_RESULT: ${{ needs.cli-release-provenance.result }}
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
 
@@ -330,13 +365,31 @@ jobs:
           NOTES
           )"
 
+          # Conditionally add provenance verification section.
+          PROVENANCE_NOTES=""
+          if [ "$PROVENANCE_RESULT" = "success" ]; then
+            PROVENANCE_NOTES="$(cat <<PROV
+
+          ### Provenance Verification (SLSA Level 3)
+
+          Verify the provenance of any archive with [slsa-verifier](https://github.com/slsa-framework/slsa-verifier):
+          \`\`\`bash
+          slsa-verifier verify-artifact synthorg_linux_amd64.tar.gz \\
+            --provenance-path cli-provenance.intoto.jsonl \\
+            --source-uri github.com/Aureliolo/synthorg \\
+            --source-tag ${TAG}
+          \`\`\`
+          PROV
+            )"
+          fi
+
           # Fetch existing body and append.
           EXISTING_BODY="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body)"
-          FULL_BODY="${EXISTING_BODY}${INSTALL_NOTES}"
+          FULL_BODY="${EXISTING_BODY}${INSTALL_NOTES}${PROVENANCE_NOTES}"
 
           tmpfile="$(mktemp)"
           printf '%s' "$FULL_BODY" > "$tmpfile"
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$tmpfile"
           rm -f "$tmpfile"
 
-          echo "Release notes updated with install instructions and checksums."
+          echo "Release notes updated with install instructions, checksums, and provenance."

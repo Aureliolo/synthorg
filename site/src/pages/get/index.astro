@@ -128,6 +128,7 @@ import Footer from "../../components/Footer.astro";
             Review the exact scripts the install commands run. They download a binary from
             <a href="https://github.com/Aureliolo/synthorg/releases" class="text-teal-400 hover:underline">GitHub Releases</a>,
             verify its SHA-256 checksum, and place it in your PATH.
+            Each release also includes SLSA Level 3 provenance attestations for independent verification.
           </p>
           <div class="flex flex-wrap gap-2">
             <a
@@ -194,6 +195,10 @@ import Footer from "../../components/Footer.astro";
               <span>Extract and move to your <code class="text-gray-300">PATH</code></span>
             </li>
           </ol>
+          <p class="text-xs text-gray-500 mt-3">
+            Each release includes <a href="https://slsa.dev" class="text-teal-400 hover:underline">SLSA L3 provenance</a> — verify with
+            <code class="text-gray-300">slsa-verifier</code>.
+          </p>
         </div>
 
         <!-- CLI is optional -->
