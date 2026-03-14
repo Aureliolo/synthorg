@@ -7,7 +7,7 @@ lifecycle hooks (startup/shutdown).
 
 import time
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from litestar import Litestar, Router
 from litestar.config.compression import CompressionConfig
@@ -24,7 +24,11 @@ from ai_company.api.auth.middleware import create_auth_middleware_class
 from ai_company.api.auth.secret import resolve_jwt_secret
 from ai_company.api.auth.service import AuthService
 from ai_company.api.bus_bridge import MessageBusBridge
-from ai_company.api.channels import CHANNEL_APPROVALS, create_channels_plugin
+from ai_company.api.channels import (
+    CHANNEL_APPROVALS,
+    CHANNEL_MEETINGS,
+    create_channels_plugin,
+)
 from ai_company.api.controllers import ALL_CONTROLLERS
 from ai_company.api.controllers.ws import ws_handler
 from ai_company.api.exception_handlers import EXCEPTION_HANDLERS
@@ -33,6 +37,10 @@ from ai_company.api.state import AppState
 from ai_company.api.ws_models import WsEvent, WsEventType
 from ai_company.budget.tracker import CostTracker  # noqa: TC001
 from ai_company.communication.bus_protocol import MessageBus  # noqa: TC001
+from ai_company.communication.meeting.orchestrator import (
+    MeetingOrchestrator,  # noqa: TC001
+)
+from ai_company.communication.meeting.scheduler import MeetingScheduler  # noqa: TC001
 from ai_company.config.schema import RootConfig
 from ai_company.core.approval import ApprovalItem  # noqa: TC001
 from ai_company.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
@@ -103,11 +111,42 @@ def _make_expire_callback(
     return _on_expire
 
 
-def _build_lifecycle(
+def _make_meeting_publisher(
+    channels_plugin: ChannelsPlugin,
+) -> Callable[[str, dict[str, Any]], None]:
+    """Create a sync callback that publishes meeting events to WS.
+
+    Args:
+        channels_plugin: Litestar channels plugin for WebSocket delivery.
+
+    Returns:
+        Sync callback ``(event_name, payload) -> None``.
+    """
+
+    def _on_meeting_event(
+        event_name: str,
+        payload: dict[str, Any],
+    ) -> None:
+        event = WsEvent(
+            event_type=WsEventType(event_name),
+            channel=CHANNEL_MEETINGS,
+            timestamp=datetime.now(UTC),
+            payload=payload,
+        )
+        channels_plugin.publish(
+            event.model_dump_json(),
+            channels=[CHANNEL_MEETINGS],
+        )
+
+    return _on_meeting_event
+
+
+def _build_lifecycle(  # noqa: PLR0913
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
     bridge: MessageBusBridge | None,
     task_engine: TaskEngine | None,
+    meeting_scheduler: MeetingScheduler | None,
     app_state: AppState,
 ) -> tuple[
     Sequence[Callable[[], Awaitable[None]]],
@@ -126,12 +165,19 @@ def _build_lifecycle(
             message_bus,
             bridge,
             task_engine,
+            meeting_scheduler,
             app_state,
         )
 
     async def on_shutdown() -> None:
         logger.info(API_APP_SHUTDOWN, version=__version__)
-        await _safe_shutdown(task_engine, bridge, message_bus, persistence)
+        await _safe_shutdown(
+            task_engine,
+            meeting_scheduler,
+            bridge,
+            message_bus,
+            persistence,
+        )
 
     return [on_startup], [on_shutdown]
 
@@ -165,8 +211,16 @@ async def _cleanup_on_failure(  # noqa: PLR0913
     started_bridge: bool = False,
     task_engine: TaskEngine | None = None,
     started_task_engine: bool = False,
+    meeting_scheduler: MeetingScheduler | None = None,
+    started_meeting_scheduler: bool = False,
 ) -> None:
-    """Reverse cleanup on startup failure (task engine, bridge, bus, persistence)."""
+    """Reverse cleanup on startup failure."""
+    if started_meeting_scheduler and meeting_scheduler is not None:
+        await _try_stop(
+            meeting_scheduler.stop(),
+            API_APP_STARTUP,
+            "Cleanup: failed to stop meeting scheduler",
+        )
     if started_task_engine and task_engine is not None:
         await _try_stop(
             task_engine.stop(),
@@ -235,14 +289,15 @@ async def _init_persistence(
             raise
 
 
-async def _safe_startup(
+async def _safe_startup(  # noqa: PLR0913, C901
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
     bridge: MessageBusBridge | None,
     task_engine: TaskEngine | None,
+    meeting_scheduler: MeetingScheduler | None,
     app_state: AppState,
 ) -> None:
-    """Connect persistence, resolve JWT secret, start bus, bridge, task engine.
+    """Start all services: persistence, bus, bridge, task engine, scheduler.
 
     Executes in order; on failure, cleans up already-started
     components in reverse order before re-raising.
@@ -251,6 +306,7 @@ async def _safe_startup(
     started_bridge = False
     started_persistence = False
     started_task_engine = False
+    started_meeting_scheduler = False
     try:
         if persistence is not None:
             try:
@@ -296,6 +352,16 @@ async def _safe_startup(
                 )
                 raise
             started_task_engine = True
+        if meeting_scheduler is not None:
+            try:
+                await meeting_scheduler.start()
+            except Exception:
+                logger.exception(
+                    API_APP_STARTUP,
+                    error="Failed to start meeting scheduler",
+                )
+                raise
+            started_meeting_scheduler = True
     except Exception:
         await _cleanup_on_failure(
             persistence=persistence,
@@ -306,22 +372,31 @@ async def _safe_startup(
             started_bridge=started_bridge,
             task_engine=task_engine,
             started_task_engine=started_task_engine,
+            meeting_scheduler=meeting_scheduler,
+            started_meeting_scheduler=started_meeting_scheduler,
         )
         raise
 
 
 async def _safe_shutdown(
     task_engine: TaskEngine | None,
+    meeting_scheduler: MeetingScheduler | None,
     bridge: MessageBusBridge | None,
     message_bus: MessageBus | None,
     persistence: PersistenceBackend | None,
 ) -> None:
-    """Stop task engine, bridge, message bus and disconnect persistence.
+    """Stop scheduler, task engine, bridge, message bus and disconnect persistence.
 
-    Mirrors ``_cleanup_on_failure`` reverse order: task engine first so it
-    can drain queued mutations and publish final snapshots through the
-    still-running bridge.
+    Mirrors ``_cleanup_on_failure`` reverse order: scheduler first (depends on
+    orchestrator), then task engine so it can drain queued mutations and
+    publish final snapshots through the still-running bridge.
     """
+    if meeting_scheduler is not None:
+        await _try_stop(
+            meeting_scheduler.stop(),
+            API_APP_SHUTDOWN,
+            "Failed to stop meeting scheduler",
+        )
     if task_engine is not None:
         await _try_stop(
             task_engine.stop(),
@@ -359,6 +434,8 @@ def create_app(  # noqa: PLR0913
     task_engine: TaskEngine | None = None,
     coordinator: MultiAgentCoordinator | None = None,
     agent_registry: AgentRegistryService | None = None,
+    meeting_orchestrator: MeetingOrchestrator | None = None,
+    meeting_scheduler: MeetingScheduler | None = None,
 ) -> Litestar:
     """Create and configure the Litestar application.
 
@@ -375,6 +452,8 @@ def create_app(  # noqa: PLR0913
         task_engine: Centralized task state engine.
         coordinator: Multi-agent coordinator.
         agent_registry: Agent registry service.
+        meeting_orchestrator: Meeting orchestrator.
+        meeting_scheduler: Meeting scheduler.
 
     Returns:
         Configured Litestar application.
@@ -401,6 +480,12 @@ def create_app(  # noqa: PLR0913
         on_expire=expire_callback,
     )
 
+    # Wire meeting event publisher to the meetings WS channel.
+    if meeting_scheduler is not None and meeting_scheduler._event_publisher is None:  # noqa: SLF001
+        meeting_scheduler._event_publisher = _make_meeting_publisher(  # noqa: SLF001
+            channels_plugin,
+        )
+
     app_state = AppState(
         config=effective_config,
         persistence=persistence,
@@ -411,6 +496,8 @@ def create_app(  # noqa: PLR0913
         task_engine=task_engine,
         coordinator=coordinator,
         agent_registry=agent_registry,
+        meeting_orchestrator=meeting_orchestrator,
+        meeting_scheduler=meeting_scheduler,
         startup_time=time.monotonic(),
     )
 
@@ -429,6 +516,7 @@ def create_app(  # noqa: PLR0913
         message_bus,
         bridge,
         task_engine,
+        meeting_scheduler,
         app_state,
     )
 

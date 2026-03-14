@@ -92,6 +92,7 @@ jobs:
 
       - name: Run tests with race detector and coverage
         working-directory: cli
+        shell: bash
         run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Upload coverage

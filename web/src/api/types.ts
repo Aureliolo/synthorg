@@ -487,6 +487,98 @@ export interface AutonomyLevelRequest {
   level: AutonomyLevel
 }
 
+// ── Meetings ─────────────────────────────────────────────────
+
+export type MeetingStatus =
+  | 'scheduled'
+  | 'in_progress'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'budget_exhausted'
+
+export type MeetingProtocolType =
+  | 'round_robin'
+  | 'position_papers'
+  | 'structured_phases'
+
+export interface MeetingAgendaItem {
+  title: string
+  description: string
+  presenter_id: string | null
+}
+
+export interface MeetingAgenda {
+  title: string
+  context: string
+  items: MeetingAgendaItem[]
+}
+
+export type MeetingPhase =
+  | 'agenda_broadcast'
+  | 'round_robin_turn'
+  | 'position_paper'
+  | 'input_gathering'
+  | 'discussion'
+  | 'synthesis'
+  | 'summary'
+
+export interface MeetingContribution {
+  agent_id: string
+  content: string
+  phase: MeetingPhase
+  turn_number: number
+  input_tokens: number
+  output_tokens: number
+  timestamp: string
+}
+
+export interface ActionItem {
+  description: string
+  assignee_id: string | null
+  priority: Priority
+}
+
+export interface MeetingMinutes {
+  meeting_id: string
+  protocol_type: MeetingProtocolType
+  leader_id: string
+  participant_ids: string[]
+  agenda: MeetingAgenda
+  contributions: MeetingContribution[]
+  summary: string
+  decisions: string[]
+  action_items: ActionItem[]
+  conflicts_detected: boolean
+  total_input_tokens: number
+  total_output_tokens: number
+  total_tokens: number
+  started_at: string
+  ended_at: string
+}
+
+export interface MeetingRecord {
+  meeting_id: string
+  meeting_type_name: string
+  protocol_type: MeetingProtocolType
+  status: MeetingStatus
+  minutes: MeetingMinutes | null
+  error_message: string | null
+  token_budget: number
+}
+
+export interface MeetingFilters {
+  status?: MeetingStatus
+  meeting_type?: string
+  offset?: number
+  limit?: number
+}
+
+export interface TriggerMeetingRequest {
+  event_name: string
+  context?: Record<string, string | string[]>
+}
+
 // ── WebSocket ────────────────────────────────────────────────
 
 export type WsChannel =
@@ -496,6 +588,7 @@ export type WsChannel =
   | 'messages'
   | 'system'
   | 'approvals'
+  | 'meetings'
 
 export type WsEventType =
   | 'task.created'
@@ -515,6 +608,9 @@ export type WsEventType =
   | 'approval.approved'
   | 'approval.rejected'
   | 'approval.expired'
+  | 'meeting.started'
+  | 'meeting.completed'
+  | 'meeting.failed'
 
 export interface WsEvent {
   event_type: WsEventType

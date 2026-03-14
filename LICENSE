@@ -5,21 +5,31 @@ Parameters
 
 Licensor:             Aurelio
 Licensed Work:        SynthOrg. The Licensed Work is (c) 2026 Aurelio.
-Additional Use Grant: You may make non-production use of the Licensed Work for
-                      personal, educational, research, and evaluation purposes only.
-                      Production use and commercial use of the Licensed Work require
-                      a separate commercial license from the Licensor.
+Additional Use Grant: You may use the Licensed Work in production, provided
+                      that:
 
-                      "Production use" means using the Licensed Work or any
-                      derivative work in a live, revenue-generating, or
-                      business-critical environment, including but not limited to:
-                      deploying the Licensed Work as part of a commercial product or
-                      service, using it to generate revenue directly or indirectly,
-                      or offering it to third parties on a hosted or embedded basis.
+                      (a) You do not offer the Licensed Work, or any product
+                      or service whose substantial value derives from the
+                      functionality of the Licensed Work, to third parties on
+                      a hosted, managed, or embedded basis ("Competing Use");
+                      and
 
-                      "Non-production use" means use solely for personal learning,
-                      academic research, testing, development, and evaluation in
-                      non-commercial settings.
+                      (b) Your organization, together with its affiliates, has
+                      fewer than 500 employees and individual contractors at
+                      the time of use ("Small Organization").
+
+                      Organizations that meet both (a) and (b) may use the
+                      Licensed Work freely in production without a separate
+                      license. All other production use — including Competing
+                      Use by any organization, or any production use by
+                      organizations with 500 or more employees and individual
+                      contractors — requires a commercial license from the
+                      Licensor, which may be granted at no cost at the
+                      Licensor's discretion.
+
+                      Non-production use (personal learning, academic research,
+                      testing, development, evaluation) is always permitted
+                      regardless of organization size.
 Change Date:          February 27, 2030
 Change License:       Apache License, Version 2.0
 

@@ -40,11 +40,11 @@ func runStop(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Fprintln(cmd.OutOrStdout(), "Stopping containers...")
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Stopping containers...")
 	if err := composeRun(ctx, cmd, info, state.DataDir, "down"); err != nil {
 		return fmt.Errorf("stopping containers: %w", err)
 	}
 
-	fmt.Fprintln(cmd.OutOrStdout(), "SynthOrg stopped.")
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "SynthOrg stopped.")
 	return nil
 }

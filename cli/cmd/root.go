@@ -53,7 +53,7 @@ func isInteractive() bool {
 // Execute runs the root command.
 func Execute() error {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(rootCmd.ErrOrStderr(), err)
+		_, _ = fmt.Fprintln(rootCmd.ErrOrStderr(), err)
 		return err
 	}
 	return nil

@@ -38,7 +38,7 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 	// Stop containers and optionally remove volumes.
 	info, dockerErr := docker.Detect(ctx)
 	if dockerErr != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: Docker not available, cannot stop containers: %v\n", dockerErr)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: Docker not available, cannot stop containers: %v\n", dockerErr)
 	} else {
 		if err := stopAndRemoveVolumes(cmd, info, state); err != nil {
 			return err
@@ -55,7 +55,7 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	fmt.Fprintln(out, "SynthOrg uninstalled.")
+	_, _ = fmt.Fprintln(out, "SynthOrg uninstalled.")
 	return nil
 }
 
@@ -75,14 +75,14 @@ func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, state config.Sta
 		return err
 	}
 
-	fmt.Fprintln(cmd.OutOrStdout(), "Stopping containers...")
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Stopping containers...")
 
 	// Use "down -v" if removing volumes (handles both stop and volume removal
 	// in a single command), otherwise just "down".
 	downArgs := []string{"down"}
 	if removeVolumes {
 		downArgs = append(downArgs, "-v")
-		fmt.Fprintln(cmd.OutOrStdout(), "Removing volumes...")
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Removing volumes...")
 	}
 
 	if err := composeRun(ctx, cmd, info, state.DataDir, downArgs...); err != nil {
@@ -115,7 +115,7 @@ func confirmAndRemoveData(cmd *cobra.Command, state config.State) error {
 		if err := os.RemoveAll(dir); err != nil {
 			return fmt.Errorf("removing data directory: %w", err)
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "Removed %s\n", dir)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed %s\n", dir)
 	}
 	return nil
 }
@@ -144,10 +144,10 @@ func confirmAndRemoveBinary(cmd *cobra.Command) error {
 			execPath = resolved
 		}
 		if err := os.Remove(execPath); err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not remove binary: %v\n", err)
-			fmt.Fprintf(cmd.OutOrStdout(), "Manually remove: %s\n", execPath)
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not remove binary: %v\n", err)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Manually remove: %s\n", execPath)
 		} else {
-			fmt.Fprintln(cmd.OutOrStdout(), "CLI binary removed.")
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "CLI binary removed.")
 		}
 	}
 	return nil

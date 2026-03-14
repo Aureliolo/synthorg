@@ -10,6 +10,10 @@ from ai_company.api.auth.service import AuthService  # noqa: TC001
 from ai_company.api.errors import ServiceUnavailableError
 from ai_company.budget.tracker import CostTracker  # noqa: TC001
 from ai_company.communication.bus_protocol import MessageBus  # noqa: TC001
+from ai_company.communication.meeting.orchestrator import (
+    MeetingOrchestrator,  # noqa: TC001
+)
+from ai_company.communication.meeting.scheduler import MeetingScheduler  # noqa: TC001
 from ai_company.config.schema import RootConfig  # noqa: TC001
 from ai_company.engine.approval_gate import ApprovalGate  # noqa: TC001
 from ai_company.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
@@ -45,6 +49,8 @@ class AppState:
         "_auth_service",
         "_coordinator",
         "_cost_tracker",
+        "_meeting_orchestrator",
+        "_meeting_scheduler",
         "_message_bus",
         "_persistence",
         "_task_engine",
@@ -66,6 +72,8 @@ class AppState:
         approval_gate: ApprovalGate | None = None,
         coordinator: MultiAgentCoordinator | None = None,
         agent_registry: AgentRegistryService | None = None,
+        meeting_orchestrator: MeetingOrchestrator | None = None,
+        meeting_scheduler: MeetingScheduler | None = None,
         startup_time: float = 0.0,
     ) -> None:
         self.config = config
@@ -78,6 +86,8 @@ class AppState:
         self._task_engine = task_engine
         self._coordinator = coordinator
         self._agent_registry = agent_registry
+        self._meeting_orchestrator = meeting_orchestrator
+        self._meeting_scheduler = meeting_scheduler
         self.startup_time = startup_time
 
     def _require_service[T](self, service: T | None, name: str) -> T:
@@ -143,6 +153,22 @@ class AppState:
             logger.error(API_APP_STARTUP, error=msg)
             raise RuntimeError(msg)
         self._task_engine = engine
+
+    @property
+    def meeting_orchestrator(self) -> MeetingOrchestrator:
+        """Return meeting orchestrator or raise 503."""
+        return self._require_service(
+            self._meeting_orchestrator,
+            "meeting_orchestrator",
+        )
+
+    @property
+    def meeting_scheduler(self) -> MeetingScheduler:
+        """Return meeting scheduler or raise 503."""
+        return self._require_service(
+            self._meeting_scheduler,
+            "meeting_scheduler",
+        )
 
     @property
     def approval_gate(self) -> ApprovalGate | None:

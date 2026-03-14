@@ -184,7 +184,7 @@ Directory suffix is auto-derived from the branch name:
    - #<N>: <title>
 
    ## Instructions
-   1. Read `DESIGN_SPEC.md` sections: <list relevant §sections from issue bodies>
+   1. Read the relevant `docs/design/` pages: <list pages matched from issue spec labels and §section references>
    2. Read the GitHub issues: <gh issue view commands>
    3. Read the relevant source modules: <list directories/files matched from spec labels + dependency parsing>
 

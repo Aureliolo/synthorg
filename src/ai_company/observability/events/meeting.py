@@ -44,3 +44,15 @@ MEETING_PARSING_NO_SECTION: Final[str] = "meeting.parsing.no_section"
 
 # Internal invariant violations
 MEETING_INTERNAL_ERROR: Final[str] = "meeting.internal.error"
+
+# Scheduler lifecycle
+MEETING_SCHEDULER_STARTED: Final[str] = "meeting.scheduler.started"
+MEETING_SCHEDULER_STOPPED: Final[str] = "meeting.scheduler.stopped"
+MEETING_PERIODIC_TRIGGERED: Final[str] = "meeting.scheduler.periodic_triggered"
+MEETING_EVENT_TRIGGERED: Final[str] = "meeting.scheduler.event_triggered"
+MEETING_PARTICIPANTS_RESOLVED: Final[str] = "meeting.scheduler.participants_resolved"
+MEETING_NO_PARTICIPANTS: Final[str] = "meeting.scheduler.no_participants"
+MEETING_SCHEDULER_ERROR: Final[str] = "meeting.scheduler.error"
+
+# API-level meeting events
+MEETING_NOT_FOUND: Final[str] = "meeting.api.not_found"
