@@ -142,6 +142,17 @@ class RecoveryStrategy(Protocol):
         """
         ...
 
+    async def finalize(
+        self,
+        execution_id: str,
+    ) -> None:
+        """Post-resume cleanup hook.
+
+        Called after a successful resume (non-ERROR termination) to
+        clean up strategy-specific state.  No-op by default.
+        """
+        ...
+
     def get_strategy_type(self) -> str:
         """Return the strategy type identifier."""
         ...
@@ -214,6 +225,9 @@ class FailAndReassignStrategy:
         )
 
         return result
+
+    async def finalize(self, execution_id: str) -> None:
+        """No-op -- fail-and-reassign has no post-resume state."""
 
     def get_strategy_type(self) -> str:
         """Return the strategy type identifier."""

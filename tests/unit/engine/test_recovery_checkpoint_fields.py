@@ -182,3 +182,101 @@ class TestBackwardCompatibility:
         assert result.checkpoint_context_json is None
         assert result.resume_attempt == 0
         assert result.strategy_type == "fail_reassign"
+
+
+@pytest.mark.unit
+class TestFailAndReassignFinalize:
+    """FailAndReassignStrategy.finalize() is a no-op."""
+
+    async def test_finalize_is_noop(self) -> None:
+        strategy = FailAndReassignStrategy()
+        # Should not raise — no state to clean up
+        await strategy.finalize("exec-001")
+
+    async def test_finalize_idempotent(self) -> None:
+        strategy = FailAndReassignStrategy()
+        await strategy.finalize("exec-001")
+        await strategy.finalize("exec-001")  # Calling twice is safe
+
+
+@pytest.mark.unit
+class TestRecoveryResultCheckpointJsonValidation:
+    """RecoveryResult rejects invalid checkpoint_context_json values."""
+
+    def test_invalid_json_raises(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """Invalid JSON in checkpoint_context_json raises ValueError."""
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        ctx = ctx.with_task_transition(
+            TaskStatus.IN_PROGRESS,
+            reason="starting",
+        )
+        assert ctx.task_execution is not None
+
+        with pytest.raises(ValueError, match="valid JSON"):
+            RecoveryResult(
+                task_execution=ctx.task_execution,
+                strategy_type="checkpoint",
+                context_snapshot=ctx.to_snapshot(),
+                error_message="crash",
+                checkpoint_context_json="{not valid}",
+                resume_attempt=1,
+            )
+
+    def test_json_array_raises(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """JSON array in checkpoint_context_json raises ValueError."""
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        ctx = ctx.with_task_transition(
+            TaskStatus.IN_PROGRESS,
+            reason="starting",
+        )
+        assert ctx.task_execution is not None
+
+        with pytest.raises(ValueError, match="JSON object"):
+            RecoveryResult(
+                task_execution=ctx.task_execution,
+                strategy_type="checkpoint",
+                context_snapshot=ctx.to_snapshot(),
+                error_message="crash",
+                checkpoint_context_json="[1, 2, 3]",
+                resume_attempt=1,
+            )
+
+    def test_json_primitive_raises(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """JSON primitive in checkpoint_context_json raises ValueError."""
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        ctx = ctx.with_task_transition(
+            TaskStatus.IN_PROGRESS,
+            reason="starting",
+        )
+        assert ctx.task_execution is not None
+
+        with pytest.raises(ValueError, match="JSON object"):
+            RecoveryResult(
+                task_execution=ctx.task_execution,
+                strategy_type="checkpoint",
+                context_snapshot=ctx.to_snapshot(),
+                error_message="crash",
+                checkpoint_context_json='"just a string"',
+                resume_attempt=1,
+            )

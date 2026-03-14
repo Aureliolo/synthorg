@@ -437,3 +437,165 @@ class TestCheckpointRecoveryCounter:
             context=ctx_b,
         )
         assert result_b.resume_attempt == 1  # Independent counter
+
+
+@pytest.mark.unit
+class TestCheckpointRecoveryFinalize:
+    """finalize() delegates to clear_resume_count."""
+
+    async def test_finalize_clears_counter(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """finalize() resets the counter for the execution."""
+        ctx, task_exec = _make_in_progress_ctx(
+            sample_agent_with_personality,
+            sample_task_with_criteria,
+        )
+        checkpoint = _make_checkpoint(execution_id=ctx.execution_id)
+        repo = _make_mock_repo(checkpoint)
+        config = CheckpointConfig(max_resume_attempts=5)
+        strategy = _make_strategy(repo, config=config)
+
+        # Use up one attempt
+        result = await strategy.recover(
+            task_execution=task_exec,
+            error_message="crash",
+            context=ctx,
+        )
+        assert result.resume_attempt == 1
+
+        # Finalize clears the counter
+        await strategy.finalize(ctx.execution_id)
+
+        # Next recovery starts at 1 again (not 2)
+        result2 = await strategy.recover(
+            task_execution=task_exec,
+            error_message="crash 2",
+            context=ctx,
+        )
+        assert result2.resume_attempt == 1
+
+    async def test_finalize_noop_for_unknown(self) -> None:
+        """finalize() on unknown execution_id is a safe no-op."""
+        repo = _make_mock_repo()
+        strategy = _make_strategy(repo)
+        await strategy.finalize("nonexistent-exec")  # Should not raise
+
+
+@pytest.mark.unit
+class TestCheckpointRecoveryFallbackCleanup:
+    """Fallback path calls cleanup_checkpoint_artifacts."""
+
+    async def test_no_checkpoint_calls_cleanup(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """When no checkpoint exists, cleanup is called before fallback."""
+        ctx, task_exec = _make_in_progress_ctx(
+            sample_agent_with_personality,
+            sample_task_with_criteria,
+        )
+        cp_repo = AsyncMock()
+        cp_repo.get_latest = AsyncMock(return_value=None)
+        cp_repo.delete_by_execution = AsyncMock(return_value=0)
+        hb_repo = AsyncMock()
+        hb_repo.delete = AsyncMock()
+
+        strategy = CheckpointRecoveryStrategy(
+            checkpoint_repo=cp_repo,
+            heartbeat_repo=hb_repo,
+            config=CheckpointConfig(),
+        )
+
+        await strategy.recover(
+            task_execution=task_exec,
+            error_message="crash",
+            context=ctx,
+        )
+
+        # Cleanup was called before fallback
+        cp_repo.delete_by_execution.assert_awaited_once_with(
+            ctx.execution_id,
+        )
+        hb_repo.delete.assert_awaited_once_with(ctx.execution_id)
+
+    async def test_exhausted_attempts_calls_cleanup(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """After max_resume_attempts, cleanup is called before fallback."""
+        ctx, task_exec = _make_in_progress_ctx(
+            sample_agent_with_personality,
+            sample_task_with_criteria,
+        )
+        checkpoint = _make_checkpoint(execution_id=ctx.execution_id)
+        cp_repo = AsyncMock()
+        cp_repo.get_latest = AsyncMock(return_value=checkpoint)
+        cp_repo.delete_by_execution = AsyncMock(return_value=1)
+        hb_repo = AsyncMock()
+        hb_repo.delete = AsyncMock()
+
+        config = CheckpointConfig(max_resume_attempts=0)
+        strategy = CheckpointRecoveryStrategy(
+            checkpoint_repo=cp_repo,
+            heartbeat_repo=hb_repo,
+            config=config,
+        )
+
+        result = await strategy.recover(
+            task_execution=task_exec,
+            error_message="crash",
+            context=ctx,
+        )
+
+        assert result.can_resume is False
+        # Cleanup was called
+        cp_repo.delete_by_execution.assert_awaited_once()
+        hb_repo.delete.assert_awaited_once()
+
+
+@pytest.mark.unit
+class TestCheckpointRecoveryExceptionPropagation:
+    """MemoryError and RecursionError propagate through _load_latest."""
+
+    async def test_memory_error_propagates(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        ctx, task_exec = _make_in_progress_ctx(
+            sample_agent_with_personality,
+            sample_task_with_criteria,
+        )
+        repo = _make_mock_repo(error=MemoryError("out of memory"))
+        strategy = _make_strategy(repo)
+
+        with pytest.raises(MemoryError):
+            await strategy.recover(
+                task_execution=task_exec,
+                error_message="crash",
+                context=ctx,
+            )
+
+    async def test_recursion_error_propagates(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        ctx, task_exec = _make_in_progress_ctx(
+            sample_agent_with_personality,
+            sample_task_with_criteria,
+        )
+        repo = _make_mock_repo(error=RecursionError("max depth"))
+        strategy = _make_strategy(repo)
+
+        with pytest.raises(RecursionError):
+            await strategy.recover(
+                task_execution=task_exec,
+                error_message="crash",
+                context=ctx,
+            )

@@ -12,7 +12,7 @@ from ai_company.engine.checkpoint.models import (
     Heartbeat,
 )
 from ai_company.engine.checkpoint.resume import (
-    cleanup_after_resume,
+    cleanup_checkpoint_artifacts,
     deserialize_and_reconcile,
 )
 from ai_company.engine.checkpoint.strategy import CheckpointRecoveryStrategy
@@ -23,7 +23,7 @@ __all__ = [
     "CheckpointConfig",
     "CheckpointRecoveryStrategy",
     "Heartbeat",
-    "cleanup_after_resume",
+    "cleanup_checkpoint_artifacts",
     "deserialize_and_reconcile",
     "make_checkpoint_callback",
 ]

@@ -17,11 +17,10 @@ from ai_company.engine._validation import (
 )
 from ai_company.engine.checkpoint.models import CheckpointConfig
 from ai_company.engine.checkpoint.resume import (
-    cleanup_after_resume,
+    cleanup_checkpoint_artifacts,
     deserialize_and_reconcile,
     make_loop_with_callback,
 )
-from ai_company.engine.checkpoint.strategy import CheckpointRecoveryStrategy
 from ai_company.engine.classification.pipeline import classify_execution_errors
 from ai_company.engine.context import DEFAULT_MAX_TURNS, AgentContext
 from ai_company.engine.cost_recording import record_execution_costs
@@ -313,6 +312,8 @@ class AgentEngine:
                 duration_seconds=time.monotonic() - start,
                 ctx=ctx,
                 system_prompt=system_prompt,
+                completion_config=completion_config,
+                effective_autonomy=effective_autonomy,
             )
 
     async def _execute(  # noqa: PLR0913
@@ -391,6 +392,11 @@ class AgentEngine:
         (best-effort).  Classification and sync failures are logged,
         never fatal.
         """
+        # Costs are recorded BEFORE recovery intentionally — the
+        # pre-recovery execution's cost (including partial turns that
+        # led to the error) should be tracked.  The resumed execution
+        # will have its own cost recording when it completes through
+        # the normal pipeline.
         await record_execution_costs(
             execution_result,
             identity,
@@ -683,10 +689,15 @@ class AgentEngine:
         """Resume execution from a checkpoint.
 
         Delegates to ``deserialize_and_reconcile`` for context
-        reconstruction and ``cleanup_after_resume`` for post-resume
-        housekeeping.  Budget checking is constructed ad-hoc (same
-        approach as ``_execute``); timeout is not applied because
-        the original wall-clock deadline is no longer available.
+        reconstruction and ``cleanup_checkpoint_artifacts`` for
+        post-resume housekeeping.  Budget checking is constructed
+        ad-hoc (same approach as ``_execute``).
+
+        Policy: resumed executions run without a wall-clock timeout.
+        The original deadline is not available after deserialization,
+        and applying a fresh full-duration timeout could mask issues.
+        The loop's per-turn budget and max_turns still constrain
+        execution.
         """
         if recovery_result.checkpoint_context_json is None:
             logger.error(
@@ -706,14 +717,9 @@ class AgentEngine:
         )
 
         try:
-            checkpoint_ctx = deserialize_and_reconcile(
+            result, execution_id = await self._reconstruct_and_run_resume(
                 recovery_result.checkpoint_context_json,
                 recovery_result.error_message,
-                agent_id,
-                task_id,
-            )
-            result = await self._execute_resumed_loop(
-                checkpoint_ctx,
                 agent_id,
                 task_id,
                 completion_config=completion_config,
@@ -732,11 +738,42 @@ class AgentEngine:
         else:
             await self._finalize_resume(
                 result,
-                checkpoint_ctx.execution_id,
+                execution_id,
                 agent_id,
                 task_id,
             )
             return result
+
+    async def _reconstruct_and_run_resume(  # noqa: PLR0913
+        self,
+        checkpoint_context_json: str,
+        error_message: str,
+        agent_id: str,
+        task_id: str,
+        *,
+        completion_config: CompletionConfig | None = None,
+        effective_autonomy: EffectiveAutonomy | None = None,
+    ) -> tuple[ExecutionResult, str]:
+        """Deserialize checkpoint context and run the resumed loop.
+
+        Returns:
+            A ``(result, execution_id)`` tuple so the caller can
+            call ``_finalize_resume`` with the execution identifier.
+        """
+        checkpoint_ctx = deserialize_and_reconcile(
+            checkpoint_context_json,
+            error_message,
+            agent_id,
+            task_id,
+        )
+        result = await self._execute_resumed_loop(
+            checkpoint_ctx,
+            agent_id,
+            task_id,
+            completion_config=completion_config,
+            effective_autonomy=effective_autonomy,
+        )
+        return result, checkpoint_ctx.execution_id
 
     async def _execute_resumed_loop(
         self,
@@ -790,14 +827,9 @@ class AgentEngine:
             termination_reason=result.termination_reason.value,
         )
         if result.termination_reason != TerminationReason.ERROR:
-            if isinstance(
-                self._recovery_strategy,
-                CheckpointRecoveryStrategy,
-            ):
-                await self._recovery_strategy.clear_resume_count(
-                    execution_id,
-                )
-            await cleanup_after_resume(
+            if self._recovery_strategy is not None:
+                await self._recovery_strategy.finalize(execution_id)
+            await cleanup_checkpoint_artifacts(
                 self._checkpoint_repo,
                 self._heartbeat_repo,
                 execution_id,
@@ -991,6 +1023,8 @@ class AgentEngine:
         duration_seconds: float,
         ctx: AgentContext | None = None,
         system_prompt: SystemPrompt | None = None,
+        completion_config: CompletionConfig | None = None,
+        effective_autonomy: EffectiveAutonomy | None = None,
     ) -> AgentRunResult:
         """Build an error ``AgentRunResult`` when the execution pipeline fails.
 
@@ -1018,6 +1052,8 @@ class AgentEngine:
                 task_id,
                 error_msg,
                 ctx,
+                completion_config=completion_config,
+                effective_autonomy=effective_autonomy,
             )
             # Sync fatal-error recovery status to TaskEngine (best-effort).
             error_ctx = error_execution.context
@@ -1078,6 +1114,9 @@ class AgentEngine:
         task_id: str,
         error_msg: str,
         ctx: AgentContext | None,
+        *,
+        completion_config: CompletionConfig | None = None,
+        effective_autonomy: EffectiveAutonomy | None = None,
     ) -> ExecutionResult:
         """Create an error ``ExecutionResult`` and apply recovery."""
         error_ctx = ctx or AgentContext.from_identity(identity, task=task)
@@ -1090,4 +1129,6 @@ class AgentEngine:
             error_execution,
             agent_id,
             task_id,
+            completion_config=completion_config,
+            effective_autonomy=effective_autonomy,
         )

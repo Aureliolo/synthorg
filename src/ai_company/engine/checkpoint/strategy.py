@@ -13,7 +13,7 @@ from ai_company.engine.checkpoint.models import (
     Checkpoint,  # noqa: TC001
     CheckpointConfig,  # noqa: TC001
 )
-from ai_company.engine.checkpoint.resume import cleanup_after_resume
+from ai_company.engine.checkpoint.resume import cleanup_checkpoint_artifacts
 from ai_company.engine.context import AgentContext  # noqa: TC001
 from ai_company.engine.recovery import (
     FailAndReassignStrategy,
@@ -124,7 +124,7 @@ class CheckpointRecoveryStrategy:
                 context=context,
             )
 
-        should_fallback = await self._reserve_resume_attempt(
+        should_fallback, resume_attempt = await self._reserve_resume_attempt(
             execution_id,
             task_id,
         )
@@ -140,7 +140,12 @@ class CheckpointRecoveryStrategy:
             error_message=error_message,
             context=context,
             checkpoint=checkpoint,
+            resume_attempt=resume_attempt,
         )
+
+    async def finalize(self, execution_id: str) -> None:
+        """Clear resume counter after successful completion."""
+        await self.clear_resume_count(execution_id)
 
     def get_strategy_type(self) -> str:
         """Return the strategy type identifier."""
@@ -203,8 +208,13 @@ class CheckpointRecoveryStrategy:
         self,
         execution_id: str,
         task_id: str,
-    ) -> bool:
-        """Reserve a resume attempt, returning ``True`` when exhausted."""
+    ) -> tuple[bool, int]:
+        """Reserve a resume attempt.
+
+        Returns:
+            A ``(should_fallback, resume_count)`` tuple.
+            ``should_fallback`` is ``True`` when attempts are exhausted.
+        """
         async with self._resume_lock:
             resume_count = self._resume_counts.get(execution_id, 0)
             if resume_count >= self._config.max_resume_attempts:
@@ -217,16 +227,20 @@ class CheckpointRecoveryStrategy:
                     reason="max_resume_attempts_exhausted",
                 )
                 self._resume_counts.pop(execution_id, None)
-                return True
+                return True, resume_count
 
-            self._resume_counts[execution_id] = resume_count + 1
+            new_count = resume_count + 1
+            self._resume_counts[execution_id] = new_count
 
-            # Evict oldest entries when the dict grows too large
+            # Evict oldest entry (FIFO).  LRU would be more precise
+            # but FIFO is acceptable given the 10k safety bound — the
+            # dict only contains active executions that have crashed at
+            # least once, which should be far fewer than 10k.
             if len(self._resume_counts) > _MAX_TRACKED_EXECUTIONS:
                 oldest = next(iter(self._resume_counts))
                 self._resume_counts.pop(oldest, None)
 
-        return False
+        return False, new_count
 
     def _build_resume_result(
         self,
@@ -235,11 +249,10 @@ class CheckpointRecoveryStrategy:
         error_message: str,
         context: AgentContext,
         checkpoint: Checkpoint,
+        resume_attempt: int,
     ) -> RecoveryResult:
         """Build a resumable ``RecoveryResult``."""
         execution_id = context.execution_id
-        resume_attempt = self._resume_counts.get(execution_id, 1)
-
         snapshot = context.to_snapshot()
         logger.info(
             CHECKPOINT_RECOVERY_RESUME,
@@ -272,7 +285,7 @@ class CheckpointRecoveryStrategy:
         Also cleans up any orphaned checkpoint/heartbeat rows for
         this execution, since the resume path will not be entered.
         """
-        await cleanup_after_resume(
+        await cleanup_checkpoint_artifacts(
             self._checkpoint_repo,
             self._heartbeat_repo,
             context.execution_id,

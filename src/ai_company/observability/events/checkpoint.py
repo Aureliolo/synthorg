@@ -27,3 +27,6 @@ CHECKPOINT_RECOVERY_RESUME: Final[str] = "checkpoint.recovery.resume"
 CHECKPOINT_RECOVERY_FALLBACK: Final[str] = "checkpoint.recovery.fallback"
 CHECKPOINT_RECOVERY_NO_CHECKPOINT: Final[str] = "checkpoint.recovery.no_checkpoint"
 CHECKPOINT_RECOVERY_RECONCILIATION: Final[str] = "checkpoint.recovery.reconciliation"
+CHECKPOINT_RECOVERY_DESERIALIZE_FAILED: Final[str] = (
+    "checkpoint.recovery.deserialize_failed"
+)

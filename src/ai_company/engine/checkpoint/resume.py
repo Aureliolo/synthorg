@@ -17,6 +17,7 @@ from ai_company.observability import get_logger
 from ai_company.observability.events.checkpoint import (
     CHECKPOINT_DELETE_FAILED,
     CHECKPOINT_DELETED,
+    CHECKPOINT_RECOVERY_DESERIALIZE_FAILED,
     CHECKPOINT_RECOVERY_RECONCILIATION,
     CHECKPOINT_UNSUPPORTED_LOOP,
     HEARTBEAT_DELETE_FAILED,
@@ -61,7 +62,7 @@ def deserialize_and_reconcile(
         checkpoint_ctx = AgentContext.model_validate_json(checkpoint_json)
     except ValueError:
         logger.exception(
-            CHECKPOINT_RECOVERY_RECONCILIATION,
+            CHECKPOINT_RECOVERY_DESERIALIZE_FAILED,
             agent_id=agent_id,
             task_id=task_id,
             error="Failed to deserialize checkpoint context",
@@ -126,12 +127,15 @@ def make_loop_with_callback(  # noqa: PLR0913
     return loop
 
 
-async def cleanup_after_resume(
+async def cleanup_checkpoint_artifacts(
     checkpoint_repo: CheckpointRepository | None,
     heartbeat_repo: HeartbeatRepository | None,
     execution_id: str,
 ) -> None:
-    """Delete checkpoints and heartbeat after a successful resume.
+    """Delete checkpoints and heartbeat for an execution.
+
+    Used after successful resume completion and on fallback paths
+    to prevent orphaned rows.
 
     Best-effort: errors are logged but never propagated.
 

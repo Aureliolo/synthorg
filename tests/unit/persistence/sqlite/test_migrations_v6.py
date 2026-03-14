@@ -101,6 +101,7 @@ class TestV6MigrationIndexes:
             "idx_cp_execution_id",
             "idx_cp_task_id",
             "idx_cp_exec_turn",
+            "idx_cp_task_turn",
         }
         assert expected.issubset(indexes)
 
