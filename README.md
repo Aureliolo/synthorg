@@ -79,9 +79,13 @@ Built-in tools (file system, git, sandbox, code runner) plus MCP bridge for exte
 ### Install CLI
 
 ```bash
-brew install aureliolo/tap/synthorg                         # macOS
-scoop bucket add aureliolo https://github.com/Aureliolo/scoop-bucket && scoop install synthorg  # Windows
-curl -sSfL https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.sh | sh  # Linux
+# Linux / macOS
+curl -sSfL https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.sh | sh
+```
+
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.ps1 | iex
 ```
 
 ### Setup & Run

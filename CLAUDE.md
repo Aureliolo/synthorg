@@ -150,7 +150,7 @@ cli/                # Go CLI binary (cross-platform, manages Docker lifecycle)
     selfupdate/     # GitHub Releases self-update + binary replacement
   scripts/          # Install scripts (install.sh, install.ps1)
   testdata/         # Golden files for compose generation tests
-  .goreleaser.yml   # GoReleaser config (cross-compile, checksums, Homebrew, Scoop)
+  .goreleaser.yml   # GoReleaser config (cross-compile, checksums)
 ```
 
 ## Shell Usage
@@ -248,7 +248,7 @@ cli/                # Go CLI binary (cross-platform, manages Docker lifecycle)
   - Concurrency group cancels stale builds on rapid pushes
 - **Docker**: `.github/workflows/docker.yml` — builds backend + web images, pushes to GHCR, signs with cosign. Scans: Trivy (CRITICAL = hard fail, HIGH = warn-only) + Grype (critical cutoff). CVE triage via `.github/.trivyignore.yaml` and `.github/.grype.yaml`. Images only pushed after scans pass. Triggers on push to main and version tags (`v*`).
 - **Matrix**: Python 3.14
-- **CLI**: `.github/workflows/cli.yml` — Go lint (`golangci-lint` + `go vet`) + test (`-race -coverprofile`) + build (cross-compile matrix: linux/darwin/windows × amd64/arm64) + vulnerability check (`govulncheck`) on `cli/**` changes. GoReleaser release on `v*` tags (attaches assets to existing Release Please release, pushes to Homebrew tap + Scoop bucket).
+- **CLI**: `.github/workflows/cli.yml` — Go lint (`golangci-lint` + `go vet`) + test (`-race -coverprofile`) + build (cross-compile matrix: linux/darwin/windows × amd64/arm64) + vulnerability check (`govulncheck`) on `cli/**` changes. GoReleaser release on `v*` tags (attaches assets to existing Release Please release). Post-release step pins checksums in install scripts and appends install instructions + checksum table to GitHub Release notes.
 - **Dependabot**: daily uv + github-actions + npm + pre-commit + docker + gomod updates, grouped minor/patch, no auto-merge. Use `/review-dep-pr` to review Dependabot PRs before merging
 - **Python audit**: `.github/workflows/python-audit.yml` — weekly pip-audit scan for Python dependency vulnerabilities (also runs per-PR via `python-audit` job in ci.yml)
 - **Dockerfile lint**: hadolint lints all 3 Dockerfiles (backend, web, sandbox) in CI via `dockerfile-lint` job + hadolint-docker pre-commit hook locally

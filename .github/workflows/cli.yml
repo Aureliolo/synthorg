@@ -194,12 +194,7 @@ jobs:
           args: release --clean
           workdir: cli
         env:
-          # GITHUB_TOKEN for release assets; GORELEASER_TAP_TOKEN for
-          # pushing to homebrew-tap and scoop-bucket external repos.
-          # If GORELEASER_TAP_TOKEN is not set, tap/bucket updates are
-          # skipped (GoReleaser handles this gracefully).
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GORELEASER_TAP_TOKEN: ${{ secrets.GORELEASER_TAP_TOKEN }}
 
       - name: Pin checksums in install scripts and update release notes
         env:
@@ -256,16 +251,6 @@ jobs:
           **Windows (PowerShell):**
           \`\`\`powershell
           irm https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.ps1 | iex
-          \`\`\`
-
-          **Homebrew:**
-          \`\`\`bash
-          brew install Aureliolo/tap/synthorg
-          \`\`\`
-
-          **Scoop:**
-          \`\`\`powershell
-          scoop bucket add aureliolo https://github.com/Aureliolo/scoop-bucket && scoop install synthorg
           \`\`\`
 
           ### Checksums (SHA-256)
