@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.1.4](https://github.com/Aureliolo/synthorg/compare/v0.1.3...v0.1.4) (2026-03-14)
+
+
+### Features
+
+* add approval workflow gates to TaskEngine ([#387](https://github.com/Aureliolo/synthorg/issues/387)) ([2db968a](https://github.com/Aureliolo/synthorg/commit/2db968a21fb0f0afa42eb990ee70cbb7b71d2ae5))
+* implement checkpoint recovery strategy ([#367](https://github.com/Aureliolo/synthorg/issues/367)) ([f886838](https://github.com/Aureliolo/synthorg/commit/f886838af9789a1ed9834f1c16883e893c764761))
+
+
+### CI/CD
+
+* add npm and pre-commit ecosystems to Dependabot ([#369](https://github.com/Aureliolo/synthorg/issues/369)) ([54e5fe7](https://github.com/Aureliolo/synthorg/commit/54e5fe7c0351cd44ffd638fe662a4394e4a2eeea))
+* bump actions/setup-node from 4.4.0 to 6.3.0 ([#360](https://github.com/Aureliolo/synthorg/issues/360)) ([2db5105](https://github.com/Aureliolo/synthorg/commit/2db5105429da3937daa8d0bb58593cc8dacd756f))
+* bump github/codeql-action from 3.32.6 to 4.32.6 ([#361](https://github.com/Aureliolo/synthorg/issues/361)) ([ce766e8](https://github.com/Aureliolo/synthorg/commit/ce766e8b655af0cb80674a37eabd379ba0794011))
+* group major dependabot bumps per ecosystem ([#388](https://github.com/Aureliolo/synthorg/issues/388)) ([3c43aef](https://github.com/Aureliolo/synthorg/commit/3c43aef7660a78fbfa337d448d954d21ed928806))
+
+
+### Maintenance
+
+* bump @vitejs/plugin-vue from 5.2.4 to 6.0.5 in /web ([#382](https://github.com/Aureliolo/synthorg/issues/382)) ([d7054ee](https://github.com/Aureliolo/synthorg/commit/d7054ee2c379341211e8dbd088ec2d03f8887e9c))
+* bump @vue/tsconfig from 0.7.0 to 0.9.0 in /web in the minor-and-patch group across 1 directory ([#371](https://github.com/Aureliolo/synthorg/issues/371)) ([64fa08b](https://github.com/Aureliolo/synthorg/commit/64fa08b63ab8e7c30fbb2b94c40b2a3aa9044df4))
+* bump astro from 5.18.1 to 6.0.4 in /site ([#376](https://github.com/Aureliolo/synthorg/issues/376)) ([d349317](https://github.com/Aureliolo/synthorg/commit/d349317a189e97e625b39d038387b9e324e56d8f))
+* bump https://github.com/astral-sh/ruff-pre-commit from v0.15.5 to 0.15.6 ([#372](https://github.com/Aureliolo/synthorg/issues/372)) ([dcacb2e](https://github.com/Aureliolo/synthorg/commit/dcacb2eb3a890b7b1e4907a881b3fe87ba11f083))
+* bump https://github.com/gitleaks/gitleaks from v8.24.3 to 8.30.1 ([#375](https://github.com/Aureliolo/synthorg/issues/375)) ([a18e6ed](https://github.com/Aureliolo/synthorg/commit/a18e6ed04f9bcb02b132f1e0ff161046948bc3fa))
+* bump https://github.com/hadolint/hadolint from v2.12.0 to 2.14.0 ([#373](https://github.com/Aureliolo/synthorg/issues/373)) ([47b906b](https://github.com/Aureliolo/synthorg/commit/47b906b63e46678d2acec50f5a45f2916cd65086))
+* bump https://github.com/pre-commit/pre-commit-hooks from v5.0.0 to 6.0.0 ([#374](https://github.com/Aureliolo/synthorg/issues/374)) ([1926555](https://github.com/Aureliolo/synthorg/commit/1926555d8116d3d60902bce789c1f3e0e6ec96e0))
+* bump litellm from 1.82.1 to 1.82.2 in the minor-and-patch group ([#385](https://github.com/Aureliolo/synthorg/issues/385)) ([fa4f7b7](https://github.com/Aureliolo/synthorg/commit/fa4f7b76809c7b8c2c99c839b23994f87c7a60b5))
+* bump node from 22-alpine to 25-alpine in /docker/web ([#359](https://github.com/Aureliolo/synthorg/issues/359)) ([8d56cd3](https://github.com/Aureliolo/synthorg/commit/8d56cd362ff1ce544d2be858751e504cace1b12c))
+* bump node from 22-slim to 25-slim in /docker/sandbox ([#358](https://github.com/Aureliolo/synthorg/issues/358)) ([3de8748](https://github.com/Aureliolo/synthorg/commit/3de8748af5a77058f5d6f496a693b731f13b1490))
+* bump pinia from 2.3.1 to 3.0.4 in /web ([#381](https://github.com/Aureliolo/synthorg/issues/381)) ([c78dcc2](https://github.com/Aureliolo/synthorg/commit/c78dcc2de57340836d504b836242c2e67497a7db))
+* bump the major group across 1 directory with 9 updates ([#389](https://github.com/Aureliolo/synthorg/issues/389)) ([9fa621b](https://github.com/Aureliolo/synthorg/commit/9fa621bc33d78373608179b639108cb03dc83115))
+* bump the minor-and-patch group with 2 updates ([#362](https://github.com/Aureliolo/synthorg/issues/362)) ([6ede2ce](https://github.com/Aureliolo/synthorg/commit/6ede2cee6fe97b39b37e37997b7cc102fd0f5994))
+* bump vue-router from 4.6.4 to 5.0.3 in /web ([#378](https://github.com/Aureliolo/synthorg/issues/378)) ([6c60f6c](https://github.com/Aureliolo/synthorg/commit/6c60f6c822d7a975c012dc588041348f119e0744))
+* expand review skills to 18 smart conditional agents ([#364](https://github.com/Aureliolo/synthorg/issues/364)) ([494013f](https://github.com/Aureliolo/synthorg/commit/494013feb1c6d4e7977c75cf4f42714bf1615bbd))
+
 ## [0.1.3](https://github.com/Aureliolo/synthorg/compare/v0.1.2...v0.1.3) (2026-03-13)
 
 
