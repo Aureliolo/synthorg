@@ -62,10 +62,11 @@ func Load(dataDir string) (State, error) {
 	}
 	// Canonicalize and validate DataDir.
 	if s.DataDir != "" {
-		s.DataDir = filepath.Clean(s.DataDir)
-		if !filepath.IsAbs(s.DataDir) {
-			return State{}, fmt.Errorf("data_dir must be an absolute path, got %q", s.DataDir)
+		safeLoaded, err := SecurePath(s.DataDir)
+		if err != nil {
+			return State{}, fmt.Errorf("data_dir: %w", err)
 		}
+		s.DataDir = safeLoaded
 	}
 	return s, nil
 }

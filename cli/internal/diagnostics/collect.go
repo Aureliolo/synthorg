@@ -46,17 +46,16 @@ func Collect(ctx context.Context, state config.State) Report {
 		CLICommit:  version.Commit,
 	}
 
-	safeDir, err := config.SecurePath(state.DataDir)
-	if err != nil {
-		r.Errors = append(r.Errors, fmt.Sprintf("path: %v", err))
-		return r
+	safeDir, pathErr := config.SecurePath(state.DataDir)
+	if pathErr != nil {
+		r.Errors = append(r.Errors, fmt.Sprintf("path: %v", pathErr))
 	}
 
-	// Docker info.
+	// Docker info (requires valid safeDir for compose commands).
 	info, err := docker.Detect(ctx)
 	if err != nil {
 		r.Errors = append(r.Errors, fmt.Sprintf("docker: %v", err))
-	} else {
+	} else if pathErr == nil {
 		r.DockerVersion = info.DockerVersion
 		r.ComposeVersion = info.ComposeVersion
 
@@ -69,6 +68,9 @@ func Collect(ctx context.Context, state config.State) Report {
 		if logs, err := docker.ComposeExecOutput(ctx, info, safeDir, "logs", "--tail", "50", "--no-color"); err == nil {
 			r.RecentLogs = truncate(logs, 4000)
 		}
+	} else {
+		r.DockerVersion = info.DockerVersion
+		r.ComposeVersion = info.ComposeVersion
 	}
 
 	// Health endpoint.
@@ -100,8 +102,10 @@ func Collect(ctx context.Context, state config.State) Report {
 		r.ConfigRedacted = string(b)
 	}
 
-	// Disk space for data directory (best-effort).
-	r.DiskInfo = diskInfo(ctx, safeDir)
+	// Disk space for data directory (best-effort, skip if path invalid).
+	if pathErr == nil {
+		r.DiskInfo = diskInfo(ctx, safeDir)
+	}
 
 	return r
 }

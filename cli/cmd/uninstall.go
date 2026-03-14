@@ -61,7 +61,7 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 
 func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, state config.State) error {
 	ctx := cmd.Context()
-	safeDir, err := config.SecurePath(state.DataDir)
+	safeDir, err := safeStateDir(state)
 	if err != nil {
 		return err
 	}
@@ -110,7 +110,7 @@ func confirmAndRemoveData(cmd *cobra.Command, state config.State) error {
 	}
 
 	if removeData {
-		dir, err := config.SecurePath(state.DataDir)
+		dir, err := safeStateDir(state)
 		if err != nil {
 			return err
 		}
