@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -20,7 +22,7 @@ _task_types = st.sampled_from(list(TaskType))
 _priorities = st.sampled_from(list(Priority))
 _complexities = st.sampled_from(list(Complexity))
 
-_TASK_DEFAULTS: dict = {
+_TASK_DEFAULTS: dict[str, Any] = {
     "id": "task-001",
     "title": "Test task",
     "description": "A test task",
@@ -34,7 +36,7 @@ _TASK_DEFAULTS: dict = {
 }
 
 
-def _make_task_kwargs(**overrides: object) -> dict:
+def _make_task_kwargs(**overrides: Any) -> dict[str, Any]:
     return {**_TASK_DEFAULTS, **overrides}
 
 
@@ -53,7 +55,7 @@ _roundtrip_st = st.fixed_dictionaries(
 class TestTaskRoundtripProperties:
     @given(data=_roundtrip_st)
     @settings(max_examples=100)
-    def test_model_dump_validate_roundtrip(self, data: dict) -> None:
+    def test_model_dump_validate_roundtrip(self, data: dict[str, Any]) -> None:
         task = Task(
             id="task-rt-001",
             title=data["title"],

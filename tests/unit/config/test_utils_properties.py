@@ -1,4 +1,5 @@
 import copy
+from typing import Any
 
 import pytest
 from hypothesis import given, settings
@@ -40,7 +41,7 @@ str_key_dicts = st.dictionaries(
 class TestDeepMergeProperties:
     @given(a=str_key_dicts)
     @settings(max_examples=100)
-    def test_identity_merge_with_empty(self, a: dict) -> None:
+    def test_identity_merge_with_empty(self, a: dict[str, Any]) -> None:
         result = deep_merge(a, {})
         assert result == a
         # Result must be a distinct object (deep copy)
@@ -49,13 +50,13 @@ class TestDeepMergeProperties:
 
     @given(a=str_key_dicts, b=str_key_dicts)
     @settings(max_examples=100)
-    def test_result_keys_are_union(self, a: dict, b: dict) -> None:
+    def test_result_keys_are_union(self, a: dict[str, Any], b: dict[str, Any]) -> None:
         result = deep_merge(a, b)
         assert set(result.keys()) == set(a.keys()) | set(b.keys())
 
     @given(a=str_key_dicts, b=str_key_dicts)
     @settings(max_examples=100)
-    def test_inputs_are_not_mutated(self, a: dict, b: dict) -> None:
+    def test_inputs_are_not_mutated(self, a: dict[str, Any], b: dict[str, Any]) -> None:
         a_before = copy.deepcopy(a)
         b_before = copy.deepcopy(b)
         deep_merge(a, b)
@@ -73,7 +74,9 @@ class TestDeepMergeProperties:
         override_z=st.integers(),
     )
     @settings(max_examples=100)
-    def test_recursive_nested_merge(self, base: dict, override_z: int) -> None:
+    def test_recursive_nested_merge(
+        self, base: dict[str, Any], override_z: int
+    ) -> None:
         override = {"nested": {"z": override_z}}
         result = deep_merge(base, override)
         # Original nested keys preserved
@@ -84,7 +87,9 @@ class TestDeepMergeProperties:
 
     @given(a=str_key_dicts, b=str_key_dicts)
     @settings(max_examples=100)
-    def test_override_values_win_for_non_dict(self, a: dict, b: dict) -> None:
+    def test_override_values_win_for_non_dict(
+        self, a: dict[str, Any], b: dict[str, Any]
+    ) -> None:
         result = deep_merge(a, b)
         for key, value in b.items():
             if not (key in a and isinstance(a[key], dict) and isinstance(value, dict)):

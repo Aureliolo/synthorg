@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -42,7 +44,7 @@ class TestSubstituteEnvVarsProperties:
         ),
     )
     @settings(max_examples=100)
-    def test_no_env_vars_passes_through(self, data: dict) -> None:
+    def test_no_env_vars_passes_through(self, data: dict[str, Any]) -> None:
         has_env_pattern = any(
             isinstance(v, str) and "${" in v and "}" in v for v in data.values()
         )
@@ -71,7 +73,7 @@ class TestSubstituteEnvVarsProperties:
         ),
     )
     @settings(max_examples=50)
-    def test_non_string_values_unchanged(self, data: dict) -> None:
+    def test_non_string_values_unchanged(self, data: dict[str, Any]) -> None:
         result = _substitute_env_vars(data)
         assert result == data
 

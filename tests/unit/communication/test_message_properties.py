@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 from hypothesis import given, settings
@@ -37,7 +38,7 @@ _message_kwargs_st = st.fixed_dictionaries(
 )
 
 
-def _kwargs_to_message_dict(kwargs: dict) -> dict:
+def _kwargs_to_message_dict(kwargs: dict[str, Any]) -> dict[str, Any]:
     return {
         "from": kwargs["sender"],
         "to": kwargs["to"],
@@ -49,7 +50,7 @@ def _kwargs_to_message_dict(kwargs: dict) -> dict:
     }
 
 
-def _make_default_message_kwargs() -> dict:
+def _make_default_message_kwargs() -> dict[str, Any]:
     return {
         "from": "agent-sender",
         "to": "agent-receiver",
@@ -64,7 +65,7 @@ def _make_default_message_kwargs() -> dict:
 class TestMessageRoundtripProperties:
     @given(data=_message_kwargs_st)
     @settings(max_examples=100)
-    def test_model_dump_validate_roundtrip(self, data: dict) -> None:
+    def test_model_dump_validate_roundtrip(self, data: dict[str, Any]) -> None:
         msg = Message(**_kwargs_to_message_dict(data))
         dumped = msg.model_dump(by_alias=True)
         restored = Message.model_validate(dumped)
@@ -72,7 +73,7 @@ class TestMessageRoundtripProperties:
 
     @given(data=_message_kwargs_st)
     @settings(max_examples=50)
-    def test_roundtrip_preserves_sender_alias(self, data: dict) -> None:
+    def test_roundtrip_preserves_sender_alias(self, data: dict[str, Any]) -> None:
         msg = Message(**_kwargs_to_message_dict(data))
         sender = data["sender"]
 
