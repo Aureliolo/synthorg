@@ -12,6 +12,8 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+      major:
+        update-types: [major]
     open-pull-requests-limit: 10
     reviewers:
       - Aureliolo
@@ -29,6 +31,8 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+      major:
+        update-types: [major]
     open-pull-requests-limit: 10
     reviewers:
       - Aureliolo
@@ -46,6 +50,8 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+      major:
+        update-types: [major]
     open-pull-requests-limit: 5
     reviewers:
       - Aureliolo
@@ -65,6 +71,8 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+      major:
+        update-types: [major]
     open-pull-requests-limit: 10
     reviewers:
       - Aureliolo
@@ -82,6 +90,8 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+      major:
+        update-types: [major]
     open-pull-requests-limit: 5
     reviewers:
       - Aureliolo
@@ -96,6 +106,11 @@ updates:
       timezone: Etc/UTC
     commit-message:
       prefix: "chore"
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+      major:
+        update-types: [major]
     open-pull-requests-limit: 5
     reviewers:
       - Aureliolo
@@ -110,6 +125,11 @@ updates:
       timezone: Etc/UTC
     commit-message:
       prefix: "chore"
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+      major:
+        update-types: [major]
     open-pull-requests-limit: 5
     reviewers:
       - Aureliolo
@@ -124,6 +144,11 @@ updates:
       timezone: Etc/UTC
     commit-message:
       prefix: "chore"
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+      major:
+        update-types: [major]
     open-pull-requests-limit: 5
     reviewers:
       - Aureliolo
