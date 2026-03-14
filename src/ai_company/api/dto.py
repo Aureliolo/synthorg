@@ -24,13 +24,13 @@ from ai_company.core.enums import (
     TaskType,
 )
 from ai_company.core.types import NotBlankStr  # noqa: TC001
+from ai_company.core.validation import is_valid_action_type
 
 DEFAULT_LIMIT: int = 50
 MAX_LIMIT: int = 200
 
 _MAX_METADATA_KEYS: int = 20
 _MAX_METADATA_STR_LEN: int = 256
-_ACTION_TYPE_PARTS: int = 2
 
 
 # ── Response envelopes ──────────────────────────────────────────
@@ -221,12 +221,7 @@ class CreateApprovalRequest(BaseModel):
     @field_validator("action_type")
     @classmethod
     def _validate_action_type_format(cls, v: str) -> str:
-        parts = v.split(":")
-        if (
-            len(parts) != _ACTION_TYPE_PARTS
-            or not parts[0].strip()
-            or not parts[1].strip()
-        ):
+        if not is_valid_action_type(v):
             msg = "action_type must use 'category:action' format"
             raise ValueError(msg)
         return v

@@ -1,8 +1,11 @@
 """Tests for RequestHumanApprovalTool."""
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from ai_company.api.approval_store import ApprovalStore
+from ai_company.core.enums import ApprovalRiskLevel
 from ai_company.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
 from ai_company.tools.approval_tool import RequestHumanApprovalTool
 
@@ -254,3 +257,45 @@ class TestErrorHandling:
         )
         assert result2.is_error
         assert "Failed to create approval request" in result2.content
+
+
+class TestRiskClassificationFailure:
+    """Risk classifier exception handling."""
+
+    async def test_classifier_exception_defaults_to_high(self) -> None:
+        classifier = MagicMock(spec=DefaultRiskTierClassifier)
+        classifier.classify.side_effect = ValueError("unexpected action")
+
+        tool = RequestHumanApprovalTool(
+            approval_store=ApprovalStore(),
+            risk_classifier=classifier,
+            agent_id="agent-1",
+        )
+        result = await tool.execute(
+            arguments={
+                "action_type": "custom:weird",
+                "title": "Weird action",
+                "description": "Unusual action",
+            },
+        )
+        assert not result.is_error
+        assert result.metadata["risk_level"] == ApprovalRiskLevel.HIGH.value
+
+    async def test_classifier_returns_low_risk(self) -> None:
+        classifier = MagicMock(spec=DefaultRiskTierClassifier)
+        classifier.classify.return_value = ApprovalRiskLevel.LOW
+
+        tool = RequestHumanApprovalTool(
+            approval_store=ApprovalStore(),
+            risk_classifier=classifier,
+            agent_id="agent-1",
+        )
+        result = await tool.execute(
+            arguments={
+                "action_type": "read:config",
+                "title": "Read config",
+                "description": "Read configuration",
+            },
+        )
+        assert not result.is_error
+        assert result.metadata["risk_level"] == ApprovalRiskLevel.LOW.value

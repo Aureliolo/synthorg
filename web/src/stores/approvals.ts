@@ -75,20 +75,20 @@ export const useApprovalStore = defineStore('approvals', () => {
         switch (event.event_type) {
           case 'approval.submitted':
             if (!approvals.value.some((a) => a.id === approvalId)) {
-              try {
-                const item = await approvalsApi.getApproval(approvalId)
-                if (activeFilters.value) {
-                  // Filters are active — item may not match; just bump total
-                  total.value++
-                } else {
+              if (activeFilters.value) {
+                // Filters active — re-fetch the filtered query to stay consistent
+                await fetchApprovals(activeFilters.value)
+              } else {
+                try {
+                  const item = await approvalsApi.getApproval(approvalId)
                   approvals.value = [item, ...approvals.value]
                   total.value++
-                }
-              } catch (err) {
-                if (axios.isAxiosError(err) && (err.response?.status === 404 || err.response?.status === 410)) {
-                  // Item genuinely gone — skip
-                } else {
-                  console.warn('Failed to fetch approval:', approvalId, err)
+                } catch (err) {
+                  if (axios.isAxiosError(err) && (err.response?.status === 404 || err.response?.status === 410)) {
+                    // Item genuinely gone — skip
+                  } else {
+                    console.warn('Failed to fetch approval:', approvalId, err)
+                  }
                 }
               }
             }
@@ -96,22 +96,27 @@ export const useApprovalStore = defineStore('approvals', () => {
           case 'approval.approved':
           case 'approval.rejected':
           case 'approval.expired':
-            try {
-              const updated = await approvalsApi.getApproval(approvalId)
-              approvals.value = approvals.value.map((a) =>
-                a.id === approvalId ? updated : a,
-              )
-            } catch (err) {
-              if (axios.isAxiosError(err) && (err.response?.status === 404 || err.response?.status === 410)) {
-                // Item genuinely gone — remove from local list
-                const lengthBefore = approvals.value.length
-                approvals.value = approvals.value.filter((a) => a.id !== approvalId)
-                const removed = lengthBefore - approvals.value.length
-                if (removed > 0) {
-                  total.value = Math.max(0, total.value - removed)
+            if (activeFilters.value) {
+              // Filters active — re-fetch to reconcile (items may enter/leave the filtered set)
+              await fetchApprovals(activeFilters.value)
+            } else {
+              try {
+                const updated = await approvalsApi.getApproval(approvalId)
+                approvals.value = approvals.value.map((a) =>
+                  a.id === approvalId ? updated : a,
+                )
+              } catch (err) {
+                if (axios.isAxiosError(err) && (err.response?.status === 404 || err.response?.status === 410)) {
+                  // Item genuinely gone — remove from local list
+                  const lengthBefore = approvals.value.length
+                  approvals.value = approvals.value.filter((a) => a.id !== approvalId)
+                  const removed = lengthBefore - approvals.value.length
+                  if (removed > 0) {
+                    total.value = Math.max(0, total.value - removed)
+                  }
+                } else {
+                  console.warn('Failed to fetch approval:', approvalId, err)
                 }
-              } else {
-                console.warn('Failed to fetch approval:', approvalId, err)
               }
             }
             break

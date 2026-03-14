@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useApprovalStore } from '@/stores/approvals'
 import type { ApprovalItem, WsEvent } from '@/api/types'
@@ -40,6 +40,10 @@ describe('useApprovalStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   it('initializes with empty state', () => {
@@ -255,14 +259,17 @@ describe('useApprovalStore', () => {
       expect(store.total).toBe(1)
     })
 
-    it('only increments total when filters are active on submit', async () => {
+    it('re-fetches filtered query on submit when filters active', async () => {
       mockListApprovals.mockResolvedValue({ data: [mockApproval], total: 1 })
-      mockGetApproval.mockResolvedValue({ ...mockApproval, id: 'approval-2' })
 
       const store = useApprovalStore()
       await store.fetchApprovals({ status: 'pending' })
       expect(store.total).toBe(1)
       expect(store.approvals).toHaveLength(1)
+
+      // After initial fetch, simulate a new item arriving via WS
+      const newApproval = { ...mockApproval, id: 'approval-2' }
+      mockListApprovals.mockResolvedValue({ data: [mockApproval, newApproval], total: 2 })
 
       const event: WsEvent = {
         event_type: 'approval.submitted',
@@ -273,9 +280,36 @@ describe('useApprovalStore', () => {
       store.handleWsEvent(event)
       await flushPromises()
 
-      // total incremented but item not inserted (filters active)
+      // Should have re-fetched with filters — listApprovals called again
+      expect(mockListApprovals).toHaveBeenCalledTimes(2)
+      expect(mockListApprovals).toHaveBeenLastCalledWith({ status: 'pending' })
       expect(store.total).toBe(2)
-      expect(store.approvals).toHaveLength(1)
+      expect(store.approvals).toHaveLength(2)
+    })
+
+    it('re-fetches filtered query on status change when filters active', async () => {
+      mockListApprovals.mockResolvedValue({ data: [mockApproval], total: 1 })
+
+      const store = useApprovalStore()
+      await store.fetchApprovals({ status: 'pending' })
+      expect(store.total).toBe(1)
+
+      // After approval, the pending filter should now return empty
+      mockListApprovals.mockResolvedValue({ data: [], total: 0 })
+
+      const event: WsEvent = {
+        event_type: 'approval.approved',
+        channel: 'approvals',
+        timestamp: '2026-03-12T10:01:00Z',
+        payload: { approval_id: 'approval-1', status: 'approved', action_type: 'deploy:production', risk_level: 'high' },
+      }
+      store.handleWsEvent(event)
+      await flushPromises()
+
+      // Should have re-fetched with filters
+      expect(mockListApprovals).toHaveBeenCalledTimes(2)
+      expect(store.total).toBe(0)
+      expect(store.approvals).toHaveLength(0)
     })
 
     it('only decrements total when item was actually removed', async () => {

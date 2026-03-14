@@ -152,7 +152,7 @@ CREATE TABLE IF NOT EXISTS parked_contexts (
     id TEXT PRIMARY KEY,
     execution_id TEXT NOT NULL,
     agent_id TEXT NOT NULL,
-    task_id TEXT NOT NULL,
+    task_id TEXT,
     approval_id TEXT NOT NULL,
     parked_at TEXT NOT NULL,
     context_json TEXT NOT NULL,

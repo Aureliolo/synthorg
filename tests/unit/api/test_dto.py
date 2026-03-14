@@ -2,7 +2,7 @@
 
 import pytest
 
-from ai_company.api.dto import ApiResponse, CreateApprovalRequest
+from ai_company.api.dto import ApiResponse, ApproveRequest, CreateApprovalRequest
 from ai_company.core.enums import ApprovalRiskLevel
 
 
@@ -75,3 +75,101 @@ class TestCreateApprovalRequestMetadata:
             metadata={"key": "value"},
         )
         assert req.metadata == {"key": "value"}
+
+
+@pytest.mark.unit
+class TestCreateApprovalRequestActionType:
+    @pytest.mark.parametrize(
+        "invalid_action_type",
+        [
+            "deploy",
+            ":release",
+            "deploy:",
+            "deploy:  ",
+            "  :release",
+            "a:b:c",
+        ],
+    )
+    def test_invalid_format_rejected(self, invalid_action_type: str) -> None:
+        with pytest.raises(ValueError, match="category:action"):
+            CreateApprovalRequest(
+                action_type=invalid_action_type,
+                title="Test",
+                description="Test desc",
+                risk_level=ApprovalRiskLevel.LOW,
+            )
+
+    @pytest.mark.parametrize(
+        "valid_action_type",
+        [
+            "deploy:production",
+            "db:admin",
+            "comms:internal",
+            "test:action",
+        ],
+    )
+    def test_valid_format_accepted(self, valid_action_type: str) -> None:
+        req = CreateApprovalRequest(
+            action_type=valid_action_type,
+            title="Test",
+            description="Test desc",
+            risk_level=ApprovalRiskLevel.LOW,
+        )
+        assert req.action_type == valid_action_type
+
+
+@pytest.mark.unit
+class TestCreateApprovalRequestTtl:
+    def test_ttl_below_minimum_rejected(self) -> None:
+        with pytest.raises(ValueError, match="greater than or equal to 60"):
+            CreateApprovalRequest(
+                action_type="deploy:release",
+                title="Test",
+                description="Test desc",
+                risk_level=ApprovalRiskLevel.LOW,
+                ttl_seconds=30,
+            )
+
+    def test_ttl_above_maximum_rejected(self) -> None:
+        with pytest.raises(ValueError, match="less than or equal to 604800"):
+            CreateApprovalRequest(
+                action_type="deploy:release",
+                title="Test",
+                description="Test desc",
+                risk_level=ApprovalRiskLevel.LOW,
+                ttl_seconds=700000,
+            )
+
+    def test_ttl_within_bounds(self) -> None:
+        req = CreateApprovalRequest(
+            action_type="deploy:release",
+            title="Test",
+            description="Test desc",
+            risk_level=ApprovalRiskLevel.LOW,
+            ttl_seconds=3600,
+        )
+        assert req.ttl_seconds == 3600
+
+    def test_ttl_none_by_default(self) -> None:
+        req = CreateApprovalRequest(
+            action_type="deploy:release",
+            title="Test",
+            description="Test desc",
+            risk_level=ApprovalRiskLevel.LOW,
+        )
+        assert req.ttl_seconds is None
+
+
+@pytest.mark.unit
+class TestApproveRequestDto:
+    def test_comment_optional(self) -> None:
+        req = ApproveRequest()
+        assert req.comment is None
+
+    def test_comment_within_bounds(self) -> None:
+        req = ApproveRequest(comment="Looks good")
+        assert req.comment == "Looks good"
+
+    def test_comment_too_long(self) -> None:
+        with pytest.raises(ValueError, match="at most 4096"):
+            ApproveRequest(comment="x" * 5000)

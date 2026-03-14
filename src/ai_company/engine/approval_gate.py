@@ -230,6 +230,13 @@ class ApprovalGate:
                 parked_id=parked.id,
                 note="delete() returned False — parked record may still exist",
             )
+        else:
+            logger.debug(
+                APPROVAL_GATE_CONTEXT_RESUMED,
+                approval_id=approval_id,
+                parked_id=parked.id,
+                note="Parked record successfully deleted",
+            )
 
         logger.info(
             APPROVAL_GATE_CONTEXT_RESUMED,

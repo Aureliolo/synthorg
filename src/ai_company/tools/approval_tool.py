@@ -11,11 +11,13 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from ai_company.core.enums import ApprovalRiskLevel, ToolCategory
+from ai_company.core.validation import is_valid_action_type
 from ai_company.observability import get_logger
 from ai_company.observability.events.approval_gate import (
     APPROVAL_GATE_ESCALATION_DETECTED,
     APPROVAL_GATE_ESCALATION_FAILED,
     APPROVAL_GATE_RISK_CLASSIFIED,
+    APPROVAL_GATE_RISK_CLASSIFY_FAILED,
 )
 
 from .base import BaseTool, ToolExecutionResult
@@ -214,8 +216,7 @@ class RequestHumanApprovalTool(BaseTool):
 
         Returns ``None`` if valid, or an error result if invalid.
         """
-        parts = action_type.split(":")
-        if len(parts) != 2 or not parts[0].strip() or not parts[1].strip():  # noqa: PLR2004
+        if not is_valid_action_type(action_type):
             return ToolExecutionResult(
                 content=(
                     f"Invalid action_type {action_type!r}: "
@@ -239,7 +240,7 @@ class RequestHumanApprovalTool(BaseTool):
                 raise
             except Exception:
                 logger.exception(
-                    APPROVAL_GATE_RISK_CLASSIFIED,
+                    APPROVAL_GATE_RISK_CLASSIFY_FAILED,
                     action_type=action_type,
                     note="Risk classification failed — defaulting to HIGH",
                 )
