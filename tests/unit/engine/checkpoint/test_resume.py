@@ -97,6 +97,7 @@ class TestDeserializeAndReconcileSuccess:
         # Last message should be the reconciliation message
         last_msg = result.conversation[-1]
         assert last_msg.role is MessageRole.SYSTEM
+        assert last_msg.content is not None
         assert "turn 5" in last_msg.content
         assert "rate limit exceeded" in last_msg.content
         assert "Review progress and continue" in last_msg.content
@@ -249,7 +250,7 @@ class TestMakeLoopWithCallbackInjection:
             "agent-1",
             "task-1",
         )
-        assert result is original
+        assert result is original  # type: ignore[comparison-overlap]
 
 
 # ---------------------------------------------------------------------------
