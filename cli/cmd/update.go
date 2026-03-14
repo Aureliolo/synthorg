@@ -93,6 +93,11 @@ func updateContainerImages(cmd *cobra.Command) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
+	safeDir, err := safeStateDir(state)
+	if err != nil {
+		return err
+	}
+
 	info, err := docker.Detect(ctx)
 	if err != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: Docker not available, skipping image update: %v\n", err)
@@ -100,12 +105,12 @@ func updateContainerImages(cmd *cobra.Command) error {
 	}
 
 	_, _ = fmt.Fprintln(out, "Pulling latest container images...")
-	if err := composeRun(ctx, cmd, info, state.DataDir, "pull"); err != nil {
+	if err := composeRun(ctx, cmd, info, safeDir, "pull"); err != nil {
 		return fmt.Errorf("pulling images: %w", err)
 	}
 
 	// Check if containers are running and offer restart.
-	psOut, err := docker.ComposeExecOutput(ctx, info, state.DataDir, "ps", "-q")
+	psOut, err := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "-q")
 	if err != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not check container status: %v\n", err)
 		return nil
@@ -129,10 +134,10 @@ func updateContainerImages(cmd *cobra.Command) error {
 	}
 
 	_, _ = fmt.Fprintln(out, "Restarting...")
-	if err := composeRun(ctx, cmd, info, state.DataDir, "down"); err != nil {
+	if err := composeRun(ctx, cmd, info, safeDir, "down"); err != nil {
 		return fmt.Errorf("stopping containers: %w", err)
 	}
-	if err := composeRun(ctx, cmd, info, state.DataDir, "up", "-d"); err != nil {
+	if err := composeRun(ctx, cmd, info, safeDir, "up", "-d"); err != nil {
 		return fmt.Errorf("restarting containers: %w", err)
 	}
 

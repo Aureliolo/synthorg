@@ -50,12 +50,7 @@ func Load(dataDir string) (State, error) {
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			defaults := DefaultState()
-			// Normalize the dataDir the same way we validate loaded paths.
-			clean := filepath.Clean(dataDir)
-			if !filepath.IsAbs(clean) {
-				return State{}, fmt.Errorf("data_dir must be an absolute path, got %q", dataDir)
-			}
-			defaults.DataDir = clean
+			defaults.DataDir = safeDir
 			return defaults, nil
 		}
 		return State{}, err
@@ -76,12 +71,14 @@ func Load(dataDir string) (State, error) {
 }
 
 // Save writes State to disk as indented JSON.
+// DataDir is normalized to the SecurePath-cleaned form before persisting.
 func Save(s State) error {
 	safeDir, err := SecurePath(s.DataDir)
 	if err != nil {
 		return err
 	}
-	if err := EnsureDir(safeDir); err != nil {
+	s.DataDir = safeDir // persist the canonical path
+	if err := os.MkdirAll(safeDir, 0o700); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(s, "", "  ")

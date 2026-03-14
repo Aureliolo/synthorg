@@ -18,7 +18,12 @@ const appDirName = "synthorg"
 func DataDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		home = "." // fallback to current directory
+		// Fallback to absolute CWD so SecurePath's absolute-path check passes.
+		if cwd, cwdErr := os.Getwd(); cwdErr == nil {
+			home = cwd
+		} else {
+			home = "/" // last resort — will be valid on Unix, best-effort on Windows
+		}
 	}
 	return dataDirForOS(runtime.GOOS, home, os.Getenv("LOCALAPPDATA"), os.Getenv("XDG_DATA_HOME"))
 }
@@ -44,6 +49,10 @@ func dataDirForOS(goos, home, localAppData, xdgDataHome string) string {
 // SecurePath validates that a path is absolute and returns a cleaned version.
 // This satisfies static analysis (CodeQL go/path-injection) by ensuring
 // environment-variable-derived paths are sanitized before filesystem use.
+//
+// Security note: this validates path format only. The CLI trusts user-provided
+// paths (--data-dir, config file) by design — the user controls their own
+// installation directory. No filesystem containment is enforced.
 func SecurePath(path string) (string, error) {
 	clean := filepath.Clean(path)
 	if !filepath.IsAbs(clean) {

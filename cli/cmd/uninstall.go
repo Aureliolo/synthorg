@@ -61,6 +61,10 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 
 func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, state config.State) error {
 	ctx := cmd.Context()
+	safeDir, err := config.SecurePath(state.DataDir)
+	if err != nil {
+		return err
+	}
 
 	var removeVolumes bool
 	form := huh.NewForm(
@@ -85,7 +89,7 @@ func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, state config.Sta
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Removing volumes...")
 	}
 
-	if err := composeRun(ctx, cmd, info, state.DataDir, downArgs...); err != nil {
+	if err := composeRun(ctx, cmd, info, safeDir, downArgs...); err != nil {
 		return fmt.Errorf("stopping containers: %w", err)
 	}
 

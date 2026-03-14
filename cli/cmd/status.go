@@ -58,8 +58,8 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	_, _ = fmt.Fprintf(out, "Docker:  %s\n", info.DockerVersion)
 	_, _ = fmt.Fprintf(out, "Compose: %s\n\n", info.ComposeVersion)
 
-	printContainerStates(ctx, out, info, state)
-	printResourceUsage(ctx, out, info, state)
+	printContainerStates(ctx, out, info, safeDir)
+	printResourceUsage(ctx, out, info, safeDir)
 	printHealthStatus(ctx, out, state)
 
 	return nil
@@ -71,8 +71,8 @@ func printVersionInfo(out io.Writer, state config.State) {
 	_, _ = fmt.Fprintf(out, "Image tag:   %s\n\n", state.ImageTag)
 }
 
-func printContainerStates(ctx context.Context, out io.Writer, info docker.Info, state config.State) {
-	psOut, err := docker.ComposeExecOutput(ctx, info, state.DataDir, "ps", "--format", "json")
+func printContainerStates(ctx context.Context, out io.Writer, info docker.Info, dataDir string) {
+	psOut, err := docker.ComposeExecOutput(ctx, info, dataDir, "ps", "--format", "json")
 	if err != nil {
 		_, _ = fmt.Fprintf(out, "Could not get container states: %v\n", err)
 		return
@@ -81,9 +81,9 @@ func printContainerStates(ctx context.Context, out io.Writer, info docker.Info, 
 	_, _ = fmt.Fprintln(out, psOut)
 }
 
-func printResourceUsage(ctx context.Context, out io.Writer, info docker.Info, state config.State) {
+func printResourceUsage(ctx context.Context, out io.Writer, info docker.Info, dataDir string) {
 	// Get container IDs for this compose project only.
-	psOut, err := docker.ComposeExecOutput(ctx, info, state.DataDir, "ps", "-q")
+	psOut, err := docker.ComposeExecOutput(ctx, info, dataDir, "ps", "-q")
 	if err != nil || strings.TrimSpace(psOut) == "" {
 		return
 	}

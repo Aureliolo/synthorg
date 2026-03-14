@@ -185,7 +185,8 @@ func writeInitFiles(state config.State) error {
 	if err != nil {
 		return err
 	}
-	if err := config.EnsureDir(safeDir); err != nil {
+	state.DataDir = safeDir // normalize before persisting
+	if err := os.MkdirAll(safeDir, 0o700); err != nil {
 		return fmt.Errorf("creating data directory: %w", err)
 	}
 
@@ -232,8 +233,11 @@ func generateSecret(n int) (string, error) {
 }
 
 func fileExists(path string) bool {
-	clean := filepath.Clean(path)
-	_, err := os.Stat(clean)
+	safe, err := config.SecurePath(path)
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(safe)
 	return err == nil
 }
 

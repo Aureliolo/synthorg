@@ -46,6 +46,12 @@ func Collect(ctx context.Context, state config.State) Report {
 		CLICommit:  version.Commit,
 	}
 
+	safeDir, err := config.SecurePath(state.DataDir)
+	if err != nil {
+		r.Errors = append(r.Errors, fmt.Sprintf("path: %v", err))
+		return r
+	}
+
 	// Docker info.
 	info, err := docker.Detect(ctx)
 	if err != nil {
@@ -55,12 +61,12 @@ func Collect(ctx context.Context, state config.State) Report {
 		r.ComposeVersion = info.ComposeVersion
 
 		// Container states.
-		if ps, err := docker.ComposeExecOutput(ctx, info, state.DataDir, "ps", "--format", "json"); err == nil {
+		if ps, err := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "--format", "json"); err == nil {
 			r.ContainerPS = strings.TrimSpace(ps)
 		}
 
 		// Recent logs (last 50 lines).
-		if logs, err := docker.ComposeExecOutput(ctx, info, state.DataDir, "logs", "--tail", "50", "--no-color"); err == nil {
+		if logs, err := docker.ComposeExecOutput(ctx, info, safeDir, "logs", "--tail", "50", "--no-color"); err == nil {
 			r.RecentLogs = truncate(logs, 4000)
 		}
 	}
@@ -95,7 +101,7 @@ func Collect(ctx context.Context, state config.State) Report {
 	}
 
 	// Disk space for data directory (best-effort).
-	r.DiskInfo = diskInfo(ctx, state.DataDir)
+	r.DiskInfo = diskInfo(ctx, safeDir)
 
 	return r
 }
