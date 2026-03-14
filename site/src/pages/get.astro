@@ -56,20 +56,22 @@ import Footer from "../components/Footer.astro";
       <div class="mb-8">
         <p class="text-sm text-gray-400 mb-2 font-mono">Windows (PowerShell)</p>
         <div class="relative bg-[#0d1117] rounded-xl border border-white/10 overflow-hidden">
-          <div class="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-white/10">
-            <div class="flex items-center gap-2">
-              <span class="w-3 h-3 rounded-full bg-red-500/80"></span>
-              <span class="w-3 h-3 rounded-full bg-yellow-500/80"></span>
-              <span class="w-3 h-3 rounded-full bg-green-500/80"></span>
-              <span class="ml-2 text-xs text-gray-500 font-mono">powershell</span>
+          <div class="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-white/10">
+            <span class="text-xs text-gray-500 font-mono">PowerShell</span>
+            <div class="flex items-center gap-3">
+              <button
+                class="copy-btn text-xs text-gray-500 hover:text-gray-300 transition-colors px-2 py-1 rounded hover:bg-white/5"
+                data-code="irm https://synthorg.io/get/install.ps1 | iex"
+                aria-label="Copy to clipboard"
+              >
+                Copy
+              </button>
+              <div class="flex items-center gap-2.5 text-gray-600 text-xs leading-none">
+                <span>&#x2500;</span>
+                <span>&#x25A1;</span>
+                <span>&#x2715;</span>
+              </div>
             </div>
-            <button
-              class="copy-btn text-xs text-gray-500 hover:text-gray-300 transition-colors px-2 py-1 rounded hover:bg-white/5"
-              data-code="irm https://synthorg.io/get/install.ps1 | iex"
-              aria-label="Copy to clipboard"
-            >
-              Copy
-            </button>
           </div>
           <pre class="p-4 text-sm font-['JetBrains_Mono',monospace] text-gray-300 overflow-x-auto leading-relaxed"><code><span class="text-gray-500">PS&gt;</span> irm https://synthorg.io/get/install.ps1 | iex</code></pre>
         </div>
@@ -79,12 +81,10 @@ import Footer from "../components/Footer.astro";
       <div class="bg-[#1a1f2e] rounded-xl p-6 border border-violet-500/20">
         <p class="text-sm text-gray-400 mb-3">Then set up and start your organization:</p>
         <div class="relative bg-[#0d1117] rounded-xl border border-white/10 overflow-hidden">
-          <div class="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-white/10">
+          <div class="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-white/10">
             <div class="flex items-center gap-2">
-              <span class="w-3 h-3 rounded-full bg-red-500/80"></span>
-              <span class="w-3 h-3 rounded-full bg-yellow-500/80"></span>
-              <span class="w-3 h-3 rounded-full bg-green-500/80"></span>
-              <span class="ml-2 text-xs text-gray-500 font-mono">terminal</span>
+              <span class="text-gray-600 text-xs font-mono">&gt;_</span>
+              <span class="text-xs text-gray-500 font-mono">terminal</span>
             </div>
             <button
               class="copy-btn text-xs text-gray-500 hover:text-gray-300 transition-colors px-2 py-1 rounded hover:bg-white/5"
@@ -213,18 +213,32 @@ import Footer from "../components/Footer.astro";
   <!-- ============================================================ -->
   <Footer />
 
+  <!-- Screen-reader live region for copy status -->
+  <span id="copy-status" class="sr-only" role="status" aria-live="polite"></span>
+
   <!-- Copy button script -->
   <script>
+    const copyStatus = document.getElementById('copy-status');
+    function flashCopy(el: HTMLElement, msg: string) {
+      el.textContent = msg;
+      if (copyStatus) copyStatus.textContent = msg;
+      setTimeout(() => {
+        el.textContent = 'Copy';
+        if (copyStatus) copyStatus.textContent = '';
+      }, 2000);
+    }
     document.querySelectorAll('.copy-btn').forEach(btn => {
       btn.addEventListener('click', function() {
         const code = this.getAttribute('data-code') || '';
         const el = this as HTMLElement;
+        if (!navigator.clipboard) {
+          flashCopy(el, 'Copy failed');
+          return;
+        }
         navigator.clipboard.writeText(code).then(() => {
-          el.textContent = 'Copied!';
-          setTimeout(() => { el.textContent = 'Copy'; }, 2000);
+          flashCopy(el, 'Copied!');
         }).catch(() => {
-          el.textContent = 'Copy failed';
-          setTimeout(() => { el.textContent = 'Copy'; }, 2000);
+          flashCopy(el, 'Copy failed');
         });
       });
     });

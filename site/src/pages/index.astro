@@ -414,9 +414,17 @@ import Footer from "../components/Footer.astro";
       <script>
         document.getElementById('copy-terminal')?.addEventListener('click', function() {
           const text = 'curl -sSfL https://synthorg.io/get/install.sh | bash\nsynthorg init\nsynthorg start';
+          const btn = this;
+          if (!navigator.clipboard) {
+            btn.textContent = 'Copy failed';
+            setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+            return;
+          }
           navigator.clipboard.writeText(text).then(() => {
-            const btn = this;
             btn.textContent = 'Copied!';
+            setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+          }).catch(() => {
+            btn.textContent = 'Copy failed';
             setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
           });
         });
