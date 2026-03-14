@@ -7,6 +7,7 @@ APPROVAL_GATE_ESCALATION_DETECTED: Final[str] = "approval_gate.escalation.detect
 APPROVAL_GATE_ESCALATION_FAILED: Final[str] = "approval_gate.escalation.failed"
 APPROVAL_GATE_RISK_CLASSIFIED: Final[str] = "approval_gate.risk.classified"
 APPROVAL_GATE_RISK_CLASSIFY_FAILED: Final[str] = "approval_gate.risk.classify_failed"
+APPROVAL_GATE_LOOP_WIRING_WARNING: Final[str] = "approval_gate.loop_wiring_warning"
 APPROVAL_GATE_CONTEXT_PARKED: Final[str] = "approval_gate.context.parked"
 APPROVAL_GATE_CONTEXT_PARK_FAILED: Final[str] = "approval_gate.context.park_failed"
 APPROVAL_GATE_PARK_TASKLESS: Final[str] = "approval_gate.park.taskless"

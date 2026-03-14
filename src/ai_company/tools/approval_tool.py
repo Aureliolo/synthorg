@@ -16,6 +16,7 @@ from ai_company.observability import get_logger
 from ai_company.observability.events.approval_gate import (
     APPROVAL_GATE_ESCALATION_DETECTED,
     APPROVAL_GATE_ESCALATION_FAILED,
+    APPROVAL_GATE_RISK_CLASSIFIED,
     APPROVAL_GATE_RISK_CLASSIFY_FAILED,
 )
 
@@ -243,7 +244,7 @@ class RequestHumanApprovalTool(BaseTool):
         """
         if self._risk_classifier is not None:
             try:
-                return self._risk_classifier.classify(action_type)
+                level = self._risk_classifier.classify(action_type)
             except MemoryError, RecursionError:
                 raise
             except Exception:
@@ -253,9 +254,10 @@ class RequestHumanApprovalTool(BaseTool):
                     note="Risk classification failed — defaulting to HIGH",
                 )
                 return ApprovalRiskLevel.HIGH
-        logger.debug(
-            APPROVAL_GATE_RISK_CLASSIFY_FAILED,
-            action_type=action_type,
-            note="No risk classifier configured — defaulting to HIGH",
-        )
+            logger.debug(
+                APPROVAL_GATE_RISK_CLASSIFIED,
+                action_type=action_type,
+                risk_level=level.value,
+            )
+            return level
         return ApprovalRiskLevel.HIGH
