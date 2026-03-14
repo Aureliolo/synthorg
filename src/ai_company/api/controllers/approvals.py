@@ -27,7 +27,6 @@ from ai_company.core.enums import (
     ApprovalRiskLevel,
     ApprovalStatus,
 )
-from ai_company.engine.approval_gate import ApprovalGate
 from ai_company.observability import get_logger
 from ai_company.observability.events.api import (
     API_APPROVAL_APPROVED,
@@ -177,11 +176,13 @@ async def _trigger_resume(
     decided_by: str,
     decision_reason: str | None = None,
 ) -> None:
-    """Best-effort resume of a parked agent context after a decision.
+    """Signal that a parked agent can be resumed after a decision.
 
-    If an ``ApprovalGate`` is configured, loads the parked context,
-    builds a resume message, and publishes a WebSocket event.
-    Failures are logged at WARNING and never propagate to the caller.
+    Does NOT consume the parked record — that is the responsibility
+    of the future scheduling component that will actually re-enqueue
+    the agent.  This function only logs the resume trigger so that
+    a scheduler observing log events or polling the approval store
+    can detect the decision and call ``ApprovalGate.resume_context()``.
 
     Args:
         app_state: Application state containing the approval gate.
@@ -194,35 +195,13 @@ async def _trigger_resume(
     if approval_gate is None:
         return
 
-    try:
-        result = await approval_gate.resume_context(approval_id)
-        if result is None:
-            return
-
-        _ctx, parked_id = result
-        resume_message = ApprovalGate.build_resume_message(
-            approval_id,
-            approved=approved,
-            decided_by=decided_by,
-            decision_reason=decision_reason,
-        )
-        logger.info(
-            APPROVAL_GATE_RESUME_TRIGGERED,
-            approval_id=approval_id,
-            parked_id=parked_id,
-            approved=approved,
-            decided_by=decided_by,
-            resume_message_length=len(resume_message),
-        )
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
-        logger.warning(
-            APPROVAL_GATE_RESUME_TRIGGERED,
-            approval_id=approval_id,
-            note="Resume trigger failed — decision was saved successfully",
-            exc_info=True,
-        )
+    logger.info(
+        APPROVAL_GATE_RESUME_TRIGGERED,
+        approval_id=approval_id,
+        approved=approved,
+        decided_by=decided_by,
+        has_reason=decision_reason is not None,
+    )
 
 
 class ApprovalsController(Controller):

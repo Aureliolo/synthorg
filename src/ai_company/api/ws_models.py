@@ -42,7 +42,6 @@ class WsEventType(StrEnum):
     APPROVAL_APPROVED = "approval.approved"
     APPROVAL_REJECTED = "approval.rejected"
     APPROVAL_EXPIRED = "approval.expired"
-    APPROVAL_RESUMED = "approval.resumed"
 
 
 class WsEvent(BaseModel):
