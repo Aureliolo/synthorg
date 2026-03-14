@@ -31,10 +31,16 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	}
 
 	// Stop containers.
+	dockerAvailable := false
 	info, err := docker.Detect(ctx)
 	if err == nil {
+		dockerAvailable = true
 		fmt.Fprintln(out, "Stopping containers...")
-		_ = composeRun(ctx, info, state.DataDir, "down")
+		if err := composeRun(ctx, info, state.DataDir, "down"); err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not stop containers: %v\n", err)
+		}
+	} else {
+		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: Docker not available, cannot stop containers: %v\n", err)
 	}
 
 	// Confirm volume removal.
@@ -51,9 +57,15 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if removeVolumes && info.DockerPath != "" {
-		fmt.Fprintln(out, "Removing volumes...")
-		_ = composeRun(ctx, info, state.DataDir, "down", "-v")
+	if removeVolumes {
+		if dockerAvailable {
+			fmt.Fprintln(out, "Removing volumes...")
+			if err := composeRun(ctx, info, state.DataDir, "down", "-v"); err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: volume removal may have failed: %v\n", err)
+			}
+		} else {
+			fmt.Fprintln(cmd.ErrOrStderr(), "Warning: Docker not available, cannot remove volumes. Remove them manually.")
+		}
 	}
 
 	// Remove data directory.

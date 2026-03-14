@@ -73,7 +73,10 @@ func Collect(ctx context.Context, state config.State) Report {
 		r.Errors = append(r.Errors, fmt.Sprintf("health: %v", err))
 	} else {
 		defer resp.Body.Close()
-		body, _ := io.ReadAll(resp.Body)
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+		if readErr != nil {
+			r.Errors = append(r.Errors, fmt.Sprintf("health read: %v", readErr))
+		}
 		r.HealthStatus = fmt.Sprintf("%d", resp.StatusCode)
 		r.HealthBody = truncate(string(body), 1000)
 	}
@@ -131,8 +134,9 @@ func diskInfo(ctx context.Context) string {
 	var args []string
 	switch runtime.GOOS {
 	case "windows":
-		name = "wmic"
-		args = []string{"logicaldisk", "get", "size,freespace,caption"}
+		// Use fsutil (available on all Windows versions) instead of deprecated wmic.
+		name = "fsutil"
+		args = []string{"volume", "diskfree", "C:"}
 	default:
 		name = "df"
 		args = []string{"-h", "/"}

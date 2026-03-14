@@ -46,6 +46,7 @@ brews:
     repository:
       owner: Aureliolo
       name: homebrew-tap
+      token: "{{ .Env.GORELEASER_TAP_TOKEN }}"
     homepage: https://synthorg.io
     description: CLI for managing SynthOrg — autonomous AI agent orchestration
     license: BUSL-1.1
@@ -59,6 +60,7 @@ scoops:
     repository:
       owner: Aureliolo
       name: scoop-bucket
+      token: "{{ .Env.GORELEASER_TAP_TOKEN }}"
     homepage: https://synthorg.io
     description: CLI for managing SynthOrg — autonomous AI agent orchestration
     license: BUSL-1.1

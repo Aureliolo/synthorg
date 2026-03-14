@@ -48,15 +48,17 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 
 	fmt.Fprintln(out, text)
 
-	// Generate GitHub issue URL.
+	// Generate GitHub issue URL (exclude logs — may contain secrets).
 	issueTitle := fmt.Sprintf("[CLI] Bug report — %s/%s, CLI %s", report.OS, report.Arch, report.CLIVersion)
-	issueBody := fmt.Sprintf("## Diagnostic Report\n\n```\n%s\n```\n\n## Steps to Reproduce\n\n1. \n\n## Expected Behavior\n\n\n## Actual Behavior\n\n", text)
+	issueBody := fmt.Sprintf(
+		"## Environment\n\nOS: %s/%s\nCLI: %s (%s)\nDocker: %s\nCompose: %s\nHealth: %s\n\n"+
+			"> Full diagnostics saved to: attach the file from `synthorg doctor` output\n\n"+
+			"## Steps to Reproduce\n\n1. \n\n## Expected Behavior\n\n\n## Actual Behavior\n\n",
+		report.OS, report.Arch, report.CLIVersion, report.CLICommit,
+		report.DockerVersion, report.ComposeVersion, report.HealthStatus,
+	)
 
-	// URL-encode and truncate if needed (GitHub URL limit ~8000 chars).
 	encodedBody := url.QueryEscape(issueBody)
-	if len(encodedBody) > 6000 {
-		encodedBody = url.QueryEscape("## Diagnostic Report\n\nSee attached diagnostic file.\n\n## Steps to Reproduce\n\n1. \n")
-	}
 
 	issueURL := fmt.Sprintf(
 		"https://github.com/Aureliolo/synthorg/issues/new?title=%s&labels=type%%3Abug&body=%s",

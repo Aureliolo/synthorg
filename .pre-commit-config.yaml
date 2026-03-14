@@ -49,16 +49,17 @@ repos:
     hooks:
       - id: hadolint-docker
 
-  - repo: https://github.com/golangci/golangci-lint
-    rev: v2.11.3
-    hooks:
-      - id: golangci-lint
-        args: [--config=cli/.golangci.yml]
-        files: ^cli/.*\.go$
-        stages: [pre-push]
-
   - repo: local
     hooks:
+      - id: golangci-lint
+        name: golangci-lint (CLI)
+        entry: bash -c 'cd cli && golangci-lint run'
+        language: system
+        files: ^cli/.*\.go$
+        pass_filenames: false
+        stages: [pre-push]
+
+
       - id: mypy
         name: mypy type-check
         entry: uv run mypy src/ tests/

@@ -84,7 +84,9 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		}
 		if restart {
 			fmt.Fprintln(out, "Restarting...")
-			_ = composeRun(ctx, info, state.DataDir, "down")
+			if err := composeRun(ctx, info, state.DataDir, "down"); err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: stopping containers failed: %v\n", err)
+			}
 			if err := composeRun(ctx, info, state.DataDir, "up", "-d"); err != nil {
 				return fmt.Errorf("restarting containers: %w", err)
 			}

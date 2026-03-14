@@ -55,7 +55,7 @@ services:
   sandbox:
     image: ghcr.io/aureliolo/synthorg-sandbox:{{.ImageTag}}
     volumes:
-      - {{.DockerSock}}:/var/run/docker.sock:ro
+      - "{{.DockerSock}}:/var/run/docker.sock:ro"
     security_opt:
       - no-new-privileges:true
     cap_drop:

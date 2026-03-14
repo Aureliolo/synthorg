@@ -71,7 +71,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(out, "  Backend: unreachable (%v)\n", err)
 	} else {
 		defer resp.Body.Close()
-		body, _ := io.ReadAll(resp.Body)
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+		if readErr != nil {
+			fmt.Fprintf(out, "  Backend: error reading response (%v)\n", readErr)
+			return nil
+		}
 		var hr map[string]any
 		if json.Unmarshal(body, &hr) == nil {
 			fmt.Fprintf(out, "  Backend: %s\n", prettyJSON(hr))

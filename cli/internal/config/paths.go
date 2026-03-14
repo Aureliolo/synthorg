@@ -15,7 +15,10 @@ const appDirName = "synthorg"
 //   - macOS:   ~/Library/Application Support/synthorg
 //   - Windows: %LOCALAPPDATA%\synthorg
 func DataDir() string {
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "." // fallback to current directory
+	}
 	return dataDirForOS(runtime.GOOS, home, os.Getenv("LOCALAPPDATA"), os.Getenv("XDG_DATA_HOME"))
 }
 

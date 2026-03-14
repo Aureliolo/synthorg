@@ -6,13 +6,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
+	"strings"
 
 	"github.com/Aureliolo/synthorg/cli/internal/compose"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 )
+
+// imageTagPattern validates image tags to prevent YAML injection.
+var imageTagPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 
 var initCmd = &cobra.Command{
 	Use:   "init",
@@ -29,8 +35,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 	defaults := config.DefaultState()
 
 	dir := defaults.DataDir
-	backendPort := defaults.BackendPort
-	webPort := defaults.WebPort
+	backendPortStr := fmt.Sprintf("%d", defaults.BackendPort)
+	webPortStr := fmt.Sprintf("%d", defaults.WebPort)
 	sandbox := false
 	dockerSock := defaultDockerSock()
 	logLevel := defaults.LogLevel
@@ -46,12 +52,12 @@ func runInit(cmd *cobra.Command, args []string) error {
 			huh.NewInput().
 				Title("Backend API port").
 				Description("Port for the REST/WebSocket API").
-				Value(strPtr(fmt.Sprintf("%d", backendPort))),
+				Value(&backendPortStr),
 
 			huh.NewInput().
 				Title("Web dashboard port").
 				Description("Port for the web UI").
-				Value(strPtr(fmt.Sprintf("%d", webPort))),
+				Value(&webPortStr),
 
 			huh.NewConfirm().
 				Title("Enable agent code sandbox?").
@@ -84,9 +90,26 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Parse ports from string inputs (huh input is string-based).
-	// The form binds strings; we parse them manually.
-	fmt.Sscanf(dir, "%s", &dir)
+	// Trim whitespace from user input.
+	dir = strings.TrimSpace(dir)
+
+	// Parse and validate ports.
+	backendPort, err := parsePort(backendPortStr, "backend")
+	if err != nil {
+		return err
+	}
+	webPort, err := parsePort(webPortStr, "web")
+	if err != nil {
+		return err
+	}
+
+	// Validate docker socket path (must be absolute, no YAML-special chars).
+	if sandbox {
+		dockerSock = strings.TrimSpace(dockerSock)
+		if !filepath.IsAbs(dockerSock) && !strings.HasPrefix(dockerSock, "//") {
+			return fmt.Errorf("docker socket must be an absolute path, got %q", dockerSock)
+		}
+	}
 
 	var jwtSecret string
 	if genJWT {
@@ -133,14 +156,15 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(cmd.OutOrStdout(), "\nSynthOrg initialized in %s\n", state.DataDir)
 	fmt.Fprintf(cmd.OutOrStdout(), "  Compose file: %s\n", composePath)
 	fmt.Fprintf(cmd.OutOrStdout(), "  Config:       %s\n", config.StatePath(state.DataDir))
-	fmt.Fprintf(cmd.OutOrStdout(), "\nRun 'synthorg start' to launch.\n")
+	fmt.Fprintf(cmd.OutOrStdout(), "\nKeep compose.yml and config.json private — they contain your JWT secret.\n")
+	fmt.Fprintf(cmd.OutOrStdout(), "Run 'synthorg start' to launch.\n")
 
 	return nil
 }
 
 func defaultDockerSock() string {
 	if runtime.GOOS == "windows" {
-		return "//var/run/docker.sock"
+		return "//./pipe/docker_engine"
 	}
 	return "/var/run/docker.sock"
 }
@@ -153,6 +177,11 @@ func generateSecret(n int) (string, error) {
 	return base64.URLEncoding.EncodeToString(b), nil
 }
 
-func strPtr(s string) *string {
-	return &s
+func parsePort(s, name string) (int, error) {
+	s = strings.TrimSpace(s)
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 1 || n > 65535 {
+		return 0, fmt.Errorf("invalid %s port: %q (must be 1-65535)", name, s)
+	}
+	return n, nil
 }

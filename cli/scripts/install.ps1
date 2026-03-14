@@ -40,7 +40,9 @@ try {
     # --- Verify checksum ---
 
     Write-Host "Verifying checksum..."
-    $ExpectedHash = (Get-Content (Join-Path $TmpDir "checksums.txt") | Where-Object { $_ -match $ArchiveName }) -replace "\s+.*$", ""
+    # Use exact string match (not regex) to prevent crafted filename bypass.
+    $line = Get-Content (Join-Path $TmpDir "checksums.txt") | Where-Object { ($_ -split '\s+')[1] -eq $ArchiveName }
+    $ExpectedHash = ($line -split '\s+')[0]
     $ActualHash = (Get-FileHash -Path (Join-Path $TmpDir $ArchiveName) -Algorithm SHA256).Hash.ToLower()
 
     if ($ExpectedHash -ne $ActualHash) {

@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -51,6 +52,13 @@ func Load(dataDir string) (State, error) {
 	var s State
 	if err := json.Unmarshal(data, &s); err != nil {
 		return State{}, err
+	}
+	// Canonicalize and validate DataDir.
+	if s.DataDir != "" {
+		s.DataDir = filepath.Clean(s.DataDir)
+		if !filepath.IsAbs(s.DataDir) {
+			return State{}, fmt.Errorf("data_dir must be an absolute path, got %q", s.DataDir)
+		}
 	}
 	return s, nil
 }

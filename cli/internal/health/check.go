@@ -51,19 +51,22 @@ func WaitForHealthy(ctx context.Context, url string, timeout, interval, initialD
 	}
 }
 
+// healthClient is used for individual health check requests with a timeout.
+var healthClient = &http.Client{Timeout: 5 * time.Second}
+
 func checkOnce(ctx context.Context, url string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := healthClient.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 	if err != nil {
 		return err
 	}

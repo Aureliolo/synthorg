@@ -35,7 +35,12 @@ if [ -z "${SYNTHORG_VERSION:-}" ]; then
     SYNTHORG_VERSION="$(curl -sSf "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | cut -d '"' -f 4)"
 fi
 
-VERSION_NO_V="${SYNTHORG_VERSION#v}"
+# Validate version string to prevent injection.
+if ! echo "$SYNTHORG_VERSION" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+    echo "Error: invalid version string: $SYNTHORG_VERSION"
+    exit 1
+fi
+
 echo "Installing SynthOrg CLI ${SYNTHORG_VERSION}..."
 
 # --- Download ---
@@ -51,29 +56,29 @@ echo "Downloading ${DOWNLOAD_URL}..."
 curl -sSfL -o "${TMP_DIR}/${ARCHIVE_NAME}" "$DOWNLOAD_URL"
 curl -sSfL -o "${TMP_DIR}/checksums.txt" "$CHECKSUMS_URL"
 
-# --- Verify checksum ---
+# --- Verify checksum (mandatory) ---
 
 echo "Verifying checksum..."
-cd "$TMP_DIR"
 
 if command -v sha256sum >/dev/null 2>&1; then
-    grep "$ARCHIVE_NAME" checksums.txt | sha256sum -c --quiet
+    grep "${ARCHIVE_NAME}" "${TMP_DIR}/checksums.txt" | (cd "$TMP_DIR" && sha256sum -c --quiet)
 elif command -v shasum >/dev/null 2>&1; then
-    grep "$ARCHIVE_NAME" checksums.txt | shasum -a 256 -c --quiet
+    grep "${ARCHIVE_NAME}" "${TMP_DIR}/checksums.txt" | (cd "$TMP_DIR" && shasum -a 256 -c --quiet)
 else
-    echo "Warning: no sha256sum or shasum available — skipping checksum verification"
+    echo "Error: sha256sum or shasum is required but not found. Aborting installation."
+    exit 1
 fi
 
 # --- Extract and install ---
 
 echo "Extracting..."
-tar -xzf "$ARCHIVE_NAME"
+tar -xzf "${TMP_DIR}/${ARCHIVE_NAME}" -C "$TMP_DIR"
 
 echo "Installing to ${INSTALL_DIR}/${BINARY_NAME}..."
 if [ -w "$INSTALL_DIR" ]; then
-    mv "$BINARY_NAME" "${INSTALL_DIR}/${BINARY_NAME}"
+    mv "${TMP_DIR}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
 else
-    sudo mv "$BINARY_NAME" "${INSTALL_DIR}/${BINARY_NAME}"
+    sudo mv "${TMP_DIR}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
 fi
 chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
 

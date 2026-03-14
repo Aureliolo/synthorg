@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -476,8 +477,8 @@ func TestCheckFromURL(t *testing.T) {
 	release := Release{
 		TagName: "v1.0.0",
 		Assets: []Asset{
-			{Name: assetName(), BrowserDownloadURL: "https://example.com/asset"},
-			{Name: "checksums.txt", BrowserDownloadURL: "https://example.com/checksums"},
+			{Name: assetName(), BrowserDownloadURL: expectedURLPrefix + "v1.0.0/" + assetName()},
+			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v1.0.0/checksums.txt"},
 			{Name: "other_file.txt", BrowserDownloadURL: "https://example.com/other"},
 		},
 	}
@@ -499,11 +500,13 @@ func TestCheckFromURL(t *testing.T) {
 	if !result.UpdateAvail {
 		t.Error("UpdateAvail should be true (dev != 1.0.0)")
 	}
-	if result.AssetURL != "https://example.com/asset" {
-		t.Errorf("AssetURL = %q", result.AssetURL)
+	wantAssetURL := expectedURLPrefix + "v1.0.0/" + assetName()
+	if result.AssetURL != wantAssetURL {
+		t.Errorf("AssetURL = %q, want %q", result.AssetURL, wantAssetURL)
 	}
-	if result.ChecksumURL != "https://example.com/checksums" {
-		t.Errorf("ChecksumURL = %q", result.ChecksumURL)
+	wantChecksumURL := expectedURLPrefix + "v1.0.0/checksums.txt"
+	if result.ChecksumURL != wantChecksumURL {
+		t.Errorf("ChecksumURL = %q, want %q", result.ChecksumURL, wantChecksumURL)
 	}
 }
 
@@ -585,40 +588,18 @@ func TestReplaceAtNonexistentPath(t *testing.T) {
 	}
 }
 
-func TestDownloadNoChecksum(t *testing.T) {
-	binaryContent := []byte("binary without checksum verification")
-
-	var archive []byte
-	if runtime.GOOS == "windows" {
-		var buf bytes.Buffer
-		zw := zip.NewWriter(&buf)
-		fw, _ := zw.Create("synthorg.exe")
-		fw.Write(binaryContent)
-		zw.Close()
-		archive = buf.Bytes()
-	} else {
-		var buf bytes.Buffer
-		gw := gzip.NewWriter(&buf)
-		tw := tar.NewWriter(gw)
-		hdr := &tar.Header{Name: "synthorg", Mode: 0o755, Size: int64(len(binaryContent))}
-		tw.WriteHeader(hdr)
-		tw.Write(binaryContent)
-		tw.Close()
-		gw.Close()
-		archive = buf.Bytes()
-	}
-
+func TestDownloadNoChecksumRefused(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(archive)
+		w.Write([]byte("archive data"))
 	}))
 	defer srv.Close()
 
-	// Empty checksum URL — should skip verification.
-	binary, err := Download(context.Background(), srv.URL, "")
-	if err != nil {
-		t.Fatalf("Download without checksum: %v", err)
+	// Empty checksum URL — should refuse to download.
+	_, err := Download(context.Background(), srv.URL, "")
+	if err == nil {
+		t.Fatal("expected error when checksum URL is empty")
 	}
-	if string(binary) != string(binaryContent) {
-		t.Errorf("downloaded = %q, want %q", binary, binaryContent)
+	if !strings.Contains(err.Error(), "refusing to install unverified binary") {
+		t.Errorf("unexpected error: %v", err)
 	}
 }

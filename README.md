@@ -79,8 +79,8 @@ Built-in tools (file system, git, sandbox, code runner) plus MCP bridge for exte
 ### Install CLI
 
 ```bash
-brew install aureliolo/tap/synthorg        # macOS
-scoop install synthorg                      # Windows
+brew install aureliolo/tap/synthorg                         # macOS
+scoop bucket add aureliolo https://github.com/Aureliolo/scoop-bucket && scoop install synthorg  # Windows
 curl -sSfL https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.sh | sh  # Linux
 ```
 
@@ -147,7 +147,7 @@ graph TB
 
 ## Status
 
-Core framework complete — agent engine, multi-agent coordination, API, security, HR, memory (including Mem0 backend adapter), budget systems, and approval workflow gates are implemented. Web dashboard (Vue 3 + PrimeVue + Tailwind CSS) is built. Remaining: CLI and approval resume scheduler (approvals can park agents; re-enqueue after decision requires a future scheduler). See the [roadmap](docs/roadmap/index.md) for details.
+Core framework complete — agent engine, multi-agent coordination, API, security, HR, memory (including Mem0 backend adapter), budget systems, and approval workflow gates are implemented. Web dashboard (Vue 3 + PrimeVue + Tailwind CSS) is built. CLI (Go binary) provides install, setup wizard, container lifecycle, self-updates, and diagnostics. Remaining: approval resume scheduler (approvals can park agents; re-enqueue after decision requires a future scheduler). See the [roadmap](docs/roadmap/index.md) for details.
 
 ## License
 

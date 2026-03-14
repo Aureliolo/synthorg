@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
@@ -47,7 +49,15 @@ func runLogs(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	composeArgs := []string{"logs", "--tail", logTail}
+	// Validate --tail value.
+	tail := strings.TrimSpace(logTail)
+	if tail != "all" {
+		if n, err := strconv.Atoi(tail); err != nil || n < 0 {
+			return fmt.Errorf("--tail must be a positive integer or 'all', got %q", logTail)
+		}
+	}
+
+	composeArgs := []string{"logs", "--tail", tail}
 	if logFollow {
 		composeArgs = append(composeArgs, "-f")
 	}

@@ -56,10 +56,13 @@ npm --prefix web run test                  # Vitest unit tests
 
 ### CLI (Go Binary)
 
+Note: Go commands require `cd cli` because the Go module is in `cli/` (exception to the "never use cd" rule — Go tooling requires working directory to be the module root).
+
 ```bash
 cd cli && go build -o synthorg ./main.go   # build CLI
 cd cli && go test ./...                     # run tests
 cd cli && go vet ./...                      # vet
+cd cli && golangci-lint run                 # lint
 ```
 
 ## Documentation
@@ -108,7 +111,7 @@ curl http://localhost:3000/api/v1/health   # backend (via web proxy)
 src/ai_company/
   api/            # Litestar REST + WebSocket API (controllers, guards, channels, JWT + API key auth, approval gate integration)
   budget/         # Cost tracking, budget enforcement (pre-flight/in-flight checks, auto-downgrade), billing periods, cost tiers, quota/subscription tracking, CFO cost optimization (anomaly detection, efficiency analysis, downgrade recommendations, approval decisions), spending reports, budget errors (BudgetExhaustedError, DailyLimitExceededError, QuotaExhaustedError)
-  cli/            # CLI interface (future — thin API wrapper if needed)
+  cli/            # Python CLI module (superseded by top-level cli/ Go binary)
   communication/  # Message bus, dispatcher, messenger, channels, delegation, loop prevention, conflict resolution, meeting protocol
   config/         # YAML company config loading and validation
   core/           # Shared domain models, base classes, and resilience config (RetryConfig, RateLimiterConfig)
@@ -208,7 +211,7 @@ cli/                # Go CLI binary (cross-platform, manages Docker lifecycle)
 - **Signed commits**: required on `main` via branch protection — all commits must be GPG/SSH signed
 - **Branches**: `<type>/<slug>` from main
 - **Pre-commit hooks**: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-json, check-merge-conflict, check-added-large-files, no-commit-to-branch (main), ruff check+format, gitleaks, hadolint (Dockerfile linting)
-- **Pre-push hooks**: mypy type-check + pytest unit tests (fast gate before push, skipped in pre-commit.ci — dedicated CI jobs already run these)
+- **Pre-push hooks**: mypy type-check + pytest unit tests + golangci-lint + go vet + go test (CLI, conditional on `cli/**/*.go`) (fast gate before push, skipped in pre-commit.ci — dedicated CI jobs already run these)
 - **Pre-commit.ci**: autoupdate disabled (`autoupdate_schedule: never`) — Dependabot owns hook version bumps via `pre-commit` ecosystem
 - **GitHub issue queries**: use `gh issue list` via Bash (not MCP tools) — MCP `list_issues` has unreliable field data
 - **PR issue references**: preserve existing `Closes #NNN` references — never remove unless explicitly asked
@@ -266,3 +269,4 @@ cli/                # Go CLI binary (cross-platform, manages Docker lifecycle)
 - **Required**: `mem0ai` (Mem0 memory backend — the default and currently only backend)
 - **Install**: `uv sync` installs everything (dev group is default)
 - **Web dashboard**: Node.js 20+, dependencies in `web/package.json` (Vue 3, PrimeVue, Tailwind CSS, Pinia, VueFlow, ECharts, Axios, vue-draggable-plus, Vitest, ESLint, vue-tsc)
+- **CLI**: Go 1.26+, dependencies in `cli/go.mod` (Cobra, charmbracelet/huh, charmbracelet/lipgloss, gopkg.in/yaml.v3)

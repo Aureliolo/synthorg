@@ -308,6 +308,7 @@ jobs:
           # Jobs that were skipped (not needed) count as passing.
           # Only "failure" is a real failure.
           RESULTS: >-
+            ${{ needs.changes.result }}
             ${{ needs.lint.result }}
             ${{ needs.type-check.result }}
             ${{ needs.test.result }}
