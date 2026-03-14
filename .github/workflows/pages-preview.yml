@@ -216,20 +216,21 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - name: Download preview artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: preview-site
-          path: _site
-
       - name: Checkout CI tooling (wrangler lockfile)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
+          ref: ${{ needs.build.outputs.head_sha }}
           persist-credentials: false
           sparse-checkout: |
             .github/package.json
             .github/package-lock.json
           sparse-checkout-cone-mode: false
+
+      - name: Download preview artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: preview-site
+          path: _site
 
       - name: Set up Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
