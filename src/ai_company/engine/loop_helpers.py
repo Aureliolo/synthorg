@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 
 from ai_company.observability import get_logger
 from ai_company.observability.events.approval_gate import (
-    APPROVAL_GATE_CONTEXT_PARK_FAILED,
     APPROVAL_GATE_PARK_TASKLESS,
 )
 from ai_company.observability.events.execution import (
@@ -387,13 +386,7 @@ async def _park_for_approval(
     except MemoryError, RecursionError:
         raise
     except Exception:
-        logger.exception(
-            APPROVAL_GATE_CONTEXT_PARK_FAILED,
-            approval_id=escalation.approval_id,
-            agent_id=agent_id,
-            task_id=task_id,
-            note="Parking failed — returning ERROR (non-resumable)",
-        )
+        # ApprovalGate already logs APPROVAL_GATE_CONTEXT_PARK_FAILED
         return build_result(
             ctx,
             TerminationReason.ERROR,
