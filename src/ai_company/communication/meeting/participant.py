@@ -121,13 +121,22 @@ class RegistryParticipantResolver:
         Returns:
             List of agent ID strings for this entry.
         """
-        # 1. Context lookup
+        # 1. Context lookup — str, list/tuple, or warn on unexpected type.
         if entry in ctx:
             val = ctx[entry]
             if isinstance(val, str):
-                return [val]
-            if isinstance(val, (list, tuple)):
-                return [v for v in val if isinstance(v, str) and v.strip()]
+                resolved = [val]
+            elif isinstance(val, (list, tuple)):
+                resolved = [v for v in val if isinstance(v, str) and v.strip()]
+            else:
+                logger.warning(
+                    MEETING_NO_PARTICIPANTS,
+                    entry=entry,
+                    ctx_value_type=type(val).__name__,
+                    note="context value is not str or list, skipping",
+                )
+                resolved = []
+            return resolved
 
         # 2. Special "all"
         if entry.lower() == "all":
