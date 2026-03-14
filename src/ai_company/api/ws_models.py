@@ -49,6 +49,10 @@ class WsEventType(StrEnum):
     COORDINATION_COMPLETED = "coordination.completed"
     COORDINATION_FAILED = "coordination.failed"
 
+    MEETING_STARTED = "meeting.started"
+    MEETING_COMPLETED = "meeting.completed"
+    MEETING_FAILED = "meeting.failed"
+
 
 class WsEvent(BaseModel):
     """A real-time event pushed over WebSocket.

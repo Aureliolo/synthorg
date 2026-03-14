@@ -122,6 +122,7 @@ nav:
       - reference/research.md
       - reference/standards.md
   - Security: security.md
+  - Licensing: licensing.md
   - API Reference: rest-api.md
   - Library Reference:
       - api/index.md

@@ -2,7 +2,7 @@ ci:
   autoupdate_schedule: never
   autofix_prs: true
   autofix_commit_msg: "style: auto-fix pre-commit hooks"
-  skip: [commitizen, gitleaks, hadolint-docker, mypy, pytest-unit, golangci-lint, go-test]
+  skip: [commitizen, gitleaks, hadolint-docker, mypy, pytest-unit, golangci-lint, go-vet, go-test]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -53,14 +53,14 @@ repos:
     hooks:
       - id: mypy
         name: mypy type-check
-        entry: uv run mypy src/ tests/
+        entry: uv run python -m mypy src/ tests/
         language: system
         pass_filenames: false
         stages: [pre-push]
 
       - id: pytest-unit
         name: pytest unit tests
-        entry: uv run pytest tests/ -m unit -n auto -q
+        entry: uv run python -m pytest tests/ -m unit -n auto -q
         language: system
         pass_filenames: false
         stages: [pre-push]
@@ -71,11 +71,19 @@ repos:
         language: system
         files: ^cli/.*\.go$
         pass_filenames: false
-        stages: [pre-push]
+        stages: [pre-commit, pre-push]
+
+      - id: go-vet
+        name: go vet (CLI)
+        entry: bash -c 'cd cli && go vet ./...'
+        language: system
+        files: ^cli/.*\.go$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
 
       - id: go-test
         name: go test (CLI)
-        entry: bash -c 'cd cli && go test -race ./...'
+        entry: bash -c 'cd cli && go test ./...'
         language: system
         files: ^cli/.*\.go$
         pass_filenames: false

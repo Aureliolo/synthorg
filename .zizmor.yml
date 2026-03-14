@@ -1,5 +1,0 @@
-rules:
-  # Daily Dependabot updates are intentional — see CLAUDE.md and dependabot.yml.
-  # The project uses daily checks with grouped minor/patch to stay current.
-  dependabot-cooldown:
-    disable: true

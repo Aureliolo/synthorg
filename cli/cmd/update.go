@@ -36,22 +36,22 @@ func updateCLI(cmd *cobra.Command) error {
 
 	// Warn on dev builds.
 	if version.Version == "dev" {
-		fmt.Fprintln(out, "Warning: running a dev build — update check will always report an update available.")
+		_, _ = fmt.Fprintln(out, "Warning: running a dev build — update check will always report an update available.")
 	}
 
-	fmt.Fprintln(out, "Checking for updates...")
+	_, _ = fmt.Fprintln(out, "Checking for updates...")
 	result, err := selfupdate.Check(ctx)
 	if err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not check for updates: %v\n", err)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not check for updates: %v\n", err)
 		return nil
 	}
 
 	if !result.UpdateAvail {
-		fmt.Fprintf(out, "CLI is up to date (%s)\n", result.CurrentVersion)
+		_, _ = fmt.Fprintf(out, "CLI is up to date (%s)\n", result.CurrentVersion)
 		return nil
 	}
 
-	fmt.Fprintf(out, "New version available: %s (current: %s)\n", result.LatestVersion, result.CurrentVersion)
+	_, _ = fmt.Fprintf(out, "New version available: %s (current: %s)\n", result.LatestVersion, result.CurrentVersion)
 
 	if isInteractive() {
 		var proceed bool
@@ -67,10 +67,10 @@ func updateCLI(cmd *cobra.Command) error {
 			return nil
 		}
 	} else {
-		fmt.Fprintf(out, "Non-interactive mode: auto-applying update to %s\n", result.LatestVersion)
+		_, _ = fmt.Fprintf(out, "Non-interactive mode: auto-applying update to %s\n", result.LatestVersion)
 	}
 
-	fmt.Fprintln(out, "Downloading...")
+	_, _ = fmt.Fprintln(out, "Downloading...")
 	binary, err := selfupdate.Download(ctx, result.AssetURL, result.ChecksumURL)
 	if err != nil {
 		return fmt.Errorf("downloading update: %w", err)
@@ -79,7 +79,7 @@ func updateCLI(cmd *cobra.Command) error {
 	if err := selfupdate.Replace(binary); err != nil {
 		return fmt.Errorf("replacing binary: %w", err)
 	}
-	fmt.Fprintf(out, "CLI updated to %s\n", result.LatestVersion)
+	_, _ = fmt.Fprintf(out, "CLI updated to %s\n", result.LatestVersion)
 	return nil
 }
 
@@ -93,21 +93,26 @@ func updateContainerImages(cmd *cobra.Command) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
+	safeDir, err := safeStateDir(state)
+	if err != nil {
+		return err
+	}
+
 	info, err := docker.Detect(ctx)
 	if err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: Docker not available, skipping image update: %v\n", err)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: Docker not available, skipping image update: %v\n", err)
 		return nil
 	}
 
-	fmt.Fprintln(out, "Pulling latest container images...")
-	if err := composeRun(ctx, cmd, info, state.DataDir, "pull"); err != nil {
+	_, _ = fmt.Fprintln(out, "Pulling latest container images...")
+	if err := composeRun(ctx, cmd, info, safeDir, "pull"); err != nil {
 		return fmt.Errorf("pulling images: %w", err)
 	}
 
 	// Check if containers are running and offer restart.
-	psOut, err := docker.ComposeExecOutput(ctx, info, state.DataDir, "ps", "-q")
+	psOut, err := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "-q")
 	if err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not check container status: %v\n", err)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not check container status: %v\n", err)
 		return nil
 	}
 
@@ -116,7 +121,7 @@ func updateContainerImages(cmd *cobra.Command) error {
 	}
 
 	if !isInteractive() {
-		fmt.Fprintln(out, "Non-interactive mode: skipping restart. Run 'synthorg stop && synthorg start' to apply new images.")
+		_, _ = fmt.Fprintln(out, "Non-interactive mode: skipping restart. Run 'synthorg stop && synthorg start' to apply new images.")
 		return nil
 	}
 
@@ -128,21 +133,21 @@ func updateContainerImages(cmd *cobra.Command) error {
 		return nil
 	}
 
-	fmt.Fprintln(out, "Restarting...")
-	if err := composeRun(ctx, cmd, info, state.DataDir, "down"); err != nil {
+	_, _ = fmt.Fprintln(out, "Restarting...")
+	if err := composeRun(ctx, cmd, info, safeDir, "down"); err != nil {
 		return fmt.Errorf("stopping containers: %w", err)
 	}
-	if err := composeRun(ctx, cmd, info, state.DataDir, "up", "-d"); err != nil {
+	if err := composeRun(ctx, cmd, info, safeDir, "up", "-d"); err != nil {
 		return fmt.Errorf("restarting containers: %w", err)
 	}
 
 	// Health check after restart.
-	fmt.Fprintln(out, "Waiting for backend to become healthy...")
+	_, _ = fmt.Fprintln(out, "Waiting for backend to become healthy...")
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort)
 	if err := health.WaitForHealthy(ctx, healthURL, 90*time.Second, 2*time.Second, 5*time.Second); err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: health check did not pass after restart: %v\n", err)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: health check did not pass after restart: %v\n", err)
 	} else {
-		fmt.Fprintln(out, "Containers restarted with new images and healthy.")
+		_, _ = fmt.Fprintln(out, "Containers restarted with new images and healthy.")
 	}
 
 	return nil

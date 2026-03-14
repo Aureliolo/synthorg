@@ -3,6 +3,14 @@
 ## [0.1.4](https://github.com/Aureliolo/synthorg/compare/v0.1.3...v0.1.4) (2026-03-14)
 
 
+### License
+
+* narrow BSL 1.1 Additional Use Grant — free production use for non-competing organizations with fewer than 500 employees and contractors ([#406](https://github.com/Aureliolo/synthorg/issues/406))
+* add Contributor License Agreement (CLA) with automated enforcement for dual-licensing support
+* add licensing rationale documentation page explaining BSL choice, what's permitted, and invitation for feedback
+* auto-update BSL Change Date to 3 years ahead on each release
+
+
 ### Features
 
 * add approval workflow gates to TaskEngine ([#387](https://github.com/Aureliolo/synthorg/issues/387)) ([2db968a](https://github.com/Aureliolo/synthorg/commit/2db968a21fb0f0afa42eb990ee70cbb7b71d2ae5))

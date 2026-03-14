@@ -140,6 +140,14 @@ web/                  # Web UI scaffold (nginx + placeholder)
 
 See [docs/getting_started.md](../docs/getting_started.md) for descriptions of each sub-package.
 
-## License
+## License & CLA
 
-This project is licensed under [BUSL-1.1](../LICENSE). By contributing, you agree that your contributions will be licensed under the same terms.
+This project is licensed under [BUSL-1.1](../LICENSE) (Business Source License 1.1).
+
+### Contributor License Agreement
+
+Before your first contribution can be merged, you must sign the [Contributor License Agreement (CLA)](CLA.md). This is required to enable dual-licensing (BSL + commercial licenses for enterprise customers).
+
+**How to sign:** When you open your first pull request, a bot will post a comment asking you to sign. Simply reply with the text specified in the comment — no forms, no external services. Your signature is recorded as a JSON entry in this repository.
+
+The CLA grants SynthOrg a perpetual, non-exclusive license to your contributions. You retain full ownership of your work and can use it however you wish.

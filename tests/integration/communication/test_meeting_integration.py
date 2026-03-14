@@ -16,6 +16,7 @@ from ai_company.communication.meeting.enums import (
     MeetingProtocolType,
     MeetingStatus,
 )
+from ai_company.communication.meeting.frequency import MeetingFrequency
 from ai_company.communication.meeting.models import (
     AgentResponse,
     MeetingAgenda,
@@ -420,7 +421,7 @@ class TestMeetingTypeConfigIntegration:
 
         config = MeetingTypeConfig(
             name="standup",
-            frequency="daily",
+            frequency=MeetingFrequency.DAILY,
             participants=("engineering",),
         )
         assert isinstance(config.protocol_config, MeetingProtocolConfig)

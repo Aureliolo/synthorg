@@ -28,6 +28,7 @@ from ai_company.communication.enums import (
     MessagePriority,
     MessageType,
 )
+from ai_company.communication.meeting.frequency import MeetingFrequency
 from ai_company.communication.message import Attachment, Message, MessageMetadata
 from ai_company.communication.subscription import DeliveryEnvelope, Subscription
 
@@ -171,7 +172,7 @@ def sample_channel() -> Channel:
 def sample_meeting_type() -> MeetingTypeConfig:
     return MeetingTypeConfig(
         name="daily_standup",
-        frequency="per_sprint_day",
+        frequency=MeetingFrequency.PER_SPRINT_DAY,
         participants=("engineering", "qa"),
         duration_tokens=2000,
     )
