@@ -4,6 +4,6 @@
   "private": true,
   "description": "CI-only tooling (hash-pinned via lockfile for OSSF Scorecard compliance)",
   "dependencies": {
-    "wrangler": "3.114.17"
+    "wrangler": "4.73.0"
   }
 }
