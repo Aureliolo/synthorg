@@ -447,6 +447,11 @@ async run(
    `timeout_seconds` is set, wraps the call in `asyncio.wait`; on expiry
    the run returns with `TerminationReason.ERROR` but cost recording and
    post-execution processing still occur.
+   When escalations are detected after tool execution (via
+   `ToolInvoker.pending_escalations`), the `ApprovalGate` evaluates whether
+   parking is needed. If so, the context is serialized via `ParkService`
+   and persisted when a `ParkedContextRepository` is configured; the loop
+   then returns a `PARKED` result.
 9. **Record costs** -- records accumulated `TokenUsage` to `CostTracker` (if
    available). Cost recording failures are logged but do not affect the result.
 10. **Apply post-execution transitions:**

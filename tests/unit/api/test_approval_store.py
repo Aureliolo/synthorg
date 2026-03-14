@@ -1,6 +1,7 @@
 """Tests for the in-memory ApprovalStore."""
 
 from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -17,7 +18,7 @@ def _now() -> datetime:
 def _make_item(  # noqa: PLR0913
     *,
     approval_id: str = "approval-001",
-    action_type: str = "code_merge",
+    action_type: str = "code:merge",
     risk_level: ApprovalRiskLevel = ApprovalRiskLevel.MEDIUM,
     status: ApprovalStatus = ApprovalStatus.PENDING,
     ttl_seconds: int | None = None,
@@ -46,6 +47,7 @@ def _make_item(  # noqa: PLR0913
 
 
 @pytest.mark.unit
+@pytest.mark.timeout(30)
 class TestApprovalStore:
     async def test_add_and_get_roundtrip(self) -> None:
         store = ApprovalStore()
@@ -109,12 +111,12 @@ class TestApprovalStore:
     async def test_list_with_action_type_filter(self) -> None:
         store = ApprovalStore()
         await store.add(
-            _make_item(approval_id="a1", action_type="code_merge"),
+            _make_item(approval_id="a1", action_type="code:merge"),
         )
         await store.add(
-            _make_item(approval_id="a2", action_type="deployment"),
+            _make_item(approval_id="a2", action_type="deploy:staging"),
         )
-        merges = await store.list_items(action_type="code_merge")
+        merges = await store.list_items(action_type="code:merge")
         assert len(merges) == 1
         assert merges[0].id == "a1"
 
@@ -123,7 +125,7 @@ class TestApprovalStore:
         now = _now()
         item = ApprovalItem(
             id="exp-001",
-            action_type="code_merge",
+            action_type="code:merge",
             title="Test",
             description="desc",
             requested_by="agent-dev",
@@ -161,7 +163,7 @@ class TestApprovalStore:
         now = _now()
         item = ApprovalItem(
             id="nonexistent",
-            action_type="code_merge",
+            action_type="code:merge",
             title="Test",
             description="desc",
             requested_by="agent-dev",
@@ -173,3 +175,204 @@ class TestApprovalStore:
         )
         result = await store.save(item)
         assert result is None
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(30)
+class TestSaveIfPending:
+    """save_if_pending() optimistic concurrency guard."""
+
+    async def test_saves_when_pending(self) -> None:
+        store = ApprovalStore()
+        item = _make_item()
+        await store.add(item)
+
+        updated = item.model_copy(
+            update={
+                "status": ApprovalStatus.APPROVED,
+                "decided_at": _now(),
+                "decided_by": "admin",
+            },
+        )
+        result = await store.save_if_pending(updated)
+        assert result is not None
+        assert result.status == ApprovalStatus.APPROVED
+
+    async def test_returns_none_when_already_decided(self) -> None:
+        store = ApprovalStore()
+        now = _now()
+        item = _make_item(
+            status=ApprovalStatus.APPROVED,
+            decided_at=now,
+            decided_by="admin",
+        )
+        await store.add(item)
+
+        updated = item.model_copy(
+            update={"status": ApprovalStatus.REJECTED},
+        )
+        result = await store.save_if_pending(updated)
+        assert result is None
+
+    async def test_returns_none_when_not_found(self) -> None:
+        store = ApprovalStore()
+        item = _make_item(approval_id="nonexistent")
+        result = await store.save_if_pending(item)
+        assert result is None
+
+    async def test_returns_none_when_expired(self) -> None:
+        store = ApprovalStore()
+        now = _now()
+        item = ApprovalItem(
+            id="exp-001",
+            action_type="code:merge",
+            title="Test",
+            description="desc",
+            requested_by="agent-dev",
+            risk_level=ApprovalRiskLevel.LOW,
+            created_at=now - timedelta(hours=2),
+            expires_at=now - timedelta(hours=1),
+        )
+        store._items[item.id] = item
+        updated = item.model_copy(
+            update={"status": ApprovalStatus.APPROVED},
+        )
+        result = await store.save_if_pending(updated)
+        assert result is None
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(30)
+class TestApprovalStoreFilters:
+    """Combined filter tests."""
+
+    async def test_combined_status_and_risk(self) -> None:
+        store = ApprovalStore()
+        await store.add(_make_item(approval_id="a1", risk_level=ApprovalRiskLevel.HIGH))
+        await store.add(
+            _make_item(
+                approval_id="a2",
+                risk_level=ApprovalRiskLevel.LOW,
+            ),
+        )
+        await store.add(
+            _make_item(
+                approval_id="a3",
+                risk_level=ApprovalRiskLevel.HIGH,
+                status=ApprovalStatus.APPROVED,
+                decided_at=_now(),
+                decided_by="admin",
+            ),
+        )
+        result = await store.list_items(
+            status=ApprovalStatus.PENDING,
+            risk_level=ApprovalRiskLevel.HIGH,
+        )
+        assert len(result) == 1
+        assert result[0].id == "a1"
+
+    async def test_combined_status_risk_action(self) -> None:
+        store = ApprovalStore()
+        await store.add(
+            _make_item(
+                approval_id="a1",
+                action_type="deploy:prod",
+                risk_level=ApprovalRiskLevel.CRITICAL,
+            ),
+        )
+        await store.add(
+            _make_item(
+                approval_id="a2",
+                action_type="db:admin",
+                risk_level=ApprovalRiskLevel.CRITICAL,
+            ),
+        )
+        result = await store.list_items(
+            status=ApprovalStatus.PENDING,
+            risk_level=ApprovalRiskLevel.CRITICAL,
+            action_type="deploy:prod",
+        )
+        assert len(result) == 1
+        assert result[0].id == "a1"
+
+    async def test_no_matches_returns_empty(self) -> None:
+        store = ApprovalStore()
+        await store.add(_make_item())
+        result = await store.list_items(
+            status=ApprovalStatus.REJECTED,
+        )
+        assert result == ()
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(30)
+class TestOnExpireCallback:
+    """on_expire callback lifecycle."""
+
+    async def test_callback_receives_expired_item(self) -> None:
+        callback = MagicMock()
+        store = ApprovalStore(on_expire=callback)
+        now = _now()
+        item = ApprovalItem(
+            id="exp-001",
+            action_type="code:merge",
+            title="Test",
+            description="desc",
+            requested_by="agent-dev",
+            risk_level=ApprovalRiskLevel.LOW,
+            created_at=now - timedelta(hours=2),
+            expires_at=now - timedelta(hours=1),
+        )
+        store._items[item.id] = item
+        await store.get("exp-001")
+        callback.assert_called_once()
+        expired_item = callback.call_args[0][0]
+        assert expired_item.status == ApprovalStatus.EXPIRED
+
+    async def test_callback_exception_does_not_prevent_expiration(self) -> None:
+        callback = MagicMock(side_effect=RuntimeError("oops"))
+        store = ApprovalStore(on_expire=callback)
+        now = _now()
+        item = ApprovalItem(
+            id="exp-001",
+            action_type="code:merge",
+            title="Test",
+            description="desc",
+            requested_by="agent-dev",
+            risk_level=ApprovalRiskLevel.LOW,
+            created_at=now - timedelta(hours=2),
+            expires_at=now - timedelta(hours=1),
+        )
+        store._items[item.id] = item
+        result = await store.get("exp-001")
+        assert result is not None
+        assert result.status == ApprovalStatus.EXPIRED
+
+    async def test_expired_items_have_expired_status_in_list(self) -> None:
+        store = ApprovalStore()
+        now = _now()
+        live = _make_item(approval_id="live")
+        expired = ApprovalItem(
+            id="expired",
+            action_type="code:merge",
+            title="Test",
+            description="desc",
+            requested_by="agent-dev",
+            risk_level=ApprovalRiskLevel.LOW,
+            created_at=now - timedelta(hours=2),
+            expires_at=now - timedelta(hours=1),
+        )
+        await store.add(live)
+        store._items[expired.id] = expired
+
+        # All items returned, but expired ones have EXPIRED status
+        items = await store.list_items()
+        assert len(items) == 2
+        statuses = {i.id: i.status for i in items}
+        assert statuses["live"] == ApprovalStatus.PENDING
+        assert statuses["expired"] == ApprovalStatus.EXPIRED
+
+        # Filter to pending only excludes expired
+        pending = await store.list_items(status=ApprovalStatus.PENDING)
+        assert len(pending) == 1
+        assert pending[0].id == "live"

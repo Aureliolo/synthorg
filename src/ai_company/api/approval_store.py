@@ -122,6 +122,32 @@ class ApprovalStore:
         self._items[item.id] = item
         return item
 
+    async def save_if_pending(
+        self,
+        item: ApprovalItem,
+    ) -> ApprovalItem | None:
+        """Conditionally update an approval item if it is still pending.
+
+        A lazy expiration check is applied before comparing status.
+
+        Returns:
+            The saved item on success, or ``None`` if:
+
+            * no item with the given ID exists in the store,
+            * the stored item has expired, or
+            * the stored item is no longer ``PENDING`` (e.g. a
+              concurrent decision was made).
+        """
+        current = self._items.get(item.id)
+        if current is None:
+            return None
+        # Apply lazy expiration check before comparing status.
+        current = self._check_expiration(current)
+        if current.status != ApprovalStatus.PENDING:
+            return None
+        self._items[item.id] = item
+        return item
+
     def _check_expiration(self, item: ApprovalItem) -> ApprovalItem:
         """Lazily expire a pending item past its ``expires_at``.
 
@@ -148,6 +174,15 @@ class ApprovalStore:
                 approval_id=item.id,
             )
             if self._on_expire is not None:
-                self._on_expire(expired)
+                try:
+                    self._on_expire(expired)
+                except MemoryError, RecursionError:
+                    raise
+                except Exception:
+                    logger.exception(
+                        API_APPROVAL_EXPIRED,
+                        approval_id=item.id,
+                        note="on_expire callback failed",
+                    )
             return expired
         return item

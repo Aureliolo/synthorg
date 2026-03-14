@@ -16,6 +16,7 @@ import jsonschema
 from referencing import Registry as JsonSchemaRegistry
 from referencing.exceptions import NoSuchResource
 
+from ai_company.core.enums import ApprovalRiskLevel
 from ai_company.observability import get_logger
 from ai_company.observability.events.security import (
     SECURITY_INTERCEPTOR_ERROR,
@@ -48,6 +49,7 @@ from .errors import ToolExecutionError, ToolNotFoundError, ToolParameterError
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from ai_company.engine.approval_gate_models import EscalationInfo
     from ai_company.providers.models import ToolDefinition
     from ai_company.security.protocol import SecurityInterceptionStrategy
 
@@ -115,10 +117,23 @@ class ToolInvoker:
         self._agent_id = agent_id
         self._task_id = task_id
 
+        self._pending_escalations: list[EscalationInfo] = []
+
     @property
     def registry(self) -> ToolRegistry:
         """Read-only access to the underlying tool registry."""
         return self._registry
+
+    @property
+    def pending_escalations(self) -> tuple[EscalationInfo, ...]:
+        """Escalations detected during the most recent invoke/invoke_all.
+
+        Populated when a security ESCALATE verdict with a non-``None``
+        ``approval_id`` is returned, or when a tool returns
+        ``requires_parking`` metadata.  Cleared at the start of every
+        ``invoke()`` and ``invoke_all()`` call.
+        """
+        return tuple(self._pending_escalations)
 
     def get_permitted_definitions(self) -> tuple[ToolDefinition, ...]:
         """Return tool definitions filtered by the permission checker.
@@ -219,6 +234,21 @@ class ToolInvoker:
                 reason=verdict.reason,
                 approval_id=verdict.approval_id,
             )
+            if verdict.approval_id is not None:
+                from ai_company.engine.approval_gate_models import (  # noqa: PLC0415
+                    EscalationInfo,
+                )
+
+                self._pending_escalations.append(
+                    EscalationInfo(
+                        approval_id=verdict.approval_id,
+                        tool_call_id=tool_call.id,
+                        tool_name=tool_call.name,
+                        action_type=tool.action_type,
+                        risk_level=verdict.risk_level,
+                        reason=verdict.reason,
+                    ),
+                )
             msg = (
                 f"Security escalation: {verdict.reason}. "
                 f"Approval required (id={verdict.approval_id})"
@@ -331,6 +361,15 @@ class ToolInvoker:
         Returns:
             A ``ToolResult`` with the tool's output or error message.
         """
+        self._pending_escalations.clear()
+        return await self._invoke_single(tool_call)
+
+    async def _invoke_single(self, tool_call: ToolCall) -> ToolResult:  # noqa: PLR0911
+        """Core invoke logic without clearing escalations.
+
+        Used by both ``invoke`` (after clearing) and ``invoke_all``
+        (which clears once at the batch level).
+        """
         logger.info(
             TOOL_INVOKE_START,
             tool_call_id=tool_call.id,
@@ -360,6 +399,17 @@ class ToolInvoker:
         exec_result = await self._execute_tool(tool_or_error, tool_call)
         if isinstance(exec_result, ToolResult):
             return exec_result
+
+        # Detect parking metadata from tools like request_human_approval.
+        # Returns an error ToolResult if tracking fails, preventing the
+        # agent from silently bypassing the approval gate.
+        parking_error = self._track_parking_metadata(
+            exec_result,
+            tool_or_error,
+            tool_call,
+        )
+        if parking_error is not None:
+            return parking_error
 
         if security_context is not None:
             exec_result = await self._scan_output(
@@ -556,6 +606,75 @@ class ToolInvoker:
                 is_error=True,
             )
 
+    def _track_parking_metadata(
+        self,
+        result: ToolExecutionResult,
+        tool: BaseTool,
+        tool_call: ToolCall,
+    ) -> ToolResult | None:
+        """Detect ``requires_parking`` metadata and add to escalations.
+
+        Tools like ``request_human_approval`` signal parking via
+        ``ToolExecutionResult.metadata``.  Only tracks when both
+        ``requires_parking=True`` and ``approval_id`` are present.
+
+        Returns:
+            ``None`` on success, or an error ``ToolResult`` if tracking
+            fails — ensures the agent does not silently bypass the
+            approval gate.
+        """
+        if result.metadata.get("requires_parking") is not True:
+            return None
+        if not result.metadata.get("approval_id"):
+            logger.error(
+                TOOL_INVOKE_EXECUTION_ERROR,
+                tool_call_id=tool_call.id,
+                tool_name=tool.name,
+                note="requires_parking=True but approval_id missing",
+            )
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                content=(
+                    "Tool signalled requires_parking=True but did not "
+                    "provide an approval_id — cannot track escalation"
+                ),
+                is_error=True,
+            )
+        try:
+            from ai_company.engine.approval_gate_models import (  # noqa: PLC0415
+                EscalationInfo as _EscalationInfo,
+            )
+
+            self._pending_escalations.append(
+                _EscalationInfo(
+                    approval_id=str(result.metadata["approval_id"]),
+                    tool_call_id=tool_call.id,
+                    tool_name=tool.name,
+                    action_type=str(
+                        result.metadata.get("action_type", tool.action_type),
+                    ),
+                    risk_level=ApprovalRiskLevel(
+                        result.metadata.get("risk_level", "high"),
+                    ),
+                    reason="Agent requested human approval",
+                ),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                TOOL_INVOKE_EXECUTION_ERROR,
+                tool_call_id=tool_call.id,
+                tool_name=tool.name,
+                note="Failed to track parking metadata",
+            )
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                content=f"Approval escalation tracking failed: {exc}",
+                is_error=True,
+            )
+        return None
+
     def _build_result(
         self,
         tool_call: ToolCall,
@@ -599,7 +718,7 @@ class ToolInvoker:
         try:
             ctx = semaphore if semaphore is not None else nullcontext()
             async with ctx:
-                results[index] = await self.invoke(tool_call)
+                results[index] = await self._invoke_single(tool_call)
         except (MemoryError, RecursionError) as exc:
             fatal_errors.append(exc)
 
@@ -634,6 +753,8 @@ class ToolInvoker:
             RecursionError: Re-raised if a single fatal error occurred.
             ExceptionGroup: If multiple fatal errors occurred.
         """
+        self._pending_escalations.clear()
+
         if max_concurrency is not None and max_concurrency < 1:
             msg = f"max_concurrency must be >= 1, got {max_concurrency}"
             raise ValueError(msg)
@@ -673,4 +794,12 @@ class ToolInvoker:
         )
 
         self._raise_fatal_errors(fatal_errors)
+
+        # Sort escalations by tool-call index for deterministic ordering.
+        if len(self._pending_escalations) > 1:
+            call_id_order = {tc.id: idx for idx, tc in enumerate(calls)}
+            self._pending_escalations.sort(
+                key=lambda e: call_id_order.get(e.tool_call_id, len(calls)),
+            )
+
         return tuple(results[i] for i in range(len(calls)))

@@ -137,7 +137,7 @@ from ai_company.observability.events.workspace import (
     WORKSPACE_TEARDOWN_START,
 )
 
-pytestmark = pytest.mark.timeout(30)
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 _DOT_PATTERN = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
 
@@ -156,7 +156,6 @@ def _all_event_names() -> list[tuple[str, str]]:
     return result
 
 
-@pytest.mark.unit
 class TestEventConstants:
     def test_all_are_strings(self) -> None:
         for attr, val in _all_event_names():
@@ -181,6 +180,7 @@ class TestEventConstants:
         """Every expected domain module is found by pkgutil discovery."""
         expected = {
             "api",
+            "approval_gate",
             "autonomy",
             "budget",
             "cfo",

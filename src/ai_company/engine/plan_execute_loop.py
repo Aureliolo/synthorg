@@ -67,6 +67,7 @@ from .plan_parsing import (
 )
 
 if TYPE_CHECKING:
+    from ai_company.engine.approval_gate import ApprovalGate
     from ai_company.engine.checkpoint.callback import CheckpointCallback
     from ai_company.engine.context import AgentContext
     from ai_company.providers.models import ToolDefinition
@@ -81,15 +82,25 @@ class PlanExecuteLoop:
 
     Decomposes a task into steps via LLM planning, then executes each
     step with a mini-ReAct sub-loop. Supports re-planning on failure.
+
+    Args:
+        config: Loop configuration.  Defaults to ``PlanExecuteConfig()``.
+        checkpoint_callback: Optional per-turn checkpoint callback.
+        approval_gate: Optional gate that checks for pending escalations
+            after tool execution and parks the agent when approval is
+            required.  ``None`` disables approval checks.
     """
 
     def __init__(
         self,
         config: PlanExecuteConfig | None = None,
         checkpoint_callback: CheckpointCallback | None = None,
+        *,
+        approval_gate: ApprovalGate | None = None,
     ) -> None:
         self._config = config or PlanExecuteConfig()
         self._checkpoint_callback = checkpoint_callback
+        self._approval_gate = approval_gate
 
     @property
     def config(self) -> PlanExecuteConfig:
@@ -739,8 +750,8 @@ class PlanExecuteLoop:
             )
         return ctx, success
 
-    @staticmethod
     async def _handle_step_tool_calls(  # noqa: PLR0913
+        self,
         ctx: AgentContext,
         tool_invoker: ToolInvoker | None,
         response: CompletionResponse,
@@ -763,6 +774,7 @@ class PlanExecuteLoop:
             response,
             turn_number,
             turns,
+            approval_gate=self._approval_gate,
         )
 
     # ── Checkpoint ──────────────────────────────────────────────────

@@ -34,7 +34,11 @@ from ai_company.observability.events.api import (
     API_APPROVAL_CREATED,
     API_APPROVAL_PUBLISH_FAILED,
     API_APPROVAL_REJECTED,
+    API_AUTH_FAILED,
     API_RESOURCE_NOT_FOUND,
+)
+from ai_company.observability.events.approval_gate import (
+    APPROVAL_GATE_RESUME_TRIGGERED,
 )
 
 logger = get_logger(__name__)
@@ -94,7 +98,9 @@ def _publish_approval_event(
             event.model_dump_json(),
             channels=[CHANNEL_APPROVALS],
         )
-    except RuntimeError, OSError:
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
         logger.warning(
             API_APPROVAL_PUBLISH_FAILED,
             approval_id=item.id,
@@ -111,8 +117,8 @@ def _resolve_decision(
     """Validate that an approval item is pending and extract the auth user.
 
     Performs the shared pre-checks for approve/reject operations:
-    look up the authenticated user, and verify the item is still
-    in PENDING status.
+    verify the item is still in PENDING status, and look up the
+    authenticated user.
 
     Args:
         request: The incoming HTTP request.
@@ -138,9 +144,72 @@ def _resolve_decision(
     auth_user = request.scope.get("user")
     if not isinstance(auth_user, AuthenticatedUser):
         msg = "Authentication required"
+        logger.warning(
+            API_AUTH_FAILED,
+            approval_id=approval_id,
+            note="No authenticated user in request scope",
+        )
         raise UnauthorizedError(msg)
 
     return auth_user
+
+
+def _log_approval_decision(
+    approval_id: str,
+    *,
+    approved: bool,
+    decided_by: str,
+) -> None:
+    """Log the approval decision for observability.
+
+    Context resumption is not handled by the approval controller.
+    A future scheduling component will observe status changes and
+    call ``ApprovalGate.resume_context()`` to resume the parked agent.
+    """
+    event = API_APPROVAL_APPROVED if approved else API_APPROVAL_REJECTED
+    logger.info(
+        event,
+        approval_id=approval_id,
+        decided_by=decided_by,
+    )
+
+
+async def _signal_resume_intent(
+    app_state: AppState,
+    approval_id: str,
+    *,
+    approved: bool,
+    decided_by: str,
+    decision_reason: str | None = None,
+) -> None:
+    """Log that a decision was made so a scheduler can resume the agent.
+
+    This is intentionally a **signalling-only stub**.  It does NOT call
+    ``ApprovalGate.resume_context()`` or re-enqueue the parked agent —
+    that is the responsibility of a future scheduling component that
+    will observe status changes (via log events or store polling) and
+    perform the actual resume.
+
+    .. todo:: Wire to a real scheduler once one exists (see §12.4).
+
+    Args:
+        app_state: Application state containing the approval gate.
+        approval_id: The approval item identifier.
+        approved: Whether the action was approved.
+        decided_by: Who made the decision.
+        decision_reason: Optional reason for the decision.
+    """
+    approval_gate = app_state.approval_gate
+    if approval_gate is None:
+        return
+
+    logger.info(
+        APPROVAL_GATE_RESUME_TRIGGERED,
+        approval_id=approval_id,
+        approved=approved,
+        decided_by=decided_by,
+        has_reason=decision_reason is not None,
+    )
 
 
 class ApprovalsController(Controller):
@@ -220,6 +289,9 @@ class ApprovalsController(Controller):
     ) -> ApiResponse[ApprovalItem]:
         """Create a new approval item.
 
+        The ``requested_by`` field is populated from the authenticated
+        user's username, not from the request body.
+
         Args:
             state: Application state.
             data: Approval creation payload.
@@ -227,7 +299,20 @@ class ApprovalsController(Controller):
 
         Returns:
             Created approval item envelope.
+
+        Raises:
+            UnauthorizedError: If the user is missing from the request scope.
         """
+        auth_user = request.scope.get("user")
+        if not isinstance(auth_user, AuthenticatedUser):
+            msg = "Authentication required"
+            logger.warning(
+                API_AUTH_FAILED,
+                endpoint="create_approval",
+                note="No authenticated user in request scope",
+            )
+            raise UnauthorizedError(msg)
+
         app_state: AppState = state.app_state
         now = datetime.now(UTC)
         approval_id = f"approval-{uuid4().hex}"
@@ -241,7 +326,7 @@ class ApprovalsController(Controller):
             action_type=data.action_type,
             title=data.title,
             description=data.description,
-            requested_by=data.requested_by,
+            requested_by=auth_user.username,
             risk_level=data.risk_level,
             created_at=now,
             expires_at=expires_at,
@@ -314,28 +399,35 @@ class ApprovalsController(Controller):
                 "decision_reason": data.comment,
             },
         )
-        saved = await app_state.approval_store.save(updated)
+        saved = await app_state.approval_store.save_if_pending(updated)
         if saved is None:
+            msg = "Approval is no longer pending (already decided or expired)"
             logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="approval",
-                id=approval_id,
-                note="disappeared between get and save",
+                API_APPROVAL_CONFLICT,
+                approval_id=approval_id,
+                note=msg,
             )
-            msg = f"Approval {approval_id!r} not found"
-            raise NotFoundError(msg)
+            raise ConflictError(msg)
 
         _publish_approval_event(
             request,
             WsEventType.APPROVAL_APPROVED,
             updated,
         )
-        logger.info(
-            API_APPROVAL_APPROVED,
-            approval_id=approval_id,
+        _log_approval_decision(
+            approval_id,
+            approved=True,
             decided_by=auth_user.username,
         )
-        return ApiResponse(data=updated)
+        await _signal_resume_intent(
+            app_state,
+            approval_id,
+            approved=True,
+            decided_by=auth_user.username,
+            decision_reason=data.comment,
+        )
+
+        return ApiResponse(data=saved)
 
     @post(
         "/{approval_id:str}/reject",
@@ -388,25 +480,32 @@ class ApprovalsController(Controller):
                 "decision_reason": data.reason,
             },
         )
-        saved = await app_state.approval_store.save(updated)
+        saved = await app_state.approval_store.save_if_pending(updated)
         if saved is None:
+            msg = "Approval is no longer pending (already decided or expired)"
             logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="approval",
-                id=approval_id,
-                note="disappeared between get and save",
+                API_APPROVAL_CONFLICT,
+                approval_id=approval_id,
+                note=msg,
             )
-            msg = f"Approval {approval_id!r} not found"
-            raise NotFoundError(msg)
+            raise ConflictError(msg)
 
         _publish_approval_event(
             request,
             WsEventType.APPROVAL_REJECTED,
             updated,
         )
-        logger.info(
-            API_APPROVAL_REJECTED,
-            approval_id=approval_id,
+        _log_approval_decision(
+            approval_id,
+            approved=False,
             decided_by=auth_user.username,
         )
-        return ApiResponse(data=updated)
+        await _signal_resume_intent(
+            app_state,
+            approval_id,
+            approved=False,
+            decided_by=auth_user.username,
+            decision_reason=data.reason,
+        )
+
+        return ApiResponse(data=saved)

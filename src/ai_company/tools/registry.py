@@ -99,6 +99,10 @@ class ToolRegistry:
         """Return sorted tuple of registered tool names."""
         return tuple(sorted(self._tools))
 
+    def all_tools(self) -> tuple[BaseTool, ...]:
+        """Return all registered tool instances, sorted by name."""
+        return tuple(self._tools[name] for name in sorted(self._tools))
+
     def to_definitions(self) -> tuple[ToolDefinition, ...]:
         """Return all tool definitions as a sorted tuple, ordered by name.
 

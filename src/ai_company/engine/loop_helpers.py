@@ -8,6 +8,9 @@ on their control-flow logic.
 from typing import TYPE_CHECKING
 
 from ai_company.observability import get_logger
+from ai_company.observability.events.approval_gate import (
+    APPROVAL_GATE_PARK_TASKLESS,
+)
 from ai_company.observability.events.execution import (
     EXECUTION_LOOP_BUDGET_EXHAUSTED,
     EXECUTION_LOOP_ERROR,
@@ -34,6 +37,8 @@ from .loop_protocol import (
 
 if TYPE_CHECKING:
     from ai_company.budget.call_category import LLMCallCategory
+    from ai_company.engine.approval_gate import ApprovalGate
+    from ai_company.engine.approval_gate_models import EscalationInfo
     from ai_company.engine.context import AgentContext
     from ai_company.providers.protocol import CompletionProvider
     from ai_company.tools.invoker import ToolInvoker
@@ -232,14 +237,20 @@ def check_response_errors(
     )
 
 
-async def execute_tool_calls(
+async def execute_tool_calls(  # noqa: PLR0913
     ctx: AgentContext,
     tool_invoker: ToolInvoker | None,
     response: CompletionResponse,
     turn_number: int,
     turns: list[TurnRecord],
+    *,
+    approval_gate: ApprovalGate | None = None,
 ) -> AgentContext | ExecutionResult:
     """Execute tool calls and append results to context.
+
+    When an ``approval_gate`` is provided and the invoker reports
+    pending escalations, the context is parked and a PARKED result
+    is returned.
 
     Args:
         ctx: Current agent context.
@@ -247,6 +258,7 @@ async def execute_tool_calls(
         response: Provider response containing tool calls.
         turn_number: Current turn number (1-indexed).
         turns: Accumulated turn records.
+        approval_gate: Optional approval gate for escalation parking.
 
     Returns:
         Updated ``AgentContext`` on success, or ``ExecutionResult`` on error.
@@ -314,7 +326,90 @@ async def execute_tool_calls(
         )
         ctx = ctx.with_message(tool_msg)
 
+    # Check for escalations requiring parking.
+    if approval_gate is not None:
+        escalation = approval_gate.should_park(
+            tool_invoker.pending_escalations,
+        )
+        if escalation is not None:
+            return await _park_for_approval(
+                ctx,
+                escalation,
+                approval_gate,
+                turns,
+            )
+
     return ctx
+
+
+async def _park_for_approval(
+    ctx: AgentContext,
+    escalation: EscalationInfo,
+    approval_gate: ApprovalGate,
+    turns: list[TurnRecord],
+) -> ExecutionResult:
+    """Park the context for approval and return a PARKED or ERROR result.
+
+    On success, returns PARKED with the approval_id in metadata.
+    On failure (serialization/persistence error), returns ERROR — the
+    agent should not continue, and the caller should treat this as a
+    non-resumable failure.
+
+    Args:
+        ctx: Current agent context.
+        escalation: The escalation that triggered parking.
+        approval_gate: The approval gate service.
+        turns: Accumulated turn records.
+
+    Returns:
+        An ``ExecutionResult`` with PARKED or ERROR termination reason.
+    """
+    agent_id = str(ctx.identity.id)
+    task_id: str | None = None
+    if ctx.task_execution is not None:
+        task_id = ctx.task_execution.task.id
+    else:
+        logger.debug(
+            APPROVAL_GATE_PARK_TASKLESS,
+            approval_id=escalation.approval_id,
+            agent_id=agent_id,
+            note="No task_execution on context — task_id will be None",
+        )
+
+    try:
+        await approval_gate.park_context(
+            escalation=escalation,
+            context=ctx,
+            agent_id=agent_id,
+            task_id=task_id,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        # ApprovalGate already logs APPROVAL_GATE_CONTEXT_PARK_FAILED
+        return build_result(
+            ctx,
+            TerminationReason.ERROR,
+            turns,
+            error_message=(
+                f"Approval escalation detected (id={escalation.approval_id}) "
+                f"but context parking failed — cannot resume"
+            ),
+            metadata={
+                "approval_id": escalation.approval_id,
+                "parking_failed": True,
+            },
+        )
+
+    return build_result(
+        ctx,
+        TerminationReason.PARKED,
+        turns,
+        metadata={
+            "approval_id": escalation.approval_id,
+            "parking_failed": False,
+        },
+    )
 
 
 def clear_last_turn_tool_calls(turns: list[TurnRecord]) -> None:

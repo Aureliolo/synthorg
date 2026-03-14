@@ -23,7 +23,7 @@ from ai_company.persistence.errors import MigrationError
 logger = get_logger(__name__)
 
 # Current schema version — bump when adding new migrations.
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 _V1_STATEMENTS: Sequence[str] = (
     # ── Tasks ─────────────────────────────────────────────
@@ -255,6 +255,28 @@ CREATE TABLE IF NOT EXISTS heartbeats (
     "CREATE INDEX IF NOT EXISTS idx_hb_last_heartbeat ON heartbeats(last_heartbeat_at)",
 )
 
+_V7_NEW_TABLE_DDL: str = """\
+CREATE TABLE IF NOT EXISTS parked_contexts_new (
+    id TEXT PRIMARY KEY,
+    execution_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    task_id TEXT,
+    approval_id TEXT NOT NULL,
+    parked_at TEXT NOT NULL,
+    context_json TEXT NOT NULL,
+    metadata TEXT NOT NULL DEFAULT '{}'
+)"""
+
+_V7_COPY_ROWS: str = """\
+INSERT OR IGNORE INTO parked_contexts_new (
+    id, execution_id, agent_id, task_id, approval_id,
+    parked_at, context_json, metadata
+)
+SELECT
+    id, execution_id, agent_id, task_id, approval_id,
+    parked_at, context_json, metadata
+FROM {source}"""
+
 _MigrateFn = Callable[[aiosqlite.Connection], Coroutine[Any, Any, None]]
 
 
@@ -323,6 +345,65 @@ async def _apply_v6(db: aiosqlite.Connection) -> None:
         await db.execute(stmt)
 
 
+async def _table_exists(db: aiosqlite.Connection, name: str) -> bool:
+    """Check whether a table exists in the database."""
+    cursor = await db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (name,),
+    )
+    return await cursor.fetchone() is not None
+
+
+async def _apply_v7(db: aiosqlite.Connection) -> None:
+    """Apply schema v7: make parked_contexts.task_id nullable.
+
+    Crash-safe: handles three intermediate states:
+    1. Normal (parked_contexts exists) — create new, copy, rename, drop.
+    2. Mid-crash (parked_contexts_old exists, parked_contexts gone) —
+       skip copy, just rename new → parked_contexts and drop old.
+    3. Already done (parked_contexts exists, no _new or _old) — no-op
+       via IF NOT EXISTS + OR IGNORE guards.
+    """
+    has_original = await _table_exists(db, "parked_contexts")
+    has_old = await _table_exists(db, "parked_contexts_old")
+
+    # Step 1: create the new table (idempotent).
+    await db.execute(_V7_NEW_TABLE_DDL)
+
+    # Step 2: copy rows from the surviving source table.
+    # Always run when a source exists — INSERT OR IGNORE makes it idempotent.
+    if has_original:
+        await db.execute(_V7_COPY_ROWS.format(source="parked_contexts"))
+    elif has_old:
+        await db.execute(_V7_COPY_ROWS.format(source="parked_contexts_old"))
+
+    # Step 3: rename original → _old (skip if already gone).
+    if has_original and not has_old:
+        await db.execute(
+            "ALTER TABLE parked_contexts RENAME TO parked_contexts_old",
+        )
+
+    # Step 4: ensure parked_contexts exists, handling crash states.
+    has_current = await _table_exists(db, "parked_contexts")
+    if await _table_exists(db, "parked_contexts_new"):
+        if has_current:
+            # Crash after a previous step 4 — keep existing, drop redundant.
+            await db.execute("DROP TABLE parked_contexts_new")
+        else:
+            await db.execute(
+                "ALTER TABLE parked_contexts_new RENAME TO parked_contexts",
+            )
+
+    # Step 5: clean up.
+    await db.execute("DROP TABLE IF EXISTS parked_contexts_old")
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pc_agent_id ON parked_contexts(agent_id)",
+    )
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pc_approval_id ON parked_contexts(approval_id)",
+    )
+
+
 # Ordered list of (target_version, migration_function) pairs. Each migration
 # is applied when the current schema version is below its target version.
 _MIGRATIONS: list[tuple[int, _MigrateFn]] = [
@@ -332,6 +413,7 @@ _MIGRATIONS: list[tuple[int, _MigrateFn]] = [
     (4, _apply_v4),
     (5, _apply_v5),
     (6, _apply_v6),
+    (7, _apply_v7),
 ]
 
 

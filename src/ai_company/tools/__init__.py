@@ -1,5 +1,6 @@
 """Tool system — base abstraction, registry, invoker, permissions, and errors."""
 
+from .approval_tool import RequestHumanApprovalTool
 from .base import BaseTool, ToolExecutionResult
 from .code_runner import CodeRunnerTool
 from .errors import (
@@ -64,6 +65,7 @@ __all__ = [
     "ListDirectoryTool",
     "PathValidator",
     "ReadFileTool",
+    "RequestHumanApprovalTool",
     "SandboxBackend",
     "SandboxError",
     "SandboxResult",

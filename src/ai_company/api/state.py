@@ -11,6 +11,7 @@ from ai_company.api.errors import ServiceUnavailableError
 from ai_company.budget.tracker import CostTracker  # noqa: TC001
 from ai_company.communication.bus_protocol import MessageBus  # noqa: TC001
 from ai_company.config.schema import RootConfig  # noqa: TC001
+from ai_company.engine.approval_gate import ApprovalGate  # noqa: TC001
 from ai_company.engine.task_engine import TaskEngine  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.api import API_APP_STARTUP, API_SERVICE_UNAVAILABLE
@@ -36,6 +37,7 @@ class AppState:
     """
 
     __slots__ = (
+        "_approval_gate",
         "_auth_service",
         "_cost_tracker",
         "_message_bus",
@@ -56,10 +58,12 @@ class AppState:
         cost_tracker: CostTracker | None = None,
         auth_service: AuthService | None = None,
         task_engine: TaskEngine | None = None,
+        approval_gate: ApprovalGate | None = None,
         startup_time: float = 0.0,
     ) -> None:
         self.config = config
         self.approval_store = approval_store
+        self._approval_gate = approval_gate
         self._persistence = persistence
         self._message_bus = message_bus
         self._cost_tracker = cost_tracker
@@ -130,6 +134,11 @@ class AppState:
             logger.error(API_APP_STARTUP, error=msg)
             raise RuntimeError(msg)
         self._task_engine = engine
+
+    @property
+    def approval_gate(self) -> ApprovalGate | None:
+        """Return approval gate, or None if not configured."""
+        return self._approval_gate
 
     @property
     def has_auth_service(self) -> bool:

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import axios from 'axios'
 import * as approvalsApi from '@/api/endpoints/approvals'
 import { getErrorMessage } from '@/utils/errors'
 import type { ApprovalItem, ApprovalFilters, ApproveRequest, RejectRequest, WsEvent } from '@/api/types'
@@ -52,45 +53,81 @@ export const useApprovalStore = defineStore('approvals', () => {
     }
   }
 
-  /** Runtime check for required ApprovalItem fields before insertion. */
-  function isValidApprovalPayload(p: Record<string, unknown>): boolean {
-    return (
-      typeof p.id === 'string' && p.id !== '' &&
-      typeof p.action_type === 'string' &&
-      typeof p.title === 'string' &&
-      typeof p.status === 'string' &&
-      typeof p.requested_by === 'string' &&
-      typeof p.risk_level === 'string' &&
-      typeof p.created_at === 'string'
-    )
-  }
-
-  function handleWsEvent(event: WsEvent) {
+  /**
+   * Handle a WebSocket approval event.
+   *
+   * The backend sends a minimal payload with ``approval_id`` (not ``id``).
+   * For new submissions, we fetch the full item from the API.
+   * For status changes, we update the local status and re-fetch for
+   * the complete updated item.
+   *
+   * This function is synchronous to satisfy the ``WsEventHandler`` type
+   * contract.  Async work runs inside a void IIFE.
+   */
+  function handleWsEvent(event: WsEvent): void {
     const payload = event.payload as Record<string, unknown> | null
     if (!payload || typeof payload !== 'object') return
-    switch (event.event_type) {
-      case 'approval.submitted':
-        if (
-          isValidApprovalPayload(payload) &&
-          !approvals.value.some((a) => a.id === payload.id)
-        ) {
-          // Only insert + count into unfiltered views to keep list consistent
-          if (!activeFilters.value) {
-            approvals.value = [payload as unknown as ApprovalItem, ...approvals.value]
-            total.value++
-          }
+    const approvalId = payload.approval_id
+    if (typeof approvalId !== 'string' || !approvalId) return
+
+    void (async () => {
+      try {
+        switch (event.event_type) {
+          case 'approval.submitted':
+            if (!approvals.value.some((a) => a.id === approvalId)) {
+              if (activeFilters.value) {
+                // Filters active — re-fetch the filtered query to stay consistent
+                await fetchApprovals(activeFilters.value)
+              } else {
+                try {
+                  const item = await approvalsApi.getApproval(approvalId)
+                  // Re-check after async fetch to prevent duplicate insertion
+                  if (!approvals.value.some((a) => a.id === approvalId)) {
+                    approvals.value = [item, ...approvals.value]
+                    total.value++
+                  }
+                } catch (err) {
+                  if (axios.isAxiosError(err) && (err.response?.status === 404 || err.response?.status === 410)) {
+                    // Item genuinely gone — skip
+                  } else {
+                    console.warn('Failed to fetch approval:', approvalId, err)
+                  }
+                }
+              }
+            }
+            break
+          case 'approval.approved':
+          case 'approval.rejected':
+          case 'approval.expired':
+            if (activeFilters.value) {
+              // Filters active — re-fetch to reconcile (items may enter/leave the filtered set)
+              await fetchApprovals(activeFilters.value)
+            } else {
+              try {
+                const updated = await approvalsApi.getApproval(approvalId)
+                approvals.value = approvals.value.map((a) =>
+                  a.id === approvalId ? updated : a,
+                )
+              } catch (err) {
+                if (axios.isAxiosError(err) && (err.response?.status === 404 || err.response?.status === 410)) {
+                  // Item genuinely gone — remove from local list
+                  const lengthBefore = approvals.value.length
+                  approvals.value = approvals.value.filter((a) => a.id !== approvalId)
+                  const removed = lengthBefore - approvals.value.length
+                  if (removed > 0) {
+                    total.value = Math.max(0, total.value - removed)
+                  }
+                } else {
+                  console.warn('Failed to fetch approval:', approvalId, err)
+                }
+              }
+            }
+            break
         }
-        break
-      case 'approval.approved':
-      case 'approval.rejected':
-      case 'approval.expired':
-        if (typeof payload.id === 'string' && payload.id) {
-          approvals.value = approvals.value.map((a) =>
-            a.id === payload.id ? { ...a, ...(payload as Partial<ApprovalItem>) } : a,
-          )
-        }
-        break
-    }
+      } catch (err) {
+        console.warn('Unexpected error in WS event handler:', err)
+      }
+    })()
   }
 
   return {
