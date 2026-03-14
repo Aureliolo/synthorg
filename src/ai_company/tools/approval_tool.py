@@ -140,6 +140,10 @@ class RequestHumanApprovalTool(BaseTool):
                 is_error=True,
             )
 
+        action_type = action_type.strip()
+        title = title.strip()
+        description = description.strip()
+
         validation_error = self._validate_action_type(action_type)
         if validation_error is not None:
             return validation_error
@@ -197,9 +201,7 @@ class RequestHumanApprovalTool(BaseTool):
                 note="Failed to create approval item",
             )
             return ToolExecutionResult(
-                content=(
-                    f"Failed to create approval request: {type(exc).__name__}: {exc}"
-                ),
+                content="Failed to create approval request",
                 is_error=True,
             )
         return None

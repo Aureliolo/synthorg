@@ -18,7 +18,7 @@ def _now() -> datetime:
 def _make_item(  # noqa: PLR0913
     *,
     approval_id: str = "approval-001",
-    action_type: str = "code_merge",
+    action_type: str = "code:merge",
     risk_level: ApprovalRiskLevel = ApprovalRiskLevel.MEDIUM,
     status: ApprovalStatus = ApprovalStatus.PENDING,
     ttl_seconds: int | None = None,
@@ -47,6 +47,7 @@ def _make_item(  # noqa: PLR0913
 
 
 @pytest.mark.unit
+@pytest.mark.timeout(30)
 class TestApprovalStore:
     async def test_add_and_get_roundtrip(self) -> None:
         store = ApprovalStore()
