@@ -11,6 +11,7 @@ class TestMeetingTypeConfigFrequency:
     """Tests for MeetingFrequency enum in MeetingTypeConfig."""
 
     def test_accepts_enum_value(self) -> None:
+        """MeetingTypeConfig accepts MeetingFrequency enum for frequency field."""
         config = MeetingTypeConfig(
             name="standup",
             frequency=MeetingFrequency.DAILY,

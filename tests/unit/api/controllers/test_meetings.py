@@ -196,6 +196,10 @@ class TestMeetingController:
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
+        mock_scheduler.trigger_event.assert_awaited_once_with(
+            "deploy_complete",
+            context={},
+        )
 
     def test_503_when_orchestrator_not_configured(
         self,
@@ -258,6 +262,16 @@ class TestTriggerMeetingRequestValidation:
         ctx = {f"k{i}": "v" for i in range(20)}
         req = TriggerMeetingRequest(event_name="evt", context=ctx)
         assert len(req.context) == 20
+
+    def test_accepts_exact_max_key_and_value_lengths(self) -> None:
+        """Exact boundary: key=256 chars, value=1024 chars accepted."""
+        from ai_company.api.controllers.meetings import TriggerMeetingRequest
+
+        key = "k" * 256
+        value = "v" * 1024
+        req = TriggerMeetingRequest(event_name="evt", context={key: value})
+        assert len(req.context) == 1
+        assert req.context[key] == value
 
 
 def _create_app_without_meetings() -> Any:

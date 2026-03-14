@@ -38,7 +38,7 @@ class TriggerMeetingRequest(BaseModel):
     event_name: NotBlankStr = Field(
         description="Event trigger name",
     )
-    context: dict[str, str] = Field(
+    context: dict[str, str | list[str]] = Field(
         default_factory=dict,
         description="Event context for participant resolution and agenda",
     )
@@ -53,7 +53,15 @@ class TriggerMeetingRequest(BaseModel):
             if len(k) > _MAX_CONTEXT_KEY_LEN:
                 msg = f"context key must be at most {_MAX_CONTEXT_KEY_LEN} characters"
                 raise ValueError(msg)
-            if len(v) > _MAX_CONTEXT_VAL_LEN:
+            if isinstance(v, list):
+                for item in v:
+                    if len(item) > _MAX_CONTEXT_VAL_LEN:
+                        msg = (
+                            f"context list item must be at most"
+                            f" {_MAX_CONTEXT_VAL_LEN} characters"
+                        )
+                        raise ValueError(msg)
+            elif len(v) > _MAX_CONTEXT_VAL_LEN:
                 msg = f"context value must be at most {_MAX_CONTEXT_VAL_LEN} characters"
                 raise ValueError(msg)
         return self

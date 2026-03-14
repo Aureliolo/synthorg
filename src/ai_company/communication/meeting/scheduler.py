@@ -38,6 +38,15 @@ from ai_company.observability.events.meeting import (
 if TYPE_CHECKING:
     from ai_company.communication.config import MeetingsConfig, MeetingTypeConfig
 
+# Map meeting status values to WS event name strings.
+# Mirrors WsEventType.MEETING_* values without importing the API layer.
+_STATUS_TO_WS_EVENT: dict[str, str] = {
+    "completed": "meeting.completed",
+    "failed": "meeting.failed",
+    "budget_exhausted": "meeting.failed",
+    "in_progress": "meeting.started",
+}
+
 logger = get_logger(__name__)
 
 # Minimum participants required for a meeting (leader + at least 1 other).
@@ -158,6 +167,9 @@ class MeetingScheduler:
             Tuple of meeting records for all triggered meetings
             (empty if no matching types).
         """
+        if not self._config.enabled:
+            return ()
+
         matching = tuple(mt for mt in self._config.types if mt.trigger == event_name)
         if not matching:
             return ()
@@ -248,6 +260,36 @@ class MeetingScheduler:
         Returns:
             Meeting record on success, None if skipped or on error.
         """
+        resolved = await self._resolve_participants(meeting_type, context)
+        if resolved is None:
+            return None
+
+        # First resolved participant is designated as the meeting leader.
+        leader_id = resolved[0]
+        participant_ids = resolved[1:]
+        agenda = self._build_default_agenda(meeting_type, context)
+
+        return await self._run_and_publish(
+            meeting_type,
+            leader_id,
+            participant_ids,
+            agenda,
+        )
+
+    async def _resolve_participants(
+        self,
+        meeting_type: MeetingTypeConfig,
+        context: dict[str, Any] | None,
+    ) -> tuple[str, ...] | None:
+        """Resolve and validate participants for a meeting.
+
+        Args:
+            meeting_type: The meeting type configuration.
+            context: Optional event context.
+
+        Returns:
+            Resolved participant tuple, or None on failure.
+        """
         try:
             resolved = await self._resolver.resolve(
                 meeting_type.participants,
@@ -276,11 +318,26 @@ class MeetingScheduler:
             )
             return None
 
-        # First resolved participant is designated as the meeting leader.
-        leader_id = resolved[0]
-        participant_ids = resolved[1:]
-        agenda = self._build_default_agenda(meeting_type, context)
+        return resolved
 
+    async def _run_and_publish(
+        self,
+        meeting_type: MeetingTypeConfig,
+        leader_id: str,
+        participant_ids: tuple[str, ...],
+        agenda: MeetingAgenda,
+    ) -> MeetingRecord | None:
+        """Invoke orchestrator and publish event on success.
+
+        Args:
+            meeting_type: The meeting type configuration.
+            leader_id: ID of the meeting leader.
+            participant_ids: IDs of remaining participants.
+            agenda: The meeting agenda.
+
+        Returns:
+            Meeting record on success, None on error.
+        """
         try:
             record = await self._orchestrator.run_meeting(
                 meeting_type_name=meeting_type.name,
@@ -311,9 +368,12 @@ class MeetingScheduler:
         """
         if self._event_publisher is None:
             return
+        event_name = _STATUS_TO_WS_EVENT.get(record.status.value)
+        if event_name is None:
+            return
         try:
             self._event_publisher(
-                f"meeting.{record.status.value}",
+                event_name,
                 {
                     "meeting_id": record.meeting_id,
                     "meeting_type": record.meeting_type_name,
