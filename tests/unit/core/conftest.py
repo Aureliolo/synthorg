@@ -177,6 +177,7 @@ class TaskFactory(ModelFactory[Task]):
     __model__ = Task
     status = TaskStatus.CREATED
     assigned_to = None
+    parent_task_id = None
     dependencies = ()
     deadline = None
 
