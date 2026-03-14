@@ -23,7 +23,7 @@ from ai_company.persistence.errors import MigrationError
 logger = get_logger(__name__)
 
 # Current schema version — bump when adding new migrations.
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 _V1_STATEMENTS: Sequence[str] = (
     # ── Tasks ─────────────────────────────────────────────
@@ -255,6 +255,36 @@ CREATE TABLE IF NOT EXISTS heartbeats (
     "CREATE INDEX IF NOT EXISTS idx_hb_last_heartbeat ON heartbeats(last_heartbeat_at)",
 )
 
+_V7_STATEMENTS: Sequence[str] = (
+    # ── Make parked_contexts.task_id nullable ─────────────
+    """\
+CREATE TABLE IF NOT EXISTS parked_contexts_new (
+    id TEXT PRIMARY KEY,
+    execution_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    task_id TEXT,
+    approval_id TEXT NOT NULL,
+    parked_at TEXT NOT NULL,
+    context_json TEXT NOT NULL,
+    metadata TEXT NOT NULL DEFAULT '{}'
+)""",
+    """\
+INSERT OR IGNORE INTO parked_contexts_new (
+    id, execution_id, agent_id, task_id, approval_id,
+    parked_at, context_json, metadata
+)
+SELECT
+    id, execution_id, agent_id, task_id, approval_id,
+    parked_at, context_json, metadata
+FROM parked_contexts
+""",
+    "ALTER TABLE parked_contexts RENAME TO parked_contexts_old",
+    "ALTER TABLE parked_contexts_new RENAME TO parked_contexts",
+    "DROP TABLE IF EXISTS parked_contexts_old",
+    "CREATE INDEX IF NOT EXISTS idx_pc_agent_id ON parked_contexts(agent_id)",
+    "CREATE INDEX IF NOT EXISTS idx_pc_approval_id ON parked_contexts(approval_id)",
+)
+
 _MigrateFn = Callable[[aiosqlite.Connection], Coroutine[Any, Any, None]]
 
 
@@ -323,6 +353,12 @@ async def _apply_v6(db: aiosqlite.Connection) -> None:
         await db.execute(stmt)
 
 
+async def _apply_v7(db: aiosqlite.Connection) -> None:
+    """Apply schema v7: make parked_contexts.task_id nullable."""
+    for stmt in _V7_STATEMENTS:
+        await db.execute(stmt)
+
+
 # Ordered list of (target_version, migration_function) pairs. Each migration
 # is applied when the current schema version is below its target version.
 _MIGRATIONS: list[tuple[int, _MigrateFn]] = [
@@ -332,6 +368,7 @@ _MIGRATIONS: list[tuple[int, _MigrateFn]] = [
     (4, _apply_v4),
     (5, _apply_v5),
     (6, _apply_v6),
+    (7, _apply_v7),
 ]
 
 

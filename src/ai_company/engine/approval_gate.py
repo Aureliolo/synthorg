@@ -112,6 +112,23 @@ class ApprovalGate:
             ValueError: If context serialization fails.
             PersistenceError: If persisting the parked context fails.
         """
+        parked = self._serialize_context(
+            escalation,
+            context,
+            agent_id,
+            task_id,
+        )
+        await self._persist_parked(parked, escalation)
+        return parked
+
+    def _serialize_context(
+        self,
+        escalation: EscalationInfo,
+        context: AgentContext,
+        agent_id: str,
+        task_id: str | None,
+    ) -> ParkedContext:
+        """Serialize the agent context via ParkService."""
         try:
             parked = self._park_service.park(
                 context=context,
@@ -134,7 +151,6 @@ class ApprovalGate:
                 task_id=task_id,
             )
             raise
-
         logger.info(
             APPROVAL_GATE_CONTEXT_PARKED,
             parked_id=parked.id,
@@ -142,22 +158,28 @@ class ApprovalGate:
             agent_id=agent_id,
             task_id=task_id,
         )
-
-        if self._parked_context_repo is not None:
-            try:
-                await self._parked_context_repo.save(parked)
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
-                logger.exception(
-                    APPROVAL_GATE_CONTEXT_PARK_FAILED,
-                    approval_id=escalation.approval_id,
-                    parked_id=parked.id,
-                    note="Context serialized but persistence failed",
-                )
-                raise
-
         return parked
+
+    async def _persist_parked(
+        self,
+        parked: ParkedContext,
+        escalation: EscalationInfo,
+    ) -> None:
+        """Persist the parked context if a repository is available."""
+        if self._parked_context_repo is None:
+            return
+        try:
+            await self._parked_context_repo.save(parked)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                APPROVAL_GATE_CONTEXT_PARK_FAILED,
+                approval_id=escalation.approval_id,
+                parked_id=parked.id,
+                note="Context serialized but persistence failed",
+            )
+            raise
 
     async def resume_context(
         self,
@@ -176,6 +198,25 @@ class ApprovalGate:
             Exception: If deserialization fails — the parked record
                 is NOT deleted so it can be retried or cleaned up.
         """
+        parked = await self._load_parked(approval_id)
+        if parked is None:
+            return None
+
+        context = self._deserialize_context(parked, approval_id)
+        await self._cleanup_parked(parked, approval_id)
+
+        logger.info(
+            APPROVAL_GATE_CONTEXT_RESUMED,
+            approval_id=approval_id,
+            parked_id=parked.id,
+        )
+        return context, parked.id
+
+    async def _load_parked(
+        self,
+        approval_id: str,
+    ) -> ParkedContext | None:
+        """Load the parked context from the repository."""
         if self._parked_context_repo is None:
             logger.info(
                 APPROVAL_GATE_NO_PARKED_CONTEXT,
@@ -195,10 +236,16 @@ class ApprovalGate:
                 APPROVAL_GATE_NO_PARKED_CONTEXT,
                 approval_id=approval_id,
             )
-            return None
+        return parked
 
+    def _deserialize_context(
+        self,
+        parked: ParkedContext,
+        approval_id: str,
+    ) -> AgentContext:
+        """Deserialize the parked context. Preserves record on failure."""
         try:
-            context = self._park_service.resume(parked)
+            return self._park_service.resume(parked)
         except MemoryError, RecursionError:
             raise
         except Exception:
@@ -206,10 +253,18 @@ class ApprovalGate:
                 APPROVAL_GATE_RESUME_FAILED,
                 approval_id=approval_id,
                 parked_id=parked.id,
-                note="Deserialization failed — parked record preserved for retry",
+                note="Deserialization failed — parked record preserved",
             )
             raise
 
+    async def _cleanup_parked(
+        self,
+        parked: ParkedContext,
+        approval_id: str,
+    ) -> None:
+        """Delete the parked record after successful deserialization."""
+        if self._parked_context_repo is None:  # pragma: no cover
+            return
         deleted = False
         try:
             deleted = await self._parked_context_repo.delete(parked.id)
@@ -228,22 +283,8 @@ class ApprovalGate:
                 APPROVAL_GATE_RESUME_DELETE_FAILED,
                 approval_id=approval_id,
                 parked_id=parked.id,
-                note="delete() returned False — parked record may still exist",
+                note="delete() returned False — may cause duplicate resume",
             )
-        else:
-            logger.debug(
-                APPROVAL_GATE_CONTEXT_RESUMED,
-                approval_id=approval_id,
-                parked_id=parked.id,
-                note="Parked record successfully deleted",
-            )
-
-        logger.info(
-            APPROVAL_GATE_CONTEXT_RESUMED,
-            approval_id=approval_id,
-            parked_id=parked.id,
-        )
-        return context, parked.id
 
     @staticmethod
     def build_resume_message(

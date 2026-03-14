@@ -81,8 +81,11 @@ export const useApprovalStore = defineStore('approvals', () => {
               } else {
                 try {
                   const item = await approvalsApi.getApproval(approvalId)
-                  approvals.value = [item, ...approvals.value]
-                  total.value++
+                  // Re-check after async fetch to prevent duplicate insertion
+                  if (!approvals.value.some((a) => a.id === approvalId)) {
+                    approvals.value = [item, ...approvals.value]
+                    total.value++
+                  }
                 } catch (err) {
                   if (axios.isAxiosError(err) && (err.response?.status === 404 || err.response?.status === 410)) {
                     // Item genuinely gone — skip

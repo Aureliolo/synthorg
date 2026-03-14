@@ -28,6 +28,9 @@ async def memory_db() -> AsyncGenerator[aiosqlite.Connection]:
 
 @pytest.mark.unit
 class TestSchemaMigrations:
+    async def test_schema_version_is_seven(self) -> None:
+        assert SCHEMA_VERSION == 7
+
     async def test_fresh_db_creates_all_v2_tables(
         self, memory_db: aiosqlite.Connection
     ) -> None:

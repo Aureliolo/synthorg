@@ -54,6 +54,9 @@ from ai_company.engine.task_sync import (
     transition_task_if_needed,
 )
 from ai_company.observability import get_logger
+from ai_company.observability.events.approval_gate import (
+    APPROVAL_GATE_INITIALIZED,
+)
 from ai_company.observability.events.execution import (
     EXECUTION_ENGINE_BUDGET_STOPPED,
     EXECUTION_ENGINE_COMPLETE,
@@ -159,6 +162,15 @@ class AgentEngine:
         self._approval_store = approval_store
         self._parked_context_repo = parked_context_repo
         self._approval_gate = self._make_approval_gate()
+        if execution_loop is not None and self._approval_gate is not None:
+            logger.warning(
+                APPROVAL_GATE_INITIALIZED,
+                note=(
+                    "execution_loop provided externally — approval_gate "
+                    "will NOT be wired automatically. Configure the loop "
+                    "with approval_gate= explicitly."
+                ),
+            )
         self._loop: ExecutionLoop = execution_loop or self._make_default_loop()
         self._tool_registry = tool_registry
         self._budget_enforcer = budget_enforcer

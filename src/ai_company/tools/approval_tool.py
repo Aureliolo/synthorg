@@ -16,7 +16,6 @@ from ai_company.observability import get_logger
 from ai_company.observability.events.approval_gate import (
     APPROVAL_GATE_ESCALATION_DETECTED,
     APPROVAL_GATE_ESCALATION_FAILED,
-    APPROVAL_GATE_RISK_CLASSIFIED,
     APPROVAL_GATE_RISK_CLASSIFY_FAILED,
 )
 
@@ -111,9 +110,18 @@ class RequestHumanApprovalTool(BaseTool):
             ``ToolExecutionResult`` with ``requires_parking=True`` in
             metadata on success, or an error result on failure.
         """
-        action_type = str(arguments["action_type"])
-        title = str(arguments["title"])
-        description = str(arguments["description"])
+        try:
+            action_type = str(arguments["action_type"])
+            title = str(arguments["title"])
+            description = str(arguments["description"])
+        except KeyError as exc:
+            return ToolExecutionResult(
+                content=(
+                    f"Missing required argument: {exc}. "
+                    f"Required: action_type, title, description"
+                ),
+                is_error=True,
+            )
 
         validation_error = self._validate_action_type(action_type)
         if validation_error is not None:
@@ -246,8 +254,8 @@ class RequestHumanApprovalTool(BaseTool):
                 )
                 return ApprovalRiskLevel.HIGH
         logger.debug(
-            APPROVAL_GATE_RISK_CLASSIFIED,
+            APPROVAL_GATE_RISK_CLASSIFY_FAILED,
             action_type=action_type,
-            note="No risk classifier — defaulting to HIGH",
+            note="No risk classifier configured — defaulting to HIGH",
         )
         return ApprovalRiskLevel.HIGH
