@@ -134,11 +134,14 @@ class TestRegistryParticipantResolver:
 
         assert result == ("dup-id",)
 
-    async def test_empty_result(
+    async def test_empty_result_raises(
         self,
         resolver: RegistryParticipantResolver,
     ) -> None:
-        """Empty participant refs yield empty result."""
-        result = await resolver.resolve(())
+        """Empty participant refs raise NoParticipantsResolvedError."""
+        from ai_company.communication.meeting.errors import (
+            NoParticipantsResolvedError,
+        )
 
-        assert result == ()
+        with pytest.raises(NoParticipantsResolvedError):
+            await resolver.resolve(())

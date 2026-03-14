@@ -73,12 +73,16 @@ export const useMeetingStore = defineStore('meetings', () => {
         meetings.value = [...meetings.value, fresh]
         total.value++
       }
-    } catch {
-      // Best-effort refresh — log silently
+      if (selectedMeeting.value?.meeting_id === meetingId) {
+        selectedMeeting.value = fresh
+      }
+    } catch (err) {
+      console.warn('Meeting refresh failed:', meetingId, err)
     }
   }
 
   function handleWsEvent(event: WsEvent) {
+    if (event.channel !== 'meetings') return
     const payload = event.payload as Record<string, unknown> | null
     if (!payload || typeof payload !== 'object') return
 

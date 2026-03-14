@@ -576,7 +576,7 @@ export interface MeetingFilters {
 
 export interface TriggerMeetingRequest {
   event_name: string
-  context?: Record<string, unknown>
+  context?: Record<string, string>
 }
 
 // ── WebSocket ────────────────────────────────────────────────

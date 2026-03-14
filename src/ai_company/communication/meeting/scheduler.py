@@ -113,12 +113,13 @@ class MeetingScheduler:
         self._running = True
 
         scheduled = self.get_scheduled_types()
-        for meeting_type in scheduled:
-            task = asyncio.create_task(
-                self._run_periodic(meeting_type),
-                name=f"meeting-{meeting_type.name}",
+        self._tasks = [
+            asyncio.create_task(
+                self._run_periodic(mt),
+                name=f"meeting-{mt.name}",
             )
-            self._tasks.append(task)
+            for mt in scheduled
+        ]
 
         logger.info(
             MEETING_SCHEDULER_STARTED,
@@ -135,7 +136,7 @@ class MeetingScheduler:
             task.cancel()
         if self._tasks:
             await asyncio.gather(*self._tasks, return_exceptions=True)
-        self._tasks.clear()
+        self._tasks = []
         self._running = False
 
         logger.info(MEETING_SCHEDULER_STOPPED)
@@ -167,13 +168,12 @@ class MeetingScheduler:
             matching_count=len(matching),
         )
 
-        records: list[MeetingRecord] = []
-        for meeting_type in matching:
-            record = await self._execute_meeting(meeting_type, context)
-            if record is not None:
-                records.append(record)
+        async with asyncio.TaskGroup() as tg:
+            tasks = [
+                tg.create_task(self._execute_meeting(mt, context)) for mt in matching
+            ]
 
-        return tuple(records)
+        return tuple(r for t in tasks if (r := t.result()) is not None)
 
     def get_scheduled_types(self) -> tuple[MeetingTypeConfig, ...]:
         """Return all frequency-based meeting type configs.
@@ -228,8 +228,8 @@ class MeetingScheduler:
                         meeting_type=meeting_type.name,
                         note="periodic execution failed",
                     )
-        except asyncio.CancelledError:
-            return
+        except asyncio.CancelledError:  # noqa: TRY203
+            raise
 
     async def _execute_meeting(
         self,
@@ -276,6 +276,7 @@ class MeetingScheduler:
             )
             return None
 
+        # First resolved participant is designated as the meeting leader.
         leader_id = resolved[0]
         participant_ids = resolved[1:]
         agenda = self._build_default_agenda(meeting_type, context)
@@ -344,21 +345,12 @@ class MeetingScheduler:
         Returns:
             A meeting agenda with title and optional context items.
         """
-        items: list[MeetingAgendaItem] = []
-        parts: list[str] = []
-
-        if context:
-            for key, value in context.items():
-                items.append(
-                    MeetingAgendaItem(
-                        title=str(key),
-                        description=str(value),
-                    ),
-                )
-                parts.append(f"{key}: {value}")
-
+        ctx = context or {}
+        items = tuple(
+            MeetingAgendaItem(title=str(k), description=str(v)) for k, v in ctx.items()
+        )
         return MeetingAgenda(
             title=meeting_type.name,
-            context=", ".join(parts),
-            items=tuple(items),
+            context=", ".join(f"{k}: {v}" for k, v in ctx.items()),
+            items=items,
         )

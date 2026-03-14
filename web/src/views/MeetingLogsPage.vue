@@ -160,18 +160,18 @@ function formatTokens(record: MeetingRecord): string {
         @row-click="openDetail($event.data)"
       >
         <Column field="meeting_type_name" header="Type" sortable />
-        <Column field="protocol_type" header="Protocol" sortable style="width: 150px" />
-        <Column field="status" header="Status" sortable style="width: 140px">
+        <Column field="protocol_type" header="Protocol" sortable class="w-[150px]" />
+        <Column field="status" header="Status" sortable class="w-[140px]">
           <template #body="{ data }">
             <StatusBadge :value="data.status" />
           </template>
         </Column>
-        <Column header="Tokens" style="width: 160px">
+        <Column header="Tokens" class="w-[160px]">
           <template #body="{ data }">
             <span class="text-slate-400 font-mono text-xs">{{ formatTokens(data) }}</span>
           </template>
         </Column>
-        <Column field="meeting_id" header="ID" style="width: 140px">
+        <Column field="meeting_id" header="ID" class="w-[140px]">
           <template #body="{ data }">
             <span class="text-slate-500 font-mono text-xs">{{ data.meeting_id }}</span>
           </template>

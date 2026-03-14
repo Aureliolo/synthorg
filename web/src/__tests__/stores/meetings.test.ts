@@ -5,11 +5,13 @@ import type { MeetingRecord, WsEvent } from '@/api/types'
 import { flushPromises } from '@vue/test-utils'
 
 const mockGetMeeting = vi.fn()
+const mockListMeetings = vi.fn()
+const mockTriggerMeeting = vi.fn()
 
 vi.mock('@/api/endpoints/meetings', () => ({
-  listMeetings: vi.fn(),
+  listMeetings: (...args: unknown[]) => mockListMeetings(...args),
   getMeeting: (...args: unknown[]) => mockGetMeeting(...args),
-  triggerMeeting: vi.fn(),
+  triggerMeeting: (...args: unknown[]) => mockTriggerMeeting(...args),
 }))
 
 const completedRecord: MeetingRecord = {
@@ -26,6 +28,8 @@ describe('useMeetingStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     mockGetMeeting.mockReset()
+    mockListMeetings.mockReset()
+    mockTriggerMeeting.mockReset()
   })
 
   it('initializes with empty state', () => {
@@ -97,6 +101,92 @@ describe('useMeetingStore', () => {
     }
     store.handleWsEvent(event)
     expect(store.meetings).toHaveLength(0)
+  })
+
+  it('ignores WS events from other channels', () => {
+    const store = useMeetingStore()
+    const event: WsEvent = {
+      event_type: 'meeting.completed',
+      channel: 'tasks',
+      timestamp: '2026-03-14T10:00:00Z',
+      payload: { meeting_id: 'mtg-1' },
+    }
+    store.handleWsEvent(event)
+    expect(mockGetMeeting).not.toHaveBeenCalled()
+  })
+
+  it('syncs selectedMeeting on WS refresh', async () => {
+    const store = useMeetingStore()
+    store.meetings = [{ ...completedRecord, status: 'in_progress' }]
+    store.selectedMeeting = { ...completedRecord, status: 'in_progress' }
+
+    mockGetMeeting.mockResolvedValue(completedRecord)
+
+    const event: WsEvent = {
+      event_type: 'meeting.completed',
+      channel: 'meetings',
+      timestamp: '2026-03-14T10:00:00Z',
+      payload: { meeting_id: 'mtg-1' },
+    }
+    store.handleWsEvent(event)
+    await flushPromises()
+
+    expect(store.selectedMeeting?.status).toBe('completed')
+  })
+
+  it('fetchMeetings updates state from API response', async () => {
+    const store = useMeetingStore()
+    mockListMeetings.mockResolvedValue({
+      data: [completedRecord],
+      total: 1,
+      offset: 0,
+      limit: 50,
+    })
+
+    await store.fetchMeetings()
+
+    expect(store.meetings).toEqual([completedRecord])
+    expect(store.total).toBe(1)
+    expect(store.loading).toBe(false)
+    expect(store.error).toBeNull()
+  })
+
+  it('fetchMeetings sets error on failure', async () => {
+    const store = useMeetingStore()
+    mockListMeetings.mockRejectedValue(new Error('Network error'))
+
+    await store.fetchMeetings()
+
+    expect(store.error).toBe('Network error')
+    expect(store.loading).toBe(false)
+  })
+
+  it('triggerMeeting appends new records with dedup', async () => {
+    const store = useMeetingStore()
+    store.meetings = [completedRecord]
+
+    const newRecord: MeetingRecord = {
+      ...completedRecord,
+      meeting_id: 'mtg-2',
+    }
+    mockTriggerMeeting.mockResolvedValue([completedRecord, newRecord])
+
+    const result = await store.triggerMeeting({ event_name: 'test' })
+
+    expect(result).toHaveLength(2)
+    // mtg-1 already existed, only mtg-2 should be appended
+    expect(store.meetings).toHaveLength(2)
+    expect(store.meetings[1].meeting_id).toBe('mtg-2')
+  })
+
+  it('triggerMeeting returns null on error', async () => {
+    const store = useMeetingStore()
+    mockTriggerMeeting.mockRejectedValue(new Error('Server error'))
+
+    const result = await store.triggerMeeting({ event_name: 'test' })
+
+    expect(result).toBeNull()
+    expect(store.error).toBe('Server error')
   })
 
   it('handles WS re-fetch failure gracefully', async () => {

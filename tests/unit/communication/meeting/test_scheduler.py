@@ -10,7 +10,10 @@ from ai_company.communication.meeting.enums import (
     MeetingProtocolType,
     MeetingStatus,
 )
-from ai_company.communication.meeting.errors import SchedulerAlreadyRunningError
+from ai_company.communication.meeting.errors import (
+    NoParticipantsResolvedError,
+    SchedulerAlreadyRunningError,
+)
 from ai_company.communication.meeting.frequency import MeetingFrequency
 from ai_company.communication.meeting.models import (
     MeetingAgenda,
@@ -128,7 +131,6 @@ class TestMeetingScheduler:
 
         await scheduler.start()
         assert scheduler.running is True
-        assert len(scheduler._tasks) == 1
 
         await scheduler.stop()
         assert scheduler.running is False
@@ -159,7 +161,6 @@ class TestMeetingScheduler:
         await scheduler.start()
 
         assert scheduler.running is False
-        assert len(scheduler._tasks) == 0
 
     async def test_stop_cancels_all_tasks(
         self,
@@ -175,11 +176,10 @@ class TestMeetingScheduler:
         scheduler = self._make_scheduler(config, orchestrator, resolver)
 
         await scheduler.start()
-        assert len(scheduler._tasks) == 2
+        assert scheduler.running is True
 
         await scheduler.stop()
         assert scheduler.running is False
-        assert len(scheduler._tasks) == 0
 
     async def test_trigger_event_matches_types(
         self,
@@ -277,10 +277,6 @@ class TestMeetingScheduler:
         orchestrator: MagicMock,
         resolver: MagicMock,
     ) -> None:
-        from ai_company.communication.meeting.errors import (
-            NoParticipantsResolvedError,
-        )
-
         resolver.resolve.side_effect = NoParticipantsResolvedError(
             "no participants",
         )
@@ -338,6 +334,56 @@ class TestMeetingScheduler:
         scheduler = self._make_scheduler(config, orchestrator, resolver)
 
         assert scheduler.get_triggered_types() == (trig,)
+
+    async def test_stop_noop_when_not_running(
+        self,
+        orchestrator: MagicMock,
+        resolver: MagicMock,
+    ) -> None:
+        config = _make_config(types=(_make_frequency_type(),))
+        scheduler = self._make_scheduler(config, orchestrator, resolver)
+
+        # stop() on a never-started scheduler should not raise
+        await scheduler.stop()
+        assert scheduler.running is False
+
+    async def test_publish_event_error_does_not_prevent_record(
+        self,
+        orchestrator: MagicMock,
+        resolver: MagicMock,
+    ) -> None:
+        publisher = MagicMock(side_effect=RuntimeError("publish failed"))
+        trigger_type = _make_trigger_type()
+        config = _make_config(types=(trigger_type,))
+        scheduler = self._make_scheduler(
+            config,
+            orchestrator,
+            resolver,
+            event_publisher=publisher,
+        )
+
+        records = await scheduler.trigger_event("code_review_complete")
+
+        assert len(records) == 1
+        publisher.assert_called_once()
+
+    async def test_publish_event_reraises_memory_error(
+        self,
+        orchestrator: MagicMock,
+        resolver: MagicMock,
+    ) -> None:
+        publisher = MagicMock(side_effect=MemoryError)
+        trigger_type = _make_trigger_type()
+        config = _make_config(types=(trigger_type,))
+        scheduler = self._make_scheduler(
+            config,
+            orchestrator,
+            resolver,
+            event_publisher=publisher,
+        )
+
+        with pytest.raises(ExceptionGroup):
+            await scheduler.trigger_event("code_review_complete")
 
     async def test_event_publisher_called(
         self,

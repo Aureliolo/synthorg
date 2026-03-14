@@ -4,18 +4,18 @@ Defines the named channels for real-time event feeds and
 creates the Litestar ``ChannelsPlugin`` with an in-memory backend.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from litestar.channels import ChannelsPlugin
 from litestar.channels.backends.memory import MemoryChannelsBackend
 
-CHANNEL_TASKS: str = "tasks"
-CHANNEL_AGENTS: str = "agents"
-CHANNEL_BUDGET: str = "budget"
-CHANNEL_MESSAGES: str = "messages"
-CHANNEL_SYSTEM: str = "system"
-CHANNEL_APPROVALS: str = "approvals"
-CHANNEL_MEETINGS: str = "meetings"
+CHANNEL_TASKS: Final[str] = "tasks"
+CHANNEL_AGENTS: Final[str] = "agents"
+CHANNEL_BUDGET: Final[str] = "budget"
+CHANNEL_MESSAGES: Final[str] = "messages"
+CHANNEL_SYSTEM: Final[str] = "system"
+CHANNEL_APPROVALS: Final[str] = "approvals"
+CHANNEL_MEETINGS: Final[str] = "meetings"
 
 ALL_CHANNELS: tuple[str, ...] = (
     CHANNEL_TASKS,

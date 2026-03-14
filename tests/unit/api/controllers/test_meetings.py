@@ -61,7 +61,7 @@ def _make_record(
 
 
 @pytest.fixture
-async def mock_orchestrator() -> MagicMock:
+def mock_orchestrator() -> MagicMock:
     """Mock orchestrator with pre-loaded records."""
     orch = MagicMock()
     records = (
@@ -77,6 +77,8 @@ def mock_scheduler() -> MagicMock:
     """Mock scheduler."""
     sched = MagicMock()
     sched.trigger_event = AsyncMock(return_value=())
+    sched.start = AsyncMock()
+    sched.stop = AsyncMock()
     return sched
 
 
@@ -179,7 +181,7 @@ class TestMeetingController:
         body = resp.json()
         assert body["success"] is False
 
-    def test_trigger_endpoint_callsmock_scheduler(
+    def test_trigger_endpoint_calls_mock_scheduler(
         self,
         meeting_client: TestClient[Any],
         mock_scheduler: MagicMock,
@@ -199,33 +201,90 @@ class TestMeetingController:
         self,
     ) -> None:
         """Without meeting_orchestrator, list should 503."""
-        from ai_company.api.approval_store import ApprovalStore
-        from ai_company.api.auth.service import AuthService
-        from ai_company.budget.tracker import CostTracker
-        from ai_company.config.schema import RootConfig
-
-        persistence = FakePersistenceBackend()
-        bus = FakeMessageBus()
-        auth_config = __import__(
-            "ai_company.api.auth.config",
-            fromlist=["AuthConfig"],
-        ).AuthConfig(jwt_secret="test-secret-that-is-at-least-32-characters-long")
-        auth_service = AuthService(auth_config)
-
-        from tests.unit.api.conftest import _seed_test_users
-
-        _seed_test_users(persistence, auth_service)
-
-        app = create_app(
-            config=RootConfig(company_name="test"),
-            persistence=persistence,
-            message_bus=bus,
-            cost_tracker=CostTracker(),
-            approval_store=ApprovalStore(),
-            auth_service=auth_service,
-            # No meeting_orchestrator or meetingmock_scheduler
-        )
+        app = _create_app_without_meetings()
         with TestClient(app) as client:
             client.headers.update(make_auth_headers("ceo"))
             resp = client.get("/api/v1/meetings")
             assert resp.status_code == 503
+
+
+@pytest.mark.unit
+class TestTriggerMeetingRequestValidation:
+    """Tests for TriggerMeetingRequest input validation bounds."""
+
+    def test_valid_request(self) -> None:
+        from ai_company.api.controllers.meetings import TriggerMeetingRequest
+
+        req = TriggerMeetingRequest(
+            event_name="deploy_complete",
+            context={"key": "value"},
+        )
+        assert req.event_name == "deploy_complete"
+
+    def test_rejects_blank_event_name(self) -> None:
+        from ai_company.api.controllers.meetings import TriggerMeetingRequest
+
+        with pytest.raises(ValueError, match="whitespace"):
+            TriggerMeetingRequest(event_name="   ", context={})
+
+    def test_rejects_too_many_context_keys(self) -> None:
+        from ai_company.api.controllers.meetings import TriggerMeetingRequest
+
+        ctx = {f"key-{i}": "val" for i in range(21)}
+        with pytest.raises(ValueError, match="at most 20 keys"):
+            TriggerMeetingRequest(event_name="evt", context=ctx)
+
+    def test_rejects_oversized_context_key(self) -> None:
+        from ai_company.api.controllers.meetings import TriggerMeetingRequest
+
+        with pytest.raises(ValueError, match="key must be at most"):
+            TriggerMeetingRequest(
+                event_name="evt",
+                context={"k" * 257: "val"},
+            )
+
+    def test_rejects_oversized_context_value(self) -> None:
+        from ai_company.api.controllers.meetings import TriggerMeetingRequest
+
+        with pytest.raises(ValueError, match="value must be at most"):
+            TriggerMeetingRequest(
+                event_name="evt",
+                context={"key": "v" * 1025},
+            )
+
+    def test_accepts_boundary_context(self) -> None:
+        from ai_company.api.controllers.meetings import TriggerMeetingRequest
+
+        ctx = {f"k{i}": "v" for i in range(20)}
+        req = TriggerMeetingRequest(event_name="evt", context=ctx)
+        assert len(req.context) == 20
+
+
+def _create_app_without_meetings() -> Any:
+    """Create app without meeting services for 503 testing."""
+    from ai_company.api.approval_store import ApprovalStore
+    from ai_company.api.auth.service import AuthService
+    from ai_company.budget.tracker import CostTracker
+    from ai_company.config.schema import RootConfig
+
+    persistence = FakePersistenceBackend()
+    bus = FakeMessageBus()
+    auth_config = __import__(
+        "ai_company.api.auth.config",
+        fromlist=["AuthConfig"],
+    ).AuthConfig(jwt_secret="test-secret-that-is-at-least-32-characters-long")
+    auth_service = AuthService(auth_config)
+
+    from tests.unit.api.conftest import _seed_test_users
+
+    _seed_test_users(persistence, auth_service)
+
+    return create_app(
+        config=RootConfig(company_name="test"),
+        persistence=persistence,
+        message_bus=bus,
+        cost_tracker=CostTracker(),
+        approval_store=ApprovalStore(),
+        auth_service=auth_service,
+        # No meeting_orchestrator or meeting_scheduler
+    )

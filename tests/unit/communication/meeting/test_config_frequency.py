@@ -24,6 +24,7 @@ class TestMeetingTypeConfigFrequency:
             ("daily", MeetingFrequency.DAILY),
             ("weekly", MeetingFrequency.WEEKLY),
             ("bi_weekly", MeetingFrequency.BI_WEEKLY),
+            ("per_sprint_day", MeetingFrequency.PER_SPRINT_DAY),
             ("monthly", MeetingFrequency.MONTHLY),
         ],
     )

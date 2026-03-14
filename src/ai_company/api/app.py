@@ -107,11 +107,12 @@ def _make_expire_callback(
     return _on_expire
 
 
-def _build_lifecycle(
+def _build_lifecycle(  # noqa: PLR0913
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
     bridge: MessageBusBridge | None,
     task_engine: TaskEngine | None,
+    meeting_scheduler: MeetingScheduler | None,
     app_state: AppState,
 ) -> tuple[
     Sequence[Callable[[], Awaitable[None]]],
@@ -130,12 +131,19 @@ def _build_lifecycle(
             message_bus,
             bridge,
             task_engine,
+            meeting_scheduler,
             app_state,
         )
 
     async def on_shutdown() -> None:
         logger.info(API_APP_SHUTDOWN, version=__version__)
-        await _safe_shutdown(task_engine, bridge, message_bus, persistence)
+        await _safe_shutdown(
+            task_engine,
+            meeting_scheduler,
+            bridge,
+            message_bus,
+            persistence,
+        )
 
     return [on_startup], [on_shutdown]
 
@@ -169,8 +177,16 @@ async def _cleanup_on_failure(  # noqa: PLR0913
     started_bridge: bool = False,
     task_engine: TaskEngine | None = None,
     started_task_engine: bool = False,
+    meeting_scheduler: MeetingScheduler | None = None,
+    started_meeting_scheduler: bool = False,
 ) -> None:
-    """Reverse cleanup on startup failure (task engine, bridge, bus, persistence)."""
+    """Reverse cleanup on startup failure."""
+    if started_meeting_scheduler and meeting_scheduler is not None:
+        await _try_stop(
+            meeting_scheduler.stop(),
+            API_APP_STARTUP,
+            "Cleanup: failed to stop meeting scheduler",
+        )
     if started_task_engine and task_engine is not None:
         await _try_stop(
             task_engine.stop(),
@@ -239,14 +255,15 @@ async def _init_persistence(
             raise
 
 
-async def _safe_startup(
+async def _safe_startup(  # noqa: PLR0913, C901
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
     bridge: MessageBusBridge | None,
     task_engine: TaskEngine | None,
+    meeting_scheduler: MeetingScheduler | None,
     app_state: AppState,
 ) -> None:
-    """Connect persistence, resolve JWT secret, start bus, bridge, task engine.
+    """Start all services: persistence, bus, bridge, task engine, scheduler.
 
     Executes in order; on failure, cleans up already-started
     components in reverse order before re-raising.
@@ -255,6 +272,7 @@ async def _safe_startup(
     started_bridge = False
     started_persistence = False
     started_task_engine = False
+    started_meeting_scheduler = False
     try:
         if persistence is not None:
             try:
@@ -300,6 +318,16 @@ async def _safe_startup(
                 )
                 raise
             started_task_engine = True
+        if meeting_scheduler is not None:
+            try:
+                await meeting_scheduler.start()
+            except Exception:
+                logger.exception(
+                    API_APP_STARTUP,
+                    error="Failed to start meeting scheduler",
+                )
+                raise
+            started_meeting_scheduler = True
     except Exception:
         await _cleanup_on_failure(
             persistence=persistence,
@@ -310,22 +338,31 @@ async def _safe_startup(
             started_bridge=started_bridge,
             task_engine=task_engine,
             started_task_engine=started_task_engine,
+            meeting_scheduler=meeting_scheduler,
+            started_meeting_scheduler=started_meeting_scheduler,
         )
         raise
 
 
 async def _safe_shutdown(
     task_engine: TaskEngine | None,
+    meeting_scheduler: MeetingScheduler | None,
     bridge: MessageBusBridge | None,
     message_bus: MessageBus | None,
     persistence: PersistenceBackend | None,
 ) -> None:
-    """Stop task engine, bridge, message bus and disconnect persistence.
+    """Stop scheduler, task engine, bridge, message bus and disconnect persistence.
 
-    Mirrors ``_cleanup_on_failure`` reverse order: task engine first so it
-    can drain queued mutations and publish final snapshots through the
-    still-running bridge.
+    Mirrors ``_cleanup_on_failure`` reverse order: scheduler first (depends on
+    orchestrator), then task engine so it can drain queued mutations and
+    publish final snapshots through the still-running bridge.
     """
+    if meeting_scheduler is not None:
+        await _try_stop(
+            meeting_scheduler.stop(),
+            API_APP_SHUTDOWN,
+            "Failed to stop meeting scheduler",
+        )
     if task_engine is not None:
         await _try_stop(
             task_engine.stop(),
@@ -439,6 +476,7 @@ def create_app(  # noqa: PLR0913
         message_bus,
         bridge,
         task_engine,
+        meeting_scheduler,
         app_state,
     )
 

@@ -15,7 +15,7 @@ from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.meeting import (
     MEETING_EVENT_TRIGGERED,
-    MEETING_SCHEDULER_ERROR,
+    MEETING_NOT_FOUND,
 )
 
 logger = get_logger(__name__)
@@ -127,9 +127,8 @@ class MeetingController(Controller):
                 )
 
         logger.warning(
-            MEETING_SCHEDULER_ERROR,
+            MEETING_NOT_FOUND,
             meeting_id=meeting_id,
-            note="meeting not found",
         )
         return Response(
             content=ApiResponse[MeetingRecord](
@@ -165,7 +164,7 @@ class MeetingController(Controller):
         )
         records = await scheduler.trigger_event(
             data.event_name,
-            context=data.context or None,
+            context=data.context,
         )
 
         return Response(

@@ -6,6 +6,7 @@ special values like ``"all"``, literal IDs) into agent ID tuples.
 
 from typing import Any, Protocol, runtime_checkable
 
+from ai_company.communication.meeting.errors import NoParticipantsResolvedError
 from ai_company.hr.registry import AgentRegistryService  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.meeting import (
@@ -35,6 +36,9 @@ class ParticipantResolver(Protocol):
 
         Returns:
             Deduplicated tuple of agent ID strings.
+
+        Raises:
+            NoParticipantsResolvedError: When all entries resolve to empty.
         """
         ...
 
@@ -98,6 +102,8 @@ class RegistryParticipantResolver:
                 MEETING_NO_PARTICIPANTS,
                 refs=participant_refs,
             )
+            msg = f"No participants resolved from refs: {participant_refs!r}"
+            raise NoParticipantsResolvedError(msg)
 
         return tuple(deduped)
 
@@ -120,8 +126,8 @@ class RegistryParticipantResolver:
             val = ctx[entry]
             if isinstance(val, str):
                 return [val]
-            if isinstance(val, list):
-                return [str(v) for v in val]
+            if isinstance(val, (list, tuple)):
+                return [v for v in val if isinstance(v, str) and v.strip()]
 
         # 2. Special "all"
         if entry.lower() == "all":
