@@ -13,6 +13,7 @@ from ai_company.communication.enums import (
     MessageBusBackend,
 )
 from ai_company.communication.meeting.config import MeetingProtocolConfig
+from ai_company.communication.meeting.frequency import MeetingFrequency  # noqa: TC001
 from ai_company.core.types import (
     NotBlankStr,
     validate_unique_strings,
@@ -96,7 +97,7 @@ class MeetingTypeConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     name: NotBlankStr = Field(description="Meeting type name")
-    frequency: NotBlankStr | None = Field(
+    frequency: MeetingFrequency | None = Field(
         default=None,
         description="Recurrence schedule",
     )

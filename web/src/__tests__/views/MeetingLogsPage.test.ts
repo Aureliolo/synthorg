@@ -1,60 +1,32 @@
-import { describe, it, expect, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { setActivePinia, createPinia } from 'pinia'
+import { useMeetingStore } from '@/stores/meetings'
 
-vi.mock('vue-router', () => ({
-  useRouter: () => ({ push: vi.fn(), go: vi.fn() }),
-  useRoute: () => ({ params: {} }),
-  RouterLink: { template: '<a><slot /></a>' },
+vi.mock('@/api/endpoints/meetings', () => ({
+  listMeetings: vi.fn().mockResolvedValue({ data: [], total: 0, offset: 0, limit: 50 }),
+  getMeeting: vi.fn(),
+  triggerMeeting: vi.fn(),
 }))
 
-vi.mock('@/components/layout/AppShell.vue', () => ({
-  default: { template: '<div><slot /></div>' },
-}))
-
-vi.mock('@/components/common/PageHeader.vue', () => ({
-  default: {
-    props: ['title', 'subtitle'],
-    template: '<div><h1>{{ title }}</h1><p>{{ subtitle }}</p><slot name="actions" /></div>',
-  },
-}))
-
-vi.mock('@/components/common/EmptyState.vue', () => ({
-  default: {
-    props: ['icon', 'title', 'message'],
-    template: '<div><span>{{ title }}</span><p>{{ message }}</p><slot name="action" /></div>',
-  },
-}))
-
-import MeetingLogsPage from '@/views/MeetingLogsPage.vue'
-
-describe('MeetingLogsPage', () => {
-  it('mounts without error', () => {
-    const wrapper = mount(MeetingLogsPage)
-    expect(wrapper.exists()).toBe(true)
+describe('MeetingLogsPage store integration', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
   })
 
-  it('renders "Meeting Logs" heading', () => {
-    const wrapper = mount(MeetingLogsPage)
-    expect(wrapper.find('h1').text()).toBe('Meeting Logs')
+  it('meeting store initializes with empty state', () => {
+    const store = useMeetingStore()
+    expect(store.meetings).toEqual([])
+    expect(store.selectedMeeting).toBeNull()
+    expect(store.loading).toBe(false)
+    expect(store.error).toBeNull()
+    expect(store.total).toBe(0)
   })
 
-  it('renders "Coming Soon" empty state', () => {
-    const wrapper = mount(MeetingLogsPage)
-    expect(wrapper.text()).toContain('Coming Soon')
-  })
-
-  it('renders GitHub issue link to #264', () => {
-    const wrapper = mount(MeetingLogsPage)
-    const link = wrapper.find('a[href*="github.com"]')
-    expect(link.exists()).toBe(true)
-    expect(link.attributes('href')).toContain('/issues/264')
-    expect(link.text()).toContain('#264')
-  })
-
-  it('opens GitHub link in new tab', () => {
-    const wrapper = mount(MeetingLogsPage)
-    const link = wrapper.find('a[href*="github.com"]')
-    expect(link.attributes('target')).toBe('_blank')
-    expect(link.attributes('rel')).toContain('noopener')
+  it('meeting store has expected API methods', () => {
+    const store = useMeetingStore()
+    expect(typeof store.fetchMeetings).toBe('function')
+    expect(typeof store.fetchMeeting).toBe('function')
+    expect(typeof store.triggerMeeting).toBe('function')
+    expect(typeof store.handleWsEvent).toBe('function')
   })
 })

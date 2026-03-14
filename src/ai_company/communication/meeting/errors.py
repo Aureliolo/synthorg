@@ -25,3 +25,15 @@ class MeetingParticipantError(MeetingError):
 
 class MeetingAgentError(MeetingError):
     """An agent invocation failed during a meeting."""
+
+
+class MeetingSchedulerError(MeetingError):
+    """Base exception for meeting scheduler errors."""
+
+
+class NoParticipantsResolvedError(MeetingSchedulerError):
+    """All participant entries resolved to empty."""
+
+
+class SchedulerAlreadyRunningError(MeetingSchedulerError):
+    """start() called on a scheduler that is already running."""

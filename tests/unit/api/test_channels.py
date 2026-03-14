@@ -7,6 +7,7 @@ from ai_company.api.channels import (
     CHANNEL_AGENTS,
     CHANNEL_APPROVALS,
     CHANNEL_BUDGET,
+    CHANNEL_MEETINGS,
     CHANNEL_MESSAGES,
     CHANNEL_SYSTEM,
     CHANNEL_TASKS,
@@ -23,9 +24,10 @@ class TestChannels:
         assert CHANNEL_MESSAGES in ALL_CHANNELS
         assert CHANNEL_SYSTEM in ALL_CHANNELS
         assert CHANNEL_APPROVALS in ALL_CHANNELS
+        assert CHANNEL_MEETINGS in ALL_CHANNELS
 
-    def test_all_channels_has_six_entries(self) -> None:
-        assert len(ALL_CHANNELS) == 6
+    def test_all_channels_has_seven_entries(self) -> None:
+        assert len(ALL_CHANNELS) == 7
 
     def test_create_channels_plugin(self) -> None:
         plugin = create_channels_plugin()
