@@ -216,10 +216,9 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - name: Checkout CI tooling (wrangler lockfile)
+      - name: Checkout CI tooling (wrangler lockfile from main)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          ref: ${{ needs.build.outputs.head_sha }}
           persist-credentials: false
           sparse-checkout: |
             .github/package.json
