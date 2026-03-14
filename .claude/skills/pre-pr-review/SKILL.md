@@ -306,7 +306,7 @@ The docs-consistency agent ensures project documentation never drifts from the c
 
 **What to check:**
 
-Read the current `DESIGN_SPEC.md`, `CLAUDE.md`, and `README.md` in full. Then compare them against the PR diff and the actual current state of the codebase. Flag anything that is now inaccurate, incomplete, or missing.
+Read the current `docs/DESIGN_SPEC.md`, `CLAUDE.md`, and `README.md` in full. Then compare them against the PR diff and the actual current state of the codebase. Flag anything that is now inaccurate, incomplete, or missing.
 
 **DESIGN_SPEC.md (CRITICAL — this is the project's source of truth):**
 1. §15.3 Project Structure — does it match the actual files/directories under `src/ai_company/`? Any new modules missing? Any listed files that no longer exist? (CRITICAL)

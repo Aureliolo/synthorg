@@ -11,7 +11,7 @@
 | Production use by large org (500+ employees and contractors) | Conditional | Commercial license |
 | Offering SynthOrg as a hosted/managed service | Conditional | Commercial license |
 | Reselling or embedding SynthOrg as your core product | Conditional | Commercial license |
-| Contributing to SynthOrg | Yes | Sign the [CLA](https://github.com/Aureliolo/synthorg/blob/main/CLA.md) |
+| Contributing to SynthOrg | Yes | Sign the [CLA](https://github.com/Aureliolo/synthorg/blob/main/.github/CLA.md) |
 
 *"Conditional" uses require a commercial license — please [contact us](https://github.com/Aureliolo/synthorg/discussions) to discuss terms.*
 
@@ -111,7 +111,7 @@ This means:
 
 ## Contributor License Agreement (CLA)
 
-We require a [Contributor License Agreement](https://github.com/Aureliolo/synthorg/blob/main/CLA.md) before merging external contributions. The CLA:
+We require a [Contributor License Agreement](https://github.com/Aureliolo/synthorg/blob/main/.github/CLA.md) before merging external contributions. The CLA:
 
 - Grants SynthOrg a non-exclusive license to your contributions
 - **Does not transfer ownership** — you retain full rights to your work

@@ -146,7 +146,7 @@ This project is licensed under [BUSL-1.1](../LICENSE) (Business Source License 1
 
 ### Contributor License Agreement
 
-Before your first contribution can be merged, you must sign the [Contributor License Agreement (CLA)](../CLA.md). This is required to enable dual-licensing (BSL + commercial licenses for enterprise customers).
+Before your first contribution can be merged, you must sign the [Contributor License Agreement (CLA)](CLA.md). This is required to enable dual-licensing (BSL + commercial licenses for enterprise customers).
 
 **How to sign:** When you open your first pull request, a bot will post a comment asking you to sign. Simply reply with the text specified in the comment — no forms, no external services. Your signature is recorded as a JSON entry in this repository.
 

@@ -100,7 +100,7 @@ or include Your Contributions in the Project.
 When you open your first pull request to SynthOrg, a bot will comment asking
 you to sign this CLA. To sign, reply to the bot's comment with the exact text
 it specifies. Your signature is stored in this repository at
-`.github/cla-signatures.json`.
+`.github/cla-signatures.json` on the `cla-signatures` branch.
 
 You only need to sign once — the agreement covers all future contributions.
 

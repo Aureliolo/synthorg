@@ -124,7 +124,7 @@ synthorg/
   web/                  # Vue 3 web dashboard (PrimeVue + Tailwind CSS)
   .github/              # CI workflows, dependabot, actions
   pyproject.toml        # Project config (deps, tools, linters)
-  DESIGN_SPEC.md        # Pointer to design specification pages
+  docs/DESIGN_SPEC.md   # Pointer to design specification pages
   CLAUDE.md             # AI assistant quick reference
 ```
 

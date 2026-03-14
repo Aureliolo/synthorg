@@ -6,11 +6,11 @@
 - **Python**: 3.14+ (PEP 649 native lazy annotations)
 - **License**: BUSL-1.1 with narrowed Additional Use Grant (free production use for non-competing small orgs; converts to Apache 2.0 three years after release)
 - **Layout**: `src/ai_company/` (src layout), `tests/` (unit/integration/e2e), `web/` (Vue 3 dashboard), `cli/` (Go CLI binary)
-- **Design**: [DESIGN_SPEC.md](DESIGN_SPEC.md) (pointer to `docs/design/` pages)
+- **Design**: [DESIGN_SPEC.md](docs/DESIGN_SPEC.md) (pointer to `docs/design/` pages)
 
 ## Design Spec (MANDATORY)
 
-- **ALWAYS read the relevant `docs/design/` page** before implementing any feature or planning any issue. [DESIGN_SPEC.md](DESIGN_SPEC.md) is a pointer file linking to the 7 design pages.
+- **ALWAYS read the relevant `docs/design/` page** before implementing any feature or planning any issue. [DESIGN_SPEC.md](docs/DESIGN_SPEC.md) is a pointer file linking to the 7 design pages.
 - The design spec is the **starting point** for architecture, data models, and behavior
 - If implementation deviates from the spec (better approach found, scope evolved, etc.), **alert the user and explain why** — user decides whether to proceed or update the spec
 - Do NOT silently diverge — every deviation needs explicit user approval
@@ -262,7 +262,7 @@ cli/                # Go CLI binary (cross-platform, manages Docker lifecycle)
 - **OSSF Scorecard**: `.github/workflows/scorecard.yml` — supply chain maturity scoring on push to main + weekly schedule. SARIF upload to Security tab. Contributes to OpenSSF ecosystem data via `publish_results: true`.
 - **DAST**: `.github/workflows/dast.yml` — ZAP API scan against the backend OpenAPI spec on push to main + weekly schedule. Builds backend image locally, starts container, runs ZAP. Results available as workflow artifacts (no SARIF — action v0.10.0 lacks native SARIF output). Not on PRs (too slow).
 - **Socket.dev**: GitHub App — supply chain attack detection on PRs (typosquatting, malware, suspicious ownership changes, obfuscated code). No config file needed, auto-comments on PRs.
-- **CLA**: `.github/workflows/cla.yml` — Contributor License Agreement signature check on PRs via `contributor-assistant/github-action`. Triggers on `pull_request_target` and `issue_comment`. Skips Dependabot. Signatures stored in `.github/cla-signatures.json`.
+- **CLA**: `.github/workflows/cla.yml` — Contributor License Agreement signature check on PRs via `contributor-assistant/github-action`. Triggers on `pull_request_target` and `issue_comment`. Skips Dependabot. Signatures stored in `.github/cla-signatures.json` on the `cla-signatures` branch (unprotected, so the action can commit directly).
 - **Release**: `.github/workflows/release.yml` — Release Please (Google) auto-creates a release PR on every push to main. Merging the release PR creates a git tag (`vX.Y.Z`) + GitHub Release with changelog. Tag push triggers the Docker workflow to build version-tagged images. Uses `RELEASE_PLEASE_TOKEN` secret (PAT/GitHub App token) so tag creation triggers downstream workflows (GITHUB_TOKEN cannot). Config in `.github/release-please-config.json` and `.github/.release-please-manifest.json`. After creating/updating a release PR, auto-updates the BSL Change Date in LICENSE to 3 years ahead.
 
 ## Dependencies

@@ -29,10 +29,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           path-to-signatures: .github/cla-signatures.json
-          path-to-document: CLA.md
-          branch: main
+          path-to-document: .github/CLA.md
+          branch: cla-signatures
           custom-notsigned-prcomment: |
-            Thank you for your contribution! Before we can merge this PR, you need to sign the [Contributor License Agreement](https://github.com/${{ github.repository }}/blob/main/CLA.md).
+            Thank you for your contribution! Before we can merge this PR, you need to sign the [Contributor License Agreement](https://github.com/${{ github.repository }}/blob/main/.github/CLA.md).
 
             **To sign**, please reply to this comment with the following exact text:
 

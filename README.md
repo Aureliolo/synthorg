@@ -147,7 +147,7 @@ graph TB
 | [Developer Setup](docs/getting_started.md) | Clone, test, lint, contribute |
 | [User Guide](docs/user_guide.md) | Install, configure, run via Docker |
 
-> **Contributors:** Start with the [Design Overview](docs/design/index.md) before implementing any feature — it is the mandatory starting point for architecture, data models, and behavior. [`DESIGN_SPEC.md`](DESIGN_SPEC.md) serves as a pointer to the full design set.
+> **Contributors:** Start with the [Design Overview](docs/design/index.md) before implementing any feature — it is the mandatory starting point for architecture, data models, and behavior. [`DESIGN_SPEC.md`](docs/DESIGN_SPEC.md) serves as a pointer to the full design set.
 
 ## Status
 
