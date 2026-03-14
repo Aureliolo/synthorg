@@ -14,7 +14,9 @@ from ai_company.persistence.protocol import PersistenceBackend
 from ai_company.persistence.repositories import (
     ApiKeyRepository,
     AuditRepository,
+    CheckpointRepository,
     CostRecordRepository,
+    HeartbeatRepository,
     MessageRepository,
     ParkedContextRepository,
     TaskRepository,
@@ -29,6 +31,7 @@ if TYPE_CHECKING:
     from ai_company.communication.message import Message
     from ai_company.core.enums import ApprovalRiskLevel, TaskStatus
     from ai_company.core.task import Task
+    from ai_company.engine.checkpoint.models import Checkpoint, Heartbeat
     from ai_company.hr.models import AgentLifecycleEvent
     from ai_company.hr.performance.models import (
         CollaborationMetricRecord,
@@ -70,7 +73,12 @@ class _FakeCostRecordRepository:
     ) -> tuple[CostRecord, ...]:
         return ()
 
-    async def aggregate(self, *, agent_id: str | None = None) -> float:
+    async def aggregate(
+        self,
+        *,
+        agent_id: str | None = None,
+        task_id: str | None = None,
+    ) -> float:
         return 0.0
 
 
@@ -203,6 +211,39 @@ class _FakeApiKeyRepository:
         return False
 
 
+class _FakeCheckpointRepository:
+    async def save(self, checkpoint: Checkpoint) -> None:
+        pass
+
+    async def get_latest(
+        self,
+        *,
+        execution_id: str | None = None,
+        task_id: str | None = None,
+    ) -> Checkpoint | None:
+        return None
+
+    async def delete_by_execution(self, execution_id: str) -> int:
+        return 0
+
+
+class _FakeHeartbeatRepository:
+    async def save(self, heartbeat: Heartbeat) -> None:
+        pass
+
+    async def get(self, execution_id: str) -> Heartbeat | None:
+        return None
+
+    async def get_stale(
+        self,
+        threshold: AwareDatetime,
+    ) -> tuple[Heartbeat, ...]:
+        return ()
+
+    async def delete(self, execution_id: str) -> bool:
+        return False
+
+
 class _FakeBackend:
     async def connect(self) -> None:
         pass
@@ -264,6 +305,14 @@ class _FakeBackend:
     def api_keys(self) -> _FakeApiKeyRepository:
         return _FakeApiKeyRepository()
 
+    @property
+    def checkpoints(self) -> _FakeCheckpointRepository:
+        return _FakeCheckpointRepository()
+
+    @property
+    def heartbeats(self) -> _FakeHeartbeatRepository:
+        return _FakeHeartbeatRepository()
+
     async def get_setting(self, key: str) -> str | None:
         return None
 
@@ -315,3 +364,9 @@ class TestProtocolCompliance:
 
     def test_fake_api_key_repo_is_api_key_repository(self) -> None:
         assert isinstance(_FakeApiKeyRepository(), ApiKeyRepository)
+
+    def test_fake_checkpoint_repo_is_checkpoint_repository(self) -> None:
+        assert isinstance(_FakeCheckpointRepository(), CheckpointRepository)
+
+    def test_fake_heartbeat_repo_is_heartbeat_repository(self) -> None:
+        assert isinstance(_FakeHeartbeatRepository(), HeartbeatRepository)

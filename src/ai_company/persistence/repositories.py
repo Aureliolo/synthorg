@@ -4,7 +4,7 @@ Each entity type has its own protocol so that application code depends
 only on abstract interfaces, never on a concrete backend.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pydantic import AwareDatetime  # noqa: TC002
 
@@ -22,11 +22,16 @@ from ai_company.hr.persistence_protocol import (
 from ai_company.security.models import AuditEntry, AuditVerdictStr  # noqa: TC001
 from ai_company.security.timeout.parked_context import ParkedContext  # noqa: TC001
 
+if TYPE_CHECKING:
+    from ai_company.engine.checkpoint.models import Checkpoint, Heartbeat
+
 __all__ = [
     "ApiKeyRepository",
     "AuditRepository",
+    "CheckpointRepository",
     "CollaborationMetricRepository",
     "CostRecordRepository",
+    "HeartbeatRepository",
     "LifecycleEventRepository",
     "MessageRepository",
     "ParkedContextRepository",
@@ -465,6 +470,121 @@ class ApiKeyRepository(Protocol):
 
         Args:
             key_id: The key identifier.
+
+        Returns:
+            ``True`` if deleted, ``False`` if not found.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+
+@runtime_checkable
+class CheckpointRepository(Protocol):
+    """CRUD interface for checkpoint persistence."""
+
+    async def save(self, checkpoint: Checkpoint) -> None:
+        """Persist a checkpoint (insert or replace by ID).
+
+        Args:
+            checkpoint: The checkpoint to persist.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def get_latest(
+        self,
+        *,
+        execution_id: NotBlankStr | None = None,
+        task_id: NotBlankStr | None = None,
+    ) -> Checkpoint | None:
+        """Retrieve the latest checkpoint by turn_number.
+
+        At least one filter (``execution_id`` or ``task_id``) is required.
+
+        Args:
+            execution_id: Filter by execution identifier.
+            task_id: Filter by task identifier.
+
+        Returns:
+            The checkpoint with the highest turn_number, or ``None``.
+
+        Raises:
+            PersistenceError: If the operation fails.
+            ValueError: If neither filter is provided.
+        """
+        ...
+
+    async def delete_by_execution(self, execution_id: NotBlankStr) -> int:
+        """Delete all checkpoints for an execution.
+
+        Args:
+            execution_id: The execution identifier.
+
+        Returns:
+            Number of checkpoints deleted.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+
+@runtime_checkable
+class HeartbeatRepository(Protocol):
+    """CRUD interface for heartbeat persistence."""
+
+    async def save(self, heartbeat: Heartbeat) -> None:
+        """Persist a heartbeat (upsert by execution_id).
+
+        Args:
+            heartbeat: The heartbeat to persist.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def get(self, execution_id: NotBlankStr) -> Heartbeat | None:
+        """Retrieve a heartbeat by execution ID.
+
+        Args:
+            execution_id: The execution identifier.
+
+        Returns:
+            The heartbeat, or ``None`` if not found.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def get_stale(
+        self,
+        threshold: AwareDatetime,
+    ) -> tuple[Heartbeat, ...]:
+        """Retrieve heartbeats older than the threshold.
+
+        Args:
+            threshold: Heartbeats with ``last_heartbeat_at`` before
+                this timestamp are considered stale.
+
+        Returns:
+            Stale heartbeats as a tuple.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def delete(self, execution_id: NotBlankStr) -> bool:
+        """Delete a heartbeat by execution ID.
+
+        Args:
+            execution_id: The execution identifier.
 
         Returns:
             ``True`` if deleted, ``False`` if not found.

@@ -15,6 +15,12 @@ from ai_company.engine._validation import (
     validate_run_inputs,
     validate_task,
 )
+from ai_company.engine.checkpoint.models import CheckpointConfig
+from ai_company.engine.checkpoint.resume import (
+    cleanup_checkpoint_artifacts,
+    deserialize_and_reconcile,
+    make_loop_with_callback,
+)
 from ai_company.engine.classification.pipeline import classify_execution_errors
 from ai_company.engine.context import DEFAULT_MAX_TURNS, AgentContext
 from ai_company.engine.cost_recording import record_execution_costs
@@ -32,7 +38,11 @@ from ai_company.engine.prompt import (
     format_task_instruction,
 )
 from ai_company.engine.react_loop import ReactLoop
-from ai_company.engine.recovery import FailAndReassignStrategy, RecoveryStrategy
+from ai_company.engine.recovery import (
+    FailAndReassignStrategy,
+    RecoveryResult,
+    RecoveryStrategy,
+)
 from ai_company.engine.run_result import AgentRunResult
 from ai_company.engine.task_sync import (
     apply_post_execution_transitions,
@@ -51,6 +61,9 @@ from ai_company.observability.events.execution import (
     EXECUTION_ENGINE_TASK_TRANSITION,
     EXECUTION_ENGINE_TIMEOUT,
     EXECUTION_RECOVERY_FAILED,
+    EXECUTION_RESUME_COMPLETE,
+    EXECUTION_RESUME_FAILED,
+    EXECUTION_RESUME_START,
 )
 from ai_company.observability.events.prompt import PROMPT_TOKEN_RATIO_HIGH
 from ai_company.observability.events.security import SECURITY_DISABLED
@@ -89,6 +102,10 @@ if TYPE_CHECKING:
         ShutdownChecker,
     )
     from ai_company.engine.task_engine import TaskEngine
+    from ai_company.persistence.repositories import (
+        CheckpointRepository,
+        HeartbeatRepository,
+    )
     from ai_company.providers.models import CompletionConfig
     from ai_company.providers.protocol import CompletionProvider
     from ai_company.security.config import SecurityConfig
@@ -144,11 +161,23 @@ class AgentEngine:
         security_config: SecurityConfig | None = None,
         approval_store: ApprovalStore | None = None,
         task_engine: TaskEngine | None = None,
+        checkpoint_repo: CheckpointRepository | None = None,
+        heartbeat_repo: HeartbeatRepository | None = None,
+        checkpoint_config: CheckpointConfig | None = None,
     ) -> None:
         self._provider = provider
         self._loop: ExecutionLoop = execution_loop or ReactLoop()
         self._tool_registry = tool_registry
         self._budget_enforcer = budget_enforcer
+        if (checkpoint_repo is None) != (heartbeat_repo is None):
+            msg = (
+                "checkpoint_repo and heartbeat_repo must both be "
+                "provided or both omitted"
+            )
+            raise ValueError(msg)
+        self._checkpoint_repo = checkpoint_repo
+        self._heartbeat_repo = heartbeat_repo
+        self._checkpoint_config = checkpoint_config or CheckpointConfig()
         self._cost_tracker: CostTracker | None
         if budget_enforcer is not None:
             if (
@@ -252,6 +281,7 @@ class AgentEngine:
                 start=start,
                 timeout_seconds=timeout_seconds,
                 tool_invoker=tool_invoker,
+                effective_autonomy=effective_autonomy,
             )
         except MemoryError, RecursionError:
             logger.exception(
@@ -282,6 +312,8 @@ class AgentEngine:
                 duration_seconds=time.monotonic() - start,
                 ctx=ctx,
                 system_prompt=system_prompt,
+                completion_config=completion_config,
+                effective_autonomy=effective_autonomy,
             )
 
     async def _execute(  # noqa: PLR0913
@@ -297,6 +329,7 @@ class AgentEngine:
         start: float,
         timeout_seconds: float | None = None,
         tool_invoker: ToolInvoker | None = None,
+        effective_autonomy: EffectiveAutonomy | None = None,
     ) -> AgentRunResult:
         """Run execution loop, record costs, apply transitions, and build result."""
         budget_checker: BudgetChecker | None
@@ -331,6 +364,8 @@ class AgentEngine:
             identity,
             agent_id,
             task_id,
+            completion_config=completion_config,
+            effective_autonomy=effective_autonomy,
         )
 
         return self._build_and_log_result(
@@ -341,12 +376,15 @@ class AgentEngine:
             task_id,
         )
 
-    async def _post_execution_pipeline(
+    async def _post_execution_pipeline(  # noqa: PLR0913
         self,
         execution_result: ExecutionResult,
         identity: AgentIdentity,
         agent_id: str,
         task_id: str,
+        *,
+        completion_config: CompletionConfig | None = None,
+        effective_autonomy: EffectiveAutonomy | None = None,
     ) -> ExecutionResult:
         """Post-execution: costs, transitions, recovery, classify.
 
@@ -354,6 +392,10 @@ class AgentEngine:
         (best-effort).  Classification and sync failures are logged,
         never fatal.
         """
+        # Costs are recorded BEFORE recovery intentionally — the
+        # pre-recovery execution's cost (including partial turns that
+        # led to the error) should be tracked.  The resumed execution
+        # records its own costs inside _finalize_resume.
         await record_execution_costs(
             execution_result,
             identity,
@@ -376,8 +418,11 @@ class AgentEngine:
             )
             execution_result = await self._apply_recovery(
                 execution_result,
+                identity,
                 agent_id,
                 task_id,
+                completion_config=completion_config,
+                effective_autonomy=effective_autonomy,
             )
             # Sync post-recovery status to TaskEngine (typically FAILED,
             # depends on recovery strategy).
@@ -401,6 +446,20 @@ class AgentEngine:
                     agent_id=agent_id,
                     reason=f"Post-recovery status: {ctx.task_execution.status.value}",
                 )
+        # Clean up checkpoints and heartbeat on non-ERROR exits.
+        # The ERROR path is handled inside _finalize_resume (resume)
+        # and _delegate_to_fallback (fallback).  Normal completions
+        # (COMPLETED, MAX_TURNS, BUDGET_EXHAUSTED, SHUTDOWN, PARKED)
+        # bypass recovery entirely, so cleanup runs here.
+        if execution_result.termination_reason != TerminationReason.ERROR:
+            exec_id = execution_result.context.execution_id
+            if self._recovery_strategy is not None:
+                await self._recovery_strategy.finalize(exec_id)
+            await cleanup_checkpoint_artifacts(
+                self._checkpoint_repo,
+                self._heartbeat_repo,
+                exec_id,
+            )
         # Classification is non-critical — never destroys a result.
         if self._error_taxonomy_config is not None:
             try:
@@ -452,6 +511,21 @@ class AgentEngine:
             )
         return result
 
+    def _make_loop_with_callback(
+        self,
+        agent_id: str,
+        task_id: str,
+    ) -> ExecutionLoop:
+        """Return the execution loop with a checkpoint callback if configured."""
+        return make_loop_with_callback(
+            self._loop,
+            self._checkpoint_repo,
+            self._heartbeat_repo,
+            self._checkpoint_config,
+            agent_id,
+            task_id,
+        )
+
     async def _run_loop_with_timeout(  # noqa: PLR0913
         self,
         *,
@@ -470,7 +544,8 @@ class AgentEngine:
         ``TimeoutError`` raised inside the loop propagates normally
         and is not conflated with the engine's wall-clock deadline.
         """
-        coro = self._loop.execute(
+        loop = self._make_loop_with_callback(agent_id, task_id)
+        coro = loop.execute(
             context=ctx,
             provider=self._provider,
             tool_invoker=tool_invoker,
@@ -559,17 +634,21 @@ class AgentEngine:
 
     # ── Helpers ──────────────────────────────────────────────────
 
-    async def _apply_recovery(
+    async def _apply_recovery(  # noqa: PLR0913
         self,
         execution_result: ExecutionResult,
+        identity: AgentIdentity,
         agent_id: str,
         task_id: str,
+        *,
+        completion_config: CompletionConfig | None = None,
+        effective_autonomy: EffectiveAutonomy | None = None,
     ) -> ExecutionResult:
         """Invoke the configured recovery strategy on error outcomes.
 
-        The default strategy transitions the task to FAILED; other
-        strategies may behave differently.  If no strategy is set or
-        no task execution exists, returns the result unchanged.
+        The default strategy transitions the task to FAILED; checkpoint
+        recovery may resume from a persisted checkpoint.  If no strategy
+        is set or no task execution exists, returns the result unchanged.
         Recovery failures are logged but never block the error result.
         """
         if self._recovery_strategy is None:
@@ -585,6 +664,18 @@ class AgentEngine:
                 error_message=error_msg,
                 context=ctx,
             )
+
+            # Checkpoint resume path
+            if recovery_result.can_resume:
+                return await self._resume_from_checkpoint(
+                    recovery_result,
+                    identity,
+                    agent_id,
+                    task_id,
+                    completion_config=completion_config,
+                    effective_autonomy=effective_autonomy,
+                )
+
             updated_ctx = ctx.model_copy(
                 update={"task_execution": recovery_result.task_execution},
             )
@@ -601,6 +692,193 @@ class AgentEngine:
                 error=f"{type(exc).__name__}: {exc}",
             )
             return execution_result
+
+    def _validate_checkpoint_json(
+        self,
+        recovery_result: RecoveryResult,
+        agent_id: str,
+        task_id: str,
+    ) -> str:
+        """Return checkpoint JSON or raise if unexpectedly absent."""
+        if recovery_result.checkpoint_context_json is None:
+            logger.error(
+                EXECUTION_RESUME_FAILED,
+                agent_id=agent_id,
+                task_id=task_id,
+                error="checkpoint_context_json is None but can_resume was True",
+            )
+            msg = "checkpoint_context_json is None but can_resume was True"
+            raise RuntimeError(msg)
+        return recovery_result.checkpoint_context_json
+
+    async def _resume_from_checkpoint(  # noqa: PLR0913
+        self,
+        recovery_result: RecoveryResult,
+        identity: AgentIdentity,
+        agent_id: str,
+        task_id: str,
+        *,
+        completion_config: CompletionConfig | None = None,
+        effective_autonomy: EffectiveAutonomy | None = None,
+    ) -> ExecutionResult:
+        """Resume execution from a checkpoint.
+
+        Policy: resumed executions run without a wall-clock timeout.
+        The loop's per-turn budget and max_turns still constrain
+        execution.
+        """
+        checkpoint_json = self._validate_checkpoint_json(
+            recovery_result,
+            agent_id,
+            task_id,
+        )
+        logger.info(
+            EXECUTION_RESUME_START,
+            agent_id=agent_id,
+            task_id=task_id,
+            resume_attempt=recovery_result.resume_attempt,
+        )
+
+        try:
+            result, execution_id = await self._reconstruct_and_run_resume(
+                checkpoint_json,
+                recovery_result.error_message,
+                agent_id,
+                task_id,
+                completion_config=completion_config,
+                effective_autonomy=effective_autonomy,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                EXECUTION_RESUME_FAILED,
+                agent_id=agent_id,
+                task_id=task_id,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            raise
+        else:
+            return await self._finalize_resume(
+                result,
+                identity,
+                execution_id,
+                agent_id,
+                task_id,
+            )
+
+    async def _reconstruct_and_run_resume(  # noqa: PLR0913
+        self,
+        checkpoint_context_json: str,
+        error_message: str,
+        agent_id: str,
+        task_id: str,
+        *,
+        completion_config: CompletionConfig | None = None,
+        effective_autonomy: EffectiveAutonomy | None = None,
+    ) -> tuple[ExecutionResult, str]:
+        """Deserialize checkpoint context and run the resumed loop.
+
+        Returns:
+            A ``(result, execution_id)`` tuple so the caller can
+            call ``_finalize_resume`` with the execution identifier.
+        """
+        checkpoint_ctx = deserialize_and_reconcile(
+            checkpoint_context_json,
+            error_message,
+            agent_id,
+            task_id,
+        )
+        result = await self._execute_resumed_loop(
+            checkpoint_ctx,
+            agent_id,
+            task_id,
+            completion_config=completion_config,
+            effective_autonomy=effective_autonomy,
+        )
+        return result, checkpoint_ctx.execution_id
+
+    async def _execute_resumed_loop(
+        self,
+        checkpoint_ctx: AgentContext,
+        agent_id: str,
+        task_id: str,
+        *,
+        completion_config: CompletionConfig | None = None,
+        effective_autonomy: EffectiveAutonomy | None = None,
+    ) -> ExecutionResult:
+        """Run the execution loop on a reconstituted checkpoint context."""
+        budget_checker: BudgetChecker | None
+        if checkpoint_ctx.task_execution is None:
+            budget_checker = None
+        elif self._budget_enforcer:
+            budget_checker = await self._budget_enforcer.make_budget_checker(
+                checkpoint_ctx.task_execution.task,
+                agent_id,
+            )
+        else:
+            budget_checker = make_budget_checker(
+                checkpoint_ctx.task_execution.task,
+            )
+
+        loop = self._make_loop_with_callback(agent_id, task_id)
+        return await loop.execute(
+            context=checkpoint_ctx,
+            provider=self._provider,
+            tool_invoker=self._make_tool_invoker(
+                checkpoint_ctx.identity,
+                task_id=task_id,
+                effective_autonomy=effective_autonomy,
+            ),
+            budget_checker=budget_checker,
+            shutdown_checker=self._shutdown_checker,
+            completion_config=completion_config,
+        )
+
+    async def _finalize_resume(
+        self,
+        result: ExecutionResult,
+        identity: AgentIdentity,
+        execution_id: str,
+        agent_id: str,
+        task_id: str,
+    ) -> ExecutionResult:
+        """Record costs, apply transitions, and clean up after resume.
+
+        The resumed execution bypasses the normal pipeline's
+        ``record_execution_costs`` and ``apply_post_execution_transitions``
+        (those ran on the pre-crash result).  This method applies them
+        to the resumed result so costs are tracked and task state is
+        correctly transitioned.
+        """
+        await record_execution_costs(
+            result,
+            identity,
+            agent_id,
+            task_id,
+            tracker=self._cost_tracker,
+        )
+        result = await apply_post_execution_transitions(
+            result,
+            agent_id,
+            task_id,
+            self._task_engine,
+        )
+        logger.info(
+            EXECUTION_RESUME_COMPLETE,
+            agent_id=agent_id,
+            task_id=task_id,
+            termination_reason=result.termination_reason.value,
+        )
+        if result.termination_reason != TerminationReason.ERROR:
+            if self._recovery_strategy is not None:
+                await self._recovery_strategy.finalize(execution_id)
+            await cleanup_checkpoint_artifacts(
+                self._checkpoint_repo,
+                self._heartbeat_repo,
+                execution_id,
+            )
+        return result
 
     def _make_security_interceptor(
         self,
@@ -790,6 +1068,8 @@ class AgentEngine:
         duration_seconds: float,
         ctx: AgentContext | None = None,
         system_prompt: SystemPrompt | None = None,
+        completion_config: CompletionConfig | None = None,
+        effective_autonomy: EffectiveAutonomy | None = None,
     ) -> AgentRunResult:
         """Build an error ``AgentRunResult`` when the execution pipeline fails.
 
@@ -817,6 +1097,8 @@ class AgentEngine:
                 task_id,
                 error_msg,
                 ctx,
+                completion_config=completion_config,
+                effective_autonomy=effective_autonomy,
             )
             # Sync fatal-error recovery status to TaskEngine (best-effort).
             error_ctx = error_execution.context
@@ -877,6 +1159,9 @@ class AgentEngine:
         task_id: str,
         error_msg: str,
         ctx: AgentContext | None,
+        *,
+        completion_config: CompletionConfig | None = None,
+        effective_autonomy: EffectiveAutonomy | None = None,
     ) -> ExecutionResult:
         """Create an error ``ExecutionResult`` and apply recovery."""
         error_ctx = ctx or AgentContext.from_identity(identity, task=task)
@@ -887,6 +1172,9 @@ class AgentEngine:
         )
         return await self._apply_recovery(
             error_execution,
+            identity,
             agent_id,
             task_id,
+            completion_config=completion_config,
+            effective_autonomy=effective_autonomy,
         )

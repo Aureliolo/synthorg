@@ -553,6 +553,9 @@ class TestAgentEngineRecovery:
                     context=context,
                 )
 
+            async def finalize(self, execution_id: str) -> None:
+                pass
+
             def get_strategy_type(self) -> str:
                 return "custom"
 

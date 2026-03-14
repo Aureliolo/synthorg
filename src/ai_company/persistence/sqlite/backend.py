@@ -29,6 +29,12 @@ from ai_company.persistence.errors import (
 from ai_company.persistence.sqlite.audit_repository import (
     SQLiteAuditRepository,
 )
+from ai_company.persistence.sqlite.checkpoint_repo import (
+    SQLiteCheckpointRepository,
+)
+from ai_company.persistence.sqlite.heartbeat_repo import (
+    SQLiteHeartbeatRepository,
+)
 from ai_company.persistence.sqlite.hr_repositories import (
     SQLiteCollaborationMetricRepository,
     SQLiteLifecycleEventRepository,
@@ -79,6 +85,8 @@ class SQLitePersistenceBackend:
         self._audit_entries: SQLiteAuditRepository | None = None
         self._users: SQLiteUserRepository | None = None
         self._api_keys: SQLiteApiKeyRepository | None = None
+        self._checkpoints: SQLiteCheckpointRepository | None = None
+        self._heartbeats: SQLiteHeartbeatRepository | None = None
 
     def _clear_state(self) -> None:
         """Reset connection and repository references to ``None``."""
@@ -93,6 +101,8 @@ class SQLitePersistenceBackend:
         self._audit_entries = None
         self._users = None
         self._api_keys = None
+        self._checkpoints = None
+        self._heartbeats = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -157,6 +167,8 @@ class SQLitePersistenceBackend:
         self._audit_entries = SQLiteAuditRepository(self._db)
         self._users = SQLiteUserRepository(self._db)
         self._api_keys = SQLiteApiKeyRepository(self._db)
+        self._checkpoints = SQLiteCheckpointRepository(self._db)
+        self._heartbeats = SQLiteHeartbeatRepository(self._db)
 
     async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:
         """Log failure, close partial connection, and raise.
@@ -356,6 +368,24 @@ class SQLitePersistenceBackend:
             PersistenceConnectionError: If not connected.
         """
         return self._require_connected(self._api_keys, "api_keys")
+
+    @property
+    def checkpoints(self) -> SQLiteCheckpointRepository:
+        """Repository for Checkpoint persistence.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(self._checkpoints, "checkpoints")
+
+    @property
+    def heartbeats(self) -> SQLiteHeartbeatRepository:
+        """Repository for Heartbeat persistence.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(self._heartbeats, "heartbeats")
 
     async def get_setting(self, key: str) -> str | None:
         """Retrieve a setting value by key.

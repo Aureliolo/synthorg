@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from ai_company.budget.call_category import LLMCallCategory
 from ai_company.observability import get_logger
 from ai_company.observability.events.execution import (
+    EXECUTION_CHECKPOINT_CALLBACK_FAILED,
     EXECUTION_LOOP_START,
     EXECUTION_LOOP_TERMINATED,
     EXECUTION_LOOP_TURN_COMPLETE,
@@ -66,6 +67,7 @@ from .plan_parsing import (
 )
 
 if TYPE_CHECKING:
+    from ai_company.engine.checkpoint.callback import CheckpointCallback
     from ai_company.engine.context import AgentContext
     from ai_company.providers.models import ToolDefinition
     from ai_company.providers.protocol import CompletionProvider
@@ -81,8 +83,18 @@ class PlanExecuteLoop:
     step with a mini-ReAct sub-loop. Supports re-planning on failure.
     """
 
-    def __init__(self, config: PlanExecuteConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: PlanExecuteConfig | None = None,
+        checkpoint_callback: CheckpointCallback | None = None,
+    ) -> None:
         self._config = config or PlanExecuteConfig()
+        self._checkpoint_callback = checkpoint_callback
+
+    @property
+    def config(self) -> PlanExecuteConfig:
+        """Return the loop configuration."""
+        return self._config
 
     def get_loop_type(self) -> str:
         """Return the loop type identifier."""
@@ -559,6 +571,8 @@ class PlanExecuteLoop:
             tool_call_count=0,
         )
 
+        await self._invoke_checkpoint_callback(ctx, turn_number)
+
         plan = parse_plan(
             response,
             ctx.execution_id,
@@ -694,6 +708,8 @@ class PlanExecuteLoop:
             tool_call_count=len(response.tool_calls),
         )
 
+        await self._invoke_checkpoint_callback(ctx, turn_number)
+
         if not response.tool_calls:
             return self._handle_step_completion(ctx, response, turn_number)
 
@@ -748,6 +764,32 @@ class PlanExecuteLoop:
             turn_number,
             turns,
         )
+
+    # ── Checkpoint ──────────────────────────────────────────────────
+
+    async def _invoke_checkpoint_callback(
+        self,
+        ctx: AgentContext,
+        turn_number: int,
+    ) -> None:
+        """Invoke the checkpoint callback if configured.
+
+        Errors are logged but never propagated — checkpointing must
+        not interrupt execution.
+        """
+        if self._checkpoint_callback is None:
+            return
+        try:
+            await self._checkpoint_callback(ctx)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                EXECUTION_CHECKPOINT_CALLBACK_FAILED,
+                execution_id=ctx.execution_id,
+                turn=turn_number,
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
     # ── Utilities ───────────────────────────────────────────────────
 
