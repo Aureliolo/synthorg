@@ -160,7 +160,10 @@ class TestWithheldOutcome:
         # (ToolResult does not surface the metadata field from the
         # execution layer, so the public invoke() API cannot verify
         # metadata keys).
-        tool_exec_result = ToolExecutionResult(content="raw output")
+        tool_exec_result = ToolExecutionResult(
+            content="raw output",
+            metadata={"sentinel": True},
+        )
         context = SecurityContext(
             tool_name="secure_tool",
             tool_category=ToolCategory.FILE_SYSTEM,
@@ -168,6 +171,7 @@ class TestWithheldOutcome:
         )
         scan_exec = await invoker._scan_output(tool_call, tool_exec_result, context)
         assert scan_exec.metadata.get("output_withheld") is True
+        assert scan_exec.metadata.get("sentinel") is True
         assert "output_scan_failed" not in scan_exec.metadata
 
     async def test_withheld_takes_priority_over_redacted_content(
@@ -238,11 +242,12 @@ class TestLogOnlyOutcome:
 
 @pytest.mark.unit
 class TestDefensiveFallback:
-    """Tests for the defensive fail-closed fallback in _handle_sensitive_scan.
+    """Tests for the defensive fail-closed fallback in handle_sensitive_scan.
 
-    This branch catches unexpected states where ``has_sensitive_data=True``
-    but outcome is not ``WITHHELD`` and ``redacted_content`` is ``None``.
-    Reachable when ``model_copy()`` skips validators.
+    Exercised via ``ToolInvoker._scan_output``.  This branch catches
+    unexpected states where ``has_sensitive_data=True`` but outcome is
+    not ``WITHHELD`` and ``redacted_content`` is ``None``.  Reachable
+    when ``model_copy()`` skips validators.
     """
 
     async def test_defensive_fallback_withholds_on_unexpected_state(
@@ -295,7 +300,10 @@ class TestDefensiveFallback:
             security_registry,
             security_interceptor=interceptor,
         )
-        tool_exec_result = ToolExecutionResult(content="raw output")
+        tool_exec_result = ToolExecutionResult(
+            content="raw output",
+            metadata={"sentinel": True},
+        )
         context = SecurityContext(
             tool_name="secure_tool",
             tool_category=ToolCategory.FILE_SYSTEM,
@@ -303,4 +311,5 @@ class TestDefensiveFallback:
         )
         scan_exec = await invoker._scan_output(tool_call, tool_exec_result, context)
         assert scan_exec.metadata.get("output_scan_failed") is True
+        assert scan_exec.metadata.get("sentinel") is True
         assert "output_withheld" not in scan_exec.metadata
