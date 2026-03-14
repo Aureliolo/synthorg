@@ -71,6 +71,21 @@ _SECRET_SUBSTRINGS: Final[tuple[str, ...]] = (
     "PRIVATE",
 )
 
+# Git discovery env vars that override directory-based repo detection.
+# Stripping these ensures the tool always uses the workspace ``cwd`` for
+# repo discovery instead of stale env vars (e.g. ``GIT_DIR`` inherited
+# from ``git push`` → pre-push hook → agent subprocess chains).
+_GIT_DISCOVERY_VARS: Final[frozenset[str]] = frozenset(
+    {
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_INDEX_FILE",
+        "GIT_COMMON_DIR",
+    }
+)
+
 
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]+")
 _MAX_STDERR_FRAGMENT: Final[int] = 500
@@ -250,11 +265,14 @@ class _BaseGitTool(BaseTool, ABC):
     def _build_git_env() -> dict[str, str]:
         """Build a hardened environment for git subprocesses.
 
-        Applies git hardening overrides and strips obvious secret
-        env vars as defense-in-depth.  For full environment filtering,
-        use a ``SandboxBackend``.
+        Applies git hardening overrides, strips git discovery env vars
+        (so the tool uses *cwd*-based repo detection), and removes
+        obvious secret env vars as defense-in-depth.  For full
+        environment filtering, use a ``SandboxBackend``.
         """
         env = {**os.environ, **_GIT_HARDENING_OVERRIDES}
+        for key in _GIT_DISCOVERY_VARS:
+            env.pop(key, None)
         for key in list(env):
             upper = key.upper()
             if any(sub in upper for sub in _SECRET_SUBSTRINGS):
