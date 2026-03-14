@@ -204,9 +204,9 @@ The **docs-consistency** agent ensures project documentation never drifts from t
 
 **What to check:**
 
-Read the current `docs/DESIGN_SPEC.md`, `CLAUDE.md`, and `README.md` in full. Then compare them against the PR diff and the actual current state of the codebase. Flag anything that is now inaccurate, incomplete, or missing.
+Read the current `CLAUDE.md` and `README.md` in full, plus the relevant `docs/design/` pages (see `docs/DESIGN_SPEC.md` for the index). Then compare them against the PR diff and the actual current state of the codebase. Flag anything that is now inaccurate, incomplete, or missing.
 
-**DESIGN_SPEC.md (CRITICAL — this is the project's source of truth):**
+**Design pages in `docs/design/` (CRITICAL — these are the project's source of truth):**
 1. §15.3 Project Structure — does it match the actual files/directories under `src/ai_company/`? Any new modules missing? Any listed files that no longer exist? (CRITICAL)
 2. §3.1 Agent Identity Card — does the config/runtime split documentation match the actual model code? (MAJOR)
 3. §15.4 Key Design Decisions — are technology choices and rationale still accurate? (MAJOR)
