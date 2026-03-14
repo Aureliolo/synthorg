@@ -52,6 +52,38 @@ class _SecurityTestTool(BaseTool):
         )
 
 
+class _FailingSecurityTool(_SecurityTestTool):
+    """Tool that raises RuntimeError from execute."""
+
+    def __init__(self) -> None:
+        super().__init__(name="failing_tool")
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        msg = "intentional failure"
+        raise RuntimeError(msg)
+
+
+class _SoftErrorSecurityTool(_SecurityTestTool):
+    """Tool that returns is_error=True with sensitive content."""
+
+    def __init__(self) -> None:
+        super().__init__(name="soft_error_tool")
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        return ToolExecutionResult(
+            is_error=True,
+            content="error: API_KEY=AKIA1234567890EXAMPLE",
+        )
+
+
 # ── Helpers ──────────────────────────────────────────────────────
 
 _NOW = datetime.now(UTC)
@@ -616,11 +648,7 @@ class TestOutputScanSkippedOnToolError:
     """When tool.execute() raises, scan_output is not called."""
 
     async def test_tool_execution_error_skips_output_scan(self) -> None:
-        failing_tool = _SecurityTestTool(name="failing_tool")
-        failing_tool.execute = AsyncMock(  # type: ignore[method-assign]
-            side_effect=RuntimeError("intentional failure"),
-        )
-        registry = ToolRegistry([failing_tool])
+        registry = ToolRegistry([_FailingSecurityTool()])
         interceptor = _make_interceptor(
             pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
         )
@@ -730,14 +758,7 @@ class TestOutputScanOnSoftError:
 
     async def test_soft_error_content_is_scanned(self) -> None:
         """When tool returns is_error=True, scan_output is still called."""
-        soft_tool = _SecurityTestTool(name="soft_error_tool")
-        soft_tool.execute = AsyncMock(  # type: ignore[method-assign]
-            return_value=ToolExecutionResult(
-                is_error=True,
-                content="error: API_KEY=AKIA1234567890EXAMPLE",
-            ),
-        )
-        registry = ToolRegistry([soft_tool])
+        registry = ToolRegistry([_SoftErrorSecurityTool()])
         scan_result = OutputScanResult(
             has_sensitive_data=True,
             findings=("API key",),
@@ -762,14 +783,7 @@ class TestOutputScanOnSoftError:
 
     async def test_soft_error_scan_receives_error_content(self) -> None:
         """Verify scan_output receives the error content string."""
-        soft_tool = _SecurityTestTool(name="soft_error_tool")
-        soft_tool.execute = AsyncMock(  # type: ignore[method-assign]
-            return_value=ToolExecutionResult(
-                is_error=True,
-                content="error: API_KEY=AKIA1234567890EXAMPLE",
-            ),
-        )
-        registry = ToolRegistry([soft_tool])
+        registry = ToolRegistry([_SoftErrorSecurityTool()])
         interceptor = _make_interceptor(
             pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
         )

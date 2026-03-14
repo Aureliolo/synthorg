@@ -86,5 +86,5 @@ def handle_sensitive_scan(
     return ToolExecutionResult(
         content="Sensitive data detected (fail-closed). Tool output withheld.",
         is_error=True,
-        metadata={"output_scan_failed": True},
+        metadata={**result.metadata, "output_scan_failed": True},
     )

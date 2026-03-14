@@ -280,7 +280,7 @@ class ToolInvoker:
         """Scan tool output for sensitive data (if interceptor is set).
 
         When sensitive data is detected (``has_sensitive_data=True``),
-        delegates to ``_handle_sensitive_scan`` which branches on
+        delegates to ``handle_sensitive_scan`` which branches on
         ``outcome`` (``WITHHELD`` vs ``REDACTED``).  When no sensitive
         data is detected (including ``LOG_ONLY`` and ``CLEAN``
         outcomes), the original output passes through unchanged.

@@ -1,8 +1,9 @@
 """Tests for ScanOutcome-driven output scan handling in ToolInvoker.
 
 Covers the WITHHELD, LOG_ONLY, and defensive fallback branches of
-``ToolInvoker._handle_sensitive_scan``.  Split from
-``test_invoker_security.py`` to keep file sizes under 800 lines.
+``handle_sensitive_scan`` (exercised via the ``ToolInvoker`` flow).
+Split from ``test_invoker_security.py`` to keep file sizes under
+800 lines.
 """
 
 from datetime import UTC, datetime

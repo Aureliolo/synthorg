@@ -566,6 +566,15 @@ class TestOutputScanResult:
             pytest.param(
                 {
                     "has_sensitive_data": True,
+                    "findings": (),
+                    "outcome": ScanOutcome.WITHHELD,
+                },
+                "findings",
+                id="empty-findings-rejected-when-sensitive",
+            ),
+            pytest.param(
+                {
+                    "has_sensitive_data": True,
                     "findings": ("secret",),
                     "outcome": ScanOutcome.WITHHELD,
                     "redacted_content": "should not be set",
