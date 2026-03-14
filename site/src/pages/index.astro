@@ -13,7 +13,7 @@ import Base from "../layouts/Base.astro";
     <div class="relative z-10 max-w-4xl mx-auto text-center">
       <!-- Eyebrow -->
       <p class="text-sm tracking-widest text-violet-400 mb-6 font-mono">
-        Python 3.14+ &middot; BSL 1.1 &middot; Open Source
+        Python 3.14+ &middot; BSL 1.1 &middot; Source Available
       </p>
 
       <!-- Headline -->
@@ -27,7 +27,7 @@ import Base from "../layouts/Base.astro";
       <!-- Subtext -->
       <p class="text-lg md:text-xl text-gray-400 max-w-2xl mx-auto mb-10">
         SynthOrg is a Python framework for building synthetic organizations &mdash;
-        autonomous AI agents with roles, budgets, memory, and governance. Open source.
+        autonomous AI agents with roles, budgets, memory, and governance. Source-available under BSL 1.1.
       </p>
 
       <!-- CTAs -->
@@ -304,30 +304,75 @@ import Base from "../layouts/Base.astro";
   </section>
 
   <!-- ============================================================ -->
-  <!-- OPEN SOURCE (dark) -->
+  <!-- LICENSE & USAGE -->
   <!-- ============================================================ -->
-  <section class="py-24 px-6">
-    <div class="max-w-3xl mx-auto text-center">
-      <h2 class="text-3xl md:text-4xl font-bold mb-6">Open Source</h2>
-      <p class="text-gray-400 mb-8">
-        Everything is open &mdash; code, <a href="/docs/design/" class="text-teal-400 hover:underline">design spec</a>,
-        <a href="/docs/architecture/" class="text-teal-400 hover:underline">architecture docs</a>, and
-        <a href="/docs/roadmap/" class="text-teal-400 hover:underline">roadmap</a>.
-        Licensed under BSL 1.1, converting to Apache 2.0 on 2030-02-27.
+  <section class="py-24 px-6 bg-gradient-to-b from-[#1a1f2e] to-[#0F1219]">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">License & Usage</h2>
+      <p class="text-gray-400 text-center max-w-2xl mx-auto mb-16">
+        SynthOrg uses the <a href="https://github.com/Aureliolo/synthorg/blob/main/LICENSE" class="text-teal-400 hover:underline">Business Source License 1.1</a>
+        &mdash; source available, production-friendly for most users, converting to Apache 2.0 automatically.
       </p>
 
-      <div class="flex flex-col sm:flex-row gap-4 items-center justify-center">
-        <!-- GitHub buttons -->
-        <div class="flex gap-3">
-          <a class="github-button" href="https://github.com/Aureliolo/synthorg" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star Aureliolo/synthorg on GitHub">Star</a>
-          <a class="github-button" href="https://github.com/Aureliolo/synthorg/fork" data-icon="octicon-repo-forked" data-size="large" data-show-count="true" aria-label="Fork Aureliolo/synthorg on GitHub">Fork</a>
+      <div class="grid md:grid-cols-3 gap-8">
+        <!-- Always Free -->
+        <div class="bg-[#0F1219] rounded-xl p-8 border border-green-500/20">
+          <div class="w-12 h-12 rounded-lg bg-green-600/20 flex items-center justify-center text-green-400 mb-4 text-xl">&#10003;</div>
+          <h3 class="text-xl font-semibold mb-3 text-green-400">Always Free</h3>
+          <ul class="text-gray-400 space-y-2 text-sm">
+            <li>Personal learning and experimentation</li>
+            <li>Academic and research use</li>
+            <li>Development, testing, and evaluation</li>
+            <li>Contributing to SynthOrg itself</li>
+          </ul>
         </div>
-        <a
-          href="/docs/"
-          class="px-8 py-3 border border-white/20 hover:bg-white/5 rounded-lg font-semibold transition-colors"
-        >
-          Read the Documentation
+
+        <!-- Free in Production -->
+        <div class="bg-[#0F1219] rounded-xl p-8 border border-teal-500/20">
+          <div class="w-12 h-12 rounded-lg bg-teal-600/20 flex items-center justify-center text-teal-400 mb-4 text-xl">&#10003;</div>
+          <h3 class="text-xl font-semibold mb-3 text-teal-400">Free in Production</h3>
+          <ul class="text-gray-400 space-y-2 text-sm">
+            <li>Organizations with &lt;500 employees and contractors (including affiliates)</li>
+            <li>Non-competing use: internal tools, automation, or products where SynthOrg is not the core value</li>
+            <li>No separate license needed &mdash; see <a href="https://github.com/Aureliolo/synthorg/blob/main/LICENSE" class="text-teal-400 hover:underline">LICENSE</a> for full terms</li>
+          </ul>
+        </div>
+
+        <!-- Commercial License -->
+        <div class="bg-[#0F1219] rounded-xl p-8 border border-violet-500/20">
+          <div class="w-12 h-12 rounded-lg bg-violet-600/20 flex items-center justify-center text-violet-400 mb-4 text-xl">&#9993;</div>
+          <h3 class="text-xl font-semibold mb-3 text-violet-400">Commercial License</h3>
+          <ul class="text-gray-400 space-y-2 text-sm">
+            <li>Organizations with 500+ employees</li>
+            <li>Offering SynthOrg as a hosted service</li>
+            <li>Reselling or embedding as core product</li>
+            <li>May be granted at no cost &mdash; just ask</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="text-center mt-10">
+        <p class="text-gray-500 text-sm mb-4">
+          Every version converts to Apache 2.0 automatically. We welcome feedback on the license &mdash;
+          <a href="https://github.com/Aureliolo/synthorg/discussions" class="text-teal-400 hover:underline">start a discussion</a> or
+          <a href="https://github.com/Aureliolo/synthorg/issues" class="text-teal-400 hover:underline">open an issue</a>.
+        </p>
+        <a href="/docs/licensing/" class="text-teal-400 hover:text-teal-300 transition-colors">
+          Read the full licensing rationale &rarr;
         </a>
+
+        <div class="flex flex-col sm:flex-row gap-4 items-center justify-center mt-8">
+          <div class="flex gap-3">
+            <a class="github-button" href="https://github.com/Aureliolo/synthorg" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star Aureliolo/synthorg on GitHub">Star</a>
+            <a class="github-button" href="https://github.com/Aureliolo/synthorg/fork" data-icon="octicon-repo-forked" data-size="large" data-show-count="true" aria-label="Fork Aureliolo/synthorg on GitHub">Fork</a>
+          </div>
+          <a
+            href="/docs/"
+            class="px-8 py-3 border border-white/20 hover:bg-white/5 rounded-lg font-semibold transition-colors"
+          >
+            Read the Documentation
+          </a>
+        </div>
       </div>
     </div>
   </section>
@@ -419,7 +464,7 @@ import Base from "../layouts/Base.astro";
       <div>
         <p class="font-semibold mb-3">Legal</p>
         <ul class="space-y-2 text-gray-400">
-          <li><a href="https://github.com/Aureliolo/synthorg/blob/main/LICENSE" class="hover:text-white transition-colors">License (BSL 1.1)</a></li>
+          <li><a href="/docs/licensing/" class="hover:text-white transition-colors">License & Usage (BSL 1.1)</a></li>
         </ul>
       </div>
     </div>

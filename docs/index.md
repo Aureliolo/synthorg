@@ -130,4 +130,5 @@ The design spec covers the full architecture of SynthOrg — from agent identity
 ## Links
 
 - [GitHub Repository](https://github.com/Aureliolo/synthorg)
-- [License](https://github.com/Aureliolo/synthorg/blob/main/LICENSE) (BSL 1.1 → Apache 2.0 on 2030-02-27)
+- [License](https://github.com/Aureliolo/synthorg/blob/main/LICENSE) (BSL 1.1, source available — free production use for non-competing small orgs; converts to Apache 2.0 three years after release)
+- [Licensing & Usage](licensing.md) — what's permitted, why BSL, and how to get a commercial license

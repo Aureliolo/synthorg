@@ -45,9 +45,13 @@ func runLogs(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	composePath := filepath.Join(state.DataDir, "compose.yml")
+	safeDir, err := safeStateDir(state)
+	if err != nil {
+		return err
+	}
+	composePath := filepath.Join(safeDir, "compose.yml")
 	if _, err := os.Stat(composePath); errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("compose.yml not found in %s — run 'synthorg init' first", state.DataDir)
+		return fmt.Errorf("compose.yml not found in %s — run 'synthorg init' first", safeDir)
 	}
 
 	info, err := docker.Detect(ctx)
@@ -78,5 +82,5 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	composeArgs = append(composeArgs, "--")
 	composeArgs = append(composeArgs, args...)
 
-	return composeRun(ctx, cmd, info, state.DataDir, composeArgs...)
+	return composeRun(ctx, cmd, info, safeDir, composeArgs...)
 }

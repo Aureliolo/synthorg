@@ -41,17 +41,16 @@ func StatePath(dataDir string) string {
 // Load reads State from disk. Returns a default state with the given dataDir
 // if the file does not exist (so --data-dir is respected on bootstrap).
 func Load(dataDir string) (State, error) {
-	path := StatePath(dataDir)
-	data, err := os.ReadFile(path)
+	safeDir, err := SecurePath(dataDir)
+	if err != nil {
+		return State{}, err
+	}
+	path := StatePath(safeDir)
+	data, err := os.ReadFile(path) //nolint:gosec // path validated by SecurePath
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			defaults := DefaultState()
-			// Normalize the dataDir the same way we validate loaded paths.
-			clean := filepath.Clean(dataDir)
-			if !filepath.IsAbs(clean) {
-				return State{}, fmt.Errorf("data_dir must be an absolute path, got %q", dataDir)
-			}
-			defaults.DataDir = clean
+			defaults.DataDir = safeDir
 			return defaults, nil
 		}
 		return State{}, err
@@ -63,22 +62,32 @@ func Load(dataDir string) (State, error) {
 	}
 	// Canonicalize and validate DataDir.
 	if s.DataDir != "" {
-		s.DataDir = filepath.Clean(s.DataDir)
-		if !filepath.IsAbs(s.DataDir) {
-			return State{}, fmt.Errorf("data_dir must be an absolute path, got %q", s.DataDir)
+		safeLoaded, err := SecurePath(s.DataDir)
+		if err != nil {
+			return State{}, fmt.Errorf("data_dir: %w", err)
 		}
+		s.DataDir = safeLoaded
+	} else {
+		// Config file omitted data_dir; fall back to the directory we loaded from.
+		s.DataDir = safeDir
 	}
 	return s, nil
 }
 
 // Save writes State to disk as indented JSON.
+// DataDir is normalized to the SecurePath-cleaned form before persisting.
 func Save(s State) error {
-	if err := EnsureDir(s.DataDir); err != nil {
+	safeDir, err := SecurePath(s.DataDir)
+	if err != nil {
+		return err
+	}
+	s.DataDir = safeDir // persist the canonical path
+	if err := os.MkdirAll(safeDir, 0o700); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(StatePath(s.DataDir), data, 0o600)
+	return os.WriteFile(StatePath(safeDir), data, 0o600) //nolint:gosec // path validated by SecurePath
 }

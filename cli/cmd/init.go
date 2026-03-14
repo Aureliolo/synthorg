@@ -47,7 +47,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	// Warn if re-initializing over existing config (JWT secret will change).
 	// isInteractive() is already checked at function entry, so prompt is safe.
 	if existing := config.StatePath(state.DataDir); fileExists(existing) {
-		fmt.Fprintf(cmd.ErrOrStderr(),
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
 			"Warning: existing config at %s will be overwritten.\n"+
 				"A new JWT secret will be generated — running containers will need a restart.\n", existing)
 		var proceed bool
@@ -62,16 +62,17 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	if err := writeInitFiles(state); err != nil {
+	safeDir, err := writeInitFiles(state)
+	if err != nil {
 		return err
 	}
 
-	composePath := filepath.Join(state.DataDir, "compose.yml")
-	fmt.Fprintf(cmd.OutOrStdout(), "\nSynthOrg initialized in %s\n", state.DataDir)
-	fmt.Fprintf(cmd.OutOrStdout(), "  Compose file: %s\n", composePath)
-	fmt.Fprintf(cmd.OutOrStdout(), "  Config:       %s\n", config.StatePath(state.DataDir))
-	fmt.Fprintf(cmd.OutOrStdout(), "\nKeep compose.yml and config.json private — they contain your JWT secret.\n")
-	fmt.Fprintf(cmd.OutOrStdout(), "Run 'synthorg start' to launch.\n")
+	composePath := filepath.Join(safeDir, "compose.yml")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\nSynthOrg initialized in %s\n", safeDir)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  Compose file: %s\n", composePath)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  Config:       %s\n", config.StatePath(safeDir))
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\nKeep compose.yml and config.json private — they contain your JWT secret.\n")
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Run 'synthorg start' to launch.\n")
 
 	return nil
 }
@@ -180,26 +181,33 @@ func buildState(a setupAnswers) (config.State, error) {
 	}, nil
 }
 
-func writeInitFiles(state config.State) error {
-	if err := config.EnsureDir(state.DataDir); err != nil {
-		return fmt.Errorf("creating data directory: %w", err)
+// writeInitFiles creates the data directory, generates compose.yml, and saves
+// config. Returns the sanitized data directory path.
+func writeInitFiles(state config.State) (string, error) {
+	safeDir, err := config.SecurePath(state.DataDir)
+	if err != nil {
+		return "", err
+	}
+	state.DataDir = safeDir // normalize before persisting
+	if err := os.MkdirAll(safeDir, 0o700); err != nil {
+		return "", fmt.Errorf("creating data directory: %w", err)
 	}
 
 	params := compose.ParamsFromState(state)
 	composeYAML, err := compose.Generate(params)
 	if err != nil {
-		return fmt.Errorf("generating compose file: %w", err)
+		return "", fmt.Errorf("generating compose file: %w", err)
 	}
 
-	composePath := filepath.Join(state.DataDir, "compose.yml")
+	composePath := filepath.Join(safeDir, "compose.yml")
 	if err := os.WriteFile(composePath, composeYAML, 0o600); err != nil {
-		return fmt.Errorf("writing compose file: %w", err)
+		return "", fmt.Errorf("writing compose file: %w", err)
 	}
 
 	if err := config.Save(state); err != nil {
-		return fmt.Errorf("saving config: %w", err)
+		return "", fmt.Errorf("saving config: %w", err)
 	}
-	return nil
+	return safeDir, nil
 }
 
 func validateDockerSock(path string) error {
@@ -227,8 +235,14 @@ func generateSecret(n int) (string, error) {
 	return base64.URLEncoding.EncodeToString(b), nil
 }
 
+// fileExists reports whether the given path exists on disk.
+// The path must be absolute; relative paths are treated as non-existent.
 func fileExists(path string) bool {
-	_, err := os.Stat(path)
+	safe, err := config.SecurePath(path)
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(safe)
 	return err == nil
 }
 

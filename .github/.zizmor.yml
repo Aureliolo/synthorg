@@ -1,0 +1,18 @@
+rules:
+  # Daily Dependabot updates are intentional — see CLAUDE.md and dependabot.yml.
+  # The project uses daily checks with grouped minor/patch to stay current.
+  dependabot-cooldown:
+    disable: true
+
+  dangerous-triggers:
+    ignore:
+      # pull_request_target is required for CLA enforcement (needs write
+      # access to commit signatures). Mitigated: checkout uses ref: main
+      # (not PR head), no untrusted input in run: steps.
+      - cla.yml
+
+  artipacked:
+    ignore:
+      # persist-credentials required to push the Change Date commit back
+      # to the release PR branch.
+      - release.yml

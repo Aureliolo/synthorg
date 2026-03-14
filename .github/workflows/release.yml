@@ -16,7 +16,32 @@ jobs:
       pull-requests: write
     steps:
       - uses: googleapis/release-please-action@16a9c90856f42705d54a6fda1823352bdc62cf38 # v4.4.0
+        id: release
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: .github/release-please-config.json
           manifest-file: .github/.release-please-manifest.json
+
+      # When Release Please creates/updates a release PR, update the BSL
+      # Change Date to 3 years from today. The date update ships as part
+      # of the release PR, so it goes through normal review + merge flow.
+      - name: Checkout Release PR branch
+        if: steps.release.outputs.pr != ''
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: release-please--branches--main--components--synthorg
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+
+      - name: Update BSL Change Date (release + 3 years)
+        if: steps.release.outputs.pr != ''
+        run: |
+          new_date=$(LC_TIME=C date -d "+3 years" "+%B %-d, %Y")  # GNU date (ubuntu-latest)
+          echo "Updating Change Date to: $new_date"
+          sed -i "s/^Change Date:          .*/Change Date:          $new_date/" LICENSE
+          grep -q "^Change Date:.*$new_date" LICENSE || { echo "ERROR: sed pattern did not match; Change Date was not updated"; exit 1; }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add LICENSE
+          git diff --cached --quiet && echo "Change Date already up to date" && exit 0
+          git commit -m "chore: update BSL Change Date to $new_date"
+          git push

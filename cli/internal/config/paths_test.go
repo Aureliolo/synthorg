@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -62,6 +63,57 @@ func TestDataDirForOS_FreeBSD(t *testing.T) {
 	want := filepath.Join("/home/test", ".local", "share", appDirName)
 	if got != want {
 		t.Errorf("freebsd: got %q, want %q", got, want)
+	}
+}
+
+func absTestPath(parts ...string) string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(append([]string{`C:\`}, parts...)...)
+	}
+	return filepath.Join(append([]string{"/"}, parts...)...)
+}
+
+func TestSecurePath_Absolute(t *testing.T) {
+	input := absTestPath("usr", "local", "bin")
+	got, err := SecurePath(input)
+	if err != nil {
+		t.Fatalf("SecurePath(%q): %v", input, err)
+	}
+	if got != filepath.Clean(input) {
+		t.Errorf("got %q, want cleaned absolute path", got)
+	}
+}
+
+func TestSecurePath_Relative(t *testing.T) {
+	_, err := SecurePath("relative/path")
+	if err == nil {
+		t.Fatal("expected error for relative path")
+	}
+}
+
+func TestSecurePath_Empty(t *testing.T) {
+	_, err := SecurePath("")
+	if err == nil {
+		t.Fatal("expected error for empty path")
+	}
+}
+
+func TestSecurePath_Cleans(t *testing.T) {
+	input := absTestPath("usr", "local", "..", "bin")
+	got, err := SecurePath(input)
+	if err != nil {
+		t.Fatalf("SecurePath(%q): %v", input, err)
+	}
+	want := filepath.Clean(input)
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestSecurePath_DotDotRelative(t *testing.T) {
+	_, err := SecurePath("../etc/passwd")
+	if err == nil {
+		t.Fatal("expected error for relative traversal path")
 	}
 }
 
