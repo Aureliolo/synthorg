@@ -55,6 +55,9 @@ apiClient.interceptors.response.use(
  */
 export function unwrap<T>(response: AxiosResponse<ApiResponse<T>>): T {
   const body = response.data
+  if (!body || typeof body !== 'object') {
+    throw new Error('Unknown API error')
+  }
   if (!body.success || body.data === null || body.data === undefined) {
     throw new Error(body.error ?? 'Unknown API error')
   }
@@ -69,6 +72,9 @@ export function unwrapPaginated<T>(
   response: AxiosResponse<PaginatedResponse<T>>,
 ): { data: T[]; total: number; offset: number; limit: number } {
   const body = response.data
+  if (!body || typeof body !== 'object') {
+    throw new Error('Unknown API error')
+  }
   if (!body.success) {
     throw new Error(body.error ?? 'Unknown API error')
   }

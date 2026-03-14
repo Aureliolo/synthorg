@@ -33,10 +33,11 @@ uv run ruff check src/ tests/              # lint
 uv run ruff check src/ tests/ --fix        # lint + auto-fix
 uv run ruff format src/ tests/             # format
 uv run mypy src/ tests/                    # type-check (strict)
-uv run pytest tests/ -m unit -n auto        # unit tests only
-uv run pytest tests/ -m integration -n auto # integration tests only
-uv run pytest tests/ -m e2e -n auto         # e2e tests only
-uv run pytest tests/ -n auto --cov=ai_company --cov-fail-under=80  # full suite + coverage
+uv run python -m pytest tests/ -m unit -n auto        # unit tests only
+uv run python -m pytest tests/ -m integration -n auto # integration tests only
+uv run python -m pytest tests/ -m e2e -n auto         # e2e tests only
+uv run python -m pytest tests/ -n auto --cov=ai_company --cov-fail-under=80  # full suite + coverage
+HYPOTHESIS_PROFILE=dev uv run python -m pytest tests/ -m unit -n auto -k properties  # property tests (dev profile, 1000 examples)
 uv run pre-commit run --all-files          # all pre-commit hooks
 uv run python scripts/export_openapi.py    # export OpenAPI schema (needed before docs build)
 uv run zensical build                      # build docs (output: _site/docs/) — no --strict until zensical/backlog#72
@@ -60,9 +61,10 @@ Note: Go commands require `cd cli` because the Go module is in `cli/` (exception
 
 ```bash
 cd cli && go build -o synthorg ./main.go   # build CLI
-cd cli && go test ./...                     # run tests
+cd cli && go test ./...                     # run tests (fuzz targets run seed corpus only without -fuzz flag)
 cd cli && go vet ./...                      # vet
 cd cli && golangci-lint run                 # lint
+cd cli && go test -fuzz=FuzzYamlStr -fuzztime=30s ./internal/compose/  # fuzz example
 ```
 
 ## Documentation
@@ -211,6 +213,7 @@ site/               # Astro landing page (synthorg.io)
 - **Parallelism**: `pytest-xdist` via `-n auto` — **ALWAYS** include `-n auto` when running pytest, never run tests sequentially
 - **Parametrize**: Prefer `@pytest.mark.parametrize` for testing similar cases
 - **Vendor-agnostic everywhere**: NEVER use real vendor names (Anthropic, OpenAI, Claude, GPT, etc.) in project-owned code, docstrings, comments, tests, or config examples. Use generic names: `example-provider`, `example-large-001`, `example-medium-001`, `example-small-001`, `large`/`medium`/`small` as aliases. Vendor names may only appear in: (1) Operations design page provider list (`docs/design/operations.md`), (2) `.claude/` skill/agent files, (3) third-party import paths/module names (e.g. `litellm.types.llms.openai`). Tests must use `test-provider`, `test-small-001`, etc.
+- **Property-based testing**: Python uses [Hypothesis](https://hypothesis.readthedocs.io/) (`@given` + `@settings`), Vue uses [fast-check](https://fast-check.dev/) (`fc.assert` + `fc.property`), Go uses native `testing.F` fuzz functions (`Fuzz*`). Hypothesis profiles: `ci` (200 examples, default) and `dev` (1000 examples), controlled via `HYPOTHESIS_PROFILE` env var. Run dev profile: `HYPOTHESIS_PROFILE=dev uv run python -m pytest tests/ -m unit -n auto -k properties`. `.hypothesis/` is gitignored.
 
 ## Git
 
@@ -256,7 +259,7 @@ site/               # Astro landing page (synthorg.io)
   - Concurrency group cancels stale builds on rapid pushes
 - **Docker**: `.github/workflows/docker.yml` — builds backend + web images, pushes to GHCR, signs with cosign. Scans: Trivy (CRITICAL = hard fail, HIGH = warn-only) + Grype (critical cutoff). CVE triage via `.github/.trivyignore.yaml` and `.github/.grype.yaml`. Images only pushed after scans pass. Triggers on push to main and version tags (`v*`).
 - **Matrix**: Python 3.14
-- **CLI**: `.github/workflows/cli.yml` — Go lint (`golangci-lint` + `go vet`) + test (`-race -coverprofile`) + build (cross-compile matrix: linux/darwin/windows × amd64/arm64) + vulnerability check (`govulncheck`) on `cli/**` changes. GoReleaser release on `v*` tags (attaches assets to existing Release Please release). Post-release step pins checksums in install scripts and appends install instructions + checksum table to GitHub Release notes.
+- **CLI**: `.github/workflows/cli.yml` — Go lint (`golangci-lint` + `go vet`) + test (`-race -coverprofile`) + build (cross-compile matrix: linux/darwin/windows × amd64/arm64) + vulnerability check (`govulncheck`) + fuzz testing (main-only, 30s/target, `continue-on-error`, matrix over 4 packages) on `cli/**` changes. `cli-pass` gate includes fuzz result as informational warning. GoReleaser release on `v*` tags (attaches assets to existing Release Please release). Post-release step pins checksums in install scripts and appends install instructions + checksum table to GitHub Release notes.
 - **Dependabot**: daily uv + github-actions + npm + pre-commit + docker + gomod updates, grouped minor/patch, no auto-merge. Use `/review-dep-pr` to review Dependabot PRs before merging
 - **Python audit**: `.github/workflows/python-audit.yml` — weekly pip-audit scan for Python dependency vulnerabilities (also runs per-PR via `python-audit` job in ci.yml)
 - **Dockerfile lint**: hadolint lints all 3 Dockerfiles (backend, web, sandbox) in CI via `dockerfile-lint` job + hadolint-docker pre-commit hook locally
@@ -274,8 +277,8 @@ site/               # Astro landing page (synthorg.io)
 ## Dependencies
 
 - **Pinned**: all versions use `==` in `pyproject.toml`
-- **Groups**: `test` (pytest + plugins), `dev` (includes test + ruff, mypy, pre-commit, commitizen, pip-audit)
+- **Groups**: `test` (pytest + plugins, hypothesis), `dev` (includes test + ruff, mypy, pre-commit, commitizen, pip-audit)
 - **Required**: `mem0ai` (Mem0 memory backend — the default and currently only backend)
 - **Install**: `uv sync` installs everything (dev group is default)
-- **Web dashboard**: Node.js 20+, dependencies in `web/package.json` (Vue 3, PrimeVue, Tailwind CSS, Pinia, VueFlow, ECharts, Axios, vue-draggable-plus, Vitest, ESLint, vue-tsc)
+- **Web dashboard**: Node.js 20+, dependencies in `web/package.json` (Vue 3, PrimeVue, Tailwind CSS, Pinia, VueFlow, ECharts, Axios, vue-draggable-plus, Vitest, fast-check, ESLint, vue-tsc)
 - **CLI**: Go 1.26+, dependencies in `cli/go.mod` (Cobra, charmbracelet/huh)

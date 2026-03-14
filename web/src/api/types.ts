@@ -423,9 +423,13 @@ export type MessageType =
   | 'task_update'
   | 'question'
   | 'announcement'
+  | 'review_request'
+  | 'approval'
+  | 'delegation'
   | 'status_report'
   | 'escalation'
-  | 'delegation'
+  | 'meeting_contribution'
+  | 'hr_notification'
 
 export type MessagePriority = 'low' | 'normal' | 'high' | 'urgent'
 
