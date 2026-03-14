@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from ai_company.observability import get_logger
 from ai_company.observability.events.approval_gate import (
     APPROVAL_GATE_CONTEXT_PARK_FAILED,
-    APPROVAL_GATE_CONTEXT_PARKED,
+    APPROVAL_GATE_PARK_TASKLESS,
 )
 from ai_company.observability.events.execution import (
     EXECUTION_LOOP_BUDGET_EXHAUSTED,
@@ -371,7 +371,7 @@ async def _park_for_approval(
         task_id = ctx.task_execution.task.id
     else:
         logger.debug(
-            APPROVAL_GATE_CONTEXT_PARKED,
+            APPROVAL_GATE_PARK_TASKLESS,
             approval_id=escalation.approval_id,
             agent_id=agent_id,
             note="No task_execution on context — task_id will be None",

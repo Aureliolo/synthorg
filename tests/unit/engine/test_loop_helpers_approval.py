@@ -39,7 +39,7 @@ def _make_response_with_tool_calls() -> CompletionResponse:
         finish_reason=FinishReason.TOOL_USE,
         tool_calls=(ToolCall(id="tc-1", name="stub_tool", arguments={}),),
         usage=ZERO_TOKEN_USAGE,
-        model="test-model-001",
+        model="test-small-001",
     )
 
 
@@ -203,3 +203,71 @@ class TestExecuteToolCallsWithGate:
         assert call_kwargs[1]["metadata"]["approval_id"] == "approval-1"
         assert call_kwargs[1]["metadata"]["parking_failed"] is True
         assert "context parking failed" in call_kwargs[1]["error_message"]
+
+    @patch("ai_company.engine.loop_helpers.build_result")
+    async def test_park_without_task_execution(
+        self,
+        mock_build_result: MagicMock,
+    ) -> None:
+        """Context without task_execution parks with task_id=None."""
+        parked_result = MagicMock(spec=ExecutionResult)
+        parked_result.termination_reason = TerminationReason.PARKED
+        parked_result.metadata = {"approval_id": "approval-1"}
+        mock_build_result.return_value = parked_result
+
+        ctx = _make_context()
+        ctx.task_execution = None  # No task — taskless agent
+        escalation = _make_escalation()
+        invoker = _make_tool_invoker(escalations=(escalation,))
+        response = _make_response_with_tool_calls()
+
+        gate = MagicMock(spec=ApprovalGate)
+        gate.should_park.return_value = escalation
+        gate.park_context = AsyncMock(return_value=MagicMock(id="parked-1"))
+
+        result = await execute_tool_calls(
+            ctx,
+            invoker,
+            response,
+            1,
+            [],
+            approval_gate=gate,
+        )
+        assert result is parked_result
+        # Verify park_context was called with task_id=None
+        gate.park_context.assert_called_once()
+        call_kwargs = gate.park_context.call_args
+        assert call_kwargs.kwargs.get("task_id") is None
+
+    @patch("ai_company.engine.loop_helpers.build_result")
+    async def test_park_failure_with_io_error(
+        self,
+        mock_build_result: MagicMock,
+    ) -> None:
+        """park_context raising IOError returns ERROR result."""
+        error_result = MagicMock(spec=ExecutionResult)
+        error_result.termination_reason = TerminationReason.ERROR
+        mock_build_result.return_value = error_result
+
+        ctx = _make_context()
+        escalation = _make_escalation()
+        invoker = _make_tool_invoker(escalations=(escalation,))
+        response = _make_response_with_tool_calls()
+
+        gate = MagicMock(spec=ApprovalGate)
+        gate.should_park.return_value = escalation
+        gate.park_context = AsyncMock(
+            side_effect=OSError("disk full"),
+        )
+
+        result = await execute_tool_calls(
+            ctx,
+            invoker,
+            response,
+            1,
+            [],
+            approval_gate=gate,
+        )
+        assert result is error_result
+        call_kwargs = mock_build_result.call_args
+        assert call_kwargs[0][1] == TerminationReason.ERROR

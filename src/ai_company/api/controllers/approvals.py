@@ -34,6 +34,7 @@ from ai_company.observability.events.api import (
     API_APPROVAL_CREATED,
     API_APPROVAL_PUBLISH_FAILED,
     API_APPROVAL_REJECTED,
+    API_AUTH_FAILED,
     API_RESOURCE_NOT_FOUND,
 )
 from ai_company.observability.events.approval_gate import (
@@ -143,6 +144,11 @@ def _resolve_decision(
     auth_user = request.scope.get("user")
     if not isinstance(auth_user, AuthenticatedUser):
         msg = "Authentication required"
+        logger.warning(
+            API_AUTH_FAILED,
+            approval_id=approval_id,
+            note="No authenticated user in request scope",
+        )
         raise UnauthorizedError(msg)
 
     return auth_user
@@ -168,7 +174,7 @@ def _log_approval_decision(
     )
 
 
-async def _trigger_resume(
+async def _signal_resume_intent(
     app_state: AppState,
     approval_id: str,
     *,
@@ -176,13 +182,15 @@ async def _trigger_resume(
     decided_by: str,
     decision_reason: str | None = None,
 ) -> None:
-    """Signal that a parked agent can be resumed after a decision.
+    """Log that a decision was made so a scheduler can resume the agent.
 
-    Does NOT consume the parked record — that is the responsibility
-    of the future scheduling component that will actually re-enqueue
-    the agent.  This function only logs the resume trigger so that
-    a scheduler observing log events or polling the approval store
-    can detect the decision and call ``ApprovalGate.resume_context()``.
+    This is intentionally a **signalling-only stub**.  It does NOT call
+    ``ApprovalGate.resume_context()`` or re-enqueue the parked agent —
+    that is the responsibility of a future scheduling component that
+    will observe status changes (via log events or store polling) and
+    perform the actual resume.
+
+    .. todo:: Wire to a real scheduler once one exists (see §12.4).
 
     Args:
         app_state: Application state containing the approval gate.
@@ -298,6 +306,11 @@ class ApprovalsController(Controller):
         auth_user = request.scope.get("user")
         if not isinstance(auth_user, AuthenticatedUser):
             msg = "Authentication required"
+            logger.warning(
+                API_AUTH_FAILED,
+                endpoint="create_approval",
+                note="No authenticated user in request scope",
+            )
             raise UnauthorizedError(msg)
 
         app_state: AppState = state.app_state
@@ -406,7 +419,7 @@ class ApprovalsController(Controller):
             approved=True,
             decided_by=auth_user.username,
         )
-        await _trigger_resume(
+        await _signal_resume_intent(
             app_state,
             approval_id,
             approved=True,
@@ -487,7 +500,7 @@ class ApprovalsController(Controller):
             approved=False,
             decided_by=auth_user.username,
         )
-        await _trigger_resume(
+        await _signal_resume_intent(
             app_state,
             approval_id,
             approved=False,
