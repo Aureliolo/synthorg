@@ -155,11 +155,54 @@ jobs:
         working-directory: cli
         run: govulncheck ./...
 
+  # ── Fuzz (main only — too slow for PRs) ──
+  cli-fuzz:
+    name: CLI Fuzz
+    needs: cli-changes
+    if: needs.cli-changes.outputs.changed == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - ./internal/compose/
+          - ./internal/selfupdate/
+          - ./internal/config/
+          - ./internal/docker/
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: cli/go.mod
+          cache: false
+
+      - name: Run fuzz tests (30s per target)
+        working-directory: cli
+        run: |
+          # Run each Fuzz* function in the package for 30s.
+          # go test -fuzz only supports one fuzz target at a time,
+          # so we discover and iterate.
+          FUZZ_TARGETS=$(go test -list 'Fuzz.*' ${{ matrix.package }} 2>/dev/null | grep '^Fuzz' || true)
+          if [ -z "$FUZZ_TARGETS" ]; then
+            echo "No fuzz targets found in ${{ matrix.package }}"
+            exit 0
+          fi
+          for target in $FUZZ_TARGETS; do
+            echo "::group::Fuzzing $target"
+            go test -fuzz="^${target}$" -fuzztime=30s ${{ matrix.package }}
+            echo "::endgroup::"
+          done
+
   # ── Gate: all CLI checks must pass ──
   cli-pass:
     name: CLI Pass
     if: always()
-    needs: [cli-changes, cli-lint, cli-test, cli-build, cli-vuln]
+    needs: [cli-changes, cli-lint, cli-test, cli-build, cli-vuln, cli-fuzz]
     runs-on: ubuntu-latest
     permissions: {}
     steps:

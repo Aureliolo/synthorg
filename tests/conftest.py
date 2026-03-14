@@ -1,8 +1,18 @@
 """Root test configuration and shared fixtures."""
 
 import logging
+import os
 
 import structlog
+from hypothesis import HealthCheck, settings
+
+settings.register_profile(
+    "ci",
+    max_examples=200,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+settings.register_profile("dev", max_examples=1000)
+settings.load_profile(os.environ.get("HYPOTHESIS_PROFILE", "ci"))
 
 
 def clear_logging_state() -> None:

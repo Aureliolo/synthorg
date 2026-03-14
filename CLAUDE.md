@@ -33,10 +33,10 @@ uv run ruff check src/ tests/              # lint
 uv run ruff check src/ tests/ --fix        # lint + auto-fix
 uv run ruff format src/ tests/             # format
 uv run mypy src/ tests/                    # type-check (strict)
-uv run pytest tests/ -m unit -n auto        # unit tests only
-uv run pytest tests/ -m integration -n auto # integration tests only
-uv run pytest tests/ -m e2e -n auto         # e2e tests only
-uv run pytest tests/ -n auto --cov=ai_company --cov-fail-under=80  # full suite + coverage
+uv run python -m pytest tests/ -m unit -n auto        # unit tests only
+uv run python -m pytest tests/ -m integration -n auto # integration tests only
+uv run python -m pytest tests/ -m e2e -n auto         # e2e tests only
+uv run python -m pytest tests/ -n auto --cov=ai_company --cov-fail-under=80  # full suite + coverage
 uv run pre-commit run --all-files          # all pre-commit hooks
 uv run python scripts/export_openapi.py    # export OpenAPI schema (needed before docs build)
 uv run zensical build                      # build docs (output: _site/docs/) — no --strict until zensical/backlog#72
