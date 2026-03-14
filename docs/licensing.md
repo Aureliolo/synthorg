@@ -28,7 +28,7 @@ BSL 1.1 is a "source available" license created by MariaDB. It is **not** an ope
 - **Source code is public** — you can read, fork, modify, and redistribute it
 - **Non-production use is unrestricted** — learning, research, testing, evaluation, contributing
 - **Production use is governed by the Additional Use Grant** — our grant is deliberately permissive (see below)
-- **Every version automatically converts to Apache 2.0** — on the Change Date or 4 years after release, whichever comes first
+- **Every version automatically converts to Apache 2.0** — SynthOrg sets the Change Date to 3 years after each release (the BSL 1.1 terms also include a 4-year backstop, but our shorter Change Date always applies first)
 
 ### Our Additional Use Grant
 
@@ -97,10 +97,9 @@ The number 500 is a convention borrowed from other BSL projects and roughly alig
 
 ## Automatic Conversion to Apache 2.0
 
-Every released version of SynthOrg converts to Apache 2.0 automatically. The conversion happens on the **earlier** of:
+Every released version of SynthOrg converts to Apache 2.0 automatically.
 
-1. The **Change Date** specified in the LICENSE file (automatically set to 3 years ahead with each release)
-2. The **4th anniversary** of that specific version's first public release (built into BSL 1.1 terms)
+SynthOrg sets the **Change Date** to **3 years after each release**. The BSL 1.1 license terms also include a built-in 4-year backstop (each version converts on its 4th anniversary regardless), but since our Change Date is shorter, it always takes effect first.
 
 This means:
 
