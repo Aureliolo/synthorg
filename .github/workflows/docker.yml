@@ -393,8 +393,7 @@ jobs:
           ```
           BLOCK
           )
-          # Dedent (remove leading 10-space YAML indentation) and substitute placeholders
-          IMAGES=$(echo "$IMAGES" | sed 's/^          //')
+          # Substitute placeholders
           IMAGES=${IMAGES//VERSION_PH/$VERSION}
           IMAGES=${IMAGES//BACKEND_DIGEST_PH/$BACKEND_DIGEST}
           IMAGES=${IMAGES//WEB_DIGEST_PH/$WEB_DIGEST}
@@ -409,14 +408,15 @@ jobs:
           Container images include [SLSA L3 provenance](https://slsa.dev) attestations. Verify with [slsa-verifier](https://github.com/slsa-framework/slsa-verifier):
           \`\`\`bash
           slsa-verifier verify-image ghcr.io/aureliolo/synthorg-backend@${BACKEND_DIGEST} \\
-            --source-uri github.com/Aureliolo/synthorg
+            --source-uri github.com/Aureliolo/synthorg \\
+            --source-tag ${TAG}
 
           slsa-verifier verify-image ghcr.io/aureliolo/synthorg-web@${WEB_DIGEST} \\
-            --source-uri github.com/Aureliolo/synthorg
+            --source-uri github.com/Aureliolo/synthorg \\
+            --source-tag ${TAG}
           \`\`\`
           SLSA
             )
-            SLSA_NOTES=$(echo "$SLSA_NOTES" | sed 's/^          //')
           fi
 
           # Idempotent: strip existing Container Images section before appending

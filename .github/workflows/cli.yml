@@ -368,8 +368,6 @@ jobs:
           | \`synthorg_windows_arm64.zip\` | \`${CS_windows_arm64}\` |
           NOTES
           )"
-          # Dedent (remove leading 10-space YAML indentation)
-          INSTALL_NOTES=$(echo "$INSTALL_NOTES" | sed 's/^          //')
 
           # Conditionally add provenance verification section.
           PROVENANCE_NOTES=""
@@ -387,7 +385,6 @@ jobs:
           \`\`\`
           PROV
             )"
-            PROVENANCE_NOTES=$(echo "$PROVENANCE_NOTES" | sed 's/^          //')
           fi
 
           # Fetch existing body and append.
