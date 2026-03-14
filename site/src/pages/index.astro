@@ -73,7 +73,7 @@ import Footer from "../components/Footer.astro";
   <!-- ============================================================ -->
   <!-- HOW IT WORKS — Split Panel -->
   <!-- ============================================================ -->
-  <section id="how-it-works" class="py-24 px-6">
+  <section id="how-it-works" class="py-16 px-6">
     <div class="max-w-6xl mx-auto">
       <h2 class="text-3xl md:text-4xl font-bold text-center mb-16">See How It Works</h2>
 
@@ -138,7 +138,7 @@ import Footer from "../components/Footer.astro";
   <!-- ============================================================ -->
   <!-- CORE PILLARS (transition to lighter) -->
   <!-- ============================================================ -->
-  <section class="py-24 px-6 bg-gradient-to-b from-[#0F1219] to-[#1a1f2e]">
+  <section class="py-16 px-6 bg-gradient-to-b from-[#0F1219] to-[#1a1f2e]">
     <div class="max-w-6xl mx-auto">
       <h2 class="text-3xl md:text-4xl font-bold text-center mb-16">Core Pillars</h2>
 
@@ -185,7 +185,7 @@ import Footer from "../components/Footer.astro";
   <!-- ============================================================ -->
   <!-- EXPANDABLE ARCHITECTURE -->
   <!-- ============================================================ -->
-  <section class="py-24 px-6">
+  <section class="py-16 px-6">
     <div class="max-w-5xl mx-auto text-center">
       <h2 class="text-3xl md:text-4xl font-bold mb-4">Architecture</h2>
       <p class="text-gray-400 mb-12">Modular, protocol-driven. Every component is pluggable.</p>
@@ -219,7 +219,7 @@ import Footer from "../components/Footer.astro";
   <!-- ============================================================ -->
   <!-- SECURITY -->
   <!-- ============================================================ -->
-  <section class="py-24 px-6 bg-gradient-to-b from-[#0F1219] to-[#1a1025]">
+  <section class="py-16 px-6 bg-gradient-to-b from-[#0F1219] to-[#1a1025]">
     <div class="max-w-6xl mx-auto">
       <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">Security-First by Design</h2>
       <p class="text-gray-400 text-center max-w-2xl mx-auto mb-16">
@@ -279,7 +279,7 @@ import Footer from "../components/Footer.astro";
   <!-- ============================================================ -->
   <!-- USE CASES -->
   <!-- ============================================================ -->
-  <section class="py-24 px-6">
+  <section class="py-16 px-6">
     <div class="max-w-6xl mx-auto">
       <h2 class="text-3xl md:text-4xl font-bold text-center mb-16">Use Cases</h2>
 
@@ -307,7 +307,7 @@ import Footer from "../components/Footer.astro";
   <!-- ============================================================ -->
   <!-- LICENSE & USAGE -->
   <!-- ============================================================ -->
-  <section class="py-24 px-6 bg-gradient-to-b from-[#1a1f2e] to-[#0F1219]">
+  <section class="py-16 px-6 bg-gradient-to-b from-[#1a1f2e] to-[#0F1219]">
     <div class="max-w-5xl mx-auto">
       <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">License & Usage</h2>
       <p class="text-gray-400 text-center max-w-2xl mx-auto mb-16">
@@ -381,54 +381,12 @@ import Footer from "../components/Footer.astro";
   <!-- ============================================================ -->
   <!-- FINAL CTA -->
   <!-- ============================================================ -->
-  <section class="py-24 px-6 bg-gradient-to-b from-[#0F1219] to-[#1a1025]">
+  <section class="py-16 px-6 bg-gradient-to-b from-[#0F1219] to-[#1a1025]">
     <div class="max-w-3xl mx-auto text-center">
       <h2 class="text-3xl md:text-5xl font-bold mb-6">
         Build something that thinks
         <span class="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-teal-400">like a team.</span>
       </h2>
-
-      <div class="relative bg-[#0d1117] rounded-xl max-w-2xl mx-auto mb-8 border border-white/10 text-left overflow-hidden">
-        <!-- Terminal header -->
-        <div class="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-white/10">
-          <div class="flex items-center gap-2">
-            <span class="w-3 h-3 rounded-full bg-red-500/80"></span>
-            <span class="w-3 h-3 rounded-full bg-yellow-500/80"></span>
-            <span class="w-3 h-3 rounded-full bg-green-500/80"></span>
-            <span class="ml-2 text-xs text-gray-500 font-mono">terminal</span>
-          </div>
-          <button
-            id="copy-terminal"
-            class="text-xs text-gray-500 hover:text-gray-300 transition-colors px-2 py-1 rounded hover:bg-white/5"
-            aria-label="Copy to clipboard"
-          >
-            Copy
-          </button>
-        </div>
-        <!-- Terminal body -->
-        <pre class="p-4 text-sm font-['JetBrains_Mono',monospace] text-gray-300 overflow-x-auto leading-relaxed"><code id="terminal-code"><span class="text-gray-500">$</span> curl -sSfL https://synthorg.io/get/install.sh | bash
-<span class="text-gray-500">$</span> synthorg init
-<span class="text-gray-500">$</span> synthorg start</code></pre>
-      </div>
-
-      <script>
-        document.getElementById('copy-terminal')?.addEventListener('click', function() {
-          const text = 'curl -sSfL https://synthorg.io/get/install.sh | bash\nsynthorg init\nsynthorg start';
-          const btn = this;
-          if (!navigator.clipboard) {
-            btn.textContent = 'Copy failed';
-            setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
-            return;
-          }
-          navigator.clipboard.writeText(text).then(() => {
-            btn.textContent = 'Copied!';
-            setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
-          }).catch(() => {
-            btn.textContent = 'Copy failed';
-            setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
-          });
-        });
-      </script>
 
       <a
         href="/get/"
