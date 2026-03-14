@@ -288,13 +288,17 @@ jobs:
         working-directory: cli/dist
         run: |
           # GoReleaser writes checksums.txt in SLSA subjects format (hash  filename).
+          if [ ! -f checksums.txt ] || [ ! -s checksums.txt ]; then
+            echo "::error::checksums.txt is missing or empty"
+            exit 1
+          fi
           HASHES=$(cat checksums.txt | base64 -w0)
           echo "hashes=$HASHES" >> "$GITHUB_OUTPUT"
 
   # ── Release Provenance (SLSA Level 3, only on version tags) ──
   cli-release-provenance:
     name: CLI Release Provenance
-    needs: [cli-lint, cli-test, cli-build, cli-vuln, cli-release-build]
+    needs: [cli-release-build]
     if: startsWith(github.ref, 'refs/tags/v') && needs.cli-release-build.result == 'success'
     permissions:
       actions: read
@@ -364,6 +368,8 @@ jobs:
           | \`synthorg_windows_arm64.zip\` | \`${CS_windows_arm64}\` |
           NOTES
           )"
+          # Dedent (remove leading 10-space YAML indentation)
+          INSTALL_NOTES=$(echo "$INSTALL_NOTES" | sed 's/^          //')
 
           # Conditionally add provenance verification section.
           PROVENANCE_NOTES=""
@@ -381,6 +387,7 @@ jobs:
           \`\`\`
           PROV
             )"
+            PROVENANCE_NOTES=$(echo "$PROVENANCE_NOTES" | sed 's/^          //')
           fi
 
           # Fetch existing body and append.

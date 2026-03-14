@@ -56,7 +56,7 @@ The SynthOrg engine is structured as a set of loosely coupled subsystems. Each b
 | **Database** | SQLite (aiosqlite), PostgreSQL / MariaDB planned | Pluggable `PersistenceBackend` protocol. SQLite ships first via aiosqlite async driver. PostgreSQL and MariaDB as future backends -- swap via config, no app code changes. |
 | **Web UI** | Vue 3 + Vite | Modern, fast, good ecosystem. Simpler than React for dashboards. |
 | **Real-time** | WebSocket (Litestar channels plugin) | Built-in pub/sub broadcasting, per-channel history, backpressure management. Real-time agent activity, task updates, chat feed. |
-| **Containerization** | Docker + Docker Compose | Chainguard Python distroless runtime (non-root, CIS Docker Benchmark v1.6.0 hardened, minimal attack surface, continuously scanned in CI). `nginxinc/nginx-unprivileged` web tier. GHCR registry, cosign image signing, Trivy + Grype vulnerability scanning, SBOM + SLSA provenance. Also used for isolated code execution sandboxing. |
+| **Containerization** | Docker + Docker Compose | Chainguard Python distroless runtime (non-root, CIS Docker Benchmark v1.6.0 hardened, minimal attack surface, continuously scanned in CI). `nginxinc/nginx-unprivileged` web tier. GHCR registry, cosign image signing, Trivy + Grype vulnerability scanning, SBOM + SLSA L3 provenance. Also used for isolated code execution sandboxing. |
 | **Docker API** | aiodocker | Async-native Docker API client for the `DockerSandbox` backend. |
 | **Tool Integration** | MCP SDK (`mcp`) | Industry standard for LLM-to-tool integration. See [Industry Standards](../reference/standards.md). |
 | **Agent Communication** | A2A Protocol compatible | Future-proof inter-agent communication. See [Industry Standards](../reference/standards.md). |

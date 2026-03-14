@@ -416,6 +416,7 @@ jobs:
           \`\`\`
           SLSA
             )
+            SLSA_NOTES=$(echo "$SLSA_NOTES" | sed 's/^          //')
           fi
 
           # Idempotent: strip existing Container Images section before appending
