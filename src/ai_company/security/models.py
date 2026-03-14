@@ -207,4 +207,10 @@ class OutputScanResult(BaseModel):
         elif self.outcome == ScanOutcome.CLEAN:
             msg = "outcome='clean' is invalid when has_sensitive_data is True"
             raise ValueError(msg)
+        if self.outcome == ScanOutcome.REDACTED and self.redacted_content is None:
+            msg = "redacted_content must not be None when outcome is 'redacted'"
+            raise ValueError(msg)
+        if self.outcome == ScanOutcome.LOG_ONLY and self.has_sensitive_data:
+            msg = "outcome='log_only' is invalid when has_sensitive_data is True"
+            raise ValueError(msg)
         return self

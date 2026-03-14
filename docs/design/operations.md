@@ -787,14 +787,23 @@ execution. Post-tool-call scanning detects sensitive data in outputs.
 ### Output Scan Response Policies
 
 After the output scanner detects sensitive data, a pluggable `OutputScanResponsePolicy`
-protocol decides how to handle the findings:
+protocol decides how to handle the findings. Each policy sets a `ScanOutcome` enum on the
+returned `OutputScanResult` so downstream consumers (primarily `ToolInvoker`) can
+distinguish intentional policy decisions from scanner failures:
 
-| Policy | Behavior | Default for |
-|--------|----------|-------------|
-| **Redact** (default) | Return scanner's redacted content as-is | `SEMI`, `SUPERVISED` autonomy |
-| **Withhold** | Clear redacted content -- fail-closed, no partial data returned | `LOCKED` autonomy |
-| **Log-only** | Discard findings (logs at WARNING), pass original output through | `FULL` autonomy |
-| **Autonomy-tiered** | Delegate to a sub-policy based on effective autonomy level | Composite policy |
+| Policy | Behavior | `ScanOutcome` | Default for |
+|--------|----------|---------------|-------------|
+| **Redact** (default) | Return scanner's redacted content as-is | `REDACTED` | `SEMI`, `SUPERVISED` autonomy |
+| **Withhold** | Clear redacted content — content withheld by policy | `WITHHELD` | `LOCKED` autonomy |
+| **Log-only** | Discard findings (logs at WARNING), pass original output through | `LOG_ONLY` | `FULL` autonomy |
+| **Autonomy-tiered** | Delegate to a sub-policy based on effective autonomy level | *(set by delegate)* | Composite policy |
+
+The `ScanOutcome` enum (`CLEAN`, `REDACTED`, `WITHHELD`, `LOG_ONLY`) is set by the scanner
+(initial `REDACTED` when findings are detected) and may be transformed by the policy (e.g.
+`WithholdPolicy` changes `REDACTED` → `WITHHELD`). The `ToolInvoker._scan_output` method
+branches on `ScanOutcome.WITHHELD` first to return a dedicated error message ("content
+withheld by security policy") with `output_withheld` metadata — distinct from the generic
+fail-closed path used for scanner exceptions.
 
 Policy selection is declarative via `SecurityConfig.output_scan_policy_type`
 (`OutputScanPolicyType` enum). A factory function (`build_output_scan_policy`) resolves the

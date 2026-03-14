@@ -565,3 +565,22 @@ class TestOutputScanResult:
         )
         assert result.outcome == ScanOutcome.WITHHELD
         assert result.redacted_content is None
+
+    def test_outcome_redacted_requires_redacted_content(self) -> None:
+        """outcome=REDACTED with redacted_content=None is rejected."""
+        with pytest.raises(ValidationError, match="redacted_content"):
+            OutputScanResult(
+                has_sensitive_data=True,
+                findings=("leak",),
+                outcome=ScanOutcome.REDACTED,
+                redacted_content=None,
+            )
+
+    def test_outcome_log_only_rejected_when_sensitive(self) -> None:
+        """outcome=LOG_ONLY is invalid when has_sensitive_data=True."""
+        with pytest.raises(ValidationError, match="outcome"):
+            OutputScanResult(
+                has_sensitive_data=True,
+                findings=("secret",),
+                outcome=ScanOutcome.LOG_ONLY,
+            )

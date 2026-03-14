@@ -862,12 +862,9 @@ class TestWithheldOutcome:
             security_registry,
             security_interceptor=interceptor,
         )
-        # Access the internal _scan_output to inspect metadata.
-        from ai_company.tools.base import ToolExecutionResult
-
+        # Access _scan_output to inspect ToolExecutionResult.metadata
+        # (ToolResult does not surface metadata from the execution layer).
         tool_exec_result = ToolExecutionResult(content="raw output")
-        from ai_company.security.models import SecurityContext
-
         context = SecurityContext(
             tool_name="secure_tool",
             tool_category=ToolCategory.FILE_SYSTEM,
@@ -876,3 +873,53 @@ class TestWithheldOutcome:
         scan_exec = await invoker._scan_output(tool_call, tool_exec_result, context)
         assert scan_exec.metadata.get("output_withheld") is True
         assert "output_scan_failed" not in scan_exec.metadata
+
+    async def test_withheld_takes_priority_over_redacted_content(
+        self,
+        security_registry: ToolRegistry,
+        tool_call: ToolCall,
+    ) -> None:
+        """WITHHELD outcome withholds even when redacted_content is present."""
+        interceptor = _make_interceptor(
+            pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
+            scan_result=OutputScanResult(
+                has_sensitive_data=True,
+                findings=("token",),
+                redacted_content="partially redacted output",
+                outcome=ScanOutcome.WITHHELD,
+            ),
+        )
+        invoker = ToolInvoker(
+            security_registry,
+            security_interceptor=interceptor,
+        )
+        result = await invoker.invoke(tool_call)
+        assert result.is_error is True
+        assert "withheld by security policy" in result.content.lower()
+        assert "partially redacted" not in result.content
+
+
+# ── LOG_ONLY outcome tests ──────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestLogOnlyOutcome:
+    """Tests for the LOG_ONLY scan outcome path in the invoker."""
+
+    async def test_log_only_passes_original_output_through(
+        self,
+        security_registry: ToolRegistry,
+        tool_call: ToolCall,
+    ) -> None:
+        """LOG_ONLY outcome passes original tool output through unchanged."""
+        interceptor = _make_interceptor(
+            pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
+            scan_result=OutputScanResult(outcome=ScanOutcome.LOG_ONLY),
+        )
+        invoker = ToolInvoker(
+            security_registry,
+            security_interceptor=interceptor,
+        )
+        result = await invoker.invoke(tool_call)
+        assert result.is_error is False
+        assert result.content == "executed: ls"

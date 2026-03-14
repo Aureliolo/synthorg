@@ -42,7 +42,12 @@ from ai_company.observability.events.tool import (
     TOOL_SECURITY_ESCALATED,
 )
 from ai_company.providers.models import ToolCall, ToolResult
-from ai_company.security.models import ScanOutcome, SecurityContext, SecurityVerdictType
+from ai_company.security.models import (
+    OutputScanResult,
+    ScanOutcome,
+    SecurityContext,
+    SecurityVerdictType,
+)
 
 from .base import ToolExecutionResult
 from .errors import ToolExecutionError, ToolNotFoundError, ToolParameterError
@@ -272,6 +277,67 @@ class ToolInvoker:
             is_error=True,
         )
 
+    def _handle_sensitive_scan(
+        self,
+        tool_call: ToolCall,
+        result: ToolExecutionResult,
+        scan_result: OutputScanResult,
+    ) -> ToolExecutionResult:
+        """Route a sensitive scan result to the correct handler.
+
+        Branches on ``ScanOutcome``:
+
+        - ``WITHHELD``: return error with "withheld by policy" message.
+        - ``REDACTED`` with content: return redacted content.
+        - Defensive fallback: withhold output (fail-closed).
+        """
+        if scan_result.outcome == ScanOutcome.WITHHELD:
+            logger.warning(
+                TOOL_OUTPUT_WITHHELD,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                findings=scan_result.findings,
+                note="content withheld by security policy",
+            )
+            return ToolExecutionResult(
+                content=(
+                    "Sensitive data detected — content withheld by security policy."
+                ),
+                is_error=True,
+                metadata={"output_withheld": True},
+            )
+        if scan_result.redacted_content is not None:
+            logger.warning(
+                TOOL_OUTPUT_REDACTED,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                findings=scan_result.findings,
+            )
+            return ToolExecutionResult(
+                content=scan_result.redacted_content,
+                is_error=result.is_error,
+                metadata={
+                    **result.metadata,
+                    "output_redacted": True,
+                    "redaction_findings": list(scan_result.findings),
+                },
+            )
+        # Defensive: model validator prevents REDACTED with
+        # redacted_content=None, so this is only reachable via
+        # mocks or future outcome values.
+        logger.warning(
+            TOOL_OUTPUT_REDACTED,
+            tool_call_id=tool_call.id,
+            tool_name=tool_call.name,
+            findings=scan_result.findings,
+            note="no redacted content available — withholding output",
+        )
+        return ToolExecutionResult(
+            content=("Sensitive data detected (fail-closed). Tool output withheld."),
+            is_error=True,
+            metadata={"output_scan_failed": True},
+        )
+
     async def _scan_output(
         self,
         tool_call: ToolCall,
@@ -280,10 +346,15 @@ class ToolInvoker:
     ) -> ToolExecutionResult:
         """Scan tool output for sensitive data (if interceptor is set).
 
-        If sensitive data is found and redacted, returns a new
-        ``ToolExecutionResult`` with the redacted content.  Exceptions
-        from the scanner are caught — the original result is returned
-        to avoid destroying valid tool output.
+        When sensitive data is detected, the scan result's ``outcome``
+        determines the response:
+
+        - ``WITHHELD``: error result with "withheld by policy" message.
+        - ``REDACTED``: redacted content replaces the original output.
+        - ``LOG_ONLY`` / ``CLEAN``: original output passes through.
+
+        Scanner exceptions are caught and fail-closed — a generic error
+        result is returned to prevent leaking sensitive data.
         """
         if self._security_interceptor is None:
             return result
@@ -302,59 +373,13 @@ class ToolInvoker:
                 tool_name=tool_call.name,
             )
             return ToolExecutionResult(
-                content=("Output scan failed (fail-closed). Tool output withheld."),
+                content="Output scan failed (fail-closed). Tool output withheld.",
                 is_error=True,
                 metadata={"output_scan_failed": True},
             )
 
         if scan_result.has_sensitive_data:
-            if scan_result.outcome == ScanOutcome.WITHHELD:
-                logger.warning(
-                    TOOL_OUTPUT_WITHHELD,
-                    tool_call_id=tool_call.id,
-                    tool_name=tool_call.name,
-                    findings=scan_result.findings,
-                    note="content withheld by security policy",
-                )
-                return ToolExecutionResult(
-                    content=(
-                        "Sensitive data detected — content withheld by security policy."
-                    ),
-                    is_error=True,
-                    metadata={"output_withheld": True},
-                )
-            if scan_result.redacted_content is not None:
-                logger.warning(
-                    TOOL_OUTPUT_REDACTED,
-                    tool_call_id=tool_call.id,
-                    tool_name=tool_call.name,
-                    findings=scan_result.findings,
-                )
-                return ToolExecutionResult(
-                    content=scan_result.redacted_content,
-                    is_error=result.is_error,
-                    metadata={
-                        **result.metadata,
-                        "output_redacted": True,
-                        "redaction_findings": list(scan_result.findings),
-                    },
-                )
-            # Defensive: REDACTED outcome but redacted_content is None
-            # (shouldn't happen).
-            logger.warning(
-                TOOL_OUTPUT_REDACTED,
-                tool_call_id=tool_call.id,
-                tool_name=tool_call.name,
-                findings=scan_result.findings,
-                note="no redacted content available — withholding output",
-            )
-            return ToolExecutionResult(
-                content=(
-                    "Sensitive data detected (fail-closed). Tool output withheld."
-                ),
-                is_error=True,
-                metadata={"output_scan_failed": True},
-            )
+            return self._handle_sensitive_scan(tool_call, result, scan_result)
         return result
 
     async def invoke(self, tool_call: ToolCall) -> ToolResult:
