@@ -152,7 +152,7 @@ Images are **only pushed to GHCR after both scanners pass**.
 - **Container images**: cosign keyless signatures (verify via `cosign verify`) + SLSA Level 3 provenance attestations (verify via `slsa-verifier verify-image`)
 - **CLI binaries**: SLSA Level 3 provenance attestations (verify via `slsa-verifier verify-artifact`)
 - **Git commits**: GPG/SSH signed (enforced by branch protection ruleset)
-- **GitHub Actions**: All actions pinned by full SHA commit hash (exception: `slsa-github-generator` reusable workflows require tag-based pinning per SLSA verification requirements)
+- **GitHub Actions**: All actions pinned by full SHA commit hash
 
 ---
 
