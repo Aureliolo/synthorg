@@ -15,7 +15,9 @@ from ai_company.hr.persistence_protocol import (
 from ai_company.persistence.repositories import (
     ApiKeyRepository,  # noqa: TC001
     AuditRepository,  # noqa: TC001
+    CheckpointRepository,  # noqa: TC001
     CostRecordRepository,  # noqa: TC001
+    HeartbeatRepository,  # noqa: TC001
     MessageRepository,  # noqa: TC001
     ParkedContextRepository,  # noqa: TC001
     TaskRepository,  # noqa: TC001
@@ -44,6 +46,8 @@ class PersistenceBackend(Protocol):
         audit_entries: Repository for AuditEntry persistence.
         users: Repository for User persistence.
         api_keys: Repository for ApiKey persistence.
+        checkpoints: Repository for Checkpoint persistence.
+        heartbeats: Repository for Heartbeat persistence.
     """
 
     async def connect(self) -> None:
@@ -136,6 +140,16 @@ class PersistenceBackend(Protocol):
     @property
     def api_keys(self) -> ApiKeyRepository:
         """Repository for ApiKey persistence."""
+        ...
+
+    @property
+    def checkpoints(self) -> CheckpointRepository:
+        """Repository for Checkpoint persistence."""
+        ...
+
+    @property
+    def heartbeats(self) -> HeartbeatRepository:
+        """Repository for Heartbeat persistence."""
         ...
 
     async def get_setting(self, key: NotBlankStr) -> str | None:

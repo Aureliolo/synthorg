@@ -148,3 +148,29 @@ PERSISTENCE_SETTING_FETCHED: Final[str] = "persistence.setting.fetched"
 PERSISTENCE_SETTING_FETCH_FAILED: Final[str] = "persistence.setting.fetch_failed"
 PERSISTENCE_SETTING_SAVED: Final[str] = "persistence.setting.saved"
 PERSISTENCE_SETTING_SAVE_FAILED: Final[str] = "persistence.setting.save_failed"
+
+# Checkpoint events
+PERSISTENCE_CHECKPOINT_SAVED: Final[str] = "persistence.checkpoint.saved"
+PERSISTENCE_CHECKPOINT_SAVE_FAILED: Final[str] = "persistence.checkpoint.save_failed"
+PERSISTENCE_CHECKPOINT_QUERIED: Final[str] = "persistence.checkpoint.queried"
+PERSISTENCE_CHECKPOINT_QUERY_FAILED: Final[str] = "persistence.checkpoint.query_failed"
+PERSISTENCE_CHECKPOINT_NOT_FOUND: Final[str] = "persistence.checkpoint.not_found"
+PERSISTENCE_CHECKPOINT_DELETED: Final[str] = "persistence.checkpoint.deleted"
+PERSISTENCE_CHECKPOINT_DELETE_FAILED: Final[str] = (
+    "persistence.checkpoint.delete_failed"
+)
+PERSISTENCE_CHECKPOINT_DESERIALIZE_FAILED: Final[str] = (
+    "persistence.checkpoint.deserialize_failed"
+)
+
+# Heartbeat events
+PERSISTENCE_HEARTBEAT_SAVED: Final[str] = "persistence.heartbeat.saved"
+PERSISTENCE_HEARTBEAT_SAVE_FAILED: Final[str] = "persistence.heartbeat.save_failed"
+PERSISTENCE_HEARTBEAT_QUERIED: Final[str] = "persistence.heartbeat.queried"
+PERSISTENCE_HEARTBEAT_QUERY_FAILED: Final[str] = "persistence.heartbeat.query_failed"
+PERSISTENCE_HEARTBEAT_NOT_FOUND: Final[str] = "persistence.heartbeat.not_found"
+PERSISTENCE_HEARTBEAT_DELETED: Final[str] = "persistence.heartbeat.deleted"
+PERSISTENCE_HEARTBEAT_DELETE_FAILED: Final[str] = "persistence.heartbeat.delete_failed"
+PERSISTENCE_HEARTBEAT_DESERIALIZE_FAILED: Final[str] = (
+    "persistence.heartbeat.deserialize_failed"
+)

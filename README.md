@@ -31,7 +31,7 @@ The framework is provider-agnostic (any LLM via LiteLLM), configuration-driven (
 
 **Agent Orchestration**
 
-Define agents with roles, models, and tools. The engine handles task decomposition, routing, execution loops (ReAct, Plan-and-Execute), and multi-agent coordination.
+Define agents with roles, models, and tools. The engine handles task decomposition, routing, execution loops (ReAct, Plan-and-Execute), crash recovery (checkpoint resume), and multi-agent coordination.
 
 </td>
 <td width="33%">
@@ -111,6 +111,7 @@ graph TB
     Observability[Observability] -.-> Engine
     Persistence[Persistence] -.-> HR
     Persistence -.-> Security
+    Persistence -.-> Engine
 ```
 
 ## Documentation

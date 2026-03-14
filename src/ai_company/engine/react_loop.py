@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from ai_company.budget.call_category import LLMCallCategory
 from ai_company.observability import get_logger
 from ai_company.observability.events.execution import (
+    EXECUTION_CHECKPOINT_CALLBACK_FAILED,
     EXECUTION_LOOP_ERROR,
     EXECUTION_LOOP_START,
     EXECUTION_LOOP_TERMINATED,
@@ -43,6 +44,7 @@ from .loop_protocol import (
 )
 
 if TYPE_CHECKING:
+    from ai_company.engine.checkpoint.callback import CheckpointCallback
     from ai_company.engine.context import AgentContext
     from ai_company.providers.models import ToolDefinition
     from ai_company.providers.protocol import CompletionProvider
@@ -59,7 +61,17 @@ class ReactLoop:
     feeds results back, and repeats until the LLM signals completion,
     the turn limit is reached, the budget is exhausted, a shutdown is
     requested, or an error occurs.
+
+    Args:
+        checkpoint_callback: Optional async callback invoked after each
+            completed turn; the callback itself decides whether to persist.
     """
+
+    def __init__(
+        self,
+        checkpoint_callback: CheckpointCallback | None = None,
+    ) -> None:
+        self._checkpoint_callback = checkpoint_callback
 
     def get_loop_type(self) -> str:
         """Return the loop type identifier."""
@@ -193,6 +205,25 @@ class ReactLoop:
             finish_reason=response.finish_reason.value,
             tool_call_count=len(response.tool_calls),
         )
+
+        # Checkpoint is saved after the LLM response is recorded but
+        # before tool execution.  This is intentional: if a crash
+        # happens during tool execution, the agent resumes with the
+        # LLM response and can detect whether tools already ran.  The
+        # alternative (after tools) would lose the entire LLM call on
+        # a mid-tool crash.  Tools should be idempotent by design.
+        if self._checkpoint_callback is not None:
+            try:
+                await self._checkpoint_callback(ctx)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.exception(
+                    EXECUTION_CHECKPOINT_CALLBACK_FAILED,
+                    execution_id=ctx.execution_id,
+                    turn=turn_number,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
 
         if not response.tool_calls:
             return self._handle_completion(ctx, response, turns)

@@ -9,9 +9,10 @@ task can be reassigned (based on retry count vs max retries).
 See the Crash Recovery section of the Engine design page.
 """
 
-from typing import Final, Protocol, runtime_checkable
+import json
+from typing import Final, Protocol, Self, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from ai_company.core.enums import TaskStatus
 from ai_company.core.types import NotBlankStr  # noqa: TC001
@@ -31,20 +32,23 @@ class RecoveryResult(BaseModel):
     """Frozen result of a recovery strategy invocation.
 
     Attributes:
-        task_execution: Updated execution after recovery (typically
-            ``FAILED`` for the default strategy).
+        task_execution: Execution state after recovery (``FAILED`` for
+            fail-and-reassign, original state for checkpoint resume).
         strategy_type: Identifier of the strategy used (e.g. ``"fail_reassign"``).
         can_reassign: Computed — ``True`` when retry_count < task.max_retries.
             The caller (task router) is responsible for incrementing
             ``retry_count`` when creating the next ``TaskExecution``.
         context_snapshot: Redacted snapshot (no message contents).
         error_message: The error that triggered recovery.
+        checkpoint_context_json: Serialized ``AgentContext`` for resume
+            (set by ``CheckpointRecoveryStrategy``, ``None`` otherwise).
+        resume_attempt: Current resume attempt number (0 when not resuming).
     """
 
     model_config = ConfigDict(frozen=True)
 
     task_execution: TaskExecution = Field(
-        description="Updated execution with FAILED status",
+        description="Execution state after recovery",
     )
     strategy_type: NotBlankStr = Field(
         description="Identifier of the recovery strategy used",
@@ -55,6 +59,37 @@ class RecoveryResult(BaseModel):
     error_message: NotBlankStr = Field(
         description="The error that triggered recovery",
     )
+    checkpoint_context_json: str | None = Field(
+        default=None,
+        description="Serialized AgentContext from checkpoint for resume",
+    )
+    resume_attempt: int = Field(
+        default=0,
+        ge=0,
+        description="Current resume attempt number",
+    )
+
+    @model_validator(mode="after")
+    def _validate_checkpoint_consistency(self) -> Self:
+        """Validate checkpoint_context_json and resume_attempt are consistent."""
+        has_json = self.checkpoint_context_json is not None
+        has_attempt = self.resume_attempt > 0
+        if has_json != has_attempt:
+            msg = (
+                "checkpoint_context_json and resume_attempt must be "
+                "consistent: both set or both at default"
+            )
+            raise ValueError(msg)
+        if self.checkpoint_context_json is not None:
+            try:
+                parsed = json.loads(self.checkpoint_context_json)
+            except json.JSONDecodeError as exc:
+                msg = f"checkpoint_context_json must be valid JSON: {exc}"
+                raise ValueError(msg) from exc
+            if not isinstance(parsed, dict):
+                msg = "checkpoint_context_json must be a JSON object"
+                raise ValueError(msg)
+        return self
 
     @computed_field(  # type: ignore[prop-decorator]
         description="Whether the task can be reassigned for retry",
@@ -68,14 +103,22 @@ class RecoveryResult(BaseModel):
         """
         return self.task_execution.retry_count < self.task_execution.task.max_retries
 
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Whether execution can resume from a checkpoint",
+    )
+    @property
+    def can_resume(self) -> bool:
+        """Whether execution can resume from a persisted checkpoint."""
+        return self.checkpoint_context_json is not None
+
 
 @runtime_checkable
 class RecoveryStrategy(Protocol):
     """Protocol for crash recovery strategies.
 
-    Implementations decide how to handle a failed task execution:
-    transition the task, capture diagnostics, and report whether
-    reassignment is possible.
+    Implementations decide how to handle a failed task execution.
+    Strategies may transition the task status, capture diagnostics,
+    and report recovery options (e.g. reassignment, checkpoint resume).
     """
 
     async def recover(
@@ -96,6 +139,17 @@ class RecoveryStrategy(Protocol):
 
         Returns:
             ``RecoveryResult`` with the updated execution and diagnostics.
+        """
+        ...
+
+    async def finalize(
+        self,
+        execution_id: str,
+    ) -> None:
+        """Post-resume cleanup hook.
+
+        Called after a successful resume (non-ERROR termination) to
+        clean up strategy-specific state.  No-op by default.
         """
         ...
 
@@ -171,6 +225,10 @@ class FailAndReassignStrategy:
         )
 
         return result
+
+    async def finalize(self, execution_id: str) -> None:
+        """No-op -- fail-and-reassign has no post-resume state."""
+        _ = execution_id
 
     def get_strategy_type(self) -> str:
         """Return the strategy type identifier."""

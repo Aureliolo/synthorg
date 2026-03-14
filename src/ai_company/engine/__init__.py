@@ -28,6 +28,14 @@ from ai_company.engine.assignment import (
     TaskAssignmentStrategy,
     build_strategy_map,
 )
+from ai_company.engine.checkpoint import (
+    Checkpoint,
+    CheckpointCallback,
+    CheckpointConfig,
+    CheckpointRecoveryStrategy,
+    Heartbeat,
+    make_checkpoint_callback,
+)
 from ai_company.engine.classification import (
     ClassificationResult,
     ErrorFinding,
@@ -208,6 +216,10 @@ __all__ = [
     "BudgetChecker",
     "CancelTaskMutation",
     "CentralizedDispatcher",
+    "Checkpoint",
+    "CheckpointCallback",
+    "CheckpointConfig",
+    "CheckpointRecoveryStrategy",
     "ClassificationResult",
     "CleanupCallback",
     "ContextDependentDispatcher",
@@ -243,6 +255,7 @@ __all__ = [
     "ExecutionResult",
     "ExecutionStateError",
     "FailAndReassignStrategy",
+    "Heartbeat",
     "HierarchicalAssignmentStrategy",
     "InMemoryResourceLock",
     "LlmDecompositionConfig",
@@ -332,5 +345,6 @@ __all__ = [
     "build_strategy_map",
     "build_system_prompt",
     "classify_execution_errors",
+    "make_checkpoint_callback",
     "select_dispatcher",
 ]

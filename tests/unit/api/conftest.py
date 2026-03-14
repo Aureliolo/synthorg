@@ -27,6 +27,7 @@ from ai_company.core.enums import (
     TaskStatus,
 )
 from ai_company.core.task import Task
+from ai_company.engine.checkpoint.models import Checkpoint, Heartbeat
 from ai_company.engine.task_engine import TaskEngine
 from ai_company.hr.enums import LifecycleEventType
 from ai_company.hr.models import AgentLifecycleEvent
@@ -334,6 +335,65 @@ class FakeApiKeyRepository:
         return self._keys.pop(key_id, None) is not None
 
 
+class FakeCheckpointRepository:
+    """In-memory checkpoint repository for tests."""
+
+    def __init__(self) -> None:
+        self._checkpoints: dict[str, Checkpoint] = {}
+
+    async def save(self, checkpoint: Checkpoint) -> None:
+        self._checkpoints[checkpoint.id] = checkpoint
+
+    async def get_latest(
+        self,
+        *,
+        execution_id: str | None = None,
+        task_id: str | None = None,
+    ) -> Checkpoint | None:
+        if execution_id is None and task_id is None:
+            msg = "At least one of execution_id or task_id is required"
+            raise ValueError(msg)
+        candidates = list(self._checkpoints.values())
+        if execution_id is not None:
+            candidates = [c for c in candidates if c.execution_id == execution_id]
+        if task_id is not None:
+            candidates = [c for c in candidates if c.task_id == task_id]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda c: c.turn_number)
+
+    async def delete_by_execution(self, execution_id: str) -> int:
+        to_delete = [
+            k for k, v in self._checkpoints.items() if v.execution_id == execution_id
+        ]
+        for k in to_delete:
+            del self._checkpoints[k]
+        return len(to_delete)
+
+
+class FakeHeartbeatRepository:
+    """In-memory heartbeat repository for tests."""
+
+    def __init__(self) -> None:
+        self._heartbeats: dict[str, Heartbeat] = {}
+
+    async def save(self, heartbeat: Heartbeat) -> None:
+        self._heartbeats[heartbeat.execution_id] = heartbeat
+
+    async def get(self, execution_id: str) -> Heartbeat | None:
+        return self._heartbeats.get(execution_id)
+
+    async def get_stale(self, threshold: datetime) -> tuple[Heartbeat, ...]:
+        stale = [
+            h for h in self._heartbeats.values() if h.last_heartbeat_at < threshold
+        ]
+        stale.sort(key=lambda h: h.last_heartbeat_at)
+        return tuple(stale)
+
+    async def delete(self, execution_id: str) -> bool:
+        return self._heartbeats.pop(execution_id, None) is not None
+
+
 class FakePersistenceBackend:
     """In-memory persistence backend for tests."""
 
@@ -348,6 +408,8 @@ class FakePersistenceBackend:
         self._audit_entries = FakeAuditRepository()
         self._users = FakeUserRepository()
         self._api_keys = FakeApiKeyRepository()
+        self._checkpoints = FakeCheckpointRepository()
+        self._heartbeats_repo = FakeHeartbeatRepository()
         self._settings: dict[str, str] = {}
         self._connected = False
 
@@ -410,6 +472,14 @@ class FakePersistenceBackend:
     @property
     def api_keys(self) -> FakeApiKeyRepository:
         return self._api_keys
+
+    @property
+    def checkpoints(self) -> FakeCheckpointRepository:
+        return self._checkpoints
+
+    @property
+    def heartbeats(self) -> FakeHeartbeatRepository:
+        return self._heartbeats_repo
 
     async def get_setting(self, key: str) -> str | None:
         return self._settings.get(key)

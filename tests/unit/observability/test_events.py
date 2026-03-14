@@ -8,6 +8,11 @@ import pytest
 
 from ai_company.observability import events
 from ai_company.observability.events.budget import BUDGET_RECORD_ADDED
+from ai_company.observability.events.checkpoint import (
+    CHECKPOINT_RECOVERY_START,
+    CHECKPOINT_SAVED,
+    HEARTBEAT_UPDATED,
+)
 from ai_company.observability.events.classification import (
     CLASSIFICATION_COMPLETE,
     CLASSIFICATION_ERROR,
@@ -219,6 +224,7 @@ class TestEventConstants:
             "workspace",
             "trust",
             "promotion",
+            "checkpoint",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected
@@ -244,6 +250,11 @@ class TestEventConstants:
 
     def test_budget_events_exist(self) -> None:
         assert BUDGET_RECORD_ADDED == "budget.record.added"
+
+    def test_checkpoint_events_exist(self) -> None:
+        assert CHECKPOINT_SAVED == "checkpoint.saved"
+        assert HEARTBEAT_UPDATED == "heartbeat.updated"
+        assert CHECKPOINT_RECOVERY_START == "checkpoint.recovery.start"
 
     def test_execution_events_exist(self) -> None:
         assert EXECUTION_TASK_CREATED == "execution.task.created"

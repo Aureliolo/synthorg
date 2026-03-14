@@ -508,6 +508,9 @@ implemented behind a `RecoveryStrategy` protocol, making the system pluggable.
 | `strategy_type` | `NotBlankStr` | Strategy identifier |
 | `context_snapshot` | `AgentContextSnapshot` | Redacted snapshot (turn count, accumulated cost, message count, max turns -- no message contents) |
 | `error_message` | `NotBlankStr` | Error that triggered recovery |
+| `checkpoint_context_json` | `str \| None` | Serialized `AgentContext` for resume (`None` for non-checkpoint strategies) |
+| `resume_attempt` | `int` (ge=0) | Current resume attempt number (0 when not resuming) |
+| `can_resume` | `bool` (computed) | `checkpoint_context_json is not None` |
 | `can_reassign` | `bool` (computed) | `retry_count < task.max_retries` |
 
 ### Recovery Strategies
@@ -547,9 +550,6 @@ implemented behind a `RecoveryStrategy` protocol, making the system pluggable.
 
 === "Strategy 2: Checkpoint Recovery"
 
-    !!! warning "Planned"
-        Checkpoint recovery is planned for a future release.
-
     The engine persists an `AgentContext` snapshot after each completed turn. On
     crash, the framework detects the failure (via heartbeat timeout or
     exception), loads the last checkpoint, and resumes execution from the exact
@@ -562,21 +562,21 @@ implemented behind a `RecoveryStrategy` protocol, making the system pluggable.
       strategy: "checkpoint"
       checkpoint:
         persist_every_n_turns: 1           # checkpoint frequency
-        storage: "sqlite"                  # sqlite, filesystem
+        # Storage backend determined by the injected CheckpointRepository
         heartbeat_interval_seconds: 30     # detect unresponsive agents
         max_resume_attempts: 2             # retry limit before falling back to fail_reassign
     ```
 
     - Preserves progress -- critical for long tasks (multi-step plans,
       epic-level work)
-    - Requires persistence layer and environment state reconciliation on resume
+    - Requires persistence layer and reconciliation message on resume
     - Natural fit with the existing immutable state model
 
-    When resuming from a checkpoint, the agent's tools and workspace may have
-    changed (other agents modified files, external state drifted). The
-    checkpoint strategy includes a reconciliation step: the resumed agent
-    receives a summary of changes since the checkpoint timestamp and can adapt
-    its plan accordingly.
+    When resuming from a checkpoint, the agent receives a system message
+    informing it of the resume point (turn number) and the error that triggered
+    recovery. This reconciliation message allows the agent to review its
+    progress and adapt.  Richer reconciliation (e.g. workspace change
+    detection) is planned for a future iteration.
 
 ---
 

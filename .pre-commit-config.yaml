@@ -8,7 +8,7 @@ default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -27,14 +27,14 @@ repos:
         args: [--branch, main]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.5
+    rev: v0.15.6
     hooks:
       - id: ruff
         args: [--fix]
       - id: ruff-format
 
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.24.3
+    rev: v8.30.1
     hooks:
       - id: gitleaks
 
@@ -45,7 +45,7 @@ repos:
         stages: [commit-msg]
 
   - repo: https://github.com/hadolint/hadolint
-    rev: v2.12.0
+    rev: v2.14.0
     hooks:
       - id: hadolint-docker
 
