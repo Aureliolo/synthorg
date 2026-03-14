@@ -78,7 +78,12 @@ def _build_decomposition_strategy(
     provider: CompletionProvider | None,
     decomposition_model: str | None,
 ) -> DecompositionStrategy:
-    """Select the decomposition strategy based on available deps."""
+    """Select the decomposition strategy based on available deps.
+
+    Raises:
+        ValueError: If exactly one of *provider* / *decomposition_model*
+            is supplied — both or neither must be given.
+    """
     if provider is not None and decomposition_model is not None:
         from ai_company.engine.decomposition.llm import (  # noqa: PLC0415
             LlmDecompositionStrategy,
@@ -88,6 +93,14 @@ def _build_decomposition_strategy(
             provider=provider,
             model=decomposition_model,
         )
+    if (provider is None) != (decomposition_model is None):
+        given = "provider" if provider is not None else "decomposition_model"
+        missing = "decomposition_model" if provider is not None else "provider"
+        msg = (
+            f"Decomposition requires both provider and decomposition_model, "
+            f"but only {given} was supplied (missing {missing})"
+        )
+        raise ValueError(msg)
     return _NoProviderDecompositionStrategy()
 
 
@@ -95,7 +108,12 @@ def _build_workspace_service(
     workspace_strategy: WorkspaceIsolationStrategy | None,
     workspace_config: WorkspaceIsolationConfig | None,
 ) -> WorkspaceIsolationService | None:
-    """Build workspace isolation service if both deps are provided."""
+    """Build workspace isolation service if both deps are provided.
+
+    Raises:
+        ValueError: If exactly one of *workspace_strategy* /
+            *workspace_config* is supplied — both or neither must be given.
+    """
     if workspace_strategy is not None and workspace_config is not None:
         from ai_company.engine.workspace.service import (  # noqa: PLC0415
             WorkspaceIsolationService,
@@ -105,6 +123,22 @@ def _build_workspace_service(
             strategy=workspace_strategy,
             config=workspace_config,
         )
+    if (workspace_strategy is None) != (workspace_config is None):
+        given = (
+            "workspace_strategy"
+            if workspace_strategy is not None
+            else "workspace_config"
+        )
+        missing = (
+            "workspace_config"
+            if workspace_strategy is not None
+            else "workspace_strategy"
+        )
+        msg = (
+            f"Workspace isolation requires both workspace_strategy and "
+            f"workspace_config, but only {given} was supplied (missing {missing})"
+        )
+        raise ValueError(msg)
     return None
 
 

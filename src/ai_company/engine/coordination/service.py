@@ -177,11 +177,6 @@ class MultiAgentCoordinator:
         except CoordinationPhaseError:
             raise
         except MemoryError, RecursionError:
-            logger.warning(
-                COORDINATION_FAILED,
-                parent_task_id=task.id,
-                error="Fatal: MemoryError or RecursionError",
-            )
             raise
         except Exception as exc:
             logger.exception(
@@ -522,12 +517,20 @@ class MultiAgentCoordinator:
         if self._task_engine is None:
             return
         if rollup is None:
-            logger.info(
-                COORDINATION_PHASE_COMPLETED,
-                phase="update_parent",
-                note="Skipped — rollup is None (rollup phase failed)",
-                success=True,
-                duration_seconds=0.0,
+            phase_name = "update_parent"
+            note = "Skipped — rollup is None (rollup phase failed)"
+            logger.warning(
+                COORDINATION_PHASE_FAILED,
+                phase=phase_name,
+                note=note,
+            )
+            phases.append(
+                CoordinationPhaseResult(
+                    phase=phase_name,
+                    success=False,
+                    duration_seconds=0.0,
+                    error=note,
+                )
             )
             return
 

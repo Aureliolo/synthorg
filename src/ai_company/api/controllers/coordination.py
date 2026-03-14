@@ -251,6 +251,11 @@ class CoordinationController(Controller):
         except MemoryError, RecursionError:
             raise
         except Exception:
+            logger.exception(
+                API_COORDINATION_FAILED,
+                task_id=task_id,
+                error="Unexpected exception during coordination",
+            )
             _publish_ws_event(
                 request,
                 WsEventType.COORDINATION_FAILED,

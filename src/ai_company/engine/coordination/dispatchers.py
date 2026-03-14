@@ -161,11 +161,6 @@ async def _setup_workspaces(
         requests = _build_workspace_requests(routing_result, config)
         workspaces = await workspace_service.setup_group(requests=requests)
     except MemoryError, RecursionError:
-        logger.warning(
-            COORDINATION_PHASE_FAILED,
-            phase=phase_name,
-            error="Fatal: MemoryError or RecursionError during workspace setup",
-        )
         raise
     except Exception as exc:
         elapsed = time.monotonic() - start
@@ -213,11 +208,6 @@ async def _merge_workspaces(
             workspaces=workspaces,
         )
     except MemoryError, RecursionError:
-        logger.warning(
-            COORDINATION_PHASE_FAILED,
-            phase=phase_name,
-            error="Fatal: MemoryError or RecursionError during workspace merge",
-        )
         raise
     except Exception as exc:
         elapsed = time.monotonic() - start
@@ -261,11 +251,6 @@ async def _teardown_workspaces(
     try:
         await workspace_service.teardown_group(workspaces=workspaces)
     except MemoryError, RecursionError:
-        logger.warning(
-            COORDINATION_CLEANUP_FAILED,
-            workspace_count=len(workspaces),
-            error="Fatal: MemoryError or RecursionError during teardown",
-        )
         raise
     except Exception as exc:
         logger.warning(
@@ -349,12 +334,6 @@ async def _execute_waves(
                 break
 
         except MemoryError, RecursionError:
-            logger.warning(
-                COORDINATION_PHASE_FAILED,
-                phase=phase_name,
-                wave_index=wave_idx,
-                error="Fatal: MemoryError or RecursionError during wave execution",
-            )
             raise
         except Exception as exc:
             elapsed = time.monotonic() - start

@@ -33,7 +33,14 @@ if TYPE_CHECKING:
 def get_channels_plugin(
     request: Request[Any, Any, Any],
 ) -> ChannelsPlugin | None:
-    """Extract the ``ChannelsPlugin`` from the application, or ``None``."""
+    """Extract the ``ChannelsPlugin`` from the application, or ``None``.
+
+    Args:
+        request: The incoming Litestar request.
+
+    Returns:
+        The ``ChannelsPlugin`` instance if registered, otherwise ``None``.
+    """
     for plugin in request.app.plugins:
         if isinstance(plugin, ChannelsPlugin):
             return plugin
