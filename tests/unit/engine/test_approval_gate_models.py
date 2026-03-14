@@ -142,6 +142,15 @@ class TestResumePayload:
         with pytest.raises(ValidationError):
             ResumePayload(**kwargs)  # type: ignore[arg-type]
 
+    def test_empty_decision_reason_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ResumePayload(
+                approval_id="approval-1",
+                approved=False,
+                decided_by="admin",
+                decision_reason="",
+            )
+
     def test_blank_decision_reason_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ResumePayload(

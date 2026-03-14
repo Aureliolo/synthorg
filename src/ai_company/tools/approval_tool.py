@@ -128,6 +128,9 @@ class RequestHumanApprovalTool(BaseTool):
             not isinstance(action_type, str)
             or not isinstance(title, str)
             or not isinstance(description, str)
+            or not action_type.strip()
+            or not title.strip()
+            or not description.strip()
         ):
             return ToolExecutionResult(
                 content=(

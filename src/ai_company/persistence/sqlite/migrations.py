@@ -366,16 +366,15 @@ async def _apply_v7(db: aiosqlite.Connection) -> None:
     """
     has_original = await _table_exists(db, "parked_contexts")
     has_old = await _table_exists(db, "parked_contexts_old")
-    has_new = await _table_exists(db, "parked_contexts_new")
 
     # Step 1: create the new table (idempotent).
     await db.execute(_V7_NEW_TABLE_DDL)
 
     # Step 2: copy rows from the surviving source table.
-    if has_original and not has_new:
+    # Always run when a source exists — INSERT OR IGNORE makes it idempotent.
+    if has_original:
         await db.execute(_V7_COPY_ROWS.format(source="parked_contexts"))
-    elif has_old and not has_original:
-        # Crash happened after rename — copy from backup.
+    elif has_old:
         await db.execute(_V7_COPY_ROWS.format(source="parked_contexts_old"))
 
     # Step 3: rename original → _old (skip if already gone).

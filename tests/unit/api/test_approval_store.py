@@ -177,6 +177,7 @@ class TestApprovalStore:
 
 
 @pytest.mark.unit
+@pytest.mark.timeout(30)
 class TestSaveIfPending:
     """save_if_pending() optimistic concurrency guard."""
 
@@ -240,6 +241,7 @@ class TestSaveIfPending:
 
 
 @pytest.mark.unit
+@pytest.mark.timeout(30)
 class TestApprovalStoreFilters:
     """Combined filter tests."""
 
@@ -302,6 +304,7 @@ class TestApprovalStoreFilters:
 
 
 @pytest.mark.unit
+@pytest.mark.timeout(30)
 class TestOnExpireCallback:
     """on_expire callback lifecycle."""
 
