@@ -67,6 +67,9 @@ func Load(dataDir string) (State, error) {
 			return State{}, fmt.Errorf("data_dir: %w", err)
 		}
 		s.DataDir = safeLoaded
+	} else {
+		// Config file omitted data_dir; fall back to the directory we loaded from.
+		s.DataDir = safeDir
 	}
 	return s, nil
 }
