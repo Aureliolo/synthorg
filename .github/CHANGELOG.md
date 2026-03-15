@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.2.0](https://github.com/Aureliolo/synthorg/compare/v0.1.4...v0.2.0) (2026-03-15)
+
+
+### Features
+
+* add /get/ installation page for CLI installer ([#413](https://github.com/Aureliolo/synthorg/issues/413)) ([6a47e4a](https://github.com/Aureliolo/synthorg/commit/6a47e4aa89db39ebde26b33b4bc7bde713262e6a))
+* add cross-platform Go CLI for container lifecycle management ([#401](https://github.com/Aureliolo/synthorg/issues/401)) ([0353d9e](https://github.com/Aureliolo/synthorg/commit/0353d9ee46a0a97d425ae8daba087a6b72228a43)), closes [#392](https://github.com/Aureliolo/synthorg/issues/392)
+* add explicit ScanOutcome signal to OutputScanResult ([#394](https://github.com/Aureliolo/synthorg/issues/394)) ([be33414](https://github.com/Aureliolo/synthorg/commit/be334141af54dbe5bc16ac2380350f76da012c38)), closes [#284](https://github.com/Aureliolo/synthorg/issues/284)
+* add meeting scheduler, event-triggered meetings, and Go CLI lint fixes ([#407](https://github.com/Aureliolo/synthorg/issues/407)) ([5550fa1](https://github.com/Aureliolo/synthorg/commit/5550fa1cf31f86c39183bf002fba793e19392cb6))
+* wire MultiAgentCoordinator into runtime ([#396](https://github.com/Aureliolo/synthorg/issues/396)) ([7a9e516](https://github.com/Aureliolo/synthorg/commit/7a9e5166952693a23d22f2bfb6750557c89936db))
+
+
+### Bug Fixes
+
+* CLA signatures branch + declutter repo root ([#409](https://github.com/Aureliolo/synthorg/issues/409)) ([cabe953](https://github.com/Aureliolo/synthorg/commit/cabe95301d4e44267aa2ddfd93580083b7e8c155))
+* correct Release Please branch name in release workflow ([#410](https://github.com/Aureliolo/synthorg/issues/410)) ([515d816](https://github.com/Aureliolo/synthorg/commit/515d816b36fba0d7b95385df92f3f7e711936d40))
+* replace slsa-github-generator with attest-build-provenance, fix DAST ([#424](https://github.com/Aureliolo/synthorg/issues/424)) ([eeaadff](https://github.com/Aureliolo/synthorg/commit/eeaadff789f6179fe99874cf9f2caf89b6d3e6ea))
+* resolve CodeQL path-injection alerts in Go CLI ([#412](https://github.com/Aureliolo/synthorg/issues/412)) ([f41bf16](https://github.com/Aureliolo/synthorg/commit/f41bf1642fbf6c5242d336980bb7e413b52d2c13))
+
+
+### Refactoring
+
+* rename package from ai_company to synthorg ([#422](https://github.com/Aureliolo/synthorg/issues/422)) ([df27c6e](https://github.com/Aureliolo/synthorg/commit/df27c6e4c43546201e9e9d459981039acf177655)), closes [#398](https://github.com/Aureliolo/synthorg/issues/398)
+
+
+### Tests
+
+* add fuzz and property-based testing across all layers ([#421](https://github.com/Aureliolo/synthorg/issues/421)) ([115a742](https://github.com/Aureliolo/synthorg/commit/115a742c7259a08c9c714ac47ec52704fb997e49))
+
+
+### CI/CD
+
+* add SLSA L3 provenance for CLI binaries and container images ([#423](https://github.com/Aureliolo/synthorg/issues/423)) ([d3dc75d](https://github.com/Aureliolo/synthorg/commit/d3dc75d3f6449959504ddd032d56e769f5f3f679))
+* bump the major group with 4 updates ([#405](https://github.com/Aureliolo/synthorg/issues/405)) ([20c7a04](https://github.com/Aureliolo/synthorg/commit/20c7a04a5fccd3296cdad57df4af757e9f6abb57))
+
+
+### Maintenance
+
+* bump github.com/spf13/cobra from 1.9.1 to 1.10.2 in /cli in the minor-and-patch group ([#402](https://github.com/Aureliolo/synthorg/issues/402)) ([e31edbb](https://github.com/Aureliolo/synthorg/commit/e31edbb5d2e21439c88c98ef8c1847d23759e94a))
+* narrow BSL Additional Use Grant and add CLA ([#408](https://github.com/Aureliolo/synthorg/issues/408)) ([5ab15bd](https://github.com/Aureliolo/synthorg/commit/5ab15bd1355063144076d735815ad3e34d1cbbb0)), closes [#406](https://github.com/Aureliolo/synthorg/issues/406)
+
 ## [0.1.4](https://github.com/Aureliolo/synthorg/compare/v0.1.3...v0.1.4) (2026-03-14)
 
 
