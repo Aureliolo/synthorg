@@ -153,6 +153,7 @@ Images are **only pushed to GHCR after both scanners pass**.
 - **CLI binaries**: SLSA Level 3 provenance attestations (verify via `gh attestation verify`)
 - **Git commits**: GPG/SSH signed (enforced by branch protection ruleset)
 - **GitHub Actions**: All actions pinned by full SHA commit hash
+- **GitHub Releases**: Immutable releases enabled — once published, assets and body cannot be modified (prevents supply chain tampering). Releases are created as drafts by Release Please, finalized after all assets are attached.
 
 ---
 

@@ -1,0 +1,71 @@
+name: Finalize Release
+
+# Publish draft releases once both CLI and Docker workflows succeed.
+# Release Please creates draft releases (immutable once published),
+# then CLI (GoReleaser) and Docker (GHCR) attach assets to the draft.
+# This workflow fires on each completion and publishes when both are done.
+
+on:
+  workflow_run:
+    workflows: [Docker, CLI]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Publish Draft Release
+    # Only process tag-triggered runs (release builds)
+    if: startsWith(github.event.workflow_run.head_branch, 'v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check both workflows and publish draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+
+          echo "Triggered by: ${{ github.event.workflow.name }}"
+          echo "Tag: $TAG"
+          echo "Triggering run conclusion: ${{ github.event.workflow_run.conclusion }}"
+
+          # If the triggering workflow failed, no point checking the other
+          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+            echo "Triggering workflow failed — skipping."
+            exit 0
+          fi
+
+          # Check status of both workflows for this tag.
+          # gh run list --branch works for both branches and tags.
+          CLI_CONCLUSION=$(gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow cli.yml --branch "$TAG" --limit 1 \
+            --json conclusion --jq '.[0].conclusion // "pending"')
+
+          DOCKER_CONCLUSION=$(gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow docker.yml --branch "$TAG" --limit 1 \
+            --json conclusion --jq '.[0].conclusion // "pending"')
+
+          echo "CLI: $CLI_CONCLUSION"
+          echo "Docker: $DOCKER_CONCLUSION"
+
+          if [ "$CLI_CONCLUSION" != "success" ] || [ "$DOCKER_CONCLUSION" != "success" ]; then
+            echo "Not all workflows succeeded yet (CLI=$CLI_CONCLUSION, Docker=$DOCKER_CONCLUSION)."
+            echo "The other workflow's completion will trigger another attempt."
+            exit 0
+          fi
+
+          # Both succeeded — check if release is still a draft
+          IS_DRAFT=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft --jq '.isDraft')
+
+          if [ "$IS_DRAFT" != "true" ]; then
+            echo "Release $TAG is not a draft (isDraft=$IS_DRAFT). Already published or not found."
+            exit 0
+          fi
+
+          # Publish the draft release (makes it immutable)
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          echo "Release $TAG published successfully."
