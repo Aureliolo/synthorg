@@ -12,7 +12,6 @@ on:
   workflow_run:
     workflows: [Docker, CLI]
     types: [completed]
-    branches: [main]
 
 permissions: {}
 
@@ -27,13 +26,14 @@ jobs:
       && startsWith(github.event.workflow_run.head_branch, 'v')
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: write
     steps:
       - name: Check both workflows and publish draft
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.workflow_run.head_branch }}
-          WORKFLOW_NAME: ${{ github.event.workflow.name }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
           WORKFLOW_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: |
           set -euo pipefail
