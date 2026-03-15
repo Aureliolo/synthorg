@@ -22,6 +22,28 @@ jobs:
           config-file: .github/release-please-config.json
           manifest-file: .github/.release-please-manifest.json
 
+      # Draft releases don't create git tags (GitHub only creates tags when
+      # a release is published). Create the tag explicitly via API so the
+      # tag push event triggers Docker/CLI workflows. Uses RELEASE_PLEASE_TOKEN
+      # (PAT) because GITHUB_TOKEN tag pushes don't trigger workflows.
+      - name: Create git tag for draft release
+        if: steps.release.outputs.releases_created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          TAG_NAME: ${{ steps.release.outputs['.--tag_name'] }}
+          TAG_SHA: ${{ steps.release.outputs['.--sha'] }}
+        run: |
+          echo "Creating tag $TAG_NAME at $TAG_SHA"
+          if gh api "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG_NAME" --jq '.ref' 2>/dev/null; then
+            echo "Tag $TAG_NAME already exists — skipping."
+          else
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+              --method POST \
+              --field "ref=refs/tags/$TAG_NAME" \
+              --field "sha=$TAG_SHA"
+            echo "Tag $TAG_NAME created successfully."
+          fi
+
       # When Release Please creates/updates a release PR, update the BSL
       # Change Date to 3 years from today. The date update ships as part
       # of the release PR, so it goes through normal review + merge flow.
