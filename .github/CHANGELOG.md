@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.4](https://github.com/Aureliolo/synthorg/compare/v0.2.3...v0.2.4) (2026-03-15)
+
+
+### Bug Fixes
+
+* create git tag explicitly for draft releases ([#432](https://github.com/Aureliolo/synthorg/issues/432)) ([1f5120e](https://github.com/Aureliolo/synthorg/commit/1f5120ee80bca0441a38b399d9b26675e5029df8))
+* make install scripts usable immediately without terminal restart ([#433](https://github.com/Aureliolo/synthorg/issues/433)) ([b45533c](https://github.com/Aureliolo/synthorg/commit/b45533c9742b6f1d43cf386804d52cf996eaf663))
+
+
+### Refactoring
+
+* redesign release notes layout ([#434](https://github.com/Aureliolo/synthorg/issues/434)) ([239aaf7](https://github.com/Aureliolo/synthorg/commit/239aaf783135a9cb163cc573c62975a4fb04ab5a))
+
+
+### Maintenance
+
+* **web:** adopt @vue/tsconfig preset ([#435](https://github.com/Aureliolo/synthorg/issues/435)) ([7d4b214](https://github.com/Aureliolo/synthorg/commit/7d4b214cc22ec99b922dd46bb529e9c8af476b23))
+
 ## [0.2.3](https://github.com/Aureliolo/synthorg/compare/v0.2.2...v0.2.3) (2026-03-15)
 
 
