@@ -6,6 +6,9 @@ name: Finalize Release
 # This workflow fires on each completion and publishes when both are done.
 
 on:
+  # zizmor: ignore[dangerous-triggers] — safe: no checkout, no untrusted code
+  # execution; only queries workflow status via gh CLI and publishes a draft
+  # release. Guarded by event != 'pull_request' and startsWith(head_branch, 'v').
   workflow_run:
     workflows: [Docker, CLI]
     types: [completed]
