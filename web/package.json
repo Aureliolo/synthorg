@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@primevue/themes": "^4",
-    "@tailwindcss/vite": "0.0.0-insiders.a4be983",
+    "@tailwindcss/vite": "4.2.1",
     "@vue-flow/controls": "^1",
     "@vue-flow/core": "^1",
     "@vue-flow/minimap": "^1",
@@ -22,7 +22,7 @@
     "echarts": "^6",
     "pinia": "^3",
     "primevue": "^4",
-    "tailwindcss": "0.0.0-insiders.a4be983",
+    "tailwindcss": "4.2.1",
     "vue": "^3.5",
     "vue-draggable-plus": "^0.6",
     "vue-echarts": "^8",
