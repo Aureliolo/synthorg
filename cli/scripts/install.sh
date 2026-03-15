@@ -112,4 +112,19 @@ fi
 echo ""
 "${INSTALL_DIR}/${BINARY_NAME}" version
 echo ""
+
+# Warn if INSTALL_DIR is not in PATH.
+case ":${PATH}:" in
+    *":${INSTALL_DIR}:"*) ;;
+    *)
+        echo "Warning: ${INSTALL_DIR} is not in your PATH."
+        echo "Add it by running:"
+        echo ""
+        echo "  export PATH=\"${INSTALL_DIR}:\$PATH\""
+        echo ""
+        echo "To make it permanent, add that line to your shell profile (~/.bashrc, ~/.zshrc, etc.)."
+        echo ""
+        ;;
+esac
+
 echo "SynthOrg CLI installed successfully. Run 'synthorg init' to get started."

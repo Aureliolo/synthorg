@@ -81,7 +81,10 @@ try {
     $UserPath = [Environment]::GetEnvironmentVariable("PATH", "User")
     if ($UserPath -notlike "*$InstallDir*") {
         [Environment]::SetEnvironmentVariable("PATH", "$UserPath;$InstallDir", "User")
-        Write-Host "Added $InstallDir to user PATH (restart your terminal to use 'synthorg' directly)."
+        Write-Host "Added $InstallDir to user PATH."
+    }
+    if ($env:PATH -notlike "*$InstallDir*") {
+        $env:PATH = "$env:PATH;$InstallDir"
     }
 
     & (Join-Path $InstallDir $BinaryName) version
