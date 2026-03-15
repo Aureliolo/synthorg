@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 from litestar import Litestar, Router
 from litestar.config.compression import CompressionConfig
 from litestar.config.cors import CORSConfig
-from litestar.datastructures import ResponseHeader, State
+from litestar.datastructures import State
 from litestar.middleware.rate_limit import RateLimitConfig as LitestarRateLimitConfig
 from litestar.openapi import OpenAPIConfig
 from litestar.openapi.plugins import ScalarRenderPlugin
@@ -32,7 +32,7 @@ from synthorg.api.channels import (
 from synthorg.api.controllers import ALL_CONTROLLERS
 from synthorg.api.controllers.ws import ws_handler
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
-from synthorg.api.middleware import CSPMiddleware, RequestLoggingMiddleware
+from synthorg.api.middleware import RequestLoggingMiddleware, security_headers_hook
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
@@ -533,36 +533,7 @@ def create_app(  # noqa: PLR0913
             backend="brotli",
             minimum_size=1000,
         ),
-        response_headers=[
-            ResponseHeader(
-                name="X-Content-Type-Options",
-                value="nosniff",
-            ),
-            ResponseHeader(
-                name="X-Frame-Options",
-                value="DENY",
-            ),
-            ResponseHeader(
-                name="Referrer-Policy",
-                value="strict-origin-when-cross-origin",
-            ),
-            ResponseHeader(
-                name="Strict-Transport-Security",
-                value="max-age=63072000; includeSubDomains",
-            ),
-            ResponseHeader(
-                name="Permissions-Policy",
-                value="geolocation=(), camera=(), microphone=()",
-            ),
-            ResponseHeader(
-                name="Cross-Origin-Resource-Policy",
-                value="same-origin",
-            ),
-            ResponseHeader(
-                name="Cache-Control",
-                value="no-store",
-            ),
-        ],
+        before_send=[security_headers_hook],
         middleware=middleware,
         plugins=plugins,
         exception_handlers=EXCEPTION_HANDLERS,  # type: ignore[arg-type]
@@ -613,7 +584,6 @@ def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
     auth_middleware = create_auth_middleware_class(auth)
     return [
         auth_middleware,
-        CSPMiddleware,
         RequestLoggingMiddleware,
         rate_limit.middleware,
     ]

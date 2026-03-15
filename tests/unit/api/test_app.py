@@ -7,6 +7,7 @@ from litestar import Litestar
 from litestar.testing import TestClient
 
 from synthorg.api.app import create_app
+from synthorg.api.middleware import _SECURITY_HEADERS
 
 
 @pytest.mark.unit
@@ -34,18 +35,7 @@ class TestCreateApp:
 
     @pytest.mark.parametrize(
         ("header", "expected"),
-        [
-            ("X-Content-Type-Options", "nosniff"),
-            ("X-Frame-Options", "DENY"),
-            ("Referrer-Policy", "strict-origin-when-cross-origin"),
-            ("Permissions-Policy", "geolocation=(), camera=(), microphone=()"),
-            (
-                "Strict-Transport-Security",
-                "max-age=63072000; includeSubDomains",
-            ),
-            ("Cross-Origin-Resource-Policy", "same-origin"),
-            ("Cache-Control", "no-store"),
-        ],
+        list(_SECURITY_HEADERS.items()),
     )
     def test_security_response_headers(
         self,

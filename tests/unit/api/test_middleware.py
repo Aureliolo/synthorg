@@ -1,46 +1,122 @@
-"""Tests for request middleware (CSP and logging)."""
+"""Tests for request middleware and security headers hook."""
 
 from typing import Any
 
 import pytest
+from litestar import Litestar, get, post
+from litestar.exceptions import ValidationException
 from litestar.testing import TestClient
 
+from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 from synthorg.api.middleware import (
     _API_CSP,
     _DOCS_CSP,
-    CSPMiddleware,
+    _SECURITY_HEADERS,
+    security_headers_hook,
 )
 
 
-async def _fake_app(scope: Any, receive: Any, send: Any) -> None:
-    """Minimal ASGI app that returns a 200 response."""
-    await send(
-        {
-            "type": "http.response.start",
-            "status": 200,
-            "headers": [],
-        }
+def _make_app(*handlers: Any) -> Litestar:
+    """Build a minimal Litestar app with the security hook wired in."""
+    return Litestar(
+        route_handlers=list(handlers),
+        before_send=[security_headers_hook],
+        exception_handlers=EXCEPTION_HANDLERS,  # type: ignore[arg-type]
     )
-    await send({"type": "http.response.body", "body": b""})
 
 
-def _make_scope(path: str) -> dict[str, Any]:
-    """Build a minimal ASGI HTTP scope for testing."""
-    return {
-        "type": "http",
-        "path": path,
-        "method": "GET",
-        "headers": [],
-        "query_string": b"",
-        "root_path": "",
-        "scheme": "http",
-        "server": ("localhost", 8000),
-    }
+# ── Security headers hook ──────────────────────────────────────
 
 
 @pytest.mark.unit
-class TestCSPMiddleware:
-    """Tests for path-aware Content-Security-Policy middleware."""
+class TestSecurityHeadersHook:
+    """Verify security headers appear on ALL response types."""
+
+    def test_success_response_has_all_security_headers(self) -> None:
+        """200 OK carries every static security header."""
+
+        @get("/ok")
+        async def handler() -> dict[str, str]:
+            return {"status": "ok"}
+
+        with TestClient(_make_app(handler)) as client:
+            resp = client.get("/ok")
+            assert resp.status_code == 200
+            for name, expected in _SECURITY_HEADERS.items():
+                assert resp.headers.get(name) == expected, (
+                    f"Missing or wrong header: {name}"
+                )
+
+    def test_exception_handler_response_has_security_headers(
+        self,
+    ) -> None:
+        """Exception-handler 400 carries all security headers."""
+
+        @get("/fail")
+        async def handler() -> None:
+            raise ValidationException
+
+        with TestClient(_make_app(handler)) as client:
+            resp = client.get("/fail")
+            assert resp.status_code == 400
+            for name, expected in _SECURITY_HEADERS.items():
+                assert resp.headers.get(name) == expected, (
+                    f"Missing or wrong header on 400: {name}"
+                )
+
+    def test_unmatched_route_404_has_security_headers(self) -> None:
+        """Router-level 404 (no matching route) carries headers."""
+
+        @get("/exists")
+        async def handler() -> str:
+            return "ok"
+
+        with TestClient(_make_app(handler)) as client:
+            resp = client.get("/nonexistent")
+            assert resp.status_code == 404
+            for name, expected in _SECURITY_HEADERS.items():
+                assert resp.headers.get(name) == expected, (
+                    f"Missing or wrong header on 404: {name}"
+                )
+
+    def test_method_not_allowed_405_has_security_headers(self) -> None:
+        """Router-level 405 carries security headers."""
+
+        @post("/only-post")
+        async def handler() -> str:
+            return "ok"
+
+        with TestClient(_make_app(handler)) as client:
+            resp = client.get("/only-post")
+            assert resp.status_code == 405
+            for name, expected in _SECURITY_HEADERS.items():
+                assert resp.headers.get(name) == expected, (
+                    f"Missing or wrong header on 405: {name}"
+                )
+
+    def test_500_error_has_security_headers(self) -> None:
+        """Unexpected error 500 carries security headers."""
+
+        @get("/boom")
+        async def handler() -> None:
+            msg = "unexpected"
+            raise RuntimeError(msg)
+
+        with TestClient(_make_app(handler)) as client:
+            resp = client.get("/boom")
+            assert resp.status_code == 500
+            for name, expected in _SECURITY_HEADERS.items():
+                assert resp.headers.get(name) == expected, (
+                    f"Missing or wrong header on 500: {name}"
+                )
+
+
+# ── CSP path selection ─────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestCSPPathSelection:
+    """Verify path-aware CSP via the before_send hook."""
 
     def test_api_route_gets_strict_csp(self, test_client: TestClient[Any]) -> None:
         response = test_client.get("/api/v1/health")
@@ -74,31 +150,19 @@ class TestCSPMiddleware:
             "docs-openapi-relaxed",
         ],
     )
-    async def test_csp_path_boundary(self, path: str, expected_csp: str) -> None:
-        """Verify CSP assignment for boundary paths via direct ASGI invocation."""
-        middleware = CSPMiddleware(_fake_app)
-        captured: list[dict[str, Any]] = []
+    def test_csp_path_boundary(
+        self,
+        test_client: TestClient[Any],
+        path: str,
+        expected_csp: str,
+    ) -> None:
+        """Verify CSP assignment for boundary paths."""
+        response = test_client.get(path)
+        csp = response.headers.get("content-security-policy")
+        assert csp == expected_csp
 
-        async def capture_send(message: Any) -> None:
-            captured.append(message)
 
-        await middleware(_make_scope(path), None, capture_send)  # type: ignore[arg-type]
-
-        start_msg = captured[0]
-        headers = dict(start_msg["headers"])
-        assert headers[b"content-security-policy"] == expected_csp.encode()
-
-    async def test_non_http_scope_passes_through(self) -> None:
-        """Non-HTTP scopes should not get CSP headers."""
-        called = False
-
-        async def passthrough_app(scope: Any, receive: Any, send: Any) -> None:
-            nonlocal called
-            called = True
-
-        middleware = CSPMiddleware(passthrough_app)
-        await middleware({"type": "lifespan"}, None, None)  # type: ignore[arg-type]
-        assert called
+# ── Request logging middleware ─────────────────────────────────
 
 
 @pytest.mark.unit
