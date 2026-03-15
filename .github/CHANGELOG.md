@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/Aureliolo/synthorg/compare/v0.2.1...v0.2.2) (2026-03-15)
+
+
+### Bug Fixes
+
+* restore golangci-lint to v2.11.3 (broken by replace_all in [#425](https://github.com/Aureliolo/synthorg/issues/425)) ([#427](https://github.com/Aureliolo/synthorg/issues/427)) ([8ba9375](https://github.com/Aureliolo/synthorg/commit/8ba9375fbb4f8372486a05f3a6600f2a5710702d))
+
 ## [0.2.1](https://github.com/Aureliolo/synthorg/compare/v0.2.0...v0.2.1) (2026-03-15)
 
 
