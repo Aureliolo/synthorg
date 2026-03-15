@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/Aureliolo/synthorg/compare/v0.2.0...v0.2.1) (2026-03-15)
+
+
+### Bug Fixes
+
+* upgrade goreleaser to v2.14.3 (v2.11.3 never existed) ([#425](https://github.com/Aureliolo/synthorg/issues/425)) ([df6650d](https://github.com/Aureliolo/synthorg/commit/df6650d514976d6dfd73babe94fda107dd5714f1))
+
 ## [0.2.0](https://github.com/Aureliolo/synthorg/compare/v0.1.4...v0.2.0) (2026-03-15)
 
 
