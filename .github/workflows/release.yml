@@ -30,11 +30,21 @@ jobs:
         if: steps.release.outputs.releases_created == 'true'
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
-          TAG_NAME: ${{ steps.release.outputs['.--tag_name'] }}
-          TAG_SHA: ${{ steps.release.outputs['.--sha'] }}
+          TAG_NAME: ${{ steps.release.outputs.tag_name || steps.release.outputs['.--tag_name'] }}
+          TAG_SHA: ${{ steps.release.outputs.sha || steps.release.outputs['.--sha'] }}
         run: |
+          # Guard: fail fast if release-please didn't provide tag metadata
+          if [ -z "$TAG_NAME" ] || [ -z "$TAG_SHA" ]; then
+            echo "::error::Missing tag metadata from release-please outputs (TAG_NAME=$TAG_NAME, TAG_SHA=$TAG_SHA)"
+            exit 1
+          fi
+
           echo "Creating tag $TAG_NAME at $TAG_SHA"
-          if gh api "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG_NAME" --jq '.ref' 2>/dev/null; then
+
+          # Idempotent: check if exact tag already exists.
+          # GitHub refs API uses prefix matching, so we must verify the exact ref.
+          if gh api "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG_NAME" --jq '.[].ref, .ref' 2>/dev/null \
+              | grep -qxF "refs/tags/$TAG_NAME"; then
             echo "Tag $TAG_NAME already exists — skipping."
           else
             gh api "repos/$GITHUB_REPOSITORY/git/refs" \
