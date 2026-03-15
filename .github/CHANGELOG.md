@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/Aureliolo/synthorg/compare/v0.2.2...v0.2.3) (2026-03-15)
+
+
+### Bug Fixes
+
+* use draft releases to support immutable release policy ([#429](https://github.com/Aureliolo/synthorg/issues/429)) ([a6c7444](https://github.com/Aureliolo/synthorg/commit/a6c7444b12239422a98a81c294a139cce96abc4a))
+
 ## [0.2.2](https://github.com/Aureliolo/synthorg/compare/v0.2.1...v0.2.2) (2026-03-15)
 
 
