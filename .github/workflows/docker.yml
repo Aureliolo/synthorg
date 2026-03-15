@@ -382,6 +382,7 @@ jobs:
           IMAGES=${IMAGES//BACKEND_DIGEST_PH/$BACKEND_DIGEST}
           IMAGES=${IMAGES//WEB_DIGEST_PH/$WEB_DIGEST}
 
-          # Idempotent: strip existing Container Images section before appending
-          CLEANED=$(echo "$EXISTING" | sed '/^## Container Images$/,$d')
+          # Idempotent: strip existing Container Images section before appending.
+          # Uses awk to delete only this section (up to the next ## heading), not to EOF.
+          CLEANED=$(echo "$EXISTING" | awk '/^## Container Images$/{skip=1; next} /^## /{skip=0} !skip')
           gh release edit "$TAG" --notes "${CLEANED}${IMAGES}"

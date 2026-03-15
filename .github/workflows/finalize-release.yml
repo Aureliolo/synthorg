@@ -101,11 +101,25 @@ jobs:
           CONTAINER_COSIGN=""
           CONTAINER_SLSA=""
           if echo "$BODY" | grep -q "CONTAINER_VERIFICATION_DATA"; then
-            # First code block is cosign, second is SLSA
-            CONTAINER_COSIGN=$(echo "$BODY" | sed -n '/<!-- CONTAINER_VERIFICATION_DATA/,/CONTAINER_VERIFICATION_DATA -->/p' \
-              | sed '1d;$d' | awk '/^```bash$/{n++} n==1' RS= || true)
-            CONTAINER_SLSA=$(echo "$BODY" | sed -n '/<!-- CONTAINER_VERIFICATION_DATA/,/CONTAINER_VERIFICATION_DATA -->/p' \
-              | sed '1d;$d' | awk '/^```bash$/{n++} n==2' RS= || true)
+            CONTAINER_INNER=$(echo "$BODY" | sed -n '/<!-- CONTAINER_VERIFICATION_DATA/,/CONTAINER_VERIFICATION_DATA -->/p' | sed '1d;$d')
+            # Extract first and second ```bash...``` code blocks using line-by-line awk.
+            # (awk paragraph mode RS= breaks on blank lines inside code blocks.)
+            CONTAINER_COSIGN=$(echo "$CONTAINER_INNER" | awk '
+              /^```bash$/ { n++; p=1 }
+              p && n==1
+              /^```$/ && p && n==1 { p=0; exit }
+            ' || true)
+            CONTAINER_SLSA=$(echo "$CONTAINER_INNER" | awk '
+              /^```bash$/ { n++; if(n==2) p=1 }
+              p && n==2
+              /^```$/ && p && n==2 { p=0; exit }
+            ' || true)
+            if [ -z "$CONTAINER_COSIGN" ]; then
+              echo "::warning::Container cosign verification data not found in release body"
+            fi
+            if [ -z "$CONTAINER_SLSA" ]; then
+              echo "::warning::Container SLSA provenance data not found in release body"
+            fi
           fi
 
           # Build the combined Verification section
@@ -153,9 +167,12 @@ jobs:
 
           tmpfile="$(mktemp)"
           printf '%s' "$FINAL" > "$tmpfile"
-          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$tmpfile"
+          if gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$tmpfile"; then
+            echo "Release body assembled with combined Verification section."
+          else
+            echo "::warning::Failed to update release body (may have been published by concurrent run)"
+          fi
           rm -f "$tmpfile"
-          echo "Release body assembled with combined Verification section."
 
           # ── Publish the draft release (makes it immutable) ──
           # Handle TOCTOU race: if a concurrent run published first, the second

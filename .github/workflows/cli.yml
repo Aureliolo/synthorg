@@ -363,8 +363,9 @@ jobs:
           )"
 
           # Idempotent: strip existing CLI Installation section before appending.
+          # Uses awk to delete only this section (up to the next ## heading), not to EOF.
           EXISTING_BODY="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body)"
-          CLEANED_BODY="$(printf '%s' "$EXISTING_BODY" | sed '/^## CLI Installation$/,$d')"
+          CLEANED_BODY="$(printf '%s' "$EXISTING_BODY" | awk '/^## CLI Installation$/{skip=1; next} /^## /{skip=0} !skip')"
           FULL_BODY="${CLEANED_BODY}${CLI_SECTION}"
 
           tmpfile="$(mktemp)"
