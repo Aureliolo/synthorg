@@ -341,7 +341,8 @@ jobs:
           irm https://synthorg.io/get/install.ps1 | iex
           \`\`\`
 
-          > **Pin to this release:** set \`SYNTHORG_VERSION=${TAG}\` before running.
+          > **Pin to this release:** set \`SYNTHORG_VERSION=${TAG}\` before running
+          > (bash: \`export SYNTHORG_VERSION=${TAG}\` · PowerShell: \`\\\$env:SYNTHORG_VERSION='${TAG}'\`).
           >
           > **New to SynthOrg?** See the [Getting Started guide](https://synthorg.io/get/).
 
@@ -358,6 +359,7 @@ jobs:
           \`\`\`bash
           gh attestation verify synthorg_linux_amd64.tar.gz -R Aureliolo/synthorg
           \`\`\`
+          Replace the filename with any archive from this release.
           CLI_VERIFICATION_DATA -->
           NOTES
           )"
@@ -375,8 +377,8 @@ jobs:
           FULL_BODY="${CLEANED_BODY}${CLI_SECTION}"
 
           tmpfile="$(mktemp)"
+          trap 'rm -f "$tmpfile"' EXIT
           printf '%s' "$FULL_BODY" > "$tmpfile"
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$tmpfile"
-          rm -f "$tmpfile"
 
           echo "Release notes updated with install instructions, checksums, and provenance."

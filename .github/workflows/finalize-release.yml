@@ -110,16 +110,16 @@ jobs:
             CONTAINER_INNER=$(sed -n '/<!-- CONTAINER_VERIFICATION_DATA/,/CONTAINER_VERIFICATION_DATA -->/p' <<< "$BODY" | sed '1d;$d')
             # Extract first and second ```bash...``` code blocks using line-by-line awk.
             # (awk paragraph mode RS= breaks on blank lines inside code blocks.)
-            CONTAINER_COSIGN=$(echo "$CONTAINER_INNER" | awk '
+            CONTAINER_COSIGN=$(awk '
               /^```bash$/ { n++; p=1 }
               p && n==1
               /^```$/ && p && n==1 { p=0; exit }
-            ' || true)
-            CONTAINER_SLSA=$(echo "$CONTAINER_INNER" | awk '
+            ' <<< "$CONTAINER_INNER" || true)
+            CONTAINER_SLSA=$(awk '
               /^```bash$/ { n++; if(n==2) p=1 }
               p && n==2
               /^```$/ && p && n==2 { p=0; exit }
-            ' || true)
+            ' <<< "$CONTAINER_INNER" || true)
             if [ -z "$CONTAINER_COSIGN" ]; then
               echo "::warning::Container cosign verification data not found in release body"
             fi
