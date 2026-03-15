@@ -176,19 +176,18 @@ jobs:
           fi
 
           tmpfile="$(mktemp)"
+          trap 'rm -f "$tmpfile"' EXIT
           printf '%s' "$FINAL" > "$tmpfile"
           if gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$tmpfile"; then
             echo "Release body assembled with combined Verification section."
           else
             if [ -n "$VERIFICATION" ]; then
               echo "::error::Failed to update release body — verification data would be lost. Not publishing."
-              rm -f "$tmpfile"
               exit 1
             else
               echo "::warning::Failed to update release body (no verification data to lose — proceeding)"
             fi
           fi
-          rm -f "$tmpfile"
 
           # ── Publish the draft release (makes it immutable) ──
           # Handle TOCTOU race: if a concurrent run published first, the second

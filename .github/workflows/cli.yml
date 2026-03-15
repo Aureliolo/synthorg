@@ -342,7 +342,7 @@ jobs:
           \`\`\`
 
           > **Pin to this release:** set \`SYNTHORG_VERSION=${TAG}\` before running
-          > (bash: \`export SYNTHORG_VERSION=${TAG}\` · PowerShell: \`\\\$env:SYNTHORG_VERSION='${TAG}'\`).
+          > (bash: \`export SYNTHORG_VERSION=${TAG}\` · PowerShell: \`\$env:SYNTHORG_VERSION='${TAG}'\`).
           >
           > **New to SynthOrg?** See the [Getting Started guide](https://synthorg.io/get/).
 
