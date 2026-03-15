@@ -84,7 +84,112 @@ jobs:
             exit 0
           fi
 
-          # Publish the draft release (makes it immutable).
+          # ── Assemble combined Verification section ──
+          # CLI and Docker workflows embed verification data in HTML comments.
+          # Extract, strip markers, and append as a visible Verification section.
+          BODY="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq '.body')"
+
+          CLI_CHECKSUMS=""
+          CLI_SLSA=""
+          if grep -q "CLI_VERIFICATION_DATA" <<< "$BODY"; then
+            CLI_CHECKSUMS=$(sed -n '/<!-- CLI_VERIFICATION_DATA/,/CLI_VERIFICATION_DATA -->/p' <<< "$BODY" \
+              | sed '1d;$d' | grep -E '^\|' || true)
+            CLI_SLSA=$(sed -n '/<!-- CLI_VERIFICATION_DATA/,/CLI_VERIFICATION_DATA -->/p' <<< "$BODY" \
+              | sed '1d;$d' | sed -n '/^```bash$/,/^```$/p' || true)
+            if [ -z "$CLI_CHECKSUMS" ]; then
+              echo "::warning::CLI checksums table not found in release body"
+            fi
+            if [ -z "$CLI_SLSA" ]; then
+              echo "::warning::CLI SLSA provenance commands not found in release body"
+            fi
+          fi
+
+          CONTAINER_COSIGN=""
+          CONTAINER_SLSA=""
+          if grep -q "CONTAINER_VERIFICATION_DATA" <<< "$BODY"; then
+            CONTAINER_INNER=$(sed -n '/<!-- CONTAINER_VERIFICATION_DATA/,/CONTAINER_VERIFICATION_DATA -->/p' <<< "$BODY" | sed '1d;$d')
+            # Extract first and second ```bash...``` code blocks using line-by-line awk.
+            # (awk paragraph mode RS= breaks on blank lines inside code blocks.)
+            CONTAINER_COSIGN=$(awk '
+              /^```bash$/ { n++; p=1 }
+              p && n==1
+              /^```$/ && p && n==1 { p=0; exit }
+            ' <<< "$CONTAINER_INNER" || true)
+            CONTAINER_SLSA=$(awk '
+              /^```bash$/ { n++; if(n==2) p=1 }
+              p && n==2
+              /^```$/ && p && n==2 { p=0; exit }
+            ' <<< "$CONTAINER_INNER" || true)
+            if [ -z "$CONTAINER_COSIGN" ]; then
+              echo "::warning::Container cosign verification data not found in release body"
+            fi
+            if [ -z "$CONTAINER_SLSA" ]; then
+              echo "::warning::Container SLSA provenance data not found in release body"
+            fi
+          fi
+
+          # Build the combined Verification section
+          VERIFICATION=""
+          if [ -n "$CLI_CHECKSUMS" ] || [ -n "$CONTAINER_COSIGN" ] || [ -n "$CLI_SLSA" ] || [ -n "$CONTAINER_SLSA" ]; then
+            VERIFICATION="$(printf '\n<!-- FINALIZE_VERIFICATION -->\n\n---\n\n## Verification\n')"
+
+            if [ -n "$CLI_CHECKSUMS" ]; then
+              VERIFICATION="$(printf '%s\n\n### CLI Checksums (SHA-256)\n\n%s\n' "$VERIFICATION" "$CLI_CHECKSUMS")"
+            fi
+
+            if [ -n "$CONTAINER_COSIGN" ]; then
+              VERIFICATION="$(printf '%s\n\n### Container Image Signatures\n\n%s\n' "$VERIFICATION" "$CONTAINER_COSIGN")"
+            fi
+
+            # Combined SLSA provenance
+            SLSA_BLOCK=""
+            if [ -n "$CLI_SLSA" ]; then
+              SLSA_BLOCK="$CLI_SLSA"
+            fi
+            if [ -n "$CONTAINER_SLSA" ]; then
+              if [ -n "$SLSA_BLOCK" ]; then
+                # Merge: strip closing ``` from CLI, strip opening ```bash from container
+                CLI_COMMANDS=$(printf '%s' "$CLI_SLSA" | sed '1d' | sed '/^```$/d')
+                CONTAINER_COMMANDS=$(printf '%s' "$CONTAINER_SLSA" | sed '1d' | sed '/^```$/d')
+                SLSA_BLOCK="$(printf '```bash\n%s\n\n%s\n```' "$CLI_COMMANDS" "$CONTAINER_COMMANDS")"
+              else
+                SLSA_BLOCK="$CONTAINER_SLSA"
+              fi
+            fi
+
+            if [ -n "$SLSA_BLOCK" ]; then
+              VERIFICATION="$(printf '%s\n\n### Provenance (SLSA Level 3)\n\nVerify with the [GitHub CLI](https://cli.github.com/):\n\n%s\n' "$VERIFICATION" "$SLSA_BLOCK")"
+            fi
+          fi
+
+          # Strip and re-append only when we have a replacement. If VERIFICATION
+          # is empty (no data extracted), leave the body untouched to avoid
+          # destroying an existing Verification section with no replacement.
+          if [ -n "$VERIFICATION" ]; then
+            CLEANED=$(printf '%s' "$BODY" \
+              | sed '/<!-- CLI_VERIFICATION_DATA/,/CLI_VERIFICATION_DATA -->/d' \
+              | sed '/<!-- CONTAINER_VERIFICATION_DATA/,/CONTAINER_VERIFICATION_DATA -->/d' \
+              | sed '/^<!-- FINALIZE_VERIFICATION -->/,$d')
+            FINAL="${CLEANED}${VERIFICATION}"
+          else
+            FINAL="$BODY"
+          fi
+
+          tmpfile="$(mktemp)"
+          trap 'rm -f "$tmpfile"' EXIT
+          printf '%s' "$FINAL" > "$tmpfile"
+          if gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$tmpfile"; then
+            echo "Release body assembled with combined Verification section."
+          else
+            if [ -n "$VERIFICATION" ]; then
+              echo "::error::Failed to update release body — verification data would be lost. Not publishing."
+              exit 1
+            else
+              echo "::warning::Failed to update release body (no verification data to lose — proceeding)"
+            fi
+          fi
+
+          # ── Publish the draft release (makes it immutable) ──
           # Handle TOCTOU race: if a concurrent run published first, the second
           # call may fail with 422 (immutable). Re-check and exit cleanly.
           if gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false; then

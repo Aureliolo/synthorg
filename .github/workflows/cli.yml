@@ -305,13 +305,13 @@ jobs:
         with:
           subject-checksums: cli/dist/checksums.txt
 
-      - name: Append install instructions and checksums to release notes
+      - name: Append CLI installation and checksums to release notes
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
 
-          # Download checksums from the release we just published.
+          # Download checksums from the release assets.
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
             --pattern "checksums.txt" --dir /tmp
 
@@ -324,25 +324,29 @@ jobs:
           CS_windows_amd64="$(get_checksum synthorg_windows_amd64.zip)"
           CS_windows_arm64="$(get_checksum synthorg_windows_arm64.zip)"
 
-          # Build install instructions + checksum table.
-          INSTALL_NOTES="$(cat <<NOTES
+          # Build CLI section + hidden verification data for finalize-release.
+          CLI_SECTION="$(cat <<NOTES
 
           ---
 
-          ## Installation
+          ## CLI Installation
 
           **Linux / macOS:**
           \`\`\`bash
-          curl -sSfL https://raw.githubusercontent.com/Aureliolo/synthorg/${TAG}/cli/scripts/install.sh | SYNTHORG_VERSION=${TAG} bash
+          curl -sSfL https://synthorg.io/get/install.sh | bash
           \`\`\`
 
           **Windows (PowerShell):**
           \`\`\`powershell
-          \\\$env:SYNTHORG_VERSION='${TAG}'; irm https://raw.githubusercontent.com/Aureliolo/synthorg/${TAG}/cli/scripts/install.ps1 | iex
+          irm https://synthorg.io/get/install.ps1 | iex
           \`\`\`
 
-          ### Checksums (SHA-256)
+          > **Pin to this release:** set \`SYNTHORG_VERSION=${TAG}\` before running
+          > (bash: \`export SYNTHORG_VERSION=${TAG}\` · PowerShell: \`\$env:SYNTHORG_VERSION='${TAG}'\`).
+          >
+          > **New to SynthOrg?** See the [Getting Started guide](https://synthorg.io/get/).
 
+          <!-- CLI_VERIFICATION_DATA
           | Archive | SHA-256 |
           |---------|---------|
           | \`synthorg_linux_amd64.tar.gz\` | \`${CS_linux_amd64}\` |
@@ -352,23 +356,29 @@ jobs:
           | \`synthorg_windows_amd64.zip\` | \`${CS_windows_amd64}\` |
           | \`synthorg_windows_arm64.zip\` | \`${CS_windows_arm64}\` |
 
-          ### Provenance Verification (SLSA Level 3)
-
-          Verify the provenance of any archive with the [GitHub CLI](https://cli.github.com/):
           \`\`\`bash
           gh attestation verify synthorg_linux_amd64.tar.gz -R Aureliolo/synthorg
           \`\`\`
+          Replace the filename with any archive from this release.
+          CLI_VERIFICATION_DATA -->
           NOTES
           )"
 
-          # Idempotent: strip existing Installation section before appending.
+          # Idempotent: strip existing CLI Installation section (+ preceding ---) before appending.
+          # Uses awk to buffer --- lines so the separator doesn't accumulate on re-runs.
           EXISTING_BODY="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body)"
-          CLEANED_BODY="$(printf '%s' "$EXISTING_BODY" | sed '/^## Installation$/,$d')"
-          FULL_BODY="${CLEANED_BODY}${INSTALL_NOTES}"
+          CLEANED_BODY="$(printf '%s' "$EXISTING_BODY" | awk '
+            /^---$/ { buf=$0; next }
+            /^## CLI Installation$/ { buf=""; skip=1; next }
+            { if(buf!="") print buf; buf="" }
+            /^## / { skip=0 }
+            !skip
+          ')"
+          FULL_BODY="${CLEANED_BODY}${CLI_SECTION}"
 
           tmpfile="$(mktemp)"
+          trap 'rm -f "$tmpfile"' EXIT
           printf '%s' "$FULL_BODY" > "$tmpfile"
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$tmpfile"
-          rm -f "$tmpfile"
 
           echo "Release notes updated with install instructions, checksums, and provenance."

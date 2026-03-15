@@ -359,7 +359,7 @@ jobs:
           - Backend: `ghcr.io/aureliolo/synthorg-backend@BACKEND_DIGEST_PH`
           - Web: `ghcr.io/aureliolo/synthorg-web@WEB_DIGEST_PH`
 
-          All images are signed with [cosign](https://github.com/sigstore/cosign). Verify with:
+          <!-- CONTAINER_VERIFICATION_DATA
           ```bash
           cosign verify ghcr.io/aureliolo/synthorg-backend@BACKEND_DIGEST_PH \
             --certificate-identity-regexp='github\.com/Aureliolo/synthorg' \
@@ -370,13 +370,11 @@ jobs:
             --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
           ```
 
-          ### Provenance Verification (SLSA Level 3)
-
-          Verify provenance with the [GitHub CLI](https://cli.github.com/):
           ```bash
           gh attestation verify oci://ghcr.io/aureliolo/synthorg-backend@BACKEND_DIGEST_PH -R Aureliolo/synthorg
           gh attestation verify oci://ghcr.io/aureliolo/synthorg-web@WEB_DIGEST_PH -R Aureliolo/synthorg
           ```
+          CONTAINER_VERIFICATION_DATA -->
           BLOCK
           )
           # Substitute placeholders
@@ -384,6 +382,7 @@ jobs:
           IMAGES=${IMAGES//BACKEND_DIGEST_PH/$BACKEND_DIGEST}
           IMAGES=${IMAGES//WEB_DIGEST_PH/$WEB_DIGEST}
 
-          # Idempotent: strip existing Container Images section before appending
-          CLEANED=$(echo "$EXISTING" | sed '/^## Container Images$/,$d')
+          # Idempotent: strip existing Container Images section before appending.
+          # Uses awk to delete only this section (up to the next ## heading), not to EOF.
+          CLEANED=$(echo "$EXISTING" | awk '/^## Container Images$/{skip=1; next} /^## /{skip=0} !skip')
           gh release edit "$TAG" --notes "${CLEANED}${IMAGES}"
