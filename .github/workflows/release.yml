@@ -22,6 +22,58 @@ jobs:
           config-file: .github/release-please-config.json
           manifest-file: .github/.release-please-manifest.json
 
+      # Draft releases don't create git tags (GitHub only creates tags when
+      # a release is published). Create the tag explicitly via API so the
+      # tag push event triggers Docker/CLI workflows. Uses RELEASE_PLEASE_TOKEN
+      # (PAT) because GITHUB_TOKEN tag pushes don't trigger workflows.
+      - name: Create git tag for draft release
+        if: steps.release.outputs.releases_created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          TAG_NAME: ${{ steps.release.outputs.tag_name || steps.release.outputs['.--tag_name'] }}
+          TAG_SHA: ${{ steps.release.outputs.sha || steps.release.outputs['.--sha'] }}
+        run: |
+          # Guard: fail fast if release-please didn't provide tag metadata
+          if [ -z "$TAG_NAME" ] || [ -z "$TAG_SHA" ]; then
+            echo "::error::Missing tag metadata from release-please outputs (TAG_NAME=$TAG_NAME, TAG_SHA=$TAG_SHA)"
+            exit 1
+          fi
+
+          echo "Creating tag $TAG_NAME at $TAG_SHA"
+
+          # Atomic create: attempt POST unconditionally. Inspect response to
+          # distinguish "already exists" from genuine validation errors.
+          RESPONSE_FILE="$(mktemp)"
+          HTTP_CODE=$(curl -s -o "$RESPONSE_FILE" -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/git/refs" \
+            -d "{\"ref\":\"refs/tags/$TAG_NAME\",\"sha\":\"$TAG_SHA\"}")
+          RESPONSE_BODY=$(cat "$RESPONSE_FILE")
+          rm -f "$RESPONSE_FILE"
+
+          case "$HTTP_CODE" in
+            201)
+              echo "Tag $TAG_NAME created successfully."
+              ;;
+            409)
+              echo "Tag $TAG_NAME already exists — skipping."
+              ;;
+            422)
+              if echo "$RESPONSE_BODY" | grep -qi "Reference already exists"; then
+                echo "Tag $TAG_NAME already exists — skipping."
+              else
+                echo "::error::Failed to create tag $TAG_NAME (HTTP 422): $RESPONSE_BODY"
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::Failed to create tag $TAG_NAME (HTTP $HTTP_CODE): $RESPONSE_BODY"
+              exit 1
+              ;;
+          esac
+
       # When Release Please creates/updates a release PR, update the BSL
       # Change Date to 3 years from today. The date update ships as part
       # of the release PR, so it goes through normal review + merge flow.

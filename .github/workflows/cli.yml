@@ -272,7 +272,7 @@ jobs:
             echo "Attempt $i: release not found yet, waiting 10s..."
             sleep 10
           done
-          echo "Release $TAG not found after 5 minutes — proceeding anyway (GoReleaser will create if needed)."
+          echo "Release $TAG not found after 5 minutes — proceeding, but the next upload step will fail if the draft release is missing."
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
@@ -289,6 +289,16 @@ jobs:
             echo "::error::cli/dist/checksums.txt is missing or empty — GoReleaser may have failed"
             exit 1
           fi
+
+      - name: Upload assets to draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          # gh release upload finds draft releases (unlike GoReleaser's API).
+          # --clobber overwrites if assets already exist (idempotent on re-run).
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+            cli/dist/*.tar.gz cli/dist/*.zip cli/dist/checksums.txt
 
       - name: Attest build provenance (SLSA Level 3)
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0

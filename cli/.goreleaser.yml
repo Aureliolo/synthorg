@@ -36,7 +36,11 @@ checksum:
   algorithm: sha256
 
 release:
-  mode: keep-existing
+  # Skip GoReleaser's release management — Release Please owns the GitHub
+  # Release (created as draft). Assets are uploaded via gh release upload
+  # in the workflow, which can find draft releases (unlike GoReleaser's
+  # API call which returns 404 for drafts queried by tag).
+  disable: true
 
 changelog:
   disable: true
