@@ -97,7 +97,7 @@ runs:
         echo "Polling $PROBE_URL (deadline ${DEADLINE}s, per-attempt timeout ${ATTEMPT_TIMEOUT}s)"
 
         # Each attempt records the HTTP status so the log shows WHY the
-        # probe was still failing (boot time, 5xx, conn-refused) --
+        # probe was still failing (boot time, 5xx, conn-refused);
         # `curl -sf` on its own silently exits 22 on any non-2xx.
         # `--max-time` bounds the total time of each attempt (connect +
         # transfer) so a single hung request cannot push past the

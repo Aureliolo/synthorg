@@ -1,11 +1,11 @@
 # Labels assumed by GitHub Actions workflows in this repo.
 #
-# This file is the source of truth for *workflow-asserted* labels only --
+# This file is the source of truth for *workflow-asserted* labels only:
 # labels that the CI/automation surface relies on existing. Human-applied
 # labels (type:*, prio:*, spec:*, scope:*) are managed via the GitHub UI
 # and are not synced from here.
 #
-# Synced by .github/workflows/sync-labels.yml -- manual workflow_dispatch
+# Synced by .github/workflows/sync-labels.yml via manual workflow_dispatch
 # only. Run it from Actions -> Sync Labels -> Run workflow whenever this
 # file changes. Forks should also run it once after creation to bootstrap
 # the label set.

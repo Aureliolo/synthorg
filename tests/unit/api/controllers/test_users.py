@@ -171,7 +171,7 @@ class TestListUsers:
         assert "pagination" in body
         assert body["pagination"]["limit"] == 50
         # ``total`` is ``null`` under keyset pagination because the
-        # endpoint skips the COUNT(*) round-trip on every request --
+        # endpoint skips the COUNT(*) round-trip on every request;
         # clients derive display counts from ``data.length`` per the
         # frontend contract in ``web/CLAUDE.md``.
         assert body["pagination"]["total"] is None
@@ -447,7 +447,7 @@ class TestDeleteUser:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        # The authenticated CEO attempts to delete themselves --
+        # The authenticated CEO attempts to delete themselves;
         # self-deletion check fires before the CEO role check.
         list_resp = test_client.get(_BASE, headers=_CEO_HEADERS)
         ceo_users = [u for u in list_resp.json()["data"] if u["role"] == "ceo"]

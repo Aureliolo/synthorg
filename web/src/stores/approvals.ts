@@ -24,7 +24,7 @@ const log = createLogger('approvals')
 
 // Runtime sets derived from the canonical enum tuples in
 // `@/api/types/enums`. Building them here rather than re-declaring the
-// literal list keeps the validator in lockstep with the type union --
+// literal list keeps the validator in lockstep with the type union;
 // any drift between the runtime check and the declared enum surfaces
 // at compile time.
 const APPROVAL_STATUS_SET: ReadonlySet<string> = new Set<string>(APPROVAL_STATUS_VALUES)
@@ -66,7 +66,7 @@ function isSignatureShape(value: unknown): boolean {
     typeof v.algorithm === 'string' &&
     typeof v.signature_bytes === 'string' &&
     typeof v.signed_at === 'string' &&
-    // ``chain_position`` must be a finite, non-negative integer --
+    // ``chain_position`` must be a finite, non-negative integer;
     // reject NaN / Infinity / fractional / negative values that
     // ``typeof === 'number'`` would otherwise accept.
     isNonNegInt(v.chain_position)

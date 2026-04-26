@@ -131,8 +131,8 @@ def log_handler_invoke_failed(
 
     Error messages are routed through :func:`safe_error_description` so
     secret-shaped fragments are scrubbed before logging (SEC-1). The
-    ``**context`` kwargs are forwarded verbatim and are **not** scrubbed
-    -- callers must not pass credentials, tokens, or other secrets
+    ``**context`` kwargs are forwarded verbatim and are **not** scrubbed;
+    callers must not pass credentials, tokens, or other secrets
     through ``context``. This function defensively rejects context keys
     whose name suggests a credential (``password``, ``token``,
     ``api_key``, ``authorization``, ``secret``, etc.) so a slip is

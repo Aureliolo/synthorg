@@ -22,7 +22,7 @@ class ContinuousMode:
     """Long-running wrapper around :class:`SimulationRunner`.
 
     Dispatches one simulation run per interval until :meth:`stop`
-    is called. Only one run may be active per instance --
+    is called. Only one run may be active per instance;
     :meth:`start` raises ``RuntimeError`` if already running.
     Use separate instances for concurrent simulation loops.
     """

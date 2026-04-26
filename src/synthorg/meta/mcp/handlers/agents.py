@@ -1,8 +1,8 @@
 """Agent domain MCP handlers.
 
-Shims the 18 agent tools onto the existing HR services --
-``agent_registry`` (``AgentRegistryService``), ``performance_tracker``,
-``training_service``. Identity create / update / autonomy update /
+Shims the 18 agent tools onto the existing HR services
+(``agent_registry`` / ``AgentRegistryService``, ``performance_tracker``,
+``training_service``). Identity create / update / autonomy update /
 collaboration calibration are all live as of META-MCP-3.
 
 The remaining ``capability_gap`` returns are reserved for genuinely

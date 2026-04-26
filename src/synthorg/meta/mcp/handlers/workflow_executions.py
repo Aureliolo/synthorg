@@ -3,7 +3,7 @@
 Split out of ``meta/mcp/handlers/workflows.py`` so the parent module
 stays under the project's 800-line ceiling. The four execution handlers
 (list / get / start / cancel) share the same envelope contract,
-guardrails, and error mapping as the rest of the workflow domain --
+guardrails, and error mapping as the rest of the workflow domain;
 they just have enough error branches that grouping them with the rest
 pushed the parent module past budget.
 """
@@ -233,7 +233,7 @@ async def workflow_executions_cancel(  # noqa: PLR0911 -- error mapping
         return err(exc)
     # Check service availability before parsing ``execution_id`` so
     # deployments without ``workflow_execution_service`` surface
-    # ``capability_gap`` even when the caller's input is malformed --
+    # ``capability_gap`` even when the caller's input is malformed,
     # matching the order the other three execution handlers use.
     service = _execution_service(app_state)
     if service is None:

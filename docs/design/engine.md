@@ -298,7 +298,7 @@ cancelled), `SUBWORKFLOW_COMPLETED` (subworkflow child graph finished),
 **Condition evaluator** (`condition_eval.py`): Safe string evaluator
 (no `eval()`/`exec()`). Supports boolean literals (`true`/`false`), context
 key lookup (truthy check), equality (`key == value`), inequality
-(`key != value`), compound operators (`AND`, `OR`, `NOT` --
+(`key != value`), compound operators (`AND`, `OR`, `NOT`,
 case-insensitive), and parenthesized groups. Operator precedence:
 NOT > AND > OR. Simple expressions without compound operators take a
 zero-overhead quick path. Parse errors are logged and resolve to `False`.
@@ -424,7 +424,7 @@ obs_loop -> observers
   `Task.model_validate({**task.model_dump(), **updates})` or
   `Task.with_transition(...)`); the existing instance is never mutated.
 - **Optimistic concurrency**: Per-task version counters held in-memory
-  (volatile).  An unknown task is seeded at version 1 on first access --
+  (volatile).  An unknown task is seeded at version 1 on first access;
   this is a heuristic baseline, **not** loaded from persistence.  Version
   tracking resets on engine restart; durable persistence of versions is a
   future enhancement.  Callers can pass `expected_version` to detect stale
@@ -557,7 +557,7 @@ observers sequentially per event. If the observer queue is full, the
 event is logged at WARNING and dropped (best-effort delivery).
 
 **Notification semantics**: best-effort. Observer errors are logged at
-WARNING and swallowed (`MemoryError` and `RecursionError` propagate) --
+WARNING and swallowed (`MemoryError` and `RecursionError` propagate);
 a failing observer never blocks the mutation pipeline or prevents
 subsequent observers from running.
 

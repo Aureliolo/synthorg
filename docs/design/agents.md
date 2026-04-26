@@ -300,7 +300,7 @@ pre-configured `SQLiteVersionRepository[AgentIdentity]`.
 
 `AgentRegistryService` accepts an optional `VersioningService[AgentIdentity]`
 dependency (constructor injection). The app factory (`api.app:create_app`) auto-wires
-this dependency during startup so identity versioning is enabled out of the box --
+this dependency during startup so identity versioning is enabled out of the box;
 no manual configuration required. When wired:
 
 - `register()` snapshots the initial identity immediately after storing it.

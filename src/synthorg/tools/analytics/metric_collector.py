@@ -1,7 +1,7 @@
 """Metric collector tool -- record custom metrics via a sink.
 
 The ``MetricSink`` protocol defines a vendor-agnostic interface
-for recording metrics.  No concrete implementation is shipped --
+for recording metrics.  No concrete implementation is shipped;
 users inject a sink at construction time.
 """
 

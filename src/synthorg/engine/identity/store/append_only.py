@@ -28,7 +28,7 @@ class AppendOnlyIdentityStore:
 
     Wraps ``AgentRegistryService`` for current-identity management
     and ``VersioningService[AgentIdentity]`` for version persistence.
-    Every ``put`` and ``set_current`` call appends a new version --
+    Every ``put`` and ``set_current`` call appends a new version;
     no version is ever overwritten or deleted.
 
     Args:

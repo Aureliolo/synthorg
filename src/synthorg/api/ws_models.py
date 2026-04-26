@@ -119,8 +119,8 @@ class WsEventType(StrEnum):
 class WsEvent(BaseModel):
     """A real-time event pushed over WebSocket.
 
-    Callers must not mutate the ``payload`` dict after construction
-    -- the dict is a mutable reference inside a frozen model.
+    Callers must not mutate the ``payload`` dict after construction;
+    the dict is a mutable reference inside a frozen model.
 
     Attributes:
         version: Wire-protocol version. Clients MUST ignore events whose

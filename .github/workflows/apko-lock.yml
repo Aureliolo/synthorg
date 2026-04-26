@@ -75,7 +75,7 @@ jobs:
       - name: Update lockfiles
         run: |
           for config in docker/*/apko.yaml; do
-            # docker/web/apko.yaml depends on synthorg-web-assets@local --
+            # docker/web/apko.yaml depends on synthorg-web-assets@local,
             # a melange-built apk produced fresh per docker.yml run, with
             # no stable upstream to lock against. Skipping cleanly avoids
             # `failed to read apk key: melange.rsa.pub` when apko looks

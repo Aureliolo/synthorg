@@ -224,7 +224,7 @@ jobs:
 
       - name: Prepend Highlights to release PR body
         if: steps.release.outputs.pr != '' && steps.pr-body.outputs.skip != 'true' && steps.highlights.outcome == 'success' && steps.highlights.outputs.response != ''
-        # Same non-blocking rationale as the Highlights generation step --
+        # Same non-blocking rationale as the Highlights generation step;
         # a gh API hiccup while editing the PR body must not block the
         # release.
         continue-on-error: true

@@ -346,7 +346,7 @@ methods plus optional lifecycle hooks for stateful strategies.
 class CeremonySchedulingStrategy(Protocol):
     """Pluggable strategy for ceremony scheduling."""
 
-    # -- Core evaluation (stateless, called per event) --
+    # Core evaluation (stateless, called per event)
 
     def should_fire_ceremony(
         self,
@@ -366,7 +366,7 @@ class CeremonySchedulingStrategy(Protocol):
         """Return target status if sprint should auto-transition, else None."""
         ...
 
-    # -- Lifecycle hooks (optional, for stateful strategies) --
+    # Lifecycle hooks (optional, for stateful strategies)
 
     async def on_sprint_activated(
         self, sprint: Sprint, config: SprintConfig,
@@ -396,7 +396,7 @@ class CeremonySchedulingStrategy(Protocol):
         payload: Mapping[str, Any],
     ) -> None: ...
 
-    # -- Metadata --
+    # Metadata
 
     @property
     def strategy_type(self) -> CeremonyStrategyType: ...

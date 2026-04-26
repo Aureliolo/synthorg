@@ -141,7 +141,7 @@ def _unavailable_response(
 ) -> Response[ApiResponse[ReadinessStatus]]:
     """Return a 503 ``unavailable`` readiness body.
 
-    Used when the probe TaskGroup itself raises an unexpected error --
+    Used when the probe TaskGroup itself raises an unexpected error;
     we still want to emit a well-formed envelope so operator tooling
     can parse it, rather than letting a 500 surface.
     """

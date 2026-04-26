@@ -202,8 +202,8 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
         """Increment the acquire counter; report whether GC should run.
 
         Counter + threshold check run under the meta-lock to avoid
-        redundant concurrent sweeps. Increments on every acquire --
-        allowed AND denied -- so a key under sustained deny pressure
+        redundant concurrent sweeps. Increments on every acquire
+        (allowed AND denied) so a key under sustained deny pressure
         still triggers periodic cold-bucket sweeps.
         """
         async with self._meta_lock:
@@ -266,10 +266,10 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
 
         The horizon is computed per bucket from its own last-observed
         ``window_seconds`` so a short-window sweep cannot evict
-        long-window buckets prematurely.  Also reclaims orphan locks --
-        entries in ``self._locks`` that have no matching bucket (e.g.
+        long-window buckets prematurely.  Also reclaims orphan locks
+        (entries in ``self._locks`` that have no matching bucket, e.g.
         a cancelled ``acquire`` that created the lock before the bucket
-        was materialised) -- so they do not leak memory across the
+        was materialised) so they do not leak memory across the
         process lifetime.
         """
         async with self._meta_lock:

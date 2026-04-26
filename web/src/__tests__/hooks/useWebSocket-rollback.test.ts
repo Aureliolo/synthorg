@@ -38,7 +38,7 @@ describe('useWebSocket registration rollback', () => {
   beforeEach(() => {
     // ``restoreAllMocks`` (not ``clearAllMocks``) so
     // ``mockImplementationOnce`` queues from the previous test are
-    // fully torn down. ``clearAllMocks`` only wipes call history --
+    // fully torn down. ``clearAllMocks`` only wipes call history;
     // any leftover implementation queue from a prior test would leak
     // into the next, bypassing the real store path.
     vi.restoreAllMocks()
@@ -99,7 +99,7 @@ describe('useWebSocket registration rollback', () => {
 
     unmount()
 
-    // Exactly the handlers we registered should be deregistered --
+    // Exactly the handlers we registered should be deregistered;
     // no stale phantom entries for C (which threw) or D (which was
     // never attempted).
     const registeredHandlers = onChannelSpy.mock.calls

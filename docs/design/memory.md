@@ -493,7 +493,7 @@ the execution trajectory as an EPISODIC memory entry tagged `"distillation"`.
 
 `AgentEngine` wires this into `_post_execution_pipeline` when
 `distillation_capture_enabled=True` is passed to the constructor (default False
-for opt-in behavior).  Capture fires regardless of termination reason --
+for opt-in behavior).  Capture fires regardless of termination reason;
 successful runs, errors, timeouts, and budget exhaustions all produce useful
 trajectory context for downstream consolidation.  The helper is non-critical:
 non-system failures log at WARNING and return `None`; system errors
@@ -723,7 +723,7 @@ company_b_backend = create_backend(company_b_config.persistence)
 !!! warning "Planned"
 
     Runtime backend switching (e.g., migrating a company from SQLite to PostgreSQL during
-    operation) is a planned future capability. The protocol-based design already supports this --
+    operation) is a planned future capability. The protocol-based design already supports this:
     the engine would disconnect the current backend, connect a new one with different config,
     and migrate. Implementation details (data migration tooling, zero-downtime switchover,
     connection draining) are deferred to the PostgreSQL backend implementation.

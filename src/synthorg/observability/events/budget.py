@@ -38,7 +38,7 @@ BUDGET_RECORDS_QUERIED: Final[str] = "budget.records.queried"
 BUDGET_UTILIZATION_QUERIED: Final[str] = "budget.utilization.queried"
 BUDGET_UTILIZATION_ERROR: Final[str] = "budget.utilization.error"
 
-# -- Cost tracker eviction events --
+# Cost tracker eviction events
 BUDGET_RECORDS_PRUNED: Final[str] = "budget.records.pruned"
 BUDGET_RECORDS_AUTO_PRUNED: Final[str] = "budget.records.auto_pruned"
 BUDGET_QUERY_EXCEEDS_RETENTION: Final[str] = "budget.query.exceeds_retention"
@@ -46,18 +46,18 @@ BUDGET_QUERY_EXCEEDS_RETENTION: Final[str] = "budget.query.exceeds_retention"
 BUDGET_PROVIDER_USAGE_QUERIED: Final[str] = "budget.provider_usage.queried"
 BUDGET_NOTIFICATION_FAILED: Final[str] = "budget.notification.failed"
 
-# -- Embedding cost tracking events --
+# Embedding cost tracking events
 BUDGET_EMBEDDING_COST_RECORDED: Final[str] = "budget.embedding_cost.recorded"
 BUDGET_EMBEDDING_COST_FAILED: Final[str] = "budget.embedding_cost.failed"
 BUDGET_EMBEDDING_MODEL_UNPRICED: Final[str] = "budget.embedding_cost.model_unpriced"
 
-# -- Project-level budget events --
+# Project-level budget events
 BUDGET_PROJECT_COST_QUERIED: Final[str] = "budget.project_cost.queried"
 BUDGET_PROJECT_RECORDS_QUERIED: Final[str] = "budget.project_records.queried"
 BUDGET_PROJECT_BUDGET_EXCEEDED: Final[str] = "budget.project_budget.exceeded"
 BUDGET_PROJECT_ENFORCEMENT_CHECK: Final[str] = "budget.project.enforcement_check"
 
-# -- Durable project cost aggregate events --
+# Durable project cost aggregate events
 BUDGET_PROJECT_COST_AGGREGATED: Final[str] = "budget.project_cost.aggregated"
 BUDGET_PROJECT_COST_AGGREGATION_FAILED: Final[str] = (
     "budget.project_cost.aggregation_failed"

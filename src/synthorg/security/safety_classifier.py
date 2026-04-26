@@ -132,7 +132,7 @@ class PermissionTier(StrEnum):
     approval.
 
     Members:
-        SAFE_TOOL: Action type is in the safe-tool allowlist --
+        SAFE_TOOL: Action type is in the safe-tool allowlist;
             bypass the classifier entirely.
         IN_PROJECT: In-project operation -- lighter review
             (reserved for future use; currently falls through

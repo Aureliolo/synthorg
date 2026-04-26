@@ -600,7 +600,7 @@ jobs:
         working-directory: web
         run: npm ci --ignore-scripts && npm run build
 
-      # D2 does not publish checksums or signatures in its releases --
+      # D2 does not publish checksums or signatures in its releases;
       # integrity relies on HTTPS transport from GitHub. Accepted tradeoff:
       # D2 is a docs-only diagramming tool (not a security scanner).
       # Version managed by Renovate (regex manager in renovate.json).

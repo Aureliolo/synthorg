@@ -183,7 +183,7 @@ def _reset_for_testing() -> None:
     """Clear the process-singleton guard.
 
     Intended for tests that need to rebuild an :class:`OtlpTraceHandler`
-    within the same process. Production code must not call this --
+    within the same process. Production code must not call this;
     it leaves the previous provider installed as the OTel global,
     which is exactly the state the singleton guard exists to prevent.
     """

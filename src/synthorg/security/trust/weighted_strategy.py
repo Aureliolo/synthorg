@@ -35,8 +35,8 @@ class WeightedTrustStrategy:
       - task_difficulty: quality score normalized to [0, 1]
       - completion_rate: task success rate from the latest window
       - error_rate: failure penalty (tasks_failed / data_point_count)
-      - human_feedback: task volume proxy (tasks / 100, capped at 1.0)
-        -- placeholder until actual human feedback signals are available
+      - human_feedback: task volume proxy (tasks / 100, capped at 1.0);
+        placeholder until actual human feedback signals are available
 
     The score is compared against configurable thresholds to
     determine the recommended trust level.  Trust changes are
@@ -124,8 +124,8 @@ class WeightedTrustStrategy:
         - completion: success rate from latest window
         - error: 1 - (tasks_failed / data_point_count), distinct from
           success_rate because data_point_count includes non-task events
-        - feedback: task volume ratio (tasks/100, capped at 1.0)
-          -- placeholder for human feedback signals
+        - feedback: task volume ratio (tasks/100, capped at 1.0);
+          placeholder for human feedback signals
         """
         # Quality score normalized to [0, 1]
         difficulty_factor = (

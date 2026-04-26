@@ -63,7 +63,7 @@ class SimulationRunner:
             report_strategy: Optional report strategy for
                 producing a final report dict.
             feedback_sink: Optional async callback invoked for every
-                :class:`ClientFeedback` emitted during review --
+                :class:`ClientFeedback` emitted during review;
                 used by the API layer to populate the per-client
                 satisfaction history.
         """

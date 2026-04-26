@@ -425,7 +425,7 @@ class PostgresCostRecordRepository:
         except ValidationError as exc:
             # Deserialization failures are programmer/schema drift
             # errors, NOT transient DB failures.  Keep them distinct
-            # in the event payload so callers can tell them apart --
+            # in the event payload so callers can tell them apart;
             # retrying a ValidationError will never succeed.
             msg = "Failed to deserialize cost records"
             logger.exception(

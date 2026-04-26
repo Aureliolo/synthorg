@@ -78,7 +78,7 @@ class HybridStrategy:
     prevent percentage-based triggers from firing repeatedly once
     their threshold is crossed.
 
-    Auto-transition: ACTIVE to IN_REVIEW on whichever comes first --
+    Auto-transition: ACTIVE to IN_REVIEW on whichever comes first:
     task completion threshold (only when tasks exist) *or* calendar
     duration boundary.
 

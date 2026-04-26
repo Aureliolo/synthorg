@@ -2,7 +2,7 @@
 
 Implements three uncertainty signals from SRLM (arXiv:2603.15653):
 self-consistency filter, verbalized confidence (VC), and trace
-length (Len).  Joint scoring: ``s(p) = VC(p) + Len(p)`` --
+length (Len).  Joint scoring: ``s(p) = VC(p) + Len(p)``;
 least-negative wins.
 """
 

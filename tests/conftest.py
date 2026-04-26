@@ -108,7 +108,7 @@ try:
     )
     _local_combined_db = MultiplexedDatabase(_local_db, _shared_db)
 except OSError:
-    # HOME unwritable (containerized CI, read-only filesystem) --
+    # HOME unwritable (containerized CI, read-only filesystem);
     # fall back to local-only DB.  Failures still captured in
     # .hypothesis/examples/ for the duration of this worktree.
     _local_combined_db = MultiplexedDatabase(_local_db)

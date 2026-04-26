@@ -150,8 +150,8 @@ export interface OrgTree {
  * (usually `executive`).  Unlike the earlier design where the CEO
  * was extracted as its own standalone node, here the CEO lives
  * INSIDE its home department box and the box itself is the chart's
- * root.  That matches real-world org charts -- "leadership" is a
- * real department, not a detached node floating above everything --
+ * root.  That matches real-world org charts: "leadership" is a
+ * real department, not a detached node floating above everything,
  * and avoids the "edge cuts through the executive box" problem
  * because inter-department lines now start from the root dept box's
  * bottom border (not from an agent buried inside it).

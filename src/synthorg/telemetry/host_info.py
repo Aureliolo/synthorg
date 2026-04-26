@@ -269,7 +269,7 @@ async def _probe_daemon_info(aiodocker_mod: object) -> object | None:
     (client construction error, timeout, daemon error, non-dict
     response). Never raises. The :func:`asyncio.timeout` wrapper
     caps the probe at :data:`_DOCKER_INFO_TIMEOUT_SECONDS` because
-    ``aiodocker`` inherits aiohttp's 300 s ``sock_read`` default --
+    ``aiodocker`` inherits aiohttp's 300 s ``sock_read`` default;
     a wedged-but-reachable daemon would otherwise stall startup for
     up to five minutes.
     """

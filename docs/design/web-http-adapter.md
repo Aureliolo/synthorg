@@ -90,7 +90,7 @@ The remaining 49 leaks after A1 + M4 fall into three categories
    maintains its own cookie jar separate from `document.cookie`, so
    the `test-setup.tsx` shim cannot reach it.
 2. **beta (32 leaks)**: MSW's XHR interceptor
-   (`@mswjs/interceptors/lib/node/XMLHttpRequest-C8dIZpds.mjs:320:7` --
+   (`@mswjs/interceptors/lib/node/XMLHttpRequest-C8dIZpds.mjs:320:7`,
    `queueMicrotask(() => onRequest?.call(...).finally(...))` and a
    sibling at `:315:42` cloning `fetchRequest`). These Promises are
    created *during* axios's `xhr.send()` call inside the test body.

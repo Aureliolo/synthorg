@@ -21,7 +21,7 @@ jobs:
     name: Create Dev Pre-Release
     # Skip Release Please version-bump merges and tag pushes (handled by
     # the stable release pipeline). Also skip if a v* tag already points
-    # at this commit (the stable release just landed). Skip in forks --
+    # at this commit (the stable release just landed). Skip in forks;
     # the release-bot App token isn't available off the upstream release
     # environment.
     if: >-
@@ -141,7 +141,7 @@ jobs:
 
           # 1. Create the tag via API. The App installation token minted
           #    above carries the ``contents: write`` scope needed for
-          #    /git/refs POST AND -- unlike the ambient GITHUB_TOKEN --
+          #    /git/refs POST AND (unlike the ambient GITHUB_TOKEN)
           #    its ref-create fires downstream ``push`` workflow events,
           #    so the tag push triggers Docker + CLI.
           gh api "repos/$GITHUB_REPOSITORY/git/refs" \

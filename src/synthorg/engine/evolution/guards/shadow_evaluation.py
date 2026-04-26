@@ -18,7 +18,7 @@ The guard composes pluggable pieces:
 The decision predicate is strict: approve iff the score regression is
 at or below ``score_regression_tolerance`` **and** the pass-rate
 regression is at or below ``pass_rate_regression_tolerance * baseline``.
-An empty probe suite, or any baseline failure, rejects the proposal --
+An empty probe suite, or any baseline failure, rejects the proposal;
 shadow eval cannot approve into the void.
 """
 

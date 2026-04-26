@@ -72,7 +72,7 @@ export function AgentFilters({ className }: { className?: string }) {
           // Departments come from the LIVE company config (see the
           // useMemo above). The store's `departmentFilter` is
           // `string | null` precisely so user-created departments
-          // beyond the static `DepartmentName` enum are accepted --
+          // beyond the static `DepartmentName` enum are accepted;
           // no cast needed.
           setDepartmentFilter(validDepartmentNames.has(v) ? v : null)
         }}

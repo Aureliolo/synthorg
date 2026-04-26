@@ -704,7 +704,7 @@ class _FakeBackend:
     @property
     def workflow_versions(self) -> object:
         # ``PersistenceBackend`` is ``@runtime_checkable``, which only
-        # verifies that the ``workflow_versions`` attribute exists --
+        # verifies that the ``workflow_versions`` attribute exists,
         # not that its value implements the full
         # ``VersionRepository[WorkflowDefinition]`` interface.
         # Returning a bare ``object()`` is enough to satisfy the

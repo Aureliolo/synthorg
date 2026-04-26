@@ -27,7 +27,7 @@ def _import_script() -> ModuleType:
 gate = _import_script()
 
 
-# -- Fixtures --
+# Fixtures
 
 
 @pytest.fixture
@@ -59,7 +59,7 @@ def _claim_with_text(
     )
 
 
-# -- count_event_modules --
+# count_event_modules
 
 
 @pytest.mark.unit
@@ -81,7 +81,7 @@ class TestCountEventModules:
             assert gate.count_event_modules() == 0
 
 
-# -- parse_claim --
+# parse_claim
 
 
 @pytest.mark.unit
@@ -135,7 +135,7 @@ class TestParseClaim:
             gate.parse_claim(missing)
 
 
-# -- main() --
+# main()
 
 
 @pytest.mark.unit

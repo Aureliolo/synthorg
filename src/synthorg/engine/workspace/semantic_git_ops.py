@@ -244,7 +244,7 @@ async def run_semantic_analysis(  # noqa: PLR0913
     Orchestrates the full pipeline: finds merge base, gets changed
     files, fetches base and merged sources from git objects, and
     invokes the analyzer. All file content is read via
-    ``git show {sha}:{path}`` -- never from the live checkout --
+    ``git show {sha}:{path}`` (never from the live checkout)
     so analysis is safe to run outside the merge lock.
 
     Returns ``()`` when disabled, not configured, or on failure.

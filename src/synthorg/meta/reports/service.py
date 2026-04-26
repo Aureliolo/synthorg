@@ -95,7 +95,7 @@ class ReportsService:
             raise ValueError(msg)
         async with self._lock:
             # Sort by (generated_at, insertion_idx) so equal timestamps
-            # break toward the *later*-inserted report when reversed --
+            # break toward the *later*-inserted report when reversed,
             # guaranteeing a stable newest-first ordering when two
             # reports happen to share a timestamp (common in test
             # harnesses that pin ``datetime.now``).

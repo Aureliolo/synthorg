@@ -183,7 +183,7 @@ class BackgroundTaskRegistry:
         for task in still_pending:
             task.cancel()
         # Give cancelled tasks the remainder of the deadline to run
-        # their done-callbacks so ``active_count`` drops to zero --
+        # their done-callbacks so ``active_count`` drops to zero;
         # the caller asked for a ``timeout_sec`` bound, not
         # ``2 * timeout_sec``. A task that catches ``CancelledError``
         # without re-raising still exits at most at the original

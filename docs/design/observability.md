@@ -246,8 +246,8 @@ and once again via root propagation through the structlog sinks.
 overrides so explicit user settings take precedence) resolves this by:
 
 - Suppressing LiteLLM's raw `print()` output via `litellm.set_verbose = False` and
-  `litellm.suppress_debug_info = True` (applied only when `litellm` is already imported --
-  avoids triggering LiteLLM's expensive import side-effects)
+  `litellm.suppress_debug_info = True` (applied only when `litellm` is already imported,
+  to avoid triggering LiteLLM's expensive import side-effects)
 - Clearing all handlers from `LiteLLM`, `LiteLLM Router`, `LiteLLM Proxy`, `aiosqlite`,
   `httpcore`, `httpcore.http11`, `httpcore.connection`, `httpx`, `uvicorn`, `uvicorn.error`,
   `uvicorn.access`, `anyio`, `multipart`, `faker`, and `faker.factory` loggers

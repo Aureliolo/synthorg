@@ -51,7 +51,7 @@ def _resolve_health_port() -> int:
 
     Reads ``SYNTHORG_FINE_TUNE_HEALTH_PORT``; falls back to
     :data:`_DEFAULT_HEALTH_PORT` when unset. A malformed or
-    out-of-range value is a startup-time container config error --
+    out-of-range value is a startup-time container config error;
     log ``CONFIG_VALIDATION_FAILED`` and raise :class:`ValueError` so
     the orchestrator sees a fast, loud failure instead of the
     container silently binding the wrong port.

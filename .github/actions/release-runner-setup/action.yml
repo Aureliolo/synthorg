@@ -9,8 +9,8 @@ description: >-
   together. See docs/reference/github-environments.md#release_bot_app_ for
   provisioning.
 
-  Callers MUST have checked out the repository before invoking this composite
-  -- the action.yml file needs to exist on the runner's disk. Every current
+  Callers MUST have checked out the repository before invoking this composite;
+  the action.yml file needs to exist on the runner's disk. Every current
   caller already performs its own checkout (with per-workflow `fetch-depth`
   semantics), so this composite deliberately does not include one.
 

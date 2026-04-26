@@ -285,7 +285,7 @@ template:
       budget_percent: 20
       head_role: "Product Manager"
 
-  workflow: "agile_kanban"     # operational configs vary per template --
+  workflow: "agile_kanban"     # operational configs vary per template;
   communication: "hybrid"      # see Company Types table for each template's defaults
 
   workflow_config:             # optional Kanban/Sprint sub-configurations

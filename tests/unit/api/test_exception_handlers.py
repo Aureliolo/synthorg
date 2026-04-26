@@ -790,7 +790,7 @@ class TestDomainErrorMapping:
     to ``handle_unexpected`` (500, INTERNAL_ERROR).  Now each base declares
     HTTP metadata ClassVars (``status_code``, ``error_code``,
     ``error_category``, ``retryable``, ``default_message``) and
-    ``handle_domain_error`` maps them through ``_build_response`` --
+    ``handle_domain_error`` maps them through ``_build_response``,
     giving every domain exception a correct structured response.
     """
 

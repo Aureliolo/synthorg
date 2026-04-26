@@ -63,7 +63,7 @@ jobs:
       #
       # Uses the same system-user identity (sub=system, iss=synthorg-cli,
       # aud=synthorg-backend) that the Go CLI uses.  The system user is
-      # bootstrapped at backend startup and skips pwd_sig validation --
+      # bootstrapped at backend startup and skips pwd_sig validation;
       # the JWT HMAC signature is the sole auth gate.
       # See: src/synthorg/api/auth/middleware.py _resolve_jwt_user()
       - name: Generate DAST JWT
@@ -166,8 +166,8 @@ jobs:
 
           Likely cause: backend image failed to boot, OpenAPI spec
           regression broke the scanner target, or ZAP itself errored.
-          The scan-finding issue (created by the ZAP action) is separate
-          -- this tracking issue is for the workflow plumbing itself.
+          The scan-finding issue (created by the ZAP action) is separate;
+          this tracking issue is for the workflow plumbing itself.
           EOF
             echo 'TRACKING_ISSUE_BODY_EOF'
           } >> "$GITHUB_OUTPUT"

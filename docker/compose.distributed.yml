@@ -2,7 +2,7 @@
 #
 # Merge this on top of docker/compose.yml to actually flip the backend
 # service onto the NATS JetStream bus when `--profile distributed` is
-# active. Compose profiles alone only control which services start --
+# active. Compose profiles alone only control which services start;
 # they do not change how already-defined services are configured, so
 # this overlay has to exist as a separate file users apply explicitly:
 #

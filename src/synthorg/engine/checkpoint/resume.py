@@ -85,7 +85,7 @@ def deserialize_and_reconcile(  # noqa: PLR0913
         if compression is not None
         else ""
     )
-    # May reduce to "details redacted" if no alphanumeric content remains --
+    # May reduce to "details redacted" if no alphanumeric content remains;
     # leak prevention takes priority over detail in LLM context.
     safe_error = sanitize_message(error_message)
     category_note = f"Failure category: {failure_category.value}. "

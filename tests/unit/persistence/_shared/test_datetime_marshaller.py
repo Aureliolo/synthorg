@@ -127,7 +127,7 @@ class TestParseIsoUtc:
         # repeats the 02:00-02:59 hour locally.  Both ``fold=0``
         # (the first, CEST occurrence) and ``fold=1`` (the second,
         # CET occurrence) refer to *different* UTC instants and must
-        # both roundtrip through parse + format without collision --
+        # both roundtrip through parse + format without collision;
         # this is the exact contract that breaks if a future change
         # ever drops the offset suffix or rewrites it from ``ZoneInfo``
         # context.
@@ -247,7 +247,7 @@ class TestCoerceRowTimestamp:
         assert result.tzinfo is UTC
 
     def test_aware_non_utc_datetime_normalized(self) -> None:
-        # psycopg can hand back TIMESTAMPTZ in the session timezone --
+        # psycopg can hand back TIMESTAMPTZ in the session timezone;
         # the dispatcher must converge on UTC.
         plus_one = timezone(timedelta(hours=1))
         value = datetime(2026, 4, 26, 13, 0, tzinfo=plus_one)

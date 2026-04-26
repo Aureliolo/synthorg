@@ -80,7 +80,7 @@ def test_every_policy_lookup_resolves() -> None:
                 continue
             first = node.args[0]
             if not (isinstance(first, ast.Constant) and isinstance(first.value, str)):
-                # A non-literal first arg is unusual but not wrong --
+                # A non-literal first arg is unusual but not wrong;
                 # the runtime KeyError remains the safety net.
                 continue
             if first.value not in RATE_LIMIT_POLICIES:

@@ -688,7 +688,7 @@ touch .claude/pre-pr-review-active.lock
 While the lock exists, the hook denies the `Edit` and `Write` tools
 for targets outside `_audit/` and the lock file itself. That is the
 exact scope: other mutation paths (for example, `Bash` commands that
-write via redirection or `sed -i`) are not covered by this hook --
+write via redirection or `sed -i`) are not covered by this hook;
 the project's broader `check_bash_no_write.sh` hook is what blocks
 those, independently of the triage gate.
 

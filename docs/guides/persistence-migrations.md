@@ -33,9 +33,9 @@ justification after `--` is required).
    repository.
 
 2. **Implement both backends.**
-   - `src/synthorg/persistence/sqlite/<entity>_repo.py` --
+   - `src/synthorg/persistence/sqlite/<entity>_repo.py`:
      `SQLite<Name>Repository(db: aiosqlite.Connection)`.
-   - `src/synthorg/persistence/postgres/<entity>_repo.py` --
+   - `src/synthorg/persistence/postgres/<entity>_repo.py`:
      `Postgres<Name>Repository(pool: AsyncConnectionPool)`.
 
    Use `# noqa: TC001` on runtime-needed type imports; Pydantic v2

@@ -286,7 +286,7 @@ async def classify_execution_errors(  # noqa: PLR0913
     internally -- semantic detectors no longer accept a separate
     rate limiter to avoid double-throttling.
 
-    Returns ``None`` when the taxonomy is disabled.  Never raises --
+    Returns ``None`` when the taxonomy is disabled.  Never raises;
     all exceptions except ``MemoryError``/``RecursionError`` are
     caught and logged as ``CLASSIFICATION_ERROR``.
 

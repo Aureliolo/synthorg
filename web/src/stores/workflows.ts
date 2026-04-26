@@ -285,7 +285,7 @@ export const useWorkflowsStore = create<WorkflowsState>()((set) => ({
         failedReasons,
       }
     } catch (err) {
-      // Unexpected runtime path (not a per-item Promise rejection --
+      // Unexpected runtime path (not a per-item Promise rejection;
       // those are caught by Promise.allSettled). Preserve the store's
       // mutation contract: log, toast, and return the false sentinel.
       log.error(

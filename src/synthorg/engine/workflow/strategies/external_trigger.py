@@ -77,7 +77,7 @@ _VALID_SOURCE_TYPES: frozenset[str] = frozenset({"webhook", "git_event"})
 class ExternalTriggerStrategy:
     """Ceremony scheduling strategy driven by external signals.
 
-    Ceremonies fire when a matching external event is received --
+    Ceremonies fire when a matching external event is received,
     either via ``context.external_events`` (checked at evaluation
     time) or the ``on_external_event`` lifecycle hook (buffered for
     later evaluation).  Event source registration is declarative

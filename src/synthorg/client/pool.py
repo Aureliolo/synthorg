@@ -81,7 +81,7 @@ class ClientPool:
 
         Inactive clients remain visible to ``get_profile`` but are
         excluded from ``list_clients`` and ``list_profiles`` so the
-        runner and review stages stop selecting them. Idempotent --
+        runner and review stages stop selecting them. Idempotent:
         deactivating an already-inactive client is a no-op.
 
         Raises:

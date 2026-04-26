@@ -516,7 +516,7 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
                 )
                 await self._wait_sidecar_healthy(docker, sidecar_id)
             except BaseException as exc:
-                # Catch BaseException to handle CancelledError too --
+                # Catch BaseException to handle CancelledError too;
                 # sidecar must be cleaned up even on task cancellation.
                 removed = await self._remove_container(
                     docker,

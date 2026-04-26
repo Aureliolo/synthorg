@@ -5,7 +5,7 @@ tracked Python file under ``src/synthorg/`` for a curated list of
 forbidden patterns that have no legitimate use in application code.
 Designed for pre-push and GitHub Actions.
 
-Only ``*.py`` files are scanned.  Docs are intentionally NOT scanned --
+Only ``*.py`` files are scanned.  Docs are intentionally NOT scanned;
 operator-facing deployment guides legitimately contain ``localhost:<port>``
 examples and the occasional ``'en-US'`` / currency-code reference.
 
@@ -260,7 +260,7 @@ def _scan_file(file_path: Path, rel: str) -> list[str]:  # noqa: C901
 def _resolve_root(root: Path, project_root: Path) -> Path | None:
     """Resolve *root* to an absolute path anchored under *project_root*.
 
-    Returns ``None`` if the resolved path is outside the project root --
+    Returns ``None`` if the resolved path is outside the project root;
     the caller should treat that as a fatal argv error rather than a
     silent skip.  This is the path-traversal guard: a ``--paths ../..``
     argument is a configuration mistake, not a valid scan target.

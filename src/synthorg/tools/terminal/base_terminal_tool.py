@@ -114,7 +114,7 @@ class BaseTerminalTool(BaseTool, ABC):
         parts = normalized.split(maxsplit=1)
         executable = parts[0] if parts else ""
 
-        # Reject shell metacharacters when allowlist is active --
+        # Reject shell metacharacters when allowlist is active;
         # prevents `ls; curl ...` or `ls && cat /etc/passwd`.
         if self._SHELL_META_RE.search(command):
             logger.warning(

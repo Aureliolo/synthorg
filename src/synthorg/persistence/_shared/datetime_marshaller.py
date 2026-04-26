@@ -29,8 +29,8 @@ def parse_iso_utc(value: str) -> datetime:
     representation first (e.g. via ``ZoneInfo`` + ``isoformat()``).
 
     Args:
-        value: An ISO 8601 string with explicit timezone information
-            -- a numeric UTC offset (``+00:00``, ``-05:00``, ...) or
+        value: An ISO 8601 string with explicit timezone information,
+            either a numeric UTC offset (``+00:00``, ``-05:00``, ...) or
             the ``Z`` suffix.  Naive timestamps are rejected.
 
     Returns:

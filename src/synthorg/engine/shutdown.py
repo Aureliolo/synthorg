@@ -1,6 +1,6 @@
 """Graceful shutdown strategy and manager.
 
-Implements the Graceful Shutdown section of the Engine design page --
+Implements the Graceful Shutdown section of the Engine design page:
 pluggable shutdown strategies for clean process shutdown.
 When SIGINT/SIGTERM is received the framework signals agents to exit at
 turn boundaries, waits a grace period, force-cancels stragglers, and

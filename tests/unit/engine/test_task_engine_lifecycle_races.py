@@ -46,7 +46,7 @@ class TestConcurrentStart:
         # the lifecycle-lock acquire concurrently; otherwise scheduler
         # ordering can let one start() finish before the other
         # contends and the test would pass on an un-locked
-        # implementation. Only the first two acquires barrier-wait --
+        # implementation. Only the first two acquires barrier-wait;
         # the ``stop()`` call in ``finally`` uses a third acquire that
         # must proceed without waiting for a second party.
         barrier = asyncio.Barrier(2)

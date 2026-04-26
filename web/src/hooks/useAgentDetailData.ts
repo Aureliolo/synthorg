@@ -84,7 +84,7 @@ export function useAgentDetailData(agentName: string): UseAgentDetailDataReturn 
     if (!agentName) return
     polling.start()
     return () => polling.stop()
-    // polling is a new object each render but start/stop are stable --
+    // polling is a new object each render but start/stop are stable;
     // including it would restart polling on every render
     // eslint-disable-next-line @eslint-react/exhaustive-deps
   }, [agentName])

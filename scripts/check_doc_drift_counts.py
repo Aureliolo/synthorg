@@ -21,8 +21,8 @@ class Claim:
 
 # Marketing-style counts (eg "25,000+ unit tests" in README/roadmap) are
 # deliberately NOT registered here. They are rounded narrative numbers
-# under human editorial control. Only precise technical claims --
-# numbers a reader will cross-reference against code -- are gated.
+# under human editorial control. Only precise technical claims
+# (numbers a reader will cross-reference against code) are gated.
 # Patterns accept thousands separators in the captured group so a future
 # floor like "1,000+" still matches; parse_claim strips the comma before
 # converting to int.

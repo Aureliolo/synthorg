@@ -376,7 +376,7 @@ class TestReviewGateServiceDecisionRecording:
 
         Blank / whitespace-only descriptions are not tested here
         because ``AcceptanceCriterion.description`` is a
-        ``NotBlankStr`` and rejects them at Task construction time --
+        ``NotBlankStr`` and rejects them at Task construction time;
         the ``.strip()`` guard in ``_record_decision`` is defensive
         against an unreachable state.
         """

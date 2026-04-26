@@ -59,7 +59,7 @@ function AgentNodeComponent({ data }: NodeProps<AgentNodeType>) {
         aria-hidden="true"
       />
 
-      {/* LEAD badge on the highest-seniority agent in the dept --
+      {/* LEAD badge on the highest-seniority agent in the dept,
           derived from build-org-tree's `isDeptLead` flag.  Hidden
           when the user disables LEAD badges in the view menu. */}
       {data.isDeptLead && showLeadBadge && (

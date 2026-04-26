@@ -30,8 +30,8 @@ logger = get_logger(__name__)
 class DecentralizedDispatcher:
     """Decentralized dispatcher.
 
-    Waves from DAG parallel groups. Mandatory workspace isolation
-    -- raises ``CoordinationError`` if workspace service is
+    Waves from DAG parallel groups. Mandatory workspace isolation:
+    raises ``CoordinationError`` if workspace service is
     unavailable or isolation is disabled.
     """
 

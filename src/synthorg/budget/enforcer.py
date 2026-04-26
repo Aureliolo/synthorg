@@ -532,7 +532,7 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
 
         Dual error-handling semantics (both layers are intentional):
 
-        * **Expected dispatcher failures** --
+        * **Expected dispatcher failures**:
           :meth:`NotificationDispatcher.dispatch` may raise for
           transient transport problems (SMTP timeout, webhook 5xx,
           etc.). Those are caught here and logged at WARNING via

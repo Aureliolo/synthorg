@@ -2,7 +2,7 @@
 
 Parameterisable by entity type ``T`` via ``serialize_snapshot`` and
 ``deserialize_snapshot`` callables, so a single implementation covers
-all versioned entities. Each entity type uses a dedicated table --
+all versioned entities. Each entity type uses a dedicated table;
 the table name is validated and injected at construction time.
 
 For Postgres, the snapshot column is JSONB (not TEXT as in SQLite).

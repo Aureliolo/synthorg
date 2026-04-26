@@ -236,7 +236,7 @@ class DelegationCircuitBreaker:
                 cooldown_seconds=cooldown,
             )
 
-    # -- Persistence helpers (async, called outside hot path) --
+    # Persistence helpers (async, called outside hot path)
 
     async def load_state(self) -> None:
         """Load persisted circuit breaker state from the repository.

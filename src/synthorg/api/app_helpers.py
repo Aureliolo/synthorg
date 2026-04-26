@@ -99,8 +99,8 @@ def _postgres_config_from_url(db_url: str) -> PostgresConfig:  # noqa: C901
     ``postgresql://user:password@host:5432/dbname``. Userinfo,
     hostname, port, and path are URL-decoded so credentials with
     reserved characters survive the round-trip. The parser is strict
-    about presence of the user, password, host, and database fields
-    -- ambiguous URLs are rejected up front so the auto-wire path
+    about presence of the user, password, host, and database fields;
+    ambiguous URLs are rejected up front so the auto-wire path
     fails fast rather than producing a half-configured backend that
     explodes later under load.
 

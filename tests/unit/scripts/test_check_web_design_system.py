@@ -47,7 +47,7 @@ def _write(root: Path, relpath: str, content: str) -> Path:
     return p
 
 
-# -- Currency code literals --
+# Currency code literals
 
 
 @pytest.mark.unit
@@ -113,7 +113,7 @@ def test_non_currency_three_letter_not_flagged(web_file: Path) -> None:
     assert check.check_hardcoded_currency(src, p, web_file) == []
 
 
-# -- Currency symbols adjacent to numbers --
+# Currency symbols adjacent to numbers
 
 
 @pytest.mark.unit
@@ -158,7 +158,7 @@ def test_currency_symbol_no_false_positive_on_template_without_digit(
     assert check.check_hardcoded_currency_symbol(src, p, web_file) == []
 
 
-# -- _usd field-name suffix --
+# _usd field-name suffix
 
 
 @pytest.mark.unit
@@ -204,7 +204,7 @@ def test_usd_bare_word_not_flagged(web_file: Path) -> None:
     assert check.check_usd_field_names(src, p, web_file) == []
 
 
-# -- Suppression marker --
+# Suppression marker
 
 
 @pytest.mark.unit
@@ -245,7 +245,7 @@ def test_suppression_marker_does_not_leak_across_lines(web_file: Path) -> None:
     assert ":3:" in warnings[0]
 
 
-# -- Integration: check_file runs all new checks --
+# Integration: check_file runs all new checks
 
 
 @pytest.mark.unit

@@ -199,7 +199,7 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
     ) -> tuple[ChatMessage, ...]:
         """Return a brief instruction message about available tools.
 
-        Tool-based strategies inject minimal context up front --
+        Tool-based strategies inject minimal context up front;
         the agent retrieves memories on-demand via tool calls.
 
         Args:

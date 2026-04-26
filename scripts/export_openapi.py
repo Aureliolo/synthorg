@@ -114,7 +114,7 @@ STANDALONE_HTML = """\
        the actual content via JavaScript and does not emit its own h1. -->
   <h1 class="sr-only">SynthOrg REST API Reference</h1>
   <div class="banner">
-    Static snapshot of the OpenAPI schema --
+    Static snapshot of the OpenAPI schema;
     when running locally, use the live docs at <code>/docs/api</code> instead.
     <a href="./">&larr; Back to overview</a>
   </div>

@@ -3,7 +3,7 @@
 The in-memory bus bounds each subscriber's in-flight queue via
 ``MessageRetentionConfig.max_subscriber_queue_size``. These tests
 assert NATS reaches parity by wiring the same value through to
-``ConsumerConfig.max_ack_pending`` on the durable pull consumer --
+``ConsumerConfig.max_ack_pending`` on the durable pull consumer:
 JetStream pauses delivery to a consumer whose unacked count hits this
 cap, preventing unbounded broker-side accumulation per subscriber.
 """

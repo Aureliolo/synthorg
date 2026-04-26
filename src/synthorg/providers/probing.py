@@ -84,7 +84,7 @@ async def _probe_and_fetch(
     in ``presets.py`` (``PROVIDER_PRESETS``), never from user input.
 
     Args:
-        url: Full URL to probe (model-listing endpoint --
+        url: Full URL to probe (model-listing endpoint, e.g.
             ``/api/tags`` for Ollama, ``/models`` for standard API).
         preset_name: Preset name for logging context.
 

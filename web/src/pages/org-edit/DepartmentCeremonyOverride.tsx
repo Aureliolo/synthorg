@@ -33,7 +33,7 @@ export function DepartmentCeremonyOverride({
   onChange,
   disabled,
 }: DepartmentCeremonyOverrideProps) {
-  // Whether the department has a non-null policy object (even if empty --
+  // Whether the department has a non-null policy object (even if empty;
   // an empty object means "override with defaults").
   const hasOverride = policy != null
   const [expanded, setExpanded] = useState(hasOverride)

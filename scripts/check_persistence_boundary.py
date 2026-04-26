@@ -276,11 +276,11 @@ def _extract_event_node(call: ast.Call) -> ast.expr | None:
     pass it via the ``event`` keyword.  Both forms are accepted, and
     the returned node may be:
 
-    - :class:`ast.Name` (``EVENT``) -- the canonical case.
-    - :class:`ast.Attribute` (``events.EVENT`` / ``module.EVENT``) --
+    - :class:`ast.Name` (``EVENT``); the canonical case.
+    - :class:`ast.Attribute` (``events.EVENT`` / ``module.EVENT``);
       module-attribute access.
     - :class:`ast.Constant` with a string value
-      (``logger.info("persistence.user.saved", ...)``) -- the
+      (``logger.info("persistence.user.saved", ...)``); the
       escape-hatch literal form.
 
     Dynamic expressions (variables built at runtime, f-strings, etc.)
@@ -457,7 +457,7 @@ def _scan_persistence_mutation_logs(file_path: Path, rel: str) -> list[str]:
         ) or (literal_value is not None and _has_mutation_value_suffix(literal_value))
         if not is_mutation:
             continue
-        # Allowlist applies to the canonical identifier form only --
+        # Allowlist applies to the canonical identifier form only;
         # the lifecycle constants are always referenced by name in
         # this codebase.  String-literal usage is treated as a
         # deliberate escape hatch and never silently allowed.
@@ -579,8 +579,8 @@ def _iter_persistence_targets(
     persistence sweep from accidentally widening scope when callers
     pass aggressive ``--paths``.
 
-    Tests under ``tests/.../persistence/`` are intentionally excluded
-    -- the rule applies to production code; tests that exercise repo
+    Tests under ``tests/.../persistence/`` are intentionally excluded:
+    the rule applies to production code; tests that exercise repo
     internals can log whatever they need.
     """
     if not _persistence_in_scope(roots, project_root):

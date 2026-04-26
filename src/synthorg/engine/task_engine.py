@@ -258,8 +258,8 @@ class TaskEngine(TaskEngineLoopsMixin):
     async def stop(self, *, timeout: float | None = None) -> None:  # noqa: ASYNC109
         """Stop the engine and drain pending mutations and observer events.
 
-        Holds ``_lifecycle_lock`` across the entire stop body --
-        including the drain awaits -- so a concurrent ``start()``
+        Holds ``_lifecycle_lock`` across the entire stop body
+        (including the drain awaits) so a concurrent ``start()``
         cannot see ``_running=False`` mid-drain and spawn a new
         processing task that stop never waits on.
 

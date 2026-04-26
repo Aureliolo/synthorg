@@ -42,7 +42,7 @@ def contrast_ratio(fg: str, bg: str) -> float:
     return (lighter + 0.05) / (darker + 0.05)
 
 
-# -- Warm Ops final palette --
+# Warm Ops final palette
 # Canonical source: docs/design/ux-guidelines.md Section 1.1 + Section 5.1
 # Also defined in: web/src/styles/design-tokens.css (--so-* prefix)
 # Keep these dicts in sync with both files when colors change.

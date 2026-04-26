@@ -297,7 +297,7 @@ class ConflictError(ApiError):
 class VersionConflictError(ApiError):
     """Raised when an ETag/If-Match version check fails (409).
 
-    Used for ETag/If-Match optimistic concurrency checks --
+    Used for ETag/If-Match optimistic concurrency checks,
     currently on settings endpoints.
     """
 

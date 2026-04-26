@@ -87,7 +87,7 @@ function parseRetryAfterMs(
     ms = Math.max(0, parsedDate - Date.now())
   }
   // If the server wants us to wait longer than our bounded budget,
-  // surface the error to the caller instead of silently truncating --
+  // surface the error to the caller instead of silently truncating;
   // a truncated retry would hit the same 429 immediately and waste
   // the backend's budget.
   if (ms > MAX_RETRY_AFTER_MS) return DO_NOT_RETRY
@@ -109,7 +109,7 @@ async function sleep(ms: number): Promise<void> {
 // sessionStorage-based JWT management.
 
 // `synchronous: true` tells axios this request interceptor runs
-// synchronously and must not return a Promise (header mutation is fine --
+// synchronously and must not return a Promise (header mutation is fine,
 // the option is about execution mode, not purity). That lets
 // `Axios.prototype._request` skip the `.then(chain[i++], chain[i++])` loop
 // at `node_modules/axios/lib/core/Axios.js:196` and call `dispatchRequest`
@@ -339,7 +339,7 @@ export async function paginateAll<T>(
       return collected
     }
     if (!result.nextCursor) {
-      // hasMore=true but nextCursor=null is a malformed envelope --
+      // hasMore=true but nextCursor=null is a malformed envelope;
       // the backend's PaginationMeta._validate_cursor_consistency
       // rejects this on the wire, but a misbehaving proxy or stub
       // could still smuggle it through. Throwing here surfaces the

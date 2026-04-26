@@ -109,10 +109,10 @@ EXECUTION_PLAN_SUMMARY_FALLBACK: Final[str] = "execution.plan.summary_fallback"
 # Metrics events
 EXECUTION_METRICS_UNEXPECTED_TYPE: Final[str] = "execution.metrics.unexpected_type"
 
-# -- Project validation events --
+# Project validation events
 EXECUTION_PROJECT_VALIDATION_FAILED: Final[str] = "execution.project.validation_failed"
 
-# -- Credential isolation events --
+# Credential isolation events
 EXECUTION_CREDENTIAL_ISOLATION_VIOLATION: Final[str] = (
     "execution.credential_isolation.violation"
 )
