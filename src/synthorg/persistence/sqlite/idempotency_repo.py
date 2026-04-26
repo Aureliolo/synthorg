@@ -66,6 +66,16 @@ class SQLiteIdempotencyRepository:
 
         expires_at = now + timedelta(seconds=ttl_seconds)
         async with self._write_lock:
+            # ``BEGIN IMMEDIATE`` acquires SQLite's RESERVED write
+            # lock at the DB level so two competing claimants on
+            # *different* aiosqlite connections (e.g. a sibling
+            # repository sharing the connection pool) serialise here
+            # rather than each performing the SELECT against an
+            # un-locked DB and then both UPDATING. The asyncio
+            # ``_write_lock`` already serialises async callers within
+            # this process; ``BEGIN IMMEDIATE`` extends the guarantee
+            # across connections.
+            await self._db.execute("BEGIN IMMEDIATE")
             try:
                 cursor = await self._db.execute(
                     "SELECT status, response_body, expires_at "
@@ -78,11 +88,13 @@ class SQLiteIdempotencyRepository:
                     status = str(row["status"])
                     row_expires = _parse_dt(row["expires_at"])
                     if row_expires > now and status == "completed":
+                        await self._db.commit()
                         return IdempotencyClaim(
                             outcome=IdempotencyOutcome.COMPLETED,
                             cached_response=row["response_body"],
                         )
                     if row_expires > now and status == "in_flight":
+                        await self._db.commit()
                         return IdempotencyClaim(
                             outcome=IdempotencyOutcome.IN_FLIGHT,
                         )

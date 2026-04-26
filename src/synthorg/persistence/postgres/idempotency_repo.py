@@ -11,10 +11,11 @@ to overwrite expired/failed rows in a follow-up ``UPDATE``.
 
 import json
 import secrets
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 from psycopg import Error as PsycopgError
+from pydantic import AwareDatetime  # noqa: TC002
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -63,7 +64,7 @@ class PostgresIdempotencyRepository:
         scope: NotBlankStr,
         key: NotBlankStr,
         ttl_seconds: int,
-        now: datetime,
+        now: AwareDatetime,
     ) -> IdempotencyClaim:
         """Atomically claim ``(scope, key)`` for *ttl_seconds*.
 
@@ -323,7 +324,7 @@ class PostgresIdempotencyRepository:
             expires_at=row["expires_at"],
         )
 
-    async def cleanup_expired(self, now: datetime) -> int:
+    async def cleanup_expired(self, now: AwareDatetime) -> int:
         """Delete expired rows and return the count removed."""
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:

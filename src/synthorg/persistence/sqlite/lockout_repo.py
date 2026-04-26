@@ -165,14 +165,18 @@ class SQLiteLockoutRepository:
             except Exception:
                 await self._db.rollback()
                 raise
-
-        # Mutate the cache only after the write_lock + try/except
-        # exits cleanly. A failure during cache mutation here cannot
-        # roll back a committed DB transaction, so the cache write
-        # belongs outside the rollback-on-failure block.
-        if now_locked:
-            with self._locked_lock:
-                self._locked[username] = time.monotonic() + self._duration_seconds
+            # Cache mutation MUST happen while still holding
+            # ``_write_lock`` so a concurrent ``record_success``
+            # cannot interleave between our commit and our cache
+            # write -- otherwise two writers can commit DB-order
+            # T1->T2 but mutate the cache T2->T1, leaving
+            # ``_locked`` inconsistent with durable state.
+            # ``_locked_lock`` is taken briefly for the dict op so
+            # the auth hot-path ``is_locked`` reader is not blocked
+            # by the surrounding async tx.
+            if now_locked:
+                with self._locked_lock:
+                    self._locked[username] = time.monotonic() + self._duration_seconds
         # Caller logs SECURITY_AUTH_ACCOUNT_LOCKED with the contextual
         # fields (attempts, threshold, duration) the controller
         # already tracks; persistence does not emit decision events
@@ -200,11 +204,11 @@ class SQLiteLockoutRepository:
             except Exception:
                 await self._db.rollback()
                 raise
-        # Cache mutation outside the rollback-on-failure block:
-        # a failure during cache pop must NOT trigger DB rollback,
-        # the delete already committed successfully.
-        with self._locked_lock:
-            return self._locked.pop(username, None) is not None
+            # Cache pop while still holding ``_write_lock`` so a
+            # concurrent ``record_failure`` cannot insert + flip
+            # ``_locked`` between our commit and our pop.
+            with self._locked_lock:
+                return self._locked.pop(username, None) is not None
 
     async def cleanup_expired(self) -> int:
         """Remove old attempt records outside the recovery horizon.

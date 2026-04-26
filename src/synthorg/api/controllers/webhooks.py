@@ -195,7 +195,22 @@ def _check_replay_or_freshness(
     here; durable IdempotencyService below handles dedup so a
     legitimate retry with the same nonce on a different replica
     receives the cached 202 instead of an early 409.
+
+    The hard ``MAX_NONCE_CHARS`` cap that ``ReplayProtector.check``
+    enforces in the no-nonce branch must apply here too -- otherwise
+    an attacker can sidestep the limit by passing a freshness-only
+    nonce and let the durable path try to hash an unbounded string.
     """
+    if nonce is not None and len(nonce) > MAX_NONCE_CHARS:
+        logger.warning(
+            WEBHOOK_REJECTED,
+            connection_name=connection_name,
+            reason="nonce exceeds max size",
+            nonce_length=len(nonce),
+            max_nonce_chars=MAX_NONCE_CHARS,
+        )
+        msg = "Nonce exceeds maximum size"
+        raise ConflictError(msg)
     replay_protector = _get_replay_protector(state)
     if nonce:
         if replay_protector.check_freshness(timestamp):
