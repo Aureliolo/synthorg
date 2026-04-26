@@ -7,7 +7,6 @@ them surface :class:`CapabilityNotSupportedError` -> typed
 ``not_supported`` envelope.
 """
 
-import copy
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
@@ -28,14 +27,22 @@ from synthorg.meta.mcp.handlers.common import (
     ok,
     require_destructive_guardrails,
 )
-from synthorg.meta.mcp.handlers.common_args import coerce_pagination, require_arg
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.meta.mcp.handlers.common_args import (
+    actor_label,
+    coerce_pagination,
+    get_optional_str,
+    require_arg,
+    require_dict,
+)
+from synthorg.meta.mcp.handlers.common_logging import (
+    log_handler_argument_invalid,
+    log_handler_guardrail_violated,
+    log_handler_invoke_failed,
+)
+from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
     MCP_DESTRUCTIVE_OP_EXECUTED,
-    MCP_HANDLER_ARGUMENT_INVALID,
     MCP_HANDLER_CAPABILITY_GAP,
-    MCP_HANDLER_GUARDRAIL_VIOLATED,
-    MCP_HANDLER_INVOKE_FAILED,
 )
 from synthorg.organization.services import UNSET, UnsetType
 
@@ -52,35 +59,6 @@ _TY_DICT = "mapping of str -> object"
 _TY_LIST = "sequence of strings"
 
 
-def _log_invalid(tool: str, exc: ArgumentValidationError) -> None:
-    """Emit ``MCP_HANDLER_ARGUMENT_INVALID`` at WARNING for client-input errors."""
-    logger.warning(
-        MCP_HANDLER_ARGUMENT_INVALID,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-
-
-def _log_failed(tool: str, exc: Exception) -> None:
-    """Emit ``MCP_HANDLER_INVOKE_FAILED`` at WARNING with safe error context."""
-    logger.warning(
-        MCP_HANDLER_INVOKE_FAILED,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-
-
-def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
-    """Emit ``MCP_HANDLER_GUARDRAIL_VIOLATED`` for destructive-op rejections."""
-    logger.warning(
-        MCP_HANDLER_GUARDRAIL_VIOLATED,
-        tool_name=tool,
-        violation=exc.violation,
-    )
-
-
 def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
     """Translate a facade-side capability gap into a typed error envelope.
 
@@ -95,43 +73,9 @@ def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
     return err(exc, domain_code=exc.domain_code)
 
 
-def _actor_name(actor: AgentIdentity | None) -> NotBlankStr:
-    """Return a stable audit identifier, preferring ``actor.id`` over ``name``.
-
-    A string ``actor.id`` is only accepted when it is non-blank after
-    stripping; empty / whitespace-only strings fall through to
-    ``actor.name`` and finally to ``"mcp-anonymous"`` so audit rows
-    never record a blank actor.  Non-string ``actor.id`` values (e.g.
-    UUID instances, integers) are accepted via ``str(...)`` unchanged.
-    """
-    if actor is None:
-        return NotBlankStr("mcp-anonymous")
-    actor_id = getattr(actor, "id", None)
-    if actor_id is not None:
-        if isinstance(actor_id, str):
-            if actor_id.strip():
-                return NotBlankStr(actor_id)
-        else:
-            return NotBlankStr(str(actor_id))
-    name = getattr(actor, "name", None)
-    if isinstance(name, str) and name.strip():
-        return NotBlankStr(name)
-    return NotBlankStr("mcp-anonymous")
-
-
-def _get_str(arguments: dict[str, Any], key: str) -> NotBlankStr | None:
-    """Extract an optional non-blank string argument; returns ``None`` when absent."""
-    raw = arguments.get(key)
-    if raw in (None, ""):
-        return None
-    if not isinstance(raw, str) or not raw.strip():
-        raise invalid_argument(key, _TY_STRING)
-    return NotBlankStr(raw)
-
-
 def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
     """Extract a required non-blank string or raise ``ArgumentValidationError``."""
-    value = _get_str(arguments, key)
+    value = get_optional_str(arguments, key)
     if value is None:
         raise invalid_argument(key, _TY_STRING)
     return value
@@ -145,20 +89,6 @@ def _require_uuid(arguments: dict[str, Any], key: str) -> NotBlankStr:
     except ValueError as exc:
         raise invalid_argument(key, _TY_UUID) from exc
     return NotBlankStr(value)
-
-
-def _require_dict(arguments: dict[str, Any], key: str) -> dict[str, object]:
-    """Extract a required mapping argument or raise ``ArgumentValidationError``.
-
-    The returned dict is a deep copy so the handler's view is fully
-    decoupled from the caller-supplied payload.  A shallow ``dict(raw)``
-    would still share nested mutable containers (lists, dicts), which
-    a later caller mutation could ripple into.
-    """
-    raw = arguments.get(key)
-    if not isinstance(raw, dict):
-        raise invalid_argument(key, _TY_DICT)
-    return copy.deepcopy(raw)
 
 
 def _require_str_list(arguments: dict[str, Any], key: str) -> tuple[str, ...]:
@@ -217,10 +147,10 @@ async def _company_get(
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(_to_jsonable(company))
 
@@ -234,18 +164,18 @@ async def _company_update(
     """Apply a payload patch to the company record (non-destructive write)."""
     tool = "synthorg_company_update"
     try:
-        payload = _require_dict(arguments, "payload")
+        payload = require_dict(arguments, "payload")
         result = await app_state.company_read_service.update_company(
             payload=payload,
-            actor_id=_actor_name(actor),
+            actor_id=actor_label(actor),
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(_to_jsonable(result))
 
@@ -261,12 +191,12 @@ async def _company_list_departments(
     try:
         departments = await app_state.company_read_service.list_departments()
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok([_to_jsonable(d) for d in departments])
 
@@ -283,15 +213,15 @@ async def _company_reorder_departments(
         ids = _require_uuid_list(arguments, "department_ids")
         await app_state.company_read_service.reorder_departments(
             department_ids=ids,
-            actor_id=_actor_name(actor),
+            actor_id=actor_label(actor),
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(None)
 
@@ -307,12 +237,12 @@ async def _company_versions_list(
     try:
         versions = await app_state.company_read_service.list_versions()
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok([_to_jsonable(v) for v in versions])
 
@@ -329,12 +259,12 @@ async def _company_versions_get(
         version_id = _require_str(arguments, "version_id")
         version = await app_state.company_read_service.get_version(version_id)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     if version is None:
         return err(
@@ -364,10 +294,10 @@ async def _departments_list(
         pagination = PaginationMeta(total=total, offset=offset, limit=limit)
         return ok([d.to_dict() for d in page], pagination=pagination)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
 
@@ -383,10 +313,10 @@ async def _departments_get(
         department_id = _require_uuid(arguments, "department_id")
         record = await app_state.department_service.get_department(department_id)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     if record is None:
         return err(
@@ -410,13 +340,13 @@ async def _departments_create(
         record = await app_state.department_service.create_department(
             name=name,
             description=description,
-            actor_id=_actor_name(actor),
+            actor_id=actor_label(actor),
         )
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(record.to_dict())
 
@@ -431,19 +361,19 @@ async def _departments_update(
     tool = "synthorg_departments_update"
     try:
         department_id = _require_uuid(arguments, "department_id")
-        name = _get_str(arguments, "name")
-        description = _get_str(arguments, "description")
+        name = get_optional_str(arguments, "name")
+        description = get_optional_str(arguments, "description")
         record = await app_state.department_service.update_department(
             department_id=department_id,
-            actor_id=_actor_name(actor),
+            actor_id=actor_label(actor),
             name=name,
             description=description,
         )
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     if record is None:
         return err(
@@ -466,26 +396,26 @@ async def _departments_delete(
         department_id = _require_uuid(arguments, "department_id")
         removed = await app_state.department_service.delete_department(
             department_id=department_id,
-            actor_id=_actor_name(resolved_actor),
+            actor_id=actor_label(resolved_actor),
             reason=reason,
         )
         if removed:
             logger.info(
                 MCP_DESTRUCTIVE_OP_EXECUTED,
                 tool_name=tool,
-                actor=_actor_name(resolved_actor),
+                actor=actor_label(resolved_actor),
                 reason=reason,
                 department_id=department_id,
                 removed=removed,
             )
     except GuardrailViolationError as exc:
-        _log_guardrail(tool, exc)
+        log_handler_guardrail_violated(tool, exc)
         return err(exc)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok({"removed": removed})
 
@@ -502,10 +432,10 @@ async def _departments_get_health(
         department_id = _require_uuid(arguments, "department_id")
         result = await app_state.department_service.get_health(department_id)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(dict(result))
 
@@ -530,10 +460,10 @@ async def _teams_list(
         pagination = PaginationMeta(total=total, offset=offset, limit=limit)
         return ok([t.to_dict() for t in page], pagination=pagination)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
 
@@ -549,10 +479,10 @@ async def _teams_get(
         team_id = _require_uuid(arguments, "team_id")
         record = await app_state.team_service.get_team(team_id)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     if record is None:
         return err(
@@ -572,17 +502,17 @@ async def _teams_create(
     tool = "synthorg_teams_create"
     try:
         name = _require_str(arguments, "name")
-        department_id = _get_str(arguments, "department_id")
+        department_id = get_optional_str(arguments, "department_id")
         record = await app_state.team_service.create_team(
             name=name,
-            actor_id=_actor_name(actor),
+            actor_id=actor_label(actor),
             department_id=department_id,
         )
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(record.to_dict())
 
@@ -597,9 +527,9 @@ async def _teams_update(
     tool = "synthorg_teams_update"
     try:
         team_id = _require_uuid(arguments, "team_id")
-        name = _get_str(arguments, "name")
+        name = get_optional_str(arguments, "name")
         if "department_id" in arguments:
-            department_id: NotBlankStr | None | UnsetType = _get_str(
+            department_id: NotBlankStr | None | UnsetType = get_optional_str(
                 arguments,
                 "department_id",
             )
@@ -607,15 +537,15 @@ async def _teams_update(
             department_id = UNSET
         record = await app_state.team_service.update_team(
             team_id=team_id,
-            actor_id=_actor_name(actor),
+            actor_id=actor_label(actor),
             name=name,
             department_id=department_id,
         )
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     if record is None:
         return err(
@@ -638,26 +568,26 @@ async def _teams_delete(
         team_id = _require_uuid(arguments, "team_id")
         removed = await app_state.team_service.delete_team(
             team_id=team_id,
-            actor_id=_actor_name(resolved_actor),
+            actor_id=actor_label(resolved_actor),
             reason=reason,
         )
         if removed:
             logger.info(
                 MCP_DESTRUCTIVE_OP_EXECUTED,
                 tool_name=tool,
-                actor=_actor_name(resolved_actor),
+                actor=actor_label(resolved_actor),
                 reason=reason,
                 team_id=team_id,
                 removed=removed,
             )
     except GuardrailViolationError as exc:
-        _log_guardrail(tool, exc)
+        log_handler_guardrail_violated(tool, exc)
         return err(exc)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok({"removed": removed})
 
@@ -674,17 +604,17 @@ async def _role_versions_list(
     """List role-version snapshots, optionally filtered by role name."""
     tool = "synthorg_role_versions_list"
     try:
-        role_name = _get_str(arguments, "role_name")
+        role_name = get_optional_str(arguments, "role_name")
         versions = await app_state.role_version_service.list_versions(
             role_name=role_name,
         )
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok([_to_jsonable(v) for v in versions])
 
@@ -701,12 +631,12 @@ async def _role_versions_get(
         version_id = _require_str(arguments, "version_id")
         version = await app_state.role_version_service.get_version(version_id)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     if version is None:
         return err(
