@@ -548,7 +548,10 @@ class _FakeIdempotencyRepository:
         now: Any,
     ) -> IdempotencyClaim:
         del scope, key, ttl_seconds, now
-        return IdempotencyClaim(outcome=IdempotencyOutcome.FRESH)
+        return IdempotencyClaim(
+            outcome=IdempotencyOutcome.FRESH,
+            claim_token="fake-token",
+        )
 
     async def complete(
         self,
@@ -557,16 +560,20 @@ class _FakeIdempotencyRepository:
         key: NotBlankStr,
         response_body: str,
         response_hash: str,
-    ) -> None:
-        del scope, key, response_body, response_hash
+        claim_token: str,
+    ) -> bool:
+        del scope, key, response_body, response_hash, claim_token
+        return True
 
     async def fail(
         self,
         *,
         scope: NotBlankStr,
         key: NotBlankStr,
-    ) -> None:
-        del scope, key
+        claim_token: str,
+    ) -> bool:
+        del scope, key, claim_token
+        return True
 
     async def get(
         self,
@@ -851,6 +858,12 @@ class TestProtocolCompliance:
         assert isinstance(_FakeMessageRepository(), MessageRepository)
 
     def test_fake_idempotency_repo_is_idempotency_repository(self) -> None:
+        # Assert through the backend so a regression that nulls or
+        # mistypes ``_FakeBackend.idempotency_keys`` fails here, not
+        # only the standalone-class check that would happily pass even
+        # if the backend forgot to wire the repo at all.
+        backend = _FakeBackend()
+        assert isinstance(backend.idempotency_keys, IdempotencyRepository)
         assert isinstance(_FakeIdempotencyRepository(), IdempotencyRepository)
 
     def test_fake_lifecycle_repo_is_lifecycle_event_repository(self) -> None:

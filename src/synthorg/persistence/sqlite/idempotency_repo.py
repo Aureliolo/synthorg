@@ -9,6 +9,7 @@ claim of the same ``(scope, key)``.
 
 import asyncio
 import contextlib
+import secrets
 import sqlite3
 from datetime import datetime  # noqa: TC003
 
@@ -85,13 +86,18 @@ class SQLiteIdempotencyRepository:
                         return IdempotencyClaim(
                             outcome=IdempotencyOutcome.IN_FLIGHT,
                         )
-                    # Expired OR failed -- overwrite as a fresh claim.
+                    # Expired OR failed -- rotate to a fresh lease
+                    # with a new claim_token so any stale worker
+                    # holding the old token cannot CAS-overwrite.
+                    new_token = secrets.token_hex(16)
                     await self._db.execute(
                         "UPDATE idempotency_keys "
-                        "SET status = 'in_flight', response_hash = NULL, "
-                        "response_body = NULL, created_at = ?, expires_at = ? "
+                        "SET status = 'in_flight', claim_token = ?, "
+                        "response_hash = NULL, response_body = NULL, "
+                        "created_at = ?, expires_at = ? "
                         "WHERE scope = ? AND key = ?",
                         (
+                            new_token,
                             format_iso_utc(now),
                             format_iso_utc(expires_at),
                             scope,
@@ -99,19 +105,25 @@ class SQLiteIdempotencyRepository:
                         ),
                     )
                 else:
+                    new_token = secrets.token_hex(16)
                     await self._db.execute(
                         "INSERT INTO idempotency_keys "
-                        "(scope, key, status, created_at, expires_at) "
-                        "VALUES (?, ?, 'in_flight', ?, ?)",
+                        "(scope, key, status, claim_token, "
+                        "created_at, expires_at) "
+                        "VALUES (?, ?, 'in_flight', ?, ?, ?)",
                         (
                             scope,
                             key,
+                            new_token,
                             format_iso_utc(now),
                             format_iso_utc(expires_at),
                         ),
                     )
                 await self._db.commit()
-                return IdempotencyClaim(outcome=IdempotencyOutcome.FRESH)
+                return IdempotencyClaim(
+                    outcome=IdempotencyOutcome.FRESH,
+                    claim_token=new_token,
+                )
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -132,18 +144,26 @@ class SQLiteIdempotencyRepository:
         key: NotBlankStr,
         response_body: str,
         response_hash: str,
-    ) -> None:
-        """Mark a claimed key as ``COMPLETED`` and persist the response."""
+        claim_token: str,
+    ) -> bool:
+        """Mark a claimed key as ``COMPLETED`` if *claim_token* matches.
+
+        Returns ``True`` when the row's stored token matched and the
+        UPDATE landed; ``False`` when the lease has rotated (a stale
+        worker MUST NOT recover by ignoring this -- the new lease
+        owns the row).
+        """
         async with self._write_lock:
             try:
-                await self._db.execute(
+                cursor = await self._db.execute(
                     "UPDATE idempotency_keys "
                     "SET status = 'completed', response_body = ?, "
                     "response_hash = ? "
-                    "WHERE scope = ? AND key = ?",
-                    (response_body, response_hash, scope, key),
+                    "WHERE scope = ? AND key = ? AND claim_token = ?",
+                    (response_body, response_hash, scope, key, claim_token),
                 )
                 await self._db.commit()
+                rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -156,22 +176,25 @@ class SQLiteIdempotencyRepository:
                 )
                 msg = "Failed to record idempotency completion"
                 raise QueryError(msg) from exc
+        return rowcount > 0
 
     async def fail(
         self,
         *,
         scope: NotBlankStr,
         key: NotBlankStr,
-    ) -> None:
-        """Mark a claimed key as ``FAILED`` so future retries can re-claim."""
+        claim_token: str,
+    ) -> bool:
+        """Mark a claimed key as ``FAILED`` if *claim_token* matches."""
         async with self._write_lock:
             try:
-                await self._db.execute(
+                cursor = await self._db.execute(
                     "UPDATE idempotency_keys SET status = 'failed' "
-                    "WHERE scope = ? AND key = ?",
-                    (scope, key),
+                    "WHERE scope = ? AND key = ? AND claim_token = ?",
+                    (scope, key, claim_token),
                 )
                 await self._db.commit()
+                rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -184,6 +207,7 @@ class SQLiteIdempotencyRepository:
                 )
                 msg = "Failed to record idempotency failure"
                 raise QueryError(msg) from exc
+        return rowcount > 0
 
     async def get(
         self,

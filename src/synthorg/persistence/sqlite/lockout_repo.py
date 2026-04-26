@@ -23,10 +23,6 @@ from synthorg.observability.events.api import (
     API_AUTH_LOCKOUT_CLEANUP,
     API_AUTH_LOCKOUT_RESTORED,
 )
-from synthorg.observability.events.security import (
-    SECURITY_AUTH_ACCOUNT_LOCKED,
-    SECURITY_AUTH_LOCKOUT_CLEARED,
-)
 
 logger = get_logger(__name__)
 
@@ -66,6 +62,11 @@ class SQLiteLockoutRepository:
     def lockout_duration_seconds(self) -> int:
         """Return the lockout duration in seconds for Retry-After."""
         return self._duration_seconds
+
+    @property
+    def threshold(self) -> int:
+        """Failed-attempt threshold; used by the controller's audit log."""
+        return self._threshold
 
     def is_locked(self, username: str) -> bool:
         """Sync O(1) lockout check for the auth hot path."""
@@ -172,18 +173,20 @@ class SQLiteLockoutRepository:
         if now_locked:
             with self._locked_lock:
                 self._locked[username] = time.monotonic() + self._duration_seconds
-            logger.warning(
-                SECURITY_AUTH_ACCOUNT_LOCKED,
-                username=username,
-                attempts=count,
-                threshold=self._threshold,
-                duration_minutes=self._duration.total_seconds() / 60,
-            )
+            # Caller logs SECURITY_AUTH_ACCOUNT_LOCKED with the
+            # contextual fields (attempts, threshold, duration) the
+            # controller already tracks; persistence does not emit
+            # decision events (#1599 persistence-boundary rule).
             return True
         return False
 
-    async def record_success(self, username: str) -> None:
-        """Clear failure count on successful login."""
+    async def record_success(self, username: str) -> bool:
+        """Clear failure count on successful login.
+
+        Returns ``True`` if a previously-locked account was unlocked
+        (caller logs ``SECURITY_AUTH_LOCKOUT_CLEARED``); ``False``
+        when there was no prior lockout (no audit emission warranted).
+        """
         username = username.lower()
         async with self._write_lock:
             await self._db.execute("BEGIN IMMEDIATE")
@@ -199,12 +202,7 @@ class SQLiteLockoutRepository:
                 await self._db.rollback()
                 raise
         with self._locked_lock:
-            was_locked = self._locked.pop(username, None) is not None
-        if was_locked:
-            logger.info(
-                SECURITY_AUTH_LOCKOUT_CLEARED,
-                username=username,
-            )
+            return self._locked.pop(username, None) is not None
 
     async def cleanup_expired(self) -> int:
         """Remove old attempt records outside the recovery horizon.

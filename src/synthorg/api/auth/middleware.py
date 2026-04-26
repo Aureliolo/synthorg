@@ -336,6 +336,11 @@ async def _resolve_jwt_user(
         must_change_password=db_user.must_change_password,
         org_roles=db_user.org_roles,
         scoped_departments=db_user.scoped_departments,
+        # Carry the JTI through so long-lived WS / SSE connections can
+        # poll ``session_store.is_revoked`` on their own cadence; the
+        # request-time middleware check above only protects this single
+        # request.
+        session_id=claims.get("jti"),
     )
 
 

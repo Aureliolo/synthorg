@@ -38,6 +38,8 @@ class _FakeAppState:
         *,
         persisted_user: User | None,
         raise_on_get: bool = False,
+        has_session_store: bool = False,
+        is_revoked: bool = False,
     ) -> None:
         users_repo = AsyncMock()
         if raise_on_get:
@@ -45,11 +47,17 @@ class _FakeAppState:
         else:
             users_repo.get.return_value = persisted_user
         self.persistence = type("Pst", (), {"users": users_repo})()
+        self.has_session_store = has_session_store
+        self.session_store = type(
+            "Ss",
+            (),
+            {"is_revoked": lambda _self, _jti: is_revoked},
+        )()
 
 
 async def test_revocation_reason_returns_user_deleted_when_user_missing() -> None:
     state = _FakeAppState(persisted_user=None)
-    reason, ok = await _user_revocation_reason(state, "u-001")  # type: ignore[arg-type]
+    reason, ok = await _user_revocation_reason(state, "u-001", None)  # type: ignore[arg-type]
     assert ok is True
     assert reason == "user_deleted"
 
@@ -57,7 +65,7 @@ async def test_revocation_reason_returns_user_deleted_when_user_missing() -> Non
 async def test_revocation_reason_returns_role_demoted_for_system_role() -> None:
     demoted = _make_user(role=HumanRole.SYSTEM)
     state = _FakeAppState(persisted_user=demoted)
-    reason, ok = await _user_revocation_reason(state, "u-001")  # type: ignore[arg-type]
+    reason, ok = await _user_revocation_reason(state, "u-001", None)  # type: ignore[arg-type]
     assert ok is True
     assert reason == "role_demoted"
 
@@ -65,16 +73,32 @@ async def test_revocation_reason_returns_role_demoted_for_system_role() -> None:
 async def test_revocation_reason_returns_none_for_active_user() -> None:
     user = _make_user(role=HumanRole.CEO)
     state = _FakeAppState(persisted_user=user)
-    reason, ok = await _user_revocation_reason(state, "u-001")  # type: ignore[arg-type]
+    reason, ok = await _user_revocation_reason(state, "u-001", None)  # type: ignore[arg-type]
     assert ok is True
     assert reason is None
 
 
 async def test_revocation_reason_signals_not_ok_on_transient_failure() -> None:
     state = _FakeAppState(persisted_user=None, raise_on_get=True)
-    reason, ok = await _user_revocation_reason(state, "u-001")  # type: ignore[arg-type]
+    reason, ok = await _user_revocation_reason(state, "u-001", None)  # type: ignore[arg-type]
     assert ok is False
     assert reason is None
+
+
+async def test_revocation_reason_session_revoked_kicks_stream() -> None:
+    """A revoked JTI on an otherwise-active user surfaces as
+    ``session_revoked`` so the SSE stream tears down within one
+    revalidation interval rather than waiting for the access token
+    to expire."""
+    user = _make_user(role=HumanRole.CEO)
+    state = _FakeAppState(
+        persisted_user=user,
+        has_session_store=True,
+        is_revoked=True,
+    )
+    reason, ok = await _user_revocation_reason(state, "u-001", "jti-123")  # type: ignore[arg-type]
+    assert ok is True
+    assert reason == "session_revoked"
 
 
 async def test_sse_event_stream_emits_revoked_when_role_demoted(

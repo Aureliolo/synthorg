@@ -156,7 +156,7 @@ async def _periodic_revalidate(
             continue
 
         consecutive_failures = 0
-        revoke_reason = _revocation_reason(db_user)
+        revoke_reason = _revocation_reason(db_user, user, app_state)
         if revoke_reason is not None:
             logger.info(
                 SECURITY_SESSION_REVOKED,
@@ -173,8 +173,20 @@ async def _periodic_revalidate(
             return
 
 
-def _revocation_reason(db_user: object | None) -> str | None:
-    """Return the rejection reason or None when the user is still authorised."""
+def _revocation_reason(
+    db_user: object | None,
+    user: AuthenticatedUser,
+    app_state: Any,
+) -> str | None:
+    """Return the rejection reason or None when still authorised.
+
+    Three independent gates: the user record (deleted / role-missing /
+    role-demoted), the role allowlist, and the session-revocation
+    set. The session check uses the JWT JTI captured at ticket-issue
+    time and consults the in-memory revoked-session set published by
+    ``session_store`` so an admin's ``DELETE /sessions/{jti}`` kicks
+    the live connection out without waiting for token expiry.
+    """
     if db_user is None:
         return "user_deleted"
     role = getattr(db_user, "role", None)
@@ -182,6 +194,12 @@ def _revocation_reason(db_user: object | None) -> str | None:
         return "user_role_missing"
     if role not in _READ_ROLES:
         return "role_demoted"
+    if (
+        user.session_id is not None
+        and app_state.has_session_store
+        and app_state.session_store.is_revoked(user.session_id)
+    ):
+        return "session_revoked"
     return None
 
 

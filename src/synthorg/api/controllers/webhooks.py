@@ -27,6 +27,7 @@ from synthorg.integrations.webhooks.event_bus_bridge import (
 from synthorg.integrations.webhooks.replay_protection import ReplayProtector
 from synthorg.integrations.webhooks.verifiers.factory import get_verifier
 from synthorg.observability import get_logger
+from synthorg.observability.events.idempotency import IDEMPOTENCY_CLAIM_IN_FLIGHT
 from synthorg.observability.events.integrations import (
     WEBHOOK_ACCEPTED,
     WEBHOOK_RECEIVED,
@@ -250,7 +251,11 @@ class WebhooksController(Controller):
             from synthorg.core.types import NotBlankStr  # noqa: PLC0415
 
             scope = NotBlankStr(f"webhooks:{conn.connection_type}")
-            idem_key = NotBlankStr(f"{connection_name}:{nonce}")
+            # Include event_type in the durable key so two distinct
+            # routes that legitimately share a (connection_name, nonce)
+            # tuple (different event subscriptions on the same upstream)
+            # don't collide and replay each other's cached responses.
+            idem_key = NotBlankStr(f"{connection_name}:{event_type}:{nonce}")
 
             async def _publish_and_accept() -> dict[str, object]:
                 await publish_webhook_event(
@@ -274,8 +279,19 @@ class WebhooksController(Controller):
                 callback=_publish_and_accept,
             )
             if cached is None:
-                # Persistent claim couldn't resolve in time -- surface
-                # 409 so the caller retries.
+                # Durable claim couldn't resolve in the polling window
+                # -- record the contention before raising 409 so the
+                # operator-visible failure trail carries the
+                # connection / event / idempotency-key context the
+                # bare ConflictError body does not.
+                logger.warning(
+                    IDEMPOTENCY_CLAIM_IN_FLIGHT,
+                    scope=scope,
+                    idempotency_key=idem_key,
+                    connection_name=connection_name,
+                    event_type=event_type,
+                    endpoint="webhook.receive",
+                )
                 msg = "Concurrent in-flight webhook delivery"
                 raise ConflictError(msg)
             return ApiResponse(data=cached)

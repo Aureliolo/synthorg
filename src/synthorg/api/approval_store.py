@@ -94,18 +94,33 @@ class ApprovalStore:
         # race where two callers' differing payloads silently stomp one
         # another.
         self._saves_in_flight: set[str] = set()
+        # Generation counter incremented by ``clear``. A ``save`` that
+        # captures the current generation under the lock and observes
+        # a different generation when it tries to repopulate
+        # ``_items`` aborts the cache write so a clear cannot be
+        # silently undone by an in-flight save. Wrapping at 2**64 is
+        # not a concern -- the value is only ever compared for
+        # equality.
+        self._generation: int = 0
 
     async def clear(self) -> None:
         """Reset all approval items.
 
         Holds the same ``self._lock`` as the CRUD methods so a
         concurrent ``save`` / ``get`` / ``list_items`` cannot observe
-        a partially-cleared cache (#1599).
+        a partially-cleared cache (#1599). The generation counter is
+        bumped under the lock; in-flight saves that captured the old
+        generation will refuse to repopulate ``_items`` after the
+        clear lands. The ``_saves_in_flight`` markers are deliberately
+        preserved so a sibling save still observes the in-flight slot
+        for first-writer-wins semantics -- the generation guard
+        prevents the post-clear cache resurrection without sacrificing
+        save dedup.
         """
         async with self._lock:
             cleared_count = len(self._items)
             self._items.clear()
-            self._saves_in_flight.clear()
+            self._generation += 1
         logger.info(API_APPROVAL_STORE_CLEARED, cleared_count=cleared_count)
 
     def reset_for_test_sync(self) -> None:
@@ -118,6 +133,7 @@ class ApprovalStore:
         cleared_count = len(self._items)
         self._items.clear()
         self._saves_in_flight.clear()
+        self._generation += 1
         logger.info(API_APPROVAL_STORE_CLEARED, cleared_count=cleared_count)
 
     async def add(self, item: ApprovalItem) -> None:
@@ -280,6 +296,10 @@ class ApprovalStore:
                 )
                 return None
             self._saves_in_flight.add(item.id)
+            # Capture the generation under the lock so a ``clear``
+            # that lands during ``repo.save`` can be detected when
+            # we re-acquire the lock to repopulate the cache.
+            captured_generation = self._generation
         try:
             if self._repo is not None:
                 try:
@@ -296,6 +316,18 @@ class ApprovalStore:
                     await asyncio.shield(self._invalidate_cache(item.id))
                     raise
             async with self._lock:
+                if self._generation != captured_generation:
+                    # ``clear`` ran during the repo write -- do NOT
+                    # repopulate the cache, otherwise this save
+                    # would silently undo the clear. The repo commit
+                    # already landed, so a subsequent ``get`` will
+                    # fall through to the repo and observe it.
+                    logger.info(
+                        API_APPROVAL_STORE_CLEARED,
+                        note="save_aborted_by_concurrent_clear",
+                        approval_id=item.id,
+                    )
+                    return None
                 self._items[item.id] = item
             return item
         finally:

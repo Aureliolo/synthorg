@@ -111,11 +111,15 @@ class ReplayProtector:
                 reason="non-finite timestamp",
             )
             return False
-        if abs(self._clock() - timestamp) > self._window:
+        # Capture once so the comparison and the logged ``skew`` field
+        # cannot disagree if the clock advances between calls.
+        now = self._clock()
+        skew = abs(now - timestamp)
+        if skew > self._window:
             logger.warning(
                 WEBHOOK_REPLAY_DETECTED,
                 reason="timestamp outside window",
-                skew=abs(self._clock() - timestamp),
+                skew=skew,
             )
             return False
         return True

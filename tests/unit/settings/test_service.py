@@ -1045,3 +1045,164 @@ class TestSecuritySettingsAuditEmission:
         captured = _install_logger_info_spy(monkeypatch, service_mod)
         await svc.delete("security", "opt_in")
         assert SECURITY_SETTINGS_CHANGED in captured
+
+    async def test_set_many_emits_security_event_for_audited_namespace(
+        self,
+        mock_repo: AsyncMock,
+        config: _FakeConfig,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``set_many`` must emit one security event per audited key."""
+        from synthorg.settings import service as service_mod
+
+        registry = SettingsRegistry()
+        for key in ("opt_in", "second_flag"):
+            registry.register(
+                _make_definition(
+                    namespace=SettingNamespace.SECURITY,
+                    key=key,
+                    setting_type=SettingType.BOOLEAN,
+                    default="false",
+                    yaml_path=None,
+                ),
+            )
+        # Stub repo.set_many to return success (number of writes).
+        mock_repo.set_many.return_value = "2026-04-26T13:00:00+00:00"
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+        )
+        captured = _install_logger_info_spy(monkeypatch, service_mod)
+        await svc.set_many(
+            [
+                ("security", "opt_in", "true"),
+                ("security", "second_flag", "true"),
+            ],
+            expected_updated_at_map={
+                ("security", "opt_in"): "",
+                ("security", "second_flag"): "",
+            },
+        )
+        # One event per audited key.
+        assert sum(1 for e in captured if e == SECURITY_SETTINGS_CHANGED) == 2
+
+    async def test_set_many_does_not_emit_for_non_audited_namespace(
+        self,
+        mock_repo: AsyncMock,
+        config: _FakeConfig,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``set_many`` against ``budget`` must NOT emit security events."""
+        from synthorg.settings import service as service_mod
+
+        registry = SettingsRegistry()
+        registry.register(
+            _make_definition(
+                namespace=SettingNamespace.BUDGET,
+                key="total_monthly",
+                setting_type=SettingType.FLOAT,
+                yaml_path=None,
+            ),
+        )
+        mock_repo.set_many.return_value = "2026-04-26T13:00:00+00:00"
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+        )
+        captured = _install_logger_info_spy(monkeypatch, service_mod)
+        await svc.set_many(
+            [("budget", "total_monthly", "200.0")],
+            expected_updated_at_map={("budget", "total_monthly"): ""},
+        )
+        assert SECURITY_SETTINGS_CHANGED not in captured
+
+    async def test_delete_namespace_emits_security_event_for_audited(
+        self,
+        mock_repo: AsyncMock,
+        config: _FakeConfig,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``delete_namespace`` on ``security`` must emit one event."""
+        from synthorg.settings import service as service_mod
+
+        registry = SettingsRegistry()
+        registry.register(
+            _make_definition(
+                namespace=SettingNamespace.SECURITY,
+                key="opt_in",
+                setting_type=SettingType.BOOLEAN,
+                default="false",
+                yaml_path=None,
+            ),
+        )
+        # Stub returning-keys repo so the service sees deleted > 0 and
+        # falls into the audit-emit branch.
+        mock_repo.delete_namespace_returning_keys.return_value = ["opt_in"]
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+        )
+        captured = _install_logger_info_spy(monkeypatch, service_mod)
+        await svc.delete_namespace("security")
+        assert SECURITY_SETTINGS_CHANGED in captured
+
+    async def test_delete_namespace_does_not_emit_for_non_audited(
+        self,
+        mock_repo: AsyncMock,
+        config: _FakeConfig,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``delete_namespace`` on ``budget`` must NOT emit security events."""
+        from synthorg.settings import service as service_mod
+
+        registry = SettingsRegistry()
+        registry.register(
+            _make_definition(
+                namespace=SettingNamespace.BUDGET,
+                key="total_monthly",
+                setting_type=SettingType.FLOAT,
+                yaml_path=None,
+            ),
+        )
+        mock_repo.delete_namespace_returning_keys.return_value = ["total_monthly"]
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+        )
+        captured = _install_logger_info_spy(monkeypatch, service_mod)
+        await svc.delete_namespace("budget")
+        assert SECURITY_SETTINGS_CHANGED not in captured
+
+    async def test_delete_namespace_no_rows_does_not_emit(
+        self,
+        mock_repo: AsyncMock,
+        config: _FakeConfig,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """An empty ``delete_namespace`` must not fire the audit event."""
+        from synthorg.settings import service as service_mod
+
+        registry = SettingsRegistry()
+        registry.register(
+            _make_definition(
+                namespace=SettingNamespace.SECURITY,
+                key="opt_in",
+                setting_type=SettingType.BOOLEAN,
+                default="false",
+                yaml_path=None,
+            ),
+        )
+        mock_repo.delete_namespace_returning_keys.return_value = []
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+        )
+        captured = _install_logger_info_spy(monkeypatch, service_mod)
+        result = await svc.delete_namespace("security")
+        assert result == 0
+        assert SECURITY_SETTINGS_CHANGED not in captured

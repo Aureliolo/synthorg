@@ -62,18 +62,21 @@ class TestIdempotencyClaim:
         backend: PersistenceBackend,
     ) -> None:
         key = NotBlankStr("key-completed")
-        await backend.idempotency_keys.claim(
+        first = await backend.idempotency_keys.claim(
             scope=_SCOPE,
             key=key,
             ttl_seconds=60,
             now=_now(),
         )
-        await backend.idempotency_keys.complete(
+        assert first.claim_token is not None
+        committed = await backend.idempotency_keys.complete(
             scope=_SCOPE,
             key=key,
             response_body='{"ok": true}',
             response_hash="deadbeef",
+            claim_token=first.claim_token,
         )
+        assert committed is True
         claim = await backend.idempotency_keys.claim(
             scope=_SCOPE,
             key=key,
@@ -108,13 +111,19 @@ class TestIdempotencyClaim:
         backend: PersistenceBackend,
     ) -> None:
         key = NotBlankStr("key-failed-retry")
-        await backend.idempotency_keys.claim(
+        first = await backend.idempotency_keys.claim(
             scope=_SCOPE,
             key=key,
             ttl_seconds=60,
             now=_now(),
         )
-        await backend.idempotency_keys.fail(scope=_SCOPE, key=key)
+        assert first.claim_token is not None
+        committed = await backend.idempotency_keys.fail(
+            scope=_SCOPE,
+            key=key,
+            claim_token=first.claim_token,
+        )
+        assert committed is True
         retry = await backend.idempotency_keys.claim(
             scope=_SCOPE,
             key=key,
@@ -122,6 +131,10 @@ class TestIdempotencyClaim:
             now=_now(),
         )
         assert retry.outcome is IdempotencyOutcome.FRESH
+        # The reclaim must rotate the token so a stale worker holding
+        # the original lease cannot CAS-overwrite this fresh row.
+        assert retry.claim_token is not None
+        assert retry.claim_token != first.claim_token
 
     async def test_concurrent_claims_only_one_wins(
         self,

@@ -57,6 +57,16 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
         """Initialise an empty bucket store."""
         self._buckets: dict[str, _Bucket] = {}
         self._locks: dict[str, asyncio.Lock] = {}
+        # Reference count of in-flight ``acquire`` calls per key, used
+        # to gate GC so a coroutine that has just received a lock from
+        # ``_get_lock`` (but not yet awaited ``acquire``) can never
+        # have it evicted from underneath itself. ``lock.locked()``
+        # alone is insufficient: between ``_get_lock`` returning and
+        # ``async with lock`` actually blocking, a GC sweep could drop
+        # the unlocked lock and the next ``_get_lock(same_key)`` would
+        # mint a fresh lock, leaving two concurrent ``acquire`` calls
+        # holding *different* lock objects for the same key.
+        self._lock_refs: dict[str, int] = {}
         self._meta_lock: asyncio.Lock = asyncio.Lock()
         self._acquires_since_gc: int = 0
 
@@ -95,34 +105,41 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
 
         outcome: RateLimitOutcome
         lock = await self._get_lock(key)
-        async with lock:
-            now = time.monotonic()
-            bucket = self._buckets.setdefault(key, _Bucket())
-            # Remember the largest observed window per key; GC uses this
-            # to avoid prematurely evicting a long-window bucket when a
-            # short-window acquire triggers a sweep.
-            bucket.window_seconds = max(bucket.window_seconds, window_seconds)
-            cutoff = now - float(window_seconds)
-            while bucket.timestamps and bucket.timestamps[0] <= cutoff:
-                bucket.timestamps.popleft()
-            if len(bucket.timestamps) >= max_requests:
-                oldest = bucket.timestamps[0]
-                # Minimum 0.001s so a client seeing retry_after=0 never hot-loops
-                # on sub-millisecond clock jitter while a window is still active.
-                retry_after = max(oldest + float(window_seconds) - now, 0.001)
-                outcome = RateLimitOutcome(
-                    allowed=False,
-                    retry_after_seconds=retry_after,
-                    remaining=0,
-                )
-            else:
-                bucket.timestamps.append(now)
-                remaining = max(max_requests - len(bucket.timestamps), 0)
-                outcome = RateLimitOutcome(
-                    allowed=True,
-                    retry_after_seconds=None,
-                    remaining=remaining,
-                )
+        try:
+            async with lock:
+                now = time.monotonic()
+                bucket = self._buckets.setdefault(key, _Bucket())
+                # Remember the largest observed window per key; GC uses
+                # this to avoid prematurely evicting a long-window
+                # bucket when a short-window acquire triggers a sweep.
+                bucket.window_seconds = max(bucket.window_seconds, window_seconds)
+                cutoff = now - float(window_seconds)
+                while bucket.timestamps and bucket.timestamps[0] <= cutoff:
+                    bucket.timestamps.popleft()
+                if len(bucket.timestamps) >= max_requests:
+                    oldest = bucket.timestamps[0]
+                    # Minimum 0.001s so a client seeing retry_after=0
+                    # never hot-loops on sub-millisecond clock jitter
+                    # while a window is still active.
+                    retry_after = max(
+                        oldest + float(window_seconds) - now,
+                        0.001,
+                    )
+                    outcome = RateLimitOutcome(
+                        allowed=False,
+                        retry_after_seconds=retry_after,
+                        remaining=0,
+                    )
+                else:
+                    bucket.timestamps.append(now)
+                    remaining = max(max_requests - len(bucket.timestamps), 0)
+                    outcome = RateLimitOutcome(
+                        allowed=True,
+                        retry_after_seconds=None,
+                        remaining=remaining,
+                    )
+        finally:
+            await self._release_lock_ref(key)
 
         # GC counter increments on every acquire -- allowed AND denied --
         # so a key under sustained deny pressure still triggers periodic
@@ -144,6 +161,7 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
         async with self._meta_lock:
             self._buckets.clear()
             self._locks.clear()
+            self._lock_refs.clear()
             self._acquires_since_gc = 0
 
     async def _get_lock(self, key: str) -> asyncio.Lock:
@@ -155,13 +173,36 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
         ``dict.get`` is not guaranteed atomic, and the cost of one
         async-lock acquire per ``acquire()`` is negligible against the
         bucket-mutation work that follows (#1599).
+
+        Increments ``_lock_refs[key]`` so a concurrent
+        :meth:`_gc_cold_buckets` cannot evict the lock between this
+        return and the caller's ``async with``. The caller MUST pair
+        every successful ``_get_lock`` with a
+        :meth:`_release_lock_ref` (see ``finally`` block in
+        :meth:`acquire`).
         """
         async with self._meta_lock:
             lock = self._locks.get(key)
             if lock is None:
                 lock = asyncio.Lock()
                 self._locks[key] = lock
+            self._lock_refs[key] = self._lock_refs.get(key, 0) + 1
             return lock
+
+    async def _release_lock_ref(self, key: str) -> None:
+        """Drop one reference; remove the entry when it hits zero.
+
+        Pairs with :meth:`_get_lock`. The ``_lock_refs`` entry is
+        deleted (rather than left at 0) so a quiescent key contributes
+        nothing to memory; the dict only holds keys with at least one
+        in-flight ``acquire``.
+        """
+        async with self._meta_lock:
+            count = self._lock_refs.get(key, 0) - 1
+            if count <= 0:
+                self._lock_refs.pop(key, None)
+            else:
+                self._lock_refs[key] = count
 
     async def _gc_cold_buckets(self) -> None:
         """Drop buckets (and locks) that have been empty for twice the window.
@@ -188,11 +229,21 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
                         dead.append(key)
                 for key in dead:
                     self._buckets.pop(key, None)
-                    # Only drop the lock if no task is holding it -- a
-                    # locked entry means an in-flight acquire that must
-                    # observe the same lock object.
+                    # Only drop the lock if no task is holding it AND
+                    # no in-flight ``acquire`` has captured a
+                    # reference. ``lock.locked()`` alone is too weak:
+                    # a coroutine that just got the lock from
+                    # ``_get_lock`` but has not yet awaited
+                    # ``async with`` would be deprived of its lock,
+                    # and the next ``_get_lock(same_key)`` would mint
+                    # a fresh one -- two acquires holding different
+                    # locks for the same key.
                     lock = self._locks.get(key)
-                    if lock is not None and not lock.locked():
+                    if (
+                        lock is not None
+                        and not lock.locked()
+                        and self._lock_refs.get(key, 0) == 0
+                    ):
                         self._locks.pop(key, None)
                 # Sweep orphan locks (keys in _locks but not in _buckets).
                 orphan_lock_keys = [
@@ -200,7 +251,11 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
                 ]
                 for key in orphan_lock_keys:
                     lock = self._locks.get(key)
-                    if lock is not None and not lock.locked():
+                    if (
+                        lock is not None
+                        and not lock.locked()
+                        and self._lock_refs.get(key, 0) == 0
+                    ):
                         self._locks.pop(key, None)
             except asyncio.CancelledError, MemoryError, RecursionError:
                 # Non-recoverable: propagate so shutdown / OOM is not hidden.

@@ -43,12 +43,21 @@ class IdempotencyClaim(BaseModel):
         cached_response: When ``outcome`` is ``COMPLETED``, the JSON
             string body returned by the prior successful execution.
             ``None`` for every other outcome.
+        claim_token: Random opaque token issued for ``FRESH`` claims so
+            ``complete`` / ``fail`` can compare-and-swap against the
+            current lease. A stale worker that timed out and finishes
+            after another worker re-claimed the key will see the row's
+            token has rotated and skip the write, instead of
+            overwriting the new lease's cached response. ``None`` for
+            outcomes the caller cannot complete (``IN_FLIGHT`` /
+            ``COMPLETED`` / ``FAILED``).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     outcome: IdempotencyOutcome
     cached_response: str | None = Field(default=None)
+    claim_token: str | None = Field(default=None)
 
     @model_validator(mode="after")
     def _validate_cached_response_matches_outcome(self) -> Self:
@@ -56,7 +65,9 @@ class IdempotencyClaim(BaseModel):
 
         Prevents constructing a claim that pretends to have a cached
         body for an in-flight or failed entry, or one that drops the
-        cached body for a completed entry.
+        cached body for a completed entry. Also enforces that
+        ``claim_token`` is set iff outcome is ``FRESH`` -- only the
+        FRESH winner has a lease to defend.
         """
         if self.outcome is IdempotencyOutcome.COMPLETED:
             if self.cached_response is None:
@@ -64,6 +75,13 @@ class IdempotencyClaim(BaseModel):
                 raise ValueError(msg)
         elif self.cached_response is not None:
             msg = f"cached_response must be None when outcome is {self.outcome.value!r}"
+            raise ValueError(msg)
+        if self.outcome is IdempotencyOutcome.FRESH:
+            if self.claim_token is None:
+                msg = "claim_token must be present when outcome is FRESH"
+                raise ValueError(msg)
+        elif self.claim_token is not None:
+            msg = f"claim_token must be None when outcome is {self.outcome.value!r}"
             raise ValueError(msg)
         return self
 
@@ -150,8 +168,17 @@ class IdempotencyRepository(Protocol):
         key: NotBlankStr,
         response_body: str,
         response_hash: str,
-    ) -> None:
-        """Mark a claimed key as ``COMPLETED`` and store the response."""
+        claim_token: str,
+    ) -> bool:
+        """Mark a claimed key as ``COMPLETED`` and store the response.
+
+        Returns ``True`` if the row's stored ``claim_token`` matched
+        and the write landed; ``False`` if the token has rotated
+        (another worker re-claimed the key) or the row vanished. A
+        ``False`` return signals a stale worker -- callers must not
+        attempt to recover by ignoring it; the row already belongs to
+        a different lease.
+        """
         ...
 
     async def fail(
@@ -159,8 +186,14 @@ class IdempotencyRepository(Protocol):
         *,
         scope: NotBlankStr,
         key: NotBlankStr,
-    ) -> None:
-        """Mark a claimed key as ``FAILED`` so future retries can re-claim."""
+        claim_token: str,
+    ) -> bool:
+        """Mark a claimed key as ``FAILED`` so future retries can re-claim.
+
+        Returns ``True`` only if the row's stored ``claim_token``
+        matched -- a stale worker whose lease has rotated cannot
+        flip the row to FAILED.
+        """
         ...
 
     async def get(

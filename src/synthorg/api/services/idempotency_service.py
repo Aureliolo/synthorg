@@ -111,7 +111,20 @@ class IdempotencyService:
             # expected to translate to 409 Conflict at the API layer.
             return None, False
 
-        # FRESH -- execute the callback under the claim.
+        # FRESH -- execute the callback under the claim. The
+        # ``claim_token`` is the lease this worker owns; ``complete``
+        # / ``fail`` enforce token equality so a slow worker that
+        # ran past the in-flight window cannot CAS-overwrite a row
+        # the rotation handed to a fresh worker. The
+        # ``IdempotencyClaim`` model_validator already enforces that
+        # FRESH outcomes carry a non-None token, so this lookup is
+        # type-safe; we surface a defensive ValueError to the
+        # operator instead of an untyped AttributeError if the
+        # invariant ever regressed.
+        token = claim.claim_token
+        if token is None:
+            msg = "FRESH claim must carry a claim_token"
+            raise ValueError(msg)
         logger.info(IDEMPOTENCY_CLAIM_FRESH, scope=scope, key=key)
         try:
             result = await callback()
@@ -120,13 +133,18 @@ class IdempotencyService:
             # the claim row. Project convention.
             raise
         except Exception:
-            await self._mark_failed_safely(scope=scope, key=key)
+            await self._mark_failed_safely(
+                scope=scope,
+                key=key,
+                claim_token=token,
+            )
             raise
 
         body = await self._record_completion(
             scope=scope,
             key=key,
             result=result,
+            claim_token=token,
         )
         # Round-trip through ``json.loads`` so the fresh-path return
         # value has the same shape as the replay-path return value
@@ -181,6 +199,7 @@ class IdempotencyService:
         scope: NotBlankStr,
         key: NotBlankStr,
         result: Any,
+        claim_token: str,
     ) -> str:
         """Persist *result* as the cached response body and return it.
 
@@ -191,16 +210,33 @@ class IdempotencyService:
         to the caller as a different type. The caller round-trips the
         returned body through ``json.loads`` so fresh and replay paths
         return identical shapes.
+
+        ``claim_token`` is the lease the FRESH winner received. The
+        repository's ``complete`` enforces token equality so a stale
+        worker that finished after the lease rotated cannot overwrite
+        the new lease's row.
         """
         body = json.dumps(result, sort_keys=True)
         digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
-        await self._repo.complete(
+        committed = await self._repo.complete(
             scope=scope,
             key=key,
             response_body=body,
             response_hash=digest,
+            claim_token=claim_token,
         )
-        logger.info(IDEMPOTENCY_COMPLETE, scope=scope, key=key)
+        if not committed:
+            # Lease rotated while we were running -- do NOT silently
+            # ignore. The caller still gets the intended return
+            # value but operators see the rotation in the log.
+            logger.warning(
+                IDEMPOTENCY_COMPLETE,
+                scope=scope,
+                key=key,
+                note="claim_token_rotated_skipping_completion",
+            )
+        else:
+            logger.info(IDEMPOTENCY_COMPLETE, scope=scope, key=key)
         return body
 
     async def _mark_failed_safely(
@@ -208,10 +244,23 @@ class IdempotencyService:
         *,
         scope: NotBlankStr,
         key: NotBlankStr,
+        claim_token: str,
     ) -> None:
         try:
-            await self._repo.fail(scope=scope, key=key)
-            logger.info(IDEMPOTENCY_FAIL, scope=scope, key=key)
+            committed = await self._repo.fail(
+                scope=scope,
+                key=key,
+                claim_token=claim_token,
+            )
+            if not committed:
+                logger.warning(
+                    IDEMPOTENCY_FAIL,
+                    scope=scope,
+                    key=key,
+                    note="claim_token_rotated_skipping_fail",
+                )
+            else:
+                logger.info(IDEMPOTENCY_FAIL, scope=scope, key=key)
         except Exception as exc:
             # The original callback exception is the one the caller
             # cares about; failing to mark the row failed is best-

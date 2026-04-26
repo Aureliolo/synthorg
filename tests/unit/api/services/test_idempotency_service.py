@@ -49,6 +49,11 @@ class _FakeRepo:
         now: datetime,
     ) -> IdempotencyClaim:
         del scope, key
+        if self.next_outcome is IdempotencyOutcome.FRESH:
+            return IdempotencyClaim(
+                outcome=IdempotencyOutcome.FRESH,
+                claim_token="test-token",
+            )
         return IdempotencyClaim(
             outcome=self.next_outcome,
             cached_response=self.cached_response,
@@ -61,20 +66,25 @@ class _FakeRepo:
         key: NotBlankStr,
         response_body: str,
         response_hash: str,
-    ) -> None:
-        del scope, key
+        claim_token: str,
+    ) -> bool:
+        del scope, key, claim_token
         self.completes.append((response_body, response_hash))
         self.cached_response = response_body
         self.next_outcome = IdempotencyOutcome.COMPLETED
+        return True
 
     async def fail(
         self,
         *,
         scope: NotBlankStr,
         key: NotBlankStr,
-    ) -> None:
+        claim_token: str,
+    ) -> bool:
+        del claim_token
         self.fails.append((str(scope), str(key)))
         self.next_outcome = IdempotencyOutcome.FAILED
+        return True
 
     async def get(
         self,

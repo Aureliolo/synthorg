@@ -1198,10 +1198,34 @@ CREATE TABLE idempotency_keys (
     scope TEXT NOT NULL CHECK(length(trim(scope)) > 0 AND length(scope) <= 64),
     key TEXT NOT NULL CHECK(length(trim(key)) > 0 AND length(key) <= 255),
     status TEXT NOT NULL CHECK(status IN ('in_flight', 'completed', 'failed')),
+    -- Opaque per-lease ownership token (UUIDv4 hex). Rotated every
+    -- time a row is reclaimed (FRESH on an expired/failed prior
+    -- entry) so a stale worker that times out and finishes later
+    -- cannot CAS-overwrite the new lease's cached response.
+    claim_token TEXT NOT NULL CHECK(length(trim(claim_token)) > 0),
     response_hash TEXT,
     response_body TEXT,
-    created_at TEXT NOT NULL,
-    expires_at TEXT NOT NULL,
+    -- Timestamp format is enforced by the Python layer via
+    -- ``parse_iso_utc`` / ``format_iso_utc`` (see
+    -- ``persistence/_shared/datetime_marshaller.py``); the DB only
+    -- enforces non-blank and the TTL ordering invariant.
+    created_at TEXT NOT NULL CHECK(length(trim(created_at)) > 0),
+    expires_at TEXT NOT NULL CHECK(
+        length(trim(expires_at)) > 0
+        AND expires_at > created_at
+    ),
+    -- Cached-response invariant: the (response_hash, response_body)
+    -- pair is set if and only if status is 'completed'. Catches
+    -- buggy writes and corrupt rows loaded from disk before the
+    -- service layer sees them.
+    CONSTRAINT idempotency_keys_response_cache_check CHECK(
+        (status = 'completed'
+            AND response_hash IS NOT NULL
+            AND response_body IS NOT NULL)
+        OR (status IN ('in_flight', 'failed')
+            AND response_hash IS NULL
+            AND response_body IS NULL)
+    ),
     PRIMARY KEY (scope, key)
 );
 CREATE INDEX idx_idempotency_expires ON idempotency_keys(expires_at);

@@ -6,6 +6,7 @@ Split out of ``lifecycle_builder.py`` so neither file exceeds the
 """
 
 import asyncio
+import inspect
 from typing import TYPE_CHECKING, Any
 
 from synthorg.notifications.factory import build_notification_dispatcher
@@ -124,7 +125,12 @@ async def _run_cleanup_step(
     """
     try:
         result = action()
-        if asyncio.iscoroutine(result):
+        # Use ``inspect.isawaitable`` so Tasks, Futures, and any
+        # ``__await__``-implementing custom awaitable returned by a
+        # cleanup hook are awaited too -- ``asyncio.iscoroutine``
+        # only matches bare coroutines and would silently skip the
+        # rest.
+        if inspect.isawaitable(result):
             await result
     except MemoryError, RecursionError:
         raise

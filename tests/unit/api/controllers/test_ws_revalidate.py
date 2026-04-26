@@ -38,18 +38,53 @@ def _make_auth_user(role: HumanRole = HumanRole.CEO) -> AuthenticatedUser:
     )
 
 
+def _make_app_state(
+    *,
+    has_session_store: bool = False,
+    is_revoked: bool = False,
+) -> Any:
+    """Lightweight ``app_state`` stub for ``_revocation_reason``."""
+    session_store = type("Ss", (), {"is_revoked": lambda _self, _jti: is_revoked})()
+    return type(
+        "AS",
+        (),
+        {"has_session_store": has_session_store, "session_store": session_store},
+    )()
+
+
 def test_revocation_reason_user_deleted() -> None:
-    assert _revocation_reason(None) == "user_deleted"
+    auth = _make_auth_user()
+    assert _revocation_reason(None, auth, _make_app_state()) == "user_deleted"
 
 
 def test_revocation_reason_role_demoted() -> None:
     user = _make_user(role=HumanRole.SYSTEM)
-    assert _revocation_reason(user) == "role_demoted"
+    auth = _make_auth_user()
+    assert _revocation_reason(user, auth, _make_app_state()) == "role_demoted"
 
 
 def test_revocation_reason_active_user_passes() -> None:
     user = _make_user(role=HumanRole.CEO)
-    assert _revocation_reason(user) is None
+    auth = _make_auth_user()
+    assert _revocation_reason(user, auth, _make_app_state()) is None
+
+
+def test_revocation_reason_session_revoked_kicks_connection() -> None:
+    """A revoked JTI must surface as ``session_revoked`` even when the
+    user record is otherwise authorised."""
+    user = _make_user(role=HumanRole.CEO)
+    auth = _make_auth_user().model_copy(update={"session_id": "jti-123"})
+    app_state = _make_app_state(has_session_store=True, is_revoked=True)
+    assert _revocation_reason(user, auth, app_state) == "session_revoked"
+
+
+def test_revocation_reason_no_session_id_skips_session_check() -> None:
+    """Auth methods without a JTI (e.g. API key) bypass the session
+    check; an active user passes."""
+    user = _make_user(role=HumanRole.CEO)
+    auth = _make_auth_user()  # session_id defaults to None
+    app_state = _make_app_state(has_session_store=True, is_revoked=True)
+    assert _revocation_reason(user, auth, app_state) is None
 
 
 async def test_periodic_revalidate_closes_on_user_deleted() -> None:
@@ -119,5 +154,9 @@ class _FakeApp:
         else:
             users_repo.get.return_value = persisted_user
         persistence = type("Pst", (), {"users": users_repo})()
-        app_state = type("AS", (), {"persistence": persistence})()
+        app_state = type(
+            "AS",
+            (),
+            {"persistence": persistence, "has_session_store": False},
+        )()
         self.state: dict[str, Any] = {"app_state": app_state}

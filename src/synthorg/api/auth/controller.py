@@ -49,7 +49,9 @@ from synthorg.observability.events.api import (
     API_SESSION_REVOKE_FAILED,
 )
 from synthorg.observability.events.security import (
+    SECURITY_AUTH_ACCOUNT_LOCKED,
     SECURITY_AUTH_FAILED,
+    SECURITY_AUTH_LOCKOUT_CLEARED,
     SECURITY_AUTH_PASSWORD_CHANGED,
     SECURITY_AUTH_SETUP_COMPLETE,
     SECURITY_AUTH_TOKEN_ISSUED,
@@ -95,6 +97,59 @@ not collide with the global rate limiter.
 
 
 _VALID_SCOPES: frozenset[str] = frozenset({"own", "all"})
+
+
+async def _record_failed_login(
+    app_state: Any,
+    username: str,
+    request: Request[Any, Any, Any],
+) -> None:
+    """Record a failed login attempt and raise on lockout.
+
+    Extracted from :meth:`AuthController.login` so the parent stays
+    under the McCabe-complexity ceiling. Per the persistence-boundary
+    rule (#1599) the repo no longer logs ``SECURITY_AUTH_ACCOUNT_LOCKED``;
+    this helper emits the signed audit event with the controller-side
+    context (threshold + duration) and raises ``AccountLockedError``
+    so the caller's flow short-circuits before the generic
+    ``invalid_credentials`` log line.
+    """
+    if not app_state.has_lockout_store:
+        return
+    client = request.client
+    ip = client.host if client else ""
+    locked = await app_state.lockout_store.record_failure(
+        username,
+        ip_address=ip,
+    )
+    if not locked:
+        return
+    logger.warning(
+        SECURITY_AUTH_ACCOUNT_LOCKED,
+        username=username,
+        threshold=app_state.lockout_store.threshold,
+        duration_minutes=(app_state.lockout_store.lockout_duration_seconds // 60),
+    )
+    raise AccountLockedError(
+        retry_after=app_state.lockout_store.lockout_duration_seconds,
+    )
+
+
+async def _record_successful_login(app_state: Any, username: str) -> None:
+    """Clear the lockout state and emit the audit event when warranted.
+
+    Repo returns whether a lock was actually cleared; we only emit
+    ``SECURITY_AUTH_LOCKOUT_CLEARED`` when there was something to
+    clear so a routine successful login does not chain a no-op
+    decision into the audit log.
+    """
+    if not app_state.has_lockout_store:
+        return
+    if await app_state.lockout_store.record_success(username):
+        logger.info(
+            SECURITY_AUTH_LOCKOUT_CLEARED,
+            username=username,
+        )
 
 
 class AuthController(Controller):
@@ -255,17 +310,7 @@ class AuthController(Controller):
             password_valid = False
 
         if not password_valid:
-            # Record failure for lockout tracking
-            if app_state.has_lockout_store:
-                client = request.client
-                ip = client.host if client else ""
-                locked = await app_state.lockout_store.record_failure(
-                    data.username, ip_address=ip
-                )
-                if locked:
-                    raise AccountLockedError(
-                        retry_after=app_state.lockout_store.lockout_duration_seconds,
-                    )
+            await _record_failed_login(app_state, data.username, request)
             logger.warning(
                 SECURITY_AUTH_FAILED,
                 reason="invalid_credentials",
@@ -273,9 +318,8 @@ class AuthController(Controller):
             msg = "Invalid credentials"
             raise UnauthorizedError(msg)
 
-        # Clear lockout on success
-        if app_state.has_lockout_store:
-            await app_state.lockout_store.record_success(data.username)
+        # Clear lockout on success.
+        await _record_successful_login(app_state, data.username)
 
         token, expires_in, session_id = auth_service.create_token(user)
 

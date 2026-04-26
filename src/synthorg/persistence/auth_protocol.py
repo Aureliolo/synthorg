@@ -97,8 +97,13 @@ class LockoutRepository(Protocol):
         """Record a failed login attempt; return ``True`` if now locked."""
         ...
 
-    async def record_success(self, username: str) -> None:
-        """Clear failure count on successful login."""
+    async def record_success(self, username: str) -> bool:
+        """Clear failure count on successful login.
+
+        Returns ``True`` when a previously-locked account was
+        unlocked (caller logs ``SECURITY_AUTH_LOCKOUT_CLEARED``);
+        ``False`` when no lockout was in effect.
+        """
         ...
 
     async def cleanup_expired(self) -> int:
@@ -112,6 +117,11 @@ class LockoutRepository(Protocol):
     @property
     def lockout_duration_seconds(self) -> int:
         """Return the lockout duration in seconds for Retry-After."""
+        ...
+
+    @property
+    def threshold(self) -> int:
+        """Failed-attempt threshold; used by the auth controller audit."""
         ...
 
 

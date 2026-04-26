@@ -108,6 +108,11 @@ class AuthenticatedUser(BaseModel):
         must_change_password: Whether forced password change is pending.
         org_roles: Permission-level roles for org config access.
         scoped_departments: Departments accessible to dept admins.
+        session_id: JWT ``jti`` (or ``None`` for non-JWT methods).
+            Long-lived connections (WS, SSE) consult
+            ``session_store.is_revoked(session_id)`` periodically so an
+            admin revocation kicks the connection out instead of
+            waiting for the access token to expire (#1599).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -119,6 +124,7 @@ class AuthenticatedUser(BaseModel):
     must_change_password: bool = False
     org_roles: tuple[OrgRole, ...] = ()
     scoped_departments: tuple[NotBlankStr, ...] = ()
+    session_id: NotBlankStr | None = None
 
     @model_validator(mode="after")
     def _validate_scoped_departments(self) -> AuthenticatedUser:

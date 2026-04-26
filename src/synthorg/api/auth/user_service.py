@@ -3,8 +3,12 @@
 Thin wrapper over :class:`UserRepository` so the ``/users`` controller
 does not reach into ``app_state.persistence.users`` directly. CEO /
 SYSTEM / constraint-violation policy stays in the controller (those are
-HTTP / audit-log concerns) but CRUD mechanics live here with uniform
-``API_USER_*`` logging.
+HTTP and authorization concerns); CRUD mechanics live here and emit
+``SECURITY_USER_*`` audit events (``security.user.created`` / ``updated``
+/ ``deleted`` / ``delete_failed``) so every successful or aborted user
+mutation is signed by the audit chain. Operational-only events such as
+listing or save failures stay under ``api.user.*`` and do not enter the
+chain.
 """
 
 from typing import TYPE_CHECKING

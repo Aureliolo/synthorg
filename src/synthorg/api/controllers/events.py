@@ -58,8 +58,13 @@ _SSE_REVALIDATE_MAX_FAILURES: int = 3
 async def _user_revocation_reason(
     app_state: AppState,
     user_id: str,
+    session_id: str | None,
 ) -> tuple[str | None, bool]:
     """Return ``(reason, ok)``: reason is None when still authorised.
+
+    Checks the user record (deleted / role-missing / demoted) **and**
+    the session-revocation set (an admin ``DELETE /sessions/{jti}``
+    must kick a live SSE stream within one revalidation interval).
 
     ``ok`` is False when the persistence call itself failed (transient
     backend error). Callers tolerate ``_SSE_REVALIDATE_MAX_FAILURES``
@@ -83,6 +88,12 @@ async def _user_revocation_reason(
         return "user_role_missing", True
     if role not in _READ_ROLES:
         return "role_demoted", True
+    if (
+        session_id is not None
+        and app_state.has_session_store
+        and app_state.session_store.is_revoked(session_id)
+    ):
+        return "session_revoked", True
     return None, True
 
 
@@ -289,6 +300,7 @@ async def _sse_event_stream(
                 reason, ok = await _user_revocation_reason(
                     app_state,
                     user.user_id,
+                    user.session_id,
                 )
                 if not ok:
                     consecutive_failures += 1
