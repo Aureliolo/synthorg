@@ -21,13 +21,18 @@ from synthorg.meta.mcp.handlers.common import (
     err,
     ok,
 )
-from synthorg.meta.mcp.handlers.common_args import coerce_pagination, require_arg
-from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.mcp import (
-    MCP_HANDLER_ARGUMENT_INVALID,
-    MCP_HANDLER_CAPABILITY_GAP,
-    MCP_HANDLER_INVOKE_FAILED,
+from synthorg.meta.mcp.handlers.common_args import (
+    actor_label,
+    coerce_pagination,
+    get_optional_str,
+    require_arg,
 )
+from synthorg.meta.mcp.handlers.common_logging import (
+    log_handler_argument_invalid,
+    log_handler_invoke_failed,
+)
+from synthorg.observability import get_logger
+from synthorg.observability.events.mcp import MCP_HANDLER_CAPABILITY_GAP
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -59,26 +64,6 @@ def _get_optional_str(arguments: dict[str, Any], key: str) -> str | None:
     return raw
 
 
-def _log_invalid(tool: str, exc: ArgumentValidationError) -> None:
-    """Emit ``MCP_HANDLER_ARGUMENT_INVALID`` at WARNING for client-input errors."""
-    logger.warning(
-        MCP_HANDLER_ARGUMENT_INVALID,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-
-
-def _log_failed(tool: str, exc: Exception) -> None:
-    """Emit ``MCP_HANDLER_INVOKE_FAILED`` at WARNING with safe error context."""
-    logger.warning(
-        MCP_HANDLER_INVOKE_FAILED,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-
-
 def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
     """Translate a facade-side capability gap into a typed error envelope.
 
@@ -93,32 +78,9 @@ def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
     return err(exc, domain_code=exc.domain_code)
 
 
-def _actor_name(actor: AgentIdentity | None) -> NotBlankStr:
-    """Return a stable audit identifier, preferring ``actor.id`` over ``name``."""
-    if actor is None:
-        return NotBlankStr("mcp-anonymous")
-    actor_id = getattr(actor, "id", None)
-    if actor_id is not None:
-        return NotBlankStr(str(actor_id))
-    name = getattr(actor, "name", None)
-    if isinstance(name, str) and name.strip():
-        return NotBlankStr(name)
-    return NotBlankStr("mcp-anonymous")
-
-
-def _get_str(arguments: dict[str, Any], key: str) -> NotBlankStr | None:
-    """Extract an optional non-blank string argument."""
-    raw = arguments.get(key)
-    if raw in (None, ""):
-        return None
-    if not isinstance(raw, str) or not raw.strip():
-        raise invalid_argument(key, _TY_STRING)
-    return NotBlankStr(raw)
-
-
 def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
     """Extract a required non-blank string or raise ``ArgumentValidationError``."""
-    value = _get_str(arguments, key)
+    value = get_optional_str(arguments, key)
     if value is None:
         raise invalid_argument(key, _TY_STRING)
     return value
@@ -161,10 +123,10 @@ async def _quality_get_summary(
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(dict(summary))
 
@@ -185,10 +147,10 @@ async def _quality_get_agent_quality(
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(dict(result))
 
@@ -203,19 +165,19 @@ async def _quality_list_scores(
     tool = "synthorg_quality_list_scores"
     try:
         offset, limit = coerce_pagination(arguments)
-        agent_id = _get_str(arguments, "agent_id")
+        agent_id = get_optional_str(arguments, "agent_id")
         page, total = await app_state.quality_facade_service.list_scores(
             agent_id=agent_id,
             offset=offset,
             limit=limit,
         )
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     pagination = PaginationMeta(total=total, offset=offset, limit=limit)
     return ok([_to_jsonable(s) for s in page], pagination=pagination)
@@ -241,10 +203,10 @@ async def _reviews_list(
         pagination = PaginationMeta(total=total, offset=offset, limit=limit)
         return ok([r.to_dict() for r in page], pagination=pagination)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
 
@@ -260,10 +222,10 @@ async def _reviews_get(
         review_id = _require_uuid(arguments, "review_id")
         record = await app_state.review_facade_service.get_review(review_id)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     if record is None:
         return err(
@@ -287,15 +249,15 @@ async def _reviews_create(
         comments = _get_optional_str(arguments, "comments")
         record = await app_state.review_facade_service.create_review(
             task_id=task_id,
-            reviewer_id=_actor_name(actor),
+            reviewer_id=actor_label(actor),
             verdict=verdict,
             comments=comments,
         )
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(record.to_dict())
 
@@ -310,19 +272,19 @@ async def _reviews_update(
     tool = "synthorg_reviews_update"
     try:
         review_id = _require_uuid(arguments, "review_id")
-        verdict = _get_str(arguments, "verdict")
+        verdict = get_optional_str(arguments, "verdict")
         comments = _get_optional_str(arguments, "comments")
         record = await app_state.review_facade_service.update_review(
             review_id=review_id,
             verdict=verdict,
             comments=comments,
-            actor_id=_actor_name(actor),
+            actor_id=actor_label(actor),
         )
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     if record is None:
         return err(
@@ -346,10 +308,10 @@ async def _evaluation_versions_list(
     try:
         versions = await app_state.evaluation_version_service.list_versions()
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok([_to_jsonable(v) for v in versions])
 
@@ -368,10 +330,10 @@ async def _evaluation_versions_get(
             version_id,
         )
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     if version is None:
         return err(
