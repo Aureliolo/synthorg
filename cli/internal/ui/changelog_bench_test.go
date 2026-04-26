@@ -2,10 +2,16 @@ package ui
 
 import "testing"
 
-// Sample release-body inputs sized to a realistic “synthorg update“
+// Sample release-body inputs sized to a realistic "synthorg update"
 // payload: the v0.7.0 changelog has 12 highlight bullets and ~60
 // commit lines. Inputs are kept inline (not files) so the bench
 // allocation cost is fully attributable to the renderer, not I/O.
+//
+// The v0.7.0 content is a fixture, not a pinned tag. Maintain the
+// approximate shape (12 highlight bullets, ~60 commit lines) when
+// updating, so render cost stays comparable across release cycles --
+// render cost scales with input size and a different shape would
+// make historical bench numbers incomparable.
 const sampleHighlightsBody = `**TL;DR**: API hardening, engine quality + shadow eval, observability hardening, settings service, fine-tune image GPU/CPU split.
 
 ### What's new
@@ -42,8 +48,15 @@ const sampleCommitsBody = `## [0.7.0](https://github.com/Aureliolo/synthorg/comp
 * **engine:** middleware + coordination split ([#1278](https://github.com/Aureliolo/synthorg/pull/1278)) ([3b4c5d6](https://github.com/Aureliolo/synthorg/commit/3b4c5d6789012345678901234567890123456789))`
 
 // BenchmarkRenderHighlightsStyled measures the styled-output path
-// (lipgloss colors enabled). Called every "synthorg update" invocation
-// in the default "color auto" mode on a TTY.
+// (lipgloss colors enabled). The underlying RenderHighlights is
+// called on every "synthorg update" invocation in the default "color
+// auto" mode on a TTY.
+//
+// The return value is intentionally discarded with “_“ -- this is
+// a pure-string-rendering function with no error return today, and
+// we are measuring the rendering cost end-to-end. If RenderHighlights
+// ever changes signature to “(string, error)“, this discard becomes
+// a compile-time signal to revisit the bench.
 func BenchmarkRenderHighlightsStyled(b *testing.B) {
 	opts := Options{NoColor: false, Plain: false}
 	for b.Loop() {
@@ -52,7 +65,9 @@ func BenchmarkRenderHighlightsStyled(b *testing.B) {
 }
 
 // BenchmarkRenderHighlightsPlain measures the no-color / plain path.
-// CI logs and "--no-color" invocations hit this regularly.
+// CI logs and "--no-color" invocations hit this regularly. See
+// BenchmarkRenderHighlightsStyled for the rationale on discarding
+// the return value.
 func BenchmarkRenderHighlightsPlain(b *testing.B) {
 	opts := Options{NoColor: true, Plain: true}
 	for b.Loop() {
@@ -62,7 +77,9 @@ func BenchmarkRenderHighlightsPlain(b *testing.B) {
 
 // BenchmarkRenderCommitsStyled measures the commits-view styled path.
 // The dev channel always renders this view, so dev-channel users hit
-// this on every update walk.
+// the underlying RenderCommits on every update walk. See
+// BenchmarkRenderHighlightsStyled for the rationale on discarding
+// the return value.
 func BenchmarkRenderCommitsStyled(b *testing.B) {
 	opts := Options{NoColor: false, Plain: false}
 	for b.Loop() {

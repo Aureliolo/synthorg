@@ -7,8 +7,14 @@ name: CodSpeed Python
 # deterministically -- variance under 1% across runners. The free tier
 # covers unlimited benchmarks on standard GitHub-hosted runners.
 #
-# Macro Runner / walltime modes are intentionally not used; see
-# docs/design/perf-regression-system.md (planned) for rationale.
+# Macro Runner / walltime modes are intentionally not used: walltime on
+# standard GitHub runners has 5-15% variance from system load and
+# co-tenancy, which would flap the regression gate. CPU Simulation
+# trades a slower per-bench cost (cachegrind is ~5x slower than
+# native execution) for deterministic instruction counts that compare
+# meaningfully across runs. Walltime would need Macro Runners
+# (CodSpeed's bare-metal pool) to match that variance, which we have
+# explicitly scoped out of this system to keep the gate free-tier.
 
 on:
   push:

@@ -1,11 +1,17 @@
 /**
  * size-limit budgets for the React 19 dashboard bundle.
  *
- * Captured against ``main`` on 2026-04-26 with the existing Vite +
- * Rollup config. Each budget carries ~10% headroom over the captured
- * gzipped size to absorb routine churn without flapping CI; raise a
- * budget intentionally only when a feature legitimately requires more
- * shipping JS, never just to silence a CI red.
+ * Captured gzipped sizes on 2026-04-26 against ``main`` with the
+ * existing Vite + Rollup config. Per-vendor budgets carry ~10-15%
+ * headroom; the total-app-JS budget carries ~7% headroom (current
+ * ~882 KB gzipped, ceiling 950 KB). Headroom absorbs routine
+ * dependency-update churn without flapping CI -- raise a budget
+ * intentionally only when a feature legitimately requires more
+ * shipping JS, never just to silence a CI red. To re-baseline:
+ *   npm --prefix web run build
+ *   npm --prefix web run size
+ *   # then update each ``limit:`` to (current-size * 1.10) and document
+ *   # the bump in the PR description.
  *
  * The chunks are named by Rollup's content-hash output
  * (``vendor-charts-<hash>.js``), so glob patterns ride the hash. We

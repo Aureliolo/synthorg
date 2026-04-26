@@ -93,6 +93,14 @@ _ADVERSARIAL: dict[str, Any] = {
 }
 
 
+# ``.copy()`` on the payload before each scrub call is bench hygiene,
+# not a correctness requirement: ``scrub_event_fields`` returns a new
+# dict via a comprehension over ``_scrub_value``-recursed values and
+# does NOT mutate its input. The shallow copy guards against any
+# future change to that contract (and lets the bench iterations
+# exercise an identical input each time).
+
+
 @pytest.mark.benchmark
 def test_scrub_small_clean(benchmark: BenchmarkFixture) -> None:
     """Best-case path: no secret-shaped strings present."""

@@ -14,6 +14,8 @@ Builders + constants live in ``tests/benchmarks/_helpers.py`` so test
 modules can import them directly.
 """
 
+from collections.abc import Sequence
+
 import pytest
 
 from synthorg.budget.cost_record import CostRecord
@@ -53,8 +55,13 @@ def shared_entries_50() -> tuple[MemoryEntry, ...]:
 
 
 @pytest.fixture(scope="module")
-def cost_records_500() -> list[CostRecord]:
-    """500 cost records across 10 agents -- group_by_agent / window benches."""
+def cost_records_500() -> Sequence[CostRecord]:
+    """500 cost records across 10 agents -- group_by_agent / window benches.
+
+    Returns ``Sequence`` (read-only view) so a test cannot accidentally
+    mutate the module-scoped fixture and bleed state into subsequent
+    tests. Callers that need a mutable copy can do ``list(fixture)``.
+    """
     agents = [f"agent-{a}" for a in range(10)]
     return [
         make_cost_record(
@@ -70,8 +77,12 @@ def cost_records_500() -> list[CostRecord]:
 
 
 @pytest.fixture(scope="module")
-def cost_records_2000() -> list[CostRecord]:
-    """2000 cost records across 20 agents -- sum_cost / sum_tokens at scale."""
+def cost_records_2000() -> Sequence[CostRecord]:
+    """2000 cost records across 20 agents -- sum_cost / sum_tokens at scale.
+
+    See :func:`cost_records_500` for the rationale on returning
+    ``Sequence`` rather than ``list``.
+    """
     agents = [f"agent-{a}" for a in range(20)]
     return [
         make_cost_record(

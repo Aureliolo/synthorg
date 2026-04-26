@@ -14,6 +14,14 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  // ``test.setupFiles`` is shared between ``vitest run`` (test mode)
+  // and ``vitest bench`` (benchmark mode). Vitest 4.x's bench command
+  // inherits its setup from the parent ``test`` config, so the
+  // synchronous ``document.cookie`` shim + global afterEach hooks in
+  // ``test-setup.tsx`` apply to bench iterations too. This is what
+  // keeps ``csrf.bench.ts`` from going through jsdom's tough-cookie
+  // Promise-based getter and leaking unresolved Promises across
+  // iterations.
   test: {
     globals: true,
     environment: 'jsdom',

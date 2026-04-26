@@ -10,7 +10,16 @@ go -C cli test ./...                                                   # run tes
 go -C cli vet ./...                                                    # vet
 bash -c "cd cli && golangci-lint run"                                  # lint (subshell cd; golangci-lint has no -C flag -- requires scripts/install_cli_tools.sh)
 go -C cli test -fuzz=FuzzYamlStr -fuzztime=30s ./internal/compose/     # fuzz example
+go -C cli test -bench=. -benchmem ./internal/compose/                  # run benchmarks for one package (modern `for b.Loop()` pattern)
+go -C cli test -bench=. -benchmem -count=10 ./...                      # capture benchmark snapshot across all packages
+bash scripts/check_cli_bench_regression.sh                             # in-CI A/B compare HEAD vs merge-base (also runs as `cli-bench` job)
 ```
+
+## Performance Benchmarks
+
+`*_bench_test.go` files (next to their `*_test.go` siblings under `cli/internal/<pkg>/`) use Go's standard `testing.B` framework with the modern `for b.Loop()` pattern (Go 1.24+). They are picked up by `go test -bench=.` and excluded from regular `go test ./...` runs (which only run `Test*` functions).
+
+Regression detection uses an **in-CI A/B compare** (`scripts/check_cli_bench_regression.sh`): the script captures benches at PR HEAD, checks out the merge-base against `origin/main`, captures again on the same runner, and runs `benchstat` to detect deltas above a threshold (default 15% slowdown fails the job). No committed baseline file -- the comparison runs entirely within one CI job on the same hardware, sidestepping cross-architecture variance entirely. The `cli-bench` job in `.github/workflows/cli.yml` only runs on `pull_request` events (it needs the merge-base).
 
 ## Local Setup
 

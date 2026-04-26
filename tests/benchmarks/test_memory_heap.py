@@ -14,6 +14,8 @@ applies.
 """
 
 import tracemalloc
+from collections.abc import Callable
+from typing import Final
 
 import pytest
 
@@ -28,19 +30,25 @@ from tests.benchmarks._helpers import (
 )
 
 # Captured peaks (KiB) plus a 25% headroom factor for variance across
-# Python 3.14 patch releases and runner architectures.
-_RANK_1000_PEAK_KIB_CEILING = 4000
-_SCRUB_ADVERSARIAL_PEAK_KIB_CEILING = 50
-_BUDGET_AGG_2000_PEAK_KIB_CEILING = 2000
+# Python 3.14 patch releases and runner architectures. Captured on
+# Windows 11 Pro N (x86_64); Linux ubuntu-latest typically measures
+# 10-15% lower due to allocator differences. ARM64 may differ further.
+# ⚠️ Bump only with explicit user approval -- these are durable
+# baseline contracts; CI flakes are not a reason to raise them.
+_RANK_1000_PEAK_KIB_CEILING: Final[int] = 4000
+_SCRUB_ADVERSARIAL_PEAK_KIB_CEILING: Final[int] = 50
+_BUDGET_AGG_2000_PEAK_KIB_CEILING: Final[int] = 2000
 
-_KIB = 1024
+_KIB: Final[int] = 1024
 
 
-def _peak_kib(thunk: object) -> int:
-    """Return the peak heap KiB used during ``thunk()``."""
-    if not callable(thunk):
-        msg = "thunk must be callable"
-        raise TypeError(msg)
+def _peak_kib(thunk: Callable[[], object]) -> int:
+    """Return the peak heap KiB used during ``thunk()``.
+
+    The ``try``/``finally`` guarantees ``tracemalloc.stop()`` runs even
+    if ``thunk`` raises, so the global tracemalloc state never leaks
+    into subsequent tests.
+    """
     tracemalloc.start()
     try:
         thunk()

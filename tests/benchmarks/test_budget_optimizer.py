@@ -1,16 +1,19 @@
 """CodSpeed benchmarks for budget optimizer compute hot paths.
 
-Note on import surface: same as ``test_budget_aggregation.py`` -- the
-public ``CostOptimizer.detect_anomalies`` / ``analyze_efficiency`` /
-``recommend_downgrades`` API is async; benching it would let
+Note on import surface: the public
+``CostOptimizer.detect_anomalies`` / ``analyze_efficiency`` /
+``recommend_downgrades`` API is async, and benching it would let
 event-loop overhead dominate per-iteration cost. We bench the
 synchronous compute helpers in
 :mod:`synthorg.budget._optimizer_helpers` directly because they are
-the actual hot paths that the async public methods delegate to. Same
-caveat: a refactor of these helpers requires updating bench bodies
-here.
+the actual hot paths that the async public methods delegate to. A
+refactor of these helpers will require updating bench bodies in
+this file -- an accepted tradeoff documented in the perf-system PR
+design (see also ``test_budget_aggregation.py`` for the same
+pattern).
 """
 
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -27,7 +30,7 @@ from synthorg.budget.cost_record import CostRecord
 @pytest.mark.benchmark
 def test_compute_window_costs_12(
     benchmark: BenchmarkFixture,
-    cost_records_500: list[CostRecord],
+    cost_records_500: Sequence[CostRecord],
 ) -> None:
     """Compute per-window costs across 12 daily windows for one agent."""
     agent_records = [r for r in cost_records_500 if r.agent_id == "agent-0"]

@@ -96,7 +96,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "${PR_EVENT_NUMBER:-}" ]]; then
-            echo "Skipping: no PR number resolvable (likely workflow_dispatch on a branch)."
+            echo "::warning::Skipping lighthouse-site: no PR number resolvable (likely workflow_dispatch on a branch). The marketing-site Lighthouse audit only runs against the deployed pr-preview URL."
             echo "skip=true" >>"$GITHUB_OUTPUT"
           else
             echo "pr_number=${PR_EVENT_NUMBER}" >>"$GITHUB_OUTPUT"

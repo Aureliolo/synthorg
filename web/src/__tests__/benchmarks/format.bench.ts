@@ -57,9 +57,29 @@ describe('format helpers', () => {
     }
   })
 
-  bench('formatRelativeTime x100', () => {
+  bench('formatRelativeTime x100 (1-day-old happy path)', () => {
     for (let i = 0; i < 100; i++) {
       formatRelativeTime(PAST_ISO)
+    }
+  })
+
+  // Real WS payloads (sanitizeApproval / sanitizeMeeting / sanitizeTask)
+  // can produce null/undefined timestamps; the helper short-circuits to
+  // ``'--'`` early. Bench measures the null-check branch cost.
+  bench('formatRelativeTime x100 (null/undefined fast path)', () => {
+    for (let i = 0; i < 100; i++) {
+      formatRelativeTime(null)
+      formatRelativeTime(undefined)
+    }
+  })
+
+  // Old timestamps (>1 week) fall through to the formatDateTime branch,
+  // which exercises a different ``Intl.DateTimeFormat`` instance than
+  // the relative-time formatter. Catches regressions in the fallback path.
+  const OLD_DATE_ISO = '2026-03-15T14:30:00Z' // ~6 weeks before NOW
+  bench('formatRelativeTime x100 (old date >1 week fallback)', () => {
+    for (let i = 0; i < 100; i++) {
+      formatRelativeTime(OLD_DATE_ISO)
     }
   })
 })

@@ -9,6 +9,7 @@ CLAUDE.md §Testing.
 """
 
 from datetime import UTC, datetime, timedelta
+from typing import Final
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.core.enums import MemoryCategory
@@ -16,9 +17,9 @@ from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 
 # Reference instant: pinned so no fixture depends on wall-clock time.
-NOW = datetime(2026, 1, 1, tzinfo=UTC)
+NOW: Final[datetime] = datetime(2026, 1, 1, tzinfo=UTC)
 
-RETRIEVAL_CONFIG = MemoryRetrievalConfig(
+RETRIEVAL_CONFIG: Final[MemoryRetrievalConfig] = MemoryRetrievalConfig(
     relevance_weight=0.7,
     recency_weight=0.3,
     recency_decay_rate=0.01,

@@ -3,10 +3,10 @@ package compose
 import "testing"
 
 // BenchmarkGenerateDefault measures the cost of rendering the default
-// (sqlite + internal bus) compose tree. Called every “synthorg start“
-// and every compose-affecting “config set“; the rendered YAML drives
-// docker-compose's container graph so a regression here delays every
-// CLI invocation a user runs.
+// (sqlite + internal bus) compose tree. The underlying Generate() is
+// called every "synthorg start" and every compose-affecting "config
+// set"; the rendered YAML drives docker-compose's container graph so
+// a regression in Generate() delays every CLI invocation a user runs.
 func BenchmarkGenerateDefault(b *testing.B) {
 	p := Params{
 		CLIVersion:         "dev",

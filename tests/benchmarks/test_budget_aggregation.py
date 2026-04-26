@@ -12,6 +12,8 @@ this file; that is an accepted tradeoff documented in the perf-system
 PR design.
 """
 
+from collections.abc import Sequence
+
 import pytest
 from pytest_codspeed import BenchmarkFixture
 
@@ -27,7 +29,7 @@ from synthorg.budget.cost_record import CostRecord
 @pytest.mark.benchmark
 def test_group_by_agent_500(
     benchmark: BenchmarkFixture,
-    cost_records_500: list[CostRecord],
+    cost_records_500: Sequence[CostRecord],
 ) -> None:
     """Group 500 cost records by ``agent_id`` (10 agents)."""
 
@@ -39,7 +41,7 @@ def test_group_by_agent_500(
 @pytest.mark.benchmark
 def test_sum_cost_2000(
     benchmark: BenchmarkFixture,
-    cost_records_2000: list[CostRecord],
+    cost_records_2000: Sequence[CostRecord],
 ) -> None:
     """Sum cost across 2000 records (math.fsum precision path)."""
 
@@ -51,7 +53,7 @@ def test_sum_cost_2000(
 @pytest.mark.benchmark
 def test_sum_tokens_2000(
     benchmark: BenchmarkFixture,
-    cost_records_2000: list[CostRecord],
+    cost_records_2000: Sequence[CostRecord],
 ) -> None:
     """Sum input + output tokens across 2000 records."""
 

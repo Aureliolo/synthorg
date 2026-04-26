@@ -14,13 +14,21 @@ npm --prefix web run lint                  # ESLint (zero warnings enforced)
 npm --prefix web run type-check            # TypeScript type checking
 npm --prefix web run test                  # Vitest unit tests (coverage scoped to files changed vs origin/main)
 npm --prefix web run test -- --coverage --detect-async-leaks  # Full suite + unhandled-handle detection (matches CI)
+npm --prefix web run bench                 # Vitest performance benchmarks (CodSpeed CPU Simulation; *.bench.ts files under web/src/__tests__/benchmarks/)
+npm --prefix web run size                  # size-limit bundle-size budget check (requires `npm run build` first)
 npm --prefix web run analyze               # bundle size treemap (opens stats.html)
 npm --prefix web run e2e                   # Playwright visual regression tests
 npm --prefix web run e2e:update            # update Playwright screenshot baselines
-npm --prefix web run lighthouse            # Lighthouse performance audit (target: 90+)
+npm --prefix web run lighthouse            # Lighthouse performance audit (target: 90+; also runs in CI via .github/workflows/lighthouse.yml against vite preview)
 npm --prefix web run storybook             # Storybook dev server (http://localhost:6006)
 npm --prefix web run storybook:build       # Storybook production build
 ```
+
+## Performance Benchmarks
+
+`*.bench.ts` files under `web/src/__tests__/benchmarks/` use Vitest's `bench()` API and the `@codspeed/vitest-plugin` integration. The plugin is a no-op when `process.env.CODSPEED` is unset, so `npm run bench` works locally as a walltime sanity check. CI runs the same suite under CodSpeed CPU Simulation (deterministic instruction counting, sub-1% variance) via `.github/workflows/codspeed-web.yml`. Bench targets are pure-compute helpers only -- no DOM, no MSW, no Zustand store imports that pull in toast/timer side effects. New helpers worth benching live alongside their `.test.ts` counterparts under `web/src/__tests__/benchmarks/`.
+
+Bundle-size budgets are declared in `web/.size-limit.cjs` (per-vendor-chunk gzipped ceilings) and enforced by the `dashboard-build` job in `.github/workflows/ci.yml`. Raise a budget intentionally only when a feature legitimately requires more shipping JS, never just to silence a CI red.
 
 ## Package Structure
 

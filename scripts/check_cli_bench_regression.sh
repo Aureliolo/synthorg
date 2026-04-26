@@ -57,11 +57,29 @@ fi
 
 # Use temp files outside the worktree so checkout doesn't touch them.
 WORK_DIR="$(mktemp -d)"
-trap 'rm -rf "${WORK_DIR}"' EXIT
-
 NEW_OUT="${WORK_DIR}/new.txt"
 OLD_OUT="${WORK_DIR}/old.txt"
 DIFF_OUT="${WORK_DIR}/diff.txt"
+
+# Stash ref captured below before the merge-base checkout. Declared
+# upfront so the EXIT trap can clean it up regardless of where the
+# script aborts.
+STASH_REF=""
+
+# Single composite EXIT trap covers every cleanup path. Bash traps do
+# not compose -- registering a second ``trap ... EXIT`` after this
+# would silently overwrite the cleanup, so all cleanup logic lives
+# here. Each step is best-effort (``2>/dev/null || true``) so that
+# even a half-completed script leaves the working tree on the
+# original HEAD with no stray stash refs.
+cleanup_on_exit() {
+    git checkout --quiet "${CURRENT_HEAD}" 2>/dev/null || true
+    if [[ -n "${STASH_REF}" ]]; then
+        git stash drop "${STASH_REF}" >/dev/null 2>&1 || true
+    fi
+    rm -rf "${WORK_DIR}"
+}
+trap cleanup_on_exit EXIT
 
 run_benches() {
     local out_file="$1"
@@ -101,17 +119,12 @@ run_benches "${NEW_OUT}"
 
 echo "=== Switching to merge-base ${MERGE_BASE:0:8} ==="
 # stash any local untracked / dirty files (CI checkout is clean, but
-# defend against local invocation)
-STASH_REF=""
+# defend against local invocation). The cleanup_on_exit trap above
+# drops STASH_REF on exit regardless of where we abort.
 if ! git diff-index --quiet HEAD --; then
     STASH_REF="$(git stash create 'cli-bench: pre-baseline-capture')"
 fi
 git checkout --quiet "${MERGE_BASE}"
-
-# Restore HEAD on exit even if benches fail.
-trap 'git checkout --quiet "${CURRENT_HEAD}"; \
-     [[ -n "${STASH_REF}" ]] && git stash drop "${STASH_REF}" >/dev/null 2>&1; \
-     rm -rf "${WORK_DIR}"' EXIT
 
 echo "=== Capturing merge-base benchmarks ==="
 run_benches "${OLD_OUT}"
@@ -137,7 +150,9 @@ fi
 
 # benchstat exit code is always 0; we parse the output for regressions.
 # Rows that report a percentage delta with a "+" prefix are
-# slowdowns. The format on each delta cell is e.g. "+12.30%".
+# slowdowns. The regex tolerates any number of integer + fractional
+# digits ("+15%", "+15.3%", "+1234.56%") so a benchstat output-format
+# tweak does not silently mute the gate.
 REGRESSED_BENCHES="$(awk -v thresh="${THRESHOLD_PCT}" '
     # Skip header rows + blank lines.
     /^[[:space:]]*$/ { next }
@@ -145,10 +160,10 @@ REGRESSED_BENCHES="$(awk -v thresh="${THRESHOLD_PCT}" '
     /^pkg:/ { next }
     /^geomean/ { next }
     {
-        # Find a "+NN.NN%" cell (slowdown). benchstat prints "~" for
-        # statistically insignificant changes.
+        # Find a "+NN(.NN)?%" cell (slowdown). benchstat prints "~"
+        # for statistically insignificant changes; those never match.
         for (i = 1; i <= NF; i++) {
-            if ($i ~ /^\+[0-9]+\.[0-9]+%/) {
+            if ($i ~ /^\+[0-9]+\.?[0-9]*%/) {
                 pct = $i
                 gsub(/[+%]/, "", pct)
                 if (pct + 0 > thresh) {

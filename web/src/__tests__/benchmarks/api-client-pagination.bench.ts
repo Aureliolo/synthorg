@@ -5,11 +5,21 @@
  * + envelope unwrap + nested pagination object copy. A regression here
  * affects every list page in the dashboard.
  */
-import type { AxiosResponse } from 'axios'
+import { AxiosHeaders, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
 import { bench, describe } from 'vitest'
 
 import { unwrap, unwrapPaginated } from '@/api/client'
 import type { ApiResponse, PaginatedResponse } from '@/api/types/http'
+
+// ``AxiosResponse.config`` is a required ``InternalAxiosRequestConfig``;
+// we construct one valid instance per file so each ``makeXxxResponse``
+// returns a fully-typed value rather than relying on ``as never`` casts
+// that would silently break under a future axios type tightening.
+const BENCH_REQUEST_CONFIG: InternalAxiosRequestConfig = {
+  url: '/bench',
+  method: 'GET',
+  headers: new AxiosHeaders(),
+}
 
 interface Row {
   id: string
@@ -48,7 +58,7 @@ function makePaginatedResponse<T>(rows: T[]): AxiosResponse<PaginatedResponse<T>
     status: 200,
     statusText: 'OK',
     headers: {},
-    config: {} as never,
+    config: BENCH_REQUEST_CONFIG,
   }
 }
 
@@ -63,7 +73,7 @@ function makeApiResponse<T>(payload: T): AxiosResponse<ApiResponse<T>> {
     status: 200,
     statusText: 'OK',
     headers: {},
-    config: {} as never,
+    config: BENCH_REQUEST_CONFIG,
   }
 }
 
