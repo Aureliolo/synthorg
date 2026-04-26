@@ -92,6 +92,30 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
+      # The workflow-level ``paths:`` filter is a UNION (web/ OR site/
+      # OR docs/), so this job runs whenever ``codspeed-web`` /
+      # ``codspeed-python`` need to. Without an inner filter the site
+      # job would burn a full LHCI run on every web-only PR -- the
+      # ``Wait for pr-preview`` step would then poll a URL that the
+      # ``pages-preview`` workflow never deployed (its trigger is
+      # ``site/**`` only) and time out at 5 minutes. Running this
+      # filter here gates the heavy steps (``Wait for pr-preview``,
+      # ``Install lhci``, ``Lighthouse CI (site)``) on whether the PR
+      # actually touched the site surface; PR-number resolution still
+      # runs unconditionally because it is cheap and only reads
+      # ``github.event``.
+      - name: Detect site-surface changes
+        id: changes
+        uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        with:
+          filters: |
+            site-surface:
+              - 'site/**'
+              - 'docs/**'
+              - 'mkdocs.yml'
+              - '.github/workflows/lighthouse.yml'
+              - '.github/workflows/pages-preview.yml'
+
       - name: Resolve PR number
         id: pr
         env:
@@ -107,7 +131,7 @@ jobs:
           fi
 
       - name: Wait for pr-preview deployment to be live
-        if: steps.pr.outputs.skip == 'false'
+        if: steps.pr.outputs.skip == 'false' && steps.changes.outputs.site-surface == 'true'
         env:
           PREVIEW_URL: "https://pr-${{ steps.pr.outputs.pr_number }}.synthorg-pr-preview.pages.dev"
         run: |
@@ -126,18 +150,23 @@ jobs:
           exit 1
 
       - name: Install lhci (reuse web's @lhci/cli)
-        if: steps.pr.outputs.skip == 'false'
+        if: steps.pr.outputs.skip == 'false' && steps.changes.outputs.site-surface == 'true'
         # Retry transient npm registry 5xx / network blips with
         # exponential backoff.
         run: npm --prefix web ci --fetch-retries=5 --fetch-retry-factor=2 --fetch-retry-mintimeout=2000
 
       - name: Lighthouse CI (site)
-        if: steps.pr.outputs.skip == 'false'
+        if: steps.pr.outputs.skip == 'false' && steps.changes.outputs.site-surface == 'true'
         env:
           LHCI_PR_PREVIEW_URL: "https://pr-${{ steps.pr.outputs.pr_number }}.synthorg-pr-preview.pages.dev"
           LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
         working-directory: site
         run: npx --prefix ../web lhci autorun
+
+      - name: Note skipped on web-only PR
+        if: steps.changes.outputs.site-surface != 'true'
+        run: |
+          echo "::notice::Skipping lighthouse-site: PR did not touch the site surface (site/, docs/, mkdocs.yml, lighthouse.yml, pages-preview.yml)."
 
   # ── Aggregator gate ──
   lighthouse-pass:

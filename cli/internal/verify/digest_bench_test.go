@@ -14,7 +14,9 @@ import "testing"
 // signal we care about, not single-input micro-cost.
 func BenchmarkIsValidDigest(b *testing.B) {
 	digests := []string{
-		"sha256:abc1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+		// 64 lowercase hex chars after "sha256:" -- a real SHA-256 digest
+		// shape so the bench exercises the success path of IsValidDigest.
+		"sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 		"sha512:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		"sha256:invalid_uppercase_ABC", // failure path
 		"",                             // empty path

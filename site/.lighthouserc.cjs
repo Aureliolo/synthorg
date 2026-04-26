@@ -11,7 +11,12 @@
  *  - ``/docs/``   : docs index (heaviest, mkdocs + Astro merge)
  *  - ``/get/``    : install page (above-the-fold install snippet)
  */
-const previewBase = process.env.LHCI_PR_PREVIEW_URL ?? 'http://localhost:4321'
+// Strip any trailing ``/`` so ``${previewBase}/docs/`` does not produce
+// a double-slash URL (Cloudflare Pages 308-redirects ``//docs`` to
+// ``/docs``, which adds noise to the LHCI run and can flip TBT/LCP).
+const previewBase = (
+  process.env.LHCI_PR_PREVIEW_URL ?? 'http://localhost:4321'
+).replace(/\/+$/, '')
 
 module.exports = {
   ci: {

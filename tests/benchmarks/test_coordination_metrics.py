@@ -48,7 +48,7 @@ def test_compute_straggler_gap_20_agents(benchmark: BenchmarkFixture) -> None:
 
 @pytest.mark.benchmark
 def test_compute_redundancy_rate_100(benchmark: BenchmarkFixture) -> None:
-    """Redundancy rate (above-threshold sims / total) across 100 samples."""
+    """Redundancy rate (mean similarity) across 100 samples."""
     similarities = [0.1 + (i % 9) * 0.1 for i in range(100)]
 
     @benchmark
