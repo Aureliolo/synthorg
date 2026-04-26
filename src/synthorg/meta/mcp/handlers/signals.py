@@ -61,11 +61,6 @@ _TY_PROPOSAL_OBJ = "ImprovementProposal object"
 _TY_PROPOSAL_SCHEMA = "valid ImprovementProposal schema"
 
 
-def _parse_pagination(arguments: dict[str, Any]) -> tuple[int, int]:
-    """Extract offset/limit with defaults."""
-    return coerce_pagination(arguments)
-
-
 def _parse_status(arguments: dict[str, Any]) -> ApprovalStatus | None:
     """Extract and validate the optional ``status`` filter."""
     status_raw = arguments.get(_ARG_STATUS)
@@ -146,7 +141,7 @@ async def _list_proposals(
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     try:
-        offset, limit = _parse_pagination(arguments)
+        offset, limit = coerce_pagination(arguments)
         status = _parse_status(arguments)
         page, total = await app_state.signals_service.list_proposals(
             status=status,

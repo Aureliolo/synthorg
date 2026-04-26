@@ -28,9 +28,9 @@ from synthorg.meta.mcp.handlers.common import (
     require_destructive_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    actor_label,
     coerce_pagination,
     get_optional_str,
+    require_actor_id,
     require_arg,
     require_dict,
 )
@@ -167,7 +167,7 @@ async def _company_update(
         payload = require_dict(arguments, "payload")
         result = await app_state.company_read_service.update_company(
             payload=payload,
-            actor_id=actor_label(actor),
+            actor_id=require_actor_id(actor),
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
@@ -213,7 +213,7 @@ async def _company_reorder_departments(
         ids = _require_uuid_list(arguments, "department_ids")
         await app_state.company_read_service.reorder_departments(
             department_ids=ids,
-            actor_id=actor_label(actor),
+            actor_id=require_actor_id(actor),
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
@@ -340,7 +340,7 @@ async def _departments_create(
         record = await app_state.department_service.create_department(
             name=name,
             description=description,
-            actor_id=actor_label(actor),
+            actor_id=require_actor_id(actor),
         )
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
@@ -365,7 +365,7 @@ async def _departments_update(
         description = get_optional_str(arguments, "description")
         record = await app_state.department_service.update_department(
             department_id=department_id,
-            actor_id=actor_label(actor),
+            actor_id=require_actor_id(actor),
             name=name,
             description=description,
         )
@@ -396,14 +396,14 @@ async def _departments_delete(
         department_id = _require_uuid(arguments, "department_id")
         removed = await app_state.department_service.delete_department(
             department_id=department_id,
-            actor_id=actor_label(resolved_actor),
+            actor_id=require_actor_id(resolved_actor),
             reason=reason,
         )
         if removed:
             logger.info(
                 MCP_DESTRUCTIVE_OP_EXECUTED,
                 tool_name=tool,
-                actor=actor_label(resolved_actor),
+                actor=require_actor_id(resolved_actor),
                 reason=reason,
                 department_id=department_id,
                 removed=removed,
@@ -505,7 +505,7 @@ async def _teams_create(
         department_id = get_optional_str(arguments, "department_id")
         record = await app_state.team_service.create_team(
             name=name,
-            actor_id=actor_label(actor),
+            actor_id=require_actor_id(actor),
             department_id=department_id,
         )
     except ArgumentValidationError as exc:
@@ -537,7 +537,7 @@ async def _teams_update(
             department_id = UNSET
         record = await app_state.team_service.update_team(
             team_id=team_id,
-            actor_id=actor_label(actor),
+            actor_id=require_actor_id(actor),
             name=name,
             department_id=department_id,
         )
@@ -568,14 +568,14 @@ async def _teams_delete(
         team_id = _require_uuid(arguments, "team_id")
         removed = await app_state.team_service.delete_team(
             team_id=team_id,
-            actor_id=actor_label(resolved_actor),
+            actor_id=require_actor_id(resolved_actor),
             reason=reason,
         )
         if removed:
             logger.info(
                 MCP_DESTRUCTIVE_OP_EXECUTED,
                 tool_name=tool,
-                actor=actor_label(resolved_actor),
+                actor=require_actor_id(resolved_actor),
                 reason=reason,
                 team_id=team_id,
                 removed=removed,

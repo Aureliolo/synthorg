@@ -15,7 +15,6 @@ stripped-down unit environments); production deployments wire the
 services in the application bootstrap.
 """
 
-import copy
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -336,19 +335,17 @@ async def _ceremony_policy_get_active_strategy(
 
 
 COORDINATION_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    copy.deepcopy(
-        {
-            "synthorg_coordination_get_task_metrics": _coordination_get_task_metrics,
-            "synthorg_coordination_metrics_list": _coordination_metrics_list,
-            "synthorg_scaling_list_decisions": _scaling_list_decisions,
-            "synthorg_scaling_get_decision": _scaling_get_decision,
-            "synthorg_scaling_get_config": _scaling_get_config,
-            "synthorg_scaling_trigger": _scaling_trigger,
-            "synthorg_ceremony_policy_get": _ceremony_policy_get,
-            "synthorg_ceremony_policy_get_resolved": _ceremony_policy_get_resolved,
-            "synthorg_ceremony_policy_get_active_strategy": (
-                _ceremony_policy_get_active_strategy
-            ),
-        },
-    ),
+    {
+        "synthorg_coordination_get_task_metrics": _coordination_get_task_metrics,
+        "synthorg_coordination_metrics_list": _coordination_metrics_list,
+        "synthorg_scaling_list_decisions": _scaling_list_decisions,
+        "synthorg_scaling_get_decision": _scaling_get_decision,
+        "synthorg_scaling_get_config": _scaling_get_config,
+        "synthorg_scaling_trigger": _scaling_trigger,
+        "synthorg_ceremony_policy_get": _ceremony_policy_get,
+        "synthorg_ceremony_policy_get_resolved": _ceremony_policy_get_resolved,
+        "synthorg_ceremony_policy_get_active_strategy": (
+            _ceremony_policy_get_active_strategy
+        ),
+    },
 )

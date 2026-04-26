@@ -27,9 +27,9 @@ from synthorg.meta.mcp.handlers.common import (
     require_destructive_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    actor_label,
     coerce_pagination,
     get_optional_str,
+    require_actor_id,
     require_arg,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
@@ -215,7 +215,7 @@ async def _mcp_catalog_install(
         entry_id = _require_str(arguments, "entry_id")
         result = await app_state.mcp_catalog_facade_service.install_catalog_entry(
             entry_id=entry_id,
-            actor_id=actor_label(actor),
+            actor_id=require_actor_id(actor),
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
@@ -241,14 +241,14 @@ async def _mcp_catalog_uninstall(
         installation_id = _require_str(arguments, "installation_id")
         removed = await app_state.mcp_catalog_facade_service.uninstall_catalog_entry(
             installation_id=installation_id,
-            actor_id=actor_label(resolved_actor),
+            actor_id=require_actor_id(resolved_actor),
             reason=reason,
         )
         if removed:
             logger.info(
                 MCP_DESTRUCTIVE_OP_EXECUTED,
                 tool_name=tool,
-                actor=actor_label(resolved_actor),
+                actor=require_actor_id(resolved_actor),
                 reason=reason,
                 installation_id=installation_id,
                 removed=removed,
@@ -311,7 +311,7 @@ async def _oauth_configure_provider(
             authorize_url=authorize_url,
             token_url=token_url,
             scopes=scopes,
-            actor_id=actor_label(actor),
+            actor_id=require_actor_id(actor),
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
@@ -337,14 +337,14 @@ async def _oauth_remove_provider(
         name = _require_str(arguments, "name")
         removed = await app_state.oauth_facade_service.remove_provider(
             name=name,
-            actor_id=actor_label(resolved_actor),
+            actor_id=require_actor_id(resolved_actor),
             reason=reason,
         )
         if removed:
             logger.info(
                 MCP_DESTRUCTIVE_OP_EXECUTED,
                 tool_name=tool,
-                actor=actor_label(resolved_actor),
+                actor=require_actor_id(resolved_actor),
                 reason=reason,
                 provider_name=name,
                 removed=removed,
@@ -431,7 +431,7 @@ async def _clients_create(
         notes = get_optional_str(arguments, "notes")
         client = await app_state.client_facade_service.create_client(
             name=name,
-            actor_id=actor_label(actor),
+            actor_id=require_actor_id(actor),
             contact_email=contact_email,
             notes=notes,
         )
@@ -459,14 +459,14 @@ async def _clients_deactivate(
         client_id = _require_uuid(arguments, "client_id")
         deactivated = await app_state.client_facade_service.deactivate_client(
             client_id=client_id,
-            actor_id=actor_label(resolved_actor),
+            actor_id=require_actor_id(resolved_actor),
             reason=reason,
         )
         if deactivated:
             logger.info(
                 MCP_DESTRUCTIVE_OP_EXECUTED,
                 tool_name=tool,
-                actor=actor_label(resolved_actor),
+                actor=require_actor_id(resolved_actor),
                 reason=reason,
                 client_id=client_id,
                 deactivated=deactivated,
@@ -577,7 +577,7 @@ async def _artifacts_create(
             content_type=content_type,
             size_bytes=size_bytes,
             storage_ref=storage_ref,
-            actor_id=actor_label(actor),
+            actor_id=require_actor_id(actor),
         )
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
@@ -603,14 +603,14 @@ async def _artifacts_delete(
         artifact_id = _require_uuid(arguments, "artifact_id")
         removed = await app_state.artifact_facade_service.delete_artifact(
             artifact_id=artifact_id,
-            actor_id=actor_label(resolved_actor),
+            actor_id=require_actor_id(resolved_actor),
             reason=reason,
         )
         if removed:
             logger.info(
                 MCP_DESTRUCTIVE_OP_EXECUTED,
                 tool_name=tool,
-                actor=actor_label(resolved_actor),
+                actor=require_actor_id(resolved_actor),
                 reason=reason,
                 artifact_id=artifact_id,
                 removed=removed,

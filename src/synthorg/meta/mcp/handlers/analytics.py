@@ -44,6 +44,7 @@ from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_invoke_failed,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -152,6 +153,10 @@ async def _analytics_overview(
             since=since,
             until=until,
         )
+        logger.info(
+            MCP_HANDLER_INVOKE_SUCCESS,
+            tool_name="synthorg_analytics_get_overview",
+        )
         return ok(result.model_dump(mode="json"))
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_analytics_get_overview", exc)
@@ -174,6 +179,10 @@ async def _analytics_trends(
             since=since,
             until=until,
             metric_names=metric_names,
+        )
+        logger.info(
+            MCP_HANDLER_INVOKE_SUCCESS,
+            tool_name="synthorg_analytics_get_trends",
         )
         return ok(result.model_dump(mode="json"))
     except ArgumentValidationError as exc:
@@ -202,6 +211,10 @@ async def _analytics_forecast(
             until=until,
             horizon_days=horizon_days,
         )
+        logger.info(
+            MCP_HANDLER_INVOKE_SUCCESS,
+            tool_name="synthorg_analytics_get_forecast",
+        )
         return ok(result.model_dump(mode="json"))
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_analytics_get_forecast", exc)
@@ -224,6 +237,10 @@ async def _metrics_current(
             since=since,
             until=until,
             metric_names=metric_names,
+        )
+        logger.info(
+            MCP_HANDLER_INVOKE_SUCCESS,
+            tool_name="synthorg_metrics_get_current",
         )
         return ok(result.model_dump(mode="json"))
     except ArgumentValidationError as exc:
@@ -258,6 +275,10 @@ async def _metrics_history(
             metric_names=metric_names,
             sample_count=sample_count,
         )
+        logger.info(
+            MCP_HANDLER_INVOKE_SUCCESS,
+            tool_name="synthorg_metrics_get_history",
+        )
         return ok(result.model_dump(mode="json"))
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_metrics_get_history", exc)
@@ -289,6 +310,10 @@ async def _reports_list(
         # page 2+ requests will apply the offset a second time and come
         # back empty.
         pagination = PaginationMeta(total=total, offset=offset, limit=limit)
+        logger.info(
+            MCP_HANDLER_INVOKE_SUCCESS,
+            tool_name="synthorg_reports_list",
+        )
         return ok(dump_many(reports), pagination=pagination)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_reports_list", exc)
@@ -310,6 +335,10 @@ async def _reports_get(
         if report is None:
             missing = LookupError(f"Report {report_id} not found")
             return err(missing, domain_code="not_found")
+        logger.info(
+            MCP_HANDLER_INVOKE_SUCCESS,
+            tool_name="synthorg_reports_get",
+        )
         return ok(report.model_dump(mode="json"))
     except ArgumentValidationError as exc:
         log_handler_argument_invalid("synthorg_reports_get", exc)
@@ -336,6 +365,10 @@ async def _reports_generate(
             template=template,
             author_id=require_actor_id(actor),
             options=options,
+        )
+        logger.info(
+            MCP_HANDLER_INVOKE_SUCCESS,
+            tool_name="synthorg_reports_generate",
         )
         return ok(report.model_dump(mode="json"))
     except ArgumentValidationError as exc:

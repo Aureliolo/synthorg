@@ -118,10 +118,11 @@ async def _health_check(
             "approval_store": getattr(app_state, "approval_store", None) is not None,
             "agent_registry": app_state.has_agent_registry,
         }
-    except ArgumentValidationError as exc:
-        log_handler_argument_invalid(tool, exc)
-        return err(exc)
     except Exception as exc:
+        # No argument validation in this body, so the canonical
+        # ``except ArgumentValidationError`` branch added across other
+        # handlers would be dead code here. Capability flag access is
+        # the only thing that can fail.
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
