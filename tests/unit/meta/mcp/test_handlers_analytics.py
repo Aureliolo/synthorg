@@ -18,6 +18,7 @@ from synthorg.meta.analytics.models import (
 )
 from synthorg.meta.mcp.handlers.analytics import ANALYTICS_HANDLERS
 from synthorg.meta.reports.models import Report, ReportStatus
+from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
 
@@ -228,8 +229,36 @@ class TestReportsHandlers:
         response = await handler(
             app_state=fake_app_state,
             arguments={"template": "org_overview"},
+            actor=make_test_actor(name="reporter"),
         )
         assert json.loads(response)["status"] == "ok"
+
+    async def test_generate_rejects_anonymous_actor(
+        self,
+        fake_app_state: SimpleNamespace,
+    ) -> None:
+        # Report generation persists ``author_id`` and must reject
+        # anonymous callers rather than silently storing
+        # ``"mcp-anonymous"`` (the previous behaviour). With ``actor=None``
+        # the handler hits ``require_actor_id`` and the
+        # ArgumentValidationError envelope is returned WITHOUT touching
+        # the service layer -- attribution validation must short-circuit
+        # before any persistence call so the wire failure is "actor
+        # required" rather than "report half-created with a synthetic
+        # author".
+        handler = ANALYTICS_HANDLERS["synthorg_reports_generate"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"template": "org_overview"},
+            actor=None,
+        )
+        body = json.loads(response)
+        assert body["status"] == "error"
+        assert body["domain_code"] == "invalid_argument"
+        # Service-side regression guard: the validation failure must
+        # happen BEFORE we hit the reports service, so the mocked
+        # generate_report call is never made.
+        fake_app_state.reports_service.generate_report.assert_not_called()
 
     async def test_generate_requires_template(
         self,
@@ -239,5 +268,6 @@ class TestReportsHandlers:
         response = await handler(
             app_state=fake_app_state,
             arguments={},
+            actor=make_test_actor(name="reporter"),
         )
         assert json.loads(response)["status"] == "error"

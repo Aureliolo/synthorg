@@ -58,20 +58,26 @@ from synthorg.meta.mcp.handlers.agents_autonomy import (
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     capability_gap,
-    coerce_pagination,
     dump_many,
     err,
     ok,
     paginate_sequence,
-    require_arg,
     require_destructive_guardrails,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.meta.mcp.handlers.common_args import (
+    actor_id,
+    coerce_pagination,
+    require_arg,
+    require_non_blank,
+)
+from synthorg.meta.mcp.handlers.common_logging import (
+    log_handler_argument_invalid,
+    log_handler_guardrail_violated,
+    log_handler_invoke_failed,
+)
+from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
     MCP_DESTRUCTIVE_OP_EXECUTED,
-    MCP_HANDLER_ARGUMENT_INVALID,
-    MCP_HANDLER_GUARDRAIL_VIOLATED,
-    MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
 
@@ -81,7 +87,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-_TY_NON_BLANK = "non-blank string"
 _ARG_AGENT_NAME = "agent_name"
 _ARG_AGENT_ID = "agent_id"
 
@@ -108,58 +113,6 @@ _WHY_TRAINING_START = (
 )
 
 
-def _log_invalid(tool: str, exc: Exception) -> None:
-    logger.warning(
-        MCP_HANDLER_ARGUMENT_INVALID,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-
-
-def _log_failed(tool: str, exc: Exception) -> None:
-    logger.warning(
-        MCP_HANDLER_INVOKE_FAILED,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-
-
-def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
-    logger.warning(
-        MCP_HANDLER_GUARDRAIL_VIOLATED,
-        tool_name=tool,
-        violation=exc.violation,
-    )
-
-
-def _actor_id(actor: Any) -> str | None:
-    """Return a stable audit identifier for ``actor`` (prefers ``.id``).
-
-    Prefers ``actor.id`` (a ``UUID`` that never changes over the agent's
-    lifetime) so destructive-op audit trails stay consistent even when
-    the display name is later edited.  Falls back to ``actor.name`` only
-    when id is absent.
-    """
-    if actor is None:
-        return None
-    agent_id = getattr(actor, "id", None)
-    if agent_id is not None:
-        return str(agent_id)
-    name = getattr(actor, "name", None)
-    return name if isinstance(name, str) and name else None
-
-
-def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
-    """Extract a non-blank string argument, stripped of surrounding whitespace."""
-    raw = require_arg(arguments, key, str)
-    stripped = raw.strip()
-    if not stripped:
-        raise invalid_argument(key, _TY_NON_BLANK)
-    return stripped
-
-
 # --- Agent CRUD -----------------------------------------------------------
 
 
@@ -173,7 +126,7 @@ async def _agents_list(
     try:
         offset, limit = coerce_pagination(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         agents = await app_state.agent_registry.list_active()
@@ -181,7 +134,7 @@ async def _agents_list(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=dump_many(page), pagination=meta)
@@ -195,20 +148,20 @@ async def _agents_get(
 ) -> str:
     tool = "synthorg_agents_get"
     try:
-        name = _require_non_blank(arguments, _ARG_AGENT_NAME)
+        name = require_non_blank(arguments, _ARG_AGENT_NAME)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         identity = await app_state.agent_registry.get_by_name(name)
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     if identity is None:
         missing = AgentNotFoundError(f"Agent {name!r} not found")
-        _log_failed(tool, missing)
+        log_handler_invoke_failed(tool, missing)
         return err(missing, domain_code="not_found")
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=identity.model_dump(mode="json"))
@@ -224,7 +177,7 @@ async def _agents_create(
     try:
         identity_dict = require_arg(arguments, "identity", dict)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
 
     # Local import: AgentIdentity transitively pulls heavy core modules
@@ -234,19 +187,19 @@ async def _agents_create(
     try:
         identity = _AgentIdentity.model_validate(identity_dict)
     except ValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc, domain_code="invalid_argument")
 
-    saved_by = _actor_id(actor) or "mcp"
+    saved_by = actor_id(actor) or "mcp"
     try:
         await app_state.agent_registry.register(identity, saved_by=saved_by)
     except AgentAlreadyRegisteredError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="already_exists")
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=identity.model_dump(mode="json"))
@@ -260,13 +213,13 @@ async def _agents_update(
 ) -> str:
     tool = "synthorg_agents_update"
     try:
-        agent_id = _require_non_blank(arguments, _ARG_AGENT_ID)
+        agent_id = require_non_blank(arguments, _ARG_AGENT_ID)
         updates = require_arg(arguments, "updates", dict)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
 
-    saved_by = _actor_id(actor) or "mcp"
+    saved_by = actor_id(actor) or "mcp"
     try:
         updated = await app_state.agent_registry.apply_identity_update(
             NotBlankStr(agent_id),
@@ -274,16 +227,16 @@ async def _agents_update(
             saved_by=saved_by,
         )
     except AgentNotFoundError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
     except ValueError as exc:
         # Blocked-field rejection from the registry surfaces here.
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc, domain_code="invalid_argument")
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=updated.model_dump(mode="json"))
@@ -297,37 +250,37 @@ async def _agents_delete(
 ) -> str:
     tool = "synthorg_agents_delete"
     try:
-        agent_name = _require_non_blank(arguments, _ARG_AGENT_NAME)
+        agent_name = require_non_blank(arguments, _ARG_AGENT_NAME)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         reason, resolved_actor = require_destructive_guardrails(arguments, actor)
     except GuardrailViolationError as exc:
-        _log_guardrail(tool, exc)
+        log_handler_guardrail_violated(tool, exc)
         return err(exc)
 
     try:
         identity = await app_state.agent_registry.get_by_name(agent_name)
         if identity is None:
             missing = AgentNotFoundError(f"Agent {agent_name!r} not found")
-            _log_failed(tool, missing)
+            log_handler_invoke_failed(tool, missing)
             return err(missing, domain_code="not_found")
         removed = await app_state.agent_registry.unregister(str(identity.id))
     except AgentNotFoundError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
         MCP_DESTRUCTIVE_OP_EXECUTED,
         tool_name=tool,
-        actor_agent_id=_actor_id(resolved_actor),
+        actor_agent_id=actor_id(resolved_actor),
         reason=reason,
         target_id=str(removed.id),
     )
@@ -345,15 +298,15 @@ async def _agents_get_performance(
 ) -> str:
     tool = "synthorg_agents_get_performance"
     try:
-        agent_name = _require_non_blank(arguments, _ARG_AGENT_NAME)
+        agent_name = require_non_blank(arguments, _ARG_AGENT_NAME)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         identity = await app_state.agent_registry.get_by_name(agent_name)
         if identity is None:
             missing = AgentNotFoundError(f"Agent {agent_name!r} not found")
-            _log_failed(tool, missing)
+            log_handler_invoke_failed(tool, missing)
             return err(missing, domain_code="not_found")
         snapshot = await app_state.performance_tracker.get_snapshot(
             str(identity.id),
@@ -361,7 +314,7 @@ async def _agents_get_performance(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     if snapshot is None:
@@ -377,10 +330,10 @@ async def _agents_get_activity(
 ) -> str:
     tool = "synthorg_agents_get_activity"
     try:
-        agent_name = _require_non_blank(arguments, _ARG_AGENT_NAME)
+        agent_name = require_non_blank(arguments, _ARG_AGENT_NAME)
         offset, limit = coerce_pagination(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     if not getattr(app_state, "has_activity_feed_service", False):
         return capability_gap(tool, _WHY_ACTIVITY)
@@ -388,7 +341,7 @@ async def _agents_get_activity(
         identity = await app_state.agent_registry.get_by_name(agent_name)
         if identity is None:
             missing = AgentNotFoundError(f"Agent {agent_name!r} not found")
-            _log_failed(tool, missing)
+            log_handler_invoke_failed(tool, missing)
             return err(missing, domain_code="not_found")
         events, total = await app_state.activity_feed_service.get_agent_activity(
             NotBlankStr(str(identity.id)),
@@ -398,7 +351,7 @@ async def _agents_get_activity(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     meta = PaginationMeta(total=total, offset=offset, limit=limit)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -413,10 +366,10 @@ async def _agents_get_history(
 ) -> str:
     tool = "synthorg_agents_get_history"
     try:
-        agent_name = _require_non_blank(arguments, _ARG_AGENT_NAME)
+        agent_name = require_non_blank(arguments, _ARG_AGENT_NAME)
         offset, limit = coerce_pagination(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     if not getattr(app_state, "has_agent_version_service", False):
         return capability_gap(tool, _WHY_HISTORY)
@@ -424,7 +377,7 @@ async def _agents_get_history(
         identity = await app_state.agent_registry.get_by_name(agent_name)
         if identity is None:
             missing = AgentNotFoundError(f"Agent {agent_name!r} not found")
-            _log_failed(tool, missing)
+            log_handler_invoke_failed(tool, missing)
             return err(missing, domain_code="not_found")
         versions, total = await app_state.agent_version_service.list_versions(
             NotBlankStr(str(identity.id)),
@@ -434,7 +387,7 @@ async def _agents_get_history(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     meta = PaginationMeta(total=total, offset=offset, limit=limit)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -449,9 +402,9 @@ async def _agents_get_health(
 ) -> str:
     tool = "synthorg_agents_get_health"
     try:
-        agent_name = _require_non_blank(arguments, _ARG_AGENT_NAME)
+        agent_name = require_non_blank(arguments, _ARG_AGENT_NAME)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     if not getattr(app_state, "has_agent_health_service", False):
         return capability_gap(tool, _WHY_HEALTH)
@@ -459,7 +412,7 @@ async def _agents_get_health(
         identity = await app_state.agent_registry.get_by_name(agent_name)
         if identity is None:
             missing = AgentNotFoundError(f"Agent {agent_name!r} not found")
-            _log_failed(tool, missing)
+            log_handler_invoke_failed(tool, missing)
             return err(missing, domain_code="not_found")
         report = await app_state.agent_health_service.get_agent_health(
             NotBlankStr(str(identity.id)),
@@ -467,7 +420,7 @@ async def _agents_get_health(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=report.model_dump(mode="json"))
@@ -486,7 +439,7 @@ async def _personalities_list(
     try:
         offset, limit = coerce_pagination(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     if not getattr(app_state, "has_personality_service", False):
         return capability_gap(tool, _WHY_PERSONALITIES)
@@ -498,7 +451,7 @@ async def _personalities_list(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     meta = PaginationMeta(total=total, offset=offset, limit=limit)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -513,9 +466,9 @@ async def _personalities_get(
 ) -> str:
     tool = "synthorg_personalities_get"
     try:
-        name = _require_non_blank(arguments, "name")
+        name = require_non_blank(arguments, "name")
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     if not getattr(app_state, "has_personality_service", False):
         return capability_gap(tool, _WHY_PERSONALITIES)
@@ -526,11 +479,11 @@ async def _personalities_get(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     if entry is None:
         missing = PersonalityNotFoundError(f"Personality {name!r} not found")
-        _log_failed(tool, missing)
+        log_handler_invoke_failed(tool, missing)
         return err(missing, domain_code="not_found")
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=entry.model_dump(mode="json"))
@@ -549,7 +502,7 @@ async def _training_list_sessions(
     try:
         offset, limit = coerce_pagination(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     if not getattr(app_state, "has_training_service", False):
         return capability_gap(tool, _WHY_TRAINING_LIST)
@@ -561,7 +514,7 @@ async def _training_list_sessions(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     meta = PaginationMeta(total=total, offset=offset, limit=limit)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -576,9 +529,9 @@ async def _training_get_session(
 ) -> str:
     tool = "synthorg_training_get_session"
     try:
-        plan_id = _require_non_blank(arguments, "session_id")
+        plan_id = require_non_blank(arguments, "session_id")
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     if not getattr(app_state, "has_training_service", False):
         return capability_gap(tool, _WHY_TRAINING_LIST)
@@ -589,13 +542,13 @@ async def _training_get_session(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     if session is None:
         missing = TrainingSessionNotFoundError(
             f"Training session {plan_id!r} not found",
         )
-        _log_failed(tool, missing)
+        log_handler_invoke_failed(tool, missing)
         return err(missing, domain_code="not_found")
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=session.model_dump(mode="json"))
@@ -611,7 +564,7 @@ async def _training_start_session(
     try:
         plan = _parse_training_plan(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     if not getattr(app_state, "has_training_service", False):
         return capability_gap(tool, _WHY_TRAINING_START)
@@ -620,7 +573,7 @@ async def _training_start_session(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=result.model_dump(mode="json"))
@@ -641,9 +594,9 @@ def _parse_training_plan(arguments: dict[str, Any]) -> TrainingPlan:
     expected_enabled_values = (
         "list of content type strings (procedural/semantic/tool_patterns)"
     )
-    new_agent_id = _require_non_blank(arguments, "new_agent_id")
-    new_agent_role = _require_non_blank(arguments, "new_agent_role")
-    raw_level = _require_non_blank(arguments, arg_level)
+    new_agent_id = require_non_blank(arguments, "new_agent_id")
+    new_agent_role = require_non_blank(arguments, "new_agent_role")
+    raw_level = require_non_blank(arguments, arg_level)
     try:
         level = SeniorityLevel(raw_level)
     except ValueError as exc:

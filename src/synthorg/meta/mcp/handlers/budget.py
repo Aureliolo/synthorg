@@ -21,19 +21,22 @@ from synthorg.meta.mcp.handler_protocol import (
 )
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
-    coerce_pagination,
     dump_many,
     err,
     ok,
     paginate_sequence,
+)
+from synthorg.meta.mcp.handlers.common_args import (
+    coerce_pagination,
     require_arg,
+    require_non_blank,
 )
-from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.mcp import (
-    MCP_HANDLER_ARGUMENT_INVALID,
-    MCP_HANDLER_INVOKE_FAILED,
-    MCP_HANDLER_INVOKE_SUCCESS,
+from synthorg.meta.mcp.handlers.common_logging import (
+    log_handler_argument_invalid,
+    log_handler_invoke_failed,
 )
+from synthorg.observability import get_logger
+from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -75,31 +78,6 @@ class _NotFoundError(LookupError):
     domain_code = "not_found"
 
 
-def _log_failed(tool: str, exc: Exception) -> None:
-    logger.warning(
-        MCP_HANDLER_INVOKE_FAILED,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-
-
-def _log_invalid(tool: str, exc: Exception) -> None:
-    logger.warning(
-        MCP_HANDLER_ARGUMENT_INVALID,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-
-
-def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
-    raw = require_arg(arguments, key, str)
-    if not raw.strip():
-        raise invalid_argument(key, _TY_NON_BLANK)
-    return raw
-
-
 async def _budget_get_config(
     *,
     app_state: Any,
@@ -110,7 +88,7 @@ async def _budget_get_config(
     try:
         config = await app_state.config_resolver.get_budget_config()
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=config.model_dump(mode="json"))
@@ -136,7 +114,7 @@ async def _budget_list_records(
             raise invalid_argument(_ARG_TASK_ID, _TY_NON_BLANK)
         offset, limit = coerce_pagination(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
 
     try:
@@ -146,7 +124,7 @@ async def _budget_list_records(
         )
         page, meta = paginate_sequence(records, offset=offset, limit=limit)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=dump_many(page), pagination=meta)
@@ -160,16 +138,16 @@ async def _budget_get_agent_spending(
 ) -> str:
     tool = "synthorg_budget_get_agent_spending"
     try:
-        agent_id = _require_non_blank(arguments, _ARG_AGENT_ID)
+        agent_id = require_non_blank(arguments, _ARG_AGENT_ID)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
 
     try:
         total = await app_state.cost_tracker.get_agent_cost(agent_id)
         config = await app_state.config_resolver.get_budget_config()
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(
@@ -191,7 +169,7 @@ async def _budget_versions_list(
     try:
         offset, limit = coerce_pagination(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
 
     try:
@@ -200,7 +178,7 @@ async def _budget_versions_list(
             offset=offset,
         )
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     # The service already returned the requested page; build the
     # envelope meta directly with the repo's true total count.
@@ -221,19 +199,19 @@ async def _budget_versions_get(
         if version_num < 1:
             raise invalid_argument(_ARG_VERSION, _TY_POS_INT)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
 
     try:
         snapshot = await _versions_service(app_state).get_version(version_num)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     if snapshot is None:
         missing = _NotFoundError(
             f"Budget config version {version_num} not found",
         )
-        _log_failed(tool, missing)
+        log_handler_invoke_failed(tool, missing)
         return err(missing)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=snapshot.model_dump(mode="json"))

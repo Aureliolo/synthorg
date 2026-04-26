@@ -26,26 +26,26 @@ from synthorg.meta.mcp.errors import (
     invalid_argument,
 )
 from synthorg.meta.mcp.handlers.common import (
-    actor_id as _actor_id,
-)
-from synthorg.meta.mcp.handlers.common import (
     capability_gap,
-    coerce_pagination,
     dump_many,
     err,
     ok,
     paginate_sequence,
     require_destructive_guardrails,
 )
-from synthorg.meta.mcp.handlers.common import (
-    require_non_blank as _require_non_blank,
+from synthorg.meta.mcp.handlers.common_args import (
+    actor_id,
+    coerce_pagination,
+    require_non_blank,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.meta.mcp.handlers.common_logging import (
+    log_handler_argument_invalid,
+    log_handler_guardrail_violated,
+    log_handler_invoke_failed,
+)
+from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
     MCP_DESTRUCTIVE_OP_EXECUTED,
-    MCP_HANDLER_ARGUMENT_INVALID,
-    MCP_HANDLER_GUARDRAIL_VIOLATED,
-    MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
 
@@ -61,32 +61,6 @@ _ARG_EXEC_ID = "execution_id"
 _WHY_EXECUTION_SERVICE = (
     "workflow_execution_service is not wired on app_state in this deployment"
 )
-
-
-def _log_invalid(tool: str, exc: Exception) -> None:
-    logger.warning(
-        MCP_HANDLER_ARGUMENT_INVALID,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-
-
-def _log_failed(tool: str, exc: Exception) -> None:
-    logger.warning(
-        MCP_HANDLER_INVOKE_FAILED,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-
-
-def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
-    logger.warning(
-        MCP_HANDLER_GUARDRAIL_VIOLATED,
-        tool_name=tool,
-        violation=exc.violation,
-    )
 
 
 def _execution_service(app_state: Any) -> WorkflowExecutionService | None:
@@ -113,7 +87,7 @@ def _parse_start_args(
     arg_project = "project"
     arg_context = "context"
     ty_object = "object"
-    def_id = _require_non_blank(arguments, _ARG_DEF_ID)
+    def_id = require_non_blank(arguments, _ARG_DEF_ID)
     # Treat ``project`` as missing only when the caller omits it (or
     # passes ``None``); a blank or whitespace-only value is explicitly
     # invalid input, not a request for the default project.
@@ -148,10 +122,10 @@ async def workflow_executions_list(
     if service is None:
         return capability_gap(tool, _WHY_EXECUTION_SERVICE)
     try:
-        def_id = _require_non_blank(arguments, _ARG_DEF_ID)
+        def_id = require_non_blank(arguments, _ARG_DEF_ID)
         offset, limit = coerce_pagination(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         executions = await service.list_executions(def_id)
@@ -159,7 +133,7 @@ async def workflow_executions_list(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=dump_many(page), pagination=meta)
@@ -177,22 +151,22 @@ async def workflow_executions_get(
     if service is None:
         return capability_gap(tool, _WHY_EXECUTION_SERVICE)
     try:
-        execution_id = _require_non_blank(arguments, _ARG_EXEC_ID)
+        execution_id = require_non_blank(arguments, _ARG_EXEC_ID)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         execution = await service.get_execution(execution_id)
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     if execution is None:
         missing = WorkflowExecutionNotFoundError(
             f"Workflow execution {execution_id!r} not found",
         )
-        _log_failed(tool, missing)
+        log_handler_invoke_failed(tool, missing)
         return err(missing, domain_code="not_found")
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=execution.model_dump(mode="json"))
@@ -212,9 +186,9 @@ async def workflow_executions_start(  # noqa: PLR0911 -- error mapping
     try:
         def_id, project, context_raw = _parse_start_args(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
-    activated_by = _actor_id(actor) or "mcp"
+    activated_by = actor_id(actor) or "mcp"
     try:
         execution = await service.activate(
             def_id,
@@ -223,18 +197,18 @@ async def workflow_executions_start(  # noqa: PLR0911 -- error mapping
             context=context_raw,
         )
     except WorkflowExecutionNotFoundError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
     except (WorkflowDefinitionInvalidError, SubworkflowDepthExceededError) as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="invalid_argument")
     except WorkflowExecutionError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=execution.model_dump(mode="json"))
@@ -255,7 +229,7 @@ async def workflow_executions_cancel(  # noqa: PLR0911 -- error mapping
     try:
         reason, resolved_actor = require_destructive_guardrails(arguments, actor)
     except GuardrailViolationError as exc:
-        _log_guardrail(tool, exc)
+        log_handler_guardrail_violated(tool, exc)
         return err(exc)
     # Check service availability before parsing ``execution_id`` so
     # deployments without ``workflow_execution_service`` surface
@@ -265,26 +239,26 @@ async def workflow_executions_cancel(  # noqa: PLR0911 -- error mapping
     if service is None:
         return capability_gap(tool, _WHY_EXECUTION_SERVICE)
     try:
-        execution_id = _require_non_blank(arguments, _ARG_EXEC_ID)
+        execution_id = require_non_blank(arguments, _ARG_EXEC_ID)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
-    cancelled_by = _actor_id(resolved_actor) or "mcp"
+    cancelled_by = actor_id(resolved_actor) or "mcp"
     try:
         execution = await service.cancel_execution(
             execution_id,
             cancelled_by=cancelled_by,
         )
     except WorkflowExecutionNotFoundError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
     except WorkflowExecutionError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(

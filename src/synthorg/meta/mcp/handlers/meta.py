@@ -36,20 +36,19 @@ from synthorg.meta.mcp.handler_protocol import (
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     capability_gap,
-    coerce_pagination,
     err,
     ok,
     require_destructive_guardrails,
 )
-from synthorg.meta.mcp.handlers.common import (
-    actor_id as _actor_id,
+from synthorg.meta.mcp.handlers.common_args import actor_id, coerce_pagination
+from synthorg.meta.mcp.handlers.common_logging import (
+    log_handler_argument_invalid,
+    log_handler_guardrail_violated,
+    log_handler_invoke_failed,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
     MCP_DESTRUCTIVE_OP_EXECUTED,
-    MCP_HANDLER_ARGUMENT_INVALID,
-    MCP_HANDLER_GUARDRAIL_VIOLATED,
-    MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
     MCP_HANDLER_LAZY_SERVICE_INIT,
 )
@@ -61,32 +60,6 @@ _WHY_SELF_IMPROVEMENT = (
     "self-improvement service is not wired on app_state in this "
     "deployment; enable the meta loop to use this tool"
 )
-
-
-def _log_invalid(tool: str, exc: Exception) -> None:
-    logger.warning(
-        MCP_HANDLER_ARGUMENT_INVALID,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-
-
-def _log_failed(tool: str, exc: Exception) -> None:
-    logger.warning(
-        MCP_HANDLER_INVOKE_FAILED,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-
-
-def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
-    logger.warning(
-        MCP_HANDLER_GUARDRAIL_VIOLATED,
-        tool_name=tool,
-        violation=exc.violation,
-    )
 
 
 def _custom_rules_service(app_state: Any) -> CustomRulesService:
@@ -146,7 +119,7 @@ async def _meta_get_config(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=config_dump)
@@ -162,7 +135,7 @@ async def _meta_list_rules(
     try:
         offset, limit = coerce_pagination(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         page, total = await _custom_rules_service(app_state).list_rules(
@@ -170,7 +143,7 @@ async def _meta_list_rules(
             limit=limit,
         )
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     pagination = PaginationMeta(total=total, offset=offset, limit=limit)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -194,7 +167,7 @@ async def _meta_list_mcp_tools(
         tools = list(registry.get_tool_definitions())
         response = ok(data=tools)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return response
@@ -213,7 +186,7 @@ async def _meta_get_mcp_server_config(
         config = get_server_config()
         response = ok(data=config)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return response
@@ -238,18 +211,18 @@ async def _meta_trigger_cycle(
     try:
         reason, resolved_actor = require_destructive_guardrails(arguments, actor)
     except GuardrailViolationError as exc:
-        _log_guardrail(tool, exc)
+        log_handler_guardrail_violated(tool, exc)
         return err(exc)
-    actor_str = _actor_id(resolved_actor) or "mcp"
+    actor_str = actor_id(resolved_actor) or "mcp"
     try:
         result = await app_state.self_improvement_service.trigger_cycle()
     except SelfImprovementTriggerError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="unavailable")
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(

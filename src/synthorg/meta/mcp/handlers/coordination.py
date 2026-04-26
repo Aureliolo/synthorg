@@ -15,7 +15,6 @@ stripped-down unit environments); production deployments wire the
 services in the application bootstrap.
 """
 
-import copy
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -32,18 +31,21 @@ from synthorg.meta.mcp.handler_protocol import (
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     capability_gap,
-    coerce_pagination,
     dump_many,
     err,
     ok,
-    require_arg,
 )
-from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.mcp import (
-    MCP_HANDLER_ARGUMENT_INVALID,
-    MCP_HANDLER_INVOKE_FAILED,
-    MCP_HANDLER_INVOKE_SUCCESS,
+from synthorg.meta.mcp.handlers.common_args import (
+    coerce_pagination,
+    require_non_blank,
+    require_non_blank_value,
 )
+from synthorg.meta.mcp.handlers.common_logging import (
+    log_handler_argument_invalid,
+    log_handler_invoke_failed,
+)
+from synthorg.observability import get_logger
+from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -52,48 +54,6 @@ logger = get_logger(__name__)
 
 
 _TY_NON_BLANK = "non-blank string"
-
-
-def _log_invalid(tool: str, exc: Exception) -> None:
-    logger.warning(
-        MCP_HANDLER_ARGUMENT_INVALID,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-
-
-def _log_failed(tool: str, exc: Exception, **context: str) -> None:
-    """Emit the invoke-failed audit event with optional context labels.
-
-    ``context`` surfaces ids (e.g. ``task_id``, ``decision_id``) so
-    operators can correlate a 404 with a specific user request instead
-    of seeing anonymous "record missing" entries.
-    """
-    logger.warning(
-        MCP_HANDLER_INVOKE_FAILED,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-        **context,
-    )
-
-
-def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
-    """Extract a non-blank string via the shared typed-extraction path.
-
-    Delegates type-checking to :func:`require_arg` (raises
-    ``ArgumentValidationError`` with a clear ``expected`` string on a
-    missing key or type mismatch) and then enforces non-blankness with
-    the same ``invalid_argument`` helper the rest of the handler
-    layer uses.
-    """
-    raw = require_arg(arguments, key, str)
-    trimmed = raw.strip()
-    if not trimmed:
-        raise invalid_argument(key, _TY_NON_BLANK)
-    return trimmed
-
 
 _WHY_COORDINATION_NOT_WIRED = (
     "coordination_service is not attached to app_state; wire it in "
@@ -120,9 +80,9 @@ async def _coordination_get_task_metrics(
 ) -> str:
     tool = "synthorg_coordination_get_task_metrics"
     try:
-        task_id = _require_non_blank(arguments, "task_id")
+        task_id = require_non_blank(arguments, "task_id")
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     if not getattr(app_state, "has_coordination_service", False):
         return capability_gap(tool, _WHY_COORDINATION_NOT_WIRED)
@@ -133,13 +93,13 @@ async def _coordination_get_task_metrics(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     if record is None:
         missing = NotFoundError(
             f"No coordination metrics recorded for task {task_id!r}",
         )
-        _log_failed(tool, missing, task_id=str(task_id))
+        log_handler_invoke_failed(tool, missing, task_id=str(task_id))
         return err(missing, domain_code="not_found")
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=record.model_dump(mode="json"))
@@ -155,7 +115,7 @@ async def _coordination_metrics_list(
     try:
         offset, limit = coerce_pagination(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     if not getattr(app_state, "has_coordination_service", False):
         return capability_gap(tool, _WHY_COORDINATION_NOT_WIRED)
@@ -167,7 +127,7 @@ async def _coordination_metrics_list(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     meta = PaginationMeta(total=total, offset=offset, limit=limit)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -187,7 +147,7 @@ async def _scaling_list_decisions(
     try:
         offset, limit = coerce_pagination(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     if not getattr(app_state, "has_scaling_decision_service", False):
         return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
@@ -199,7 +159,7 @@ async def _scaling_list_decisions(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     meta = PaginationMeta(total=total, offset=offset, limit=limit)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -214,9 +174,9 @@ async def _scaling_get_decision(
 ) -> str:
     tool = "synthorg_scaling_get_decision"
     try:
-        decision_id = _require_non_blank(arguments, "decision_id")
+        decision_id = require_non_blank(arguments, "decision_id")
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     if not getattr(app_state, "has_scaling_decision_service", False):
         return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
@@ -227,11 +187,11 @@ async def _scaling_get_decision(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     if decision is None:
         missing = NotFoundError(f"Scaling decision {decision_id!r} not found")
-        _log_failed(tool, missing, decision_id=str(decision_id))
+        log_handler_invoke_failed(tool, missing, decision_id=str(decision_id))
         return err(missing, domain_code="not_found")
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=decision.model_dump(mode="json"))
@@ -251,7 +211,7 @@ async def _scaling_get_config(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=config.model_dump(mode="json"))
@@ -267,18 +227,18 @@ async def _scaling_trigger(
     raw_ids = arguments.get("agent_ids")
     if raw_ids is None or not isinstance(raw_ids, (list, tuple)):
         bad = invalid_argument("agent_ids", "list of non-blank strings")
-        _log_invalid(tool, bad)
+        log_handler_argument_invalid(tool, bad)
         return err(bad)
     try:
         agent_ids = tuple(
-            NotBlankStr(_require_non_blank_value(v, "agent_ids")) for v in raw_ids
+            NotBlankStr(require_non_blank_value(v, "agent_ids")) for v in raw_ids
         )
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     if not agent_ids:
         empty = invalid_argument("agent_ids", "non-empty list")
-        _log_invalid(tool, empty)
+        log_handler_argument_invalid(tool, empty)
         return err(empty)
     if not getattr(app_state, "has_scaling_decision_service", False):
         return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
@@ -287,7 +247,7 @@ async def _scaling_trigger(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=dump_many(decisions))
@@ -310,7 +270,7 @@ async def _ceremony_policy_get(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=policy.model_dump(mode="json"))
@@ -334,11 +294,11 @@ async def _ceremony_policy_get_resolved(
         # path.
         if department_raw is None:
             exc = invalid_argument("department", _TY_NON_BLANK)
-            _log_invalid(tool, exc)
+            log_handler_argument_invalid(tool, exc)
             return err(exc)
         if not isinstance(department_raw, str) or not department_raw.strip():
             exc = invalid_argument("department", _TY_NON_BLANK)
-            _log_invalid(tool, exc)
+            log_handler_argument_invalid(tool, exc)
             return err(exc)
         department = NotBlankStr(department_raw.strip())
     try:
@@ -348,7 +308,7 @@ async def _ceremony_policy_get_resolved(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=resolved.model_dump(mode="json"))
@@ -368,32 +328,24 @@ async def _ceremony_policy_get_active_strategy(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=active.model_dump(mode="json"))
 
 
-def _require_non_blank_value(value: Any, arg_name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise invalid_argument(arg_name, _TY_NON_BLANK)
-    return value.strip()
-
-
 COORDINATION_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    copy.deepcopy(
-        {
-            "synthorg_coordination_get_task_metrics": _coordination_get_task_metrics,
-            "synthorg_coordination_metrics_list": _coordination_metrics_list,
-            "synthorg_scaling_list_decisions": _scaling_list_decisions,
-            "synthorg_scaling_get_decision": _scaling_get_decision,
-            "synthorg_scaling_get_config": _scaling_get_config,
-            "synthorg_scaling_trigger": _scaling_trigger,
-            "synthorg_ceremony_policy_get": _ceremony_policy_get,
-            "synthorg_ceremony_policy_get_resolved": _ceremony_policy_get_resolved,
-            "synthorg_ceremony_policy_get_active_strategy": (
-                _ceremony_policy_get_active_strategy
-            ),
-        },
-    ),
+    {
+        "synthorg_coordination_get_task_metrics": _coordination_get_task_metrics,
+        "synthorg_coordination_metrics_list": _coordination_metrics_list,
+        "synthorg_scaling_list_decisions": _scaling_list_decisions,
+        "synthorg_scaling_get_decision": _scaling_get_decision,
+        "synthorg_scaling_get_config": _scaling_get_config,
+        "synthorg_scaling_trigger": _scaling_trigger,
+        "synthorg_ceremony_policy_get": _ceremony_policy_get,
+        "synthorg_ceremony_policy_get_resolved": _ceremony_policy_get_resolved,
+        "synthorg_ceremony_policy_get_active_strategy": (
+            _ceremony_policy_get_active_strategy
+        ),
+    },
 )

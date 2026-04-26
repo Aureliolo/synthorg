@@ -24,9 +24,9 @@ from synthorg.meta.mcp.handlers.common import (
     err,
     ok,
     paginate_sequence,
-    require_arg,
     require_destructive_guardrails,
 )
+from synthorg.meta.mcp.handlers.common_args import require_arg
 
 pytestmark = pytest.mark.unit
 

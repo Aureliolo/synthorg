@@ -12,23 +12,18 @@ from pydantic import ValidationError
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import AgentNotFoundError
-from synthorg.meta.mcp.errors import ArgumentValidationError, invalid_argument
-from synthorg.meta.mcp.handlers.common import (
-    actor_id as _actor_id,
-)
+from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handlers.common import (
     err,
     ok,
 )
-from synthorg.meta.mcp.handlers.common import (
-    require_non_blank as _require_non_blank,
+from synthorg.meta.mcp.handlers.common_args import actor_id, require_non_blank
+from synthorg.meta.mcp.handlers.common_logging import (
+    log_handler_argument_invalid,
+    log_handler_invoke_failed,
 )
-from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.mcp import (
-    MCP_HANDLER_ARGUMENT_INVALID,
-    MCP_HANDLER_INVOKE_FAILED,
-    MCP_HANDLER_INVOKE_SUCCESS,
-)
+from synthorg.observability import get_logger
+from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -36,26 +31,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_TY_NON_BLANK = "non-blank string"
 _ARG_AGENT_ID = "agent_id"
-
-
-def _log_invalid(tool: str, exc: Exception) -> None:
-    logger.warning(
-        MCP_HANDLER_ARGUMENT_INVALID,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-
-
-def _log_failed(tool: str, exc: Exception) -> None:
-    logger.warning(
-        MCP_HANDLER_INVOKE_FAILED,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
 
 
 async def autonomy_get(
@@ -67,20 +43,20 @@ async def autonomy_get(
     """Read the agent's effective autonomy level."""
     tool = "synthorg_autonomy_get"
     try:
-        agent_id = _require_non_blank(arguments, _ARG_AGENT_ID)
+        agent_id = require_non_blank(arguments, _ARG_AGENT_ID)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         identity = await app_state.agent_registry.get(NotBlankStr(agent_id))
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     if identity is None:
         missing = AgentNotFoundError(f"Agent {agent_id!r} not found")
-        _log_failed(tool, missing)
+        log_handler_invoke_failed(tool, missing)
         return err(missing, domain_code="not_found")
 
     level: AutonomyLevel | None = identity.autonomy_level
@@ -103,12 +79,10 @@ def _parse_autonomy_update_args(
     file under its line budget.
     """
     arg_reason = "reason"
-    agent_id = _require_non_blank(arguments, _ARG_AGENT_ID)
-    level_raw = _require_non_blank(arguments, "level")
-    reason_raw = arguments.get(arg_reason)
-    if not isinstance(reason_raw, str) or not reason_raw.strip():
-        raise invalid_argument(arg_reason, _TY_NON_BLANK)
-    return agent_id, level_raw, reason_raw.strip()
+    agent_id = require_non_blank(arguments, _ARG_AGENT_ID)
+    level_raw = require_non_blank(arguments, "level")
+    reason = require_non_blank(arguments, arg_reason)
+    return agent_id, level_raw, reason
 
 
 async def autonomy_update(
@@ -122,7 +96,7 @@ async def autonomy_update(
     try:
         agent_id, level_raw, reason = _parse_autonomy_update_args(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
 
     # Local imports keep the agents handler module light at import time.
@@ -134,10 +108,10 @@ async def autonomy_update(
     try:
         level = _AutonomyLevel(level_raw)
     except ValueError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc, domain_code="invalid_argument")
 
-    actor_str = _actor_id(actor)
+    actor_str = actor_id(actor)
     try:
         update = _AutonomyUpdate(
             requested_level=level,
@@ -145,7 +119,7 @@ async def autonomy_update(
             requested_by=NotBlankStr(actor_str) if actor_str else None,
         )
     except ValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc, domain_code="invalid_argument")
 
     approval_store = getattr(app_state, "approval_store", None)
@@ -156,12 +130,12 @@ async def autonomy_update(
             approval_store=approval_store,
         )
     except AgentNotFoundError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=result.model_dump(mode="json"))
@@ -176,9 +150,9 @@ async def collaboration_get_score(
     """Return the agent's current collaboration score."""
     tool = "synthorg_collaboration_get_score"
     try:
-        agent_id = _require_non_blank(arguments, _ARG_AGENT_ID)
+        agent_id = require_non_blank(arguments, _ARG_AGENT_ID)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         score = await app_state.performance_tracker.get_collaboration_score(
@@ -187,7 +161,7 @@ async def collaboration_get_score(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     # ``CollaborationScoreResult`` is a Pydantic model; dump to JSON-mode
@@ -210,9 +184,9 @@ async def collaboration_get_calibration(
     """Return the curated calibration readout for the agent's score."""
     tool = "synthorg_collaboration_get_calibration"
     try:
-        agent_id = _require_non_blank(arguments, _ARG_AGENT_ID)
+        agent_id = require_non_blank(arguments, _ARG_AGENT_ID)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         calibration = await app_state.performance_tracker.get_collaboration_calibration(
@@ -221,7 +195,7 @@ async def collaboration_get_calibration(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=calibration.model_dump(mode="json"))

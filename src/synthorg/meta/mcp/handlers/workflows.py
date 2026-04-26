@@ -13,7 +13,6 @@ Destructive ops -- ``workflows_delete``, ``subworkflows_delete``, and
 emit ``MCP_DESTRUCTIVE_OP_EXECUTED`` on success.
 """
 
-import copy
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -49,13 +48,22 @@ from synthorg.meta.mcp.handler_protocol import (
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     capability_gap,
-    coerce_pagination,
     dump_many,
     err,
     ok,
     paginate_sequence,
-    require_arg,
     require_destructive_guardrails,
+)
+from synthorg.meta.mcp.handlers.common_args import (
+    actor_id,
+    coerce_pagination,
+    require_arg,
+    require_non_blank,
+)
+from synthorg.meta.mcp.handlers.common_logging import (
+    log_handler_argument_invalid,
+    log_handler_guardrail_violated,
+    log_handler_invoke_failed,
 )
 from synthorg.meta.mcp.handlers.workflow_executions import (
     workflow_executions_cancel as workflow_executions_cancel_impl,
@@ -69,11 +77,9 @@ from synthorg.meta.mcp.handlers.workflow_executions import (
 from synthorg.meta.mcp.handlers.workflow_executions import (
     workflow_executions_start as workflow_executions_start_impl,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
     MCP_DESTRUCTIVE_OP_EXECUTED,
-    MCP_HANDLER_ARGUMENT_INVALID,
-    MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
@@ -98,51 +104,6 @@ _WHY_SUBWORKFLOW_SERVICE = (
 _WHY_VERSION_SERVICE = (
     "workflow_version_service is not wired on app_state in this deployment"
 )
-
-
-def _log_invalid(tool: str, exc: Exception) -> None:
-    logger.warning(
-        MCP_HANDLER_ARGUMENT_INVALID,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-
-
-def _log_failed(tool: str, exc: Exception) -> None:
-    logger.warning(
-        MCP_HANDLER_INVOKE_FAILED,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-
-
-def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
-    logger.warning(
-        MCP_HANDLER_GUARDRAIL_VIOLATED,
-        tool_name=tool,
-        violation=exc.violation,
-    )
-
-
-def _actor_id(actor: Any) -> str | None:
-    """Return a stable audit identifier for ``actor`` (prefers ``.id``)."""
-    if actor is None:
-        return None
-    agent_id = getattr(actor, "id", None)
-    if agent_id is not None:
-        return str(agent_id)
-    name = getattr(actor, "name", None)
-    return name if isinstance(name, str) and name else None
-
-
-def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
-    """Extract a non-blank string argument, stripped of surrounding whitespace."""
-    raw = arguments.get(key)
-    if not isinstance(raw, str) or not raw.strip():
-        raise invalid_argument(key, _TY_NON_BLANK)
-    return raw.strip()
 
 
 def _require_int(
@@ -233,7 +194,7 @@ async def _workflows_list(
     try:
         offset, limit = coerce_pagination(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         items = await _service(app_state).list_definitions()
@@ -241,7 +202,7 @@ async def _workflows_list(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=dump_many(page), pagination=meta)
@@ -255,22 +216,22 @@ async def _workflows_get(
 ) -> str:
     tool = "synthorg_workflows_get"
     try:
-        def_id = _require_non_blank(arguments, _ARG_DEF_ID)
+        def_id = require_non_blank(arguments, _ARG_DEF_ID)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         defn = await _service(app_state).get_definition(def_id)
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     if defn is None:
         missing = WorkflowDefinitionNotFoundError(
             f"Workflow definition {def_id!r} not found",
         )
-        _log_failed(tool, missing)
+        log_handler_invoke_failed(tool, missing)
         return err(missing, domain_code="not_found")
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=defn.model_dump(mode="json"))
@@ -286,7 +247,7 @@ async def _workflows_create(
     try:
         definition_dict = require_arg(arguments, "definition", dict)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
 
     from synthorg.engine.workflow.definition import (  # noqa: PLC0415
@@ -296,22 +257,22 @@ async def _workflows_create(
     try:
         definition = WorkflowDefinition.model_validate(definition_dict)
     except ValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc, domain_code="invalid_argument")
 
-    saved_by = _actor_id(actor) or "mcp"
+    saved_by = actor_id(actor) or "mcp"
     try:
         created = await _service(app_state).create_definition(
             definition,
             saved_by=saved_by,
         )
     except WorkflowDefinitionExistsError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="already_exists")
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=created.model_dump(mode="json"))
@@ -327,7 +288,7 @@ async def _workflows_update(
     try:
         definition_dict = require_arg(arguments, "definition", dict)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
 
     from synthorg.engine.workflow.definition import (  # noqa: PLC0415
@@ -337,25 +298,25 @@ async def _workflows_update(
     try:
         definition = WorkflowDefinition.model_validate(definition_dict)
     except ValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc, domain_code="invalid_argument")
 
-    saved_by = _actor_id(actor) or "mcp"
+    saved_by = actor_id(actor) or "mcp"
     try:
         updated = await _service(app_state).update_definition(
             definition,
             saved_by=saved_by,
         )
     except WorkflowDefinitionNotFoundError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
     except WorkflowDefinitionRevisionMismatchError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=updated.model_dump(mode="json"))
@@ -369,14 +330,14 @@ async def _workflows_delete(
 ) -> str:
     tool = "synthorg_workflows_delete"
     try:
-        def_id = _require_non_blank(arguments, _ARG_DEF_ID)
+        def_id = require_non_blank(arguments, _ARG_DEF_ID)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         reason, _ = require_destructive_guardrails(arguments, actor)
     except GuardrailViolationError as exc:
-        _log_guardrail(tool, exc)
+        log_handler_guardrail_violated(tool, exc)
         return err(exc)
 
     try:
@@ -384,20 +345,20 @@ async def _workflows_delete(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     if not deleted:
         missing = WorkflowDefinitionNotFoundError(
             f"Workflow definition {def_id!r} not found",
         )
-        _log_failed(tool, missing)
+        log_handler_invoke_failed(tool, missing)
         return err(missing, domain_code="not_found")
 
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
         MCP_DESTRUCTIVE_OP_EXECUTED,
         tool_name=tool,
-        actor_agent_id=_actor_id(actor),
+        actor_agent_id=actor_id(actor),
         reason=reason,
         target_id=def_id,
     )
@@ -414,7 +375,7 @@ async def _workflows_validate(
     try:
         definition_dict = require_arg(arguments, "definition", dict)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
 
     from synthorg.engine.workflow.definition import (  # noqa: PLC0415
@@ -424,7 +385,7 @@ async def _workflows_validate(
     try:
         definition = WorkflowDefinition.model_validate(definition_dict)
     except ValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc, domain_code="invalid_argument")
 
     try:
@@ -432,7 +393,7 @@ async def _workflows_validate(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=result.model_dump(mode="json"))
@@ -458,7 +419,7 @@ async def _subworkflows_list(
         if query_raw is not None and not isinstance(query_raw, str):
             raise invalid_argument(arg_query, _TY_NON_BLANK)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         page, total = await service.list_summaries(
@@ -469,7 +430,7 @@ async def _subworkflows_list(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     meta = PaginationMeta(total=total, offset=offset, limit=limit)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -487,7 +448,7 @@ async def _subworkflows_get(
     if service is None:
         return capability_gap(tool, _WHY_SUBWORKFLOW_SERVICE)
     try:
-        sub_id = _require_non_blank(arguments, _ARG_SUB_ID)
+        sub_id = require_non_blank(arguments, _ARG_SUB_ID)
         version_raw = arguments.get(_ARG_VERSION)
         if version_raw is not None and (
             not isinstance(version_raw, str) or not version_raw.strip()
@@ -495,17 +456,17 @@ async def _subworkflows_get(
             raise invalid_argument(_ARG_VERSION, _TY_NON_BLANK)
         version = NotBlankStr(version_raw.strip()) if version_raw is not None else None
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         defn = await service.get(NotBlankStr(sub_id), version)
     except SubworkflowNotFoundError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=defn.model_dump(mode="json"))
@@ -524,7 +485,7 @@ async def _subworkflows_create(
     try:
         definition_dict = require_arg(arguments, "definition", dict)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
 
     from synthorg.engine.workflow.definition import (  # noqa: PLC0415
@@ -534,19 +495,19 @@ async def _subworkflows_create(
     try:
         definition = WorkflowDefinition.model_validate(definition_dict)
     except ValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc, domain_code="invalid_argument")
 
-    saved_by = _actor_id(actor) or "mcp"
+    saved_by = actor_id(actor) or "mcp"
     try:
         created = await service.create(definition, saved_by=saved_by)
     except SubworkflowIOError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="invalid_argument")
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=created.model_dump(mode="json"))
@@ -566,18 +527,18 @@ async def _subworkflows_delete(  # noqa: PLR0911 -- error mapping fans out
     try:
         reason, resolved_actor = require_destructive_guardrails(arguments, actor)
     except GuardrailViolationError as exc:
-        _log_guardrail(tool, exc)
+        log_handler_guardrail_violated(tool, exc)
         return err(exc)
     try:
-        sub_id = _require_non_blank(arguments, _ARG_SUB_ID)
-        version = _require_non_blank(arguments, _ARG_VERSION)
+        sub_id = require_non_blank(arguments, _ARG_SUB_ID)
+        version = require_non_blank(arguments, _ARG_VERSION)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     service = _subworkflow_service(app_state)
     if service is None:
         return capability_gap(tool, _WHY_SUBWORKFLOW_SERVICE)
-    deleted_by = _actor_id(resolved_actor) or "mcp"
+    deleted_by = actor_id(resolved_actor) or "mcp"
     try:
         await service.delete(
             NotBlankStr(sub_id),
@@ -586,15 +547,15 @@ async def _subworkflows_delete(  # noqa: PLR0911 -- error mapping fans out
             actor_id=deleted_by,
         )
     except SubworkflowHasParentsError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
     except SubworkflowNotFoundError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
@@ -632,10 +593,10 @@ async def _workflow_versions_list(
     if service is None:
         return capability_gap(tool, _WHY_VERSION_SERVICE)
     try:
-        def_id = _require_non_blank(arguments, _ARG_DEF_ID)
+        def_id = require_non_blank(arguments, _ARG_DEF_ID)
         offset, limit = coerce_pagination(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         page, total = await service.list_versions(
@@ -646,7 +607,7 @@ async def _workflow_versions_list(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     meta = PaginationMeta(total=total, offset=offset, limit=limit)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -664,47 +625,45 @@ async def _workflow_versions_get(
     if service is None:
         return capability_gap(tool, _WHY_VERSION_SERVICE)
     try:
-        def_id = _require_non_blank(arguments, _ARG_DEF_ID)
+        def_id = require_non_blank(arguments, _ARG_DEF_ID)
         revision = _require_int(arguments, _ARG_REVISION, positive=True)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         snapshot = await service.get_version(NotBlankStr(def_id), revision)
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     if snapshot is None:
         missing = WorkflowDefinitionNotFoundError(
             f"Workflow definition {def_id!r} revision {revision!r} not found",
         )
-        _log_failed(tool, missing)
+        log_handler_invoke_failed(tool, missing)
         return err(missing, domain_code="not_found")
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=snapshot.model_dump(mode="json"))
 
 
 WORKFLOW_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    copy.deepcopy(
-        {
-            "synthorg_workflows_list": _workflows_list,
-            "synthorg_workflows_get": _workflows_get,
-            "synthorg_workflows_create": _workflows_create,
-            "synthorg_workflows_update": _workflows_update,
-            "synthorg_workflows_delete": _workflows_delete,
-            "synthorg_workflows_validate": _workflows_validate,
-            "synthorg_subworkflows_list": _subworkflows_list,
-            "synthorg_subworkflows_get": _subworkflows_get,
-            "synthorg_subworkflows_create": _subworkflows_create,
-            "synthorg_subworkflows_delete": _subworkflows_delete,
-            "synthorg_workflow_executions_list": _workflow_executions_list,
-            "synthorg_workflow_executions_get": _workflow_executions_get,
-            "synthorg_workflow_executions_start": _workflow_executions_start,
-            "synthorg_workflow_executions_cancel": _workflow_executions_cancel,
-            "synthorg_workflow_versions_list": _workflow_versions_list,
-            "synthorg_workflow_versions_get": _workflow_versions_get,
-        },
-    ),
+    {
+        "synthorg_workflows_list": _workflows_list,
+        "synthorg_workflows_get": _workflows_get,
+        "synthorg_workflows_create": _workflows_create,
+        "synthorg_workflows_update": _workflows_update,
+        "synthorg_workflows_delete": _workflows_delete,
+        "synthorg_workflows_validate": _workflows_validate,
+        "synthorg_subworkflows_list": _subworkflows_list,
+        "synthorg_subworkflows_get": _subworkflows_get,
+        "synthorg_subworkflows_create": _subworkflows_create,
+        "synthorg_subworkflows_delete": _subworkflows_delete,
+        "synthorg_workflow_executions_list": _workflow_executions_list,
+        "synthorg_workflow_executions_get": _workflow_executions_get,
+        "synthorg_workflow_executions_start": _workflow_executions_start,
+        "synthorg_workflow_executions_cancel": _workflow_executions_cancel,
+        "synthorg_workflow_versions_list": _workflow_versions_list,
+        "synthorg_workflow_versions_get": _workflow_versions_get,
+    },
 )

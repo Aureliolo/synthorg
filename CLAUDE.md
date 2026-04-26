@@ -141,7 +141,7 @@ See [docs/reference/persistence-boundary.md](docs/reference/persistence-boundary
 
 ## Logging
 
-- **Every module** with business logic MUST have: `from synthorg.observability import get_logger` then `logger = get_logger(__name__)`
+- **Every module** with business logic MUST have: `from synthorg.observability import get_logger` then `logger = get_logger(__name__)`. The single carve-out is shared infrastructure modules whose helpers log on behalf of an entire layer: `meta/mcp/handlers/common_logging.py` uses `get_logger("synthorg.meta.mcp.handlers")` (an explicit string) so the three centralized handler log helpers emit under one stable event source, regardless of which domain handler called them. New carve-outs of this kind require explicit justification in the module docstring.
 - **Never** use `import logging` / `logging.getLogger()` / `print()` in application code (exception: `observability/setup.py`, `observability/sinks.py`, `observability/syslog_handler.py`, `observability/http_handler.py`, and `observability/otlp_handler.py` may use stdlib `logging` and `print(..., file=sys.stderr)` for handler construction, bootstrap, and error reporting code that runs before or during logging system configuration)
 - **Variable name**: always `logger` (not `_logger`, not `log`)
 - **Event names**: always use constants from the domain-specific module under `synthorg.observability.events` (e.g., `API_REQUEST_STARTED` from `events.api`, `TOOL_INVOKE_START` from `events.tool`). Each domain has its own module -- see `src/synthorg/observability/events/` for the full inventory of constants. Import directly: `from synthorg.observability.events.<domain> import EVENT_CONSTANT`
@@ -154,7 +154,13 @@ See [docs/reference/persistence-boundary.md](docs/reference/persistence-boundary
 
 ## MCP Handler Layer
 
-SynthOrg exposes 200+ tools across 15 domains via its MCP server. Adding a new handler means implementing the `ToolHandler` protocol in `src/synthorg/meta/mcp/handlers/<domain>.py`. Handlers use envelope helpers (`ok`/`err`/`capability_gap`/`not_supported`) from `common.py`, validate args via `require_arg`, and run `require_destructive_guardrails(arguments, actor)` on any `admin_tool`. Handlers route through service-layer facades, never into `app_state.persistence.*` directly.
+SynthOrg exposes 200+ tools across 17 domains via its MCP server. Adding a new handler means implementing the `ToolHandler` protocol in `src/synthorg/meta/mcp/handlers/<domain>.py`. Handler infrastructure lives in three sibling modules under `src/synthorg/meta/mcp/handlers/`:
+
+- **`common.py`** -- response envelopes (`ok`, `err`, `capability_gap`, `not_supported`, `service_fallback`), pagination output (`PaginationMeta`, `paginate_sequence`, `dump_many`), guardrails (`require_destructive_guardrails`), and placeholder factories.
+- **`common_args.py`** -- argument validators/extractors (`require_arg`, `require_non_blank`, `get_optional_str`, `require_dict`, `parse_time_window`, `parse_str_sequence`, `coerce_pagination`, `actor_id`, `require_actor_id`, `actor_label`).
+- **`common_logging.py`** -- the three handler-layer log helpers covering the three log paths every domain handler exercises: `log_handler_argument_invalid` (caught `ArgumentValidationError`), `log_handler_invoke_failed` (any other `Exception` from the service layer, with optional correlation kwargs), and `log_handler_guardrail_violated` (caught `GuardrailViolationError` from a destructive-op precondition). Owns a module-scoped logger keyed at `synthorg.meta.mcp.handlers` -- one of the rare carve-outs from the `get_logger(__name__)` rule (see "Logging" above).
+
+Handlers run `require_destructive_guardrails(arguments, actor)` on any `admin_tool`, route through service-layer facades (never into `app_state.persistence.*` directly), and emit the three log paths via `common_logging` helpers (no per-handler `_log_*` duplicates).
 
 See [docs/reference/mcp-handler-contract.md](docs/reference/mcp-handler-contract.md) for the full contract, `docs/design/tools.md` §"SynthOrg MCP Tool Surface" for the user-facing surface, and `docs/design/observability.md` §"MCP handler events" for the event inventory.
 
