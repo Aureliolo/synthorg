@@ -505,9 +505,19 @@ class CostTracker(CostTrackerSummaryMixin):
             )
         except MemoryError, RecursionError:
             raise
-        except MixedCurrencyAggregationError:
+        except MixedCurrencyAggregationError as exc:
             # Mixed-currency increments are a caller-contract violation;
-            # surface to the caller rather than silently swallowing.
+            # surface to the caller rather than silently swallowing --
+            # but log first so operators see the rejection in telemetry
+            # alongside successful aggregations.
+            logger.warning(
+                BUDGET_PROJECT_COST_AGGREGATION_FAILED,
+                project_id=cost_record.project_id,
+                cost=cost_record.cost,
+                currency=cost_record.currency,
+                error_type=type(exc).__qualname__,
+                reason="mixed_currency_aggregation",
+            )
             raise
         except Exception:
             logger.warning(

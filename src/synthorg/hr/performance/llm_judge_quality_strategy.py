@@ -342,8 +342,8 @@ class LlmJudgeQualityStrategy:
         if response.content is None:
             logger.warning(
                 PERF_LLM_JUDGE_FAILED,
-                agent_id=task_result.agent_id,
-                task_id=task_result.task_id,
+                agent_id=agent_id,
+                task_id=task_id,
                 reason="no_content",
             )
             msg = "LLM returned no content"
@@ -351,7 +351,7 @@ class LlmJudgeQualityStrategy:
 
         llm_score, rationale = self._parse_llm_response(
             response.content,
-            task_result.agent_id,
-            task_result.task_id,
+            agent_id,
+            task_id,
         )
         return (llm_score, rationale, response.usage.cost)

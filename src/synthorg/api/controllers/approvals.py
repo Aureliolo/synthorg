@@ -632,6 +632,11 @@ class ApprovalsController(Controller):
             task_id=data.task_id,
             metadata=data.metadata,
         )
+        # Resolve urgency thresholds BEFORE the durable write so a slow
+        # settings backend can't strand a committed approval behind a
+        # blocked response (which would prompt the client to retry and
+        # double-write the same approval).
+        critical_seconds, high_seconds = await _resolve_urgency_thresholds(app_state)
         await app_state.approval_store.add(item)
 
         _publish_approval_event(
@@ -645,7 +650,6 @@ class ApprovalsController(Controller):
             action_type=item.action_type,
             risk_level=item.risk_level.value,
         )
-        critical_seconds, high_seconds = await _resolve_urgency_thresholds(app_state)
         return ApiResponse(
             data=_to_approval_response(
                 item,
@@ -701,6 +705,11 @@ class ApprovalsController(Controller):
                 "decision_reason": data.comment,
             },
         )
+        # Pre-resolve urgency thresholds before the durable decision
+        # write so a slow settings backend can't strand a committed
+        # decision behind a blocked response (which would prompt the
+        # client to retry against an already-decided approval).
+        critical_seconds, high_seconds = await _resolve_urgency_thresholds(app_state)
         saved = await _save_decision_and_notify(
             app_state,
             request,
@@ -712,7 +721,6 @@ class ApprovalsController(Controller):
             ws_event=WsEventType.APPROVAL_APPROVED,
         )
 
-        critical_seconds, high_seconds = await _resolve_urgency_thresholds(app_state)
         return ApiResponse(
             data=_to_approval_response(
                 saved,
@@ -768,6 +776,11 @@ class ApprovalsController(Controller):
                 "decision_reason": data.reason,
             },
         )
+        # Pre-resolve urgency thresholds before the durable decision
+        # write so a slow settings backend can't strand a committed
+        # decision behind a blocked response (which would prompt the
+        # client to retry against an already-decided approval).
+        critical_seconds, high_seconds = await _resolve_urgency_thresholds(app_state)
         saved = await _save_decision_and_notify(
             app_state,
             request,
@@ -779,7 +792,6 @@ class ApprovalsController(Controller):
             ws_event=WsEventType.APPROVAL_REJECTED,
         )
 
-        critical_seconds, high_seconds = await _resolve_urgency_thresholds(app_state)
         return ApiResponse(
             data=_to_approval_response(
                 saved,

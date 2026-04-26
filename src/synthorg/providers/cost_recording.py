@@ -29,6 +29,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from synthorg.budget.call_category import LLMCallCategory  # noqa: TC001
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
+
+# ``CostTracker`` and ``CompletionResponse`` appear in public
+# annotations on ``cost_recording_scope`` / ``resolve_currency`` /
+# ``emit_cost_record_from_context``, so they must resolve at runtime
+# when downstream tooling evaluates type hints.
+from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
@@ -36,13 +42,13 @@ from synthorg.observability.events.provider import (
     PROVIDER_COST_RECORDED,
     PROVIDER_COST_SKIPPED,
 )
-from synthorg.providers.models import TokenUsage  # noqa: TC001
+from synthorg.providers.models import (  # noqa: TC001
+    CompletionResponse,
+    TokenUsage,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.providers.models import CompletionResponse
 
 logger = get_logger(__name__)
 
@@ -89,12 +95,20 @@ class CostRecordingContext(BaseModel):
 
 
 # Bound on ``cost_tracker.record(...)`` so a slow or hung tracker
-# (DB stall, queue backpressure, custom Tracker subclass with bad I/O)
-# can never block the provider's user-visible response.  5 s is well
-# under any reasonable LLM call duration -- if the tracker can't
-# accept a record in 5 s, something is wrong and the cost record is
-# dropped with a structured warning rather than holding the request.
+# (DB stall, queue backpressure, custom Tracker subclass with bad
+# I/O) can never accumulate forever-pending background tasks.  5 s
+# is well under any reasonable LLM call duration; the chokepoint
+# itself does not await this -- the bound only protects against
+# leaked tasks if the tracker hangs indefinitely.
 _COST_RECORD_TIMEOUT_SECONDS: Final[float] = 5.0
+
+
+# Strong references to in-flight background record tasks so the
+# event loop's task GC cannot drop them before they run.  Tests can
+# call :func:`drain_pending_cost_records` to wait for the set to
+# settle when they need to observe ``CostTracker`` state immediately
+# after a ``provider.complete()`` call.
+_pending_record_tasks: set[asyncio.Task[None]] = set()
 
 
 _cost_context: ContextVar[CostRecordingContext | None] = ContextVar(
@@ -328,6 +342,51 @@ async def emit_cost_record_from_context(
         )
         return
 
+    # Submit the record off the response path so a slow tracker can
+    # never add user-visible latency to ``provider.complete()``.  The
+    # background task is bounded by the same timeout so a hung
+    # tracker doesn't accumulate forever-pending tasks; failures
+    # (timeout, exception) are logged in the task itself with the
+    # same structured event the inline path used to emit.
+    task = asyncio.create_task(
+        _record_cost_in_background(ctx, record, provider=provider, model=model),
+        name=f"cost_record:{ctx.agent_id}:{ctx.task_id}",
+    )
+    # Track task so the event loop's GC can't drop the reference and
+    # cancel the recording mid-flight.  ``discard`` removes the task
+    # once it completes (the lambda fires from ``add_done_callback``).
+    _pending_record_tasks.add(task)
+    task.add_done_callback(_pending_record_tasks.discard)
+
+    logger.info(
+        PROVIDER_COST_RECORDED,
+        agent_id=ctx.agent_id,
+        task_id=ctx.task_id,
+        provider=provider,
+        model=model,
+        cost=response.usage.cost,
+        currency=ctx.currency,
+        call_category=ctx.call_category.value,
+    )
+
+
+async def _record_cost_in_background(
+    ctx: CostRecordingContext,
+    record: CostRecord,
+    *,
+    provider: str,
+    model: str,
+) -> None:
+    """Submit a CostRecord with bounded latency, swallow + log failures.
+
+    Run as a background task by ``emit_cost_record_from_context`` so
+    the user-visible provider response returns immediately.  Bounded
+    by ``_COST_RECORD_TIMEOUT_SECONDS`` so a hung tracker doesn't
+    leak tasks.  ``MemoryError`` / ``RecursionError`` propagate to
+    the asyncio event loop's default exception handler (loud crash
+    is preferable to silent corruption); everything else is logged
+    and swallowed.
+    """
     try:
         await asyncio.wait_for(
             ctx.cost_tracker.record(record),
@@ -346,7 +405,6 @@ async def emit_cost_record_from_context(
             timeout_seconds=_COST_RECORD_TIMEOUT_SECONDS,
             reason="cost_tracker_record_timeout",
         )
-        return
     except Exception as exc:
         logger.warning(
             PROVIDER_COST_FAILED,
@@ -358,24 +416,37 @@ async def emit_cost_record_from_context(
             error=safe_error_description(exc),
             reason="cost_tracker_record_failed",
         )
-        return
 
-    logger.info(
-        PROVIDER_COST_RECORDED,
-        agent_id=ctx.agent_id,
-        task_id=ctx.task_id,
-        provider=provider,
-        model=model,
-        cost=response.usage.cost,
-        currency=ctx.currency,
-        call_category=ctx.call_category.value,
-    )
+
+async def drain_pending_cost_records() -> None:
+    """Wait for all in-flight background record tasks to settle.
+
+    Test-only utility: the chokepoint schedules ``cost_tracker.record``
+    as a background task so the user-visible ``provider.complete()``
+    response is never blocked on tracker I/O.  Tests that need to
+    observe ``CostTracker`` state immediately after a ``complete()``
+    call can ``await drain_pending_cost_records()`` to deterministically
+    wait for the recording side effect.
+
+    No-op when there are no pending tasks.  Failures inside the
+    background tasks are already logged + swallowed in
+    ``_record_cost_in_background`` -- this helper just guarantees the
+    tasks have completed (success or failure) before returning.
+    """
+    if not _pending_record_tasks:
+        return
+    # Snapshot before awaiting: ``_pending_record_tasks`` is mutated
+    # by the ``add_done_callback`` registered above, and iterating
+    # the live set while it shrinks would risk skipping tasks.
+    pending = tuple(_pending_record_tasks)
+    await asyncio.gather(*pending, return_exceptions=True)
 
 
 __all__ = [
     "CostRecordingContext",
     "cost_recording_scope",
     "current_cost_context",
+    "drain_pending_cost_records",
     "emit_cost_record_from_context",
     "resolve_currency",
 ]

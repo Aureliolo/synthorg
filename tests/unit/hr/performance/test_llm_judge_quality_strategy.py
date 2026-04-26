@@ -13,6 +13,7 @@ from synthorg.hr.performance.llm_judge_quality_strategy import (
     LlmJudgeQualityStrategy,
 )
 from synthorg.providers.base import BaseCompletionProvider
+from synthorg.providers.cost_recording import drain_pending_cost_records
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage
 
@@ -400,6 +401,7 @@ class TestCostTracking:
             acceptance_criteria=(),
         )
 
+        await drain_pending_cost_records()
         records = await cost_tracker.get_records()
         assert len(records) == 1
         cost_record = records[0]
@@ -450,6 +452,7 @@ class TestCostTracking:
             acceptance_criteria=(),
         )
 
+        await drain_pending_cost_records()
         records = await cost_tracker.get_records()
         assert records == ()
 

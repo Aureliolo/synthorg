@@ -24,6 +24,7 @@ from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.cost_recording import (
     cost_recording_scope,
     current_cost_context,
+    drain_pending_cost_records,
     resolve_currency,
 )
 from synthorg.providers.enums import FinishReason, MessageRole
@@ -118,6 +119,7 @@ class TestCostRecordingChokepoint:
         ):
             response = await provider.complete([_msg()], "test-model")
 
+        await drain_pending_cost_records()
         records = await tracker.get_records()
         assert len(records) == 1
         record = records[0]
@@ -139,6 +141,7 @@ class TestCostRecordingChokepoint:
         provider = _StubProvider()
         tracker = CostTracker()
         await provider.complete([_msg()], "test-model")
+        await drain_pending_cost_records()
         records = await tracker.get_records()
         assert records == ()
 
@@ -155,6 +158,7 @@ class TestCostRecordingChokepoint:
             currency=CurrencyCode(DEFAULT_CURRENCY),
         ):
             await provider.complete([_msg()], "test-model")
+        await drain_pending_cost_records()
         records = await tracker.get_records()
         assert records == ()
 
@@ -172,6 +176,7 @@ class TestCostRecordingChokepoint:
             currency=CurrencyCode(DEFAULT_CURRENCY),
         ):
             await provider.complete([_msg()], "test-model")
+        await drain_pending_cost_records()
         records = await tracker.get_records()
         assert len(records) == 1
         assert records[0].cost == 0.0
@@ -195,6 +200,7 @@ class TestCostRecordingChokepoint:
             currency=CurrencyCode(DEFAULT_CURRENCY),
         ):
             response = await provider.complete([_msg()], "test-model")
+        await drain_pending_cost_records()
         # Provider call still returned the response despite recording failure
         assert response.content == "hello"
 
@@ -270,6 +276,7 @@ class TestCostRecordingChokepoint:
             tg.create_task(task_a())
             tg.create_task(task_b())
 
+        await drain_pending_cost_records()
         # task_b ran outside any scope -> nothing recorded on tracker_b
         records_a = await tracker_a.get_records()
         records_b = await tracker_b.get_records()
