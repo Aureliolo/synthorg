@@ -12,7 +12,7 @@ Any attacker-controllable string interpolated into an LLM prompt MUST be wrapped
 
 ### Attacker-controllable surfaces
 
-Task title / description, acceptance criteria, artifact payloads, tool results, tool-invocation arguments, code diffs, multi-tenant strategy config, proposal / alert / query fields, rule metadata, triage requirements, generator context.
+Task title / description, acceptance criteria, artifact payloads, tool results, tool-invocation arguments, code diffs, multi-tenant strategy config, proposal / alert / query fields, rule metadata, triage requirements, generator context, peer-agent contributions in meeting protocols.
 
 ### Standard tags
 
@@ -24,12 +24,15 @@ Task title / description, acceptance criteria, artifact payloads, tool results, 
 - `TAG_CODE_DIFF`
 - `TAG_CONFIG_VALUE`
 - `TAG_CRITERIA_JSON`
+- `TAG_PEER_CONTRIBUTION`
 
 ### Fence breakout protection
 
 `wrap_untrusted` escapes literal `</tag>` in content (case-insensitively, including whitespace-terminated variants like `</tag >` or `</tag\t>`).
 
-### 15 reference call sites
+### Key reference call sites
+
+This list is non-exhaustive; treat it as a navigational starting point for new SEC-1 audits. Any LLM call site that interpolates an attacker-controllable string is in scope, whether or not it appears here.
 
 - `format_task_instruction`
 - `TaskLedgerMiddleware`
@@ -38,6 +41,7 @@ Task title / description, acceptance criteria, artifact payloads, tool results, 
 - `build_review_message` (semantic_llm_prompt)
 - `build_strategic_prompt_sections`
 - `_encode_decomposer_payload`
+- `build_task_message` / `build_system_message` (`engine/decomposition/llm_prompt.py`)
 - `separate_analyzer._build_user_message` (evolution proposer)
 - `LlmSecurityEvaluator._build_messages` (tool-invocation arguments via `TAG_TOOL_ARGUMENTS`)
 - `ChiefOfStaffChat.explain_proposal` / `.explain_alert` / `.ask` (three surfaces under `meta/chief_of_staff/chat.py` plus directive-append in `prompts.py` templates)
@@ -45,6 +49,12 @@ Task title / description, acceptance criteria, artifact payloads, tool results, 
 - `_BaseSemanticDetector._prompt` (four subclasses in `engine/classification/semantic_detectors.py`)
 - `LLMGenerator._build_prompt` (`client/generators/llm.py`)
 - `AgentIntake._build_prompt` (`engine/intake/strategies/agent_intake.py`)
+- Meeting protocol prompt builders (peer-contribution wrapping):
+    - `build_agenda_prompt` (`communication/meeting/_prompts.py`) -- wraps agenda title / context / items in `TAG_TASK_DATA`
+    - `RoundRobinProtocol.run` and `RoundRobinProtocol._run_discussion_rounds` (`communication/meeting/round_robin.py`) -- both transcript-build paths wrap each turn's content via the shared `_format_transcript_entry` helper using `TAG_PEER_CONTRIBUTION`
+    - `_build_conflict_check_prompt` / `_build_discussion_prompt` / `_build_synthesis_prompt` (`communication/meeting/structured_phases.py`)
+    - `_build_synthesis_prompt` (`communication/meeting/position_papers.py`)
+    - `_render_system_prompt` in `communication/meeting/agent_caller.py` appends the directive listing both `TAG_TASK_DATA` and `TAG_PEER_CONTRIBUTION` for every meeting LLM call
 
 ### Completion config pinning
 
@@ -52,7 +62,7 @@ LLM sites that previously invoked `provider.complete()` without an explicit `Com
 
 ### Injection detector (tool results)
 
-Tool-result interpolation additionally runs an advisory injection-pattern detector (`TOOL_INJECTION_PATTERN_DETECTED`) covering closing-tag look-alikes for every standard fence (`</task-data>`, `</task-fact>`, `</tool-result>`, `</tool-arguments>`, `</untrusted-artifact>`, `</code-diff>`, `</config-value>`, `</criteria-json>`) plus common override phrases. The telemetry sample is scrubbed via `scrub_secret_tokens` before logging.
+Tool-result interpolation additionally runs an advisory injection-pattern detector (`TOOL_INJECTION_PATTERN_DETECTED`) covering closing-tag look-alikes for every standard fence (`</task-data>`, `</task-fact>`, `</tool-result>`, `</tool-arguments>`, `</untrusted-artifact>`, `</code-diff>`, `</config-value>`, `</criteria-json>`, `</peer-contribution>`) plus common override phrases. The telemetry sample is scrubbed via `scrub_secret_tokens` before logging.
 
 ## HTML parsing: XXE protection
 

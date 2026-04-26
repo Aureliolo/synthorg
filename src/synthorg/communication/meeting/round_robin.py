@@ -33,6 +33,10 @@ from synthorg.communication.meeting.models import (
     MeetingMinutes,
 )
 from synthorg.communication.meeting.protocol import AgentCaller  # noqa: TC001
+from synthorg.engine.prompt_safety import (
+    TAG_PEER_CONTRIBUTION,
+    wrap_untrusted,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.meeting import (
     MEETING_AGENT_CALLED,
@@ -47,6 +51,21 @@ from synthorg.observability.events.meeting import (
 )
 
 logger = get_logger(__name__)
+
+
+def _format_transcript_entry(agent_id: str, content: str) -> str:
+    """Render a single transcript entry with SEC-1 fencing.
+
+    Centralises the security-critical formatting used by both the
+    discussion-round transcript build and the leader-summary transcript
+    rebuild so the two paths cannot drift out of sync (#1596).  The
+    ``[agent_id]:`` prefix sits outside the fence as model-trusted
+    attribution; the agent's free-form output goes inside the fence.
+    """
+    return f"[{agent_id}]:\n" + wrap_untrusted(
+        TAG_PEER_CONTRIBUTION,
+        content,
+    )
 
 
 def _build_turn_prompt(
@@ -151,7 +170,14 @@ class RoundRobinProtocol:
         )
 
         turn_number = len(contributions)
-        transcript = [f"[{c.agent_id}]: {c.content}" for c in contributions]
+        # SEC-1: each transcript entry's content originates from another
+        # agent's free-form output and may itself have been prompt-
+        # injected upstream.  Wrap each contribution in its own
+        # ``<peer-contribution>`` fence so a literal closing tag in the
+        # content cannot inject into the leader's summary prompt (#1596).
+        transcript = [
+            _format_transcript_entry(c.agent_id, c.content) for c in contributions
+        ]
 
         # Summary phase
         summary = ""
@@ -290,7 +316,16 @@ class RoundRobinProtocol:
                     lens_assignments=lens_assignments,
                 )
                 contributions.append(contribution)
-                transcript.append(f"[{participant_id}]: {contribution.content}")
+                # SEC-1: each peer turn is wrapped in its own
+                # ``<peer-contribution>`` fence so a compromised
+                # contribution cannot escape and inject into downstream
+                # turns or the leader's summary prompt (#1596).
+                transcript.append(
+                    _format_transcript_entry(
+                        participant_id,
+                        contribution.content,
+                    )
+                )
                 turn_number += 1
 
             if turn_number >= self._config.max_total_turns:

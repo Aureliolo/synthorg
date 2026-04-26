@@ -469,7 +469,11 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
 **Pipeline phases:**
 
 1. **Decompose** -- `DecompositionService` breaks the parent task into subtasks
-   with a dependency DAG
+   with a dependency DAG. The LLM-backed decomposer routes task title,
+   description, and acceptance criteria through `wrap_untrusted(TAG_TASK_DATA, ...)`
+   before interpolating them into the prompt; the system prompt appends the
+   canonical `untrusted_content_directive` so the model is told the fenced
+   content is untrusted input. See [SEC-1: Prompt Safety](../reference/sec-prompt-safety.md).
 2. **Route** -- `TaskRoutingService` assigns each subtask to an agent based on
    skills, workload, and topology
 3. **Resolve topology** -- reads topology from routing decisions; falls back to
