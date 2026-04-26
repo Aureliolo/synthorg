@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { AlertTriangle, Check, Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -149,14 +149,27 @@ export function DetectedLocalList({
   // [Add local] on Ollama while [Add cloud] is still resolving)
   // coexist without clobbering each other's in-flight markers.
   const [adding, setAdding] = useState<Record<string, 'local' | 'cloud'>>({})
+  // Synchronous in-flight guard against rapid double-clicks.  React's
+  // setState is queued, so a second click within the same render
+  // tick would see the same closure-captured ``adding`` and pass the
+  // visible-state check.  A ref-backed Set updates synchronously and
+  // gives us "first click wins" semantics across both add kinds.
+  // Declared here (before any early return) so the hook order is
+  // stable across renders.
+  const inflightRef = useRef<Set<string>>(new Set())
 
   // A preset is "detected" when its probe result has a URL.  Cloud
   // presets and undetected locals are absent from probeResults.
   const detectedPresets = localPresets.filter((p) => probeResults[p.name]?.url)
-  // Failed presets: probe was attempted and returned an error.  Surface
-  // these so the operator distinguishes "service unreachable" from
-  // "preset never tried".
-  const failedPresets = localPresets.filter((p) => probeErrors?.[p.name])
+  // Failed presets: probe was attempted and returned an error.  Use
+  // key presence (not truthiness) so an empty-string error message --
+  // a legitimate "probe failed but no detail" envelope -- still
+  // surfaces as a warning row instead of being silently dropped.
+  const failedPresets = localPresets.filter(
+    (p) =>
+      probeErrors !== undefined &&
+      Object.prototype.hasOwnProperty.call(probeErrors, p.name),
+  )
 
   if (!probing && detectedPresets.length === 0 && failedPresets.length === 0) {
     // Nothing detected, nothing failed, not currently probing.  The
@@ -165,6 +178,14 @@ export function DetectedLocalList({
     return null
   }
 
+  const tryAcquire = (name: string): boolean => {
+    if (inflightRef.current.has(name)) return false
+    inflightRef.current.add(name)
+    return true
+  }
+  const release = (name: string) => {
+    inflightRef.current.delete(name)
+  }
   const markAdding = (name: string, kind: 'local' | 'cloud') => {
     setAdding((prev) => ({ ...prev, [name]: kind }))
   }
@@ -178,16 +199,19 @@ export function DetectedLocalList({
   }
 
   const handleAddLocal = async (name: string, url: string) => {
+    if (!tryAcquire(name)) return
     markAdding(name, 'local')
     try {
       await onAddLocal(name, url)
     } finally {
+      release(name)
       clearAdding(name)
     }
   }
 
   const handleAddCloud = (cloudPresetName: string) => {
     if (!onAddCloud) return
+    if (!tryAcquire(cloudPresetName)) return
     markAdding(cloudPresetName, 'cloud')
     try {
       onAddCloud(cloudPresetName)
@@ -199,13 +223,17 @@ export function DetectedLocalList({
       // attacker-controlled string in the caller's error path is
       // truncated, control-char stripped, and bidi-override safe.
       log.error('onAddCloud handler raised', sanitizeForLog(err))
+      release(cloudPresetName)
       clearAdding(cloudPresetName)
       return
     }
     // Cloud add opens the modal synchronously; clear the in-flight
     // marker on the next tick so the button briefly reflects intent
     // without keeping the row disabled forever.
-    setTimeout(() => clearAdding(cloudPresetName), 0)
+    setTimeout(() => {
+      release(cloudPresetName)
+      clearAdding(cloudPresetName)
+    }, 0)
   }
 
   return (
