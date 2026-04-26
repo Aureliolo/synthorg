@@ -11,6 +11,16 @@
           },
           {
             "type": "command",
+            "command": "bash scripts/check_push_throttle.sh",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/check_no_throttle_override_creation.sh",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
             "command": "bash scripts/check_no_atlas_rehash.sh",
             "timeout": 5000
           },
@@ -57,6 +67,11 @@
           {
             "type": "command",
             "command": "bash scripts/check_pre_pr_review_triage_gate.sh",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/check_no_throttle_override_creation.sh",
             "timeout": 5000
           }
         ]

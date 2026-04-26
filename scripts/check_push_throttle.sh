@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# PreToolUse hook: enforce a minimum interval between consecutive
+# ``git push`` invocations on the same branch.
+#
+# Why this exists:
+#   Each push triggers full CI + reviewer (CodeRabbit) re-runs that
+#   cost real money / quota. Pushing twice in a row inside one
+#   review round (e.g. a rebase-only push followed minutes later by
+#   the actual fix-bundle push) doubles that cost for zero benefit
+#   over a single batched push. The model has repeatedly violated
+#   the "one push per round" rule from
+#   ``feedback_push_and_review_discipline.md`` despite the memory
+#   being present, so this script is the hard backstop.
+#
+# Behaviour:
+#   - Non-push commands: exit 0 (allow).
+#   - First push to a branch in this repo: exit 0 (allow), record
+#     timestamp + branch in ``.claude/state/last-push.json``.
+#   - Push within < THROTTLE_MIN minutes of the last push to the
+#     SAME branch: emit blocking JSON with a clear override
+#     instruction, exit 2.
+#   - Override: a one-shot flag file
+#     ``.claude/state/allow-double-push.flag`` must exist AND its
+#     first non-empty line must equal the current branch name
+#     EXACTLY. The flag is CONSUMED (deleted) on successful use, so
+#     each override authorises exactly one push. The model cannot
+#     create the flag itself via Write (the path is under
+#     ``.claude/state/`` which is gitignored runtime state, not a
+#     source-tree edit) -- the user must create the flag in their
+#     own shell. Recommended:
+#       printf '%s\n' "$(git branch --show-current)" \
+#           >.claude/state/allow-double-push.flag && git push <args>
+#   - Threshold tuneable via ``SYNTHORG_PUSH_THROTTLE_MIN`` (env
+#     or repo-level default below). Default: 5 minutes.
+
+set -euo pipefail
+
+THROTTLE_MIN="${SYNTHORG_PUSH_THROTTLE_MIN:-5}"
+REPO_ROOT_DIR="${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}"
+STATE_DIR="${REPO_ROOT_DIR}/.claude/state"
+STATE_FILE="${STATE_DIR}/last-push.json"
+OVERRIDE_FLAG="${STATE_DIR}/allow-double-push.flag"
+
+# Read tool_input.command from JSON stdin (Claude Code / OpenCode
+# both pass the tool payload as JSON on stdin for PreToolUse hooks).
+# If stdin is not JSON (e.g. someone runs the script standalone),
+# treat the input as a no-op and exit 0.
+COMMAND=""
+if [[ ! -t 0 ]]; then
+    COMMAND=$(jq -r '.tool_input.command // ""' 2>/dev/null || echo "")
+fi
+
+# Only act on git push commands. Match anywhere in compound commands
+# (``a && git push && b``) but require a real word boundary so we do
+# not match ``git push-tag-helper`` or comments.
+if [[ -z "$COMMAND" ]] || ! printf '%s\n' "$COMMAND" | grep -qE '\bgit[[:space:]]+push\b'; then
+    exit 0
+fi
+
+BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
+NOW=$(date -u +%s)
+
+# Only throttle when an open PR exists for the current branch. The
+# rationale for the rule is "every push burns CI + reviewer
+# rate-limit budget"; outside a PR there is no reviewer to burn and
+# no CI gate (most workflows are ``pull_request``-triggered), so a
+# throttle would just slow down ordinary feature work for no
+# benefit. ``gh pr view`` exits non-zero when there is no PR for
+# the branch; we treat that as "not in a review round" and skip.
+# If ``gh`` is unavailable or unauthenticated we fail OPEN (allow
+# the push) -- the script's job is to prevent reviewer-rate-limit
+# burn, not to gate developer pushes when the tooling is broken.
+if ! command -v gh >/dev/null 2>&1; then
+    exit 0
+fi
+if ! gh pr view --json state,number --jq '.state' >/dev/null 2>&1; then
+    # No open PR for ``${BRANCH}``: not in a review round.
+    exit 0
+fi
+
+mkdir -p "${STATE_DIR}"
+
+# Check the override flag. The flag must exist AND its first
+# non-empty line must match the current branch EXACTLY. This
+# prevents a stale flag from a previous branch silently authorising
+# pushes elsewhere, and prevents an accidental ``touch`` from
+# bypassing the gate.
+OVERRIDE=0
+if [[ -f "${OVERRIDE_FLAG}" ]]; then
+    FLAG_BRANCH=$(awk 'NF { print; exit }' "${OVERRIDE_FLAG}" 2>/dev/null || echo "")
+    if [[ -n "${FLAG_BRANCH}" && "${FLAG_BRANCH}" == "${BRANCH}" ]]; then
+        OVERRIDE=1
+    fi
+fi
+
+# Read previous push record. Tolerate a missing or malformed file.
+LAST_TS=0
+LAST_BRANCH=""
+if [[ -f "${STATE_FILE}" ]]; then
+    LAST_TS=$(jq -r '.timestamp // 0' "${STATE_FILE}" 2>/dev/null || echo 0)
+    LAST_BRANCH=$(jq -r '.branch // ""' "${STATE_FILE}" 2>/dev/null || echo "")
+fi
+
+DELTA=$(( NOW - LAST_TS ))
+THROTTLE_SEC=$(( THROTTLE_MIN * 60 ))
+
+if [[ "${OVERRIDE}" -eq 0 && "${LAST_BRANCH}" == "${BRANCH}" && "${LAST_TS}" -gt 0 && "${DELTA}" -lt "${THROTTLE_SEC}" ]]; then
+    REMAINING=$(( THROTTLE_SEC - DELTA ))
+    REMAINING_MIN=$(( (REMAINING + 59) / 60 ))
+    LAST_HUMAN=$(date -u -d "@${LAST_TS}" +"%H:%M:%SZ" 2>/dev/null || date -ur "${LAST_TS}" +"%H:%M:%SZ" 2>/dev/null || echo "${LAST_TS}")
+    REASON="Push to '${BRANCH}' blocked: previous push was at ${LAST_HUMAN} (${DELTA}s ago). Minimum interval is ${THROTTLE_MIN} minutes; wait ~${REMAINING_MIN} more min and batch any pending fixes into ONE push. To override, the user (not the model) must run: printf '%s\\\\n' \\\"\$(git branch --show-current)\\\" >.claude/state/allow-double-push.flag && git push <args>. The flag is consumed on use; each override authorises exactly one push. Each push triggers full CI + CodeRabbit re-runs; doubling that costs real money."
+    cat <<ENDJSON
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "${REASON}"
+  }
+}
+ENDJSON
+    exit 2
+fi
+
+# Successful authorisation: consume the override flag (one-shot).
+if [[ "${OVERRIDE}" -eq 1 ]]; then
+    rm -f "${OVERRIDE_FLAG}"
+fi
+
+# Record this push (allowed or override). We write atomically via a
+# temp file in the same dir to survive a crash mid-write.
+TMP_FILE=$(mktemp "${STATE_DIR}/last-push.json.XXXXXX")
+printf '{"timestamp":%s,"branch":"%s","override":%s}\n' "${NOW}" "${BRANCH}" "${OVERRIDE}" >"${TMP_FILE}"
+mv -f "${TMP_FILE}" "${STATE_FILE}"
+
+exit 0
