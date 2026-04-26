@@ -25,26 +25,33 @@ from synthorg.observability.events.api import (
     API_SESSION_REVOKE_FAILED,
     API_SESSION_REVOKED,
 )
+from synthorg.persistence._shared import (
+    format_iso_utc,
+    normalize_utc,
+    parse_iso_utc,
+)
 from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
 
 
-def _coerce_datetime(value: Any) -> datetime:
-    """Accept a pre-parsed ``datetime`` or an ISO-8601 string.
-
-    SQLite stores timestamps as TEXT; aiosqlite returns them as ``str``.
-    The isinstance check resolves ``datetime.datetime`` via the stdlib
-    module reference rather than the bound ``datetime`` name because
-    tests patch the latter with a ``MagicMock``.
-    """
-    if isinstance(value, _datetime_mod.datetime):
-        return value
-    return datetime.fromisoformat(value)
-
-
 def _row_to_session(row: Any) -> Session:
-    """Deserialize an aiosqlite.Row into a :class:`Session`."""
+    """Deserialize an aiosqlite.Row into a :class:`Session`.
+
+    SQLite stores timestamps as TEXT (``aiosqlite`` returns them as
+    ``str``).  When tests patch the bound ``datetime`` name with a
+    ``MagicMock`` the row payload may already be a ``datetime``
+    instance, so the isinstance check resolves the class via the
+    stdlib module reference and either normalises through
+    ``normalize_utc`` (already-typed) or parses via ``parse_iso_utc``
+    (string).
+    """
+
+    def _coerce(value: Any) -> datetime:
+        if isinstance(value, _datetime_mod.datetime):
+            return normalize_utc(value)
+        return parse_iso_utc(value)
+
     return Session(
         session_id=NotBlankStr(row["session_id"]),
         user_id=NotBlankStr(row["user_id"]),
@@ -52,9 +59,9 @@ def _row_to_session(row: Any) -> Session:
         role=HumanRole(row["role"]),
         ip_address=row["ip_address"],
         user_agent=row["user_agent"],
-        created_at=_coerce_datetime(row["created_at"]),
-        last_active_at=_coerce_datetime(row["last_active_at"]),
-        expires_at=_coerce_datetime(row["expires_at"]),
+        created_at=_coerce(row["created_at"]),
+        last_active_at=_coerce(row["last_active_at"]),
+        expires_at=_coerce(row["expires_at"]),
         revoked=bool(row["revoked"]),
     )
 
@@ -91,7 +98,7 @@ class SQLiteSessionRepository:
         loads sessions that have not yet expired -- expired JWTs are
         rejected by the decoder regardless of revocation.
         """
-        now = datetime.now(UTC).isoformat()
+        now = format_iso_utc(datetime.now(UTC))
         cursor = await self._db.execute(
             "SELECT session_id FROM sessions WHERE revoked = 1 AND expires_at > ?",
             (now,),
@@ -115,9 +122,9 @@ class SQLiteSessionRepository:
                         session.role.value,
                         session.ip_address,
                         session.user_agent,
-                        session.created_at.isoformat(),
-                        session.last_active_at.isoformat(),
-                        session.expires_at.isoformat(),
+                        format_iso_utc(session.created_at),
+                        format_iso_utc(session.last_active_at),
+                        format_iso_utc(session.expires_at),
                         int(session.revoked),
                     ),
                 )
@@ -148,7 +155,7 @@ class SQLiteSessionRepository:
 
     async def list_by_user(self, user_id: str) -> tuple[Session, ...]:
         """List active (non-expired, non-revoked) sessions for a user."""
-        now = datetime.now(UTC).isoformat()
+        now = format_iso_utc(datetime.now(UTC))
         cursor = await self._db.execute(
             "SELECT * FROM sessions "
             "WHERE user_id = ? AND revoked = 0 "
@@ -161,7 +168,7 @@ class SQLiteSessionRepository:
 
     async def list_all(self) -> tuple[Session, ...]:
         """List all active (non-expired, non-revoked) sessions."""
-        now = datetime.now(UTC).isoformat()
+        now = format_iso_utc(datetime.now(UTC))
         cursor = await self._db.execute(
             "SELECT * FROM sessions "
             "WHERE revoked = 0 AND expires_at > ? "
@@ -208,7 +215,7 @@ class SQLiteSessionRepository:
         partial-success state would route the affected sessions
         through the auth fast path until the next ``load_revoked``.
         """
-        now = datetime.now(UTC).isoformat()
+        now = format_iso_utc(datetime.now(UTC))
         async with self._write_lock:
             try:
                 # SELECT first: capture the ids that WILL be revoked
@@ -279,7 +286,7 @@ class SQLiteSessionRepository:
 
     async def cleanup_expired(self) -> int:
         """Remove expired sessions from the database."""
-        now = datetime.now(UTC).isoformat()
+        now = format_iso_utc(datetime.now(UTC))
         async with self._write_lock:
             try:
                 cursor = await self._db.execute(

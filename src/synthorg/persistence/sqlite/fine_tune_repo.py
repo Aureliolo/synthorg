@@ -15,11 +15,12 @@ from synthorg.memory.embedding.fine_tune_models import (
     FineTuneRun,
     FineTuneRunConfig,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_INTERRUPTED,
     MEMORY_FINE_TUNE_PERSIST_FAILED,
 )
+from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
 from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
@@ -38,24 +39,6 @@ _ACTIVE_STAGES = tuple(
 _MAX_LIST_LIMIT: int = 1_000
 
 
-def _parse_ts(value: str | None) -> datetime | None:
-    """Parse an ISO-8601 timestamp with UTC fallback."""
-    if value is None:
-        return None
-    dt = datetime.fromisoformat(value)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=UTC)
-    return dt
-
-
-def _parse_required_ts(value: str) -> datetime:
-    """Parse a required ISO-8601 timestamp with UTC fallback."""
-    dt = datetime.fromisoformat(value)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=UTC)
-    return dt
-
-
 def _run_from_row(row: aiosqlite.Row) -> FineTuneRun:
     """Build a ``FineTuneRun`` from a database row.
 
@@ -71,9 +54,13 @@ def _run_from_row(row: aiosqlite.Row) -> FineTuneRun:
             progress=row["progress"],
             error=row["error"],
             config=config,
-            started_at=_parse_required_ts(row["started_at"]),
-            updated_at=_parse_required_ts(row["updated_at"]),
-            completed_at=_parse_ts(row["completed_at"]),
+            started_at=parse_iso_utc(row["started_at"]),
+            updated_at=parse_iso_utc(row["updated_at"]),
+            completed_at=(
+                parse_iso_utc(row["completed_at"])
+                if row["completed_at"] is not None
+                else None
+            ),
             stages_completed=stages,
         )
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
@@ -101,7 +88,7 @@ def _checkpoint_from_row(row: aiosqlite.Row) -> CheckpointRecord:
             doc_count=row["doc_count"],
             eval_metrics=eval_metrics,
             size_bytes=row["size_bytes"],
-            created_at=_parse_required_ts(row["created_at"]),
+            created_at=parse_iso_utc(row["created_at"]),
             is_active=bool(row["is_active"]),
             backup_config_json=row["backup_config_json"],
         )
@@ -154,19 +141,24 @@ class SQLiteFineTuneRunRepository:
                         run.progress,
                         run.error,
                         run.config.model_dump_json(),
-                        run.started_at.isoformat(),
-                        run.updated_at.isoformat(),
-                        run.completed_at.isoformat() if run.completed_at else None,
+                        format_iso_utc(run.started_at),
+                        format_iso_utc(run.updated_at),
+                        (
+                            format_iso_utc(run.completed_at)
+                            if run.completed_at
+                            else None
+                        ),
                         json.dumps(list(run.stages_completed)),
                     ),
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 msg = f"Failed to save fine-tune run {run.id}"
-                logger.exception(
+                logger.warning(
                     MEMORY_FINE_TUNE_PERSIST_FAILED,
                     run_id=run.id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 
@@ -263,8 +255,12 @@ class SQLiteFineTuneRunRepository:
                         run.progress,
                         run.error,
                         run.config.model_dump_json(),
-                        run.updated_at.isoformat(),
-                        run.completed_at.isoformat() if run.completed_at else None,
+                        format_iso_utc(run.updated_at),
+                        (
+                            format_iso_utc(run.completed_at)
+                            if run.completed_at
+                            else None
+                        ),
                         json.dumps(list(run.stages_completed)),
                         run.id,
                     ),
@@ -286,7 +282,7 @@ class SQLiteFineTuneRunRepository:
             Number of runs marked as interrupted.
         """
         placeholders = ", ".join("?" for _ in _ACTIVE_STAGES)
-        now = datetime.now(UTC).isoformat()
+        now = format_iso_utc(datetime.now(UTC))
         query = (
             f"UPDATE fine_tune_runs SET "  # noqa: S608
             f"stage = ?, error = ?, updated_at = ?, completed_at = ? "
@@ -372,7 +368,7 @@ class SQLiteFineTuneCheckpointRepository:
                         if checkpoint.eval_metrics
                         else None,
                         checkpoint.size_bytes,
-                        checkpoint.created_at.isoformat(),
+                        format_iso_utc(checkpoint.created_at),
                         int(checkpoint.is_active),
                         checkpoint.backup_config_json,
                     ),

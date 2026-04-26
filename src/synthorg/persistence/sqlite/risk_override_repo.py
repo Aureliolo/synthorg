@@ -14,6 +14,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
     PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
 )
+from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
 from synthorg.persistence.errors import DuplicateRecordError, PersistenceError
 from synthorg.security.rules.risk_override import RiskTierOverride
 
@@ -34,13 +35,6 @@ def _is_unique_constraint_error(exc: sqlite3.IntegrityError) -> bool:
         "SQLITE_CONSTRAINT_UNIQUE",
         "SQLITE_CONSTRAINT_PRIMARYKEY",
     }
-
-
-def _ensure_utc(dt: datetime) -> datetime:
-    """Attach UTC if the parsed datetime is naive."""
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=UTC)
-    return dt
 
 
 class SQLiteRiskOverrideRepository:
@@ -84,12 +78,10 @@ class SQLiteRiskOverrideRepository:
             DuplicateRecordError: If an override with the same ID exists.
             PersistenceError: If the save fails.
         """
-        created_at_utc = override.created_at.astimezone(UTC).isoformat()
-        expires_at_utc = override.expires_at.astimezone(UTC).isoformat()
+        created_at_utc = format_iso_utc(override.created_at)
+        expires_at_utc = format_iso_utc(override.expires_at)
         revoked_at_utc = (
-            override.revoked_at.astimezone(UTC).isoformat()
-            if override.revoked_at
-            else None
+            format_iso_utc(override.revoked_at) if override.revoked_at else None
         )
 
         try:
@@ -157,7 +149,7 @@ class SQLiteRiskOverrideRepository:
 
     async def list_active(self) -> tuple[RiskTierOverride, ...]:
         """Return all active (non-expired, non-revoked) overrides."""
-        now_utc = datetime.now(tz=UTC).isoformat()
+        now_utc = format_iso_utc(datetime.now(UTC))
         try:
             cursor = await self._db.execute(
                 f"SELECT {_COLS} FROM risk_overrides "  # noqa: S608
@@ -194,7 +186,7 @@ class SQLiteRiskOverrideRepository:
         revoked_at: AwareDatetime,
     ) -> bool:
         """Mark an override as revoked."""
-        revoked_at_utc = revoked_at.astimezone(UTC).isoformat()
+        revoked_at_utc = format_iso_utc(revoked_at)
         try:
             async with self._write_lock:
                 cursor = await self._db.execute(
@@ -238,10 +230,8 @@ def _row_to_override(row: Any) -> RiskTierOverride:
         override_tier=ApprovalRiskLevel(override_tier),
         reason=reason,
         created_by=created_by,
-        created_at=_ensure_utc(datetime.fromisoformat(created_at)),
-        expires_at=_ensure_utc(datetime.fromisoformat(expires_at)),
-        revoked_at=(
-            _ensure_utc(datetime.fromisoformat(revoked_at)) if revoked_at else None
-        ),
+        created_at=parse_iso_utc(created_at),
+        expires_at=parse_iso_utc(expires_at),
+        revoked_at=(parse_iso_utc(revoked_at) if revoked_at else None),
         revoked_by=revoked_by,
     )

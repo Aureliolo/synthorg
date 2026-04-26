@@ -3,7 +3,6 @@
 import asyncio
 import json
 import sqlite3
-from datetime import datetime
 
 import aiosqlite
 from aiosqlite import Row
@@ -19,6 +18,7 @@ from synthorg.observability.events.api import (
     API_APPROVAL_REPO_FETCHED,
     API_APPROVAL_REPO_LISTED,
 )
+from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
 from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
 logger = get_logger(__name__)
@@ -66,14 +66,14 @@ def _row_to_item(row: Row) -> ApprovalItem:
             requested_by=str(row["requested_by"]),
             risk_level=ApprovalRiskLevel(str(row["risk_level"])),
             status=ApprovalStatus(str(row["status"])),
-            created_at=datetime.fromisoformat(str(row["created_at"])),
+            created_at=parse_iso_utc(str(row["created_at"])),
             expires_at=(
-                datetime.fromisoformat(str(row["expires_at"]))
+                parse_iso_utc(str(row["expires_at"]))
                 if row["expires_at"] is not None
                 else None
             ),
             decided_at=(
-                datetime.fromisoformat(str(row["decided_at"]))
+                parse_iso_utc(str(row["decided_at"]))
                 if row["decided_at"] is not None
                 else None
             ),
@@ -161,9 +161,9 @@ class SQLiteApprovalRepository:
             item.requested_by,
             item.risk_level.value,
             item.status.value,
-            item.created_at.isoformat(),
-            item.expires_at.isoformat() if item.expires_at else None,
-            item.decided_at.isoformat() if item.decided_at else None,
+            format_iso_utc(item.created_at),
+            format_iso_utc(item.expires_at) if item.expires_at else None,
+            format_iso_utc(item.decided_at) if item.decided_at else None,
             item.decided_by,
             item.decision_reason,
             item.task_id,

@@ -23,7 +23,7 @@ from synthorg.memory.org.models import (
     OrgFact,
     OrgFactAuthor,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.org_memory import (
     ORG_MEMORY_MVCC_LOG_QUERIED,
     ORG_MEMORY_MVCC_PUBLISH_APPENDED,
@@ -33,6 +33,7 @@ from synthorg.observability.events.org_memory import (
     ORG_MEMORY_ROW_PARSE_FAILED,
     ORG_MEMORY_WRITE_FAILED,
 )
+from synthorg.persistence._shared import normalize_utc
 
 if TYPE_CHECKING:
     import psycopg
@@ -68,11 +69,6 @@ def _tags_from_json(raw: str | list[Any]) -> tuple[NotBlankStr, ...]:
     return tuple(NotBlankStr(t) for t in parsed)
 
 
-def _coerce_tz(value: datetime) -> datetime:
-    """Guarantee UTC tzinfo on a TIMESTAMPTZ round-trip."""
-    return value if value.tzinfo else value.replace(tzinfo=UTC)
-
-
 def _snapshot_row_to_org_fact(row: dict[str, Any]) -> OrgFact:
     """Reconstruct an ``OrgFact`` from a snapshot row."""
     try:
@@ -96,7 +92,7 @@ def _snapshot_row_to_org_fact(row: dict[str, Any]) -> OrgFact:
             category=OrgFactCategory(row["category"]),
             tags=_tags_from_json(row["tags"]),
             author=author,
-            created_at=_coerce_tz(row["created_at"]),
+            created_at=normalize_utc(row["created_at"]),
         )
     except (KeyError, ValueError, ValidationError, OrgMemoryQueryError) as exc:
         logger.warning(
@@ -130,7 +126,7 @@ def _row_to_operation_log_entry(row: dict[str, Any]) -> OperationLogEntry:
                 if row["author_autonomy_level"]
                 else None
             ),
-            timestamp=_coerce_tz(row["timestamp"]),
+            timestamp=normalize_utc(row["timestamp"]),
             version=row["version"],
         )
     except (KeyError, ValueError, ValidationError, OrgMemoryQueryError) as exc:
@@ -147,9 +143,9 @@ def _row_to_snapshot(row: dict[str, Any]) -> OperationLogSnapshot:
     """Reconstruct an ``OperationLogSnapshot`` from a time-travel query row."""
     try:
         op_type: str = row["operation_type"]
-        retracted_at = _coerce_tz(row["timestamp"]) if op_type == "RETRACT" else None
+        retracted_at = normalize_utc(row["timestamp"]) if op_type == "RETRACT" else None
         created_at_raw = row.get("created_at")
-        created_at = _coerce_tz(created_at_raw or row["timestamp"])
+        created_at = normalize_utc(created_at_raw or row["timestamp"])
         return OperationLogSnapshot(
             fact_id=row["fact_id"],
             content=row["content"],
@@ -289,15 +285,16 @@ class PostgresOrgFactRepository:
                                 if fact.author.autonomy_level
                                 else None
                             ),
-                            _coerce_tz(fact.created_at),
+                            normalize_utc(fact.created_at),
                             version,
                         ),
                     )
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 ORG_MEMORY_WRITE_FAILED,
                 fact_id=fact.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to save org fact: {exc}"
             raise OrgMemoryWriteError(msg) from exc
@@ -351,10 +348,11 @@ class PostgresOrgFactRepository:
                         (now, version, fact_id),
                     )
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 ORG_MEMORY_WRITE_FAILED,
                 fact_id=fact_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to delete org fact: {exc}"
             raise OrgMemoryWriteError(msg) from exc
@@ -381,10 +379,11 @@ class PostgresOrgFactRepository:
                 )
                 row = await cur.fetchone()
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 ORG_MEMORY_QUERY_FAILED,
                 fact_id=fact_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to get org fact: {exc}"
             raise OrgMemoryQueryError(msg) from exc
@@ -435,7 +434,11 @@ class PostgresOrgFactRepository:
                 await cur.execute(sql, params)
                 rows = await cur.fetchall()
         except Exception as exc:
-            logger.exception(ORG_MEMORY_QUERY_FAILED, error=str(exc))
+            logger.warning(
+                ORG_MEMORY_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             msg = f"Failed to query org facts: {exc}"
             raise OrgMemoryQueryError(msg) from exc
         return tuple(_snapshot_row_to_org_fact(row) for row in rows)
@@ -459,10 +462,11 @@ class PostgresOrgFactRepository:
                 )
                 rows = await cur.fetchall()
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 ORG_MEMORY_QUERY_FAILED,
                 category=category.value,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to list org facts by category: {exc}"
             raise OrgMemoryQueryError(msg) from exc
@@ -474,10 +478,7 @@ class PostgresOrgFactRepository:
     ) -> tuple[OperationLogSnapshot, ...]:
         """Point-in-time snapshot of all facts at a given timestamp."""
         dict_row = self._dict_row
-        if timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=UTC)
-        else:
-            timestamp = timestamp.astimezone(UTC)
+        timestamp = normalize_utc(timestamp)
         sql = """\
 WITH latest_ops AS (
     SELECT fact_id, operation_type, content, tags, category,
@@ -526,10 +527,11 @@ ORDER BY lo.fact_id
                 await cur.execute(sql, {"ts": timestamp})
                 rows = await cur.fetchall()
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 ORG_MEMORY_QUERY_FAILED,
                 timestamp=timestamp.isoformat(),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to query snapshot at {timestamp.isoformat()}: {exc}"
             raise OrgMemoryQueryError(msg) from exc
@@ -559,10 +561,11 @@ ORDER BY lo.fact_id
                 )
                 rows = await cur.fetchall()
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 ORG_MEMORY_QUERY_FAILED,
                 fact_id=fact_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to get operation log for {fact_id}: {exc}"
             raise OrgMemoryQueryError(msg) from exc

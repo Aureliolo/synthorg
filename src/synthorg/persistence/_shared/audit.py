@@ -26,7 +26,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_DESERIALIZE_FAILED,
     PERSISTENCE_AUDIT_ENTRY_SAVE_FAILED,
 )
-from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared import normalize_utc, parse_iso_utc
 from synthorg.persistence.errors import (
     DuplicateRecordError,
     MalformedRowError,
@@ -136,7 +136,7 @@ def row_to_audit_entry(row: dict[str, object]) -> AuditEntry:
         if isinstance(ts, datetime):
             parsed["timestamp"] = normalize_utc(ts)
         elif isinstance(ts, str):
-            parsed["timestamp"] = normalize_utc(datetime.fromisoformat(ts))
+            parsed["timestamp"] = parse_iso_utc(ts)
         return AuditEntry.model_validate(parsed)
     except (
         ValidationError,

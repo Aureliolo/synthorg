@@ -11,7 +11,6 @@ Callers depend on the :class:`ApprovalRepository` Protocol from
 structurally.
 """
 
-from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import psycopg
@@ -29,6 +28,7 @@ from synthorg.observability.events.api import (
     API_APPROVAL_REPO_FETCHED,
     API_APPROVAL_REPO_LISTED,
 )
+from synthorg.persistence._shared import parse_iso_utc
 from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
 if TYPE_CHECKING:
@@ -85,13 +85,13 @@ def _row_to_item(row: dict[str, Any]) -> ApprovalItem:
         )
         created_at = row["created_at"]
         if isinstance(created_at, str):
-            created_at = datetime.fromisoformat(created_at)
+            created_at = parse_iso_utc(created_at)
         expires_at = row["expires_at"]
         if isinstance(expires_at, str):
-            expires_at = datetime.fromisoformat(expires_at)
+            expires_at = parse_iso_utc(expires_at)
         decided_at = row["decided_at"]
         if isinstance(decided_at, str):
-            decided_at = datetime.fromisoformat(decided_at)
+            decided_at = parse_iso_utc(decided_at)
         return ApprovalItem(
             id=str(row["id"]),
             action_type=str(row["action_type"]),

@@ -4,7 +4,6 @@ This is the Postgres sibling of src/synthorg/persistence/sqlite/ssrf_violation_r
 Postgres stores timestamps as native TIMESTAMPTZ and port as BIGINT.
 """
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
 import psycopg
@@ -17,10 +16,13 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
     PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
 )
+from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence.errors import DuplicateRecordError, QueryError
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
@@ -29,17 +31,6 @@ _COLS = (
     "id, timestamp, url, hostname, port, resolved_ip, "
     "blocked_range, provider_name, status, resolved_by, resolved_at"
 )
-
-
-def _ensure_utc(dt: datetime) -> datetime:
-    """Normalize a datetime to UTC.
-
-    Naive datetimes get UTC attached.  Aware datetimes with non-UTC
-    offsets are converted so repository reads always return UTC.
-    """
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=UTC)
-    return dt.astimezone(UTC)
 
 
 class PostgresSsrfViolationRepository:
@@ -62,9 +53,9 @@ class PostgresSsrfViolationRepository:
             DuplicateRecordError: If a violation with the same ID exists.
             QueryError: If the save fails.
         """
-        ts_utc = violation.timestamp.astimezone(UTC)
+        ts_utc = normalize_utc(violation.timestamp)
         resolved_at_utc = (
-            violation.resolved_at.astimezone(UTC) if violation.resolved_at else None
+            normalize_utc(violation.resolved_at) if violation.resolved_at else None
         )
 
         try:
@@ -223,7 +214,7 @@ class PostgresSsrfViolationRepository:
             msg = "Cannot transition a violation back to PENDING"
             raise ValueError(msg)
 
-        resolved_at_utc = resolved_at.astimezone(UTC)
+        resolved_at_utc = normalize_utc(resolved_at)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -255,7 +246,7 @@ def _row_to_violation(row: dict[str, object]) -> SsrfViolation:
     """Convert a Postgres row to an SsrfViolation."""
     return SsrfViolation(
         id=str(row["id"]),
-        timestamp=_ensure_utc(cast("datetime", row["timestamp"])),
+        timestamp=normalize_utc(cast("datetime", row["timestamp"])),
         url=str(row["url"]),
         hostname=str(row["hostname"]),
         port=int(cast("int", row["port"])),
@@ -265,7 +256,7 @@ def _row_to_violation(row: dict[str, object]) -> SsrfViolation:
         status=SsrfViolationStatus(str(row["status"])),
         resolved_by=cast("str | None", row.get("resolved_by")),
         resolved_at=(
-            _ensure_utc(cast("datetime", row["resolved_at"]))
+            normalize_utc(cast("datetime", row["resolved_at"]))
             if row.get("resolved_at")
             else None
         ),

@@ -14,13 +14,14 @@ from pydantic import AwareDatetime, ValidationError
 
 from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
     PERSISTENCE_RISK_OVERRIDE_REVOKE_FAILED,
     PERSISTENCE_RISK_OVERRIDE_REVOKED,
     PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
 )
+from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence.errors import DuplicateRecordError, QueryError
 from synthorg.security.rules.risk_override import RiskTierOverride
 
@@ -33,18 +34,6 @@ _COLS = (
     "id, action_type, original_tier, override_tier, reason, "
     "created_by, created_at, expires_at, revoked_at, revoked_by"
 )
-
-
-def _ensure_utc(dt: datetime) -> datetime:
-    """Normalize a datetime to UTC.
-
-    Naive datetimes get UTC attached.  Aware datetimes with non-UTC
-    offsets are converted so all repository reads return UTC
-    timestamps regardless of what the server session returned.
-    """
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=UTC)
-    return dt.astimezone(UTC)
 
 
 class PostgresRiskOverrideRepository:
@@ -67,10 +56,10 @@ class PostgresRiskOverrideRepository:
             DuplicateRecordError: If an override with the same ID exists.
             QueryError: If the save fails.
         """
-        created_at_utc = override.created_at.astimezone(UTC)
-        expires_at_utc = override.expires_at.astimezone(UTC)
+        created_at_utc = normalize_utc(override.created_at)
+        expires_at_utc = normalize_utc(override.expires_at)
         revoked_at_utc = (
-            override.revoked_at.astimezone(UTC) if override.revoked_at else None
+            normalize_utc(override.revoked_at) if override.revoked_at else None
         )
 
         try:
@@ -137,10 +126,11 @@ class PostgresRiskOverrideRepository:
             return _row_to_override(row)
         except (ValueError, ValidationError) as exc:
             msg = f"Failed to deserialize risk override {override_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
                 override_id=override_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -197,7 +187,7 @@ class PostgresRiskOverrideRepository:
         revoked_at: AwareDatetime,
     ) -> bool:
         """Mark an override as revoked."""
-        revoked_at_utc = revoked_at.astimezone(UTC)
+        revoked_at_utc = normalize_utc(revoked_at)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -235,10 +225,10 @@ def _row_to_override(row: dict[str, object]) -> RiskTierOverride:
         override_tier=ApprovalRiskLevel(str(row["override_tier"])),
         reason=str(row["reason"]),
         created_by=str(row["created_by"]),
-        created_at=_ensure_utc(cast("datetime", row["created_at"])),
-        expires_at=_ensure_utc(cast("datetime", row["expires_at"])),
+        created_at=normalize_utc(cast("datetime", row["created_at"])),
+        expires_at=normalize_utc(cast("datetime", row["expires_at"])),
         revoked_at=(
-            _ensure_utc(cast("datetime", row["revoked_at"]))
+            normalize_utc(cast("datetime", row["revoked_at"]))
             if row.get("revoked_at")
             else None
         ),

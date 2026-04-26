@@ -27,7 +27,7 @@ from synthorg.meta.models import ProposalAltitude
 from synthorg.meta.rules.custom import CustomRuleDefinition
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import META_CUSTOM_RULE_FETCH_FAILED
-from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared import normalize_utc, parse_iso_utc
 from synthorg.persistence.errors import MalformedRowError
 
 logger = get_logger(__name__)
@@ -151,14 +151,19 @@ def _coerce_datetime(value: object) -> datetime:
     Single normalisation point so conformance tests can assert that
     both backends produce identical UTC-aware ``datetime`` objects
     regardless of whether the underlying column was TEXT or
-    TIMESTAMPTZ.
+    TIMESTAMPTZ.  String values are parsed via the strict
+    :func:`parse_iso_utc` helper (naive ISO strings raise
+    ``ValueError``); ``datetime`` values are normalised to UTC via
+    :func:`normalize_utc`.
 
     Raises:
         TypeError: If ``value`` is neither ``datetime`` nor ``str``.
+        ValueError: If ``value`` is a string that does not parse as a
+            timezone-aware ISO 8601 datetime.
     """
     if isinstance(value, datetime):
         return normalize_utc(value)
     if isinstance(value, str):
-        return normalize_utc(datetime.fromisoformat(value))
+        return parse_iso_utc(value)
     msg = f"Unsupported datetime type {type(value).__name__}"
     raise TypeError(msg)

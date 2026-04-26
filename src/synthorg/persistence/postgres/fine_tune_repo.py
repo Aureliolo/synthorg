@@ -28,6 +28,7 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_INTERRUPTED,
     MEMORY_FINE_TUNE_PERSIST_FAILED,
 )
+from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence.errors import QueryError
 
 if TYPE_CHECKING:
@@ -56,16 +57,6 @@ def _clamp_pagination(limit: int, offset: int) -> tuple[int, int]:
     ``[0, +inf)``.  Used by both list_runs and list_checkpoints.
     """
     return min(max(limit, 1), _MAX_LIST_LIMIT), max(offset, 0)
-
-
-def _normalise_ts(value: datetime) -> datetime:
-    """Coerce a tz-aware datetime to UTC for TIMESTAMPTZ insertion."""
-    return value.astimezone(UTC)
-
-
-def _normalise_optional_ts(value: datetime | None) -> datetime | None:
-    """UTC-normalise an optional tz-aware datetime."""
-    return None if value is None else value.astimezone(UTC)
 
 
 def _run_from_row(row: dict[str, Any]) -> FineTuneRun:
@@ -175,9 +166,13 @@ ON CONFLICT (id) DO UPDATE SET
                         run.progress,
                         run.error,
                         Jsonb(run.config.model_dump(mode="json")),
-                        _normalise_ts(run.started_at),
-                        _normalise_ts(run.updated_at),
-                        _normalise_optional_ts(run.completed_at),
+                        normalize_utc(run.started_at),
+                        normalize_utc(run.updated_at),
+                        (
+                            None
+                            if run.completed_at is None
+                            else normalize_utc(run.completed_at)
+                        ),
                         Jsonb(list(run.stages_completed)),
                     ),
                 )
@@ -300,8 +295,12 @@ WHERE id = %s""",
                         run.progress,
                         run.error,
                         Jsonb(run.config.model_dump(mode="json")),
-                        _normalise_ts(run.updated_at),
-                        _normalise_optional_ts(run.completed_at),
+                        normalize_utc(run.updated_at),
+                        (
+                            None
+                            if run.completed_at is None
+                            else normalize_utc(run.completed_at)
+                        ),
                         Jsonb(list(run.stages_completed)),
                         run.id,
                     ),
@@ -407,7 +406,7 @@ ON CONFLICT (id) DO UPDATE SET
                         checkpoint.doc_count,
                         eval_payload,
                         checkpoint.size_bytes,
-                        _normalise_ts(checkpoint.created_at),
+                        normalize_utc(checkpoint.created_at),
                         checkpoint.is_active,
                         backup_payload,
                     ),

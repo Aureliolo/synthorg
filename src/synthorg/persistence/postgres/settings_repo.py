@@ -7,7 +7,6 @@ from ISO strings at the boundary so the protocol surface --
 """
 
 from collections.abc import Mapping, Sequence  # noqa: TC003
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
 import psycopg
@@ -16,6 +15,8 @@ from psycopg.rows import dict_row
 from synthorg.core.types import NotBlankStr
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from psycopg_pool import AsyncConnectionPool
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
@@ -24,6 +25,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_SET_FAILED,
     SETTINGS_VALUE_SET,
 )
+from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
 from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
@@ -35,39 +37,6 @@ class _CASConflict(Exception):  # noqa: N818
     Caught immediately by ``set_many`` to convert the exception into a
     ``False`` return.  Never escapes the repository.
     """
-
-
-def _parse_iso(value: str) -> datetime:
-    """Parse an ISO 8601 timestamp string to a tz-aware UTC datetime.
-
-    Naive datetimes (no ``tzinfo``) are rejected -- the Postgres
-    ``TIMESTAMPTZ`` column is always tz-aware and allowing naive
-    values to slip in would create round-trip drift (the server would
-    interpret them in its session time zone).  Values with an offset
-    are normalized to UTC so round-tripped timestamps always come
-    back with ``tzinfo == UTC``.
-    """
-    parsed = datetime.fromisoformat(value)
-    if parsed.tzinfo is None:
-        msg = f"settings updated_at must be timezone-aware, got naive value {value!r}"
-        raise ValueError(msg)
-    return parsed.astimezone(UTC)
-
-
-def _format_iso(value: datetime) -> str:
-    """Format a tz-aware datetime as a UTC ISO 8601 string.
-
-    Naive datetimes are rejected for the same reason as
-    :func:`_parse_iso`.  Values with a non-UTC offset are normalized
-    to UTC so stored timestamps and retrieved timestamps always use
-    the same offset string.
-    """
-    if value.tzinfo is None:
-        msg = (
-            f"settings updated_at must be timezone-aware, got naive datetime {value!r}"
-        )
-        raise ValueError(msg)
-    return value.astimezone(UTC).isoformat()
 
 
 class PostgresSettingsRepository:
@@ -104,16 +73,17 @@ class PostgresSettingsRepository:
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to get setting {namespace}/{key}"
-            logger.exception(
+            logger.warning(
                 SETTINGS_FETCH_FAILED,
                 namespace=namespace,
                 key=key,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
             return None
-        return (str(row["value"]), _format_iso(cast("datetime", row["updated_at"])))
+        return (str(row["value"]), format_iso_utc(cast("datetime", row["updated_at"])))
 
     async def get_namespace(
         self,
@@ -133,17 +103,18 @@ class PostgresSettingsRepository:
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = f"Failed to get settings for namespace {namespace}"
-            logger.exception(
+            logger.warning(
                 SETTINGS_FETCH_FAILED,
                 namespace=namespace,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         return tuple(
             (
                 str(r["key"]),
                 str(r["value"]),
-                _format_iso(cast("datetime", r["updated_at"])),
+                format_iso_utc(cast("datetime", r["updated_at"])),
             )
             for r in rows
         )
@@ -162,14 +133,18 @@ class PostgresSettingsRepository:
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = "Failed to get all settings"
-            logger.exception(SETTINGS_FETCH_FAILED, error=str(exc))
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
         return tuple(
             (
                 str(r["namespace"]),
                 str(r["key"]),
                 str(r["value"]),
-                _format_iso(cast("datetime", r["updated_at"])),
+                format_iso_utc(cast("datetime", r["updated_at"])),
             )
             for r in rows
         )
@@ -199,7 +174,7 @@ class PostgresSettingsRepository:
             ``True`` if the write succeeded, ``False`` if the
             compare-and-swap condition was not met.
         """
-        updated_at_dt = _parse_iso(updated_at)
+        updated_at_dt = parse_iso_utc(updated_at)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 if expected_updated_at is not None:
@@ -212,7 +187,7 @@ class PostgresSettingsRepository:
                             (namespace, key, value, updated_at_dt),
                         )
                     else:
-                        expected_dt = _parse_iso(expected_updated_at)
+                        expected_dt = parse_iso_utc(expected_updated_at)
                         await cur.execute(
                             "UPDATE settings "
                             "SET value = %s, updated_at = %s "
@@ -242,11 +217,12 @@ class PostgresSettingsRepository:
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to set setting {namespace}/{key}"
-            logger.exception(
+            logger.warning(
                 SETTINGS_SET_FAILED,
                 namespace=namespace,
                 key=key,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.debug(
@@ -264,7 +240,7 @@ class PostgresSettingsRepository:
     ) -> datetime:
         """Parse ISO timestamp, raising QueryError on bad input."""
         try:
-            return _parse_iso(value)
+            return parse_iso_utc(value)
         except ValueError as exc:
             msg = f"Invalid timestamp for {namespace}/{key}: {value!r}"
             raise QueryError(msg) from exc
@@ -314,7 +290,7 @@ class PostgresSettingsRepository:
                                 if cur.rowcount == 0:
                                     raise _CASConflict  # noqa: TRY301
                                 continue
-                            expected_dt = _parse_iso(expected)
+                            expected_dt = parse_iso_utc(expected)
                             await cur.execute(
                                 "UPDATE settings "
                                 "SET value = %s, updated_at = %s "
@@ -334,9 +310,10 @@ class PostgresSettingsRepository:
                     return False
         except psycopg.Error as exc:
             msg = "Failed to set_many settings"
-            logger.exception(
+            logger.warning(
                 SETTINGS_SET_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 item_count=len(items),
             )
             raise QueryError(msg) from exc
@@ -364,11 +341,12 @@ class PostgresSettingsRepository:
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to delete setting {namespace}/{key}"
-            logger.exception(
+            logger.warning(
                 SETTINGS_DELETE_FAILED,
                 namespace=namespace,
                 key=key,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         return deleted
@@ -385,10 +363,11 @@ class PostgresSettingsRepository:
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to delete namespace {namespace}"
-            logger.exception(
+            logger.warning(
                 SETTINGS_DELETE_FAILED,
                 namespace=namespace,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         return count

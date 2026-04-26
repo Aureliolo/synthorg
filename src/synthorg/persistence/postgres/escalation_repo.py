@@ -31,6 +31,7 @@ from synthorg.communication.conflict_resolution.escalation.protocol import (
 from synthorg.communication.conflict_resolution.models import Conflict
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_REQUEST_ERROR
+from synthorg.persistence._shared import parse_iso_utc
 from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
 if TYPE_CHECKING:
@@ -319,7 +320,7 @@ INSERT INTO conflict_escalations (
         cancellation (``system:resolver_cancelled``) or human
         decisions (``human:<operator_id>``).
         """
-        now_dt = datetime.fromisoformat(now_iso)
+        now_dt = parse_iso_utc(now_iso)
         try:
             async with (
                 self._pool.connection() as conn,
