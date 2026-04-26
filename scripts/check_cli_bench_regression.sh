@@ -48,7 +48,7 @@ MERGE_BASE="$(git merge-base HEAD origin/main 2>/dev/null || echo '')"
 
 if [[ -z "${MERGE_BASE}" ]]; then
     echo "Error: could not resolve merge-base against origin/main."
-    echo "  Make sure the workflow checkout has fetch-depth >= 50."
+    echo "  Make sure the workflow checkout uses fetch-depth: 0 (full history)."
     exit 2
 fi
 

@@ -7,20 +7,23 @@ name: CodSpeed Web
 # The plugin is a no-op outside the CodSpeed CI runner (``process.env.CODSPEED``
 # unset locally), so ``npm --prefix web run bench`` works for
 # contributors without any token / network setup.
+#
+# Why no top-level ``paths:`` filter:
+#   ``codspeed-web-pass`` is a REQUIRED status check on ``main``
+#   (see ``.github/branch_protection.yml``). A workflow-level
+#   ``paths:`` filter would prevent the workflow from starting on
+#   non-web PRs, leaving the required check absent / pending and
+#   blocking unrelated merges. Instead, the workflow ALWAYS runs
+#   on ``pull_request`` / ``push`` to ``main``; the ``changes``
+#   gate job below detects whether web files were touched and
+#   skips the heavy bench job otherwise. The pass job aggregates
+#   both, so the required context always reports.
 
 on:
   push:
     branches: [main]
-    paths:
-      - "web/**"
-      - "docs/openapi/openapi.json"
-      - ".github/workflows/codspeed-web.yml"
   pull_request:
     branches: [main]
-    paths:
-      - "web/**"
-      - "docs/openapi/openapi.json"
-      - ".github/workflows/codspeed-web.yml"
   workflow_dispatch:
 
 permissions: {}
@@ -30,8 +33,33 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # ── Gate: detect whether web-relevant files changed ──
+  changes:
+    name: Detect web changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      changed: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            web:
+              - 'web/**'
+              - 'docs/openapi/openapi.json'
+              - '.github/workflows/codspeed-web.yml'
+
   codspeed-web:
     name: CodSpeed Web benchmarks
+    needs: changes
+    if: needs.changes.outputs.changed == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -63,17 +91,30 @@ jobs:
   codspeed-web-pass:
     name: CodSpeed Web Pass
     if: always()
-    needs: [codspeed-web]
+    needs: [changes, codspeed-web]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
     steps:
       - name: Check results
         env:
-          RESULTS: ${{ needs.codspeed-web.result }}
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          BENCH_RESULT: ${{ needs.codspeed-web.result }}
+          BENCH_RAN: ${{ needs.changes.outputs.changed }}
         run: |
-          if echo "$RESULTS" | grep -qE "failure|cancelled"; then
-            echo "CodSpeed Web checks failed. Job result: $RESULTS"
+          # When no web files changed, the bench job is skipped on
+          # purpose; report success so the required status is
+          # present on PRs that don't touch the dashboard.
+          if [[ "$CHANGES_RESULT" == "failure" || "$CHANGES_RESULT" == "cancelled" ]]; then
+            echo "Path-detection job failed: $CHANGES_RESULT"
             exit 1
           fi
-          echo "CodSpeed Web checks passed (result: $RESULTS)"
+          if [[ "$BENCH_RAN" != "true" ]]; then
+            echo "No web-relevant changes detected -- bench skipped, gate passes."
+            exit 0
+          fi
+          if [[ "$BENCH_RESULT" == "failure" || "$BENCH_RESULT" == "cancelled" ]]; then
+            echo "CodSpeed Web checks failed. Job result: $BENCH_RESULT"
+            exit 1
+          fi
+          echo "CodSpeed Web checks passed (result: $BENCH_RESULT)"

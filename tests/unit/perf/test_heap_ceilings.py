@@ -69,6 +69,11 @@ def _peak_kib(thunk: Callable[[], object]) -> int:
     The ``try``/``finally`` guarantees ``tracemalloc.stop()`` runs even
     if ``thunk`` raises, so the global tracemalloc state never leaks
     into subsequent tests.
+
+    Conversion is ``ceil(peak / KiB)`` -- a regression of 1..1023 bytes
+    above the ceiling must NOT pass under integer floor division. The
+    ceiling fields are themselves whole-KiB budgets, so the rounding
+    direction matters at the single-byte boundary.
     """
     tracemalloc.start()
     try:
@@ -76,7 +81,7 @@ def _peak_kib(thunk: Callable[[], object]) -> int:
         _, peak = tracemalloc.get_traced_memory()
     finally:
         tracemalloc.stop()
-    return peak // _KIB
+    return -(-peak // _KIB)
 
 
 @pytest.mark.unit

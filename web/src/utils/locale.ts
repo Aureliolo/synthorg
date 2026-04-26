@@ -38,16 +38,47 @@ export const APP_LOCALE_FALLBACK = 'en'
  */
 export const APP_LOCALE = APP_LOCALE_FALLBACK
 
+/**
+ * Pure-compute resolver: pick a locale tag from already-collected
+ * inputs. Lives separately from {@link getLocale} so the bench
+ * suite can measure the actual resolution work (validation +
+ * trim + tag-canonicalisation) without re-entering the settings
+ * store and `navigator.language` on every call.
+ *
+ * Inputs may be ``null`` / empty; invalid BCP 47 tags throw inside
+ * `Intl.getCanonicalLocales` and are caught and skipped.
+ */
+export function resolveLocale(
+  override: string | null | undefined,
+  browserLocale: string | null | undefined,
+): string {
+  if (typeof override === 'string') {
+    const trimmed = override.trim()
+    if (trimmed.length > 0) {
+      try {
+        Intl.getCanonicalLocales(trimmed)
+        return trimmed
+      } catch {
+        // fall through
+      }
+    }
+  }
+  if (typeof browserLocale === 'string' && browserLocale.length > 0) {
+    try {
+      Intl.getCanonicalLocales(browserLocale)
+      return browserLocale
+    } catch {
+      // fall through
+    }
+  }
+  return APP_LOCALE_FALLBACK
+}
+
 function readBrowserLocale(): string | null {
   if (typeof navigator === 'undefined') return null
   const raw = navigator.language
   if (typeof raw !== 'string' || raw.length === 0) return null
-  try {
-    Intl.getCanonicalLocales(raw)
-    return raw
-  } catch {
-    return null
-  }
+  return raw
 }
 
 function readSettingsOverride(): string | null {
@@ -56,10 +87,7 @@ function readSettingsOverride(): string | null {
   try {
     const raw = useSettingsStore.getState().locale
     if (typeof raw !== 'string') return null
-    const trimmed = raw.trim()
-    if (trimmed.length === 0) return null
-    Intl.getCanonicalLocales(trimmed)
-    return trimmed
+    return raw
   } catch {
     return null
   }
@@ -74,5 +102,5 @@ function readSettingsOverride(): string | null {
  * preference the moment the store updates.
  */
 export function getLocale(): string {
-  return readSettingsOverride() ?? readBrowserLocale() ?? APP_LOCALE_FALLBACK
+  return resolveLocale(readSettingsOverride(), readBrowserLocale())
 }

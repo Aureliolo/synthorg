@@ -29,9 +29,14 @@ concurrency:
 jobs:
   # ── Dashboard: Lighthouse against vite preview ──
   #
-  # Path-filter on the workflow trigger (``paths:`` above) already
-  # gates this job to PRs that touched ``web/``; no extra ``if:``
-  # guard is needed here.
+  # The workflow's ``on.pull_request.paths`` is a UNION of
+  # ``web/`` / ``site/`` / ``docs/`` / ``mkdocs.yml`` / the workflow
+  # file. Any of those entries triggers the workflow, so this
+  # dashboard job runs whenever the workflow does. If you need
+  # finer-grained gating (e.g. dashboard-only when ``web/``
+  # actually changed), add a ``dorny/paths-filter`` step to this
+  # job; today the cost of running a full LHCI on every triggering
+  # PR is acceptable.
   lighthouse-dashboard:
     name: Lighthouse Dashboard
     runs-on: ubuntu-24.04
@@ -71,16 +76,22 @@ jobs:
 
   # ── Marketing site: Lighthouse against pr-preview URL ──
   #
-  # Triggered by the ``Deploy Preview`` job in pages-preview.yml via
-  # ``workflow_run``. The ``pages-preview`` workflow itself runs on
-  # ``pull_request``, so this is its sibling -- both fire when a PR
-  # touches site/.
+  # This job is a sibling of ``lighthouse-dashboard`` -- both fire
+  # whenever the workflow's ``on.pull_request.paths`` matches. The
+  # site path-filter step below narrows the heavy work (preview
+  # poll + LHCI run) to PRs that actually touched the site
+  # surface; ``lighthouse-pass`` reports success when the site
+  # job is skipped on a web-only PR.
   lighthouse-site:
     name: Lighthouse Site
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
+      # ``pull-requests: read`` is required by
+      # ``dorny/paths-filter@v4`` on ``pull_request`` events; without
+      # it the action 403s when fetching the PR file list.
       contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
