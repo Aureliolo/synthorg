@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // ── View ────────────────────────────────────────────────────────────
@@ -585,12 +586,12 @@ const boxBorderOverhead = 4
 // rendered content row, so a long path or wide toggle row widens the whole
 // box uniformly instead of pushing one row's right border past the others.
 //
-// terminalWidth (typically setupTUI.width) clamps the result so an
-// unusually long path cannot render a box wider than the terminal. A
-// terminalWidth of 0 -- the pre-WindowSizeMsg state -- skips the clamp
-// (the next render will correct it). The boxW floor is preserved even
-// when the terminal is narrower than boxW + boxBorderOverhead, matching
-// the pre-clamp behavior on cramped terminals.
+// terminalWidth (typically setupTUI.width) caps the result so an unusually
+// long path cannot render a box wider than the terminal. The cap takes
+// precedence over the boxW floor: on a terminal narrower than
+// boxW + boxBorderOverhead, returning boxW would overflow anyway, so we
+// shrink to fit. A terminalWidth of 0 -- the pre-WindowSizeMsg state --
+// skips the cap (the next render will correct it).
 func contentBoxWidth(content []string, terminalWidth int) int {
 	w := boxW
 	for _, line := range content {
@@ -600,7 +601,7 @@ func contentBoxWidth(content []string, terminalWidth int) int {
 	}
 	if terminalWidth > 0 {
 		ceiling := terminalWidth - boxBorderOverhead
-		if ceiling > boxW && w > ceiling {
+		if ceiling > 0 && w > ceiling {
 			w = ceiling
 		}
 	}
@@ -611,10 +612,19 @@ func contentBoxWidth(content []string, terminalWidth int) int {
 // Width is the caller's responsibility (typically via contentBoxWidth) so
 // that toggles and buttons -- which distribute their own internal padding --
 // can be rendered at the final width before being passed in.
+//
+// Each line is ANSI-aware-truncated to w before rendering: contentBoxWidth
+// can clamp w below the widest content line when terminalWidth fires, and
+// brow does not shrink its output -- so without truncation a clamped box
+// would reproduce the very right-border-overflow bug this whole helper
+// exists to fix.
 func renderBox(title string, content []string, w int) []string {
 	out := make([]string, 0, len(content)+2)
 	out = append(out, boxTop(title, w))
 	for _, line := range content {
+		if lipgloss.Width(line) > w {
+			line = ansi.Truncate(line, w, "")
+		}
 		out = append(out, brow(line, w))
 	}
 	out = append(out, boxBottom(w))
