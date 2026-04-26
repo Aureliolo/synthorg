@@ -39,7 +39,7 @@ The SynthOrg backend has an 11-sink structlog pipeline:
 
 **Key invariant**: Every message that appears in Docker logs (console sink, INFO+) MUST also appear in `synthorg.log` (catch-all, INFO+) and `debug.log` (catch-all, DEBUG+). A message in Docker logs but missing from file sinks is a **routing bug** in the observability pipeline.
 
-The reverse is fine -- file sinks contain DEBUG-level messages and routed messages that the console sink filters out.
+The reverse is fine: file sinks contain DEBUG-level messages and routed messages that the console sink filters out.
 
 Log files live at `/data/logs/` inside the backend container, on the `synthorg-data` Docker volume.
 
@@ -64,9 +64,9 @@ Only fetch Docker logs if running discrepancy mode or default (summary + discrep
 docker logs synthorg-backend-1 --tail 1000 > logs/docker-stdout.txt 2>&1
 ```
 
-Do **not** pass `--timestamps` -- Docker's RFC 3339 prefix would prepend a second timestamp before the app's own timestamp, breaking the parsing regex in Step 3.
+Do **not** pass `--timestamps`; Docker's RFC 3339 prefix would prepend a second timestamp before the app's own timestamp, breaking the parsing regex in Step 3.
 
-If the container is stopped, skip the discrepancy check and report: "Container is stopped -- file log analysis only (no discrepancy check)."
+If the container is stopped, skip the discrepancy check and report: "Container is stopped: file log analysis only (no discrepancy check)."
 
 ---
 
@@ -75,21 +75,21 @@ If the container is stopped, skip the discrepancy check and report: "Container i
 All file-based logs are newline-delimited JSON. Each line has at minimum:
 - `timestamp` (ISO 8601 UTC)
 - `level` (debug/info/warning/error/critical)
-- `event` (the log event name -- typically a constant from `synthorg.observability.events`)
+- `event` (the log event name; typically a constant from `synthorg.observability.events`)
 - `logger` (the Python module path, e.g. `synthorg.engine.loops.react`)
 
 Optional fields: `request_id`, `task_id`, `agent_id`, plus arbitrary structured kwargs.
 
 ### Filtering by arguments
 
-- `errors` -- only show ERROR and CRITICAL from `errors.log`
-- `warnings` -- show WARNING+ from `synthorg.log`
-- `all` -- full dump from `debug.log`
-- `summary` -- aggregate counts by level, logger, and event across all sinks
-- `discrepancy` -- run the discrepancy check (Step 4)
-- `--since <duration>` -- filter by timestamp (parse ISO timestamps, compare)
-- `--agent <name>` -- filter by `agent_id` field
-- `--correlation <id>` -- filter by `request_id` or `task_id`
+- `errors`: only show ERROR and CRITICAL from `errors.log`
+- `warnings`: show WARNING+ from `synthorg.log`
+- `all`: full dump from `debug.log`
+- `summary`: aggregate counts by level, logger, and event across all sinks
+- `discrepancy`: run the discrepancy check (Step 4)
+- `--since <duration>`: filter by timestamp (parse ISO timestamps, compare)
+- `--agent <name>`: filter by `agent_id` field
+- `--correlation <id>`: filter by `request_id` or `task_id`
 
 If no argument is provided, default to `summary` + `discrepancy`.
 
@@ -101,7 +101,7 @@ For large log files, do NOT read the entire file into the conversation. Instead:
 2. For error analysis, extract only the relevant lines
 3. Present structured summaries, not raw dumps
 
-Example summary script pattern (minimal -- does not implement `--since`, `--agent`, or `--correlation` filtering; extend with `argparse` as needed):
+Example summary script pattern (minimal; does not implement `--since`, `--agent`, or `--correlation` filtering; extend with `argparse` as needed):
 
 ```bash
 python -c "
@@ -236,9 +236,9 @@ Report each discrepancy with:
 - Suggested fix (add logger routing, wrap foreign library, remove print statement)
 
 **Severity**:
-- `synthorg.*` logger missing from files = **BUG** in sink routing -- must fix
-- Foreign library (uvicorn, litellm, etc.) only in Docker = **WARNING** -- should be captured but may be acceptable
-- Raw unstructured text (no logger pattern) = **BUG** -- likely a `print()` statement or uncaught exception going to stderr
+- `synthorg.*` logger missing from files = **BUG** in sink routing (must fix)
+- Foreign library (uvicorn, litellm, etc.) only in Docker = **WARNING** (should be captured but may be acceptable)
+- Raw unstructured text (no logger pattern) = **BUG** (likely a `print()` statement or uncaught exception going to stderr)
 
 ---
 
@@ -268,13 +268,13 @@ Format the output based on the requested mode:
 | ERROR | 12 |
 
 ### Top Events (by frequency)
-1. `TOOL_INVOKE_START` (synthorg.tools) -- 340
-2. `API_REQUEST_STARTED` (synthorg.api) -- 280
+1. `TOOL_INVOKE_START` (synthorg.tools): 340
+2. `API_REQUEST_STARTED` (synthorg.api): 280
 ...
 
 ### Errors (last 1h)
-- [10:15:30] PROVIDER_CONNECTION_ERROR (synthorg.providers.litellm) -- connection refused to example-provider
-- [10:22:45] TASK_EXECUTION_FAILED (synthorg.engine.loops.react) -- agent_id=ceo, task_id=abc123
+- [10:15:30] PROVIDER_CONNECTION_ERROR (synthorg.providers.litellm): connection refused to example-provider
+- [10:22:45] TASK_EXECUTION_FAILED (synthorg.engine.loops.react): agent_id=ceo, task_id=abc123
 ...
 ```
 
@@ -286,15 +286,15 @@ Format the output based on the requested mode:
 Status: X entries in Docker logs missing from file sinks
 
 ### Bugs (synthorg.* logger, must fix)
-- `SOME_EVENT` from `synthorg.some.module` -- not routed to any file sink
+- `SOME_EVENT` from `synthorg.some.module`: not routed to any file sink
   Fix: check _SINK_ROUTING in sinks.py, verify handler attachment
 
 ### Warnings (foreign library)
-- uvicorn access log entries -- going to stderr only
+- uvicorn access log entries: going to stderr only
   Fix: configure uvicorn to use structlog wrapper
 
 ### Raw output (no logger)
-- 3 lines of unstructured text -- likely print() statements
+- 3 lines of unstructured text: likely print() statements
   Fix: grep codebase for print() in application code
 ```
 
@@ -312,11 +312,11 @@ rm -rf logs/
 
 ## Rules
 
-- **Never dump raw log files** into the conversation -- always parse and summarize
+- **Never dump raw log files** into the conversation; always parse and summarize
 - **Large files**: use `wc -l` and `du -h` first to gauge size before deciding how to process
-- **Timestamps**: all file logs are ISO 8601 UTC. Docker log timestamps may include timezone -- normalize before comparing
-- **Rotation**: log files may have rotated copies (`.1`, `.2`, etc.) -- include them in analysis if `--since` spans beyond current file
+- **Timestamps**: all file logs are ISO 8601 UTC. Docker log timestamps may include timezone; normalize before comparing
+- **Rotation**: log files may have rotated copies (`.1`, `.2`, etc.); include them in analysis if `--since` spans beyond current file
 - **Sensitive data**: the logs have already been through `sanitize_sensitive_fields` (passwords, tokens, API keys are `**REDACTED**`), but still avoid dumping large volumes of log data into the conversation unnecessarily
-- **Container access**: use `docker ps -a --filter "name=synthorg"` for discovery and `docker cp`/`docker exec`/`docker logs` with the container name (`synthorg-backend-1`) directly. Use `synthorg logs` CLI when available. Do NOT use `docker compose -f docker/compose.yml` -- the running compose file is in the CLI data directory (e.g. `~/.synthorg/` on Linux/macOS, `%LOCALAPPDATA%\synthorg\` on Windows), not the repo's `docker/` directory. Volumes and container metadata live in the Docker VM, so accessing repo files directly will target the wrong or non-existent containers.
-- **Distroless container**: The backend uses a Chainguard distroless base image -- there is no `/bin/sh` or `/bin/bash`. Commands like `docker exec synthorg-backend-1 sh -c '...'` will fail. Use `docker cp` to extract files (primary method) and `docker exec synthorg-backend-1 /app/.venv/bin/python -c '...'` for any in-container Python execution.
-- **If containers are down**: report clearly and stop -- don't try to access volumes directly (they may be on a Docker VM)
+- **Container access**: use `docker ps -a --filter "name=synthorg"` for discovery and `docker cp`/`docker exec`/`docker logs` with the container name (`synthorg-backend-1`) directly. Use `synthorg logs` CLI when available. Do NOT use `docker compose -f docker/compose.yml`; the running compose file is in the CLI data directory (e.g. `~/.synthorg/` on Linux/macOS, `%LOCALAPPDATA%\synthorg\` on Windows), not the repo's `docker/` directory. Volumes and container metadata live in the Docker VM, so accessing repo files directly will target the wrong or non-existent containers.
+- **Distroless container**: the backend uses a Chainguard distroless base image; there is no `/bin/sh` or `/bin/bash`. Commands like `docker exec synthorg-backend-1 sh -c '...'` will fail. Use `docker cp` to extract files (primary method) and `docker exec synthorg-backend-1 /app/.venv/bin/python -c '...'` for any in-container Python execution.
+- **If containers are down**: report clearly and stop. Don't try to access volumes directly (they may be on a Docker VM).

@@ -97,7 +97,7 @@ SynthOrg ships only the **HTTP** OTLP exporter (`opentelemetry.exporter.otlp.pro
 - OTLP/HTTP and OTLP/gRPC share the same payload schema, so switching later is a dependency change rather than a protocol redesign.
 - Every OpenTelemetry collector supports both; operators who prefer gRPC can run a side-car collector and point SynthOrg at its HTTP receiver.
 
-If a concrete deployment needs gRPC directly, file an enhancement issue with the target environment -- there is no open design blocker, only a missing dependency opt-in.
+If a concrete deployment needs gRPC directly, file an enhancement issue with the target environment; there is no open design blocker, only a missing dependency opt-in.
 
 The HTTP sink sends raw JSON arrays.  Backends that expect different payload formats
 (e.g., Grafana Loki's `/loki/api/v1/push`, Elasticsearch's `/_bulk`) require a
@@ -184,18 +184,18 @@ names. Format: `"<domain>.<noun>.<verb>"` (e.g., `"api.request.started"`).
 | `MCP_SERVER_INVOKE_START` | DEBUG | Invoker dispatches a tool call. |
 | `MCP_SERVER_INVOKE_SUCCESS` | DEBUG | Handler returned without exception. |
 | `MCP_SERVER_INVOKE_FAILED` | WARNING | Tool/handler not found, or handler raised an uncaught exception. |
-| `MCP_HANDLER_INVOKE_SUCCESS` | INFO | Handler completed its service shim successfully (state transition -- every tool invocation that mutates or produces a result is auditable). |
+| `MCP_HANDLER_INVOKE_SUCCESS` | INFO | Handler completed its service shim successfully (state transition; every tool invocation that mutates or produces a result is auditable). |
 | `MCP_HANDLER_INVOKE_FAILED` | WARNING | Handler caught a service-layer or domain error and returned an `err(...)` envelope. |
 | `MCP_HANDLER_ARGUMENT_INVALID` | WARNING | Caller input failed `require_arg` / pagination / enum coercion; returned `domain_code="invalid_argument"`. |
 | `MCP_HANDLER_GUARDRAIL_VIOLATED` | WARNING | Destructive-op guardrail rejected the call (missing `confirm`/`reason`/`actor`); returned `domain_code="guardrail_violated"`. |
 | `MCP_DESTRUCTIVE_OP_EXECUTED` | INFO | Audit trail for a successful destructive operation; carries `actor_agent_id`, `reason`, and the target id. |
-| `MCP_HANDLER_NOT_IMPLEMENTED` | WARNING | Handler returned `not_supported`. Two emission paths: (a) the MCP tool is registered but no concrete handler is wired (placeholder tools via `make_placeholder_handler`); (b) a live handler caught a typed `BackendUnsupportedError` from the persistence layer and forwarded it through `not_supported()` -- the fine-tune lifecycle tools running against a backend that lacks fine-tune repos are the concrete example. The wire envelope is identical in both cases; operators disambiguate via the **event name** itself (`MCP_HANDLER_NOT_IMPLEMENTED` for both, vs `MCP_HANDLER_CAPABILITY_GAP` for the primitive-gap path vs `MCP_HANDLER_SERVICE_FALLBACK` for the legacy fallback) -- the tool / handler name in the payload then narrows which of the two `NOT_IMPLEMENTED` sub-cases fired. |
+| `MCP_HANDLER_NOT_IMPLEMENTED` | WARNING | Handler returned `not_supported`. Two emission paths: (a) the MCP tool is registered but no concrete handler is wired (placeholder tools via `make_placeholder_handler`); (b) a live handler caught a typed `BackendUnsupportedError` from the persistence layer and forwarded it through `not_supported()`. The fine-tune lifecycle tools running against a backend that lacks fine-tune repos are the concrete example. The wire envelope is identical in both cases; operators disambiguate via the **event name** itself (`MCP_HANDLER_NOT_IMPLEMENTED` for both, vs `MCP_HANDLER_CAPABILITY_GAP` for the primitive-gap path vs `MCP_HANDLER_SERVICE_FALLBACK` for the legacy fallback). The tool / handler name in the payload then narrows which of the two `NOT_IMPLEMENTED` sub-cases fired. |
 | `MCP_HANDLER_SERVICE_FALLBACK` | WARNING | Legacy helper `service_fallback()` emitted; META-MCP-2 removed every call site and the integration sweep at `tests/integration/mcp/test_tool_surface.py` asserts zero emissions. Helper retained for future surgical use. |
 | `MCP_HANDLER_CAPABILITY_GAP` | INFO | Live handler whose underlying primitive does not expose the required method; wire envelope matches `not_supported` (`domain_code="not_supported"`) but the event channel distinguishes "primitive gap" from "handler unwired" and from "backend-unsupported". Some primitives may never grow the method (infrastructure limits of the selected backend); others may acquire it in a later release. The event records the current gap, not a forward commitment. |
 | `MCP_HANDLER_LAZY_SERVICE_INIT` | DEBUG | Handler constructed its service facade per-call because `app_state` had not wired one. Telemetry for legacy bootstrap paths. |
 | `MCP_HANDLERS_BUILT` | DEBUG (ERROR on duplicate key) | Handler registry successfully composed from the 15 domain modules. |
 
-All MCP handler log calls go through `logger.warning(EVENT, error_type=type(exc).__name__, error=safe_error_description(exc))` on credential-sensitive paths -- never `logger.exception(..., error=str(exc))` -- to avoid leaking secrets through traceback frame-locals (SEC-1).
+All MCP handler log calls go through `logger.warning(EVENT, error_type=type(exc).__name__, error=safe_error_description(exc))` on credential-sensitive paths (never `logger.exception(..., error=str(exc))`) to avoid leaking secrets through traceback frame-locals (SEC-1).
 
 **Self-improvement meta-loop events (`observability/events/meta.py`):**
 
@@ -222,7 +222,7 @@ Uvicorn's default access logger is **disabled** (`access_log=False`, `log_config
 HTTP access logging is handled by `RequestLoggingMiddleware`, which provides richer structured
 fields (method, path, status_code, duration_ms, request_id) through structlog. Uvicorn's own
 handlers are cleared by `_tame_third_party_loggers()` and its loggers (`uvicorn`,
-`uvicorn.error`, `uvicorn.access`) are set to `WARNING` with `propagate = True` -- startup
+`uvicorn.error`, `uvicorn.access`) are set to `WARNING` with `propagate = True`; startup
 INFO messages (e.g., "Uvicorn running on ...") are intentionally suppressed since the
 application's own lifecycle logging provides equivalent structured events via structlog.
 Warning and error messages still propagate through the structlog pipeline.
@@ -239,7 +239,7 @@ they survive.
 ### Third-Party Logger Taming
 
 LiteLLM and its HTTP stack (httpx, httpcore) attach their own `StreamHandler` instances at
-import time, producing duplicate output in Docker logs -- once via the library's own handler,
+import time, producing duplicate output in Docker logs: once via the library's own handler,
 and once again via root propagation through the structlog sinks.
 
 `_tame_third_party_loggers()` (called as step 7 of `configure_logging`, before per-logger level
@@ -267,21 +267,21 @@ Two layers of log management:
 2. **Container-level** (Docker): `json-file` driver with 10 MB x 3 rotation on
    stdout/stderr. Captures console sink output and any uncaught stderr.
 
-The layers are complementary -- app files provide structured, routed logs; Docker captures
+The layers are complementary: app files provide structured, routed logs; Docker captures
 the console stream for `docker logs` access.
 
 ### Runtime Settings
 
 Four observability settings are runtime-editable via `SettingsService`:
 
-- `root_log_level` (enum: debug/info/warning/error/critical) -- changes the root logger level
-- `enable_correlation` (boolean) -- toggles correlation ID injection
-- `sink_overrides` (JSON) -- per-sink overrides keyed by sink identifier (`__console__` for the
+- `root_log_level` (enum: debug/info/warning/error/critical): changes the root logger level
+- `enable_correlation` (boolean): toggles correlation ID injection
+- `sink_overrides` (JSON): per-sink overrides keyed by sink identifier (`__console__` for the
   console sink, file path for file sinks). Each value is an object with optional fields:
   `enabled` (bool), `level` (string), `json_format` (bool), `rotation` (object with `max_bytes`,
   `backup_count`, `strategy`, `compress_rotated` (built-in-only)). The console sink cannot be disabled
   (`enabled: false` is rejected).
-- `custom_sinks` (JSON) -- additional sinks as a JSON array. Each entry may specify `sink_type`
+- `custom_sinks` (JSON): additional sinks as a JSON array. Each entry may specify `sink_type`
   (`file`, `syslog`, `http`; defaults to `file`). File sinks require `file_path` and accept
   `level`, `json_format`, `rotation`, `routing_prefixes`. Syslog sinks require `syslog_host`
   and accept `syslog_port`, `syslog_facility`, `syslog_protocol`, `level`. HTTP sinks require
@@ -290,7 +290,7 @@ Four observability settings are runtime-editable via `SettingsService`:
 
 Console sink level can also be overridden via `SYNTHORG_LOG_LEVEL` env var.
 
-Changes take effect without restart -- the `ObservabilitySettingsSubscriber` rebuilds the entire
+Changes take effect without restart; the `ObservabilitySettingsSubscriber` rebuilds the entire
 logging pipeline via `configure_logging()` (idempotent) when any of the four observability
 settings change (`root_log_level`, `enable_correlation`, `sink_overrides`, or `custom_sinks`).
 Custom sink file paths cannot collide with default sink paths (reserved even if disabled).
@@ -303,32 +303,32 @@ The `/metrics` endpoint exposes business and infrastructure metrics under the `s
 
 **Business health**
 
-- `synthorg_escalation_queue_depth{department}` -- gauge; pending escalations awaiting decision, per department.
-- `synthorg_agent_identity_version_changes_total{agent_id, change_type}` -- counter; emitted on each agent identity change. `change_type` is one of `created`, `updated`, `rolled_back`, `archived`.
-- `synthorg_workflow_execution_seconds{workflow_definition_id, status}` -- histogram; wall-clock duration of completed workflow executions. `workflow_definition_id` is the stable workflow **definition** id (bounded by defined workflows); passing an execution id would explode cardinality.
+- `synthorg_escalation_queue_depth{department}`: gauge; pending escalations awaiting decision, per department.
+- `synthorg_agent_identity_version_changes_total{agent_id, change_type}`: counter; emitted on each agent identity change. `change_type` is one of `created`, `updated`, `rolled_back`, `archived`.
+- `synthorg_workflow_execution_seconds{workflow_definition_id, status}`: histogram; wall-clock duration of completed workflow executions. `workflow_definition_id` is the stable workflow **definition** id (bounded by defined workflows); passing an execution id would explode cardinality.
 
 **Cost + tokens**
 
-- `synthorg_provider_tokens_total{provider, model, direction}` -- counter; input/output token consumption.
-- `synthorg_provider_cost_total{provider, model}` -- counter; accumulated cost in the configured currency.
+- `synthorg_provider_tokens_total{provider, model, direction}`: counter; input/output token consumption.
+- `synthorg_provider_cost_total{provider, model}`: counter; accumulated cost in the configured currency.
 
 **Provider errors**
 
-- `synthorg_provider_errors_total{provider, model, error_class}` -- counter; emitted from every failed `BaseCompletionProvider.complete` / `stream` call. `error_class` is one of the bounded `ProviderErrorLabel` values (`rate_limit`, `timeout`, `connection`, `internal`, `invalid_request`, `auth`, `content_filter`, `not_found`, `other`) produced by `classify_provider_error`.
+- `synthorg_provider_errors_total{provider, model, error_class}`: counter; emitted from every failed `BaseCompletionProvider.complete` / `stream` call. `error_class` is one of the bounded `ProviderErrorLabel` values (`rate_limit`, `timeout`, `connection`, `internal`, `invalid_request`, `auth`, `content_filter`, `not_found`, `other`) produced by `classify_provider_error`.
 
 **Caches**
 
-- `synthorg_cache_operations_total{cache_name, outcome}` -- counter; emitted from the in-process caches (`mcp_result`, `reranker`). `outcome` is one of `hit` / `miss` / `evict`.
+- `synthorg_cache_operations_total{cache_name, outcome}`: counter; emitted from the in-process caches (`mcp_result`, `reranker`). `outcome` is one of `hit` / `miss` / `evict`.
 
 **Latency**
 
-- `synthorg_api_request_duration_seconds{method, route, status_class}` -- histogram; per-route HTTP handler duration. Its auto-emitted `_count` series doubles as a request counter.
-- `synthorg_task_duration_seconds{outcome}` + `synthorg_task_runs_total{outcome}` -- task execution.
-- `synthorg_tool_duration_seconds{tool_name, outcome}` + `synthorg_tool_invocations_total{tool_name, outcome}` -- tool invocation.
+- `synthorg_api_request_duration_seconds{method, route, status_class}`: histogram; per-route HTTP handler duration. Its auto-emitted `_count` series doubles as a request counter.
+- `synthorg_task_duration_seconds{outcome}` + `synthorg_task_runs_total{outcome}`: task execution.
+- `synthorg_tool_duration_seconds{tool_name, outcome}` + `synthorg_tool_invocations_total{tool_name, outcome}`: tool invocation.
 
 **API errors**
 
-- `synthorg_api_error_classification_total{category, status_class}` -- counter; emitted from the structured-error builder on every 4xx/5xx response. `category` is derived from the `ErrorCategory` enum (`auth`, `validation`, `not_found`, `conflict`, `rate_limit`, `budget_exhausted`, `provider_error`, `internal`) with no parallel allowlist.
+- `synthorg_api_error_classification_total{category, status_class}`: counter; emitted from the structured-error builder on every 4xx/5xx response. `category` is derived from the `ErrorCategory` enum (`auth`, `validation`, `not_found`, `conflict`, `rate_limit`, `budget_exhausted`, `provider_error`, `internal`) with no parallel allowlist.
 
 **Audit chain + OTLP health**
 
@@ -341,5 +341,5 @@ See the ready-to-import [Grafana dashboard](../../monitoring/grafana/synthorg-ov
 
 ## See Also
 
-- [Notifications](notifications.md) -- notification dispatcher and sinks
-- [Design Overview](index.md) -- full index
+- [Notifications](notifications.md): notification dispatcher and sinks
+- [Design Overview](index.md): full index
