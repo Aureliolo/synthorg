@@ -49,14 +49,13 @@ from synthorg.meta.mcp.handler_protocol import (
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     capability_gap,
-    coerce_pagination,
     dump_many,
     err,
     ok,
     paginate_sequence,
-    require_arg,
     require_destructive_guardrails,
 )
+from synthorg.meta.mcp.handlers.common_args import coerce_pagination, require_arg
 from synthorg.meta.mcp.handlers.workflow_executions import (
     workflow_executions_cancel as workflow_executions_cancel_impl,
 )

@@ -14,13 +14,13 @@ from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import AgentNotFoundError
 from synthorg.meta.mcp.errors import ArgumentValidationError, invalid_argument
 from synthorg.meta.mcp.handlers.common import (
-    actor_id as _actor_id,
-)
-from synthorg.meta.mcp.handlers.common import (
     err,
     ok,
 )
-from synthorg.meta.mcp.handlers.common import (
+from synthorg.meta.mcp.handlers.common_args import (
+    actor_id as _actor_id,
+)
+from synthorg.meta.mcp.handlers.common_args import (
     require_non_blank as _require_non_blank,
 )
 from synthorg.observability import get_logger, safe_error_description

@@ -26,18 +26,20 @@ from synthorg.meta.mcp.errors import (
     invalid_argument,
 )
 from synthorg.meta.mcp.handlers.common import (
-    actor_id as _actor_id,
-)
-from synthorg.meta.mcp.handlers.common import (
     capability_gap,
-    coerce_pagination,
     dump_many,
     err,
     ok,
     paginate_sequence,
     require_destructive_guardrails,
 )
-from synthorg.meta.mcp.handlers.common import (
+from synthorg.meta.mcp.handlers.common_args import (
+    actor_id as _actor_id,
+)
+from synthorg.meta.mcp.handlers.common_args import (
+    coerce_pagination,
+)
+from synthorg.meta.mcp.handlers.common_args import (
     require_non_blank as _require_non_blank,
 )
 from synthorg.observability import get_logger, safe_error_description

@@ -36,13 +36,15 @@ from synthorg.meta.mcp.handler_protocol import (
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     capability_gap,
-    coerce_pagination,
     err,
     ok,
     require_destructive_guardrails,
 )
-from synthorg.meta.mcp.handlers.common import (
+from synthorg.meta.mcp.handlers.common_args import (
     actor_id as _actor_id,
+)
+from synthorg.meta.mcp.handlers.common_args import (
+    coerce_pagination,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (

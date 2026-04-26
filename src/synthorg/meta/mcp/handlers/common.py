@@ -1,22 +1,29 @@
-"""Shared helpers for MCP tool handlers.
+"""Shared response/output helpers for MCP tool handlers.
 
 Every real handler imports from this module.  The file provides three
 concerns in one place:
 
-1. **Response envelope** (``ok``, ``err``, ``PaginationMeta``) -- builds
+1. **Response envelope** (``ok``, ``err``, ``PaginationMeta``,
+   ``not_supported``, ``capability_gap``, ``service_fallback``) -- builds
    the JSON string the handler returns to the invoker.
-2. **Input helpers** (``require_arg``, ``dump_many``,
-   ``paginate_sequence``) -- typed extraction, Pydantic serialisation,
-   in-memory pagination.
+2. **Output helpers** (``dump_many``, ``paginate_sequence``) --
+   Pydantic batch serialisation and in-memory pagination of an
+   already-materialised sequence.
 3. **Guardrails** (``require_destructive_guardrails``) -- single source
    of truth for the ``confirm=True`` + non-blank ``reason`` + non-None
    ``actor`` triple enforced on every destructive tool.
 
+Argument-validation helpers (``require_arg``, ``require_non_blank``,
+``actor_id``, ``coerce_pagination``, plus six newer extractors) live in
+:mod:`synthorg.meta.mcp.handlers.common_args`. Structured-logging
+helpers for the three handler-side log paths (argument-invalid,
+invoke-failed, guardrail-violated) live in
+:mod:`synthorg.meta.mcp.handlers.common_logging`.
+
 The placeholder scaffold (``make_placeholder_handler``,
 ``make_handlers_for_tools``) stays in this module; real handlers never
-call it.  The placeholder now logs at WARNING (upgraded from DEBUG in
-HYG-1) via the new ``MCP_HANDLER_NOT_IMPLEMENTED`` event so ops can
-alert on unwired tools.
+call it.  The placeholder logs at WARNING via the
+``MCP_HANDLER_NOT_IMPLEMENTED`` event so ops can alert on unwired tools.
 """
 
 import json
@@ -140,165 +147,6 @@ def err(
     if resolved_code is not None:
         body["domain_code"] = resolved_code
     return json.dumps(body)
-
-
-def coerce_pagination(
-    arguments: dict[str, Any],
-    *,
-    default_limit: int = 50,
-) -> tuple[int, int]:
-    """Parse ``offset``/``limit`` as ints with strict bounds + bool rejection.
-
-    Shared pagination coercion for every handler that accepts a page slice.
-    Each branch raises :class:`ArgumentValidationError` (``domain_code=
-    invalid_argument``) so callers get a stable envelope instead of a raw
-    ``TypeError``/``ValueError``:
-
-    - missing / empty-string value -> default (``offset=0``, ``limit=default_limit``);
-    - ``bool`` literal (``True``/``False``) is rejected even though
-      ``int(True) == 1`` -- booleans are a type confusion, not a valid
-      pagination value;
-    - non-coercible value (non-numeric string, mapping, etc.) -> invalid;
-    - coerced int fails the bound check (``offset >= 0`` / ``limit > 0``)
-      -> invalid.
-
-    Args:
-        arguments: Parsed MCP tool arguments.
-        default_limit: Page size when ``limit`` is missing or empty.
-
-    Returns:
-        Tuple of ``(offset, limit)`` both guaranteed to satisfy the
-        bounds.
-
-    Raises:
-        ArgumentValidationError: On any of the failure modes above.
-    """
-    raw_offset: Any = arguments.get("offset")
-    raw_limit: Any = arguments.get("limit")
-    offset = _coerce_bounded_int(
-        raw_offset,
-        arg_name=_ARG_OFFSET,
-        expected=_TY_NON_NEG_INT,
-        default=0,
-        lower=0,
-    )
-    limit = _coerce_bounded_int(
-        raw_limit,
-        arg_name=_ARG_LIMIT,
-        expected=_TY_POS_INT,
-        default=default_limit,
-        lower=1,
-    )
-    return offset, limit
-
-
-def _coerce_bounded_int(
-    raw: Any,
-    *,
-    arg_name: str,
-    expected: str,
-    default: int,
-    lower: int,
-) -> int:
-    """Coerce ``raw`` to int >= ``lower`` or raise ``ArgumentValidationError``.
-
-    The ``default`` is validated through the same gate so a caller
-    passing ``default=0`` or ``default=True`` cannot smuggle an invalid
-    value past the check when ``raw`` is missing.
-    """
-    if raw is None or raw == "":
-        if isinstance(default, bool) or not isinstance(default, int):
-            raise invalid_argument(arg_name, expected)
-        if default < lower:
-            raise invalid_argument(arg_name, expected)
-        return default
-    if isinstance(raw, bool):
-        raise invalid_argument(arg_name, expected)
-    try:
-        value = int(raw)
-    except (TypeError, ValueError) as exc:
-        raise invalid_argument(arg_name, expected) from exc
-    if value < lower:
-        raise invalid_argument(arg_name, expected)
-    return value
-
-
-_TY_NON_BLANK = "non-blank string"
-
-
-def require_non_blank(arguments: dict[str, Any], key: str) -> str:
-    """Extract a non-blank, stripped string argument or raise.
-
-    Centralised so every handler does the same validation: missing,
-    non-string, blank-after-strip all map to ``ArgumentValidationError``
-    with ``domain_code=invalid_argument``.
-
-    Args:
-        arguments: Parsed tool arguments.
-        key: Argument name.
-
-    Returns:
-        The argument value with surrounding whitespace stripped.
-
-    Raises:
-        ArgumentValidationError: If missing, not a string, or blank after
-            stripping.
-    """
-    raw = arguments.get(key)
-    if not isinstance(raw, str) or not raw.strip():
-        raise invalid_argument(key, _TY_NON_BLANK)
-    return raw.strip()
-
-
-def actor_id(actor: Any) -> str | None:
-    """Return a stable audit identifier for ``actor`` (prefers ``.id``).
-
-    Returns ``None`` when ``actor`` is ``None`` or carries neither a
-    non-``None`` ``.id`` nor a non-blank ``.name``. The ``.name``
-    fallback is stripped before returning so a whitespace-only name
-    (which would otherwise satisfy raw truthiness) is rejected -- the
-    audit attribution surface is not allowed to record blank
-    identifiers. Centralised so every handler emits the same
-    identifier shape into audit events and service calls.
-    """
-    if actor is None:
-        return None
-    agent_id = getattr(actor, "id", None)
-    if agent_id is not None:
-        return str(agent_id)
-    name = getattr(actor, "name", None)
-    if isinstance(name, str):
-        stripped = name.strip()
-        return stripped or None
-    return None
-
-
-def require_arg[T](arguments: dict[str, Any], key: str, ty: type[T]) -> T:
-    """Extract a typed required argument or raise ``ArgumentValidationError``.
-
-    ``bool`` is explicitly rejected when ``ty is int`` so that a sloppy
-    ``confirm=True`` never satisfies an int field.  ``None`` is always
-    treated as missing, regardless of the declared type.
-
-    Args:
-        arguments: Parsed tool arguments.
-        key: Argument name.
-        ty: Expected Python type (``str``, ``int``, ``bool``, etc.).
-
-    Returns:
-        The argument value, narrowed to ``ty``.
-
-    Raises:
-        ArgumentValidationError: If missing, ``None``, or wrongly typed.
-    """
-    if key not in arguments or arguments[key] is None:
-        raise invalid_argument(key, ty.__name__)
-    value = arguments[key]
-    if ty is int and isinstance(value, bool):
-        raise invalid_argument(key, "int")
-    if not isinstance(value, ty):
-        raise invalid_argument(key, ty.__name__)
-    return value
 
 
 def _actor_has_identifier(actor: Any) -> bool:

@@ -29,12 +29,11 @@ from synthorg.meta.mcp.handler_protocol import (
 )
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
-    coerce_pagination,
     dump_many,
     err,
     ok,
-    require_arg,
 )
+from synthorg.meta.mcp.handlers.common_args import coerce_pagination, require_arg
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_FAILED
 

@@ -58,14 +58,13 @@ from synthorg.meta.mcp.handlers.agents_autonomy import (
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     capability_gap,
-    coerce_pagination,
     dump_many,
     err,
     ok,
     paginate_sequence,
-    require_arg,
     require_destructive_guardrails,
 )
+from synthorg.meta.mcp.handlers.common_args import coerce_pagination, require_arg
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_DESTRUCTIVE_OP_EXECUTED,
