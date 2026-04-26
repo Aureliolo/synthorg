@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.budget.config import BudgetConfig
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.errors import ProjectBudgetExhaustedError
 from synthorg.budget.project_cost_aggregate import ProjectCostAggregate
@@ -32,7 +33,7 @@ def _make_aggregate(
     project_id: str = "proj-1",
     total_cost: float = 0.0,
     *,
-    currency: str = "USD",
+    currency: str = DEFAULT_CURRENCY,
 ) -> ProjectCostAggregate:
     return ProjectCostAggregate(
         project_id=project_id,

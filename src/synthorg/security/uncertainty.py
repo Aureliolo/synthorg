@@ -25,6 +25,12 @@ from typing import TYPE_CHECKING, Final
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.budget.call_category import LLMCallCategory
+
+# ``CostTracker``, ``ProviderRegistry``, and ``ModelResolver`` are
+# part of ``UncertaintyChecker.__init__``'s public annotation, so
+# they must resolve at runtime when downstream tooling evaluates
+# type hints (DI containers, doc generators).
+from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -41,14 +47,13 @@ from synthorg.observability.events.security import (
 )
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.models import ChatMessage, CompletionConfig
+from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
+from synthorg.providers.routing.resolver import ModelResolver  # noqa: TC001
 from synthorg.security.config import UncertaintyCheckConfig  # noqa: TC001
 
 if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
     from synthorg.providers.base import BaseCompletionProvider
-    from synthorg.providers.registry import ProviderRegistry
     from synthorg.providers.routing.models import ResolvedModel
-    from synthorg.providers.routing.resolver import ModelResolver
 
 logger = get_logger(__name__)
 

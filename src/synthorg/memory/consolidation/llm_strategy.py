@@ -14,9 +14,13 @@ import asyncio
 from enum import StrEnum
 from itertools import groupby
 from operator import attrgetter
-from typing import TYPE_CHECKING
 
 from synthorg.budget.call_category import LLMCallCategory
+
+# ``CostTracker`` is part of ``LLMConsolidationStrategy.__init__``'s
+# public annotation, so it must resolve at runtime when downstream
+# tooling evaluates type hints (DI containers, doc generators).
+from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.core.enums import MemoryCategory  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.consolidation.config import LLMConsolidationConfig
@@ -42,9 +46,6 @@ from synthorg.providers.errors import ProviderError
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
 from synthorg.providers.resilience.errors import RetryExhaustedError
-
-if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
 
 logger = get_logger(__name__)
 

@@ -12,6 +12,11 @@ from typing import TYPE_CHECKING, Any, Final
 from pydantic import ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
+
+# ``CostTracker`` is part of ``SeparateAnalyzerProposer.__init__``'s
+# public annotation, so it must resolve at runtime when downstream
+# tooling evaluates type hints (DI containers, doc generators).
+from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.evolution.models import (
     AdaptationProposal,
@@ -35,7 +40,6 @@ from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
 
 if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
     from synthorg.engine.evolution.protocols import EvolutionContext
 
 logger = get_logger(__name__)

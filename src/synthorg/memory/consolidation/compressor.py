@@ -9,10 +9,16 @@ import builtins
 import hashlib
 import json
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 from uuid import uuid4
 
 from synthorg.budget.call_category import LLMCallCategory
+
+# ``CostTracker``, ``ExperienceCompressorConfig`` and
+# ``CompletionProvider`` are part of ``LLMExperienceCompressor.__init__``'s
+# public annotation, so they must resolve at runtime when downstream
+# tooling evaluates type hints (DI containers, doc generators).
+from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -20,6 +26,9 @@ from synthorg.engine.prompt_safety import (
     TAG_UNTRUSTED_ARTIFACT,
     untrusted_content_directive,
     wrap_untrusted,
+)
+from synthorg.memory.consolidation.config import (  # noqa: TC001
+    ExperienceCompressorConfig,
 )
 from synthorg.memory.consolidation.models import (
     CompressedExperience,
@@ -33,13 +42,7 @@ from synthorg.observability.events.consolidation import (
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
-
-if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.memory.consolidation.config import (
-        ExperienceCompressorConfig,
-    )
-    from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
 
 logger = get_logger(__name__)
 

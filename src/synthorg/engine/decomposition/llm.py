@@ -4,11 +4,18 @@ Uses an LLM provider with tool calling to break a task into subtasks.
 Falls back to parsing JSON from content when tool calls are absent.
 """
 
-from typing import TYPE_CHECKING
-
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.budget.call_category import LLMCallCategory
+
+# ``CostTracker``, ``CompletionProvider``, ``Task``,
+# ``DecompositionContext``, ``DecompositionPlan``, and
+# ``CompletionResponse`` appear in public annotations of
+# ``LlmDecompositionStrategy`` (constructor + ``decompose``), so they
+# must resolve at runtime when downstream tooling evaluates type hints
+# (DI containers, doc generators).
+from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.core.task import Task  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.llm_prompt import (
     build_decomposition_tool,
@@ -17,6 +24,10 @@ from synthorg.engine.decomposition.llm_prompt import (
     build_task_message,
     parse_content_response,
     parse_tool_call_response,
+)
+from synthorg.engine.decomposition.models import (  # noqa: TC001
+    DecompositionContext,
+    DecompositionPlan,
 )
 from synthorg.engine.errors import (
     DecompositionDepthError,
@@ -37,21 +48,9 @@ from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
+    CompletionResponse,
 )
-
-if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.core.task import Task
-    from synthorg.engine.decomposition.models import (
-        DecompositionContext,
-        DecompositionPlan,
-    )
-    from synthorg.providers.models import (
-        CompletionResponse,
-    )
-    from synthorg.providers.protocol import (
-        CompletionProvider,
-    )
+from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
 
 logger = get_logger(__name__)
 

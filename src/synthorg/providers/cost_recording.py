@@ -219,18 +219,28 @@ def _extract_provider_metadata(
     retry_count_raw = md.get("_synthorg_retry_count")
     retry_reason_raw = md.get("_synthorg_retry_reason")
 
-    # Reject NaN/Inf at the boundary so a misbehaving driver can't
-    # poison the recorded ``latency_ms`` -- ``CostRecord`` carries
-    # ``allow_inf_nan=False`` and would raise on validation, which the
-    # chokepoint would swallow as "cost_record_construction_failed".
-    # Filtering here turns a corrupt latency into a missing field
-    # instead of a dropped record.
-    if isinstance(latency_raw, (int, float)) and math.isfinite(latency_raw):
+    # Reject NaN/Inf and ``bool`` at the boundary so a misbehaving
+    # driver can't poison the recorded numeric fields -- ``bool`` is
+    # an ``int`` subclass so ``isinstance(True, int)`` is True; an
+    # explicit ``not isinstance(..., bool)`` guard keeps booleans
+    # from being silently coerced to ``1.0`` / ``1``.  ``CostRecord``
+    # carries ``allow_inf_nan=False`` and would raise on validation,
+    # which the chokepoint would swallow as
+    # "cost_record_construction_failed" -- filtering here turns a
+    # corrupt field into a missing one instead of a dropped record.
+    if (
+        isinstance(latency_raw, (int, float))
+        and not isinstance(latency_raw, bool)
+        and math.isfinite(latency_raw)
+    ):
         latency_ms: float | None = float(latency_raw)
     else:
         latency_ms = None
     cache_hit = cache_raw if isinstance(cache_raw, bool) else None
-    retry_count = retry_count_raw if isinstance(retry_count_raw, int) else None
+    if isinstance(retry_count_raw, int) and not isinstance(retry_count_raw, bool):
+        retry_count: int | None = retry_count_raw
+    else:
+        retry_count = None
     retry_reason = retry_reason_raw if isinstance(retry_reason_raw, str) else None
     return latency_ms, cache_hit, retry_count, retry_reason
 
