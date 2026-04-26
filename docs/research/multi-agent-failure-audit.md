@@ -14,14 +14,14 @@ date: 2026-04-07
 
 Two independent sources converge on a warning relevant to SynthOrg's architecture:
 
-1. **CIO article**: Empirical failure rates -- swarm topology 68%, hierarchical 36%, gated
+1. **CIO article**: empirical failure rates: swarm topology 68%, hierarchical 36%, gated
    pipelines 100% failure without human checkpoints. The data validates SynthOrg's
    orchestrated-hierarchical approach. But the warning is that even orchestrated systems
    drift toward swarm behavior if agent boundaries are poorly managed.
 
 2. **Medium article**: Multi-agent systems recreate microservices problems: unowned
    services, chatty interfaces, cascading failures, observability gaps, and distributed
-   monolith emergence. These are solved problems in microservices -- but the solutions
+   monolith emergence. These are solved problems in microservices, but the solutions
    (service ownership, circuit breakers, distributed tracing) need analogues in agent systems.
 
 This audit examines SynthOrg's current guardrails, identifies concrete vulnerabilities, and
@@ -44,7 +44,7 @@ The structured phases protocol is bounded at every stage:
   `MeetingBudgetExhaustedError` raised if synthesis cannot start
 
 `TokenTracker.is_exhausted` is checked at every phase boundary. `KeywordConflictDetector`
-is a single keyword scan ("CONFLICTS: YES") -- not an LLM call, no loop.
+is a single keyword scan ("CONFLICTS: YES"), not an LLM call, no loop.
 
 **Verdict**: Safe. Bounded termination guaranteed.
 
@@ -66,7 +66,7 @@ All participants generate position papers in parallel, bounded by `max_tokens_pe
 
 **Verdict**: Safe. Cheapest protocol, parallel collection with bounded output.
 
-### Meeting-Task Feedback Loop -- VULNERABILITY FOUND
+### Meeting-Task Feedback Loop: VULNERABILITY FOUND
 
 **Source**: `src/synthorg/communication/meeting/config.py` (line 103),
 `src/synthorg/communication/meeting/orchestrator.py` (line 319),
@@ -78,7 +78,7 @@ from meeting minutes. These tasks can be assigned to agents who execute them. If
 execution emits events that match `MeetingScheduler.trigger_event()` patterns, new meetings
 are triggered.
 
-`MeetingScheduler.trigger_event()` has **no deduplication** -- any event matching a
+`MeetingScheduler.trigger_event()` has **no deduplication**: any event matching a
 registered meeting type fires that meeting immediately, without cooldown or recency check:
 
 ```python
@@ -116,7 +116,7 @@ cooldowns. Alternatively, add a `max_tasks_per_meeting` cap to `MeetingProtocolC
 
 Deterministic seniority comparison. N-party conflicts use pairwise comparison. Equal
 seniority falls back to hierarchy proximity (lowest common manager). If no common manager
-exists across departments, `ConflictHierarchyError` is raised -- this is the correct
+exists across departments, `ConflictHierarchyError` is raised; this is the correct
 behavior (cross-department conflicts without hierarchy require human escalation).
 
 **Verdict**: Safe. Always terminates; no LLM calls.
@@ -146,10 +146,10 @@ occurs.
 **Source**: `src/synthorg/communication/conflict_resolution/human_strategy.py`
 
 This is a **stub implementation** pending approval queue integration (#37). It does not
-block waiting for a human -- it returns a `ConflictResolution` with outcome
+block waiting for a human; it returns a `ConflictResolution` with outcome
 `ESCALATED_TO_HUMAN` immediately. The caller receives a resolution object but with no
 winning position. What happens next depends on the caller's handling of
-`ESCALATED_TO_HUMAN` -- there is no standard downstream behavior enforced by the resolver.
+`ESCALATED_TO_HUMAN`; there is no standard downstream behavior enforced by the resolver.
 
 This means conflicts assigned to `HumanEscalationResolver` are technically "resolved" from
 the resolver's perspective but have no actual decision. Callers that do not handle
@@ -216,7 +216,7 @@ flags when `message_count > team_size^2 * threshold` (`is_quadratic` property). 
 
 **Gap**: These metrics are computed and emitted as structured log events but they are not
 enforced as circuit breakers. A coordination run with quadratic message overhead continues
-to completion (or budget exhaustion) -- the metric is observational only. There is no
+to completion (or budget exhaustion); the metric is observational only. There is no
 "coordination overhead budget" that halts a run when message density exceeds a threshold.
 
 **Assessment**: Detection exists; enforcement does not. Acceptable for now given the
@@ -243,7 +243,7 @@ is introduced across agent groups.
 **Definition**: It is unclear which service/agent owns a resource, leading to conflicting
 mutations.
 
-**SynthOrg assessment**: `TaskEngine` is a single-writer actor -- all task state mutations
+**SynthOrg assessment**: `TaskEngine` is a single-writer actor; all task state mutations
 are serialized through its `asyncio.Queue`. Task `assigned_to` is a single agent ID field.
 `ResourceLock` prevents concurrent execution of the same task by multiple agents.
 `DelegationService` validates authority before creating sub-tasks.
@@ -277,12 +277,12 @@ All critical decision points have human intervention paths:
 
 | Decision Point | Trigger | Path | Blocking? |
 |---|---|---|---|
-| Sensitive tool use | Security rule ESCALATE verdict | `ApprovalGate` parks context; human approves/rejects | Yes -- execution paused |
+| Sensitive tool use | Security rule ESCALATE verdict | `ApprovalGate` parks context; human approves/rejects | Yes (execution paused) |
 | Autonomy-gated action | Action in `human_approval_actions` (LOCKED preset) | Same approval flow | Yes |
-| Trust promotion | Any standard-to-elevated promotion | `TrustService._enforce_elevated_gate()` creates approval item | Yes -- promotion blocked |
-| Conflict resolution | `HumanEscalationResolver` or `HybridResolver` with ambiguity | Returns `ESCALATED_TO_HUMAN` (stub) | No -- stub returns immediately |
-| Budget hard stop | Monthly spend >= `hard_stop_at` % | Execution halted | No -- no override path |
-| Model downgrade | Budget >= `auto_downgrade.threshold` | Applied at task boundary | No -- automatic |
+| Trust promotion | Any standard-to-elevated promotion | `TrustService._enforce_elevated_gate()` creates approval item | Yes (promotion blocked) |
+| Conflict resolution | `HumanEscalationResolver` or `HybridResolver` with ambiguity | Returns `ESCALATED_TO_HUMAN` (stub) | No (stub returns immediately) |
+| Budget hard stop | Monthly spend >= `hard_stop_at` % | Execution halted | No (no override path) |
+| Model downgrade | Budget >= `auto_downgrade.threshold` | Applied at task boundary | No (automatic) |
 
 **Gap**: Budget hard stop halts all execution with no override path. In production, an
 operator may need to temporarily extend a budget to complete critical work. There is no
@@ -307,7 +307,7 @@ The `DelegationGuard` runs 5 checks in order, short-circuiting on first failure:
 4. **Rate limiting**: 10 delegations/min per agent-pair
 5. **Circuit breaker**: Trips after 3 bounces (same pair, short window)
 
-**Vulnerability -- circuit breaker bounce count reset**:
+**Vulnerability: circuit breaker bounce count reset**:
 
 After cooldown (default 300s), the circuit breaker evicts the state entry entirely:
 
@@ -319,8 +319,8 @@ del self._pairs[key]
 
 This resets the bounce count to 0. A pair that was tripped can resume with a fresh
 counter after 300 seconds. The deduplication window (60s) and rate limiter (10/min) mitigate
-within a single cycle, but slow-burn patterns -- where the same pair redelegates with
->60s gaps -- can bypass all guards:
+within a single cycle, but slow-burn patterns (where the same pair redelegates with
+>60s gaps) can bypass all guards:
 
 - Bounce 1 at t=0 (counted)
 - Bounce 2 at t=90s (outside dedup window, counted)
@@ -351,7 +351,7 @@ most reliable anti-drift mechanism for single-agent loops.
 ### Budget Enforcement as Ultimate Backstop
 
 All agent activity is bounded by the monthly budget hard stop. Even if all other guardrails
-fail, budget exhaustion terminates all execution. This is correct but blunt -- it means
+fail, budget exhaustion terminates all execution. This is correct but blunt; it means
 budget exhaustion is the failure signal for undetected drift, not a purpose-built guard.
 
 **No global coordination overhead cap**: Individual agent budgets and task budgets exist,
@@ -363,7 +363,7 @@ compute orchestration ratios but they are not wired to any enforcement action.
 
 Coordination topology (SAS, centralized, decentralized, context-dependent) is selected at
 the start of a coordination run and remains fixed throughout. There is no runtime topology
-mutation -- agents cannot renegotiate their coordination structure mid-execution.
+mutation; agents cannot renegotiate their coordination structure mid-execution.
 
 **Verdict**: Strong guarantee against emergent topology drift. The orchestrator selects
 topology deterministically; agents cannot change it.
@@ -413,7 +413,7 @@ most immediate functional gap, but it is already tracked as a dependency (#37).
 [arXiv:2603.27771](https://huggingface.co/papers/2603.27771) "Emergent Social
 Intelligence Risks in Generative Multi-Agent Systems" (2026) introduces the
 first systematic taxonomy of 15 collective-level failure modes in multi-agent
-LLM systems -- risks that cannot be reduced to individual agent safety. This
+LLM systems; risks that cannot be reduced to individual agent safety. This
 appendix maps each risk to SynthOrg coverage. Full analysis in
 [S1 Multi-Agent Architecture Decision](s1-multi-agent-decision.md).
 
@@ -442,5 +442,5 @@ appendix maps each risk to SynthOrg coverage. Full analysis in
 The two HIGH-priority gaps (2.1 majority sway + 2.2 authority deference) are
 the critical new work S1 surfaces, and both are encoded as constraints on the
 existing R1/R2/R4 RFC issues rather than filed as standalone implementation
-tickets -- each mitigation is a structural hook that the RFCs must design
+tickets; each mitigation is a structural hook that the RFCs must design
 around.

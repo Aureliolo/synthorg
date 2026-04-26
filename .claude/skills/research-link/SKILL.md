@@ -16,7 +16,7 @@ allowed-tools:
 
 # Research Link
 
-Research any external content -- URL, tool, concept, pasted article, code snippet -- and evaluate what it means for the SynthOrg project. Produces a decision-oriented assessment with concrete verdicts and next-step options.
+Research any external content (URL, tool, concept, pasted article, code snippet) and evaluate what it means for the SynthOrg project. Produces a decision-oriented assessment with concrete verdicts and next-step options.
 
 **Arguments:** "$ARGUMENTS"
 
@@ -45,7 +45,7 @@ Detect what the user provided:
    - Search for the title + author + key phrases
    - Look for: GitHub repos, HN/Reddit discussions, dev.to reposts, author's other posts
    - Fetch whatever supplementary sources are found
-3. **If user pasted content in the conversation**: use that directly -- don't waste time trying to fetch a paywalled URL the user already provided the content for
+3. **If user pasted content in the conversation**: use that directly. Don't waste time trying to fetch a paywalled URL the user already provided the content for.
 4. **Collect the primary content** before proceeding
 
 ### Supplementary Source Gathering
@@ -88,16 +88,16 @@ For each tool/library/framework mentioned:
 
 Cross-reference findings against the SynthOrg project. Search these in parallel:
 
-1. **DESIGN_SPEC.md** -- Grep for related sections (memory, providers, communication, agents, etc.)
-2. **Source code** -- Grep `src/synthorg/` for overlapping implementations or modules
-3. **CLAUDE.md** -- Check for relevant conventions, decisions, or constraints
-4. **Memory files** -- Grep the project's auto memory directory (the path is in your system context) for prior research on same or related topics
-5. **pyproject.toml** -- Check current dependencies for overlap or conflict
+1. **DESIGN_SPEC.md**: grep for related sections (memory, providers, communication, agents, etc.)
+2. **Source code**: grep `src/synthorg/` for overlapping implementations or modules
+3. **CLAUDE.md**: check for relevant conventions, decisions, or constraints
+4. **Memory files**: grep the project's auto memory directory (the path is in your system context) for prior research on same or related topics
+5. **pyproject.toml**: check current dependencies for overlap or conflict
 
 For each match, note:
 - **Which module/section** it relates to
-- **Current state** -- do we already have this, plan to have it, or haven't considered it?
-- **Conflict or synergy** -- does it align with or contradict our existing approach?
+- **Current state**: do we already have this, plan to have it, or haven't considered it?
+- **Conflict or synergy**: does it align with or contradict our existing approach?
 
 ## Phase 4: Assess and Verdict
 
@@ -116,9 +116,9 @@ For each relevant concept, tool, or pattern found, assign exactly one verdict:
 
 - Every verdict must reference a specific part of the project (module, design section, convention)
 - **USE** and **REPLACE** require a license check against the repo's dependency review allow-list (see CI workflow and `CLAUDE.md` dependency notes; must be permissive and CI-compatible)
-- **RETHINK** must explain the scope of impact -- is it one module or the whole architecture?
+- **RETHINK** must explain the scope of impact: is it one module or the whole architecture?
 - **LATER** must specify the trigger condition (e.g., "when we add the memory and budget subsystems")
-- Be honest -- most research produces ADAPT or LATER, not USE or RETHINK
+- Be honest: most research produces ADAPT or LATER, not USE or RETHINK
 
 ## Phase 5: Present Results
 
@@ -150,14 +150,14 @@ All URLs consulted as markdown hyperlinks.
 After presenting results, use AskUserQuestion to ask how to proceed. The options depend on what verdicts were produced:
 
 **Always include:**
-- "Save findings to memory" -- Append to research log + create detailed write-up
-- "Note it and move on" -- Append one-liner to research log only, no detailed file
+- "Save findings to memory": append to research log + create detailed write-up
+- "Note it and move on": append one-liner to research log only, no detailed file
 
 **If any USE/REPLACE/RETHINK verdicts exist, also include:**
-- "Act on recommendations" -- Create GitHub issues for actionable items, or implement the highest-impact one now (ask which in a follow-up)
+- "Act on recommendations": create GitHub issues for actionable items, or implement the highest-impact one now (ask which in a follow-up)
 
 **If any ADAPT/LATER verdicts exist, also include:**
-- "Explore [specific item] deeper" -- Do a deeper dive on the most promising ADAPT/LATER item
+- "Explore [specific item] deeper": do a deeper dive on the most promising ADAPT/LATER item
 
 Tailor the options to what actually came out of the research. Don't offer "Act on recommendations" if everything was SKIP/LATER. Keep the total to 4 options max (the AskUserQuestion tool limit).
 
@@ -183,5 +183,5 @@ Create the file with a header row if it doesn't exist yet.
 - If the content is a product pitch with little technical substance, say so directly.
 - For GitHub repos: always check license, activity (last commit), and stars before recommending adoption.
 - Keep the analysis decision-oriented. The user wants to know "what do we do with this?" not "here's a book report."
-- If the content contradicts an existing decision in CLAUDE.md or DESIGN_SPEC.md, flag it prominently -- don't bury it.
+- If the content contradicts an existing decision in CLAUDE.md or DESIGN_SPEC.md, flag it prominently. Don't bury it.
 - If prior research on the same topic exists in memory, reference it and note what's new.
