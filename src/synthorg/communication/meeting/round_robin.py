@@ -302,8 +302,9 @@ class RoundRobinProtocol:
                     lens_assignments=lens_assignments,
                 )
                 contributions.append(contribution)
-                # SEC-1: see ``run`` -- each peer turn is wrapped so a
-                # compromised contribution cannot inject into downstream
+                # SEC-1: each peer turn is wrapped in its own
+                # ``<peer-contribution>`` fence so a compromised
+                # contribution cannot escape and inject into downstream
                 # turns or the leader's summary prompt (#1596).
                 transcript.append(
                     f"[{participant_id}]:\n"

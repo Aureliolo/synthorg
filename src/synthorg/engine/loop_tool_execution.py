@@ -16,6 +16,7 @@ from synthorg.engine.prompt_safety import (
     TAG_CODE_DIFF,
     TAG_CONFIG_VALUE,
     TAG_CRITERIA_JSON,
+    TAG_PEER_CONTRIBUTION,
     TAG_TASK_DATA,
     TAG_TASK_FACT,
     TAG_TOOL_ARGUMENTS,
@@ -71,6 +72,7 @@ _FENCE_TAGS: Final[tuple[str, ...]] = (
     TAG_CODE_DIFF,
     TAG_CONFIG_VALUE,
     TAG_CRITERIA_JSON,
+    TAG_PEER_CONTRIBUTION,
 )
 
 _INJECTION_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (

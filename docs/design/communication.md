@@ -528,6 +528,17 @@ types naturally suit different protocols. All protocols implement a
 registered and selected per meeting type. Cost bounds are enforced by
 `duration_tokens` in the [communication config](#communication-config).
 
+!!! note "SEC-1: lateral prompt-injection defenses"
+    Every protocol below carries the same prompt-injection defense: agenda
+    fields (title, context, items) are wrapped in `<task-data>` and each peer
+    agent's contribution is wrapped in `<peer-contribution>` before being
+    interpolated into the next agent's user message. The meeting agent
+    system prompt (`agent_caller._render_system_prompt`) appends the
+    canonical `untrusted_content_directive` listing both fences so the model
+    is told their content is untrusted data. A compromised participant
+    cannot break out of its fence to hijack downstream turns or the
+    leader's synthesis. See [SEC-1: Prompt Safety](../reference/sec-prompt-safety.md).
+
 !!! warning "Synthesis risks: majority sway + authority deference"
     All three protocols below terminate their group discussion in a
     **synthesis step** that aggregates participant positions into a single

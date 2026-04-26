@@ -104,9 +104,11 @@ def _build_discussion_prompt(
 ) -> str:
     """Build a discussion prompt for a participant.
 
-    Inputs and the conflict analysis (itself the leader's prior turn
-    output) are wrapped in ``<peer-contribution>`` fences so neither
-    can inject into the discussion participant's prompt (#1596).
+    Inputs and the conflict analysis (the leader's prior turn output,
+    which may itself contain prompt-injected content from upstream
+    inputs) are wrapped in ``<peer-contribution>`` fences so a
+    compromised upstream turn cannot escape and inject into this
+    participant's reasoning (#1596).
     """
     parts = [agenda_text, "", "Previous inputs:"]
     for aid, content in inputs:

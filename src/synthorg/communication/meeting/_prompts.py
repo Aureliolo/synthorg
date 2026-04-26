@@ -25,9 +25,11 @@ def build_agenda_prompt(agenda: MeetingAgenda) -> str:
         agenda: The meeting agenda to format.
 
     Returns:
-        Formatted agenda text for use in agent prompts.  The
-        ``Meeting agenda:`` header sits outside the fence as
-        model-trusted prose; everything else is fenced.
+        Formatted agenda text with all attacker-controllable values
+        fenced.  The literal ``Meeting agenda:`` header sits outside
+        the ``<task-data>`` fence as model-trusted prose so the LLM
+        can still read it as instructions; every user-supplied agenda
+        detail (title, context, items) goes inside the single fence.
     """
     inner: list[str] = [f"Title: {agenda.title}"]
     if agenda.context:
@@ -57,6 +59,15 @@ def inject_lens_perspective(
     If the agent has a lens assignment, the lens name is appended
     as a perspective instruction.  Otherwise the prompt is returned
     unchanged.
+
+    SEC-1: ``lens_name`` is interpolated unwrapped because
+    ``lens_assignments`` originates from operator-controlled
+    strategy config (e.g. ``MeetingsConfig.lens_assignments``), not
+    from API request bodies or other agent output.  If a future change
+    routes user-supplied values into ``lens_assignments``, wrap
+    ``lens_name`` via ``wrap_untrusted(TAG_CONFIG_VALUE, ...)`` and
+    extend the meeting agent ``untrusted_content_directive`` to
+    include the new tag.
 
     Args:
         prompt: The base prompt text.

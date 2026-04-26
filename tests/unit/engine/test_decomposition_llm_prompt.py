@@ -219,10 +219,10 @@ class TestBuildTaskMessage:
         assert "3" in msg.content  # max_depth
 
 
+@pytest.mark.unit
 class TestBuildTaskMessageInjectionDefense:
     """SEC-1 / #1596: prompt-injection defenses for ``build_task_message``."""
 
-    @pytest.mark.unit
     def test_attacker_breakout_in_title_is_escaped(self) -> None:
         """A title with the literal closing fence cannot break out.
 
@@ -244,7 +244,6 @@ class TestBuildTaskMessageInjectionDefense:
         assert msg.content.count("</task-data>") == 1
         assert "<\\/task-data>" in msg.content
 
-    @pytest.mark.unit
     def test_attacker_breakout_in_description_is_escaped(self) -> None:
         """A description with the literal closing fence cannot break out."""
         task = _make_task(
@@ -256,7 +255,6 @@ class TestBuildTaskMessageInjectionDefense:
         assert msg.content.count("</task-data>") == 1
         assert "<\\/task-data>" in msg.content
 
-    @pytest.mark.unit
     def test_attacker_breakout_in_criterion_is_escaped(self) -> None:
         """A criterion with the literal closing fence cannot break out."""
         task = _make_task(
@@ -272,7 +270,6 @@ class TestBuildTaskMessageInjectionDefense:
         assert msg.content.count("</task-data>") == 1
         assert "<\\/task-data>" in msg.content
 
-    @pytest.mark.unit
     def test_breakout_handles_case_insensitive_variants(self) -> None:
         """``</TASK-DATA>`` and ``</Task-Data>`` are also escaped."""
         task = _make_task(
