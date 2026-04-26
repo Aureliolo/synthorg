@@ -463,10 +463,13 @@ async def drain_pending_cost_records() -> None:
     call can ``await drain_pending_cost_records()`` to deterministically
     wait for the recording side effect.
 
-    No-op when there are no pending tasks.  Failures inside the
-    background tasks are already logged + swallowed in
-    ``_record_cost_in_background`` -- this helper just guarantees the
-    tasks have completed (success or failure) before returning.
+    No-op when there are no pending tasks.  Recoverable failures inside
+    the background tasks are already logged + swallowed in
+    ``_record_cost_in_background``; ``MemoryError`` and ``RecursionError``
+    propagate out of those tasks (the asyncio default handler logs them
+    loudly), and we re-raise them here too so a ``drain`` invoked from
+    a test path doesn't silently swallow interpreter-fatal signals via
+    ``return_exceptions=True``.
     """
     if not _pending_record_tasks:
         return
@@ -474,7 +477,10 @@ async def drain_pending_cost_records() -> None:
     # by the ``add_done_callback`` registered above, and iterating
     # the live set while it shrinks would risk skipping tasks.
     pending = tuple(_pending_record_tasks)
-    await asyncio.gather(*pending, return_exceptions=True)
+    results = await asyncio.gather(*pending, return_exceptions=True)
+    for outcome in results:
+        if isinstance(outcome, (MemoryError, RecursionError)):
+            raise outcome
 
 
 __all__ = [
