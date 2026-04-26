@@ -95,15 +95,25 @@ class ApprovalStore:
         # another.
         self._saves_in_flight: set[str] = set()
 
-    def clear(self) -> None:
-        """Reset all approval items for test isolation.
+    async def clear(self) -> None:
+        """Reset all approval items.
 
-        **Test-only.**  Intentionally synchronous and does not acquire
-        ``self._lock`` so it can be called from sync test-reset fixtures
-        (`tests/unit/api/conftest.py`) that run between tests when no
-        async operations are in flight.  Calling this concurrently with
-        ``save`` / ``get`` / ``list_items`` could race -- production
-        code must not invoke it; use the async CRUD methods instead.
+        Holds the same ``self._lock`` as the CRUD methods so a
+        concurrent ``save`` / ``get`` / ``list_items`` cannot observe
+        a partially-cleared cache (#1599).
+        """
+        async with self._lock:
+            cleared_count = len(self._items)
+            self._items.clear()
+            self._saves_in_flight.clear()
+        logger.info(API_APPROVAL_STORE_CLEARED, cleared_count=cleared_count)
+
+    def reset_for_test_sync(self) -> None:
+        """Synchronous reset for sync pytest fixtures only.
+
+        Bypasses ``self._lock`` -- callers must guarantee no async
+        operations are in flight. Production code MUST use the async
+        ``clear`` instead.
         """
         cleared_count = len(self._items)
         self._items.clear()

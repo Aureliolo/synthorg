@@ -727,6 +727,10 @@ class _FakeBackend:
         return None
 
     @property
+    def idempotency_keys(self) -> Any:
+        return None
+
+    @property
     def mcp_installations(self) -> Any:
         return None
 

@@ -147,10 +147,15 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
             self._acquires_since_gc = 0
 
     async def _get_lock(self, key: str) -> asyncio.Lock:
-        """Return the per-key lock, creating it under the meta-lock."""
-        lock = self._locks.get(key)
-        if lock is not None:
-            return lock
+        """Return the per-key lock, creating it under the meta-lock.
+
+        Always acquires ``self._meta_lock`` rather than peeking at
+        ``self._locks`` first. The unlocked fast-path was correct under
+        CPython's GIL but fragile on alternative interpreters where
+        ``dict.get`` is not guaranteed atomic, and the cost of one
+        async-lock acquire per ``acquire()`` is negligible against the
+        bucket-mutation work that follows (#1599).
+        """
         async with self._meta_lock:
             lock = self._locks.get(key)
             if lock is None:

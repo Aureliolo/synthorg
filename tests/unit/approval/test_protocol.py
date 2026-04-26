@@ -31,6 +31,7 @@ class TestApprovalStoreProtocol:
         expected = {
             "add",
             "clear",
+            "reset_for_test_sync",
             "get",
             "list_items",
             "save",

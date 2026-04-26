@@ -489,7 +489,13 @@ def test_client(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # that clear() invokes) with a stub that raises or corrupts
         # state; we want the real ``clear`` implementation to run.
         _restore_instance_patches(svc)
-        svc.clear()
+        # AgentRegistryService.clear and ApprovalStore.clear are async
+        # (#1599); use the sync test-only entry point so this sync
+        # fixture keeps its shape.
+        if isinstance(svc, (AgentRegistryService, ApprovalStore)):
+            svc.reset_for_test_sync()
+        else:
+            svc.clear()
     fake_persistence.clear()
     fake_message_bus.clear()
 

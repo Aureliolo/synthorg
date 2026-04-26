@@ -29,10 +29,14 @@ class ApprovalStoreProtocol(Protocol):
     the contract.
     """
 
-    def clear(self) -> None:
-        """Reset all approval items for test isolation.
+    async def clear(self) -> None:
+        """Reset all approval items, holding the store lock (#1599)."""
+        ...
 
-        Test-only.  Production code uses the async CRUD methods.
+    def reset_for_test_sync(self) -> None:
+        """Synchronous reset for sync pytest fixtures only.
+
+        Bypasses the store lock; production code MUST call ``clear``.
         """
         ...
 

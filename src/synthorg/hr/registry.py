@@ -69,8 +69,27 @@ class AgentRegistryService:
         self._lock = asyncio.Lock()
         self._versioning = versioning
 
-    def clear(self) -> None:
-        """Reset all registered agents for test isolation."""
+    async def clear(self) -> None:
+        """Reset all registered agents.
+
+        Holds the same ``self._lock`` as ``register`` / ``unregister``
+        / ``update_*`` so a concurrent caller cannot observe a partial
+        clear -- the registry is either fully empty or in the state
+        the contending writer claimed (#1599).
+        """
+        async with self._lock:
+            cleared_count = len(self._agents)
+            self._agents.clear()
+        logger.info(HR_REGISTRY_CLEARED, cleared_count=cleared_count)
+
+    def reset_for_test_sync(self) -> None:
+        """Synchronous reset for sync pytest fixtures only.
+
+        Bypasses ``self._lock`` -- callers must guarantee no async
+        operations are in flight. Production code MUST use the async
+        ``clear`` instead. Provided so existing sync fixtures can keep
+        their iteration shape after #1599 made ``clear`` async.
+        """
         cleared_count = len(self._agents)
         self._agents.clear()
         logger.info(HR_REGISTRY_CLEARED, cleared_count=cleared_count)
