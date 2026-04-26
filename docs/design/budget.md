@@ -36,7 +36,7 @@ graph TD
     neutral fallback). SynthOrg stamps `budget.currency` onto every row at
     record-creation time; historical rows retain the code that was active when they were
     written, so changing the setting only affects newly created rows. Numeric cost values
-    are never converted -- updating the setting relabels the display symbol for future
+    are never converted; updating the setting relabels the display symbol for future
     records, not the existing ones.
 
 ## Cost Tracking
@@ -63,16 +63,16 @@ Every `CostRecord`, `TaskMetricRecord`, `LlmCalibrationRecord`, and `AgentRuntim
 retain the code that was active when they were created, so changing `budget.currency`
 is safe and does not invalidate history.
 
-Every aggregation site -- `CostTracker`, `ReportGenerator`, `CostOptimizer`,
+Every aggregation site (`CostTracker`, `ReportGenerator`, `CostOptimizer`,
 per-agent / per-department / per-project rollups, and the HR `WindowMetrics` multi-window
-strategy -- enforces a same-currency invariant. Mixing currencies raises
+strategy) enforces a same-currency invariant. Mixing currencies raises
 `MixedCurrencyAggregationError` (HTTP 409, `MIXED_CURRENCY_AGGREGATION` error code) at the
 aggregator rather than silently producing a meaningless total. `CostTracker.record()`
 additionally rejects at the ingestion boundary when the incoming record's currency differs
 from the currently-configured `budget.currency`, so new writes cannot introduce drift
 against the live setting. Historical rows written before a `budget.currency` change still
 carry their original code, so a rollup that spans the change window will legitimately see
-mixed currencies -- the aggregator raises rather than silently combining them. Operators
+mixed currencies; the aggregator raises rather than silently combining them. Operators
 who change `budget.currency` should either scope reports to a single currency window or
 run a proper migration that converts both the numeric amount and the currency code
 together under a documented FX policy; a raw
@@ -143,7 +143,7 @@ budget:
 !!! tip "Auto-Downgrade Boundary"
 
     Model downgrades apply only at **task assignment time**, never mid-execution. An agent
-    halfway through an architecture review cannot be switched to a cheaper model -- the task
+    halfway through an architecture review cannot be switched to a cheaper model; the task
     completes on its assigned model. The next task assignment respects the downgrade threshold.
     This prevents quality degradation from mid-thought model switches.
 
@@ -195,7 +195,7 @@ Degradation is resolved during pre-flight checks (`BudgetEnforcer.check_can_exec
 which returns a `PreFlightResult` carrying the effective provider and degradation details.
 The engine's `AgentEngine._apply_degradation` swaps the provider driver via the
 `ProviderRegistry` when FALLBACK selects a different provider. QUEUE keeps the same
-provider -- it waits for the quota window to rotate, then re-checks.
+provider; it waits for the quota window to rotate, then re-checks.
 
 !!! tip "Degradation Boundary"
     Like auto-downgrade, degradation applies only at **task assignment time** (pre-flight).
@@ -213,14 +213,14 @@ cost). The engine layer creates a `CostRecord` (with agent/task context) and rec
 into `CostTracker`. The engine additionally logs **proxy overhead metrics** at task
 completion:
 
-- `turns_per_task` -- number of LLM turns to complete the task
-- `tokens_per_task` -- total tokens consumed
-- `cost_per_task` -- total cost in configured currency
-- `duration_seconds` -- wall-clock execution time
-- `prompt_tokens` -- estimated system prompt tokens
-- `prompt_token_ratio` -- ratio of prompt tokens to total tokens (overhead indicator; warns when >0.3)
+- `turns_per_task`: number of LLM turns to complete the task
+- `tokens_per_task`: total tokens consumed
+- `cost_per_task`: total cost in configured currency
+- `duration_seconds`: wall-clock execution time
+- `prompt_tokens`: estimated system prompt tokens
+- `prompt_token_ratio`: ratio of prompt tokens to total tokens (overhead indicator; warns when >0.3)
 
-These are natural overhead indicators -- a task consuming 15 turns and 50k tokens for a
+These are natural overhead indicators; a task consuming 15 turns and 50k tokens for a
 one-line fix signals a problem. Metrics are captured in `TaskCompletionMetrics`, a frozen
 Pydantic model with a `from_run_result()` factory method.
 
@@ -230,10 +230,10 @@ When multi-agent coordination exists, each `CostRecord` is tagged with a **call 
 
 | Category | Description | Examples |
 |----------|-------------|---------|
-| `productive` | Direct task work -- tool calls, code generation, task output | Agent writing code, running tests |
-| `coordination` | Inter-agent communication -- delegation, reviews, meetings | Manager reviewing work, agent presenting in meeting |
-| `system` | Framework overhead -- system prompt injection, context loading | Initial prompt, [memory retrieval injection](memory.md#memory-injection-strategies) |
-| `embedding` | Embedding model calls -- memory store/retrieve vectorization | Mem0 store embedding, similarity search query embedding |
+| `productive` | Direct task work: tool calls, code generation, task output | Agent writing code, running tests |
+| `coordination` | Inter-agent communication: delegation, reviews, meetings | Manager reviewing work, agent presenting in meeting |
+| `system` | Framework overhead: system prompt injection, context loading | Initial prompt, [memory retrieval injection](memory.md#memory-injection-strategies) |
+| `embedding` | Embedding model calls: memory store/retrieve vectorization | Mem0 store embedding, similarity search query embedding |
 
 The **orchestration ratio** (`coordination / total`) is surfaced in metrics and alerts. If
 coordination tokens consistently exceed productive tokens, the company configuration needs
@@ -248,9 +248,9 @@ etc.).
 
     | Metric | Symbol | Definition | What It Signals |
     |--------|--------|------------|-----------------|
-    | **Coordination efficiency** | `Ec` | `success_rate / (turns / turns_sas)` -- success normalized by relative turn count vs single-agent baseline | Overall coordination ROI. Low Ec = coordination costs exceed benefits |
-    | **Coordination overhead** | `O%` | `(turns_mas - turns_sas) / turns_sas * 100%` -- relative turn increase | Communication cost. Optimal band: 200--300%. Above 400% = over-coordination |
-    | **Error amplification** | `Ae` | `error_rate_mas / error_rate_sas` -- relative failure probability | Whether MAS corrects or propagates errors. Centralized ~4.4x, Independent ~17.2x |
+    | **Coordination efficiency** | `Ec` | `success_rate / (turns / turns_sas)`: success normalized by relative turn count vs single-agent baseline | Overall coordination ROI. Low Ec = coordination costs exceed benefits |
+    | **Coordination overhead** | `O%` | `(turns_mas - turns_sas) / turns_sas * 100%`: relative turn increase | Communication cost. Optimal band: 200--300%. Above 400% = over-coordination |
+    | **Error amplification** | `Ae` | `error_rate_mas / error_rate_sas`: relative failure probability | Whether MAS corrects or propagates errors. Centralized ~4.4x, Independent ~17.2x |
     | **Message density** | `c` | Inter-agent messages per reasoning turn | Communication intensity. Performance saturates at ~0.39 messages/turn |
     | **Redundancy rate** | `R` | Mean cosine similarity of agent output embeddings | Agent agreement. Optimal at ~0.41 (balances fusion with independence) |
     | **Amdahl ceiling** | `Sc` | Theoretical max speedup from Amdahl's Law given parallelizable fraction | Diminishing returns threshold. Recommends ideal team size |
@@ -315,7 +315,7 @@ etc.).
     ```
 
     Analytics metadata is append-only and never blocks execution. Failed analytics writes are
-    logged and skipped -- the agent's task is never delayed by telemetry.
+    logged and skipped; the agent's task is never delayed by telemetry.
 
 ### Coordination Error Taxonomy
 
@@ -335,9 +335,9 @@ Cross-agent data is sanitized via `sanitize_message` before inclusion.
 | **Numerical drift** | Accumulated errors from cascading rounding (>5% deviation) | Context-labeled number extraction + % drift | LLM cross-verification of numerical claims | SAME_TASK |
 | **Context omission** | Failure to reference previously established entities | Capitalized entity set diff (first-half/second-half) | LLM entity introduction/disposition tracking | SAME_TASK |
 | **Coordination failure** | Message misinterpretation, task allocation conflicts | Tool errors + error finish reasons | LLM classification of coordination breakdowns | SAME_TASK |
-| **Delegation protocol violation** | Broken delegation chains, missing parent linkage | Structural check: parent_task_id, delegation_chain integrity | -- | TASK_TREE |
-| **Review pipeline violation** | PASS without stages, PASS contradicting FAIL stage | Structural check: verdict/stage consistency | -- | TASK_TREE |
-| **Authority breach attempt** | Execution cost exceeding authority budget limit | Budget comparison: total turn cost vs limit | -- | SAME_TASK |
+| **Delegation protocol violation** | Broken delegation chains, missing parent linkage | Structural check: parent_task_id, delegation_chain integrity | - | TASK_TREE |
+| **Review pipeline violation** | PASS without stages, PASS contradicting FAIL stage | Structural check: verdict/stage consistency | - | TASK_TREE |
+| **Authority breach attempt** | Execution cost exceeding authority budget limit | Budget comparison: total turn cost vs limit | - | SAME_TASK |
 
 **Pipeline architecture**: detectors implement the `Detector` protocol and are
 discovered dynamically from `ErrorTaxonomyConfig.detectors` (a dict mapping
@@ -363,7 +363,7 @@ Multi-Agent System Failure Taxonomy (MAST) by Cemri et al. (2025).
 
 The framework tracks **cumulative risk** alongside monetary cost. While the
 `RiskClassifier` assigns per-action risk levels (LOW/MEDIUM/HIGH/CRITICAL),
-the risk budget tracks risk _accumulation_ -- an agent executing 50 MEDIUM-risk
+the risk budget tracks risk _accumulation_: an agent executing 50 MEDIUM-risk
 actions in a row should trigger escalation even though each individual action
 is approved.
 
@@ -421,7 +421,7 @@ per-agent/per-task/total aggregation queries.
 
 | Mode | Behavior |
 |------|----------|
-| `active` (default) | Full enforcement -- verdicts applied as-is |
+| `active` (default) | Full enforcement; verdicts applied as-is |
 | `shadow` | Full pipeline runs, audit recorded, but blocking verdicts convert to ALLOW |
 | `disabled` | No evaluation, always ALLOW |
 
@@ -487,6 +487,6 @@ budgets continue to drive per-task spend caps; PTE drives efficiency analysis vi
 
 ## See Also
 
-- [Providers](providers.md) -- provider abstraction, routing, quota
-- [Tools](tools.md) -- tool invocation cost tracking
-- [Design Overview](index.md) -- full index
+- [Providers](providers.md): provider abstraction, routing, quota
+- [Tools](tools.md): tool invocation cost tracking
+- [Design Overview](index.md): full index
