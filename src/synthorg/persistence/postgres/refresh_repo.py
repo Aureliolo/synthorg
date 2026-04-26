@@ -18,9 +18,9 @@ from synthorg.api.auth.refresh_record import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
-    API_AUTH_REFRESH_CLEANUP,
     API_AUTH_REFRESH_PERSISTENCE_ERROR,
 )
+from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence.errors import QueryError
 
 # Persistence-boundary rule (#1599): SECURITY_AUTH_REFRESH_* events are
@@ -62,8 +62,15 @@ class PostgresRefreshTokenRepository:
         user_id: str,
         expires_at: datetime,
     ) -> None:
-        """Store a new refresh token."""
-        now = datetime.now(UTC)
+        """Store a new refresh token.
+
+        Datetimes are normalised to UTC before insertion so a caller
+        that supplied an aware non-UTC datetime cannot poison the
+        TIMESTAMPTZ column with an off-zone value the cleanup /
+        consume paths interpret incorrectly.
+        """
+        now = normalize_utc(datetime.now(UTC))
+        utc_expires_at = normalize_utc(expires_at)
         try:
             async with (
                 self._pool.connection() as conn,
@@ -79,7 +86,7 @@ class PostgresRefreshTokenRepository:
                         token_hash,
                         session_id,
                         user_id,
-                        expires_at,
+                        utc_expires_at,
                         now,
                     ),
                 )
@@ -142,14 +149,18 @@ class PostgresRefreshTokenRepository:
                 return RefreshConsumeOutcome(
                     reject_reason=RefreshRejectReason.SESSION_REVOKED,
                 )
+            # Postgres TIMESTAMPTZ rows can come back in the session
+            # zone; normalise to UTC at the boundary so the
+            # ``RefreshRecord`` always carries a UTC-anchored
+            # datetime regardless of server / pool timezone settings.
             return RefreshConsumeOutcome(
                 record=RefreshRecord(
                     token_hash=row["token_hash"],
                     session_id=row["session_id"],
                     user_id=row["user_id"],
-                    expires_at=row["expires_at"],
+                    expires_at=normalize_utc(row["expires_at"]),
                     used=bool(row["used"]),
-                    created_at=row["created_at"],
+                    created_at=normalize_utc(row["created_at"]),
                 ),
             )
 
@@ -222,8 +233,15 @@ class PostgresRefreshTokenRepository:
             raise QueryError(msg) from exc
 
     async def cleanup_expired(self) -> int:
-        """Remove expired tokens."""
-        now = datetime.now(UTC)
+        """Remove expired tokens.
+
+        Caller (the periodic cleanup job in
+        :mod:`synthorg.api.lifecycle_helpers`) logs
+        ``API_AUTH_REFRESH_CLEANUP`` when count > 0; this repo only
+        returns the count per the persistence-boundary rule
+        (#1599 -- repositories do not emit operational events).
+        """
+        now = normalize_utc(datetime.now(UTC))
         try:
             async with (
                 self._pool.connection() as conn,
@@ -234,7 +252,7 @@ class PostgresRefreshTokenRepository:
                     "DELETE FROM refresh_tokens WHERE expires_at <= %s",
                     (now,),
                 )
-                count = cur.rowcount
+                return cur.rowcount
         except PsycopgError as exc:
             logger.warning(
                 API_AUTH_REFRESH_PERSISTENCE_ERROR,
@@ -244,6 +262,3 @@ class PostgresRefreshTokenRepository:
             )
             msg = "Failed to cleanup expired refresh tokens"
             raise QueryError(msg) from exc
-        if count:
-            logger.info(API_AUTH_REFRESH_CLEANUP, removed=count)
-        return count

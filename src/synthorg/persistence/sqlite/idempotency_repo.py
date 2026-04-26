@@ -62,81 +62,35 @@ class SQLiteIdempotencyRepository:
         ttl_seconds: int,
         now: AwareDatetime,
     ) -> IdempotencyClaim:
-        """Atomically claim ``(scope, key)`` for *ttl_seconds*."""
+        """Atomically claim ``(scope, key)`` for *ttl_seconds*.
+
+        Holds ``self._write_lock`` (asyncio) plus a ``BEGIN IMMEDIATE``
+        DB-level RESERVED write lock so competing claimants on
+        *different* aiosqlite connections (e.g. a sibling repository
+        sharing the pool) serialise -- otherwise each would perform
+        an un-locked SELECT and then race on the UPDATE/INSERT.
+
+        Both the lock acquisition (``BEGIN IMMEDIATE``) and the
+        subsequent SELECT/UPDATE/INSERT/commit run inside a single
+        ``try`` so any exception -- not just one raised after BEGIN
+        succeeded -- routes through the rollback + structured-log +
+        ``QueryError`` path.
+        """
         from datetime import timedelta  # noqa: PLC0415
 
         expires_at = now + timedelta(seconds=ttl_seconds)
         async with self._write_lock:
-            # ``BEGIN IMMEDIATE`` acquires SQLite's RESERVED write
-            # lock at the DB level so two competing claimants on
-            # *different* aiosqlite connections (e.g. a sibling
-            # repository sharing the connection pool) serialise here
-            # rather than each performing the SELECT against an
-            # un-locked DB and then both UPDATING. The asyncio
-            # ``_write_lock`` already serialises async callers within
-            # this process; ``BEGIN IMMEDIATE`` extends the guarantee
-            # across connections.
-            await self._db.execute("BEGIN IMMEDIATE")
             try:
-                cursor = await self._db.execute(
-                    "SELECT status, response_body, expires_at "
-                    "FROM idempotency_keys WHERE scope = ? AND key = ?",
-                    (scope, key),
+                await self._db.execute("BEGIN IMMEDIATE")
+                row = await self._fetch_idempotency_row(scope, key)
+                claim = await self._claim_under_lock(
+                    scope=scope,
+                    key=key,
+                    row=row,
+                    now=now,
+                    expires_at=expires_at,
                 )
-                row = await cursor.fetchone()
-
-                if row is not None:
-                    status = str(row["status"])
-                    row_expires = _parse_dt(row["expires_at"])
-                    if row_expires > now and status == "completed":
-                        await self._db.commit()
-                        return IdempotencyClaim(
-                            outcome=IdempotencyOutcome.COMPLETED,
-                            cached_response=row["response_body"],
-                        )
-                    if row_expires > now and status == "in_flight":
-                        await self._db.commit()
-                        return IdempotencyClaim(
-                            outcome=IdempotencyOutcome.IN_FLIGHT,
-                        )
-                    # Expired OR failed -- rotate to a fresh lease
-                    # with a new claim_token so any stale worker
-                    # holding the old token cannot CAS-overwrite.
-                    new_token = secrets.token_hex(16)
-                    await self._db.execute(
-                        "UPDATE idempotency_keys "
-                        "SET status = 'in_flight', claim_token = ?, "
-                        "response_hash = NULL, response_body = NULL, "
-                        "created_at = ?, expires_at = ? "
-                        "WHERE scope = ? AND key = ?",
-                        (
-                            new_token,
-                            format_iso_utc(now),
-                            format_iso_utc(expires_at),
-                            scope,
-                            key,
-                        ),
-                    )
-                else:
-                    new_token = secrets.token_hex(16)
-                    await self._db.execute(
-                        "INSERT INTO idempotency_keys "
-                        "(scope, key, status, claim_token, "
-                        "created_at, expires_at) "
-                        "VALUES (?, ?, 'in_flight', ?, ?, ?)",
-                        (
-                            scope,
-                            key,
-                            new_token,
-                            format_iso_utc(now),
-                            format_iso_utc(expires_at),
-                        ),
-                    )
                 await self._db.commit()
-                return IdempotencyClaim(
-                    outcome=IdempotencyOutcome.FRESH,
-                    claim_token=new_token,
-                )
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -149,6 +103,119 @@ class SQLiteIdempotencyRepository:
                 )
                 msg = "Failed to claim idempotency key"
                 raise QueryError(msg) from exc
+        return claim
+
+    async def _fetch_idempotency_row(
+        self,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+    ) -> aiosqlite.Row | None:
+        """Return the existing row for *(scope, key)* or ``None``."""
+        cursor = await self._db.execute(
+            "SELECT status, response_body, expires_at "
+            "FROM idempotency_keys WHERE scope = ? AND key = ?",
+            (scope, key),
+        )
+        return await cursor.fetchone()
+
+    async def _claim_under_lock(
+        self,
+        *,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+        row: aiosqlite.Row | None,
+        now: AwareDatetime,
+        expires_at: AwareDatetime,
+    ) -> IdempotencyClaim:
+        """Pick the right claim outcome given the existing *row*."""
+        if row is not None:
+            status = str(row["status"])
+            row_expires = _parse_dt(row["expires_at"])
+            if row_expires > now and status == "completed":
+                return IdempotencyClaim(
+                    outcome=IdempotencyOutcome.COMPLETED,
+                    cached_response=row["response_body"],
+                )
+            if row_expires > now and status == "in_flight":
+                return IdempotencyClaim(outcome=IdempotencyOutcome.IN_FLIGHT)
+            # Expired OR failed -- rotate the lease.
+            new_token = secrets.token_hex(16)
+            await self._update_row_to_in_flight(
+                scope=scope,
+                key=key,
+                new_token=new_token,
+                expires_at=expires_at,
+            )
+            return IdempotencyClaim(
+                outcome=IdempotencyOutcome.FRESH,
+                claim_token=NotBlankStr(new_token),
+            )
+        new_token = secrets.token_hex(16)
+        await self._insert_in_flight_row(
+            scope=scope,
+            key=key,
+            new_token=new_token,
+            now=now,
+            expires_at=expires_at,
+        )
+        return IdempotencyClaim(
+            outcome=IdempotencyOutcome.FRESH,
+            claim_token=NotBlankStr(new_token),
+        )
+
+    async def _update_row_to_in_flight(
+        self,
+        *,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+        new_token: str,
+        expires_at: AwareDatetime,
+    ) -> None:
+        """Rotate an expired/failed row to a fresh in-flight lease.
+
+        ``created_at`` is intentionally NOT in the SET clause: it
+        records the original insertion time so
+        ``IdempotencyRecord.created_at`` stays meaningful across
+        re-claims (the protocol contract). Only the lease columns
+        rotate.
+        """
+        await self._db.execute(
+            "UPDATE idempotency_keys "
+            "SET status = 'in_flight', claim_token = ?, "
+            "response_hash = NULL, response_body = NULL, "
+            "expires_at = ? "
+            "WHERE scope = ? AND key = ?",
+            (
+                new_token,
+                format_iso_utc(expires_at),
+                scope,
+                key,
+            ),
+        )
+
+    async def _insert_in_flight_row(
+        self,
+        *,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+        new_token: str,
+        now: AwareDatetime,
+        expires_at: AwareDatetime,
+    ) -> None:
+        """Insert a fresh in-flight idempotency row."""
+        await self._db.execute(
+            "INSERT INTO idempotency_keys "
+            "(scope, key, status, claim_token, "
+            "created_at, expires_at) "
+            "VALUES (?, ?, 'in_flight', ?, ?, ?)",
+            (
+                scope,
+                key,
+                new_token,
+                format_iso_utc(now),
+                format_iso_utc(expires_at),
+            ),
+        )
 
     async def complete(
         self,

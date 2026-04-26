@@ -148,14 +148,19 @@ class PostgresIdempotencyRepository:
                         )
                     # Expired or failed -- rotate the lease token so a
                     # stale worker holding the old one cannot CAS
-                    # against the new claim.
+                    # against the new claim. ``created_at`` is
+                    # intentionally NOT in the SET clause: it records
+                    # the original insertion time so
+                    # ``IdempotencyRecord.created_at`` (per the
+                    # protocol contract) stays meaningful across
+                    # re-claims.
                     await cur.execute(
                         "UPDATE idempotency_keys "
                         "SET status = 'in_flight', claim_token = %s, "
                         "response_hash = NULL, response_body = NULL, "
-                        "created_at = %s, expires_at = %s "
+                        "expires_at = %s "
                         "WHERE scope = %s AND key = %s",
-                        (new_token, now, expires_at, scope, key),
+                        (new_token, expires_at, scope, key),
                     )
                     return IdempotencyClaim(
                         outcome=IdempotencyOutcome.FRESH,

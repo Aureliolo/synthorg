@@ -20,7 +20,6 @@ from synthorg.api.auth.refresh_record import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
-    API_AUTH_REFRESH_CLEANUP,
     API_AUTH_REFRESH_PERSISTENCE_ERROR,
 )
 from synthorg.persistence.errors import QueryError
@@ -214,7 +213,14 @@ class SQLiteRefreshTokenRepository:
         return count
 
     async def cleanup_expired(self) -> int:
-        """Remove expired tokens."""
+        """Remove expired tokens.
+
+        Caller (the periodic cleanup job in
+        :mod:`synthorg.api.lifecycle_helpers`) logs
+        ``API_AUTH_REFRESH_CLEANUP`` when count > 0; this repo only
+        returns the count per the persistence-boundary rule
+        (#1599 -- repositories do not emit operational events).
+        """
         now = datetime.now(UTC).isoformat()
         async with self._write_lock:
             try:
@@ -223,18 +229,16 @@ class SQLiteRefreshTokenRepository:
                     (now,),
                 )
                 await self._db.commit()
-                count = cursor.rowcount
+                rowcount = cursor.rowcount
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
-                msg = "Failed to cleanup expired refresh tokens"
                 logger.warning(
-                    API_AUTH_REFRESH_CLEANUP,
-                    phase="cleanup_failed",
+                    API_AUTH_REFRESH_PERSISTENCE_ERROR,
+                    operation="cleanup_expired",
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
+                msg = "Failed to cleanup expired refresh tokens"
                 raise QueryError(msg) from exc
-        if count:
-            logger.info(API_AUTH_REFRESH_CLEANUP, removed=count)
-        return count
+        return rowcount
