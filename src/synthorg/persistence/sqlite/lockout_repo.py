@@ -160,25 +160,27 @@ class SQLiteLockoutRepository:
                 count = row["cnt"] if row else 0
                 now_locked = count >= self._threshold
                 await self._db.commit()
+                # Cache mutation inside the write_lock so a
+                # concurrent ``record_success`` cannot delete the
+                # rows and clear ``_locked`` between our commit and
+                # the cache write -- the DB and cache mutations
+                # land in the same protected section.
+                if now_locked:
+                    with self._locked_lock:
+                        self._locked[username] = (
+                            time.monotonic() + self._duration_seconds
+                        )
             except MemoryError, RecursionError:
                 raise
             except Exception:
                 await self._db.rollback()
                 raise
 
-        # Only mark the user locked after the DB commit has
-        # succeeded; otherwise a commit failure would leave the
-        # cache out of sync with persisted state and block logins
-        # for a lockout the DB does not know about.
-        if now_locked:
-            with self._locked_lock:
-                self._locked[username] = time.monotonic() + self._duration_seconds
-            # Caller logs SECURITY_AUTH_ACCOUNT_LOCKED with the
-            # contextual fields (attempts, threshold, duration) the
-            # controller already tracks; persistence does not emit
-            # decision events (#1599 persistence-boundary rule).
-            return True
-        return False
+        # Caller logs SECURITY_AUTH_ACCOUNT_LOCKED with the contextual
+        # fields (attempts, threshold, duration) the controller
+        # already tracks; persistence does not emit decision events
+        # (#1599 persistence-boundary rule).
+        return now_locked
 
     async def record_success(self, username: str) -> bool:
         """Clear failure count on successful login.
@@ -196,13 +198,17 @@ class SQLiteLockoutRepository:
                     (username,),
                 )
                 await self._db.commit()
+                # Cache mutation inside the write_lock so the DB
+                # delete and the cache pop land atomically with
+                # respect to a concurrent ``record_failure``.
+                with self._locked_lock:
+                    was_locked = self._locked.pop(username, None) is not None
             except MemoryError, RecursionError:
                 raise
             except Exception:
                 await self._db.rollback()
                 raise
-        with self._locked_lock:
-            return self._locked.pop(username, None) is not None
+        return was_locked
 
     async def cleanup_expired(self) -> int:
         """Remove old attempt records outside the recovery horizon.

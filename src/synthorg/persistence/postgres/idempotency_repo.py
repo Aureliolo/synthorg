@@ -128,7 +128,15 @@ class PostgresIdempotencyRepository:
                     row_expires = row["expires_at"]
                     if row_expires > now and status == "completed":
                         cached = row["response_body"]
-                        cached_str = json.dumps(cached) if cached is not None else None
+                        # Always serialise: a stored JSONB ``null``
+                        # round-trips through psycopg as Python None
+                        # but is a *legitimate cached null response*,
+                        # not a missing body. Conditional ``None``
+                        # passthrough would lose that distinction and
+                        # also violate the IdempotencyClaim invariant
+                        # (COMPLETED requires non-None cached_response).
+                        # ``json.dumps(None)`` -> ``"null"``.
+                        cached_str = json.dumps(cached)
                         return IdempotencyClaim(
                             outcome=IdempotencyOutcome.COMPLETED,
                             cached_response=cached_str,
@@ -279,12 +287,22 @@ class PostgresIdempotencyRepository:
 
         if row is None:
             return None
+        status = IdempotencyOutcome(row["status"])
+        # When status is COMPLETED, ``response_body`` is a JSONB column
+        # we MUST surface as a JSON string (a stored JSONB ``null``
+        # round-trips as Python None but is a legitimate cached null
+        # response). For non-completed rows the schema CHECK forces
+        # ``response_body`` to SQL NULL and the IdempotencyRecord
+        # invariant requires Python None -- pass it through verbatim.
         cached = row["response_body"]
-        cached_str = json.dumps(cached) if cached is not None else None
+        if status is IdempotencyOutcome.COMPLETED:
+            cached_str: str | None = json.dumps(cached)
+        else:
+            cached_str = None
         return IdempotencyRecord(
             scope=NotBlankStr(str(row["scope"])),
             key=NotBlankStr(str(row["key"])),
-            status=IdempotencyOutcome(row["status"]),
+            status=status,
             response_hash=row["response_hash"],
             response_body=cached_str,
             created_at=row["created_at"],

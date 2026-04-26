@@ -4,6 +4,7 @@ Receives webhook events from external services, verifies
 signatures, and publishes to the message bus.
 """
 
+import hashlib
 import json
 from typing import Any
 
@@ -35,6 +36,13 @@ from synthorg.observability.events.integrations import (
 )
 
 logger = get_logger(__name__)
+
+# DB CHECK constraint on ``idempotency_keys.key`` caps the column at
+# 255 chars. The composed key from connection_name + event_type +
+# attacker-controlled nonce can exceed that; we collapse to a fixed
+# SHA-256 digest when oversized so the DB insert never fails on
+# length while operator-visible logs still carry the route prefix.
+_IDEMPOTENCY_KEY_MAX_LEN: int = 255
 
 
 def _get_replay_protector(state: State) -> ReplayProtector:
@@ -255,7 +263,22 @@ class WebhooksController(Controller):
             # routes that legitimately share a (connection_name, nonce)
             # tuple (different event subscriptions on the same upstream)
             # don't collide and replay each other's cached responses.
-            idem_key = NotBlankStr(f"{connection_name}:{event_type}:{nonce}")
+            # If the composed key exceeds the DB column's 255-char
+            # CHECK constraint (an attacker-controllable nonce can be
+            # arbitrarily long), collapse the nonce into a SHA-256
+            # digest while preserving the (connection_name, event_type)
+            # prefix so operator-visible logs still carry the route.
+            raw_key = f"{connection_name}:{event_type}:{nonce}"
+            if len(raw_key) > _IDEMPOTENCY_KEY_MAX_LEN:
+                nonce_digest = hashlib.sha256(
+                    nonce.encode("utf-8", errors="replace"),
+                ).hexdigest()
+                raw_key = f"{connection_name}:{event_type}:sha256:{nonce_digest}"
+                # Defensive truncation in case the connection_name +
+                # event_type prefix alone is also pathologically long.
+                if len(raw_key) > _IDEMPOTENCY_KEY_MAX_LEN:
+                    raw_key = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+            idem_key = NotBlankStr(raw_key)
 
             async def _publish_and_accept() -> dict[str, object]:
                 await publish_webhook_event(

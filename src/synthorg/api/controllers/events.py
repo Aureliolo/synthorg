@@ -236,6 +236,90 @@ async def _resolve_interrupt(
 # ── SSE stream ───────────────────────────────────────────────────
 
 
+async def _serialise_stream_event(
+    event: StreamEvent,
+    session_id: str,
+) -> dict[str, str] | None:
+    """Render a hub event as an SSE frame, or ``None`` on serialise failure.
+
+    Extracted from :func:`_sse_event_stream` so the loop body stays
+    under the McCabe / branch / statement ceilings. Failures are
+    logged at WARNING and skipped; the parent loop should ``continue``.
+    """
+    try:
+        data = _json.dumps(event.model_dump(mode="json"))
+    except MemoryError, RecursionError:
+        raise
+    except Exception as serialize_exc:
+        logger.warning(
+            EVENT_STREAM_PROJECTION_FAILED,
+            session_id=session_id,
+            event_id=event.id,
+            note="Failed to serialize event, skipping",
+            error_type=type(serialize_exc).__name__,
+            error=safe_error_description(serialize_exc),
+        )
+        return None
+    return {"event": event.type.value, "data": data}
+
+
+class _RevalidationVerdict(BaseModel):
+    """Outcome of one revalidation tick.
+
+    Attributes:
+        consecutive_failures: Updated transient-failure counter the
+            caller threads back into the loop.
+        revoked_event: SSE frame to yield when the user is no longer
+            authorised (or the persistence backend is repeatedly
+            unavailable). ``None`` when the loop should keep running.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    consecutive_failures: int
+    revoked_event: dict[str, str] | None = None
+
+
+async def _run_revalidation_tick(
+    *,
+    app_state: AppState,
+    user: AuthenticatedUser,
+    consecutive_failures: int,
+) -> _RevalidationVerdict:
+    """Execute one revalidation check and return what the loop should do.
+
+    Centralises the failure-counter / role-check / session-revocation
+    decision tree so :func:`_sse_event_stream` does not exceed the
+    McCabe complexity ceiling (#1599). The caller advances its
+    ``next_revalidate_ts`` regardless of the verdict.
+    """
+    reason, ok = await _user_revocation_reason(
+        app_state,
+        user.user_id,
+        user.session_id,
+    )
+    if not ok:
+        new_failures = consecutive_failures + 1
+        if new_failures >= _SSE_REVALIDATE_MAX_FAILURES:
+            return _RevalidationVerdict(
+                consecutive_failures=new_failures,
+                revoked_event={
+                    "event": "revoked",
+                    "data": _json.dumps({"reason": "backend_unavailable"}),
+                },
+            )
+        return _RevalidationVerdict(consecutive_failures=new_failures)
+    if reason is not None:
+        return _RevalidationVerdict(
+            consecutive_failures=0,
+            revoked_event={
+                "event": "revoked",
+                "data": _json.dumps({"reason": reason}),
+            },
+        )
+    return _RevalidationVerdict(consecutive_failures=0)
+
+
 async def _sse_event_stream(
     hub: EventStreamHub,
     session_id: str,
@@ -258,34 +342,31 @@ async def _sse_event_stream(
         EVENT_STREAM_CLIENT_CONNECTED,
         session_id=session_id,
     )
-    next_keepalive_ts = asyncio.get_event_loop().time() + _SSE_KEEPALIVE_SECONDS
-    next_revalidate_ts = (
-        asyncio.get_event_loop().time() + SSE_REVALIDATE_INTERVAL_SECONDS
+    revalidation_armed = app_state is not None and user is not None
+    loop_now = asyncio.get_event_loop().time()
+    next_keepalive_ts = loop_now + _SSE_KEEPALIVE_SECONDS
+    # When auth context is absent (anonymous / unit-test stream), arming
+    # the revalidation deadline at ``loop_now`` would make ``timeout``
+    # collapse to 0 on the first iteration and busy-loop the wait_for.
+    # Only arm the timer when there is something to revalidate.
+    next_revalidate_ts: float | None = (
+        loop_now + SSE_REVALIDATE_INTERVAL_SECONDS if revalidation_armed else None
     )
     try:
         while True:
             now = asyncio.get_event_loop().time()
-            timeout = max(0.0, min(next_keepalive_ts, next_revalidate_ts) - now)
+            if next_revalidate_ts is None:
+                timeout = max(0.0, next_keepalive_ts - now)
+            else:
+                timeout = max(0.0, min(next_keepalive_ts, next_revalidate_ts) - now)
             try:
                 event: StreamEvent = await asyncio.wait_for(
                     queue.get(),
                     timeout=timeout,
                 )
-                try:
-                    data = _json.dumps(event.model_dump(mode="json"))
-                except MemoryError, RecursionError:
-                    raise
-                except Exception as serialize_exc:
-                    logger.warning(
-                        EVENT_STREAM_PROJECTION_FAILED,
-                        session_id=session_id,
-                        event_id=event.id,
-                        note="Failed to serialize event, skipping",
-                        error_type=type(serialize_exc).__name__,
-                        error=safe_error_description(serialize_exc),
-                    )
-                    continue
-                yield {"event": event.type.value, "data": data}
+                frame = await _serialise_stream_event(event, session_id)
+                if frame is not None:
+                    yield frame
             except TimeoutError:
                 # Timer fired; decide which deadline expired. Both can
                 # be due simultaneously after a long-blocking event was
@@ -295,30 +376,22 @@ async def _sse_event_stream(
             if now >= next_keepalive_ts:
                 yield {"event": "keepalive", "data": "{}"}
                 next_keepalive_ts = now + _SSE_KEEPALIVE_SECONDS
-            if app_state is not None and user is not None and now >= next_revalidate_ts:
+            if (
+                revalidation_armed
+                and next_revalidate_ts is not None
+                and now >= next_revalidate_ts
+                and app_state is not None
+                and user is not None
+            ):
                 next_revalidate_ts = now + SSE_REVALIDATE_INTERVAL_SECONDS
-                reason, ok = await _user_revocation_reason(
-                    app_state,
-                    user.user_id,
-                    user.session_id,
+                verdict = await _run_revalidation_tick(
+                    app_state=app_state,
+                    user=user,
+                    consecutive_failures=consecutive_failures,
                 )
-                if not ok:
-                    consecutive_failures += 1
-                    if consecutive_failures >= _SSE_REVALIDATE_MAX_FAILURES:
-                        yield {
-                            "event": "revoked",
-                            "data": _json.dumps(
-                                {"reason": "backend_unavailable"},
-                            ),
-                        }
-                        return
-                    continue
-                consecutive_failures = 0
-                if reason is not None:
-                    yield {
-                        "event": "revoked",
-                        "data": _json.dumps({"reason": reason}),
-                    }
+                consecutive_failures = verdict.consecutive_failures
+                if verdict.revoked_event is not None:
+                    yield verdict.revoked_event
                     return
     finally:
         # Unsubscribe must run before the disconnect log: a raise here

@@ -104,7 +104,19 @@ class ApprovalStore:
         self._generation: int = 0
 
     async def clear(self) -> None:
-        """Reset all approval items.
+        """Reset the in-memory approval cache (cache-only).
+
+        ``ApprovalStore`` is an in-memory cache fronting an optional
+        durable :class:`ApprovalRepository`; ``clear`` deliberately
+        does NOT delete persisted rows. The next ``get`` / ``list_items``
+        on a configured repo will repopulate from durable storage --
+        which is the intended contract for tenant-teardown and test
+        isolation, the only callers. Reaching into the repo to delete
+        every persisted approval would be an order-of-magnitude
+        wider blast radius than any caller currently needs and there
+        is no ``ApprovalRepository.clear``/``delete_all`` method on
+        purpose -- destructive bulk deletes belong in administrative
+        tooling, not the cache wrapper.
 
         Holds the same ``self._lock`` as the CRUD methods so a
         concurrent ``save`` / ``get`` / ``list_items`` cannot observe
@@ -321,13 +333,20 @@ class ApprovalStore:
                     # repopulate the cache, otherwise this save
                     # would silently undo the clear. The repo commit
                     # already landed, so a subsequent ``get`` will
-                    # fall through to the repo and observe it.
+                    # fall through to the repo and observe it. The
+                    # save itself succeeded: returning ``None`` here
+                    # would misreport a durable write as a not-found
+                    # / dedup-skip and confuse callers that branch
+                    # on the return value (the conventional contract
+                    # is None == "no such id" / "concurrent dedup
+                    # claimed it"). Return ``item`` so the caller
+                    # sees the persisted state.
                     logger.info(
                         API_APPROVAL_STORE_CLEARED,
                         note="save_aborted_by_concurrent_clear",
                         approval_id=item.id,
                     )
-                    return None
+                    return item
                 self._items[item.id] = item
             return item
         finally:

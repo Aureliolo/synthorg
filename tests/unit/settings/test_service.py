@@ -1046,6 +1046,40 @@ class TestSecuritySettingsAuditEmission:
         await svc.delete("security", "opt_in")
         assert SECURITY_SETTINGS_CHANGED in captured
 
+    async def test_delete_does_not_emit_security_event_for_non_audited_namespace(
+        self,
+        mock_repo: AsyncMock,
+        config: _FakeConfig,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``delete`` against ``budget`` must NOT emit a security event.
+
+        Negative-path complement to
+        :meth:`test_delete_emits_security_event_for_audited_namespace`:
+        only the namespaces in ``_AUDITED_SETTING_NAMESPACES`` enter
+        the audit chain; routine budget tweaks must stay off the
+        cryptographic signing path.
+        """
+        from synthorg.settings import service as service_mod
+
+        registry = SettingsRegistry()
+        registry.register(
+            _make_definition(
+                namespace=SettingNamespace.BUDGET,
+                key="total_monthly",
+                setting_type=SettingType.FLOAT,
+                yaml_path=None,
+            )
+        )
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+        )
+        captured = _install_logger_info_spy(monkeypatch, service_mod)
+        await svc.delete("budget", "total_monthly")
+        assert SECURITY_SETTINGS_CHANGED not in captured
+
     async def test_set_many_emits_security_event_for_audited_namespace(
         self,
         mock_repo: AsyncMock,

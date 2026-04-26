@@ -171,17 +171,22 @@ class PostgresLockoutRepository:
                 (username, window_start),
             )
             row = await cur.fetchone()
+            count = row[0] if row else 0
+            now_locked = count >= self._threshold
+            # Mutate the in-memory cache while still inside the
+            # transaction's async-with so a concurrent
+            # ``record_success`` cannot delete the failure rows and
+            # then race past us to clear ``_locked`` before our cache
+            # write lands. Holding the asyncio context plus the sync
+            # ``_locked_lock`` keeps the DB/cache pair ordered.
+            if now_locked:
+                with self._locked_lock:
+                    self._locked[username] = time.monotonic() + self._duration_seconds
 
-        count = row[0] if row else 0
-        if count >= self._threshold:
-            with self._locked_lock:
-                self._locked[username] = time.monotonic() + self._duration_seconds
-            # Caller logs SECURITY_AUTH_ACCOUNT_LOCKED with the
-            # contextual fields (attempts, threshold, duration);
-            # persistence does not emit decision events
-            # (#1599 persistence-boundary rule).
-            return True
-        return False
+        # Caller logs SECURITY_AUTH_ACCOUNT_LOCKED with the contextual
+        # fields (attempts, threshold, duration); persistence does not
+        # emit decision events (#1599 persistence-boundary rule).
+        return now_locked
 
     async def record_success(self, username: str) -> bool:
         """Clear failure count on successful login.
@@ -200,8 +205,13 @@ class PostgresLockoutRepository:
                 "DELETE FROM login_attempts WHERE username = %s",
                 (username,),
             )
-        with self._locked_lock:
-            return self._locked.pop(username, None) is not None
+            # Cache mutation inside the transaction: a concurrent
+            # ``record_failure`` can't insert + flip ``_locked`` past
+            # us; ours is the last committed write to both the DB and
+            # the cache.
+            with self._locked_lock:
+                was_locked = self._locked.pop(username, None) is not None
+        return was_locked
 
     async def cleanup_expired(self) -> int:
         """Remove old attempt records outside the recovery horizon.
