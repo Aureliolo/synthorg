@@ -87,7 +87,7 @@ class ProviderModelResponse(BaseModel):
 
 _PROVIDER_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$")
 _RESERVED_PROVIDER_NAMES: frozenset[str] = frozenset(
-    {"presets", "from-preset", "probe-preset", "discovery-policy"},
+    {"presets", "from-preset", "probe-local", "discovery-policy"},
 )
 
 
@@ -388,8 +388,11 @@ class ProbeLocalResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    results: dict[str, ProbePresetResponse] = Field(default_factory=dict)
-    errors: dict[str, str] = Field(default_factory=dict)
+    # Keys are preset names; ``NotBlankStr`` rejects empty / whitespace
+    # entries that would otherwise sneak through ``dict[str, ...]`` and
+    # render as ghost rows in the detected-list UI.
+    results: dict[NotBlankStr, ProbePresetResponse] = Field(default_factory=dict)
+    errors: dict[NotBlankStr, str] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _validate_disjoint_results_errors(self) -> Self:

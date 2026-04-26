@@ -344,7 +344,17 @@ class TestProbeLocalResponseInvariant:
 
 @pytest.mark.unit
 class TestProbeLocalEndpoint:
-    """Tests for POST /providers/probe-local (batch local probe)."""
+    """Tests for POST /providers/probe-local (batch local probe).
+
+    These cases assert against the real ``PROVIDER_PRESETS`` registry
+    via ``list_probable_presets()``, so they reference the actual
+    preset names ("ollama", "lm-studio", "vllm").  The CLAUDE.md
+    "test-provider" rule covers freshly-authored test fixtures, not
+    references to the registry under test -- replacing the names here
+    would require mocking ``list_probable_presets`` in every case and
+    lose the registry-integration assertion (catching e.g. a future
+    rename, accidental drop, or new preset that quietly slips in).
+    """
 
     async def test_all_local_presets_succeed(self) -> None:
         """Every probable preset's result lands in ``results``, none in ``errors``."""
@@ -500,18 +510,20 @@ class TestProbeLocalEndpoint:
             "synthorg.api.controllers.providers.probe_preset_urls",
             side_effect=fast_probe,
         ):
-            # Drain the bucket; one user, sequential calls.
-            for _ in range(20):
+            # Drain the bucket; one user, sequential calls.  Each
+            # admit must return a clean 2xx -- a 5xx would mean the
+            # handler regressed and is hiding behind "not 429".
+            # Litestar ``@post`` defaults to 201 Created on success;
+            # accept either 200 OR 201 to stay handler-config agnostic.
+            for i in range(20):
                 resp = test_client.post(
                     "/api/v1/providers/probe-local",
                     json={},
                     headers=make_auth_headers("ceo"),
                 )
-                # 200 (success), 502/503 (transient) all mean "the
-                # guard let it through".  429 here would invalidate
-                # the test setup.
-                assert resp.status_code != 429, (
-                    "Bucket drained earlier than expected -- check fixture"
+                assert resp.status_code in (200, 201), (
+                    f"Probe call {i + 1}/20 returned "
+                    f"{resp.status_code}; expected 2xx while bucket fills"
                 )
             # 21st call hits the cap.
             resp = test_client.post(
