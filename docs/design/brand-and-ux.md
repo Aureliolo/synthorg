@@ -7,11 +7,11 @@ description: Visual identity, theme architecture, color system, typography, dens
 
 ## Design Direction
 
-**Chosen direction**: Warm Ops -- a warm, approachable aesthetic with balanced density and spring-physics interactions, combined with semantic state-driven color encoding where every color communicates system status rather than serving as decoration.
+**Chosen direction**: Warm Ops, a warm, approachable aesthetic with balanced density and spring-physics interactions, combined with semantic state-driven color encoding where every color communicates system status rather than serving as decoration.
 
-**Why this direction**: Warmth makes an AI operations tool feel approachable without losing professionalism. Tying color exclusively to state (green = rising, amber = attention, red = critical) gives operators instant comprehension of system health. The brand accent is a warm soft blue -- deliberately neutral so that semantic state colors dominate the visual hierarchy. Orange/amber means "attention needed," not "this is SynthOrg."
+**Why this direction**: Warmth makes an AI operations tool feel approachable without losing professionalism. Tying color exclusively to state (green = rising, amber = attention, red = critical) gives operators instant comprehension of system health. The brand accent is a warm soft blue, deliberately neutral so that semantic state colors dominate the visual hierarchy. Orange/amber means "attention needed," not "this is SynthOrg."
 
-**What was rejected and why**: A cool blue-cyan palette (data center aesthetic) was too generic -- indistinguishable from Grafana/Datadog screenshots. A neutral gray palette (no hue) lacked enough identity to be recognizable. A high-energy violet/purple palette was visually fatiguing for sustained 8-hour use. These directions scored well on individual criteria but failed the combination of identity distinctiveness + sustained usability.
+**What was rejected and why**: A cool blue-cyan palette (data center aesthetic) was too generic, indistinguishable from Grafana/Datadog screenshots. A neutral gray palette (no hue) lacked enough identity to be recognizable. A high-energy violet/purple palette was visually fatiguing for sustained 8-hour use. These directions scored well on individual criteria but failed the combination of identity distinctiveness + sustained usability.
 
 **Design influences**: Linear (clean layout, balanced density), Vercel (status-first design), Dust.tt (warm approachability), Grafana (data density as a user preference).
 
@@ -23,7 +23,7 @@ Colors are **state-driven**, not decorative. Every colored element answers: "wha
 
 | Token | Purpose | Example hex | When to use |
 |-------|---------|-------------|-------------|
-| `accent` | Brand, interactive elements, links, focus rings, active nav | `#38bdf8` (warm soft blue -- tunable) | Default state, clickable things, brand identity |
+| `accent` | Brand, interactive elements, links, focus rings, active nav | `#38bdf8` (warm soft blue, tunable) | Default state, clickable things, brand identity |
 | `accent-dim` | Muted brand, secondary interactive, onboarding | Derived from accent | Hover states, secondary info, less prominent interactive |
 | `success` | Rising, improving, healthy, completed | `#10b981` (emerald) | Metrics trending up, tasks completed, agents active |
 | `warning` | Declining, degrading, attention needed | `#f59e0b` (amber) | Metrics trending down, budget nearing limit, stale tasks |
@@ -45,7 +45,7 @@ Metric cards, sparklines, and trend indicators use colors dynamically based on d
 | Data state | Color token | Rationale |
 |------------|-------------|-----------|
 | Improving / rising | `success` | Green = things getting better |
-| Stable / normal | `accent` or `text-muted` | Neutral -- no action needed |
+| Stable / normal | `accent` or `text-muted` | Neutral; no action needed |
 | Declining / degrading | `warning` | Amber = attention warranted |
 | Critical / threshold | `danger` | Red = act now |
 
@@ -57,9 +57,9 @@ Each theme is a single configuration object (~50 lines). All colors are CSS cust
 
 1. Create a new theme config (e.g. `themes/midnight.ts`) with all color tokens
 2. Register it in the theme index
-3. Done -- all components automatically pick up the new palette
+3. Done; all components automatically pick up the new palette
 
-No component code changes required. The 5 exploration themes (Ice Station, Warm Ops, Stealth, Signal, Neon) demonstrate this pattern -- each theme is ~50 lines of color token definitions with zero component changes.
+No component code changes required. The 5 exploration themes (Ice Station, Warm Ops, Stealth, Signal, Neon) demonstrate this pattern: each theme is ~50 lines of color token definitions with zero component changes.
 
 ## Typography
 
@@ -96,7 +96,7 @@ Density is an **independent user preference**, not tied to theme colors.
 
 ### How to Add a New Density Level
 
-Create a new `ThemeDensity` object with padding, gap, and font size values. Register it in the density index. Components read density from the theme context -- no component changes needed.
+Create a new `ThemeDensity` object with padding, gap, and font size values. Register it in the density index. Components read density from the theme context; no component changes needed.
 
 ## Animation
 
@@ -107,7 +107,7 @@ Animation is an **independent user preference**, controlling motion intensity.
 | Minimal | 200ms fade | None | Fade only | Subtle | Reduced motion preference, distraction-free |
 | Spring | Spring physics | Lift + shadow | Slide | Yes | Playful, responsive feel |
 | Instant | No animation | None | None | No | Maximum performance, zero latency feel |
-| Status-driven | Fade | None | Fade | Only on state change | Animation earns attention -- only moving things changed |
+| Status-driven | Fade | None | Fade | Only on state change | Animation earns attention; only moving things changed |
 | Aggressive | Slide + fade + scale | Lift + glow | Scale | Yes + shimmer | High energy, demo/presentation mode |
 
 **Recommended default**: Status-driven. Animation should communicate state change, not decoration. Static elements stay still; only things that changed move.
@@ -119,7 +119,7 @@ Sidebar mode is an **independent user preference**.
 | Mode | Behavior | Width | Best for |
 |------|----------|-------|----------|
 | Rail | Always visible, icon + label | 220px | Standard desktop use |
-| Collapsible (default) | Expanded by default, can collapse to icon rail. Remembers user preference. | 220px / 56px | Most users -- full nav when needed, compact when focused |
+| Collapsible (default) | Expanded by default, can collapse to icon rail. Remembers user preference. | 220px / 56px | Most users (full nav when needed, compact when focused) |
 | Hidden | Hamburger toggle, content gets full width | 240px (overlay) | Maximum content area, presentation |
 | Persistent | Always expanded with notification badges | 220px | High-interactivity workflows, many nav items |
 | Compact | Always visible, icons prominent, text secondary | 56px | Small screens, secondary monitors |
@@ -178,7 +178,7 @@ This was discovered during the design exploration (#765) and caused layout break
 - Keyboard navigation for all interactive elements
 - `aria-hidden="true"` on decorative icons
 - Escape key closes overlays/drawers
-- **Storybook a11y enforcement**: `parameters.a11y.test: 'error'` set globally in `.storybook/preview.tsx` -- all stories fail on WCAG violations, catching regressions at component development time
+- **Storybook a11y enforcement**: `parameters.a11y.test: 'error'` set globally in `.storybook/preview.tsx`; all stories fail on WCAG violations, catching regressions at component development time
 
 ## Storybook Tooling (v10)
 
@@ -192,7 +192,7 @@ The component development environment uses Storybook 10 with native type-safe co
 
 ## Component Inventory
 
-The following shared components live in `web/src/components/ui/` and form the building blocks for all dashboard pages. **Always compose pages from these** -- never recreate equivalent functionality inline.
+The following shared components live in `web/src/components/ui/` and form the building blocks for all dashboard pages. **Always compose pages from these**; never recreate equivalent functionality inline.
 
 ### Core Components
 
@@ -203,7 +203,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `Sparkline` | `sparkline.tsx` | `data`, `color?`, `width?`, `height?`, `animated?` | Pure SVG sparkline with gradient fill and animated draw. `color` defaults to `var(--so-accent)`. Standalone or inside MetricCard. |
 | `SectionCard` | `section-card.tsx` | `title`, `icon?`, `action?`, `children` | Titled card wrapper with Lucide icon, action slot, and content area. Use for every content section. |
 | `AgentCard` | `agent-card.tsx` | `name`, `role`, `department`, `status`, `currentTask?`, `timestamp?` | Consistent agent display. Composes Avatar + StatusBadge internally. Must look identical everywhere. |
-| `DeptHealthBar` | `dept-health-bar.tsx` | `name`, `health?`, `agentCount` | Animated horizontal fill bar with utilization percentage (null-safe -- shows N/A when utilization unavailable). Color auto-mapped via `getHealthColor()`. |
+| `DeptHealthBar` | `dept-health-bar.tsx` | `name`, `health?`, `agentCount` | Animated horizontal fill bar with utilization percentage (null-safe; shows N/A when utilization unavailable). Color auto-mapped via `getHealthColor()`. |
 | `ProgressGauge` | `progress-gauge.tsx` | `value`, `max?`, `label?`, `variant?`, `size?` | Circular or linear gauge for budget/utilization. `variant` defaults to `'circular'`, `max` defaults to 100. |
 | `StatPill` | `stat-pill.tsx` | `label`, `value` | Compact inline label + value pair for metadata rows. |
 | `Avatar` | `avatar.tsx` | `name`, `size?`, `borderColor?` | Circular initials avatar with optional colored border. Sizes: sm (24px), md (32px), lg (40px). |
@@ -236,7 +236,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `SegmentedControl` | `segmented-control.tsx` | `label`, `options`, `value`, `onChange`, `disabled?`, `size?`, `className?` | Accessible radiogroup with keyboard navigation (arrow keys + wrapping), size variants (`sm`/`md`), generic `<T extends string>` typing. |
 | `ThemeToggle` | `theme-toggle.tsx` | `className?` | Base UI Popover with 5-axis theme controls (color, density, typography, animation, sidebar). Rendered in StatusBar for global access. |
 | `LiveRegion` | `live-region.tsx` | `children`, `politeness?`, `debounceMs?`, `className?` | Debounced ARIA live region wrapper for real-time WS updates without overwhelming screen readers. Default: 500ms polite, 0ms assertive. |
-| `MobileUnsupportedOverlay` | `mobile-unsupported.tsx` | (none -- self-managing) | Full-screen overlay at <768px viewports directing users to desktop or CLI. Self-manages visibility via `useBreakpoint`. |
+| `MobileUnsupportedOverlay` | `mobile-unsupported.tsx` | (none, self-managing) | Full-screen overlay at <768px viewports directing users to desktop or CLI. Self-manages visibility via `useBreakpoint`. |
 | `LazyCodeMirrorEditor` | `lazy-code-mirror-editor.tsx` | Same as `CodeMirrorEditor` | Suspense-wrapped lazy-loaded CodeMirrorEditor. Drop-in replacement that defers ~200KB+ CodeMirror bundle. |
 | `MetadataGrid` | `metadata-grid.tsx` | `items`, `columns?`, `className?` | Key-value metadata grid for detail pages with configurable 2/3/4 columns and density-aware spacing. |
 | `ProjectStatusBadge` | `project-status-badge.tsx` | `status`, `showLabel?`, `className?` | Project status dot with optional label and semantic colors (planning/active/on_hold/completed/cancelled). |

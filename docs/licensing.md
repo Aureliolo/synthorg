@@ -13,7 +13,7 @@
 | Reselling or embedding SynthOrg as your core product | Conditional | Commercial license |
 | Contributing to SynthOrg | Yes | Sign the [CLA](https://github.com/Aureliolo/synthorg/blob/main/.github/CLA.md) |
 
-*"Conditional" uses require a commercial license -- please [contact us](https://synthorg.io/#contact) to discuss terms.*
+*"Conditional" uses require a commercial license; please [contact us](https://synthorg.io/#contact) to discuss terms.*
 
 ---
 
@@ -25,10 +25,10 @@ SynthOrg is licensed under the [Business Source License 1.1](https://github.com/
 
 BSL 1.1 is a "source available" license created by MariaDB. It is **not** an open-source license by the OSI definition, but it is close in spirit:
 
-- **Source code is public** -- you can read, fork, modify, and redistribute it
-- **Non-production use is unrestricted** -- learning, research, testing, evaluation, contributing
-- **Production use is governed by the Additional Use Grant** -- our grant is deliberately permissive (see below)
-- **Every version automatically converts to Apache 2.0** -- SynthOrg sets the Change Date to 3 years after each release (the BSL 1.1 terms also include a 4-year backstop, but our shorter Change Date always applies first)
+- **Source code is public**: you can read, fork, modify, and redistribute it
+- **Non-production use is unrestricted**: learning, research, testing, evaluation, contributing
+- **Production use is governed by the Additional Use Grant**: our grant is deliberately permissive (see below)
+- **Every version automatically converts to Apache 2.0**: SynthOrg sets the Change Date to 3 years after each release (the BSL 1.1 terms also include a 4-year backstop, but our shorter Change Date always applies first)
 
 ### Our Additional Use Grant
 
@@ -36,15 +36,15 @@ The Additional Use Grant is the part that distinguishes one BSL project from ano
 
 You **can** use SynthOrg freely in production if both conditions are met:
 
-1. **Not Competing Use** -- you are not offering SynthOrg itself (or a product whose substantial value derives from SynthOrg's functionality) to third parties on a hosted, managed, or embedded basis
-2. **Small Organization** -- your organization (including affiliates) has fewer than 500 employees and individual contractors
+1. **Not Competing Use**: you are not offering SynthOrg itself (or a product whose substantial value derives from SynthOrg's functionality) to third parties on a hosted, managed, or embedded basis
+2. **Small Organization**: your organization (including affiliates) has fewer than 500 employees and individual contractors
 
-If you meet both conditions, you need **no separate license** -- just use it.
+If you meet both conditions, you need **no separate license**; just use it.
 
 ### What Requires a Commercial License
 
-- **Competing Use by any organization** -- offering SynthOrg as a hosted or managed service, regardless of size
-- **Production use by organizations with 500+ employees** -- even for internal use
+- **Competing Use by any organization**: offering SynthOrg as a hosted or managed service, regardless of size
+- **Production use by organizations with 500+ employees**: even for internal use
 
 !!! tip "Commercial licenses may be free"
 
@@ -73,9 +73,9 @@ Copyleft licenses (AGPL, SSPL) attempt to fix this but create friction for legit
 
 BSL 1.1 threads the needle:
 
-- **For most users, it behaves like Apache 2.0** -- read, modify, use in production, no strings attached
-- **It only restricts the specific behavior we want to prevent** -- competing commercial use without engagement
-- **It automatically becomes Apache 2.0** -- every version converts on a fixed schedule, so there is zero long-term lock-in
+- **For most users, it behaves like Apache 2.0**: read, modify, use in production, no strings attached
+- **It only restricts the specific behavior we want to prevent**: competing commercial use without engagement
+- **It automatically becomes Apache 2.0**: every version converts on a fixed schedule, so there is zero long-term lock-in
 
 This is the same approach used by CockroachDB, Sentry, MariaDB MaxScale, and others. It has a strong track record.
 
@@ -89,7 +89,7 @@ AGPL would require anyone running SynthOrg as a service to release their modific
 
 ### Why the 500-Employee Threshold?
 
-The threshold exists to distinguish between companies that can reasonably engage in a licensing conversation and those that cannot. A 10-person startup using SynthOrg to automate internal workflows should not need to negotiate a license. A 5,000-person enterprise can afford a conversation -- and we will often grant a free license anyway.
+The threshold exists to distinguish between companies that can reasonably engage in a licensing conversation and those that cannot. A 10-person startup using SynthOrg to automate internal workflows should not need to negotiate a license. A 5,000-person enterprise can afford a conversation, and we will often grant a free license anyway.
 
 The number 500 is a convention borrowed from other BSL projects and roughly aligns with the EU's definition of "large enterprise."
 
@@ -114,7 +114,7 @@ This means:
 We require a [Contributor License Agreement](https://github.com/Aureliolo/synthorg/blob/main/.github/CLA.md) before merging external contributions. The CLA:
 
 - Grants SynthOrg a non-exclusive license to your contributions
-- **Does not transfer ownership** -- you retain full rights to your work
+- **Does not transfer ownership**: you retain full rights to your work
 - Enables dual-licensing (BSL for the community, commercial licenses for enterprises)
 - Is based on the Apache ICLA template, widely used in open source
 
@@ -126,7 +126,7 @@ This is the same model used by Apache Software Foundation, Google, Meta, and man
 
 ### How to Sign
 
-When you open your first pull request, a bot will comment with instructions. Reply with the specified text -- no forms, no external services. Your signature is recorded in the repository.
+When you open your first pull request, a bot will comment with instructions. Reply with the specified text; no forms, no external services. Your signature is recorded in the repository.
 
 ---
 
@@ -149,7 +149,7 @@ Please [open a discussion](https://github.com/Aureliolo/synthorg/discussions) or
 
 **Yes**, if your company has fewer than 500 employees (including contractors and affiliates). No license needed.
 
-If your company has 500+ employees, [contact us](https://synthorg.io/#contact) -- we are likely to grant a free commercial license for internal use.
+If your company has 500+ employees, [contact us](https://synthorg.io/#contact); we are likely to grant a free commercial license for internal use.
 
 ### Can I build a product that uses SynthOrg?
 
@@ -165,8 +165,8 @@ The version becomes fully open source under Apache 2.0, with no restrictions wha
 
 ### Is this "open source"?
 
-Technically, no -- BSL 1.1 is not OSI-approved. It is "source available." However, for most users, the practical experience is identical to open source: you can read, modify, and use the code freely. The restriction only applies to a narrow set of commercial scenarios.
+Technically, no: BSL 1.1 is not OSI-approved. It is "source available." However, for most users, the practical experience is identical to open source: you can read, modify, and use the code freely. The restriction only applies to a narrow set of commercial scenarios.
 
 ### Can I use SynthOrg for a hackathon, course, or workshop?
 
-**Yes** for learning, prototyping, and evaluation -- these are non-production use and always permitted. If your hackathon project goes into production (e.g., deployed as a live service), the normal Additional Use Grant conditions apply.
+**Yes** for learning, prototyping, and evaluation: these are non-production use and always permitted. If your hackathon project goes into production (e.g., deployed as a live service), the normal Additional Use Grant conditions apply.

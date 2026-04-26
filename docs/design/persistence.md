@@ -30,7 +30,7 @@ by a caller that reached past the abstraction.
   payload *is* DDL keyword strings; and (3) test fixtures and conformance
   harnesses that hold driver primitives for cross-subsystem setup.  The
   authoritative list lives in `_ALLOWLIST` inside
-  `scripts/check_persistence_boundary.py` -- consult it before assuming a
+  `scripts/check_persistence_boundary.py`; consult it before assuming a
   path is (or is not) covered.  Any new exception must be added there with
   a justifying comment.
 - Every durable feature **must** define a repository protocol in
@@ -41,11 +41,9 @@ by a caller that reached past the abstraction.
   first.**  Never hand-edit SQL in `persistence/{sqlite,postgres}/revisions/`.
   Never edit `atlas.sum`.  Never run `atlas migrate hash` post-release (a
   PreToolUse hook blocks it).
-- Per-line opt-out: `# lint-allow: persistence-boundary -- <required
-  justification>` as a trailing comment.  The justification after `--` must be
-  non-empty.
+- Per-line opt-out: append `# lint-allow: persistence-boundary -- <required justification>` as a trailing comment. The justification after the `--` separator must be non-empty.
 - Enforced by `scripts/check_persistence_boundary.py`, wired into the pre-push
-  hook and the CI Lint job -- both fail loudly on violations.
+  hook and the CI Lint job; both fail loudly on violations.
 
 The same rule is restated verbatim in [`CLAUDE.md`](../../CLAUDE.md)
 (`## Persistence Boundary`) so Claude and human developers see the same contract
@@ -65,7 +63,7 @@ one level up in `src/synthorg/persistence/`:
 | Protocol module                        | Concerns |
 |----------------------------------------|-----------|
 | `protocol.py` (`PersistenceBackend`)   | Backend aggregate: connect / disconnect, migrate, and accessors for every repository below |
-| `approval_protocol.py`                 | `ApprovalRepository` -- human-in-the-loop decision queue |
+| `approval_protocol.py`                 | `ApprovalRepository`: human-in-the-loop decision queue |
 | `auth_protocol.py`                     | `SessionRepository`, `RefreshTokenRepository`, `LockoutRepository` |
 | `escalation_protocol.py`               | Conflict-resolution escalation queue |
 | `fine_tune_protocol.py`                | `FineTuneRunRepository`, `FineTuneCheckpointRepository` |
@@ -75,7 +73,7 @@ one level up in `src/synthorg/persistence/`:
 | `version_repo.py`                      | Generic version-snapshot repository reused by ontology + future versioned entities |
 | `secret_backends/protocol.py`          | `SecretBackend` protocol used by the secret-backend factory |
 
-The table above is representative, not exhaustive -- the authoritative
+The table above is representative, not exhaustive; the authoritative
 inventory is the set of properties / factory methods on
 ``PersistenceBackend`` in ``src/synthorg/persistence/protocol.py``, and the
 concrete repositories live alongside the dialect-specific backends in
@@ -163,7 +161,7 @@ backend implements:
 `TaskEngine.list_tasks(..., include_total=True)` composes both methods: the
 page comes from `list_tasks` and (when `include_total=True`) the cardinality
 comes from a separate `count_tasks` call.  `include_total=False` skips the
-second round trip entirely -- meant for callers that only need `has_more`
+second round trip entirely, meant for callers that only need `has_more`
 semantics via an extra page, not an exact total.  Negative `limit` or
 `offset` is rejected at the engine boundary with `ValueError`.
 
@@ -179,7 +177,7 @@ HTTP 400 `InvalidCursorError` without leaking internal IDs or counts.
 
 The contract requires every paginated endpoint to feed `paginate_cursor`
 a **deterministically-sorted** sequence so cursor offsets remain stable
-across calls.  The sort key MUST be **total** -- ties on the visible
+across calls.  The sort key MUST be **total**; ties on the visible
 sort fields create page-boundary drift (a request for the next page can
 return a row already on the previous page, or skip a row entirely).
 When the natural sort fields are not unique, append the entity's stable
@@ -202,9 +200,9 @@ snapshot via cursor walk), both in `web/src/api/client.ts`.
 ### Backend capability methods
 
 When an application service needs a subsystem whose construction differs
-between backends -- e.g. ontology versioning that wraps an
+between backends (e.g. ontology versioning that wraps an
 ``aiosqlite.Connection`` for SQLite but an ``AsyncConnectionPool`` for
-Postgres -- the pattern is a ``build_*()`` method on ``PersistenceBackend``
+Postgres) the pattern is a ``build_*()`` method on ``PersistenceBackend``
 instead of an ``isinstance(persistence, ConcreteBackend)`` branch at the
 call site.  Current examples include ``build_lockouts(auth_config)``,
 ``build_escalations(notify_channel)``, and ``build_ontology_versioning()``.
@@ -218,18 +216,18 @@ code audit (ARC-1, #1491).
 The schema (`src/synthorg/persistence/postgres/schema.sql` and its SQLite
 sibling) mixes two write patterns:
 
-**Mutable tables** -- canonical state with in-place updates.  Examples:
+**Mutable tables**: canonical state with in-place updates.  Examples:
 `users`, `settings`, `agent_states`, `heartbeats`, `approvals`,
 `custom_rules`.  Rows are updated on every state transition; row count stays
 bounded.  Concurrent updates are serialised by MVCC + application-level CAS
 (settings use `updated_at` as an etag; see `SettingsRepository.set` and
 `set_many`).  Both `approvals` (human-in-the-loop decision queue,
 `pending`/`approved`/`rejected`/`expired` state machine) and `custom_rules`
-(operator-defined alert thresholds) exist on both backends -- previously
+(operator-defined alert thresholds) exist on both backends; previously
 they shipped only on SQLite and the Postgres parity gap was closed in the
 budget-persistence audit.
 
-**Append-only time-series tables** -- facts with a timestamp column, never
+**Append-only time-series tables**: facts with a timestamp column, never
 updated in place.  Examples: `cost_records`, `audit_entries`,
 `lifecycle_events`, `messages`, `task_metrics`, `collaboration_metrics`,
 `login_attempts`.  These tables grow linearly with system activity and are the
@@ -266,7 +264,7 @@ tracked on the roadmap.
 
 `heartbeats` is deliberately **excluded** from the append-only set.  Despite
 having a timestamp, it stores one row per `execution_id` and updates that row
-on every pulse -- the write pattern is update-heavy and the row count is
+on every pulse; the write pattern is update-heavy and the row count is
 bounded by the number of live executions.  Hypertables optimise for immutable
 append-only data, so converting `heartbeats` would be the wrong choice.
 
@@ -301,14 +299,14 @@ applies the declarative schema migrations, then a dedicated step calls
 (`if_not_exists => TRUE`) so reruns and restores are safe.  If the
 `timescaledb` extension is not installed on the server, the flag is treated as
 a best-effort hint and the backend logs a warning rather than failing the
-migration -- this lets operators leave the flag true in shared config and have
+migration; this lets operators leave the flag true in shared config and have
 it degrade gracefully on clusters that do not support it.
 
 **Scope: Apache-2.0 features only.**  The Postgres backend uses exclusively
 TimescaleDB features that ship under Apache-2.0: core hypertables,
 `create_hypertable`, chunk management, and `drop_chunks`.  Retention policies,
 compression, and continuous aggregates are under the Timescale License and are
-**not** used -- they would force every deployment to accept the Timescale
+**not** used; they would force every deployment to accept the Timescale
 License terms and would not run on the OSS image (`-oss` tag).  Self-hosted
 operators who want retention today can call `drop_chunks('cost_records',
 older_than => INTERVAL '90 days')` on their own cron schedule until SynthOrg
@@ -325,8 +323,8 @@ grows a backend-owned retention policy that stays within Apache-2.0.
 TimescaleDB is a self-hosted-only feature.  The major managed Postgres offerings
 (AWS RDS, Google Cloud SQL) do not allow custom extensions; operators
 cannot install `timescaledb` there.  Azure Database for PostgreSQL
-Flexible Server is an exception -- it supports TimescaleDB as an extension.  SynthOrg runs
-cleanly on all of them -- leave `enable_timescaledb=False` and the schema stays
+Flexible Server is an exception: it supports TimescaleDB as an extension.  SynthOrg runs
+cleanly on all of them; leave `enable_timescaledb=False` and the schema stays
 fully relational.  The composite primary keys on `cost_records` and
 `audit_entries` are valid on vanilla Postgres and do not require TimescaleDB to
 function; they just preserve the option of turning hypertables on later if the
@@ -416,7 +414,7 @@ via `SQUASH_THRESHOLD`), the oldest files beyond the **newest 50**
 |---|---|
 | Fresh install | Applies checkpoint (full schema to squash point) then remaining files |
 | At or past squash point | Skips checkpoint, applies only unapplied files |
-| Before squash point | **Error** -- the individual files it needs are gone; upgrade through the unsquashed release first |
+| Before squash point | **Error**: the individual files it needs are gone; upgrade through the unsquashed release first |
 
 The "before squash point" case is safe because the threshold (100) and keep
 count (50) guarantee that by the time a squash runs, all production databases
