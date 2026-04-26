@@ -62,96 +62,114 @@ func (m setupTUI) View() tea.View {
 // ── Phase views ─────────────────────────────────────────────────────
 
 func (m setupTUI) viewReinit() []string {
-	w := boxW
-	o := make([]string, 0, 12)
-	o = append(o, boxTop("Existing Configuration", w))
-	o = append(o, brow("", w))
-	o = append(o, brow(sLabel.Render("Configuration already exists at:"), w))
-	path := m.reinitPath
-	if len(path) > w-2 {
-		path = "..." + path[len(path)-w+5:]
+	content := []string{
+		"",
+		sLabel.Render("Configuration already exists at:"),
+		sCmd.Render(m.reinitPath),
+		"",
+		sWarn.Render("\u26a0") + "  A new JWT secret will be generated.",
+		"   Running containers will need a restart.",
+		"",
+		"", // placeholder for buttons -- needs box width to center
+		"",
 	}
-	o = append(o, brow(sCmd.Render(path), w))
-	o = append(o, brow("", w))
-	o = append(o, brow(sWarn.Render("\u26a0")+"  A new JWT secret will be generated.", w))
-	o = append(o, brow("   Running containers will need a restart.", w))
-	o = append(o, brow("", w))
-	o = append(o, brow(btnPair("Overwrite", "Cancel", m.focus == fReinitOverwrite, w), w))
-	o = append(o, brow("", w))
-	o = append(o, boxBottom(w))
+	w := contentBoxWidth(content)
+	content[7] = btnPair("Overwrite", "Cancel", m.focus == fReinitOverwrite, w)
+	o := renderBox("Existing Configuration", content, w)
 	o = append(o, sDim.Render("\u2190\u2192 toggle  enter select  esc cancel"))
 	return o
 }
 
 func (m setupTUI) viewSetup() []string {
-	w := boxW
-	var main []string
-	main = append(main, boxTop("Setup", w))
-	main = append(main, brow("", w))
+	// Toggle rows depend on the final box width because they distribute their
+	// own internal padding. We compute width from the non-toggle content first
+	// (longest contributor is the data-directory path), then render toggles at
+	// that width.
+	prelim := []string{
+		"",
+		flabel("Data directory", m.focus == fDataDir),
+		"  " + m.dataDir.View(),
+	}
+	if m.advExpanded {
+		prelim = append(prelim,
+			"  "+m.backendPort.View(),
+			"  "+m.webPort.View(),
+		)
+		if m.persistence == 1 {
+			prelim = append(prelim, "  "+m.postgresPort.View())
+		}
+		if m.busBackend == 1 {
+			prelim = append(prelim, "  "+m.natsPort.View())
+		}
+	}
+	w := contentBoxWidth(prelim)
 
-	// Data directory
-	main = append(main, brow(flabel("Data directory", m.focus == fDataDir), w))
-	main = append(main, brow("  "+m.dataDir.View(), w))
-	main = append(main, brow("", w))
-
-	// Database toggle (promoted from advanced)
-	main = append(main, brow(m.persistenceToggle(w), w))
-	main = append(main, brow("", w))
-
-	// Bus backend toggle (promoted from advanced)
-	main = append(main, brow(m.busToggle(w), w))
-	main = append(main, brow("", w))
-
-	// Fine-tuning toggle
-	main = append(main, brow(m.fineTuningToggle(w), w))
+	content := []string{
+		"",
+		flabel("Data directory", m.focus == fDataDir),
+		"  " + m.dataDir.View(),
+		"",
+		m.persistenceToggle(w),
+		"",
+		m.busToggle(w),
+		"",
+		m.fineTuningToggle(w),
+	}
 	if m.fineTuning {
 		// Variant row appears only when fine-tuning is enabled. The dependent
 		// relationship is signalled by the "  Variant" label in
 		// fineTuneVariantToggle, which keeps the toggle column aligned with
 		// its parent row.
-		main = append(main, brow(m.fineTuneVariantToggle(w), w))
+		content = append(content, m.fineTuneVariantToggle(w))
 	}
-	main = append(main, brow("", w))
+	content = append(content, "")
 
-	// Advanced toggle
 	arrow := "\u25b8"
 	if m.advExpanded {
 		arrow = "\u25be"
 	}
 	togTxt := arrow + " Advanced settings"
 	if m.focus == fAdvToggle {
-		main = append(main, brow(sBrand.Render(togTxt), w))
+		content = append(content, sBrand.Render(togTxt))
 	} else {
-		main = append(main, brow(sDim.Render(togTxt), w))
+		content = append(content, sDim.Render(togTxt))
 	}
 
 	if m.advExpanded {
-		main = append(main, brow("", w))
-		main = append(main, brow(m.sandboxToggle(w), w))
-		main = append(main, brow("", w))
-		main = append(main, brow(m.encryptSecretsToggle(w), w))
-		main = append(main, brow("", w))
-		main = append(main, brow(flabel("Backend port", m.focus == fBackendPort), w))
-		main = append(main, brow("  "+m.backendPort.View(), w))
-		main = append(main, brow("", w))
-		main = append(main, brow(flabel("Dashboard port", m.focus == fWebPort), w))
-		main = append(main, brow("  "+m.webPort.View(), w))
+		content = append(content,
+			"",
+			m.sandboxToggle(w),
+			"",
+			m.encryptSecretsToggle(w),
+			"",
+			flabel("Backend port", m.focus == fBackendPort),
+			"  "+m.backendPort.View(),
+			"",
+			flabel("Dashboard port", m.focus == fWebPort),
+			"  "+m.webPort.View(),
+		)
 		if m.persistence == 1 {
-			main = append(main, brow("", w))
-			main = append(main, brow(flabel("Postgres port", m.focus == fPostgresPort), w))
-			main = append(main, brow("  "+m.postgresPort.View(), w))
+			content = append(content,
+				"",
+				flabel("Postgres port", m.focus == fPostgresPort),
+				"  "+m.postgresPort.View(),
+			)
 		}
 		if m.busBackend == 1 {
-			main = append(main, brow("", w))
-			main = append(main, brow(flabel("NATS port", m.focus == fNatsPort), w))
-			main = append(main, brow("  "+m.natsPort.View(), w))
+			content = append(content,
+				"",
+				flabel("NATS port", m.focus == fNatsPort),
+				"  "+m.natsPort.View(),
+			)
 		}
 	}
 
-	main = append(main, brow("", w))
-	main = append(main, brow(btnCenter("Continue", m.focus == fContinue, w), w))
-	main = append(main, brow("", w))
-	main = append(main, boxBottom(w))
+	content = append(content,
+		"",
+		btnCenter("Continue", m.focus == fContinue, w),
+		"",
+	)
+	main := renderBox("Setup", content, w)
 
 	help := "\u2191\u2193 navigate  enter select  esc quit"
 	isToggle := m.focus == fSandbox || m.focus == fBusBackend || m.focus == fPersistence || m.focus == fFineTuning || m.focus == fFineTuneVariant || m.focus == fEncryptSecrets
@@ -373,45 +391,46 @@ func sideBySide(left, right []string, gap int) []string {
 }
 
 func (m setupTUI) viewTelemetry() []string {
-	w := boxW
-	o := make([]string, 0, 16)
-	o = append(o, boxTop("Telemetry", w))
-	o = append(o, brow("", w))
-	o = append(o, brow(sLabel.Render("Help improve SynthOrg?"), w))
-	o = append(o, brow("", w))
-	o = append(o, brow("Send anonymous usage stats (agent count,", w))
-	o = append(o, brow("feature usage, error rates).", w))
-	o = append(o, brow("", w))
-	o = append(o, brow(sOn.Render("\u2713")+" No API keys, content, or personal data.", w))
-	o = append(o, brow("", w))
-
-	// Dynamic: show opposite command based on current selection
-	if m.focus == fTelYes {
-		o = append(o, brow(sMuted.Render("Disable later: ")+sCmd.Render("synthorg config set"), w))
-		o = append(o, brow(sCmd.Render("telemetry_opt_in false"), w))
-	} else {
-		o = append(o, brow(sMuted.Render("Enable later: ")+sCmd.Render("synthorg config set"), w))
-		o = append(o, brow(sCmd.Render("telemetry_opt_in true"), w))
+	content := []string{
+		"",
+		sLabel.Render("Help improve SynthOrg?"),
+		"",
+		"Send anonymous usage stats (agent count,",
+		"feature usage, error rates).",
+		"",
+		sOn.Render("\u2713") + " No API keys, content, or personal data.",
+		"",
 	}
-
-	o = append(o, brow("", w))
-	o = append(o, brow(btnPairEx("Yes", "No", m.focus == fTelYes, btnWarn, w), w))
-	o = append(o, brow("", w))
-	o = append(o, boxBottom(w))
+	// Dynamic: show opposite command based on current selection.
+	if m.focus == fTelYes {
+		content = append(content,
+			sMuted.Render("Disable later: ")+sCmd.Render("synthorg config set"),
+			sCmd.Render("telemetry_opt_in false"),
+		)
+	} else {
+		content = append(content,
+			sMuted.Render("Enable later: ")+sCmd.Render("synthorg config set"),
+			sCmd.Render("telemetry_opt_in true"),
+		)
+	}
+	content = append(content, "", "", "") // spacer, button placeholder, spacer
+	w := contentBoxWidth(content)
+	content[len(content)-2] = btnPairEx("Yes", "No", m.focus == fTelYes, btnWarn, w)
+	o := renderBox("Telemetry", content, w)
 	o = append(o, sDim.Render("\u2190\u2192 toggle  enter select  y/n shortcut"))
 	return o
 }
 
 func (m setupTUI) viewSummary() []string {
-	w := boxW
-	o := make([]string, 0, 20)
-	o = append(o, boxTop("Ready", w))
-	o = append(o, brow("", w))
-	o = append(o, brow(sSuccess.Render("\u2713 SynthOrg initialized"), w))
-	o = append(o, brow("", w))
-
 	data := m.buildSummary()
-	for _, e := range summaryEntries(data) {
+	entries := summaryEntries(data)
+	content := make([]string, 0, len(entries)+8)
+	content = append(content,
+		"",
+		sSuccess.Render("\u2713 SynthOrg initialized"),
+		"",
+	)
+	for _, e := range entries {
 		var val string
 		switch e.kind {
 		case entryOK:
@@ -423,15 +442,18 @@ func (m setupTUI) viewSummary() []string {
 		default:
 			val = e.value
 		}
-		o = append(o, brow(sLabel.Render(fmt.Sprintf("%-16s", e.label))+val, w))
+		content = append(content, sLabel.Render(fmt.Sprintf("%-16s", e.label))+val)
 	}
-
-	o = append(o, brow("", w))
-	o = append(o, brow(sLabel.Render("Start SynthOrg now?"), w))
-	o = append(o, brow("", w))
-	o = append(o, brow(btnPair("Yes, start", "No, exit", m.focus == fStartYes, w), w))
-	o = append(o, brow("", w))
-	o = append(o, boxBottom(w))
+	content = append(content,
+		"",
+		sLabel.Render("Start SynthOrg now?"),
+		"",
+		"", // button placeholder
+		"",
+	)
+	w := contentBoxWidth(content)
+	content[len(content)-2] = btnPair("Yes, start", "No, exit", m.focus == fStartYes, w)
+	o := renderBox("Ready", content, w)
 	o = append(o, sDim.Render("\u2190\u2192 toggle  enter select"))
 	return o
 }
@@ -549,6 +571,34 @@ func (m setupTUI) buildSummary() summaryData {
 }
 
 // ── Box primitives ──────────────────────────────────────────────────
+
+// contentBoxWidth returns the inner width to use when wrapping a slice of
+// content lines in a bordered box: the larger of boxW and the widest
+// rendered content row, so a long path or wide toggle row widens the whole
+// box uniformly instead of pushing one row's right border past the others.
+func contentBoxWidth(content []string) int {
+	w := boxW
+	for _, line := range content {
+		if cw := lipgloss.Width(line); cw > w {
+			w = cw
+		}
+	}
+	return w
+}
+
+// renderBox wraps content lines in a bordered box of the given inner width.
+// Width is the caller's responsibility (typically via contentBoxWidth) so
+// that toggles and buttons -- which distribute their own internal padding --
+// can be rendered at the final width before being passed in.
+func renderBox(title string, content []string, w int) []string {
+	out := make([]string, 0, len(content)+2)
+	out = append(out, boxTop(title, w))
+	for _, line := range content {
+		out = append(out, brow(line, w))
+	}
+	out = append(out, boxBottom(w))
+	return out
+}
 
 func boxTop(title string, w int) string {
 	tw := lipgloss.Width(title)
