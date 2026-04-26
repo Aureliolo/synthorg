@@ -19,6 +19,25 @@ Sanctioned exceptions cover three categories. The authoritative list lives in `_
 
 - Hold driver primitives for cross-subsystem setup.
 
+## Shared helpers
+
+`src/synthorg/persistence/_shared/` is the canonical home for backend-agnostic serialization, deserialization, error-classification, and timestamp-normalization logic. Repositories pass driver-specific bits (JSON wrappers, error-class predicates) in as callables so the helpers stay portable. Current helpers:
+
+- `datetime_marshaller.py`: strict pair `parse_iso_utc(str) -> datetime` and `format_iso_utc(datetime) -> str`. Both reject naive datetimes (`ValueError`) and normalize to UTC. Use these for any persistence path that round-trips ISO 8601 timestamps through TEXT columns, JSON envelopes, or settings DTOs.
+- `coerce_row_timestamp(value: str | datetime) -> datetime`: canonical row-deserialization dispatcher. Every repository `_row_to_*` helper should call it; it tolerates SQLite TEXT (`str`), SQLite TEXT with `detect_types=PARSE_DECLTYPES` (`datetime`), Postgres `TIMESTAMPTZ` (tz-aware `datetime`, possibly in the session timezone), and legacy / migrated rows persisted as ISO strings even where the column is now typed.
+    - **String path**: routed through `parse_iso_utc` (strict naive rejection -- a naive ISO string surfaces as `ValueError`).
+    - **Datetime path**: routed through `normalize_utc` (treats naive as UTC and calls `astimezone(UTC)` on aware values).
+    - **Error path**: any other input type raises `TypeError` so a corrupt row surfaces loudly via the enclosing `MalformedRowError` / `QueryError` handler instead of silently producing garbage.
+- `normalize_utc(datetime) -> datetime`: relaxed coercer (treats naive as UTC, calls `astimezone(UTC)` on aware). Used internally by `coerce_row_timestamp`'s datetime branch. Call directly only when the input is statically known to be a `datetime` (e.g. when the caller has already produced a `datetime.now(UTC)` and just needs to defend against a future code change introducing a non-UTC offset).
+- `audit.py`: shared `AuditEntry` row<->payload helpers (`audit_entry_to_payload`, `row_to_audit_entry`, `classify_audit_save_error`).
+- `custom_rule.py`: shared custom-rule deserialization (`row_to_custom_rule`, `serialize_altitudes`).
+
+When to use which: the strict pair (`parse_iso_utc` / `format_iso_utc`) sits at the boundary where ISO strings cross the persistence layer (settings DTOs, JSON envelopes, SQLite TEXT writes); `coerce_row_timestamp` sits inside `_row_to_*` deserializers where the driver shape is uncertain; `normalize_utc` is the lowest-level primitive and is rarely called directly by repository code.
+
+The new helper is covered by `tests/unit/persistence/_shared/test_datetime_marshaller.py` (unit suite, dedicated `TestCoerceRowTimestamp` class) and exercised end-to-end by every backend conformance test that round-trips a timestamped entity (`test_audit_repository.py`, `test_custom_rule_repo.py`, `test_settings_repo.py`, etc.).
+
+Adding a new shared helper: extract the duplicated logic into `_shared/`, add a `test_*_helpers.py` unit suite alongside it, and add a conformance test that runs against both backends.
+
 ## In-memory fallbacks
 
 In-memory fallbacks in `persistence/integration_stubs.py` are named `InMemoryXRepository` (NOT `StubXRepository`) to signal that they are *working* repositories, just process-local and non-durable. These still require durable SQLite + Postgres counterparts (tracked in issue #1517); the `InMemory*` naming does not relax that obligation.

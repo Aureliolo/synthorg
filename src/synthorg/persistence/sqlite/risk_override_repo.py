@@ -9,11 +9,12 @@ import aiosqlite
 from pydantic import AwareDatetime, ValidationError
 
 from synthorg.core.enums import ApprovalRiskLevel
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
     PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
 )
+from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 from synthorg.persistence.errors import DuplicateRecordError, PersistenceError
 from synthorg.security.rules.risk_override import RiskTierOverride
 
@@ -34,13 +35,6 @@ def _is_unique_constraint_error(exc: sqlite3.IntegrityError) -> bool:
         "SQLITE_CONSTRAINT_UNIQUE",
         "SQLITE_CONSTRAINT_PRIMARYKEY",
     }
-
-
-def _ensure_utc(dt: datetime) -> datetime:
-    """Attach UTC if the parsed datetime is naive."""
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=UTC)
-    return dt
 
 
 class SQLiteRiskOverrideRepository:
@@ -84,12 +78,10 @@ class SQLiteRiskOverrideRepository:
             DuplicateRecordError: If an override with the same ID exists.
             PersistenceError: If the save fails.
         """
-        created_at_utc = override.created_at.astimezone(UTC).isoformat()
-        expires_at_utc = override.expires_at.astimezone(UTC).isoformat()
+        created_at_utc = format_iso_utc(override.created_at)
+        expires_at_utc = format_iso_utc(override.expires_at)
         revoked_at_utc = (
-            override.revoked_at.astimezone(UTC).isoformat()
-            if override.revoked_at
-            else None
+            format_iso_utc(override.revoked_at) if override.revoked_at else None
         )
 
         try:
@@ -116,18 +108,20 @@ class SQLiteRiskOverrideRepository:
             if _is_unique_constraint_error(exc):
                 msg = f"Risk override {override.id!r} already exists"
                 raise DuplicateRecordError(msg) from exc
-            msg = f"Failed to save risk override: {exc}"
-            logger.exception(
+            msg = "Failed to save risk override"
+            logger.warning(
                 PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise PersistenceError(msg) from exc
         except (sqlite3.Error, aiosqlite.Error) as exc:
             await self._rollback_quietly()
-            msg = f"Failed to save risk override: {exc}"
-            logger.exception(
+            msg = "Failed to save risk override"
+            logger.warning(
                 PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise PersistenceError(msg) from exc
 
@@ -144,10 +138,11 @@ class SQLiteRiskOverrideRepository:
             )
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to get risk override: {exc}"
-            logger.exception(
+            msg = "Failed to get risk override"
+            logger.warning(
                 PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise PersistenceError(msg) from exc
 
@@ -157,7 +152,7 @@ class SQLiteRiskOverrideRepository:
 
     async def list_active(self) -> tuple[RiskTierOverride, ...]:
         """Return all active (non-expired, non-revoked) overrides."""
-        now_utc = datetime.now(tz=UTC).isoformat()
+        now_utc = format_iso_utc(datetime.now(UTC))
         try:
             cursor = await self._db.execute(
                 f"SELECT {_COLS} FROM risk_overrides "  # noqa: S608
@@ -167,10 +162,11 @@ class SQLiteRiskOverrideRepository:
             )
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to list active overrides: {exc}"
-            logger.exception(
+            msg = "Failed to list active overrides"
+            logger.warning(
                 PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise PersistenceError(msg) from exc
 
@@ -178,12 +174,21 @@ class SQLiteRiskOverrideRepository:
         for row in rows:
             try:
                 results.append(_row_to_override(row))
-            except ValueError, ValidationError:
+            except (ValueError, ValidationError, TypeError) as exc:
+                # Never silently drop a malformed active override:
+                # callers rely on ``list_active`` to return the full
+                # current policy set, so a partial result would be a
+                # dangerous security regression (missing overrides
+                # mean risk rules silently revert to defaults).
+                row_id = row[0] if row else "unknown"
                 logger.warning(
                     PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
-                    error="failed to deserialize row",
-                    row_id=row[0] if row else "unknown",
+                    row_id=row_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
+                msg = f"Failed to deserialize active risk override row {row_id!r}"
+                raise PersistenceError(msg) from exc
         return tuple(results)
 
     async def revoke(
@@ -194,7 +199,7 @@ class SQLiteRiskOverrideRepository:
         revoked_at: AwareDatetime,
     ) -> bool:
         """Mark an override as revoked."""
-        revoked_at_utc = revoked_at.astimezone(UTC).isoformat()
+        revoked_at_utc = format_iso_utc(revoked_at)
         try:
             async with self._write_lock:
                 cursor = await self._db.execute(
@@ -206,10 +211,11 @@ class SQLiteRiskOverrideRepository:
                 await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             await self._rollback_quietly()
-            msg = f"Failed to revoke risk override: {exc}"
-            logger.exception(
+            msg = "Failed to revoke risk override"
+            logger.warning(
                 PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise PersistenceError(msg) from exc
 
@@ -238,10 +244,10 @@ def _row_to_override(row: Any) -> RiskTierOverride:
         override_tier=ApprovalRiskLevel(override_tier),
         reason=reason,
         created_by=created_by,
-        created_at=_ensure_utc(datetime.fromisoformat(created_at)),
-        expires_at=_ensure_utc(datetime.fromisoformat(expires_at)),
+        created_at=coerce_row_timestamp(created_at),
+        expires_at=coerce_row_timestamp(expires_at),
         revoked_at=(
-            _ensure_utc(datetime.fromisoformat(revoked_at)) if revoked_at else None
+            coerce_row_timestamp(revoked_at) if revoked_at is not None else None
         ),
         revoked_by=revoked_by,
     )

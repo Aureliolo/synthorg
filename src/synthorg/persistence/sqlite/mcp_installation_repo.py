@@ -8,7 +8,6 @@ the persistence backend owns connection lifecycle.
 import asyncio
 import contextlib
 import sqlite3
-from datetime import UTC, datetime
 
 import aiosqlite
 
@@ -19,19 +18,10 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_MCP_INSTALLATION_DELETE_FAILED,
     PERSISTENCE_MCP_INSTALLATION_SAVE_FAILED,
 )
+from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
-
-
-def _parse_timestamp(raw: str | datetime) -> datetime:
-    """Parse a stored timestamp into a timezone-aware datetime."""
-    if isinstance(raw, datetime):
-        return raw if raw.tzinfo else raw.replace(tzinfo=UTC)
-    value = datetime.fromisoformat(raw)
-    if value.tzinfo is None:
-        return value.replace(tzinfo=UTC)
-    return value
 
 
 class SQLiteMcpInstallationRepository:
@@ -52,7 +42,7 @@ class SQLiteMcpInstallationRepository:
 
     async def save(self, installation: McpInstallation) -> None:
         """Upsert an installation row (idempotent on catalog_entry_id)."""
-        installed_at_iso = installation.installed_at.astimezone(UTC).isoformat()
+        installed_at_iso = format_iso_utc(installation.installed_at)
         async with self._write_lock:
             try:
                 await self._db.execute(
@@ -108,7 +98,7 @@ class SQLiteMcpInstallationRepository:
         return McpInstallation(
             catalog_entry_id=NotBlankStr(row[0]),
             connection_name=(NotBlankStr(row[1]) if row[1] else None),
-            installed_at=_parse_timestamp(row[2]),
+            installed_at=coerce_row_timestamp(row[2]),
         )
 
     async def list_all(self) -> tuple[McpInstallation, ...]:
@@ -125,7 +115,7 @@ class SQLiteMcpInstallationRepository:
             McpInstallation(
                 catalog_entry_id=NotBlankStr(row[0]),
                 connection_name=(NotBlankStr(row[1]) if row[1] else None),
-                installed_at=_parse_timestamp(row[2]),
+                installed_at=coerce_row_timestamp(row[2]),
             )
             for row in rows
         )

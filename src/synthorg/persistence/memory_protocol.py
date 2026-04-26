@@ -8,7 +8,7 @@ with every other repository protocol.  Domain types stay in
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from datetime import datetime
+    from pydantic import AwareDatetime
 
     from synthorg.core.enums import OrgFactCategory
     from synthorg.core.types import NotBlankStr
@@ -60,9 +60,18 @@ class OrgFactRepository(Protocol):
 
     async def snapshot_at(
         self,
-        timestamp: datetime,
+        timestamp: AwareDatetime,
     ) -> tuple[OperationLogSnapshot, ...]:
-        """Point-in-time snapshot of facts at the given timestamp."""
+        """Point-in-time snapshot of facts at the given timestamp.
+
+        ``timestamp`` MUST be timezone-aware.  Implementations route it
+        through :func:`format_iso_utc` (SQLite) or bind it directly as
+        a ``TIMESTAMPTZ`` parameter (Postgres); a naive datetime
+        either raises ``ValueError`` (SQLite) or silently binds in the
+        session timezone (Postgres) -- both surface as a programming
+        bug, never as a query that returns a wrong-but-plausible
+        snapshot.
+        """
         ...
 
     async def get_operation_log(

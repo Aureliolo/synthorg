@@ -26,7 +26,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_DESERIALIZE_FAILED,
     PERSISTENCE_AUDIT_ENTRY_SAVE_FAILED,
 )
-from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared import coerce_row_timestamp, normalize_utc
 from synthorg.persistence.errors import (
     DuplicateRecordError,
     MalformedRowError,
@@ -133,10 +133,8 @@ def row_to_audit_entry(row: dict[str, object]) -> AuditEntry:
         # non-UTC offset would survive validation but compare unequal
         # to the SQLite read in conformance tests.
         ts = parsed.get("timestamp")
-        if isinstance(ts, datetime):
-            parsed["timestamp"] = normalize_utc(ts)
-        elif isinstance(ts, str):
-            parsed["timestamp"] = normalize_utc(datetime.fromisoformat(ts))
+        if ts is not None:
+            parsed["timestamp"] = coerce_row_timestamp(ts)
         return AuditEntry.model_validate(parsed)
     except (
         ValidationError,

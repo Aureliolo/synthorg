@@ -14,8 +14,18 @@ a database backend.
 from datetime import UTC, datetime
 
 from synthorg.observability import get_logger
+from synthorg.persistence._shared.datetime_marshaller import (
+    coerce_row_timestamp,
+    format_iso_utc,
+    parse_iso_utc,
+)
 
-__all__ = ("normalize_utc",)
+__all__ = (
+    "coerce_row_timestamp",
+    "format_iso_utc",
+    "normalize_utc",
+    "parse_iso_utc",
+)
 
 logger = get_logger(__name__)
 

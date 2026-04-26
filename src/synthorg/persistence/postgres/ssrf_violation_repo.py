@@ -4,7 +4,6 @@ This is the Postgres sibling of src/synthorg/persistence/sqlite/ssrf_violation_r
 Postgres stores timestamps as native TIMESTAMPTZ and port as BIGINT.
 """
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
 import psycopg
@@ -12,15 +11,18 @@ from psycopg.rows import dict_row
 from pydantic import AwareDatetime, ValidationError
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
     PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
 )
+from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence.errors import DuplicateRecordError, QueryError
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
@@ -29,17 +31,6 @@ _COLS = (
     "id, timestamp, url, hostname, port, resolved_ip, "
     "blocked_range, provider_name, status, resolved_by, resolved_at"
 )
-
-
-def _ensure_utc(dt: datetime) -> datetime:
-    """Normalize a datetime to UTC.
-
-    Naive datetimes get UTC attached.  Aware datetimes with non-UTC
-    offsets are converted so repository reads always return UTC.
-    """
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=UTC)
-    return dt.astimezone(UTC)
 
 
 class PostgresSsrfViolationRepository:
@@ -62,9 +53,9 @@ class PostgresSsrfViolationRepository:
             DuplicateRecordError: If a violation with the same ID exists.
             QueryError: If the save fails.
         """
-        ts_utc = violation.timestamp.astimezone(UTC)
+        ts_utc = normalize_utc(violation.timestamp)
         resolved_at_utc = (
-            violation.resolved_at.astimezone(UTC) if violation.resolved_at else None
+            normalize_utc(violation.resolved_at) if violation.resolved_at else None
         )
 
         try:
@@ -92,15 +83,17 @@ class PostgresSsrfViolationRepository:
             logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
                 violation_id=violation.id,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise DuplicateRecordError(msg) from exc
         except psycopg.Error as exc:
-            msg = f"Failed to save SSRF violation: {exc}"
-            logger.exception(
+            msg = f"Failed to save SSRF violation {violation.id!r}"
+            logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
                 violation_id=violation.id,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -120,11 +113,12 @@ class PostgresSsrfViolationRepository:
                 )
                 row = await cur.fetchone()
         except psycopg.Error as exc:
-            msg = f"Failed to get SSRF violation {violation_id!r}: {exc}"
-            logger.exception(
+            msg = f"Failed to get SSRF violation {violation_id!r}"
+            logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
                 violation_id=violation_id,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -132,12 +126,13 @@ class PostgresSsrfViolationRepository:
             return None
         try:
             return _row_to_violation(row)
-        except (ValueError, ValidationError) as exc:
-            msg = f"Failed to deserialize SSRF violation {violation_id!r}: {exc}"
-            logger.exception(
+        except (ValueError, ValidationError, TypeError) as exc:
+            msg = f"Failed to deserialize SSRF violation {violation_id!r}"
+            logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
-                error=msg,
                 violation_id=violation_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -176,12 +171,13 @@ class PostgresSsrfViolationRepository:
                     )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
-            msg = f"Failed to list SSRF violations: {exc}"
-            logger.exception(
+            msg = "Failed to list SSRF violations"
+            logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
                 status=status.value if status is not None else None,
                 limit=limit,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -189,18 +185,19 @@ class PostgresSsrfViolationRepository:
         for row in rows:
             try:
                 results.append(_row_to_violation(row))
-            except (ValueError, ValidationError) as exc:
+            except (ValueError, ValidationError, TypeError) as exc:
                 # Do not silently drop malformed violation rows:
                 # list_violations is how operators audit the full
                 # history of blocked SSRF attempts, so returning a
                 # partial list would hide security-relevant events.
                 row_id = row.get("id") if row else "unknown"
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
-                    error="failed to deserialize violation row",
                     row_id=row_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
-                msg = f"Failed to deserialize SSRF violation row {row_id!r}: {exc}"
+                msg = f"Failed to deserialize SSRF violation row {row_id!r}"
                 raise QueryError(msg) from exc
         return tuple(results)
 
@@ -223,7 +220,7 @@ class PostgresSsrfViolationRepository:
             msg = "Cannot transition a violation back to PENDING"
             raise ValueError(msg)
 
-        resolved_at_utc = resolved_at.astimezone(UTC)
+        resolved_at_utc = normalize_utc(resolved_at)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -240,11 +237,12 @@ class PostgresSsrfViolationRepository:
                 updated = cur.rowcount > 0
                 await conn.commit()
         except psycopg.Error as exc:
-            msg = f"Failed to update SSRF violation {violation_id!r} status: {exc}"
-            logger.exception(
+            msg = f"Failed to update SSRF violation {violation_id!r} status"
+            logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
                 violation_id=violation_id,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -255,7 +253,7 @@ def _row_to_violation(row: dict[str, object]) -> SsrfViolation:
     """Convert a Postgres row to an SsrfViolation."""
     return SsrfViolation(
         id=str(row["id"]),
-        timestamp=_ensure_utc(cast("datetime", row["timestamp"])),
+        timestamp=normalize_utc(cast("datetime", row["timestamp"])),
         url=str(row["url"]),
         hostname=str(row["hostname"]),
         port=int(cast("int", row["port"])),
@@ -265,7 +263,7 @@ def _row_to_violation(row: dict[str, object]) -> SsrfViolation:
         status=SsrfViolationStatus(str(row["status"])),
         resolved_by=cast("str | None", row.get("resolved_by")),
         resolved_at=(
-            _ensure_utc(cast("datetime", row["resolved_at"]))
+            normalize_utc(cast("datetime", row["resolved_at"]))
             if row.get("resolved_at")
             else None
         ),

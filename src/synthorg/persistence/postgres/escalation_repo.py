@@ -31,6 +31,7 @@ from synthorg.communication.conflict_resolution.escalation.protocol import (
 from synthorg.communication.conflict_resolution.models import Conflict
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_REQUEST_ERROR
+from synthorg.persistence._shared import parse_iso_utc
 from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
 if TYPE_CHECKING:
@@ -62,7 +63,11 @@ def _row_to_escalation(row: dict[str, Any]) -> Escalation:
     ``conflict_json`` and ``decision_json`` arrive as native Python
     objects (psycopg decodes ``JSONB`` automatically); the helper
     re-serialises them so Pydantic's ``model_validate_json`` path is
-    exercised uniformly across backends.
+    exercised uniformly across backends.  Timestamps (``created_at``,
+    ``expires_at``, ``decided_at``) arrive as native tz-aware
+    ``datetime`` objects from ``TIMESTAMPTZ`` columns and are
+    validated by Pydantic's ``AwareDatetime`` type on the
+    :class:`Escalation` model.
     """
     try:
         conflict = Conflict.model_validate(row["conflict_json"])
@@ -319,7 +324,7 @@ INSERT INTO conflict_escalations (
         cancellation (``system:resolver_cancelled``) or human
         decisions (``human:<operator_id>``).
         """
-        now_dt = datetime.fromisoformat(now_iso)
+        now_dt = parse_iso_utc(now_iso)
         try:
             async with (
                 self._pool.connection() as conn,

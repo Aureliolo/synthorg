@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 import aiosqlite  # noqa: TC002
-from pydantic import ValidationError
+from pydantic import AwareDatetime, ValidationError
 
 from synthorg.core.enums import (
     AutonomyLevel,
@@ -27,7 +27,7 @@ from synthorg.memory.org.models import (
     OrgFact,
     OrgFactAuthor,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.org_memory import (
     ORG_MEMORY_MVCC_LOG_QUERIED,
     ORG_MEMORY_MVCC_PUBLISH_APPENDED,
@@ -37,6 +37,7 @@ from synthorg.observability.events.org_memory import (
     ORG_MEMORY_ROW_PARSE_FAILED,
     ORG_MEMORY_WRITE_FAILED,
 )
+from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 
 logger = get_logger(__name__)
 
@@ -60,18 +61,10 @@ def _tags_from_json(raw: str) -> tuple[NotBlankStr, ...]:
     return tuple(NotBlankStr(t) for t in parsed)
 
 
-def _parse_timestamp(raw: str) -> datetime:
-    """Parse an ISO timestamp, defaulting to UTC if naive."""
-    dt = datetime.fromisoformat(raw)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=UTC)
-    return dt
-
-
 def _snapshot_row_to_org_fact(row: Any) -> OrgFact:
     """Reconstruct an ``OrgFact`` from a snapshot row."""
     try:
-        created_at = _parse_timestamp(row["created_at"])
+        created_at = coerce_row_timestamp(row["created_at"])
         author = OrgFactAuthor(
             agent_id=row["author_agent_id"],
             seniority=(
@@ -94,11 +87,17 @@ def _snapshot_row_to_org_fact(row: Any) -> OrgFact:
             author=author,
             created_at=created_at,
         )
-    except (KeyError, ValueError, ValidationError, OrgMemoryQueryError) as exc:
+    except (
+        KeyError,
+        ValueError,
+        TypeError,
+        ValidationError,
+        OrgMemoryQueryError,
+    ) as exc:
         logger.warning(
             ORG_MEMORY_ROW_PARSE_FAILED,
-            error=str(exc),
             error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = f"Failed to deserialize snapshot row: {exc}"
         raise OrgMemoryQueryError(msg) from exc
@@ -126,14 +125,20 @@ def _row_to_operation_log_entry(row: Any) -> OperationLogEntry:
                 if row["author_autonomy_level"]
                 else None
             ),
-            timestamp=_parse_timestamp(row["timestamp"]),
+            timestamp=coerce_row_timestamp(row["timestamp"]),
             version=row["version"],
         )
-    except (KeyError, ValueError, ValidationError, OrgMemoryQueryError) as exc:
+    except (
+        KeyError,
+        ValueError,
+        TypeError,
+        ValidationError,
+        OrgMemoryQueryError,
+    ) as exc:
         logger.warning(
             ORG_MEMORY_ROW_PARSE_FAILED,
-            error=str(exc),
             error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = f"Failed to deserialize operation log row: {exc}"
         raise OrgMemoryQueryError(msg) from exc
@@ -144,13 +149,13 @@ def _row_to_snapshot(row: Any) -> OperationLogSnapshot:
     try:
         op_type: str = row["operation_type"]
         retracted_at = (
-            _parse_timestamp(row["timestamp"]) if op_type == "RETRACT" else None
+            coerce_row_timestamp(row["timestamp"]) if op_type == "RETRACT" else None
         )
         created_at_raw: str | None = row["created_at"]
         if created_at_raw is None:
-            created_at = _parse_timestamp(row["timestamp"])
+            created_at = coerce_row_timestamp(row["timestamp"])
         else:
-            created_at = _parse_timestamp(created_at_raw)
+            created_at = coerce_row_timestamp(created_at_raw)
         return OperationLogSnapshot(
             fact_id=row["fact_id"],
             content=row["content"],
@@ -160,11 +165,17 @@ def _row_to_snapshot(row: Any) -> OperationLogSnapshot:
             retracted_at=retracted_at,
             version=row["version"],
         )
-    except (KeyError, ValueError, ValidationError, OrgMemoryQueryError) as exc:
+    except (
+        KeyError,
+        ValueError,
+        TypeError,
+        ValidationError,
+        OrgMemoryQueryError,
+    ) as exc:
         logger.warning(
             ORG_MEMORY_ROW_PARSE_FAILED,
-            error=str(exc),
             error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = f"Failed to deserialize snapshot_at row: {exc}"
         raise OrgMemoryQueryError(msg) from exc
@@ -244,7 +255,7 @@ class SQLiteOrgFactRepository:
                 int(author_is_human),
                 (author_autonomy_level.value if author_autonomy_level else None),
                 (category.value if category else None),
-                now.isoformat(),
+                format_iso_utc(now),
                 next_version,
             ),
         )
@@ -253,6 +264,15 @@ class SQLiteOrgFactRepository:
     async def save(self, fact: OrgFact) -> None:
         """Publish a fact: append PUBLISH to log, upsert snapshot."""
         db = self._db
+        # Marshal every Python value into its SQLite-bound shape BEFORE
+        # the transaction opens.  ``format_iso_utc`` raises
+        # ``ValueError`` on a naive ``created_at`` (defending against
+        # a regression that bypasses the ``AwareDatetime`` type
+        # guard); doing the marshal up here keeps that error path
+        # outside the ``try`` block, so we never strand a
+        # ``BEGIN IMMEDIATE`` transaction holding the write lock.
+        created_at_iso = format_iso_utc(fact.created_at)
+        tags_json = _tags_to_json(fact.tags)
         async with self._write_lock:
             try:
                 await db.execute("BEGIN IMMEDIATE")
@@ -291,7 +311,7 @@ class SQLiteOrgFactRepository:
                         fact.id,
                         fact.content,
                         fact.category.value,
-                        _tags_to_json(fact.tags),
+                        tags_json,
                         fact.author.agent_id,
                         (
                             fact.author.seniority.value
@@ -304,11 +324,7 @@ class SQLiteOrgFactRepository:
                             if fact.author.autonomy_level
                             else None
                         ),
-                        (
-                            fact.created_at.astimezone(UTC).isoformat()
-                            if fact.created_at.tzinfo is not None
-                            else fact.created_at.replace(tzinfo=UTC).isoformat()
-                        ),
+                        created_at_iso,
                         version,
                     ),
                 )
@@ -316,10 +332,11 @@ class SQLiteOrgFactRepository:
             except sqlite3.Error as exc:
                 with contextlib.suppress(sqlite3.Error):
                     await db.execute("ROLLBACK")
-                logger.exception(
+                logger.warning(
                     ORG_MEMORY_WRITE_FAILED,
                     fact_id=fact.id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 msg = f"Failed to save org fact: {exc}"
                 raise OrgMemoryWriteError(msg) from exc
@@ -370,16 +387,17 @@ class SQLiteOrgFactRepository:
                     "UPDATE org_facts_snapshot "
                     "SET retracted_at = ?, version = ? "
                     "WHERE fact_id = ?",
-                    (now.isoformat(), version, fact_id),
+                    (format_iso_utc(now), version, fact_id),
                 )
                 await db.commit()
             except (sqlite3.Error, ValueError, OrgMemoryQueryError) as exc:
                 with contextlib.suppress(sqlite3.Error):
                     await db.execute("ROLLBACK")
-                logger.exception(
+                logger.warning(
                     ORG_MEMORY_WRITE_FAILED,
                     fact_id=fact_id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 msg = f"Failed to delete org fact: {exc}"
                 raise OrgMemoryWriteError(msg) from exc
@@ -401,10 +419,11 @@ class SQLiteOrgFactRepository:
             )
             row = await cursor.fetchone()
         except sqlite3.Error as exc:
-            logger.exception(
+            logger.warning(
                 ORG_MEMORY_QUERY_FAILED,
                 fact_id=fact_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to get org fact: {exc}"
             raise OrgMemoryQueryError(msg) from exc
@@ -451,7 +470,11 @@ class SQLiteOrgFactRepository:
             cursor = await db.execute(sql, params)
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:
-            logger.exception(ORG_MEMORY_QUERY_FAILED, error=str(exc))
+            logger.warning(
+                ORG_MEMORY_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             msg = f"Failed to query org facts: {exc}"
             raise OrgMemoryQueryError(msg) from exc
         return tuple(_snapshot_row_to_org_fact(row) for row in rows)
@@ -470,10 +493,11 @@ class SQLiteOrgFactRepository:
             )
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:
-            logger.exception(
+            logger.warning(
                 ORG_MEMORY_QUERY_FAILED,
                 category=category.value,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to list org facts by category: {exc}"
             raise OrgMemoryQueryError(msg) from exc
@@ -481,15 +505,17 @@ class SQLiteOrgFactRepository:
 
     async def snapshot_at(
         self,
-        timestamp: datetime,
+        timestamp: AwareDatetime,
     ) -> tuple[OperationLogSnapshot, ...]:
-        """Point-in-time snapshot of all facts at a given timestamp."""
+        """Point-in-time snapshot of all facts at a given timestamp.
+
+        ``timestamp`` must be timezone-aware; ``format_iso_utc`` will
+        raise ``ValueError`` on a naive datetime so a regression that
+        bypasses the type guard surfaces immediately rather than
+        binding a misinterpreted instant into the WHERE clause.
+        """
         db = self._db
-        if timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=UTC)
-        else:
-            timestamp = timestamp.astimezone(UTC)
-        query_ts = timestamp.isoformat()
+        query_ts = format_iso_utc(timestamp)
         sql = """\
 WITH latest_ops AS (
     SELECT fact_id, operation_type, content, tags, category,
@@ -540,10 +566,11 @@ ORDER BY lo.fact_id
             )
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:
-            logger.exception(
+            logger.warning(
                 ORG_MEMORY_QUERY_FAILED,
                 timestamp=query_ts,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to query snapshot at {query_ts}: {exc}"
             raise OrgMemoryQueryError(msg) from exc
@@ -569,10 +596,11 @@ ORDER BY lo.fact_id
             )
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:
-            logger.exception(
+            logger.warning(
                 ORG_MEMORY_QUERY_FAILED,
                 fact_id=fact_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to get operation log for {fact_id}: {exc}"
             raise OrgMemoryQueryError(msg) from exc

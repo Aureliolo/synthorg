@@ -11,9 +11,8 @@ from synthorg.meta.models import ProposalAltitude, RuleSeverity
 from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
 from synthorg.observability import safe_error_description
 from synthorg.observability.events.meta import META_CUSTOM_RULE_FETCH_FAILED
+from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence._shared.custom_rule import (
-    _coerce_datetime,
-    normalize_utc,
     row_to_custom_rule,
     serialize_altitudes,
 )
@@ -180,10 +179,3 @@ class TestRowToCustomRule:
         underlying = raised.value.__cause__
         assert underlying is not None
         assert evt["error"] == safe_error_description(underlying)
-
-
-@pytest.mark.unit
-class TestCoerceDatetime:
-    def test_unsupported_type_raises_type_error(self) -> None:
-        with pytest.raises(TypeError):
-            _coerce_datetime(12345)

@@ -28,6 +28,7 @@ from synthorg.communication.conflict_resolution.escalation.protocol import (
 from synthorg.communication.conflict_resolution.models import Conflict
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_REQUEST_ERROR
+from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
 from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
 logger = get_logger(__name__)
@@ -62,14 +63,14 @@ def _row_to_escalation(row: Row) -> Escalation:
             id=str(row["id"]),
             conflict=conflict,
             status=EscalationStatus(str(row["status"])),
-            created_at=datetime.fromisoformat(str(row["created_at"])),
+            created_at=parse_iso_utc(str(row["created_at"])),
             expires_at=(
-                datetime.fromisoformat(str(row["expires_at"]))
+                parse_iso_utc(str(row["expires_at"]))
                 if row["expires_at"] is not None
                 else None
             ),
             decided_at=(
-                datetime.fromisoformat(str(row["decided_at"]))
+                parse_iso_utc(str(row["decided_at"]))
                 if row["decided_at"] is not None
                 else None
             ),
@@ -126,8 +127,8 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             escalation.conflict.id,
             escalation.conflict.model_dump_json(),
             escalation.status.value,
-            escalation.created_at.isoformat(),
-            escalation.expires_at.isoformat() if escalation.expires_at else None,
+            format_iso_utc(escalation.created_at),
+            (format_iso_utc(escalation.expires_at) if escalation.expires_at else None),
             None,
             None,
             None,
@@ -238,7 +239,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         decided_by: str,
     ) -> Escalation:
         """Transition PENDING -> DECIDED atomically."""
-        now_iso = datetime.now(UTC).isoformat()
+        now_iso = format_iso_utc(datetime.now(UTC))
         decision_json = _decision_adapter.dump_json(decision).decode("utf-8")
         return await self._update_terminal(
             escalation_id,
@@ -251,7 +252,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
 
     async def cancel(self, escalation_id: str, *, cancelled_by: str) -> Escalation:
         """Transition PENDING -> CANCELLED."""
-        now_iso = datetime.now(UTC).isoformat()
+        now_iso = format_iso_utc(datetime.now(UTC))
         return await self._update_terminal(
             escalation_id,
             new_status=EscalationStatus.CANCELLED,

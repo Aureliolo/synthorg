@@ -11,7 +11,6 @@ Callers depend on the :class:`ApprovalRepository` Protocol from
 structurally.
 """
 
-from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import psycopg
@@ -29,6 +28,7 @@ from synthorg.observability.events.api import (
     API_APPROVAL_REPO_FETCHED,
     API_APPROVAL_REPO_LISTED,
 )
+from synthorg.persistence._shared import coerce_row_timestamp
 from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
 if TYPE_CHECKING:
@@ -65,6 +65,12 @@ _APPROVALS_UPSERT_SQL = f"""
 def _row_to_item(row: dict[str, Any]) -> ApprovalItem:
     """Convert a Postgres dict row into an :class:`ApprovalItem`.
 
+    Postgres ``TIMESTAMPTZ`` columns return native ``datetime``
+    objects via psycopg, but legacy or migrated rows may carry ISO
+    8601 strings; the function dispatches on ``isinstance(..., str)``
+    and parses string values via :func:`parse_iso_utc` (strict on
+    naive) so both representations land as UTC-aware datetimes.
+
     Raises:
         QueryError: If the row contains corrupt or unparseable data.
     """
@@ -83,15 +89,23 @@ def _row_to_item(row: dict[str, Any]) -> ApprovalItem:
             if row["evidence_package"] is not None
             else None
         )
-        created_at = row["created_at"]
-        if isinstance(created_at, str):
-            created_at = datetime.fromisoformat(created_at)
-        expires_at = row["expires_at"]
-        if isinstance(expires_at, str):
-            expires_at = datetime.fromisoformat(expires_at)
-        decided_at = row["decided_at"]
-        if isinstance(decided_at, str):
-            decided_at = datetime.fromisoformat(decided_at)
+        # Postgres ``TIMESTAMPTZ`` columns normally return tz-aware
+        # ``datetime`` objects via psycopg, but the offset reflects the
+        # session timezone -- normalize to UTC so reads are symmetric
+        # with writes regardless of the connection's ``SET TIME ZONE``
+        # setting.  Legacy or migrated rows may still arrive as ISO
+        # strings; the shared dispatcher tolerates both.
+        created_at = coerce_row_timestamp(row["created_at"])
+        expires_at = (
+            coerce_row_timestamp(row["expires_at"])
+            if row["expires_at"] is not None
+            else None
+        )
+        decided_at = (
+            coerce_row_timestamp(row["decided_at"])
+            if row["decided_at"] is not None
+            else None
+        )
         return ApprovalItem(
             id=str(row["id"]),
             action_type=str(row["action_type"]),
