@@ -33,13 +33,6 @@ class ApprovalStoreProtocol(Protocol):
         """Reset all approval items, holding the store lock (#1599)."""
         ...
 
-    def reset_for_test_sync(self) -> None:
-        """Synchronous reset for sync pytest fixtures only.
-
-        Bypasses the store lock; production code MUST call ``clear``.
-        """
-        ...
-
     async def add(self, item: ApprovalItem) -> None:
         """Add a new approval item.
 
@@ -71,4 +64,22 @@ class ApprovalStoreProtocol(Protocol):
         item: ApprovalItem,
     ) -> ApprovalItem | None:
         """Conditionally update an approval item if it is still pending."""
+        ...
+
+
+@runtime_checkable
+class SyncResettableApprovalStore(Protocol):
+    """Test-only escape hatch for sync pytest fixtures.
+
+    Production code MUST depend on :class:`ApprovalStoreProtocol` and
+    call its async :meth:`~ApprovalStoreProtocol.clear`. Sync fixtures
+    that need to drop approval state without an event loop type their
+    dependency on this protocol; concrete stores implement both.
+
+    The class name deliberately avoids the ``Test`` prefix so pytest
+    does not attempt to collect the protocol itself.
+    """
+
+    def reset_for_test_sync(self) -> None:
+        """Synchronous reset that bypasses the store lock."""
         ...

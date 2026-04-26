@@ -11,6 +11,7 @@ import pytest
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.errors import AgentAlreadyRegisteredError
 from synthorg.hr.registry import AgentRegistryService
 from tests.unit.hr.conftest import make_agent_identity
 
@@ -38,11 +39,23 @@ async def test_clear_concurrent_with_register_no_partial_state() -> None:
         await registry.clear()
 
     register_tasks = [register_one(f"{i:03d}") for i in range(50)]
-    await asyncio.gather(
+    results = await asyncio.gather(
         clear_under_lock(),
         *register_tasks,
-        return_exceptions=True,  # AgentAlreadyRegisteredError noise tolerable
+        return_exceptions=True,
     )
+
+    # Only ``AgentAlreadyRegisteredError`` is a tolerable concurrency
+    # outcome: the clear ran between this register's lock acquisition
+    # and another register-then-clear-then-register sequence. Any other
+    # exception means the lock contract is broken.
+    for outcome in results:
+        if isinstance(outcome, BaseException):
+            assert isinstance(outcome, AgentAlreadyRegisteredError), (
+                f"unexpected gather exception: {type(outcome).__name__}: {outcome}"
+            )
+        else:
+            assert outcome is None
 
     # Final state: every agent that survived clear() is fully present.
     final_agents = await registry.list_active()

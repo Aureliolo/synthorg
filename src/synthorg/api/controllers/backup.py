@@ -93,6 +93,7 @@ class BackupController(Controller):
                     "a second backup."
                 ),
                 required=False,
+                min_length=1,
             ),
         ] = None,
     ) -> ApiResponse[BackupManifest]:

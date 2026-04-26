@@ -9,14 +9,11 @@ backstop for cross-restart and cross-replica deduplication.
 """
 
 from enum import StrEnum
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, Self, runtime_checkable
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 
 class IdempotencyOutcome(StrEnum):
@@ -52,6 +49,23 @@ class IdempotencyClaim(BaseModel):
 
     outcome: IdempotencyOutcome
     cached_response: str | None = Field(default=None)
+
+    @model_validator(mode="after")
+    def _validate_cached_response_matches_outcome(self) -> Self:
+        """Enforce: ``cached_response`` is set iff ``outcome`` is COMPLETED.
+
+        Prevents constructing a claim that pretends to have a cached
+        body for an in-flight or failed entry, or one that drops the
+        cached body for a completed entry.
+        """
+        if self.outcome is IdempotencyOutcome.COMPLETED:
+            if self.cached_response is None:
+                msg = "cached_response must be present when outcome is COMPLETED"
+                raise ValueError(msg)
+        elif self.cached_response is not None:
+            msg = f"cached_response must be None when outcome is {self.outcome.value!r}"
+            raise ValueError(msg)
+        return self
 
 
 class IdempotencyRecord(BaseModel):
@@ -92,7 +106,7 @@ class IdempotencyRepository(Protocol):
         scope: NotBlankStr,
         key: NotBlankStr,
         ttl_seconds: int,
-        now: datetime,
+        now: AwareDatetime,
     ) -> IdempotencyClaim:
         """Attempt to claim *(scope, key)* for the duration of *ttl_seconds*.
 
@@ -132,6 +146,6 @@ class IdempotencyRepository(Protocol):
         """Fetch the persisted record verbatim (None if absent)."""
         ...
 
-    async def cleanup_expired(self, now: datetime) -> int:
+    async def cleanup_expired(self, now: AwareDatetime) -> int:
         """Delete expired rows. Returns the number of rows removed."""
         ...

@@ -186,11 +186,12 @@ class TestEventConstants:
         ``security.*``) or the sink filter has been narrowed.
         """
         from synthorg.observability import events as events_pkg
+        from synthorg.observability.audit_chain.sink import AuditChainSink
 
         security_module = importlib.import_module(
             f"{events_pkg.__name__}.security",
         )
-        prefixes = ("security.", "tool.registry.integrity.")
+        prefixes = AuditChainSink._AUDITED_PREFIXES
         unsigned: list[str] = []
         for attr in dir(security_module):
             if attr.startswith("_"):

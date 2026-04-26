@@ -9,7 +9,10 @@ hr callers.
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.approval.protocol import (
+    ApprovalStoreProtocol,
+    SyncResettableApprovalStore,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -26,12 +29,16 @@ class TestApprovalStoreProtocol:
         store = ApprovalStore()
         assert isinstance(store, ApprovalStoreProtocol)
 
+    def test_concrete_satisfies_test_reset_protocol(self) -> None:
+        """``ApprovalStore`` also satisfies the test-only reset hatch."""
+        store = ApprovalStore()
+        assert isinstance(store, SyncResettableApprovalStore)
+
     def test_protocol_surface_is_stable(self) -> None:
         """The protocol's public method names are the agreed surface."""
         expected = {
             "add",
             "clear",
-            "reset_for_test_sync",
             "get",
             "list_items",
             "save",
@@ -44,3 +51,13 @@ class TestApprovalStoreProtocol:
             "ApprovalStoreProtocol surface changed: "
             f"missing={expected - actual}, added={actual - expected}"
         )
+
+    def test_test_reset_protocol_surface_is_stable(self) -> None:
+        """The test-reset protocol exposes only the sync escape hatch."""
+        expected = {"reset_for_test_sync"}
+        actual = {
+            name
+            for name in vars(SyncResettableApprovalStore)
+            if not name.startswith("_")
+        }
+        assert actual == expected

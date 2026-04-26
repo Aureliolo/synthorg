@@ -76,6 +76,9 @@ SETUP_AGENT_INDEX_OUT_OF_RANGE: Final[str] = "setup.agent.index_out_of_range"
 # Unexpected error while checking setup completion status
 SETUP_COMPLETE_CHECK_ERROR: Final[str] = "setup.flow.complete_check_error"
 
+# Failure resolving model IDs from provider configs during embedder selection
+SETUP_MODEL_ID_COLLECTION_ERROR: Final[str] = "setup.flow.model_id_collection_error"
+
 # Agent dict missing critical fields during summary conversion
 SETUP_AGENT_SUMMARY_MISSING_FIELDS: Final[str] = "setup.agent.summary_missing_fields"
 

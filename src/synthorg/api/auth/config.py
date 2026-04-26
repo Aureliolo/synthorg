@@ -16,12 +16,15 @@ DEFAULT_REFRESH_COOKIE_PATH = "/api/v1/auth/refresh"
 # Cadence at which long-lived WebSocket connections re-load the user
 # record to honour role demotions and account deletions. 10 minutes
 # bounds the post-revocation window without flooding the persistence
-# backend; callers may override per AuthConfig (#1599).
+# backend. Tests override the cadence by passing ``interval_seconds``
+# directly to ``_periodic_revalidate`` (or by monkey-patching the
+# module-level constant); there is no AuthConfig field at runtime.
 WS_REVALIDATE_INTERVAL_SECONDS: int = 10 * 60
 
 # Cadence at which long-lived SSE event streams re-validate the
 # subscriber's role. Same trade-off as WS; piggy-backs on the
-# keepalive tick so no separate timer is required.
+# keepalive tick so no separate timer is required. Tests override
+# via module-level monkeypatch (no AuthConfig field).
 SSE_REVALIDATE_INTERVAL_SECONDS: int = 10 * 60
 
 

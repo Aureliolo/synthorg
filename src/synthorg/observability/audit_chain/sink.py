@@ -95,6 +95,16 @@ class AuditChainSink(logging.Handler):
             rebuilding the sink.
     """
 
+    # Event-name prefixes that this sink signs and chains. Exposed as a
+    # class attribute so the events test module can assert that every
+    # ``security.*`` constant remains covered without duplicating the
+    # tuple literal -- a future narrowing of the allowlist must update
+    # exactly this constant and is then visible to the regression test.
+    _AUDITED_PREFIXES: tuple[str, ...] = (
+        "security.",
+        "tool.registry.integrity.",
+    )
+
     def __init__(
         self,
         *,
@@ -228,9 +238,8 @@ class AuditChainSink(logging.Handler):
         if threading.current_thread().name.startswith(_SIGNING_EXECUTOR_PREFIX):
             return
 
-        _AUDITED_PREFIXES = ("security.", "tool.registry.integrity.")  # noqa: N806
         msg = record.getMessage()
-        if not any(msg.startswith(p) for p in _AUDITED_PREFIXES):
+        if not any(msg.startswith(p) for p in self._AUDITED_PREFIXES):
             return
 
         try:

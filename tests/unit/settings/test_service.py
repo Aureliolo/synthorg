@@ -1026,7 +1026,6 @@ class TestSecuritySettingsAuditEmission:
                 yaml_path=None,
             )
         )
-        mock_repo.get.return_value = ("true", "2026-04-25T10:00:00Z")
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,

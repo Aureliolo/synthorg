@@ -32,6 +32,7 @@ from synthorg.observability.events.setup import (
     SETUP_AGENT_INDEX_OUT_OF_RANGE,
     SETUP_ALREADY_COMPLETE,
     SETUP_COMPLETE_CHECK_ERROR,
+    SETUP_MODEL_ID_COLLECTION_ERROR,
     SETUP_NAME_LOCALES_CORRUPTED,
     SETUP_NAME_LOCALES_INVALID,
     SETUP_PROVIDER_RELOAD_FAILED,
@@ -640,7 +641,7 @@ async def collect_model_ids(app_state: AppState) -> tuple[str, ...]:
         raise
     except Exception as exc:
         logger.warning(
-            SETUP_COMPLETE_CHECK_ERROR,
+            SETUP_MODEL_ID_COLLECTION_ERROR,
             check="collect_model_ids",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
