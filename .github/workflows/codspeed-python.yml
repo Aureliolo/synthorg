@@ -1,0 +1,86 @@
+name: CodSpeed Python
+
+# Continuous performance regression detection for the Python backend.
+#
+# Runs ``pytest tests/benchmarks/ --codspeed`` under CodSpeed's CPU
+# Simulation mode (cachegrind / valgrind), which counts CPU instructions
+# deterministically -- variance under 1% across runners. The free tier
+# covers unlimited benchmarks on standard GitHub-hosted runners.
+#
+# Macro Runner / walltime modes are intentionally not used; see
+# docs/design/perf-regression-system.md (planned) for rationale.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/synthorg/**"
+      - "tests/benchmarks/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/actions/setup-python-uv/**"
+      - ".github/workflows/codspeed-python.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/synthorg/**"
+      - "tests/benchmarks/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/actions/setup-python-uv/**"
+      - ".github/workflows/codspeed-python.yml"
+  # ``workflow_dispatch`` lets CodSpeed back-test historical commits to
+  # seed the dashboard with baseline data after first install.
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  codspeed-python:
+    name: CodSpeed Python benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # OIDC-based auth to CodSpeed (no CODSPEED_TOKEN secret required;
+      # see codspeed.io/changelog/2025-11-19-simpler-authentication-with-oidc).
+      id-token: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-python-uv
+
+      - name: Run CodSpeed benchmarks
+        uses: CodSpeedHQ/action@658a901452bb54c799643e060733b7afe9121b8d # v4.14.0
+        with:
+          mode: simulation
+          # ``-n0`` overrides the project-wide ``-n=8`` in pyproject.toml
+          # addopts -- pytest-codspeed must run serial for deterministic
+          # measurements.
+          run: uv run python -m pytest tests/benchmarks/ --codspeed -n0
+
+  # Branch-protection-friendly aggregator: required check is a single
+  # name regardless of how many bench jobs exist.
+  codspeed-python-pass:
+    name: CodSpeed Python Pass
+    if: always()
+    needs: [codspeed-python]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Check results
+        env:
+          RESULTS: ${{ needs.codspeed-python.result }}
+        run: |
+          if echo "$RESULTS" | grep -qE "failure|cancelled"; then
+            echo "CodSpeed Python checks failed. Job result: $RESULTS"
+            exit 1
+          fi
+          echo "CodSpeed Python checks passed (result: $RESULTS)"

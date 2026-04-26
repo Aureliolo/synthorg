@@ -90,6 +90,11 @@ jobs:
           # metadata missing from PyPI for NVIDIA CUDA packages (proprietary,
           # freely redistributable). torch is BSD-style. scikit-learn has compound
           # BSD-3-Clause AND scancode tag.
+          #
+          # pytest-codspeed: MIT upstream
+          # (https://github.com/CodSpeedHQ/pytest-codspeed/blob/main/LICENSE)
+          # but PyPI metadata is null. Verified manually. Test-only dependency
+          # used by the Python perf-regression suite under tests/benchmarks/.
           allow-dependencies-licenses: >-
             pkg:pypi/mem0ai@1.0.9,
             pkg:pypi/numpy@2.4.4,
@@ -102,6 +107,7 @@ jobs:
             pkg:pypi/grpcio@1.80.0,
             pkg:pypi/charset-normalizer@3.4.6,
             pkg:pypi/wrapt@2.1.2,
+            pkg:pypi/pytest-codspeed@4.4.0,
             pkg:npm/@img/sharp-wasm32@0.33.5,
             pkg:npm/@img/sharp-win32-ia32@0.33.5,
             pkg:npm/@img/sharp-win32-x64@0.33.5,

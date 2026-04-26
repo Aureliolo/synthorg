@@ -1,0 +1,159 @@
+name: Lighthouse CI
+
+# Web Vitals + Lighthouse perf-score gates for both the React 19
+# dashboard (run against the production-built ``vite preview``) and
+# the Astro marketing site (run against the deployed pr-preview URL).
+#
+# The dashboard job is independent of the pr-preview deployment --
+# it builds + serves locally inside the runner. The site job runs
+# only after the ``Deploy Preview`` job in ``pages-preview.yml``
+# succeeds, so the Cloudflare Pages URL is live.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "site/**"
+      - "docs/**"
+      - "mkdocs.yml"
+      - ".github/workflows/lighthouse.yml"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # ── Dashboard: Lighthouse against vite preview ──
+  #
+  # Path-filter on the workflow trigger (``paths:`` above) already
+  # gates this job to PRs that touched ``web/``; no extra ``if:``
+  # guard is needed here.
+  lighthouse-dashboard:
+    name: Lighthouse Dashboard
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: web/package.json
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Set up Python + uv (OpenAPI export)
+        uses: ./.github/actions/setup-python-uv
+
+      - name: Export OpenAPI schema for type codegen
+        run: uv run python scripts/export_openapi.py
+
+      - name: Install dashboard deps
+        run: npm --prefix web ci
+
+      - name: Build dashboard (production)
+        run: npm --prefix web run build
+
+      - name: Lighthouse CI (dashboard)
+        run: npm --prefix web run lighthouse
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+
+  # ── Marketing site: Lighthouse against pr-preview URL ──
+  #
+  # Triggered by the ``Deploy Preview`` job in pages-preview.yml via
+  # ``workflow_run``. The ``pages-preview`` workflow itself runs on
+  # ``pull_request``, so this is its sibling -- both fire when a PR
+  # touches site/.
+  lighthouse-site:
+    name: Lighthouse Site
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: web/package.json
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Resolve PR number
+        id: pr
+        env:
+          PR_EVENT_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${PR_EVENT_NUMBER:-}" ]]; then
+            echo "Skipping: no PR number resolvable (likely workflow_dispatch on a branch)."
+            echo "skip=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "pr_number=${PR_EVENT_NUMBER}" >>"$GITHUB_OUTPUT"
+            echo "skip=false" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Wait for pr-preview deployment to be live
+        if: steps.pr.outputs.skip == 'false'
+        env:
+          PREVIEW_URL: "https://pr-${{ steps.pr.outputs.pr_number }}.synthorg-pr-preview.pages.dev"
+        run: |
+          set -euo pipefail
+          echo "Waiting for ${PREVIEW_URL} to respond 200..."
+          for i in $(seq 1 30); do
+            STATUS=$(curl -sS -o /dev/null -w "%{http_code}" "${PREVIEW_URL}" || echo "000")
+            if [[ "${STATUS}" == "200" ]]; then
+              echo "pr-preview is live (HTTP 200)."
+              exit 0
+            fi
+            echo "Attempt $i: HTTP ${STATUS}; waiting 10s..."
+            sleep 10
+          done
+          echo "::error::pr-preview did not become healthy within 5 minutes."
+          exit 1
+
+      - name: Install lhci (reuse web's @lhci/cli)
+        if: steps.pr.outputs.skip == 'false'
+        run: npm --prefix web ci
+
+      - name: Lighthouse CI (site)
+        if: steps.pr.outputs.skip == 'false'
+        env:
+          LHCI_PR_PREVIEW_URL: "https://pr-${{ steps.pr.outputs.pr_number }}.synthorg-pr-preview.pages.dev"
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+        working-directory: site
+        run: npx --prefix ../web lhci autorun
+
+  # ── Aggregator gate ──
+  lighthouse-pass:
+    name: Lighthouse Pass
+    if: always()
+    needs: [lighthouse-dashboard, lighthouse-site]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Check results
+        env:
+          DASHBOARD_RESULT: ${{ needs.lighthouse-dashboard.result }}
+          SITE_RESULT: ${{ needs.lighthouse-site.result }}
+        run: |
+          # Skipped jobs (path-filter said "no relevant change") count
+          # as passing; only "failure" / "cancelled" propagate.
+          for r in "${DASHBOARD_RESULT}" "${SITE_RESULT}"; do
+            if [[ "${r}" == "failure" || "${r}" == "cancelled" ]]; then
+              echo "Lighthouse checks failed. Results: dashboard=${DASHBOARD_RESULT}, site=${SITE_RESULT}"
+              exit 1
+            fi
+          done
+          echo "Lighthouse checks passed (results: dashboard=${DASHBOARD_RESULT}, site=${SITE_RESULT})"

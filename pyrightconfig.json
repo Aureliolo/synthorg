@@ -1,6 +1,7 @@
 {
   "include": ["src/", "tests/"],
   "exclude": [".venv/", "build/", "dist/", ".pytest_cache/", ".hypothesis/"],
+  "extraPaths": ["src/", "."],
   "pythonVersion": "3.14",
   "venvPath": ".",
   "venv": ".venv",

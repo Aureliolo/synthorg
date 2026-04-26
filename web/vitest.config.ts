@@ -1,9 +1,14 @@
 import { defineConfig, configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
+import codspeedPlugin from '@codspeed/vitest-plugin'
 import { fileURLToPath, URL } from 'node:url'
 
 export default defineConfig({
-  plugins: [react()],
+  // The CodSpeed plugin is a no-op when ``process.env.CODSPEED`` is
+  // unset, so local ``npm run test`` / ``npm run bench`` are
+  // unaffected. Inside the CodSpeed CI runner it captures bench
+  // results for upload.
+  plugins: [react(), codspeedPlugin()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
