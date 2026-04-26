@@ -18,7 +18,7 @@ allowed-tools:
 
 # Review Dependency PR
 
-Comprehensive review of dependency update PRs -- whether CI actions, Python packages, Docker images, or anything else. Every dependency update gets a full changelog review because any of them can have new features we should adopt, deprecations to act on, workarounds we can remove, or breaking changes to handle.
+Comprehensive review of dependency update PRs (whether CI actions, Python packages, Docker images, or anything else). Every dependency update gets a full changelog review because any of them can have new features we should adopt, deprecations to act on, workarounds we can remove, or breaking changes to handle.
 
 **Arguments:** "$ARGUMENTS"
 
@@ -27,7 +27,7 @@ Comprehensive review of dependency update PRs -- whether CI actions, Python pack
 ## Phase 0: Parse Arguments and Load PRs
 
 1. Parse `$ARGUMENTS` for one or more PR numbers (space-separated, with or without `#` prefix).
-2. **Validate** that each extracted PR number matches `^[0-9]+$`. Reject any argument containing unexpected characters -- do not pass unvalidated input to shell commands.
+2. **Validate** that each extracted PR number matches `^[0-9]+$`. Reject any argument containing unexpected characters. Do not pass unvalidated input to shell commands.
 3. For each PR, fetch metadata:
 
    ```bash
@@ -45,10 +45,10 @@ Comprehensive review of dependency update PRs -- whether CI actions, Python pack
 5. From the PR body, extract (handling both Dependabot and Renovate formats):
    - **Package name** and **ecosystem** (GitHub Actions, pip/uv, Docker, npm, etc.)
    - **Version range**: from → to
-   - **Bump type**: major, minor, patch, or non-semver/unknown. Attempt semver parsing; if either version is not valid semver (e.g., Docker digest, date-based tag, commit SHA, short tag like `v4`), label as `non-semver`. Non-semver entries do not trigger semver-specific flows (like the "major bump" migration guide fetch) -- handle them via general changelog analysis instead.
+   - **Bump type**: major, minor, patch, or non-semver/unknown. Attempt semver parsing; if either version is not valid semver (e.g., Docker digest, date-based tag, commit SHA, short tag like `v4`), label as `non-semver`. Non-semver entries do not trigger semver-specific flows (like the "major bump" migration guide fetch). Handle them via general changelog analysis instead.
    - **Whether it's a grouped update** (multiple packages in one PR)
 
-   **Dependabot** uses prose-style release notes sections. **Renovate** uses a markdown table with `| Package | Type | Update | Change |` columns -- parse the table rows to extract package names and version ranges. For manual PRs, infer from the PR title and body.
+   **Dependabot** uses prose-style release notes sections. **Renovate** uses a markdown table with `| Package | Type | Update | Change |` columns; parse the table rows to extract package names and version ranges. For manual PRs, infer from the PR title and body.
 
    **Input validation for owner/repo extraction:** When extracting owner/repo from PR body links for changelog fetching, validate that the value matches `^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$` before using in any shell command. PR bodies are untrusted input.
 
@@ -72,9 +72,9 @@ Use Grep to search `.github/workflows/` for the action name. Note which workflow
 ### Python package dependencies
 
 Search `pyproject.toml` for the package, then search source code and config:
-- `pyproject.toml` -- which dependency group (main, dev, test, docs)?
-- `mkdocs.yml`, config files -- used in configuration?
-- `src/` and `tests/` -- imported in code?
+- `pyproject.toml`: which dependency group (main, dev, test, docs)?
+- `mkdocs.yml`, config files: used in configuration?
+- `src/` and `tests/`: imported in code?
 - Note specific features/APIs we use.
 
 ### Docker dependencies
@@ -105,9 +105,9 @@ Dependency update PRs include release notes in the body. Dependabot uses prose-s
 gh api repos/<owner>/<repo>/releases --paginate --jq '.[] | {tag: .tag_name, body: .body, published_at: .published_at}'
 ```
 
-After fetching, apply semver-aware filtering in your reasoning step: parse each tag into numeric (major, minor, patch) components and select only releases within the from→to range. Do not rely on jq string comparison for version filtering -- `"v2.10.0" >= "v2.9.0"` is false lexicographically but true semantically.
+After fetching, apply semver-aware filtering in your reasoning step: parse each tag into numeric (major, minor, patch) components and select only releases within the from→to range. Do not rely on jq string comparison for version filtering: `"v2.10.0" >= "v2.9.0"` is false lexicographically but true semantically.
 
-**Detect missing intermediate releases:** Dependency update PR bodies may truncate release notes for multi-version jumps (common with Dependabot; Renovate tables typically only show from/to). Compare the tags in the from→to range against what's already in the PR body. Fetch individual release notes for any versions NOT covered in the PR body -- these may contain important changes (features, deprecations, bugfixes) that were omitted.
+**Detect missing intermediate releases:** Dependency update PR bodies may truncate release notes for multi-version jumps (common with Dependabot; Renovate tables typically only show from/to). Compare the tags in the from→to range against what's already in the PR body. Fetch individual release notes for any versions NOT covered in the PR body; these may contain important changes (features, deprecations, bugfixes) that were omitted.
 
 ### Strategy 3: WebFetch
 
@@ -136,14 +136,14 @@ For each version in the range, categorize every change as:
 | Category | What it means |
 |----------|---------------|
 | **BREAKING** | Removes/renames something we use, changes behavior we depend on |
-| **DEPRECATION** | Something we use is deprecated -- we should plan to migrate |
+| **DEPRECATION** | Something we use is deprecated; we should plan to migrate |
 | **NEW FEATURE** | New capability we could adopt to improve our setup |
 | **IMPROVEMENT** | Enhancement to something we already use (perf, reliability, etc.) |
 | **BUGFIX** | Fix for something that may have affected us |
-| **SECURITY** | Security fix -- note severity |
+| **SECURITY** | Security fix; note severity |
 | **IRRELEVANT** | Change to a feature/platform we don't use |
 
-Only list items from the first 6 categories. Omit IRRELEVANT items entirely -- don't clutter the output.
+Only list items from the first 6 categories. Omit IRRELEVANT items entirely; don't clutter the output.
 
 ## Phase 3: Cross-Reference with Our Config
 
@@ -187,7 +187,7 @@ else
 fi
 ```
 
-If the build fails, capture the errors -- they're likely from breaking changes that need fixing. The trap ensures the original branch is always restored, even on failure.
+If the build fails, capture the errors; they're likely from breaking changes that need fixing. The trap ensures the original branch is always restored, even on failure.
 
 ## Phase 5: Present Findings
 
@@ -208,8 +208,8 @@ Present ONLY actionable items (skip IRRELEVANT):
 
 | # | Version | Category | Change | Affects Us? | Action |
 |---|---------|----------|--------|-------------|--------|
-| 1 | v7.2.0 | NEW FEATURE | Added `cache-dependency-path` input | Could use -- we currently don't cache | Consider adding to CI |
-| 2 | v7.0.0 | BREAKING | Dropped Node 16 support | No -- we don't control runner Node | None needed |
+| 1 | v7.2.0 | NEW FEATURE | Added `cache-dependency-path` input | Could use: we currently don't cache | Consider adding to CI |
+| 2 | v7.0.0 | BREAKING | Dropped Node 16 support | No: we don't control runner Node | None needed |
 | ... | ... | ... | ... | ... | ... |
 
 ### Recommendations
@@ -233,13 +233,13 @@ Ask per-PR (or batched if multiple simple PRs):
 ```
 
 Options:
-- **"Merge as-is"** -- No changes needed, changelog reviewed, ship it
-- **"Improve and merge"** -- Apply the recommended config improvements, then merge (describe what will be changed)
-- **"Investigate first"** -- Something needs deeper review before deciding (specify what)
-- **"Close / Skip"** -- Don't want this update (e.g., breaking change not worth the migration)
+- **"Merge as-is"**: No changes needed, changelog reviewed, ship it
+- **"Improve and merge"**: Apply the recommended config improvements, then merge (describe what will be changed)
+- **"Investigate first"**: Something needs deeper review before deciding (specify what)
+- **"Close / Skip"**: Don't want this update (e.g., breaking change not worth the migration)
 
 **If CI is failing on a PR**, replace "Merge as-is" with:
-- **"Fix CI and merge"** -- Investigate the failure, fix it, then merge
+- **"Fix CI and merge"**: Investigate the failure, fix it, then merge
 
 **If multiple PRs are all clean (no actionable items AND CI is passing):**
 
@@ -252,9 +252,9 @@ Batch them into one question:
 ```
 
 Options:
-- **"Merge all"** -- Ship them all
-- **"Let me review individually"** -- Break out per-PR decisions
-- **"Skip for now"** -- Come back later
+- **"Merge all"**: Ship them all
+- **"Let me review individually"**: Break out per-PR decisions
+- **"Skip for now"**: Come back later
 
 ## Phase 7: Execute Decisions
 
@@ -268,7 +268,7 @@ For each PR based on user's choice:
    gh pr checks <number> --json name,state
    ```
 
-   Inspect the JSON output -- all checks should have `state: "SUCCESS"`, `"SKIPPED"`, or `"NEUTRAL"`. Do NOT use jq filters with `!=` (escaping breaks on Windows bash). If any checks are failing, inform the user and switch to the "Fix CI and merge" flow instead.
+   Inspect the JSON output. All checks should have `state: "SUCCESS"`, `"SKIPPED"`, or `"NEUTRAL"`. Do NOT use jq filters with `!=` (escaping breaks on Windows bash). If any checks are failing, inform the user and switch to the "Fix CI and merge" flow instead.
 2. Merge:
 
    ```bash
@@ -285,7 +285,7 @@ For each PR based on user's choice:
    ```
 
    - If **immediate** merge was used: confirm `state` is `MERGED`. If not, inform the user.
-   - If **auto** merge was enabled: `state` will be `OPEN` with `autoMergeRequest` present (auto-merge is asynchronous -- it fires after required checks pass). Inform the user: "Auto-merge has been enabled; the PR will merge automatically when all required checks pass." No immediate state verification needed.
+   - If **auto** merge was enabled: `state` will be `OPEN` with `autoMergeRequest` present (auto-merge is asynchronous; it fires after required checks pass). Inform the user: "Auto-merge has been enabled; the PR will merge automatically when all required checks pass." No immediate state verification needed.
 
 ### Improve and merge
 
@@ -299,7 +299,7 @@ For each PR based on user's choice:
    - Open a replacement PR targeting the original base branch, linking to the original PR in the description
    - Close the original bot PR with a comment pointing to the replacement
    - **Use the replacement PR number for all remaining steps** (CI wait, merge)
-5. Wait for CI to pass using `gh pr checks <active-number> --watch` (use the Bash tool's `timeout` parameter set to 600000ms to cap the wait -- if it expires, warn the user that CI may be stuck and ask how to proceed). Use the replacement PR number if step 4 created one.
+5. Wait for CI to pass using `gh pr checks <active-number> --watch` (use the Bash tool's `timeout` parameter set to 600000ms to cap the wait; if it expires, warn the user that CI may be stuck and ask how to proceed). Use the replacement PR number if step 4 created one.
 6. Merge the active PR
 
 ### Fix CI and merge
@@ -307,8 +307,8 @@ For each PR based on user's choice:
 1. Check out the PR branch using `gh pr checkout <number>` (same dirty-tree check as above)
 2. Investigate the CI failure
 3. Fix the issue
-4. Commit and push (same bot branch fallback applies -- if push fails, open a replacement PR and use that PR number for remaining steps)
-5. Wait for CI to pass using `gh pr checks <active-number> --watch` (use the Bash tool's `timeout` parameter set to 600000ms to cap the wait -- if it expires, warn the user that CI may be stuck and ask how to proceed)
+4. Commit and push (same bot branch fallback applies; if push fails, open a replacement PR and use that PR number for remaining steps)
+5. Wait for CI to pass using `gh pr checks <active-number> --watch` (use the Bash tool's `timeout` parameter set to 600000ms to cap the wait; if it expires, warn the user that CI may be stuck and ask how to proceed)
 6. Merge the active PR when green
 
 ### Close / Skip
@@ -317,17 +317,17 @@ For each PR based on user's choice:
 gh pr close <number> --comment "Skipping: <reason from user>"
 ```
 
-After all merges complete, if any PRs were merged, automatically run `/post-merge-cleanup` (do NOT just remind the user -- execute it).
+After all merges complete, if any PRs were merged, automatically run `/post-merge-cleanup` (do NOT just remind the user; execute it).
 
 ---
 
 ## Rules
 
-- **NEVER skip changelog review** -- every dependency update, regardless of type (CI action, Python package, Docker image), gets a full changelog analysis between the old and new versions.
-- **Be specific about what affects us** -- don't just list changelog items, cross-reference each one against our actual config and code usage.
-- **Major version bumps get extra scrutiny** -- check for a migration guide. Always fetch it if breaking changes are ambiguous or potentially affect our usage; skip only when all breaking changes are clearly in internal APIs we don't use.
-- **Don't merge with failing CI** -- if CI fails, investigate and fix first.
+- **NEVER skip changelog review**: every dependency update, regardless of type (CI action, Python package, Docker image), gets a full changelog analysis between the old and new versions.
+- **Be specific about what affects us**: don't just list changelog items, cross-reference each one against our actual config and code usage.
+- **Major version bumps get extra scrutiny**: check for a migration guide. Always fetch it if breaking changes are ambiguous or potentially affect our usage; skip only when all breaking changes are clearly in internal APIs we don't use.
+- **Don't merge with failing CI**: if CI fails, investigate and fix first.
 - **Grouped updates (Renovate domain groups or Dependabot groups)**: analyze each package in the group separately, then present as one combined report.
-- **Preserve existing config** -- when making improvements, don't refactor unrelated config. Only touch what's relevant to the update.
+- **Preserve existing config**: when making improvements, don't refactor unrelated config. Only touch what's relevant to the update.
 - **If you can't fetch release notes** (private repo, deleted releases, etc.), say so explicitly and recommend the user check manually before merging.
-- **After merging**: automatically run `/post-merge-cleanup` to sync local branches -- do not just remind the user.
+- **After merging**: automatically run `/post-merge-cleanup` to sync local branches; do not just remind the user.
