@@ -1,4 +1,4 @@
-# Web HTTP Adapter -- Evaluation and Decision
+# Web HTTP Adapter: Evaluation and Decision
 
 > **Spec topic**: web dashboard HTTP layer.
 >
@@ -15,7 +15,7 @@
 > inside MSW 2.x's own interceptor stack and cannot be eliminated without
 > replacing MSW itself, which would regress PR #1462's Storybook + typed-
 > handler ergonomics that just landed. The 2026-04-20 round of research
-> (#1466 ∪ #1468) measured three additional approaches -- M1 (sync
+> (#1466 ∪ #1468) measured three additional approaches: M1 (sync
 > `queueMicrotask`) went to 114 and was reverted; M4 (`synchronous: true`
 > on the request interceptor) shaved 1 leak and shipped; Option C (custom
 > `axios.defaults.adapter` that dispatches via `handler.run()`) added new
@@ -47,8 +47,8 @@ like going forward.
 Vitest 4.x's `--detect-async-leaks` flag installs a Node
 `async_hooks.createHook` that tracks every Promise created during a
 test file (and every Promise triggered from one). At end of file it
-collects Promises whose `promiseResolve` hook never fired -- i.e.
-that never settled from Node's point of view. Those are reported as
+collects Promises whose `promiseResolve` hook never fired (i.e.
+that never settled from Node's point of view). Those are reported as
 `N × PROMISE leaking in <file>`.
 
 The distinction is important: **settled Promises do not leak**,
@@ -67,14 +67,14 @@ are directly comparable.
 | # | Approach | Leaks | Tests pass | Notes |
 |---|---|---:|---:|---|
 | 0 | Main branch (baseline) | 69 | 2592 / 2592 | Status quo. |
-| 1 | A1 -- sync `document.cookie` shim on `Document.prototype` in `test-setup.tsx` | **50** | 2592 / 2592 | **Shipped.** 28% reduction (69 -> 50, delta 19). Eliminates the 17 `getCsrfToken`/`getAllDocumentCookies`-path tough-cookie leaks plus 2 adjacent tough-cookie frames that the shim also short-circuits. |
-| 2 | A1 + A3 -- monkey-patch `XMLHttpRequest.prototype.send` to track pending XHRs, abort them in `afterEach` + microtask drain | 50 | 2592 / 2592 | 0 delta. The leaks are from *completed* XHRs; draining the live set does not reach them. |
-| 3 | A1 + A5 -- microtask/`setImmediate` drain in `afterEach` | 50 | 2592 / 2592 | 0 delta. Leaks survive `Promise.resolve(setImmediate)` collection. |
-| 4 | Phase B -- replace jsdom with happy-dom (`vitest.config.ts` `environment: 'happy-dom'` + `npm install happy-dom`) | 67 | 2582 / 2592 (10 fail) | **Worse.** happy-dom introduces a new leak category via `FetchBodyUtility.toReadableStream` and does not remove MSW's XHR-interceptor path. |
-| 5 | Phase C -- `apiClient.defaults.adapter = 'fetch'` + `apiClient.defaults.baseURL = 'http://localhost:3000/api/v1'` in `test-setup.tsx` | 146 | 2577 / 2592 (15 fail) | **Much worse.** MSW's fetch interceptor (`InterceptorHttpNetworkFrame.resolve`, `Object.respondWith`, `HttpHandler.cloneRequestOrGetFromCache`, `CookieStore.getCookies` via tough-cookie) generates more Promise chains than its XHR interceptor. |
-| 6 | M1 -- replace `globalThis.queueMicrotask` with a sync wrapper so MSW's XHR interceptor dispatch runs in-line | 114 | 2592 / 2592 | **Much worse.** Reverted. Confirms approaches #2/#3's finding that timing of microtask settle-point does not affect what `async_hooks` tracks -- running it synchronously just creates more Promise identity shifts for the tracker to flag. |
-| 7 | M4 -- `apiClient.interceptors.request.use(..., { synchronous: true })` so `Axios.prototype._request` skips the `.then(chain[i++], ...)` loop at `Axios.js:196` | **49** | 2592 / 2592 | **Shipped.** Eliminates the 15 "Axios._request :196" top-frame leaks at the cost of shifting 14 of them to MSW's XHR interceptor (net -1). Cheap production change -- the CSRF interceptor was already synchronous, we just annotated it. |
-| 8 | Option C -- custom `axios.defaults.adapter` in `test-setup.tsx` that dispatches directly to MSW's `handler.run({ request, requestId })` and bypasses `@mswjs/interceptors` + jsdom's XMLHttpRequest entirely (kept `setupServer` for `fetch()` paths) | 76 | 2592 / 2592 | **Reverted.** Did eliminate the 32 MSW XHR interceptor leaks (beta bucket), but `handler.run` itself reads cookies via `getAllRequestCookies` per call -- the tough-cookie `createPromiseCallback` leak (alpha residual) scales linearly with the number of handlers tried per request, and MSW's internal `HttpHandler.cloneRequestOrGetFromCache` + `ClientRequest` interceptor (still installed by `setupServer`) added another ~23 leaks of their own. Method + path-prefix pre-filtering of the handler list brought only ~3 leaks back. Net: structural Promise allocation inside MSW's handler pipeline is not reachable from user-space without replacing MSW's matching layer wholesale. |
+| 1 | A1 (sync `document.cookie` shim on `Document.prototype` in `test-setup.tsx`) | **50** | 2592 / 2592 | **Shipped.** 28% reduction (69 -> 50, delta 19). Eliminates the 17 `getCsrfToken`/`getAllDocumentCookies`-path tough-cookie leaks plus 2 adjacent tough-cookie frames that the shim also short-circuits. |
+| 2 | A1 + A3 (monkey-patch `XMLHttpRequest.prototype.send` to track pending XHRs, abort them in `afterEach` + microtask drain) | 50 | 2592 / 2592 | 0 delta. The leaks are from *completed* XHRs; draining the live set does not reach them. |
+| 3 | A1 + A5 (microtask/`setImmediate` drain in `afterEach`) | 50 | 2592 / 2592 | 0 delta. Leaks survive `Promise.resolve(setImmediate)` collection. |
+| 4 | Phase B (replace jsdom with happy-dom: `vitest.config.ts` `environment: 'happy-dom'` + `npm install happy-dom`) | 67 | 2582 / 2592 (10 fail) | **Worse.** happy-dom introduces a new leak category via `FetchBodyUtility.toReadableStream` and does not remove MSW's XHR-interceptor path. |
+| 5 | Phase C (`apiClient.defaults.adapter = 'fetch'` + `apiClient.defaults.baseURL = 'http://localhost:3000/api/v1'` in `test-setup.tsx`) | 146 | 2577 / 2592 (15 fail) | **Much worse.** MSW's fetch interceptor (`InterceptorHttpNetworkFrame.resolve`, `Object.respondWith`, `HttpHandler.cloneRequestOrGetFromCache`, `CookieStore.getCookies` via tough-cookie) generates more Promise chains than its XHR interceptor. |
+| 6 | M1 (replace `globalThis.queueMicrotask` with a sync wrapper so MSW's XHR interceptor dispatch runs in-line) | 114 | 2592 / 2592 | **Much worse.** Reverted. Confirms approaches #2/#3's finding that timing of microtask settle-point does not affect what `async_hooks` tracks; running it synchronously just creates more Promise identity shifts for the tracker to flag. |
+| 7 | M4 (`apiClient.interceptors.request.use(..., { synchronous: true })` so `Axios.prototype._request` skips the `.then(chain[i++], ...)` loop at `Axios.js:196`) | **49** | 2592 / 2592 | **Shipped.** Eliminates the 15 "Axios._request :196" top-frame leaks at the cost of shifting 14 of them to MSW's XHR interceptor (net -1). Cheap production change; the CSRF interceptor was already synchronous, we just annotated it. |
+| 8 | Option C (custom `axios.defaults.adapter` in `test-setup.tsx` that dispatches directly to MSW's `handler.run({ request, requestId })` and bypasses `@mswjs/interceptors` + jsdom's XMLHttpRequest entirely; kept `setupServer` for `fetch()` paths) | 76 | 2592 / 2592 | **Reverted.** Did eliminate the 32 MSW XHR interceptor leaks (beta bucket), but `handler.run` itself reads cookies via `getAllRequestCookies` per call; the tough-cookie `createPromiseCallback` leak (alpha residual) scales linearly with the number of handlers tried per request, and MSW's internal `HttpHandler.cloneRequestOrGetFromCache` + `ClientRequest` interceptor (still installed by `setupServer`) added another ~23 leaks of their own. Method + path-prefix pre-filtering of the handler list brought only ~3 leaks back. Net: structural Promise allocation inside MSW's handler pipeline is not reachable from user-space without replacing MSW's matching layer wholesale. |
 
 Only approaches `#1` and `#7` improved over the baseline. Approaches `#4`, `#5`, `#6`, and `#8` made things strictly worse or failed to improve. Approaches `#2` and `#3` had no effect. Current floor: **49 local leaks** (A1 + M4).
 
@@ -100,10 +100,10 @@ The remaining 49 leaks after A1 + M4 fall into three categories
    MSW's internal async frame. When the test body returns, the frame
    is still pending from `async_hooks`'s POV.
 3. **gamma (17 leaks)**: axios's own internal chain at
-   `axios/lib/core/Axios.js:196:27` -- `promise = promise.then(chain[i++], chain[i++])`
+   `axios/lib/core/Axios.js:196:27` (`promise = promise.then(chain[i++], chain[i++])`)
    builds a Promise chain per request. The outermost `.then()` in
    this chain is `init`'d during the test but only `promiseResolve`s
-   when the full MSW interceptor chain has fully settled -- which,
+   when the full MSW interceptor chain has fully settled, which,
    per category 2, it has not.
 
 Replacing axios with a native-fetch client (ky / ofetch / bespoke)
@@ -115,8 +115,8 @@ category. Net: worse.
 
 The only path to 0 that the investigation identified is **replacing
 MSW 2.x** with a mock layer that does not use
-`@mswjs/interceptors` -- e.g. `nock` (intercepts at `http.request`)
-or plain axios adapter mocks. That is rejected as out-of-scope:
+`@mswjs/interceptors` (e.g. `nock`, which intercepts at `http.request`,
+or plain axios adapter mocks). That is rejected as out-of-scope:
 PR `#1462` just landed the MSW migration and it is load-bearing for
 Storybook (`msw-storybook-addon`) and for the typed handler helpers
 (`successFor<typeof endpoint>`, `paginatedFor<typeof endpoint>`,
@@ -158,20 +158,20 @@ choice for this stack.
 
 ## What ships in this PR
 
-1. `web/src/test-setup.tsx` -- A1 cookie shim with a module-scoped
+1. `web/src/test-setup.tsx`: A1 cookie shim with a module-scoped
    `cookieJar` that is wiped and re-seeded with the CSRF token in the
    global `afterEach`, delete-style writes (`Max-Age=0` or a past
    `Expires=`) remove the entry so `utils/app-version.ts::
    clearClientVisibleCookies` behaves like the browser, and prototype
    keys (`__proto__`, `constructor`) are rejected as defense-in-depth.
-2. `.github/workflows/ci.yml` -- `MAX_ASYNC_LEAKS` ceiling set to 66
+2. `.github/workflows/ci.yml`: `MAX_ASYNC_LEAKS` ceiling set to 66
    (post-M4 CI baseline ~63 with a 3-leak variance buffer; the legacy
    parser silently reported 0 because `grep -oE 'Leaks +[0-9]+ leaks'`
    never matched ANSI-colored output); strict anchored parser fails the
    job if Vitest's `Leaks N leaks` summary line is missing or malformed,
    `NO_COLOR=1` is set so the line is plain ASCII. The ceiling was 70
    before the 2026-04-20 ratchet.
-3. `web/src/api/client.ts` -- M4: pass `{ synchronous: true }` as the
+3. `web/src/api/client.ts`: M4. Pass `{ synchronous: true }` as the
    third argument to `apiClient.interceptors.request.use(...)` so axios
    skips the `.then(chain[i++], ...)` loop at
    `node_modules/axios/lib/core/Axios.js:196`. Removes 15 of the baseline
@@ -179,7 +179,7 @@ choice for this stack.
    interceptor, net -1 (50 -> 49 local). See approach #7 in the
    evaluation matrix.
 4. `docs/design/web-http-adapter.md` (this file).
-5. Follow-up issue #1468 -- "replace MSW 2.x to eliminate the
+5. Follow-up issue #1468: "replace MSW 2.x to eliminate the
    remaining 49 Vitest async leaks". Scope, acceptance criteria, and
    candidate replacement layers (nock, direct axios-adapter mocks,
    happy-dom's built-in interceptor) documented there.
@@ -196,11 +196,11 @@ choice for this stack.
 
 ## References
 
-- #1466 -- original "eliminate async leaks" issue.
-- #1467 -- "evaluate switching axios XHR adapter to fetch" (closed by
+- #1466: original "eliminate async leaks" issue.
+- #1467: "evaluate switching axios XHR adapter to fetch" (closed by
   this note).
-- #1468 -- follow-up for MSW replacement (path to 0 leaks, deferred).
-- PR #1462 -- MSW migration that gave us typed handlers and raised
+- #1468: follow-up for MSW replacement (path to 0 leaks, deferred).
+- PR #1462: MSW migration that gave us typed handlers and raised
   the leak count from 69 to ~85 (since ratcheted to 69, now 50).
-- `web/CLAUDE.md` -- MSW handlers contract and test teardown
+- `web/CLAUDE.md`: MSW handlers contract and test teardown
   requirements that this PR preserves.
