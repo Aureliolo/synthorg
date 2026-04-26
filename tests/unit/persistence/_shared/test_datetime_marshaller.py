@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from synthorg.persistence._shared.datetime_marshaller import (
+    coerce_row_timestamp,
     format_iso_utc,
     parse_iso_utc,
 )
@@ -217,3 +218,82 @@ class TestRoundtrip:
         assert result == value
         assert result.tzinfo is UTC
         assert result.utcoffset() == timedelta(0)
+
+
+@pytest.mark.unit
+class TestCoerceRowTimestamp:
+    """``coerce_row_timestamp`` dispatches str/datetime row values."""
+
+    def test_aware_utc_datetime_passthrough(self) -> None:
+        value = datetime(2026, 4, 26, 12, 0, tzinfo=UTC)
+
+        result = coerce_row_timestamp(value)
+
+        assert result == value
+        assert result.tzinfo is UTC
+
+    def test_aware_non_utc_datetime_normalized(self) -> None:
+        # psycopg can hand back TIMESTAMPTZ in the session timezone --
+        # the dispatcher must converge on UTC.
+        plus_one = timezone(timedelta(hours=1))
+        value = datetime(2026, 4, 26, 13, 0, tzinfo=plus_one)
+
+        result = coerce_row_timestamp(value)
+
+        assert result == datetime(2026, 4, 26, 12, 0, tzinfo=UTC)
+        assert result.tzinfo is UTC
+
+    def test_naive_datetime_treated_as_utc(self) -> None:
+        # ``normalize_utc`` semantics for the datetime branch: naive
+        # is tagged as UTC (matches the project-wide rule "store UTC
+        # everywhere").
+        result = coerce_row_timestamp(datetime(2026, 4, 26, 12, 0))  # noqa: DTZ001
+
+        assert result == datetime(2026, 4, 26, 12, 0, tzinfo=UTC)
+        assert result.tzinfo is UTC
+
+    def test_aware_iso_string_parsed(self) -> None:
+        result = coerce_row_timestamp("2026-04-26T13:00:00+01:00")
+
+        assert result == datetime(2026, 4, 26, 12, 0, tzinfo=UTC)
+        assert result.tzinfo is UTC
+
+    def test_z_suffix_iso_string_parsed(self) -> None:
+        result = coerce_row_timestamp("2026-04-26T12:00:00Z")
+
+        assert result == datetime(2026, 4, 26, 12, 0, tzinfo=UTC)
+
+    def test_naive_iso_string_rejected(self) -> None:
+        # Naive strings flow through the strict ``parse_iso_utc`` and
+        # raise -- this is what surfaces a corrupt SQLite TEXT row to
+        # ``MalformedRowError`` instead of silently UTC-tagging it.
+        with pytest.raises(ValueError, match="timezone-aware"):
+            coerce_row_timestamp("2026-04-26T12:00:00")
+
+    def test_unparseable_string_raises(self) -> None:
+        with pytest.raises(ValueError, match="Invalid isoformat string"):
+            coerce_row_timestamp("not-a-date")
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            12345,
+            12.5,
+            None,
+            ["2026-04-26T12:00:00+00:00"],
+            {"timestamp": "2026-04-26T12:00:00+00:00"},
+            b"2026-04-26T12:00:00+00:00",
+        ],
+    )
+    def test_unsupported_type_raises_type_error(self, value: object) -> None:
+        with pytest.raises(TypeError, match="Unsupported timestamp type"):
+            coerce_row_timestamp(value)
+
+    def test_dst_aware_datetime_normalized(self) -> None:
+        zurich = ZoneInfo("Europe/Zurich")
+        value = datetime(2026, 7, 15, 14, 0, tzinfo=zurich)  # CEST +02:00
+
+        result = coerce_row_timestamp(value)
+
+        assert result == datetime(2026, 7, 15, 12, 0, tzinfo=UTC)
+        assert result.tzinfo is UTC

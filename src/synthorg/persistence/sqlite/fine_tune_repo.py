@@ -20,7 +20,7 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_INTERRUPTED,
     MEMORY_FINE_TUNE_PERSIST_FAILED,
 )
-from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
+from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
@@ -54,10 +54,10 @@ def _run_from_row(row: aiosqlite.Row) -> FineTuneRun:
             progress=row["progress"],
             error=row["error"],
             config=config,
-            started_at=parse_iso_utc(row["started_at"]),
-            updated_at=parse_iso_utc(row["updated_at"]),
+            started_at=coerce_row_timestamp(row["started_at"]),
+            updated_at=coerce_row_timestamp(row["updated_at"]),
             completed_at=(
-                parse_iso_utc(row["completed_at"])
+                coerce_row_timestamp(row["completed_at"])
                 if row["completed_at"] is not None
                 else None
             ),
@@ -88,7 +88,7 @@ def _checkpoint_from_row(row: aiosqlite.Row) -> CheckpointRecord:
             doc_count=row["doc_count"],
             eval_metrics=eval_metrics,
             size_bytes=row["size_bytes"],
-            created_at=parse_iso_utc(row["created_at"]),
+            created_at=coerce_row_timestamp(row["created_at"]),
             is_active=bool(row["is_active"]),
             backup_config_json=row["backup_config_json"],
         )
@@ -175,7 +175,8 @@ class SQLiteFineTuneRunRepository:
             logger.warning(
                 MEMORY_FINE_TUNE_PERSIST_FAILED,
                 run_id=run_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -197,7 +198,8 @@ class SQLiteFineTuneRunRepository:
             msg = "Failed to query active fine-tune run"
             logger.warning(
                 MEMORY_FINE_TUNE_PERSIST_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -234,7 +236,8 @@ class SQLiteFineTuneRunRepository:
             msg = "Failed to list fine-tune runs"
             logger.warning(
                 MEMORY_FINE_TUNE_PERSIST_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         return tuple(_run_from_row(r) for r in rows), total
@@ -271,7 +274,8 @@ class SQLiteFineTuneRunRepository:
                 logger.warning(
                     MEMORY_FINE_TUNE_PERSIST_FAILED,
                     run_id=run.id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 
@@ -306,7 +310,8 @@ class SQLiteFineTuneRunRepository:
                 msg = "Failed to mark interrupted fine-tune runs"
                 logger.warning(
                     MEMORY_FINE_TUNE_PERSIST_FAILED,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
         if count > 0:
@@ -379,7 +384,8 @@ class SQLiteFineTuneCheckpointRepository:
                 logger.warning(
                     MEMORY_FINE_TUNE_PERSIST_FAILED,
                     checkpoint_id=checkpoint.id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 
@@ -399,7 +405,8 @@ class SQLiteFineTuneCheckpointRepository:
             logger.warning(
                 MEMORY_FINE_TUNE_PERSIST_FAILED,
                 checkpoint_id=checkpoint_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -436,7 +443,8 @@ class SQLiteFineTuneCheckpointRepository:
             msg = "Failed to list checkpoints"
             logger.warning(
                 MEMORY_FINE_TUNE_PERSIST_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         return tuple(_checkpoint_from_row(r) for r in rows), total
@@ -476,7 +484,8 @@ class SQLiteFineTuneCheckpointRepository:
                 logger.warning(
                     MEMORY_FINE_TUNE_PERSIST_FAILED,
                     checkpoint_id=checkpoint_id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 
@@ -492,7 +501,8 @@ class SQLiteFineTuneCheckpointRepository:
                 msg = "Failed to deactivate all checkpoints"
                 logger.warning(
                     MEMORY_FINE_TUNE_PERSIST_FAILED,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 
@@ -542,7 +552,8 @@ class SQLiteFineTuneCheckpointRepository:
                 logger.warning(
                     MEMORY_FINE_TUNE_PERSIST_FAILED,
                     checkpoint_id=checkpoint_id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
 
@@ -559,7 +570,8 @@ class SQLiteFineTuneCheckpointRepository:
             msg = "Failed to query active checkpoint"
             logger.warning(
                 MEMORY_FINE_TUNE_PERSIST_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:

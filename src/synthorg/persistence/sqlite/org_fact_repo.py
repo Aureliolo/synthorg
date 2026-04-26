@@ -37,7 +37,11 @@ from synthorg.observability.events.org_memory import (
     ORG_MEMORY_ROW_PARSE_FAILED,
     ORG_MEMORY_WRITE_FAILED,
 )
-from synthorg.persistence._shared import format_iso_utc, normalize_utc, parse_iso_utc
+from synthorg.persistence._shared import (
+    coerce_row_timestamp,
+    format_iso_utc,
+    normalize_utc,
+)
 
 logger = get_logger(__name__)
 
@@ -64,7 +68,7 @@ def _tags_from_json(raw: str) -> tuple[NotBlankStr, ...]:
 def _snapshot_row_to_org_fact(row: Any) -> OrgFact:
     """Reconstruct an ``OrgFact`` from a snapshot row."""
     try:
-        created_at = parse_iso_utc(row["created_at"])
+        created_at = coerce_row_timestamp(row["created_at"])
         author = OrgFactAuthor(
             agent_id=row["author_agent_id"],
             seniority=(
@@ -119,7 +123,7 @@ def _row_to_operation_log_entry(row: Any) -> OperationLogEntry:
                 if row["author_autonomy_level"]
                 else None
             ),
-            timestamp=parse_iso_utc(row["timestamp"]),
+            timestamp=coerce_row_timestamp(row["timestamp"]),
             version=row["version"],
         )
     except (KeyError, ValueError, ValidationError, OrgMemoryQueryError) as exc:
@@ -136,12 +140,14 @@ def _row_to_snapshot(row: Any) -> OperationLogSnapshot:
     """Reconstruct an ``OperationLogSnapshot`` from a time-travel query row."""
     try:
         op_type: str = row["operation_type"]
-        retracted_at = parse_iso_utc(row["timestamp"]) if op_type == "RETRACT" else None
+        retracted_at = (
+            coerce_row_timestamp(row["timestamp"]) if op_type == "RETRACT" else None
+        )
         created_at_raw: str | None = row["created_at"]
         if created_at_raw is None:
-            created_at = parse_iso_utc(row["timestamp"])
+            created_at = coerce_row_timestamp(row["timestamp"])
         else:
-            created_at = parse_iso_utc(created_at_raw)
+            created_at = coerce_row_timestamp(created_at_raw)
         return OperationLogSnapshot(
             fact_id=row["fact_id"],
             content=row["content"],

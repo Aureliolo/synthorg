@@ -21,7 +21,7 @@ from synthorg.observability.events.integrations import (
     MCP_SERVER_INSTALLED,
     MCP_SERVER_UNINSTALLED,
 )
-from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared import coerce_row_timestamp, normalize_utc
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -38,7 +38,7 @@ def _row_to_installation(row: dict[str, Any]) -> McpInstallation:
         connection_name=(
             NotBlankStr(connection_name_raw) if connection_name_raw else None
         ),
-        installed_at=normalize_utc(row["installed_at"]),
+        installed_at=coerce_row_timestamp(row["installed_at"]),
     )
 
 

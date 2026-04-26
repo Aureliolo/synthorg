@@ -9,7 +9,7 @@ Both backends round-trip the same Pydantic model. Differences:
 
 The helpers below take a unified ``dict[str, Any]`` row contract,
 tolerate either encoding for ``target_altitudes``, and route both
-backends through a single :func:`_coerce_datetime` so timestamp
+backends through :func:`coerce_row_timestamp` so timestamp
 normalisation is the conformance contract.
 
 Conformance tests for ``CustomRuleRepository`` should target these
@@ -18,7 +18,6 @@ instantiating either backend.
 """
 
 import json
-from datetime import datetime
 from typing import Any
 
 from pydantic import ValidationError
@@ -27,13 +26,12 @@ from synthorg.meta.models import ProposalAltitude
 from synthorg.meta.rules.custom import CustomRuleDefinition
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import META_CUSTOM_RULE_FETCH_FAILED
-from synthorg.persistence._shared import normalize_utc, parse_iso_utc
+from synthorg.persistence._shared import coerce_row_timestamp
 from synthorg.persistence.errors import MalformedRowError
 
 logger = get_logger(__name__)
 
 __all__ = (
-    "normalize_utc",
     "row_to_custom_rule",
     "serialize_altitudes",
 )
@@ -122,8 +120,8 @@ def row_to_custom_rule(row: dict[str, Any]) -> CustomRuleDefinition:
             severity=row["severity"],
             target_altitudes=tuple(ProposalAltitude(a) for a in altitudes_list),
             enabled=row["enabled"],
-            created_at=_coerce_datetime(row["created_at"]),
-            updated_at=_coerce_datetime(row["updated_at"]),
+            created_at=coerce_row_timestamp(row["created_at"]),
+            updated_at=coerce_row_timestamp(row["updated_at"]),
         )
     except (
         ValidationError,
@@ -143,27 +141,3 @@ def row_to_custom_rule(row: dict[str, Any]) -> CustomRuleDefinition:
             error=safe_error_description(exc),
         )
         raise MalformedRowError(msg) from exc
-
-
-def _coerce_datetime(value: object) -> datetime:
-    """Coerce a row datetime field (str OR datetime) to UTC-aware.
-
-    Single normalisation point so conformance tests can assert that
-    both backends produce identical UTC-aware ``datetime`` objects
-    regardless of whether the underlying column was TEXT or
-    TIMESTAMPTZ.  String values are parsed via the strict
-    :func:`parse_iso_utc` helper (naive ISO strings raise
-    ``ValueError``); ``datetime`` values are normalised to UTC via
-    :func:`normalize_utc`.
-
-    Raises:
-        TypeError: If ``value`` is neither ``datetime`` nor ``str``.
-        ValueError: If ``value`` is a string that does not parse as a
-            timezone-aware ISO 8601 datetime.
-    """
-    if isinstance(value, datetime):
-        return normalize_utc(value)
-    if isinstance(value, str):
-        return parse_iso_utc(value)
-    msg = f"Unsupported datetime type {type(value).__name__}"
-    raise TypeError(msg)

@@ -11,7 +11,7 @@ from psycopg.rows import dict_row
 from pydantic import AwareDatetime, ValidationError
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
     PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
@@ -83,15 +83,17 @@ class PostgresSsrfViolationRepository:
             logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
                 violation_id=violation.id,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise DuplicateRecordError(msg) from exc
         except psycopg.Error as exc:
-            msg = f"Failed to save SSRF violation: {exc}"
-            logger.exception(
+            msg = f"Failed to save SSRF violation {violation.id!r}"
+            logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
                 violation_id=violation.id,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -111,11 +113,12 @@ class PostgresSsrfViolationRepository:
                 )
                 row = await cur.fetchone()
         except psycopg.Error as exc:
-            msg = f"Failed to get SSRF violation {violation_id!r}: {exc}"
-            logger.exception(
+            msg = f"Failed to get SSRF violation {violation_id!r}"
+            logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
                 violation_id=violation_id,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -124,11 +127,12 @@ class PostgresSsrfViolationRepository:
         try:
             return _row_to_violation(row)
         except (ValueError, ValidationError) as exc:
-            msg = f"Failed to deserialize SSRF violation {violation_id!r}: {exc}"
-            logger.exception(
+            msg = f"Failed to deserialize SSRF violation {violation_id!r}"
+            logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
-                error=msg,
                 violation_id=violation_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -167,12 +171,13 @@ class PostgresSsrfViolationRepository:
                     )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
-            msg = f"Failed to list SSRF violations: {exc}"
-            logger.exception(
+            msg = "Failed to list SSRF violations"
+            logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
                 status=status.value if status is not None else None,
                 limit=limit,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -186,12 +191,13 @@ class PostgresSsrfViolationRepository:
                 # history of blocked SSRF attempts, so returning a
                 # partial list would hide security-relevant events.
                 row_id = row.get("id") if row else "unknown"
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
-                    error="failed to deserialize violation row",
                     row_id=row_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
-                msg = f"Failed to deserialize SSRF violation row {row_id!r}: {exc}"
+                msg = f"Failed to deserialize SSRF violation row {row_id!r}"
                 raise QueryError(msg) from exc
         return tuple(results)
 
@@ -231,11 +237,12 @@ class PostgresSsrfViolationRepository:
                 updated = cur.rowcount > 0
                 await conn.commit()
         except psycopg.Error as exc:
-            msg = f"Failed to update SSRF violation {violation_id!r} status: {exc}"
-            logger.exception(
+            msg = f"Failed to update SSRF violation {violation_id!r} status"
+            logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
                 violation_id=violation_id,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 

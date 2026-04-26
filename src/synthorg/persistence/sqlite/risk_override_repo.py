@@ -14,7 +14,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
     PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
 )
-from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
+from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 from synthorg.persistence.errors import DuplicateRecordError, PersistenceError
 from synthorg.security.rules.risk_override import RiskTierOverride
 
@@ -244,8 +244,8 @@ def _row_to_override(row: Any) -> RiskTierOverride:
         override_tier=ApprovalRiskLevel(override_tier),
         reason=reason,
         created_by=created_by,
-        created_at=parse_iso_utc(created_at),
-        expires_at=parse_iso_utc(expires_at),
-        revoked_at=(parse_iso_utc(revoked_at) if revoked_at else None),
+        created_at=coerce_row_timestamp(created_at),
+        expires_at=coerce_row_timestamp(expires_at),
+        revoked_at=(coerce_row_timestamp(revoked_at) if revoked_at else None),
         revoked_by=revoked_by,
     )

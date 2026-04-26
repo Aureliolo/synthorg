@@ -8,7 +8,6 @@ the persistence backend owns connection lifecycle.
 import asyncio
 import contextlib
 import sqlite3
-from datetime import datetime
 
 import aiosqlite
 
@@ -19,24 +18,10 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_MCP_INSTALLATION_DELETE_FAILED,
     PERSISTENCE_MCP_INSTALLATION_SAVE_FAILED,
 )
-from synthorg.persistence._shared import format_iso_utc, normalize_utc, parse_iso_utc
+from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
-
-
-def _row_timestamp(raw: str | datetime) -> datetime:
-    """Coerce a stored ``installed_at`` value to a UTC-aware datetime.
-
-    SQLite stores TEXT, but the column type affinity returns
-    ``datetime`` instances directly when ``detect_types`` is on, so the
-    isinstance dispatch handles both flavours uniformly: aware or
-    naive datetimes go through :func:`normalize_utc`, ISO strings go
-    through :func:`parse_iso_utc`.
-    """
-    if isinstance(raw, datetime):
-        return normalize_utc(raw)
-    return parse_iso_utc(raw)
 
 
 class SQLiteMcpInstallationRepository:
@@ -113,7 +98,7 @@ class SQLiteMcpInstallationRepository:
         return McpInstallation(
             catalog_entry_id=NotBlankStr(row[0]),
             connection_name=(NotBlankStr(row[1]) if row[1] else None),
-            installed_at=_row_timestamp(row[2]),
+            installed_at=coerce_row_timestamp(row[2]),
         )
 
     async def list_all(self) -> tuple[McpInstallation, ...]:
@@ -130,7 +115,7 @@ class SQLiteMcpInstallationRepository:
             McpInstallation(
                 catalog_entry_id=NotBlankStr(row[0]),
                 connection_name=(NotBlankStr(row[1]) if row[1] else None),
-                installed_at=_row_timestamp(row[2]),
+                installed_at=coerce_row_timestamp(row[2]),
             )
             for row in rows
         )

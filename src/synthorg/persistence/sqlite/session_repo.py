@@ -7,7 +7,6 @@ SQLite connection provides survival across restarts.
 
 import asyncio
 import contextlib
-import datetime as _datetime_mod
 import sqlite3
 from datetime import UTC, datetime
 from typing import Any
@@ -25,11 +24,7 @@ from synthorg.observability.events.api import (
     API_SESSION_REVOKE_FAILED,
     API_SESSION_REVOKED,
 )
-from synthorg.persistence._shared import (
-    format_iso_utc,
-    normalize_utc,
-    parse_iso_utc,
-)
+from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
@@ -39,19 +34,11 @@ def _row_to_session(row: Any) -> Session:
     """Deserialize an aiosqlite.Row into a :class:`Session`.
 
     SQLite stores timestamps as TEXT (``aiosqlite`` returns them as
-    ``str``).  When tests patch the bound ``datetime`` name with a
-    ``MagicMock`` the row payload may already be a ``datetime``
-    instance, so the isinstance check resolves the class via the
-    stdlib module reference and either normalises through
-    ``normalize_utc`` (already-typed) or parses via ``parse_iso_utc``
-    (string).
+    ``str``).  ``coerce_row_timestamp`` accepts either ``str`` or
+    ``datetime`` so tests that patch the bound ``datetime`` name with
+    a ``MagicMock`` (and supply pre-parsed datetime row values) keep
+    working alongside production reads.
     """
-
-    def _coerce(value: Any) -> datetime:
-        if isinstance(value, _datetime_mod.datetime):
-            return normalize_utc(value)
-        return parse_iso_utc(value)
-
     return Session(
         session_id=NotBlankStr(row["session_id"]),
         user_id=NotBlankStr(row["user_id"]),
@@ -59,9 +46,9 @@ def _row_to_session(row: Any) -> Session:
         role=HumanRole(row["role"]),
         ip_address=row["ip_address"],
         user_agent=row["user_agent"],
-        created_at=_coerce(row["created_at"]),
-        last_active_at=_coerce(row["last_active_at"]),
-        expires_at=_coerce(row["expires_at"]),
+        created_at=coerce_row_timestamp(row["created_at"]),
+        last_active_at=coerce_row_timestamp(row["last_active_at"]),
+        expires_at=coerce_row_timestamp(row["expires_at"]),
         revoked=bool(row["revoked"]),
     )
 

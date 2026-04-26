@@ -17,8 +17,8 @@ from synthorg.observability.events.meta import (
     META_CUSTOM_RULE_LISTED,
     META_CUSTOM_RULE_SAVE_FAILED,
 )
+from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence._shared.custom_rule import (
-    normalize_utc,
     row_to_custom_rule,
     serialize_altitudes,
 )
