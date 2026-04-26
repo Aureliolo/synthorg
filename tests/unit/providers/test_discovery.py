@@ -13,6 +13,7 @@ from synthorg.providers.discovery import (
     _validate_discovery_url,
     discover_models,
 )
+from synthorg.providers.presets import LocalPreset
 from synthorg.providers.probing import (
     ProbeResult,
     probe_preset_urls,
@@ -438,6 +439,7 @@ class TestProbePresetUrls:
         )
         client = _mock_client(ollama_response)
         fake_preset = Mock(
+            spec=LocalPreset,
             candidate_urls=(
                 "http://host.docker.internal:11434",
                 "http://localhost:11434",
@@ -474,6 +476,7 @@ class TestProbePresetUrls:
         client = _mock_client(ok_response)
         client.get.side_effect = side_effect_get
         fake_preset = Mock(
+            spec=LocalPreset,
             candidate_urls=(
                 "http://host.docker.internal:11434",
                 "http://172.17.0.1:11434",
@@ -499,6 +502,7 @@ class TestProbePresetUrls:
         """When all candidates fail, returns empty result."""
         client = _mock_client(side_effect=httpx.ConnectError("refused"))
         fake_preset = Mock(
+            spec=LocalPreset,
             candidate_urls=("http://a:11434", "http://b:11434"),
         )
 
@@ -519,7 +523,7 @@ class TestProbePresetUrls:
 
     async def test_empty_candidates(self) -> None:
         """No candidates to probe returns empty result."""
-        fake_preset = Mock(candidate_urls=())
+        fake_preset = Mock(spec=LocalPreset, candidate_urls=())
 
         with patch(
             "synthorg.providers.presets.get_preset",
@@ -535,6 +539,7 @@ class TestProbePresetUrls:
         )
         client = _mock_client(response)
         fake_preset = Mock(
+            spec=LocalPreset,
             candidate_urls=(
                 "http://host.docker.internal:1234/v1",
                 "http://172.17.0.1:1234/v1",
@@ -561,6 +566,7 @@ class TestProbePresetUrls:
         """Timeout is handled gracefully and URL is skipped."""
         client = _mock_client(side_effect=httpx.TimeoutException("timed out"))
         fake_preset = Mock(
+            spec=LocalPreset,
             candidate_urls=("http://slow-host:11434",),
         )
 
@@ -583,6 +589,7 @@ class TestProbePresetUrls:
         response = _mock_response({"error": "not found"}, status_code=404)
         client = _mock_client(response)
         fake_preset = Mock(
+            spec=LocalPreset,
             candidate_urls=("http://host:11434",),
         )
 
@@ -611,6 +618,7 @@ class TestProbePresetUrls:
         )
         client = _mock_client(html_response)
         fake_preset = Mock(
+            spec=LocalPreset,
             candidate_urls=("http://host:11434",),
         )
 
@@ -633,6 +641,7 @@ class TestProbePresetUrls:
         response = _mock_response([{"not": "a dict"}])
         client = _mock_client(response)
         fake_preset = Mock(
+            spec=LocalPreset,
             candidate_urls=("http://host:11434",),
         )
 

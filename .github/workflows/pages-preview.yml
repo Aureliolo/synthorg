@@ -120,7 +120,7 @@ jobs:
           # renovate: datasource=github-releases depName=terrastruct/d2
           D2_VERSION: v0.7.1
         run: |
-          curl -fsSL --retry 3 --retry-delay 5 "https://github.com/terrastruct/d2/releases/download/${D2_VERSION}/d2-${D2_VERSION}-linux-amd64.tar.gz" -o d2.tar.gz
+          curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors "https://github.com/terrastruct/d2/releases/download/${D2_VERSION}/d2-${D2_VERSION}-linux-amd64.tar.gz" -o d2.tar.gz
           tar -xzf d2.tar.gz
           sudo mv "d2-${D2_VERSION}/bin/d2" /usr/local/bin/d2
           rm -rf d2.tar.gz "d2-${D2_VERSION}"
@@ -427,6 +427,7 @@ jobs:
           while :; do
             CURL_EXIT=0
             RESPONSE=$(curl -s -w "\n%{http_code}" \
+              --retry 5 --retry-delay 5 --retry-all-errors \
               "${API_BASE}?per_page=${PER_PAGE}&page=${PAGE}" \
               -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}") || CURL_EXIT=$?
             HTTP_CODE=$(echo "$RESPONSE" | tail -1)
@@ -477,6 +478,7 @@ jobs:
             echo "Deleting deployment ${DEPLOY_ID}..."
             DEL_CURL_EXIT=0
             DEL_RESPONSE=$(curl -s -w "\n%{http_code}" -X DELETE \
+              --retry 5 --retry-delay 5 --retry-all-errors \
               "${API_BASE}/${DEPLOY_ID}?force=true" \
               -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}") || DEL_CURL_EXIT=$?
             DEL_CODE=$(echo "$DEL_RESPONSE" | tail -1)

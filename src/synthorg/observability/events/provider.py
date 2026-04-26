@@ -68,6 +68,15 @@ PROVIDER_PROBE_STARTED: Final[str] = "provider.management.probe_started"
 PROVIDER_PROBE_HIT: Final[str] = "provider.management.probe_hit"
 PROVIDER_PROBE_MISS: Final[str] = "provider.management.probe_miss"
 PROVIDER_PROBE_COMPLETED: Final[str] = "provider.management.probe_completed"
+PROVIDER_PROBE_LOCAL_BATCH_STARTED: Final[str] = (
+    "provider.management.probe_local_batch_started"
+)
+PROVIDER_PROBE_LOCAL_BATCH_COMPLETED: Final[str] = (
+    "provider.management.probe_local_batch_completed"
+)
+PROVIDER_PROBE_LOCAL_PRESET_FAILED: Final[str] = (
+    "provider.management.probe_local_preset_failed"
+)
 
 # ── Provider health probing ───────────────────────────────────
 

@@ -147,27 +147,58 @@ export interface TestConnectionResponse {
   model_tested: string | null
 }
 
-export interface ProviderPreset {
+/** Fields shared by every preset kind. */
+interface BasePresetFields {
   name: string
   display_name: string
   description: string
   driver: string
   litellm_provider: string
   auth_type: AuthType
-  readonly supported_auth_types: readonly AuthType[]
   default_base_url: string | null
   requires_base_url: boolean
-  readonly candidate_urls: readonly string[]
-  readonly default_models: readonly ProviderModelConfig[]
-  supports_model_pull: boolean
-  supports_model_delete: boolean
-  supports_model_config: boolean
 }
 
+/** Hosted LLM provider (no auto-detect, prefilled model list). */
+export interface CloudPreset extends BasePresetFields {
+  kind: 'cloud'
+  readonly supported_auth_types: readonly AuthType[]
+  readonly default_models: readonly ProviderModelConfig[]
+}
+
+/** Self-hosted LLM server (auto-detect via candidate URLs). */
+export interface LocalPreset extends BasePresetFields {
+  kind: 'local'
+  readonly candidate_urls: readonly string[]
+  readonly supports_model_pull: boolean
+  readonly supports_model_delete: boolean
+  readonly supports_model_config: boolean
+}
+
+/** Discriminated union of every preset kind, keyed by ``kind``. */
+export type ProviderPreset = CloudPreset | LocalPreset
+
+/** Per-preset probe outcome (used as a value inside ``ProbeLocalResponse``). */
 export interface ProbePresetResponse {
   url: string | null
   model_count: number
   candidates_tried: number
+}
+
+/** Batch result of ``POST /providers/probe-local``. */
+export interface ProbeLocalResponse {
+  /**
+   * Map of preset name to per-preset probe result.  Only local presets
+   * with non-empty ``candidate_urls`` are probed and appear here.
+   * Cloud presets and vLLM (intentionally empty candidates) are
+   * excluded from both maps.
+   */
+  readonly results: Readonly<Partial<Record<string, ProbePresetResponse>>>
+  /**
+   * Map of preset name to error message for presets whose probes
+   * raised.  Disjoint with ``results``.
+   */
+  readonly errors: Readonly<Partial<Record<string, string>>>
 }
 
 export interface CreateFromPresetRequest {

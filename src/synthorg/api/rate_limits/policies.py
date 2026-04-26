@@ -103,7 +103,7 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "providers.delete": (5, 60),
     "providers.delete_model": (20, 60),
     "providers.discover_models": (5, 60),
-    "providers.probe": (10, 60),
+    "providers.probe_local": (20, 60),
     "providers.pull_model": (5, 300),
     "providers.test": (20, 60),
     "providers.update": (20, 60),

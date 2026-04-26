@@ -227,7 +227,12 @@ export { buildMeeting } from './meetings'
 export { buildMessage, buildChannel } from './messages'
 export { buildEntity } from './ontology'
 export { buildProject } from './projects'
-export { buildProvider, buildProviderPreset } from './providers'
+export {
+  buildCloudPreset,
+  buildLocalPreset,
+  buildProvider,
+  buildProviderPreset,
+} from './providers'
 export { buildSettingEntry } from './settings'
 export { buildAgentSummary as buildSetupAgentSummary } from './setup'
 export { buildSubworkflow } from './subworkflows'

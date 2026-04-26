@@ -130,8 +130,10 @@ export interface ProvidersSlice {
   createProviderFromPresetFull: (data: CreateFromPresetRequest) => Promise<ProviderConfig | null>
   createProviderCustom: (data: CreateProviderRequest) => Promise<ProviderConfig | null>
   testProviderConnection: (name: string) => Promise<TestConnectionResponse>
-  probeAllPresets: () => Promise<void>
-  reprobePresets: () => Promise<void>
+  /** Kick off the batch local-provider probe. Idempotent on repeated calls. */
+  probeLocalProviders: () => Promise<void>
+  /** Force a fresh probe round (clears prior results before re-running). */
+  reprobeLocalProviders: () => Promise<void>
 }
 
 export interface ThemeSlice {

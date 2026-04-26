@@ -5,11 +5,11 @@ import {
   getProvider,
   listPresets,
   listProviders,
-  probePreset,
+  probeLocal,
   testConnection,
 } from '@/api/endpoints/providers'
 import { createLogger } from '@/lib/logger'
-import type { ProbePresetResponse, ProviderPreset } from '@/api/types/providers'
+import type { ProbePresetResponse } from '@/api/types/providers'
 import { getErrorMessage } from '@/utils/errors'
 import { useToastStore } from '@/stores/toast'
 import type { ProvidersSlice, SliceCreator } from './types'
@@ -21,33 +21,36 @@ interface ProbeOutcome {
   errors: Record<string, string>
 }
 
-async function runProbeAll(
-  presets: readonly ProviderPreset[],
-  label: string,
-): Promise<ProbeOutcome> {
-  const entries = await Promise.allSettled(
-    presets.map(async (preset) => {
-      const result = await probePreset(preset.name)
-      return { name: preset.name, result }
-    }),
-  )
-  const results: Record<string, ProbePresetResponse> = {}
-  const errors: Record<string, string> = {}
-  entries.forEach((entry, i) => {
-    const preset = presets[i]
-    if (!preset) return
-    if (entry.status === 'fulfilled') {
-      results[entry.value.name] = entry.value.result
-    } else {
-      const message = getErrorMessage(entry.reason)
-      log.error(`${label} failed for ${preset.name}:`, message)
-      errors[preset.name] = message
+/**
+ * Hit the batch probe-local endpoint, normalise the envelope into
+ * concrete records, and toast on top-level failure.  Per-preset
+ * failures land under ``errors`` and are surfaced inline by
+ * ``DetectedLocalList``; this helper does not toast for those.
+ */
+async function runProbeLocal(label: string): Promise<ProbeOutcome | null> {
+  try {
+    const response = await probeLocal()
+    const results = Object.fromEntries(
+      Object.entries(response.results).filter(
+        (entry): entry is [string, ProbePresetResponse] => entry[1] !== undefined,
+      ),
+    )
+    const errors = Object.fromEntries(
+      Object.entries(response.errors).filter(
+        (entry): entry is [string, string] => entry[1] !== undefined,
+      ),
+    )
+    if (Object.keys(errors).length > 0) {
+      log.warn(`${label} reported per-preset errors`, errors)
     }
-  })
-  return { results, errors }
+    return { results, errors }
+  } catch (err) {
+    log.error(`${label} failed`, getErrorMessage(err))
+    return null
+  }
 }
 
-export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set, get) => ({
+export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set) => ({
   providers: {},
   presets: [],
   presetsLoading: false,
@@ -182,59 +185,33 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (set, get) => 
     }
   },
 
-  async probeAllPresets() {
-    const { presets } = get()
+  async probeLocalProviders() {
     set({ probing: true, probeErrors: {}, probeGlobalError: null })
-    try {
-      const { results, errors } = await runProbeAll(presets, 'probe')
-      set({ probeResults: results, probeErrors: errors })
-      if (Object.keys(errors).length > 0) {
-        const failedCount = Object.keys(errors).length
-        useToastStore.getState().add({
-          variant: 'warning',
-          title: `Provider probe failed for ${failedCount} preset${failedCount === 1 ? '' : 's'}`,
-          description: 'See the Providers step for retry options or skip to configure manually.',
-        })
-      }
-    } catch (err) {
-      const message = getErrorMessage(err)
-      log.error('probeAllPresets failed:', message)
-      set({ probeGlobalError: message })
+    const outcome = await runProbeLocal('probeLocalProviders')
+    if (outcome === null) {
+      set({ probeGlobalError: 'Local provider probe failed', probing: false })
       useToastStore.getState().add({
         variant: 'error',
-        title: 'Provider probe failed',
-        description: message,
+        title: 'Local provider probe failed',
+        description: 'Could not reach the SynthOrg API. Try Re-scan or skip to configure manually.',
       })
-    } finally {
-      set({ probing: false })
+      return
     }
+    set({ probeResults: outcome.results, probeErrors: outcome.errors, probing: false })
   },
 
-  async reprobePresets() {
+  async reprobeLocalProviders() {
     set({ probeResults: {}, probeErrors: {}, probeGlobalError: null, probing: true })
-    try {
-      const { presets } = get()
-      const { results, errors } = await runProbeAll(presets, 'reprobe')
-      set({ probeResults: results, probeErrors: errors })
-      if (Object.keys(errors).length > 0) {
-        const failedCount = Object.keys(errors).length
-        useToastStore.getState().add({
-          variant: 'warning',
-          title: `Re-probe failed for ${failedCount} preset${failedCount === 1 ? '' : 's'}`,
-          description: 'See the Providers step for retry options or skip to configure manually.',
-        })
-      }
-    } catch (err) {
-      const message = getErrorMessage(err)
-      log.error('reprobePresets failed:', message)
-      set({ probeGlobalError: message })
+    const outcome = await runProbeLocal('reprobeLocalProviders')
+    if (outcome === null) {
+      set({ probeGlobalError: 'Local provider probe failed', probing: false })
       useToastStore.getState().add({
         variant: 'error',
-        title: 'Provider re-probe failed',
-        description: message,
+        title: 'Local provider probe failed',
+        description: 'Could not reach the SynthOrg API. Check your connection and try again.',
       })
-    } finally {
-      set({ probing: false })
+      return
     }
+    set({ probeResults: outcome.results, probeErrors: outcome.errors, probing: false })
   },
 })

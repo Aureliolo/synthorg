@@ -10,7 +10,7 @@ from synthorg.config.schema import ProviderModelConfig
 from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import ProviderNotFoundError
 from synthorg.providers.management.service import ProviderManagementService
-from synthorg.providers.presets import ProviderPreset
+from synthorg.providers.presets import LocalPreset
 from synthorg.providers.url_utils import redact_url
 
 from .conftest import make_create_request
@@ -373,14 +373,13 @@ class TestSelfConnectionGuard:
         expected_trust: bool,
     ) -> None:
         """Self-connection URLs are blocked before discovery; others proceed."""
-        fake_preset = ProviderPreset(
+        fake_preset = LocalPreset(
             name="test-local",
             display_name="Test Local",
             description="Fake preset for self-connection guard tests",
             driver="litellm",
             litellm_provider="test-local",
             auth_type=AuthType.NONE,
-            supported_auth_types=(AuthType.NONE,),
             candidate_urls=(base_url,),
         )
         await service.create_provider(
@@ -415,14 +414,13 @@ class TestSelfConnectionGuard:
     ) -> None:
         """Self-connection guard blocks discovery for default_base_url too."""
         self_url = f"http://localhost:{_BACKEND_PORT}/v1"
-        fake_preset = ProviderPreset(
+        fake_preset = LocalPreset(
             name="test-local",
             display_name="Test Local",
             description="Fake preset with self-URL as default_base_url",
             driver="litellm",
             litellm_provider="test-local",
             auth_type=AuthType.NONE,
-            supported_auth_types=(AuthType.NONE,),
             default_base_url=self_url,
         )
         await service.create_provider(
@@ -454,14 +452,13 @@ class TestSelfConnectionGuard:
     ) -> None:
         """Self-connection guard emits a warning log on rejection."""
         self_url = f"http://localhost:{_BACKEND_PORT}/v1"
-        fake_preset = ProviderPreset(
+        fake_preset = LocalPreset(
             name="test-local",
             display_name="Test Local",
             description="Fake preset for log assertion",
             driver="litellm",
             litellm_provider="test-local",
             auth_type=AuthType.NONE,
-            supported_auth_types=(AuthType.NONE,),
             candidate_urls=(self_url,),
         )
         await service.create_provider(

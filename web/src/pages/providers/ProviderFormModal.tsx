@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Dialog } from '@base-ui/react/dialog'
 import { X } from 'lucide-react'
 import { createLogger } from '@/lib/logger'
@@ -7,10 +7,17 @@ import { SelectField } from '@/components/ui/select-field'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ErrorBanner } from '@/components/ui/error-banner'
-import { PresetPicker } from './PresetPicker'
 import { useProvidersStore } from '@/stores/providers'
 import { cn } from '@/lib/utils'
-import type { AuthType, CreateFromPresetRequest, CreateProviderRequest, ProviderConfig, ProviderPreset, UpdateProviderRequest } from '@/api/types/providers'
+import type {
+  AuthType,
+  CloudPreset,
+  CreateFromPresetRequest,
+  CreateProviderRequest,
+  ProviderConfig,
+  ProviderPreset,
+  UpdateProviderRequest,
+} from '@/api/types/providers'
 import type { ProviderWithName } from '@/utils/providers'
 
 const log = createLogger('providers')
@@ -20,6 +27,18 @@ const AUTH_OPTIONS: { value: AuthType; label: string }[] = [
   { value: 'subscription', label: 'Subscription (OAuth)' },
   { value: 'none', label: 'None' },
 ]
+
+const AUTH_TYPE_VALUES: ReadonlySet<AuthType> = new Set([
+  'api_key',
+  'oauth',
+  'custom_header',
+  'subscription',
+  'none',
+])
+
+function isAuthType(value: string): value is AuthType {
+  return AUTH_TYPE_VALUES.has(value as AuthType)
+}
 
 /** Optional store-override props for using this drawer outside the Settings page. */
 export interface ProviderFormOverrides {
@@ -37,6 +56,13 @@ interface ProviderFormModalProps {
   onClose: () => void
   mode: 'create' | 'edit'
   provider?: ProviderWithName | null
+  /**
+   * When provided in create mode, the modal opens with this preset
+   * pre-selected and the form pre-filled.  Pass ``null`` (or omit) to
+   * open in custom-endpoint mode with a small "Or pick a preset"
+   * dropdown so users with private gateways can still pick a preset.
+   */
+  initialPreset?: string | null
   /** When provided, uses these callbacks instead of `useProvidersStore`. */
   overrides?: ProviderFormOverrides
 }
@@ -46,6 +72,12 @@ export function ProviderFormModal({
   onClose,
   mode,
   provider,
+  // ``null`` means "open in custom-endpoint mode"; explicit string
+  // means "open with that preset preselected".  Defaulting to ``null``
+  // (rather than leaving it ``undefined``) ensures that consumers who
+  // omit the prop still land on a valid initial state instead of the
+  // blank-modal failure mode caught by CodeRabbit.
+  initialPreset = null,
   overrides,
 }: ProviderFormModalProps) {
   // Resolve store vs overrides
@@ -76,6 +108,32 @@ export function ProviderFormModal({
   const preset: ProviderPreset | undefined = presets.find((p) => p.name === selectedPreset)
   const isCustom = selectedPreset === '__custom__'
 
+  // Cloud-only narrowing for cloud-specific fields (supported_auth_types).
+  const cloudPreset = preset?.kind === 'cloud' ? (preset as CloudPreset) : null
+
+  // Subscription billing context: the banner copy + pricing link below
+  // are Anthropic-specific (Pro/Max plan credits).  Gating on the
+  // preset name (rather than just supported_auth_types) keeps a future
+  // provider with subscription auth from inheriting the wrong copy.
+  // When a second subscription-auth provider lands, move the copy +
+  // link into preset metadata and gate the banner on the metadata
+  // being present.
+  const showSubscriptionBillingHint =
+    cloudPreset != null &&
+    cloudPreset.name === 'anthropic' &&
+    authType === 'subscription' &&
+    cloudPreset.supported_auth_types.includes('subscription')
+
+  // Preset options for the small "Or pick a preset" dropdown shown only
+  // in custom-config mode (no initial preset and user has not picked).
+  const presetOptions = useMemo(
+    () => [
+      { value: '__custom__', label: 'Custom endpoint' },
+      ...presets.map((p) => ({ value: p.name, label: p.display_name })),
+    ],
+    [presets],
+  )
+
   // Fetch presets when dialog opens in create mode
   useEffect(() => {
     if (open && mode === 'create') {
@@ -83,7 +141,19 @@ export function ProviderFormModal({
     }
   }, [open, mode, fetchPresetsFn])
 
-  // Render-phase state sync: capture previous values before comparisons
+  // ── Render-phase state sync ──────────────────────────────────
+  // We mirror props (open / mode / provider / initialPreset / the
+  // chosen preset) into local controlled inputs by comparing each
+  // prop to its prior value via refs and conditionally calling
+  // setState during render.  This is React's documented pattern for
+  // "Adjusting state when a prop changes":
+  //   https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
+  // We use ``useRef`` instead of ``useState`` for the "previous"
+  // value so the comparison itself does not schedule an extra
+  // render.  Going through ``useEffect`` here would (a) trip the
+  // ``@eslint-react/set-state-in-effect`` rule and (b) double-fire
+  // under React StrictMode in dev; the render-phase pattern avoids
+  // both.  Each setState below is idempotent under repeat invocation.
   const prevProviderRef = useRef<typeof provider | undefined>(undefined)
   const prevModeRef = useRef<typeof mode | undefined>(undefined)
   const prevOpenRef = useRef<typeof open | undefined>(undefined)
@@ -93,14 +163,22 @@ export function ProviderFormModal({
   const openChanged = open !== prevOpenRef.current
   const selectedPresetChanged = selectedPreset !== prevSelectedPresetRef.current
 
-  // Clear credentials when switching to edit mode
+  // 1. Clear credentials when transitioning into edit mode.
   if (open && mode === 'edit' && (openChanged || modeChanged || providerChanged)) {
     setSelectedPreset(null)
     setApiKey('')
     setSubscriptionToken('')
   }
 
-  // Pre-fill in edit mode (also fires on reopen with same provider)
+  // 2. Seed selected preset from ``initialPreset`` on create-mode
+  //    open.  ``null`` (the default) maps to ``__custom__`` so users
+  //    who open the modal without a preset land in custom-endpoint
+  //    mode with the "Or pick a preset" dropdown visible.
+  if (open && mode === 'create' && openChanged) {
+    setSelectedPreset(initialPreset ?? '__custom__')
+  }
+
+  // 3. Pre-fill from the provider when entering edit mode.
   if (open && mode === 'edit' && provider && (openChanged || modeChanged || providerChanged)) {
     setName(provider.name)
     setAuthType(provider.auth_type)
@@ -109,7 +187,8 @@ export function ProviderFormModal({
     setTosAccepted(provider.tos_accepted_at !== null)
   }
 
-  // When user selection changes, auto-fill form fields (or reset for custom)
+  // 4. Sync form fields when the user picks a different preset
+  //    (or switches to custom mode).
   if (selectedPresetChanged) {
     if (selectedPreset === '__custom__') {
       setName('')
@@ -130,7 +209,8 @@ export function ProviderFormModal({
     }
   }
 
-  // Update all prev refs after comparisons
+  // Update ref snapshots so the next render compares against the
+  // values we just observed.
   prevModeRef.current = mode
   prevProviderRef.current = provider
   prevOpenRef.current = open
@@ -143,15 +223,25 @@ export function ProviderFormModal({
     : preset ? 'Optional -- override the default endpoint'
     : undefined
 
-  // Available auth types based on selected preset
-  const availableAuthTypes = preset
-    ? AUTH_OPTIONS.filter((opt) => preset.supported_auth_types.includes(opt.value))
-    : AUTH_OPTIONS
+  // Available auth types based on selected preset.  Only cloud presets
+  // declare ``supported_auth_types``; local presets always use NONE.
+  const availableAuthTypes = (() => {
+    if (cloudPreset) {
+      return AUTH_OPTIONS.filter((opt) => cloudPreset.supported_auth_types.includes(opt.value))
+    }
+    if (preset?.kind === 'local') {
+      return AUTH_OPTIONS.filter((opt) => opt.value === 'none')
+    }
+    return AUTH_OPTIONS
+  })()
 
   const handleAuthTypeChange = useCallback((value: string) => {
-    const newType = value as AuthType
-    setAuthType(newType)
-    if (newType === 'subscription' && !tosAccepted) {
+    if (!isAuthType(value)) {
+      log.warn('Ignoring unknown auth_type value', value)
+      return
+    }
+    setAuthType(value)
+    if (value === 'subscription' && !tosAccepted) {
       setShowTosDialog(true)
     }
   }, [tosAccepted])
@@ -168,10 +258,13 @@ export function ProviderFormModal({
     setTosAccepted(false)
   }, [])
 
-  // Reset form when mode switches (e.g., edit -> create without closing)
-  if ((modeChanged || openChanged) && mode === 'create' && open) {
-    resetForm()
-  }
+  // 5. Block 2 above always seeds ``selectedPreset`` on create-mode
+  //    open (mapping ``null`` -> ``__custom__``), so we no longer need
+  //    a render-phase ``resetForm()`` here -- block 4 (driven by the
+  //    selectedPreset transition) handles every field reset.  Keeping
+  //    this comment as a tombstone for the previous render-phase
+  //    reset, which ran into a setState-batching ordering bug
+  //    (CodeRabbit R1) and was removed.
 
   const handleClose = useCallback(() => {
     resetForm()
@@ -290,22 +383,21 @@ export function ProviderFormModal({
                   />
                 )}
 
-                {/* Step 1: Preset picker (create only) */}
-                {mode === 'create' && (
-                  <div>
-                    <h3 className="mb-3 text-sm font-medium text-foreground">
-                      Select Provider Type
-                    </h3>
-                    <PresetPicker
-                      presets={presets}
-                      selected={selectedPreset}
-                      onSelect={setSelectedPreset}
-                      loading={presetsLoading}
-                    />
-                  </div>
+                {/* Optional preset switcher -- only visible in custom mode
+                    so users opening "Configure manually" can still adopt a
+                    preset without going back to the picker. */}
+                {mode === 'create' && isCustom && !presetsLoading && (
+                  <SelectField
+                    label="Or pick a preset"
+                    options={presetOptions}
+                    value={selectedPreset ?? '__custom__'}
+                    onChange={(v) => setSelectedPreset(v)}
+                    hint="Switch to a preset to autofill the LiteLLM routing key, base URL, and auth type."
+                  />
                 )}
 
-                {/* Step 2+: Configuration (shown after preset selected or in edit mode) */}
+                {/* Configuration form (shown when a preset is chosen,
+                    custom mode, or edit mode) */}
                 {(selectedPreset !== null || mode === 'edit') && (
                   <>
                     {/* Auth type */}
@@ -315,6 +407,32 @@ export function ProviderFormModal({
                       value={authType}
                       onChange={handleAuthTypeChange}
                     />
+
+                    {/* Subscription billing context -- shown only when the
+                        chosen cloud preset supports subscription auth and
+                        the user has selected it.  Anthropic Pro/Max plans
+                        consume API credits from the subscription rather
+                        than charging the API key separately. */}
+                    {showSubscriptionBillingHint && (
+                      <ErrorBanner
+                        variant="inline"
+                        severity="info"
+                        title="Counts against your subscription credits"
+                        description={`API calls made through ${
+                          cloudPreset?.display_name ?? 'this provider'
+                        } using subscription auth consume your monthly Pro/Max plan credits, not your API billing budget.`}
+                        action={
+                          <a
+                            href="https://www.anthropic.com/pricing"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+                          >
+                            View pricing
+                          </a>
+                        }
+                      />
+                    )}
 
                     {/* Auth-specific fields */}
                     {authType === 'api_key' && (

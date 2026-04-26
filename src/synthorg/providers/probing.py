@@ -198,10 +198,15 @@ async def probe_preset_urls(
     Returns:
         Probe result with reachable URL and model count, or empty.
     """
-    from synthorg.providers.presets import get_preset  # noqa: PLC0415
+    from synthorg.providers.presets import (  # noqa: PLC0415
+        LocalPreset,
+        get_preset,
+    )
 
     preset = get_preset(preset_name)
-    if preset is None:
+    if not isinstance(preset, LocalPreset):
+        # Cloud presets have no auto-detect surface; only LocalPreset
+        # carries candidate URLs.
         return ProbeResult()
     candidate_urls = preset.candidate_urls
     if not candidate_urls:

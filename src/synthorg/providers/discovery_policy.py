@@ -121,11 +121,14 @@ def seed_from_presets() -> tuple[str, ...]:
     Returns:
         Deduplicated tuple of ``host:port`` strings.
     """
-    from synthorg.providers.presets import PROVIDER_PRESETS  # noqa: PLC0415
+    from synthorg.providers.presets import (  # noqa: PLC0415
+        PROVIDER_PRESETS,
+        candidate_urls_for,
+    )
 
     seen: dict[str, None] = {}
     for preset in PROVIDER_PRESETS:
-        for url in preset.candidate_urls:
+        for url in candidate_urls_for(preset):
             hp = extract_host_port(url)
             if hp is not None:
                 seen.setdefault(hp, None)

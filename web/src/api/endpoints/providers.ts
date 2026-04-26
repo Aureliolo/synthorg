@@ -10,7 +10,7 @@ import type {
   DiscoverModelsResponse,
   DiscoveryPolicyResponse,
   LocalModelParams,
-  ProbePresetResponse,
+  ProbeLocalResponse,
   ProviderConfig,
   ProviderHealthSummary,
   ProviderModelResponse,
@@ -87,10 +87,18 @@ export async function createFromPreset(data: CreateFromPresetRequest): Promise<P
   return unwrap(response)
 }
 
-export async function probePreset(presetName: string): Promise<ProbePresetResponse> {
-  const response = await apiClient.post<ApiResponse<ProbePresetResponse>>('/providers/probe-preset', {
-    preset_name: presetName,
-  })
+/**
+ * Probe every local preset's candidate URLs in one batch.
+ *
+ * Server-side fan-out via ``asyncio.TaskGroup``; a single rate-limit
+ * slot is consumed per call.  Per-preset failures are reported in the
+ * ``errors`` envelope rather than raising.
+ */
+export async function probeLocal(): Promise<ProbeLocalResponse> {
+  const response = await apiClient.post<ApiResponse<ProbeLocalResponse>>(
+    '/providers/probe-local',
+    {},
+  )
   return unwrap(response)
 }
 

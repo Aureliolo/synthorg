@@ -10,41 +10,78 @@ import type {
   getProviderModels,
   listPresets,
   listProviders,
-  probePreset,
+  probeLocal,
   removeAllowlistEntry,
   testConnection,
   updateModelConfig,
   updateProvider,
 } from '@/api/endpoints/providers'
-import type { ProviderConfig, ProviderPreset } from '@/api/types/providers'
+import type {
+  CloudPreset,
+  LocalPreset,
+  ProviderConfig,
+} from '@/api/types/providers'
 import { successFor, voidSuccess } from './helpers'
 
 /**
- * Canonical preset fixture builder. Keeps test fixtures aligned with the
- * shape of the real `/providers/presets` response so tests that need a
- * realistic preset do not diverge from the wire contract.
+ * Canonical cloud-preset fixture builder.
+ *
+ * Keeps test fixtures aligned with the shape of the real
+ * `/providers/presets` response so tests that need a realistic
+ * cloud preset do not diverge from the wire contract.
  */
-export function buildProviderPreset(
-  overrides: Partial<ProviderPreset> = {},
-): ProviderPreset {
+export function buildCloudPreset(
+  overrides: Partial<CloudPreset> = {},
+): CloudPreset {
   return {
+    kind: 'cloud',
+    name: 'cloud-test',
+    display_name: 'Cloud Test',
+    description: '',
+    driver: 'litellm',
+    litellm_provider: 'cloud-test',
+    auth_type: 'api_key',
+    supported_auth_types: ['api_key'],
+    default_base_url: null,
+    requires_base_url: false,
+    default_models: [],
+    ...overrides,
+  }
+}
+
+/**
+ * Canonical local-preset fixture builder.
+ *
+ * Defaults to the local-Ollama shape (the canonical happy path for
+ * the wizard's batch-probe flow).  Override ``candidate_urls=[]`` for
+ * vLLM-style manual-only presets.
+ */
+export function buildLocalPreset(
+  overrides: Partial<LocalPreset> = {},
+): LocalPreset {
+  return {
+    kind: 'local',
     name: 'local-ollama',
     display_name: 'Ollama',
     description: '',
     driver: 'litellm',
     litellm_provider: 'ollama',
     auth_type: 'none',
-    supported_auth_types: ['none'],
     default_base_url: 'http://localhost:11434',
-    requires_base_url: false,
-    candidate_urls: [],
-    default_models: [],
+    requires_base_url: true,
+    candidate_urls: ['http://localhost:11434'],
     supports_model_pull: true,
     supports_model_delete: true,
     supports_model_config: false,
     ...overrides,
   }
 }
+
+/**
+ * @deprecated Prefer ``buildCloudPreset`` / ``buildLocalPreset`` to
+ * make the preset kind explicit at the call site.
+ */
+export const buildProviderPreset = buildLocalPreset
 
 export function buildProvider(
   overrides: Partial<ProviderConfig> = {},
@@ -110,12 +147,11 @@ export const providersHandlers = [
       { status: 201 },
     )
   }),
-  http.post('/api/v1/providers/probe-preset', () =>
+  http.post('/api/v1/providers/probe-local', () =>
     HttpResponse.json(
-      successFor<typeof probePreset>({
-        url: null,
-        model_count: 0,
-        candidates_tried: 0,
+      successFor<typeof probeLocal>({
+        results: {},
+        errors: {},
       }),
     ),
   ),

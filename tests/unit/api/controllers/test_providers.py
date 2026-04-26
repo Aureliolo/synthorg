@@ -122,17 +122,33 @@ class TestProviderCrudEndpoints:
         )
         assert resp.status_code == 403
 
-    def test_probe_preset_requires_write_access(
+    def test_probe_local_requires_write_access(
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """POST /providers/probe-preset is guarded by write access."""
+        """POST /providers/probe-local is guarded by write access."""
         resp = test_client.post(
-            "/api/v1/providers/probe-preset",
-            json={"preset_name": "ollama"},
+            "/api/v1/providers/probe-local",
+            json={},
             headers=make_auth_headers("observer"),
         )
         assert resp.status_code == 403
+
+    def test_legacy_probe_preset_endpoint_returns_404(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """The legacy /probe-preset endpoint is removed and must 404 / 405.
+
+        Belt-and-braces regression guard so a stray client integration
+        cannot silently fall through to a different handler.
+        """
+        resp = test_client.post(
+            "/api/v1/providers/probe-preset",
+            json={"preset_name": "ollama"},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code in (404, 405)
 
 
 def _make_provider_state_and_mgmt() -> tuple[MagicMock, AsyncMock]:
@@ -287,60 +303,232 @@ class TestListModelsBatchCapabilities:
 
 
 @pytest.mark.unit
-class TestProbePresetEndpoint:
-    """Tests for POST /providers/probe-preset."""
+class TestProbeLocalResponseInvariant:
+    """Tests for the disjoint-set invariant on ``ProbeLocalResponse``."""
 
-    async def test_unknown_preset_raises_validation_error(self) -> None:
-        """Unknown preset name produces a validation error."""
-        state, _ = _make_provider_state_and_mgmt()
-        from synthorg.api.dto import ProbePresetRequest
-        from synthorg.api.errors import ApiValidationError
+    def test_overlapping_results_and_errors_raises(self) -> None:
+        """Constructing the model with the same name in both maps fails fast."""
+        from pydantic import ValidationError
 
-        ctrl = _provider_controller()
-        with pytest.raises(ApiValidationError):
-            await ctrl.probe_preset.fn(
-                ctrl,
-                state=state,
-                data=ProbePresetRequest(preset_name="nonexistent-preset"),
+        from synthorg.api.dto import ProbeLocalResponse, ProbePresetResponse
+
+        with pytest.raises(ValidationError, match=r"results.*errors.*overlap"):
+            ProbeLocalResponse(
+                results={
+                    "test-local-a": ProbePresetResponse(
+                        url="http://example/a",
+                        model_count=1,
+                        candidates_tried=1,
+                    ),
+                },
+                errors={"test-local-a": "boom"},
             )
 
-    async def test_preset_with_no_candidates_returns_empty(self) -> None:
-        """Preset with no candidate URLs returns zero candidates tried."""
-        state, _ = _make_provider_state_and_mgmt()
-        from synthorg.api.dto import ProbePresetRequest
+    def test_disjoint_results_and_errors_validate(self) -> None:
+        """Disjoint maps construct cleanly (no validation error)."""
+        from synthorg.api.dto import ProbeLocalResponse, ProbePresetResponse
 
-        ctrl = _provider_controller()
-        result = await ctrl.probe_preset.fn(
-            ctrl,
-            state=state,
-            data=ProbePresetRequest(preset_name="openrouter"),
+        response = ProbeLocalResponse(
+            results={
+                "test-local-a": ProbePresetResponse(
+                    url="http://example/a",
+                    model_count=1,
+                    candidates_tried=1,
+                ),
+            },
+            errors={"test-local-b": "boom"},
         )
-        assert result.data.candidates_tried == 0
-        assert result.data.url is None
+        assert "test-local-a" in response.results
+        assert "test-local-b" in response.errors
 
-    async def test_successful_probe_maps_result(self) -> None:
-        """Successful probe result is correctly mapped to response DTO."""
+
+@pytest.mark.unit
+class TestProbeLocalEndpoint:
+    """Tests for POST /providers/probe-local (batch local probe).
+
+    These cases assert against the real ``PROVIDER_PRESETS`` registry
+    via ``list_probable_presets()``, so they reference the actual
+    preset names ("ollama", "lm-studio", "vllm").  The CLAUDE.md
+    "test-provider" rule covers freshly-authored test fixtures, not
+    references to the registry under test -- replacing the names here
+    would require mocking ``list_probable_presets`` in every case and
+    lose the registry-integration assertion (catching e.g. a future
+    rename, accidental drop, or new preset that quietly slips in).
+    """
+
+    async def test_all_local_presets_succeed(self) -> None:
+        """Every probable preset's result lands in ``results``, none in ``errors``."""
         from unittest.mock import patch
 
-        from synthorg.api.dto import ProbePresetRequest
+        from synthorg.providers.presets import list_probable_presets
         from synthorg.providers.probing import ProbeResult
 
         state, _ = _make_provider_state_and_mgmt()
         ctrl = _provider_controller()
-        mock_result = ProbeResult(
-            url="http://host.docker.internal:11434",
-            model_count=3,
-            candidates_tried=1,
-        )
+
+        async def fake_probe(name: str) -> ProbeResult:
+            return ProbeResult(
+                url=f"http://host:port/{name}",
+                model_count=2,
+                candidates_tried=1,
+            )
+
         with patch(
             "synthorg.api.controllers.providers.probe_preset_urls",
-            AsyncMock(return_value=mock_result),
+            side_effect=fake_probe,
         ):
-            result = await ctrl.probe_preset.fn(
-                ctrl,
-                state=state,
-                data=ProbePresetRequest(preset_name="ollama"),
+            response = await ctrl.probe_local.fn(ctrl, state=state)
+
+        probable = list_probable_presets()
+        expected_names = {p.name for p in probable}
+        assert set(response.data.results.keys()) == expected_names
+        assert response.data.errors == {}
+        for name, entry in response.data.results.items():
+            assert entry.url == f"http://host:port/{name}"
+            assert entry.model_count == 2
+            assert entry.candidates_tried == 1
+
+    async def test_partial_failure_records_errors(self) -> None:
+        """One preset raising does not abort the batch; other results land."""
+        from unittest.mock import patch
+
+        from synthorg.providers.probing import ProbeResult
+
+        state, _ = _make_provider_state_and_mgmt()
+        ctrl = _provider_controller()
+
+        async def fake_probe(name: str) -> ProbeResult:
+            if name == "ollama":
+                msg = "boom"
+                raise RuntimeError(msg)
+            return ProbeResult(
+                url=f"http://host:port/{name}",
+                model_count=1,
+                candidates_tried=1,
             )
-        assert result.data.url == "http://host.docker.internal:11434"
-        assert result.data.model_count == 3
-        assert result.data.candidates_tried == 1
+
+        with patch(
+            "synthorg.api.controllers.providers.probe_preset_urls",
+            side_effect=fake_probe,
+        ):
+            response = await ctrl.probe_local.fn(ctrl, state=state)
+
+        assert "ollama" in response.data.errors
+        assert "ollama" not in response.data.results
+        # LM Studio should still appear in results despite Ollama's failure.
+        assert "lm-studio" in response.data.results
+
+    async def test_all_failures_records_all_errors(self) -> None:
+        """When every preset raises, every entry lives under ``errors``."""
+        from unittest.mock import patch
+
+        from synthorg.providers.presets import list_probable_presets
+
+        state, _ = _make_provider_state_and_mgmt()
+        ctrl = _provider_controller()
+
+        async def fake_probe(_name: str) -> object:
+            msg = "all down"
+            raise RuntimeError(msg)
+
+        with patch(
+            "synthorg.api.controllers.providers.probe_preset_urls",
+            side_effect=fake_probe,
+        ):
+            response = await ctrl.probe_local.fn(ctrl, state=state)
+
+        probable = list_probable_presets()
+        expected_names = {p.name for p in probable}
+        assert set(response.data.errors.keys()) == expected_names
+        assert response.data.results == {}
+
+    async def test_excludes_vllm(self) -> None:
+        """vLLM has no candidate URLs and must not appear in either map."""
+        from unittest.mock import patch
+
+        from synthorg.providers.probing import ProbeResult
+
+        state, _ = _make_provider_state_and_mgmt()
+        ctrl = _provider_controller()
+
+        async def fake_probe(name: str) -> ProbeResult:
+            return ProbeResult(
+                url=f"http://probe/{name}",
+                model_count=0,
+                candidates_tried=1,
+            )
+
+        with patch(
+            "synthorg.api.controllers.providers.probe_preset_urls",
+            side_effect=fake_probe,
+        ):
+            response = await ctrl.probe_local.fn(ctrl, state=state)
+
+        assert "vllm" not in response.data.results
+        assert "vllm" not in response.data.errors
+
+    async def test_empty_probable_list_returns_empty_envelope(self) -> None:
+        """No probable presets => empty envelope, never raises.
+
+        Defensive guard against the silent-degradation case where a
+        future refactor empties every local preset's candidate_urls.
+        """
+        from unittest.mock import patch
+
+        state, _ = _make_provider_state_and_mgmt()
+        ctrl = _provider_controller()
+
+        with patch(
+            "synthorg.api.controllers.providers.list_probable_presets",
+            return_value=(),
+        ):
+            response = await ctrl.probe_local.fn(ctrl, state=state)
+
+        assert response.data.results == {}
+        assert response.data.errors == {}
+
+    def test_probe_local_rate_limit_returns_429_when_exhausted(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """The probe-local guard surfaces a 429 once its bucket drains.
+
+        Drains the (20, 60) per-user bucket and asserts the next call
+        receives a 429.  Locks the rate-limit policy in place so a
+        future refactor can't silently remove the guard from the
+        controller.  ``probe_preset_urls`` is mocked so each call
+        returns instantly without any real HTTP traffic.
+        """
+        from unittest.mock import patch
+
+        from synthorg.providers.probing import ProbeResult
+
+        async def fast_probe(_name: str) -> ProbeResult:
+            return ProbeResult(url=None, model_count=0, candidates_tried=0)
+
+        with patch(
+            "synthorg.api.controllers.providers.probe_preset_urls",
+            side_effect=fast_probe,
+        ):
+            # Drain the bucket; one user, sequential calls.  Each
+            # admit must return a clean 2xx -- a 5xx would mean the
+            # handler regressed and is hiding behind "not 429".
+            # Litestar ``@post`` defaults to 201 Created on success;
+            # accept either 200 OR 201 to stay handler-config agnostic.
+            for i in range(20):
+                resp = test_client.post(
+                    "/api/v1/providers/probe-local",
+                    json={},
+                    headers=make_auth_headers("ceo"),
+                )
+                assert resp.status_code in (200, 201), (
+                    f"Probe call {i + 1}/20 returned "
+                    f"{resp.status_code}; expected 2xx while bucket fills"
+                )
+            # 21st call hits the cap.
+            resp = test_client.post(
+                "/api/v1/providers/probe-local",
+                json={},
+                headers=make_auth_headers("ceo"),
+            )
+            assert resp.status_code == 429

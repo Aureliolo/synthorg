@@ -258,9 +258,9 @@ class TestCreateFromPreset:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Presets with requires_base_url=True reject creation without a URL."""
-        from synthorg.providers.presets import ProviderPreset
+        from synthorg.providers.presets import CloudPreset
 
-        test_preset = ProviderPreset(
+        test_preset = CloudPreset(
             name="test-provider",
             display_name="Test Provider",
             description="Test preset requiring base URL",
