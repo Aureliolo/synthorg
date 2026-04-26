@@ -42,7 +42,7 @@ You audit logging practices against the SynthOrg logging conventions defined in 
 - Full request/response bodies that may contain PII
 - Database connection strings with credentials
 
-### 6. Logging Coverage Suggestions (SUGGESTION -- soft rules, user validates in triage)
+### 6. Logging Coverage Suggestions (SUGGESTION: soft rules, user validates in triage)
 
 For every function touched by the changes, analyze its logic and suggest missing logging:
 

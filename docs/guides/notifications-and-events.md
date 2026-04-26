@@ -11,7 +11,7 @@ SynthOrg emits two complementary streams of updates: **notifications** (operator
 
 ## Notification Sinks
 
-Notifications are alerts that require operator attention -- approval gate decisions, budget threshold breaches, timeout escalations, system errors. They fan out concurrently to every registered sink.
+Notifications are alerts that require operator attention: approval gate decisions, budget threshold breaches, timeout escalations, system errors. They fan out concurrently to every registered sink.
 
 ### Configuration
 
@@ -72,7 +72,7 @@ See [Notifications design](../design/notifications.md) for the protocol and exte
 
 ## WebSocket Event Channels
 
-The dashboard subscribes to real-time events over `/api/v1/ws`. External consumers can connect the same way. Tickets (one-time tokens) are obtained via `POST /api/v1/auth/ws-ticket` with a valid session. **Preferred flow**: connect without query params, then send `{"action":"auth","ticket":"<ticket>"}` as the first message -- this keeps the ticket out of URLs, logs, and browser history. Query-param `?ticket=...` remains supported as a legacy fallback.
+The dashboard subscribes to real-time events over `/api/v1/ws`. External consumers can connect the same way. Tickets (one-time tokens) are obtained via `POST /api/v1/auth/ws-ticket` with a valid session. **Preferred flow**: connect without query params, then send `{"action":"auth","ticket":"<ticket>"}` as the first message; this keeps the ticket out of URLs, logs, and browser history. Query-param `?ticket=...` remains supported as a legacy fallback.
 
 ### Channel Inventory
 
@@ -163,13 +163,13 @@ notifications:
 
 External systems that need task / approval events can open a long-lived WebSocket connection and republish to their own bus (Kafka, NATS, webhook). The dashboard uses this same pattern.
 
-Keep one connection per consumer (not per user). Tickets are short-lived; the server emits `{"action":"ticket_expired"}` ~60 s before expiry -- re-request a fresh one and reconnect.
+Keep one connection per consumer (not per user). Tickets are short-lived; the server emits `{"action":"ticket_expired"}` ~60 s before expiry, so re-request a fresh one and reconnect.
 
 ---
 
 ## See Also
 
-- [Design: Notifications](../design/notifications.md) -- `NotificationSink` protocol and dispatcher
-- [Design: Communication](../design/communication.md) -- event stream hub, A2A gateway, projection layers
-- [Centralized Logging](centralized-logging.md) -- shipping logs (vs notifications) to external systems
-- [Settings Reference](settings-reference.md) -- `notifications` namespace settings
+- [Design: Notifications](../design/notifications.md): `NotificationSink` protocol and dispatcher
+- [Design: Communication](../design/communication.md): event stream hub, A2A gateway, projection layers
+- [Centralized Logging](centralized-logging.md): shipping logs (vs notifications) to external systems
+- [Settings Reference](settings-reference.md): `notifications` namespace settings

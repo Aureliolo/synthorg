@@ -5,7 +5,7 @@ search:
 
 # Tools
 
-Tool system -- base class, registry, invoker, built-in tools, and MCP bridge.
+Tool system: base class, registry, invoker, built-in tools, and MCP bridge.
 
 ## Base Tool
 

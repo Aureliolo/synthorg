@@ -5,7 +5,7 @@ description: Automated and manual backups, pluggable ComponentHandler protocol, 
 
 # Backup and Restore
 
-The backup system protects persistent data -- persistence DB, agent memory, and company configuration -- through automated and manual backups with configurable retention policies and validated restore.
+The backup system protects persistent data (persistence DB, agent memory, and company configuration) through automated and manual backups with configurable retention policies and validated restore.
 
 ---
 
@@ -62,6 +62,6 @@ Backup settings live in the `backup` namespace with runtime editability via `Bac
 
 ## See Also
 
-- [Persistence](persistence.md) -- repository protocol, migrations, schema
-- [Deployment](deployment.md) -- container runtime
-- [Design Overview](index.md) -- full index
+- [Persistence](persistence.md): repository protocol, migrations, schema
+- [Deployment](deployment.md): container runtime
+- [Design Overview](index.md): full index

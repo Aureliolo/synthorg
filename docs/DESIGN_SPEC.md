@@ -1,6 +1,6 @@
 # SynthOrg - High-Level Design Specification
 
-> A framework for building synthetic organizations -- autonomous AI agents orchestrated as a virtual company, with configurable roles, hierarchies, communication patterns, and tool access.
+> A framework for building synthetic organizations: autonomous AI agents orchestrated as a virtual company, with configurable roles, hierarchies, communication patterns, and tool access.
 
 ---
 

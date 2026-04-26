@@ -5,7 +5,7 @@ description: Pluggable NotificationSink protocol, NotificationDispatcher fan-out
 
 # Notifications
 
-The notification subsystem delivers operator-facing alerts for events that require human attention -- approval gate decisions, budget threshold breaches, system errors, and timeout escalations.
+The notification subsystem delivers operator-facing alerts for events that require human attention: approval gate decisions, budget threshold breaches, system errors, and timeout escalations.
 
 ---
 
@@ -13,8 +13,8 @@ The notification subsystem delivers operator-facing alerts for events that requi
 
 All notification adapters implement the `NotificationSink` protocol:
 
-- ``async send(notification: Notification) -> None`` -- deliver a single notification
-- ``async close() -> None`` -- release resources (connections, file handles)
+- ``async send(notification: Notification) -> None``: deliver a single notification
+- ``async close() -> None``: release resources (connections, file handles)
 
 The protocol is intentionally minimal so new adapters (PagerDuty, Teams, Discord, etc.)
 can be added without modifying dispatcher logic.
@@ -100,7 +100,7 @@ silently dropped.
 
 ## See Also
 
-- [Observability](observability.md) -- structured logging, correlation IDs, sinks
-- [Budget](budget.md) -- threshold alerts that emit notifications
-- [Security & Approval](security.md) -- approval gate alerts
-- [Design Overview](index.md) -- full index
+- [Observability](observability.md): structured logging, correlation IDs, sinks
+- [Budget](budget.md): threshold alerts that emit notifications
+- [Security & Approval](security.md): approval gate alerts
+- [Design Overview](index.md): full index

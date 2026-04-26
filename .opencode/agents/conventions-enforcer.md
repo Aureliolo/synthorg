@@ -31,8 +31,8 @@ See `.claude/skills/aurelio-review-pr/SKILL.md` for the canonical policy. In sum
 
 ### 3. Python 3.14 Conventions
 
-- `from __future__ import annotations` -- forbidden, Python 3.14 has PEP 649 native lazy annotations (CRITICAL)
-- `except (A, B):` with parentheses instead of PEP 758 `except A, B:` -- ruff enforces this on Python 3.14 (MAJOR)
+- `from __future__ import annotations`: forbidden, Python 3.14 has PEP 649 native lazy annotations (CRITICAL)
+- `except (A, B):` with parentheses instead of PEP 758 `except A, B:`; ruff enforces this on Python 3.14 (MAJOR)
 
 ### 4. Pydantic Patterns (HIGH)
 

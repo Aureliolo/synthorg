@@ -25,7 +25,7 @@ When the skill copies `.claude/` local files to worktrees, ALSO copy OpenCode co
 When generating prompts for each worktree (step 5), generate prompts that work in OpenCode:
 - Reference CLAUDE.md (OpenCode reads it via instructions)
 - Reference AGENTS.md (OpenCode reads it natively)
-- The prompt content itself is the same -- it's project instructions, not tool-specific
+- The prompt content itself is the same; it's project instructions, not tool-specific
 
 ### Shell compatibility
 

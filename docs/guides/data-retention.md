@@ -26,24 +26,24 @@ lives, how long it is retained, and how it is removed.
 
 When an operator issues `DELETE /api/v1/users/{user_id}` the server:
 
-1. **Revokes refresh tokens (defense-in-depth)** -- the
+1. **Revokes refresh tokens (defense-in-depth)**: the
    `UserService.delete()` method calls
    `RefreshTokenRepository.revoke_by_user(user_id)` before the DB
    delete so outstanding tokens cannot continue to mint access
    tokens even while the delete is in flight or retried. If the
    revocation raises, the user delete is aborted (fail-closed) so
    tokens are never left live alongside a deleted user.
-2. **Cascades via foreign key** -- the `api_keys`, `sessions`, and
+2. **Cascades via foreign key**: the `api_keys`, `sessions`, and
    `refresh_tokens` tables all declare
    `user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE`,
    so API keys, active sessions (including their recorded IP/UA),
    and any remaining refresh token rows are removed atomically
    when the user row is deleted.
-3. **Preserves audit entries** -- `audit_entries.agent_id` carries
+3. **Preserves audit entries**: `audit_entries.agent_id` carries
    the agent identifier, not the user id; there is no FK from audit
    entries to users. Audit integrity is intentionally held above
    PII erasure (see `docs/design/security.md`).
-4. **Preserves authorship records** -- `tasks.created_by` and
+4. **Preserves authorship records**: `tasks.created_by` and
    `artifacts.created_by` are not cascaded. Work outlives its
    author; removing the author would destroy project history.
 
@@ -93,7 +93,7 @@ the session TTL.
 
 Login-attempt rows drive the account-lockout policy (five failures
 in 15 minutes by default). Expired rows are cleared by the same
-cleanup loop -- look for `API_AUTH_LOCKOUT_CLEANUP` in the logs.
+cleanup loop; look for `API_AUTH_LOCKOUT_CLEANUP` in the logs.
 
 ## Out of scope
 
@@ -107,7 +107,7 @@ cleanup loop -- look for `API_AUTH_LOCKOUT_CLEANUP` in the logs.
 
 ## See also
 
-- [Settings Reference](settings-reference.md) -- full catalog of
+- [Settings Reference](settings-reference.md): full catalog of
   runtime-editable settings, including the retention knobs.
-- [Security design](../design/security.md) -- the rationale behind
+- [Security design](../design/security.md): the rationale behind
   audit append-only + preserved-authorship tradeoffs.

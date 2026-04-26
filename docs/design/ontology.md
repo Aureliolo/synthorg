@@ -77,7 +77,7 @@ class Task(BaseModel):
 ```
 
 The decorator inspects the model's docstring and `Field(description=...)`
-annotations.  Registration is lazy -- the decorator stores a reference to
+annotations.  Registration is lazy; the decorator stores a reference to
 the class, and `EntityDefinition` objects are built on first access via
 `get_entity_registry()`.
 

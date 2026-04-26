@@ -1,6 +1,6 @@
 ---
 name: tool-parity-checker
-description: Verifies Claude Code and OpenCode configuration parity -- checks that changes to .claude/ or .opencode/ files maintain dual-tool compatibility
+description: Verifies Claude Code and OpenCode configuration parity; checks that changes to .claude/ or .opencode/ files maintain dual-tool compatibility
 tools:
   - Read
   - Grep
@@ -26,7 +26,7 @@ If a `.claude/skills/<name>/SKILL.md` was modified:
 
 If `.claude/agents/<name>.md` was modified:
 - Check if `.opencode/agents/<name>.md` exists
-- If it does, verify the agent instructions (body) match (frontmatter format will differ -- that's expected)
+- If it does, verify the agent instructions (body) match (frontmatter format will differ; that's expected)
 - Flag if the agent body has diverged
 
 ### 3. Hook parity

@@ -9,6 +9,7 @@
  *   PreToolUse (Bash): scripts/check_no_atlas_rehash.sh
  *   PreToolUse (Bash): scripts/check_bash_no_write.sh
  *   PreToolUse (Bash): scripts/check_git_c_cwd.sh
+ *   PreToolUse (Bash | Edit): scripts/check_no_bulk_edit.py
  *   PreToolUse (Edit|Write): scripts/check_no_edit_migration.sh
  *   PreToolUse (Edit|Write): scripts/check_no_edit_baseline.sh
  *   PreToolUse (Edit|Write): scripts/check_pre_pr_review_triage_gate.sh
@@ -161,6 +162,18 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
             const filePath = typeof output.args?.file_path === "string"
               ? output.args.file_path as string
               : "";
+
+            // Block bulk Edit (replace_all=true) without explicit user approval.
+            // The user must approve every bulk edit before it runs.
+            if (input.tool === "edit" && output.args?.replace_all === true) {
+              const oldString = typeof output.args?.old_string === "string"
+                ? output.args.old_string as string
+                : "<old_string>";
+              throw new Error(
+                `BLOCKED: Edit with replace_all=true is a bulk edit. The user must explicitly approve every bulk edit before it runs. Either ask the user to confirm bulk replacement of \`${oldString}\` in \`${filePath}\`, or do per-occurrence edits with replace_all=false (one Edit call per occurrence with enough context to make old_string unique).`,
+              );
+            }
+
             const payload = { tool_input: { file_path: filePath } } as Record<string, unknown>;
 
             for (const script of [
@@ -183,6 +196,24 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
           // Only the remaining bash / shell checks apply below
           if (input.tool === "bash" || input.tool === "shell") {
             const command = (output.args?.command as string) ?? "";
+
+            // Block in-place bulk-edit shell commands (sed -i, awk -i inplace,
+            // perl -i, perl -pi, gawk -i inplace). Bulk edits require explicit
+            // user approval; the Edit tool with replace_all=false is the
+            // sanctioned per-occurrence path.
+            const _bulkPatterns: Array<{ re: RegExp; label: string }> = [
+              { re: /\bsed\s+(?:-[a-zA-Z]*i|--in-place\b)/, label: "sed -i / sed --in-place" },
+              { re: /\bawk\s+(?:-[a-zA-Z]*i\b|.*-i\s+inplace)/, label: "awk -i inplace" },
+              { re: /\bperl\s+(?:-[a-zA-Z]*i\b|-pi\b|-pie\b)/, label: "perl -i / perl -pi" },
+              { re: /\bgawk\s+(?:-[a-zA-Z]*i\b|.*-i\s+inplace)/, label: "gawk -i inplace" },
+            ];
+            for (const { re, label } of _bulkPatterns) {
+              if (re.test(command)) {
+                throw new Error(
+                  `BLOCKED: detected an in-place bulk-edit shell command (${label}). Bulk edits require explicit user approval. Use the Edit tool with replace_all=false for per-occurrence edits, or ask the user to approve the bulk operation.`,
+                );
+              }
+            }
 
             // block-pr-create: block direct gh pr create
             if (/gh\s+pr\s+create/i.test(command)) {

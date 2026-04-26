@@ -97,7 +97,7 @@ All tests must pass and coverage must remain at or above 80%.
 
 Hooks run automatically on `git commit`. If a hook fails:
 
-1. Review the output -- most hooks (ruff, trailing whitespace) auto-fix the issue
+1. Review the output; most hooks (ruff, trailing whitespace) auto-fix the issue
 2. Stage the auto-fixed files: `git add .`
 3. Commit again
 
@@ -148,6 +148,6 @@ This project is licensed under [BUSL-1.1](../LICENSE) (Business Source License 1
 
 Before your first contribution can be merged, you must sign the [Contributor License Agreement (CLA)](CLA.md). This is required to enable dual-licensing (BSL + commercial licenses for enterprise customers).
 
-**How to sign:** When you open your first pull request, a bot will post a comment asking you to sign. Simply reply with the text specified in the comment -- no forms, no external services. Your signature is recorded as a JSON entry in this repository.
+**How to sign:** When you open your first pull request, a bot will post a comment asking you to sign. Simply reply with the text specified in the comment: no forms, no external services. Your signature is recorded as a JSON entry in this repository.
 
 The CLA grants SynthOrg a perpetual, non-exclusive license to your contributions. You retain full ownership of your work and can use it however you wish.

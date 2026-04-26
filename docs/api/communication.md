@@ -5,7 +5,7 @@ search:
 
 # Communication
 
-Inter-agent messaging -- bus, dispatcher, delegation, loop prevention, conflict resolution, and meeting protocols.
+Inter-agent messaging: bus, dispatcher, delegation, loop prevention, conflict resolution, and meeting protocols.
 
 ## Message
 

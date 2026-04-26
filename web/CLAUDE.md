@@ -2,7 +2,7 @@
 
 React 19 + shadcn/ui + Base UI + Tailwind CSS 4 + Motion + Zustand
 
-`App.tsx` wraps the app in `<CSPProvider nonce={getCspNonce()}>` + `<MotionConfig nonce>` so every inline `<style>` tag injected by Base UI and Motion carries the per-request CSP nonce. See `docs/security.md` → CSP Nonce Infrastructure for the full flow. Base UI's `render` prop is the polymorphism primitive used throughout the dashboard; the local `<Slot>` helper in `components/ui/slot.tsx` uses `@base-ui/react/merge-props` to support the `<Button asChild>` ergonomic (the only component that uses this helper -- all other primitives use Base UI's native `render` prop directly).
+`App.tsx` wraps the app in `<CSPProvider nonce={getCspNonce()}>` + `<MotionConfig nonce>` so every inline `<style>` tag injected by Base UI and Motion carries the per-request CSP nonce. See `docs/security.md` → CSP Nonce Infrastructure for the full flow. Base UI's `render` prop is the polymorphism primitive used throughout the dashboard; the local `<Slot>` helper in `components/ui/slot.tsx` uses `@base-ui/react/merge-props` to support the `<Button asChild>` ergonomic (the only component that uses this helper; all other primitives use Base UI's native `render` prop directly).
 
 ## Quick Commands
 
@@ -41,7 +41,7 @@ web/src/
 
 ## Logging
 
-- **Always** use `createLogger` from `@/lib/logger` -- never bare `console.warn`/`console.error`/`console.debug` in application code
+- **Always** use `createLogger` from `@/lib/logger`; never bare `console.warn`/`console.error`/`console.debug` in application code
 - **Variable name**: always `log` (e.g. `const log = createLogger('module-name')`)
 - **Only `logger.ts` itself** may use bare console methods
 - **Levels**: `log.debug()` (DEV-only, stripped in production), `log.warn()`, `log.error()`
@@ -57,19 +57,19 @@ All Zustand store **mutation** actions (create/update/delete) MUST follow the `s
 3. On failure: log via `log.error('...', sanitizeForLog(err))`, emit an error toast with `description: getErrorMessage(err)`, and **return a sentinel** (`null` for create/update returning an entity, `false` for delete returning a boolean).
 4. For optimistic mutations, capture `previous` state synchronously and restore it in the `catch` branch.
 
-**Callers MUST NOT wrap store mutation calls in `try`/`catch`** -- the store owns the error UX. Callers only need to null-check the sentinel to decide whether to navigate, dismiss a dialog, or run a rollback.
+**Callers MUST NOT wrap store mutation calls in `try`/`catch`**; the store owns the error UX. Callers only need to null-check the sentinel to decide whether to navigate, dismiss a dialog, or run a rollback.
 
-**List reads** (`fetch*`) follow the same pattern for logging but set `error: string | null` on the store instead of toasting -- the UI surface (usually a page-level error banner) consumes the error state.
+**List reads** (`fetch*`) follow the same pattern for logging but set `error: string | null` on the store instead of toasting; the UI surface (usually a page-level error banner) consumes the error state.
 
 **Cursor pagination (MANDATORY)**: list endpoints use opaque cursor-based paging. The wire envelope is `PaginationMeta { limit, next_cursor: string | null, has_more: boolean, total: number | null, offset: number }`, unwrapped in `@/api/client` to `PaginatedResult<T> { data, total, offset, limit, nextCursor, hasMore, pagination }`. Stores that expose `fetchMore*` actions keep `nextCursor` + `hasMore` in state (not offset arithmetic) and early-return when `!hasMore || !nextCursor`; call sites pass `{ cursor: state.nextCursor, limit }` to the endpoint. `total` is nullable: repo-backed endpoints omit the extra `COUNT(*)` round-trip, so derive display counts from `data.length` when `total === null`. `has_more=true` with `next_cursor=null` is rejected server-side by `PaginationMeta._validate_cursor_consistency`; the two fields always agree.
 
-**Health / readiness endpoints (MANDATORY)**: the dashboard calls `getLiveness()` (`/api/v1/healthz`, always 200 while the process is alive) and `getReadiness()` (`/api/v1/readyz`, 200 on healthy persistence + message bus, 503 otherwise). `ReadinessOutcome` is a binary `'ok' | 'unavailable'` union -- the old tri-state `'degraded'` was dropped because supervisors have no sensible action for it. `StatusBar` / `health-popover` map `'unavailable'` to the local `SubsystemState` / `SystemStatus` models; any new caller must handle the 503 path explicitly rather than assuming a 200 body. The legacy `getHealth()` export is a pure alias for `getReadiness()` and exists only so older call sites compile.
+**Health / readiness endpoints (MANDATORY)**: the dashboard calls `getLiveness()` (`/api/v1/healthz`, always 200 while the process is alive) and `getReadiness()` (`/api/v1/readyz`, 200 on healthy persistence + message bus, 503 otherwise). `ReadinessOutcome` is a binary `'ok' | 'unavailable'` union; the old tri-state `'degraded'` was dropped because supervisors have no sensible action for it. `StatusBar` / `health-popover` map `'unavailable'` to the local `SubsystemState` / `SystemStatus` models; any new caller must handle the 503 path explicitly rather than assuming a 200 body. The legacy `getHealth()` export is a pure alias for `getReadiness()` and exists only so older call sites compile.
 
-**MSW handlers (MANDATORY)**: `web/src/mocks/handlers/` mirrors `web/src/api/endpoints/*.ts` 1:1 with a default happy-path handler for every exported endpoint function. `test-setup.tsx` boots `setupServer(...defaultHandlers)` with `onUnhandledRequest: 'error'` so any request without a handler fails the test loudly. Tests override defaults per-case via `server.use(http.get(...))` inside the test body; never use `vi.mock('@/api/endpoints/*')`. Handler response payloads go through typed helpers keyed to the endpoint function's return type -- `successFor<typeof endpoint>(data)` for `ApiResponse<T>` routes, `paginatedFor<typeof endpoint>(result)` for `PaginatedResponse<T>` routes, `voidSuccess()` for void routes -- so any drift between endpoint modules and handlers fails type-check. Per-domain `buildEntity()` builders (`buildAgent`, `buildTask`, `buildWorkflow`, etc.) are exported from `@/mocks/handlers` for constructing realistic stubs in overrides.
+**MSW handlers (MANDATORY)**: `web/src/mocks/handlers/` mirrors `web/src/api/endpoints/*.ts` 1:1 with a default happy-path handler for every exported endpoint function. `test-setup.tsx` boots `setupServer(...defaultHandlers)` with `onUnhandledRequest: 'error'` so any request without a handler fails the test loudly. Tests override defaults per-case via `server.use(http.get(...))` inside the test body; never use `vi.mock('@/api/endpoints/*')`. Handler response payloads go through typed helpers keyed to the endpoint function's return type (`successFor<typeof endpoint>(data)` for `ApiResponse<T>` routes, `paginatedFor<typeof endpoint>(result)` for `PaginatedResponse<T>` routes, `voidSuccess()` for void routes), so any drift between endpoint modules and handlers fails type-check. Per-domain `buildEntity()` builders (`buildAgent`, `buildTask`, `buildWorkflow`, etc.) are exported from `@/mocks/handlers` for constructing realistic stubs in overrides.
 
-**Test teardown**: `web/src/test-setup.tsx` registers a global `afterEach` that calls `useToastStore.getState().dismissAll()` (clears pending auto-dismiss timers + the toasts array in one idiomatic call), invokes `cancelPendingPersist()` on the notifications store, and calls `useThemeStore.getState().teardown()` (detaches the `prefers-reduced-motion` `MediaQueryList` listener installed at store creation). Tests that need to inspect the toasts list *after* timers drain can call `useToastStore.getState().cancelAllPending()` directly in their own teardown -- it clears timers without mutating `toasts`. This contract is required for `npm run test -- --detect-async-leaks` to stay under the CI ceiling; **any new store that schedules timers or attaches event listeners (e.g. `matchMedia`, `document.addEventListener`, `IntersectionObserver`) must expose an equivalent cleanup hook** and register it in the global `afterEach`. The theme store also calls `teardown()` from its `import.meta.hot?.dispose(...)` block so Vite Fast Refresh does not layer duplicate listeners in dev. The theme store additionally exposes `reattach()` -- the companion to `teardown()` -- so tests that exercise runtime reduced-motion reactivity can re-install the listener against a per-test `window.matchMedia` mock (call it in the test body after the mock is installed; it is idempotent if the listener is already attached).
+**Test teardown**: `web/src/test-setup.tsx` registers a global `afterEach` that calls `useToastStore.getState().dismissAll()` (clears pending auto-dismiss timers + the toasts array in one idiomatic call), invokes `cancelPendingPersist()` on the notifications store, and calls `useThemeStore.getState().teardown()` (detaches the `prefers-reduced-motion` `MediaQueryList` listener installed at store creation). Tests that need to inspect the toasts list *after* timers drain can call `useToastStore.getState().cancelAllPending()` directly in their own teardown; it clears timers without mutating `toasts`. This contract is required for `npm run test -- --detect-async-leaks` to stay under the CI ceiling; **any new store that schedules timers or attaches event listeners (e.g. `matchMedia`, `document.addEventListener`, `IntersectionObserver`) must expose an equivalent cleanup hook** and register it in the global `afterEach`. The theme store also calls `teardown()` from its `import.meta.hot?.dispose(...)` block so Vite Fast Refresh does not layer duplicate listeners in dev. The theme store additionally exposes `reattach()` (the companion to `teardown()`) so tests that exercise runtime reduced-motion reactivity can re-install the listener against a per-test `window.matchMedia` mock (call it in the test body after the mock is installed; it is idempotent if the listener is already attached).
 
-**Async-leak ceiling (MANDATORY)**: CI's `Dashboard Test` job runs `vitest run --coverage --detect-async-leaks` under `NO_COLOR=1` and fails if the `Leaks N leaks` summary line reports more than `MAX_ASYNC_LEAKS` (currently 80) OR if the anchored summary line is missing entirely. The local post-shim+M4 floor is 49; CI measures ~76 on ubuntu-latest because event-loop timing differs by platform, so the CI ceiling carries a small run-to-run variance buffer. The 2026-04-21 raise (66 -> 72) was tied to PR #1500 (WEB-1): the new WS payload sanitizers (`sanitizeApproval` / `sanitizeMeeting` / `sanitizeTask`) + strict shape guards exercise MSW-mocked paths ~6-8 more times on ubuntu-latest without introducing new timers or fire-and-forget async. The 2026-04-22 raise (72 -> 80) was tied to PR #1506 (WEB-2): nine new fast-check property suites exercise the same MSW-intercepted render paths a few more times per property, pushing the CI baseline to 76; see `.github/workflows/ci.yml` for the full per-PR justifications. The structural floor is MSW 2.x's own `CookieStore` (tough-cookie), the MSW XHR interceptor's `queueMicrotask` dispatch, and axios's response-interceptor `promise.then` chain -- none reachable from `test-setup.tsx`. The 2026-04-20 research round measured and rejected two further approaches (sync `queueMicrotask` went to 114; a custom axios adapter dispatching via MSW's `handler.run` went to 76 by re-attributing Promises to MSW's parse pipeline); zero leaks requires replacing MSW's matching layer, tracked by #1468. Raise the ceiling only with the same kind of documented per-PR justification; lower it whenever the structural floor shifts. Full investigation + options matrix lives in `docs/design/web-http-adapter.md`. `test-setup.tsx` also installs a synchronous `document.cookie` shim on `Document.prototype` to bypass jsdom's tough-cookie Promise-based accessor: preserve that shim; if a unit test needs a different cookie behavior, override it via `Document.prototype.cookie` at the test level (see `__tests__/utils/csrf.test.ts`) and ensure the test's `afterEach` restores the shim by default. The shim itself is reset by the global `afterEach` in `test-setup.tsx`, which clears the jar and re-seeds `csrf_token=test-csrf-token`, so tests that mutate `document.cookie` directly do not leak state across the suite.
+**Async-leak ceiling (MANDATORY)**: CI's `Dashboard Test` job runs `vitest run --coverage --detect-async-leaks` under `NO_COLOR=1` and fails if the `Leaks N leaks` summary line reports more than `MAX_ASYNC_LEAKS` (currently 80) OR if the anchored summary line is missing entirely. The local post-shim+M4 floor is 49; CI measures ~76 on ubuntu-latest because event-loop timing differs by platform, so the CI ceiling carries a small run-to-run variance buffer. The 2026-04-21 raise (66 -> 72) was tied to PR #1500 (WEB-1): the new WS payload sanitizers (`sanitizeApproval` / `sanitizeMeeting` / `sanitizeTask`) + strict shape guards exercise MSW-mocked paths ~6-8 more times on ubuntu-latest without introducing new timers or fire-and-forget async. The 2026-04-22 raise (72 -> 80) was tied to PR #1506 (WEB-2): nine new fast-check property suites exercise the same MSW-intercepted render paths a few more times per property, pushing the CI baseline to 76; see `.github/workflows/ci.yml` for the full per-PR justifications. The structural floor is MSW 2.x's own `CookieStore` (tough-cookie), the MSW XHR interceptor's `queueMicrotask` dispatch, and axios's response-interceptor `promise.then` chain; none reachable from `test-setup.tsx`. The 2026-04-20 research round measured and rejected two further approaches (sync `queueMicrotask` went to 114; a custom axios adapter dispatching via MSW's `handler.run` went to 76 by re-attributing Promises to MSW's parse pipeline); zero leaks requires replacing MSW's matching layer, tracked by #1468. Raise the ceiling only with the same kind of documented per-PR justification; lower it whenever the structural floor shifts. Full investigation + options matrix lives in `docs/design/web-http-adapter.md`. `test-setup.tsx` also installs a synchronous `document.cookie` shim on `Document.prototype` to bypass jsdom's tough-cookie Promise-based accessor: preserve that shim; if a unit test needs a different cookie behavior, override it via `Document.prototype.cookie` at the test level (see `__tests__/utils/csrf.test.ts`) and ensure the test's `afterEach` restores the shim by default. The shim itself is reset by the global `afterEach` in `test-setup.tsx`, which clears the jar and re-seeds `csrf_token=test-csrf-token`, so tests that mutate `document.cookie` directly do not leak state across the suite.
 
 **WS payload sanitization**: `sanitizeWsString()` (exported from `web/src/stores/notifications.ts`) normalizes every string field received from WebSocket events before it reaches storage or display. It strips C0 control characters and DELETE (except common whitespace `\t` / `\n` / `\r`), strips bidi-override characters (CVE-2021-42574 class), trims, and caps length at `MAX_STRING_LEN` (128) at code-point boundaries so surrogate pairs are not split. Any new WS payload handler in the notifications store **or a sibling store that ingests untrusted strings** (messages, approvals, tasks, agents, ...) MUST route string fields through this sanitizer.
 
@@ -87,7 +87,7 @@ All Zustand store **mutation** actions (create/update/delete) MUST follow the `s
 
 ### Component Reuse
 
-**ALWAYS reuse existing components from `web/src/components/ui/`** before creating new ones. These are the shared building blocks -- every page composes from them:
+**ALWAYS reuse existing components from `web/src/components/ui/`** before creating new ones. These are the shared building blocks; every page composes from them:
 
 | Component | Import | Use for |
 |-----------|--------|---------|
@@ -101,12 +101,12 @@ All Zustand store **mutation** actions (create/update/delete) MUST follow the `s
 | `StatPill` | `@/components/ui/stat-pill` | Compact inline label + value pair |
 | `Avatar` | `@/components/ui/avatar` | Circular initials avatar with optional `borderColor?` prop |
 | `Button` | `@/components/ui/button` | Standard button (shadcn) |
-| `Toast` / `ToastContainer` | `@/components/ui/toast` | Success/error/warning/info notifications with auto-dismiss queue (mount `ToastContainer` once in AppLayout). Store exposes `dismissAll()` (timers + toasts) and `cancelAllPending()` (timers only, preserves toasts) for test teardown -- the global `afterEach` in `web/src/test-setup.tsx` uses `dismissAll()`. |
+| `Toast` / `ToastContainer` | `@/components/ui/toast` | Success/error/warning/info notifications with auto-dismiss queue (mount `ToastContainer` once in AppLayout). Store exposes `dismissAll()` (timers + toasts) and `cancelAllPending()` (timers only, preserves toasts) for test teardown; the global `afterEach` in `web/src/test-setup.tsx` uses `dismissAll()`. |
 | `Skeleton` / `SkeletonCard` / `SkeletonMetric` / `SkeletonTable` / `SkeletonText` | `@/components/ui/skeleton` | Loading placeholders matching component shapes (shimmer animation, respects `prefers-reduced-motion`) |
 | `EmptyState` | `@/components/ui/empty-state` | No-data / no-results placeholder with icon, title, description, optional action button |
-| `ErrorBoundary` | `@/components/ui/error-boundary` | React error boundary with retry -- `level` prop: `page` / `section` / `component` |
+| `ErrorBoundary` | `@/components/ui/error-boundary` | React error boundary with retry. `level` prop: `page` / `section` / `component` |
 | `ConfirmDialog` | `@/components/ui/confirm-dialog` | Confirmation modal (Base UI AlertDialog) with `default` / `destructive` variants and `loading` state |
-| `CommandPalette` | `@/components/ui/command-palette` | Global Cmd+K search (cmdk-base + Base UI Dialog + React Router) -- mount once in AppLayout, register commands via `useCommandPalette` hook |
+| `CommandPalette` | `@/components/ui/command-palette` | Global Cmd+K search (cmdk-base + Base UI Dialog + React Router). Mount once in AppLayout, register commands via `useCommandPalette` hook |
 | `InlineEdit` | `@/components/ui/inline-edit` | Click-to-edit text with Enter/Escape, validation, optimistic save with rollback |
 | `AnimatedPresence` | `@/components/ui/animated-presence` | Page transition wrapper (Motion AnimatePresence keyed by route) |
 | `StaggerGroup` / `StaggerItem` | `@/components/ui/stagger-group` | Card entrance stagger container with configurable delay |
@@ -150,9 +150,9 @@ All Zustand store **mutation** actions (create/update/delete) MUST follow the `s
 - **Spacing**: use density-aware tokens (`p-card`, `gap-section-gap`, `gap-grid-gap`) or standard Tailwind spacing. NEVER hardcode pixel values for layout spacing.
 - **Shadows/Borders**: use token variables (`var(--so-shadow-card-hover)`, `border-border`, `border-bright`).
 - **Responsive widths**: use the named-variant tokens for drawers, search inputs, and popovers instead of hard-coding `w-[40vw]` / `max-w-*`. Drawers pick a width via `<Drawer width="narrow|default|wide">` (mapped to `--so-drawer-width-narrow|default|wide`); search inputs cap via `<SearchInput maxWidth="narrow|wide">` (mapped to `--so-search-max-narrow|wide`); popovers pass one of the two popover caps directly, e.g. `style={{ maxWidth: 'var(--so-popover-max-compact)' }}` for small menus or `style={{ maxWidth: 'var(--so-popover-max-wide)' }}` for larger surfaces like the health popover. The token values use `clamp()` so they adapt to viewport and density automatically; NEVER add new inline `w-[40vw]` or `max-w-lg` drawer overrides.
-- **Chart SVG attributes** (Recharts, xyflow, `<svg>`): use `var(--so-stroke-hairline)` (1) or `var(--so-stroke-thin)` (1.5) for `strokeWidth`; `var(--so-chart-fill-opacity-strong)` (0.3) or `var(--so-chart-fill-opacity-subtle)` (0.15) for `stopOpacity`; `var(--so-dash-tight)` / `--so-dash-compact` / `--so-dash-medium` / `--so-dash-loose` / `--so-dash-wide` for `strokeDasharray`. Modern browsers resolve CSS variables inside SVG presentation attributes. **Exception**: xyflow's `MiniMap` props (`maskStrokeWidth`, `nodeStrokeWidth`, `nodeBorderRadius`) and Recharts' `margin` prop are typed as `number` and reject CSS vars -- use numeric constants and a comment pointing to the token.
+- **Chart SVG attributes** (Recharts, xyflow, `<svg>`): use `var(--so-stroke-hairline)` (1) or `var(--so-stroke-thin)` (1.5) for `strokeWidth`; `var(--so-chart-fill-opacity-strong)` (0.3) or `var(--so-chart-fill-opacity-subtle)` (0.15) for `stopOpacity`; `var(--so-dash-tight)` / `--so-dash-compact` / `--so-dash-medium` / `--so-dash-loose` / `--so-dash-wide` for `strokeDasharray`. Modern browsers resolve CSS variables inside SVG presentation attributes. **Exception**: xyflow's `MiniMap` props (`maskStrokeWidth`, `nodeStrokeWidth`, `nodeBorderRadius`) and Recharts' `margin` prop are typed as `number` and reject CSS vars; use numeric constants and a comment pointing to the token.
 - **Currency**: NEVER hardcode currency codes (`'EUR'`, `'USD'`) or symbols (`€`, `$`) in formatter calls. Import `DEFAULT_CURRENCY` from `@/utils/currencies` and pass it to `formatCurrency(value, DEFAULT_CURRENCY)` or read the runtime currency from the company/settings store where available.
-- **Locale / i18n**: NEVER hardcode BCP 47 locale strings (`'en-US'`, `'fr-FR'`) or call bare `.toLocaleString()` / `.toLocaleDateString()` / `.toLocaleTimeString()`. Use the helpers in `@/utils/format` -- `formatDateTime`, `formatDateOnly`, `formatTime`, `formatDayLabel`, `formatTodayLabel`, `formatRelativeTime`, `formatNumber`, `formatCurrency`, `formatCurrencyCompact`, `formatTokenCount` -- all of which accept an optional `locale?: string` that defaults to `getLocale()` from `@/utils/locale`. The locale source of truth is `APP_LOCALE` in `@/utils/locale`; swap in a settings-store read there when we add a user-facing locale toggle.
+- **Locale / i18n**: NEVER hardcode BCP 47 locale strings (`'en-US'`, `'fr-FR'`) or call bare `.toLocaleString()` / `.toLocaleDateString()` / `.toLocaleTimeString()`. Use the helpers in `@/utils/format` (`formatDateTime`, `formatDateOnly`, `formatTime`, `formatDayLabel`, `formatTodayLabel`, `formatRelativeTime`, `formatNumber`, `formatCurrency`, `formatCurrencyCompact`, `formatTokenCount`), all of which accept an optional `locale?: string` that defaults to `getLocale()` from `@/utils/locale`. The locale source of truth is `APP_LOCALE` in `@/utils/locale`; swap in a settings-store read there when we add a user-facing locale toggle.
 
 ### Creating New Components
 
@@ -160,24 +160,24 @@ When a new shared component is needed (not covered by the inventory above):
 1. Place it in `web/src/components/ui/` with a descriptive kebab-case filename
 2. Create a `.stories.tsx` file alongside it with all states (default, hover, loading, error, empty)
 3. Export props as a TypeScript interface
-4. Use design tokens exclusively -- no hardcoded colors, fonts, or spacing
+4. Use design tokens exclusively; no hardcoded colors, fonts, or spacing
 5. Import `cn` from `@/lib/utils` for conditional class merging
-6. **For primitives backed by Base UI** (Dialog, AlertDialog, Popover, Menu, Tabs, Drawer -- see the Adoption Decisions table below for the canonical list; `Select`, `Toast`, `Meter`, `Combobox`, `Tooltip` are intentionally **not** adopted):
+6. **For primitives backed by Base UI** (Dialog, AlertDialog, Popover, Menu, Tabs, Drawer; see the Adoption Decisions table below for the canonical list; `Select`, `Toast`, `Meter`, `Combobox`, `Tooltip` are intentionally **not** adopted):
    - Import from the specific subpath: `import { Dialog } from '@base-ui/react/dialog'`
    - Use the component's `render` prop for polymorphism: `<Dialog.Trigger render={<Button>Open</Button>} />`. Never spread props manually.
    - For Dialog/AlertDialog/Popover/Drawer: compose with `Portal` + `Backdrop` + `Popup`. Popover and Menu additionally require a `Positioner` wrapper that owns `side` / `align` / `sideOffset`. Drawer additionally supports `swipeDirection` on `Root` and `SwipeArea` for swipe-to-dismiss.
    - Animation state attributes are `data-[open]`, `data-[closed]`, `data-[starting-style]`, `data-[ending-style]` (not `data-[state=open]` / `data-[state=closed]`). Tabs Tab uses `data-[active]` (not `data-[state=active]`).
    - In Tailwind v4, `translate-*` and `scale-*` compile to the dedicated CSS `translate:` and `scale:` properties, not `transform:`. Transition property lists must name each one explicitly: `transition-[opacity,translate]` or `transition-[opacity,scale]`, not just `transition-[opacity,transform]`.
-   - The local `<Slot>` helper in `components/ui/slot.tsx` is reserved for `<Button asChild>` -- all other polymorphism goes through Base UI's `render` prop.
+   - The local `<Slot>` helper in `components/ui/slot.tsx` is reserved for `<Button asChild>`; all other polymorphism goes through Base UI's `render` prop.
 
 ### What NOT to Do
 
-- **Do NOT** recreate status dots inline -- use `<StatusBadge>`
-- **Do NOT** build card-with-header layouts from scratch -- use `<SectionCard>`
-- **Do NOT** create metric displays with `text-metric font-bold` -- use `<MetricCard>`
-- **Do NOT** render initials circles manually -- use `<Avatar>`
-- **Do NOT** create complex (>8 line) JSX inside `.map()` -- extract to a shared component
-- **Do NOT** use `rgba()` with hardcoded values -- use design token variables
+- **Do NOT** recreate status dots inline; use `<StatusBadge>`
+- **Do NOT** build card-with-header layouts from scratch; use `<SectionCard>`
+- **Do NOT** create metric displays with `text-metric font-bold`; use `<MetricCard>`
+- **Do NOT** render initials circles manually; use `<Avatar>`
+- **Do NOT** create complex (>8 line) JSX inside `.map()`; extract to a shared component
+- **Do NOT** use `rgba()` with hardcoded values; use design token variables
 
 ### Enforcement
 
@@ -185,17 +185,17 @@ A PostToolUse hook (`scripts/check_web_design_system.py`) runs automatically on 
 - Hardcoded hex colors and rgba values
 - Hardcoded font-family declarations
 - Hardcoded Motion transition durations (should use `@/lib/motion` presets)
-- Hardcoded BCP 47 locale literals (`'en-US'`, `'de-DE'`, etc.) in files that use `Intl.*` or `.toLocale*String(...)` -- use helpers from `@/utils/format` instead
+- Hardcoded BCP 47 locale literals (`'en-US'`, `'de-DE'`, etc.) in files that use `Intl.*` or `.toLocale*String(...)`; use helpers from `@/utils/format` instead
 - Bare `.toLocaleString()` / `.toLocaleDateString()` / `.toLocaleTimeString()` calls without an explicit locale
 - New components without Storybook stories
 - Duplicate patterns that should use existing shared components
 - Complex `.map()` blocks that should be extracted
 
-Fix all violations before proceeding -- do not suppress or ignore hook output.
+Fix all violations before proceeding; do not suppress or ignore hook output.
 
 ## Base UI Adoption Decisions
 
-The dashboard's primitive layer is [Base UI](https://base-ui.com).  `components.json` is set to the `base-vega` shadcn style so that any component generated via the shadcn CLI targets Base UI internals, but the adopted primitives below are **imported directly** from `@base-ui/react/*` subpaths (for example `import { Dialog } from '@base-ui/react/dialog'`) with no shadcn wrapper layer in between.  When adding a new primitive, prefer the direct-import path -- do not introduce a shadcn wrapper unless there is a concrete reason to diverge.
+The dashboard's primitive layer is [Base UI](https://base-ui.com).  `components.json` is set to the `base-vega` shadcn style so that any component generated via the shadcn CLI targets Base UI internals, but the adopted primitives below are **imported directly** from `@base-ui/react/*` subpaths (for example `import { Dialog } from '@base-ui/react/dialog'`) with no shadcn wrapper layer in between.  When adding a new primitive, prefer the direct-import path; do not introduce a shadcn wrapper unless there is a concrete reason to diverge.
 
 | Component | Decision | Rationale |
 |-----------|----------|-----------|
@@ -205,11 +205,11 @@ The dashboard's primitive layer is [Base UI](https://base-ui.com).  `components.
 | `Toast` | **Not adopted** | Our custom `components/ui/toast.tsx` is a Zustand-backed queue that integrates with the rest of the state stack; Base UI's Toast doesn't couple to external stores. |
 | `Drawer` | **Adopted** | Switched from custom Motion-based implementation to Base UI 1.4.0 stable Drawer. Base UI provides focus management (initialFocus/finalFocus), swipe-to-dismiss, modal trap focus, and CSS transitions via `data-[closed]`/`data-[starting-style]`/`data-[ending-style]` selectors (consistent with Dialog, AlertDialog, Popover). Eliminates ~100 lines of hand-rolled a11y code (focus trap, Escape handler, portal). |
 | `Meter` | **Not adopted** | `ProgressGauge` already emits `role="meter"` + `aria-valuenow`/`valuemin`/`valuemax`. Base UI's Meter is a raw primitive without the styled circular/linear variants we need. |
-| `Select` | **Not adopted** | `SelectField` is a native `<select>` -- we intentionally keep the native mobile picker for iOS/Android UX. Replacing with a custom dropdown would lose that. |
+| `Select` | **Not adopted** | `SelectField` is a native `<select>`; we intentionally keep the native mobile picker for iOS/Android UX. Replacing with a custom dropdown would lose that. |
 | `Combobox`, `Autocomplete` | **Not adopted (for now)** | v1.4.0 adds passive keyboard nav + autofill improvements. No current typeahead call sites in the dashboard (connections page uses button grid, SelectField uses native `<select>`). Re-evaluate when filterable selects become a feature requirement. |
 | `OTP Field` | **Not adopted (preview)** | v1.4.0 preview component for one-time password / verification code input. Evaluate when auth/2FA flows are built (post-v0.7). |
 
-When adding new dashboard primitives, prefer Base UI components for accessibility (Dialog, AlertDialog, Popover, Tabs, Menu, Drawer) and keep the existing custom components (`SelectField`, `Toast`, `ProgressGauge`, animations) where they are -- see the Adoption Decisions table above for the canonical rationale.  Tooltip is not yet adopted; reach for an existing primitive first and add a row to the table above if a real Tooltip requirement appears.
+When adding new dashboard primitives, prefer Base UI components for accessibility (Dialog, AlertDialog, Popover, Tabs, Menu, Drawer) and keep the existing custom components (`SelectField`, `Toast`, `ProgressGauge`, animations) where they are; see the Adoption Decisions table above for the canonical rationale.  Tooltip is not yet adopted; reach for an existing primitive first and add a row to the table above if a real Tooltip requirement appears.
 
 ## Post-Training Reference (TypeScript 6 & Storybook 10)
 
@@ -217,22 +217,22 @@ These tools were released after Claude's training cutoff. Key facts for correct 
 
 ### TypeScript 6.0 (https://aka.ms/ts6)
 
-- **`baseUrl` deprecated** -- will stop working in TS 7. Remove it; `paths` entries are relative to the tsconfig directory
-- **`esModuleInterop` always true** -- cannot be set to `false`; remove explicit `"esModuleInterop": true` to avoid deprecation warning
-- **`types` defaults to `[]`** -- no longer auto-discovers `@types/*`; must explicitly list needed types (e.g. `"types": ["vitest/globals"]`)
-- **`DOM.Iterable` merged into `DOM`** -- `"lib": ["ES2025", "DOM"]` is sufficient, no separate `DOM.Iterable`
-- **`moduleResolution: "classic"` and `"node10"` removed** -- use `"bundler"` or `"nodenext"`
-- **`strict` defaults to `true`** -- explicit `"strict": true` is redundant but harmless
-- **`noUncheckedSideEffectImports` defaults to `true`** -- CSS side-effect imports need type declarations (Vite's `/// <reference types="vite/client" />` covers this)
-- **Last JS-based TypeScript** -- TS 7.0 will be rewritten in Go. Migration tool: `npx @andrewbranch/ts5to6`
+- **`baseUrl` deprecated**: will stop working in TS 7. Remove it; `paths` entries are relative to the tsconfig directory
+- **`esModuleInterop` always true**: cannot be set to `false`; remove explicit `"esModuleInterop": true` to avoid deprecation warning
+- **`types` defaults to `[]`**: no longer auto-discovers `@types/*`; must explicitly list needed types (e.g. `"types": ["vitest/globals"]`)
+- **`DOM.Iterable` merged into `DOM`**: `"lib": ["ES2025", "DOM"]` is sufficient, no separate `DOM.Iterable`
+- **`moduleResolution: "classic"` and `"node10"` removed**: use `"bundler"` or `"nodenext"`
+- **`strict` defaults to `true`**: explicit `"strict": true` is redundant but harmless
+- **`noUncheckedSideEffectImports` defaults to `true`**: CSS side-effect imports need type declarations (Vite's `/// <reference types="vite/client" />` covers this)
+- **Last JS-based TypeScript**: TS 7.0 will be rewritten in Go. Migration tool: `npx @andrewbranch/ts5to6`
 
 ### Storybook 10 (https://storybook.js.org/docs/releases/migration-guide)
 
-- **ESM-only** -- all CJS support removed
-- **Packages removed** -- `@storybook/addon-essentials`, `@storybook/addon-interactions`, `@storybook/test`, `@storybook/blocks` no longer published. Essentials (backgrounds, controls, viewport, actions, toolbars, measure, outline) and interactions are built into core `storybook`
-- **`@storybook/addon-docs` is separate** -- must be installed and added to addons if using `tags: ['autodocs']` or MDX
-- **Import paths changed** -- use `storybook/test` (not `@storybook/test`), `storybook/actions` (not `@storybook/addon-actions`)
-- **Type-safe config** -- use `defineMain` from `@storybook/react-vite/node` and `definePreview` from `@storybook/react-vite` (must still include explicit `framework` field)
-- **Backgrounds API changed** -- use `parameters.backgrounds.options` (object keyed by name) + `initialGlobals.backgrounds.value` (replaces old `default` + `values` array)
-- **a11y testing** -- use `parameters.a11y.test: 'error' | 'todo' | 'off'` (replaces old `.element` and `.manual`). Set globally in `preview.tsx` to enforce WCAG compliance on all stories
-- **Minimum versions** -- Node 20.19+, Vite 5+, Vitest 3+, TypeScript 4.9+
+- **ESM-only**: all CJS support removed
+- **Packages removed**: `@storybook/addon-essentials`, `@storybook/addon-interactions`, `@storybook/test`, `@storybook/blocks` no longer published. Essentials (backgrounds, controls, viewport, actions, toolbars, measure, outline) and interactions are built into core `storybook`
+- **`@storybook/addon-docs` is separate**: must be installed and added to addons if using `tags: ['autodocs']` or MDX
+- **Import paths changed**: use `storybook/test` (not `@storybook/test`), `storybook/actions` (not `@storybook/addon-actions`)
+- **Type-safe config**: use `defineMain` from `@storybook/react-vite/node` and `definePreview` from `@storybook/react-vite` (must still include explicit `framework` field)
+- **Backgrounds API changed**: use `parameters.backgrounds.options` (object keyed by name) + `initialGlobals.backgrounds.value` (replaces old `default` + `values` array)
+- **a11y testing**: use `parameters.a11y.test: 'error' | 'todo' | 'off'` (replaces old `.element` and `.manual`). Set globally in `preview.tsx` to enforce WCAG compliance on all stories
+- **Minimum versions**: Node 20.19+, Vite 5+, Vitest 3+, TypeScript 4.9+

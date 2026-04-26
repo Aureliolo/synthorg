@@ -1,6 +1,6 @@
 ---
 title: RL Consolidation Feasibility
-description: Feasibility analysis for reinforcement learning-based memory consolidation in SynthOrg -- cost-benefit assessment, minimum viable design, break-even analysis, and decision rationale.
+description: "Feasibility analysis for reinforcement learning-based memory consolidation in SynthOrg: cost-benefit assessment, minimum viable design, break-even analysis, and decision rationale."
 ---
 
 # RL Consolidation Feasibility
@@ -63,7 +63,7 @@ If RL consolidation is revisited, the minimum viable design is:
     - w4 * discard_penalty_if_later_retrieved
   ```
 
-  `discard_penalty_if_later_retrieved` is the most important term -- it prevents
+  `discard_penalty_if_later_retrieved` is the most important term; it prevents
   the policy from aggressively discarding memories that are later queried.
 
 - **Training algorithm**: Proximal Policy Optimization (PPO) on rollouts collected
@@ -76,7 +76,7 @@ If RL consolidation is revisited, the minimum viable design is:
 2. Collect human preference labels on 1,000+ session pairs (preferred vs. rejected
    consolidation outputs).
 3. Train reward model on preference data (Direct Preference Optimization is the
-   viable intermediate step -- see D27).
+   viable intermediate step; see D27).
 4. Train RL policy against the reward model in shadow mode.
 5. A/B test policy against LLM baseline before full rollout.
 
@@ -126,7 +126,7 @@ Assumptions:
 | 10,000 | 300,000 | $1,080 | ~$972 (90%) | ~31 months |
 | 50,000 | 1,500,000 | $5,400 | ~$4,860 (90%) | ~6 months |
 
-At 10,000 concurrent agents, break-even is approximately 31 months -- still
+At 10,000 concurrent agents, break-even is approximately 31 months, still
 unattractive given the annotation cost, training risk, and maintenance burden.
 At 50,000+ agents, the economics become viable.
 

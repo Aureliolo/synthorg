@@ -43,11 +43,11 @@ For each acceptance criterion, check the changed files:
 
 ### 5. Specific Checks
 
-1. **Acceptance criteria coverage** -- does the diff address every criterion or requirement in the issue? List each and whether it's met, partially met, or missing. (CRITICAL)
-2. **Scope completeness** -- does the diff handle all sub-tasks, edge cases, or scenarios described? (MAJOR)
-3. **Test coverage for issue requirements** -- are the issue's requirements covered by tests? (MAJOR)
-4. **Documentation requirements** -- if the issue mentions doc updates (README, DESIGN_SPEC, CLAUDE.md), are they included? (MEDIUM)
-5. **Issue comments** -- do any comments add requirements or scope changes the diff doesn't account for? (MEDIUM)
+1. **Acceptance criteria coverage**: does the diff address every criterion or requirement in the issue? List each and whether it's met, partially met, or missing. (CRITICAL)
+2. **Scope completeness**: does the diff handle all sub-tasks, edge cases, or scenarios described? (MAJOR)
+3. **Test coverage for issue requirements**: are the issue's requirements covered by tests? (MAJOR)
+4. **Documentation requirements**: if the issue mentions doc updates (README, DESIGN_SPEC, CLAUDE.md), are they included? (MEDIUM)
+5. **Issue comments**: do any comments add requirements or scope changes the diff doesn't account for? (MEDIUM)
 
 ## Report Format
 
@@ -59,6 +59,6 @@ Evidence: which files/lines address it (or why it's missing)
 Confidence: 0-100
 ```
 
-**CRITICAL RULE: NOT_RESOLVED items always override the generic confidence-to-severity mapping and are surfaced as CRITICAL (blocking)** -- regardless of the individual confidence score. This ensures missing acceptance criteria are never downgraded.
+**CRITICAL RULE: NOT_RESOLVED items always override the generic confidence-to-severity mapping and are surfaced as CRITICAL (blocking)**, regardless of the individual confidence score. This ensures missing acceptance criteria are never downgraded.
 
 End with overall verdict: PASS (all RESOLVED), PARTIAL (some PARTIALLY_RESOLVED), or FAIL (any NOT_RESOLVED).

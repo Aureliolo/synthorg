@@ -11,10 +11,10 @@ emit raw SQL DDL/DML keywords in string literals.
 
 Two files are sanctioned exceptions:
 
-- `src/synthorg/tools/database/schema_inspect.py` -- agent-facing
+- `src/synthorg/tools/database/schema_inspect.py`: agent-facing
   introspection tool; returns arbitrary DB metadata the repository
   abstraction does not expose.
-- `src/synthorg/tools/database/sql_query.py` -- agent-facing
+- `src/synthorg/tools/database/sql_query.py`: agent-facing
   arbitrary-SQL tool; the SQL string itself is the payload, so it
   cannot ride the repository pattern.
 
@@ -23,12 +23,12 @@ CI Lint.  Opt-out on a single line with a trailing
 `# lint-allow: persistence-boundary -- <reason>` comment (the
 justification after `--` is required).
 
-## Happy Path -- Adding a New Durable Table
+## Happy Path: Adding a New Durable Table
 
 1. **Define the repository Protocol** in
    `src/synthorg/persistence/<domain>_protocol.py`.  Inherit from
    `typing.Protocol`, decorate with `@runtime_checkable`, and keep
-   the method surface thin -- CRUD only.  Composite orchestration
+   the method surface thin: CRUD only.  Composite orchestration
    (search, manifest assembly) belongs in a service layer, not the
    repository.
 
@@ -66,7 +66,7 @@ justification after `--` is required).
 
 6. **Write conformance tests** under
    `tests/conformance/persistence/test_<entity>_repository.py`.  Use
-   the existing `backend` fixture in `conftest.py` -- it parametrizes
+   the existing `backend` fixture in `conftest.py`; it parametrizes
    over `["sqlite", "postgres"]` and applies migrations fresh per
    test.  Postgres arm auto-skips when Docker is unavailable.
 
@@ -118,7 +118,7 @@ is the symptom the boundary is designed to catch.  Instead:
 
 A full single-baseline squash collapses every historical revision
 into one `00000000000000_baseline.sql` per backend, derived from the
-current `schema.sql`.  Run rarely -- the revision history is the
+current `schema.sql`.  Run rarely; the revision history is the
 audit trail between squashes.
 
 Per backend (sqlite first, then postgres):

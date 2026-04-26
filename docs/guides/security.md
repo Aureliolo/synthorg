@@ -296,7 +296,7 @@ Action types follow a `category:action` format. Built-in types include:
 
 !!! warning "Bypass mode restriction"
 
-    When `custom_allow_bypasses_detectors` is `true`, custom policies are placed *before* the built-in detectors in the evaluation pipeline. In this mode, only `deny` verdicts are allowed in custom policies -- `allow` and `escalate` would skip all security detectors and are rejected at validation time.
+    When `custom_allow_bypasses_detectors` is `true`, custom policies are placed *before* the built-in detectors in the evaluation pipeline. In this mode, only `deny` verdicts are allowed in custom policies; `allow` and `escalate` would skip all security detectors and are rejected at validation time.
 
 ---
 
@@ -348,7 +348,7 @@ security:
 
 ## Autonomy & Permissions (Runtime Operations)
 
-This section covers runtime operations on the autonomy and tool-permission surface -- promoting an agent, setting a department-level override, granting or revoking tool categories per-agent, and querying the audit trail.
+This section covers runtime operations on the autonomy and tool-permission surface: promoting an agent, setting a department-level override, granting or revoking tool categories per-agent, and querying the audit trail.
 
 ### Promote or demote an agent's autonomy
 
@@ -414,6 +414,6 @@ Supported filters: `agent_id`, `tool_name`, `verdict` (`ALLOW`, `DENY`, `ESCALAT
 
 ## See Also
 
-- [Company Configuration](company-config.md) -- full configuration reference
-- [Security](../security.md) -- security architecture reference
-- [Design: Security & Approval](../design/security.md) -- security design specification
+- [Company Configuration](company-config.md): full configuration reference
+- [Security](../security.md): security architecture reference
+- [Design: Security & Approval](../design/security.md): security design specification

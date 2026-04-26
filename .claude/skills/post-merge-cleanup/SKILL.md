@@ -32,6 +32,6 @@ Run this after squash-merging a PR to clean up the local repo.
 
    Avoid piped bulk deletion (e.g., via `xargs`) to reduce the risk of accidental destructive operations. Use explicit `git branch -D branch1 branch2` calls instead.
 
-4. Check for any remaining non-main local branches and report them. Do NOT delete branches that still have a remote -- only report them.
+4. Check for any remaining non-main local branches and report them. Do NOT delete branches that still have a remote; only report them.
 
 5. Confirm the workspace is clean with `git status`.

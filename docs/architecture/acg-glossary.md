@@ -20,9 +20,9 @@ design, and agent pruning recommendations, see
 | ACG Concept | SynthOrg Equivalent | Source | Fidelity | Notes |
 |---|---|---|---|---|
 | ACG Template | `CompanyConfig` + Company YAML / `WorkflowDefinition` | `core/company.py`, `config/schema.py` | Partial | ACG templates are graph-level (workflow topology). SynthOrg's YAML is org-level (agent roster, tool permissions, budget). `WorkflowDefinition` is the closer analogue for workflow templates. |
-| Realized Graph | `AgentContext` + `TaskExecution` + `CoordinationResult` | `engine/context.py`, `engine/coordination/models.py` | Strong | The realized graph IS the running state -- context, history, accumulated cost, current position. Multi-agent coordination adds `CoordinationPhaseResult` per phase. |
+| Realized Graph | `AgentContext` + `TaskExecution` + `CoordinationResult` | `engine/context.py`, `engine/coordination/models.py` | Strong | The realized graph IS the running state: context, history, accumulated cost, current position. Multi-agent coordination adds `CoordinationPhaseResult` per phase. |
 | Execution Trace | `tuple[TurnRecord, ...]` in `ExecutionResult` + observability events | `engine/loop_protocol.py`, `observability/events/` | Strong | SynthOrg's trace is richer than ACG baseline: per-turn cost, token usage, tool fingerprints, stagnation signals, quality scores. numerous event constant domains (see `observability/events/`). |
-| Nodes (atomic actions) | LLM calls (`call_provider`), tool invocations (`execute_tool_calls`), validation gates (`check_budget`, `check_stagnation`) | `engine/loop_helpers.py` | Partial | Node typing is implicit in loop control flow, not a first-class abstraction. There is no `Node` type -- actions are identified by function names and turn records. |
+| Nodes (atomic actions) | LLM calls (`call_provider`), tool invocations (`execute_tool_calls`), validation gates (`check_budget`, `check_stagnation`) | `engine/loop_helpers.py` | Partial | Node typing is implicit in loop control flow, not a first-class abstraction. There is no `Node` type; actions are identified by function names and turn records. |
 | Edges (control/data flow) | `SubtaskDefinition.dependencies` DAG, `DecompositionPlan.dependency_edges` | `engine/decomposition/models.py` | Strong (multi-agent) | Edges are explicit in multi-agent decomposition (dependency DAG). Implicit in single-agent loops (sequential execution order, no formal edge representation). |
 | Scheduling Policies | `AutoLoopConfig` + `select_loop_type()` + `CoordinationConfig` + `AutoTopologyConfig` | `engine/loop_selector.py`, `engine/routing/models.py` | Strong | Three-way loop selection (react/plan-execute/hybrid) and topology selection (SAS/centralized/decentralized/context-dependent) are scheduling policies. Budget-aware downgrade is a resource-constrained policy. |
 
@@ -86,7 +86,7 @@ Where fidelity is "Partial," SynthOrg implements the concept but through differe
 abstractions than ACG prescribes:
 
 - **Node typing**: ACG defines explicit node types. SynthOrg's nodes are implicit in loop
-  control flow -- actions are identified by function names and turn records, not a `Node`
+  control flow; actions are identified by function names and turn records, not a `Node`
   type. A lightweight `NodeType` enum (LLM_CALL, TOOL_INVOCATION, QUALITY_CHECK, etc.)
   on `TurnRecord` is a recommended future addition.
 

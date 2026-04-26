@@ -1,12 +1,12 @@
 ---
-title: AI Agent Traps -- Execution Safety Threat Model
+title: "AI Agent Traps: Execution Safety Threat Model"
 description: >
   Maps 6 adversarial-content attack classes to SynthOrg security
   modules, identifies gaps, and cross-references the S1 15-risk
   register for multi-agent coordination risks.
 issue: "#1268"
 sources:
-  - "AI Agent Traps (SSRN:6372438) -- taxonomy sourced from #1256 issue body"
+  - "AI Agent Traps (SSRN:6372438): taxonomy sourced from #1256 issue body"
   - "S1 Multi-Agent Decision Framework (docs/research/s1-multi-agent-decision.md)"
 date: 2026-04-14
 ---
@@ -221,7 +221,7 @@ or disclosing sensitive information.
 The EvidencePackage structure supports bias mitigation (narrative
 context, multiple recommended actions) but the UI doesn't currently
 surface bias-specific cues (e.g. "This is the 5th approval in 10
-minutes -- consider slowing down").
+minutes; consider slowing down").
 
 **New mitigation**: Threat model documentation only. UI-level
 cognitive bias warnings are a future dashboard enhancement.
