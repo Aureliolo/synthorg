@@ -11,13 +11,17 @@ import { createLogger } from '@/lib/logger'
 const log = createLogger('csrf')
 
 /**
- * Read the CSRF token from the non-HttpOnly csrf_token cookie.
+ * Pure cookie-string parser: extract the ``csrf_token`` value from a
+ * raw cookie string (the value of ``document.cookie``). Exported so
+ * benchmarks + unit tests can exercise the parsing path without
+ * depending on DOM state.
  *
- * Returns null when the cookie is absent (e.g. before login or after
- * cookie expiry).
+ * Returns null when the cookie is absent or its URL-encoding is
+ * malformed (the CSRF interceptor then omits the header and the
+ * server returns 403, which is the right failure mode).
  */
-export function getCsrfToken(): string | null {
-  const match = document.cookie
+export function parseCsrfTokenFromCookieString(cookieString: string): string | null {
+  const match = cookieString
     .split(';')
     .map((s) => s.trim())
     .find((row) => row.startsWith('csrf_token='))
@@ -32,4 +36,15 @@ export function getCsrfToken(): string | null {
     log.warn('Failed to decode csrf_token cookie:', err)
     return null
   }
+}
+
+/**
+ * Read the CSRF token from the non-HttpOnly csrf_token cookie.
+ *
+ * Returns null when the cookie is absent (e.g. before login or after
+ * cookie expiry). Thin DOM wrapper over
+ * :func:`parseCsrfTokenFromCookieString`.
+ */
+export function getCsrfToken(): string | null {
+  return parseCsrfTokenFromCookieString(document.cookie)
 }

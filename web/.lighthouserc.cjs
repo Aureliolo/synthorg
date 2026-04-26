@@ -3,16 +3,15 @@
  *
  * Runs against ``vite preview`` (the production-build static server)
  * so the audit reflects the bundle that ships, not the dev-mode HMR
- * variant. Three URLs cover the common entry points:
- *  - ``/``           : initial route (auth guard usually redirects)
- *  - ``/login``      : the actual first-paint route a fresh visitor lands on
- *  - ``/agents``     : a representative authenticated route
+ * variant. Two URLs cover the routes that render meaningfully without
+ * a live backend:
+ *  - ``/``      : initial route (auth guard usually redirects to /login)
+ *  - ``/login`` : the actual first-paint route a fresh visitor lands on
  *
- * The dashboard requires auth + a backend for most routes; ``/login`` and ``/``
- * are the only routes that render meaningfully without state, so the
- * authenticated path is intentionally skipped here -- those are
- * already covered by Storybook's perf characteristics + CodSpeed
- * micro-benchmarks.
+ * Authenticated routes (``/agents``, ``/workflows``, etc.) require a
+ * running backend + session, so they are intentionally skipped here.
+ * Their perf characteristics are covered by Storybook + the CodSpeed
+ * pure-compute micro-benchmarks.
  *
  * Run locally:
  *   npm --prefix web run build && npm --prefix web run lighthouse

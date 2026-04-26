@@ -1,31 +1,29 @@
 /**
- * CodSpeed bench for `getCsrfToken()`.
+ * CodSpeed bench for the pure CSRF cookie parser.
  *
- * Reads `document.cookie` via the synchronous shim installed by
- * `test-setup.tsx`. Called on every mutating API request that goes
- * through the axios client.
+ * Benches ``parseCsrfTokenFromCookieString`` (the pure parser) rather
+ * than ``getCsrfToken`` (the DOM wrapper) so timings reflect parsing
+ * cost only, not jsdom's tough-cookie shim or any test-setup state.
+ * Per ``web/CLAUDE.md`` -- bench targets must be pure-compute helpers.
  */
 import { bench, describe } from 'vitest'
 
-import { getCsrfToken } from '@/utils/csrf'
+import { parseCsrfTokenFromCookieString } from '@/utils/csrf'
 
-describe('CSRF token reader', () => {
-  bench('getCsrfToken x500 (cookie present)', () => {
-    // Match the seed in test-setup.tsx
-    document.cookie = 'csrf_token=test-csrf-token'
+const SINGLE_COOKIE = 'csrf_token=test-csrf-token'
+const MULTIPLE_COOKIES_DEEP =
+  'pad_a=1; pad_b=2; pad_c=3; csrf_token=test-csrf-token; pad_d=4'
+
+describe('CSRF cookie parser', () => {
+  bench('parseCsrfTokenFromCookieString x500 (single cookie)', () => {
     for (let i = 0; i < 500; i++) {
-      getCsrfToken()
+      parseCsrfTokenFromCookieString(SINGLE_COOKIE)
     }
   })
 
-  bench('getCsrfToken x500 (multiple cookies, target deep)', () => {
-    document.cookie = 'pad_a=1'
-    document.cookie = 'pad_b=2'
-    document.cookie = 'pad_c=3'
-    document.cookie = 'csrf_token=test-csrf-token'
-    document.cookie = 'pad_d=4'
+  bench('parseCsrfTokenFromCookieString x500 (multiple cookies, target deep)', () => {
     for (let i = 0; i < 500; i++) {
-      getCsrfToken()
+      parseCsrfTokenFromCookieString(MULTIPLE_COOKIES_DEEP)
     }
   })
 })

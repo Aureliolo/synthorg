@@ -32,7 +32,7 @@ concurrency:
 jobs:
   codspeed-web:
     name: CodSpeed Web benchmarks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -44,12 +44,15 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version-file: web/package.json
+          node-version: 24.15.0
           cache: npm
           cache-dependency-path: web/package-lock.json
 
       - name: Install dependencies
-        run: npm --prefix web ci
+        # ``--fetch-retries=5`` retries on transient registry 5xx /
+        # network blips so a flaky npm registry doesn't fail the gate;
+        # ``--fetch-retry-factor=2`` does exponential backoff.
+        run: npm --prefix web ci --fetch-retries=5 --fetch-retry-factor=2 --fetch-retry-mintimeout=2000
 
       - name: Run CodSpeed benchmarks
         uses: CodSpeedHQ/action@658a901452bb54c799643e060733b7afe9121b8d # v4.14.0
@@ -61,7 +64,7 @@ jobs:
     name: CodSpeed Web Pass
     if: always()
     needs: [codspeed-web]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
     steps:

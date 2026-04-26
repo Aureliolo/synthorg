@@ -8,7 +8,10 @@
  */
 import { bench, describe } from 'vitest'
 
-import { sanitizeWsString } from '@/stores/notifications'
+// Imports the pure helper directly (not from the Zustand store) so
+// the bench measures only the sanitization cost -- no toast queue,
+// no persistence subscription, no localStorage hydration.
+import { sanitizeWsString } from '@/utils/ws-sanitize'
 
 const CLEAN_PAYLOAD = 'Task task-abc-0042 completed by agent backend-7 in 1.2s'
 const CONTROL_CHAR_HEAVY = '\x00\x01\x02foo\x03\x04bar\x05\x06baz\x07\x08\x0b\x0c'
