@@ -5,7 +5,7 @@ description: Development workflow, testing, code conventions, and pull request p
 
 # Contributing
 
-This guide covers the contributor workflow for SynthOrg -- from creating a branch to merging a pull request. For development environment setup (Python, uv, Git hooks), see [Developer Setup](../getting_started.md).
+This guide covers the contributor workflow for SynthOrg, from creating a branch to merging a pull request. For development environment setup (Python, uv, Git hooks), see [Developer Setup](../getting_started.md).
 
 ---
 
@@ -17,9 +17,9 @@ This guide covers the contributor workflow for SynthOrg -- from creating a branc
     git checkout -b feat/my-feature main
     ```
 
-2. **Make changes** -- follow the code conventions below.
+2. **Make changes**: follow the code conventions below.
 
-3. **Run quality checks** -- see [Quality Checks](#quality-checks).
+3. **Run quality checks**: see [Quality Checks](#quality-checks).
 
 4. **Commit** with conventional commit format:
 
@@ -142,7 +142,7 @@ uv run python -m pytest tests/ -n 8 --cov=synthorg --cov-fail-under=80
 
 - **Coverage**: 80% minimum (enforced in CI)
 - **Parallelism**: always include `-n 8` (pytest-xdist)
-- **Async**: `asyncio_mode = "auto"` -- no manual `@pytest.mark.asyncio` needed
+- **Async**: `asyncio_mode = "auto"`, no manual `@pytest.mark.asyncio` needed
 - **Timeout**: 30 seconds per test (global default)
 - **Markers**: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.e2e`, `@pytest.mark.slow`
 - **Parametrize**: prefer `@pytest.mark.parametrize` for similar cases
@@ -162,7 +162,7 @@ Key hooks include: ruff (lint + format), gitleaks (secret detection), commitizen
 
 If a hook fails:
 
-1. Review the output -- most hooks auto-fix (ruff, trailing whitespace)
+1. Review the output: most hooks auto-fix (ruff, trailing whitespace)
 2. Stage the auto-fixed files: `git add .`
 3. Commit again
 
@@ -174,12 +174,12 @@ Key conventions (see [CLAUDE.md](https://github.com/Aureliolo/synthorg/blob/main
 
 - **Type hints** on all public functions (mypy strict mode)
 - **Docstrings** in Google style on all public classes and functions
-- **Immutability** -- frozen Pydantic models for config, `model_copy(update=...)` for runtime state
+- **Immutability**: frozen Pydantic models for config, `model_copy(update=...)` for runtime state
 - **Line length**: 88 characters (ruff)
 - **Functions**: < 50 lines, files < 800 lines
 - **Errors**: handle explicitly, never silently swallow
 - **Logging**: use `from synthorg.observability import get_logger` (never `import logging` or `print()`)
-- **No `from __future__ import annotations`** -- Python 3.14 has PEP 649
+- **No `from __future__ import annotations`**: Python 3.14 has PEP 649
 
 ---
 
@@ -189,8 +189,8 @@ Key conventions (see [CLAUDE.md](https://github.com/Aureliolo/synthorg/blob/main
 2. **Push** your branch: `git push -u origin feat/my-feature`
 3. **Open a PR** against `main` with a clear description (what, why, how to test)
 4. **CI runs** automatically: lint + type-check + tests with coverage + security scanning
-5. **Review** -- address feedback, push fixes
-6. **Squash-merge** when approved -- the PR body becomes the squash commit message
+5. **Review**: address feedback, push fixes
+6. **Squash-merge** when approved; the PR body becomes the squash commit message
 
 ### PR Description Template
 
@@ -215,7 +215,7 @@ Brief description of what this PR does and why.
 
 First-time contributors must sign a Contributor License Agreement (CLA). The CLA bot will comment on your PR with signing instructions. Your signature is recorded in the repository and applies to all future contributions.
 
-The CLA grants a perpetual, non-exclusive license to the project -- you retain full ownership of your contributions.
+The CLA grants a perpetual, non-exclusive license to the project; you retain full ownership of your contributions.
 
 ---
 
@@ -241,6 +241,6 @@ uv run zensical serve                      # preview at http://127.0.0.1:8000
 
 ## See Also
 
-- [Developer Setup](../getting_started.md) -- environment setup
-- [Fork Setup](fork-setup.md) -- configure CI on a fresh fork (environments, labels, branch protection, release-bot App)
-- [CONTRIBUTING.md](https://github.com/Aureliolo/synthorg/blob/main/.github/CONTRIBUTING.md) -- formal contributing guidelines
+- [Developer Setup](../getting_started.md): environment setup
+- [Fork Setup](fork-setup.md): configure CI on a fresh fork (environments, labels, branch protection, release-bot App)
+- [CONTRIBUTING.md](https://github.com/Aureliolo/synthorg/blob/main/.github/CONTRIBUTING.md): formal contributing guidelines

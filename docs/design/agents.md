@@ -1,6 +1,6 @@
 ---
 title: Agents
-description: Agent identity system -- personality dimensions, structured skill model, tool namespaces, runtime state, and identity versioning with audit trail.
+description: Agent identity system. Personality dimensions, structured skill model, tool namespaces, runtime state, and identity versioning with audit trail.
 ---
 
 # Agents
@@ -20,7 +20,7 @@ Config (immutable)
 Runtime state (mutable-via-copy)
 :   Current status, active task, conversation history, and execution metrics. Evolves during
     agent operation. Represented as Pydantic models using `model_copy(update=...)` for state
-    transitions -- never mutated in place.
+    transitions, never mutated in place.
 
 ### Personality Dimensions
 
@@ -102,24 +102,24 @@ class SkillSet(BaseModel):
 | `tags` | `tags` | Searchable tags for multi-faceted routing |
 | `input_modes` | `inputModes` | MIME types the agent accepts for this skill |
 | `output_modes` | `outputModes` | MIME types the agent produces for this skill |
-| `proficiency` | -- | SynthOrg-specific: proficiency level for quality-aware routing |
+| `proficiency` | - | SynthOrg-specific: proficiency level for quality-aware routing |
 
 **Defaults:**
 
-- `input_modes` and `output_modes` default to `("text/plain",)` -- internal agents that
+- `input_modes` and `output_modes` default to `("text/plain",)`; internal agents that
   only handle text do not need to specify these fields
-- `proficiency` defaults to `1.0` -- only meaningful when comparing agents with the same
+- `proficiency` defaults to `1.0`, only meaningful when comparing agents with the same
   skill at different proficiency levels
 - `SkillSet` rejects string entries, duplicate skill IDs within a tier, and overlap
-  between `primary` and `secondary` -- pre-alpha, no backward-compat coercion from the
-  legacy string-based shape
+  between `primary` and `secondary` (pre-alpha, no compatibility coercion from any prior
+  string-based shape)
 
 **Routing impact:** `AgentTaskScorer` uses the structured skill data directly.  Primary
 skill overlap is weighted at 40% and secondary at 20%, each contribution scaled by the
 agent's `proficiency` for every matched skill (default `1.0`, which reproduces
 boolean-match scoring).  When a subtask declares `required_tags`, matched skills whose
 tags cover every required tag earn an additional 10% bonus.  Proficiency thus drives
-quality-aware routing -- "route to the agent with the highest Python proficiency" -- and
+quality-aware routing ("route to the agent with the highest Python proficiency") and
 tags drive multi-faceted matching when callers opt in.
 
 **Maintenance:** Skills will be template-seeded at hire time (company templates provide
@@ -264,7 +264,7 @@ with `model_copy`:
 `AgentRegistryService` creates ``VersionSnapshot[AgentIdentity]`` records for
 ``register()`` and ``update_identity()`` (charter/config changes such as model
 swaps and level changes). ``update_status()`` (status transitions) is **not**
-versioned -- status changes are transient runtime state, not charter mutations.
+versioned: status changes are transient runtime state, not charter mutations.
 This provides a full audit trail of charter changes and enables ``DecisionRecord``
 entries to cite the exact charter version that was active during execution.
 
@@ -278,7 +278,7 @@ entity-agnostic so it can be reused for other versioned entity types (tracked in
   with fields `entity_id`, `version`, `content_hash`, `snapshot: T`, `saved_by`,
   `saved_at`. Version numbers are monotonically increasing per entity.
 - **`compute_content_hash(model)`** (`versioning/hashing.py`): SHA-256 of
-  `json.dumps(model.model_dump(mode="json"), sort_keys=True)` -- stable across
+  `json.dumps(model.model_dump(mode="json"), sort_keys=True)`; stable across
   field-ordering variations in Pydantic serialization.
 - **`VersioningService[T]`** (`versioning/service.py`): Wraps a `VersionRepository`
   to provide content-addressable snapshot creation. `snapshot_if_changed` skips the
@@ -319,7 +319,7 @@ Identity version history is exposed under `/api/v1/agents/{agent_id}/versions`
 | `GET` | `/` | read | Paginated list of version snapshots (`offset`, `limit` default 20) |
 | `GET` | `/{version_num}` | read | Single version snapshot by monotonic version number |
 | `GET` | `/diff?from_version=N&to_version=M` | read | Field-level `AgentIdentityDiff` between two versions (`from_version < to_version` required) |
-| `POST` | `/rollback` | write | Restore a prior version.  Body: `{target_version: int, reason?: str}`.  Executed via `evolve_identity`, producing a new snapshot whose content hash equals the restored version -- rollbacks never mutate history. |
+| `POST` | `/rollback` | write | Restore a prior version.  Body: `{target_version: int, reason?: str}`.  Executed via `evolve_identity`, producing a new snapshot whose content hash equals the restored version; rollbacks never mutate history. |
 
 All endpoints additionally verify that the stored snapshot's encoded owner id
 matches the path `agent_id` (cross-agent rows are rejected with 400).
@@ -364,7 +364,7 @@ extension point.
 
 ## See Also
 
-- [HR & Agent Lifecycle](hr-lifecycle.md) -- seniority, hiring, firing, performance, evaluation, promotions, evolution, five-pillar framework, client agents
-- [Organization](organization.md) -- company types, departments, templates
-- [Tools & Capabilities](tools.md) -- tool access levels, progressive trust
-- [Design Overview](index.md) -- full index
+- [HR & Agent Lifecycle](hr-lifecycle.md): seniority, hiring, firing, performance, evaluation, promotions, evolution, five-pillar framework, client agents
+- [Organization](organization.md): company types, departments, templates
+- [Tools & Capabilities](tools.md): tool access levels, progressive trust
+- [Design Overview](index.md): full index

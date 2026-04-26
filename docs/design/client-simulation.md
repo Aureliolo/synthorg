@@ -49,9 +49,9 @@ FeedbackStrategy                 |                         |
 
 All client types implement `ClientInterface`, providing two operations:
 
-- **`submit_requirement(context)`** -- Generate or submit a task requirement.
+- **`submit_requirement(context)`**: generate or submit a task requirement.
   Returns `None` when the client declines to participate.
-- **`review_deliverable(context)`** -- Review a completed deliverable and return
+- **`review_deliverable(context)`**: review a completed deliverable and return
   feedback with acceptance decision and reasoning.
 
 ### AIClient
@@ -63,7 +63,7 @@ requirement generation and deliverable review. Persona-driven prompts based on
 ### HumanClient
 
 Delegates to the API/dashboard for human input. Uses an async callback pattern
-for approval flows. No LLM calls -- pure API/UI delegation.
+for approval flows. No LLM calls; pure API/UI delegation.
 
 ### HybridClient
 
@@ -84,7 +84,7 @@ class ClientProfile(BaseModel):
 ```
 
 Profiles control how clients generate requirements and evaluate deliverables.
-`strictness_level` influences feedback strategies -- stricter clients reject
+`strictness_level` influences feedback strategies; stricter clients reject
 more deliverables and provide more detailed failure analysis.
 
 ---
@@ -151,9 +151,9 @@ dictionary, and `unmet_criteria` tuple.
 The review pipeline walks a chain of `ReviewStage` implementations in order.
 Each stage returns a `ReviewVerdict`:
 
-- **PASS** -- Continue to the next stage.
-- **FAIL** -- Short-circuit; task returns to IN_PROGRESS for rework.
-- **SKIP** -- Stage not applicable; continue to next.
+- **PASS**: continue to the next stage.
+- **FAIL**: short-circuit; task returns to IN_PROGRESS for rework.
+- **SKIP**: stage not applicable; continue to next.
 
 Pipeline progress is tracked in task metadata (not via new `TaskStatus` values).
 The task stays in `IN_REVIEW` throughout pipeline execution.
@@ -174,9 +174,9 @@ The task stays in `IN_REVIEW` throughout pipeline execution.
 
 ### Built-in Stages
 
-- **InternalReviewStage** -- Wraps existing `ReviewGateService` logic.
+- **InternalReviewStage**: wraps existing `ReviewGateService` logic.
   Backward-compatible default first stage.
-- **ClientReviewStage** -- Invokes `ClientInterface.review_deliverable()`.
+- **ClientReviewStage**: invokes `ClientInterface.review_deliverable()`.
   Maps `ClientFeedback` to `ReviewStageResult`.
 
 ---
@@ -186,9 +186,9 @@ The task stays in `IN_REVIEW` throughout pipeline execution.
 The `IntakeEngine` manages the `ClientRequest` lifecycle from `SUBMITTED`
 through `TASK_CREATED`. It routes requests to a configured `IntakeStrategy`:
 
-- **DirectIntake** -- Pass-through; creates a task immediately from the
+- **DirectIntake**: pass-through; creates a task immediately from the
   requirement with minimal validation.
-- **AgentIntake** -- Routes to an intake agent (PM/Account Manager) for
+- **AgentIntake**: routes to an intake agent (PM/Account Manager) for
   triage, scoping, and approval before task creation.
 
 ---
@@ -246,7 +246,7 @@ class ClientSimulationConfig(BaseModel):
 
 Each client strategy family has a config discriminator that a factory
 function in `synthorg.client.factory` dispatches to the concrete
-implementation. Misconfiguration fails loudly -- every factory raises
+implementation. Misconfiguration fails loudly: every factory raises
 `UnknownStrategyError` (a `ValueError` subclass) on an unknown
 discriminator rather than silently falling back to a default.
 
@@ -269,7 +269,7 @@ time, not a runtime surprise during a simulation.
     multiple underlying generators with weights, so it has no
     single-argument factory; callers must construct it manually with a
     tuple of `(generator, weight)` pairs. Passing `"hybrid"` to the
-    factory raises `UnknownStrategyError` -- this is a deliberate
+    factory raises `UnknownStrategyError`: this is a deliberate
     deviation from the other strategies, not an oversight.
 
 ---

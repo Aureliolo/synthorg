@@ -1,11 +1,11 @@
 ---
 title: A2A Protocol
-description: Agent-to-Agent protocol integration -- status, architecture, implemented capabilities, Agent Card projection, and federation with external agent systems.
+description: Agent-to-Agent protocol integration. Status, architecture, implemented capabilities, Agent Card projection, and federation with external agent systems.
 ---
 
 # A2A Protocol
 
-The [A2A (Agent-to-Agent) protocol](https://agent-protocol.ai) is a standard for heterogeneous agent communication. SynthOrg exposes an A2A gateway that lets external agent systems discover, invoke, and receive updates from the internal roster -- without either side needing to understand the other's internal shape.
+The [A2A (Agent-to-Agent) protocol](https://agent-protocol.ai) is a standard for heterogeneous agent communication. SynthOrg exposes an A2A gateway that lets external agent systems discover, invoke, and receive updates from the internal roster, without either side needing to understand the other's internal shape.
 
 This page is the status-and-architecture reference: what ships today, how it maps onto SynthOrg's internal model, and what's next.
 
@@ -58,7 +58,7 @@ SynthOrg.Projection -> ExtAgent: "SSE or webhook"
 ExtAgent -> SynthOrg.WebhookRX: "Push notification"
 ```
 
-The gateway is a thin translation layer: inbound A2A requests become internal `MessageBus` messages after passing the delegation guard and A2A-specific security checks. Outbound state is served through a per-consumer projection over the shared `EventStreamHub` -- no duplicate event source.
+The gateway is a thin translation layer: inbound A2A requests become internal `MessageBus` messages after passing the delegation guard and A2A-specific security checks. Outbound state is served through a per-consumer projection over the shared `EventStreamHub`, with no duplicate event source.
 
 See [Security & Approval -> A2A Security](security.md#a2a-security) for the full auth, trust, webhook, and SSRF enforcement reference.
 
@@ -74,7 +74,7 @@ SynthOrg projects its internal `AgentIdentity` model to the A2A Agent Card forma
 | `Skill.tags` | `tags` | Searchable tags for multi-faceted routing |
 | `Skill.input_modes` | `inputModes` | MIME types accepted |
 | `Skill.output_modes` | `outputModes` | MIME types produced |
-| `Skill.proficiency` | -- | SynthOrg-specific; not projected (no A2A field yet) |
+| `Skill.proficiency` | - | SynthOrg-specific; not projected (no A2A field yet) |
 
 See [Agents -> Skill Model](agents.md#skill-model) for the skill structure.
 
@@ -82,11 +82,11 @@ See [Agents -> Skill Model](agents.md#skill-model) for the skill structure.
 
 External agents are treated as delegation sources. The same five `DelegationGuard` mechanisms that protect internal delegation chains also apply to A2A inbound requests:
 
-1. **Depth cap** -- max delegation chain length
-2. **Ancestry check** -- reject cycles in the delegation graph
-3. **Per-pair rate limit** -- throttle repeated delegations between the same agents
-4. **Structural circuit breaker** -- detect rapid oscillation
-5. **Budget guard** -- reject when the delegation chain has consumed too much
+1. **Depth cap**: max delegation chain length
+2. **Ancestry check**: reject cycles in the delegation graph
+3. **Per-pair rate limit**: throttle repeated delegations between the same agents
+4. **Structural circuit breaker**: detect rapid oscillation
+5. **Budget guard**: reject when the delegation chain has consumed too much
 
 See [Communication -> Loop Prevention](communication.md#loop-prevention) for implementation.
 
@@ -128,7 +128,7 @@ a2a:
 
 ## See Also
 
-- [Security & Approval](security.md#a2a-security) -- authentication, trust, webhook, SSRF details
-- [Communication](communication.md#a2a-external-gateway) -- gateway architecture, loop prevention
-- [Agents](agents.md#skill-model) -- internal skill shape that gets projected to A2A Agent Card
-- [Reference: Standards](../reference/standards.md) -- protocol compliance table
+- [Security & Approval](security.md#a2a-security): authentication, trust, webhook, SSRF details
+- [Communication](communication.md#a2a-external-gateway): gateway architecture, loop prevention
+- [Agents](agents.md#skill-model): internal skill shape that gets projected to A2A Agent Card
+- [Reference: Standards](../reference/standards.md): protocol compliance table

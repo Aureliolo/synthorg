@@ -5,7 +5,7 @@ elevated permissions or access sensitive secrets. Each environment has a
 branch allowlist (deployment branch policy) so the job only runs when the
 workflow was triggered from an expected ref.
 
-Policies cannot be declared in workflow YAML -- they live on the GitHub
+Policies cannot be declared in workflow YAML; they live on the GitHub
 environment itself. Apply them via `scripts/configure_environments.sh`.
 
 ## Current environments
@@ -16,12 +16,12 @@ environment itself. Apply them via `scripts/configure_environments.sh`.
 | `release` | `main` | `release.yml` + `dev-release.yml` + `auto-rollover.yml` + `graduate.yml` (main-scoped), `finalize-release.yml:publish` (workflow_run resolves `github.ref` to main; carries `statuses: write` so the publish job can post a `finalize-release` commit status against `workflow_run.head_sha`). Holds `RELEASE_BOT_APP_CLIENT_ID` + `RELEASE_BOT_APP_PRIVATE_KEY`. |
 | `release-tags` | `v*` | `cli.yml:cli-release` + `docker.yml:update-release` (v* tag pushes). Structural ref gate only; no privileged secrets. |
 | `image-push` | `main`, `v*` | `docker.yml` `*-publish` jobs (4 apko base pushes + 5 app image pushes) on main and v* refs |
-| `apko-lock` | `main` | `apko-lock.yml` schedule + workflow_dispatch. Holds `APKO_BOT_APP_CLIENT_ID` + `APKO_BOT_APP_PRIVATE_KEY` -- a copy of the `synthorg-repo-bot` App credentials (`Contents: Read and write` + `Pull requests: Read and write` + `Metadata: Read`, scoped to this repo only), used by the apko-lock workflow to mint an installation token for the lockfile-update PR. `GITHUB_TOKEN` cannot create the PR because the repo-level setting `can_approve_pull_request_reviews: false` blocks it. The same App credentials live under `RELEASE_BOT_APP_*` in the `release` env (env-scoped, not shared across envs). Both copies point at the same App; the dedicated `apko-lock` env keeps weekly-cron auth and release-pipeline auth in separate boxes even though they share an identity. |
+| `apko-lock` | `main` | `apko-lock.yml` schedule + workflow_dispatch. Holds `APKO_BOT_APP_CLIENT_ID` + `APKO_BOT_APP_PRIVATE_KEY`: a copy of the `synthorg-repo-bot` App credentials (`Contents: Read and write` + `Pull requests: Read and write` + `Metadata: Read`, scoped to this repo only), used by the apko-lock workflow to mint an installation token for the lockfile-update PR. `GITHUB_TOKEN` cannot create the PR because the repo-level setting `can_approve_pull_request_reviews: false` blocks it. The same App credentials live under `RELEASE_BOT_APP_*` in the `release` env (env-scoped, not shared across envs). Both copies point at the same App; the dedicated `apko-lock` env keeps weekly-cron auth and release-pipeline auth in separate boxes even though they share an identity. |
 | `cloudflare-preview` | _none_ (see below) | `pages-preview.yml` pull_request events |
 | `atlas` | _none_ (see below) | `ci.yml:schema-validate` push + pull_request |
 
 The release path is intentionally split into two environments. GitHub's
-deployment branch policies only match ref *names* -- they do NOT verify
+deployment branch policies only match ref *names*; they do NOT verify
 that a tag's commit is reachable from an allowed branch. Admitting `v*`
 on the secret-bearing environment would let any `v`-prefixed tag
 (including one forged on an unmerged feature branch) unlock the App
@@ -73,7 +73,7 @@ branch policies exactly matches the `ENV_CONFIG` table inside the script.
 Missing policies are `POST`-ed (with `HTTP 422` already-exists treated as a
 no-op), and any extra policy not in the desired set is `DELETE`-d. Requires a
 `gh` CLI authenticated with the `repo` scope (classic PAT/OAuth) or
-`administration:write` (fine-grained PATs/GitHub Apps) -- see the
+`administration:write` (fine-grained PATs/GitHub Apps); see the
 [deployments API docs](https://docs.github.com/rest/deployments/environments).
 
 ## Verifying policies
@@ -94,7 +94,7 @@ Expected output for the reconciled environments (`github-pages`, `apko-lock`,
 - `branch_policies` for `image-push`: `["main", "v*"]`
 
 `cloudflare-preview` and `atlas` are intentionally excluded from the
-`custom_branch_policies` expectation -- see the rationale above.
+`custom_branch_policies` expectation; see the rationale above.
 
 ## Required secrets
 
@@ -109,17 +109,17 @@ The release pipeline is authenticated by a dedicated GitHub App,
 `synthorg-repo-bot`. Its credentials live in the `release`
 deployment environment as two secrets:
 
-- `RELEASE_BOT_APP_CLIENT_ID` -- the App's Client ID as shown on the
+- `RELEASE_BOT_APP_CLIENT_ID`: the App's Client ID as shown on the
   App's settings page (format `Iv23...`). This is what
   `actions/create-github-app-token@v3.1+` expects via its `client-id`
   input; the older `app-id` input accepted the numeric App ID and
   was deprecated in v3.1.
-- `RELEASE_BOT_APP_PRIVATE_KEY` -- the full `.pem` contents verbatim,
+- `RELEASE_BOT_APP_PRIVATE_KEY`: the full `.pem` contents verbatim,
   including the opening and closing marker lines. Both markers must
   be present and spelled exactly as emitted by the GitHub App page:
   - Opening line: `-----BEGIN RSA PRIVATE KEY-----`
   - Closing line: `-----END RSA PRIVATE KEY-----`
-  Paste the file contents exactly as downloaded -- GitHub's secret
+  Paste the file contents exactly as downloaded; GitHub's secret
   store accepts multi-line values but silently strips trailing
   whitespace, so do not hand-edit the `.pem`.
 
@@ -142,7 +142,7 @@ installation token (valid ≤1 hour) via the
 `release-runner-setup` composite action, which wraps
 `actions/create-github-app-token@v3.1.1`. Consumers:
 
-- `release.yml` -- `release-please-action` token input, so the RP
+- `release.yml`: `release-please-action` token input, so the RP
   tag push on release-PR merge triggers Docker + CLI builds. The
   BSL Change Date Contents API commit keeps `GITHUB_TOKEN` (lands
   on the RP PR branch, not `main`; no recursion concern). One
@@ -157,11 +157,11 @@ installation token (valid ≤1 hour) via the
   carries `statuses: write`). Statuses are unconditionally part of
   a PR's `statusCheckRollup` and satisfy `required_status_checks`
   evaluation, so the merge gate resolves without ci.yml ever
-  firing. (The earlier mechanism -- a `gh workflow run ci.yml`
-  workflow_dispatch nudge -- produced a check_run on the SHA but
+  firing. (The earlier mechanism, a `gh workflow run ci.yml`
+  workflow_dispatch nudge, produced a check_run on the SHA but
   the dispatched run's `check_suite.pull_requests` was empty, so
   the check did not appear in the rollup; the merge UI stayed
-  stuck on `CI Pass -- Expected, waiting`. See PR #1615 for the
+  stuck on `CI Pass: Expected, waiting`. See PR #1615 for the
   full root cause.) `ci.yml`'s `is_release_please` skip remains
   in place as defense-in-depth so a future change in
   release-please's identity does not accidentally run a full CI
@@ -169,11 +169,11 @@ installation token (valid ≤1 hour) via the
   `ci.yml` keeps a `github.ref == 'refs/heads/main'` gate so any
   ad-hoc dispatch from a non-main ref skips cleanly instead of
   hitting the `release` environment's branch allowlist.
-- `dev-release.yml` -- tag creation for dev pre-releases via
+- `dev-release.yml`: tag creation for dev pre-releases via
   `gh api`.
-- `auto-rollover.yml` -- empty `Release-As:` commit via the Git
+- `auto-rollover.yml`: empty `Release-As:` commit via the Git
   Data API (`POST /git/commits` + `PATCH /git/refs/heads/main`).
-- `graduate.yml` -- user-triggered signed empty commit with a
+- `graduate.yml`: user-triggered signed empty commit with a
   `Release-As:` trailer for target versions that skip the normal
   patch cadence.
 
@@ -186,7 +186,7 @@ installation token (valid ≤1 hour) via the
   - `Contents: Read and write`
   - `Pull requests: Read and write`
   - `Metadata: Read`
-- Subscribe to **no** events -- this App has no webhook
+- Subscribe to **no** events; this App has no webhook
   endpoint and does not need to receive events.
 
 **Provisioning checklist** (follow once at setup):
@@ -205,7 +205,7 @@ installation token (valid ≤1 hour) via the
    and `actions/ai-inference@*` (used by the release-notes
    Highlights step in `release.yml`).
 
-**No rotation schedule**. Installation tokens are ephemeral --
+**No rotation schedule**. Installation tokens are ephemeral:
 minted per workflow run and valid for at most one hour, then
 discarded. The only long-lived secret is the App private key,
 rotated only if the key file is compromised. Private-key rotation
@@ -225,7 +225,7 @@ cannot reach the App credentials.
 ## Testing the `apko-lock` gate
 
 Trigger the workflow from a non-main ref via `workflow_dispatch` API (pushing
-a commit to a feature branch is not enough -- the workflow is not configured
+a commit to a feature branch is not enough; the workflow is not configured
 for `push` events):
 
 ```bash

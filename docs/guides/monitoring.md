@@ -33,17 +33,17 @@ The endpoint is unauthenticated by default; put it behind your normal scrape-ACL
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `synthorg_coordination_efficiency` | Gauge | -- | 0.0-1.0 efficiency ratio. |
-| `synthorg_coordination_overhead_percent` | Gauge | -- | % of wall time spent coordinating. |
+| `synthorg_coordination_efficiency` | Gauge | - | 0.0-1.0 efficiency ratio. |
+| `synthorg_coordination_overhead_percent` | Gauge | - | % of wall time spent coordinating. |
 
 ### Cost & budget (pull-refreshed at scrape)
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `synthorg_cost_total` | Gauge | -- | Total accumulated cost. |
-| `synthorg_budget_used_percent` | Gauge | -- | Monthly budget utilisation. |
-| `synthorg_budget_monthly_cost` | Gauge | -- | Monthly budget in configured currency. |
-| `synthorg_budget_daily_used_percent` | Gauge | -- | Daily utilisation (prorated). |
+| `synthorg_cost_total` | Gauge | - | Total accumulated cost. |
+| `synthorg_budget_used_percent` | Gauge | - | Monthly budget utilisation. |
+| `synthorg_budget_monthly_cost` | Gauge | - | Monthly budget in configured currency. |
+| `synthorg_budget_daily_used_percent` | Gauge | - | Daily utilisation (prorated). |
 | `synthorg_agent_cost_total` | Gauge | `agent_id` | Per-agent accumulated cost. |
 | `synthorg_agent_budget_used_percent` | Gauge | `agent_id` | Per-agent daily utilisation. |
 
@@ -75,7 +75,7 @@ The endpoint is unauthenticated by default; put it behind your normal scrape-ACL
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `synthorg_api_request_duration_seconds` | Histogram | `method`, `route`, `status_class` | HTTP request handler duration (buckets 5ms-10s). The auto-emitted `_count` series is the per-label request counter -- use it for request-rate PromQL. |
+| `synthorg_api_request_duration_seconds` | Histogram | `method`, `route`, `status_class` | HTTP request handler duration (buckets 5ms-10s). The auto-emitted `_count` series is the per-label request counter; use it for request-rate PromQL. |
 | `synthorg_api_error_classification_total` | Counter | `category`, `status_class` | 4xx/5xx response counter partitioned by RFC 9457 category (`auth` / `validation` / `not_found` / `conflict` / `rate_limit` / `budget_exhausted` / `provider_error` / `internal`) and status class. |
 
 ### Caches
@@ -95,8 +95,8 @@ The endpoint is unauthenticated by default; put it behind your normal scrape-ACL
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
 | `synthorg_audit_chain_appends_total` | Counter | `status` | Audit chain append operations (`status` bounded to `signed` / `fallback` / `error`). |
-| `synthorg_audit_chain_depth` | Gauge | -- | Current hash chain length. |
-| `synthorg_audit_chain_last_append_timestamp_seconds` | Gauge | -- | Unix timestamp of the most recent append. |
+| `synthorg_audit_chain_depth` | Gauge | - | Current hash chain length. |
+| `synthorg_audit_chain_last_append_timestamp_seconds` | Gauge | - | Unix timestamp of the most recent append. |
 
 ### OTLP export health
 
@@ -113,7 +113,7 @@ The endpoint is unauthenticated by default; put it behind your normal scrape-ACL
 | `synthorg_agent_identity_version_changes_total` | Counter | `agent_id`, `change_type` | Identity-version lifecycle events (`change_type` bounded to `created` / `updated` / `rolled_back` / `archived`). |
 | `synthorg_workflow_execution_seconds` | Histogram | `workflow_definition_id`, `status` | Workflow execution duration (`status` bounded to `completed` / `failed` / `cancelled` / `timeout`; buckets 0.5s-3600s). |
 
-Bounded-label values are enforced at record time in `src/synthorg/observability/prometheus_labels.py` -- PromQL filters that reference values outside those allowlists will never match data.
+Bounded-label values are enforced at record time in `src/synthorg/observability/prometheus_labels.py`; PromQL filters that reference values outside those allowlists will never match data.
 
 ## Suggested PromQL queries
 
@@ -248,7 +248,7 @@ To install via the Grafana UI: `Dashboards → New → Import → Upload JSON fi
 
 ## Alerts
 
-The file does not ship alert rules because thresholds are deployment-specific. The suggested PromQL above is ready to drop into Prometheus' `rules.yml` -- pair each query with a `labels: severity: warning|critical` and a `for:` duration. Example:
+The file does not ship alert rules because thresholds are deployment-specific. The suggested PromQL above is ready to drop into Prometheus' `rules.yml`; pair each query with a `labels: severity: warning|critical` and a `for:` duration. Example:
 
 ```yaml
 groups:
@@ -265,12 +265,12 @@ groups:
 
 ## Logfire
 
-Logfire's Prometheus integration can scrape the same `/metrics` endpoint directly -- no additional wiring is required on the SynthOrg side. Follow the [Logfire Prometheus setup](https://logfire.pydantic.dev/docs/integrations/metrics/prometheus/) and point it at `http://synthorg:8000/metrics`. All metrics documented above will appear under the same names in Logfire dashboards.
+Logfire's Prometheus integration can scrape the same `/metrics` endpoint directly; no additional wiring is required on the SynthOrg side. Follow the [Logfire Prometheus setup](https://logfire.pydantic.dev/docs/integrations/metrics/prometheus/) and point it at `http://synthorg:8000/metrics`. All metrics documented above will appear under the same names in Logfire dashboards.
 
 ## Further reading
 
-- [Observability design](../design/observability.md) -- sink layout, correlation IDs, per-domain routing
-- [Reference: errors](../reference/errors.md) -- RFC 9457 error categories
-- `src/synthorg/observability/prometheus_collector.py` -- canonical metric registration
-- `src/synthorg/observability/prometheus_push_metrics.py` -- push-updated metric families
-- `src/synthorg/observability/prometheus_labels.py` -- bounded label value sets
+- [Observability design](../design/observability.md): sink layout, correlation IDs, per-domain routing
+- [Reference: errors](../reference/errors.md): RFC 9457 error categories
+- `src/synthorg/observability/prometheus_collector.py`: canonical metric registration
+- `src/synthorg/observability/prometheus_push_metrics.py`: push-updated metric families
+- `src/synthorg/observability/prometheus_labels.py`: bounded label value sets

@@ -17,7 +17,7 @@ related_research_log: 24
 
 LangChain's Autonomous Context Compression proposes exposing compaction as an **agent tool**
 rather than a fixed-threshold system trigger. The agent decides when to compact at
-semantically meaningful moments -- task boundaries, before large new inputs, after extracting
+semantically meaningful moments such as task boundaries, before large new inputs, after extracting
 key results. This aligns with SynthOrg's design principle for auto-downgrade: model changes
 apply only at task boundaries, never mid-execution.
 
@@ -55,7 +55,7 @@ Trigger checked at turn boundaries in all three loops via shared `invoke_compact
 are re-raised.
 
 **Conversation splitting** (`_split_conversation`):
-- Head: leading SYSTEM messages (preserved verbatim -- system prompt, etc.)
+- Head: leading SYSTEM messages (preserved verbatim: system prompt, etc.)
 - Archivable: middle messages (compressed)
 - Recent: last `preserve_recent_turns * 2` messages (preserved verbatim)
 
@@ -87,7 +87,7 @@ def estimate_context_fill(ctx, estimator):
 
 ### What Works
 
-- **Reliable safety mechanism**: Errors are properly isolated -- compaction failure never
+- **Reliable safety mechanism**: errors are properly isolated; compaction failure never
   kills agent execution. The loop continues even if compaction fails completely.
 - **Configurable thresholds**: `CompactionConfig` is part of `AgentEngine` construction,
   giving operators control over trigger point and retention.
@@ -124,7 +124,7 @@ uniformly. A model with a 200k token context window starts compacting at 160k to
 model with a 4k context window compacts at 3.2k tokens. The fixed percentage may be too
 aggressive for large-context models and too permissive for small ones.
 
-**No memory offloading.** Archived messages are discarded -- converted to a 500-char text
+**No memory offloading.** Archived messages are discarded, converted to a 500-char text
 summary. SynthOrg has a `MemoryBackend` (Mem0, Qdrant embedded + SQLite), but compaction
 does not write archived content there as episodic memory entries.
 
@@ -135,7 +135,7 @@ does not write archived content there as episodic memory entries.
 | Parameter | LangChain Deep Agents | SynthOrg Current | Assessment |
 |---|---|---|---|
 | Offloading threshold | 20,000 tokens | Not implemented | Gap: no file-based offloading |
-| Summarization threshold | 85% of model max | 80% of model max | SynthOrg more conservative (earlier trigger) -- acceptable |
+| Summarization threshold | 85% of model max | 80% of model max | SynthOrg more conservative (earlier trigger): acceptable |
 | Recent retention | 10% of context | `preserve_recent_turns * 2` messages (absolute count) | SynthOrg uses absolute count; could be too few for large contexts (3 turns in a 200k context = trivially small) |
 | Catch-and-retry | `ContextOverflowError` caught, retry with summary | No explicit catch | Minor gap: SynthOrg relies on threshold trigger rather than error recovery |
 | Summarization method | LLM-based | Text concatenation | Significant quality gap |
@@ -151,13 +151,13 @@ SynthOrg's threshold is appropriately conservative.
 ### Why It Matters
 
 Self-Distillation & Epistemic Verbalization (arXiv:2603.24472) shows that "thinking tokens"
--- hedging, self-correction, uncertainty markers -- are functionally important for
+(hedging, self-correction, uncertainty markers) are functionally important for
 out-of-distribution reasoning. In experiments, models that had these markers removed from
 their compressed traces degraded by up to 63% on AIME24 benchmarks.
 
 The current `_build_summary()` function provides no protection for these markers. A 500-char
-concatenation of message snippets will strip "wait, I think I made an error -- let me
-reconsider the approach" to "wait, I think I made an error --" or less.
+concatenation of message snippets will strip "wait, I think I made an error, let me
+reconsider the approach" to "wait, I think I made an error" or less.
 
 The research finding also clarifies when preservation matters:
 - **Narrow/repetitive tasks**: Concise reasoning is fine, marker preservation is not critical
@@ -223,7 +223,7 @@ under a frozen base model to assign per-token compression cost:
 
 **Computational cost**: Surprisal scoring requires a forward pass through a frozen base
 model for every token being evaluated for compression. For a 100k-token context, this is
-a non-trivial inference call -- potentially more expensive than the compaction it enables.
+a non-trivial inference call, potentially more expensive than the compaction it enables.
 
 **Infrastructure cost**: SynthOrg would need to maintain a frozen reference model (separate
 from the active completion provider) for surprisal scoring. This conflicts with the goal
@@ -246,8 +246,8 @@ importance scoring to the archival decision (which messages to compress vs. pres
 low-cost improvement that captures the spirit of surprisal-based compression without model
 inference overhead.
 
-**Beta-to-DegradationAction mapping**: The conceptual insight -- that the accuracy-efficiency
-tradeoff maps to quota degradation -- is actionable without full surprisal scoring. Under
+**Beta-to-DegradationAction mapping**: the conceptual insight (the accuracy-efficiency
+tradeoff maps to quota degradation) is actionable without full surprisal scoring. Under
 budget pressure (e.g., `QuotaCheckResult.action == DegradationAction.FALLBACK`), use a
 tighter compaction threshold (compact at 70% instead of 80%) and less retention (2 turns
 instead of 3). This is the beta parameter expressed via existing degradation infrastructure.
@@ -286,7 +286,7 @@ class CompressContextTool(BaseTool):
         reason: NotBlankStr  # agent must state why it's compacting now
 
     async def execute(self, params: Parameters, context: ToolContext) -> ToolExecutionResult:
-        # Returns a compaction directive -- actual compaction applied by loop
+        # Returns a compaction directive; actual compaction applied by loop
         return ToolExecutionResult(
             content=f"Compaction requested: {params.reason}",
             metadata={"compaction_directive": True, "strategy": params.strategy,
@@ -298,11 +298,11 @@ class CompressContextTool(BaseTool):
 
 The current tool contract (`execute_tool_calls` in `loop_helpers.py`) produces
 `ToolExecutionResult` objects and appends them as TOOL messages to `AgentContext`. Tools
-cannot mutate the conversation -- they can only add a message. `AgentContext` is a frozen
+cannot mutate the conversation; they can only add a message. `AgentContext` is a frozen
 Pydantic model; `with_compression()` is the only mutation method, and it must be called
 from the loop, not from a tool.
 
-**Solution (Option A -- compaction directive)**:
+**Solution (Option A: compaction directive)**:
 
 The `compress_context` tool returns a `ToolExecutionResult` with `metadata["compaction_directive"] = True`.
 After `execute_tool_calls()` processes all tool calls in a batch, the loop checks for any
@@ -366,7 +366,7 @@ Target files: `src/synthorg/engine/compaction/summarizer.py`, `src/synthorg/engi
 
 2. **Safety net threshold field**: Add `safety_threshold_percent: float = 95.0` to
    `CompactionConfig`. Use this when `agent_controlled=True` (which defaults to False, so
-   no behavior change in Phase 1 -- just preparatory).
+   no behavior change in Phase 1, just preparatory).
 
 3. **Relative retention option**: Add `preserve_recent_percent: float | None = None` to
    `CompactionConfig`. When set, retain the larger of `preserve_recent_turns` and
