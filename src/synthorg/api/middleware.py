@@ -68,7 +68,13 @@ _DOCS_CSP: Final[str] = (
 
 # Cache-Control for API data endpoints (named constant for test
 # clarity; applied via _SECURITY_HEADERS).
-_API_CACHE_CONTROL: Final[str] = "no-store"
+#
+# OWASP REST guidance + RFC 7234 best practice: combine no-store,
+# no-cache, must-revalidate, and max-age=0 so legacy proxies and
+# browsers that ignore one directive still skip caching. Every API
+# response in this app is operator-authenticated and should never be
+# cached, so the strongest possible value applies globally (#1599).
+_API_CACHE_CONTROL: Final[str] = "no-store, no-cache, must-revalidate, max-age=0"
 
 # Cache-Control for documentation paths -- OpenAPI spec and Scalar UI
 # are public, unauthenticated, non-user-specific content safe for
@@ -87,6 +93,9 @@ _SECURITY_HEADERS: Final[MappingProxyType[str, str]] = MappingProxyType(
         "Cross-Origin-Resource-Policy": "same-origin",
         "Cross-Origin-Opener-Policy": "same-origin",
         "Cache-Control": _API_CACHE_CONTROL,
+        # HTTP/1.0 Pragma directive -- belt-and-braces alongside
+        # Cache-Control: no-store for clients that only honour Pragma.
+        "Pragma": "no-cache",
     }
 )
 
