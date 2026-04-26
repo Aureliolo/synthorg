@@ -40,13 +40,20 @@ from synthorg.meta.mcp.handlers.common import (
     paginate_sequence,
     require_destructive_guardrails,
 )
-from synthorg.meta.mcp.handlers.common_args import coerce_pagination, require_arg
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.meta.mcp.handlers.common_args import (
+    actor_id,
+    coerce_pagination,
+    require_actor_id,
+    require_non_blank,
+)
+from synthorg.meta.mcp.handlers.common_logging import (
+    log_handler_argument_invalid,
+    log_handler_guardrail_violated,
+    log_handler_invoke_failed,
+)
+from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
     MCP_DESTRUCTIVE_OP_EXECUTED,
-    MCP_HANDLER_ARGUMENT_INVALID,
-    MCP_HANDLER_GUARDRAIL_VIOLATED,
-    MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
 
@@ -81,9 +88,7 @@ _TY_STRING = "string"
 _TY_NON_BLANK = "non-blank string"
 _TY_STATUS = "ApprovalStatus"
 _TY_RISK = "ApprovalRiskLevel"
-_TY_AGENT = "identified agent"
 _ARG_STATUS = "status"
-_ARG_ACTOR = "actor"
 _ARG_TITLE = "title"
 _ARG_COMMENT = "comment"
 _ARG_ACTION_TYPE = "action_type"
@@ -114,70 +119,6 @@ def _coerce_risk(raw: Any, *, field: str = "risk_level") -> ApprovalRiskLevel | 
         raise invalid_argument(field, _TY_RISK) from exc
 
 
-def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
-    """Extract a non-blank string argument, stripped of surrounding whitespace.
-
-    Normalising at the boundary keeps downstream lookups consistent --
-    an ``approval_id`` like ``"  approval-123  "`` would otherwise fail
-    the store's exact-match lookup.
-    """
-    raw = require_arg(arguments, key, str)
-    if not raw.strip():
-        raise invalid_argument(key, _TY_NON_BLANK)
-    return raw.strip()
-
-
-def _actor_id(actor: Any) -> str | None:
-    """Return a stable audit identifier for ``actor``.
-
-    Prefers ``actor.id`` (a ``UUID`` that never changes over the
-    agent's lifetime) so ``decided_by`` audit records stay consistent
-    even when the display name is later edited.  Falls back to
-    ``actor.name`` only when id is absent.
-    """
-    if actor is None:
-        return None
-    agent_id = getattr(actor, "id", None)
-    if agent_id is not None:
-        return str(agent_id)
-    name = getattr(actor, "name", None)
-    return name if isinstance(name, str) and name else None
-
-
-def _log_failed(tool: str, exc: Exception) -> None:
-    logger.warning(
-        MCP_HANDLER_INVOKE_FAILED,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-
-
-def _log_invalid(tool: str, exc: Exception) -> None:
-    logger.warning(
-        MCP_HANDLER_ARGUMENT_INVALID,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-
-
-def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
-    logger.warning(
-        MCP_HANDLER_GUARDRAIL_VIOLATED,
-        tool_name=tool,
-        violation=exc.violation,
-    )
-
-
-def _required_actor_id(actor: Any) -> str:
-    """Return the actor's stable id (or name fallback) or raise."""
-    name = _actor_id(actor)
-    if name is None:
-        raise invalid_argument(_ARG_ACTOR, _TY_AGENT)
-    return name
-
-
 # --- handlers --------------------------------------------------------------
 
 
@@ -202,7 +143,7 @@ async def _list_approvals(
             action_type = action_type_raw.strip()
         offset, limit = coerce_pagination(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
 
     # Service call (isolated so domain errors log at WARNING).  Argument
@@ -216,7 +157,7 @@ async def _list_approvals(
         )
         page, meta = paginate_sequence(items, offset=offset, limit=limit)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -233,20 +174,20 @@ async def _get_approval(
     tool = "synthorg_approvals_get"
 
     try:
-        approval_id = _require_non_blank(arguments, "approval_id")
+        approval_id = require_non_blank(arguments, "approval_id")
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
 
     try:
         item = await app_state.approval_store.get(approval_id)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
     if item is None:
         missing = _NotFoundError(f"Approval {approval_id!r} not found")
-        _log_failed(tool, missing)
+        log_handler_invoke_failed(tool, missing)
         return err(missing)
 
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -263,9 +204,9 @@ async def _create_approval(
     tool = "synthorg_approvals_create"
 
     try:
-        requested_by = _required_actor_id(actor)
-        action_type = _require_non_blank(arguments, "action_type")
-        description = _require_non_blank(arguments, "description")
+        requested_by = require_actor_id(actor)
+        action_type = require_non_blank(arguments, "action_type")
+        description = require_non_blank(arguments, "description")
         title_raw = arguments.get("title")
         if title_raw is None:
             title = description[:80]
@@ -277,7 +218,7 @@ async def _create_approval(
         if risk is None:
             raise invalid_argument(_ARG_RISK_LEVEL, _TY_RISK)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
 
     now = datetime.now(UTC)
@@ -293,10 +234,10 @@ async def _create_approval(
     try:
         await app_state.approval_store.add(item)
     except ConflictError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -326,7 +267,7 @@ async def _decide(
         _ConflictError: Item already decided or in-flight save.
         ArgumentValidationError: Actor is missing a decidable name.
     """
-    decided_by = _required_actor_id(actor)
+    decided_by = require_actor_id(actor)
     existing = await app_state.approval_store.get(approval_id)
     if existing is None:
         msg = f"Approval {approval_id!r} not found"
@@ -369,12 +310,12 @@ async def _approve(
     tool = "synthorg_approvals_approve"
 
     try:
-        approval_id = _require_non_blank(arguments, "approval_id")
+        approval_id = require_non_blank(arguments, "approval_id")
         comment = arguments.get("comment")
         if comment is not None and not isinstance(comment, str):
             raise invalid_argument(_ARG_COMMENT, _TY_STRING)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
 
     try:
@@ -386,16 +327,16 @@ async def _approve(
             reason=comment,
         )
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except _NotFoundError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     except _ConflictError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -416,15 +357,15 @@ async def _reject(
     tool = "synthorg_approvals_reject"
 
     try:
-        approval_id = _require_non_blank(arguments, "approval_id")
+        approval_id = require_non_blank(arguments, "approval_id")
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
 
     try:
         reason, _ = require_destructive_guardrails(arguments, actor)
     except GuardrailViolationError as exc:
-        _log_guardrail(tool, exc)
+        log_handler_guardrail_violated(tool, exc)
         return err(exc)
 
     try:
@@ -436,13 +377,13 @@ async def _reject(
             reason=reason,
         )
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
         # Covers _NotFoundError, _ConflictError, and any other service-layer
         # failure.  The ``err()`` envelope picks up ``domain_code`` off the
         # handler-local errors automatically.
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
     # Emit both the handler-success telemetry *and* the destructive-op
@@ -452,7 +393,7 @@ async def _reject(
     logger.info(
         MCP_DESTRUCTIVE_OP_EXECUTED,
         tool_name=tool,
-        actor_agent_id=_actor_id(actor),
+        actor_agent_id=actor_id(actor),
         reason=reason,
         target_id=approval_id,
     )
