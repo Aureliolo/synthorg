@@ -201,7 +201,7 @@ handlers) but no logger, that's a finding.
 
 ```
 
-**Agent 02 -- missing-event-constants** (haiku)
+**Agent 02: missing-event-constants** (haiku)
 File: `_audit/latest/findings/02-missing-event-constants.md`
 
 ```text
@@ -224,7 +224,7 @@ Severity: low.
 
 ```
 
-**Agent 03 -- missing-error-logging** (sonnet)
+**Agent 03: missing-error-logging** (sonnet)
 File: `_audit/latest/findings/03-missing-error-logging.md`
 
 ```text
@@ -247,7 +247,7 @@ Severity: medium for service/engine code, low for model validation.
 
 ```
 
-**Agent 04 -- missing-state-transition-log** (sonnet)
+**Agent 04: missing-state-transition-log** (sonnet)
 File: `_audit/latest/findings/04-missing-state-transition-log.md`
 
 ```text
@@ -271,7 +271,7 @@ there's an INFO-level log call nearby. Missing transitions are severity=medium.
 
 ```
 
-**Agent 05 -- observability-completeness** (sonnet)
+**Agent 05: observability-completeness** (sonnet)
 File: `_audit/latest/findings/05-observability-completeness.md`
 
 ```text
@@ -297,7 +297,7 @@ low for nice-to-have.
 
 ### Wave 2: Wiring & Integration (8 agents)
 
-**Agent 06 -- unwired-api-controllers** (sonnet)
+**Agent 06: unwired-api-controllers** (sonnet)
 File: `_audit/latest/findings/06-unwired-api-controllers.md`
 
 ```text
@@ -308,7 +308,7 @@ owns that). Severity: high (unreachable code).
 
 ```
 
-**Agent 07 -- unwired-web-stores** (sonnet)
+**Agent 07: unwired-web-stores** (sonnet)
 File: `_audit/latest/findings/07-unwired-web-stores.md`
 
 ```text
@@ -318,7 +318,7 @@ zero pages or components, it's dead. Severity: medium.
 
 ```
 
-**Agent 08 -- unwired-web-pages** (sonnet)
+**Agent 08: unwired-web-pages** (sonnet)
 File: `_audit/latest/findings/08-unwired-web-pages.md`
 
 ```text
@@ -328,7 +328,7 @@ route AND no parent import are unreachable. Severity: medium.
 
 ```
 
-**Agent 09 -- unwired-settings** (sonnet)
+**Agent 09: unwired-settings** (sonnet)
 File: `_audit/latest/findings/09-unwired-settings.md`
 
 ```text
@@ -339,7 +339,7 @@ Settings defined but never consumed are dead config. Severity: medium.
 
 ```
 
-**Agent 10 -- unwired-tools** (sonnet)
+**Agent 10: unwired-tools** (sonnet)
 File: `_audit/latest/findings/10-unwired-tools.md`
 
 ```text
@@ -349,7 +349,7 @@ Unregistered tools are dead code. Severity: medium.
 
 ```
 
-**Agent 11 -- unwired-protocols** (sonnet)
+**Agent 11: unwired-protocols** (sonnet)
 File: `_audit/latest/findings/11-unwired-protocols.md`
 
 ```text
@@ -361,7 +361,7 @@ implementations are registered in their factory. Report:
 
 ```
 
-**Agent 12 -- unwired-notifications** (sonnet)
+**Agent 12: unwired-notifications** (sonnet)
 File: `_audit/latest/findings/12-unwired-notifications.md`
 
 ```text
@@ -372,7 +372,7 @@ notification types never dispatched. Severity: medium.
 
 ```
 
-**Agent 13 -- frontend-backend-mismatch** (sonnet)
+**Agent 13: frontend-backend-mismatch** (sonnet)
 File: `_audit/latest/findings/13-frontend-backend-mismatch.md`
 
 ```text
@@ -385,7 +385,7 @@ api/controllers/ endpoints. Report:
 
 ### Wave 3: Dead Code & Unused (3 agents)
 
-**Agent 14 -- unused-python-exports** (sonnet)
+**Agent 14: unused-python-exports** (sonnet)
 File: `_audit/latest/findings/14-unused-python-exports.md`
 
 ```text
@@ -396,7 +396,7 @@ methods, enum members, Pydantic field definitions. Severity: medium.
 
 ```
 
-**Agent 15 -- unused-dto-fields** (sonnet)
+**Agent 15: unused-dto-fields** (sonnet)
 File: `_audit/latest/findings/15-unused-dto-fields.md`
 
 ```text
@@ -407,7 +407,7 @@ Runs for `full`, `src/`, or `web/` scope (requires both backend and frontend).
 
 ```
 
-**Agent 16 -- orphan-test-helpers** (haiku)
+**Agent 16: orphan-test-helpers** (haiku)
 File: `_audit/latest/findings/16-orphan-test-helpers.md`
 
 ```text
@@ -419,7 +419,7 @@ Severity: low.
 
 ### Wave 4: TODOs & Deferred (4 agents)
 
-**Agent 17 -- todo-comments** (haiku)
+**Agent 17: todo-comments** (haiku)
 File: `_audit/latest/findings/17-todo-comments.md`
 
 ```text
@@ -429,7 +429,7 @@ comment text. Severity: info.
 
 ```
 
-**Agent 18 -- not-implemented** (haiku)
+**Agent 18: not-implemented** (haiku)
 File: `_audit/latest/findings/18-not-implemented.md`
 
 ```text
@@ -439,7 +439,7 @@ body. Severity: info for abstract methods, medium for concrete stubs.
 
 ```
 
-**Agent 19 -- placeholder-stubs** (sonnet)
+**Agent 19: placeholder-stubs** (sonnet)
 File: `_audit/latest/findings/19-placeholder-stubs.md`
 
 ```text
@@ -449,7 +449,7 @@ These suggest incomplete implementations. Severity: medium.
 
 ```
 
-**Agent 20 -- deferred-features** (sonnet)
+**Agent 20: deferred-features** (sonnet)
 File: `_audit/latest/findings/20-deferred-features.md`
 
 ```text
@@ -461,7 +461,7 @@ Focus on major features (not minor details). Severity: info.
 
 ### Wave 5: Safety & Security (6 agents)
 
-**Agent 21 -- silent-exception-swallow** (sonnet)
+**Agent 21: silent-exception-swallow** (sonnet)
 File: `_audit/latest/findings/21-silent-exception-swallow.md`
 
 ```text
@@ -472,7 +472,7 @@ graceful shutdown cleanup. Severity: high for business logic, medium for cleanup
 
 ```
 
-**Agent 22 -- input-validation-gaps** (sonnet)
+**Agent 22: input-validation-gaps** (sonnet)
 File: `_audit/latest/findings/22-input-validation-gaps.md`
 
 ```text
@@ -482,7 +482,7 @@ body access, and missing type coercion. Severity: high.
 
 ```
 
-**Agent 23 -- sql-injection-risk** (sonnet)
+**Agent 23: sql-injection-risk** (sonnet)
 File: `_audit/latest/findings/23-sql-injection-risk.md`
 
 ```text
@@ -491,7 +491,7 @@ in SQL queries instead of parameterized queries. Severity: critical.
 
 ```
 
-**Agent 24 -- missing-auth-checks** (sonnet)
+**Agent 24: missing-auth-checks** (sonnet)
 File: `_audit/latest/findings/24-missing-auth-checks.md`
 
 ```text
@@ -501,7 +501,7 @@ Severity: high for data-mutating endpoints, medium for read-only.
 
 ```
 
-**Agent 25 -- unsafe-deserialization** (sonnet)
+**Agent 25: unsafe-deserialization** (sonnet)
 File: `_audit/latest/findings/25-unsafe-deserialization.md`
 
 ```text
@@ -511,7 +511,7 @@ variable or function parameter (not a string literal). Severity: critical.
 
 ```
 
-**Agent 26 -- missing-rate-limiting** (sonnet)
+**Agent 26: missing-rate-limiting** (sonnet)
 File: `_audit/latest/findings/26-missing-rate-limiting.md`
 
 ```text
@@ -522,7 +522,7 @@ Check public-facing API endpoints for rate limiting. Check expensive operations
 
 ### Wave 6: Configuration & Hardcoding (4 agents)
 
-**Agent 27 -- hardcoded-urls-ports** (haiku)
+**Agent 27: hardcoded-urls-ports** (haiku)
 File: `_audit/latest/findings/27-hardcoded-urls-ports.md`
 
 ```text
@@ -532,7 +532,7 @@ documentation. Severity: medium.
 
 ```
 
-**Agent 28 -- hardcoded-timeouts-limits** (sonnet)
+**Agent 28: hardcoded-timeouts-limits** (sonnet)
 File: `_audit/latest/findings/28-hardcoded-timeouts-limits.md`
 
 ```text
@@ -541,7 +541,7 @@ batch sizes, max limits that should be configurable. Look for bare numeric
 literals in asyncio.wait_for, sleep, timeout parameters. Severity: low.
 ```
 
-**Agent 29 -- hardcoded-magic-numbers** (sonnet)
+**Agent 29: hardcoded-magic-numbers** (sonnet)
 File: `_audit/latest/findings/29-hardcoded-magic-numbers.md`
 
 ```text
@@ -551,7 +551,7 @@ and config defaults. Severity: low.
 
 ```
 
-**Agent 30 -- missing-settings-bridge** (sonnet)
+**Agent 30: missing-settings-bridge** (sonnet)
 File: `_audit/latest/findings/30-missing-settings-bridge.md`
 
 ```text
@@ -563,7 +563,7 @@ and settings defined but never consumed by any code. Severity: medium.
 
 ### Wave 7: Code Quality & Conventions (4 agents)
 
-**Agent 31 -- model-convention-violations** (sonnet)
+**Agent 31: model-convention-violations** (sonnet)
 File: `_audit/latest/findings/31-model-convention-violations.md`
 
 ```text
@@ -576,7 +576,7 @@ Severity: medium.
 
 ```
 
-**Agent 32 -- missing-immutability** (sonnet)
+**Agent 32: missing-immutability** (sonnet)
 File: `_audit/latest/findings/32-missing-immutability.md`
 
 ```text
@@ -589,7 +589,7 @@ Severity: medium.
 
 ```
 
-**Agent 33 -- async-antipatterns** (sonnet)
+**Agent 33: async-antipatterns** (sonnet)
 File: `_audit/latest/findings/33-async-antipatterns.md`
 
 ```text
@@ -603,7 +603,7 @@ Severity: high for missing await, medium for others.
 
 ```
 
-**Agent 34 -- error-handling-consistency** (sonnet)
+**Agent 34: error-handling-consistency** (sonnet)
 File: `_audit/latest/findings/34-error-handling-consistency.md`
 
 ```text
@@ -618,7 +618,7 @@ Severity: medium.
 
 ### Wave 8: Frontend Quality (4 agents)
 
-**Agent 35 -- missing-accessibility** (sonnet)
+**Agent 35: missing-accessibility** (sonnet)
 File: `_audit/latest/findings/35-missing-accessibility.md`
 
 ```text
@@ -629,7 +629,7 @@ navigation, images without alt text. Severity: medium.
 
 ```
 
-**Agent 36 -- missing-loading-states** (sonnet)
+**Agent 36: missing-loading-states** (sonnet)
 File: `_audit/latest/findings/36-missing-loading-states.md`
 
 ```text
@@ -639,7 +639,7 @@ and missing error boundaries around async content. Severity: medium.
 
 ```
 
-**Agent 37 -- hardcoded-frontend-strings** (sonnet)
+**Agent 37: hardcoded-frontend-strings** (sonnet)
 File: `_audit/latest/findings/37-hardcoded-frontend-strings.md`
 
 ```text
@@ -649,7 +649,7 @@ Skip component prop names and technical strings. Severity: info.
 
 ```
 
-**Agent 38 -- missing-error-handling-fe** (sonnet)
+**Agent 38: missing-error-handling-fe** (sonnet)
 File: `_audit/latest/findings/38-missing-error-handling-fe.md`
 
 ```text
@@ -661,7 +661,7 @@ rollback on error, console.error without user feedback. Severity: medium.
 
 ### Wave 9: Logic & Architecture (4 agents)
 
-**Agent 39 -- race-conditions** (sonnet)
+**Agent 39: race-conditions** (sonnet)
 File: `_audit/latest/findings/39-race-conditions.md`
 
 ```text
@@ -671,7 +671,7 @@ modification, DB read-modify-write without transactions. Severity: high.
 
 ```
 
-**Agent 40 -- resource-leaks** (sonnet)
+**Agent 40: resource-leaks** (sonnet)
 File: `_audit/latest/findings/40-resource-leaks.md`
 
 ```text
@@ -681,7 +681,7 @@ aiohttp sessions created but not closed. Severity: high.
 
 ```
 
-**Agent 41 -- circular-dependencies** (sonnet)
+**Agent 41: circular-dependencies** (sonnet)
 File: `_audit/latest/findings/41-circular-dependencies.md`
 
 ```text
@@ -691,7 +691,7 @@ Also check for TYPE_CHECKING guards that hide real circular deps. Severity: medi
 
 ```
 
-**Agent 42 -- design-spec-drift** (opus)
+**Agent 42: design-spec-drift** (opus)
 File: `_audit/latest/findings/42-design-spec-drift.md`
 
 ```text
@@ -703,7 +703,7 @@ documented rationale. Focus on major architectural decisions. Severity: medium.
 
 ### Wave 10: Go CLI (2 agents)
 
-**Agent 43 -- go-hardcoded-values** (haiku)
+**Agent 43: go-hardcoded-values** (haiku)
 File: `_audit/latest/findings/43-go-hardcoded-values.md`
 
 ```text
@@ -712,7 +712,7 @@ be configurable via flags or config. Severity: low.
 
 ```
 
-**Agent 44 -- go-cli-wiring** (sonnet)
+**Agent 44: go-cli-wiring** (sonnet)
 File: `_audit/latest/findings/44-go-cli-wiring.md`
 
 ```text
@@ -724,7 +724,7 @@ Severity: medium.
 
 ### Wave 11: Dashboard Completeness (3 agents)
 
-**Agent 45 -- dashboard-api-coverage** (sonnet)
+**Agent 45: dashboard-api-coverage** (sonnet)
 File: `_audit/latest/findings/45-dashboard-api-coverage.md`
 
 ```text
@@ -736,7 +736,7 @@ the backend but have no corresponding UI surface. Severity: medium.
 
 ```
 
-**Agent 46 -- dashboard-settings-completeness** (sonnet)
+**Agent 46: dashboard-settings-completeness** (sonnet)
 File: `_audit/latest/findings/46-dashboard-settings-completeness.md`
 
 ```text
@@ -748,7 +748,7 @@ Report settings that exist but are not exposed. Severity: medium.
 
 ```
 
-**Agent 47 -- dashboard-ux-improvements** (sonnet)
+**Agent 47: dashboard-ux-improvements** (sonnet)
 File: `_audit/latest/findings/47-dashboard-ux-improvements.md`
 
 ```text
@@ -769,7 +769,7 @@ core UX patterns, low for polish.
 
 ### Wave 12: Documentation Quality (4 agents)
 
-**Agent 48 -- docs-accuracy** (sonnet)
+**Agent 48: docs-accuracy** (sonnet)
 File: `_audit/latest/findings/48-docs-accuracy.md`
 
 ```text
@@ -785,7 +785,7 @@ Severity: medium for misleading docs, low for minor inaccuracies.
 
 ```
 
-**Agent 49 -- docs-completeness** (sonnet)
+**Agent 49: docs-completeness** (sonnet)
 File: `_audit/latest/findings/49-docs-completeness.md`
 
 ```text
@@ -801,7 +801,7 @@ Severity: medium for missing feature docs, low for missing examples.
 
 ```
 
-**Agent 50 -- readme-website-accuracy** (sonnet)
+**Agent 50: readme-website-accuracy** (sonnet)
 File: `_audit/latest/findings/50-readme-website-accuracy.md`
 
 ```text
@@ -817,7 +817,7 @@ Severity: medium for public-facing inaccuracies.
 
 ```
 
-**Agent 51 -- docs-diagram-quality** (sonnet)
+**Agent 51: docs-diagram-quality** (sonnet)
 File: `_audit/latest/findings/51-docs-diagram-quality.md`
 
 ```text
@@ -834,7 +834,7 @@ Severity: low.
 
 ### Wave 13: UX & Content Quality (8 agents)
 
-**Agent 52 -- ux-consistency** (sonnet)
+**Agent 52: ux-consistency** (sonnet)
 File: `_audit/latest/findings/52-ux-consistency.md`
 
 ```text
@@ -850,7 +850,7 @@ Severity: medium for jarring inconsistencies, low for minor.
 
 ```
 
-**Agent 53 -- ux-responsiveness** (sonnet)
+**Agent 53: ux-responsiveness** (sonnet)
 File: `_audit/latest/findings/53-ux-responsiveness.md`
 
 ```text
@@ -865,7 +865,7 @@ Severity: medium.
 
 ```
 
-**Agent 54 -- ux-performance-patterns** (sonnet)
+**Agent 54: ux-performance-patterns** (sonnet)
 File: `_audit/latest/findings/54-ux-performance-patterns.md`
 
 ```text
@@ -881,7 +881,7 @@ Severity: medium.
 
 ```
 
-**Agent 55 -- api-docs-openapi** (sonnet)
+**Agent 55: api-docs-openapi** (sonnet)
 File: `_audit/latest/findings/55-api-docs-openapi.md`
 
 ```text
@@ -896,7 +896,7 @@ Severity: low.
 
 ```
 
-**Agent 56 -- cli-docs-help** (haiku)
+**Agent 56: cli-docs-help** (haiku)
 File: `_audit/latest/findings/56-cli-docs-help.md`
 
 ```text
@@ -910,7 +910,7 @@ Check cli/cmd/*.go for cobra.Command fields. Severity: low.
 
 ```
 
-**Agent 57 -- storybook-coverage** (sonnet)
+**Agent 57: storybook-coverage** (sonnet)
 File: `_audit/latest/findings/57-storybook-coverage.md`
 
 ```text
@@ -924,7 +924,7 @@ zero coverage.
 
 ```
 
-**Agent 58 -- error-messages-ux** (sonnet)
+**Agent 58: error-messages-ux** (sonnet)
 File: `_audit/latest/findings/58-error-messages-ux.md`
 
 ```text
@@ -941,7 +941,7 @@ Severity: medium for unhelpful errors, low for tone inconsistencies.
 
 ```
 
-**Agent 59 -- onboarding-flow** (sonnet)
+**Agent 59: onboarding-flow** (sonnet)
 File: `_audit/latest/findings/59-onboarding-flow.md`
 
 ```text
@@ -959,7 +959,7 @@ Severity: medium.
 
 ### Wave 14: Abstraction Boundaries & Backend Parity (13 agents)
 
-**Agent 60 -- dual-backend-protocol-parity** (sonnet)
+**Agent 60: dual-backend-protocol-parity** (sonnet)
 File: `_audit/latest/findings/60-dual-backend-protocol-parity.md`
 
 ```text
@@ -977,7 +977,7 @@ Severity: high for missing impl, medium for signature drift.
 
 ```
 
-**Agent 61 -- migration-parity** (sonnet)
+**Agent 61: migration-parity** (sonnet)
 File: `_audit/latest/findings/61-migration-parity.md`
 
 ```text
@@ -996,7 +996,7 @@ Severity: high.
 
 ```
 
-**Agent 62 -- dual-backend-test-parity** (sonnet)
+**Agent 62: dual-backend-test-parity** (sonnet)
 File: `_audit/latest/findings/62-dual-backend-test-parity.md`
 
 ```text
@@ -1013,7 +1013,7 @@ Severity: medium.
 
 ```
 
-**Agent 63 -- persistence-boundary-deep** (sonnet)
+**Agent 63: persistence-boundary-deep** (sonnet)
 File: `_audit/latest/findings/63-persistence-boundary-deep.md`
 
 ```text
@@ -1032,7 +1032,7 @@ Severity: high.
 
 ```
 
-**Agent 64 -- provider-boundary-leaks** (sonnet)
+**Agent 64: provider-boundary-leaks** (sonnet)
 File: `_audit/latest/findings/64-provider-boundary-leaks.md`
 
 ```text
@@ -1047,7 +1047,7 @@ Outside src/synthorg/providers/, find:
 Severity: high.
 ```
 
-**Agent 65 -- memory-boundary-leaks** (sonnet)
+**Agent 65: memory-boundary-leaks** (sonnet)
 File: `_audit/latest/findings/65-memory-boundary-leaks.md`
 
 ```text
@@ -1063,7 +1063,7 @@ Severity: medium.
 
 ```
 
-**Agent 66 -- queue-boundary-leaks** (sonnet)
+**Agent 66: queue-boundary-leaks** (sonnet)
 File: `_audit/latest/findings/66-queue-boundary-leaks.md`
 
 ```text
@@ -1080,7 +1080,7 @@ Severity: medium.
 
 ```
 
-**Agent 67 -- process-spawn-leaks** (sonnet)
+**Agent 67: process-spawn-leaks** (sonnet)
 File: `_audit/latest/findings/67-process-spawn-leaks.md`
 
 ```text
@@ -1097,7 +1097,7 @@ Severity: high for arbitrary code paths, medium for admin tools.
 
 ```
 
-**Agent 68 -- state-mutation-leaks** (sonnet)
+**Agent 68: state-mutation-leaks** (sonnet)
 File: `_audit/latest/findings/68-state-mutation-leaks.md`
 
 ```text
@@ -1113,7 +1113,7 @@ In src/synthorg/api/controllers/, find:
 Severity: medium.
 ```
 
-**Agent 69 -- hardcoded-backend-selection** (sonnet)
+**Agent 69: hardcoded-backend-selection** (sonnet)
 File: `_audit/latest/findings/69-hardcoded-backend-selection.md`
 
 ```text
@@ -1128,7 +1128,7 @@ business code.
 Severity: medium.
 ```
 
-**Agent 70 -- pluggable-impl-coverage** (opus)
+**Agent 70: pluggable-impl-coverage** (opus)
 File: `_audit/latest/findings/70-pluggable-impl-coverage.md`
 
 ```text
@@ -1150,7 +1150,7 @@ Flag:
 Severity: medium.
 ```
 
-**Agent 71 -- abstraction-swap-readiness** (opus)
+**Agent 71: abstraction-swap-readiness** (opus)
 File: `_audit/latest/findings/71-abstraction-swap-readiness.md`
 
 ```text
@@ -1166,7 +1166,7 @@ Find code that would break that invariant:
 Severity: medium.
 ```
 
-**Agent 72 -- dependency-inversion-violations** (opus)
+**Agent 72: dependency-inversion-violations** (opus)
 File: `_audit/latest/findings/72-dependency-inversion-violations.md`
 
 ```text
@@ -1183,7 +1183,7 @@ Severity: low.
 
 ### Wave 15: Documentation Truth & Freshness (9 agents)
 
-**Agent 73 -- roadmap-currency** (sonnet)
+**Agent 73: roadmap-currency** (sonnet)
 File: `_audit/latest/findings/73-roadmap-currency.md`
 
 ```text
@@ -1218,7 +1218,7 @@ Findings without evidence are inadmissible.
 - HIGH for shipped work described as future.
 ```
 
-**Agent 74 -- comparison-page-accuracy** (sonnet)
+**Agent 74: comparison-page-accuracy** (sonnet)
 File: `_audit/latest/findings/74-comparison-page-accuracy.md`
 
 ```text
@@ -1235,7 +1235,7 @@ Severity: medium for inaccurate self-claims, low for competitor drift.
 
 ```
 
-**Agent 75 -- landing-page-metrics** (sonnet)
+**Agent 75: landing-page-metrics** (sonnet)
 File: `_audit/latest/findings/75-landing-page-metrics.md`
 
 ```text
@@ -1270,7 +1270,7 @@ Stale public-facing numbers are an investor / user trust issue, not a
 low-priority finding.
 ```
 
-**Agent 76 -- superseded-decisions** (sonnet)
+**Agent 76: superseded-decisions** (sonnet)
 File: `_audit/latest/findings/76-superseded-decisions.md`
 
 ```text
@@ -1286,7 +1286,7 @@ Flag:
 Severity: medium.
 ```
 
-**Agent 77 -- config-reference-drift** (sonnet)
+**Agent 77: config-reference-drift** (sonnet)
 File: `_audit/latest/findings/77-config-reference-drift.md`
 
 ```text
@@ -1302,7 +1302,7 @@ Flag:
 Severity: medium.
 ```
 
-**Agent 78 -- cli-reference-drift** (sonnet)
+**Agent 78: cli-reference-drift** (sonnet)
 File: `_audit/latest/findings/78-cli-reference-drift.md`
 
 ```text
@@ -1317,7 +1317,7 @@ Flag:
 Severity: medium.
 ```
 
-**Agent 79 -- api-reference-drift** (sonnet)
+**Agent 79: api-reference-drift** (sonnet)
 File: `_audit/latest/findings/79-api-reference-drift.md`
 
 ```text
@@ -1332,7 +1332,7 @@ Flag:
 Severity: medium.
 ```
 
-**Agent 80 -- example-config-validity** (sonnet)
+**Agent 80: example-config-validity** (sonnet)
 File: `_audit/latest/findings/80-example-config-validity.md`
 
 ```text
@@ -1349,7 +1349,7 @@ Flag:
 Severity: medium.
 ```
 
-**Agent 81 -- design-spec-contradictions** (opus)
+**Agent 81: design-spec-contradictions** (opus)
 File: `_audit/latest/findings/81-design-spec-contradictions.md`
 
 ```text
@@ -1366,7 +1366,7 @@ Severity: medium.
 
 ### Wave 16: Docs Scope & Rot (5 agents)
 
-**Agent 82 -- docs-scope-creep** (sonnet)
+**Agent 82: docs-scope-creep** (sonnet)
 File: `_audit/latest/findings/82-docs-scope-creep.md`
 
 ```text
@@ -1381,7 +1381,7 @@ Flag:
 Severity: low.
 ```
 
-**Agent 83 -- stale-code-examples** (sonnet)
+**Agent 83: stale-code-examples** (sonnet)
 File: `_audit/latest/findings/83-stale-code-examples.md`
 
 ```text
@@ -1398,7 +1398,7 @@ Flag:
 Severity: medium.
 ```
 
-**Agent 84 -- removed-features-still-mentioned** (sonnet)
+**Agent 84: removed-features-still-mentioned** (sonnet)
 File: `_audit/latest/findings/84-removed-features-still-mentioned.md`
 
 ```text
@@ -1413,7 +1413,7 @@ Flag:
 Severity: medium.
 ```
 
-**Agent 85 -- docs-seo-freshness** (haiku)
+**Agent 85: docs-seo-freshness** (haiku)
 File: `_audit/latest/findings/85-docs-seo-freshness.md`
 
 ```text
@@ -1426,7 +1426,7 @@ in docs/ for:
 Severity: low.
 ```
 
-**Agent 86 -- issue-pr-link-rot** (haiku)
+**Agent 86: issue-pr-link-rot** (haiku)
 File: `_audit/latest/findings/86-issue-pr-link-rot.md`
 
 ```text
@@ -1443,7 +1443,7 @@ Severity: low.
 
 ### Wave 17: Security Deep-Dive (6 agents)
 
-**Agent 87 -- http-security-headers** (sonnet)
+**Agent 87: http-security-headers** (sonnet)
 File: `_audit/latest/findings/87-http-security-headers.md`
 
 ```text
@@ -1456,7 +1456,7 @@ Scope: api/app.py middleware, Litestar response plugins, reverse proxy configs.
 Severity: medium.
 ```
 
-**Agent 88 -- cookie-auth-security** (sonnet)
+**Agent 88: cookie-auth-security** (sonnet)
 File: `_audit/latest/findings/88-cookie-auth-security.md`
 
 ```text
@@ -1469,7 +1469,7 @@ Audit authentication and cookie hygiene:
 Severity: high.
 ```
 
-**Agent 89 -- crypto-hygiene** (sonnet)
+**Agent 89: crypto-hygiene** (sonnet)
 File: `_audit/latest/findings/89-crypto-hygiene.md`
 
 ```text
@@ -1482,7 +1482,7 @@ Find cryptographic anti-patterns:
 Severity: high.
 ```
 
-**Agent 90 -- secrets-in-logs** (sonnet)
+**Agent 90: secrets-in-logs** (sonnet)
 File: `_audit/latest/findings/90-secrets-in-logs.md`
 
 ```text
@@ -1496,7 +1496,7 @@ against actual `logger.*` calls. Flag:
 Severity: high.
 ```
 
-**Agent 91 -- path-traversal-ssrf-xxe-redos** (sonnet)
+**Agent 91: path-traversal-ssrf-xxe-redos** (sonnet)
 File: `_audit/latest/findings/91-path-traversal-ssrf-xxe-redos.md`
 
 ```text
@@ -1509,7 +1509,7 @@ Find injection-class vulnerabilities:
 Severity: high.
 ```
 
-**Agent 92 -- prompt-injection-defenses** (opus)
+**Agent 92: prompt-injection-defenses** (opus)
 File: `_audit/latest/findings/92-prompt-injection-defenses.md`
 
 ```text
@@ -1525,7 +1525,7 @@ Severity: high.
 
 ### Wave 18: Performance & Resource Efficiency (5 agents)
 
-**Agent 93 -- n-plus-one-queries** (sonnet)
+**Agent 93: n-plus-one-queries** (sonnet)
 File: `_audit/latest/findings/93-n-plus-one-queries.md`
 
 ```text
@@ -1536,7 +1536,7 @@ paths, missing eager-load joins for related entities.
 Severity: high.
 ```
 
-**Agent 94 -- missing-indices** (sonnet)
+**Agent 94: missing-indices** (sonnet)
 File: `_audit/latest/findings/94-missing-indices.md`
 
 ```text
@@ -1547,7 +1547,7 @@ doesn't exist. Check both SQLite and Postgres schemas.
 Severity: medium.
 ```
 
-**Agent 95 -- missing-pagination** (sonnet)
+**Agent 95: missing-pagination** (sonnet)
 File: `_audit/latest/findings/95-missing-pagination.md`
 
 ```text
@@ -1557,7 +1557,7 @@ Everything that can grow should accept cursor/offset+limit parameters.
 Severity: medium.
 ```
 
-**Agent 96 -- blocking-io-hot-paths** (sonnet)
+**Agent 96: blocking-io-hot-paths** (sonnet)
 File: `_audit/latest/findings/96-blocking-io-hot-paths.md`
 
 ```text
@@ -1570,7 +1570,7 @@ Find blocking I/O inside async hot paths:
 Severity: high.
 ```
 
-**Agent 97 -- memory-leak-patterns** (sonnet)
+**Agent 97: memory-leak-patterns** (sonnet)
 File: `_audit/latest/findings/97-memory-leak-patterns.md`
 
 ```text
@@ -1587,7 +1587,7 @@ Severity: high.
 
 ### Wave 19: Test Quality (3 agents)
 
-**Agent 99 -- tests-with-sleeps** (haiku)
+**Agent 99: tests-with-sleeps** (haiku)
 File: `_audit/latest/findings/99-tests-with-sleeps.md`
 
 ```text
@@ -1598,7 +1598,7 @@ use deterministic waits (Event, condition variables, fake clocks).
 Severity: medium.
 ```
 
-**Agent 100 -- mock-drift** (sonnet)
+**Agent 100: mock-drift** (sonnet)
 File: `_audit/latest/findings/100-mock-drift.md`
 
 ```text
@@ -1609,7 +1609,7 @@ types on mocks that don't match the real class/function today.
 Severity: medium.
 ```
 
-**Agent 101 -- e2e-critical-flow-gaps** (sonnet)
+**Agent 101: e2e-critical-flow-gaps** (sonnet)
 File: `_audit/latest/findings/101-e2e-critical-flow-gaps.md`
 
 ```text
@@ -1622,7 +1622,7 @@ Severity: medium.
 
 ### Wave 20: Operational & Data Readiness (5 agents)
 
-**Agent 102 -- graceful-shutdown** (sonnet)
+**Agent 102: graceful-shutdown** (sonnet)
 File: `_audit/latest/findings/102-graceful-shutdown.md`
 
 ```text
@@ -1636,7 +1636,7 @@ Check shutdown path:
 Severity: high.
 ```
 
-**Agent 103 -- data-retention-gdpr** (sonnet)
+**Agent 103: data-retention-gdpr** (sonnet)
 File: `_audit/latest/findings/103-data-retention-gdpr.md`
 
 ```text
@@ -1649,7 +1649,7 @@ check:
 Severity: medium.
 ```
 
-**Agent 104 -- monitoring-dashboards** (sonnet)
+**Agent 104: monitoring-dashboards** (sonnet)
 File: `_audit/latest/findings/104-monitoring-dashboards.md`
 
 ```text
@@ -1660,7 +1660,7 @@ to metrics that no longer exist.
 Severity: medium.
 ```
 
-**Agent 105 -- prompt-eval-coverage** (sonnet)
+**Agent 105: prompt-eval-coverage** (sonnet)
 File: `_audit/latest/findings/105-prompt-eval-coverage.md`
 
 ```text
@@ -1673,7 +1673,7 @@ check each has:
 Severity: medium.
 ```
 
-**Agent 106 -- health-readiness-probes** (sonnet)
+**Agent 106: health-readiness-probes** (sonnet)
 File: `_audit/latest/findings/106-health-readiness-probes.md`
 
 ```text
@@ -1686,7 +1686,7 @@ Severity: medium.
 
 ### Wave 21: Developer Experience & Reproducibility (2 agents)
 
-**Agent 107 -- slow-precommit-hooks** (haiku)
+**Agent 107: slow-precommit-hooks** (haiku)
 File: `_audit/latest/findings/107-slow-precommit-hooks.md`
 
 ```text
@@ -1697,7 +1697,7 @@ pre-push or CI.
 Severity: low.
 ```
 
-**Agent 108 -- claude-md-reproducibility** (sonnet)
+**Agent 108: claude-md-reproducibility** (sonnet)
 File: `_audit/latest/findings/108-claude-md-reproducibility.md`
 
 ```text
@@ -1710,7 +1710,7 @@ Severity: medium.
 
 ### Wave 22: Code Quality & Duplication (6 agents)
 
-**Agent 109 -- typescript-strictness** (sonnet)
+**Agent 109: typescript-strictness** (sonnet)
 File: `_audit/latest/findings/109-typescript-strictness.md`
 
 ```text
@@ -1721,7 +1721,7 @@ guard would be safer. Verify tsconfig `strict` is fully enabled.
 Severity: medium.
 ```
 
-**Agent 110 -- duplicate-business-logic** (sonnet)
+**Agent 110: duplicate-business-logic** (sonnet)
 File: `_audit/latest/findings/110-duplicate-business-logic.md`
 
 ```text
@@ -1731,7 +1731,7 @@ substantive duplication (>10 lines of non-trivial code), not boilerplate.
 Severity: medium.
 ```
 
-**Agent 111 -- duplicate-types** (sonnet)
+**Agent 111: duplicate-types** (sonnet)
 File: `_audit/latest/findings/111-duplicate-types.md`
 
 ```text
@@ -1743,7 +1743,7 @@ shared enums.
 Severity: medium.
 ```
 
-**Agent 112 -- duplicate-error-codes** (sonnet)
+**Agent 112: duplicate-error-codes** (sonnet)
 File: `_audit/latest/findings/112-duplicate-error-codes.md`
 
 ```text
@@ -1754,7 +1754,7 @@ places.
 Severity: medium.
 ```
 
-**Agent 113 -- feature-flag-coverage** (sonnet)
+**Agent 113: feature-flag-coverage** (sonnet)
 File: `_audit/latest/findings/113-feature-flag-coverage.md`
 
 ```text
@@ -1766,7 +1766,7 @@ Find feature flags / settings that gate risky behavior. Flag:
 Severity: medium.
 ```
 
-**Agent 114 -- default-config-sanity** (sonnet)
+**Agent 114: default-config-sanity** (sonnet)
 File: `_audit/latest/findings/114-default-config-sanity.md`
 
 ```text
@@ -1779,7 +1779,7 @@ Severity: medium.
 
 ### Wave 23: CI & Supply Chain (5 agents)
 
-**Agent 115 -- workflow-permissions** (sonnet)
+**Agent 115: workflow-permissions** (sonnet)
 File: `_audit/latest/findings/115-workflow-permissions.md`
 
 ```text
@@ -1791,7 +1791,7 @@ Audit `.github/workflows/*.yml` for:
 Severity: high.
 ```
 
-**Agent 116 -- ci-flakiness** (sonnet)
+**Agent 116: ci-flakiness** (sonnet)
 File: `_audit/latest/findings/116-ci-flakiness.md`
 
 ```text
@@ -1803,7 +1803,7 @@ Analyze recent CI run history (via `gh run list`) for patterns:
 Severity: medium.
 ```
 
-**Agent 117 -- unused-deps** (sonnet)
+**Agent 117: unused-deps** (sonnet)
 File: `_audit/latest/findings/117-unused-deps.md`
 
 ```text
@@ -1814,7 +1814,7 @@ but never imported anywhere.
 Severity: medium.
 ```
 
-**Agent 118 -- duplicate-deps** (sonnet)
+**Agent 118: duplicate-deps** (sonnet)
 File: `_audit/latest/findings/118-duplicate-deps.md`
 
 ```text
@@ -1824,7 +1824,7 @@ fetch wrappers, multiple date libraries). Recommend consolidation.
 Severity: low.
 ```
 
-**Agent 119 -- license-compat** (sonnet)
+**Agent 119: license-compat** (sonnet)
 File: `_audit/latest/findings/119-license-compat.md`
 
 ```text
@@ -1837,7 +1837,7 @@ Severity: high.
 
 ### Wave 24: Client Robustness (2 agents)
 
-**Agent 120 -- rate-limit-client** (sonnet)
+**Agent 120: rate-limit-client** (sonnet)
 File: `_audit/latest/findings/120-rate-limit-client.md`
 
 ```text
@@ -1849,7 +1849,7 @@ Audit client-side handling of HTTP 429 responses:
 Severity: medium.
 ```
 
-**Agent 121 -- ws-sse-robustness** (sonnet)
+**Agent 121: ws-sse-robustness** (sonnet)
 File: `_audit/latest/findings/121-ws-sse-robustness.md`
 
 ```text
@@ -1865,7 +1865,7 @@ Severity: medium.
 
 ### Wave 25: Git History & Drift (2 agents)
 
-**Agent 122 -- git-history-secrets-and-bloat** (sonnet)
+**Agent 122: git-history-secrets-and-bloat** (sonnet)
 File: `_audit/latest/findings/122-git-history-secrets-and-bloat.md`
 
 ```text
@@ -1880,7 +1880,7 @@ Two narrow checks on full git history (not just current tree):
 Severity: critical for secrets, medium for bloat.
 ```
 
-**Agent 123 -- temporal-drift-wording** (sonnet)
+**Agent 123: temporal-drift-wording** (sonnet)
 File: `_audit/latest/findings/123-temporal-drift-wording.md`
 
 ```text
@@ -1903,7 +1903,7 @@ Severity: low for stylistic drift, medium for misleading claims.
 
 ### Wave 26: SynthOrg-Specific Invariants (7 agents)
 
-**Agent 124 -- mcp-handler-contract** (sonnet)
+**Agent 124: mcp-handler-contract** (sonnet)
 File: `_audit/latest/findings/124-mcp-handler-contract.md`
 
 ```text
@@ -1926,7 +1926,7 @@ Severity: high.
 
 ```
 
-**Agent 125 -- sec1-prompt-safety-call-sites** (sonnet)
+**Agent 125: sec1-prompt-safety-call-sites** (sonnet)
 File: `_audit/latest/findings/125-sec1-prompt-safety-call-sites.md`
 
 ```text
@@ -1946,7 +1946,7 @@ Severity: critical for missing wrap_untrusted, high for missing directive.
 
 ```
 
-**Agent 126 -- currency-aggregation-invariant** (sonnet)
+**Agent 126: currency-aggregation-invariant** (sonnet)
 File: `_audit/latest/findings/126-currency-aggregation-invariant.md`
 
 ```text
@@ -1967,7 +1967,7 @@ Severity: high.
 
 ```
 
-**Agent 127 -- lifecycle-lock-pattern** (sonnet)
+**Agent 127: lifecycle-lock-pattern** (sonnet)
 File: `_audit/latest/findings/127-lifecycle-lock-pattern.md`
 
 ```text
@@ -1989,7 +1989,7 @@ Severity: high.
 
 ```
 
-**Agent 128 -- cost-tracking-coverage** (sonnet)
+**Agent 128: cost-tracking-coverage** (sonnet)
 File: `_audit/latest/findings/128-cost-tracking-coverage.md`
 
 ```text
@@ -2011,7 +2011,7 @@ Severity: high.
 
 ```
 
-**Agent 129 -- audit-chain-coverage** (sonnet)
+**Agent 129: audit-chain-coverage** (sonnet)
 File: `_audit/latest/findings/129-audit-chain-coverage.md`
 
 ```text
@@ -2034,7 +2034,7 @@ Severity: high.
 
 ```
 
-**Agent 130 -- pre-alpha-rename-completeness** (sonnet)
+**Agent 130: pre-alpha-rename-completeness** (sonnet)
 File: `_audit/latest/findings/130-pre-alpha-rename-completeness.md`
 
 ```text
@@ -2061,7 +2061,7 @@ Severity: medium.
 
 ### Wave 27: Generic Correctness Gaps (5 agents)
 
-**Agent 131 -- websocket-sse-auth** (sonnet)
+**Agent 131: websocket-sse-auth** (sonnet)
 File: `_audit/latest/findings/131-websocket-sse-auth.md`
 
 ```text
@@ -2086,7 +2086,7 @@ Severity: high.
 
 ```
 
-**Agent 132 -- prometheus-label-cardinality** (sonnet)
+**Agent 132: prometheus-label-cardinality** (sonnet)
 File: `_audit/latest/findings/132-prometheus-label-cardinality.md`
 
 ```text
@@ -2116,7 +2116,7 @@ high-cardinality.
 
 ```
 
-**Agent 133 -- idempotency-retry-safety** (sonnet)
+**Agent 133: idempotency-retry-safety** (sonnet)
 File: `_audit/latest/findings/133-idempotency-retry-safety.md`
 
 ```text
@@ -2142,7 +2142,7 @@ Severity: high.
 
 ```
 
-**Agent 134 -- time-clock-injection** (haiku)
+**Agent 134: time-clock-injection** (haiku)
 File: `_audit/latest/findings/134-time-clock-injection.md`
 
 ```text
@@ -2170,7 +2170,7 @@ Severity: medium.
 
 ```
 
-**Agent 135 -- pydantic-deep-checks** (sonnet)
+**Agent 135: pydantic-deep-checks** (sonnet)
 File: `_audit/latest/findings/135-pydantic-deep-checks.md`
 
 ```text
@@ -2197,9 +2197,9 @@ Severity: medium. Flag extra="allow" on input DTOs as high.
 
 ### Wave 28: Centralization & Architectural Rework (15 agents)
 
-These agents look for systemic patterns indicating a centralized system, missing abstraction, or fundamental rework is needed -- not single-file bugs. Findings from this wave feed into the Architectural Recommendations section of INDEX.md and the REWORK.md synthesis (Phase 3.5) rather than per-finding GitHub issues.
+These agents look for systemic patterns indicating a centralized system, missing abstraction, or fundamental rework is needed, not single-file bugs. Findings from this wave feed into the Architectural Recommendations section of INDEX.md and the REWORK.md synthesis (Phase 3.5) rather than per-finding GitHub issues.
 
-**Agent 136 -- repeated-workarounds** (sonnet)
+**Agent 136: repeated-workarounds** (sonnet)
 File: `_audit/latest/findings/136-repeated-workarounds.md`
 
 ```text
@@ -2218,7 +2218,7 @@ Severity: medium when 3 or more cluster on one cause; low for pairs.
 
 ```
 
-**Agent 137 -- centralization-opportunities** (opus)
+**Agent 137: centralization-opportunities** (opus)
 File: `_audit/latest/findings/137-centralization-opportunities.md`
 
 ```text
@@ -2242,7 +2242,7 @@ Severity: medium.
 
 ```
 
-**Agent 138 -- inline-cross-cutting-concerns** (sonnet)
+**Agent 138: inline-cross-cutting-concerns** (sonnet)
 File: `_audit/latest/findings/138-inline-cross-cutting-concerns.md`
 
 ```text
@@ -2267,7 +2267,7 @@ Severity: medium.
 
 ```
 
-**Agent 139 -- fragmented-dispatch** (sonnet)
+**Agent 139: fragmented-dispatch** (sonnet)
 File: `_audit/latest/findings/139-fragmented-dispatch.md`
 
 ```text
@@ -2291,7 +2291,7 @@ Severity: medium.
 
 ```
 
-**Agent 140 -- ambient-parameter-threading** (sonnet)
+**Agent 140: ambient-parameter-threading** (sonnet)
 File: `_audit/latest/findings/140-ambient-parameter-threading.md`
 
 ```text
@@ -2313,7 +2313,7 @@ Severity: medium.
 
 ```
 
-**Agent 141 -- repeated-normalization-parsing** (sonnet)
+**Agent 141: repeated-normalization-parsing** (sonnet)
 File: `_audit/latest/findings/141-repeated-normalization-parsing.md`
 
 ```text
@@ -2337,7 +2337,7 @@ Severity: medium.
 
 ```
 
-**Agent 142 -- scattered-config-access** (sonnet)
+**Agent 142: scattered-config-access** (sonnet)
 File: `_audit/latest/findings/142-scattered-config-access.md`
 
 ```text
@@ -2357,7 +2357,7 @@ Severity: medium.
 
 ```
 
-**Agent 143 -- utility-file-bloat** (sonnet)
+**Agent 143: utility-file-bloat** (sonnet)
 File: `_audit/latest/findings/143-utility-file-bloat.md`
 
 ```text
@@ -2378,7 +2378,7 @@ mixing 5 or more topics.
 
 ```
 
-**Agent 144 -- layer-violations** (sonnet)
+**Agent 144: layer-violations** (sonnet)
 File: `_audit/latest/findings/144-layer-violations.md`
 
 ```text
@@ -2403,7 +2403,7 @@ Severity: medium.
 
 ```
 
-**Agent 145 -- abstraction-on-wrong-axis** (opus)
+**Agent 145: abstraction-on-wrong-axis** (opus)
 File: `_audit/latest/findings/145-abstraction-on-wrong-axis.md`
 
 ```text
@@ -2435,7 +2435,7 @@ abstractions (factory always picks the same impl).
 
 ```
 
-**Agent 146 -- configuration-soup** (sonnet)
+**Agent 146: configuration-soup** (sonnet)
 File: `_audit/latest/findings/146-configuration-soup.md`
 
 ```text
@@ -2455,7 +2455,7 @@ Severity: medium.
 
 ```
 
-**Agent 147 -- error-mapping-inconsistency** (sonnet)
+**Agent 147: error-mapping-inconsistency** (sonnet)
 File: `_audit/latest/findings/147-error-mapping-inconsistency.md`
 
 ```text
@@ -2478,7 +2478,7 @@ Severity: medium.
 
 ```
 
-**Agent 148 -- protocol-cardinality-overabstraction** (sonnet)
+**Agent 148: protocol-cardinality-overabstraction** (sonnet)
 File: `_audit/latest/findings/148-protocol-cardinality-overabstraction.md`
 
 ```text
@@ -2501,7 +2501,7 @@ Severity: low.
 
 ```
 
-**Agent 149 -- mixed-async-sync-migration** (sonnet)
+**Agent 149: mixed-async-sync-migration** (sonnet)
 File: `_audit/latest/findings/149-mixed-async-sync-migration.md`
 
 ```text
@@ -2522,7 +2522,7 @@ Severity: medium.
 
 ```
 
-**Agent 150 -- stringly-typed-boundaries** (sonnet)
+**Agent 150: stringly-typed-boundaries** (sonnet)
 File: `_audit/latest/findings/150-stringly-typed-boundaries.md`
 
 ```text
@@ -2548,7 +2548,7 @@ Severity: medium.
 
 ### Wave 29: Public-Facing Truth Enforcement (2 agents)
 
-**Agent 151 -- docs-numeric-claims-enumeration** (sonnet)
+**Agent 151: docs-numeric-claims-enumeration** (sonnet)
 File: `_audit/latest/findings/151-docs-numeric-claims-enumeration.md`
 
 ```text
@@ -2588,7 +2588,7 @@ evidence-free numeric findings with severity downgrade to info.
 
 ```
 
-**Agent 152 -- website-published-pages-audit** (sonnet)
+**Agent 152: website-published-pages-audit** (sonnet)
 File: `_audit/latest/findings/152-website-published-pages-audit.md`
 
 ```text
@@ -2628,7 +2628,7 @@ inaccuracies are an investor / user trust issue.
 
 ### Wave 30: Implicit Convention Discovery (1 agent)
 
-**Agent 153 -- implicit-convention-finder** (sonnet)
+**Agent 153: implicit-convention-finder** (sonnet)
 File: `_audit/latest/findings/153-implicit-convention-finder.md`
 
 ```text
@@ -2701,14 +2701,14 @@ These concerns have a planned hook, linter, or external-tool replacement, but th
 
 ## Phase 3: Validate Findings (sonnet agents)
 
-**Required on every run.** Validation runs on all findings -- critical, high, medium, low, and info -- with no opt-out and no severity threshold. This skill is for huge audits; the false-positive filter must apply uniformly across severities so INDEX.md is not contaminated by un-validated noise.
+**Required on every run.** Validation runs on all findings (critical, high, medium, low, and info) with no opt-out and no severity threshold. This skill is for huge audits; the false-positive filter must apply uniformly across severities so INDEX.md is not contaminated by un-validated noise.
 
 After all launched audit agents complete, launch validation agents to verify findings. The number of audit agents depends on scope (152 for `full`, fewer for scoped runs).
 
 ### Process
 
 1. Read all finding files present in `_audit/latest/findings/`
-2. Collect ALL findings -- every severity, including low and info -- into a validation queue
+2. Collect ALL findings (every severity, including low and info) into a validation queue
 3. If queue exceeds 50 findings, prioritize by clustering related findings (same file/module). Order batches by severity descending (critical first) so the highest-impact verdicts land earliest, but every finding still gets validated
 4. Split the queue into batches of ~12 findings each
 5. Launch one **sonnet** validation agent per batch (in parallel, `run_in_background: true`)
@@ -2832,7 +2832,7 @@ mkdir -p "$RUN_DIR/findings"
 ln -sfn "runs/$(basename "$RUN_DIR")" _audit/latest
 ```
 
-The timestamp uses second-level precision (`%H%M%S`) so back-to-back runs in the same minute do not collide and overwrite each other's findings. On Windows, the OpenCode adapter first attempts `New-Item -ItemType SymbolicLink` (requires Developer Mode or admin); on failure it falls back to `New-Item -ItemType Junction`, which needs no special privileges. Either link type makes `_audit/latest` resolve as a directory, so downstream writes to `_audit/latest/findings/<file>` succeed regardless of which one was created. All findings, INDEX, REWORK, DIFF, and JSON live in the run-specific directory. `_audit/latest` always points at the most recent run. Older runs accumulate -- never delete `_audit/runs/*`.
+The timestamp uses second-level precision (`%H%M%S`) so back-to-back runs in the same minute do not collide and overwrite each other's findings. On Windows, the OpenCode adapter first attempts `New-Item -ItemType SymbolicLink` (requires Developer Mode or admin); on failure it falls back to `New-Item -ItemType Junction`, which needs no special privileges. Either link type makes `_audit/latest` resolve as a directory, so downstream writes to `_audit/latest/findings/<file>` succeed regardless of which one was created. All findings, INDEX, REWORK, DIFF, and JSON live in the run-specific directory. `_audit/latest` always points at the most recent run. Older runs accumulate; never delete `_audit/runs/*`.
 
 Verify `_audit/` is in `.gitignore` (existing behavior). The `_audit/.ignore.yaml` ignore list (see below) is also gitignored by virtue of the parent.
 
@@ -2854,11 +2854,11 @@ Verify `_audit/` is in `.gitignore` (existing behavior). The `_audit/.ignore.yam
 
 When building INDEX (Phase 4), read `.ignore.yaml`. Findings with a matching `finding`/`agent` pair are filtered out before counting and triage. Add a footer: "N findings suppressed by `.ignore.yaml`."
 
-Phase 5 triage gets a new option: "Ignore permanently" -- appends to `.ignore.yaml` with reason and optional expiry.
+Phase 5 triage gets a new option: "Ignore permanently" appends to `.ignore.yaml` with reason and optional expiry.
 
 ### Phase 3 update: validate every finding
 
-Validation runs over **every finding at every severity** -- critical, high, medium, low, info. There is no opt-out and no severity threshold. The previous "skip lower severities to save validation work" carve-out is removed: this skill is for HUGE audits, the false-positive filter must apply uniformly, and public-facing drift (the "13k tests" precedent) survived past audits precisely because lower-severity findings were untriaged. Phase 3.5 also promotes public-facing findings up one severity, so an unvalidated `low` becomes an unvalidated `medium` in INDEX.md -- exactly the noise this validation phase exists to remove.
+Validation runs over **every finding at every severity** (critical, high, medium, low, info). There is no opt-out and no severity threshold. The previous "skip lower severities to save validation work" carve-out is removed: this skill is for HUGE audits, the false-positive filter must apply uniformly, and public-facing drift (the "13k tests" precedent) survived past audits precisely because lower-severity findings were untriaged. Phase 3.5 also promotes public-facing findings up one severity, so an unvalidated `low` becomes an unvalidated `medium` in INDEX.md, exactly the noise this validation phase exists to remove.
 
 ### Phase 3 update: evidence requirement enforcement
 
@@ -3013,8 +3013,8 @@ Updated at end of each run from validation results. INDEX.md gets an "Agent Qual
 ### Agent prompt regression tests
 
 Optional, best-effort. Each agent can have a golden-input test:
-- `_audit/tests/<agent-id>/seed-input.md` -- short snippet that contains the issue the agent should catch
-- `_audit/tests/<agent-id>/expected-finding.md` -- the finding the agent must produce
+- `_audit/tests/<agent-id>/seed-input.md`: short snippet that contains the issue the agent should catch
+- `_audit/tests/<agent-id>/expected-finding.md`: the finding the agent must produce
 
 A new command `/codebase-audit self-test` runs each agent against its golden input and verifies it finds the seeded issue. Catches prompt rot.
 
@@ -3027,15 +3027,15 @@ If an agent fails its self-test, INDEX.md "Self-Test Status" section flags it.
 ## Rules
 
 1. **Every agent writes to `_audit/latest/findings/`** using the Write tool, not Bash
-2. **Architecture brief in every prompt** -- no blind agents
-3. **Validation is required** for every finding at every severity on every run -- no opt-out, no threshold
-4. **Batch execution** -- ~10 agents per batch, wait between batches
+2. **Architecture brief in every prompt**: no blind agents
+3. **Validation is required** for every finding at every severity on every run; no opt-out, no threshold
+4. **Batch execution**: ~10 agents per batch, wait between batches
 5. **Model selection**:
    - **Haiku**: pure pattern matching with low ambiguity (grep + filter, regex over fixed token sets, listing TODOs).
    - **Sonnet** (default): cross-file reasoning, judgment calls, semantic analysis, anything where false-positive cost matters.
    - **Opus**: reserved for the small set of agents requiring cross-document architectural synthesis. Permitted only on the agents listed below; do not use Opus for any other audit agent without explicit user approval.
    - **Opus-permitted agents**: 42 (design-spec-drift), 70 (pluggable-impl-coverage), 71 (abstraction-swap-readiness), 72 (dependency-inversion-violations), 81 (design-spec-contradictions), 92 (prompt-injection-defenses), 137 (centralization-opportunities), 145 (abstraction-on-wrong-axis), plus the Wave 28 meta-synthesis agent in Phase 3.5. Total: 9.
-6. **Do NOT fix anything** -- audit only, findings only
-7. **Rerunnable** -- never delete `_audit/runs/*`; always create a fresh `_audit/runs/<timestamp>/` and repoint `_audit/latest` at it
+6. **Do NOT fix anything**: audit only, findings only
+7. **Rerunnable**: never delete `_audit/runs/*`; always create a fresh `_audit/runs/<timestamp>/` and repoint `_audit/latest` at it
 8. **Never use em-dashes** in any output files (project convention)
 9. **Report progress** after each batch completes
