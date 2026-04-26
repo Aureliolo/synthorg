@@ -79,8 +79,12 @@ class _StubProvider(BaseCompletionProvider):
         config: CompletionConfig | None = None,
     ) -> AsyncIterator[StreamChunk]:
         async def _gen() -> AsyncIterator[StreamChunk]:
-            return
-            yield
+            # Empty async generator: the unconditional-False guard
+            # keeps the function's coroutine-shape (so ``async for``
+            # on it works) without producing any chunks.  ``yield``
+            # is unreachable on purpose -- mypy gets the silencer.
+            if False:
+                yield  # type: ignore[unreachable]
 
         return _gen()
 

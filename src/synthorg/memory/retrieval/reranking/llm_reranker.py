@@ -7,7 +7,6 @@ small-tier model and re-orders by LLM-assigned ranking.
 import builtins
 import hashlib
 import json
-from typing import TYPE_CHECKING
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.types import NotBlankStr
@@ -31,14 +30,18 @@ from synthorg.providers.models import ChatMessage, CompletionConfig
 # LLM returning a malformed ranking array that forces a fallback.
 _RERANK_COMPLETION_CONFIG = CompletionConfig(temperature=0.0)
 
-if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.memory.retrieval.models import (
-        RetrievalCandidate,
-        RetrievalQuery,
-    )
-    from synthorg.memory.retrieval.reranking.cache import RerankerCache
-    from synthorg.providers.protocol import CompletionProvider
+# ``CostTracker``, ``CompletionProvider``, ``RerankerCache``,
+# ``RetrievalQuery`` and ``RetrievalCandidate`` are part of
+# ``LLMQuerySpecificReranker.__init__`` and ``rerank``'s public
+# annotation, so they must resolve at runtime when downstream tooling
+# evaluates type hints (DI containers, doc generators).
+from synthorg.budget.tracker import CostTracker  # noqa: TC001, E402
+from synthorg.memory.retrieval.models import (  # noqa: TC001, E402
+    RetrievalCandidate,
+    RetrievalQuery,
+)
+from synthorg.memory.retrieval.reranking.cache import RerankerCache  # noqa: TC001, E402
+from synthorg.providers.protocol import CompletionProvider  # noqa: TC001, E402
 
 logger = get_logger(__name__)
 

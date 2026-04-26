@@ -9,6 +9,12 @@ the provider call fails.
 from typing import TYPE_CHECKING
 
 from synthorg.budget.call_category import LLMCallCategory
+
+# ``CostTracker`` and ``CompletionProvider`` are part of
+# ``LLMCurated.__init__``'s public annotation, so they must resolve
+# at runtime when downstream tooling evaluates type hints (DI
+# containers, doc generators).
+from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_UNTRUSTED_ARTIFACT,
@@ -25,18 +31,16 @@ from synthorg.observability.events.training import (
     HR_TRAINING_CURATION_FALLBACK,
 )
 from synthorg.providers.cost_recording import cost_recording_scope
-from synthorg.providers.errors import ProviderError
-
-if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.core.enums import SeniorityLevel
-    from synthorg.providers.protocol import CompletionProvider
-
 from synthorg.providers.enums import MessageRole
+from synthorg.providers.errors import ProviderError
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
 )
+from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
+
+if TYPE_CHECKING:
+    from synthorg.core.enums import SeniorityLevel
 
 logger = get_logger(__name__)
 

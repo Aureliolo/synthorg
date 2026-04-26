@@ -403,7 +403,13 @@ class LLMRubricGrader:
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
-                agent_id=generator_agent_id,
+                # The grading LLM call is verification work performed
+                # by the evaluator on the generator's artifact.  Charge
+                # it to the evaluator (the agent doing the grading)
+                # rather than to the generator (the artifact producer);
+                # the task_id already encodes the evaluator identity
+                # for cross-reference.
+                agent_id=evaluator_agent_id,
                 task_id=NotBlankStr(f"system:verification:{evaluator_agent_id}"),
                 call_category=LLMCallCategory.SYSTEM,
             ):

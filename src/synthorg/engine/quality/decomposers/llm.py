@@ -14,9 +14,14 @@ server-side (never taken from the model).
 
 import json
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, Final, NoReturn
+from typing import Any, Final, NoReturn
 
 from synthorg.budget.call_category import LLMCallCategory
+
+# ``CostTracker`` is part of ``LLMCriteriaDecomposer.__init__``'s public
+# annotation, so it must resolve at runtime when downstream tooling
+# evaluates type hints (DI containers, doc generators).
+from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.core.task import AcceptanceCriterion  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.prompt_safety import (
@@ -40,9 +45,6 @@ from synthorg.providers.models import (
     ToolDefinition,
 )
 from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
-
-if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
 
 logger = get_logger(__name__)
 

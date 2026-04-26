@@ -23,11 +23,19 @@ import asyncio
 import json
 import re
 import time
+
+# ``Mapping``, ``CostTracker``, ``ProviderConfig`` and
+# ``ProviderRegistry`` are part of ``LlmSecurityEvaluator.__init__``'s
+# public annotation, so they must resolve at runtime when downstream
+# tooling evaluates type hints (DI containers, doc generators).
+from collections.abc import Mapping  # noqa: TC003
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.config.schema import ProviderConfig  # noqa: TC001
 from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
@@ -49,6 +57,7 @@ from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.family import get_family, providers_excluding_family
 from synthorg.providers.models import ChatMessage, CompletionConfig, ToolDefinition
+from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
 from synthorg.security.config import (
     ArgumentTruncationStrategy,
     LlmFallbackConfig,
@@ -63,13 +72,8 @@ from synthorg.security.models import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.config.schema import ProviderConfig
     from synthorg.providers.base import BaseCompletionProvider
     from synthorg.providers.models import CompletionResponse
-    from synthorg.providers.registry import ProviderRegistry
 
 logger = get_logger(__name__)
 

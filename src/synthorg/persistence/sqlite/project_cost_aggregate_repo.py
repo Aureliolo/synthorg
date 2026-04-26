@@ -223,7 +223,11 @@ class SQLiteProjectCostAggregateRepository:
 
         try:
             aggregate = _row_to_aggregate(row, currency=currency)
-        except ValidationError as exc:
+        except (ValidationError, ValueError) as exc:
+            # ``ValueError`` from ``parse_iso_utc`` (naive datetime,
+            # malformed ISO string) and ``ValidationError`` from
+            # Pydantic both signal a corrupt durable row -- treat
+            # uniformly as a deserialization failure.
             logger.warning(
                 PERSISTENCE_PROJECT_COST_AGG_DESERIALIZE_FAILED,
                 project_id=project_id,
@@ -353,7 +357,10 @@ class SQLiteProjectCostAggregateRepository:
                             raise QueryError(msg)
                         try:
                             aggregate = _row_to_aggregate(row, currency=currency)
-                        except ValidationError as exc:
+                        except (ValidationError, ValueError) as exc:
+                            # ``ValueError`` from ``parse_iso_utc`` and
+                            # ``ValidationError`` from Pydantic are both
+                            # corrupt-row signals -- handle uniformly.
                             await self._db.rollback()
                             logger.warning(
                                 PERSISTENCE_PROJECT_COST_AGG_DESERIALIZE_FAILED,

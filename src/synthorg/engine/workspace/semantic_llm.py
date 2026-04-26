@@ -7,10 +7,20 @@ logic resides in the workspace strategy layer.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
+from collections.abc import Mapping  # noqa: TC003
 
 from synthorg.budget.call_category import LLMCallCategory
+
+# These types appear in ``LlmSemanticAnalyzer.__init__`` and ``analyze``
+# annotations and must resolve at runtime when downstream tooling
+# evaluates type hints (DI containers, doc generators).
+from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.workspace.config import SemanticAnalysisConfig  # noqa: TC001
+from synthorg.engine.workspace.models import (  # noqa: TC001
+    MergeConflict,
+    Workspace,
+)
 from synthorg.engine.workspace.semantic_analyzer import filter_files
 from synthorg.engine.workspace.semantic_llm_prompt import (
     build_review_message,
@@ -30,14 +40,7 @@ from synthorg.providers.models import (
     CompletionConfig,
     ToolDefinition,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.engine.workspace.config import SemanticAnalysisConfig
-    from synthorg.engine.workspace.models import MergeConflict, Workspace
-    from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
 
 logger = get_logger(__name__)
 

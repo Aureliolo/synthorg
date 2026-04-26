@@ -788,3 +788,74 @@ class TestResolveUrgencyThresholdsFallback:
         critical, high = await _resolve_urgency_thresholds(app_state)
         assert critical == 600.0
         assert high == 7200.0
+
+    @pytest.mark.parametrize(
+        ("critical_val", "high_val"),
+        [
+            pytest.param(-1.0, 14400.0, id="negative-critical"),
+            pytest.param(3600.0, -1.0, id="negative-high"),
+            pytest.param(float("nan"), 14400.0, id="nan-critical"),
+            pytest.param(3600.0, float("inf"), id="inf-high"),
+            pytest.param(14400.0, 14400.0, id="critical-equals-high"),
+            pytest.param(14400.0, 3600.0, id="critical-greater-than-high"),
+        ],
+    )
+    async def test_invalid_resolved_values_fall_back(
+        self,
+        critical_val: float,
+        high_val: float,
+    ) -> None:
+        """Invalid threshold pairs (negative, NaN/Inf, mis-ordered)
+        return the registry fallbacks instead of being trusted.
+        """
+        from unittest.mock import AsyncMock as _AsyncMock
+        from unittest.mock import MagicMock as _MagicMock
+
+        from synthorg.api.controllers.approvals import _resolve_urgency_thresholds
+
+        app_state = _MagicMock()
+        app_state.has_config_resolver = True
+        app_state.config_resolver.get_float = _AsyncMock(
+            side_effect=[critical_val, high_val],
+        )
+        critical, high = await _resolve_urgency_thresholds(app_state)
+        assert critical == 3600.0  # _URGENCY_CRITICAL_FALLBACK_SECONDS
+        assert high == 14400.0  # _URGENCY_HIGH_FALLBACK_SECONDS
+
+    async def test_recovery_log_after_fallback(self) -> None:
+        """A failure-then-success sequence emits the recovery signal.
+
+        The first call raises (forces fallback + arms the recovery
+        flag) and the second returns valid values; the recovery log
+        ``API_SETTINGS_BACKEND_RECOVERED`` must fire on the second
+        call, and the helper must return the resolved values.
+        """
+        from unittest.mock import AsyncMock as _AsyncMock
+        from unittest.mock import MagicMock as _MagicMock
+
+        import structlog.testing
+
+        from synthorg.api.controllers.approvals import _resolve_urgency_thresholds
+        from synthorg.observability.events.api import API_SETTINGS_BACKEND_RECOVERED
+
+        app_state = _MagicMock()
+        app_state.has_config_resolver = True
+        # First call: raise.  Second + third: serve a valid pair
+        # (each ``_resolve_urgency_thresholds`` call awaits ``get_float``
+        # twice, once per threshold).
+        app_state.config_resolver.get_float = _AsyncMock(
+            side_effect=[
+                RuntimeError("settings backend down"),
+                600.0,
+                7200.0,
+            ],
+        )
+        # First call: forces fallback.
+        await _resolve_urgency_thresholds(app_state)
+        # Second call: succeeds and emits the recovery event.
+        with structlog.testing.capture_logs() as cap:
+            critical, high = await _resolve_urgency_thresholds(app_state)
+        events = [e["event"] for e in cap]
+        assert API_SETTINGS_BACKEND_RECOVERED in events
+        assert critical == 600.0
+        assert high == 7200.0

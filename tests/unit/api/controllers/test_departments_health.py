@@ -471,9 +471,12 @@ class TestAggregateDeptCost:
                 _aggregate_dept_cost(records, agent_ids, _NOW)
             assert exc_info.value.currencies == expected["raises"]
             return
-        total, currency, _trend = _aggregate_dept_cost(records, agent_ids, _NOW)
-        assert total == pytest.approx(expected["total"])
-        assert currency == expected["currency"]
+        # Use the named ``DepartmentCostAggregate`` fields rather than
+        # tuple positions so a future field reorder doesn't silently
+        # break this assertion.
+        aggregate = _aggregate_dept_cost(records, agent_ids, _NOW)
+        assert aggregate.total_cost == pytest.approx(expected["total"])
+        assert aggregate.currency == expected["currency"]
 
 
 # ── ExceptionGroup fallback test ──────────────────────────────

@@ -12,6 +12,12 @@ import math
 from typing import TYPE_CHECKING
 
 from synthorg.budget.call_category import LLMCallCategory
+
+# ``CostTracker`` and ``CompletionProvider`` are part of
+# ``LlmJudgeQualityStrategy.__init__``'s public annotation, so they
+# must resolve at runtime when downstream tooling evaluates type
+# hints (DI containers, doc generators).
+from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_CRITERIA_JSON,
@@ -28,12 +34,11 @@ from synthorg.observability.events.performance import (
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
+from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
 from synthorg.providers.resilience.errors import RetryExhaustedError
 
 if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
     from synthorg.core.task import AcceptanceCriterion
-    from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 

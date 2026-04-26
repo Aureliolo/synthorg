@@ -679,6 +679,43 @@ class TestResolveMaxContextKeysFallback:
         result = await _resolve_max_context_keys(app_state)
         assert result == 50
 
+    async def test_negative_resolved_value_falls_back(self) -> None:
+        """Negative caps are nonsensical; fall back to the registry default."""
+        from unittest.mock import AsyncMock as _AsyncMock
+        from unittest.mock import MagicMock as _MagicMock
+
+        from synthorg.api.controllers.meetings import _resolve_max_context_keys
+
+        app_state = _MagicMock()
+        app_state.has_config_resolver = True
+        app_state.config_resolver.get_int = _AsyncMock(return_value=-5)
+        result = await _resolve_max_context_keys(app_state)
+        assert result == 20  # _MAX_CONTEXT_KEYS_FALLBACK
+
+    async def test_recovery_log_after_fallback(self) -> None:
+        """A failure-then-success sequence emits the recovery signal."""
+        from unittest.mock import AsyncMock as _AsyncMock
+        from unittest.mock import MagicMock as _MagicMock
+
+        import structlog.testing
+
+        from synthorg.api.controllers.meetings import _resolve_max_context_keys
+        from synthorg.observability.events.api import API_SETTINGS_BACKEND_RECOVERED
+
+        app_state = _MagicMock()
+        app_state.has_config_resolver = True
+        app_state.config_resolver.get_int = _AsyncMock(
+            side_effect=[RuntimeError("settings backend down"), 30],
+        )
+        # First call: raises -> fallback (arms the recovery flag).
+        await _resolve_max_context_keys(app_state)
+        # Second call: succeeds -> emits recovery event.
+        with structlog.testing.capture_logs() as cap:
+            result = await _resolve_max_context_keys(app_state)
+        events = [e["event"] for e in cap]
+        assert API_SETTINGS_BACKEND_RECOVERED in events
+        assert result == 30
+
 
 def _create_app_without_explicit_meetings() -> Any:
     """Create app without explicit meeting services (auto-wired)."""

@@ -14,6 +14,7 @@ The scope is async-safe: Python :mod:`contextvars` propagate per
 ``asyncio.Task``.
 """
 
+import asyncio
 import math
 from collections.abc import (
     AsyncIterator,  # noqa: TC003 -- runtime use in @asynccontextmanager signature
@@ -21,7 +22,7 @@ from collections.abc import (
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -87,6 +88,15 @@ class CostRecordingContext(BaseModel):
         return value
 
 
+# Bound on ``cost_tracker.record(...)`` so a slow or hung tracker
+# (DB stall, queue backpressure, custom Tracker subclass with bad I/O)
+# can never block the provider's user-visible response.  5 s is well
+# under any reasonable LLM call duration -- if the tracker can't
+# accept a record in 5 s, something is wrong and the cost record is
+# dropped with a structured warning rather than holding the request.
+_COST_RECORD_TIMEOUT_SECONDS: Final[float] = 5.0
+
+
 _cost_context: ContextVar[CostRecordingContext | None] = ContextVar(
     "synthorg_cost_recording_context",
     default=None,
@@ -119,14 +129,17 @@ async def cost_recording_scope(  # noqa: PLR0913
     emits a :class:`CostRecord` to ``cost_tracker``.  Nested scopes
     shadow the outer one and the prior scope is restored on exit.
 
-    When ``cost_tracker`` is ``None`` the scope is a no-op so call
-    sites can keep a single code path regardless of whether a
-    tracker has been wired (test fakes, infra probes, partially
-    configured services).
+    When ``cost_tracker`` is ``None`` the scope still **shadows the
+    outer context with ``None``** -- so a nested ``cost_tracker=None``
+    block under an outer wired scope correctly suppresses recording
+    for the nested call rather than silently inheriting the outer
+    tracker.  The original context is restored on exit.
 
     Args:
         cost_tracker: Sink the chokepoint records to.  ``None`` makes
-            the scope a no-op.
+            the scope a no-op (suppresses recording for the duration
+            of the block, including nested calls under a wired outer
+            scope).
         agent_id: Agent attribution for the emitted record.
         task_id: Task attribution for the emitted record.
         project_id: Optional project attribution.
@@ -137,7 +150,14 @@ async def cost_recording_scope(  # noqa: PLR0913
             :data:`DEFAULT_CURRENCY`) is used.
     """
     if cost_tracker is None:
-        yield
+        # Shadow the outer context with ``None`` so nested calls
+        # don't silently inherit a wired outer tracker.  Reset on
+        # exit to restore whatever was active before.
+        token = _cost_context.set(None)
+        try:
+            yield
+        finally:
+            _cost_context.reset(token)
         return
     resolved_currency = (
         currency if currency is not None else resolve_currency(cost_tracker)
@@ -299,9 +319,24 @@ async def emit_cost_record_from_context(
         return
 
     try:
-        await ctx.cost_tracker.record(record)
+        await asyncio.wait_for(
+            ctx.cost_tracker.record(record),
+            timeout=_COST_RECORD_TIMEOUT_SECONDS,
+        )
     except MemoryError, RecursionError:
         raise
+    except TimeoutError as exc:
+        logger.warning(
+            PROVIDER_COST_FAILED,
+            agent_id=ctx.agent_id,
+            task_id=ctx.task_id,
+            provider=provider,
+            model=model,
+            error_type=type(exc).__name__,
+            timeout_seconds=_COST_RECORD_TIMEOUT_SECONDS,
+            reason="cost_tracker_record_timeout",
+        )
+        return
     except Exception as exc:
         logger.warning(
             PROVIDER_COST_FAILED,

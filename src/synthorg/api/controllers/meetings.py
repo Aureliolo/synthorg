@@ -354,6 +354,12 @@ class MeetingController(Controller):
                 meetings can be triggered.
         """
         app_state: AppState = state.app_state
+        # Resolve the scheduler FIRST: ``app_state.meeting_scheduler``
+        # raises ``ServiceUnavailableError`` when the scheduler is
+        # ``None`` (degraded mode).  Failing fast with a clean 503
+        # before the settings-backend round trip avoids unnecessary
+        # I/O when the endpoint can't dispatch anyway.
+        scheduler = app_state.meeting_scheduler
         max_keys = await _resolve_max_context_keys(app_state)
         if len(data.context) > max_keys:
             msg = f"context must have at most {max_keys} keys"
@@ -364,10 +370,6 @@ class MeetingController(Controller):
                 max_keys=max_keys,
             )
             raise ApiValidationError(msg)
-        # ``app_state.meeting_scheduler`` raises ServiceUnavailableError
-        # when the scheduler is ``None`` (degraded mode), so this
-        # endpoint fails with a clean 503 rather than AttributeError.
-        scheduler = app_state.meeting_scheduler
         records = await scheduler.trigger_event(
             data.event_name,
             context=data.context,
