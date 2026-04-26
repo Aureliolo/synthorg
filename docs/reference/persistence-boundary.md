@@ -25,7 +25,7 @@ Sanctioned exceptions cover three categories. The authoritative list lives in `_
 
 - `datetime_marshaller.py`: strict pair `parse_iso_utc(str) -> datetime` and `format_iso_utc(datetime) -> str`. Both reject naive datetimes (`ValueError`) and normalize to UTC. Use these for any persistence path that round-trips ISO 8601 timestamps through TEXT columns, JSON envelopes, or settings DTOs.
 - `coerce_row_timestamp(value: str | datetime) -> datetime`: canonical row-deserialization dispatcher. Every repository `_row_to_*` helper should call it; it tolerates SQLite TEXT (`str`), SQLite TEXT with `detect_types=PARSE_DECLTYPES` (`datetime`), Postgres `TIMESTAMPTZ` (tz-aware `datetime`, possibly in the session timezone), and legacy / migrated rows persisted as ISO strings even where the column is now typed.
-    - **String path**: routed through `parse_iso_utc` (strict naive rejection -- a naive ISO string surfaces as `ValueError`).
+    - **String path**: routed through `parse_iso_utc` (strict naive rejection; a naive ISO string surfaces as `ValueError`).
     - **Datetime path**: routed through `normalize_utc` (treats naive as UTC and calls `astimezone(UTC)` on aware values).
     - **Error path**: any other input type raises `TypeError` so a corrupt row surfaces loudly via the enclosing `MalformedRowError` / `QueryError` handler instead of silently producing garbage.
 - `normalize_utc(datetime) -> datetime`: relaxed coercer (treats naive as UTC, calls `astimezone(UTC)` on aware). Used internally by `coerce_row_timestamp`'s datetime branch. Call directly only when the input is statically known to be a `datetime` (e.g. when the caller has already produced a `datetime.now(UTC)` and just needs to defend against a future code change introducing a non-UTC offset).

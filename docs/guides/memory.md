@@ -13,8 +13,8 @@ SynthOrg agents have persistent memory that spans conversations and tasks. The m
 
 The memory system has two concerns:
 
-- **Agent memory** -- per-agent memories (what an agent has learned, experienced, and knows) stored in a pluggable memory backend
-- **Operational data** -- structured records (tasks, cost records, messages, audit entries) stored in a persistence backend (SQLite)
+- **Agent memory**: per-agent memories (what an agent has learned, experienced, and knows) stored in a pluggable memory backend
+- **Operational data**: structured records (tasks, cost records, messages, audit entries) stored in a persistence backend (SQLite)
 
 ```mermaid
 graph TD
@@ -159,15 +159,15 @@ retrieval:
   recency_weight: 0.3     # with some recency bias
 ```
 
-- **Higher `relevance_weight`** -- better for knowledge-heavy tasks where the most relevant memory matters regardless of when it was stored
-- **Higher `recency_weight`** -- better for conversational contexts where recent interactions are more important
-- **`personal_boost`** -- adds a bonus to the agent's own memories over shared org memories (0.1 = 10% boost)
+- **Higher `relevance_weight`**: better for knowledge-heavy tasks where the most relevant memory matters regardless of when it was stored
+- **Higher `recency_weight`**: better for conversational contexts where recent interactions are more important
+- **`personal_boost`**: adds a bonus to the agent's own memories over shared org memories (0.1 = 10% boost)
 
 ---
 
 ## Shared Organizational Memory
 
-Beyond per-agent memory, SynthOrg supports shared organizational memory -- knowledge available to all agents:
+Beyond per-agent memory, SynthOrg supports shared organizational memory: knowledge available to all agents.
 
 ```yaml
 org_memory:
@@ -194,8 +194,8 @@ org_memory:
 
 The **hybrid prompt + retrieval** backend uses two layers:
 
-1. **Core policies** -- short, critical rules injected directly into every agent's system prompt. These are always available and never filtered.
-2. **Extended store** -- a searchable database of organizational facts, procedures, and conventions. These are retrieved on demand via the retrieval pipeline (up to `max_retrieved_per_query` per query).
+1. **Core policies**: short, critical rules injected directly into every agent's system prompt. These are always available and never filtered.
+2. **Extended store**: a searchable database of organizational facts, procedures, and conventions. These are retrieved on demand via the retrieval pipeline (up to `max_retrieved_per_query` per query).
 
 ---
 
@@ -376,6 +376,6 @@ Consolidation, reindex, procedural-skill management, and organization-memory pro
 
 ## See Also
 
-- [Company Configuration](company-config.md) -- full configuration reference
-- [Design: Memory](../design/memory.md) -- memory architecture in the design spec
-- [Library Reference: Memory](../api/memory.md) -- API documentation
+- [Company Configuration](company-config.md): full configuration reference
+- [Design: Memory](../design/memory.md): memory architecture in the design spec
+- [Library Reference: Memory](../api/memory.md): API documentation

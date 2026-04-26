@@ -71,23 +71,23 @@ development, business operations, creative work, or any domain.
 - Not a chatbot or conversational AI product
 - Not locked to software development only (though that is a primary use case)
 - Not a wrapper around a single model or provider
-- Not a toy/demo -- designed for real, production-quality output
-- Not a reasoning parallelizer -- single-agent reasoning is typically more token-efficient on isolated multi-hop questions, and SynthOrg's [auto topology selector](engine.md#task-decomposability-coordination-topology) defaults to single-agent for such tasks. SynthOrg's value is role-specialized work-stream parallelism, organizational simulation fidelity, and audit-grade decision trails -- not reasoning parallelism. See [S1 Multi-Agent Architecture Decision](../research/s1-multi-agent-decision.md) for the full reconciliation.
+- Not a toy/demo: designed for real, production-quality output
+- Not a reasoning parallelizer. Single-agent reasoning is typically more token-efficient on isolated multi-hop questions, and SynthOrg's [auto topology selector](engine.md#task-decomposability-coordination-topology) defaults to single-agent for such tasks. SynthOrg's value is role-specialized work-stream parallelism, organizational simulation fidelity, and audit-grade decision trails, not reasoning parallelism. See [S1 Multi-Agent Architecture Decision](../research/s1-multi-agent-decision.md) for the full reconciliation.
 
 !!! info "How to read the design specification"
 
     Sections describe the full vision. The full design is documented upfront to inform
-    architecture decisions -- protocol interfaces are designed even for features that are
+    architecture decisions; protocol interfaces are designed even for features that are
     not yet implemented. For current implementation status, see the
     [Roadmap](../roadmap/index.md).
 
 ## Configuration Philosophy
 
-The framework follows **progressive disclosure** -- users only configure what they need:
+The framework follows **progressive disclosure**: users only configure what they need.
 
-1. **Templates** handle 90% of users -- pick a template, override 2-3 values, go
-2. **Minimal config** for custom setups -- everything has sensible defaults
-3. **Full config** for power users -- every knob exposed but none required
+1. **Templates** handle 90% of users: pick a template, override 2-3 values, go
+2. **Minimal config** for custom setups: everything has sensible defaults
+3. **Full config** for power users: every knob exposed but none required
 
 **Minimal custom company** (all other settings use defaults):
 
@@ -98,7 +98,7 @@ company:
   budget_monthly: 50.00
 ```
 
-All configuration systems in the framework are **pluggable** -- strategies, backends, and
+All configuration systems in the framework are **pluggable**: strategies, backends, and
 policies are swappable via protocol interfaces without modifying existing code. Sensible
 defaults are chosen for each, documented in the relevant section alongside the full
 configuration reference.

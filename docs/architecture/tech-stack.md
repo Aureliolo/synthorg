@@ -113,11 +113,11 @@ The SynthOrg engine is structured as a set of loosely coupled subsystems. Each b
 
     Both are async-native Python frameworks with auto-generated OpenAPI docs and Pydantic support. FastAPI has a larger ecosystem and more community resources. However, Litestar provides significantly more built-in functionality that would otherwise need to be written and maintained separately:
 
-    1. **Channels plugin** -- pub/sub WebSocket broadcasting with per-channel subscriptions, backpressure management, and subscriber backlog. FastAPI requires hand-rolling all WebSocket connection management.
-    2. **Class-based controllers** -- group routes with shared guards, middleware, and configuration. The 13 route groups map naturally to controllers. FastAPI only supports loose functions on routers.
-    3. **Native route guards** -- declarative authorization at controller/route level. Essential for the approval queue and security features. FastAPI requires `Depends()` on every route.
-    4. **Built-in middleware** -- rate limiting, CSRF protection, GZip/Brotli compression, session handling, request logging. FastAPI requires third-party packages or custom code for each.
-    5. **Explicit dependency injection** -- pytest-style named dependencies with scope control. Matches the project's testing approach. FastAPI's DI is implicit (function parameter magic). **Caveat**: plugin instances must be resolved manually in WebSocket handlers via `app.plugins.get(PluginClass)` -- Litestar's DI misidentifies them as query params in WS handlers (#549).
+    1. **Channels plugin**: pub/sub WebSocket broadcasting with per-channel subscriptions, backpressure management, and subscriber backlog. FastAPI requires hand-rolling all WebSocket connection management.
+    2. **Class-based controllers**: group routes with shared guards, middleware, and configuration. The 13 route groups map naturally to controllers. FastAPI only supports loose functions on routers.
+    3. **Native route guards**: declarative authorization at controller/route level. Essential for the approval queue and security features. FastAPI requires `Depends()` on every route.
+    4. **Built-in middleware**: rate limiting, CSRF protection, GZip/Brotli compression, session handling, request logging. FastAPI requires third-party packages or custom code for each.
+    5. **Explicit dependency injection**: pytest-style named dependencies with scope control. Matches the project's testing approach. FastAPI's DI is implicit (function parameter magic). **Caveat**: plugin instances must be resolved manually in WebSocket handlers via `app.plugins.get(PluginClass)` because Litestar's DI misidentifies them as query params in WS handlers (#549).
 
     The ecosystem size gap is acceptable: the API is an internal orchestration interface, not a public web service. The bottleneck is LLM latency (seconds), not framework overhead (microseconds). Litestar's approximately 2x performance advantage in micro-benchmarks is a bonus, not the deciding factor. Python 3.14 is supported by both.
 
@@ -155,4 +155,4 @@ These conventions are used throughout the codebase. For full details on each, se
 | **Delegation and loop prevention** | Adopted | `DelegationGuard` orchestrates five mechanisms (ancestry, depth, dedup, rate limit, circuit breaker) in sequence with short-circuit on first rejection. |
 | **Task assignment** | Adopted | `TaskAssignmentStrategy` protocol with six strategies: Manual, RoleBased, LoadBalanced, CostOptimized, Hierarchical, and Auction. |
 | **Conflict resolution** | Adopted | `ConflictResolver` protocol with four strategies: Authority, Debate, Human Escalation, and Hybrid. |
-| **Pydantic alias for YAML directives** | Adopted | `Field(alias="_remove")` in `TemplateAgentConfig` -- YAML uses `_remove: true`, Python accesses `agent.remove`. Keeps YAML human-readable while avoiding leading-underscore attributes. |
+| **Pydantic alias for YAML directives** | Adopted | `Field(alias="_remove")` in `TemplateAgentConfig`: YAML uses `_remove: true`, Python accesses `agent.remove`. Keeps YAML human-readable while avoiding leading-underscore attributes. |

@@ -5,7 +5,7 @@ description: Published container images, apko-composed bases, cosign + SLSA veri
 
 # Deployment & Container Runtime
 
-SynthOrg ships as six container images to `ghcr.io/aureliolo/synthorg-{backend,web,sandbox,sidecar,fine-tune-gpu,fine-tune-cpu}`. The **backend** and **web** images are managed as Docker Compose services by the CLI. The **sandbox**, **sidecar**, and **fine-tune-{gpu,cpu}** images are not Compose services -- the CLI pre-pulls sandbox when requested, and the backend spawns sandbox/sidecar/fine-tune containers on demand via the Docker API. The CLI verifies cosign signatures for all enabled images (both Compose-managed and on-demand) before starting.
+SynthOrg ships as six container images to `ghcr.io/aureliolo/synthorg-{backend,web,sandbox,sidecar,fine-tune-gpu,fine-tune-cpu}`. The **backend** and **web** images are managed as Docker Compose services by the CLI. The **sandbox**, **sidecar**, and **fine-tune-{gpu,cpu}** images are not Compose services; the CLI pre-pulls sandbox when requested, and the backend spawns sandbox/sidecar/fine-tune containers on demand via the Docker API. The CLI verifies cosign signatures for all enabled images (both Compose-managed and on-demand) before starting.
 
 ---
 
@@ -24,7 +24,7 @@ Each published image is signed with **cosign keyless** via GitHub OIDC in `.gith
 
 ## apko-composed base images
 
-The backend, sandbox, and sidecar images use a **Hybrid A** pattern: apko composes the base image declaratively from Wolfi packages (`python-3.14`, `git`, etc.) with exact versions resolved via `apko.lock.json`, and a thin Dockerfile layers the application on top (`FROM apko-base@sha256:...`, `COPY .venv`, `COPY src`, `ENTRYPOINT`). The sidecar image adds `iptables` for DNAT setup but the sandbox image is minimal (no iptables, no elevated privileges). The web image is **pure apko** -- no Dockerfile -- composing Caddy plus a melange-packaged static site bundle.
+The backend, sandbox, and sidecar images use a **Hybrid A** pattern: apko composes the base image declaratively from Wolfi packages (`python-3.14`, `git`, etc.) with exact versions resolved via `apko.lock.json`, and a thin Dockerfile layers the application on top (`FROM apko-base@sha256:...`, `COPY .venv`, `COPY src`, `ENTRYPOINT`). The sidecar image adds `iptables` for DNAT setup but the sandbox image is minimal (no iptables, no elevated privileges). The web image is **pure apko** (no Dockerfile), composing Caddy plus a melange-packaged static site bundle.
 
 Wolfi is a separate distribution from Alpine. It reuses the `apk` package format but is built against **glibc**, not musl, so Python `manylinux` wheels install natively without source rebuilds and `uv` runs at full speed. This is the decisive reason Wolfi wins over both Alpine and Debian-slim for our workload.
 
@@ -33,7 +33,7 @@ Reconciliation mechanisms:
 | Mechanism | Target | Cadence |
 |-----------|--------|---------|
 | Renovate (Docker ecosystem + digest pinning) | Thin Dockerfile `FROM` lines (apko-base digest) | Daily |
-| `apko lock` cron (`.github/workflows/apko-lock.yml`) | `docker/*/apko.lock.json` (backend, sandbox, sidecar, fine-tune). `docker/web/apko.yaml` is intentionally skipped: it depends on the workflow-build-time `synthorg-web-assets@local` melange package, which has no stable upstream to lock against | Weekly (Mon 06:00 UTC) -- the single `fine-tune` apko base is shared by both `-gpu` and `-cpu` runtime images |
+| `apko lock` cron (`.github/workflows/apko-lock.yml`) | `docker/*/apko.lock.json` (backend, sandbox, sidecar, fine-tune). `docker/web/apko.yaml` is intentionally skipped: it depends on the workflow-build-time `synthorg-web-assets@local` melange package, which has no stable upstream to lock against | Weekly (Mon 06:00 UTC); the single `fine-tune` apko base is shared by both `-gpu` and `-cpu` runtime images |
 
 ## Image verification at launch
 
@@ -56,9 +56,9 @@ flowchart LR
 
 ## Sandbox image resolution
 
-When `--sandbox` is enabled, the CLI verifies the sandbox image alongside the others, pre-pulls it via `docker pull <digest-ref>` (the sandbox is **not** a compose service -- the backend spawns ephemeral sandbox containers on demand via `aiodocker`), and passes the digest-pinned reference to the backend container as `SYNTHORG_SANDBOX_IMAGE`. The backend's `DockerSandboxConfig.image` field reads this env var as its default via a Pydantic `default_factory`; explicit YAML under `sandboxing.docker.image` still wins when set. This keeps the CLI pin and the backend pin version-locked.
+When `--sandbox` is enabled, the CLI verifies the sandbox image alongside the others, pre-pulls it via `docker pull <digest-ref>` (the sandbox is **not** a compose service; the backend spawns ephemeral sandbox containers on demand via `aiodocker`), and passes the digest-pinned reference to the backend container as `SYNTHORG_SANDBOX_IMAGE`. The backend's `DockerSandboxConfig.image` field reads this env var as its default via a Pydantic `default_factory`; explicit YAML under `sandboxing.docker.image` still wins when set. This keeps the CLI pin and the backend pin version-locked.
 
-The backend gets `/var/run/docker.sock` mounted **read-write** (it needs `create`, `start`, `stop`, and `exec` on the daemon). The sandbox image retains a full shell plus `git` but no iptables -- it is fully rootless (UID 10001, `cap_drop: ALL`, `no-new-privileges`, read-only root filesystem). Per-host:port `allowed_hosts` network enforcement is handled by a separate sidecar proxy container that shares the sandbox's network namespace. The sidecar runs with `NET_ADMIN` (for iptables DNAT setup) and provides dual-layer enforcement: DNS filtering (allowed hostnames forwarded, denied get NXDOMAIN) and transparent TCP proxying (connections to unauthorized hosts are dropped with TCP RST).
+The backend gets `/var/run/docker.sock` mounted **read-write** (it needs `create`, `start`, `stop`, and `exec` on the daemon). The sandbox image retains a full shell plus `git` but no iptables; it is fully rootless (UID 10001, `cap_drop: ALL`, `no-new-privileges`, read-only root filesystem). Per-host:port `allowed_hosts` network enforcement is handled by a separate sidecar proxy container that shares the sandbox's network namespace. The sidecar runs with `NET_ADMIN` (for iptables DNAT setup) and provides dual-layer enforcement: DNS filtering (allowed hostnames forwarded, denied get NXDOMAIN) and transparent TCP proxying (connections to unauthorized hosts are dropped with TCP RST).
 
 ## Web server
 
@@ -68,6 +68,6 @@ The web image runs **Caddy** inside a pure-apko Wolfi image. Caddy serves the Re
 
 ## See Also
 
-- [Tools](tools.md) -- sandbox backends, lifecycle strategies
-- [Backup](backup.md) -- persistence snapshots and restore
-- [Design Overview](index.md) -- full index
+- [Tools](tools.md): sandbox backends, lifecycle strategies
+- [Backup](backup.md): persistence snapshots and restore
+- [Design Overview](index.md): full index
