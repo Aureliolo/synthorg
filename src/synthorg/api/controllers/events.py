@@ -234,30 +234,31 @@ async def _sse_event_stream(
 ) -> AsyncIterator[dict[str, str]]:
     """Yield SSE events from the hub for the given session.
 
-    When ``app_state`` and ``user`` are supplied, every Nth keepalive
-    re-checks the user's role -- bounded by
-    ``SSE_REVALIDATE_INTERVAL_SECONDS`` (#1599). On revocation, yields
-    a final ``revoked`` event and terminates the stream. Tolerates
-    ``_SSE_REVALIDATE_MAX_FAILURES`` transient persistence errors
-    before escalating.
+    When ``app_state`` and ``user`` are supplied, the loop tracks an
+    independent revalidation deadline (``SSE_REVALIDATE_INTERVAL_SECONDS``)
+    and fires it even on busy streams that never hit a keepalive
+    timeout (#1599). On revocation, yields a final ``revoked`` event
+    and terminates the stream. Tolerates ``_SSE_REVALIDATE_MAX_FAILURES``
+    transient persistence errors before escalating.
     """
-    keepalives_per_revalidate = max(
-        1,
-        int(SSE_REVALIDATE_INTERVAL_SECONDS / _SSE_KEEPALIVE_SECONDS),
-    )
-    keepalive_count = 0
     consecutive_failures = 0
     queue = hub.subscribe(session_id)
     logger.info(
         EVENT_STREAM_CLIENT_CONNECTED,
         session_id=session_id,
     )
+    next_keepalive_ts = asyncio.get_event_loop().time() + _SSE_KEEPALIVE_SECONDS
+    next_revalidate_ts = (
+        asyncio.get_event_loop().time() + SSE_REVALIDATE_INTERVAL_SECONDS
+    )
     try:
         while True:
+            now = asyncio.get_event_loop().time()
+            timeout = max(0.0, min(next_keepalive_ts, next_revalidate_ts) - now)
             try:
                 event: StreamEvent = await asyncio.wait_for(
                     queue.get(),
-                    timeout=_SSE_KEEPALIVE_SECONDS,
+                    timeout=timeout,
                 )
                 try:
                     data = _json.dumps(event.model_dump(mode="json"))
@@ -275,36 +276,38 @@ async def _sse_event_stream(
                     continue
                 yield {"event": event.type.value, "data": data}
             except TimeoutError:
+                # Timer fired; decide which deadline expired. Both can
+                # be due simultaneously after a long-blocking event was
+                # delivered; emit keepalive first, revalidate second.
+                pass
+            now = asyncio.get_event_loop().time()
+            if now >= next_keepalive_ts:
                 yield {"event": "keepalive", "data": "{}"}
-                keepalive_count += 1
-                if (
-                    app_state is not None
-                    and user is not None
-                    and keepalive_count >= keepalives_per_revalidate
-                ):
-                    keepalive_count = 0
-                    reason, ok = await _user_revocation_reason(
-                        app_state,
-                        user.user_id,
-                    )
-                    if not ok:
-                        consecutive_failures += 1
-                        if consecutive_failures >= _SSE_REVALIDATE_MAX_FAILURES:
-                            yield {
-                                "event": "revoked",
-                                "data": _json.dumps(
-                                    {"reason": "backend_unavailable"},
-                                ),
-                            }
-                            return
-                        continue
-                    consecutive_failures = 0
-                    if reason is not None:
+                next_keepalive_ts = now + _SSE_KEEPALIVE_SECONDS
+            if app_state is not None and user is not None and now >= next_revalidate_ts:
+                next_revalidate_ts = now + SSE_REVALIDATE_INTERVAL_SECONDS
+                reason, ok = await _user_revocation_reason(
+                    app_state,
+                    user.user_id,
+                )
+                if not ok:
+                    consecutive_failures += 1
+                    if consecutive_failures >= _SSE_REVALIDATE_MAX_FAILURES:
                         yield {
                             "event": "revoked",
-                            "data": _json.dumps({"reason": reason}),
+                            "data": _json.dumps(
+                                {"reason": "backend_unavailable"},
+                            ),
                         }
                         return
+                    continue
+                consecutive_failures = 0
+                if reason is not None:
+                    yield {
+                        "event": "revoked",
+                        "data": _json.dumps({"reason": reason}),
+                    }
+                    return
     finally:
         # Unsubscribe must run before the disconnect log: a raise here
         # leaves the queue subscribed to the hub, which would leak

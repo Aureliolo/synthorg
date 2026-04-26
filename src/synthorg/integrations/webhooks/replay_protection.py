@@ -87,6 +87,39 @@ class ReplayProtector:
         self._seen: OrderedDict[str, float] = OrderedDict()
         self._clock = clock
 
+    def check_freshness(self, timestamp: float | None) -> bool:
+        """Validate timestamp staleness only (no nonce dedup).
+
+        Used by callers that delegate dedup to a durable store (e.g.
+        ``IdempotencyService``) but still want to reject stale or
+        non-finite timestamps before the durable claim runs.
+
+        Args:
+            timestamp: Request timestamp as Unix epoch seconds, or
+                ``None`` if no timestamp header was supplied.
+
+        Returns:
+            ``True`` if the timestamp is fresh (or absent).
+            ``False`` if the timestamp is non-finite or outside the
+            configured window.
+        """
+        if timestamp is None:
+            return True
+        if not math.isfinite(timestamp):
+            logger.warning(
+                WEBHOOK_REPLAY_DETECTED,
+                reason="non-finite timestamp",
+            )
+            return False
+        if abs(self._clock() - timestamp) > self._window:
+            logger.warning(
+                WEBHOOK_REPLAY_DETECTED,
+                reason="timestamp outside window",
+                skew=abs(self._clock() - timestamp),
+            )
+            return False
+        return True
+
     def check(
         self,
         *,

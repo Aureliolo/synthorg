@@ -58,6 +58,35 @@ _AUDITED_SETTING_NAMESPACES: frozenset[str] = frozenset(
 )
 
 
+def _emit_security_setting_changed(
+    namespace: str,
+    *,
+    action_type: str,
+    key: str | None = None,
+    **extra: object,
+) -> None:
+    """Emit ``SECURITY_SETTINGS_CHANGED`` when *namespace* is audited.
+
+    Centralises the gate so set / set_many / delete / delete_namespace
+    use a single, consistent payload shape -- and so a future
+    namespace addition only has to touch
+    :data:`_AUDITED_SETTING_NAMESPACES`.
+
+    ``key`` is optional because ``delete_namespace`` operates on the
+    whole namespace and substitutes ``count`` via ``extra`` instead.
+    """
+    if namespace not in _AUDITED_SETTING_NAMESPACES:
+        return
+    payload: dict[str, object] = {
+        "namespace": namespace,
+        "action_type": action_type,
+        **extra,
+    }
+    if key is not None:
+        payload["key"] = key
+    logger.info(SECURITY_SETTINGS_CHANGED, **payload)
+
+
 def _now_iso() -> str:
     """Return current UTC time as ISO 8601 string."""
     return datetime.now(UTC).isoformat()
@@ -632,13 +661,7 @@ class SettingsService:
 
         self._invalidate_cache(namespace, key)
         logger.info(SETTINGS_VALUE_SET, namespace=namespace, key=key)
-        if namespace in _AUDITED_SETTING_NAMESPACES:
-            logger.info(
-                SECURITY_SETTINGS_CHANGED,
-                namespace=namespace,
-                key=key,
-                action_type="set",
-            )
+        _emit_security_setting_changed(namespace, key=key, action_type="set")
         await self._publish_change(namespace, key, definition)
 
         display_value = _SENSITIVE_MASK if definition.sensitive else value
@@ -696,13 +719,11 @@ class SettingsService:
         for namespace, key, definition in definitions:
             self._invalidate_cache(namespace, key)
             logger.info(SETTINGS_VALUE_SET, namespace=namespace, key=key)
-            if namespace in _AUDITED_SETTING_NAMESPACES:
-                logger.info(
-                    SECURITY_SETTINGS_CHANGED,
-                    namespace=namespace,
-                    key=key,
-                    action_type="set_many",
-                )
+            _emit_security_setting_changed(
+                namespace,
+                key=key,
+                action_type="set_many",
+            )
             await self._publish_change(namespace, key, definition)
 
         return updated_at
@@ -817,13 +838,7 @@ class SettingsService:
             namespace=namespace,
             key=key,
         )
-        if namespace in _AUDITED_SETTING_NAMESPACES:
-            logger.info(
-                SECURITY_SETTINGS_CHANGED,
-                namespace=namespace,
-                key=key,
-                action_type="delete",
-            )
+        _emit_security_setting_changed(namespace, key=key, action_type="delete")
 
         await self._publish_change(namespace, key, definition)
 
@@ -886,13 +901,11 @@ class SettingsService:
             namespace=namespace,
             count=deleted,
         )
-        if namespace in _AUDITED_SETTING_NAMESPACES:
-            logger.info(
-                SECURITY_SETTINGS_CHANGED,
-                namespace=namespace,
-                action_type="delete_namespace",
-                count=deleted,
-            )
+        _emit_security_setting_changed(
+            namespace,
+            action_type="delete_namespace",
+            count=deleted,
+        )
 
         removed_key_set = set(removed_keys)
         for definition in self._registry.list_namespace(namespace):

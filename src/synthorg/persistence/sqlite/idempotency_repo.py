@@ -10,7 +10,7 @@ claim of the same ``(scope, key)``.
 import asyncio
 import contextlib
 import sqlite3
-from datetime import datetime
+from datetime import datetime  # noqa: TC003
 
 import aiosqlite
 
@@ -19,6 +19,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.idempotency import (
     IDEMPOTENCY_PERSISTENCE_ERROR,
 )
+from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
 from synthorg.persistence.errors import QueryError
 from synthorg.persistence.idempotency_protocol import (
     IdempotencyClaim,
@@ -30,7 +31,13 @@ logger = get_logger(__name__)
 
 
 def _parse_dt(value: str) -> datetime:
-    return datetime.fromisoformat(value)
+    """Parse a stored ISO-8601 timestamp.
+
+    Delegates to :func:`parse_iso_utc` so naive values fail-fast and
+    every read returns a timezone-aware UTC datetime, matching the
+    repository-wide marshalling contract from ``_shared``.
+    """
+    return parse_iso_utc(value)
 
 
 class SQLiteIdempotencyRepository:
@@ -84,14 +91,24 @@ class SQLiteIdempotencyRepository:
                         "SET status = 'in_flight', response_hash = NULL, "
                         "response_body = NULL, created_at = ?, expires_at = ? "
                         "WHERE scope = ? AND key = ?",
-                        (now.isoformat(), expires_at.isoformat(), scope, key),
+                        (
+                            format_iso_utc(now),
+                            format_iso_utc(expires_at),
+                            scope,
+                            key,
+                        ),
                     )
                 else:
                     await self._db.execute(
                         "INSERT INTO idempotency_keys "
                         "(scope, key, status, created_at, expires_at) "
                         "VALUES (?, ?, 'in_flight', ?, ?)",
-                        (scope, key, now.isoformat(), expires_at.isoformat()),
+                        (
+                            scope,
+                            key,
+                            format_iso_utc(now),
+                            format_iso_utc(expires_at),
+                        ),
                     )
                 await self._db.commit()
                 return IdempotencyClaim(outcome=IdempotencyOutcome.FRESH)
@@ -212,7 +229,7 @@ class SQLiteIdempotencyRepository:
             try:
                 cursor = await self._db.execute(
                     "DELETE FROM idempotency_keys WHERE expires_at <= ?",
-                    (now.isoformat(),),
+                    (format_iso_utc(now),),
                 )
                 await self._db.commit()
                 return int(cursor.rowcount or 0)

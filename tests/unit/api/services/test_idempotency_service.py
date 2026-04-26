@@ -147,6 +147,35 @@ async def test_run_idempotent_marks_failed_when_callback_raises() -> None:
     assert len(repo.completes) == 0
 
 
+def _install_deterministic_clock(
+    monkeypatch: pytest.MonkeyPatch,
+    svc_mod: Any,
+) -> list[float]:
+    """Replace ``time.monotonic`` and ``asyncio.sleep`` in *svc_mod*.
+
+    Returns a single-element ``[clock]`` list (used as a mutable cell
+    so the spy and the test can read/write the same float). Each
+    ``await asyncio.sleep(d)`` call advances the clock by *d* without
+    actually sleeping, so the polling loop sees deterministic elapsed
+    time even on slow CI workers.
+    """
+    clock = [0.0]
+
+    def _monotonic() -> float:
+        return clock[0]
+
+    async def _fake_sleep(delay: float) -> None:
+        # Negative or zero stays a real no-op; positive advances the
+        # virtual clock so deadline arithmetic in the service-under-
+        # test progresses without a real wall-clock sleep.
+        if delay > 0:
+            clock[0] += delay
+
+    monkeypatch.setattr(svc_mod.time, "monotonic", _monotonic)
+    monkeypatch.setattr(svc_mod.asyncio, "sleep", _fake_sleep)
+    return clock
+
+
 async def test_run_idempotent_in_flight_returns_none_after_poll_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -158,6 +187,7 @@ async def test_run_idempotent_in_flight_returns_none_after_poll_timeout(
     monkeypatch.setattr(svc_mod, "_IN_FLIGHT_POLL_TIMEOUT_SECONDS", 0.05)
     monkeypatch.setattr(svc_mod, "_IN_FLIGHT_POLL_INITIAL_BACKOFF_SECONDS", 0.005)
     monkeypatch.setattr(svc_mod, "_IN_FLIGHT_POLL_MAX_BACKOFF_SECONDS", 0.01)
+    _install_deterministic_clock(monkeypatch, svc_mod)
 
     class _StuckRepo(_FakeRepo):
         async def get(
@@ -197,6 +227,7 @@ async def test_run_idempotent_in_flight_resolves_to_completed_via_poll(
     monkeypatch.setattr(svc_mod, "_IN_FLIGHT_POLL_TIMEOUT_SECONDS", 0.5)
     monkeypatch.setattr(svc_mod, "_IN_FLIGHT_POLL_INITIAL_BACKOFF_SECONDS", 0.005)
     monkeypatch.setattr(svc_mod, "_IN_FLIGHT_POLL_MAX_BACKOFF_SECONDS", 0.01)
+    _install_deterministic_clock(monkeypatch, svc_mod)
 
     poll_count = 0
 

@@ -14,11 +14,13 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AUTH_REFRESH_CLEANUP,
 )
-from synthorg.observability.events.security import (
-    SECURITY_AUTH_REFRESH_CONSUMED,
-    SECURITY_AUTH_REFRESH_REJECTED,
-    SECURITY_AUTH_REFRESH_REVOKED,
-)
+
+# Persistence-boundary rule (#1599): SECURITY_AUTH_REFRESH_* events are
+# auth decisions, not storage facts. Repos must not emit them; the
+# service / controller layer that calls ``consume`` /
+# ``revoke_by_session`` / ``revoke_by_user`` is responsible for
+# translating the return value into the appropriate
+# ``security.auth.refresh_*`` audit event.
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -104,17 +106,9 @@ class PostgresRefreshTokenRepository:
             if is_session_revoked and is_session_revoked(
                 row["session_id"],
             ):
-                logger.warning(
-                    SECURITY_AUTH_REFRESH_REJECTED,
-                    reason="session_revoked",
-                    session_id=row["session_id"][:8],
-                )
+                # Caller logs SECURITY_AUTH_REFRESH_REJECTED with
+                # reason="session_revoked" when this branch is reached.
                 return None
-            logger.info(
-                SECURITY_AUTH_REFRESH_CONSUMED,
-                session_id=row["session_id"],
-                user_id=row["user_id"],
-            )
             return RefreshRecord(
                 token_hash=row["token_hash"],
                 session_id=row["session_id"],
@@ -124,53 +118,41 @@ class PostgresRefreshTokenRepository:
                 created_at=row["created_at"],
             )
 
-        if replay_row is not None and replay_row["used"]:
-            logger.warning(
-                SECURITY_AUTH_REFRESH_REJECTED,
-                reason="replay_detected",
-                token_hash=token_hash[:8],
-            )
-        else:
-            logger.warning(
-                SECURITY_AUTH_REFRESH_REJECTED,
-                reason="not_found_or_expired",
-                token_hash=token_hash[:8],
-            )
+        # No row consumed -- caller logs SECURITY_AUTH_REFRESH_REJECTED
+        # (reason: replay_detected if the token already exists in used
+        # state, not_found_or_expired otherwise).
+        del replay_row
         return None
 
     async def revoke_by_session(self, session_id: str) -> int:
-        """Mark all refresh tokens for a session as used."""
+        """Mark all refresh tokens for a session as used.
+
+        Caller logs ``SECURITY_AUTH_REFRESH_REVOKED`` when count > 0
+        (persistence-boundary rule -- repos do not emit decision
+        events).
+        """
         async with self._pool.connection() as conn, conn.cursor() as cur:
             await cur.execute(
                 "UPDATE refresh_tokens SET used = TRUE "
                 "WHERE session_id = %s AND used = FALSE",
                 (session_id,),
             )
-            count = cur.rowcount
-        if count:
-            logger.info(
-                SECURITY_AUTH_REFRESH_REVOKED,
-                session_id=session_id,
-                revoked=count,
-            )
-        return count
+            return cur.rowcount
 
     async def revoke_by_user(self, user_id: str) -> int:
-        """Mark all refresh tokens for a user as used."""
+        """Mark all refresh tokens for a user as used.
+
+        Caller logs ``SECURITY_AUTH_REFRESH_REVOKED`` when count > 0
+        (persistence-boundary rule -- repos do not emit decision
+        events).
+        """
         async with self._pool.connection() as conn, conn.cursor() as cur:
             await cur.execute(
                 "UPDATE refresh_tokens SET used = TRUE "
                 "WHERE user_id = %s AND used = FALSE",
                 (user_id,),
             )
-            count = cur.rowcount
-        if count:
-            logger.info(
-                SECURITY_AUTH_REFRESH_REVOKED,
-                user_id=user_id,
-                revoked=count,
-            )
-        return count
+            return cur.rowcount
 
     async def cleanup_expired(self) -> int:
         """Remove expired tokens."""

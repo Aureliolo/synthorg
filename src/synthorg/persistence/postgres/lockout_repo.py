@@ -15,6 +15,7 @@ from synthorg.api.auth.config import AuthConfig  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AUTH_LOCKOUT_CLEANUP,
+    API_AUTH_LOCKOUT_RESTORED,
 )
 from synthorg.observability.events.security import (
     SECURITY_AUTH_ACCOUNT_LOCKED,
@@ -132,9 +133,12 @@ class PostgresLockoutRepository:
                         self._locked[uname] = mono_now + remaining
                         restored += 1
         if restored:
+            # Cache rehydration only -- no NEW lockout decision is
+            # being made here. Emitting SECURITY_AUTH_ACCOUNT_LOCKED
+            # would chain a duplicate decision into the audit log on
+            # every restart for every still-locked account.
             logger.info(
-                SECURITY_AUTH_ACCOUNT_LOCKED,
-                note="Restored lockout state from database",
+                API_AUTH_LOCKOUT_RESTORED,
                 restored=restored,
             )
         return restored

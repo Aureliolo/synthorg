@@ -18,7 +18,6 @@ The server pushes ``WsEvent`` JSON on subscribed channels.
 """
 
 import asyncio
-import contextlib
 import json
 from typing import Any
 
@@ -776,10 +775,22 @@ async def ws_handler(
             )
     finally:
         revalidate_task.cancel()
-        # Cancellation expected; swallow any unrelated raise so
-        # teardown is never blocked by revalidate cleanup.
-        with contextlib.suppress(asyncio.CancelledError, Exception):
+        # Cancellation is expected -- the receive loop has exited and
+        # we are tearing down. Any *other* exception out of
+        # _periodic_revalidate is a real bug we want surfaced in logs
+        # rather than swallowed silently. Teardown still proceeds so a
+        # crashed revalidator never blocks WebSocket cleanup.
+        try:
             await revalidate_task
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            logger.warning(
+                API_WS_TRANSPORT_ERROR,
+                stage="periodic_revalidate_teardown",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
         await _teardown_connection(
             socket,
             user,

@@ -43,6 +43,7 @@ def _build_app_state(*, enabled: bool) -> SimpleNamespace:
         has_config_resolver=True,
         has_session_store=True,
         has_lockout_store=True,
+        has_persistence=False,
     )
 
 
@@ -167,6 +168,7 @@ class TestRunCleanupTickExceptionIsolation:
             lockout_store=lockout_store,
             has_session_store=True,
             has_lockout_store=True,
+            has_persistence=False,
         )
 
         await lifecycle_helpers._run_cleanup_tick(app_state)  # type: ignore[arg-type]
@@ -189,6 +191,7 @@ class TestRunCleanupTickExceptionIsolation:
             lockout_store=lockout_store,
             has_session_store=True,
             has_lockout_store=True,
+            has_persistence=False,
         )
 
         await lifecycle_helpers._run_cleanup_tick(app_state)  # type: ignore[arg-type]
@@ -206,6 +209,7 @@ class TestRunCleanupTickExceptionIsolation:
             ticket_store=ticket_store,
             has_session_store=False,
             has_lockout_store=False,
+            has_persistence=False,
         )
 
         with pytest.raises(MemoryError):

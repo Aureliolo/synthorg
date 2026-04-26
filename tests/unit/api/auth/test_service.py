@@ -154,6 +154,61 @@ class TestJWT:
         with pytest.raises(jwt.MissingRequiredClaimError):
             svc.decode_token(token)
 
+    def test_decode_token_does_not_verify_issuer_value(self) -> None:
+        """``decode_token`` accepts any ``iss`` value (presence only).
+
+        Issuer *value* enforcement intentionally lives in
+        :func:`_resolve_jwt_user` so the middleware can pick the
+        canonical pair per-role (``synthorg-cli`` for SYSTEM tokens,
+        ``synthorg-api`` for human user tokens) AFTER loading the user
+        record. The end-to-end rejection path for wrong-value issuers
+        is exercised by
+        ``test_middleware.test_user_jwt_with_wrong_issuer_returns_401``
+        and ``test_middleware.test_system_user_jwt_with_wrong_issuer_returns_401``.
+
+        This test pins the service-layer contract: a token with a
+        bogus ``iss`` decodes successfully here, and the middleware is
+        the layer that rejects it.
+        """
+        svc = _make_service()
+        user = _make_user()
+        payload = {
+            "iss": "attacker",
+            "aud": USER_AUDIENCE,
+            "sub": user.id,
+            "username": user.username,
+            "role": user.role.value,
+            "jti": "abc",
+            "iat": datetime.now(UTC),
+            "exp": datetime.now(UTC) + timedelta(hours=1),
+        }
+        token = jwt.encode(payload, _SECRET, algorithm="HS256")
+        claims = svc.decode_token(token)
+        assert claims["iss"] == "attacker"
+
+    def test_decode_token_does_not_verify_audience_value(self) -> None:
+        """``decode_token`` accepts any ``aud`` value (presence only).
+
+        Wrong-value audience rejection is exercised by
+        ``test_middleware.test_user_jwt_with_wrong_audience_returns_401``
+        and ``test_middleware.test_system_user_jwt_with_wrong_audience_returns_401``.
+        """
+        svc = _make_service()
+        user = _make_user()
+        payload = {
+            "iss": USER_ISSUER,
+            "aud": "attacker",
+            "sub": user.id,
+            "username": user.username,
+            "role": user.role.value,
+            "jti": "abc",
+            "iat": datetime.now(UTC),
+            "exp": datetime.now(UTC) + timedelta(hours=1),
+        }
+        token = jwt.encode(payload, _SECRET, algorithm="HS256")
+        claims = svc.decode_token(token)
+        assert claims["aud"] == "attacker"
+
     def test_invalid_signature_raises(self) -> None:
         svc = _make_service()
         user = _make_user()

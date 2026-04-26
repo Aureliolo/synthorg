@@ -205,7 +205,24 @@ class WebhooksController(Controller):
                 raise ApiValidationError(msg) from None
 
         replay_protector = _get_replay_protector(state)
-        if not replay_protector.check(nonce=nonce, timestamp=timestamp):
+        if nonce:
+            # Durable IdempotencyService below handles dedup across
+            # processes / restarts; the in-memory nonce cache would
+            # otherwise reject a legitimate retry with the same nonce
+            # (different replica or after a restart) before the
+            # durable claim can return the cached response. We still
+            # validate timestamp staleness here so an attacker with a
+            # captured signature cannot replay outside the freshness
+            # window even on a fresh nonce.
+            if not replay_protector.check_freshness(timestamp):
+                logger.warning(
+                    WEBHOOK_REJECTED,
+                    connection_name=connection_name,
+                    reason="stale timestamp",
+                )
+                msg = "Replay detected (stale timestamp)"
+                raise ConflictError(msg)
+        elif not replay_protector.check(nonce=nonce, timestamp=timestamp):
             logger.warning(
                 WEBHOOK_REJECTED,
                 connection_name=connection_name,

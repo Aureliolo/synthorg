@@ -7,6 +7,7 @@ public guarantee under heavy thread-pool contention.
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -45,9 +46,19 @@ def test_eviction_logs_exactly_once_under_thread_concurrency(
     info_calls: list[str] = []
     original_info = ec_mod.logger.info
 
-    def _spy(event: str, **kwargs: object) -> object:
-        info_calls.append(event)
-        return original_info(event, **kwargs)
+    def _spy(*args: Any, **kwargs: Any) -> Any:
+        # Accept any structlog call shape (positional or keyword
+        # event=...) so an unrelated logger.info elsewhere in the
+        # under-test code path cannot blow this fixture up with a
+        # TypeError. Record the message robustly: first positional arg
+        # if present, else ``event`` kwarg, else a joined fallback.
+        if args:
+            info_calls.append(str(args[0]))
+        elif "event" in kwargs:
+            info_calls.append(str(kwargs["event"]))
+        else:
+            info_calls.append(" ".join(str(a) for a in args))
+        return original_info(*args, **kwargs)
 
     monkeypatch.setattr(ec_mod.logger, "info", _spy)
 

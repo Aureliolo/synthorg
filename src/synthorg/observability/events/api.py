@@ -116,6 +116,12 @@ API_CSRF_SKIPPED: Final[str] = "api.csrf.skipped"
 # api.auth.account_locked / lockout_cleared moved to events.security as
 # SECURITY_AUTH_ACCOUNT_LOCKED / SECURITY_AUTH_LOCKOUT_CLEARED.
 API_AUTH_LOCKOUT_CLEANUP: Final[str] = "api.auth.lockout_cleanup"
+# In-memory lockout cache rehydration after process restart. This is an
+# operational housekeeping event (no NEW lockout decision is being
+# recorded -- the underlying lockout was already audit-chained when the
+# threshold tripped on the original request). Stays under api.* so the
+# audit chain does not log duplicate lockout decisions on every restart.
+API_AUTH_LOCKOUT_RESTORED: Final[str] = "api.auth.lockout_restored"
 
 # Refresh tokens
 # api.auth.refresh_created / consumed / rejected / revoked moved to

@@ -16,7 +16,9 @@ from synthorg.observability.events.api import (
     API_USER_LISTED,
 )
 from synthorg.observability.events.security import (
+    SECURITY_AUTH_REFRESH_REVOKED,
     SECURITY_USER_CREATED,
+    SECURITY_USER_DELETE_FAILED,
     SECURITY_USER_DELETED,
     SECURITY_USER_UPDATED,
 )
@@ -196,14 +198,27 @@ class UserService:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
+                # Distinct event from SECURITY_USER_DELETED so a
+                # forensic reader cannot mistake the aborted delete
+                # for a successful one.
                 logger.warning(
-                    SECURITY_USER_DELETED,
+                    SECURITY_USER_DELETE_FAILED,
                     user_id=user_id,
                     note="refresh-token cascade failed; aborting user delete",
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
                 raise
+            if revoked_refresh_tokens:
+                # Repo no longer logs SECURITY_AUTH_REFRESH_REVOKED
+                # (persistence-boundary rule); service layer emits the
+                # signed audit event with the cascading user_id.
+                logger.info(
+                    SECURITY_AUTH_REFRESH_REVOKED,
+                    user_id=user_id,
+                    revoked=revoked_refresh_tokens,
+                    note="cascade_during_user_delete",
+                )
         deleted = await self._repo.delete(user_id)
         if deleted:
             logger.info(

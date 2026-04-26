@@ -7,6 +7,7 @@ import pytest
 from cryptography.fernet import Fernet
 from pydantic import BaseModel, ConfigDict
 
+from synthorg.observability.events.security import SECURITY_SETTINGS_CHANGED
 from synthorg.persistence.settings_protocol import SettingsRepository
 from synthorg.settings.encryption import SettingsEncryptor
 from synthorg.settings.enums import (
@@ -990,7 +991,7 @@ class TestSecuritySettingsAuditEmission:
         )
         captured = _install_logger_info_spy(monkeypatch, service_mod)
         await svc.set("security", "opt_in", "true")
-        assert "security.settings.changed" in captured
+        assert SECURITY_SETTINGS_CHANGED in captured
 
     async def test_set_does_not_emit_security_event_for_non_audited_namespace(
         self,
@@ -1016,7 +1017,7 @@ class TestSecuritySettingsAuditEmission:
         )
         captured = _install_logger_info_spy(monkeypatch, service_mod)
         await svc.set("budget", "total_monthly", "200.0")
-        assert "security.settings.changed" not in captured
+        assert SECURITY_SETTINGS_CHANGED not in captured
 
     async def test_delete_emits_security_event_for_audited_namespace(
         self,
@@ -1043,4 +1044,4 @@ class TestSecuritySettingsAuditEmission:
         )
         captured = _install_logger_info_spy(monkeypatch, service_mod)
         await svc.delete("security", "opt_in")
-        assert "security.settings.changed" in captured
+        assert SECURITY_SETTINGS_CHANGED in captured

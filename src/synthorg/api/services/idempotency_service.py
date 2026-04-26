@@ -123,12 +123,18 @@ class IdempotencyService:
             await self._mark_failed_safely(scope=scope, key=key)
             raise
 
-        await self._record_completion(
+        body = await self._record_completion(
             scope=scope,
             key=key,
             result=result,
         )
-        return result, True
+        # Round-trip through ``json.loads`` so the fresh-path return
+        # value has the same shape as the replay-path return value
+        # (which is always ``json.loads(body)``). Without this, a fresh
+        # caller would receive ``dict[str, object]`` while a replay
+        # caller would receive whatever JSON-decoding produces, leaving
+        # callers with type-unstable behaviour they cannot reason about.
+        return json.loads(body), True
 
     async def _wait_for_in_flight(
         self,
@@ -175,8 +181,18 @@ class IdempotencyService:
         scope: NotBlankStr,
         key: NotBlankStr,
         result: Any,
-    ) -> None:
-        body = json.dumps(result, default=str, sort_keys=True)
+    ) -> str:
+        """Persist *result* as the cached response body and return it.
+
+        Callbacks must return a JSON-serialisable value: the strict
+        ``json.dumps`` (no ``default=str`` fallback) raises
+        ``TypeError`` for non-serialisable types so a controller cannot
+        silently cache a string-coerced object that round-trips back
+        to the caller as a different type. The caller round-trips the
+        returned body through ``json.loads`` so fresh and replay paths
+        return identical shapes.
+        """
+        body = json.dumps(result, sort_keys=True)
         digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
         await self._repo.complete(
             scope=scope,
@@ -185,6 +201,7 @@ class IdempotencyService:
             response_hash=digest,
         )
         logger.info(IDEMPOTENCY_COMPLETE, scope=scope, key=key)
+        return body
 
     async def _mark_failed_safely(
         self,

@@ -153,6 +153,11 @@ SECURITY_CSRF_REJECTED: Final[str] = "security.csrf.rejected"
 SECURITY_USER_CREATED: Final[str] = "security.user.created"
 SECURITY_USER_UPDATED: Final[str] = "security.user.updated"
 SECURITY_USER_DELETED: Final[str] = "security.user.deleted"
+# Aborted-delete decision: refresh-token cascade failed (or another
+# pre-delete dependency) so the user row was NOT removed. Distinct
+# from SECURITY_USER_DELETED so a forensic reader cannot mistake the
+# abort for a successful delete.
+SECURITY_USER_DELETE_FAILED: Final[str] = "security.user.delete_failed"
 
 # ── Approval decisions (signed) ────────────────────────────────
 # Creation, expiration, and review-completion stay under api.approval.*
