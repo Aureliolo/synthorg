@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
-import { apiError, apiSuccess, buildProviderPreset } from '@/mocks/handlers'
+import { apiError, apiSuccess, buildLocalPreset, buildCloudPreset } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import { CURRENCY_OPTIONS, DEFAULT_CURRENCY } from '@/utils/currencies'
 import type { SeniorityLevel } from '@/api/types/enums'
@@ -547,26 +547,22 @@ describe('setup wizard store', () => {
     })
   })
 
-  describe('provider probe error surfacing', () => {
-    // Use the shared builder so the preset shape stays aligned with the
+  describe('local provider probe (batch endpoint)', () => {
+    // Use the shared builders so the preset shape stays aligned with the
     // real /providers/presets response; test-local drift is only the
     // name + provider override per preset.
     const PRESET_FIXTURES = [
-      buildProviderPreset({
-        name: 'local-ollama',
+      buildLocalPreset({
+        name: 'ollama',
         display_name: 'Ollama',
         litellm_provider: 'ollama',
         default_base_url: 'http://localhost:11434',
-        auth_type: 'none',
-        supported_auth_types: ['none'],
       }),
-      buildProviderPreset({
+      buildCloudPreset({
         name: 'openrouter',
         display_name: 'OpenRouter',
         litellm_provider: 'openrouter',
         default_base_url: 'https://openrouter.ai/api/v1',
-        auth_type: 'api_key',
-        supported_auth_types: ['api_key'],
       }),
     ]
 
@@ -579,64 +575,92 @@ describe('setup wizard store', () => {
       return useSetupWizardStore.getState().fetchPresets()
     }
 
-    it('records per-preset probe failures in probeErrors and leaves successes in probeResults', async () => {
+    it('populates probeResults from the batch envelope on success', async () => {
       await seedPresets()
       server.use(
-        http.post('/api/v1/providers/probe-preset', async ({ request }) => {
-          const body = (await request.json()) as { preset_name: string }
-          if (body.preset_name === 'openrouter') {
-            return HttpResponse.json(
-              apiError('Provider unreachable'),
-              { status: 502 },
-            )
-          }
-          return HttpResponse.json(
-            apiSuccess({
-              url: 'http://localhost:11434',
-              model_count: 3,
-              candidates_tried: 1,
-            }),
-          )
-        }),
-      )
-
-      await useSetupWizardStore.getState().probeAllPresets()
-
-      const state = useSetupWizardStore.getState()
-      expect(state.probeResults['local-ollama']).toMatchObject({ model_count: 3 })
-      expect(state.probeErrors).toHaveProperty('openrouter')
-      expect(state.probeErrors['openrouter']).toBeTruthy()
-      expect(state.probeGlobalError).toBeNull()
-    })
-
-    it('reprobePresets clears prior errors before re-running', async () => {
-      await seedPresets()
-      // First run: openrouter fails.
-      server.use(
-        http.post('/api/v1/providers/probe-preset', async ({ request }) => {
-          const body = (await request.json()) as { preset_name: string }
-          if (body.preset_name === 'openrouter') {
-            return HttpResponse.json(apiError('boom'), { status: 502 })
-          }
-          return HttpResponse.json(
-            apiSuccess({ url: null, model_count: 0, candidates_tried: 0 }),
-          )
-        }),
-      )
-      await useSetupWizardStore.getState().probeAllPresets()
-      expect(useSetupWizardStore.getState().probeErrors).toHaveProperty('openrouter')
-
-      // Second run: everything succeeds -> errors reset.
-      server.use(
-        http.post('/api/v1/providers/probe-preset', () =>
+        http.post('/api/v1/providers/probe-local', () =>
           HttpResponse.json(
-            apiSuccess({ url: null, model_count: 0, candidates_tried: 0 }),
+            apiSuccess({
+              results: {
+                ollama: {
+                  url: 'http://localhost:11434',
+                  model_count: 3,
+                  candidates_tried: 1,
+                },
+              },
+              errors: {},
+            }),
           ),
         ),
       )
-      await useSetupWizardStore.getState().reprobePresets()
+
+      await useSetupWizardStore.getState().probeLocalProviders()
+
+      const state = useSetupWizardStore.getState()
+      expect(state.probeResults['ollama']).toMatchObject({ model_count: 3 })
+      expect(state.probeErrors).toEqual({})
+      expect(state.probeGlobalError).toBeNull()
+    })
+
+    it('forwards per-preset failures from the batch envelope into probeErrors', async () => {
+      await seedPresets()
+      server.use(
+        http.post('/api/v1/providers/probe-local', () =>
+          HttpResponse.json(
+            apiSuccess({
+              results: {},
+              errors: { ollama: 'boom' },
+            }),
+          ),
+        ),
+      )
+
+      await useSetupWizardStore.getState().probeLocalProviders()
+
+      const state = useSetupWizardStore.getState()
+      expect(state.probeResults).toEqual({})
+      expect(state.probeErrors['ollama']).toBe('boom')
+      expect(state.probeGlobalError).toBeNull()
+    })
+
+    it('reprobeLocalProviders clears prior results before re-running', async () => {
+      await seedPresets()
+
+      // First run: failure populates probeErrors.
+      server.use(
+        http.post('/api/v1/providers/probe-local', () =>
+          HttpResponse.json(
+            apiSuccess({ results: {}, errors: { ollama: 'down' } }),
+          ),
+        ),
+      )
+      await useSetupWizardStore.getState().probeLocalProviders()
+      expect(useSetupWizardStore.getState().probeErrors).toHaveProperty('ollama')
+
+      // Second run: success -> errors reset.
+      server.use(
+        http.post('/api/v1/providers/probe-local', () =>
+          HttpResponse.json(apiSuccess({ results: {}, errors: {} })),
+        ),
+      )
+      await useSetupWizardStore.getState().reprobeLocalProviders()
       expect(useSetupWizardStore.getState().probeErrors).toEqual({})
       expect(useSetupWizardStore.getState().probeGlobalError).toBeNull()
+    })
+
+    it('top-level network failure surfaces probeGlobalError', async () => {
+      await seedPresets()
+      server.use(
+        http.post('/api/v1/providers/probe-local', () =>
+          HttpResponse.json(apiError('rate limited'), { status: 429 }),
+        ),
+      )
+
+      await useSetupWizardStore.getState().probeLocalProviders()
+
+      const state = useSetupWizardStore.getState()
+      expect(state.probeGlobalError).not.toBeNull()
+      expect(state.probing).toBe(false)
     })
   })
 })

@@ -122,17 +122,33 @@ class TestProviderCrudEndpoints:
         )
         assert resp.status_code == 403
 
-    def test_probe_preset_requires_write_access(
+    def test_probe_local_requires_write_access(
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """POST /providers/probe-preset is guarded by write access."""
+        """POST /providers/probe-local is guarded by write access."""
         resp = test_client.post(
-            "/api/v1/providers/probe-preset",
-            json={"preset_name": "ollama"},
+            "/api/v1/providers/probe-local",
+            json={},
             headers=make_auth_headers("observer"),
         )
         assert resp.status_code == 403
+
+    def test_legacy_probe_preset_endpoint_returns_404(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """The legacy /probe-preset endpoint is removed and must 404 / 405.
+
+        Belt-and-braces regression guard so a stray client integration
+        cannot silently fall through to a different handler.
+        """
+        resp = test_client.post(
+            "/api/v1/providers/probe-preset",
+            json={"preset_name": "ollama"},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code in (404, 405)
 
 
 def _make_provider_state_and_mgmt() -> tuple[MagicMock, AsyncMock]:
@@ -287,60 +303,116 @@ class TestListModelsBatchCapabilities:
 
 
 @pytest.mark.unit
-class TestProbePresetEndpoint:
-    """Tests for POST /providers/probe-preset."""
+class TestProbeLocalEndpoint:
+    """Tests for POST /providers/probe-local (batch local probe)."""
 
-    async def test_unknown_preset_raises_validation_error(self) -> None:
-        """Unknown preset name produces a validation error."""
-        state, _ = _make_provider_state_and_mgmt()
-        from synthorg.api.dto import ProbePresetRequest
-        from synthorg.api.errors import ApiValidationError
-
-        ctrl = _provider_controller()
-        with pytest.raises(ApiValidationError):
-            await ctrl.probe_preset.fn(
-                ctrl,
-                state=state,
-                data=ProbePresetRequest(preset_name="nonexistent-preset"),
-            )
-
-    async def test_preset_with_no_candidates_returns_empty(self) -> None:
-        """Preset with no candidate URLs returns zero candidates tried."""
-        state, _ = _make_provider_state_and_mgmt()
-        from synthorg.api.dto import ProbePresetRequest
-
-        ctrl = _provider_controller()
-        result = await ctrl.probe_preset.fn(
-            ctrl,
-            state=state,
-            data=ProbePresetRequest(preset_name="openrouter"),
-        )
-        assert result.data.candidates_tried == 0
-        assert result.data.url is None
-
-    async def test_successful_probe_maps_result(self) -> None:
-        """Successful probe result is correctly mapped to response DTO."""
+    async def test_all_local_presets_succeed(self) -> None:
+        """Every probable preset's result lands in ``results``, none in ``errors``."""
         from unittest.mock import patch
 
-        from synthorg.api.dto import ProbePresetRequest
+        from synthorg.providers.presets import list_probable_presets
         from synthorg.providers.probing import ProbeResult
 
         state, _ = _make_provider_state_and_mgmt()
         ctrl = _provider_controller()
-        mock_result = ProbeResult(
-            url="http://host.docker.internal:11434",
-            model_count=3,
-            candidates_tried=1,
-        )
+
+        async def fake_probe(name: str) -> ProbeResult:
+            return ProbeResult(
+                url=f"http://host:port/{name}",
+                model_count=2,
+                candidates_tried=1,
+            )
+
         with patch(
             "synthorg.api.controllers.providers.probe_preset_urls",
-            AsyncMock(return_value=mock_result),
+            side_effect=fake_probe,
         ):
-            result = await ctrl.probe_preset.fn(
-                ctrl,
-                state=state,
-                data=ProbePresetRequest(preset_name="ollama"),
+            response = await ctrl.probe_local.fn(ctrl, state=state)
+
+        probable = list_probable_presets()
+        expected_names = {p.name for p in probable}
+        assert set(response.data.results.keys()) == expected_names
+        assert response.data.errors == {}
+        for name, entry in response.data.results.items():
+            assert entry.url == f"http://host:port/{name}"
+            assert entry.model_count == 2
+            assert entry.candidates_tried == 1
+
+    async def test_partial_failure_records_errors(self) -> None:
+        """One preset raising does not abort the batch; other results land."""
+        from unittest.mock import patch
+
+        from synthorg.providers.probing import ProbeResult
+
+        state, _ = _make_provider_state_and_mgmt()
+        ctrl = _provider_controller()
+
+        async def fake_probe(name: str) -> ProbeResult:
+            if name == "ollama":
+                msg = "boom"
+                raise RuntimeError(msg)
+            return ProbeResult(
+                url=f"http://host:port/{name}",
+                model_count=1,
+                candidates_tried=1,
             )
-        assert result.data.url == "http://host.docker.internal:11434"
-        assert result.data.model_count == 3
-        assert result.data.candidates_tried == 1
+
+        with patch(
+            "synthorg.api.controllers.providers.probe_preset_urls",
+            side_effect=fake_probe,
+        ):
+            response = await ctrl.probe_local.fn(ctrl, state=state)
+
+        assert "ollama" in response.data.errors
+        assert "ollama" not in response.data.results
+        # LM Studio should still appear in results despite Ollama's failure.
+        assert "lm-studio" in response.data.results
+
+    async def test_all_failures_records_all_errors(self) -> None:
+        """When every preset raises, every entry lives under ``errors``."""
+        from unittest.mock import patch
+
+        from synthorg.providers.presets import list_probable_presets
+
+        state, _ = _make_provider_state_and_mgmt()
+        ctrl = _provider_controller()
+
+        async def fake_probe(_name: str) -> object:
+            msg = "all down"
+            raise RuntimeError(msg)
+
+        with patch(
+            "synthorg.api.controllers.providers.probe_preset_urls",
+            side_effect=fake_probe,
+        ):
+            response = await ctrl.probe_local.fn(ctrl, state=state)
+
+        probable = list_probable_presets()
+        expected_names = {p.name for p in probable}
+        assert set(response.data.errors.keys()) == expected_names
+        assert response.data.results == {}
+
+    async def test_excludes_vllm(self) -> None:
+        """vLLM has no candidate URLs and must not appear in either map."""
+        from unittest.mock import patch
+
+        from synthorg.providers.probing import ProbeResult
+
+        state, _ = _make_provider_state_and_mgmt()
+        ctrl = _provider_controller()
+
+        async def fake_probe(name: str) -> ProbeResult:
+            return ProbeResult(
+                url=f"http://probe/{name}",
+                model_count=0,
+                candidates_tried=1,
+            )
+
+        with patch(
+            "synthorg.api.controllers.providers.probe_preset_urls",
+            side_effect=fake_probe,
+        ):
+            response = await ctrl.probe_local.fn(ctrl, state=state)
+
+        assert "vllm" not in response.data.results
+        assert "vllm" not in response.data.errors

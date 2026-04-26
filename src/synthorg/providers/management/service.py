@@ -55,7 +55,12 @@ from synthorg.providers.management._helpers import (
 )
 from synthorg.providers.management.allowlist import DiscoveryAllowlistManager
 from synthorg.providers.models import ChatMessage
-from synthorg.providers.presets import ProviderPreset, get_preset
+from synthorg.providers.presets import (
+    CloudPreset,
+    LocalPreset,
+    default_models_for,
+    get_preset,
+)
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.url_utils import is_self_url, redact_url
 
@@ -346,10 +351,10 @@ class ProviderManagementService:
         elif preset.auth_type == AuthType.NONE:
             # Local providers: skip static LiteLLM DB, rely on live
             # discovery in _maybe_discover_preset_models below.
-            models = preset.default_models
+            models = default_models_for(preset)
         else:
             litellm_models = models_from_litellm(preset.litellm_provider)
-            models = litellm_models or preset.default_models
+            models = litellm_models or default_models_for(preset)
         base_url = request.base_url or preset.default_base_url
         if preset.requires_base_url and not base_url:
             msg = (
@@ -385,7 +390,7 @@ class ProviderManagementService:
 
     async def _maybe_discover_preset_models(
         self,
-        preset: ProviderPreset,
+        preset: CloudPreset | LocalPreset,
         base_url: str | None,
         models: tuple[ProviderModelConfig, ...],
         *,

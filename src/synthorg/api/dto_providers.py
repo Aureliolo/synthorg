@@ -356,20 +356,8 @@ class DiscoverModelsResponse(BaseModel):
     provider_name: NotBlankStr
 
 
-class ProbePresetRequest(BaseModel):
-    """Request to probe a preset's candidate URLs for reachability.
-
-    Attributes:
-        preset_name: Preset identifier to probe.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    preset_name: NotBlankStr = Field(max_length=64)
-
-
 class ProbePresetResponse(BaseModel):
-    """Result of probing a preset's candidate URLs.
+    """Result of probing one preset's candidate URLs.
 
     Attributes:
         url: The first reachable base URL, or ``None`` if none responded.
@@ -382,6 +370,26 @@ class ProbePresetResponse(BaseModel):
     url: NotBlankStr | None = None
     model_count: int = Field(default=0, ge=0)
     candidates_tried: int = Field(default=0, ge=0)
+
+
+class ProbeLocalResponse(BaseModel):
+    """Batch result of probing every local preset's candidate URLs.
+
+    Attributes:
+        results: Map of preset name to per-preset probe result.  Only
+            local presets with non-empty ``candidate_urls`` are probed
+            and appear here; cloud presets and vLLM (intentionally
+            empty candidates) are excluded.
+        errors: Map of preset name to error message for presets whose
+            probes raised.  ``results`` and ``errors`` are disjoint:
+            a successful probe for ``ollama`` populates ``results``,
+            a raising probe populates ``errors``.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    results: dict[str, ProbePresetResponse] = Field(default_factory=dict)
+    errors: dict[str, str] = Field(default_factory=dict)
 
 
 def to_provider_response(config: ProviderConfig) -> ProviderResponse:
@@ -397,7 +405,10 @@ def to_provider_response(config: ProviderConfig) -> ProviderResponse:
     Returns:
         Safe response DTO with secrets stripped.
     """
-    from synthorg.providers.presets import get_preset  # noqa: PLC0415
+    from synthorg.providers.presets import (  # noqa: PLC0415
+        LocalPreset,
+        get_preset,
+    )
 
     tos_str = (
         config.tos_accepted_at.isoformat()
@@ -405,6 +416,9 @@ def to_provider_response(config: ProviderConfig) -> ProviderResponse:
         else None
     )
     preset = get_preset(config.preset_name) if config.preset_name else None
+    # Local-management capability flags only exist on LocalPreset; cloud
+    # providers don't expose model lifecycle ops via this surface.
+    local_preset = preset if isinstance(preset, LocalPreset) else None
     return ProviderResponse(
         driver=config.driver,
         litellm_provider=config.litellm_provider,
@@ -428,9 +442,13 @@ def to_provider_response(config: ProviderConfig) -> ProviderResponse:
         oauth_scope=config.oauth_scope,
         custom_header_name=config.custom_header_name,
         preset_name=config.preset_name,
-        supports_model_pull=preset.supports_model_pull if preset else False,
-        supports_model_delete=preset.supports_model_delete if preset else False,
-        supports_model_config=preset.supports_model_config if preset else False,
+        supports_model_pull=local_preset.supports_model_pull if local_preset else False,
+        supports_model_delete=local_preset.supports_model_delete
+        if local_preset
+        else False,
+        supports_model_config=local_preset.supports_model_config
+        if local_preset
+        else False,
     )
 
 

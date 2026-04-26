@@ -2,11 +2,24 @@
 
 Presets provide sensible defaults for popular providers so users
 can add them with minimal configuration (e.g. just an API key).
+
+Two preset kinds, expressed as a discriminated union:
+
+* :class:`CloudPreset` -- hosted LLM APIs (Anthropic, OpenAI, Azure, ...).
+  Carries cloud-specific metadata (default model list, supported auth
+  types) and never has ``candidate_urls``.
+* :class:`LocalPreset` -- self-hosted LLM servers (Ollama, LM Studio,
+  vLLM).  Carries auto-detect candidate URLs and local model-management
+  capability flags.
+
+Consumers iterating across all presets should use the helpers
+:func:`default_models_for`, :func:`candidate_urls_for`, and
+:func:`list_local_presets` instead of conditional ``isinstance`` checks.
 """
 
 import re
 from types import MappingProxyType
-from typing import Final, Self
+from typing import Annotated, Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -15,8 +28,11 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.providers.enums import AuthType
 
 
-class ProviderPreset(BaseModel):
-    """Immutable preset definition for a provider.
+class _BasePreset(BaseModel):
+    """Common fields shared by every preset kind.
+
+    Not instantiated directly -- use :class:`CloudPreset` or
+    :class:`LocalPreset`.
 
     Attributes:
         name: Machine-readable preset identifier.
@@ -25,22 +41,11 @@ class ProviderPreset(BaseModel):
         driver: Driver backend name.
         litellm_provider: LiteLLM routing identifier (e.g. ``"anthropic"``).
         auth_type: Default authentication type.
-        supported_auth_types: All auth types this preset supports.
-            Shown in the UI so users can choose (e.g. API key or
-            subscription).
         default_base_url: Default API base URL.
         requires_base_url: Whether the user must supply a base URL.
             ``False`` for cloud providers (the routing library knows
             the URL), ``True`` for self-hosted and deployment-specific
             backends (per-deployment).
-        candidate_urls: URLs to probe during auto-detection, in priority
-            order.  The first reachable URL becomes the base URL.
-        default_models: Pre-configured model definitions.
-        supports_model_pull: Whether pulling/downloading models is
-            supported via the provider's management API.
-        supports_model_delete: Whether deleting models is supported.
-        supports_model_config: Whether per-model launch parameter
-            configuration (e.g. context window, GPU layers) is supported.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -51,21 +56,33 @@ class ProviderPreset(BaseModel):
     driver: NotBlankStr
     litellm_provider: NotBlankStr
     auth_type: AuthType
+    default_base_url: NotBlankStr | None = None
+    requires_base_url: bool = False
+
+
+class CloudPreset(_BasePreset):
+    """Hosted LLM provider (no auto-detect, prefilled model list).
+
+    Attributes:
+        kind: Discriminator literal ``"cloud"``.
+        supported_auth_types: All auth types this preset supports.
+            Shown in the UI so users can choose (e.g. API key or
+            subscription).
+        default_models: Pre-configured model definitions used as a
+            fallback when the LiteLLM model_cost database returns no
+            entries for ``litellm_provider``.
+    """
+
+    kind: Literal["cloud"] = "cloud"
     supported_auth_types: tuple[AuthType, ...] = Field(
         default=(AuthType.API_KEY,),
         min_length=1,
     )
-    default_base_url: NotBlankStr | None = None
-    requires_base_url: bool = False
-    candidate_urls: tuple[NotBlankStr, ...] = ()
     default_models: tuple[ProviderModelConfig, ...] = ()
-    supports_model_pull: bool = False
-    supports_model_delete: bool = False
-    supports_model_config: bool = False
 
     @model_validator(mode="after")
     def _validate_auth_type_in_supported(self) -> Self:
-        """Ensure default auth_type is in the supported set."""
+        """Ensure default ``auth_type`` is in the supported set."""
         if self.auth_type not in self.supported_auth_types:
             msg = (
                 f"auth_type {self.auth_type!r} not in "
@@ -75,9 +92,40 @@ class ProviderPreset(BaseModel):
         return self
 
 
+class LocalPreset(_BasePreset):
+    """Self-hosted LLM server (auto-detect via candidate URLs).
+
+    Attributes:
+        kind: Discriminator literal ``"local"``.
+        candidate_urls: URLs to probe during auto-detection, in priority
+            order.  The first reachable URL becomes the base URL.  May
+            be empty when the local server runs on user-chosen ports
+            (e.g. vLLM) -- such presets are configured manually only.
+        supports_model_pull: Whether pulling/downloading models is
+            supported via the provider's management API.
+        supports_model_delete: Whether deleting models is supported.
+        supports_model_config: Whether per-model launch parameter
+            configuration (e.g. context window, GPU layers) is supported.
+    """
+
+    kind: Literal["local"] = "local"
+    candidate_urls: tuple[NotBlankStr, ...] = ()
+    supports_model_pull: bool = False
+    supports_model_delete: bool = False
+    supports_model_config: bool = False
+
+
+ProviderPreset = Annotated[CloudPreset | LocalPreset, Field(discriminator="kind")]
+"""Discriminated union of all preset kinds.
+
+Pydantic models receiving a ``ProviderPreset`` use the ``kind``
+discriminator to deserialize into the correct concrete type.
+"""
+
+
 # ── Cloud providers ────────────────────────────────────────────
 
-_ANTHROPIC = ProviderPreset(
+_ANTHROPIC = CloudPreset(
     name="anthropic",
     display_name="Anthropic",
     description="Claude models (Opus, Sonnet, Haiku)",
@@ -103,7 +151,7 @@ _ANTHROPIC = ProviderPreset(
     ),
 )
 
-_OPENAI = ProviderPreset(
+_OPENAI = CloudPreset(
     name="openai",
     display_name="OpenAI",
     description="GPT and o-series models",
@@ -136,7 +184,7 @@ _OPENAI = ProviderPreset(
     ),
 )
 
-_GEMINI = ProviderPreset(
+_GEMINI = CloudPreset(
     name="gemini",
     display_name="Google AI Studio",
     description="Gemini models via Google AI",
@@ -162,7 +210,7 @@ _GEMINI = ProviderPreset(
     ),
 )
 
-_MISTRAL = ProviderPreset(
+_MISTRAL = CloudPreset(
     name="mistral",
     display_name="Mistral AI",
     description="Mistral and Codestral models",
@@ -173,7 +221,7 @@ _MISTRAL = ProviderPreset(
     default_models=(),
 )
 
-_GROQ = ProviderPreset(
+_GROQ = CloudPreset(
     name="groq",
     display_name="Groq",
     description="Ultra-fast inference (LPU)",
@@ -184,7 +232,7 @@ _GROQ = ProviderPreset(
     default_models=(),
 )
 
-_DEEPSEEK = ProviderPreset(
+_DEEPSEEK = CloudPreset(
     name="deepseek",
     display_name="DeepSeek",
     description="DeepSeek reasoning and chat models",
@@ -195,7 +243,7 @@ _DEEPSEEK = ProviderPreset(
     default_models=(),
 )
 
-_AZURE_OPENAI = ProviderPreset(
+_AZURE_OPENAI = CloudPreset(
     name="azure",
     display_name="Azure OpenAI",
     description="OpenAI models via Azure",
@@ -209,16 +257,31 @@ _AZURE_OPENAI = ProviderPreset(
     default_models=(),
 )
 
+_OLLAMA_CLOUD = CloudPreset(
+    name="ollama-cloud",
+    display_name="Ollama Cloud",
+    description="Hosted Ollama models (managed inference)",
+    driver="litellm",
+    litellm_provider="ollama",
+    auth_type=AuthType.API_KEY,
+    supported_auth_types=(AuthType.API_KEY,),
+    # Hosted Ollama API base.  Verify before launch -- the user supplies
+    # the API key from ollama.com; LiteLLM's ``ollama`` routing uses this
+    # as the base URL.
+    default_base_url="https://ollama.com",
+    requires_base_url=False,
+    default_models=(),
+)
+
 # ── Self-hosted / local ────────────────────────────────────────
 
-_OLLAMA = ProviderPreset(
+_OLLAMA = LocalPreset(
     name="ollama",
     display_name="Ollama",
-    description="Local LLM inference server",
+    description="Local Ollama inference server",
     driver="litellm",
     litellm_provider="ollama",
     auth_type=AuthType.NONE,
-    supported_auth_types=(AuthType.NONE,),
     default_base_url="http://localhost:11434",
     requires_base_url=True,
     candidate_urls=(
@@ -226,20 +289,18 @@ _OLLAMA = ProviderPreset(
         "http://172.17.0.1:11434",
         "http://localhost:11434",
     ),
-    default_models=(),
     supports_model_pull=True,
     supports_model_delete=True,
     supports_model_config=True,
 )
 
-_LM_STUDIO = ProviderPreset(
+_LM_STUDIO = LocalPreset(
     name="lm-studio",
     display_name="LM Studio",
     description="Local LLM development environment",
     driver="litellm",
     litellm_provider="openai",
     auth_type=AuthType.NONE,
-    supported_auth_types=(AuthType.NONE,),
     default_base_url="http://localhost:1234/v1",
     requires_base_url=True,
     candidate_urls=(
@@ -247,29 +308,27 @@ _LM_STUDIO = ProviderPreset(
         "http://172.17.0.1:1234/v1",
         "http://localhost:1234/v1",
     ),
-    default_models=(),
 )
 
-_VLLM = ProviderPreset(
+_VLLM = LocalPreset(
     name="vllm",
     display_name="vLLM",
     description="High-throughput local inference engine",
     driver="litellm",
     litellm_provider="openai",
     auth_type=AuthType.NONE,
-    supported_auth_types=(AuthType.NONE,),
     default_base_url="http://localhost:8000/v1",
     requires_base_url=True,
     # candidate_urls intentionally empty: vLLM's default port (8000)
     # is a common collision risk (the SynthOrg backend formerly used
     # 8000).  Users must specify the vLLM URL explicitly or remap
     # vLLM to a non-colliding port.
-    default_models=(),
+    candidate_urls=(),
 )
 
 # ── Gateways ───────────────────────────────────────────────────
 
-_OPENROUTER = ProviderPreset(
+_OPENROUTER = CloudPreset(
     name="openrouter",
     display_name="OpenRouter",
     description="Multi-provider API gateway",
@@ -282,7 +341,7 @@ _OPENROUTER = ProviderPreset(
 )
 
 
-PROVIDER_PRESETS: tuple[ProviderPreset, ...] = (
+PROVIDER_PRESETS: tuple[CloudPreset | LocalPreset, ...] = (
     # Cloud (alphabetical)
     _ANTHROPIC,
     _AZURE_OPENAI,
@@ -290,21 +349,21 @@ PROVIDER_PRESETS: tuple[ProviderPreset, ...] = (
     _GEMINI,
     _GROQ,
     _MISTRAL,
+    _OLLAMA_CLOUD,
     _OPENAI,
-    # Self-hosted
+    _OPENROUTER,
+    # Self-hosted (alphabetical)
     _LM_STUDIO,
     _OLLAMA,
     _VLLM,
-    # Gateways
-    _OPENROUTER,
 )
 
-_PRESET_LOOKUP: MappingProxyType[str, ProviderPreset] = MappingProxyType(
+_PRESET_LOOKUP: MappingProxyType[str, CloudPreset | LocalPreset] = MappingProxyType(
     {p.name: p for p in PROVIDER_PRESETS},
 )
 
 
-def get_preset(name: str) -> ProviderPreset | None:
+def get_preset(name: str) -> CloudPreset | LocalPreset | None:
     """Look up a preset by name.
 
     Args:
@@ -316,13 +375,55 @@ def get_preset(name: str) -> ProviderPreset | None:
     return _PRESET_LOOKUP.get(name)
 
 
-def list_presets() -> tuple[ProviderPreset, ...]:
+def list_presets() -> tuple[CloudPreset | LocalPreset, ...]:
     """Return all available presets.
 
     Returns:
-        Tuple of all provider presets.
+        Tuple of all provider presets (cloud + local).
     """
     return PROVIDER_PRESETS
+
+
+def list_local_presets() -> tuple[LocalPreset, ...]:
+    """Return only the local-server presets.
+
+    Returns:
+        Tuple of presets for self-hosted backends, regardless of whether
+        they have ``candidate_urls`` configured.
+    """
+    return tuple(p for p in PROVIDER_PRESETS if isinstance(p, LocalPreset))
+
+
+def list_probable_presets() -> tuple[LocalPreset, ...]:
+    """Return local presets that have at least one candidate URL.
+
+    Used by the wizard's batch probe endpoint.  Excludes vLLM
+    (deliberately no candidate URLs -- port-collision risk).
+
+    Returns:
+        Tuple of local presets with non-empty ``candidate_urls``.
+    """
+    return tuple(p for p in list_local_presets() if p.candidate_urls)
+
+
+def candidate_urls_for(preset: CloudPreset | LocalPreset) -> tuple[str, ...]:
+    """Return candidate URLs for any preset (empty for cloud presets).
+
+    Lets consumers iterate across the union without ``isinstance``
+    branches when they only care about the URLs.
+    """
+    return preset.candidate_urls if isinstance(preset, LocalPreset) else ()
+
+
+def default_models_for(
+    preset: CloudPreset | LocalPreset,
+) -> tuple[ProviderModelConfig, ...]:
+    """Return default models for any preset (empty for local presets).
+
+    Lets consumers iterate across the union without ``isinstance``
+    branches when they only care about the prefilled model list.
+    """
+    return preset.default_models if isinstance(preset, CloudPreset) else ()
 
 
 # ── Model generation filters ─────────────────────────────────
