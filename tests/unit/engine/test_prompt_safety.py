@@ -15,6 +15,7 @@ from synthorg.engine.prompt_safety import (
     TAG_CODE_DIFF,
     TAG_CONFIG_VALUE,
     TAG_CRITERIA_JSON,
+    TAG_PEER_CONTRIBUTION,
     TAG_TASK_DATA,
     TAG_TASK_FACT,
     TAG_TOOL_ARGUMENTS,
@@ -46,6 +47,7 @@ class TestWrapUntrustedShape:
             TAG_CODE_DIFF,
             TAG_CONFIG_VALUE,
             TAG_CRITERIA_JSON,
+            TAG_PEER_CONTRIBUTION,
         ],
     )
     def test_all_standard_tags_work(self, tag: str) -> None:

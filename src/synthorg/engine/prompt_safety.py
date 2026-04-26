@@ -60,6 +60,17 @@ TAG_CONFIG_VALUE: Final[str] = "config-value"
 TAG_CRITERIA_JSON: Final[str] = "criteria-json"
 """Wrap the JSON envelope the LLM decomposer ships to the model."""
 
+TAG_PEER_CONTRIBUTION: Final[str] = "peer-contribution"
+"""Wrap a contribution emitted by another agent during a meeting.
+
+Distinct from :data:`TAG_UNTRUSTED_ARTIFACT` (grader artifact payloads)
+and :data:`TAG_TOOL_RESULT` (tool output): peer contributions are the
+free-form natural-language outputs of upstream meeting turns.  The
+agent that produced the content may itself have been prompt-injected
+by an attacker-controlled task field, so each peer turn is treated as
+untrusted input by every downstream meeting prompt.
+"""
+
 _TAG_NAME_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 """Valid tag names: lower-case ASCII, starts with letter, ``[a-z0-9-]``, max 32 chars.
 
