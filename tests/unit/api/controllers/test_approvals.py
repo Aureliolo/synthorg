@@ -579,8 +579,11 @@ class TestApprovalUrgencyFields:
     @pytest.mark.parametrize(
         ("approval_id", "boundary_seconds", "expected_urgency"),
         [
-            ("boundary-1h", 3600, "high"),
-            ("boundary-4h", 14400, "normal"),
+            # The thresholds are inclusive ("at or below"): a TTL
+            # exactly at the configured value belongs to the more
+            # urgent bucket, not the next-laxer one.
+            ("boundary-1h", 3600, "critical"),
+            ("boundary-4h", 14400, "high"),
         ],
     )
     async def test_urgency_boundary(
@@ -707,3 +710,81 @@ class TestApprovalPathParamValidation:
             headers=_READ_HEADERS,
         )
         assert resp.status_code == 422
+
+
+@pytest.mark.unit
+class TestResolveUrgencyThresholdsFallback:
+    """``_resolve_urgency_thresholds`` settings-backend fallback contract.
+
+    The helper falls back to
+    ``(_URGENCY_CRITICAL_FALLBACK_SECONDS, _URGENCY_HIGH_FALLBACK_SECONDS)``
+    when the config resolver is unavailable or raises.  These tests
+    guard that contract so a settings backend outage cannot turn every
+    pending approval into a 500 -- urgency calculations degrade
+    gracefully to the registry defaults.
+    """
+
+    @pytest.mark.parametrize(
+        "scenario",
+        ["resolver_absent", "resolver_raises"],
+    )
+    async def test_returns_fallback_for_absent_or_error_resolver(
+        self,
+        scenario: str,
+    ) -> None:
+        """Both fallback paths return registry defaults.
+
+        ``resolver_absent``: ``app_state.has_config_resolver`` is
+        ``False`` (no settings backend wired -- treated identically to
+        a transient outage so the recovery log can fire when one
+        appears).
+
+        ``resolver_raises``: backend is wired but
+        ``get_float`` raises a generic ``RuntimeError``.
+        """
+        from unittest.mock import AsyncMock as _AsyncMock
+        from unittest.mock import MagicMock as _MagicMock
+
+        from synthorg.api.controllers.approvals import _resolve_urgency_thresholds
+
+        app_state = _MagicMock()
+        if scenario == "resolver_absent":
+            app_state.has_config_resolver = False
+        else:
+            app_state.has_config_resolver = True
+            app_state.config_resolver.get_float = _AsyncMock(
+                side_effect=RuntimeError("settings backend down"),
+            )
+        critical, high = await _resolve_urgency_thresholds(app_state)
+        assert critical == 3600.0  # _URGENCY_CRITICAL_FALLBACK_SECONDS
+        assert high == 14400.0  # _URGENCY_HIGH_FALLBACK_SECONDS
+
+    async def test_propagates_cancelled_error(self) -> None:
+        import asyncio as _asyncio
+        from unittest.mock import AsyncMock as _AsyncMock
+        from unittest.mock import MagicMock as _MagicMock
+
+        from synthorg.api.controllers.approvals import _resolve_urgency_thresholds
+
+        app_state = _MagicMock()
+        app_state.has_config_resolver = True
+        app_state.config_resolver.get_float = _AsyncMock(
+            side_effect=_asyncio.CancelledError(),
+        )
+        with pytest.raises(_asyncio.CancelledError):
+            await _resolve_urgency_thresholds(app_state)
+
+    async def test_returns_resolved_values_on_success(self) -> None:
+        from unittest.mock import AsyncMock as _AsyncMock
+        from unittest.mock import MagicMock as _MagicMock
+
+        from synthorg.api.controllers.approvals import _resolve_urgency_thresholds
+
+        app_state = _MagicMock()
+        app_state.has_config_resolver = True
+        app_state.config_resolver.get_float = _AsyncMock(
+            side_effect=[600.0, 7200.0],
+        )
+        critical, high = await _resolve_urgency_thresholds(app_state)
+        assert critical == 600.0
+        assert high == 7200.0

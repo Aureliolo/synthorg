@@ -10,6 +10,7 @@ import json
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.coordination_config import (
     DetectionScope,
     ErrorCategory,
@@ -31,10 +32,12 @@ from synthorg.observability.events.classification import (
     DETECTOR_PARSE_ERROR,
     DETECTOR_START,
 )
+from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 
 if TYPE_CHECKING:
+    from synthorg.budget.tracker import CostTracker
     from synthorg.engine.classification.budget_tracker import (
         ClassificationBudgetTracker,
     )
@@ -207,7 +210,7 @@ class _BaseSemanticDetector:
         msg = "Subclasses must override category"
         raise NotImplementedError(msg)
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         provider: BaseCompletionProvider,
@@ -215,10 +218,12 @@ class _BaseSemanticDetector:
         budget_tracker: ClassificationBudgetTracker | None = None,
         temperature: float = 0.0,
         max_tokens: int = 1024,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         self._provider = provider
         self._model_id = model_id
         self._budget_tracker = budget_tracker
+        self._cost_tracker = cost_tracker
         # SEC-1 fingerprint stability: pin temperature + max_tokens at
         # construction so runs are reproducible across provider-default
         # changes. Detection is deterministic by default (temperature=0.0).
@@ -320,11 +325,17 @@ class _BaseSemanticDetector:
 
         settled = False
         try:
-            response = await self._provider.complete(
-                messages,
-                self._model_id,
-                config=self._completion_config,
-            )
+            async with cost_recording_scope(
+                cost_tracker=self._cost_tracker,
+                agent_id=context.agent_id,
+                task_id=context.task_id,
+                call_category=LLMCallCategory.SYSTEM,
+            ):
+                response = await self._provider.complete(
+                    messages,
+                    self._model_id,
+                    config=self._completion_config,
+                )
             # ``CompletionResponse.usage`` is a required ``TokenUsage``
             # (see ``synthorg.providers.models``) so Pydantic rejects
             # responses without it at construction time -- no runtime

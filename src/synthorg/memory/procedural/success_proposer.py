@@ -8,10 +8,12 @@ but optimized for success outcomes with a lighter system prompt.
 
 import json
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
+from synthorg.budget.call_category import LLMCallCategory
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.procedural.models import (
     ProceduralMemoryConfig,
     ProceduralMemoryProposal,
@@ -23,10 +25,14 @@ from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_MEMORY_PROPOSER_INIT,
     PROCEDURAL_MEMORY_SKIPPED,
 )
+from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import ProviderError
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
+
+if TYPE_CHECKING:
+    from synthorg.budget.tracker import CostTracker
 
 logger = get_logger(__name__)
 
@@ -118,9 +124,11 @@ class SuccessMemoryProposer:
         *,
         provider: CompletionProvider,
         config: ProceduralMemoryConfig,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         self._provider = provider
         self._config = config
+        self._cost_tracker = cost_tracker
         self._completion_config = CompletionConfig(
             temperature=config.temperature,
             max_tokens=config.max_tokens,
@@ -158,11 +166,17 @@ class SuccessMemoryProposer:
                     content=_build_user_message(execution_result),
                 ),
             ]
-            response = await self._provider.complete(
-                messages,
-                self._config.model,
-                config=self._completion_config,
-            )
+            async with cost_recording_scope(
+                cost_tracker=self._cost_tracker,
+                agent_id=NotBlankStr("system"),
+                task_id=NotBlankStr("system:procedural:success_proposer"),
+                call_category=LLMCallCategory.SYSTEM,
+            ):
+                response = await self._provider.complete(
+                    messages,
+                    self._config.model,
+                    config=self._completion_config,
+                )
         except MemoryError, RecursionError:
             raise
         except ProviderError as exc:

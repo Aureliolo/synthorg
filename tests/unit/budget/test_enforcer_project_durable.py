@@ -31,10 +31,13 @@ def _make_task() -> Task:
 def _make_aggregate(
     project_id: str = "proj-1",
     total_cost: float = 0.0,
+    *,
+    currency: str = "USD",
 ) -> ProjectCostAggregate:
     return ProjectCostAggregate(
         project_id=project_id,
         total_cost=total_cost,
+        currency=currency,
         total_input_tokens=0,
         total_output_tokens=0,
         record_count=1,

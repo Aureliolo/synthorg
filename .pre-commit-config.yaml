@@ -24,7 +24,7 @@ ci:
   # scripts with no CI counterpart, and letting pre-commit.ci enforce
   # them closes the gap where a PR from a contributor who skipped local
   # hooks would otherwise introduce a regression unchecked.
-  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, no-new-logger-exception-str-exc, orphan-fixtures, doc-drift-counts]
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, provider-complete-chokepoint, no-new-logger-exception-str-exc, orphan-fixtures, doc-drift-counts]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -242,5 +242,18 @@ repos:
         entry: uv run python scripts/check_persistence_boundary.py
         language: system
         files: ^(src/synthorg|tests)/.*\.py$
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: provider-complete-chokepoint
+        name: cost-recording chokepoint gate
+        entry: uv run python scripts/check_provider_complete_chokepoint.py
+        language: system
+        # Trigger on any change to the scanned tree, the checker
+        # itself, or this config -- so a PR that weakens the gate
+        # (e.g. relaxing the heuristic, expanding the allowlist,
+        # changing the trigger pattern) cannot bypass the check by
+        # not touching ``src/synthorg/`` Python files.
+        files: ^(src/synthorg/.*\.py|scripts/check_provider_complete_chokepoint\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]

@@ -5,11 +5,12 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
+from synthorg.budget.call_category import LLMCallCategory
 from synthorg.client.models import (
     ClientRequest,  # noqa: TC001
     TaskRequirement,  # noqa: TC001
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -23,10 +24,12 @@ from synthorg.observability.events.review_pipeline import (
     INTAKE_AGENT_PARSE_FAILED,
     INTAKE_AGENT_REFINED_INVALID,
 )
+from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 
 if TYPE_CHECKING:
+    from synthorg.budget.tracker import CostTracker
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.providers.protocol import CompletionProvider
 
@@ -62,6 +65,7 @@ class AgentIntake:
         persona: str = _DEFAULT_PERSONA,
         temperature: float = 0.0,
         max_tokens: int = 512,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         """Initialize the agent intake strategy.
 
@@ -81,12 +85,15 @@ class AgentIntake:
             temperature: Sampling temperature (default 0.0 -- triage
                 is classification, determinism wins over diversity).
             max_tokens: Maximum tokens in the triage response.
+            cost_tracker: Optional cost tracker; when wired the
+                chokepoint emits a CostRecord for each LLM call.
         """
         self._task_engine = task_engine
         self._provider = provider
         self._model = model
         self._project = project
         self._requested_by = requested_by
+        self._cost_tracker = cost_tracker
         # SEC-1: normalize the persona to always carry the untrusted-
         # content directive. A caller-supplied persona without it would
         # silently weaken fence semantics.
@@ -105,11 +112,17 @@ class AgentIntake:
         """Invoke the triage agent and create a task on acceptance."""
         messages = self._build_prompt(request.requirement)
         try:
-            response = await self._provider.complete(
-                messages=messages,
-                model=self._model,
-                config=self._completion_config,
-            )
+            async with cost_recording_scope(
+                cost_tracker=self._cost_tracker,
+                agent_id=NotBlankStr("system"),
+                task_id=NotBlankStr(f"system:intake:{request.request_id}"),
+                call_category=LLMCallCategory.SYSTEM,
+            ):
+                response = await self._provider.complete(
+                    messages=messages,
+                    model=self._model,
+                    config=self._completion_config,
+                )
         except Exception:
             logger.exception(
                 INTAKE_AGENT_PARSE_FAILED,

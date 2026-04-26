@@ -6,6 +6,12 @@ driver implementations, and the provider registry.
 
 from .base import BaseCompletionProvider
 from .capabilities import ModelCapabilities
+from .cost_recording import (
+    CostRecordingContext,
+    cost_recording_scope,
+    current_cost_context,
+    resolve_currency,
+)
 from .drivers import LiteLLMDriver
 from .enums import FinishReason, MessageRole, StreamEventType
 from .errors import (
@@ -83,6 +89,7 @@ __all__ = [
     "CompletionResponse",
     "ContentFilterError",
     "CostAwareStrategy",
+    "CostRecordingContext",
     "DriverAlreadyRegisteredError",
     "DriverFactoryNotFoundError",
     "DriverNotRegisteredError",
@@ -122,4 +129,7 @@ __all__ = [
     "ToolResult",
     "UnknownStrategyError",
     "add_token_usage",
+    "cost_recording_scope",
+    "current_cost_context",
+    "resolve_currency",
 ]

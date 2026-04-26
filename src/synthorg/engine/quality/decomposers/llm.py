@@ -14,8 +14,9 @@ server-side (never taken from the model).
 
 import json
 from collections.abc import Mapping
-from typing import Any, Final, NoReturn
+from typing import TYPE_CHECKING, Any, Final, NoReturn
 
+from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.task import AcceptanceCriterion  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.prompt_safety import (
@@ -31,6 +32,7 @@ from synthorg.observability.events.verification import (
     VERIFICATION_DECOMPOSER_PROBE_REJECTED,
     VERIFICATION_DECOMPOSER_RESPONSE_INVALID,
 )
+from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
@@ -38,6 +40,9 @@ from synthorg.providers.models import (
     ToolDefinition,
 )
 from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
+
+if TYPE_CHECKING:
+    from synthorg.budget.tracker import CostTracker
 
 logger = get_logger(__name__)
 
@@ -198,6 +203,7 @@ class LLMCriteriaDecomposer:
         provider: CompletionProvider,
         model_id: NotBlankStr,
         max_probes_per_criterion: int = 5,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         """Store dependencies and enforce a positive cap."""
         if max_probes_per_criterion < 1:
@@ -206,6 +212,7 @@ class LLMCriteriaDecomposer:
         self._provider = provider
         self._model_id = model_id
         self._max_probes_per_criterion = max_probes_per_criterion
+        self._cost_tracker = cost_tracker
 
     @property
     def name(self) -> str:
@@ -247,7 +254,9 @@ class LLMCriteriaDecomposer:
             return ()
 
         tool, messages = self._prepare_tool_and_messages(criteria)
-        response = await self._invoke_provider(messages, tool)
+        response = await self._invoke_provider(
+            messages, tool, agent_id=agent_id, task_id=task_id
+        )
         raw_probes = self._extract_raw_probes(
             response,
             task_id=task_id,
@@ -295,14 +304,23 @@ class LLMCriteriaDecomposer:
         self,
         messages: list[ChatMessage],
         tool: ToolDefinition,
+        *,
+        agent_id: NotBlankStr,
+        task_id: NotBlankStr,
     ) -> Any:
         """Invoke ``self._provider.complete`` with the decomposer config."""
-        return await self._provider.complete(
-            messages=messages,
-            model=self._model_id,
-            tools=[tool],
-            config=CompletionConfig(temperature=0.0, max_tokens=2048),
-        )
+        async with cost_recording_scope(
+            cost_tracker=self._cost_tracker,
+            agent_id=agent_id,
+            task_id=task_id,
+            call_category=LLMCallCategory.SYSTEM,
+        ):
+            return await self._provider.complete(
+                messages=messages,
+                model=self._model_id,
+                tools=[tool],
+                config=CompletionConfig(temperature=0.0, max_tokens=2048),
+            )
 
     def _extract_raw_probes(
         self,

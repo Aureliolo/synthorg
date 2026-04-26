@@ -7,7 +7,9 @@ LLM calls (retry + rate limiting handled by the provider).
 
 from typing import TYPE_CHECKING
 
+from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_CONFIG_VALUE,
     TAG_TASK_DATA,
@@ -29,10 +31,12 @@ from synthorg.observability.events.chief_of_staff import (
     COS_CHAT_QUERY,
     COS_CHAT_RESPONSE,
 )
+from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 
 if TYPE_CHECKING:
+    from synthorg.budget.tracker import CostTracker
     from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
     from synthorg.meta.chief_of_staff.protocol import OutcomeStore
     from synthorg.meta.models import ImprovementProposal, OrgSignalSnapshot
@@ -60,10 +64,12 @@ class ChiefOfStaffChat:
         provider: CompletionProvider,
         config: ChiefOfStaffConfig,
         outcome_store: OutcomeStore | None = None,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         self._provider = provider
         self._config = config
         self._outcome_store = outcome_store
+        self._cost_tracker = cost_tracker
 
     async def explain_proposal(
         self,
@@ -228,11 +234,17 @@ class ChiefOfStaffChat:
             max_tokens=self._config.chat_max_tokens,
         )
         try:
-            response = await self._provider.complete(
-                messages,
-                self._config.chat_model,
-                config=config,
-            )
+            async with cost_recording_scope(
+                cost_tracker=self._cost_tracker,
+                agent_id=NotBlankStr("system"),
+                task_id=NotBlankStr("system:cos:chat"),
+                call_category=LLMCallCategory.SYSTEM,
+            ):
+                response = await self._provider.complete(
+                    messages,
+                    self._config.chat_model,
+                    config=config,
+                )
         except Exception:
             logger.exception(COS_CHAT_FAILED)
             raise

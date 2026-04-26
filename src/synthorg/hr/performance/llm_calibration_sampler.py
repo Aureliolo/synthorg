@@ -10,6 +10,7 @@ import random
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import LlmCalibrationRecord
@@ -19,12 +20,14 @@ from synthorg.observability.events.performance import (
     PERF_LLM_SAMPLE_FAILED,
     PERF_LLM_SAMPLE_STARTED,
 )
+from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
 
+    from synthorg.budget.tracker import CostTracker
     from synthorg.hr.performance.models import CollaborationMetricRecord
     from synthorg.providers.protocol import CompletionProvider
 
@@ -73,7 +76,7 @@ class LlmCalibrationSampler:
         ValueError: If sampling_rate or retention_days are out of bounds.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         provider: CompletionProvider,
@@ -81,6 +84,7 @@ class LlmCalibrationSampler:
         sampling_rate: float = 0.01,
         retention_days: int = 90,
         currency: CurrencyCode = DEFAULT_CURRENCY,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         if not (0.0 <= sampling_rate <= 1.0):
             msg = f"sampling_rate must be in [0.0, 1.0], got {sampling_rate}"
@@ -93,6 +97,7 @@ class LlmCalibrationSampler:
         self._sampling_rate = sampling_rate
         self._retention_days = retention_days
         self._currency = currency
+        self._cost_tracker = cost_tracker
         self._records: dict[str, list[LlmCalibrationRecord]] = {}
 
     def should_sample(self) -> bool:
@@ -328,16 +333,27 @@ class LlmCalibrationSampler:
         """
         prompt = self._build_prompt(record)
 
-        response = await self._provider.complete(
-            messages=[
-                ChatMessage(
-                    role=MessageRole.USER,
-                    content=prompt,
-                ),
-            ],
-            model=self._model,
-            config=_COMPLETION_CONFIG,
-        )
+        async with cost_recording_scope(
+            cost_tracker=self._cost_tracker,
+            agent_id=record.agent_id,
+            task_id=NotBlankStr(f"system:hr:calibration:{record.id}"),
+            call_category=LLMCallCategory.SYSTEM,
+            # Pin the scope to the same currency the
+            # ``LlmCalibrationRecord`` is stamped with so the chokepoint's
+            # ``CostRecord`` and the calibration record never disagree
+            # under the same-currency invariant.
+            currency=self._currency,
+        ):
+            response = await self._provider.complete(
+                messages=[
+                    ChatMessage(
+                        role=MessageRole.USER,
+                        content=prompt,
+                    ),
+                ],
+                model=self._model,
+                config=_COMPLETION_CONFIG,
+            )
 
         if response.content is None:
             logger.warning(

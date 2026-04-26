@@ -404,6 +404,7 @@ class StructuredPhasesProtocol:
                 participant_id,
                 prompt,
                 budget,
+                meeting_id,
             )
             tracker.record(response.input_tokens, response.output_tokens)
 
@@ -511,6 +512,7 @@ class StructuredPhasesProtocol:
             leader_id,
             conflict_prompt,
             tracker.remaining,
+            meeting_id,
         )
         tracker.record(
             conflict_response.input_tokens,
@@ -651,6 +653,7 @@ class StructuredPhasesProtocol:
                 pid,
                 disc_prompt,
                 min(tokens_per_agent, remaining_discussion),
+                meeting_id,
             )
             tracker.record(
                 disc_response.input_tokens,
@@ -739,6 +742,7 @@ class StructuredPhasesProtocol:
             leader_id,
             synthesis_prompt,
             tracker.remaining,
+            meeting_id,
         )
         tracker.record(
             synthesis_response.input_tokens,

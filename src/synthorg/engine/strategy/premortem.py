@@ -77,6 +77,9 @@ class PremortemOutput(BaseModel):
     )
 
 
+_PREMORTEM_TASK_ID_FALLBACK = "system:premortem"
+
+
 @runtime_checkable
 class PremortemExecutor(Protocol):
     """Execute premortem analysis on meeting synthesis.
@@ -86,7 +89,7 @@ class PremortemExecutor(Protocol):
     failure modes, and hidden assumptions.
     """
 
-    async def execute(
+    async def execute(  # noqa: PLR0913
         self,
         *,
         synthesis_text: str,
@@ -94,6 +97,7 @@ class PremortemExecutor(Protocol):
         agent_caller: AgentCaller,
         config: PremortemConfig,
         token_budget: int,
+        context_id: str = _PREMORTEM_TASK_ID_FALLBACK,
     ) -> PremortemOutput:
         """Conduct premortem analysis.
 
@@ -103,6 +107,11 @@ class PremortemExecutor(Protocol):
             agent_caller: Callback to invoke agents.
             config: Premortem configuration.
             token_budget: Maximum tokens for all premortem calls.
+            context_id: Threaded as the ``meeting_id`` argument of
+                ``agent_caller`` so cost-recording attribution carries
+                a meaningful task identifier.  Defaults to
+                ``system:premortem`` when no caller-supplied context
+                is available.
 
         Returns:
             Aggregated premortem analysis output.
@@ -119,7 +128,7 @@ class DefaultPremortemExecutor:
     into a unified output.
     """
 
-    async def execute(
+    async def execute(  # noqa: PLR0913
         self,
         *,
         synthesis_text: str,
@@ -127,6 +136,7 @@ class DefaultPremortemExecutor:
         agent_caller: AgentCaller,
         config: PremortemConfig,
         token_budget: int,
+        context_id: str = _PREMORTEM_TASK_ID_FALLBACK,
     ) -> PremortemOutput:
         """Conduct premortem analysis.
 
@@ -136,6 +146,11 @@ class DefaultPremortemExecutor:
             agent_caller: Callback to invoke agents.
             config: Premortem configuration.
             token_budget: Maximum tokens for all premortem calls.
+            context_id: Threaded as the ``meeting_id`` argument of
+                ``agent_caller`` so cost-recording attribution carries
+                a meaningful task identifier.  Defaults to
+                ``system:premortem`` when no caller-supplied context
+                is available.
 
         Returns:
             Aggregated premortem analysis output.
@@ -144,12 +159,19 @@ class DefaultPremortemExecutor:
         if not selected:
             return PremortemOutput()
 
+        # Normalise blank/whitespace-only ``context_id`` to the
+        # fallback so the downstream ``agent_caller`` (and the
+        # ``cost_recording_scope`` it opens) never sees a
+        # whitespace-only ``task_id`` that would fail
+        # ``NotBlankStr`` validation deeper in the stack.
+        normalized_context_id = context_id.strip() or _PREMORTEM_TASK_ID_FALLBACK
         prompt = self._build_prompt(synthesis_text)
         responses = await self._gather_responses(
             agent_caller,
             selected,
             prompt,
             token_budget,
+            context_id=normalized_context_id,
         )
         failure_modes, assumptions = self._aggregate_responses(responses)
 
@@ -192,6 +214,8 @@ class DefaultPremortemExecutor:
         selected: tuple[NotBlankStr, ...],
         prompt: str,
         token_budget: int,
+        *,
+        context_id: str,
     ) -> list[AgentResponse]:
         """Fan-out agent calls and collect responses."""
         n = len(selected)
@@ -215,6 +239,7 @@ class DefaultPremortemExecutor:
                     pid,
                     prompt,
                     tokens_list[idx],
+                    context_id,
                 )
             except MemoryError, RecursionError:
                 raise

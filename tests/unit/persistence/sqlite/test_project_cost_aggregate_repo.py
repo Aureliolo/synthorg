@@ -32,10 +32,11 @@ class TestSQLiteProjectCostAggregateRepository:
         migrated_db: aiosqlite.Connection,
     ) -> None:
         repo = SQLiteProjectCostAggregateRepository(migrated_db)
-        agg = await repo.increment("proj-1", 1.5, 100, 50)
+        agg = await repo.increment("proj-1", 1.5, 100, 50, currency="USD")
 
         assert agg.project_id == "proj-1"
         assert agg.total_cost == 1.5
+        assert agg.currency == "USD"
         assert agg.total_input_tokens == 100
         assert agg.total_output_tokens == 50
         assert agg.record_count == 1
@@ -45,10 +46,11 @@ class TestSQLiteProjectCostAggregateRepository:
         migrated_db: aiosqlite.Connection,
     ) -> None:
         repo = SQLiteProjectCostAggregateRepository(migrated_db)
-        await repo.increment("proj-1", 1.0, 100, 50)
-        agg = await repo.increment("proj-1", 2.0, 200, 100)
+        await repo.increment("proj-1", 1.0, 100, 50, currency="USD")
+        agg = await repo.increment("proj-1", 2.0, 200, 100, currency="USD")
 
         assert agg.total_cost == pytest.approx(3.0)
+        assert agg.currency == "USD"
         assert agg.total_input_tokens == 300
         assert agg.total_output_tokens == 150
         assert agg.record_count == 2
@@ -59,7 +61,7 @@ class TestSQLiteProjectCostAggregateRepository:
     ) -> None:
         repo = SQLiteProjectCostAggregateRepository(migrated_db)
         for _ in range(5):
-            await repo.increment("proj-1", 0.1, 10, 5)
+            await repo.increment("proj-1", 0.1, 10, 5, currency="USD")
 
         agg = await repo.get("proj-1")
         assert agg is not None
@@ -73,11 +75,12 @@ class TestSQLiteProjectCostAggregateRepository:
         migrated_db: aiosqlite.Connection,
     ) -> None:
         repo = SQLiteProjectCostAggregateRepository(migrated_db)
-        await repo.increment("proj-1", 3.0, 500, 200)
+        await repo.increment("proj-1", 3.0, 500, 200, currency="USD")
 
         agg = await repo.get("proj-1")
         assert agg is not None
         assert agg.total_cost == 3.0
+        assert agg.currency == "USD"
         assert agg.total_input_tokens == 500
         assert agg.total_output_tokens == 200
         assert agg.record_count == 1
@@ -87,8 +90,8 @@ class TestSQLiteProjectCostAggregateRepository:
         migrated_db: aiosqlite.Connection,
     ) -> None:
         repo = SQLiteProjectCostAggregateRepository(migrated_db)
-        await repo.increment("proj-a", 10.0, 1000, 500)
-        await repo.increment("proj-b", 5.0, 200, 100)
+        await repo.increment("proj-a", 10.0, 1000, 500, currency="USD")
+        await repo.increment("proj-b", 5.0, 200, 100, currency="USD")
 
         agg_a = await repo.get("proj-a")
         agg_b = await repo.get("proj-b")
@@ -103,8 +106,8 @@ class TestSQLiteProjectCostAggregateRepository:
         migrated_db: aiosqlite.Connection,
     ) -> None:
         repo = SQLiteProjectCostAggregateRepository(migrated_db)
-        agg1 = await repo.increment("proj-1", 1.0, 10, 5)
-        agg2 = await repo.increment("proj-1", 1.0, 10, 5)
+        agg1 = await repo.increment("proj-1", 1.0, 10, 5, currency="USD")
+        agg2 = await repo.increment("proj-1", 1.0, 10, 5, currency="USD")
 
         assert agg2.last_updated >= agg1.last_updated
 
@@ -113,13 +116,41 @@ class TestSQLiteProjectCostAggregateRepository:
         migrated_db: aiosqlite.Connection,
     ) -> None:
         repo = SQLiteProjectCostAggregateRepository(migrated_db)
-        agg = await repo.increment("proj-1", 0.0, 0, 0)
+        agg = await repo.increment("proj-1", 0.0, 0, 0, currency="USD")
 
         assert agg.total_cost == 0.0
         assert agg.record_count == 1
 
-        agg2 = await repo.increment("proj-1", 0.0, 0, 0)
+        agg2 = await repo.increment("proj-1", 0.0, 0, 0, currency="USD")
         assert agg2.record_count == 2
+
+    async def test_increment_rejects_currency_mismatch(
+        self,
+        migrated_db: aiosqlite.Connection,
+    ) -> None:
+        from synthorg.budget.errors import (
+            MixedCurrencyAggregationError,
+        )
+
+        repo = SQLiteProjectCostAggregateRepository(migrated_db)
+        await repo.increment("proj-1", 1.0, 10, 5, currency="USD")
+        with pytest.raises(MixedCurrencyAggregationError) as exc_info:
+            await repo.increment("proj-1", 1.0, 10, 5, currency="EUR")
+        assert exc_info.value.currencies == frozenset({"USD", "EUR"})
+        assert exc_info.value.project_id == "proj-1"
+
+        # Fail-closed: the rejected EUR increment must NOT have
+        # mutated the durable aggregate.  After the exception, the
+        # row must still match the first-write state -- otherwise a
+        # retry (or a currency reconfiguration) would double-count
+        # the offending entry.
+        after = await repo.get("proj-1")
+        assert after is not None
+        assert after.currency == "USD"
+        assert after.total_cost == pytest.approx(1.0)
+        assert after.total_input_tokens == 10
+        assert after.total_output_tokens == 5
+        assert after.record_count == 1
 
     async def test_get_raises_query_error_on_db_failure(
         self,
@@ -151,7 +182,7 @@ class TestSQLiteProjectCostAggregateRepository:
             ),
             pytest.raises(QueryError),
         ):
-            await repo.increment("proj-1", 1.0, 100, 50)
+            await repo.increment("proj-1", 1.0, 100, 50, currency="USD")
 
     @pytest.mark.parametrize(
         ("cost", "input_tokens", "output_tokens"),
@@ -179,4 +210,6 @@ class TestSQLiteProjectCostAggregateRepository:
     ) -> None:
         repo = SQLiteProjectCostAggregateRepository(migrated_db)
         with pytest.raises(ValueError, match="non-negative"):
-            await repo.increment("proj-1", cost, input_tokens, output_tokens)
+            await repo.increment(
+                "proj-1", cost, input_tokens, output_tokens, currency="USD"
+            )

@@ -22,6 +22,7 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.config import BudgetConfig  # noqa: TC001
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -198,6 +199,14 @@ def _build_summaries(
 
     Returns:
         Tuple of (daily summaries sorted chronologically, period summary).
+
+    Raises:
+        MixedCurrencyAggregationError: If the records span more than
+            one currency, or if any record's currency does not match
+            the requested ``currency``.  Cost summation across
+            currencies is meaningless without an FX policy and is
+            rejected at the aggregator boundary -- the caller must
+            scope the query to a single-currency window.
     """
     if not records:
         return (), PeriodSummary(
@@ -206,6 +215,26 @@ def _build_summaries(
             total_output_tokens=0,
             record_count=0,
             currency=currency,
+        )
+
+    record_currencies = {r.currency for r in records}
+    if len(record_currencies) > 1 or next(iter(record_currencies)) != currency:
+        sorted_record_currencies = sorted(record_currencies)
+        logger.warning(
+            API_VALIDATION_FAILED,
+            reason="mixed_currency_aggregation",
+            scope="budget_summary",
+            requested_currency=currency,
+            record_currencies=sorted_record_currencies,
+            record_count=len(records),
+        )
+        msg = (
+            f"Cost records span currencies {sorted_record_currencies}; "
+            f"summary requested in {currency!r}"
+        )
+        raise MixedCurrencyAggregationError(
+            msg,
+            currencies=frozenset(record_currencies | {currency}),
         )
 
     by_day: dict[str, list[CostRecord]] = defaultdict(list)

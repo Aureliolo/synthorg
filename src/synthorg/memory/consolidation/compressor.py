@@ -12,6 +12,15 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from uuid import uuid4
 
+from synthorg.budget.call_category import LLMCallCategory
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.prompt_safety import (
+    TAG_TASK_DATA,
+    TAG_TOOL_RESULT,
+    TAG_UNTRUSTED_ARTIFACT,
+    untrusted_content_directive,
+    wrap_untrusted,
+)
 from synthorg.memory.consolidation.models import (
     CompressedExperience,
 )
@@ -21,11 +30,12 @@ from synthorg.observability.events.consolidation import (
     EXPERIENCE_COMPRESSED,
     EXPERIENCE_COMPRESSION_FAILED,
 )
+from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 
 if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
+    from synthorg.budget.tracker import CostTracker
     from synthorg.memory.consolidation.config import (
         ExperienceCompressorConfig,
     )
@@ -94,7 +104,10 @@ Focus on:
 
 Be concise. Each decision should be one sentence. \
 Each context should describe when the lesson applies.
-"""
+
+""" + untrusted_content_directive(
+    (TAG_TASK_DATA, TAG_TOOL_RESULT, TAG_UNTRUSTED_ARTIFACT)
+)
 
 _COMPRESSOR_VERSION = "llm-v1"
 
@@ -117,10 +130,12 @@ class LLMExperienceCompressor:
         provider: CompletionProvider,
         model: NotBlankStr,
         config: ExperienceCompressorConfig,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         self._provider = provider
         self._model = model
         self._config = config
+        self._cost_tracker = cost_tracker
 
     async def compress(  # noqa: PLR0912, PLR0913, PLR0915, C901
         self,
@@ -176,20 +191,33 @@ class LLMExperienceCompressor:
             raw_artifact_parts.extend(reasoning_trace)
         raw_len = sum(len(part) for part in raw_artifact_parts)
 
+        # SEC-1: every untrusted field is wrapped in its tag so the
+        # compressor model treats them as data.  ``prompt`` is the
+        # operator-supplied task content; ``output`` and
+        # ``verification_feedback`` may carry adversarial peer/tool
+        # output; ``reasoning_trace`` carries arbitrary intermediate
+        # tool outputs; ``memory_context`` is prior memories that may
+        # have been seeded by attacker-influenced traces.
         user_parts = [
-            f"## Prompt\n{prompt}",
-            f"## Output\n{output}",
+            f"## Prompt\n{wrap_untrusted(TAG_TASK_DATA, prompt)}",
+            f"## Output\n{wrap_untrusted(TAG_UNTRUSTED_ARTIFACT, output)}",
         ]
         if verification_feedback:
             user_parts.append(
-                f"## Verification\n{verification_feedback}",
+                "## Verification\n"
+                + wrap_untrusted(TAG_UNTRUSTED_ARTIFACT, verification_feedback),
             )
         if reasoning_trace:
             trace_text = "\n".join(f"- {step}" for step in reasoning_trace)
-            user_parts.append(f"## Reasoning\n{trace_text}")
+            user_parts.append(
+                f"## Reasoning\n{wrap_untrusted(TAG_TOOL_RESULT, trace_text)}"
+            )
         if memory_context:
             context_text = "\n".join(f"- {m.content[:200]}" for m in memory_context[:5])
-            user_parts.append(f"## Memory Context\n{context_text}")
+            user_parts.append(
+                "## Memory Context\n"
+                + wrap_untrusted(TAG_UNTRUSTED_ARTIFACT, context_text),
+            )
 
         user_content = "\n\n".join(user_parts)
 
@@ -206,11 +234,17 @@ class LLMExperienceCompressor:
             max_tokens=self._config.max_tokens,
         )
         try:
-            response = await self._provider.complete(
-                messages,
-                self._model,
-                config=completion_config,
-            )
+            async with cost_recording_scope(
+                cost_tracker=self._cost_tracker,
+                agent_id=agent_id,
+                task_id=NotBlankStr(f"system:memory:compress:{source_artifact_ids[0]}"),
+                call_category=LLMCallCategory.SYSTEM,
+            ):
+                response = await self._provider.complete(
+                    messages,
+                    self._model,
+                    config=completion_config,
+                )
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:

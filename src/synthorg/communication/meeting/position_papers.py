@@ -274,6 +274,7 @@ class PositionPapersProtocol:
                 participant_id,
                 prompt,
                 max_tokens,
+                meeting_id,
             )
             tracker.record(response.input_tokens, response.output_tokens)
 
@@ -399,6 +400,7 @@ class PositionPapersProtocol:
             synthesizer_id,
             synthesis_prompt,
             tracker.remaining,
+            meeting_id,
         )
         tracker.record(
             synthesis_response.input_tokens,

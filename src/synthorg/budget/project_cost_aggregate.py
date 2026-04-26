@@ -13,6 +13,7 @@ Protocol and expose it via ``PersistenceBackend.project_cost_aggregates``.
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+from synthorg.budget.currency import CurrencyCode  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 
@@ -20,11 +21,15 @@ class ProjectCostAggregate(BaseModel):
     """Immutable snapshot of a project's lifetime cost totals.
 
     One row per project in the ``project_cost_aggregates`` table.
-    Totals are monotonically increasing (never pruned).
+    Totals are monotonically increasing (never pruned).  Every
+    aggregate carries a single currency code; mixing currencies is
+    rejected at the repository boundary via
+    :class:`MixedCurrencyAggregationError`.
 
     Attributes:
         project_id: Unique project identifier (primary key).
-        total_cost: Accumulated cost in base currency.
+        total_cost: Accumulated cost denominated in ``currency``.
+        currency: ISO 4217 currency code for ``total_cost``.
         total_input_tokens: Accumulated input token count.
         total_output_tokens: Accumulated output token count.
         record_count: Number of cost records aggregated.
@@ -34,7 +39,13 @@ class ProjectCostAggregate(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     project_id: NotBlankStr = Field(description="Project identifier")
-    total_cost: float = Field(ge=0.0, description="Accumulated cost")
+    total_cost: float = Field(
+        ge=0.0,
+        description="Accumulated cost denominated in ``currency``",
+    )
+    currency: CurrencyCode = Field(
+        description="ISO 4217 currency code for ``total_cost``",
+    )
     total_input_tokens: int = Field(
         ge=0,
         description="Accumulated input tokens",

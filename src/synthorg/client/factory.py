@@ -8,7 +8,6 @@ silently falls through to a no-op default.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from synthorg.client.adapters import (
     DirectAdapter,
@@ -40,22 +39,27 @@ from synthorg.observability.events.client import (
 
 logger = get_logger(__name__)
 
-if TYPE_CHECKING:
-    from synthorg.client.config import (
-        ClientPoolConfig,
-        FeedbackConfig,
-        ReportConfig,
-        RequirementGeneratorConfig,
-    )
-    from synthorg.client.protocols import (
-        ClientPoolStrategy,
-        EntryPointStrategy,
-        FeedbackStrategy,
-        ReportStrategy,
-        RequirementGenerator,
-    )
-    from synthorg.providers.protocol import CompletionProvider
-
+# Every name referenced in this module's public factory signatures
+# (``build_requirement_generator``, ``build_feedback_strategy``, etc.)
+# must resolve at runtime when downstream tooling evaluates the
+# annotations -- e.g. ``typing.get_type_hints(...)`` from API docs
+# generators or DI containers.  Keep them out of the ``TYPE_CHECKING``
+# block so the names are present in module globals.
+from synthorg.budget.tracker import CostTracker  # noqa: E402, TC001
+from synthorg.client.config import (  # noqa: E402, TC001
+    ClientPoolConfig,
+    FeedbackConfig,
+    ReportConfig,
+    RequirementGeneratorConfig,
+)
+from synthorg.client.protocols import (  # noqa: E402, TC001
+    ClientPoolStrategy,
+    EntryPointStrategy,
+    FeedbackStrategy,
+    ReportStrategy,
+    RequirementGenerator,
+)
+from synthorg.providers.protocol import CompletionProvider  # noqa: E402, TC001
 
 _GENERATOR_STRATEGIES: frozenset[str] = frozenset(
     {"template", "llm", "dataset", "hybrid", "procedural"},
@@ -125,6 +129,7 @@ def _build_llm_generator(
     *,
     provider: CompletionProvider | None,
     model: NotBlankStr | None,
+    cost_tracker: CostTracker | None,
 ) -> RequirementGenerator:
     if provider is None:
         logger.warning(
@@ -141,7 +146,11 @@ def _build_llm_generator(
         strategy=strategy,
         field="model (argument or config.llm_model)",
     )
-    return LLMGenerator(provider=provider, model=NotBlankStr(effective_model))
+    return LLMGenerator(
+        provider=provider,
+        model=NotBlankStr(effective_model),
+        cost_tracker=cost_tracker,
+    )
 
 
 def _build_dataset_generator(
@@ -179,13 +188,16 @@ def build_requirement_generator(
     *,
     provider: CompletionProvider | None = None,
     model: NotBlankStr | None = None,
+    cost_tracker: CostTracker | None = None,
 ) -> RequirementGenerator:
     """Construct a ``RequirementGenerator`` from configuration.
 
     Dispatches on ``config.strategy``:
 
     * ``template`` -> ``TemplateGenerator``
-    * ``llm`` -> ``LLMGenerator`` (requires ``provider`` + ``model``)
+    * ``llm`` -> ``LLMGenerator`` (requires ``provider`` + ``model``;
+      threads ``cost_tracker`` through so the chokepoint records each
+      generated batch).
     * ``dataset`` -> ``DatasetGenerator`` (requires ``dataset_path``)
     * ``procedural`` -> ``ProceduralGenerator``
     * ``hybrid`` is **intentionally excluded** from factory dispatch:
@@ -193,6 +205,19 @@ def build_requirement_generator(
       and has no single-argument factory, so it must be constructed
       manually. Passing ``strategy="hybrid"`` here raises
       ``UnknownStrategyError``.
+
+    Args:
+        config: Strategy + per-strategy configuration.
+        provider: LLM provider used by the ``llm`` strategy.
+            Ignored by other strategies.
+        model: Model identifier used by the ``llm`` strategy when
+            the config does not pin one.  Ignored by other strategies.
+        cost_tracker: Optional :class:`CostTracker` propagated to
+            the ``llm`` strategy so cost-recording (`CostRecord`) is
+            emitted on each generated batch.  Ignored by all other
+            strategies (template / dataset / procedural don't talk
+            to a provider).  When ``None``, the ``llm`` strategy
+            still works -- the chokepoint just stays silent.
     """
     strategy = str(config.strategy)
     if strategy == "template":
@@ -203,6 +228,7 @@ def build_requirement_generator(
             strategy,
             provider=provider,
             model=model,
+            cost_tracker=cost_tracker,
         )
     if strategy == "dataset":
         return _build_dataset_generator(config, strategy)

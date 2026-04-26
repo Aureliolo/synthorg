@@ -394,6 +394,88 @@ class TestDepartmentHealthModel:
         assert health.utilization_percent == 0.0
 
 
+# ── Currency aggregation invariant ────────────────────────────
+
+
+@pytest.mark.unit
+class TestAggregateDeptCost:
+    """Same-currency invariant in ``_aggregate_dept_cost``.
+
+    Per the budget design (``docs/design/budget.md``) and audit
+    finding 126, cost aggregation across distinct currencies is
+    rejected at the aggregator boundary -- the helper raises
+    ``MixedCurrencyAggregationError`` rather than silently summing
+    a meaningless number.
+    """
+
+    def _make_record(
+        self,
+        agent: str,
+        *,
+        currency: str = "USD",
+        cost: float = 0.10,
+    ) -> CostRecord:
+        return CostRecord(
+            agent_id=agent,
+            task_id="task-001",
+            provider="test-provider",
+            model="test-small-001",
+            input_tokens=100,
+            output_tokens=50,
+            cost=cost,
+            currency=currency,
+            timestamp=_NOW,
+        )
+
+    @pytest.mark.parametrize(
+        ("records_spec", "agent_ids", "expected"),
+        [
+            # Single-currency happy path: totals sum across same-currency records.
+            pytest.param(
+                (("a", "USD", 0.10), ("b", "USD", 0.20)),
+                frozenset({"a", "b"}),
+                {"total": 0.30, "currency": "USD"},
+                id="single-currency-aggregates",
+            ),
+            # No matching records: total=0, currency=None.
+            pytest.param(
+                (),
+                frozenset({"a"}),
+                {"total": 0.0, "currency": None},
+                id="no-records-returns-none-currency",
+            ),
+            # Mixed-currency: must raise; reuse the same harness.
+            pytest.param(
+                (("a", "USD", 0.10), ("b", "EUR", 0.10)),
+                frozenset({"a", "b"}),
+                {"raises": frozenset({"USD", "EUR"})},
+                id="mixed-currency-raises",
+            ),
+        ],
+    )
+    def test_aggregate_dept_cost(
+        self,
+        records_spec: tuple[tuple[str, str, float], ...],
+        agent_ids: frozenset[str],
+        expected: dict[str, object],
+    ) -> None:
+        from synthorg.api.controllers._department_health import _aggregate_dept_cost
+        from synthorg.budget.errors import MixedCurrencyAggregationError
+
+        records = tuple(
+            self._make_record(agent_id, currency=cur, cost=cost)
+            for agent_id, cur, cost in records_spec
+        )
+        if "raises" in expected:
+            with pytest.raises(MixedCurrencyAggregationError) as exc_info:
+                _aggregate_dept_cost(records, agent_ids, _NOW)
+            assert exc_info.value.currencies == expected["raises"]
+            return
+        total, currency, _trend = _aggregate_dept_cost(records, agent_ids, _NOW)
+        assert total == pytest.approx(expected["total"])
+        assert currency == expected["currency"]
+
+
 # ── ExceptionGroup fallback test ──────────────────────────────
 
 

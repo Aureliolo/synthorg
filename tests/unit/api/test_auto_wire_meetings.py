@@ -152,7 +152,7 @@ class TestAutoWireMeetings:
         assert result.ceremony_scheduler is None
         caller = result.meeting_orchestrator._agent_caller
         with pytest.raises(MeetingAgentCallerNotConfiguredError) as exc_info:
-            await caller("agent-1", "prompt", 100)
+            await caller("agent-1", "prompt", 100, "meeting-test")
         # Error carries agent_id and names both missing dependencies so
         # operators can act without parsing the message string.
         assert exc_info.value.agent_id == "agent-1"
@@ -206,7 +206,7 @@ class TestAutoWireMeetings:
         assert result.ceremony_scheduler is None
         caller = result.meeting_orchestrator._agent_caller
         with pytest.raises(MeetingAgentCallerNotConfiguredError) as exc_info:
-            await caller("agent-1", "prompt", 100)
+            await caller("agent-1", "prompt", 100, "meeting-test")
         assert exc_info.value.missing_dependencies == expected_missing
 
     def test_preserves_explicit_orchestrator(self) -> None:
@@ -354,7 +354,7 @@ class TestAutoWireMeetings:
         )
 
         caller = result.meeting_orchestrator._agent_caller
-        response = await caller(str(identity.id), "What is next?", 256)
+        response = await caller(str(identity.id), "What is next?", 256, "meeting-test")
 
         assert isinstance(response, AgentResponse)
         assert response.content == "I recommend a task queue."

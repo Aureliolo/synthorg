@@ -47,7 +47,9 @@ def _make_agent_caller(
         agent_id: str,
         prompt: str,
         max_tokens: int,
+        meeting_id: str,
     ) -> AgentResponse:
+        del meeting_id
         call_counts.setdefault(agent_id, 0)
         idx = call_counts[agent_id]
         call_counts[agent_id] += 1
@@ -358,7 +360,9 @@ class TestErrorRecovery:
             agent_id: str,
             prompt: str,
             max_tokens: int,
+            meeting_id: str,
         ) -> AgentResponse:
+            del agent_id, prompt, max_tokens, meeting_id
             msg = "Connection refused"
             raise RuntimeError(msg)
 
@@ -388,7 +392,9 @@ class TestErrorRecovery:
             agent_id: str,
             prompt: str,
             max_tokens: int,
+            meeting_id: str,
         ) -> AgentResponse:
+            del agent_id, prompt, max_tokens, meeting_id
             msg = "timeout"
             raise RuntimeError(msg)
 

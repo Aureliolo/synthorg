@@ -1,5 +1,7 @@
 """Approvals controller -- human approval queue CRUD."""
 
+import asyncio
+import math
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Annotated, Any
@@ -53,6 +55,7 @@ from synthorg.observability.events.api import (
     API_APPROVAL_CREATED,
     API_APPROVAL_PUBLISH_FAILED,
     API_RESOURCE_NOT_FOUND,
+    API_SETTINGS_BACKEND_RECOVERED,
     API_VALIDATION_FAILED,
 )
 from synthorg.observability.events.security import (
@@ -60,11 +63,99 @@ from synthorg.observability.events.security import (
     SECURITY_APPROVAL_REJECTED,
     SECURITY_AUTH_FAILED,
 )
+from synthorg.settings.enums import SettingNamespace
 
 logger = get_logger(__name__)
 
-_URGENCY_CRITICAL_SECONDS: float = 3600.0
-_URGENCY_HIGH_SECONDS: float = 14400.0
+_URGENCY_CRITICAL_FALLBACK_SECONDS: float = 3600.0
+_URGENCY_HIGH_FALLBACK_SECONDS: float = 14400.0
+
+
+_urgency_threshold_fallback_logged: bool = False
+
+
+def _urgency_thresholds_fallback(reason: str) -> tuple[float, float]:
+    """Log the fallback warning once and return the registry defaults.
+
+    Idempotent: only the first transition into the fallback state
+    emits a log line, so a flapping settings backend doesn't spam.
+    """
+    global _urgency_threshold_fallback_logged  # noqa: PLW0603
+    if not _urgency_threshold_fallback_logged:
+        logger.warning(
+            API_VALIDATION_FAILED,
+            error=reason,
+            critical_fallback=_URGENCY_CRITICAL_FALLBACK_SECONDS,
+            high_fallback=_URGENCY_HIGH_FALLBACK_SECONDS,
+        )
+        _urgency_threshold_fallback_logged = True
+    return _URGENCY_CRITICAL_FALLBACK_SECONDS, _URGENCY_HIGH_FALLBACK_SECONDS
+
+
+def _validate_urgency_thresholds(
+    critical: float,
+    high: float,
+) -> tuple[float, float]:
+    """Validate resolved thresholds and emit the recovery log on success.
+
+    Thresholds must be non-negative, finite, and ordered
+    (``critical < high``); otherwise the urgency bucketing would
+    misclassify every approval (a ``critical=high=0`` setting would
+    mark everything as ``CRITICAL``).  Invalid values are treated
+    identically to a backend outage so the fallback log fires and
+    recovery is still possible.
+    """
+    global _urgency_threshold_fallback_logged  # noqa: PLW0603
+    if (
+        not (math.isfinite(critical) and math.isfinite(high))
+        or critical < 0
+        or high < 0
+        or critical >= high
+    ):
+        return _urgency_thresholds_fallback(
+            "approval urgency thresholds are invalid"
+            " (require 0 <= critical < high, both finite);"
+            " using fallback"
+        )
+    if _urgency_threshold_fallback_logged:
+        logger.info(
+            API_SETTINGS_BACKEND_RECOVERED,
+            setting="approval_urgency_thresholds",
+            critical_seconds=critical,
+            high_seconds=high,
+        )
+        _urgency_threshold_fallback_logged = False
+    return critical, high
+
+
+async def _resolve_urgency_thresholds(app_state: AppState) -> tuple[float, float]:
+    """Read approval urgency thresholds from the settings backend.
+
+    Falls back to the registry defaults (3600s critical / 14400s high)
+    if the settings backend is unavailable.  Per-process log-once so a
+    flapping settings backend does not spam the logs.
+    """
+    if not app_state.has_config_resolver:
+        return _urgency_thresholds_fallback(
+            "no config resolver available; using approval urgency threshold fallbacks"
+        )
+    try:
+        critical = await app_state.config_resolver.get_float(
+            SettingNamespace.API.value, "approval_urgency_critical_seconds"
+        )
+        high = await app_state.config_resolver.get_float(
+            SettingNamespace.API.value, "approval_urgency_high_seconds"
+        )
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        return _urgency_thresholds_fallback(
+            "failed to resolve approval urgency thresholds;"
+            f" using fallback ({type(exc).__name__})"
+        )
+    return _validate_urgency_thresholds(critical, high)
 
 
 class UrgencyLevel(StrEnum):
@@ -104,12 +195,23 @@ def _to_approval_response(
     item: ApprovalItem,
     *,
     now: datetime,
+    urgency_critical_seconds: float,
+    urgency_high_seconds: float,
 ) -> ApprovalResponse:
     """Convert an ApprovalItem to an ApprovalResponse with urgency fields.
 
     Args:
         item: The domain-layer approval item.
         now: Reference timestamp for computing seconds remaining.
+        urgency_critical_seconds: Threshold below which urgency is
+            ``CRITICAL`` (resolved per-request from the settings
+            backend; falls back to the registry default).
+        urgency_high_seconds: Threshold below which urgency is
+            ``HIGH``.  Operators must satisfy
+            ``urgency_critical_seconds < urgency_high_seconds``; the
+            startup invariant validator
+            (``lifecycle_helpers._validate_approval_urgency_invariant``)
+            blocks bad combinations before traffic arrives.
 
     Returns:
         Response DTO with computed ``seconds_remaining`` and ``urgency_level``.
@@ -119,9 +221,13 @@ def _to_approval_response(
         urgency = UrgencyLevel.NO_EXPIRY
     else:
         seconds_remaining = max(0.0, (item.expires_at - now).total_seconds())
-        if seconds_remaining < _URGENCY_CRITICAL_SECONDS:
+        # Inclusive comparisons: the settings contract is "at or below"
+        # so a TTL exactly at the configured threshold is included in
+        # the corresponding bucket (CRITICAL or HIGH) rather than spilling
+        # into the next-laxer bucket.
+        if seconds_remaining <= urgency_critical_seconds:
             urgency = UrgencyLevel.CRITICAL
-        elif seconds_remaining < _URGENCY_HIGH_SECONDS:
+        elif seconds_remaining <= urgency_high_seconds:
             urgency = UrgencyLevel.HIGH
         else:
             urgency = UrgencyLevel.NORMAL
@@ -425,7 +531,16 @@ class ApprovalsController(Controller):
             secret=app_state.cursor_secret,
         )
         now = datetime.now(UTC)
-        enriched = tuple(_to_approval_response(i, now=now) for i in page)
+        critical_seconds, high_seconds = await _resolve_urgency_thresholds(app_state)
+        enriched = tuple(
+            _to_approval_response(
+                i,
+                now=now,
+                urgency_critical_seconds=critical_seconds,
+                urgency_high_seconds=high_seconds,
+            )
+            for i in page
+        )
         return PaginatedResponse(data=enriched, pagination=meta)
 
     @get("/{approval_id:str}", guards=[require_read_access])
@@ -448,7 +563,15 @@ class ApprovalsController(Controller):
         """
         app_state: AppState = state.app_state
         item = await _get_approval_or_404(app_state, approval_id)
-        return ApiResponse(data=_to_approval_response(item, now=datetime.now(UTC)))
+        critical_seconds, high_seconds = await _resolve_urgency_thresholds(app_state)
+        return ApiResponse(
+            data=_to_approval_response(
+                item,
+                now=datetime.now(UTC),
+                urgency_critical_seconds=critical_seconds,
+                urgency_high_seconds=high_seconds,
+            )
+        )
 
     @post(
         guards=[
@@ -522,7 +645,15 @@ class ApprovalsController(Controller):
             action_type=item.action_type,
             risk_level=item.risk_level.value,
         )
-        return ApiResponse(data=_to_approval_response(item, now=now))
+        critical_seconds, high_seconds = await _resolve_urgency_thresholds(app_state)
+        return ApiResponse(
+            data=_to_approval_response(
+                item,
+                now=now,
+                urgency_critical_seconds=critical_seconds,
+                urgency_high_seconds=high_seconds,
+            )
+        )
 
     @post(
         "/{approval_id:str}/approve",
@@ -581,7 +712,15 @@ class ApprovalsController(Controller):
             ws_event=WsEventType.APPROVAL_APPROVED,
         )
 
-        return ApiResponse(data=_to_approval_response(saved, now=now))
+        critical_seconds, high_seconds = await _resolve_urgency_thresholds(app_state)
+        return ApiResponse(
+            data=_to_approval_response(
+                saved,
+                now=now,
+                urgency_critical_seconds=critical_seconds,
+                urgency_high_seconds=high_seconds,
+            )
+        )
 
     @post(
         "/{approval_id:str}/reject",
@@ -640,4 +779,12 @@ class ApprovalsController(Controller):
             ws_event=WsEventType.APPROVAL_REJECTED,
         )
 
-        return ApiResponse(data=_to_approval_response(saved, now=now))
+        critical_seconds, high_seconds = await _resolve_urgency_thresholds(app_state)
+        return ApiResponse(
+            data=_to_approval_response(
+                saved,
+                now=now,
+                urgency_critical_seconds=critical_seconds,
+                urgency_high_seconds=high_seconds,
+            )
+        )

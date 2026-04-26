@@ -88,7 +88,10 @@ class TestRerankPromptContract:
             model="test-small-001",
             cache=None,
         )
-        query = cast(RetrievalQuery, SimpleNamespace(text="needle"))
+        query = cast(
+            RetrievalQuery,
+            SimpleNamespace(text="needle", agent_id="test-agent"),
+        )
         candidates = (
             cast(
                 RetrievalCandidate,

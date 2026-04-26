@@ -27,13 +27,15 @@ from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TOOL_ARGUMENTS,
     untrusted_content_directive,
     wrap_untrusted,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_LLM_EVAL_COMPLETE,
     SECURITY_LLM_EVAL_CROSS_FAMILY,
@@ -43,6 +45,7 @@ from synthorg.observability.events.security import (
     SECURITY_LLM_EVAL_START,
     SECURITY_LLM_EVAL_TIMEOUT,
 )
+from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.family import get_family, providers_excluding_family
 from synthorg.providers.models import ChatMessage, CompletionConfig, ToolDefinition
@@ -62,6 +65,7 @@ from synthorg.security.models import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from synthorg.budget.tracker import CostTracker
     from synthorg.config.schema import ProviderConfig
     from synthorg.providers.base import BaseCompletionProvider
     from synthorg.providers.models import CompletionResponse
@@ -165,10 +169,12 @@ class LlmSecurityEvaluator:
         provider_registry: ProviderRegistry,
         provider_configs: Mapping[str, ProviderConfig],
         config: LlmFallbackConfig,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         self._registry = provider_registry
         self._configs = provider_configs
         self._config = config
+        self._cost_tracker = cost_tracker
 
     async def evaluate(
         self,
@@ -240,19 +246,38 @@ class LlmSecurityEvaluator:
         ``SecurityVerdict`` (from error policy) on failure.
         """
         messages = self._build_messages(context)
+        # Per-task task_id when the calling context carries one so
+        # cost rollups split per evaluated task instead of collapsing
+        # every security evaluation into one synthetic bucket.  Falls
+        # back to the synthetic id for callers that don't set
+        # ``context.task_id`` (rare -- most paths attribute through).
+        scope_task_id = (
+            context.task_id
+            if context.task_id is not None
+            else NotBlankStr("system:security:llm_evaluator")
+        )
+        scope_agent_id = (
+            context.agent_id if context.agent_id is not None else NotBlankStr("system")
+        )
         try:
-            return await asyncio.wait_for(
-                driver.complete(
-                    messages,
-                    model,
-                    tools=[_SECURITY_VERDICT_TOOL],
-                    config=CompletionConfig(
-                        temperature=0.0,
-                        max_tokens=256,
+            async with cost_recording_scope(
+                cost_tracker=self._cost_tracker,
+                agent_id=scope_agent_id,
+                task_id=scope_task_id,
+                call_category=LLMCallCategory.SYSTEM,
+            ):
+                return await asyncio.wait_for(
+                    driver.complete(
+                        messages,
+                        model,
+                        tools=[_SECURITY_VERDICT_TOOL],
+                        config=CompletionConfig(
+                            temperature=0.0,
+                            max_tokens=256,
+                        ),
                     ),
-                ),
-                timeout=self._config.timeout_seconds,
-            )
+                    timeout=self._config.timeout_seconds,
+                )
         except TimeoutError:
             return self._on_llm_timeout(context, rule_verdict, start)
         except MemoryError, RecursionError:
@@ -293,12 +318,16 @@ class LlmSecurityEvaluator:
     ) -> SecurityVerdict:
         """Handle unexpected LLM call errors."""
         duration_ms = (time.monotonic() - start) * 1000
-        logger.exception(
+        # SEC-1: use ``logger.warning`` + ``safe_error_description``
+        # instead of ``logger.exception`` so we don't emit a traceback
+        # that could leak credential-bearing locals (provider auth
+        # headers, request bodies) on this credential-bearing path.
+        logger.warning(
             SECURITY_LLM_EVAL_ERROR,
             tool_name=context.tool_name,
             duration_ms=duration_ms,
             error_type=type(exc).__name__,
-            error_message=str(exc),
+            error=safe_error_description(exc),
         )
         return self._apply_error_policy(
             rule_verdict,

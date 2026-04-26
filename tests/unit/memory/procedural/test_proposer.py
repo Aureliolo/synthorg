@@ -153,13 +153,18 @@ class TestProceduralMemoryProposer:
         assert "LLM timeout after 30s" in user_msg
 
     async def test_user_message_has_structural_delimiters(self) -> None:
-        """Structural delimiters prevent prompt injection."""
+        """SEC-1 fences prevent prompt injection in proposer payloads."""
         proposer, provider = _make_proposer()
         await proposer.propose(_make_payload())
 
         user_msg = provider.complete.call_args[0][0][1].content
-        assert "[BEGIN FAILURE CONTEXT]" in user_msg
-        assert "[END FAILURE CONTEXT]" in user_msg
+        # SEC-1: untrusted task fields are wrapped in ``<task-data>``
+        # and tool-call summaries in ``<tool-result>``; the system
+        # prompt carries the matching directive.
+        assert "<task-data>" in user_msg
+        assert "</task-data>" in user_msg
+        assert "<tool-result>" in user_msg
+        assert "</tool-result>" in user_msg
 
     async def test_low_confidence_returns_none(self) -> None:
         response = _make_response(_LOW_CONFIDENCE_JSON)
@@ -327,4 +332,8 @@ class TestBuildUserMessage:
         payload = _make_payload(tool_calls_made=())
         msg = _build_user_message(payload)
 
-        assert "Tools used: none" in msg
+        # The empty tool list still appears under the
+        # ``## Tool calls made`` heading; the literal "none" is
+        # wrapped inside a ``<tool-result>`` fence per SEC-1.
+        assert "## Tool calls made" in msg
+        assert "<tool-result>\nnone\n</tool-result>" in msg

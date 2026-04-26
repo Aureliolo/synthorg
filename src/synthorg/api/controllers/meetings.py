@@ -1,5 +1,6 @@
 """Meeting controller -- list, get, and trigger meetings."""
 
+import asyncio
 from typing import Annotated, Self
 
 from litestar import Controller, get, post
@@ -13,22 +14,102 @@ from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.communication.meeting.enums import MeetingStatus  # noqa: TC001
 from synthorg.communication.meeting.models import MeetingRecord
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_MEETING_TRIGGERED,
+    API_SETTINGS_BACKEND_RECOVERED,
     API_VALIDATION_FAILED,
 )
 from synthorg.observability.events.meeting import MEETING_NOT_FOUND
+from synthorg.settings.enums import SettingNamespace
 
 logger = get_logger(__name__)
 
-_MAX_CONTEXT_KEYS: int = 20
+# Fallback used only when the settings backend is unavailable; the
+# authoritative cap is ``api.max_meeting_context_keys``, resolved
+# per-request in ``trigger_meeting``.
+_MAX_CONTEXT_KEYS_FALLBACK: int = 20
 _MAX_CONTEXT_KEY_LEN: int = 256
 _MAX_CONTEXT_VAL_LEN: int = 1024
 _MAX_CONTEXT_LIST_ITEMS: int = 50
+
+
+_meeting_context_cap_fallback_logged: bool = False
+
+
+async def _resolve_max_context_keys(app_state: AppState) -> int:
+    """Read the ``api.max_meeting_context_keys`` setting at request time.
+
+    Falls back to ``_MAX_CONTEXT_KEYS_FALLBACK`` (20) when the settings
+    backend is unavailable.  Per-process log-once so a flapping settings
+    backend does not spam the logs.
+    """
+    global _meeting_context_cap_fallback_logged  # noqa: PLW0603
+    if not app_state.has_config_resolver:
+        # Treat absent resolver as a fallback path identical to the
+        # except-branch below: log once on first observation so
+        # operators see the gap, and arm the recovery log so it fires
+        # the moment a resolver becomes available.
+        if not _meeting_context_cap_fallback_logged:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                error=(
+                    "no config resolver available;"
+                    " using max_meeting_context_keys fallback"
+                ),
+                cap=_MAX_CONTEXT_KEYS_FALLBACK,
+            )
+            _meeting_context_cap_fallback_logged = True
+        return _MAX_CONTEXT_KEYS_FALLBACK
+    try:
+        result: int = await app_state.config_resolver.get_int(
+            SettingNamespace.API.value, "max_meeting_context_keys"
+        )
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        if not _meeting_context_cap_fallback_logged:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                error=(
+                    "failed to resolve max_meeting_context_keys;"
+                    f" using fallback ({type(exc).__name__})"
+                ),
+                cap=_MAX_CONTEXT_KEYS_FALLBACK,
+            )
+            _meeting_context_cap_fallback_logged = True
+        return _MAX_CONTEXT_KEYS_FALLBACK
+    if result < 0:
+        # Negative caps are nonsensical: ``len(context) > cap`` would
+        # always be ``True`` and reject every payload.  Treat as a
+        # backend misconfiguration and fall back so operators can
+        # recover by fixing the setting.
+        if not _meeting_context_cap_fallback_logged:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                error=(
+                    "max_meeting_context_keys resolved to a negative value;"
+                    " using fallback"
+                ),
+                resolved=result,
+                cap=_MAX_CONTEXT_KEYS_FALLBACK,
+            )
+            _meeting_context_cap_fallback_logged = True
+        return _MAX_CONTEXT_KEYS_FALLBACK
+    if _meeting_context_cap_fallback_logged:
+        logger.info(
+            API_SETTINGS_BACKEND_RECOVERED,
+            setting="max_meeting_context_keys",
+            cap=result,
+        )
+        _meeting_context_cap_fallback_logged = False
+    return result
 
 
 class TriggerMeetingRequest(BaseModel):
@@ -51,10 +132,14 @@ class TriggerMeetingRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_context_bounds(self) -> Self:
-        """Limit context size to prevent abuse."""
-        if len(self.context) > _MAX_CONTEXT_KEYS:
-            msg = f"context must have at most {_MAX_CONTEXT_KEYS} keys"
-            raise ValueError(msg)
+        """Validate per-key and per-value lengths.
+
+        The aggregate ``len(context) <= max_meeting_context_keys`` cap
+        is enforced controller-side in ``trigger_meeting`` so operators
+        can tune it via the ``api.max_meeting_context_keys`` setting
+        without code changes.  This validator only checks per-key /
+        per-value invariants which are static.
+        """
         for k, v in self.context.items():
             if len(k) > _MAX_CONTEXT_KEY_LEN:
                 msg = f"context key must be at most {_MAX_CONTEXT_KEY_LEN} characters"
@@ -258,6 +343,9 @@ class MeetingController(Controller):
             Tuple of meeting responses for all triggered meetings.
 
         Raises:
+            ApiValidationError: If ``data.context`` exceeds the
+                operator-configured key cap
+                (``api.max_meeting_context_keys``).
             ServiceUnavailableError: Raised by the
                 ``app_state.meeting_scheduler`` property (503) when the
                 scheduler was not auto-wired -- happens in the degraded
@@ -265,10 +353,21 @@ class MeetingController(Controller):
                 must provide the agent and provider registries before
                 meetings can be triggered.
         """
+        app_state: AppState = state.app_state
+        max_keys = await _resolve_max_context_keys(app_state)
+        if len(data.context) > max_keys:
+            msg = f"context must have at most {max_keys} keys"
+            logger.warning(
+                API_VALIDATION_FAILED,
+                field="context",
+                actual_keys=len(data.context),
+                max_keys=max_keys,
+            )
+            raise ApiValidationError(msg)
         # ``app_state.meeting_scheduler`` raises ServiceUnavailableError
         # when the scheduler is ``None`` (degraded mode), so this
         # endpoint fails with a clean 503 rather than AttributeError.
-        scheduler = state.app_state.meeting_scheduler
+        scheduler = app_state.meeting_scheduler
         records = await scheduler.trigger_event(
             data.event_name,
             context=data.context,

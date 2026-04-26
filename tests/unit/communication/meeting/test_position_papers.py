@@ -312,8 +312,9 @@ class TestPositionPapersInjectionDefense:
             agent_id: str,
             prompt: str,
             max_tokens: int,
+            meeting_id: str,
         ) -> AgentResponse:
-            del max_tokens
+            del max_tokens, meeting_id
             captured.append((agent_id, prompt))
             if agent_id == "agent-a":
                 content = attacker_payload

@@ -494,8 +494,9 @@ class TestStructuredPhasesInjectionDefense:
             agent_id: str,
             prompt: str,
             max_tokens: int,
+            meeting_id: str,
         ) -> AgentResponse:
-            del max_tokens
+            del max_tokens, meeting_id
             captured.append((agent_id, prompt))
             if agent_id == "agent-a":
                 content = attacker_payload
@@ -551,8 +552,9 @@ class TestStructuredPhasesInjectionDefense:
             agent_id: str,
             prompt: str,
             max_tokens: int,
+            meeting_id: str,
         ) -> AgentResponse:
-            del max_tokens
+            del max_tokens, meeting_id
             captured.append((agent_id, prompt))
             call_counts[agent_id] = call_counts.get(agent_id, 0) + 1
             if agent_id == "agent-a" and call_counts[agent_id] == 2:
