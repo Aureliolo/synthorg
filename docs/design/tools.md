@@ -35,7 +35,7 @@ exception for one, `ExceptionGroup` for multiple).
 
 **Permission checking** follows a priority-based system:
 
-1. `get_permitted_definitions()` filters tool definitions sent to the LLM -- the agent only
+1. `get_permitted_definitions()` filters tool definitions sent to the LLM; the agent only
    sees tools it is permitted to use
 2. At invocation time, denied tools return `ToolResult(is_error=True)` with a descriptive
    denial reason (defense-in-depth against LLM hallucinating unpresented tools)
@@ -114,13 +114,13 @@ individual tools additionally require a runtime dependency (e.g. image tools
 require an ``ImageProvider``, notification tools require a dispatcher, analytics
 query/metric tools require a provider or sink).
 
-Docker is optional -- only required when code execution, terminal, web, or database tools are
+Docker is optional; only required when code execution, terminal, web, or database tools are
 enabled. File system and git tools work out of the box with subprocess isolation. This keeps
 the local-first experience lightweight while providing strong isolation where it matters.
 
 Docker MVP uses `aiodocker` (async-native) with a pre-built image
 (Python 3.14 + Node.js LTS + basic utils, <500MB). If Docker is unavailable, the framework
-fails with a clear error -- no unsafe subprocess fallback for code execution
+fails with a clear error; no unsafe subprocess fallback for code execution
 ([Decision Log](../architecture/decisions.md) D16).
 
 ### Container Log Shipping
@@ -150,14 +150,14 @@ redaction.  Configuration lives on `LogConfig.container_log_shipping`
 !!! info "Scaling Path"
 
     In a future Kubernetes deployment, each agent can run in its own pod via
-    `K8sSandbox`. At that point, the layered configuration becomes less relevant -- all tools
+    `K8sSandbox`. At that point, the layered configuration becomes less relevant; all tools
     execute within the agent's isolated pod. The `SandboxBackend` protocol makes this
     transition seamless.
 
 ### Sandbox Lifecycle Strategies
 
-Container lifecycle isolation -- when to create, reuse, or destroy sandbox containers
--- is configurable via the pluggable `SandboxLifecycleStrategy` protocol
+Container lifecycle isolation (when to create, reuse, or destroy sandbox containers)
+is configurable via the pluggable `SandboxLifecycleStrategy` protocol
 (`src/synthorg/tools/sandbox/lifecycle/protocol.py`). Three built-in strategies control
 the trade-off between resource efficiency and isolation:
 
@@ -173,7 +173,7 @@ together, since they share a network namespace).
 
 > **Status**: The lifecycle protocol, config, factory, and three strategy
 > implementations are complete. Integration into `DockerSandbox.execute()` is
-> in progress -- the `owner_id` parameter is accepted and the config field is
+> in progress; the `owner_id` parameter is accepted and the config field is
 > wired, but the Docker backend does not yet dispatch to the lifecycle strategy.
 > Until wired, all executions use the current per-call ephemeral behaviour.
 
@@ -261,83 +261,83 @@ Shared handler infrastructure lives in three sibling modules under
 `src/synthorg/meta/mcp/handlers/`. The split keeps each module focused
 on one concern and below the 800-line file ceiling.
 
-**`common.py`** -- response envelopes, pagination output, guardrails,
+**`common.py`**: response envelopes, pagination output, guardrails,
 placeholder factories:
 
-- `ok(data, *, pagination=None)` -- success envelope with optional
+- `ok(data, *, pagination=None)`: success envelope with optional
   `PaginationMeta` metadata (frozen Pydantic model, `allow_inf_nan=False`).
-- `err(exc, *, domain_code=None)` -- error envelope; `message` always goes
+- `err(exc, *, domain_code=None)`: error envelope; `message` always goes
   through `safe_error_description(exc)` (SEC-1) and `domain_code` falls back
   to `exc.domain_code` when present.
-- `not_supported(tool_name, reason)` -- stable `status="error"` /
+- `not_supported(tool_name, reason)`: stable `status="error"` /
   `domain_code="not_supported"` envelope for tools whose service facade is
   not yet wired. Emits the `MCP_HANDLER_NOT_IMPLEMENTED` WARNING event so
   operators can alert on unwired tools. After META-MCP-2 every tool is
   wired, so this path only fires for tools registered after PR1 that have
   not yet been given a concrete handler.
-- `service_fallback(tool_name, reason)` -- helper retained in `common.py`
+- `service_fallback(tool_name, reason)`: helper retained in `common.py`
   for future surgical use. Emits `MCP_HANDLER_SERVICE_FALLBACK`;
   META-MCP-2 removed every call site and the integration sweep at
   `tests/integration/mcp/test_tool_surface.py` asserts zero emissions of
   this event across the full 204-tool surface.
-- `capability_gap(tool_name, reason)` -- live handler whose underlying
+- `capability_gap(tool_name, reason)`: live handler whose underlying
   primitive does not yet expose the required method (e.g. agent
   `activity_feed`, memory fine-tune orchestrator on a backend that
   lacks fine-tune support). Identical wire envelope to `not_supported`
   (`domain_code="not_supported"`) but emits the dedicated
   `MCP_HANDLER_CAPABILITY_GAP` INFO event so ops telemetry distinguishes
   "primitive missing method" from "handler unwired".
-- `require_destructive_guardrails(arguments, actor)` -- single source of
+- `require_destructive_guardrails(arguments, actor)`: single source of
   truth for the destructive-op precondition triple: non-`None` `actor`,
   literal `confirm=True`, non-blank `reason`. Raises
   `GuardrailViolationError` with a typed `violation` code
   (`"missing_actor"` / `"missing_confirm"` / `"missing_reason"`).
-- `paginate_sequence(seq, *, offset, limit, total=None)` -- in-memory
+- `paginate_sequence(seq, *, offset, limit, total=None)`: in-memory
   page slicing that returns `(page, PaginationMeta)`.
-- `dump_many(models)` -- batch Pydantic model serialisation to
+- `dump_many(models)`: batch Pydantic model serialisation to
   JSON-mode dicts.
 
-**`common_args.py`** -- argument validators/extractors. Every helper
+**`common_args.py`**: argument validators/extractors. Every helper
 raises `ArgumentValidationError` on bad input so handlers can convert
 to a stable `err(...)` envelope without catching framework-specific
 exceptions:
 
-- `require_arg(arguments, key, ty)` -- typed required-argument extraction
+- `require_arg(arguments, key, ty)`: typed required-argument extraction
   (ruff `EM101`-safe).
-- `require_non_blank(arguments, key)` -- required non-blank string,
+- `require_non_blank(arguments, key)`: required non-blank string,
   whitespace-stripped.
-- `get_optional_str(arguments, key)` -- optional non-blank string;
+- `get_optional_str(arguments, key)`: optional non-blank string;
   returns `None` when missing/empty.
-- `require_dict(arguments, key, *, value_type=None, deep_copy=True)` --
+- `require_dict(arguments, key, *, value_type=None, deep_copy=True)`:
   required dict argument; pass `value_type=str` for `dict[str, str]`
   validation. Defaults to deep-copying the input to decouple handler
   mutations from caller payload.
-- `parse_time_window(arguments, *, until_required=True)` -- ISO 8601
+- `parse_time_window(arguments, *, until_required=True)`: ISO 8601
   since/until parsing with timezone-aware enforcement and
   `since < until` ordering.
-- `parse_str_sequence(arguments, key)` -- optional sequence-of-non-blank-strings.
-- `coerce_pagination(arguments, *, default_limit=50)` -- offset/limit
+- `parse_str_sequence(arguments, key)`: optional sequence-of-non-blank-strings.
+- `coerce_pagination(arguments, *, default_limit=50)`: offset/limit
   parsing with strict bounds and explicit bool rejection.
-- `actor_id(actor)` / `require_actor_id(actor)` / `actor_label(actor)`
-  -- actor identity helpers. Use `actor_id` for optional attribution,
+- `actor_id(actor)` / `require_actor_id(actor)` / `actor_label(actor)`:
+  actor identity helpers. Use `actor_id` for optional attribution,
   `require_actor_id` when attribution is mandatory (raises if
   unidentifiable), `actor_label` only for emit-only paths where a
   `"mcp-anonymous"` fallback is acceptable.
 
-**`common_logging.py`** -- the three handler-layer log helpers.
+**`common_logging.py`**: the three handler-layer log helpers.
 Module-scoped logger keyed at `synthorg.meta.mcp.handlers` so test
 assertions see a single stable event source regardless of which domain
 handler emitted the event:
 
-- `log_handler_argument_invalid(tool, exc)` -- caught
+- `log_handler_argument_invalid(tool, exc)`: caught
   `ArgumentValidationError`. Emits `MCP_HANDLER_ARGUMENT_INVALID` at
   WARNING.
-- `log_handler_invoke_failed(tool, exc, **context)` -- generic
+- `log_handler_invoke_failed(tool, exc, **context)`: generic
   `Exception` from the service layer. `**context` carries optional
   correlation ids (e.g. `task_id=`, `decision_id=`); keys that would
   shadow the canonical event fields (`tool_name`, `error_type`,
   `error`, `event`, `log_level`) are rejected with `ValueError`.
-- `log_handler_guardrail_violated(tool, exc)` -- caught
+- `log_handler_guardrail_violated(tool, exc)`: caught
   `GuardrailViolationError` from a destructive-op precondition.
   Records only the typed `violation` code; the human message stays in
   the response envelope.
@@ -377,9 +377,9 @@ hierarchy inspired by Google ADK's skill loading pattern:
 
 **Discovery tools** (always available regardless of agent access level):
 
-- `list_tools()` -- returns L1 metadata for all permitted tools
-- `load_tool(tool_name)` -- returns L2 body; marks tool as loaded in `AgentContext`
-- `load_tool_resource(tool_name, resource_id)` -- returns specific L3 resource
+- `list_tools()`: returns L1 metadata for all permitted tools
+- `load_tool(tool_name)`: returns L2 body; marks tool as loaded in `AgentContext`
+- `load_tool_resource(tool_name, resource_id)`: returns specific L3 resource
 
 **Context injection:**
 
@@ -394,8 +394,8 @@ L2 body is unloaded (FIFO by insertion order). L1 metadata remains.
 
 **Configuration** (`ToolDisclosureConfig`):
 
-- `l1_token_budget` (default 3000) -- max tokens for L1 metadata
-- `l2_token_budget` (default 15000) -- max tokens for loaded L2 bodies
+- `l1_token_budget` (default 3000): max tokens for L1 metadata
+- `l2_token_budget` (default 15000): max tokens for loaded L2 bodies
 - `auto_unload_on_budget_pressure` (default `true`)
 - `unload_threshold_percent` (default 80.0)
 
@@ -410,7 +410,7 @@ SecOps validation, tiered timeout policies, and progressive trust
 
 **Registry:** `StrEnum` for ~26 built-in action types (type safety, autocomplete, typos caught
 by static type checking and config-load-time validation) + `ActionTypeRegistry` for custom
-types via explicit registration. Unknown strings are rejected at config load time -- a typo
+types via explicit registration. Unknown strings are rejected at config load time; a typo
 in `human_approval` list silently meaning "skip approval" is a critical safety concern.
 
 **Granularity:** Two-level `category:action` hierarchy. Category shortcuts expand to all
@@ -501,7 +501,7 @@ implemented.
 === "Disabled (Default)"
 
     Trust is disabled. Agents receive their configured access level at hire time and it never
-    changes. Simplest option -- useful when the human manages permissions manually.
+    changes. Simplest option, useful when the human manages permissions manually.
 
     ```yaml
     trust:
@@ -532,7 +532,7 @@ implemented.
           requires_human_approval: true  # always human-gated
     ```
 
-    Simple model, easy to understand. One number to track. However, too coarse -- an agent
+    Simple model, easy to understand. One number to track. However, too coarse; an agent
     trusted for file edits should not auto-gain deployment access.
 
 === "Per-Category"
@@ -603,6 +603,6 @@ implemented.
 
 ## See Also
 
-- [Providers](providers.md) -- LLM abstraction and routing
-- [Security & Approval](security.md) -- autonomy tiers, approval gates, progressive trust
-- [Design Overview](index.md) -- full index
+- [Providers](providers.md): LLM abstraction and routing
+- [Security & Approval](security.md): autonomy tiers, approval gates, progressive trust
+- [Design Overview](index.md): full index
