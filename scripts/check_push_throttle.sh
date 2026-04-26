@@ -130,6 +130,16 @@ if ! [[ "${LAST_TS}" =~ ^[0-9]+$ ]]; then
     LAST_TS=0
 fi
 
+# Guard against a future-dated LAST_TS (clock rollback or
+# corrupted state). Without this, ``DELTA = NOW - LAST_TS`` is
+# negative and the ``DELTA < THROTTLE_SEC`` test below succeeds
+# trivially, blocking the push instead of failing OPEN
+# (CodeRabbit, 2026-04-26). Reset to 0 so the gate behaves as if
+# this were a first push.
+if [[ "${LAST_TS}" -gt "${NOW}" ]]; then
+    LAST_TS=0
+fi
+
 DELTA=$(( NOW - LAST_TS ))
 THROTTLE_SEC=$(( THROTTLE_MIN * 60 ))
 
