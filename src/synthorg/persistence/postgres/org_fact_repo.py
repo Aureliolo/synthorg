@@ -94,11 +94,17 @@ def _snapshot_row_to_org_fact(row: dict[str, Any]) -> OrgFact:
             author=author,
             created_at=normalize_utc(row["created_at"]),
         )
-    except (KeyError, ValueError, ValidationError, OrgMemoryQueryError) as exc:
+    except (
+        KeyError,
+        ValueError,
+        TypeError,
+        ValidationError,
+        OrgMemoryQueryError,
+    ) as exc:
         logger.warning(
             ORG_MEMORY_ROW_PARSE_FAILED,
-            error=str(exc),
             error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = f"Failed to deserialize snapshot row: {exc}"
         raise OrgMemoryQueryError(msg) from exc
@@ -129,11 +135,17 @@ def _row_to_operation_log_entry(row: dict[str, Any]) -> OperationLogEntry:
             timestamp=normalize_utc(row["timestamp"]),
             version=row["version"],
         )
-    except (KeyError, ValueError, ValidationError, OrgMemoryQueryError) as exc:
+    except (
+        KeyError,
+        ValueError,
+        TypeError,
+        ValidationError,
+        OrgMemoryQueryError,
+    ) as exc:
         logger.warning(
             ORG_MEMORY_ROW_PARSE_FAILED,
-            error=str(exc),
             error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = f"Failed to deserialize operation log row: {exc}"
         raise OrgMemoryQueryError(msg) from exc
@@ -155,11 +167,17 @@ def _row_to_snapshot(row: dict[str, Any]) -> OperationLogSnapshot:
             retracted_at=retracted_at,
             version=row["version"],
         )
-    except (KeyError, ValueError, ValidationError, OrgMemoryQueryError) as exc:
+    except (
+        KeyError,
+        ValueError,
+        TypeError,
+        ValidationError,
+        OrgMemoryQueryError,
+    ) as exc:
         logger.warning(
             ORG_MEMORY_ROW_PARSE_FAILED,
-            error=str(exc),
             error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = f"Failed to deserialize snapshot_at row: {exc}"
         raise OrgMemoryQueryError(msg) from exc

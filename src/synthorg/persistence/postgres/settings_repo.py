@@ -174,7 +174,7 @@ class PostgresSettingsRepository:
             ``True`` if the write succeeded, ``False`` if the
             compare-and-swap condition was not met.
         """
-        updated_at_dt = parse_iso_utc(updated_at)
+        updated_at_dt = self._safe_parse_iso(updated_at, namespace, key)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 if expected_updated_at is not None:
@@ -187,7 +187,11 @@ class PostgresSettingsRepository:
                             (namespace, key, value, updated_at_dt),
                         )
                     else:
-                        expected_dt = parse_iso_utc(expected_updated_at)
+                        expected_dt = self._safe_parse_iso(
+                            expected_updated_at,
+                            namespace,
+                            key,
+                        )
                         await cur.execute(
                             "UPDATE settings "
                             "SET value = %s, updated_at = %s "
@@ -290,7 +294,11 @@ class PostgresSettingsRepository:
                                 if cur.rowcount == 0:
                                     raise _CASConflict  # noqa: TRY301
                                 continue
-                            expected_dt = parse_iso_utc(expected)
+                            expected_dt = self._safe_parse_iso(
+                                expected,
+                                str(namespace),
+                                str(key),
+                            )
                             await cur.execute(
                                 "UPDATE settings "
                                 "SET value = %s, updated_at = %s "

@@ -174,7 +174,7 @@ class SQLiteRiskOverrideRepository:
         for row in rows:
             try:
                 results.append(_row_to_override(row))
-            except (ValueError, ValidationError) as exc:
+            except (ValueError, ValidationError, TypeError) as exc:
                 # Never silently drop a malformed active override:
                 # callers rely on ``list_active`` to return the full
                 # current policy set, so a partial result would be a
@@ -246,6 +246,8 @@ def _row_to_override(row: Any) -> RiskTierOverride:
         created_by=created_by,
         created_at=coerce_row_timestamp(created_at),
         expires_at=coerce_row_timestamp(expires_at),
-        revoked_at=(coerce_row_timestamp(revoked_at) if revoked_at else None),
+        revoked_at=(
+            coerce_row_timestamp(revoked_at) if revoked_at is not None else None
+        ),
         revoked_by=revoked_by,
     )

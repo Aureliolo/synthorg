@@ -20,11 +20,18 @@ from datetime import UTC, datetime
 def parse_iso_utc(value: str) -> datetime:
     """Parse an ISO 8601 string to a tz-aware UTC datetime.
 
+    Delegates to :py:meth:`datetime.datetime.fromisoformat`, which
+    accepts only numeric UTC offsets (e.g. ``+00:00``, ``-05:00``,
+    ``+01:30``) or the ``Z`` suffix (Zulu, equivalent to ``+00:00``).
+    IANA timezone names like ``Europe/Zurich`` or ``UTC`` are *not*
+    accepted by ``fromisoformat`` and will raise ``ValueError``;
+    callers that need to ingest such input must convert to an offset
+    representation first (e.g. via ``ZoneInfo`` + ``isoformat()``).
+
     Args:
-        value: An ISO 8601 string with explicit timezone information --
-            either a UTC offset (e.g. ``+00:00``, ``-05:00``), a named
-            timezone, or the ``Z`` suffix (Zulu, equivalent to
-            ``+00:00``).  Naive timestamps are rejected.
+        value: An ISO 8601 string with explicit timezone information
+            -- a numeric UTC offset (``+00:00``, ``-05:00``, ...) or
+            the ``Z`` suffix.  Naive timestamps are rejected.
 
     Returns:
         A tz-aware datetime normalized to UTC via

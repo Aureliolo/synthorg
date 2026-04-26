@@ -123,17 +123,31 @@ class TestParseIsoUtc:
 
     def test_dst_fall_back_boundary(self) -> None:
         # Europe/Zurich switches from CEST (+02:00) back to CET
-        # (+01:00) on the last Sunday of October.  ``ZoneInfo`` resolves
-        # ``01:30`` to the first occurrence (CEST) without
-        # ``fold=1``, so the UTC instant is unambiguous and the
-        # roundtrip preserves it.
+        # (+01:00) on the last Sunday of October at 03:00 local, which
+        # repeats the 02:00-02:59 hour locally.  Both ``fold=0``
+        # (the first, CEST occurrence) and ``fold=1`` (the second,
+        # CET occurrence) refer to *different* UTC instants and must
+        # both roundtrip through parse + format without collision --
+        # this is the exact contract that breaks if a future change
+        # ever drops the offset suffix or rewrites it from ``ZoneInfo``
+        # context.
         zurich = ZoneInfo("Europe/Zurich")
-        local = datetime(2026, 10, 25, 1, 30, tzinfo=zurich)
+        cest_first = datetime(2026, 10, 25, 2, 30, tzinfo=zurich, fold=0)
+        cet_second = datetime(2026, 10, 25, 2, 30, tzinfo=zurich, fold=1)
 
-        result = parse_iso_utc(local.isoformat())
+        cest_utc = parse_iso_utc(cest_first.isoformat())
+        cet_utc = parse_iso_utc(cet_second.isoformat())
 
-        assert result.tzinfo is UTC
-        assert result == parse_iso_utc(format_iso_utc(result))
+        # CEST (+02:00) at 02:30 local == 00:30 UTC; CET (+01:00) at
+        # 02:30 local == 01:30 UTC -- distinct instants exactly one
+        # hour apart.
+        assert cest_utc == datetime(2026, 10, 25, 0, 30, tzinfo=UTC)
+        assert cet_utc == datetime(2026, 10, 25, 1, 30, tzinfo=UTC)
+        assert cet_utc - cest_utc == timedelta(hours=1)
+
+        # Both branches survive the format -> parse roundtrip.
+        assert parse_iso_utc(format_iso_utc(cest_utc)) == cest_utc
+        assert parse_iso_utc(format_iso_utc(cet_utc)) == cet_utc
 
 
 @pytest.mark.unit
@@ -296,4 +310,51 @@ class TestCoerceRowTimestamp:
         result = coerce_row_timestamp(value)
 
         assert result == datetime(2026, 7, 15, 12, 0, tzinfo=UTC)
+        assert result.tzinfo is UTC
+
+    def test_iana_timezone_name_in_iso_string_rejected(self) -> None:
+        # ``datetime.fromisoformat`` only accepts numeric UTC offsets
+        # or the ``Z`` suffix -- IANA names like ``Europe/Zurich``
+        # raise ValueError.  Verify the dispatcher surfaces this
+        # cleanly instead of swallowing it.
+        with pytest.raises(ValueError, match="Invalid isoformat string"):
+            coerce_row_timestamp("2026-04-26T12:00:00 Europe/Zurich")
+
+    def test_zoneinfo_local_isoformat_roundtrip(self) -> None:
+        # ``ZoneInfo`` + ``isoformat()`` produces a numeric offset
+        # (e.g. ``+02:00``), which ``fromisoformat`` accepts.  Verify
+        # the round-trip via the dispatcher behaves exactly like the
+        # underlying ``parse_iso_utc``.
+        zurich = ZoneInfo("Europe/Zurich")
+        value = datetime(2026, 7, 15, 14, 0, tzinfo=zurich)
+
+        from_str = coerce_row_timestamp(value.isoformat())
+        from_dt = coerce_row_timestamp(value)
+
+        assert from_str == from_dt
+        assert from_str == datetime(2026, 7, 15, 12, 0, tzinfo=UTC)
+
+
+@pytest.mark.unit
+class TestParseIsoUtcDocstringContract:
+    """Regression tests for the precise grammar accepted by parse_iso_utc."""
+
+    def test_named_timezone_in_iso_string_rejected(self) -> None:
+        # The docstring explicitly excludes IANA names; protect that
+        # contract so a future refactor that swaps ``fromisoformat``
+        # for a more permissive parser would surface here.
+        with pytest.raises(ValueError, match="Invalid isoformat string"):
+            parse_iso_utc("2026-04-26T12:00:00 UTC")
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "2026-04-26T12:00:00+05:30",
+            "2026-04-26T12:00:00-08:00",
+            "2026-04-26T12:00:00+00:00",
+            "2026-04-26T12:00:00.000000+00:00",
+        ],
+    )
+    def test_numeric_offset_variants_accepted(self, value: str) -> None:
+        result = parse_iso_utc(value)
         assert result.tzinfo is UTC
