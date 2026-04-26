@@ -271,6 +271,33 @@ class TestBuildMeetingAgentCaller:
         # is always rendered -- pin that branch too.
         assert "Communication style: neutral." in system_content
 
+    async def test_system_prompt_carries_untrusted_directive(self) -> None:
+        """SEC-1 / #1596: every meeting LLM call carries the directive.
+
+        The agent_caller is the single place that renders the meeting
+        agent's system prompt.  Appending the canonical
+        ``untrusted_content_directive`` here means every protocol
+        (round_robin, structured_phases, position_papers) gets the
+        directive for free, regardless of which one built the user
+        message.
+        """
+        from synthorg.engine.prompt_safety import (
+            TAG_PEER_CONTRIBUTION,
+            TAG_TASK_DATA,
+            untrusted_content_directive,
+        )
+
+        caller, _reg, provider_registry = _build_caller(
+            identity=_identity(),
+        )
+        await caller(_AGENT_ID, "agenda", 100)
+        messages = provider_registry.get.return_value.complete.await_args.args[0]
+        system_content = messages[0].content or ""
+        expected = untrusted_content_directive(
+            (TAG_TASK_DATA, TAG_PEER_CONTRIBUTION),
+        )
+        assert expected in system_content
+
 
 class TestBuildUnconfiguredMeetingAgentCaller:
     async def test_caller_raises_with_typed_attributes(self) -> None:

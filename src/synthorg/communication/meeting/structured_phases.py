@@ -41,6 +41,10 @@ from synthorg.communication.meeting.protocol import (
     AgentCaller,  # noqa: TC001
     ConflictDetector,  # noqa: TC001
 )
+from synthorg.engine.prompt_safety import (
+    TAG_PEER_CONTRIBUTION,
+    wrap_untrusted,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.meeting import (
     MEETING_AGENT_CALLED,
@@ -72,11 +76,16 @@ def _build_conflict_check_prompt(
     agenda_text: str,
     inputs: list[tuple[str, str]],
 ) -> str:
-    """Build a prompt for the leader to check for conflicts."""
+    """Build a prompt for the leader to check for conflicts.
+
+    Each participant input is wrapped in its own ``<peer-contribution>``
+    fence (SEC-1 / #1596) so a literal closing tag in any input cannot
+    inject instructions into the leader's reasoning.
+    """
     parts = [agenda_text, "", "Participant inputs:"]
     for agent_id, content in inputs:
         parts.append(f"\n--- {agent_id} ---")
-        parts.append(content)
+        parts.append(wrap_untrusted(TAG_PEER_CONTRIBUTION, content))
     parts.append("")
     parts.append(
         "As the meeting leader, review the inputs above. "
@@ -93,12 +102,20 @@ def _build_discussion_prompt(
     conflict_analysis: str,
     agent_id: str,
 ) -> str:
-    """Build a discussion prompt for a participant."""
+    """Build a discussion prompt for a participant.
+
+    Inputs and the conflict analysis (itself the leader's prior turn
+    output) are wrapped in ``<peer-contribution>`` fences so neither
+    can inject into the discussion participant's prompt (#1596).
+    """
     parts = [agenda_text, "", "Previous inputs:"]
     for aid, content in inputs:
         parts.append(f"\n--- {aid} ---")
-        parts.append(content)
-    parts.append(f"\nConflict analysis: {conflict_analysis}")
+        parts.append(wrap_untrusted(TAG_PEER_CONTRIBUTION, content))
+    parts.append(
+        "\nConflict analysis:\n"
+        + wrap_untrusted(TAG_PEER_CONTRIBUTION, conflict_analysis),
+    )
     parts.append("")
     parts.append(
         f"{agent_id}, please respond to the conflicts identified. "
@@ -112,16 +129,21 @@ def _build_synthesis_prompt(
     inputs: list[tuple[str, str]],
     discussion: list[tuple[str, str]] | None = None,
 ) -> str:
-    """Build a synthesis prompt for the leader."""
+    """Build a synthesis prompt for the leader.
+
+    Each input and discussion contribution is wrapped in its own
+    ``<peer-contribution>`` fence so a compromised participant cannot
+    inject into the synthesis decision (#1596).
+    """
     parts = [agenda_text, "", "Participant inputs:"]
     for agent_id, content in inputs:
         parts.append(f"\n--- {agent_id} ---")
-        parts.append(content)
+        parts.append(wrap_untrusted(TAG_PEER_CONTRIBUTION, content))
     if discussion:
         parts.append("\nDiscussion contributions:")
         for agent_id, content in discussion:
             parts.append(f"\n--- {agent_id} ---")
-            parts.append(content)
+            parts.append(wrap_untrusted(TAG_PEER_CONTRIBUTION, content))
     parts.append("")
     parts.append(
         "As the meeting leader, synthesize all inputs and discussion "

@@ -33,6 +33,10 @@ from synthorg.communication.meeting.models import (
     MeetingMinutes,
 )
 from synthorg.communication.meeting.protocol import AgentCaller  # noqa: TC001
+from synthorg.engine.prompt_safety import (
+    TAG_PEER_CONTRIBUTION,
+    wrap_untrusted,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.meeting import (
     MEETING_AGENT_CALLED,
@@ -151,7 +155,15 @@ class RoundRobinProtocol:
         )
 
         turn_number = len(contributions)
-        transcript = [f"[{c.agent_id}]: {c.content}" for c in contributions]
+        # SEC-1: each transcript entry's content originates from another
+        # agent's free-form output and may itself have been prompt-
+        # injected upstream.  Wrap each contribution in its own
+        # ``<peer-contribution>`` fence so a literal closing tag in the
+        # content cannot inject into the leader's summary prompt (#1596).
+        transcript = [
+            f"[{c.agent_id}]:\n" + wrap_untrusted(TAG_PEER_CONTRIBUTION, c.content)
+            for c in contributions
+        ]
 
         # Summary phase
         summary = ""
@@ -290,7 +302,16 @@ class RoundRobinProtocol:
                     lens_assignments=lens_assignments,
                 )
                 contributions.append(contribution)
-                transcript.append(f"[{participant_id}]: {contribution.content}")
+                # SEC-1: see ``run`` -- each peer turn is wrapped so a
+                # compromised contribution cannot inject into downstream
+                # turns or the leader's summary prompt (#1596).
+                transcript.append(
+                    f"[{participant_id}]:\n"
+                    + wrap_untrusted(
+                        TAG_PEER_CONTRIBUTION,
+                        contribution.content,
+                    )
+                )
                 turn_number += 1
 
             if turn_number >= self._config.max_total_turns:

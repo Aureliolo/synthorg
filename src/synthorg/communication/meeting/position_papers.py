@@ -33,6 +33,10 @@ from synthorg.communication.meeting.models import (
     MeetingMinutes,
 )
 from synthorg.communication.meeting.protocol import AgentCaller  # noqa: TC001
+from synthorg.engine.prompt_safety import (
+    TAG_PEER_CONTRIBUTION,
+    wrap_untrusted,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.meeting import (
     MEETING_AGENT_CALLED,
@@ -63,11 +67,16 @@ def _build_synthesis_prompt(
     agenda_text: str,
     papers: list[tuple[str, str]],
 ) -> str:
-    """Build a synthesis prompt from all position papers."""
+    """Build a synthesis prompt from all position papers.
+
+    Each paper is wrapped in its own ``<peer-contribution>`` fence
+    (SEC-1 / #1596) so a compromised paper-writer cannot break out and
+    inject instructions into the synthesizer's decision.
+    """
     parts = [agenda_text, "", "Position papers submitted:"]
     for agent_id, content in papers:
         parts.append(f"\n--- {agent_id} ---")
-        parts.append(content)
+        parts.append(wrap_untrusted(TAG_PEER_CONTRIBUTION, content))
     parts.append("")
     parts.append(
         "Please synthesize these position papers. Identify areas of "

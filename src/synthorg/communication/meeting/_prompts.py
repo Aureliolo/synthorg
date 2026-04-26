@@ -3,6 +3,7 @@
 from collections.abc import Mapping  # noqa: TC003
 from typing import TYPE_CHECKING
 
+from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
@@ -14,25 +15,36 @@ logger = get_logger(__name__)
 def build_agenda_prompt(agenda: MeetingAgenda) -> str:
     """Build the initial agenda prompt text.
 
+    Agenda fields (title, context, item title/description, presenter_id)
+    originate from API request bodies and are attacker-controllable.
+    They are wrapped in a single SEC-1 ``<task-data>`` fence so a literal
+    closing tag in any field cannot break out and inject instructions
+    into downstream meeting agents (#1596).
+
     Args:
         agenda: The meeting agenda to format.
 
     Returns:
-        Formatted agenda text for use in agent prompts.
+        Formatted agenda text for use in agent prompts.  The
+        ``Meeting agenda:`` header sits outside the fence as
+        model-trusted prose; everything else is fenced.
     """
-    parts = [f"Meeting: {agenda.title}"]
+    inner: list[str] = [f"Title: {agenda.title}"]
     if agenda.context:
-        parts.append(f"Context: {agenda.context}")
+        inner.append(f"Context: {agenda.context}")
     if agenda.items:
-        parts.append("Agenda items:")
+        inner.append("Agenda items:")
         for i, item in enumerate(agenda.items, 1):
             entry = f"  {i}. {item.title}"
             if item.description:
                 entry += f" -- {item.description}"
             if item.presenter_id:
                 entry += f" (presenter: {item.presenter_id})"
-            parts.append(entry)
-    return "\n".join(parts)
+            inner.append(entry)
+    return "Meeting agenda:\n" + wrap_untrusted(
+        TAG_TASK_DATA,
+        "\n".join(inner),
+    )
 
 
 def inject_lens_perspective(
