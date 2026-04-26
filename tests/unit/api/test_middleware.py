@@ -258,6 +258,20 @@ class TestCacheControlPathSelection:
         response = test_client.get("/api/v1/healthz")
         assert response.headers.get("pragma") == "no-cache"
 
+    def test_docs_responses_omit_pragma_header(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        """Docs paths serve cacheable, non-user-specific content -- the
+        ``Pragma: no-cache`` API hint MUST NOT bleed onto them."""
+        response = test_client.get("/docs/openapi.json")
+        # The static-headers map sets ``Pragma: no-cache`` for every API
+        # response; the /docs path-aware branch must override it back to
+        # absent so SwaggerUI / Scalar assets remain cacheable.
+        pragma = response.headers.get("pragma")
+        assert pragma is None or pragma == "", (
+            f"docs response unexpectedly carries Pragma={pragma!r}"
+        )
+
 
 # ── Request logging middleware ─────────────────────────────────
 

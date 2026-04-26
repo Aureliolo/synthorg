@@ -76,6 +76,11 @@ class AgentRegistryService:
         / ``update_*`` so a concurrent caller cannot observe a partial
         clear -- the registry is either fully empty or in the state
         the contending writer claimed (#1599).
+
+        New async test fixtures should call ``await registry.clear()``
+        directly; the sync entry point below exists only to keep
+        legacy sync fixtures (``tests/unit/api/conftest.py``) working
+        without a TaskGroup wrapper.
         """
         async with self._lock:
             cleared_count = len(self._agents)
@@ -89,6 +94,9 @@ class AgentRegistryService:
         operations are in flight. Production code MUST use the async
         ``clear`` instead. Provided so existing sync fixtures can keep
         their iteration shape after #1599 made ``clear`` async.
+
+        Async fixtures must call ``await registry.clear()`` instead of
+        this helper; the helper is intentionally sync-only.
         """
         cleared_count = len(self._agents)
         self._agents.clear()

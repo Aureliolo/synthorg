@@ -93,11 +93,16 @@ _SECURITY_HEADERS: Final[MappingProxyType[str, str]] = MappingProxyType(
         "Cross-Origin-Resource-Policy": "same-origin",
         "Cross-Origin-Opener-Policy": "same-origin",
         "Cache-Control": _API_CACHE_CONTROL,
-        # HTTP/1.0 Pragma directive -- belt-and-braces alongside
-        # Cache-Control: no-store for clients that only honour Pragma.
-        "Pragma": "no-cache",
     }
 )
+
+# HTTP/1.0 Pragma directive -- applied to API paths but NOT to /docs
+# (which serves cacheable, non-user-specific assets and explicitly
+# overrides Cache-Control to ``public, max-age=300``). Co-locating
+# Pragma with the API Cache-Control keeps the two cache hints
+# consistent: a /docs response carries neither Pragma nor a no-cache
+# directive, so legacy proxies still cache the SwaggerUI bundle.
+_API_PRAGMA: Final[str] = "no-cache"
 
 
 async def security_headers_hook(message: Message, scope: Scope) -> None:
@@ -147,6 +152,8 @@ async def security_headers_hook(message: Message, scope: Scope) -> None:
     if is_docs:
         headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
         headers["Cache-Control"] = _DOCS_CACHE_CONTROL
+    else:
+        headers["Pragma"] = _API_PRAGMA
 
 
 def _log_request_completion(

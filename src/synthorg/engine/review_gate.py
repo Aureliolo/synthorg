@@ -309,13 +309,15 @@ class ReviewGateService:
                 agent_id="review-gate-service",
                 reason=transition_reason,
             )
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.warning(
                 APPROVAL_GATE_REVIEW_REWORK,
                 task_id=task.id,
                 decided_by=decided_by,
                 target_status=target.value,
                 stage="sync_to_task_engine",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 

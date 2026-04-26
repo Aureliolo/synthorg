@@ -263,13 +263,14 @@ async def _sse_event_stream(
                     data = _json.dumps(event.model_dump(mode="json"))
                 except MemoryError, RecursionError:
                     raise
-                except Exception:
+                except Exception as serialize_exc:
                     logger.warning(
                         EVENT_STREAM_PROJECTION_FAILED,
                         session_id=session_id,
                         event_id=event.id,
                         note="Failed to serialize event, skipping",
-                        exc_info=True,
+                        error_type=type(serialize_exc).__name__,
+                        error=safe_error_description(serialize_exc),
                     )
                     continue
                 yield {"event": event.type.value, "data": data}
@@ -305,11 +306,18 @@ async def _sse_event_stream(
                         }
                         return
     finally:
-        hub.unsubscribe(session_id, queue)
-        logger.info(
-            EVENT_STREAM_CLIENT_DISCONNECTED,
-            session_id=session_id,
-        )
+        # Unsubscribe must run before the disconnect log: a raise here
+        # leaves the queue subscribed to the hub, which would leak
+        # memory as new events keep enqueueing to a dead client. Log
+        # the disconnect regardless, then re-raise so the caller (and
+        # the SSE iterator harness) sees the failure.
+        try:
+            hub.unsubscribe(session_id, queue)
+        finally:
+            logger.info(
+                EVENT_STREAM_CLIENT_DISCONNECTED,
+                session_id=session_id,
+            )
 
 
 # ── Controllers ──────────────────────────────────────────────────

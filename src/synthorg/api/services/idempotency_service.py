@@ -12,6 +12,7 @@ Default TTL is 24 hours (matches Stripe-style retry windows).
 import asyncio
 import hashlib
 import json
+import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -131,10 +132,15 @@ class IdempotencyService:
         scope: NotBlankStr,
         key: NotBlankStr,
     ) -> Any | None:
-        """Poll until the in-flight claim resolves or timeout."""
-        deadline = datetime.now(UTC).timestamp() + _IN_FLIGHT_POLL_TIMEOUT_SECONDS
+        """Poll until the in-flight claim resolves or timeout.
+
+        Uses ``time.monotonic`` rather than wall-clock arithmetic so a
+        clock skew, NTP adjustment, or VM suspend/resume cannot extend
+        or short-circuit the polling deadline.
+        """
+        deadline = time.monotonic() + _IN_FLIGHT_POLL_TIMEOUT_SECONDS
         backoff = _IN_FLIGHT_POLL_INITIAL_BACKOFF_SECONDS
-        while datetime.now(UTC).timestamp() < deadline:
+        while time.monotonic() < deadline:
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, _IN_FLIGHT_POLL_MAX_BACKOFF_SECONDS)
             record = await self._repo.get(scope=scope, key=key)

@@ -88,15 +88,25 @@ async def _close_socket_safely(
     code: int,
     reason: str,
 ) -> None:
-    """Best-effort close that swallows teardown errors.
+    """Best-effort close that logs but does not propagate teardown errors.
 
     The socket may already be torn down (client disconnected, network
-    blip), but we still want the revocation decision recorded.
+    blip), but we still want the revocation decision recorded AND the
+    close failure logged so operators can diagnose half-open sockets
+    after a session-revocation event (#1599).
     """
     try:
         await socket.close(code=code, reason=reason)
-    except Exception:
-        return
+    except Exception as exc:
+        logger.warning(
+            API_WS_TRANSPORT_ERROR,
+            reason="socket_close_failed_during_revoke",
+            client=str(socket.client),
+            close_code=code,
+            close_reason=reason,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
 
 async def _periodic_revalidate(

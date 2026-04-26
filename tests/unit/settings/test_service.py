@@ -925,3 +925,120 @@ class TestValidatorPattern:
         )
         with pytest.raises(SettingValidationError, match="does not match"):
             await svc.set("budget", "hostname", "INVALID HOST!")
+
+
+# ── Security Audit Emission Tests (#1599) ───────────────────────
+
+
+@pytest.mark.unit
+class TestSecuritySettingsAuditEmission:
+    """``SECURITY_SETTINGS_CHANGED`` must be emitted on `set` / `delete`
+    paths only when the namespace is in the audited set.
+
+    structlog routes events through a custom processor pipeline that
+    bypasses pytest's stdlib ``caplog`` capture. We hook the service
+    module's ``logger.info`` directly to capture event names as the
+    underlying `logger.info(EVENT, **kwargs)` calls land.
+    """
+
+    async def test_set_emits_security_event_for_audited_namespace(
+        self,
+        mock_repo: AsyncMock,
+        config: _FakeConfig,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from synthorg.settings import service as service_mod
+
+        registry = SettingsRegistry()
+        registry.register(
+            _make_definition(
+                namespace=SettingNamespace.SECURITY,
+                key="opt_in",
+                setting_type=SettingType.BOOLEAN,
+                default="false",
+                yaml_path=None,
+            )
+        )
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+        )
+        captured: list[str] = []
+        original_info = service_mod.logger.info
+
+        def _spy(event: str, **kwargs: Any) -> Any:
+            captured.append(event)
+            return original_info(event, **kwargs)
+
+        monkeypatch.setattr(service_mod.logger, "info", _spy)
+        await svc.set("security", "opt_in", "true")
+        assert "security.settings.changed" in captured
+
+    async def test_set_does_not_emit_security_event_for_non_audited_namespace(
+        self,
+        mock_repo: AsyncMock,
+        config: _FakeConfig,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from synthorg.settings import service as service_mod
+
+        registry = SettingsRegistry()
+        registry.register(
+            _make_definition(
+                namespace=SettingNamespace.BUDGET,
+                key="total_monthly",
+                setting_type=SettingType.FLOAT,
+                yaml_path=None,
+            )
+        )
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+        )
+        captured: list[str] = []
+        original_info = service_mod.logger.info
+
+        def _spy(event: str, **kwargs: Any) -> Any:
+            captured.append(event)
+            return original_info(event, **kwargs)
+
+        monkeypatch.setattr(service_mod.logger, "info", _spy)
+        await svc.set("budget", "total_monthly", "200.0")
+        assert "security.settings.changed" not in captured
+
+    async def test_delete_emits_security_event_for_audited_namespace(
+        self,
+        mock_repo: AsyncMock,
+        config: _FakeConfig,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from synthorg.settings import service as service_mod
+
+        registry = SettingsRegistry()
+        registry.register(
+            _make_definition(
+                namespace=SettingNamespace.SECURITY,
+                key="opt_in",
+                setting_type=SettingType.BOOLEAN,
+                default="false",
+                yaml_path=None,
+            )
+        )
+        mock_repo.get.return_value = ("true", "2026-04-25T10:00:00Z")
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+        )
+        captured: list[str] = []
+        original_info = service_mod.logger.info
+
+        def _spy(event: str, **kwargs: Any) -> Any:
+            captured.append(event)
+            return original_info(event, **kwargs)
+
+        monkeypatch.setattr(service_mod.logger, "info", _spy)
+        await svc.delete("security", "opt_in")
+        assert "security.settings.changed" in captured

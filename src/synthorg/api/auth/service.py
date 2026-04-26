@@ -13,7 +13,7 @@ import jwt
 
 from synthorg.api.auth.models import User  # noqa: TC001
 from synthorg.api.auth.system_user import USER_AUDIENCE, USER_ISSUER
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_AUTH_FAILED,
     SECURITY_AUTH_REFRESH_CREATED,
@@ -102,18 +102,20 @@ class AuthService:
             return _hasher.verify(password_hash, password)
         except argon2.exceptions.VerifyMismatchError:
             return False
-        except argon2.exceptions.VerificationError:
+        except argon2.exceptions.VerificationError as exc:
             logger.warning(
                 SECURITY_AUTH_FAILED,
                 reason="hash_verification_error",
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
-        except argon2.exceptions.InvalidHashError:
-            logger.error(
+        except argon2.exceptions.InvalidHashError as exc:
+            logger.error(  # noqa: TRY400 -- structlog event constant; not the stdlib `error` shape
                 SECURITY_AUTH_FAILED,
                 reason="invalid_hash_data_corruption",
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
