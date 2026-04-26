@@ -22,18 +22,20 @@ from synthorg.core.enums import DecisionOutcome, TaskStatus
 from synthorg.engine.errors import SelfReviewError, TaskNotFoundError
 from synthorg.engine.review.models import PipelineResult, ReviewVerdict
 from synthorg.engine.task_sync import sync_to_task_engine
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_DECISION_RECORD_FAILED,
-    APPROVAL_GATE_DECISION_RECORDED,
     APPROVAL_GATE_REVIEW_COMPLETED,
     APPROVAL_GATE_REVIEW_REWORK,
-    APPROVAL_GATE_SELF_REVIEW_PREVENTED,
     APPROVAL_GATE_TASK_NOT_FOUND,
     APPROVAL_GATE_TASK_UNASSIGNED,
 )
 from synthorg.observability.events.review_pipeline import (
     APPROVAL_GATE_PIPELINE_ALL_SKIPPED,
+)
+from synthorg.observability.events.security import (
+    SECURITY_APPROVAL_DECISION_RECORDED,
+    SECURITY_APPROVAL_SELF_REVIEW_PREVENTED,
 )
 from synthorg.observability.events.versioning import VERSION_FETCH_FAILED
 from synthorg.persistence.errors import DuplicateRecordError, QueryError
@@ -350,7 +352,7 @@ class ReviewGateService:
             return
         if decided_by == task.assigned_to:
             logger.warning(
-                APPROVAL_GATE_SELF_REVIEW_PREVENTED,
+                SECURITY_APPROVAL_SELF_REVIEW_PREVENTED,
                 task_id=task.id,
                 agent_id=decided_by,
             )
@@ -500,17 +502,17 @@ class ReviewGateService:
                 metadata=metadata,
             )
             logger.info(
-                APPROVAL_GATE_DECISION_RECORDED,
+                SECURITY_APPROVAL_DECISION_RECORDED,
                 task_id=task_id,
                 decision=record.decision.value,
                 version=record.version,
             )
         except (QueryError, DuplicateRecordError) as exc:
-            logger.exception(
+            logger.warning(
                 APPROVAL_GATE_DECISION_RECORD_FAILED,
                 task_id=task_id,
                 decided_by=decided_by,
                 approved=approved,
                 error_type=type(exc).__name__,
-                error=str(exc),
+                error=safe_error_description(exc),
             )

@@ -13,9 +13,9 @@ import jwt
 
 from synthorg.api.auth.models import User  # noqa: TC001
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import (
-    API_AUTH_FAILED,
-    API_AUTH_REFRESH_CREATED,
+from synthorg.observability.events.security import (
+    SECURITY_AUTH_FAILED,
+    SECURITY_AUTH_REFRESH_CREATED,
 )
 
 if TYPE_CHECKING:
@@ -63,7 +63,7 @@ class AuthService:
         if not secret:
             msg = "JWT secret not configured"
             logger.error(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="jwt_secret_missing",
                 operation=operation,
             )
@@ -103,14 +103,14 @@ class AuthService:
             return False
         except argon2.exceptions.VerificationError:
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="hash_verification_error",
                 exc_info=True,
             )
             raise
         except argon2.exceptions.InvalidHashError:
             logger.error(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="invalid_hash_data_corruption",
                 exc_info=True,
             )
@@ -267,7 +267,7 @@ class AuthService:
             expires_at=expires_at,
         )
         logger.info(
-            API_AUTH_REFRESH_CREATED,
+            SECURITY_AUTH_REFRESH_CREATED,
             session_id=session_id,
             user_id=user_id,
         )

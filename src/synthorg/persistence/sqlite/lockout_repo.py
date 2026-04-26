@@ -20,9 +20,11 @@ import aiosqlite  # noqa: TC002
 from synthorg.api.auth.config import AuthConfig  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
-    API_AUTH_ACCOUNT_LOCKED,
     API_AUTH_LOCKOUT_CLEANUP,
-    API_AUTH_LOCKOUT_CLEARED,
+)
+from synthorg.observability.events.security import (
+    SECURITY_AUTH_ACCOUNT_LOCKED,
+    SECURITY_AUTH_LOCKOUT_CLEARED,
 )
 
 logger = get_logger(__name__)
@@ -120,7 +122,7 @@ class SQLiteLockoutRepository:
                     restored += 1
         if restored:
             logger.info(
-                API_AUTH_ACCOUNT_LOCKED,
+                SECURITY_AUTH_ACCOUNT_LOCKED,
                 note="Restored lockout state from database",
                 restored=restored,
             )
@@ -167,7 +169,7 @@ class SQLiteLockoutRepository:
             with self._locked_lock:
                 self._locked[username] = time.monotonic() + self._duration_seconds
             logger.warning(
-                API_AUTH_ACCOUNT_LOCKED,
+                SECURITY_AUTH_ACCOUNT_LOCKED,
                 username=username,
                 attempts=count,
                 threshold=self._threshold,
@@ -196,7 +198,7 @@ class SQLiteLockoutRepository:
             was_locked = self._locked.pop(username, None) is not None
         if was_locked:
             logger.info(
-                API_AUTH_LOCKOUT_CLEARED,
+                SECURITY_AUTH_LOCKOUT_CLEARED,
                 username=username,
             )
 

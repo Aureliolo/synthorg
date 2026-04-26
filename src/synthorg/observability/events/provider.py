@@ -43,10 +43,9 @@ PROVIDER_RATE_LIMITER_THROTTLED: Final[str] = "provider.rate_limiter.throttled"
 PROVIDER_RATE_LIMITER_PAUSED: Final[str] = "provider.rate_limiter.paused"
 
 # ── Provider management ─────────────────────────────────────
+# Created/Updated/Deleted moved to events.security as
+# SECURITY_PROVIDER_* (audit-chained).
 
-PROVIDER_CREATED: Final[str] = "provider.management.created"
-PROVIDER_UPDATED: Final[str] = "provider.management.updated"
-PROVIDER_DELETED: Final[str] = "provider.management.deleted"
 PROVIDER_CONNECTION_TESTED: Final[str] = "provider.management.connection_tested"
 PROVIDER_NOT_FOUND: Final[str] = "provider.management.not_found"
 PROVIDER_ALREADY_EXISTS: Final[str] = "provider.management.already_exists"

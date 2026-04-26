@@ -15,6 +15,7 @@ from synthorg.communication.enums import MessageType
 from synthorg.communication.message import Message, MessageMetadata, TextPart
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
+from synthorg.observability.events.security import SECURITY_SETTINGS_CHANGED
 from synthorg.observability.events.settings import (
     SETTINGS_CACHE_INVALIDATED,
     SETTINGS_DELETE_FAILED,
@@ -46,6 +47,15 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _SENSITIVE_MASK = "********"
+
+# Namespaces whose changes always represent a security decision and must
+# be appended to the cryptographic audit chain. Settings in these
+# namespaces affect authentication, authorization, autonomy gating, or
+# encryption -- a forensic investigator needs to be able to prove the
+# change order is intact.
+_AUDITED_SETTING_NAMESPACES: frozenset[str] = frozenset(
+    {"auth", "security", "autonomy", "encryption", "rbac"},
+)
 
 
 def _now_iso() -> str:
@@ -622,6 +632,13 @@ class SettingsService:
 
         self._invalidate_cache(namespace, key)
         logger.info(SETTINGS_VALUE_SET, namespace=namespace, key=key)
+        if namespace in _AUDITED_SETTING_NAMESPACES:
+            logger.info(
+                SECURITY_SETTINGS_CHANGED,
+                namespace=namespace,
+                key=key,
+                action_type="set",
+            )
         await self._publish_change(namespace, key, definition)
 
         display_value = _SENSITIVE_MASK if definition.sensitive else value
@@ -679,6 +696,13 @@ class SettingsService:
         for namespace, key, definition in definitions:
             self._invalidate_cache(namespace, key)
             logger.info(SETTINGS_VALUE_SET, namespace=namespace, key=key)
+            if namespace in _AUDITED_SETTING_NAMESPACES:
+                logger.info(
+                    SECURITY_SETTINGS_CHANGED,
+                    namespace=namespace,
+                    key=key,
+                    action_type="set_many",
+                )
             await self._publish_change(namespace, key, definition)
 
         return updated_at
@@ -793,6 +817,13 @@ class SettingsService:
             namespace=namespace,
             key=key,
         )
+        if namespace in _AUDITED_SETTING_NAMESPACES:
+            logger.info(
+                SECURITY_SETTINGS_CHANGED,
+                namespace=namespace,
+                key=key,
+                action_type="delete",
+            )
 
         await self._publish_change(namespace, key, definition)
 
@@ -855,6 +886,13 @@ class SettingsService:
             namespace=namespace,
             count=deleted,
         )
+        if namespace in _AUDITED_SETTING_NAMESPACES:
+            logger.info(
+                SECURITY_SETTINGS_CHANGED,
+                namespace=namespace,
+                action_type="delete_namespace",
+                count=deleted,
+            )
 
         removed_key_set = set(removed_keys)
         for definition in self._registry.list_namespace(namespace):

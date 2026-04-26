@@ -22,9 +22,9 @@ from synthorg.core.enums import (
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import AgentNotFoundError
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.observability.events.autonomy import (
-    AUTONOMY_PROMOTION_DENIED,
-    AUTONOMY_PROMOTION_REQUESTED,
+from synthorg.observability.events.security import (
+    SECURITY_AUTONOMY_PROMOTION_DENIED,
+    SECURITY_AUTONOMY_PROMOTION_REQUESTED,
 )
 from synthorg.security.autonomy.models import AutonomyUpdate
 from tests.unit.hr.conftest import make_test_identity
@@ -113,8 +113,8 @@ class TestUpdateAutonomy:
             )
 
         events = {e.get("event") for e in logs}
-        assert AUTONOMY_PROMOTION_REQUESTED in events
-        assert AUTONOMY_PROMOTION_DENIED in events
+        assert SECURITY_AUTONOMY_PROMOTION_REQUESTED in events
+        assert SECURITY_AUTONOMY_PROMOTION_DENIED in events
 
     @pytest.mark.unit
     async def test_enqueues_when_approval_store_wired(self) -> None:

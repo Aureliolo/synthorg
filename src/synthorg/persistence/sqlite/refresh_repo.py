@@ -17,9 +17,11 @@ from synthorg.api.auth.refresh_record import RefreshRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_AUTH_REFRESH_CLEANUP,
-    API_AUTH_REFRESH_CONSUMED,
-    API_AUTH_REFRESH_REJECTED,
-    API_AUTH_REFRESH_REVOKED,
+)
+from synthorg.observability.events.security import (
+    SECURITY_AUTH_REFRESH_CONSUMED,
+    SECURITY_AUTH_REFRESH_REJECTED,
+    SECURITY_AUTH_REFRESH_REVOKED,
 )
 from synthorg.persistence.errors import QueryError
 
@@ -76,7 +78,7 @@ class SQLiteRefreshTokenRepository:
                     await self._db.rollback()
                 msg = "Failed to persist refresh token"
                 logger.warning(
-                    API_AUTH_REFRESH_REJECTED,
+                    SECURITY_AUTH_REFRESH_REJECTED,
                     reason="create_failed",
                     session_id=session_id,
                     user_id=user_id,
@@ -109,7 +111,7 @@ class SQLiteRefreshTokenRepository:
                     await self._db.rollback()
                 msg = "Failed to consume refresh token"
                 logger.warning(
-                    API_AUTH_REFRESH_REJECTED,
+                    SECURITY_AUTH_REFRESH_REJECTED,
                     reason="consume_failed",
                     token_hash=token_hash[:8],
                     error_type=type(exc).__name__,
@@ -122,13 +124,13 @@ class SQLiteRefreshTokenRepository:
                 row["session_id"],
             ):
                 logger.warning(
-                    API_AUTH_REFRESH_REJECTED,
+                    SECURITY_AUTH_REFRESH_REJECTED,
                     reason="session_revoked",
                     session_id=row["session_id"][:8],
                 )
                 return None
             logger.info(
-                API_AUTH_REFRESH_CONSUMED,
+                SECURITY_AUTH_REFRESH_CONSUMED,
                 session_id=row["session_id"],
                 user_id=row["user_id"],
             )
@@ -152,13 +154,13 @@ class SQLiteRefreshTokenRepository:
         replay_row = await check.fetchone()
         if replay_row is not None and replay_row["used"]:
             logger.warning(
-                API_AUTH_REFRESH_REJECTED,
+                SECURITY_AUTH_REFRESH_REJECTED,
                 reason="replay_detected",
                 token_hash=token_hash[:8],
             )
         else:
             logger.warning(
-                API_AUTH_REFRESH_REJECTED,
+                SECURITY_AUTH_REFRESH_REJECTED,
                 reason="not_found_or_expired",
                 token_hash=token_hash[:8],
             )
@@ -180,7 +182,7 @@ class SQLiteRefreshTokenRepository:
                     await self._db.rollback()
                 msg = f"Failed to revoke refresh tokens for session {session_id!r}"
                 logger.warning(
-                    API_AUTH_REFRESH_REVOKED,
+                    SECURITY_AUTH_REFRESH_REVOKED,
                     reason="revoke_failed",
                     session_id=session_id,
                     error_type=type(exc).__name__,
@@ -189,7 +191,7 @@ class SQLiteRefreshTokenRepository:
                 raise QueryError(msg) from exc
         if count:
             logger.info(
-                API_AUTH_REFRESH_REVOKED,
+                SECURITY_AUTH_REFRESH_REVOKED,
                 session_id=session_id,
                 revoked=count,
             )
@@ -210,7 +212,7 @@ class SQLiteRefreshTokenRepository:
                     await self._db.rollback()
                 msg = f"Failed to revoke refresh tokens for user {user_id!r}"
                 logger.warning(
-                    API_AUTH_REFRESH_REVOKED,
+                    SECURITY_AUTH_REFRESH_REVOKED,
                     reason="revoke_failed",
                     user_id=user_id,
                     error_type=type(exc).__name__,
@@ -219,7 +221,7 @@ class SQLiteRefreshTokenRepository:
                 raise QueryError(msg) from exc
         if count:
             logger.info(
-                API_AUTH_REFRESH_REVOKED,
+                SECURITY_AUTH_REFRESH_REVOKED,
                 user_id=user_id,
                 revoked=count,
             )

@@ -13,10 +13,12 @@ from synthorg.api.auth.models import User  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
-    API_USER_CREATED,
-    API_USER_DELETED,
     API_USER_LISTED,
-    API_USER_UPDATED,
+)
+from synthorg.observability.events.security import (
+    SECURITY_USER_CREATED,
+    SECURITY_USER_DELETED,
+    SECURITY_USER_UPDATED,
 )
 
 if TYPE_CHECKING:
@@ -131,7 +133,7 @@ class UserService:
         """Persist a freshly-constructed user."""
         await self._repo.save(user)
         logger.info(
-            API_USER_CREATED,
+            SECURITY_USER_CREATED,
             user_id=user.id,
             role=user.role.value,
         )
@@ -148,11 +150,11 @@ class UserService:
 
         ``intent`` distinguishes updates in the audit log (role change,
         org-role grant, org-role revoke); extra ``audit_fields`` are
-        forwarded into the ``API_USER_UPDATED`` event verbatim.
+        forwarded into the ``SECURITY_USER_UPDATED`` event verbatim.
         """
         await self._repo.save(user)
         logger.info(
-            API_USER_UPDATED,
+            SECURITY_USER_UPDATED,
             user_id=user.id,
             intent=intent,
             **audit_fields,
@@ -195,7 +197,7 @@ class UserService:
                 raise
             except Exception as exc:
                 logger.warning(
-                    API_USER_DELETED,
+                    SECURITY_USER_DELETED,
                     user_id=user_id,
                     note="refresh-token cascade failed; aborting user delete",
                     error_type=type(exc).__name__,
@@ -205,7 +207,7 @@ class UserService:
         deleted = await self._repo.delete(user_id)
         if deleted:
             logger.info(
-                API_USER_DELETED,
+                SECURITY_USER_DELETED,
                 user_id=user_id,
                 deleted_by_user_id=deleted_by_user_id,
                 cascade_refresh_tokens=revoked_refresh_tokens,

@@ -4,16 +4,6 @@
   "commit": "d2c2ccfd",
   "remediation_issue": "https://github.com/Aureliolo/synthorg/issues/1488",
   "locations": {
-    "src/synthorg/api/controllers/_approval_review_gate.py": [
-      [
-        137,
-        8
-      ],
-      [
-        216,
-        8
-      ]
-    ],
     "src/synthorg/api/controllers/template_packs.py": [
       [
         139,
@@ -70,12 +60,6 @@
       [
         317,
         8
-      ]
-    ],
-    "src/synthorg/engine/review_gate.py": [
-      [
-        509,
-        12
       ]
     ],
     "src/synthorg/engine/workflow/execution_activation_helpers.py": [
@@ -996,12 +980,6 @@
       [
         507,
         16
-      ]
-    ],
-    "src/synthorg/providers/management/service.py": [
-      [
-        589,
-        12
       ]
     ],
     "src/synthorg/security/timeout/park_service.py": [

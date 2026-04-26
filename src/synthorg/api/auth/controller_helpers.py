@@ -25,10 +25,12 @@ from synthorg.api.auth.session import Session
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_AUTH_CONFIG_FALLBACK,
-    API_AUTH_FAILED,
     API_AUTH_GUARD_SKIPPED,
     API_SESSION_CREATE_FAILED,
-    API_SESSION_CREATED,
+)
+from synthorg.observability.events.security import (
+    SECURITY_AUTH_FAILED,
+    SECURITY_SESSION_CREATED,
 )
 
 if TYPE_CHECKING:
@@ -90,21 +92,21 @@ async def make_session_cookies(  # noqa: PLR0913
                     refresh_persisted = True
                 else:
                     logger.warning(
-                        API_AUTH_FAILED,
+                        SECURITY_AUTH_FAILED,
                         reason="refresh_store_not_available",
                     )
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
                 logger.warning(
-                    API_AUTH_FAILED,
+                    SECURITY_AUTH_FAILED,
                     reason="refresh_token_persist_failed",
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
         else:
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="refresh_token_persist_skipped",
                 has_app_state=app_state is not None,
                 has_session_id=bool(session_id),
@@ -149,7 +151,7 @@ def require_password_changed(
         return
     if not isinstance(user, AuthenticatedUser):
         logger.warning(
-            API_AUTH_FAILED,
+            SECURITY_AUTH_FAILED,
             reason="unexpected_user_type",
             user_type=type(user).__qualname__,
             path=path,
@@ -157,7 +159,7 @@ def require_password_changed(
         raise PermissionDeniedException(detail="Invalid user session")
     if user.must_change_password:
         logger.warning(
-            API_AUTH_FAILED,
+            SECURITY_AUTH_FAILED,
             reason="password_change_required",
             user_id=user.user_id,
             path=path,
@@ -191,7 +193,7 @@ async def create_session_record(
         )
         await store.create(session)
         logger.info(
-            API_SESSION_CREATED,
+            SECURITY_SESSION_CREATED,
             session_id=session_id,
             user_id=user.id,
         )
@@ -224,13 +226,13 @@ def extract_jti(request: Request[Any, Any, Any]) -> str | None:
         claims = app_state.auth_service.decode_token(token)
     except jwt.InvalidTokenError:
         logger.debug(
-            API_AUTH_FAILED,
+            SECURITY_AUTH_FAILED,
             reason="jti_extraction_jwt_error",
         )
         return None
     except Exception as exc:
         logger.warning(
-            API_AUTH_FAILED,
+            SECURITY_AUTH_FAILED,
             reason="jti_extraction_failed",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),

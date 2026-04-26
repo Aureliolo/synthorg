@@ -20,10 +20,6 @@ from synthorg.hr.errors import (
     AgentNotFoundError,
 )
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.autonomy import (
-    AUTONOMY_PROMOTION_DENIED,
-    AUTONOMY_PROMOTION_REQUESTED,
-)
 from synthorg.observability.events.hr import (
     HR_REGISTRY_AGENT_REGISTERED,
     HR_REGISTRY_AGENT_REMOVED,
@@ -31,6 +27,10 @@ from synthorg.observability.events.hr import (
     HR_REGISTRY_IDENTITY_EVOLVED,
     HR_REGISTRY_IDENTITY_UPDATED,
     HR_REGISTRY_STATUS_UPDATED,
+)
+from synthorg.observability.events.security import (
+    SECURITY_AUTONOMY_PROMOTION_DENIED,
+    SECURITY_AUTONOMY_PROMOTION_REQUESTED,
 )
 from synthorg.observability.events.versioning import VERSION_SNAPSHOT_FAILED
 from synthorg.security.autonomy.models import AutonomyUpdate, AutonomyUpdateResult
@@ -561,10 +561,10 @@ class AgentRegistryService:
         """Request an autonomy level change for an agent.
 
         Mirrors the REST endpoint: the change is *requested*, never
-        applied directly. ``AUTONOMY_PROMOTION_REQUESTED`` is logged
+        applied directly. ``SECURITY_AUTONOMY_PROMOTION_REQUESTED`` is logged
         for the audit trail; an approval item is enqueued when an
         ``approval_store`` is wired so the queue can drive the human
-        review; ``AUTONOMY_PROMOTION_DENIED`` is logged because the
+        review; ``SECURITY_AUTONOMY_PROMOTION_DENIED`` is logged because the
         request did not produce an immediate runtime change.
 
         Args:
@@ -586,7 +586,7 @@ class AgentRegistryService:
             if identity is None:
                 msg = f"Agent {agent_id!r} not found in registry"
                 logger.warning(
-                    AUTONOMY_PROMOTION_REQUESTED,
+                    SECURITY_AUTONOMY_PROMOTION_REQUESTED,
                     agent_id=key,
                     error=msg,
                 )
@@ -598,7 +598,7 @@ class AgentRegistryService:
             )
 
         logger.info(
-            AUTONOMY_PROMOTION_REQUESTED,
+            SECURITY_AUTONOMY_PROMOTION_REQUESTED,
             agent_id=key,
             requested_level=update.requested_level.value,
             current_level=current_level.value,
@@ -649,7 +649,7 @@ class AgentRegistryService:
         # identity here.  The approval queue drives any subsequent
         # apply, which is out of scope for META-MCP-3.
         logger.info(
-            AUTONOMY_PROMOTION_DENIED,
+            SECURITY_AUTONOMY_PROMOTION_DENIED,
             agent_id=key,
             requested_level=update.requested_level.value,
             reason="Autonomy level changes require human approval",

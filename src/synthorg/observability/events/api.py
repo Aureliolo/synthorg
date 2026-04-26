@@ -25,8 +25,9 @@ API_TASK_UPDATED: Final[str] = "api.task.updated"
 API_TASK_DELETED: Final[str] = "api.task.deleted"
 API_TASK_CANCELLED: Final[str] = "api.task.cancelled"
 API_APPROVAL_CREATED: Final[str] = "api.approval.created"
-API_APPROVAL_APPROVED: Final[str] = "api.approval.approved"
-API_APPROVAL_REJECTED: Final[str] = "api.approval.rejected"
+# api.approval.approved / api.approval.rejected moved to events.security
+# (SECURITY_APPROVAL_APPROVED / SECURITY_APPROVAL_REJECTED) so the audit
+# chain signs the human decision.
 API_APPROVAL_EXPIRED: Final[str] = "api.approval.expired"
 API_APPROVAL_EXPIRE_CALLBACK_FAILED: Final[str] = "api.approval.expire_callback_failed"
 API_APPROVAL_PUBLISH_FAILED: Final[str] = "api.approval.publish_failed"
@@ -43,12 +44,9 @@ API_WS_SEND_FAILED: Final[str] = "api.ws.send_failed"
 API_SERVICE_UNAVAILABLE: Final[str] = "api.service.unavailable"
 API_SERVICE_AUTO_WIRED: Final[str] = "api.service.auto_wired"
 API_SERVICE_AUTO_WIRE_FAILED: Final[str] = "api.service.auto_wire_failed"
-API_AUTH_SUCCESS: Final[str] = "api.auth.success"
-API_AUTH_FAILED: Final[str] = "api.auth.failed"
+# api.auth.success / failed / token_issued / setup_complete / password_changed
+# moved to events.security as SECURITY_AUTH_* (audit-chained).
 API_AUTH_GUARD_SKIPPED: Final[str] = "api.auth.guard_skipped"
-API_AUTH_TOKEN_ISSUED: Final[str] = "api.auth.token_issued"  # noqa: S105
-API_AUTH_SETUP_COMPLETE: Final[str] = "api.auth.setup_complete"
-API_AUTH_PASSWORD_CHANGED: Final[str] = "api.auth.password_changed"  # noqa: S105
 API_TASK_TRANSITION_FAILED: Final[str] = "api.task.transition_failed"
 API_TASK_MUTATION_FAILED: Final[str] = "api.task.mutation_failed"
 API_TASK_CREATED_BY_MISMATCH: Final[str] = "api.task.created_by_mismatch"
@@ -97,36 +95,31 @@ API_PROVIDER_USAGE_ENRICHMENT_FAILED: Final[str] = (
 API_ACTIVITY_FEED_QUERIED: Final[str] = "api.activity.feed_queried"
 API_MEETING_TRIGGERED: Final[str] = "api.meeting.triggered"
 API_BUDGET_RECORDS_LISTED: Final[str] = "api.budget.records_listed"
-API_USER_CREATED: Final[str] = "api.user.created"
-API_USER_UPDATED: Final[str] = "api.user.updated"
-API_USER_DELETED: Final[str] = "api.user.deleted"
+# api.user.created / updated / deleted moved to events.security as
+# SECURITY_USER_* (audit-chained); listing + save-failure stay here.
 API_USER_SAVE_FAILED: Final[str] = "api.user.save_failed"
 API_USER_LISTED: Final[str] = "api.user.listed"
 
 # Session management
-API_SESSION_CREATED: Final[str] = "api.session.created"
+# api.session.created / revoked / force_logout / limit_enforced moved
+# to events.security as SECURITY_SESSION_* (audit-chained).
 API_SESSION_CREATE_FAILED: Final[str] = "api.session.create_failed"
-API_SESSION_REVOKED: Final[str] = "api.session.revoked"
 API_SESSION_LISTED: Final[str] = "api.session.listed"
 API_SESSION_CLEANUP: Final[str] = "api.session.cleanup"
-API_SESSION_FORCE_LOGOUT: Final[str] = "api.session.force_logout"
 API_SESSION_REVOKE_FAILED: Final[str] = "api.session.revoke_failed"
-API_SESSION_LIMIT_ENFORCED: Final[str] = "api.session.limit_enforced"
 
 # CSRF
-API_CSRF_REJECTED: Final[str] = "api.csrf.rejected"
+# api.csrf.rejected moved to events.security as SECURITY_CSRF_REJECTED.
 API_CSRF_SKIPPED: Final[str] = "api.csrf.skipped"
 
 # Account lockout
-API_AUTH_ACCOUNT_LOCKED: Final[str] = "api.auth.account_locked"
-API_AUTH_LOCKOUT_CLEARED: Final[str] = "api.auth.lockout_cleared"
+# api.auth.account_locked / lockout_cleared moved to events.security as
+# SECURITY_AUTH_ACCOUNT_LOCKED / SECURITY_AUTH_LOCKOUT_CLEARED.
 API_AUTH_LOCKOUT_CLEANUP: Final[str] = "api.auth.lockout_cleanup"
 
 # Refresh tokens
-API_AUTH_REFRESH_CREATED: Final[str] = "api.auth.refresh_created"
-API_AUTH_REFRESH_CONSUMED: Final[str] = "api.auth.refresh_consumed"
-API_AUTH_REFRESH_REJECTED: Final[str] = "api.auth.refresh_rejected"
-API_AUTH_REFRESH_REVOKED: Final[str] = "api.auth.refresh_revoked"
+# api.auth.refresh_created / consumed / rejected / revoked moved to
+# events.security as SECURITY_AUTH_REFRESH_* (audit-chained).
 API_AUTH_REFRESH_CLEANUP: Final[str] = "api.auth.refresh_cleanup"
 
 # Cookie auth

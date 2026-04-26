@@ -177,6 +177,34 @@ class TestEventConstants:
     def test_has_at_least_20_events(self) -> None:
         assert len(_all_event_names()) >= 20
 
+    def test_security_events_match_audit_chain_allowlist(self) -> None:
+        """Every constant in events/security.py must be signed by the chain.
+
+        Regression guard: when a new ``security.*`` event is added, the
+        audit-chain sink's allowlist must continue to cover it.  If this
+        test fails, either the constant is mis-named (should not be
+        ``security.*``) or the sink filter has been narrowed.
+        """
+        from synthorg.observability import events as events_pkg
+
+        security_module = importlib.import_module(
+            f"{events_pkg.__name__}.security",
+        )
+        prefixes = ("security.", "tool.registry.integrity.")
+        unsigned: list[str] = []
+        for attr in dir(security_module):
+            if attr.startswith("_"):
+                continue
+            value = getattr(security_module, attr)
+            if not isinstance(value, str):
+                continue
+            if not any(value.startswith(p) for p in prefixes):
+                unsigned.append(f"{attr}={value!r}")
+        assert not unsigned, (
+            "Constants in events/security.py must use a prefix covered by "
+            f"the audit chain allowlist: {unsigned}"
+        )
+
     def test_all_domain_modules_discovered(self) -> None:
         """Every expected domain module is found by pkgutil discovery."""
         expected = {
@@ -690,20 +718,30 @@ class TestEventConstants:
         from synthorg.observability.events.autonomy import (
             AUTONOMY_ACTION_AUTO_APPROVED,
             AUTONOMY_ACTION_HUMAN_REQUIRED,
-            AUTONOMY_DOWNGRADE_TRIGGERED,
             AUTONOMY_PRESET_EXPANDED,
-            AUTONOMY_PROMOTION_DENIED,
-            AUTONOMY_PROMOTION_REQUESTED,
-            AUTONOMY_RECOVERY_REQUESTED,
             AUTONOMY_RESOLVED,
             AUTONOMY_SENIORITY_VIOLATION,
         )
+        from synthorg.observability.events.security import (
+            SECURITY_AUTONOMY_DOWNGRADE_TRIGGERED,
+            SECURITY_AUTONOMY_PROMOTION_DENIED,
+            SECURITY_AUTONOMY_PROMOTION_REQUESTED,
+            SECURITY_AUTONOMY_RECOVERY_REQUESTED,
+        )
 
         assert AUTONOMY_RESOLVED == "autonomy.resolved"
-        assert AUTONOMY_PROMOTION_REQUESTED == "autonomy.promotion.requested"
-        assert AUTONOMY_PROMOTION_DENIED == "autonomy.promotion.denied"
-        assert AUTONOMY_DOWNGRADE_TRIGGERED == "autonomy.downgrade.triggered"
-        assert AUTONOMY_RECOVERY_REQUESTED == "autonomy.recovery.requested"
+        assert SECURITY_AUTONOMY_PROMOTION_REQUESTED == (
+            "security.autonomy.promotion.requested"
+        )
+        assert SECURITY_AUTONOMY_PROMOTION_DENIED == (
+            "security.autonomy.promotion.denied"
+        )
+        assert SECURITY_AUTONOMY_DOWNGRADE_TRIGGERED == (
+            "security.autonomy.downgrade.triggered"
+        )
+        assert SECURITY_AUTONOMY_RECOVERY_REQUESTED == (
+            "security.autonomy.recovery.requested"
+        )
         assert AUTONOMY_SENIORITY_VIOLATION == "autonomy.seniority.violation"
         assert AUTONOMY_PRESET_EXPANDED == "autonomy.preset.expanded"
         assert AUTONOMY_ACTION_AUTO_APPROVED == "autonomy.action.auto_approved"

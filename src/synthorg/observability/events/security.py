@@ -121,3 +121,70 @@ SECURITY_SSRF_VIOLATION_ALLOWED: Final[str] = "security.ssrf_violation.allowed"
 SECURITY_SSRF_VIOLATION_DENIED: Final[str] = "security.ssrf_violation.denied"
 SECURITY_ALLOWLIST_UPDATED: Final[str] = "security.allowlist.updated"
 SECURITY_ALLOWLIST_UPDATE_FAILED: Final[str] = "security.allowlist.update_failed"
+
+# ── Authentication events (signed by the audit chain) ──────────
+# These represent security decisions: who logged in (or didn't), who
+# changed their password, when an account was locked, when a refresh
+# token was minted/consumed/rejected. Operational events (cleanup,
+# fallback, listing) stay under api.* and are not signed.
+SECURITY_AUTH_SUCCESS: Final[str] = "security.auth.success"
+SECURITY_AUTH_FAILED: Final[str] = "security.auth.failed"
+SECURITY_AUTH_TOKEN_ISSUED: Final[str] = "security.auth.token_issued"  # noqa: S105
+SECURITY_AUTH_PASSWORD_CHANGED: Final[str] = "security.auth.password_changed"  # noqa: S105
+SECURITY_AUTH_SETUP_COMPLETE: Final[str] = "security.auth.setup_complete"
+SECURITY_AUTH_ACCOUNT_LOCKED: Final[str] = "security.auth.account_locked"
+SECURITY_AUTH_LOCKOUT_CLEARED: Final[str] = "security.auth.lockout_cleared"
+SECURITY_AUTH_REFRESH_CREATED: Final[str] = "security.auth.refresh_created"
+SECURITY_AUTH_REFRESH_CONSUMED: Final[str] = "security.auth.refresh_consumed"
+SECURITY_AUTH_REFRESH_REJECTED: Final[str] = "security.auth.refresh_rejected"
+SECURITY_AUTH_REFRESH_REVOKED: Final[str] = "security.auth.refresh_revoked"
+
+# ── Session events (signed) ────────────────────────────────────
+SECURITY_SESSION_CREATED: Final[str] = "security.session.created"
+SECURITY_SESSION_REVOKED: Final[str] = "security.session.revoked"
+SECURITY_SESSION_FORCE_LOGOUT: Final[str] = "security.session.force_logout"
+SECURITY_SESSION_LIMIT_ENFORCED: Final[str] = "security.session.limit_enforced"
+
+# ── CSRF rejection (signed) ────────────────────────────────────
+SECURITY_CSRF_REJECTED: Final[str] = "security.csrf.rejected"
+
+# ── User CRUD (signed) ─────────────────────────────────────────
+# Listing and save-failure events stay under api.user.* (operational).
+SECURITY_USER_CREATED: Final[str] = "security.user.created"
+SECURITY_USER_UPDATED: Final[str] = "security.user.updated"
+SECURITY_USER_DELETED: Final[str] = "security.user.deleted"
+
+# ── Approval decisions (signed) ────────────────────────────────
+# Creation, expiration, and review-completion stay under api.approval.*
+# / approval_gate.* (request lifecycle, not the human decision).
+SECURITY_APPROVAL_APPROVED: Final[str] = "security.approval.approved"
+SECURITY_APPROVAL_REJECTED: Final[str] = "security.approval.rejected"
+SECURITY_APPROVAL_DECISION_RECORDED: Final[str] = "security.approval.decision.recorded"
+SECURITY_APPROVAL_SELF_REVIEW_PREVENTED: Final[str] = (
+    "security.approval.self_review.prevented"
+)
+
+# ── Autonomy lifecycle (signed) ────────────────────────────────
+# Per-action auto-approve / human-required events stay under
+# autonomy.* (high-frequency runtime hot path).
+SECURITY_AUTONOMY_PROMOTION_REQUESTED: Final[str] = (
+    "security.autonomy.promotion.requested"
+)
+SECURITY_AUTONOMY_PROMOTION_DENIED: Final[str] = "security.autonomy.promotion.denied"
+SECURITY_AUTONOMY_DOWNGRADE_TRIGGERED: Final[str] = (
+    "security.autonomy.downgrade.triggered"
+)
+SECURITY_AUTONOMY_RECOVERY_REQUESTED: Final[str] = (
+    "security.autonomy.recovery.requested"
+)
+
+# ── Provider / API-key management (signed) ─────────────────────
+# Validation failures stay under provider.management.* (operational).
+SECURITY_PROVIDER_CREATED: Final[str] = "security.provider.created"
+SECURITY_PROVIDER_UPDATED: Final[str] = "security.provider.updated"
+SECURITY_PROVIDER_DELETED: Final[str] = "security.provider.deleted"
+
+# ── Settings change (signed when sensitive namespace) ──────────
+# Emitted by SettingsService.set when the namespace is in the
+# sensitive set (auth, security, autonomy, encryption, rbac).
+SECURITY_SETTINGS_CHANGED: Final[str] = "security.settings.changed"

@@ -11,9 +11,9 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.enums import AutonomyLevel  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
-from synthorg.observability.events.autonomy import (
-    AUTONOMY_PROMOTION_DENIED,
-    AUTONOMY_PROMOTION_REQUESTED,
+from synthorg.observability.events.security import (
+    SECURITY_AUTONOMY_PROMOTION_DENIED,
+    SECURITY_AUTONOMY_PROMOTION_REQUESTED,
 )
 
 logger = get_logger(__name__)
@@ -107,7 +107,7 @@ class AutonomyController(Controller):
         requested_level = data.level
 
         logger.info(
-            AUTONOMY_PROMOTION_REQUESTED,
+            SECURITY_AUTONOMY_PROMOTION_REQUESTED,
             agent_id=agent_id,
             requested_level=requested_level.value,
             current_level=current_level.value,
@@ -117,7 +117,7 @@ class AutonomyController(Controller):
         # level with pending status.  The AutonomyChangeStrategy will
         # apply the change when the approval system is wired up.
         logger.info(
-            AUTONOMY_PROMOTION_DENIED,
+            SECURITY_AUTONOMY_PROMOTION_DENIED,
             agent_id=agent_id,
             requested_level=requested_level.value,
             reason="Autonomy level changes require human approval",

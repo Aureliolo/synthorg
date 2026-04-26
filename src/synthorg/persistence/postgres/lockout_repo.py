@@ -14,9 +14,11 @@ from typing import TYPE_CHECKING, Any
 from synthorg.api.auth.config import AuthConfig  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
-    API_AUTH_ACCOUNT_LOCKED,
     API_AUTH_LOCKOUT_CLEANUP,
-    API_AUTH_LOCKOUT_CLEARED,
+)
+from synthorg.observability.events.security import (
+    SECURITY_AUTH_ACCOUNT_LOCKED,
+    SECURITY_AUTH_LOCKOUT_CLEARED,
 )
 
 if TYPE_CHECKING:
@@ -131,7 +133,7 @@ class PostgresLockoutRepository:
                         restored += 1
         if restored:
             logger.info(
-                API_AUTH_ACCOUNT_LOCKED,
+                SECURITY_AUTH_ACCOUNT_LOCKED,
                 note="Restored lockout state from database",
                 restored=restored,
             )
@@ -170,7 +172,7 @@ class PostgresLockoutRepository:
             with self._locked_lock:
                 self._locked[username] = time.monotonic() + self._duration_seconds
             logger.warning(
-                API_AUTH_ACCOUNT_LOCKED,
+                SECURITY_AUTH_ACCOUNT_LOCKED,
                 username=username,
                 attempts=count,
                 threshold=self._threshold,
@@ -195,7 +197,7 @@ class PostgresLockoutRepository:
             was_locked = self._locked.pop(username, None) is not None
         if was_locked:
             logger.info(
-                API_AUTH_LOCKOUT_CLEARED,
+                SECURITY_AUTH_LOCKOUT_CLEARED,
                 username=username,
             )
 

@@ -17,19 +17,21 @@ from synthorg.api.dto import (
     UpdateProviderRequest,
 )
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_ALREADY_EXISTS,
     PROVIDER_CONNECTION_TESTED,
-    PROVIDER_CREATED,
-    PROVIDER_DELETED,
     PROVIDER_DISCOVERY_FAILED,
     PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED,
     PROVIDER_LOCAL_MANAGER_NOT_AVAILABLE,
     PROVIDER_MODEL_CONFIG_UPDATED,
     PROVIDER_NOT_FOUND,
-    PROVIDER_UPDATED,
     PROVIDER_VALIDATION_FAILED,
+)
+from synthorg.observability.events.security import (
+    SECURITY_PROVIDER_CREATED,
+    SECURITY_PROVIDER_DELETED,
+    SECURITY_PROVIDER_UPDATED,
 )
 from synthorg.providers.discovery import discover_models
 from synthorg.providers.discovery_policy import (
@@ -155,7 +157,7 @@ class ProviderManagementService:
             await self._allowlist.update_for_create(new_config)
 
             logger.info(
-                PROVIDER_CREATED,
+                SECURITY_PROVIDER_CREATED,
                 provider=request.name,
                 driver=new_config.driver,
                 auth_type=new_config.auth_type,
@@ -191,7 +193,7 @@ class ProviderManagementService:
             )
 
             logger.info(
-                PROVIDER_UPDATED,
+                SECURITY_PROVIDER_UPDATED,
                 provider=name,
                 driver=updated.driver,
                 auth_type=updated.auth_type,
@@ -222,7 +224,7 @@ class ProviderManagementService:
                 new_providers,
             )
 
-            logger.info(PROVIDER_DELETED, provider=name)
+            logger.info(SECURITY_PROVIDER_DELETED, provider=name)
 
     async def test_connection(
         self,
@@ -544,7 +546,7 @@ class ProviderManagementService:
             await self._validate_and_persist(new_providers)
 
             logger.info(
-                PROVIDER_UPDATED,
+                SECURITY_PROVIDER_UPDATED,
                 provider=name,
                 driver=updated.driver,
                 auth_type=updated.auth_type,
@@ -586,9 +588,10 @@ class ProviderManagementService:
             )
         except Exception as exc:
             msg = f"Failed to persist provider configuration: {type(exc).__name__}"
-            logger.exception(
+            logger.warning(
                 PROVIDER_VALIDATION_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 provider_count=len(new_providers),
             )
             raise ProviderValidationError(msg) from exc

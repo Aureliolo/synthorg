@@ -13,9 +13,11 @@ from synthorg.api.auth.refresh_record import RefreshRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AUTH_REFRESH_CLEANUP,
-    API_AUTH_REFRESH_CONSUMED,
-    API_AUTH_REFRESH_REJECTED,
-    API_AUTH_REFRESH_REVOKED,
+)
+from synthorg.observability.events.security import (
+    SECURITY_AUTH_REFRESH_CONSUMED,
+    SECURITY_AUTH_REFRESH_REJECTED,
+    SECURITY_AUTH_REFRESH_REVOKED,
 )
 
 if TYPE_CHECKING:
@@ -103,13 +105,13 @@ class PostgresRefreshTokenRepository:
                 row["session_id"],
             ):
                 logger.warning(
-                    API_AUTH_REFRESH_REJECTED,
+                    SECURITY_AUTH_REFRESH_REJECTED,
                     reason="session_revoked",
                     session_id=row["session_id"][:8],
                 )
                 return None
             logger.info(
-                API_AUTH_REFRESH_CONSUMED,
+                SECURITY_AUTH_REFRESH_CONSUMED,
                 session_id=row["session_id"],
                 user_id=row["user_id"],
             )
@@ -124,13 +126,13 @@ class PostgresRefreshTokenRepository:
 
         if replay_row is not None and replay_row["used"]:
             logger.warning(
-                API_AUTH_REFRESH_REJECTED,
+                SECURITY_AUTH_REFRESH_REJECTED,
                 reason="replay_detected",
                 token_hash=token_hash[:8],
             )
         else:
             logger.warning(
-                API_AUTH_REFRESH_REJECTED,
+                SECURITY_AUTH_REFRESH_REJECTED,
                 reason="not_found_or_expired",
                 token_hash=token_hash[:8],
             )
@@ -147,7 +149,7 @@ class PostgresRefreshTokenRepository:
             count = cur.rowcount
         if count:
             logger.info(
-                API_AUTH_REFRESH_REVOKED,
+                SECURITY_AUTH_REFRESH_REVOKED,
                 session_id=session_id,
                 revoked=count,
             )
@@ -164,7 +166,7 @@ class PostgresRefreshTokenRepository:
             count = cur.rowcount
         if count:
             logger.info(
-                API_AUTH_REFRESH_REVOKED,
+                SECURITY_AUTH_REFRESH_REVOKED,
                 user_id=user_id,
                 revoked=count,
             )

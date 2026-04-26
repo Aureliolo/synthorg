@@ -21,8 +21,10 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_AUTH_COOKIE_NAME_FALLBACK,
     API_AUTH_COOKIE_USED,
-    API_AUTH_FAILED,
-    API_AUTH_SUCCESS,
+)
+from synthorg.observability.events.security import (
+    SECURITY_AUTH_FAILED,
+    SECURITY_AUTH_SUCCESS,
 )
 
 if TYPE_CHECKING:
@@ -123,7 +125,7 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
 
         if session_cookie:
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="cookie_jwt_invalid",
                 path=path,
             )
@@ -137,7 +139,7 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
                     detail="Invalid session cookie",
                 )
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="missing_authentication",
                 path=path,
             )
@@ -148,7 +150,7 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
         token = _extract_bearer_token(auth_header)
         if token is None:
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="invalid_scheme",
                 path=path,
             )
@@ -205,7 +207,7 @@ async def _try_jwt_auth(
         claims = auth_service.decode_token(token)
     except jwt.InvalidTokenError as exc:
         logger.warning(
-            API_AUTH_FAILED,
+            SECURITY_AUTH_FAILED,
             reason="jwt_invalid",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
@@ -214,7 +216,7 @@ async def _try_jwt_auth(
         return None
     except SecretNotConfiguredError as exc:
         logger.warning(
-            API_AUTH_FAILED,
+            SECURITY_AUTH_FAILED,
             reason="jwt_secret_not_configured",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
@@ -228,7 +230,7 @@ async def _try_jwt_auth(
         session_store = app_state.session_store
         if session_store.is_revoked(jti):
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="session_revoked",
                 jti=jti[:8],
                 path=path,
@@ -254,13 +256,13 @@ async def _resolve_jwt_user(
     """
     user_id = claims.get("sub")
     if not user_id:
-        logger.warning(API_AUTH_FAILED, reason="jwt_missing_sub", path=path)
+        logger.warning(SECURITY_AUTH_FAILED, reason="jwt_missing_sub", path=path)
         return None
 
     db_user = await app_state.persistence.users.get(user_id)
     if db_user is None:
         logger.warning(
-            API_AUTH_FAILED,
+            SECURITY_AUTH_FAILED,
             reason="jwt_user_not_found",
             user_id=user_id,
             path=path,
@@ -275,7 +277,7 @@ async def _resolve_jwt_user(
     if db_user.role == HumanRole.SYSTEM:
         if claims.get("iss") != SYSTEM_ISSUER:
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="system_token_wrong_issuer",
                 user_id=user_id,
                 iss=claims.get("iss"),
@@ -284,7 +286,7 @@ async def _resolve_jwt_user(
             return None
         if claims.get("aud") != SYSTEM_AUDIENCE:
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="system_token_wrong_audience",
                 user_id=user_id,
                 aud=claims.get("aud"),
@@ -300,7 +302,7 @@ async def _resolve_jwt_user(
             expected_sig,
         ):
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="password_changed_since_token_issued",
                 user_id=user_id,
                 path=path,
@@ -308,7 +310,7 @@ async def _resolve_jwt_user(
             return None
 
     logger.info(
-        API_AUTH_SUCCESS,
+        SECURITY_AUTH_SUCCESS,
         user_id=db_user.id,
         username=db_user.username,
         auth_method="jwt",
@@ -344,7 +346,7 @@ async def _try_api_key_auth(
         key_hash = auth_service.hash_api_key(token)
     except SecretNotConfiguredError as exc:
         logger.warning(
-            API_AUTH_FAILED,
+            SECURITY_AUTH_FAILED,
             reason="api_key_hash_failed_secret_not_configured",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
@@ -355,7 +357,7 @@ async def _try_api_key_auth(
     api_key = await app_state.persistence.api_keys.get_by_hash(key_hash)
     if api_key is None:
         logger.warning(
-            API_AUTH_FAILED,
+            SECURITY_AUTH_FAILED,
             reason="api_key_not_found",
             path=path,
         )
@@ -371,7 +373,7 @@ async def _resolve_api_key_user(
     """Validate an API key (revocation, expiry) and resolve its owner."""
     if api_key.revoked:
         logger.warning(
-            API_AUTH_FAILED,
+            SECURITY_AUTH_FAILED,
             reason="api_key_revoked",
             key_name=api_key.name,
             path=path,
@@ -379,7 +381,7 @@ async def _resolve_api_key_user(
         return None
     if api_key.expires_at is not None and api_key.expires_at < datetime.now(UTC):
         logger.warning(
-            API_AUTH_FAILED,
+            SECURITY_AUTH_FAILED,
             reason="api_key_expired",
             key_name=api_key.name,
             path=path,
@@ -389,7 +391,7 @@ async def _resolve_api_key_user(
     db_user = await app_state.persistence.users.get(api_key.user_id)
     if db_user is None:
         logger.error(
-            API_AUTH_FAILED,
+            SECURITY_AUTH_FAILED,
             reason="api_key_orphaned",
             key_name=api_key.name,
             user_id=api_key.user_id,
@@ -398,7 +400,7 @@ async def _resolve_api_key_user(
         return None
 
     logger.info(
-        API_AUTH_SUCCESS,
+        SECURITY_AUTH_SUCCESS,
         user_id=db_user.id,
         username=db_user.username,
         auth_method="api_key",
