@@ -50,12 +50,38 @@ jobs:
             dashboard:
               - 'web/**'
               - 'docs/openapi/openapi.json'
+              # Direct inputs of the dashboard job that do not live
+              # under web/. ``setup-python-uv`` is the composite
+              # action; ``export_openapi.py`` regenerates the
+              # OpenAPI types the dashboard build consumes. PRs
+              # that touch only these still need to validate the
+              # dashboard audit.
+              - 'scripts/export_openapi.py'
+              - '.github/actions/setup-python-uv/**'
               - '.github/workflows/lighthouse.yml'
             site:
               - 'site/**'
               - 'docs/**'
               - 'mkdocs.yml'
-              - '.github/workflows/lighthouse.yml'
+              # ``lighthouse-site`` reuses ``web/``'s @lhci/cli
+              # toolchain (npm --prefix web ci + npx --prefix
+              # ../web lhci autorun); a toolchain-only bump
+              # (web/package.json / lock) needs to revalidate
+              # the site audit too.
+              - 'web/package.json'
+              - 'web/package-lock.json'
+              # ``pages-preview.yml`` is included because its
+              # own ``paths:`` covers itself, so a change to it
+              # WILL redeploy the preview and the wait loop will
+              # see fresh content. ``lighthouse.yml`` is
+              # deliberately NOT in this filter even though a
+              # change to it could affect the site audit:
+              # ``pages-preview.yml`` is not triggered by
+              # changes to ``lighthouse.yml``, so the wait loop
+              # would time out against a stale preview.
+              # Lighthouse-config-only PRs are still covered by
+              # the ``dashboard`` filter, which builds the
+              # preview itself locally.
               - '.github/workflows/pages-preview.yml'
 
   # ── Dashboard: Lighthouse against vite preview ──
@@ -144,18 +170,33 @@ jobs:
           # banner injected by pages-preview.yml carries this PR
           # head's 7-char SHA before unblocking the LHCI run.
           EXPECTED_SHORT_SHA: ${{ github.event.pull_request.head.sha }}
+        # NOTE: deliberately no ``set -o pipefail`` here. The earlier
+        # version used ``printf '%s' "${BODY}" | grep -q ">${SHA}<"``,
+        # but with ``pipefail`` the SIGPIPE that ``grep -q`` triggers
+        # on its first match (closing the pipe before printf is done)
+        # bubbled up as exit 141, making the conditional false even
+        # though the banner SHA matched. Replaced with a pure bash
+        # glob match so there is no subprocess / pipe at all.
         run: |
-          set -euo pipefail
+          set -eu
           SHORT_SHA="${EXPECTED_SHORT_SHA:0:7}"
+          BANNER_NEEDLE=">${SHORT_SHA}<"
           echo "Waiting for ${PREVIEW_URL} to respond 200 AND serve commit ${SHORT_SHA}..."
           for i in $(seq 1 30); do
             BODY=$(curl -sS -L --max-time 15 "${PREVIEW_URL}" || true)
             STATUS=$(curl -sS -o /dev/null -w "%{http_code}" "${PREVIEW_URL}" || echo "000")
-            if [[ "${STATUS}" == "200" ]] && printf '%s' "${BODY}" | grep -q ">${SHORT_SHA}<"; then
+            if [[ "${STATUS}" == "200" && "${BODY}" == *"${BANNER_NEEDLE}"* ]]; then
               echo "pr-preview is live (HTTP 200, banner SHA matches ${SHORT_SHA})."
               exit 0
             fi
-            echo "Attempt $i: HTTP ${STATUS} (banner SHA match: $(printf '%s' "${BODY}" | grep -oE '>[0-9a-f]{7}<' | head -1 || echo 'none')); waiting 10s..."
+            # Diagnostic: which 7-char SHA does the banner currently
+            # advertise? Bash regex against the body is enough; no
+            # external grep needed.
+            CURRENT="none"
+            if [[ "${BODY}" =~ \>([0-9a-f]{7})\< ]]; then
+              CURRENT="${BASH_REMATCH[1]}"
+            fi
+            echo "Attempt $i: HTTP ${STATUS} (banner SHA: ${CURRENT}); waiting 10s..."
             sleep 10
           done
           echo "::error::pr-preview did not serve commit ${SHORT_SHA} within 5 minutes. Either pages-preview.yml has not finished, or Cloudflare's alias is still routing to a previous deployment."

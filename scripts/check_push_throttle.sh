@@ -92,7 +92,12 @@ if [[ "${PR_STATE}" != "OPEN" ]]; then
     exit 0
 fi
 
-mkdir -p "${STATE_DIR}"
+# Failing to create the runtime state dir is a tooling problem, not
+# a "user pushed too soon" problem. Fail OPEN -- a broken filesystem
+# state must never block a push (CodeRabbit, 2026-04-26).
+if ! mkdir -p "${STATE_DIR}" 2>/dev/null; then
+    exit 0
+fi
 
 # Check the override flag. The flag must exist AND its first
 # non-empty line must match the current branch EXACTLY. This
@@ -154,9 +159,27 @@ if [[ "${OVERRIDE}" -eq 1 ]]; then
 fi
 
 # Record this push (allowed or override). We write atomically via a
-# temp file in the same dir to survive a crash mid-write.
-TMP_FILE=$(mktemp "${STATE_DIR}/last-push.json.XXXXXX")
-printf '{"timestamp":%s,"branch":"%s","override":%s}\n' "${NOW}" "${BRANCH}" "${OVERRIDE}" >"${TMP_FILE}"
-mv -f "${TMP_FILE}" "${STATE_FILE}"
+# temp file in the same dir to survive a crash mid-write. Every step
+# fails OPEN: the script's job is throttling, not gating on its own
+# state-file health. JSON is generated via ``jq -n --arg`` so a
+# branch name containing ``"`` cannot produce malformed JSON
+# (CodeRabbit, 2026-04-26).
+TMP_FILE=$(mktemp "${STATE_DIR}/last-push.json.XXXXXX" 2>/dev/null || echo "")
+if [[ -z "${TMP_FILE}" ]]; then
+    exit 0
+fi
+if ! jq -n \
+    --argjson timestamp "${NOW}" \
+    --arg branch "${BRANCH}" \
+    --argjson override "${OVERRIDE}" \
+    '{timestamp: $timestamp, branch: $branch, override: $override}' \
+    >"${TMP_FILE}" 2>/dev/null; then
+    rm -f "${TMP_FILE}"
+    exit 0
+fi
+if ! mv -f "${TMP_FILE}" "${STATE_FILE}" 2>/dev/null; then
+    rm -f "${TMP_FILE}"
+    exit 0
+fi
 
 exit 0
