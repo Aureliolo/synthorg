@@ -80,14 +80,14 @@ A special meta-agent that reviews all actions before execution:
 
 **Rule engine** ([Decision Log](../architecture/decisions.md) D4): Hybrid
 approach. Rule engine for known patterns (credentials, path traversal, destructive ops) plus
-user-defined custom policy rules (`custom_policies` in security config) -- sub-ms, covers ~95%
+user-defined custom policy rules (`custom_policies` in security config). Sub-ms, covers ~95%
 of cases. LLM fallback only for uncertain cases (~5%). Full autonomy mode:
 rules + audit logging only, no LLM path. Hard safety rules (credential exposure, data
 destruction) **never bypass** regardless of autonomy level.
 
 **Integration point** ([Decision Log](../architecture/decisions.md) D5):
 Pluggable `SecurityInterceptionStrategy` protocol. Initial strategy intercepts before every
-tool invocation -- slots into existing `ToolInvoker` between permission check and tool
+tool invocation; slots into existing `ToolInvoker` between permission check and tool
 execution. Post-tool-call scanning detects sensitive data in outputs.
 
 ## Output Scan Response Policies
@@ -100,7 +100,7 @@ distinguish intentional policy decisions from scanner failures:
 | Policy | Behavior | `ScanOutcome` | Default for |
 |--------|----------|---------------|-------------|
 | **Redact** (default) | Return scanner's redacted content as-is | `REDACTED` | `SEMI`, `SUPERVISED` autonomy |
-| **Withhold** | Clear redacted content -- content withheld by policy | `WITHHELD` | `LOCKED` autonomy |
+| **Withhold** | Clear redacted content; content withheld by policy | `WITHHELD` | `LOCKED` autonomy |
 | **Log-only** | Discard findings (logs at WARNING), pass original output through | `LOG_ONLY` | `FULL` autonomy |
 | **Autonomy-tiered** | Delegate to a sub-policy based on effective autonomy level | *(set by delegate)* | Composite policy |
 
@@ -108,7 +108,7 @@ The `ScanOutcome` enum (`CLEAN`, `REDACTED`, `WITHHELD`, `LOG_ONLY`) is set by t
 (initial `REDACTED` when findings are detected) and may be transformed by the policy (e.g.
 `WithholdPolicy` changes `REDACTED` -> `WITHHELD`). The `ToolInvoker._scan_output` method
 branches on `ScanOutcome.WITHHELD` first to return a dedicated error message ("content
-withheld by security policy") with `output_withheld` metadata -- distinct from the generic
+withheld by security policy") with `output_withheld` metadata, distinct from the generic
 fail-closed path used for scanner exceptions.
 
 Policy selection is declarative via `SecurityConfig.output_scan_policy_type`
@@ -122,16 +122,16 @@ Review gates enforce no-self-review as a structural invariant, not a convention.
 An agent must never act as reviewer on a task it executed. The invariant is enforced
 at three layers, each independently sufficient:
 
-1. **Service-layer preflight** -- `ReviewGateService.check_can_decide()` runs before
+1. **Service-layer preflight**: `ReviewGateService.check_can_decide()` runs before
    the approval row is persisted. A `SelfReviewError` at preflight raises `403
    Forbidden` with a generic message (the error's `task_id` and `agent_id`
    attributes are available for structured logs but never leaked in the HTTP body).
    The preflight-before-persist ordering ensures a rejected self-review attempt
    never leaves a decided approval row or a broadcast WebSocket event behind.
-2. **Pydantic model validator** -- `DecisionRecord._forbid_self_review` rejects
+2. **Pydantic model validator**: `DecisionRecord._forbid_self_review` rejects
    construction when `executing_agent_id == reviewer_agent_id`. Type-level invariants
    catch bugs in any caller that bypasses the service layer.
-3. **SQL `CHECK` constraint** -- the `decision_records` table carries
+3. **SQL `CHECK` constraint**: the `decision_records` table carries
    `CHECK(reviewer_agent_id != executing_agent_id)`, providing a last-resort
    defense at the database boundary. If a direct SQL caller somehow bypasses
    both the service and the model, the DB rejects the write.
@@ -144,21 +144,21 @@ reviewer, outcome (`DecisionOutcome`: `APPROVED` / `REJECTED` / `AUTO_APPROVED`
 / `AUTO_REJECTED` / `ESCALATED`), reason, acceptance-criteria snapshot, approval
 ID cross-reference, and a server-assigned monotonic version per task.
 
-- **Append-only** -- the protocol exposes no update or delete operations; the
+- **Append-only**: the protocol exposes no update or delete operations; the
   SQL schema backs this up by enforcing a `FOREIGN KEY ... ON DELETE RESTRICT`
   on `task_id`, preventing cascade-deletes that would erase audit trails.
-- **Atomic versioning** -- `append_with_next_version` computes the next version
+- **Atomic versioning**: `append_with_next_version` computes the next version
   inside a single `INSERT ... (SELECT COALESCE(MAX(version), 0) + 1 ...)`
   statement, eliminating the TOCTOU race that a read-then-write pattern would
   create under concurrent reviewers. The `UNIQUE(task_id, version)` constraint
   rejects any residual collision as `DuplicateRecordError`.
-- **Best-effort append after transition** -- a failed append is logged at ERROR
+- **Best-effort append after transition**: a failed append is logged at ERROR
   (via `logger.exception`) for audit forensics but does not roll back the review
   transition itself. Only known transient persistence errors (`QueryError`,
   `DuplicateRecordError`) are treated as non-fatal; programming errors
   (`ValidationError`, `TypeError`, etc.) propagate loudly so schema drift
   surfaces in dev/CI instead of being masked as silent audit loss.
-- **Unassigned executor -- no record** -- when a task reaches the review gate
+- **Unassigned executor, no record**: when a task reaches the review gate
   without an assigned executor (an anomalous operational state), the service
   logs an ERROR event and refuses to write a decision record rather than
   smuggling a sentinel string through the `NotBlankStr` `executing_agent_id`
@@ -168,7 +168,7 @@ ID cross-reference, and a server-assigned monotonic version per task.
 
 The drop-box is deliberately append-only, not consolidated into org memory.
 Org-memory consolidation is lossy by design (it summarises, compresses, and
-discards detail for context-window efficiency) -- appropriate for conversational
+discards detail for context-window efficiency), appropriate for conversational
 knowledge but unsuitable for compliance-grade audit data, where every decision
 must be reproducible and verifiable after the fact. Keeping the decision log as
 a dedicated append-only store avoids coupling audit integrity to memory
@@ -181,8 +181,8 @@ Credentials flow exclusively through the **hands** plane (tool execution) via th
 
 Two enforcement points maintain this boundary:
 
-1. **Task metadata validator** -- `engine/_validation.py::validate_task_metadata()` runs at the engine input boundary before execution begins.  It recursively scans all dict keys in `Task.metadata` (including nested dicts and dicts inside lists), rejecting any key matching credential patterns (`token`, `secret`, `api_key`, `password`, `bearer`) with an `EXECUTION_CREDENTIAL_ISOLATION_VIOLATION` error event (`execution.credential_isolation.violation`) and raises `ExecutionStateError`.
-2. **Sandbox credential manager** -- `tools/sandbox/credential_manager.py::SandboxCredentialManager` strips 14 credential-like patterns from environment variable overrides before they enter sandbox containers.  Stripped keys are logged via `SANDBOX_CREDENTIAL_STRIPPED`.
+1. **Task metadata validator**: `engine/_validation.py::validate_task_metadata()` runs at the engine input boundary before execution begins.  It recursively scans all dict keys in `Task.metadata` (including nested dicts and dicts inside lists), rejecting any key matching credential patterns (`token`, `secret`, `api_key`, `password`, `bearer`) with an `EXECUTION_CREDENTIAL_ISOLATION_VIOLATION` error event (`execution.credential_isolation.violation`) and raises `ExecutionStateError`.
+2. **Sandbox credential manager**: `tools/sandbox/credential_manager.py::SandboxCredentialManager` strips 14 credential-like patterns from environment variable overrides before they enter sandbox containers.  Stripped keys are logged via `SANDBOX_CREDENTIAL_STRIPPED`.
 
 See also: [Engine > Brain / Hands / Session](agent-execution.md#brain--hands--session).
 
@@ -193,7 +193,7 @@ framework provides configurable timeout policies that determine what happens whe
 does not respond. All policies implement a `TimeoutPolicy` protocol, configurable per autonomy
 level and per action risk tier.
 
-During any wait -- regardless of policy -- the agent **parks** the blocked task (saving its
+During any wait (regardless of policy) the agent **parks** the blocked task (saving its
 full serialized `AgentContext` state: conversation, progress, accumulated cost, turn count)
 and picks up other available tasks from its queue. When approval arrives, the agent **resumes**
 the original context exactly where it left off. This mirrors real company behavior: a developer
@@ -210,7 +210,7 @@ feedback arrives.
       policy: "wait"                     # wait, deny, tiered, escalation
     ```
 
-    Safest -- no risk of unauthorized actions. Can stall tasks indefinitely if human is
+    Safest: no risk of unauthorized actions. Can stall tasks indefinitely if human is
     unavailable.
 
 === "Deny on Timeout"
@@ -251,7 +251,7 @@ feedback arrives.
           actions: ["deploy", "db:admin", "comms:external", "org:hire"]
     ```
 
-    Pragmatic -- low-risk tasks do not stall, critical actions stay safe. Auto-approve on
+    Pragmatic: low-risk tasks do not stall, critical actions stay safe. Auto-approve on
     timeout carries risk. Tuning tier boundaries requires operational experience.
 
 === "Escalation Chain"
@@ -272,7 +272,7 @@ feedback arrives.
       on_chain_exhausted: "deny"         # deny if entire chain times out
     ```
 
-    Mirrors real organizations -- if one approver is unavailable, the next in line covers.
+    Mirrors real organizations: if one approver is unavailable, the next in line covers.
     Requires configuring an escalation chain.
 
 !!! info "Approval API Response Enrichment"
@@ -297,14 +297,14 @@ feedback arrives.
 
     **Design decisions** ([Decision Log](../architecture/decisions.md)):
 
-    - **D19 -- Risk Tier Classification:** Pluggable `RiskTierClassifier` protocol. Configurable
+    - **D19: Risk Tier Classification.** Pluggable `RiskTierClassifier` protocol. Configurable
       YAML mapping with sensible defaults. Unknown action types default to HIGH (fail-safe).
-    - **D20 -- Context Serialization:** Pydantic JSON via persistence backend. `ParkedContext`
-      model with metadata columns + `context_json` blob. Conversation stored verbatim --
+    - **D20: Context Serialization.** Pydantic JSON via persistence backend. `ParkedContext`
+      model with metadata columns + `context_json` blob. Conversation stored verbatim;
       summarization is a context window management concern at resume time, not a persistence
       concern.
-    - **D21 -- Resume Injection:** Tool result injection. Approval requests modeled as tool
-      calls (`request_human_approval`). Approval decision returned as `ToolResult` --
+    - **D21: Resume Injection.** Tool result injection. Approval requests modeled as tool
+      calls (`request_human_approval`). Approval decision returned as `ToolResult`,
       semantically correct (approval IS the tool's return value).
 
 !!! info "EvidencePackage (HITL Approval Payload)"
@@ -312,7 +312,7 @@ feedback arrives.
     approval payload for human review. See
     [Communication: EvidencePackage Schema](communication.md#evidencepackage-schema) for the
     full model specification. Existing approval paths (hiring, promotion, pruning) can adopt
-    the package incrementally -- the field defaults to `None`.
+    the package incrementally; the field defaults to `None`.
 
 ## Runtime Policy Engine
 
@@ -336,9 +336,9 @@ Policies are loaded from files at company boot. No external process needed.
 
 **Integration points** (via R1 middleware):
 
-- `wrap_tool_call` -- `PolicyGateMiddleware` with `action_type="tool_invoke"`
-- `before_decompose` -- coordination middleware with `action_type="delegation"`
-- `ApprovalGate.park_context()` -- with `action_type="approval_execute"`
+- `wrap_tool_call`: `PolicyGateMiddleware` with `action_type="tool_invoke"`
+- `before_decompose`: coordination middleware with `action_type="delegation"`
+- `ApprovalGate.park_context()`: with `action_type="approval_execute"`
 
 **Safety defaults**: engine defaults to `"none"` (disabled). When enabled,
 `evaluation_mode` defaults to `"log_only"` so first adoption never breaks
@@ -351,7 +351,7 @@ existing flows. Operators graduate to `"enforce"` after observing decisions.
 An observability sink that signs security events with ML-DSA-65 (FIPS 204)
 via the Asqav library and chains them in an append-only hash chain for
 tamper-evident audit. Wraps the existing `observability/sinks.py` logging
-handler protocol -- no changes to event producers.
+handler protocol; no changes to event producers.
 
 **Features**:
 
@@ -420,7 +420,7 @@ communication, configurable per direction:
 !!! warning "Production Requirement"
 
     `none` authentication is intended for local development and testing only. Production
-    deployments must not use `none` for inbound requests -- configure any of the
+    deployments must not use `none` for inbound requests. Configure any of the
     authenticated schemes (`apiKey`, `oauth2`, `bearer`, or `mTLS`).
 
 ### Inbound Request Validation
@@ -428,7 +428,7 @@ communication, configurable per direction:
 Every inbound A2A request passes through two validation layers before reaching internal
 agents:
 
-1. **DelegationGuard** -- the same
+1. **DelegationGuard**: the same
    [five loop prevention mechanisms](communication.md#loop-prevention) that protect
    internal delegation also apply to external requests. External agents are treated as
    delegation sources with the gateway as the entry point into the delegation chain.
@@ -510,19 +510,19 @@ The existing `MessageOverhead.is_quadratic` detection (see
 [Microservices Anti-Patterns](communication.md#microservices-anti-patterns-assessment))
 will be extended with a pluggable `QuadraticEnforcementStrategy` protocol. This is
 particularly relevant for A2A federation where external agent connections can amplify
-quadratic scaling. Currently, only detection exists -- enforcement strategies are
+quadratic scaling. Currently, only detection exists. Enforcement strategies are
 proposed below.
 
 Four built-in strategies are planned:
 
 | Strategy | Behavior | Default |
 |----------|----------|---------|
-| `alert_only` | Current behavior -- detect and notify via `NotificationDispatcher` | Yes |
+| `alert_only` | Current behavior; detect and notify via `NotificationDispatcher` | Yes |
 | `soft_throttle` | Auto-tighten rate limiter for affected agent group by `rate_reduction_factor` | No |
 | `hard_block` | Reject new connections when agent count exceeds `max_agent_connections` | No |
 | `disabled` | No detection or enforcement | No |
 
-The strategy will be pluggable via the `QuadraticEnforcementStrategy` protocol -- custom
+The strategy will be pluggable via the `QuadraticEnforcementStrategy` protocol; custom
 strategies can be registered without modifying built-in code.
 
 ???+ example "Quadratic enforcement configuration"
@@ -576,6 +576,6 @@ overview, Agent Card projection, and concept mapping tables.
 
 ## See Also
 
-- [Tools](tools.md) -- tool categories, sandboxing, progressive trust
-- [Budget](budget.md) -- risk budget, shadow mode enforcement
-- [Design Overview](index.md) -- full index
+- [Tools](tools.md): tool categories, sandboxing, progressive trust
+- [Budget](budget.md): risk budget, shadow mode enforcement
+- [Design Overview](index.md): full index
