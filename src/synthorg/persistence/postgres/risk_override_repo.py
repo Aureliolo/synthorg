@@ -90,10 +90,11 @@ class PostgresRiskOverrideRepository:
             )
             raise DuplicateRecordError(msg) from exc
         except psycopg.Error as exc:
-            msg = f"Failed to save risk override: {exc}"
-            logger.exception(
+            msg = "Failed to save risk override"
+            logger.warning(
                 PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -113,10 +114,11 @@ class PostgresRiskOverrideRepository:
                 )
                 row = await cur.fetchone()
         except psycopg.Error as exc:
-            msg = f"Failed to get risk override: {exc}"
-            logger.exception(
+            msg = "Failed to get risk override"
+            logger.warning(
                 PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -150,10 +152,11 @@ class PostgresRiskOverrideRepository:
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
-            msg = f"Failed to list active overrides: {exc}"
-            logger.exception(
+            msg = "Failed to list active overrides"
+            logger.warning(
                 PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -168,14 +171,13 @@ class PostgresRiskOverrideRepository:
                 # dangerous security regression (missing overrides
                 # mean risk rules silently revert to defaults).
                 row_id = row.get("id") if row else "unknown"
-                logger.exception(
+                logger.warning(
                     PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
-                    error="failed to deserialize active override row",
                     row_id=row_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
-                msg = (
-                    f"Failed to deserialize active risk override row {row_id!r}: {exc}"
-                )
+                msg = f"Failed to deserialize active risk override row {row_id!r}"
                 raise QueryError(msg) from exc
         return tuple(results)
 
@@ -199,11 +201,12 @@ class PostgresRiskOverrideRepository:
                 revoked = cur.rowcount > 0
                 await conn.commit()
         except psycopg.Error as exc:
-            msg = f"Failed to revoke risk override: {exc}"
-            logger.exception(
+            msg = "Failed to revoke risk override"
+            logger.warning(
                 PERSISTENCE_RISK_OVERRIDE_REVOKE_FAILED,
                 override_id=override_id,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 

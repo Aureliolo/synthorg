@@ -105,18 +105,20 @@ class SQLiteSsrfViolationRepository:
             if _is_unique_constraint_error(exc):
                 msg = f"SSRF violation {violation.id!r} already exists"
                 raise DuplicateRecordError(msg) from exc
-            msg = f"Failed to save SSRF violation: {exc}"
-            logger.exception(
+            msg = "Failed to save SSRF violation"
+            logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise PersistenceError(msg) from exc
         except (sqlite3.Error, aiosqlite.Error) as exc:
             await self._rollback_quietly()
-            msg = f"Failed to save SSRF violation: {exc}"
-            logger.exception(
+            msg = "Failed to save SSRF violation"
+            logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise PersistenceError(msg) from exc
 
@@ -133,10 +135,11 @@ class SQLiteSsrfViolationRepository:
             )
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to get SSRF violation: {exc}"
-            logger.exception(
+            msg = "Failed to get SSRF violation"
+            logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise PersistenceError(msg) from exc
 
@@ -145,11 +148,12 @@ class SQLiteSsrfViolationRepository:
         try:
             return _row_to_violation(row)
         except (ValueError, ValidationError) as exc:
-            msg = f"Failed to deserialize SSRF violation {violation_id!r}: {exc}"
-            logger.exception(
+            msg = f"Failed to deserialize SSRF violation {violation_id!r}"
+            logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
-                error=msg,
                 violation_id=violation_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise PersistenceError(msg) from exc
 
@@ -181,10 +185,11 @@ class SQLiteSsrfViolationRepository:
             cursor = await self._db.execute(query, params)
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to list SSRF violations: {exc}"
-            logger.exception(
+            msg = "Failed to list SSRF violations"
+            logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise PersistenceError(msg) from exc
 
@@ -258,10 +263,11 @@ class SQLiteSsrfViolationRepository:
                 await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             await self._rollback_quietly()
-            msg = f"Failed to update SSRF violation status: {exc}"
-            logger.exception(
+            msg = "Failed to update SSRF violation status"
+            logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise PersistenceError(msg) from exc
 

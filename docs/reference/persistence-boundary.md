@@ -19,6 +19,17 @@ Sanctioned exceptions cover three categories. The authoritative list lives in `_
 
 - Hold driver primitives for cross-subsystem setup.
 
+## Shared helpers
+
+`src/synthorg/persistence/_shared/` is the canonical home for backend-agnostic serialization, deserialization, error-classification, and timestamp-normalization logic. Repositories pass driver-specific bits (JSON wrappers, error-class predicates) in as callables so the helpers stay portable. Current helpers:
+
+- `datetime_marshaller.py`: strict pair `parse_iso_utc(str) -> datetime` and `format_iso_utc(datetime) -> str`. Both reject naive datetimes (`ValueError`) and normalize to UTC. Use these for any persistence path that round-trips ISO 8601 timestamps through TEXT columns, JSON envelopes, or settings DTOs.
+- `normalize_utc(datetime) -> datetime`: relaxed coercer (treats naive as UTC, calls `astimezone(UTC)` on aware). Use for repository-internal datetime normalization where the input is guaranteed to be a `datetime` (e.g. Postgres TIMESTAMPTZ rows).
+- `audit.py`: shared `AuditEntry` row<->payload helpers (`audit_entry_to_payload`, `row_to_audit_entry`, `classify_audit_save_error`).
+- `custom_rule.py`: shared custom-rule deserialization (`row_to_custom_rule`, `serialize_altitudes`, the `_coerce_datetime` `str | datetime` dispatcher).
+
+Adding a new shared helper: extract the duplicated logic into `_shared/`, add a `test_*_helpers.py` unit suite alongside it, and add a conformance test that runs against both backends.
+
 ## In-memory fallbacks
 
 In-memory fallbacks in `persistence/integration_stubs.py` are named `InMemoryXRepository` (NOT `StubXRepository`) to signal that they are *working* repositories, just process-local and non-durable. These still require durable SQLite + Postgres counterparts (tracked in issue #1517); the `InMemory*` naming does not relax that obligation.

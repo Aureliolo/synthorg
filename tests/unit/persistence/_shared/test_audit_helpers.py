@@ -141,6 +141,28 @@ class TestRowToAuditEntry:
             row_to_audit_entry(row)
         assert exc_info.value.is_retryable is False
 
+    def test_naive_iso_string_raises_malformed_row_error(self) -> None:
+        # SQLite TEXT columns store ISO 8601 strings; the strict
+        # ``parse_iso_utc`` path now rejects naive values so a corrupt
+        # row (or a sneaked-in pre-strict write) surfaces loudly via
+        # MalformedRowError instead of silently UTC-tagging the wrong
+        # instant.
+        row = self._row(matched_rules=[])
+        row["timestamp"] = "2026-04-26T12:00:00"
+        with (
+            structlog.testing.capture_logs() as cap,
+            pytest.raises(MalformedRowError),
+        ):
+            row_to_audit_entry(row)
+        events = [
+            e
+            for e in cap
+            if e.get("event") == PERSISTENCE_AUDIT_ENTRY_DESERIALIZE_FAILED
+        ]
+        assert len(events) == 1
+        assert events[0]["error_type"] == "ValueError"
+        assert "timezone-aware" in events[0]["error"]
+
     def test_logs_safe_description_on_failure(self) -> None:
         row = self._row(matched_rules="[invalid")
         with (

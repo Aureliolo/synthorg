@@ -86,8 +86,10 @@ The dialect-specific subdirectories share a third sibling at
 backend-agnostic serialization, deserialization, error-classification,
 and timestamp-normalization logic that both SQLite and Postgres repos
 would otherwise duplicate (current modules: ``audit.py``,
-``custom_rule.py``, plus the shared ``normalize_utc`` helper exported
-from ``__init__.py``).  Backend repos pass driver-specific bits (SQL
+``custom_rule.py``, ``datetime_marshaller.py`` exposing the strict ISO
+8601 pair ``parse_iso_utc`` / ``format_iso_utc``, plus the shared
+``normalize_utc`` helper exported from ``__init__.py``).  Backend repos
+pass driver-specific bits (SQL
 placeholder style, JSON wrappers, predicates that classify duplicate-key
 errors) into the helpers as callables, so the helpers stay portable and
 the conformance tests at

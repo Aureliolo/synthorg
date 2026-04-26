@@ -138,6 +138,7 @@ See [docs/reference/persistence-boundary.md](docs/reference/persistence-boundary
 - **Functions**: < 50 lines, files < 800 lines
 - **Errors**: handle explicitly, never silently swallow
 - **Validate**: at system boundaries (user input, external APIs, config files)
+- **Datetime marshalling in persistence**: repositories that round-trip timestamps through ISO 8601 strings (SQLite TEXT columns, JSON envelopes, settings DTOs) MUST use the strict pair `parse_iso_utc(str) -> datetime` and `format_iso_utc(datetime) -> str` from `synthorg.persistence._shared`. Both reject naive datetimes (`ValueError`) -- a naive value at this layer is a programming bug and the server's session timezone would otherwise corrupt the instant. For relaxed "naive-is-UTC" semantics on already-typed `datetime` inputs (Postgres `TIMESTAMPTZ` rows, internal config), use `normalize_utc` from the same package.
 
 ## Logging
 
@@ -150,7 +151,7 @@ See [docs/reference/persistence-boundary.md](docs/reference/persistence-boundary
 - **All state transitions** must log at INFO
 - **DEBUG** for object creation, internal flow, entry/exit of key functions
 - Pure data models, enums, and re-exports do NOT need logging
-- **Secret-log redaction (SEC-1)**: on credential-bearing paths (OAuth, secret backends, settings encryption, A2A client/gateway, API auth middleware, persistence repos), never use `logger.exception(EVENT, error=str(exc))`; use `logger.warning(EVENT, error_type=type(exc).__name__, error=safe_error_description(exc))` from `synthorg.observability` instead. A pre-commit gate (`scripts/check_logger_exception_str_exc.py`) blocks new violations above baseline. See [docs/reference/sec-prompt-safety.md](docs/reference/sec-prompt-safety.md) for the full rule, the `scrub_event_fields` belt-and-braces masking, and the gate's detection semantics.
+- **Secret-log redaction (SEC-1)**: on credential-bearing paths (OAuth, secret backends, settings encryption, A2A client/gateway, API auth middleware, persistence repos), never use `logger.exception(EVENT, error=str(exc))`; use `logger.warning(EVENT, error_type=type(exc).__name__, error=safe_error_description(exc))` from `synthorg.observability` instead. A pre-commit gate (`scripts/check_logger_exception_str_exc.py`) blocks new violations above a moving baseline (`scripts/_logger_exception_baseline.json`); the baseline only shrinks as grandfathered sites are converted, so each PR that touches a flagged file should opportunistically convert sites in the same diff. See [docs/reference/sec-prompt-safety.md](docs/reference/sec-prompt-safety.md) for the full rule, the `scrub_event_fields` belt-and-braces masking, and the gate's detection semantics.
 
 ## MCP Handler Layer
 

@@ -9,37 +9,25 @@ Read paths use ``psycopg.rows.dict_row`` so row access is by column
 name -- robust to accidental SELECT re-ordering.
 """
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from psycopg.rows import dict_row
 
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.mcp_catalog.installations import McpInstallation
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     MCP_SERVER_INSTALL_FAILED,
     MCP_SERVER_INSTALLED,
     MCP_SERVER_UNINSTALLED,
 )
+from synthorg.persistence._shared import normalize_utc
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
 
 
 logger = get_logger(__name__)
-
-
-def _ensure_tz(value: datetime) -> datetime:
-    """Normalize a ``TIMESTAMPTZ`` round-trip to UTC.
-
-    Attaches UTC tzinfo to naive datetimes and converts aware
-    datetimes to UTC so reads are symmetric with writes (which call
-    ``.astimezone(UTC)`` before insert).
-    """
-    if value.tzinfo is None:
-        return value.replace(tzinfo=UTC)
-    return value.astimezone(UTC)
 
 
 def _row_to_installation(row: dict[str, Any]) -> McpInstallation:
@@ -50,7 +38,7 @@ def _row_to_installation(row: dict[str, Any]) -> McpInstallation:
         connection_name=(
             NotBlankStr(connection_name_raw) if connection_name_raw else None
         ),
-        installed_at=_ensure_tz(row["installed_at"]),
+        installed_at=normalize_utc(row["installed_at"]),
     )
 
 
@@ -62,7 +50,7 @@ class PostgresMcpInstallationRepository:
 
     async def save(self, installation: McpInstallation) -> None:
         """Upsert an installation row (idempotent on catalog_entry_id)."""
-        installed_at = installation.installed_at.astimezone(UTC)
+        installed_at = normalize_utc(installation.installed_at)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -83,12 +71,13 @@ class PostgresMcpInstallationRepository:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 MCP_SERVER_INSTALL_FAILED,
                 operation="upsert",
                 catalog_entry_id=installation.catalog_entry_id,
                 connection_name=installation.connection_name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 backend="postgres",
             )
             raise
@@ -121,11 +110,12 @@ class PostgresMcpInstallationRepository:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 MCP_SERVER_INSTALL_FAILED,
                 operation="get",
                 catalog_entry_id=catalog_entry_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 backend="postgres",
             )
             raise
@@ -157,10 +147,11 @@ class PostgresMcpInstallationRepository:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 MCP_SERVER_INSTALL_FAILED,
                 operation="list_all",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 backend="postgres",
             )
             raise
@@ -178,11 +169,12 @@ class PostgresMcpInstallationRepository:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 MCP_SERVER_INSTALL_FAILED,
                 operation="delete",
                 catalog_entry_id=catalog_entry_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 backend="postgres",
             )
             raise

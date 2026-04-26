@@ -120,6 +120,20 @@ class TestParseIsoUtc:
         assert result == datetime(2026, 3, 29, 1, 0, tzinfo=UTC)
         assert result.tzinfo is UTC
 
+    def test_dst_fall_back_boundary(self) -> None:
+        # Europe/Zurich switches from CEST (+02:00) back to CET
+        # (+01:00) on the last Sunday of October.  ``ZoneInfo`` resolves
+        # ``01:30`` to the first occurrence (CEST) without
+        # ``fold=1``, so the UTC instant is unambiguous and the
+        # roundtrip preserves it.
+        zurich = ZoneInfo("Europe/Zurich")
+        local = datetime(2026, 10, 25, 1, 30, tzinfo=zurich)
+
+        result = parse_iso_utc(local.isoformat())
+
+        assert result.tzinfo is UTC
+        assert result == parse_iso_utc(format_iso_utc(result))
+
 
 @pytest.mark.unit
 class TestFormatIsoUtc:

@@ -187,3 +187,25 @@ class TestCoerceDatetime:
     def test_unsupported_type_raises_type_error(self) -> None:
         with pytest.raises(TypeError):
             _coerce_datetime(12345)
+
+    def test_rejects_naive_iso_string(self) -> None:
+        # The str branch now uses ``parse_iso_utc`` (strict); naive ISO
+        # strings raise ValueError so the surrounding MalformedRowError
+        # path surfaces corrupt rows instead of silently UTC-tagging
+        # them.
+        with pytest.raises(ValueError, match="timezone-aware"):
+            _coerce_datetime("2026-04-26T12:00:00")
+
+    def test_aware_iso_string_normalized_to_utc(self) -> None:
+        # Non-UTC offsets must be normalized to UTC so SQLite TEXT
+        # round-trips compare equal across backends.
+        result = _coerce_datetime("2026-04-26T13:00:00+01:00")
+        assert result == datetime(2026, 4, 26, 12, 0, tzinfo=UTC)
+        assert result.tzinfo is UTC
+
+    def test_aware_datetime_normalized_to_utc(self) -> None:
+        plus_one = timezone(timedelta(hours=1))
+        value = datetime(2026, 4, 26, 13, 0, tzinfo=plus_one)
+        result = _coerce_datetime(value)
+        assert result == datetime(2026, 4, 26, 12, 0, tzinfo=UTC)
+        assert result.tzinfo is UTC

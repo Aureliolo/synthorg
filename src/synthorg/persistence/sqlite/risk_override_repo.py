@@ -9,7 +9,7 @@ import aiosqlite
 from pydantic import AwareDatetime, ValidationError
 
 from synthorg.core.enums import ApprovalRiskLevel
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
     PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
@@ -108,18 +108,20 @@ class SQLiteRiskOverrideRepository:
             if _is_unique_constraint_error(exc):
                 msg = f"Risk override {override.id!r} already exists"
                 raise DuplicateRecordError(msg) from exc
-            msg = f"Failed to save risk override: {exc}"
-            logger.exception(
+            msg = "Failed to save risk override"
+            logger.warning(
                 PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise PersistenceError(msg) from exc
         except (sqlite3.Error, aiosqlite.Error) as exc:
             await self._rollback_quietly()
-            msg = f"Failed to save risk override: {exc}"
-            logger.exception(
+            msg = "Failed to save risk override"
+            logger.warning(
                 PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise PersistenceError(msg) from exc
 
@@ -136,10 +138,11 @@ class SQLiteRiskOverrideRepository:
             )
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to get risk override: {exc}"
-            logger.exception(
+            msg = "Failed to get risk override"
+            logger.warning(
                 PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise PersistenceError(msg) from exc
 
@@ -159,10 +162,11 @@ class SQLiteRiskOverrideRepository:
             )
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to list active overrides: {exc}"
-            logger.exception(
+            msg = "Failed to list active overrides"
+            logger.warning(
                 PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise PersistenceError(msg) from exc
 
@@ -170,12 +174,21 @@ class SQLiteRiskOverrideRepository:
         for row in rows:
             try:
                 results.append(_row_to_override(row))
-            except ValueError, ValidationError:
+            except (ValueError, ValidationError) as exc:
+                # Never silently drop a malformed active override:
+                # callers rely on ``list_active`` to return the full
+                # current policy set, so a partial result would be a
+                # dangerous security regression (missing overrides
+                # mean risk rules silently revert to defaults).
+                row_id = row[0] if row else "unknown"
                 logger.warning(
                     PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
-                    error="failed to deserialize row",
-                    row_id=row[0] if row else "unknown",
+                    row_id=row_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
+                msg = f"Failed to deserialize active risk override row {row_id!r}"
+                raise PersistenceError(msg) from exc
         return tuple(results)
 
     async def revoke(
@@ -198,10 +211,11 @@ class SQLiteRiskOverrideRepository:
                 await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             await self._rollback_quietly()
-            msg = f"Failed to revoke risk override: {exc}"
-            logger.exception(
+            msg = "Failed to revoke risk override"
+            logger.warning(
                 PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise PersistenceError(msg) from exc
 

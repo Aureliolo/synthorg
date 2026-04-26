@@ -63,7 +63,11 @@ def _row_to_escalation(row: dict[str, Any]) -> Escalation:
     ``conflict_json`` and ``decision_json`` arrive as native Python
     objects (psycopg decodes ``JSONB`` automatically); the helper
     re-serialises them so Pydantic's ``model_validate_json`` path is
-    exercised uniformly across backends.
+    exercised uniformly across backends.  Timestamps (``created_at``,
+    ``expires_at``, ``decided_at``) arrive as native tz-aware
+    ``datetime`` objects from ``TIMESTAMPTZ`` columns and are
+    validated by Pydantic's ``AwareDatetime`` type on the
+    :class:`Escalation` model.
     """
     try:
         conflict = Conflict.model_validate(row["conflict_json"])

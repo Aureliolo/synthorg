@@ -17,7 +17,10 @@ def parse_iso_utc(value: str) -> datetime:
     """Parse an ISO 8601 string to a tz-aware UTC datetime.
 
     Args:
-        value: An ISO 8601 string with a UTC offset or named TZ.
+        value: An ISO 8601 string with explicit timezone information --
+            either a UTC offset (e.g. ``+00:00``, ``-05:00``), a named
+            timezone, or the ``Z`` suffix (Zulu, equivalent to
+            ``+00:00``).  Naive timestamps are rejected.
 
     Returns:
         A tz-aware datetime normalized to UTC via

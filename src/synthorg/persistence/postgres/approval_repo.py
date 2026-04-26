@@ -65,6 +65,12 @@ _APPROVALS_UPSERT_SQL = f"""
 def _row_to_item(row: dict[str, Any]) -> ApprovalItem:
     """Convert a Postgres dict row into an :class:`ApprovalItem`.
 
+    Postgres ``TIMESTAMPTZ`` columns return native ``datetime``
+    objects via psycopg, but legacy or migrated rows may carry ISO
+    8601 strings; the function dispatches on ``isinstance(..., str)``
+    and parses string values via :func:`parse_iso_utc` (strict on
+    naive) so both representations land as UTC-aware datetimes.
+
     Raises:
         QueryError: If the row contains corrupt or unparseable data.
     """
