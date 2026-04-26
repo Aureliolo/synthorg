@@ -56,7 +56,7 @@ async def test_periodic_revalidate_closes_on_user_deleted() -> None:
     """When persistence reports the user vanished, the socket closes 4003."""
     socket = _FakeSocket(persisted_user=None)
     user = _make_auth_user()
-    await _periodic_revalidate(socket, user, interval_seconds=0)
+    await _periodic_revalidate(socket, user, interval_seconds=0)  # type: ignore[arg-type]
     assert socket.closed is True
     assert socket.close_code == 4003
     assert "user_deleted" in (socket.close_reason or "")
@@ -67,7 +67,7 @@ async def test_periodic_revalidate_closes_on_role_demoted() -> None:
     demoted = _make_user(role=HumanRole.SYSTEM)
     socket = _FakeSocket(persisted_user=demoted)
     user = _make_auth_user()
-    await _periodic_revalidate(socket, user, interval_seconds=0)
+    await _periodic_revalidate(socket, user, interval_seconds=0)  # type: ignore[arg-type]
     assert socket.closed is True
     assert socket.close_code == 4003
     assert "role_demoted" in (socket.close_reason or "")
@@ -77,7 +77,7 @@ async def test_periodic_revalidate_tolerates_transient_failure() -> None:
     """Three consecutive transient errors close the socket with 4011."""
     socket = _FakeSocket(persisted_user=_make_user(), raise_on_get=True)
     user = _make_auth_user()
-    await _periodic_revalidate(socket, user, interval_seconds=0)
+    await _periodic_revalidate(socket, user, interval_seconds=0)  # type: ignore[arg-type]
     assert socket.closed is True
     assert socket.close_code == 4011
 

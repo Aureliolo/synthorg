@@ -46,7 +46,10 @@ class _RecordingApprovalStore:
     def __init__(self) -> None:
         self.added: list[ApprovalItem] = []
 
-    def clear(self) -> None:
+    async def clear(self) -> None:
+        self.added.clear()
+
+    def reset_for_test_sync(self) -> None:
         self.added.clear()
 
     async def add(self, item: ApprovalItem) -> None:

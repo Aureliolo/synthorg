@@ -5,28 +5,22 @@ Production-safe ``clear`` must hold the same lock as ``register`` and
 """
 
 import asyncio
-from datetime import UTC, datetime
+import uuid
 
 import pytest
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.registry import AgentRegistryService
+from tests.unit.hr.conftest import make_agent_identity
 
 pytestmark = pytest.mark.unit
 
 
 def _make_identity(suffix: str) -> AgentIdentity:
-    now = datetime.now(UTC)
-    return AgentIdentity(
-        id=NotBlankStr(f"agent-{suffix}"),
-        name=NotBlankStr(f"Agent {suffix}"),
-        role=NotBlankStr("engineer"),
-        department=NotBlankStr("eng"),
-        autonomy_level=AutonomyLevel.SUPERVISED,
-        created_at=now,
-        updated_at=now,
+    return make_agent_identity(
+        agent_id=str(uuid.uuid5(uuid.NAMESPACE_DNS, f"clear-race-{suffix}")),
+        name=f"agent-{suffix}",
     )
 
 
@@ -56,6 +50,6 @@ async def test_clear_concurrent_with_register_no_partial_state() -> None:
         # Each surviving entry must round-trip through ``get`` -- if the
         # clear had landed mid-register the agent dict would have keys
         # without their values.
-        fetched = await registry.get(NotBlankStr(agent.id))
+        fetched = await registry.get(NotBlankStr(str(agent.id)))
         assert fetched is not None
         assert fetched.id == agent.id
