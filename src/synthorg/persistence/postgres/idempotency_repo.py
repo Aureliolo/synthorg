@@ -375,27 +375,51 @@ class PostgresIdempotencyRepository:
 
         if row is None:
             return None
-        status = IdempotencyOutcome(row["status"])
-        # When status is COMPLETED, ``response_body`` is a JSONB column
-        # we MUST surface as a JSON string (a stored JSONB ``null``
-        # round-trips as Python None but is a legitimate cached null
-        # response). For non-completed rows the schema CHECK forces
-        # ``response_body`` to SQL NULL and the IdempotencyRecord
-        # invariant requires Python None -- pass it through verbatim.
-        cached = row["response_body"]
-        if status is IdempotencyOutcome.COMPLETED:
-            cached_str: str | None = json.dumps(cached)
-        else:
-            cached_str = None
-        return IdempotencyRecord(
-            scope=NotBlankStr(str(row["scope"])),
-            key=NotBlankStr(str(row["key"])),
-            status=status,
-            response_hash=row["response_hash"],
-            response_body=cached_str,
-            created_at=row["created_at"],
-            expires_at=row["expires_at"],
-        )
+        try:
+            status = IdempotencyOutcome(row["status"])
+            # ``response_body`` is a JSONB column. For COMPLETED rows we
+            # serialise it back to a canonical JSON string (a stored
+            # JSONB ``null`` round-trips as Python ``None`` but is a
+            # legitimate cached null response). For non-COMPLETED rows
+            # the schema CHECK forces SQL NULL; we preserve the raw
+            # value rather than masking to ``None`` so the
+            # ``IdempotencyRecord`` validator surfaces corruption (a
+            # non-NULL response_body on an in_flight/failed row violates
+            # the schema invariant and must not be silently swallowed).
+            cached = row["response_body"]
+            cached_str: str | None
+            if status is IdempotencyOutcome.COMPLETED:
+                cached_str = json.dumps(cached)
+            elif cached is None:
+                cached_str = None
+            else:
+                # Non-NULL JSONB on a non-completed row -- corruption.
+                # Stringify so the validator's ``response_body must be
+                # None when status is X`` branch fires and the error
+                # is logged + wrapped in QueryError below.
+                cached_str = json.dumps(cached)
+            return IdempotencyRecord(
+                scope=NotBlankStr(str(row["scope"])),
+                key=NotBlankStr(str(row["key"])),
+                status=status,
+                response_hash=row["response_hash"],
+                response_body=cached_str,
+                created_at=row["created_at"],
+                expires_at=row["expires_at"],
+            )
+        except (ValueError, TypeError) as exc:
+            # Decode / validation failure on a corrupt row. Routing
+            # through the same QueryError contract as the SQL path so
+            # callers do not have to handle a second exception type.
+            logger.warning(
+                IDEMPOTENCY_PERSISTENCE_ERROR,
+                operation="get",
+                scope=scope,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = "Failed to fetch idempotency key"
+            raise QueryError(msg) from exc
 
     async def cleanup_expired(self, now: AwareDatetime) -> int:
         """Delete expired rows and return the count removed."""

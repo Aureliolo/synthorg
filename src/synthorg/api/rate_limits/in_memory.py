@@ -78,90 +78,122 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
         window_seconds: int,
     ) -> RateLimitOutcome:
         """Record one hit on ``key`` against the ``max_requests`` budget."""
-        if max_requests <= 0:
-            msg = "max_requests must be positive"
-            logger.warning(
-                API_REQUEST_ERROR,
-                error_type="rate_limit_invalid_config",
-                limiter="InMemorySlidingWindowStore",
-                key=key,
-                max_requests=max_requests,
-                window_seconds=window_seconds,
-                error=msg,
-            )
-            raise ValueError(msg)
-        if window_seconds <= 0:
-            msg = "window_seconds must be positive"
-            logger.warning(
-                API_REQUEST_ERROR,
-                error_type="rate_limit_invalid_config",
-                limiter="InMemorySlidingWindowStore",
-                key=key,
-                max_requests=max_requests,
-                window_seconds=window_seconds,
-                error=msg,
-            )
-            raise ValueError(msg)
-
-        outcome: RateLimitOutcome
+        self._validate_window_config(
+            key=key,
+            max_requests=max_requests,
+            window_seconds=window_seconds,
+        )
         lock = await self._get_lock(key)
         try:
             async with lock:
                 now = time.monotonic()
                 bucket = self._buckets.setdefault(key, _Bucket())
-                # Remember the largest observed window per key; GC uses
-                # this to avoid prematurely evicting a long-window
-                # bucket when a short-window acquire triggers a sweep.
-                bucket.window_seconds = max(bucket.window_seconds, window_seconds)
-                cutoff = now - float(window_seconds)
-                while bucket.timestamps and bucket.timestamps[0] <= cutoff:
-                    bucket.timestamps.popleft()
-                if len(bucket.timestamps) >= max_requests:
-                    oldest = bucket.timestamps[0]
-                    # Minimum 0.001s so a client seeing retry_after=0
-                    # never hot-loops on sub-millisecond clock jitter
-                    # while a window is still active.
-                    retry_after = max(
-                        oldest + float(window_seconds) - now,
-                        0.001,
-                    )
-                    outcome = RateLimitOutcome(
-                        allowed=False,
-                        retry_after_seconds=retry_after,
-                        remaining=0,
-                    )
-                else:
-                    bucket.timestamps.append(now)
-                    remaining = max(max_requests - len(bucket.timestamps), 0)
-                    outcome = RateLimitOutcome(
-                        allowed=True,
-                        retry_after_seconds=None,
-                        remaining=remaining,
-                    )
+                outcome = self._apply_sliding_window(
+                    bucket=bucket,
+                    now=now,
+                    max_requests=max_requests,
+                    window_seconds=window_seconds,
+                )
         finally:
-            # Shield the refcount cleanup from cancellation: the
-            # release helper itself awaits ``_meta_lock``, so a
-            # cancel arriving in the ``finally`` could exit before
-            # the decrement landed and leak the entry, leaving the
-            # lock for *key* permanently un-evictable by GC. With
-            # ``shield`` the cleanup completes before the cancel is
-            # re-raised.
-            await asyncio.shield(self._release_lock_ref(key))
+            await self._release_lock_and_cleanup(key)
+        if await self._maybe_schedule_gc():
+            await self._gc_cold_buckets()
+        return outcome
 
-        # GC counter increments on every acquire -- allowed AND denied --
-        # so a key under sustained deny pressure still triggers periodic
-        # cold-bucket sweeps.  Counter + threshold check run under the
-        # meta-lock to avoid redundant concurrent sweeps.
-        should_gc = False
+    def _validate_window_config(
+        self,
+        *,
+        key: str,
+        max_requests: int,
+        window_seconds: int,
+    ) -> None:
+        """Reject non-positive limits with a structured warning."""
+        if max_requests > 0 and window_seconds > 0:
+            return
+        msg = (
+            "max_requests must be positive"
+            if max_requests <= 0
+            else "window_seconds must be positive"
+        )
+        logger.warning(
+            API_REQUEST_ERROR,
+            error_type="rate_limit_invalid_config",
+            limiter="InMemorySlidingWindowStore",
+            key=key,
+            max_requests=max_requests,
+            window_seconds=window_seconds,
+            error=msg,
+        )
+        raise ValueError(msg)
+
+    def _apply_sliding_window(
+        self,
+        *,
+        bucket: _Bucket,
+        now: float,
+        max_requests: int,
+        window_seconds: int,
+    ) -> RateLimitOutcome:
+        """Advance the bucket's deque and decide allow / deny.
+
+        Caller MUST hold the per-key lock so the deque mutations and
+        the decision are atomic against concurrent ``acquire`` calls
+        on the same key.
+        """
+        # Remember the largest observed window per key; GC uses this
+        # to avoid prematurely evicting a long-window bucket when a
+        # short-window acquire triggers a sweep.
+        bucket.window_seconds = max(bucket.window_seconds, window_seconds)
+        cutoff = now - float(window_seconds)
+        while bucket.timestamps and bucket.timestamps[0] <= cutoff:
+            bucket.timestamps.popleft()
+        if len(bucket.timestamps) >= max_requests:
+            oldest = bucket.timestamps[0]
+            # Minimum 0.001s so a client seeing retry_after=0 never
+            # hot-loops on sub-millisecond clock jitter while a window
+            # is still active.
+            retry_after = max(
+                oldest + float(window_seconds) - now,
+                0.001,
+            )
+            return RateLimitOutcome(
+                allowed=False,
+                retry_after_seconds=retry_after,
+                remaining=0,
+            )
+        bucket.timestamps.append(now)
+        remaining = max(max_requests - len(bucket.timestamps), 0)
+        return RateLimitOutcome(
+            allowed=True,
+            retry_after_seconds=None,
+            remaining=remaining,
+        )
+
+    async def _release_lock_and_cleanup(self, key: str) -> None:
+        """Drop the per-acquire ``_lock_refs`` reference cancel-safely.
+
+        :meth:`_release_lock_ref` itself awaits ``_meta_lock``, so a
+        cancellation arriving in ``acquire``'s ``finally`` could exit
+        before the decrement landed and leak the entry, leaving the
+        lock for *key* permanently un-evictable by GC. ``asyncio.shield``
+        guarantees the cleanup completes before the cancel is re-raised.
+        """
+        await asyncio.shield(self._release_lock_ref(key))
+
+    async def _maybe_schedule_gc(self) -> bool:
+        """Increment the acquire counter; report whether GC should run.
+
+        Counter + threshold check run under the meta-lock to avoid
+        redundant concurrent sweeps. Increments on every acquire --
+        allowed AND denied -- so a key under sustained deny pressure
+        still triggers periodic cold-bucket sweeps.
+        """
         async with self._meta_lock:
             self._acquires_since_gc += 1
             if self._acquires_since_gc >= _GC_EVERY_N_ACQUIRES:
                 self._acquires_since_gc = 0
-                should_gc = True
-        if should_gc:
-            await self._gc_cold_buckets()
-
-        return outcome
+                return True
+        return False
 
     async def close(self) -> None:
         """Clear all buckets and locks."""
@@ -225,45 +257,20 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
         async with self._meta_lock:
             try:
                 now = time.monotonic()
-                dead: list[str] = []
-                for key, bucket in self._buckets.items():
-                    horizon = max(
-                        bucket.window_seconds * 2,
-                        _MIN_GC_HORIZON_SECONDS,
-                    )
-                    cutoff = now - float(horizon)
-                    if not bucket.timestamps or bucket.timestamps[-1] <= cutoff:
-                        dead.append(key)
+                dead = [
+                    key
+                    for key, bucket in self._buckets.items()
+                    if self._is_bucket_cold(bucket, now)
+                ]
                 for key in dead:
                     self._buckets.pop(key, None)
-                    # Only drop the lock if no task is holding it AND
-                    # no in-flight ``acquire`` has captured a
-                    # reference. ``lock.locked()`` alone is too weak:
-                    # a coroutine that just got the lock from
-                    # ``_get_lock`` but has not yet awaited
-                    # ``async with`` would be deprived of its lock,
-                    # and the next ``_get_lock(same_key)`` would mint
-                    # a fresh one -- two acquires holding different
-                    # locks for the same key.
-                    lock = self._locks.get(key)
-                    if (
-                        lock is not None
-                        and not lock.locked()
-                        and self._lock_refs.get(key, 0) == 0
-                    ):
-                        self._locks.pop(key, None)
+                    self._maybe_drop_idle_lock(key)
                 # Sweep orphan locks (keys in _locks but not in _buckets).
                 orphan_lock_keys = [
                     key for key in list(self._locks.keys()) if key not in self._buckets
                 ]
                 for key in orphan_lock_keys:
-                    lock = self._locks.get(key)
-                    if (
-                        lock is not None
-                        and not lock.locked()
-                        and self._lock_refs.get(key, 0) == 0
-                    ):
-                        self._locks.pop(key, None)
+                    self._maybe_drop_idle_lock(key)
             except asyncio.CancelledError, MemoryError, RecursionError:
                 # Non-recoverable: propagate so shutdown / OOM is not hidden.
                 raise
@@ -278,3 +285,28 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
                     error_type="rate_limit_gc_failed",
                     error=safe_error_description(exc),
                 )
+
+    def _is_bucket_cold(self, bucket: _Bucket, now: float) -> bool:
+        """Return True when the bucket is past its per-key GC horizon.
+
+        ``window_seconds`` is the largest observed window for the
+        bucket; doubling it gives the cooldown horizon. Empty buckets
+        are always considered cold.
+        """
+        horizon = max(bucket.window_seconds * 2, _MIN_GC_HORIZON_SECONDS)
+        cutoff = now - float(horizon)
+        return not bucket.timestamps or bucket.timestamps[-1] <= cutoff
+
+    def _maybe_drop_idle_lock(self, key: str) -> None:
+        """Remove the lock for *key* iff no task holds or references it.
+
+        ``lock.locked()`` alone is too weak: a coroutine that just got
+        the lock from :meth:`_get_lock` but has not yet awaited
+        ``async with`` would be deprived of its lock, and the next
+        ``_get_lock(same_key)`` would mint a fresh one -- two
+        ``acquire`` calls holding different locks for the same key.
+        Caller MUST hold ``self._meta_lock``.
+        """
+        lock = self._locks.get(key)
+        if lock is not None and not lock.locked() and self._lock_refs.get(key, 0) == 0:
+            self._locks.pop(key, None)

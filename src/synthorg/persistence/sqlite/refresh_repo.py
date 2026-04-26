@@ -103,8 +103,18 @@ class SQLiteRefreshTokenRepository:
         *,
         is_session_revoked: Callable[[str], bool] | None = None,
     ) -> RefreshConsumeOutcome:
-        """Atomically consume a refresh token (single-use rotation)."""
+        """Atomically consume a refresh token (single-use rotation).
+
+        ``is_session_revoked`` is consulted while the write lock is
+        still held and BEFORE the UPDATE commits. A transient failure
+        in the callback (or a True return on a revoked session) rolls
+        back the UPDATE so the token stays unused -- otherwise a
+        post-commit check would burn the token even on a transient
+        revocation-store error, leaving the user with no path to
+        recover except a full re-authentication.
+        """
         now = format_iso_utc(datetime.now(UTC))
+        revoked = False
         async with self._write_lock:
             try:
                 cursor = await self._db.execute(
@@ -115,7 +125,14 @@ class SQLiteRefreshTokenRepository:
                     (token_hash, now),
                 )
                 row = await cursor.fetchone()
-                await self._db.commit()
+                if row is not None and is_session_revoked is not None:
+                    revoked = is_session_revoked(row["session_id"])
+                if revoked:
+                    # Session is gone -- token must stay unused so a
+                    # later legitimate session can still consume it.
+                    await self._db.rollback()
+                else:
+                    await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
@@ -128,12 +145,21 @@ class SQLiteRefreshTokenRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
+            except Exception:
+                # The revocation callback is operator-supplied and may
+                # raise anything (e.g. session-store transient error).
+                # Rollback so the token is not consumed on a failed
+                # check, then re-raise verbatim so the caller sees
+                # the original error class.
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                raise
 
+        if revoked:
+            return RefreshConsumeOutcome(
+                reject_reason=RefreshRejectReason.SESSION_REVOKED,
+            )
         if row is not None:
-            if is_session_revoked and is_session_revoked(row["session_id"]):
-                return RefreshConsumeOutcome(
-                    reject_reason=RefreshRejectReason.SESSION_REVOKED,
-                )
             return RefreshConsumeOutcome(
                 record=RefreshRecord(
                     token_hash=row["token_hash"],

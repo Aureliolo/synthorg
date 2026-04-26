@@ -44,6 +44,23 @@ def _import_dict_row() -> Any:
 logger = get_logger(__name__)
 
 
+class _SessionRevokedError(Exception):
+    """Internal sentinel: rollback the consume() transaction.
+
+    Raised inside the ``conn.transaction()`` context when the
+    revocation callback reports that the session has been revoked --
+    propagation triggers psycopg's automatic transaction rollback so
+    the UPDATE that marked the token as used does not commit. Caught
+    by :meth:`PostgresRefreshTokenRepository.consume` to return a
+    SESSION_REVOKED outcome without a second SQL round-trip.
+    """
+
+
+def _raise_session_revoked() -> None:
+    """Hoist the sentinel raise out of ``consume()`` (TRY301)."""
+    raise _SessionRevokedError
+
+
 class PostgresRefreshTokenRepository:
     """Postgres-backed refresh token repository.
 
@@ -107,7 +124,15 @@ class PostgresRefreshTokenRepository:
         *,
         is_session_revoked: Callable[[str], bool] | None = None,
     ) -> RefreshConsumeOutcome:
-        """Atomically consume a refresh token (single-use rotation)."""
+        """Atomically consume a refresh token (single-use rotation).
+
+        ``is_session_revoked`` is consulted INSIDE the same transaction
+        that performs the UPDATE -- if it returns True (or raises), an
+        internal sentinel exception unwinds the transaction so the
+        token stays unused. A post-commit check would burn the token
+        even on a transient revocation-store error, leaving the user
+        with no recovery path except a full re-authentication.
+        """
         dict_row = self._dict_row
         now = datetime.now(UTC)
 
@@ -126,6 +151,15 @@ class PostgresRefreshTokenRepository:
                     (token_hash, now),
                 )
                 row = await cur.fetchone()
+                if (
+                    row is not None
+                    and is_session_revoked is not None
+                    and (is_session_revoked(row["session_id"]))
+                ):
+                    # Roll back the UPDATE so the token stays unused;
+                    # raising the sentinel here lets ``conn.transaction``
+                    # auto-rollback without a second cursor.execute().
+                    _raise_session_revoked()
                 replay_row: dict[str, Any] | None = None
                 if row is None:
                     await cur.execute(
@@ -133,6 +167,10 @@ class PostgresRefreshTokenRepository:
                         (token_hash,),
                     )
                     replay_row = await cur.fetchone()
+        except _SessionRevokedError:
+            return RefreshConsumeOutcome(
+                reject_reason=RefreshRejectReason.SESSION_REVOKED,
+            )
         except PsycopgError as exc:
             logger.warning(
                 API_AUTH_REFRESH_PERSISTENCE_ERROR,
@@ -145,10 +183,6 @@ class PostgresRefreshTokenRepository:
             raise QueryError(msg) from exc
 
         if row is not None:
-            if is_session_revoked and is_session_revoked(row["session_id"]):
-                return RefreshConsumeOutcome(
-                    reject_reason=RefreshRejectReason.SESSION_REVOKED,
-                )
             # Postgres TIMESTAMPTZ rows can come back in the session
             # zone; normalise to UTC at the boundary so the
             # ``RefreshRecord`` always carries a UTC-anchored

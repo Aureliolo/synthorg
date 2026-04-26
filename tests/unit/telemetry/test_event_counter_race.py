@@ -5,6 +5,7 @@ thread ever observes ``first_eviction=True``; this test confirms the
 public guarantee under heavy thread-pool contention.
 """
 
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import Any
@@ -14,6 +15,12 @@ import pytest
 from synthorg.telemetry.event_counter import InMemoryTelemetryEventCounter
 
 pytestmark = pytest.mark.unit
+
+# Bounds the per-future wait so a regression that hangs ``on_event``
+# under contention fails fast instead of stalling the whole suite.
+# 30 s is the global pytest timeout in pyproject.toml; keep this well
+# below to leave headroom for the assertions after the join.
+_FUTURE_TIMEOUT_S: float = 20.0
 
 
 class _FakeEvent:
@@ -62,16 +69,28 @@ def test_eviction_logs_exactly_once_under_thread_concurrency(
 
     monkeypatch.setattr(ec_mod.logger, "info", _spy)
 
+    # ``start_evt`` blocks every worker until all futures are queued,
+    # then a single ``set()`` releases them simultaneously. Without
+    # the gate, the first submissions can finish before the last is
+    # scheduled, which leaves the test asserting sequential -- not
+    # concurrent -- behaviour and silently accepts a regression.
+    start_evt = threading.Event()
+
+    def _gated_on_event(event: _FakeEvent) -> None:
+        start_evt.wait()
+        counter.on_event(event)  # type: ignore[arg-type]
+
     with ThreadPoolExecutor(max_workers=16) as pool:
         futures = [
-            pool.submit(
-                counter.on_event,
-                _FakeEvent(now, f"flood.{i}"),  # type: ignore[arg-type]
-            )
+            pool.submit(_gated_on_event, _FakeEvent(now, f"flood.{i}"))
             for i in range(1000)
         ]
+        # Release the gate only after every future is queued.
+        start_evt.set()
         for fut in futures:
-            fut.result()
+            # Bounded ``result()`` so a regression that hangs a worker
+            # fails fast rather than blocking the suite indefinitely.
+            fut.result(timeout=_FUTURE_TIMEOUT_S)
 
     eviction_logs = [e for e in info_calls if e == "telemetry.counter.evicted"]
     assert len(eviction_logs) == 1, (

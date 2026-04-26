@@ -570,10 +570,11 @@ class ProviderManagementService:
             registry = ProviderRegistry.from_config(new_providers)
             router = self._build_router(new_providers)
         except Exception as exc:
-            msg = f"Provider configuration validation failed: {exc}"
+            msg = f"Provider configuration validation failed: {type(exc).__name__}"
             logger.warning(
                 PROVIDER_VALIDATION_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 provider_count=len(new_providers),
             )
             raise ProviderValidationError(msg) from exc

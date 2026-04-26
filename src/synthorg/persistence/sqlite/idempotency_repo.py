@@ -340,15 +340,32 @@ class SQLiteIdempotencyRepository:
 
         if row is None:
             return None
-        return IdempotencyRecord(
-            scope=NotBlankStr(str(row["scope"])),
-            key=NotBlankStr(str(row["key"])),
-            status=IdempotencyOutcome(str(row["status"])),
-            response_hash=row["response_hash"],
-            response_body=row["response_body"],
-            created_at=_parse_dt(row["created_at"]),
-            expires_at=_parse_dt(row["expires_at"]),
-        )
+        # Construction is wrapped so decode / validation failures
+        # (corrupt status enum value, naive ISO timestamp via
+        # ``parse_iso_utc``, IdempotencyRecord model validator
+        # rejection) route through the same QueryError contract as
+        # the SQL path. Callers see one exception type for any read
+        # failure regardless of cause.
+        try:
+            return IdempotencyRecord(
+                scope=NotBlankStr(str(row["scope"])),
+                key=NotBlankStr(str(row["key"])),
+                status=IdempotencyOutcome(str(row["status"])),
+                response_hash=row["response_hash"],
+                response_body=row["response_body"],
+                created_at=_parse_dt(row["created_at"]),
+                expires_at=_parse_dt(row["expires_at"]),
+            )
+        except (ValueError, TypeError) as exc:
+            logger.warning(
+                IDEMPOTENCY_PERSISTENCE_ERROR,
+                operation="get",
+                scope=scope,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = "Failed to fetch idempotency key"
+            raise QueryError(msg) from exc
 
     async def cleanup_expired(self, now: AwareDatetime) -> int:
         """Delete expired rows and return the count removed."""

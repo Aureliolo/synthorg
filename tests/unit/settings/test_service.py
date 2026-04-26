@@ -1101,7 +1101,7 @@ class TestSecuritySettingsAuditEmission:
                 ),
             )
         # Stub repo.set_many to return success (number of writes).
-        mock_repo.set_many.return_value = "2026-04-26T13:00:00+00:00"
+        mock_repo.set_many.return_value = True
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
@@ -1139,7 +1139,7 @@ class TestSecuritySettingsAuditEmission:
                 yaml_path=None,
             ),
         )
-        mock_repo.set_many.return_value = "2026-04-26T13:00:00+00:00"
+        mock_repo.set_many.return_value = True
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,

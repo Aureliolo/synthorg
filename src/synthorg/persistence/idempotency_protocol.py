@@ -123,7 +123,19 @@ class IdempotencyRecord(BaseModel):
         (e.g. body without hash, or hash on a row whose status is
         still in-flight). Catches both buggy writes and corrupt rows
         loaded from disk.
+
+        ``FRESH`` is a transient claim discriminator returned by
+        :meth:`IdempotencyRepository.claim`; it MUST NOT appear on a
+        persisted row -- the table only stores ``in_flight`` /
+        ``completed`` / ``failed``. Reject it explicitly so a corrupt
+        row (or a buggy writer) cannot smuggle FRESH past the model.
         """
+        if self.status is IdempotencyOutcome.FRESH:
+            msg = (
+                "status FRESH is not valid for a persisted "
+                "IdempotencyRecord (only in_flight/completed/failed)"
+            )
+            raise ValueError(msg)
         if self.status is IdempotencyOutcome.COMPLETED:
             if self.response_hash is None or self.response_body is None:
                 msg = (

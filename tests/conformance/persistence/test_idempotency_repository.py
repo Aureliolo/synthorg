@@ -11,7 +11,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from synthorg.core.types import NotBlankStr
-from synthorg.persistence.idempotency_protocol import IdempotencyOutcome
+from synthorg.persistence.idempotency_protocol import (
+    IdempotencyClaim,
+    IdempotencyOutcome,
+)
 from synthorg.persistence.protocol import PersistenceBackend
 
 pytestmark = pytest.mark.integration
@@ -140,19 +143,36 @@ class TestIdempotencyClaim:
         self,
         backend: PersistenceBackend,
     ) -> None:
-        """``asyncio.gather`` 10 simultaneous claims -- exactly one FRESH."""
+        """``asyncio.gather`` 10 simultaneous claims -- exactly one FRESH.
+
+        All 10 coroutines block on the same ``asyncio.Event`` until the
+        last has been scheduled, then the event is set so they race
+        into ``claim`` together. Without the barrier, the loop's
+        sequential ``backend.idempotency_keys.claim(...)`` calls inside
+        the comprehension can resolve before the next task even starts
+        (especially under SQLite's BEGIN IMMEDIATE serialisation),
+        which leaves the test asserting the trivial sequential
+        outcome rather than the concurrent race that motivates it.
+        """
         key = NotBlankStr("key-race")
-        results = await asyncio.gather(
-            *[
-                backend.idempotency_keys.claim(
-                    scope=_SCOPE,
-                    key=key,
-                    ttl_seconds=60,
-                    now=_now(),
-                )
-                for _ in range(10)
-            ],
-        )
+        start_evt = asyncio.Event()
+
+        async def _gated_claim() -> IdempotencyClaim:
+            await start_evt.wait()
+            return await backend.idempotency_keys.claim(
+                scope=_SCOPE,
+                key=key,
+                ttl_seconds=60,
+                now=_now(),
+            )
+
+        tasks = [asyncio.create_task(_gated_claim()) for _ in range(10)]
+        # Yield once so every task reaches ``await start_evt.wait()``
+        # before we release the gate -- otherwise the first to be
+        # scheduled could win without anyone else having started.
+        await asyncio.sleep(0)
+        start_evt.set()
+        results = await asyncio.gather(*tasks)
         fresh = [r for r in results if r.outcome is IdempotencyOutcome.FRESH]
         in_flight = [r for r in results if r.outcome is IdempotencyOutcome.IN_FLIGHT]
         assert len(fresh) == 1

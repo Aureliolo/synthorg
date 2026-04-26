@@ -304,7 +304,7 @@ def _log_error(
         path=str(request.url.path),
         status_code=status,
         error_type=type(exc).__qualname__,
-        error=str(exc),
+        error=safe_error_description(exc),
         exc_info=status >= _SERVER_ERROR_THRESHOLD,
     )
 
@@ -614,7 +614,7 @@ def handle_not_found(
         path=str(request.url.path),
         status_code=404,
         error_type=type(exc).__qualname__,
-        error=str(exc),
+        error=safe_error_description(exc),
     )
     return _build_response(
         request,
