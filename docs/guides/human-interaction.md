@@ -12,7 +12,7 @@ This guide covers how humans and external systems interact with SynthOrg: the AP
 ## API-First Architecture
 
 The REST/WebSocket API is the **primary interface** for all consumers. The Web UI and CLI
-are thin clients that call the API -- they contain no business logic.
+are thin clients that call the API; they contain no business logic.
 
 ```d2
 Engine: "SynthOrg Engine\n(Core Logic, Agent Orchestration, Tasks)"
@@ -45,10 +45,10 @@ API -> CLI
 
 | Endpoint | Purpose |
 |----------|---------|
-| `/api/v1/healthz` | Liveness probe -- always 200 while the process is alive (used by supervisors to decide whether to restart the pod) |
-| `/api/v1/readyz` | Readiness probe -- 200 when persistence + message bus are healthy, 503 otherwise (used by load-balancers to gate traffic) |
-| `/api/v1/metrics` | Prometheus metrics scrape endpoint (unauthenticated). 12 metric families: `synthorg_app_info` (Info -- version), `synthorg_active_agents_total` (Gauge -- status, trust_level labels), `synthorg_tasks_total` (Gauge -- status, agent labels), `synthorg_cost_total` (Gauge), `synthorg_budget_used_percent` (Gauge), `synthorg_budget_monthly_cost` (Gauge), `synthorg_budget_daily_used_percent` (Gauge -- daily cost as % of prorated daily budget), `synthorg_agent_cost_total` (Gauge -- agent_id label, per-agent accumulated cost), `synthorg_agent_budget_used_percent` (Gauge -- agent_id label, per-agent daily cost as % of daily limit), `synthorg_coordination_efficiency` (Gauge -- push-updated), `synthorg_coordination_overhead_percent` (Gauge -- push-updated), `synthorg_security_evaluations_total` (Counter -- verdict label). Most refreshed per-scrape; coordination and security metrics are push-updated. |
-| `/api/v1/auth` | Authentication: setup, login (HttpOnly cookie sessions, CSRF double-submit), password change (rotates session cookie), ws-ticket, session management (list/revoke, concurrent session limits), logout, account lockout, refresh token rotation (three-tier rate limiting -- see `docs/security.md`) |
+| `/api/v1/healthz` | Liveness probe; always 200 while the process is alive (used by supervisors to decide whether to restart the pod) |
+| `/api/v1/readyz` | Readiness probe; 200 when persistence + message bus are healthy, 503 otherwise (used by load-balancers to gate traffic) |
+| `/api/v1/metrics` | Prometheus metrics scrape endpoint (unauthenticated). 12 metric families: `synthorg_app_info` (Info, version), `synthorg_active_agents_total` (Gauge with status, trust_level labels), `synthorg_tasks_total` (Gauge with status, agent labels), `synthorg_cost_total` (Gauge), `synthorg_budget_used_percent` (Gauge), `synthorg_budget_monthly_cost` (Gauge), `synthorg_budget_daily_used_percent` (Gauge, daily cost as % of prorated daily budget), `synthorg_agent_cost_total` (Gauge with agent_id label, per-agent accumulated cost), `synthorg_agent_budget_used_percent` (Gauge with agent_id label, per-agent daily cost as % of daily limit), `synthorg_coordination_efficiency` (Gauge, push-updated), `synthorg_coordination_overhead_percent` (Gauge, push-updated), `synthorg_security_evaluations_total` (Counter with verdict label). Most refreshed per-scrape; coordination and security metrics are push-updated. |
+| `/api/v1/auth` | Authentication: setup, login (HttpOnly cookie sessions, CSRF double-submit), password change (rotates session cookie), ws-ticket, session management (list/revoke, concurrent session limits), logout, account lockout, refresh token rotation (three-tier rate limiting; see `docs/security.md`) |
 | `/api/v1/company` | CRUD company config |
 | `/api/v1/agents` | List, hire, fire, modify agents |
 | `GET /api/v1/agents/{name}/health` | Per-agent composite health (performance, trust, lifecycle status) |
@@ -84,7 +84,7 @@ API -> CLI
 
 In addition to the global three-tier limiter applied in `api/app.py`
 (10,000 req/min/IP floor, 20 req/min unauth by IP, 6,000 req/min auth
-by user ID -- see `docs/security.md` for the exact behaviour), a
+by user ID; see `docs/security.md` for the exact behaviour), a
 pluggable sliding-window limiter throttles individual expensive or
 abuse-prone operations.  Guards are declared at the route level via
 `per_op_rate_limit("<op>", max_requests=N, window_seconds=W, key=...)`
@@ -132,7 +132,7 @@ subclass overrides automatically.  5xx responses return the class-level
 `default_message`; 4xx pass the controller-authored message through
 (user-safe).  A single `is_retryable=True` on a subclass is sufficient
 to surface `retryable: true` in the envelope even when the base class
-opts out -- the handler prefers the instance flag when set.
+opts out; the handler prefers the instance flag when set.
 
 ## Error Response Format (RFC 9457)
 
@@ -187,16 +187,16 @@ and retry guidance.
 !!! note "Status"
 
     The Web UI is built as a React 19 + shadcn/ui + Tailwind CSS dashboard. The API
-    remains fully self-sufficient for all operations -- the dashboard is a thin client.
+    remains fully self-sufficient for all operations; the dashboard is a thin client.
 
 For the full-page list, navigation hierarchy, URL routing map, and WebSocket channel subscriptions, see [Page Structure & IA](../design/page-structure.md).
 
 **Primary navigation** (sidebar, always visible):
 
-- **Dashboard** (`/`): Org overview -- department health indicators, recent activity widget, budget snapshot, active task summary, agent status counts, approval badge count
-- **Org Chart** (`/org`): Living org visualization with hierarchy and communication graph views, real-time agent status, drag-drop agent reassignment. Merged with former Company page -- "Edit Organization" mode (`/org/edit`) provides form-based company config CRUD with sub-tabs (General, Agents, Departments)
+- **Dashboard** (`/`): org overview, department health indicators, recent activity widget, budget snapshot, active task summary, agent status counts, approval badge count
+- **Org Chart** (`/org`): living org visualization with hierarchy and communication graph views, real-time agent status, drag-drop agent reassignment. Merged with former Company page; "Edit Organization" mode (`/org/edit`) provides form-based company config CRUD with sub-tabs (General, Agents, Departments)
 - **Task Board** (`/tasks`): Kanban (default) and list view toggle. Task detail includes "Coordinate" action for multi-agent coordination
-- **Budget** (`/budget`): P&L management dashboard -- current spend vs budget, per-agent/department breakdowns, trend lines, forecast projections (`/budget/forecast`)
+- **Budget** (`/budget`): P&L management dashboard with current spend vs budget, per-agent/department breakdowns, trend lines, forecast projections (`/budget/forecast`)
 - **Approvals** (`/approvals`): Pending decisions queue with risk-level badges, approve/reject with comment, history view
 
 **Secondary navigation** (sidebar, collapsible "Workspace" section):
@@ -229,5 +229,5 @@ Settings details:
 ## See Also
 
 - [Design Overview](../design/index.md)
-- [Security & Approval](../design/security.md) -- approval gates, autonomy levels
+- [Security & Approval](../design/security.md): approval gates, autonomy levels
 - [Error Reference](../errors.md)

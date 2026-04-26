@@ -8,7 +8,7 @@ description: Pluggable ceremony scheduling strategies, velocity calculation, con
 Sprint ceremonies bridge the sprint lifecycle with the meeting protocol system.
 The ceremony scheduling subsystem provides a **pluggable strategy architecture**
 that determines _when_ and _why_ ceremonies fire, how sprints auto-transition,
-and how velocity is measured -- all configurable per project, per department,
+and how velocity is measured: all configurable per project, per department,
 and per ceremony.
 
 ---
@@ -89,7 +89,7 @@ The **CeremonyScheduler** is a coordination layer in `engine/workflow/` that:
    **MeetingScheduler** to execute.
 4. Manages sprint auto-transitions when strategy-specific conditions are met.
 
-The `CeremonyScheduler` does _not_ replace `MeetingScheduler` -- it translates
+The `CeremonyScheduler` does _not_ replace `MeetingScheduler`; it translates
 sprint ceremony semantics into meeting system primitives.
 
 ---
@@ -182,7 +182,7 @@ sprint:
       # also fires on sprint_end
 ```
 
-**Auto-transition**: whichever comes first -- task completion threshold _or_
+**Auto-transition**: whichever comes first, task completion threshold _or_
 calendar duration boundary.
 
 **Default velocity unit**: points per sprint (`pts/sprint`).
@@ -194,7 +194,7 @@ dev shops, product teams, enterprises.
 
 Ceremonies subscribe to engine events (`sprint_started`, `task_completed`,
 `board_state_changed`, `sprint_backlog_empty`) with configurable debounce.
-No fixed schedule -- ceremonies fire reactively.
+No fixed schedule; ceremonies fire reactively.
 
 ```yaml
 sprint:
@@ -261,7 +261,7 @@ sprint:
 ```
 
 **Auto-transition**: when task completion rate stabilizes after final tasks
-complete (no anomaly-based transition -- uses a completion threshold like
+complete (no anomaly-based transition; uses a completion threshold like
 task-driven).
 
 **Default velocity unit**: points per task (`pts/task`), with rate-of-change
@@ -542,7 +542,7 @@ The `CeremonyScheduler` is a runtime coordination service that:
   `strategy.should_transition_sprint()` on events.
 - **Bridges to meetings**: converts ceremony triggers into
   `MeetingScheduler.trigger_event()` calls.
-- **Returns transitioned sprints**: follows the immutable pattern -- returns
+- **Returns transitioned sprints**: follows the immutable pattern; returns
   a new `Sprint` instance if auto-transition occurred.
 
 ```python
@@ -677,7 +677,7 @@ Event constants in `synthorg.observability.events.workflow`:
 | `SPRINT_CEREMONY_MILESTONE_ASSIGNED` | Task assigned to a milestone |
 | `SPRINT_CEREMONY_MILESTONE_UNASSIGNED` | Task removed from a milestone |
 | `SPRINT_CEREMONY_MILESTONE_COMPLETED` | All tasks in a milestone are complete |
-| `SPRINT_CEREMONY_MILESTONE_NOT_READY` | Milestone has no tasks assigned -- cannot fire |
+| `SPRINT_CEREMONY_MILESTONE_NOT_READY` | Milestone has no tasks assigned; cannot fire |
 | `SPRINT_AUTO_TRANSITION_MILESTONE` | Sprint auto-transitioned at a milestone completion |
 
 ---
@@ -703,33 +703,33 @@ Event constants in `synthorg.observability.events.workflow`:
 
 ### Shipped in #969 + #970 (Calendar + Hybrid Strategies)
 
-- `CalendarStrategy` -- time-based ceremony firing using `MeetingFrequency` intervals
-- `CalendarVelocityCalculator` -- `pts/day` with duration-weighted rolling averages
-- `HybridStrategy` -- first-wins between calendar (floor) and task-driven (ceiling) triggers
-- `MultiDimensionalVelocityCalculator` -- `pts/sprint` with `pts_per_task`, `pts_per_day`, `completion_ratio` secondaries
-- Observability event constants (`VELOCITY_CALENDAR_NO_DURATION` -- defensive, for invalid/unvalidated records only, `VELOCITY_MULTI_NO_TASK_COUNT`, `VELOCITY_MULTI_NO_DURATION` -- defensive, for invalid/unvalidated records only)
+- `CalendarStrategy`: time-based ceremony firing using `MeetingFrequency` intervals
+- `CalendarVelocityCalculator`: `pts/day` with duration-weighted rolling averages
+- `HybridStrategy`: first-wins between calendar (floor) and task-driven (ceiling) triggers
+- `MultiDimensionalVelocityCalculator`: `pts/sprint` with `pts_per_task`, `pts_per_day`, `completion_ratio` secondaries
+- Observability event constants (`VELOCITY_CALENDAR_NO_DURATION`, defensive, for invalid/unvalidated records only; `VELOCITY_MULTI_NO_TASK_COUNT`, `VELOCITY_MULTI_NO_DURATION`, defensive, for invalid/unvalidated records only)
 
 ### Implemented in #971 + #972 (Event-Driven + Budget-Driven Strategies, integration pending)
 
-- `EventDrivenStrategy` -- reactive ceremony firing on engine events with configurable debounce
-- `PointsPerSprintVelocityCalculator` -- `pts/sprint` for event-driven and external-trigger strategies
-- `BudgetDrivenStrategy` -- ceremony firing at cost-consumption thresholds
-- `BudgetVelocityCalculator` -- `pts/<DEFAULT_CURRENCY>` with budget-weighted rolling averages
+- `EventDrivenStrategy`: reactive ceremony firing on engine events with configurable debounce
+- `PointsPerSprintVelocityCalculator`: `pts/sprint` for event-driven and external-trigger strategies
+- `BudgetDrivenStrategy`: ceremony firing at cost-consumption thresholds
+- `BudgetVelocityCalculator`: `pts/<DEFAULT_CURRENCY>` with budget-weighted rolling averages
 - Observability event constants (`SPRINT_CEREMONY_EVENT_DEBOUNCE_NOT_MET`, `SPRINT_CEREMONY_EVENT_COUNTER_INCREMENTED`, `SPRINT_CEREMONY_BUDGET_THRESHOLD_CROSSED`, `SPRINT_CEREMONY_BUDGET_THRESHOLD_ALREADY_FIRED`, `SPRINT_AUTO_TRANSITION_BUDGET`, `VELOCITY_BUDGET_NO_BUDGET_CONSUMED`)
 
 > **Note:** The `CeremonyScheduler` does not yet wire all lifecycle hooks (`on_task_added`, `on_task_blocked`, `on_budget_updated`, `on_external_event`). Until scheduler integration is complete, these strategies' event counters will not increment for those event types. Scheduler integration is tracked in follow-up work.
 
 ### Implemented in #973 + #974 (Throughput-Adaptive + External-Trigger Strategies, integration pending)
 
-- `ThroughputAdaptiveStrategy` -- ceremony firing when rolling throughput rate drops or spikes beyond configured thresholds (velocity_drop_threshold_pct, velocity_spike_threshold_pct, measurement_window_tasks). Baseline rate established from first full window, frozen per sprint. Default velocity calculator: `TaskDrivenVelocityCalculator`.
-- `ExternalTriggerStrategy` -- ceremony firing on named external signals (webhooks, git events, MCP invocations). Event matching via `context.external_events` and `on_external_event` lifecycle hook buffer. Source registration is declarative. Default velocity calculator: `PointsPerSprintVelocityCalculator`.
+- `ThroughputAdaptiveStrategy`: ceremony firing when rolling throughput rate drops or spikes beyond configured thresholds (velocity_drop_threshold_pct, velocity_spike_threshold_pct, measurement_window_tasks). Baseline rate established from first full window, frozen per sprint. Default velocity calculator: `TaskDrivenVelocityCalculator`.
+- `ExternalTriggerStrategy`: ceremony firing on named external signals (webhooks, git events, MCP invocations). Event matching via `context.external_events` and `on_external_event` lifecycle hook buffer. Source registration is declarative. Default velocity calculator: `PointsPerSprintVelocityCalculator`.
 - Observability event constants (`SPRINT_CEREMONY_THROUGHPUT_BASELINE_SET`, `SPRINT_CEREMONY_THROUGHPUT_DROP_DETECTED`, `SPRINT_CEREMONY_THROUGHPUT_SPIKE_DETECTED`, `SPRINT_CEREMONY_THROUGHPUT_COLD_START`, `SPRINT_CEREMONY_EXTERNAL_EVENT_RECEIVED`, `SPRINT_CEREMONY_EXTERNAL_EVENT_MATCHED`, `SPRINT_CEREMONY_EXTERNAL_SOURCE_REGISTERED`, `SPRINT_CEREMONY_EXTERNAL_SOURCE_CLEARED`)
 
 > **Note:** Like #971 + #972, the `CeremonyScheduler` does not yet wire all lifecycle hooks for these strategies. Scheduler integration is tracked in follow-up work.
 
 ### Shipped in #975 + #976 + #980 (Milestone-Driven + Template Defaults + Department Overrides)
 
-- `MilestoneDrivenStrategy` -- ceremony firing when all tasks tagged with a milestone are complete. Milestone-to-task assignment via `on_external_event` (`milestone_assign`/`milestone_unassign`). Edge-triggered (each milestone fires exactly once per sprint). Configurable `transition_milestone` for sprint auto-transition. Default velocity calculator: `PointsPerSprintVelocityCalculator`.
+- `MilestoneDrivenStrategy`: ceremony firing when all tasks tagged with a milestone are complete. Milestone-to-task assignment via `on_external_event` (`milestone_assign`/`milestone_unassign`). Edge-triggered (each milestone fires exactly once per sprint). Configurable `transition_milestone` for sprint auto-transition. Default velocity calculator: `PointsPerSprintVelocityCalculator`.
 - Template default ceremony strategy assignments for all 9 builtins (solo_founder/startup/data_team: task_driven, dev_shop/product_team/full_company: hybrid, agency: event_driven, research_lab: throughput_adaptive, consultancy: calendar).
 - Per-department `ceremony_policy` override in `TemplateDepartmentConfig` and `Department` models. Department-level overrides merge field-by-field with project default via `resolve_ceremony_policy()`.
 - Observability event constants (`SPRINT_CEREMONY_MILESTONE_ASSIGNED`, `SPRINT_CEREMONY_MILESTONE_UNASSIGNED`, `SPRINT_CEREMONY_MILESTONE_COMPLETED`, `SPRINT_CEREMONY_MILESTONE_NOT_READY`, `SPRINT_AUTO_TRANSITION_MILESTONE`)
