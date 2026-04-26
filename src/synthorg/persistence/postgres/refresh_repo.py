@@ -9,7 +9,11 @@ from collections.abc import Callable  # noqa: TC003
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from synthorg.api.auth.refresh_record import RefreshRecord
+from synthorg.api.auth.refresh_record import (
+    RefreshConsumeOutcome,
+    RefreshRecord,
+    RefreshRejectReason,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AUTH_REFRESH_CLEANUP,
@@ -76,7 +80,7 @@ class PostgresRefreshTokenRepository:
         token_hash: str,
         *,
         is_session_revoked: Callable[[str], bool] | None = None,
-    ) -> RefreshRecord | None:
+    ) -> RefreshConsumeOutcome:
         """Atomically consume a refresh token (single-use rotation)."""
         dict_row = self._dict_row
         now = datetime.now(UTC)
@@ -103,26 +107,28 @@ class PostgresRefreshTokenRepository:
                 replay_row = await cur.fetchone()
 
         if row is not None:
-            if is_session_revoked and is_session_revoked(
-                row["session_id"],
-            ):
-                # Caller logs SECURITY_AUTH_REFRESH_REJECTED with
-                # reason="session_revoked" when this branch is reached.
-                return None
-            return RefreshRecord(
-                token_hash=row["token_hash"],
-                session_id=row["session_id"],
-                user_id=row["user_id"],
-                expires_at=row["expires_at"],
-                used=bool(row["used"]),
-                created_at=row["created_at"],
+            if is_session_revoked and is_session_revoked(row["session_id"]):
+                return RefreshConsumeOutcome(
+                    reject_reason=RefreshRejectReason.SESSION_REVOKED,
+                )
+            return RefreshConsumeOutcome(
+                record=RefreshRecord(
+                    token_hash=row["token_hash"],
+                    session_id=row["session_id"],
+                    user_id=row["user_id"],
+                    expires_at=row["expires_at"],
+                    used=bool(row["used"]),
+                    created_at=row["created_at"],
+                ),
             )
 
-        # No row consumed -- caller logs SECURITY_AUTH_REFRESH_REJECTED
-        # (reason: replay_detected if the token already exists in used
-        # state, not_found_or_expired otherwise).
-        del replay_row
-        return None
+        if replay_row is not None and replay_row["used"]:
+            return RefreshConsumeOutcome(
+                reject_reason=RefreshRejectReason.REPLAY_DETECTED,
+            )
+        return RefreshConsumeOutcome(
+            reject_reason=RefreshRejectReason.NOT_FOUND_OR_EXPIRED,
+        )
 
     async def revoke_by_session(self, session_id: str) -> int:
         """Mark all refresh tokens for a session as used.

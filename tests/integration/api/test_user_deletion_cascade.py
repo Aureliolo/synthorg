@@ -20,6 +20,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from synthorg.api.auth.models import ApiKey, OrgRole, User
+from synthorg.api.auth.refresh_record import RefreshConsumeOutcome
 from synthorg.api.auth.session import Session
 from synthorg.api.auth.user_service import UserService
 from synthorg.api.guards import HumanRole
@@ -252,7 +253,11 @@ class TestUserDeletionCascade:
                 del args, kwargs
                 raise AssertionError(_UNUSED_STUB_METHOD)
 
-            async def consume(self, *args: object, **kwargs: object) -> None:
+            async def consume(
+                self,
+                *args: object,
+                **kwargs: object,
+            ) -> RefreshConsumeOutcome:
                 del args, kwargs
                 raise AssertionError(_UNUSED_STUB_METHOD)
 

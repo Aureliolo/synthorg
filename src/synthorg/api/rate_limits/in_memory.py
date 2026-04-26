@@ -139,7 +139,14 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
                         remaining=remaining,
                     )
         finally:
-            await self._release_lock_ref(key)
+            # Shield the refcount cleanup from cancellation: the
+            # release helper itself awaits ``_meta_lock``, so a
+            # cancel arriving in the ``finally`` could exit before
+            # the decrement landed and leak the entry, leaving the
+            # lock for *key* permanently un-evictable by GC. With
+            # ``shield`` the cleanup completes before the cancel is
+            # re-raised.
+            await asyncio.shield(self._release_lock_ref(key))
 
         # GC counter increments on every acquire -- allowed AND denied --
         # so a key under sustained deny pressure still triggers periodic

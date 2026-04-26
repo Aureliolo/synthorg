@@ -13,7 +13,6 @@ import pytest
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.errors import AgentAlreadyRegisteredError
 from synthorg.hr.registry import AgentRegistryService
 from tests.unit.hr.conftest import make_agent_identity
 
@@ -69,17 +68,15 @@ async def test_clear_concurrent_with_register_no_partial_state() -> None:
         for i in range(50):
             tg.create_task(_record_outcome(register_one(f"{i:03d}"), results))
 
-    # Only ``AgentAlreadyRegisteredError`` is a tolerable concurrency
-    # outcome: the clear ran between this register's lock acquisition
-    # and another register-then-clear-then-register sequence. Any other
-    # exception means the lock contract is broken.
+    # Each ``register_one`` uses a distinct UUIDv5 (different suffix)
+    # and the registry starts empty, so a duplicate-id collision is
+    # impossible. Any task exception therefore signals a broken lock
+    # contract -- not a tolerable concurrency outcome -- and must
+    # fail the test rather than be masked.
     for outcome in results:
-        if isinstance(outcome, BaseException):
-            assert isinstance(outcome, AgentAlreadyRegisteredError), (
-                f"unexpected task exception: {type(outcome).__name__}: {outcome}"
-            )
-        else:
-            assert outcome is None
+        assert outcome is None, (
+            f"unexpected task exception: {type(outcome).__name__}: {outcome}"
+        )
 
     # Final state: every agent that survived clear() is fully present.
     final_agents = await registry.list_active()

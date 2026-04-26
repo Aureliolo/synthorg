@@ -199,7 +199,7 @@ class IdempotencyService:
         scope: NotBlankStr,
         key: NotBlankStr,
         result: Any,
-        claim_token: str,
+        claim_token: NotBlankStr,
     ) -> str:
         """Persist *result* as the cached response body and return it.
 
@@ -244,7 +244,7 @@ class IdempotencyService:
         *,
         scope: NotBlankStr,
         key: NotBlankStr,
-        claim_token: str,
+        claim_token: NotBlankStr,
     ) -> None:
         try:
             committed = await self._repo.fail(

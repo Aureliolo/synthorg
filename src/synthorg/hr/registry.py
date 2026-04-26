@@ -87,21 +87,6 @@ class AgentRegistryService:
             self._agents.clear()
         logger.info(HR_REGISTRY_CLEARED, cleared_count=cleared_count)
 
-    def reset_for_test_sync(self) -> None:
-        """Synchronous reset for sync pytest fixtures only.
-
-        Bypasses ``self._lock`` -- callers must guarantee no async
-        operations are in flight. Production code MUST use the async
-        ``clear`` instead. Provided so existing sync fixtures can keep
-        their iteration shape after #1599 made ``clear`` async.
-
-        Async fixtures must call ``await registry.clear()`` instead of
-        this helper; the helper is intentionally sync-only.
-        """
-        cleared_count = len(self._agents)
-        self._agents.clear()
-        logger.info(HR_REGISTRY_CLEARED, cleared_count=cleared_count)
-
     def bind_versioning(
         self,
         versioning: VersioningService[AgentIdentity],

@@ -33,11 +33,16 @@ class _FakeRepo:
     the service-layer assertions stay focused.
     """
 
+    #: Token issued on FRESH claims; tests assert that the service
+    #: forwards this exact value to ``complete`` / ``fail`` so a
+    #: future regression that drops the lease token surfaces here.
+    FRESH_TOKEN: str = "test-token"
+
     def __init__(self, *, initial_outcome: IdempotencyOutcome | None = None) -> None:
         self.next_outcome = initial_outcome or IdempotencyOutcome.FRESH
         self.cached_response: str | None = None
-        self.completes: list[tuple[str, str]] = []
-        self.fails: list[tuple[str, str]] = []
+        self.completes: list[tuple[str, str, str]] = []
+        self.fails: list[tuple[str, str, str]] = []
         self.cleanup_calls: list[datetime] = []
 
     async def claim(
@@ -52,7 +57,7 @@ class _FakeRepo:
         if self.next_outcome is IdempotencyOutcome.FRESH:
             return IdempotencyClaim(
                 outcome=IdempotencyOutcome.FRESH,
-                claim_token="test-token",
+                claim_token=NotBlankStr(self.FRESH_TOKEN),
             )
         return IdempotencyClaim(
             outcome=self.next_outcome,
@@ -66,10 +71,15 @@ class _FakeRepo:
         key: NotBlankStr,
         response_body: str,
         response_hash: str,
-        claim_token: str,
+        claim_token: NotBlankStr,
     ) -> bool:
-        del scope, key, claim_token
-        self.completes.append((response_body, response_hash))
+        del scope, key
+        # Capture ``claim_token`` so tests can assert the service
+        # forwards the FRESH lease token verbatim. Token CAS is the
+        # core race fix for stale-worker overwrites; if the service
+        # ever drops the forward, ``complete`` would silently degrade
+        # to "complete by (scope, key)" and re-introduce the race.
+        self.completes.append((response_body, response_hash, claim_token))
         self.cached_response = response_body
         self.next_outcome = IdempotencyOutcome.COMPLETED
         return True
@@ -79,10 +89,10 @@ class _FakeRepo:
         *,
         scope: NotBlankStr,
         key: NotBlankStr,
-        claim_token: str,
+        claim_token: NotBlankStr,
     ) -> bool:
-        del claim_token
-        self.fails.append((str(scope), str(key)))
+        # Capture token for the same reason as ``complete``.
+        self.fails.append((str(scope), str(key), claim_token))
         self.next_outcome = IdempotencyOutcome.FAILED
         return True
 
@@ -116,10 +126,14 @@ async def test_run_idempotent_executes_callback_on_fresh_claim() -> None:
     assert fresh is True
     assert result == {"status": "ok", "n": 42}
     assert len(repo.completes) == 1
-    body, digest = repo.completes[0]
+    body, digest, forwarded_token = repo.completes[0]
     assert "status" in body
     assert "ok" in body
     assert len(digest) == 64  # SHA-256 hex
+    # Token CAS regression guard: the FRESH lease token issued by the
+    # repo MUST be forwarded verbatim to ``complete`` -- a service
+    # that drops the token would silently degrade the lease contract.
+    assert forwarded_token == _FakeRepo.FRESH_TOKEN
 
 
 async def test_run_idempotent_returns_cached_on_completed_claim() -> None:
@@ -153,7 +167,10 @@ async def test_run_idempotent_marks_failed_when_callback_raises() -> None:
     with pytest.raises(_BoomError):
         await svc.run_idempotent(scope=_SCOPE, key=_KEY, callback=cb)
     assert len(repo.fails) == 1
-    assert repo.fails[0] == (str(_SCOPE), str(_KEY))
+    fail_scope, fail_key, fail_token = repo.fails[0]
+    assert (fail_scope, fail_key) == (str(_SCOPE), str(_KEY))
+    # Same token-forwarding regression guard as the success path.
+    assert fail_token == _FakeRepo.FRESH_TOKEN
     assert len(repo.completes) == 0
 
 

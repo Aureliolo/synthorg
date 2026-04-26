@@ -13,6 +13,7 @@ import jwt
 
 from synthorg.api.auth.models import User  # noqa: TC001
 from synthorg.api.auth.system_user import USER_AUDIENCE, USER_ISSUER
+from synthorg.api.guards import HumanRole
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_AUTH_FAILED,
@@ -160,7 +161,7 @@ class AuthService:
         self,
         user: User,
     ) -> tuple[str, int, str]:
-        """Create a JWT for the given user.
+        """Create a JWT for the given **human** user.
 
         The token includes a ``pwd_sig`` claim -- a 16-character
         truncated SHA-256 of the stored password hash.  This is
@@ -173,15 +174,34 @@ class AuthService:
         A ``jti`` (JWT ID) claim is included for per-token session
         tracking and revocation.
 
+        SYSTEM-role tokens are minted by the Go CLI with
+        :data:`SYSTEM_ISSUER` / :data:`SYSTEM_AUDIENCE` -- never by
+        this method. Calling ``create_token`` with a SYSTEM user
+        would mint a token bearing :data:`USER_ISSUER` /
+        :data:`USER_AUDIENCE`, which the middleware's
+        ``_resolve_jwt_user`` immediately rejects (per-role iss/aud
+        enforcement). We fail-fast with ``ValueError`` here so a
+        future caller that accidentally passes a SYSTEM user
+        surfaces the problem at mint time, not at the next request.
+
         Args:
-            user: Authenticated user.
+            user: Authenticated human user.
 
         Returns:
             Tuple of (encoded JWT, expiry seconds, session ID).
 
         Raises:
             SecretNotConfiguredError: If the JWT secret is empty.
+            ValueError: If *user* has the SYSTEM role -- mint via
+                the CLI's system-token path instead.
         """
+        if user.role is HumanRole.SYSTEM:
+            msg = (
+                "create_token cannot mint SYSTEM-role tokens; "
+                "system tokens are issued by the CLI with "
+                "SYSTEM_ISSUER / SYSTEM_AUDIENCE"
+            )
+            raise ValueError(msg)
         secret = self._require_secret("create_token")
         now = datetime.now(UTC)
         expiry_seconds = self._config.jwt_expiry_minutes * 60

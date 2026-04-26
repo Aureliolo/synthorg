@@ -74,11 +74,18 @@ async def _enforce_max_payload(
     connection_name: str,
     max_payload: int,
 ) -> bytes:
-    """Validate Content-Length AND the buffered body against *max_payload*.
+    """Reject oversized webhook payloads via streaming size enforcement.
 
-    Returns the request body so the caller does not have to await
-    ``request.body()`` twice. Raises :class:`ApiValidationError` with
-    a structured WARNING when the cap is exceeded.
+    The Content-Length header is honoured up front when present, but
+    a missing or understated header MUST NOT cause us to buffer an
+    unbounded body before checking length: an attacker can post a
+    multi-gigabyte chunked body and the worker would allocate the
+    whole thing before ``request.body()`` returned. Read via
+    ``request.stream()`` and abort as soon as the running total
+    exceeds ``max_payload``.
+
+    Raises :class:`ApiValidationError` with a structured WARNING when
+    the cap is exceeded; returns the assembled body otherwise.
     """
     content_length_header = request.headers.get(
         "content-length",
@@ -106,18 +113,24 @@ async def _enforce_max_payload(
                 f"Webhook payload exceeds configured max_payload_bytes ({max_payload})"
             )
             raise ApiValidationError(msg)
-    body = await request.body()
-    if len(body) > max_payload:
-        logger.warning(
-            WEBHOOK_REJECTED,
-            connection_name=connection_name,
-            reason="body exceeds max_payload_bytes",
-            body_length=len(body),
-            max_payload=max_payload,
-        )
-        msg = f"Webhook payload exceeds configured max_payload_bytes ({max_payload})"
-        raise ApiValidationError(msg)
-    return body
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > max_payload:
+            logger.warning(
+                WEBHOOK_REJECTED,
+                connection_name=connection_name,
+                reason="body exceeds max_payload_bytes",
+                body_length=total,
+                max_payload=max_payload,
+            )
+            msg = (
+                f"Webhook payload exceeds configured max_payload_bytes ({max_payload})"
+            )
+            raise ApiValidationError(msg)
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 async def _verify_signature(
@@ -343,6 +356,21 @@ async def _publish_with_durable_idempotency(  # noqa: PLR0913
     # Narrow defensively rather than via ``assert`` so a regression
     # surfaces as a structured exception, not an AssertionError.
     if not isinstance(cached, dict):
+        # Log the corruption with full webhook context so the operator
+        # has enough forensics to identify which row in the durable
+        # idempotency table is malformed; raising bare TypeError would
+        # surface as a generic 500 with no breadcrumb back to the
+        # offending claim.
+        logger.error(
+            IDEMPOTENCY_CLAIM_IN_FLIGHT,
+            scope=scope,
+            idempotency_key=idem_key,
+            connection_name=connection_name,
+            event_type=event_type,
+            endpoint="webhook.receive",
+            note="cached_response_type_mismatch",
+            cached_type=type(cached).__name__,
+        )
         msg = "Cached webhook response was not a JSON object"
         raise TypeError(msg)
     return cached

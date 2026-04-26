@@ -490,9 +490,16 @@ def test_client(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # state; we want the real ``clear`` implementation to run.
         _restore_instance_patches(svc)
         # AgentRegistryService.clear and ApprovalStore.clear are async
-        # (#1599); use the sync test-only entry point so this sync
-        # fixture keeps its shape.
-        if isinstance(svc, (AgentRegistryService, ApprovalStore)):
+        # (#1599); use the sync test-only entry points so this sync
+        # fixture keeps its shape. AgentRegistryService no longer has
+        # a sync reset method on its production surface; the
+        # registry_testing module exposes one specifically for this
+        # use case.
+        if isinstance(svc, AgentRegistryService):
+            from synthorg.hr.registry_testing import reset_registry_for_test_sync
+
+            reset_registry_for_test_sync(svc)
+        elif isinstance(svc, ApprovalStore):
             svc.reset_for_test_sync()
         else:
             svc.clear()

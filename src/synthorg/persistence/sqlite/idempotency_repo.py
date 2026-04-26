@@ -156,7 +156,7 @@ class SQLiteIdempotencyRepository:
         key: NotBlankStr,
         response_body: str,
         response_hash: str,
-        claim_token: str,
+        claim_token: NotBlankStr,
     ) -> bool:
         """Mark a claimed key as ``COMPLETED`` if *claim_token* matches.
 
@@ -201,7 +201,7 @@ class SQLiteIdempotencyRepository:
         *,
         scope: NotBlankStr,
         key: NotBlankStr,
-        claim_token: str,
+        claim_token: NotBlankStr,
     ) -> bool:
         """Mark a claimed key as ``FAILED`` if *claim_token* matches."""
         async with self._write_lock:

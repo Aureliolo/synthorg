@@ -16,6 +16,7 @@ import pytest
 
 from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.models import User
+from synthorg.api.auth.refresh_record import RefreshRejectReason
 from synthorg.api.auth.session import Session
 from synthorg.api.guards import HumanRole
 from synthorg.core.types import NotBlankStr
@@ -229,17 +230,22 @@ class TestRefreshTokenRepository:
             expires_at=_now() + timedelta(hours=1),
         )
         first = await backend.refresh_tokens.consume("t_hash_1")
-        assert first is not None
-        assert first.session_id == "sess_rt1"
-        # Second consume must return None -- single-use rotation.
-        assert await backend.refresh_tokens.consume("t_hash_1") is None
+        assert first.record is not None
+        assert first.reject_reason is None
+        assert first.record.session_id == "sess_rt1"
+        # Second consume must reject as replay -- single-use rotation.
+        second = await backend.refresh_tokens.consume("t_hash_1")
+        assert second.record is None
+        assert second.reject_reason is RefreshRejectReason.REPLAY_DETECTED
 
-    async def test_consume_missing_returns_none(
+    async def test_consume_missing_returns_not_found(
         self, backend: PersistenceBackend
     ) -> None:
-        assert await backend.refresh_tokens.consume("nope") is None
+        outcome = await backend.refresh_tokens.consume("nope")
+        assert outcome.record is None
+        assert outcome.reject_reason is RefreshRejectReason.NOT_FOUND_OR_EXPIRED
 
-    async def test_consume_expired_returns_none(
+    async def test_consume_expired_returns_not_found(
         self, backend: PersistenceBackend
     ) -> None:
         # Can't build a Session with expires_at in the past (temporal
@@ -253,7 +259,9 @@ class TestRefreshTokenRepository:
             user_id="user_exp",
             expires_at=past,
         )
-        assert await backend.refresh_tokens.consume("t_exp") is None
+        outcome = await backend.refresh_tokens.consume("t_exp")
+        assert outcome.record is None
+        assert outcome.reject_reason is RefreshRejectReason.NOT_FOUND_OR_EXPIRED
 
     async def test_consume_respects_session_revocation_callback(
         self, backend: PersistenceBackend
@@ -265,11 +273,12 @@ class TestRefreshTokenRepository:
             user_id="user_rv",
             expires_at=_now() + timedelta(hours=1),
         )
-        revoked = await backend.refresh_tokens.consume(
+        outcome = await backend.refresh_tokens.consume(
             "t_rev",
             is_session_revoked=lambda _sid: True,
         )
-        assert revoked is None
+        assert outcome.record is None
+        assert outcome.reject_reason is RefreshRejectReason.SESSION_REVOKED
 
     async def test_revoke_by_session(self, backend: PersistenceBackend) -> None:
         await _seed_session(backend, "sess_group", "user_g", "gaby")
@@ -287,8 +296,11 @@ class TestRefreshTokenRepository:
         )
         count = await backend.refresh_tokens.revoke_by_session("sess_group")
         assert count >= 2
-        assert await backend.refresh_tokens.consume("t_a") is None
-        assert await backend.refresh_tokens.consume("t_b") is None
+        for ref in ("t_a", "t_b"):
+            outcome = await backend.refresh_tokens.consume(ref)
+            assert outcome.record is None
+            # Revoke flags ``used = TRUE`` -- consume sees a replay.
+            assert outcome.reject_reason is RefreshRejectReason.REPLAY_DETECTED
 
     async def test_revoke_by_user(self, backend: PersistenceBackend) -> None:
         await _seed_session(backend, "sess_ubu", "user_mass_rt", "marta")
@@ -300,7 +312,9 @@ class TestRefreshTokenRepository:
         )
         count = await backend.refresh_tokens.revoke_by_user("user_mass_rt")
         assert count >= 1
-        assert await backend.refresh_tokens.consume("t_u1") is None
+        outcome = await backend.refresh_tokens.consume("t_u1")
+        assert outcome.record is None
+        assert outcome.reject_reason is RefreshRejectReason.REPLAY_DETECTED
 
     async def test_cleanup_expired(self, backend: PersistenceBackend) -> None:
         await _seed_session(backend, "sess_cl", "user_cl", "cleo")

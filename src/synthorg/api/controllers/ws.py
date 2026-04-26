@@ -778,44 +778,59 @@ async def ws_handler(
             user,
         )
 
-    consumer_task = asyncio.create_task(
-        _outbound_consumer(socket, outbound_queue),
-    )
-    revalidate_task = asyncio.create_task(_periodic_revalidate(socket, user))
+    # Structured concurrency for the WS background workers (CLAUDE.md):
+    # ``TaskGroup`` cancels siblings on any task's failure and turns the
+    # cancel/await choreography into a single ``async with`` block. The
+    # outbound consumer + the periodic revalidator are long-running; we
+    # cancel them explicitly when ``_receive_loop`` returns so the group
+    # can exit. Wrapping in ``ExceptionGroup`` lets a real failure in
+    # either worker surface to operators while ``CancelledError`` from
+    # our own teardown is treated as the expected shutdown path.
+    consumer_task: asyncio.Task[None] | None = None
     try:
-        async with subscriber.run_in_background(_event_callback):
-            await _receive_loop(
-                socket,
-                subscribed,
-                filters,
-                user,
-                outbound_queue,
+        async with asyncio.TaskGroup() as tg:
+            consumer_task = tg.create_task(
+                _outbound_consumer(socket, outbound_queue),
             )
-    finally:
-        revalidate_task.cancel()
-        # Cancellation is expected -- the receive loop has exited and
-        # we are tearing down. Any *other* exception out of
-        # _periodic_revalidate is a real bug we want surfaced in logs
-        # rather than swallowed silently. Teardown still proceeds so a
-        # crashed revalidator never blocks WebSocket cleanup.
-        try:
-            await revalidate_task
-        except asyncio.CancelledError:
-            pass
-        except Exception as exc:
+            revalidate_task = tg.create_task(
+                _periodic_revalidate(socket, user),
+            )
+            try:
+                async with subscriber.run_in_background(_event_callback):
+                    await _receive_loop(
+                        socket,
+                        subscribed,
+                        filters,
+                        user,
+                        outbound_queue,
+                    )
+            finally:
+                # Long-running workers won't exit on their own; cancel
+                # them so the TaskGroup can release.
+                revalidate_task.cancel()
+                consumer_task.cancel()
+    except* asyncio.CancelledError:
+        # Expected: receive loop returned, we cancelled the workers.
+        pass
+    except* Exception as eg:
+        # Real failure from a background task -- log each and proceed
+        # with teardown so subscriber/presence cleanup still runs.
+        for exc in eg.exceptions:
             logger.warning(
                 API_WS_TRANSPORT_ERROR,
-                stage="periodic_revalidate_teardown",
+                stage="ws_worker_failed",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-        await _teardown_connection(
-            socket,
-            user,
-            channels_plugin,
-            subscriber,
-            consumer_task,
-        )
+    finally:
+        if consumer_task is not None:
+            await _teardown_connection(
+                socket,
+                user,
+                channels_plugin,
+                subscriber,
+                consumer_task,
+            )
 
 
 async def _receive_loop(

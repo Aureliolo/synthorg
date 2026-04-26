@@ -12,7 +12,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import datetime
 
-    from synthorg.api.auth.refresh_record import RefreshRecord
+    from synthorg.api.auth.refresh_record import (
+        RefreshConsumeOutcome,
+    )
     from synthorg.api.auth.session import Session
 
 
@@ -144,8 +146,17 @@ class RefreshTokenRepository(Protocol):
         token_hash: str,
         *,
         is_session_revoked: Callable[[str], bool] | None = None,
-    ) -> RefreshRecord | None:
-        """Atomically consume a refresh token (single-use rotation)."""
+    ) -> RefreshConsumeOutcome:
+        """Atomically consume a refresh token (single-use rotation).
+
+        Returns a structured outcome that carries either the
+        consumed :class:`RefreshRecord` (success) or a typed
+        :class:`RefreshRejectReason` (``session_revoked`` /
+        ``replay_detected`` / ``not_found_or_expired``) so the
+        service layer can emit ``SECURITY_AUTH_REFRESH_REJECTED``
+        with an accurate reason. The repo MUST NOT log the audit
+        event itself per the persistence-boundary rule.
+        """
         ...
 
     async def revoke_by_session(self, session_id: str) -> int:

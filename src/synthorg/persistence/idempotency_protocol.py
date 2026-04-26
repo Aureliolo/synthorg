@@ -57,7 +57,7 @@ class IdempotencyClaim(BaseModel):
 
     outcome: IdempotencyOutcome
     cached_response: str | None = Field(default=None)
-    claim_token: str | None = Field(default=None)
+    claim_token: NotBlankStr | None = Field(default=None)
 
     @model_validator(mode="after")
     def _validate_cached_response_matches_outcome(self) -> Self:
@@ -168,7 +168,7 @@ class IdempotencyRepository(Protocol):
         key: NotBlankStr,
         response_body: str,
         response_hash: str,
-        claim_token: str,
+        claim_token: NotBlankStr,
     ) -> bool:
         """Mark a claimed key as ``COMPLETED`` and store the response.
 
@@ -186,7 +186,7 @@ class IdempotencyRepository(Protocol):
         *,
         scope: NotBlankStr,
         key: NotBlankStr,
-        claim_token: str,
+        claim_token: NotBlankStr,
     ) -> bool:
         """Mark a claimed key as ``FAILED`` so future retries can re-claim.
 
