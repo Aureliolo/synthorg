@@ -319,7 +319,7 @@ class SQLiteOrgFactRepository:
                             if fact.author.autonomy_level
                             else None
                         ),
-                        format_iso_utc(normalize_utc(fact.created_at)),
+                        format_iso_utc(fact.created_at),
                         version,
                     ),
                 )

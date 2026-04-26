@@ -242,11 +242,29 @@ class PostgresSettingsRepository:
         namespace: str,
         key: str,
     ) -> datetime:
-        """Parse ISO timestamp, raising QueryError on bad input."""
+        """Parse ISO timestamp, logging + raising QueryError on bad input.
+
+        Emits a structured WARNING with ``namespace`` / ``key`` /
+        ``value`` / ``error_type`` so an operator triaging a
+        bad-timestamp incident has the full call-site context
+        without having to grep for the raised :class:`QueryError`.
+        The raw exception text is redacted via
+        :func:`safe_error_description` so SEC-1 secret-log invariants
+        hold even if the underlying ``ValueError`` carried a payload
+        snippet.
+        """
         try:
             return parse_iso_utc(value)
         except ValueError as exc:
             msg = f"Invalid timestamp for {namespace}/{key}: {value!r}"
+            logger.warning(
+                SETTINGS_SET_FAILED,
+                namespace=namespace,
+                key=key,
+                value=value,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
 
     async def set_many(
