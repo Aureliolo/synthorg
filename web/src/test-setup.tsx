@@ -81,28 +81,19 @@ if (typeof document !== 'undefined') {
   })
 }
 
-// Vitest 4's ``BenchmarkUserOptions`` has no ``setupFiles`` field, so
-// ``vitest bench`` inherits ``test.setupFiles`` and loads this module
-// alongside every ``.bench.ts`` file. MSW's ``setupServer`` patches
-// Node's global ``http.request`` interceptor on ``listen()`` and
-// throws ``Invariant Violation`` if it is called more than once
-// against the same global without an intervening ``close()``; with
-// five ``.bench.ts`` files sharing one worker the second listen
-// trips that invariant and fails the whole CodSpeed Web job. Bench
-// files never hit network anyway -- they exercise pure helpers --
-// so we skip MSW wiring entirely in bench mode. ``process.argv``
-// reliably contains ``'bench'`` when invoked via ``vitest bench``
-// (the shape ``npm --prefix web run bench`` uses); the
-// ``test-setup`` cookie / matchMedia / rAF shims still apply so
-// benches that touch DOM-adjacent helpers (``csrf.bench.ts``)
-// still see a working ``document.cookie``.
-const IS_BENCH = process.argv.includes('bench')
-
 // Global MSW server: every default endpoint handler is registered up front
 // so tests that do not configure their own overrides get a predictable
 // happy-path response for any request. Requests that fall through to a
 // path with no handler fail the test loudly (`onUnhandledRequest: 'error'`)
 // so new endpoints cannot ship without a matching default handler.
+//
+// This file is loaded ONLY by the ``unit`` project in
+// ``vitest.config.ts``; the ``bench`` project loads
+// ``./src/bench-setup.ts`` (no MSW, no React, no Motion). Splitting
+// the two projects is the architectural fix for CodSpeed Web --
+// previously ``test.setupFiles`` was shared with bench mode, and
+// MSW's ``setupServer().listen()`` tripped its global-interceptor
+// invariant on the second ``.bench.ts`` file.
 export const server = setupServer(...defaultHandlers)
 
 beforeAll(() => {
@@ -115,15 +106,11 @@ beforeAll(() => {
   // was the cause of the round-2 14-leak regression). The test dispatcher
   // does not validate the value.
   document.cookie = `csrf_token=${CSRF_SEED_VALUE}; path=/`
-  if (!IS_BENCH) {
-    server.listen({ onUnhandledRequest: 'error' })
-  }
+  server.listen({ onUnhandledRequest: 'error' })
 })
 
 afterEach(() => {
-  if (!IS_BENCH) {
-    server.resetHandlers()
-  }
+  server.resetHandlers()
   // Clear any cookies a test wrote to the jar so state cannot leak across
   // tests in the same Vitest worker, then restore the global CSRF seed so
   // mutating-request tests still send `X-CSRF-Token` without re-seeding
@@ -136,9 +123,7 @@ afterEach(() => {
 })
 
 afterAll(() => {
-  if (!IS_BENCH) {
-    server.close()
-  }
+  server.close()
 })
 
 // Short-circuit every Motion animation so framer-motion does not leave
