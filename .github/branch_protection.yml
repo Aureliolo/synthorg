@@ -26,7 +26,6 @@ rulesets:
       ref_name:
         include: ["~ALL"]
         exclude:
-          - refs/heads/release-please--*
           - refs/heads/cla-signatures
     rules:
       - type: code_quality
