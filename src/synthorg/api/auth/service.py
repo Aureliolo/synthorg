@@ -12,6 +12,7 @@ import argon2
 import jwt
 
 from synthorg.api.auth.models import User  # noqa: TC001
+from synthorg.api.auth.system_user import USER_AUDIENCE, USER_ISSUER
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_AUTH_FAILED,
@@ -187,6 +188,8 @@ class AuthService:
             user.password_hash.encode(),
         ).hexdigest()[:16]
         payload: dict[str, Any] = {
+            "iss": USER_ISSUER,
+            "aud": USER_AUDIENCE,
             "sub": user.id,
             "username": user.username,
             "role": user.role.value,
@@ -206,11 +209,15 @@ class AuthService:
     def decode_token(self, token: str) -> dict[str, Any]:
         """Decode and validate a JWT.
 
-        Audience (``aud``) verification is intentionally disabled
-        here (``verify_aud=False``) because audience validation is
-        performed per-role in the auth middleware's
-        ``_resolve_jwt_user``.  System-user tokens require
-        ``aud=synthorg-backend``; regular user tokens omit ``aud``.
+        Issuer (``iss``) and audience (``aud``) verification is
+        intentionally deferred to the auth middleware's
+        ``_resolve_jwt_user``: the canonical pair differs by role
+        (``synthorg-cli`` / ``synthorg-backend`` for CLI-minted
+        SYSTEM tokens vs. ``synthorg-api`` / ``synthorg-api`` for
+        API-minted user tokens), and the middleware loads the user
+        record before deciding which pair to enforce. Both claims are
+        ``require``-listed here so a missing claim fails decode rather
+        than reaching the middleware as ``None``.
 
         Args:
             token: Encoded JWT string.
@@ -227,7 +234,11 @@ class AuthService:
             token,
             secret,
             algorithms=[self._config.jwt_algorithm],
-            options={"require": ["exp", "iat", "sub", "jti"], "verify_aud": False},
+            options={
+                "require": ["exp", "iat", "sub", "jti", "iss", "aud"],
+                "verify_aud": False,
+                "verify_iss": False,
+            },
         )
 
     async def persist_refresh_token(

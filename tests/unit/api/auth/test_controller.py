@@ -693,6 +693,7 @@ class TestLogoutIdempotency:
             token,
             _TEST_JWT_SECRET,
             algorithms=["HS256"],
+            options={"verify_aud": False, "verify_iss": False},
         )["jti"]
 
         response = bare_client.post(

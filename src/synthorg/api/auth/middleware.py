@@ -15,7 +15,12 @@ from litestar.middleware import (
 
 from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.api.auth.service import SecretNotConfiguredError
-from synthorg.api.auth.system_user import SYSTEM_AUDIENCE, SYSTEM_ISSUER
+from synthorg.api.auth.system_user import (
+    SYSTEM_AUDIENCE,
+    SYSTEM_ISSUER,
+    USER_AUDIENCE,
+    USER_ISSUER,
+)
 from synthorg.api.guards import HumanRole
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
@@ -273,27 +278,34 @@ async def _resolve_jwt_user(
     # pwd_sig validation is meaningless and skipped.  The shared
     # JWT secret signature is the sole authentication gate.
     # Additionally, require iss + aud to constrain which tokens
-    # may skip pwd_sig.
+    # may skip pwd_sig. Both system and user tokens carry these
+    # claims; the canonical pair differs by role so a leaked CLI
+    # token cannot replay as a user token (or vice versa).
     if db_user.role == HumanRole.SYSTEM:
-        if claims.get("iss") != SYSTEM_ISSUER:
-            logger.warning(
-                SECURITY_AUTH_FAILED,
-                reason="system_token_wrong_issuer",
-                user_id=user_id,
-                iss=claims.get("iss"),
-                path=path,
-            )
-            return None
-        if claims.get("aud") != SYSTEM_AUDIENCE:
-            logger.warning(
-                SECURITY_AUTH_FAILED,
-                reason="system_token_wrong_audience",
-                user_id=user_id,
-                aud=claims.get("aud"),
-                path=path,
-            )
-            return None
+        expected_iss, expected_aud = SYSTEM_ISSUER, SYSTEM_AUDIENCE
+        token_label = "system_token"  # noqa: S105 -- audit log discriminator
     else:
+        expected_iss, expected_aud = USER_ISSUER, USER_AUDIENCE
+        token_label = "user_token"  # noqa: S105 -- audit log discriminator
+    if claims.get("iss") != expected_iss:
+        logger.warning(
+            SECURITY_AUTH_FAILED,
+            reason=f"{token_label}_wrong_issuer",
+            user_id=user_id,
+            iss=claims.get("iss"),
+            path=path,
+        )
+        return None
+    if claims.get("aud") != expected_aud:
+        logger.warning(
+            SECURITY_AUTH_FAILED,
+            reason=f"{token_label}_wrong_audience",
+            user_id=user_id,
+            aud=claims.get("aud"),
+            path=path,
+        )
+        return None
+    if db_user.role != HumanRole.SYSTEM:
         expected_sig = hashlib.sha256(
             db_user.password_hash.encode(),
         ).hexdigest()[:16]

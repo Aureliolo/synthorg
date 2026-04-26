@@ -8,6 +8,7 @@ import pytest
 from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.models import User
 from synthorg.api.auth.service import AuthService, SecretNotConfiguredError
+from synthorg.api.auth.system_user import USER_AUDIENCE, USER_ISSUER
 from synthorg.api.guards import HumanRole
 from tests.unit.api.conftest import _TEST_JWT_SECRET as _SECRET
 
@@ -90,6 +91,10 @@ class TestJWT:
         assert claims["username"] == "admin"
         assert claims["role"] == "ceo"
         assert claims["jti"] == session_id
+        # User tokens carry the API issuer/audience pair so a leaked
+        # CLI token cannot replay as a user token (or vice versa).
+        assert claims["iss"] == USER_ISSUER
+        assert claims["aud"] == USER_AUDIENCE
 
     def test_expired_token_raises(self) -> None:
         config = AuthConfig(jwt_secret=_SECRET, jwt_expiry_minutes=1)
@@ -99,6 +104,8 @@ class TestJWT:
 
         # Manually create an expired token
         expired_payload = {
+            "iss": USER_ISSUER,
+            "aud": USER_AUDIENCE,
             "sub": user.id,
             "username": user.username,
             "role": user.role.value,
@@ -110,6 +117,42 @@ class TestJWT:
         expired_token = jwt.encode(expired_payload, _SECRET, algorithm="HS256")
         with pytest.raises(jwt.ExpiredSignatureError):
             svc.decode_token(expired_token)
+
+    def test_decode_token_missing_iss_claim(self) -> None:
+        """A token without ``iss`` is rejected at decode time."""
+        svc = _make_service()
+        user = _make_user()
+        payload = {
+            # Deliberately no "iss".
+            "aud": USER_AUDIENCE,
+            "sub": user.id,
+            "username": user.username,
+            "role": user.role.value,
+            "jti": "abc",
+            "iat": datetime.now(UTC),
+            "exp": datetime.now(UTC) + timedelta(hours=1),
+        }
+        token = jwt.encode(payload, _SECRET, algorithm="HS256")
+        with pytest.raises(jwt.MissingRequiredClaimError):
+            svc.decode_token(token)
+
+    def test_decode_token_missing_aud_claim(self) -> None:
+        """A token without ``aud`` is rejected at decode time."""
+        svc = _make_service()
+        user = _make_user()
+        payload = {
+            "iss": USER_ISSUER,
+            # Deliberately no "aud".
+            "sub": user.id,
+            "username": user.username,
+            "role": user.role.value,
+            "jti": "abc",
+            "iat": datetime.now(UTC),
+            "exp": datetime.now(UTC) + timedelta(hours=1),
+        }
+        token = jwt.encode(payload, _SECRET, algorithm="HS256")
+        with pytest.raises(jwt.MissingRequiredClaimError):
+            svc.decode_token(token)
 
     def test_invalid_signature_raises(self) -> None:
         svc = _make_service()
@@ -133,8 +176,11 @@ class TestJWT:
     def test_decode_token_missing_sub_claim(self) -> None:
         svc = _make_service()
         payload = {
+            "iss": USER_ISSUER,
+            "aud": USER_AUDIENCE,
             "username": "admin",
             "role": "ceo",
+            "jti": "abc",
             "iat": datetime.now(UTC),
             "exp": datetime.now(UTC) + timedelta(hours=1),
         }
