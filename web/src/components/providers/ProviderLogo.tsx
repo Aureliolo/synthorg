@@ -1,9 +1,32 @@
-import { useState } from 'react'
 import { Server } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+/**
+ * Preset names that have a bundled SVG in `web/public/provider-logos/`.
+ *
+ * Kept as a static set so the picker can decide between the brand mark
+ * and the fallback `Server` icon synchronously, without an HTTP probe
+ * or onError event listener (which doesn't fire reliably on
+ * `mask-image`).  Add a new entry here whenever you drop a new SVG
+ * into the public directory.
+ */
+const KNOWN_LOGOS: ReadonlySet<string> = new Set([
+  'anthropic',
+  'azure',
+  'deepseek',
+  'gemini',
+  'groq',
+  'lm-studio',
+  'mistral',
+  'ollama',
+  'ollama-cloud',
+  'openai',
+  'openrouter',
+  'vllm',
+])
+
 interface ProviderLogoProps {
-  /** Preset name (matches the SVG filename in /provider-logos/). */
+  /** Preset name (matches the SVG filename in `/provider-logos/`). */
   name: string
   /** Logo size in pixels. Defaults to 28. */
   size?: number
@@ -11,30 +34,23 @@ interface ProviderLogoProps {
 }
 
 /**
- * Brand logo for an LLM provider, sourced from `/provider-logos/{name}.svg`.
+ * Brand logo for an LLM provider.
  *
- * Falls back to a generic `Server` icon if the SVG is missing or fails to
- * load. The fallback is a feature, not a bug: we ship the component and
- * the directory now; vendor brand SVGs land in subsequent commits as
- * licensing for each is verified.
+ * Bundled SVGs live in `web/public/provider-logos/{name}.svg` and are
+ * sourced from [lobe-icons](https://github.com/lobehub/lobe-icons)
+ * (MIT licensed).  Each SVG uses `currentColor` for its mark, but
+ * `<img>` cannot inherit parent CSS color, so we render via a
+ * `mask-image` element coloured by `background-color` -- the design
+ * token then drives both light and dark themes uniformly.
  *
- * Marked `aria-hidden` because the display name always sits next to the
- * logo in the consuming UI -- the logo is decorative, not semantic.
+ * Falls back to a Lucide `Server` icon when the preset name is not
+ * in `KNOWN_LOGOS`.  Marked `aria-hidden` because the display name
+ * always sits next to the logo in the consuming UI.
  */
 export function ProviderLogo({ name, size = 28, className }: ProviderLogoProps) {
-  const [errored, setErrored] = useState(false)
-  // Render-phase reset of the error flag when the underlying preset
-  // changes -- the React-canonical alternative to a useEffect with
-  // setState (which @eslint-react/set-state-in-effect rightly flags).
-  const [prevName, setPrevName] = useState(name)
-  if (prevName !== name) {
-    setPrevName(name)
-    setErrored(false)
-  }
-
   const dimension = `${size}px`
 
-  if (errored) {
+  if (!KNOWN_LOGOS.has(name)) {
     return (
       <Server
         aria-hidden="true"
@@ -44,14 +60,25 @@ export function ProviderLogo({ name, size = 28, className }: ProviderLogoProps) 
     )
   }
 
+  const url = `/provider-logos/${encodeURIComponent(name)}.svg`
   return (
-    <img
-      src={`/provider-logos/${encodeURIComponent(name)}.svg`}
-      alt=""
+    <span
+      role="img"
       aria-hidden="true"
-      onError={() => setErrored(true)}
-      className={cn('object-contain', className)}
-      style={{ width: dimension, height: dimension }}
+      data-provider-logo={name}
+      className={cn('inline-block bg-text-secondary', className)}
+      style={{
+        width: dimension,
+        height: dimension,
+        maskImage: `url("${url}")`,
+        WebkitMaskImage: `url("${url}")`,
+        maskSize: 'contain',
+        WebkitMaskSize: 'contain',
+        maskRepeat: 'no-repeat',
+        WebkitMaskRepeat: 'no-repeat',
+        maskPosition: 'center',
+        WebkitMaskPosition: 'center',
+      }}
     />
   )
 }
