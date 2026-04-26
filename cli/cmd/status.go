@@ -235,6 +235,12 @@ func imageTag(image string) string {
 }
 
 // healthIcon returns a status icon for a container's health/state.
+//
+// A running container with no Health field is treated as healthy: it
+// declared no Docker-level healthcheck (e.g. NATS, where liveness is
+// surfaced at the application layer via /api/v1/readyz). Showing the
+// in-progress spinner indefinitely for these containers misleads the
+// reader into thinking they are still starting.
 func healthIcon(state, health string) string {
 	if health == "healthy" {
 		return ui.IconSuccess
@@ -243,6 +249,9 @@ func healthIcon(state, health string) string {
 		return ui.IconError
 	}
 	if state == "running" {
+		if health == "" {
+			return ui.IconSuccess
+		}
 		return ui.IconInProgress
 	}
 	if state == "restarting" {
@@ -291,7 +300,16 @@ func renderContainerTable(out *ui.UI, containers []containerInfo, wide, noTrunc 
 		icon := healthIcon(c.State, c.Health)
 		healthLabel := c.Health
 		if healthLabel == "" {
-			healthLabel = "-"
+			// A running container with no docker-level healthcheck
+			// (NATS is the canonical example) reports an empty
+			// Health field. "-" reads as missing data; "no probe"
+			// names what is actually true so the reader doesn't
+			// conclude the container is in a broken state.
+			if c.State == "running" {
+				healthLabel = "no probe"
+			} else {
+				healthLabel = "-"
+			}
 		}
 		imageDisplay := imageTag(c.Image)
 		if noTrunc {

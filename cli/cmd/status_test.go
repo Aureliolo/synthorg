@@ -36,7 +36,12 @@ func TestHealthIcon(t *testing.T) {
 	}{
 		{"running", "healthy", ui.IconSuccess},
 		{"running", "unhealthy", ui.IconError},
-		{"running", "", ui.IconInProgress},
+		// Running with no docker-level healthcheck (e.g. NATS) is the
+		// steady state for containers that intentionally declare no
+		// probe. Treat it as success so the table doesn't permanently
+		// show an "in progress" spinner.
+		{"running", "", ui.IconSuccess},
+		{"running", "starting", ui.IconInProgress},
 		{"restarting", "", ui.IconWarning},
 		{"exited", "", ui.IconError},
 		{"", "", ui.IconError},
