@@ -26,7 +26,7 @@ from synthorg.api.errors import (
 )
 from synthorg.api.guards import HumanRole
 from synthorg.api.state import AppState  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.setup import (
     SETUP_AGENT_BOOTSTRAP_FAILED,
     SETUP_AGENT_INDEX_OUT_OF_RANGE,
@@ -638,11 +638,12 @@ async def collect_model_ids(app_state: AppState) -> tuple[str, ...]:
         return tuple(ids)
     except MemoryError, RecursionError:
         raise
-    except Exception:
-        logger.debug(
+    except Exception as exc:
+        logger.warning(
             SETUP_COMPLETE_CHECK_ERROR,
             check="collect_model_ids",
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return ()
 

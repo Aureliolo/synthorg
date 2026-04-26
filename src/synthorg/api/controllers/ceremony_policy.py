@@ -24,7 +24,7 @@ from synthorg.engine.workflow.ceremony_policy import (
     resolve_ceremony_policy,
 )
 from synthorg.engine.workflow.velocity_types import VelocityCalcType
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_CEREMONY_POLICY_ACTIVE_QUERIED,
     API_CEREMONY_POLICY_QUERIED,
@@ -398,12 +398,14 @@ async def _lookup_dept_override_from_settings(
         )
     except MemoryError, RecursionError:
         raise
-    except Exception:
-        logger.debug(
+    except Exception as exc:
+        logger.warning(
             API_REQUEST_ERROR,
             endpoint="ceremony_policy.fetch_dept",
-            error="Settings lookup failed, falling back to config",
-            exc_info=True,
+            department=department_name,
+            note="settings_lookup_failed_falling_back_to_config",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return _SETTINGS_NOT_FOUND
 

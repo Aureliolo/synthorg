@@ -45,7 +45,7 @@ from synthorg.budget.errors import (
 from synthorg.communication.errors import CommunicationError
 from synthorg.engine.errors import EngineError
 from synthorg.integrations.errors import IntegrationError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.correlation import generate_correlation_id
 from synthorg.observability.events.api import (
     API_ACCEPT_PARSE_FAILED,
@@ -90,10 +90,10 @@ def _get_instance_id() -> str:
         if isinstance(request_id, str) and request_id:
             return request_id
     except Exception as exc:
-        logger.debug(
+        logger.warning(
             API_CORRELATION_FALLBACK,
             error_type=type(exc).__qualname__,
-            error=str(exc),
+            error=safe_error_description(exc),
         )
     return generate_correlation_id()
 
@@ -113,10 +113,10 @@ def _wants_problem_json(request: Request[Any, Any, Any]) -> bool:
             ["application/json", _PROBLEM_JSON],
         )
     except Exception as exc:
-        logger.debug(
+        logger.warning(
             API_ACCEPT_PARSE_FAILED,
             error_type=type(exc).__qualname__,
-            error=str(exc),
+            error=safe_error_description(exc),
         )
         return False
     return match == _PROBLEM_JSON
