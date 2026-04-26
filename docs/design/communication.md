@@ -36,7 +36,7 @@ The framework supports multiple communication patterns, configurable per company
 
     - Agents publish to topics, subscribe to relevant channels
     - Async by default, enables parallelism
-    - Decoupled -- agents do not need to know about each other
+    - Decoupled: agents do not need to know about each other
     - Natural audit trail of all communications
 
     Best for
@@ -106,7 +106,7 @@ MCP (Model Context Protocol, Agentic AI Foundation / Linux Foundation)
 
 The A2A gateway is an **optional** external interface that enables SynthOrg agents to
 federate with agents in other A2A-compatible systems. It is disabled by default
-(`a2a.enabled: false`). Internal communication is unchanged -- the MessageBus remains the
+(`a2a.enabled: false`). Internal communication is unchanged; the MessageBus remains the
 sole transport for intra-organization messages.
 
 ### Architecture
@@ -153,7 +153,7 @@ Outbound (internal -> external)
 
 When the gateway is enabled, SynthOrg serves an Agent Card at
 `/.well-known/agent.json` per the A2A specification. The card is a **safe projection**
-of `AgentIdentity` -- only fields relevant to external capability discovery are exposed:
+of `AgentIdentity`; only fields relevant to external capability discovery are exposed:
 
 | AgentIdentity Field | Agent Card Field | Included | Rationale |
 |---------------------|-----------------|----------|-----------|
@@ -161,12 +161,12 @@ of `AgentIdentity` -- only fields relevant to external capability discovery are 
 | `role` | `description` (partial) | Yes | Capability context |
 | `skills` (SkillSet) | `skills` (AgentSkill[]) | Yes | Lossless mapping via [Skill model](agents.md#skill-model) |
 | `department` | metadata | Optional | Organizational context |
-| `personality` | -- | No | Internal behavioral tuning |
-| `level` (seniority) | -- | No | Internal authority hierarchy |
-| `authority` | -- | No | Internal delegation rules |
-| `model` (ModelConfig) | -- | No | Internal infrastructure |
-| `tools` | -- | No | Security-sensitive capability list |
-| `budget_limit` | -- | No | Internal financial data |
+| `personality` | - | No | Internal behavioral tuning |
+| `level` (seniority) | - | No | Internal authority hierarchy |
+| `authority` | - | No | Internal delegation rules |
+| `model` (ModelConfig) | - | No | Internal infrastructure |
+| `tools` | - | No | Security-sensitive capability list |
+| `budget_limit` | - | No | Internal financial data |
 
 The [Skill model](agents.md#skill-model) is A2A AgentSkill-aligned on the shared
 capability fields (`id`, `name`, `description`, `tags`, `input_modes`,
@@ -221,8 +221,8 @@ a bidirectional reference for the gateway translation layer.
 | `DelegationRequest` | `tasks/send` (JSON-RPC) | Task creation |
 | `DelegationResult` | `tasks/get` response | Task completion/status |
 | `TaskExecution` state | Task object + `status` | Ongoing task tracking |
-| MessageBus channels | -- | No A2A equivalent; internal routing only |
-| Meeting protocols | -- | No A2A equivalent; internal coordination only |
+| MessageBus channels | - | No A2A equivalent; internal routing only |
+| Meeting protocols | - | No A2A equivalent; internal coordination only |
 
 ### SSE Streaming
 
@@ -240,7 +240,7 @@ The `EventStreamHub` is the single event source for all SSE consumers (hub-drive
 architecture). Both the AG-UI dashboard and the A2A gateway subscribe
 to the hub and apply per-consumer projection layers. The gateway applies an A2A
 projection that filters to task-related events for explicitly subscribed tasks and
-formats payloads per the A2A specification -- no internal channel traffic leaks to
+formats payloads per the A2A specification; no internal channel traffic leaks to
 external consumers.
 
 ### A2A Client (Outbound)
@@ -366,7 +366,7 @@ The default `max_subscriber_queue_size` is `1024`, capped at `65535`. Raise it f
 
 ### Bus Bridge Lifecycle Synchronization
 
-`MessageBusBridge.start()` and `stop()` (the Litestar `ChannelsPlugin` bridge in `api/bus_bridge.py`) run under a dedicated `_lifecycle_lock` so the `_running` check-and-set + the per-channel `subscribe` + poll-task-spawn loop are atomic against concurrent lifecycle calls. A racing `stop()` cannot cancel in-flight subscribes while `start()` is still wiring channels, and two concurrent `start()` calls cannot both pass the `_running=False` check. Partial-subscribe failures are tracked per channel and escalated to `ERROR` with the full list of failed channels so a silent "started with incomplete channel coverage" state is always visible to operators. The drain in `stop()` (`asyncio.gather` on all in-flight poll tasks after cancellation) is spawned as a separate task, shielded from the outer `wait_for` cancellation, and capped at `_STOP_DRAIN_TIMEOUT_SECONDS = 10.0`s. On deadline, the bridge sets `_stop_failed = True`, logs an `ERROR`, and re-raises `TimeoutError`; the shielded drain continues running in the background but no longer holds the lifecycle lock. **After a timed-out stop, `start()` refuses all restart attempts on the same instance** (`_stop_failed` is the unrestartable flag) because orphaned poller tasks remain on the event loop; the only recovery is to construct a fresh `MessageBusBridge` -- callers must replace the instance rather than retry `start()` on the same object. See `CLAUDE.md` §"Lifecycle synchronization" for the shared pattern.
+`MessageBusBridge.start()` and `stop()` (the Litestar `ChannelsPlugin` bridge in `api/bus_bridge.py`) run under a dedicated `_lifecycle_lock` so the `_running` check-and-set + the per-channel `subscribe` + poll-task-spawn loop are atomic against concurrent lifecycle calls. A racing `stop()` cannot cancel in-flight subscribes while `start()` is still wiring channels, and two concurrent `start()` calls cannot both pass the `_running=False` check. Partial-subscribe failures are tracked per channel and escalated to `ERROR` with the full list of failed channels so a silent "started with incomplete channel coverage" state is always visible to operators. The drain in `stop()` (`asyncio.gather` on all in-flight poll tasks after cancellation) is spawned as a separate task, shielded from the outer `wait_for` cancellation, and capped at `_STOP_DRAIN_TIMEOUT_SECONDS = 10.0`s. On deadline, the bridge sets `_stop_failed = True`, logs an `ERROR`, and re-raises `TimeoutError`; the shielded drain continues running in the background but no longer holds the lifecycle lock. **After a timed-out stop, `start()` refuses all restart attempts on the same instance** (`_stop_failed` is the unrestartable flag) because orphaned poller tasks remain on the event loop; the only recovery is to construct a fresh `MessageBusBridge`; callers must replace the instance rather than retry `start()` on the same object. See `CLAUDE.md` §"Lifecycle synchronization" for the shared pattern.
 
 !!! warning "Slow audit sinks"
     The drop-newest policy means an audit/security sink that falls behind will silently lose new events. Run audit sinks on dedicated channels with `max_subscriber_queue_size` sized for the worst-case burst, or monitor `COMM_SUBSCRIBER_QUEUE_OVERFLOW` at WARNING and alert on it. Security-critical events should never share a channel with normal traffic.
@@ -426,8 +426,8 @@ department, or per conflict type.
     The agent with higher authority level decides. Cross-department conflicts
     (incomparable authority) escalate to the lowest common manager in the
     hierarchy. The losing agent's reasoning is preserved as a **dissent record**
-    -- a structured log entry containing the conflict context, both positions,
-    and the resolution. Dissent records feed into organizational learning and
+    (a structured log entry containing the conflict context, both positions,
+    and the resolution). Dissent records feed into organizational learning and
     can be reviewed during retrospectives.
 
     ```yaml
@@ -455,13 +455,13 @@ department, or per conflict type.
         prompt injection, and logs all detections for audit. Coordination-level
         analog scans rollup summaries before parent-task updates. See
         [S1 Multi-Agent Architecture Decision §3](../research/s1-multi-agent-decision.md#section-3--risk-mitigation-register-15-emergent-risks-from-paper-1),
-        [Verification & Quality -- Harness Middleware Layer](verification-quality.md#harness-middleware-layer),
+        [Verification & Quality: Harness Middleware Layer](verification-quality.md#harness-middleware-layer),
         and [#1260](https://github.com/Aureliolo/synthorg/issues/1260).
 
 === "Strategy 2: Structured Debate + Judge"
 
-    Both agents present arguments (1 round each). A judge -- their shared
-    manager, the CEO, or a configurable arbitrator agent -- evaluates both
+    Both agents present arguments (1 round each). A judge (their shared
+    manager, the CEO, or a configurable arbitrator agent) evaluates both
     positions and decides. The judge's reasoning and both arguments are logged
     as a dissent record.
 
@@ -472,7 +472,7 @@ department, or per conflict type.
         judge: "shared_manager"        # shared_manager, ceo, designated_agent
     ```
 
-    - Better decisions -- forces agents to articulate reasoning
+    - Better decisions: forces agents to articulate reasoning
     - Higher token cost, adds latency proportional to argument length
 
 === "Strategy 3: Human Escalation"
@@ -486,7 +486,7 @@ department, or per conflict type.
       strategy: "human"
     ```
 
-    - Safest -- human always makes the call
+    - Safest: human always makes the call
     - Bottleneck at scale, depends on human availability
 
 === "Strategy 4: Hybrid"
@@ -495,13 +495,13 @@ department, or per conflict type.
 
     Combines strategies with an intelligent review layer:
 
-    1. Both agents present arguments (1 round) -- preserving dissent
+    1. Both agents present arguments (1 round), preserving dissent
     2. A **conflict review agent** evaluates the result:
         - If the resolution is **clear** (one position is objectively better,
-          or authority applies cleanly) -- resolve automatically, log dissent
+          or authority applies cleanly): resolve automatically, log dissent
           record
         - If the resolution is **ambiguous** (genuine trade-offs, no clear
-          winner) -- escalate to human queue with both positions + the review
+          winner): escalate to human queue with both positions + the review
           agent's analysis
 
     ```yaml
@@ -524,7 +524,7 @@ department, or per conflict type.
 Meetings (Pattern 3 above) follow configurable protocols that determine how
 agents interact during structured multi-agent conversations. Different meeting
 types naturally suit different protocols. All protocols implement a
-`MeetingProtocol` protocol, making the system extensible -- new protocols can be
+`MeetingProtocol` protocol, making the system extensible; new protocols can be
 registered and selected per meeting type. Cost bounds are enforced by
 `duration_tokens` in the [communication config](#communication-config).
 
@@ -596,7 +596,7 @@ registered and selected per meeting type. Cost bounds are enforced by
       synthesizer: "meeting_leader"    # who synthesizes
     ```
 
-    - Cheapest -- parallel calls, no quadratic growth, no ordering bias, no
+    - Cheapest: parallel calls, no quadratic growth, no ordering bias, no
       groupthink
     - Loses back-and-forth dialogue; agents cannot challenge each other's ideas
 
@@ -608,18 +608,18 @@ registered and selected per meeting type. Cost bounds are enforced by
 
     Meeting split into phases with targeted participation:
 
-    1. **Agenda broadcast** -- leader shares agenda and context to all
+    1. **Agenda broadcast**: leader shares agenda and context to all
        participants
-    2. **Input gathering** -- each agent submits input independently (parallel);
+    2. **Input gathering**: each agent submits input independently (parallel);
        strategic lens perspective injected per participant when configured
-    3. **Discussion round** -- only triggered if conflicts are detected between
+    3. **Discussion round**: only triggered if conflicts are detected between
        inputs (pluggable conflict detection: keyword, structured comparison,
        LLM judge, hybrid, or auto-select); relevant agents debate
-    4. **Premortem** *(optional)* -- participants imagine the decision failed
+    4. **Premortem** *(optional)*: participants imagine the decision failed
        and identify failure modes, risks, and hidden assumptions
-    5. **Devil's advocate** *(optional)* -- injected automatically when
+    5. **Devil's advocate** *(optional)*: injected automatically when
        consensus velocity detector identifies premature agreement
-    6. **Decision + action items** -- leader synthesizes, creates tasks from
+    6. **Decision + action items**: leader synthesizes, creates tasks from
        action items
 
     ```yaml
@@ -630,7 +630,7 @@ registered and selected per meeting type. Cost bounds are enforced by
       max_discussion_tokens: 1000
     ```
 
-    - Cost-efficient -- parallel input, discussion only when needed
+    - Cost-efficient: parallel input, discussion only when needed
     - More complex orchestration; conflict detection between inputs adds
       implementation complexity
 
@@ -648,7 +648,7 @@ triggering:
 Meetings with a `frequency` field (e.g. `daily`, `weekly`, `bi_weekly`,
 `per_sprint_day`, `monthly`) are scheduled as periodic asyncio tasks. The
 `MeetingFrequency` enum maps each value to a sleep interval in seconds. Periodic
-tasks survive transient errors -- a single execution failure does not kill the
+tasks survive transient errors; a single execution failure does not kill the
 background loop.
 
 ### Event-Triggered Meetings
@@ -664,11 +664,11 @@ The `ParticipantResolver` protocol resolves participant reference strings from
 config into concrete agent IDs. The `RegistryParticipantResolver` implementation
 uses the `AgentRegistryService` with a five-step cascade:
 
-1. **Context lookup** -- if the event context dict has a matching key, use its value.
-2. **Special `"all"`** -- resolves to all active agents.
-3. **Department lookup** -- resolves to all agents in the named department.
-4. **Agent name lookup** -- resolves to the agent with that name.
-5. **Pass-through** -- assumes the entry is a literal agent ID.
+1. **Context lookup**: if the event context dict has a matching key, use its value.
+2. **Special `"all"`**: resolves to all active agents.
+3. **Department lookup**: resolves to all agents in the named department.
+4. **Agent name lookup**: resolves to the agent with that name.
+5. **Pass-through**: assumes the entry is a literal agent ID.
 
 Results are deduplicated while preserving insertion order. The first resolved
 participant is designated as the meeting leader.
@@ -715,7 +715,7 @@ periodic and event-triggered meetings run on schedule.
 so REST endpoints stay available, but:
 
 - The `agent_caller` returned by `build_unconfigured_meeting_agent_caller`
-  raises `MeetingAgentCallerNotConfiguredError` at call time -- no
+  raises `MeetingAgentCallerNotConfiguredError` at call time; no
   silent empty responses.
 - `MeetingScheduler` and `CeremonyScheduler` are **not** auto-wired
   (`meeting_wire.meeting_scheduler is None`,
@@ -798,14 +798,14 @@ All four conflict resolution strategies terminate with bounded resource use:
     repository publishes ``<id>:<status>`` on the
     ``conflict_escalation_events`` channel from the *application* side
     after every terminal transition (``mark_decided``, ``mark_expired``,
-    ``cancel``) -- no database trigger is installed, so operators need
+    ``cancel``); no database trigger is installed, so operators need
     no elevated privileges to ship the schema.  An
     ``EscalationNotifySubscriber`` running in each worker listens on
     that channel and forwards the signal to its local registry.  The
     subscriber is controlled by
-    ``EscalationQueueConfig.cross_instance_notify`` (``auto`` -- default,
-    enables it automatically for the Postgres backend; ``on`` -- force
-    it, fail startup if the backend cannot support it; ``off`` -- scope
+    ``EscalationQueueConfig.cross_instance_notify`` (``auto``: default,
+    enables it automatically for the Postgres backend; ``on``: force
+    it, fail startup if the backend cannot support it; ``off``: scope
     to a single worker).
 
     **Timeout re-read fallback.** Because the NOTIFY publish is
@@ -852,10 +852,10 @@ limiter remain in-memory (short-lived by design).
 
 | Pattern | SynthOrg Risk | Mitigation |
 |---|---|---|
-| Chatty interfaces | Low -- detected via `MessageOverhead.is_quadratic` | Detection exists; no enforcement circuit breaker |
-| Distributed monolith | None -- async pull message bus, no synchronous coupling | |
-| Ownership ambiguity | None -- TaskEngine single-writer actor | |
-| Cascading failure | Low -- `fail_fast` bounds wave propagation | No upstream contamination detection |
+| Chatty interfaces | Low; detected via `MessageOverhead.is_quadratic` | Detection exists; no enforcement circuit breaker |
+| Distributed monolith | None; async pull message bus, no synchronous coupling | |
+| Ownership ambiguity | None; TaskEngine single-writer actor | |
+| Cascading failure | Low; `fail_fast` bounds wave propagation | No upstream contamination detection |
 
 ---
 
@@ -869,7 +869,7 @@ human-in-the-loop (HITL) interrupt/resume protocol.*
 Internal observability events (from `observability/events/`) are projected
 one-way to [AG-UI protocol](https://github.com/ag-ui-protocol/ag-ui)
 standard types for external consumers. The internal event namespace remains
-canonical -- AG-UI is the external-facing projection only.
+canonical; AG-UI is the external-facing projection only.
 
 The `EventProjector` in `communication/event_stream/projector.py` maps
 internal event constants to `AgUiEventType` values:
@@ -918,14 +918,14 @@ from this hub, each applying their own projection layer.
 
 Two blocking interrupt types:
 
-**Tool Approval Interrupt** -- emitted when `ApprovalGate` parks execution:
+**Tool Approval Interrupt**: emitted when `ApprovalGate` parks execution:
 
 - Payload: `interrupt_id`, `tool_name`, `tool_args`, `evidence_package_id`,
   `timeout_seconds`
 - Resume: `POST /api/v1/events/resume/{interrupt_id}` with
   `{decision, feedback}`
 
-**Information Request Interrupt** -- emitted when an agent needs
+**Information Request Interrupt**: emitted when an agent needs
 mid-task clarification:
 
 - Payload: `interrupt_id`, `question`, `context_snippet`, `timeout_seconds`
@@ -941,10 +941,10 @@ Non-SSE polling fallback for CLI/integration tests:
 payload. It extends `StructuredArtifact` (shared base with
 `HandoffArtifact` from R2 #1262):
 
-- `id`, `title`, `narrative` -- human-readable summary
-- `reasoning_trace` -- compressed reasoning steps
-- `recommended_actions` -- 1-3 `RecommendedAction` options
-- `risk_level` -- `ApprovalRiskLevel`
+- `id`, `title`, `narrative`: human-readable summary
+- `reasoning_trace`: compressed reasoning steps
+- `recommended_actions`: 1-3 `RecommendedAction` options
+- `risk_level`: `ApprovalRiskLevel`
 - `source_agent_id`, `task_id`, `metadata`
 
 `ApprovalItem.evidence_package` (optional) carries the package; existing
@@ -979,7 +979,7 @@ separate projection layer. No second SSE backend is needed.
 
 Supervisor agents manage background subagent tasks without blocking their own
 execution loop. The async task protocol provides five steering tools that wrap
-the existing `TaskEngine` -- no parallel task system is created.
+the existing `TaskEngine`; no parallel task system is created.
 
 ### Steering Tools
 
@@ -998,7 +998,7 @@ and gated by `ToolPermission.DELEGATION`.
 
 `AgentContext.async_task_state` is a dedicated `AsyncTaskStateChannel`
 that holds `AsyncTaskRecord` entries. It is structurally separate from
-`AgentContext.conversation` -- compaction strategies and
+`AgentContext.conversation`; compaction strategies and
 `ContextResetMiddleware` (R1 #1260) do not touch it. The state channel
 is projected into the agent's system prompt on each turn via
 `_inject_async_task_section()`, appended after trimming so it is never
