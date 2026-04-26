@@ -259,6 +259,31 @@ def _extract_provider_metadata(
     return latency_ms, cache_hit, retry_count, retry_reason
 
 
+# FinishReason values that represent a non-successful terminal outcome
+# from the provider.  ``ERROR`` is the only enum member that signals an
+# unsuccessful completion the chokepoint can observe; ``STOP``,
+# ``MAX_TOKENS``, ``TOOL_USE``, and ``CONTENT_FILTER`` are all legitimate
+# terminal reasons whose cost should still record as success.
+_NON_SUCCESS_FINISH_REASONS: Final[frozenset[str]] = frozenset({"error"})
+
+
+def _is_successful_finish(finish_reason: object) -> bool:
+    """Derive ``CostRecord.success`` from the provider's finish reason.
+
+    The chokepoint only fires after ``provider.complete()`` returns
+    without raising, so most calls land here as successes.  A response
+    that returns normally but carries ``FinishReason.ERROR`` indicates
+    a model-side failure (refusal, content-filter trip, internal error
+    surfaced as an error finish) -- record the cost (we still paid for
+    the tokens) but mark the record as ``success=False`` so analytics
+    can break out failed-but-billed calls.
+    """
+    if finish_reason is None:
+        return True
+    value = getattr(finish_reason, "value", finish_reason)
+    return str(value) not in _NON_SUCCESS_FINISH_REASONS
+
+
 def _build_cost_record(
     ctx: CostRecordingContext,
     response: CompletionResponse,
@@ -288,7 +313,7 @@ def _build_cost_record(
         retry_count=retry_count,
         retry_reason=retry_reason,
         finish_reason=response.finish_reason,
-        success=True,
+        success=_is_successful_finish(response.finish_reason),
     )
 
 
@@ -347,7 +372,11 @@ async def emit_cost_record_from_context(
     # background task is bounded by the same timeout so a hung
     # tracker doesn't accumulate forever-pending tasks; failures
     # (timeout, exception) are logged in the task itself with the
-    # same structured event the inline path used to emit.
+    # same structured event the inline path used to emit.  The
+    # ``PROVIDER_COST_RECORDED`` INFO log fires from
+    # ``_record_cost_in_background`` only after the tracker actually
+    # accepts the record, so a hung/failing tracker no longer produces
+    # a misleading "recorded" log followed by a "failed" warning.
     task = asyncio.create_task(
         _record_cost_in_background(ctx, record, provider=provider, model=model),
         name=f"cost_record:{ctx.agent_id}:{ctx.task_id}",
@@ -357,17 +386,6 @@ async def emit_cost_record_from_context(
     # once it completes (the lambda fires from ``add_done_callback``).
     _pending_record_tasks.add(task)
     task.add_done_callback(_pending_record_tasks.discard)
-
-    logger.info(
-        PROVIDER_COST_RECORDED,
-        agent_id=ctx.agent_id,
-        task_id=ctx.task_id,
-        provider=provider,
-        model=model,
-        cost=response.usage.cost,
-        currency=ctx.currency,
-        call_category=ctx.call_category.value,
-    )
 
 
 async def _record_cost_in_background(
@@ -405,6 +423,7 @@ async def _record_cost_in_background(
             timeout_seconds=_COST_RECORD_TIMEOUT_SECONDS,
             reason="cost_tracker_record_timeout",
         )
+        return
     except Exception as exc:
         logger.warning(
             PROVIDER_COST_FAILED,
@@ -416,6 +435,22 @@ async def _record_cost_in_background(
             error=safe_error_description(exc),
             reason="cost_tracker_record_failed",
         )
+        return
+
+    # Only log success after the tracker has actually accepted the
+    # record -- emitting at ``create_task`` time would produce a
+    # misleading INFO log when the background submission later fails.
+    logger.info(
+        PROVIDER_COST_RECORDED,
+        agent_id=ctx.agent_id,
+        task_id=ctx.task_id,
+        provider=provider,
+        model=model,
+        cost=record.cost,
+        currency=ctx.currency,
+        call_category=ctx.call_category.value,
+        success=record.success,
+    )
 
 
 async def drain_pending_cost_records() -> None:
