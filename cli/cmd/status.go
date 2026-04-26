@@ -235,6 +235,12 @@ func imageTag(image string) string {
 }
 
 // healthIcon returns a status icon for a container's health/state.
+//
+// A running container with no Health field (empty string) is treated as
+// successful because it declared no Docker-level healthcheck (e.g. NATS,
+// where application-level liveness is surfaced via /api/v1/readyz instead).
+// Without this, the status table would show an indefinite in-progress spinner,
+// misleading the reader into thinking the container is still starting.
 func healthIcon(state, health string) string {
 	if health == "healthy" {
 		return ui.IconSuccess
@@ -243,6 +249,9 @@ func healthIcon(state, health string) string {
 		return ui.IconError
 	}
 	if state == "running" {
+		if health == "" {
+			return ui.IconSuccess
+		}
 		return ui.IconInProgress
 	}
 	if state == "restarting" {
@@ -291,7 +300,15 @@ func renderContainerTable(out *ui.UI, containers []containerInfo, wide, noTrunc 
 		icon := healthIcon(c.State, c.Health)
 		healthLabel := c.Health
 		if healthLabel == "" {
-			healthLabel = "-"
+			// Empty Health field on a running container means no
+			// docker-level healthcheck declared. "no probe" is clearer
+			// than "-" and prevents the reader from assuming the container
+			// is broken. "-" is shown for non-running containers.
+			if c.State == "running" {
+				healthLabel = "no probe"
+			} else {
+				healthLabel = "-"
+			}
 		}
 		imageDisplay := imageTag(c.Image)
 		if noTrunc {
