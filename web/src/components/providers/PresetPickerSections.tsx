@@ -15,6 +15,12 @@ export interface PresetPickerSectionsProps {
   presets: readonly ProviderPreset[]
   /** Probe-local results, keyed by preset name. */
   probeResults: Readonly<Partial<Record<string, ProbePresetResponse>>>
+  /**
+   * Per-preset probe failures, keyed by preset name.  Disjoint with
+   * ``probeResults``.  Surfaced in the detected-local section so
+   * partial failures are visible to the operator.
+   */
+  probeErrors?: Readonly<Partial<Record<string, string>>>
   /** True while a batch probe is in flight. */
   probing: boolean
   /** Currently configured providers (for "already added" badges). */
@@ -45,6 +51,7 @@ export interface PresetPickerSectionsProps {
 export function PresetPickerSections({
   presets,
   probeResults,
+  probeErrors,
   probing,
   providers,
   onSelectCloud,
@@ -93,6 +100,7 @@ export function PresetPickerSections({
       <DetectedLocalList
         localPresets={localPresetsWithCandidates}
         probeResults={probeResults}
+        probeErrors={probeErrors}
         probing={probing}
         providers={providers}
         onAddLocal={onAddLocal}

@@ -147,11 +147,11 @@ All Zustand store **mutation** actions (create/update/delete) MUST follow the `s
 
 | Component | Import | Use for |
 |-----------|--------|---------|
-| `PresetPickerSections` | `@/components/providers/preset-picker-sections` | Canonical three-section provider picker (Cloud / Detected / Manual). Reused on the setup wizard's Providers step (`web/src/pages/setup/ProvidersStep.tsx`) and the Settings → Providers page (`web/src/pages/ProvidersPage.tsx`). Owns no fetching -- all state and callbacks come in via props. |
-| `CloudProviderGrid` | `@/components/providers/cloud-provider-grid` | Logo-and-name grid for cloud presets. Click a card to open the credential form pre-filled with that preset; already-configured presets render disabled with a "Configured" tag. |
-| `DetectedLocalList` | `@/components/providers/detected-local-list` | "Detected on this machine" panel for local LLM servers. Hidden entirely when probing is idle and nothing was found (no banner, no X marks). Each row offers `[Add local]` and -- when a cloud counterpart exists in `LOCAL_TO_CLOUD_COUNTERPART` (currently Ollama → Ollama Cloud) -- `[Add cloud]`. |
-| `CustomConfigButton` | `@/components/providers/custom-config-button` | "Configure manually" entry point opening the credential form in custom-endpoint mode. |
-| `ProviderLogo` | `@/components/providers/provider-logo` | Brand logo via `mask-image` against `bg-text-secondary` so the colour adapts cleanly to the active theme. SVGs live in `web/public/provider-logos/` (sourced from [lobe-icons](https://github.com/lobehub/lobe-icons), MIT). Falls back to a Lucide `Server` icon when the preset name is not in `KNOWN_LOGOS`. |
+| `PresetPickerSections` | `@/components/providers/PresetPickerSections` | Canonical three-section provider picker (Cloud / Detected / Manual). Reused on the setup wizard's Providers step (`web/src/pages/setup/ProvidersStep.tsx`) and the Settings → Providers page (`web/src/pages/ProvidersPage.tsx`). Owns no fetching -- all state and callbacks come in via props. |
+| `CloudProviderGrid` | `@/components/providers/CloudProviderGrid` | Logo-and-name grid for cloud presets. Click a card to open the credential form pre-filled with that preset; already-configured presets render disabled with a "Configured" tag. |
+| `DetectedLocalList` | `@/components/providers/DetectedLocalList` | "Detected on this machine" panel for local LLM servers. Hidden entirely when probing is idle and nothing was found (no banner, no X marks). Each row offers `[Add local]` and -- when a cloud counterpart exists in `LOCAL_TO_CLOUD_COUNTERPART` (currently Ollama -> Ollama Cloud) -- `[Add cloud]`. |
+| `CustomConfigButton` | `@/components/providers/CustomConfigButton` | "Configure manually" entry point opening the credential form in custom-endpoint mode. |
+| `ProviderLogo` | `@/components/providers/ProviderLogo` | Brand logo via `mask-image` against `bg-text-secondary` so the colour adapts cleanly to the active theme. SVGs live in `web/public/provider-logos/` (sourced from [lobe-icons](https://github.com/lobehub/lobe-icons), MIT). Falls back to a Lucide `Server` icon when the preset name is not in `KNOWN_LOGOS`. |
 
 ### Design Token Rules
 

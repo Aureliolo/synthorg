@@ -72,7 +72,12 @@ export function ProviderFormModal({
   onClose,
   mode,
   provider,
-  initialPreset,
+  // ``null`` means "open in custom-endpoint mode"; explicit string
+  // means "open with that preset preselected".  Defaulting to ``null``
+  // (rather than leaving it ``undefined``) ensures that consumers who
+  // omit the prop still land on a valid initial state instead of the
+  // blank-modal failure mode caught by CodeRabbit.
+  initialPreset = null,
   overrides,
 }: ProviderFormModalProps) {
   // Resolve store vs overrides
@@ -106,11 +111,16 @@ export function ProviderFormModal({
   // Cloud-only narrowing for cloud-specific fields (supported_auth_types).
   const cloudPreset = preset?.kind === 'cloud' ? (preset as CloudPreset) : null
 
-  // Subscription billing context only applies to cloud presets that
-  // declare it as a supported auth type.  Today that is Anthropic only;
-  // gating on supported_auth_types lets any future provider opt in.
+  // Subscription billing context: the banner copy + pricing link below
+  // are Anthropic-specific (Pro/Max plan credits).  Gating on the
+  // preset name (rather than just supported_auth_types) keeps a future
+  // provider with subscription auth from inheriting the wrong copy.
+  // When a second subscription-auth provider lands, move the copy +
+  // link into preset metadata and gate the banner on the metadata
+  // being present.
   const showSubscriptionBillingHint =
     cloudPreset != null &&
+    cloudPreset.name === 'anthropic' &&
     authType === 'subscription' &&
     cloudPreset.supported_auth_types.includes('subscription')
 
@@ -161,8 +171,10 @@ export function ProviderFormModal({
   }
 
   // 2. Seed selected preset from ``initialPreset`` on create-mode
-  //    open.  ``null`` keeps the user in custom mode by default.
-  if (open && mode === 'create' && openChanged && initialPreset !== undefined) {
+  //    open.  ``null`` (the default) maps to ``__custom__`` so users
+  //    who open the modal without a preset land in custom-endpoint
+  //    mode with the "Or pick a preset" dropdown visible.
+  if (open && mode === 'create' && openChanged) {
     setSelectedPreset(initialPreset ?? '__custom__')
   }
 
@@ -246,21 +258,13 @@ export function ProviderFormModal({
     setTosAccepted(false)
   }, [])
 
-  // 5. Reset form on edit→create transition (or first create-mode
-  //    open) ONLY when no explicit ``initialPreset`` is provided.
-  //    When the caller seeds a preset, block 2 already set it and
-  //    the selectedPreset-changed path (block 4) will fill the form;
-  //    a blanket resetForm() here would clobber that seed because
-  //    React batches all setState calls in this render and the last
-  //    write wins.
-  if (
-    (modeChanged || openChanged) &&
-    mode === 'create' &&
-    open &&
-    initialPreset === undefined
-  ) {
-    resetForm()
-  }
+  // 5. Block 2 above always seeds ``selectedPreset`` on create-mode
+  //    open (mapping ``null`` -> ``__custom__``), so we no longer need
+  //    a render-phase ``resetForm()`` here -- block 4 (driven by the
+  //    selectedPreset transition) handles every field reset.  Keeping
+  //    this comment as a tombstone for the previous render-phase
+  //    reset, which ran into a setState-batching ordering bug
+  //    (CodeRabbit R1) and was removed.
 
   const handleClose = useCallback(() => {
     resetForm()

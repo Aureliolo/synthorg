@@ -20,6 +20,7 @@ export function ProvidersStep() {
   const providers = useSetupWizardStore((s) => s.providers)
   const presets = useSetupWizardStore((s) => s.presets)
   const probeResults = useSetupWizardStore((s) => s.probeResults)
+  const probeErrors = useSetupWizardStore((s) => s.probeErrors)
   const probeGlobalError = useSetupWizardStore((s) => s.probeGlobalError)
   const probing = useSetupWizardStore((s) => s.probing)
   const providersLoading = useSetupWizardStore((s) => s.providersLoading)
@@ -190,6 +191,7 @@ export function ProvidersStep() {
         <PresetPickerSections
           presets={presets}
           probeResults={probeResults}
+          probeErrors={probeErrors}
           probing={probing}
           providers={providers}
           onSelectCloud={handleSelectCloud}

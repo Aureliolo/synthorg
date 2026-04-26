@@ -39,6 +39,9 @@ export default function ProvidersPage() {
   const [probeResults, setProbeResults] = useState<
     Readonly<Partial<Record<string, ProbePresetResponse>>>
   >({})
+  const [probeErrors, setProbeErrors] = useState<
+    Readonly<Partial<Record<string, string>>>
+  >({})
   const [probing, setProbing] = useState(false)
   const [probeError, setProbeError] = useState<string | null>(null)
 
@@ -66,11 +69,22 @@ export default function ProvidersPage() {
     setProbeError(null)
     try {
       const response = await probeLocal()
-      const results: Record<string, ProbePresetResponse> = {}
-      for (const [name, value] of Object.entries(response.results)) {
-        if (value !== undefined) results[name] = value
-      }
+      // Persist BOTH halves of the batch envelope: per-preset results
+      // and per-preset errors are disjoint and both meaningful for the
+      // detected-list UI.  Dropping ``response.errors`` would silently
+      // hide unreachable local providers from the operator.
+      const results = Object.fromEntries(
+        Object.entries(response.results).filter(
+          (entry): entry is [string, ProbePresetResponse] => entry[1] !== undefined,
+        ),
+      )
+      const errors = Object.fromEntries(
+        Object.entries(response.errors).filter(
+          (entry): entry is [string, string] => entry[1] !== undefined,
+        ),
+      )
       setProbeResults(results)
+      setProbeErrors(errors)
     } catch (err) {
       const msg = getErrorMessage(err)
       log.error('probe-local failed', msg)
@@ -176,6 +190,7 @@ export default function ProvidersPage() {
           <PresetPickerSections
             presets={presets}
             probeResults={probeResults}
+            probeErrors={probeErrors}
             probing={probing || presetsLoading}
             providers={providersByName}
             onSelectCloud={handleSelectCloud}

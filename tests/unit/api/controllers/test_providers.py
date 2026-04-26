@@ -303,6 +303,46 @@ class TestListModelsBatchCapabilities:
 
 
 @pytest.mark.unit
+class TestProbeLocalResponseInvariant:
+    """Tests for the disjoint-set invariant on ``ProbeLocalResponse``."""
+
+    def test_overlapping_results_and_errors_raises(self) -> None:
+        """Constructing the model with the same name in both maps fails fast."""
+        from pydantic import ValidationError
+
+        from synthorg.api.dto import ProbeLocalResponse, ProbePresetResponse
+
+        with pytest.raises(ValidationError, match=r"results.*errors.*overlap"):
+            ProbeLocalResponse(
+                results={
+                    "test-local-a": ProbePresetResponse(
+                        url="http://example/a",
+                        model_count=1,
+                        candidates_tried=1,
+                    ),
+                },
+                errors={"test-local-a": "boom"},
+            )
+
+    def test_disjoint_results_and_errors_validate(self) -> None:
+        """Disjoint maps construct cleanly (no validation error)."""
+        from synthorg.api.dto import ProbeLocalResponse, ProbePresetResponse
+
+        response = ProbeLocalResponse(
+            results={
+                "test-local-a": ProbePresetResponse(
+                    url="http://example/a",
+                    model_count=1,
+                    candidates_tried=1,
+                ),
+            },
+            errors={"test-local-b": "boom"},
+        )
+        assert "test-local-a" in response.results
+        assert "test-local-b" in response.errors
+
+
+@pytest.mark.unit
 class TestProbeLocalEndpoint:
     """Tests for POST /providers/probe-local (batch local probe)."""
 

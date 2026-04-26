@@ -30,14 +30,16 @@ interface ProbeOutcome {
 async function runProbeLocal(label: string): Promise<ProbeOutcome | null> {
   try {
     const response = await probeLocal()
-    const results: Record<string, ProbePresetResponse> = {}
-    for (const [name, value] of Object.entries(response.results)) {
-      if (value !== undefined) results[name] = value
-    }
-    const errors: Record<string, string> = {}
-    for (const [name, msg] of Object.entries(response.errors)) {
-      if (msg !== undefined) errors[name] = msg
-    }
+    const results = Object.fromEntries(
+      Object.entries(response.results).filter(
+        (entry): entry is [string, ProbePresetResponse] => entry[1] !== undefined,
+      ),
+    )
+    const errors = Object.fromEntries(
+      Object.entries(response.errors).filter(
+        (entry): entry is [string, string] => entry[1] !== undefined,
+      ),
+    )
     if (Object.keys(errors).length > 0) {
       log.warn(`${label} reported per-preset errors`, errors)
     }

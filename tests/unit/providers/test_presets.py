@@ -139,13 +139,19 @@ class TestProviderPresets:
         assert preset is not None
         assert preset.requires_base_url is True
 
-    def test_ollama_cloud_does_not_require_base_url(self) -> None:
-        """Ollama Cloud has a default hosted base URL."""
+    def test_ollama_cloud_requires_user_supplied_base_url(self) -> None:
+        """Ollama Cloud has no default base URL; the user must supply it.
+
+        The canonical hosted endpoint is unverified -- we deliberately
+        do not bake an unverified marketing URL into the form.  When a
+        stable endpoint is documented we can ship a safe default and
+        flip ``requires_base_url`` back to ``False``.
+        """
         preset = get_preset("ollama-cloud")
         assert preset is not None
         assert isinstance(preset, CloudPreset)
-        assert preset.requires_base_url is False
-        assert preset.default_base_url == "https://ollama.com"
+        assert preset.requires_base_url is True
+        assert preset.default_base_url is None
 
     @pytest.mark.parametrize("name", ["ollama", "lm-studio", "vllm"])
     def test_local_preset_requires_base_url(self, name: str) -> None:

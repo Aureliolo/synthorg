@@ -11,5 +11,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
-  args: { onClick: () => alert('Configure manually clicked') },
+  // No-op callback: ``alert`` would block Storybook's test-runner and
+  // visual-regression harnesses.
+  args: { onClick: () => undefined },
 }

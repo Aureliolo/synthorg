@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import type { LocalPreset, ProviderConfig } from '@/api/types/providers'
+import { buildProvider } from '@/mocks/handlers/providers'
 import { DetectedLocalList } from './DetectedLocalList'
 
 const ollama: LocalPreset = {
@@ -99,7 +100,7 @@ export const BothDetectedAndCloudAlreadyAdded: Story = {
     },
     probing: false,
     providers: {
-      'ollama-cloud': {} as ProviderConfig,
+      'ollama-cloud': buildProvider({ preset_name: 'ollama-cloud' }),
     },
     onAddLocal: (name, url) => alert(`Add local ${name} at ${url}`),
     onAddCloud: (name) => alert(`Add cloud ${name}`),

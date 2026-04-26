@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, Loader2, RefreshCw } from 'lucide-react'
+import { AlertTriangle, Check, Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { createLogger } from '@/lib/logger'
@@ -100,6 +100,15 @@ export interface DetectedLocalListProps {
   /** Local presets that participate in auto-detect (excludes vLLM). */
   localPresets: readonly LocalPreset[]
   probeResults: Readonly<Partial<Record<string, ProbePresetResponse>>>
+  /**
+   * Per-preset probe failures keyed by preset name.  Populated when the
+   * batch ``/providers/probe-local`` endpoint reports per-preset
+   * errors (preset returned an HTTP error, timed out, etc.).  Disjoint
+   * with ``probeResults`` -- a preset either succeeded or failed.
+   * Surfaced inline so the operator sees that a probe was attempted
+   * and reachable to the API even if it didn't yield a working URL.
+   */
+  probeErrors?: Readonly<Partial<Record<string, string>>>
   probing: boolean
   providers: Readonly<Record<string, ProviderConfig>>
   onAddLocal: (presetName: string, detectedUrl: string) => void | Promise<void>
@@ -125,6 +134,7 @@ export interface DetectedLocalListProps {
 export function DetectedLocalList({
   localPresets,
   probeResults,
+  probeErrors,
   probing,
   providers,
   onAddLocal,
@@ -136,9 +146,13 @@ export function DetectedLocalList({
   // A preset is "detected" when its probe result has a URL.  Cloud
   // presets and undetected locals are absent from probeResults.
   const detectedPresets = localPresets.filter((p) => probeResults[p.name]?.url)
+  // Failed presets: probe was attempted and returned an error.  Surface
+  // these so the operator distinguishes "service unreachable" from
+  // "preset never tried".
+  const failedPresets = localPresets.filter((p) => probeErrors?.[p.name])
 
-  if (!probing && detectedPresets.length === 0) {
-    // Nothing detected and we are not currently probing.  The
+  if (!probing && detectedPresets.length === 0 && failedPresets.length === 0) {
+    // Nothing detected, nothing failed, not currently probing.  The
     // surrounding step provides a "Re-scan" affordance via Configure
     // manually -> the wizard / Settings page own that surface.
     return null
@@ -197,35 +211,58 @@ export function DetectedLocalList({
           )}
         </Button>
       </div>
-      {probing && detectedPresets.length === 0 ? (
+      {probing && detectedPresets.length === 0 && failedPresets.length === 0 ? (
         <div className="space-y-2">
           <Skeleton className="h-6 rounded-md" />
           <Skeleton className="h-6 rounded-md" />
         </div>
       ) : (
-        detectedPresets.map((preset) => {
-          const cloudCounterpart = LOCAL_TO_CLOUD_COUNTERPART[preset.name]
-          const isAddingThis =
-            adding && adding.name === preset.name ? adding.kind : null
-          const isAddingCloudCounterpart =
-            adding && cloudCounterpart && adding.name === cloudCounterpart
-              ? adding.kind
-              : null
-          return (
-            <DetectedLocalRow
-              key={preset.name}
-              preset={preset}
-              result={probeResults[preset.name]}
-              alreadyAddedLocal={preset.name in providers}
-              alreadyAddedCloud={Boolean(
-                cloudCounterpart && cloudCounterpart in providers,
-              )}
-              adding={isAddingThis ?? isAddingCloudCounterpart}
-              onAddLocal={handleAddLocal}
-              onAddCloud={onAddCloud ? handleAddCloud : undefined}
-            />
-          )
-        })
+        <>
+          {detectedPresets.map((preset) => {
+            const cloudCounterpart = LOCAL_TO_CLOUD_COUNTERPART[preset.name]
+            const isAddingThis =
+              adding && adding.name === preset.name ? adding.kind : null
+            const isAddingCloudCounterpart =
+              adding && cloudCounterpart && adding.name === cloudCounterpart
+                ? adding.kind
+                : null
+            return (
+              <DetectedLocalRow
+                key={preset.name}
+                preset={preset}
+                result={probeResults[preset.name]}
+                alreadyAddedLocal={preset.name in providers}
+                alreadyAddedCloud={Boolean(
+                  cloudCounterpart && cloudCounterpart in providers,
+                )}
+                adding={isAddingThis ?? isAddingCloudCounterpart}
+                onAddLocal={handleAddLocal}
+                onAddCloud={onAddCloud ? handleAddCloud : undefined}
+              />
+            )
+          })}
+          {failedPresets.map((preset) => (
+            <div
+              key={`error-${preset.name}`}
+              className="flex items-center gap-3 text-sm"
+              data-probe-error={preset.name}
+            >
+              <AlertTriangle
+                className="size-4 text-warning"
+                aria-hidden="true"
+              />
+              <ProviderLogo name={preset.name} size={20} />
+              <div className="flex-1">
+                <span className="font-medium text-foreground">
+                  {preset.display_name}
+                </span>
+                <span className="ml-2 text-xs text-text-muted">
+                  probe failed: {probeErrors?.[preset.name] ?? 'unknown error'}
+                </span>
+              </div>
+            </div>
+          ))}
+        </>
       )}
     </div>
   )

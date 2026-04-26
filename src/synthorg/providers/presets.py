@@ -260,16 +260,21 @@ _AZURE_OPENAI = CloudPreset(
 _OLLAMA_CLOUD = CloudPreset(
     name="ollama-cloud",
     display_name="Ollama Cloud",
-    description="Hosted Ollama models (managed inference)",
+    description=(
+        "Hosted Ollama models (managed inference). Supply the API base URL"
+        " from your ollama.com account."
+    ),
     driver="litellm",
     litellm_provider="ollama",
     auth_type=AuthType.API_KEY,
     supported_auth_types=(AuthType.API_KEY,),
-    # Hosted Ollama API base.  Verify before launch -- the user supplies
-    # the API key from ollama.com; LiteLLM's ``ollama`` routing uses this
-    # as the base URL.
-    default_base_url="https://ollama.com",
-    requires_base_url=False,
+    # No default base URL on purpose: the canonical hosted endpoint can
+    # change as the service evolves, and we should not bake an unverified
+    # marketing URL into the form.  Users supply the URL from their
+    # ollama.com account; once a stable canonical endpoint is documented
+    # we can ship a safe default and flip ``requires_base_url`` back.
+    default_base_url=None,
+    requires_base_url=True,
     default_models=(),
 )
 

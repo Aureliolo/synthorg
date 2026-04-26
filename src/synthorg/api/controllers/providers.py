@@ -77,8 +77,8 @@ from synthorg.providers.errors import (
 )
 from synthorg.providers.health import ProviderHealthSummary  # noqa: TC001
 from synthorg.providers.presets import (
-    CloudPreset,
     LocalPreset,
+    ProviderPreset,
     list_presets,
     list_probable_presets,
 )
@@ -103,8 +103,13 @@ class ProviderController(Controller):
     async def get_presets(
         self,
         state: State,  # noqa: ARG002
-    ) -> ApiResponse[tuple[CloudPreset | LocalPreset, ...]]:
-        """List all available provider presets."""
+    ) -> ApiResponse[tuple[ProviderPreset, ...]]:
+        """List all available provider presets.
+
+        Returns the discriminated-union type alias so Litestar/Pydantic
+        emit the ``kind`` discriminator on the wire and frontend
+        consumers receive properly tagged objects.
+        """
         return ApiResponse(data=list_presets())
 
     @post(

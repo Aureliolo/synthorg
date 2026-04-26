@@ -24,7 +24,8 @@ function CloudProviderCard({ preset, added, onClick }: CloudProviderCardProps) {
       onClick={onClick}
       disabled={added}
       className={cn(
-        'flex flex-col items-center gap-2 rounded-lg border p-card text-center transition-all duration-150',
+        'flex flex-col items-center gap-2 rounded-lg border p-card text-center transition-all',
+        'duration-[var(--so-transition-fast)]',
         'hover:bg-card-hover hover:border-bright',
         'disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border disabled:hover:bg-card',
         'border-border bg-card',
