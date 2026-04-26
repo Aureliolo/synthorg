@@ -61,13 +61,19 @@ from synthorg.meta.mcp.handlers.common import (
     ok,
     require_destructive_guardrails,
 )
-from synthorg.meta.mcp.handlers.common_args import coerce_pagination
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.meta.mcp.handlers.common_args import (
+    actor_id,
+    coerce_pagination,
+    require_non_blank,
+)
+from synthorg.meta.mcp.handlers.common_logging import (
+    log_handler_argument_invalid,
+    log_handler_guardrail_violated,
+    log_handler_invoke_failed,
+)
+from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
     MCP_DESTRUCTIVE_OP_EXECUTED,
-    MCP_HANDLER_ARGUMENT_INVALID,
-    MCP_HANDLER_GUARDRAIL_VIOLATED,
-    MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
 from synthorg.persistence.errors import PersistenceConnectionError, QueryError
@@ -81,51 +87,6 @@ logger = get_logger(__name__)
 _TY_NON_BLANK = "non-blank string"
 _ARG_CHECKPOINT_ID = "checkpoint_id"
 _ARG_RUN_ID = "run_id"
-
-
-def _log_invalid(tool: str, exc: Exception) -> None:
-    logger.warning(
-        MCP_HANDLER_ARGUMENT_INVALID,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-
-
-def _log_failed(tool: str, exc: Exception) -> None:
-    logger.warning(
-        MCP_HANDLER_INVOKE_FAILED,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-
-
-def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
-    logger.warning(
-        MCP_HANDLER_GUARDRAIL_VIOLATED,
-        tool_name=tool,
-        violation=exc.violation,
-    )
-
-
-def _actor_id(actor: Any) -> str | None:
-    """Return a stable audit identifier for ``actor`` (prefers ``.id``)."""
-    if actor is None:
-        return None
-    agent_id = getattr(actor, "id", None)
-    if agent_id is not None:
-        return str(agent_id)
-    name = getattr(actor, "name", None)
-    return name if isinstance(name, str) and name else None
-
-
-def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
-    """Extract a non-blank string argument, stripped of surrounding whitespace."""
-    raw = arguments.get(key)
-    if not isinstance(raw, str) or not raw.strip():
-        raise invalid_argument(key, _TY_NON_BLANK)
-    return raw.strip()
 
 
 _WHY_MEMORY_SERVICE_NOT_WIRED = (
@@ -226,7 +187,7 @@ async def _memory_start_fine_tune(
     try:
         plan = _parse_fine_tune_plan(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         service = _service(app_state)
@@ -240,10 +201,10 @@ async def _memory_start_fine_tune(
         # when another run is already active; surface that as a
         # conflict so callers get a typed recovery path instead of
         # a generic handler error.
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=run.model_dump(mode="json"))
@@ -257,9 +218,9 @@ async def _memory_resume_fine_tune(
 ) -> str:
     tool = "synthorg_memory_resume_fine_tune"
     try:
-        run_id = _require_non_blank(arguments, _ARG_RUN_ID)
+        run_id = require_non_blank(arguments, _ARG_RUN_ID)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         service = _service(app_state)
@@ -269,7 +230,7 @@ async def _memory_resume_fine_tune(
     except RuntimeError as exc:
         # Another run is already active -- same ``conflict`` mapping
         # as :func:`_memory_start_fine_tune`.
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
     except (FineTuneRunNotFoundError, FineTuneRunNotResumableError) as exc:
         # Typed exceptions carry their own ``domain_code`` class
@@ -277,12 +238,12 @@ async def _memory_resume_fine_tune(
         # picks up the right wire contract without regex-matching
         # the message -- any future wording change in the
         # orchestrator won't reclassify the failure.
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=run.model_dump(mode="json"))
@@ -300,7 +261,7 @@ async def _memory_get_fine_tune_status(
     if run_id_raw is not None:
         if not isinstance(run_id_raw, str) or not run_id_raw.strip():
             exc = invalid_argument(_ARG_RUN_ID, _TY_NON_BLANK)
-            _log_invalid(tool, exc)
+            log_handler_argument_invalid(tool, exc)
             return err(exc)
         run_id = NotBlankStr(run_id_raw.strip())
     try:
@@ -309,12 +270,12 @@ async def _memory_get_fine_tune_status(
     except BackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
     except ValueError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=status.model_dump(mode="json"))
@@ -333,7 +294,7 @@ async def _memory_cancel_fine_tune(
             actor,
         )
     except GuardrailViolationError as exc:
-        _log_guardrail(tool, exc)
+        log_handler_guardrail_violated(tool, exc)
         return err(exc)
     try:
         service = _service(app_state)
@@ -343,7 +304,7 @@ async def _memory_cancel_fine_tune(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     # Only emit the destructive-op audit when something was actually
@@ -356,7 +317,7 @@ async def _memory_cancel_fine_tune(
         logger.info(
             MCP_DESTRUCTIVE_OP_EXECUTED,
             tool_name=tool,
-            actor_agent_id=_actor_id(resolved_actor),
+            actor_agent_id=actor_id(resolved_actor),
             reason=reason,
             target_id=target_id,
         )
@@ -373,7 +334,7 @@ async def _memory_run_preflight(
     try:
         plan = _parse_fine_tune_plan(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         service = _service(app_state)
@@ -383,7 +344,7 @@ async def _memory_run_preflight(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=result.model_dump(mode="json"))
@@ -399,7 +360,7 @@ async def _memory_list_checkpoints(
     try:
         offset, limit = coerce_pagination(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         service = _service(app_state)
@@ -413,7 +374,7 @@ async def _memory_list_checkpoints(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     meta = PaginationMeta(total=total, offset=offset, limit=limit)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -428,9 +389,9 @@ async def _memory_deploy_checkpoint(
 ) -> str:
     tool = "synthorg_memory_deploy_checkpoint"
     try:
-        checkpoint_id = _require_non_blank(arguments, _ARG_CHECKPOINT_ID)
+        checkpoint_id = require_non_blank(arguments, _ARG_CHECKPOINT_ID)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         service = _service(app_state)
@@ -439,18 +400,18 @@ async def _memory_deploy_checkpoint(
     try:
         cp = await service.deploy_checkpoint(checkpoint_id)
     except CheckpointNotFoundError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
     except QueryError as exc:
         # Persistence-layer failure during deploy (e.g. the checkpoint
         # was activated but the re-read failed) -- surface as
         # ``conflict`` so callers distinguish from internal errors.
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=cp.model_dump(mode="json"))
@@ -464,9 +425,9 @@ async def _memory_rollback_checkpoint(  # noqa: PLR0911
 ) -> str:
     tool = "synthorg_memory_rollback_checkpoint"
     try:
-        checkpoint_id = _require_non_blank(arguments, _ARG_CHECKPOINT_ID)
+        checkpoint_id = require_non_blank(arguments, _ARG_CHECKPOINT_ID)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         reason, resolved_actor = require_destructive_guardrails(
@@ -474,7 +435,7 @@ async def _memory_rollback_checkpoint(  # noqa: PLR0911
             actor,
         )
     except GuardrailViolationError as exc:
-        _log_guardrail(tool, exc)
+        log_handler_guardrail_violated(tool, exc)
         return err(exc)
     try:
         service = _service(app_state)
@@ -483,24 +444,24 @@ async def _memory_rollback_checkpoint(  # noqa: PLR0911
     try:
         cp = await service.rollback_checkpoint(checkpoint_id)
     except CheckpointNotFoundError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
     except (
         CheckpointRollbackUnavailableError,
         CheckpointRollbackCorruptError,
     ) as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
         MCP_DESTRUCTIVE_OP_EXECUTED,
         tool_name=tool,
-        actor_agent_id=_actor_id(resolved_actor),
+        actor_agent_id=actor_id(resolved_actor),
         reason=reason,
         target_id=checkpoint_id,
     )
@@ -515,9 +476,9 @@ async def _memory_delete_checkpoint(  # noqa: PLR0911
 ) -> str:
     tool = "synthorg_memory_delete_checkpoint"
     try:
-        checkpoint_id = _require_non_blank(arguments, _ARG_CHECKPOINT_ID)
+        checkpoint_id = require_non_blank(arguments, _ARG_CHECKPOINT_ID)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         reason, resolved_actor = require_destructive_guardrails(
@@ -525,7 +486,7 @@ async def _memory_delete_checkpoint(  # noqa: PLR0911
             actor,
         )
     except GuardrailViolationError as exc:
-        _log_guardrail(tool, exc)
+        log_handler_guardrail_violated(tool, exc)
         return err(exc)
 
     try:
@@ -535,24 +496,24 @@ async def _memory_delete_checkpoint(  # noqa: PLR0911
     try:
         await service.delete_checkpoint(checkpoint_id)
     except CheckpointNotFoundError as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
     except QueryError as exc:
         # Active-checkpoint / domain-rule violation -- surface as
         # ``conflict`` so callers can distinguish from internal errors.
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
         MCP_DESTRUCTIVE_OP_EXECUTED,
         tool_name=tool,
-        actor_agent_id=_actor_id(resolved_actor),
+        actor_agent_id=actor_id(resolved_actor),
         reason=reason,
         target_id=checkpoint_id,
     )
@@ -569,7 +530,7 @@ async def _memory_list_runs(
     try:
         offset, limit = coerce_pagination(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
         service = _service(app_state)
@@ -579,7 +540,7 @@ async def _memory_list_runs(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     meta = PaginationMeta(total=total, offset=offset, limit=limit)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -601,7 +562,7 @@ async def _memory_get_active_embedder(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        _log_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=snap.model_dump(mode="json"))
@@ -694,7 +655,7 @@ def _collect_optional_execution(
 
 def _parse_fine_tune_plan(arguments: dict[str, Any]) -> FineTunePlan:
     """Build a :class:`FineTunePlan` from MCP arguments with typed errors."""
-    source_dir = _require_non_blank(arguments, "source_dir")
+    source_dir = require_non_blank(arguments, "source_dir")
     payload: dict[str, Any] = {"source_dir": NotBlankStr(source_dir)}
     _collect_optional_strings(arguments, payload)
     _collect_optional_ints(arguments, payload)
