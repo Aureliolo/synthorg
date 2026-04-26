@@ -121,15 +121,17 @@ export interface DetectedLocalListProps {
  * "Detected on this machine" panel for local LLM servers.
  *
  * Behaviour:
- * - Hidden entirely when probing is idle and no preset returned a hit.
+ * - Hidden entirely when probing is idle, no preset returned a hit,
+ *   AND no preset failed.
  * - Renders a skeleton while the batch probe is in flight.
  * - For each detected preset, a row with `[Add local]` and -- when a
- *   cloud counterpart exists (e.g. Ollama → Ollama Cloud) -- an
+ *   cloud counterpart exists (e.g. Ollama -> Ollama Cloud) -- an
  *   additional `[Add cloud]` button.
- *
- * Failures are not surfaced as X marks: a preset that did not respond
- * simply does not appear.  The wizard's error banner handles top-level
- * probe failures separately.
+ * - For each preset whose probe raised, a warning row (AlertTriangle
+ *   icon + display name + redacted error message) so the operator
+ *   distinguishes "service unreachable" from "preset never tried".
+ *   Top-level batch failures are surfaced separately by the wizard /
+ *   Settings page above this component.
  */
 export function DetectedLocalList({
   localPresets,
@@ -141,7 +143,12 @@ export function DetectedLocalList({
   onAddCloud,
   onReprobe,
 }: DetectedLocalListProps) {
-  const [adding, setAdding] = useState<{ name: string; kind: 'local' | 'cloud' } | null>(null)
+  // In-flight adds keyed by preset name -- the value is which kind
+  // ('local' or 'cloud') is being added.  A map (rather than a single
+  // ``{ name, kind }``) lets two concurrent adds (e.g. user clicks
+  // [Add local] on Ollama while [Add cloud] is still resolving)
+  // coexist without clobbering each other's in-flight markers.
+  const [adding, setAdding] = useState<Record<string, 'local' | 'cloud'>>({})
 
   // A preset is "detected" when its probe result has a URL.  Cloud
   // presets and undetected locals are absent from probeResults.
@@ -158,18 +165,30 @@ export function DetectedLocalList({
     return null
   }
 
+  const markAdding = (name: string, kind: 'local' | 'cloud') => {
+    setAdding((prev) => ({ ...prev, [name]: kind }))
+  }
+  const clearAdding = (name: string) => {
+    setAdding((prev) => {
+      if (!(name in prev)) return prev
+      const next = { ...prev }
+      delete next[name]
+      return next
+    })
+  }
+
   const handleAddLocal = async (name: string, url: string) => {
-    setAdding({ name, kind: 'local' })
+    markAdding(name, 'local')
     try {
       await onAddLocal(name, url)
     } finally {
-      setAdding(null)
+      clearAdding(name)
     }
   }
 
   const handleAddCloud = (cloudPresetName: string) => {
     if (!onAddCloud) return
-    setAdding({ name: cloudPresetName, kind: 'cloud' })
+    markAdding(cloudPresetName, 'cloud')
     try {
       onAddCloud(cloudPresetName)
     } catch (err) {
@@ -180,13 +199,13 @@ export function DetectedLocalList({
       // attacker-controlled string in the caller's error path is
       // truncated, control-char stripped, and bidi-override safe.
       log.error('onAddCloud handler raised', sanitizeForLog(err))
-      setAdding(null)
+      clearAdding(cloudPresetName)
       return
     }
     // Cloud add opens the modal synchronously; clear the in-flight
     // marker on the next tick so the button briefly reflects intent
     // without keeping the row disabled forever.
-    setTimeout(() => setAdding(null), 0)
+    setTimeout(() => clearAdding(cloudPresetName), 0)
   }
 
   return (
@@ -223,17 +242,14 @@ export function DetectedLocalList({
         <>
           {detectedPresets.map((preset) => {
             const cloudCounterpart = LOCAL_TO_CLOUD_COUNTERPART[preset.name]
-            const isAddingThis =
-              adding && adding.name === preset.name ? adding.kind : null
-            const isAddingCloudCounterpart =
-              adding && cloudCounterpart && adding.name === cloudCounterpart
-                ? adding.kind
-                : null
             // ``rowAdding`` disables both buttons on this row whenever
             // either the local preset or its cloud counterpart is
-            // mid-add.  Single source of truth keeps the row's
-            // disabled state consistent across the two actions.
-            const rowAdding = isAddingThis ?? isAddingCloudCounterpart
+            // mid-add.  Reads from the per-name ``adding`` map so
+            // concurrent adds on different rows do not interfere.
+            const rowAdding =
+              adding[preset.name] ??
+              (cloudCounterpart ? adding[cloudCounterpart] : undefined) ??
+              null
             return (
               <DetectedLocalRow
                 key={preset.name}

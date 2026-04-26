@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { fn } from 'storybook/test'
 import type { CloudPreset } from '@/api/types/providers'
 import { CloudProviderGrid } from './CloudProviderGrid'
 
@@ -69,7 +70,7 @@ type Story = StoryObj<typeof meta>
 export const Default: Story = {
   args: {
     presets: samplePresets,
-    onSelect: (name) => alert(`Picked ${name}`),
+    onSelect: fn(),
   },
 }
 
@@ -77,7 +78,7 @@ export const SomeConfigured: Story = {
   args: {
     presets: samplePresets,
     addedPresets: new Set(['anthropic', 'gemini']),
-    onSelect: (name) => alert(`Picked ${name}`),
+    onSelect: fn(),
   },
 }
 
@@ -89,6 +90,6 @@ export const Empty: Story = {
   args: {
     presets: [],
     addedPresets: new Set(),
-    onSelect: (name) => alert(`Picked ${name}`),
+    onSelect: fn(),
   },
 }
