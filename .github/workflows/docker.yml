@@ -620,25 +620,18 @@ jobs:
         run: uv run zensical build
 
       - name: Set up melange
-        env:
-          # Pin melange explicitly.  The chainguard-dev/actions setup
-          # helper used to live here, but its `curl | tar` step has no
-          # retry on transient GitHub-releases CDN flakes (PR #1636
-          # hit "gzip: stdin: unexpected end of file" once).  The
-          # helper also resolves "latest-release" at runtime, so the
-          # action SHA pin did not actually pin the melange binary
-          # version.  Inline install with --retry + a real version
-          # pin gives us both reproducibility and resilience.
+        # ``setup-melange`` accepts a ``version:`` input that pins the
+        # melange binary; the SHA pin on the action itself locks the
+        # action's own code so neither layer can drift unexpectedly.
+        # The action also installs bubblewrap on the runner, which
+        # melange's default container runner needs to build apks.
+        # Renovate watches the binary version via the comment marker
+        # below; the action SHA is bumped via the standard
+        # ``actions/*`` Renovate manager.
+        uses: chainguard-dev/actions/setup-melange@061bc0e921116bde1470f51fb5c86d5318f16558 # v1.6.15
+        with:
           # renovate: datasource=github-releases depName=chainguard-dev/melange
-          MELANGE_VERSION: v0.50.3
-        run: |
-          set -euo pipefail
-          curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors \
-            "https://github.com/chainguard-dev/melange/releases/download/${MELANGE_VERSION}/melange_${MELANGE_VERSION#v}_linux_amd64.tar.gz" \
-            -o /tmp/melange.tar.gz
-          sudo tar xzf /tmp/melange.tar.gz --strip-components=1 -C /usr/local/bin
-          rm -f /tmp/melange.tar.gz
-          melange version
+          version: v0.50.3
 
       - name: Generate melange signing key
         run: melange keygen
