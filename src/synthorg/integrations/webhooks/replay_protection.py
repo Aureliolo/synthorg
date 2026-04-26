@@ -19,10 +19,12 @@ _DEFAULT_MAX_ENTRIES = 10_000
 # Attacker-controlled nonces are hashed to a fixed 32-byte digest
 # before being stored in ``_seen`` so the cache's per-entry memory
 # is bounded regardless of how long the incoming header is.
-# Reject nonces larger than ``_MAX_NONCE_CHARS`` outright -- even
+# Reject nonces larger than ``MAX_NONCE_CHARS`` outright -- even
 # the hash computation is cheap but O(n), and any legitimate
-# webhook provider ships nonces well under this limit.
-_MAX_NONCE_CHARS = 1024
+# webhook provider ships nonces well under this limit. Re-exported
+# so the durable idempotency path in ``api/controllers/webhooks.py``
+# can apply the same guard before composing its DB key.
+MAX_NONCE_CHARS: int = 1024
 
 
 def _fingerprint_nonce(nonce: str) -> str:
@@ -181,12 +183,12 @@ class ReplayProtector:
             # would otherwise be able to make each hash computation
             # increasingly expensive even though the cache entry
             # itself is fixed-size.
-            if len(nonce) > _MAX_NONCE_CHARS:
+            if len(nonce) > MAX_NONCE_CHARS:
                 logger.warning(
                     WEBHOOK_REPLAY_DETECTED,
                     reason="nonce exceeds max size",
                     nonce_length=len(nonce),
-                    max_nonce_chars=_MAX_NONCE_CHARS,
+                    max_nonce_chars=MAX_NONCE_CHARS,
                 )
                 return False
             # Store a fixed-size SHA-256 digest instead of the raw

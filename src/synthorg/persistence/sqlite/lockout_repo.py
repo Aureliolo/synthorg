@@ -160,22 +160,19 @@ class SQLiteLockoutRepository:
                 count = row["cnt"] if row else 0
                 now_locked = count >= self._threshold
                 await self._db.commit()
-                # Cache mutation inside the write_lock so a
-                # concurrent ``record_success`` cannot delete the
-                # rows and clear ``_locked`` between our commit and
-                # the cache write -- the DB and cache mutations
-                # land in the same protected section.
-                if now_locked:
-                    with self._locked_lock:
-                        self._locked[username] = (
-                            time.monotonic() + self._duration_seconds
-                        )
             except MemoryError, RecursionError:
                 raise
             except Exception:
                 await self._db.rollback()
                 raise
 
+        # Mutate the cache only after the write_lock + try/except
+        # exits cleanly. A failure during cache mutation here cannot
+        # roll back a committed DB transaction, so the cache write
+        # belongs outside the rollback-on-failure block.
+        if now_locked:
+            with self._locked_lock:
+                self._locked[username] = time.monotonic() + self._duration_seconds
         # Caller logs SECURITY_AUTH_ACCOUNT_LOCKED with the contextual
         # fields (attempts, threshold, duration) the controller
         # already tracks; persistence does not emit decision events
@@ -198,17 +195,16 @@ class SQLiteLockoutRepository:
                     (username,),
                 )
                 await self._db.commit()
-                # Cache mutation inside the write_lock so the DB
-                # delete and the cache pop land atomically with
-                # respect to a concurrent ``record_failure``.
-                with self._locked_lock:
-                    was_locked = self._locked.pop(username, None) is not None
             except MemoryError, RecursionError:
                 raise
             except Exception:
                 await self._db.rollback()
                 raise
-        return was_locked
+        # Cache mutation outside the rollback-on-failure block:
+        # a failure during cache pop must NOT trigger DB rollback,
+        # the delete already committed successfully.
+        with self._locked_lock:
+            return self._locked.pop(username, None) is not None
 
     async def cleanup_expired(self) -> int:
         """Remove old attempt records outside the recovery horizon.

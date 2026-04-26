@@ -155,11 +155,17 @@ class SQLiteIdempotencyRepository:
         """
         async with self._write_lock:
             try:
+                # Gate on status = 'in_flight' so a stale worker cannot
+                # flip an already-completed row -- completed rows MUST
+                # remain immutable. Token CAS alone would let a slow
+                # callback whose lease coincidentally re-issued the
+                # same token overwrite the new lease's response.
                 cursor = await self._db.execute(
                     "UPDATE idempotency_keys "
                     "SET status = 'completed', response_body = ?, "
                     "response_hash = ? "
-                    "WHERE scope = ? AND key = ? AND claim_token = ?",
+                    "WHERE scope = ? AND key = ? AND claim_token = ? "
+                    "AND status = 'in_flight'",
                     (response_body, response_hash, scope, key, claim_token),
                 )
                 await self._db.commit()
@@ -188,9 +194,13 @@ class SQLiteIdempotencyRepository:
         """Mark a claimed key as ``FAILED`` if *claim_token* matches."""
         async with self._write_lock:
             try:
+                # Same status gate as ``complete``: only an in-flight
+                # row owned by the matching lease can transition to
+                # failed.
                 cursor = await self._db.execute(
                     "UPDATE idempotency_keys SET status = 'failed' "
-                    "WHERE scope = ? AND key = ? AND claim_token = ?",
+                    "WHERE scope = ? AND key = ? AND claim_token = ? "
+                    "AND status = 'in_flight'",
                     (scope, key, claim_token),
                 )
                 await self._db.commit()

@@ -341,6 +341,14 @@ class ApprovalStore:
                     # is None == "no such id" / "concurrent dedup
                     # claimed it"). Return ``item`` so the caller
                     # sees the persisted state.
+                    #
+                    # Defensive eviction: if some sibling re-cached an
+                    # entry under this id between ``clear`` and our
+                    # arrival here, drop it so the next ``get``
+                    # / ``list_items`` falls through to the repo and
+                    # observes the post-clear truth instead of a
+                    # stale cached copy this save did not write.
+                    self._items.pop(item.id, None)
                     logger.info(
                         API_APPROVAL_STORE_CLEARED,
                         note="save_aborted_by_concurrent_clear",

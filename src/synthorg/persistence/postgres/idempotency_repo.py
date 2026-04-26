@@ -204,12 +204,21 @@ class PostgresIdempotencyRepository:
         """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
+                # Gate on status = 'in_flight' so a stale worker cannot
+                # flip an already-completed row -- completed rows MUST
+                # be immutable for the lifetime of the lease, otherwise
+                # a slow callback whose lease was rotated and re-claimed
+                # could overwrite the new lease's cached response even
+                # if the token CAS coincidentally matched (e.g. token
+                # rotation happens to re-issue the same value, however
+                # unlikely with 16 random bytes).
                 await cur.execute(
                     "UPDATE idempotency_keys "
                     "SET status = 'completed', response_body = %s::jsonb, "
                     "response_hash = %s "
                     "WHERE scope = %s AND key = %s "
-                    "AND claim_token = %s",
+                    "AND claim_token = %s "
+                    "AND status = 'in_flight'",
                     (response_body, response_hash, scope, key, claim_token),
                 )
                 return cur.rowcount > 0
@@ -231,13 +240,18 @@ class PostgresIdempotencyRepository:
         key: NotBlankStr,
         claim_token: str,
     ) -> bool:
-        """Mark a claimed key as ``FAILED`` if *claim_token* matches."""
+        """Mark a claimed key as ``FAILED`` if *claim_token* matches.
+
+        Same status-gate as :meth:`complete`: only an in-flight row
+        with the matching lease token can transition to failed.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
                     "UPDATE idempotency_keys SET status = 'failed' "
                     "WHERE scope = %s AND key = %s "
-                    "AND claim_token = %s",
+                    "AND claim_token = %s "
+                    "AND status = 'in_flight'",
                     (scope, key, claim_token),
                 )
                 return cur.rowcount > 0

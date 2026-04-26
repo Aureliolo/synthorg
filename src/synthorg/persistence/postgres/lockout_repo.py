@@ -173,16 +173,16 @@ class PostgresLockoutRepository:
             row = await cur.fetchone()
             count = row[0] if row else 0
             now_locked = count >= self._threshold
-            # Mutate the in-memory cache while still inside the
-            # transaction's async-with so a concurrent
-            # ``record_success`` cannot delete the failure rows and
-            # then race past us to clear ``_locked`` before our cache
-            # write lands. Holding the asyncio context plus the sync
-            # ``_locked_lock`` keeps the DB/cache pair ordered.
-            if now_locked:
-                with self._locked_lock:
-                    self._locked[username] = time.monotonic() + self._duration_seconds
-
+        # ``conn.transaction()`` commits on successful exit. Mutate
+        # the in-memory cache only AFTER the async-with releases
+        # without raising, so a commit-time failure (deferred
+        # constraints, network blip, statement timeout) cannot leave
+        # ``_locked`` claiming a lockout the DB does not actually
+        # persist. SQLite already follows this ordering; this is the
+        # parity fix.
+        if now_locked:
+            with self._locked_lock:
+                self._locked[username] = time.monotonic() + self._duration_seconds
         # Caller logs SECURITY_AUTH_ACCOUNT_LOCKED with the contextual
         # fields (attempts, threshold, duration); persistence does not
         # emit decision events (#1599 persistence-boundary rule).
@@ -205,13 +205,13 @@ class PostgresLockoutRepository:
                 "DELETE FROM login_attempts WHERE username = %s",
                 (username,),
             )
-            # Cache mutation inside the transaction: a concurrent
-            # ``record_failure`` can't insert + flip ``_locked`` past
-            # us; ours is the last committed write to both the DB and
-            # the cache.
-            with self._locked_lock:
-                was_locked = self._locked.pop(username, None) is not None
-        return was_locked
+        # Mutate the cache only after the transaction's async-with
+        # commits successfully, mirroring SQLite. A commit failure
+        # MUST NOT clear ``_locked`` -- the user is still locked
+        # according to durable state until the next attempt actually
+        # commits the delete.
+        with self._locked_lock:
+            return self._locked.pop(username, None) is not None
 
     async def cleanup_expired(self) -> int:
         """Remove old attempt records outside the recovery horizon.
