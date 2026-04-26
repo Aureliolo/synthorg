@@ -61,9 +61,14 @@ if [[ ! -t 0 ]]; then
 fi
 
 # Only act on git push commands. Match anywhere in compound commands
-# (``a && git push && b``) but require a real word boundary so we do
-# not match ``git push-tag-helper`` or comments.
-if [[ -z "$COMMAND" ]] || ! printf '%s\n' "$COMMAND" | grep -qE '\bgit[[:space:]]+push\b'; then
+# (``a && git push && b``) but require ``push`` to be followed by a
+# real command-token boundary -- whitespace, end-of-string, or one
+# of the shell separators ``| & ; )``. ``\b`` would treat ``-`` as
+# a boundary and falsely match ``git push-tag-helper`` (CodeRabbit,
+# 2026-04-26). The leading guard rejects ``foogit push`` while
+# allowing the same separators on the left.
+PUSH_REGEX='(^|[[:space:]]|[|&;(])git[[:space:]]+push([[:space:]]|$|[|&;)])'
+if [[ -z "$COMMAND" ]] || ! printf '%s\n' "$COMMAND" | grep -qE "${PUSH_REGEX}"; then
     exit 0
 fi
 
@@ -164,8 +169,14 @@ if [[ "${OVERRIDE}" -eq 0 && "${LAST_BRANCH}" == "${BRANCH}" && "${LAST_TS}" -gt
 fi
 
 # Successful authorisation: consume the override flag (one-shot).
+# ``rm -f`` can fail (read-only fs, permission edge cases); under
+# ``set -e`` that would terminate the script on an allow path and
+# turn it into an unintended deny. Tolerate the failure
+# (CodeRabbit, 2026-04-26) -- the worst case is the next push
+# inside the throttle window also bypasses the gate, which is
+# still strictly safer than spuriously blocking a push.
 if [[ "${OVERRIDE}" -eq 1 ]]; then
-    rm -f "${OVERRIDE_FLAG}"
+    rm -f "${OVERRIDE_FLAG}" 2>/dev/null || true
 fi
 
 # Record this push (allowed or override). We write atomically via a
@@ -184,11 +195,11 @@ if ! jq -n \
     --argjson override "${OVERRIDE}" \
     '{timestamp: $timestamp, branch: $branch, override: $override}' \
     >"${TMP_FILE}" 2>/dev/null; then
-    rm -f "${TMP_FILE}"
+    rm -f "${TMP_FILE}" 2>/dev/null || true
     exit 0
 fi
 if ! mv -f "${TMP_FILE}" "${STATE_FILE}" 2>/dev/null; then
-    rm -f "${TMP_FILE}"
+    rm -f "${TMP_FILE}" 2>/dev/null || true
     exit 0
 fi
 
