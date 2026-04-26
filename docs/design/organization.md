@@ -27,10 +27,10 @@ SynthOrg provides pre-built company templates for common organizational patterns
     agents working on any single task. Per-task coordination-group size is
     bounded separately by `coordination.max_concurrency_per_wave` (settings
     registry default **5**; **3-4 recommended** per research, adoption tracked
-    on R1 #1250) -- an Enterprise Org with 50 agents does not run 50-agent
+    on R1 #1250); an Enterprise Org with 50 agents does not run 50-agent
     coordination waves. See
     [Task Decomposability & Coordination Topology](engine.md#coordination-group-size-bounds)
-    for the full bounds and [S1 Multi-Agent Architecture Decision §2](../research/s1-multi-agent-decision.md#section-2--team-size-bounds).
+    for the full bounds and [S1 Multi-Agent Architecture Decision §2](../research/s1-multi-agent-decision.md#section-2-team-size-bounds).
 
 See the [Template System](#template-system) section for details on how templates are defined,
 inherited, and customized.
@@ -164,11 +164,11 @@ delegation rights, and typical model tier.
 
 Each department defines:
 
-- **head** (optional) -- The agent who leads the department (typically a C-suite or Lead role).  Defaults to ``None`` when no head is designated; hierarchy resolution skips the team-lead-to-head link for headless departments.  When multiple agents share the same role name, use the companion ``head_id`` field to disambiguate.  In template YAML this is written as ``head_merge_id`` (matching the agent's ``merge_id``); the renderer maps it to ``head_id`` at runtime -- paralleling how ``subordinate_id``/``supervisor_id`` work in ``reporting_lines``
-- **budget_percent** -- The share of the company's task-execution budget allocated to this department (covers agent compute and API costs, not provider subscriptions or seat licensing)
-- **teams** -- Named sub-groups within the department, each with a lead and members
-- **reporting_lines** -- Explicit subordinate/supervisor relationships within the department.  Each entry has ``subordinate`` and ``supervisor`` (role names), plus optional ``subordinate_id``/``supervisor_id`` for disambiguating agents that share the same role name (typically matching the agent's ``merge_id``)
-- **policies** (optional) -- Department-level operational policies.  Contains ``review_requirements`` (minimum reviewers, required reviewer roles, self-review toggle) and ``approval_chains`` (ordered approver lists keyed by action type such as ``code_review``, ``security_review``, or ``change_management``).  Defaults to a single required reviewer and no approval chains when omitted
+- **head** (optional): the agent who leads the department (typically a C-suite or Lead role).  Defaults to ``None`` when no head is designated; hierarchy resolution skips the team-lead-to-head link for headless departments.  When multiple agents share the same role name, use the companion ``head_id`` field to disambiguate.  In template YAML this is written as ``head_merge_id`` (matching the agent's ``merge_id``); the renderer maps it to ``head_id`` at runtime, paralleling how ``subordinate_id``/``supervisor_id`` work in ``reporting_lines``
+- **budget_percent**: the share of the company's task-execution budget allocated to this department (covers agent compute and API costs, not provider subscriptions or seat licensing)
+- **teams**: named sub-groups within the department, each with a lead and members
+- **reporting_lines**: explicit subordinate/supervisor relationships within the department.  Each entry has ``subordinate`` and ``supervisor`` (role names), plus optional ``subordinate_id``/``supervisor_id`` for disambiguating agents that share the same role name (typically matching the agent's ``merge_id``)
+- **policies** (optional): department-level operational policies.  Contains ``review_requirements`` (minimum reviewers, required reviewer roles, self-review toggle) and ``approval_chains`` (ordered approver lists keyed by action type such as ``code_review``, ``security_review``, or ``change_management``).  Defaults to a single required reviewer and no approval chains when omitted
 
 ---
 
@@ -176,11 +176,11 @@ Each department defines:
 
 The company can dynamically grow or shrink through several mechanisms:
 
-- **Auto-scale** -- The HR agent detects workload increases and proposes new
+- **Auto-scale**: the HR agent detects workload increases and proposes new
   [hires](agents.md#hiring-process)
-- **Manual scale** -- A human adds or removes agents via config or UI
-- **Budget-driven** -- The CFO agent caps headcount based on budget constraints
-- **Skill-gap** -- HR analyzes team capabilities, identifies missing skills, and proposes
+- **Manual scale**: a human adds or removes agents via config or UI
+- **Budget-driven**: the CFO agent caps headcount based on budget constraints
+- **Skill-gap**: HR analyzes team capabilities, identifies missing skills, and proposes
   targeted hires
 
 ---
@@ -285,7 +285,7 @@ template:
       budget_percent: 20
       head_role: "Product Manager"
 
-  workflow: "agile_kanban"     # operational configs vary per template --
+  workflow: "agile_kanban"     # operational configs vary per template;
   communication: "hybrid"      # see Company Types table for each template's defaults
 
   workflow_config:             # optional Kanban/Sprint sub-configurations
@@ -403,7 +403,7 @@ Scalars (`company_name`, `company_type`)
 :   The renderer always produces a ``workflow`` dict from ``workflow_config``
     (or schema defaults), so ``workflow`` is always present in the child's
     rendered output.  At merge time the child's ``workflow`` replaces the
-    parent's entirely -- the "inherit from parent" path cannot trigger.
+    parent's entirely; the "inherit from parent" path cannot trigger.
 
 `workflow_handoffs` and `escalation_paths`
 :   Child replaces entirely if present; otherwise inherited from parent.
@@ -429,7 +429,7 @@ via the `uses_packs` field.
 | `qa-pipeline` | QA Lead, QA Engineer, Automation Engineer | Quality assurance |
 | `creative-marketing` | Content Writer, Brand Strategist | Content and brand |
 | `design-team` | UX Designer, UX Researcher | Design and user research |
-| `verifier-harness` | Planner, Generator, Evaluator | Three-agent verification with calibrated rubric grading (see [Verification & Quality -- Verification Stage](verification-quality.md#verification-stage)) |
+| `verifier-harness` | Planner, Generator, Evaluator | Three-agent verification with calibrated rubric grading (see [Verification & Quality: Verification Stage](verification-quality.md#verification-stage)) |
 
 **User packs** live in `~/.synthorg/template-packs/` (YAML files). User packs
 override built-in packs of the same name.
@@ -452,7 +452,7 @@ pack dependencies are detected and raise `TemplateRenderError`.
 **Live application:**
 
 The `POST /api/v1/template-packs/apply` endpoint applies a pack to a running
-org -- adding its agents and departments to the existing config. Department
+org, adding its agents and departments to the existing config. Department
 names are deduplicated (case-insensitive); agent names are deduplicated by
 name.
 
@@ -461,7 +461,7 @@ name.
 ## Company Builder
 
 The web dashboard includes a setup wizard with a mode selection gate after account creation
-(conditional -- only shown when no admin exists). The user chooses **Guided Setup**
+(conditional; only shown when no admin exists). The user chooses **Guided Setup**
 (recommended, full wizard) or **Quick Setup** (minimal: company name + provider, configure
 the rest later in Settings). Guided mode steps: Mode, Template (searchable grid with
 category/size filters, recommended/others grouping, and structural metadata cards showing
@@ -472,7 +472,7 @@ API key, subscription, custom configurations, and manually entered base URLs),
 Agents (customize names, roles, personality presets, and model assignments),
 Theme (set UI preferences for palette, density, animation, sidebar, and typography), and
 Complete (review summary and launch). Quick mode steps: Mode, Company, Providers, and
-Complete -- skipping template, agents, and theme. Providers are configured before agents so
+Complete, skipping template, agents, and theme. Providers are configured before agents so
 model assignment is available during agent customization. When a template is selected, all
 template agents are auto-created with models matched to configured providers via a tier
 classification engine that respects each agent's priority axis (quality, speed, cost, or

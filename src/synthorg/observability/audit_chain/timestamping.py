@@ -73,8 +73,8 @@ class TimestampProvider(Protocol):
         Args:
             binding_payload: Optional per-append bytes to stamp
                 (typically the audit chain's current head hash).
-                When ``None``, the provider uses a default marker
-                -- providers backed by a TSA should accept and
+                When ``None``, the provider uses a default marker;
+                providers backed by a TSA should accept and
                 forward this payload so every append is
                 cryptographically bound to its own chain state.
 
@@ -160,7 +160,7 @@ class ResilientTimestampProvider:
         Args:
             binding_payload: Per-append bytes the TSA should stamp
                 (typically the current chain head). When ``None``,
-                the provider falls back to its default marker --
+                the provider falls back to its default marker;
                 callers in the audit-chain hot path must pass a
                 concrete value for the timestamp to be meaningful.
 

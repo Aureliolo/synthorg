@@ -59,7 +59,7 @@ export interface CreateDepartmentRequest {
  *
  * Distinct from the response-side {@link TeamConfig} so form/store
  * callers cannot accidentally send response-only fields. The backend
- * caps ``teams`` at {@link UPDATE_DEPARTMENT_MAX_TEAMS} entries --
+ * caps ``teams`` at {@link UPDATE_DEPARTMENT_MAX_TEAMS} entries;
  * validate length at the form/store boundary before issuing the
  * request rather than surfacing a server 422.
  */

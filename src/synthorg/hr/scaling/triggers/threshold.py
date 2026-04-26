@@ -80,7 +80,7 @@ class SignalThresholdTrigger:
     async def record_run(self) -> None:
         """Record that an evaluation cycle completed.
 
-        SignalThresholdTrigger has no in-progress state to reset --
+        SignalThresholdTrigger has no in-progress state to reset;
         crossings are consumed by ``should_trigger`` directly.
         """
 

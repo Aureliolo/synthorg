@@ -373,7 +373,7 @@ def _parse_html_safely(raw: str) -> Any:
        returns a safe-empty result.
     3. Parse with a module-scope :class:`lxml.html.HTMLParser`
        configured with ``no_network=True``, ``recover=True``,
-       ``remove_blank_text=True``, and ``huge_tree=False`` --
+       ``remove_blank_text=True``, and ``huge_tree=False``,
        belt-and-braces in case a novel payload slips past the
        pre-scan.  (``resolve_entities`` and ``load_dtd`` are
        ``XMLParser``-only knobs; see :func:`_build_safe_parser` for

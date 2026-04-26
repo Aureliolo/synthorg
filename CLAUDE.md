@@ -1,8 +1,8 @@
-# CLAUDE.md -- SynthOrg
+# CLAUDE.md: SynthOrg
 
 ## Project
 
-- **What**: Framework for building synthetic organizations -- autonomous AI agents orchestrated as a virtual company
+- **What**: Framework for building synthetic organizations (autonomous AI agents orchestrated as a virtual company)
 - **Python**: 3.14+ (PEP 649 native lazy annotations)
 - **License**: BUSL-1.1 with narrowed Additional Use Grant (free production use for non-competing small orgs; converts to Apache 2.0 three years after release)
 - **Layout**: `src/synthorg/` (src layout), `tests/` (unit/integration/e2e), `web/` (React 19 dashboard), `cli/` (Go CLI binary)
@@ -12,24 +12,24 @@
 
 - **ALWAYS read the relevant `docs/design/` page** before implementing any feature or planning any issue. [DESIGN_SPEC.md](docs/DESIGN_SPEC.md) is a pointer file linking to the 20 design pages.
 - The design spec is the **starting point** for architecture, data models, and behavior
-- If implementation deviates from the spec (better approach found, scope evolved, etc.), **alert the user and explain why** -- user decides whether to proceed or update the spec
-- Do NOT silently diverge -- every deviation needs explicit user approval
+- If implementation deviates from the spec (better approach found, scope evolved, etc.), **alert the user and explain why**; the user decides whether to proceed or update the spec
+- Do NOT silently diverge; every deviation needs explicit user approval
 - When a spec topic is referenced (e.g. "the Agents page" or "the Engine page's Crash Recovery section"), read the relevant `docs/design/` page before coding
 - When approved deviations occur, update the relevant `docs/design/` page to reflect the new reality
 
 ## Planning (MANDATORY)
 
 - Every implementation plan must be **presented to the user** for accept/deny before coding starts
-- At **every phase** of planning and implementation, be critical -- actively look for ways to improve the design in the spirit of what we're building (robustness, correctness, simplicity, future-proofing where it's free)
-- Surface improvements as suggestions, not silent changes -- user decides
-- **Prioritize issues by dependency order**, not priority labels -- unblocked dependencies come first
+- At **every phase** of planning and implementation, be critical: actively look for ways to improve the design in the spirit of what we're building (robustness, correctness, simplicity, future-proofing where it's free)
+- Surface improvements as suggestions, not silent changes; the user decides
+- **Prioritize issues by dependency order**, not priority labels; unblocked dependencies come first
 
 ## Diagrams in Documentation
 
 - **D2** (`\`\`\`d2`): architecture diagrams, nested container layouts, complex entity relationships. Rendered at build time via `mkdocs-d2-plugin` (dagre layout). Requires the [D2 CLI](https://d2lang.com/tour/install) on `PATH` locally and in CI (pinned to v0.7.1 via `.github/workflows/pages.yml`).
 - **Mermaid** (`\`\`\`mermaid`): flowcharts, sequence diagrams, simple hierarchies, pipelines. Rendered client-side via `pymdownx.superfences`.
 - **Markdown tables**: grid/matrix data that is semantically tabular (not diagrams).
-- D2 uses theme 200 (Dark Mauve), dark-only render -- configured globally in `mkdocs.yml`.
+- D2 uses theme 200 (Dark Mauve), dark-only render, configured globally in `mkdocs.yml`.
 - Never use `\`\`\`text` blocks with ASCII/Unicode box-drawing characters for diagrams.
 - Review agent `diagram-syntax-validator` runs in `/pre-pr-review` and `/aurelio-review-pr` pipelines.
 
@@ -85,8 +85,8 @@ See `cli/CLAUDE.md` for commands, flags, and reference. Key rule: use `go -C cli
 
 See `web/CLAUDE.md` for the full component inventory, design token rules, and post-training references (TS6, Storybook 10). Key rules:
 - **ALWAYS reuse** existing components from `web/src/components/ui/` before creating new ones
-- **NEVER hardcode** hex colors, font-family, pixel spacing, or Motion transitions -- use design tokens and `@/lib/motion` presets
-- **NEVER hardcode** BCP 47 locale strings (e.g. `'en-US'`) or call bare `.toLocaleString()` -- use the helpers in `@/utils/format` which read `getLocale()` from `@/utils/locale`
+- **NEVER hardcode** hex colors, font-family, pixel spacing, or Motion transitions; use design tokens and `@/lib/motion` presets
+- **NEVER hardcode** BCP 47 locale strings (e.g. `'en-US'`) or call bare `.toLocaleString()`; use the helpers in `@/utils/format` which read `getLocale()` from `@/utils/locale`
 - A PostToolUse hook (`scripts/check_web_design_system.py`) enforces these rules on every Edit/Write to `web/src/` (colors, fonts, Motion durations, hardcoded locales, bare `.toLocale*String()` calls, missing Storybook stories, duplicate component patterns)
 
 ## Regional Defaults (MANDATORY)
@@ -109,7 +109,7 @@ Enforced by `scripts/check_web_design_system.py` (PostToolUse hook on every `web
 
 - `src/synthorg/persistence/` is the **only** place that may import `aiosqlite`, `sqlite3`, `psycopg`, or `psycopg_pool`, or emit raw SQL DDL/DML keywords in string literals. Enforced by `scripts/check_persistence_boundary.py` (pre-push + CI).
 - Every durable feature MUST define a repository Protocol in `persistence/<domain>_protocol.py`, concrete impls under `persistence/{sqlite,postgres}/`, and be exposed on `PersistenceBackend`.
-- Controllers and API endpoints access persistence through domain-scoped **service layers** (e.g. `ArtifactService`, `WorkflowService`, `MemoryService`, `CustomRulesService`, `UserService`, `ProjectService`, `SsrfViolationService`, `SettingsService` -- non-exhaustive), never directly into repositories. Services centralize audit logging and cross-repo orchestration; repositories **must not** log mutations themselves (enforced by `scripts/check_persistence_boundary.py`).
+- Controllers and API endpoints access persistence through domain-scoped **service layers** (e.g. `ArtifactService`, `WorkflowService`, `MemoryService`, `CustomRulesService`, `UserService`, `ProjectService`, `SsrfViolationService`, `SettingsService`; list non-exhaustive), never directly into repositories. Services centralize audit logging and cross-repo orchestration; repositories **must not** log mutations themselves (enforced by `scripts/check_persistence_boundary.py`).
 - Adding a migration: read `docs/guides/persistence-migrations.md` first. Do not hand-edit SQL or `atlas.sum`.
 - Per-line opt-out: `# lint-allow: persistence-boundary -- <required justification>`.
 
@@ -117,18 +117,18 @@ See [docs/reference/persistence-boundary.md](docs/reference/persistence-boundary
 
 ## Shell Usage
 
-- **NEVER use `cd` in Bash commands** -- the working directory is already set to the project root. Use absolute paths or run commands directly. Do NOT prefix commands with `cd C:/Users/Aurelio/synthorg &&`. Exception: `bash -c "cd <dir> && <cmd>"` is safe (runs in a child process, no cwd side effects). Use this for tools without a `-C` flag -- e.g. `bash -c "cd web && npm install"` since `npm --prefix` is broken for bare `npm install`.
-- **NEVER use Bash to write or modify files** -- use the Write or Edit tools. Do not use `cat >`, `cat << EOF`, `echo >`, `echo >>`, `sed -i`, `python -c "open(...).write(...)"`, or `tee` to create or modify files (read-only/inspection uses like piping to stdout are fine). This applies to all files (plan files, config files, source code) and all subagents.
+- **NEVER use `cd` in Bash commands**: the working directory is already set to the project root. Use absolute paths or run commands directly. Do NOT prefix commands with `cd C:/Users/Aurelio/synthorg &&`. Exception: `bash -c "cd <dir> && <cmd>"` is safe (runs in a child process, no cwd side effects). Use this for tools without a `-C` flag, e.g. `bash -c "cd web && npm install"` since `npm --prefix` is broken for bare `npm install`.
+- **NEVER use Bash to write or modify files**: use the Write or Edit tools. Do not use `cat >`, `cat << EOF`, `echo >`, `echo >>`, `sed -i`, `python -c "open(...).write(...)"`, or `tee` to create or modify files (read-only/inspection uses like piping to stdout are fine). This applies to all files (plan files, config files, source code) and all subagents.
 
 ## Code Conventions
 
-- **No `from __future__ import annotations`** -- Python 3.14 has PEP 649
-- **PEP 758 except syntax**: use `except A, B:` (no parentheses) when NOT binding to a name -- ruff enforces this on Python 3.14. When binding via `as exc`, parentheses are still required (`except (A, B) as exc:`) because Python 3.14's grammar forbids the unparenthesized form with `as`.
+- **No `from __future__ import annotations`**: Python 3.14 has PEP 649
+- **PEP 758 except syntax**: use `except A, B:` (no parentheses) when NOT binding to a name; ruff enforces this on Python 3.14. When binding via `as exc`, parentheses are still required (`except (A, B) as exc:`) because Python 3.14's grammar forbids the unparenthesized form with `as`.
 - **Type hints**: all public functions, mypy strict mode
 - **Docstrings**: Google style, required on public classes/functions (enforced by ruff D rules)
 - **Immutability**: create new objects, never mutate existing ones. For non-Pydantic internal collections (registries, `BaseTool`), use `copy.deepcopy()` at construction + `MappingProxyType` wrapping for read-only enforcement. For `dict`/`list` fields in frozen Pydantic models, rely on `frozen=True` for field reassignment prevention and `copy.deepcopy()` at system boundaries (tool execution, LLM provider serialization, inter-agent delegation, serializing for persistence).
 - **Config vs runtime state**: frozen Pydantic models for config/identity; separate mutable-via-copy models (using `model_copy(update=...)`) for runtime state that evolves (e.g. agent execution state, task progress). Never mix static config fields with mutable runtime fields in one model.
-- **Models**: Pydantic v2 (`BaseModel`, `model_validator`, `computed_field`, `ConfigDict`). Adopted conventions: use `allow_inf_nan=False` in all `ConfigDict` declarations to reject `NaN`/`Inf` in numeric fields at validation time; use `@computed_field` for derived values instead of storing + validating redundant fields (e.g. `TokenUsage.total_tokens`); use `NotBlankStr` (from `core.types`) for all identifier/name fields -- including optional (`NotBlankStr | None`) and tuple (`tuple[NotBlankStr, ...]`) variants -- instead of manual whitespace validators.
+- **Models**: Pydantic v2 (`BaseModel`, `model_validator`, `computed_field`, `ConfigDict`). Adopted conventions: use `allow_inf_nan=False` in all `ConfigDict` declarations to reject `NaN`/`Inf` in numeric fields at validation time; use `@computed_field` for derived values instead of storing + validating redundant fields (e.g. `TokenUsage.total_tokens`); use `NotBlankStr` (from `core.types`) for all identifier/name fields (including optional `NotBlankStr | None` and tuple `tuple[NotBlankStr, ...]` variants) instead of manual whitespace validators.
 - **Async concurrency**: prefer `asyncio.TaskGroup` for fan-out/fan-in parallel operations in new code (e.g. multiple tool invocations, parallel agent calls). Prefer structured concurrency over bare `create_task`. Existing code is being migrated incrementally. When running multiple tasks inside a `TaskGroup` where one task's failure should NOT cancel the others (independent workers, classification detectors, notification sinks), wrap each task body in a small `async def` helper that catches `Exception` and returns a safe default (re-raising only `MemoryError`/`RecursionError`); never let a single worker abort the whole group.
 - **Lifecycle synchronization**: services with async `start()` / `stop()` use a dedicated `self._lifecycle_lock: asyncio.Lock` (separate from any hot-path lock) held across the full body of both methods; timed-out stops must mark the service unrestartable. See [docs/reference/lifecycle-sync.md](docs/reference/lifecycle-sync.md) for the full rule and canonical examples.
 - **Untrusted-content fences at LLM call sites (SEC-1)**: any attacker-controllable string interpolated into an LLM prompt must be wrapped via `wrap_untrusted(tag, content)` from `synthorg.engine.prompt_safety`, and the enclosing system prompt must append `untrusted_content_directive(tags)`. See [docs/reference/sec-prompt-safety.md](docs/reference/sec-prompt-safety.md) for the standard tag set, key reference call sites, and the tool-result injection detector.
@@ -138,15 +138,15 @@ See [docs/reference/persistence-boundary.md](docs/reference/persistence-boundary
 - **Functions**: < 50 lines, files < 800 lines
 - **Errors**: handle explicitly, never silently swallow
 - **Validate**: at system boundaries (user input, external APIs, config files)
-- **Datetime marshalling in persistence**: repositories that round-trip timestamps through ISO 8601 strings (SQLite TEXT columns, JSON envelopes, settings DTOs) MUST use the strict pair `parse_iso_utc(str) -> datetime` and `format_iso_utc(datetime) -> str` from `synthorg.persistence._shared`. Both reject naive datetimes (`ValueError`) -- a naive value at this layer is a programming bug and the server's session timezone would otherwise corrupt the instant. For relaxed "naive-is-UTC" semantics on already-typed `datetime` inputs (Postgres `TIMESTAMPTZ` rows, internal config), use `normalize_utc` from the same package.
+- **Datetime marshalling in persistence**: repositories that round-trip timestamps through ISO 8601 strings (SQLite TEXT columns, JSON envelopes, settings DTOs) MUST use the strict pair `parse_iso_utc(str) -> datetime` and `format_iso_utc(datetime) -> str` from `synthorg.persistence._shared`. Both reject naive datetimes (`ValueError`); a naive value at this layer is a programming bug and the server's session timezone would otherwise corrupt the instant. For relaxed "naive-is-UTC" semantics on already-typed `datetime` inputs (Postgres `TIMESTAMPTZ` rows, internal config), use `normalize_utc` from the same package.
 
 ## Logging
 
 - **Every module** with business logic MUST have: `from synthorg.observability import get_logger` then `logger = get_logger(__name__)`. The single carve-out is shared infrastructure modules whose helpers log on behalf of an entire layer: `meta/mcp/handlers/common_logging.py` uses `get_logger("synthorg.meta.mcp.handlers")` (an explicit string) so the three centralized handler log helpers emit under one stable event source, regardless of which domain handler called them. New carve-outs of this kind require explicit justification in the module docstring.
 - **Never** use `import logging` / `logging.getLogger()` / `print()` in application code (exception: `observability/setup.py`, `observability/sinks.py`, `observability/syslog_handler.py`, `observability/http_handler.py`, and `observability/otlp_handler.py` may use stdlib `logging` and `print(..., file=sys.stderr)` for handler construction, bootstrap, and error reporting code that runs before or during logging system configuration)
 - **Variable name**: always `logger` (not `_logger`, not `log`)
-- **Event names**: always use constants from the domain-specific module under `synthorg.observability.events` (e.g., `API_REQUEST_STARTED` from `events.api`, `TOOL_INVOKE_START` from `events.tool`). Each domain has its own module -- see `src/synthorg/observability/events/` for the full inventory of constants. Import directly: `from synthorg.observability.events.<domain> import EVENT_CONSTANT`
-- **Structured kwargs**: always `logger.info(EVENT, key=value)` -- never `logger.info("msg %s", val)`
+- **Event names**: always use constants from the domain-specific module under `synthorg.observability.events` (e.g., `API_REQUEST_STARTED` from `events.api`, `TOOL_INVOKE_START` from `events.tool`). Each domain has its own module; see `src/synthorg/observability/events/` for the full inventory of constants. Import directly: `from synthorg.observability.events.<domain> import EVENT_CONSTANT`
+- **Structured kwargs**: always `logger.info(EVENT, key=value)`; never `logger.info("msg %s", val)`
 - **All error paths** must log at WARNING or ERROR with context before raising
 - **All state transitions** must log at INFO
 - **DEBUG** for object creation, internal flow, entry/exit of key functions
@@ -157,9 +157,9 @@ See [docs/reference/persistence-boundary.md](docs/reference/persistence-boundary
 
 SynthOrg exposes 200+ tools across 17 domains via its MCP server. Adding a new handler means implementing the `ToolHandler` protocol in `src/synthorg/meta/mcp/handlers/<domain>.py`. Handler infrastructure lives in three sibling modules under `src/synthorg/meta/mcp/handlers/`:
 
-- **`common.py`** -- response envelopes (`ok`, `err`, `capability_gap`, `not_supported`, `service_fallback`), pagination output (`PaginationMeta`, `paginate_sequence`, `dump_many`), guardrails (`require_destructive_guardrails`), and placeholder factories.
-- **`common_args.py`** -- argument validators/extractors (`require_arg`, `require_non_blank`, `get_optional_str`, `require_dict`, `parse_time_window`, `parse_str_sequence`, `coerce_pagination`, `actor_id`, `require_actor_id`, `actor_label`).
-- **`common_logging.py`** -- the three handler-layer log helpers covering the three log paths every domain handler exercises: `log_handler_argument_invalid` (caught `ArgumentValidationError`), `log_handler_invoke_failed` (any other `Exception` from the service layer, with optional correlation kwargs), and `log_handler_guardrail_violated` (caught `GuardrailViolationError` from a destructive-op precondition). Owns a module-scoped logger keyed at `synthorg.meta.mcp.handlers` -- one of the rare carve-outs from the `get_logger(__name__)` rule (see "Logging" above).
+- **`common.py`**: response envelopes (`ok`, `err`, `capability_gap`, `not_supported`, `service_fallback`), pagination output (`PaginationMeta`, `paginate_sequence`, `dump_many`), guardrails (`require_destructive_guardrails`), and placeholder factories.
+- **`common_args.py`**: argument validators/extractors (`require_arg`, `require_non_blank`, `get_optional_str`, `require_dict`, `parse_time_window`, `parse_str_sequence`, `coerce_pagination`, `actor_id`, `require_actor_id`, `actor_label`).
+- **`common_logging.py`**: the three handler-layer log helpers covering the three log paths every domain handler exercises: `log_handler_argument_invalid` (caught `ArgumentValidationError`), `log_handler_invoke_failed` (any other `Exception` from the service layer, with optional correlation kwargs), and `log_handler_guardrail_violated` (caught `GuardrailViolationError` from a destructive-op precondition). Owns a module-scoped logger keyed at `synthorg.meta.mcp.handlers`, one of the rare carve-outs from the `get_logger(__name__)` rule (see "Logging" above).
 
 Handlers run `require_destructive_guardrails(arguments, actor)` on any `admin_tool`, route through service-layer facades (never into `app_state.persistence.*` directly), and emit the three log paths via `common_logging` helpers (no per-handler `_log_*` duplicates).
 
@@ -174,64 +174,64 @@ See [docs/reference/telemetry.md](docs/reference/telemetry.md) for enable flags,
 ## Resilience
 
 - **All provider calls** go through `BaseCompletionProvider` which applies retry + rate limiting automatically
-- **Never** implement retry logic in driver subclasses or calling code -- it's handled by the base class
+- **Never** implement retry logic in driver subclasses or calling code; it's handled by the base class
 - **RetryConfig** and **RateLimiterConfig** are set per-provider in `ProviderConfig`
 - **Retryable errors** (`is_retryable=True`): `RateLimitError`, `ProviderTimeoutError`, `ProviderConnectionError`, `ProviderInternalError`
 - **Non-retryable errors** raise immediately without retry
-- **`RetryExhaustedError`** signals that all retries failed -- the engine layer catches this to trigger fallback chains
-- **Rate limiter** respects `RateLimitError.retry_after` from providers -- automatically pauses future requests
+- **`RetryExhaustedError`** signals that all retries failed; the engine layer catches this to trigger fallback chains
+- **Rate limiter** respects `RateLimitError.retry_after` from providers, automatically pausing future requests
 
 ## Test Regression (MANDATORY)
 
 When tests fail due to timeout, slowness, or xdist resource contention:
 - **NEVER** delete tests, skip tests, or mark them `xfail` to "fix" slowness
 - **NEVER** use `--no-verify` to bypass pre-push hooks
-- **NEVER** modify `tests/baselines/unit_timing.json` -- baseline updates require explicit user approval (enforced by `scripts/check_no_edit_baseline.sh` PreToolUse hook)
+- **NEVER** modify `tests/baselines/unit_timing.json`; baseline updates require explicit user approval (enforced by `scripts/check_no_edit_baseline.sh` PreToolUse hook)
 - **FIRST** run: `uv run python -m pytest tests/unit/ -m unit -n 8 --durations=50 --durations-min=0.5 -q --no-header` to identify the slow tests
 - **THEN** compare against `tests/baselines/unit_timing.json` (the known-good baseline)
-- **IF** suite time exceeds `baseline * 1.3`: this is a **source code regression**, not a test bug -- fix the source code that caused the regression, not the tests
-- The `pytest_sessionfinish` hook in `tests/conftest.py` will warn loudly if a regression is detected -- trust the warning
+- **IF** suite time exceeds `baseline * 1.3`: this is a **source code regression**, not a test bug. Fix the source code that caused the regression, not the tests
+- The `pytest_sessionfinish` hook in `tests/conftest.py` will warn loudly if a regression is detected; trust the warning
 
 ## Testing
 
 - **Markers**: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.e2e`, `@pytest.mark.slow`
 - **Coverage**: 80% minimum (enforced in CI)
-- **Async**: `asyncio_mode = "auto"` -- no manual `@pytest.mark.asyncio` needed
-- **Timeout**: 30 seconds per test (global in `pyproject.toml` -- do not add per-file `pytest.mark.timeout(30)` markers; non-default overrides like `timeout(60)` are allowed)
-- **Parallelism**: `pytest-xdist` via `-n 8` -- **ALWAYS** include `-n 8` when running pytest locally, never run tests sequentially. CI uses `-n auto` (fewer cores on runners).
+- **Async**: `asyncio_mode = "auto"`; no manual `@pytest.mark.asyncio` needed
+- **Timeout**: 30 seconds per test (global in `pyproject.toml`; do not add per-file `pytest.mark.timeout(30)` markers; non-default overrides like `timeout(60)` are allowed)
+- **Parallelism**: `pytest-xdist` via `-n 8`. **ALWAYS** include `-n 8` when running pytest locally, never run tests sequentially. CI uses `-n auto` (fewer cores on runners).
 - **Parametrize**: Prefer `@pytest.mark.parametrize` for testing similar cases
 - **Vendor-agnostic everywhere**: NEVER use real vendor names (Anthropic, OpenAI, Claude, GPT, etc.) in project-owned code, docstrings, comments, tests, or config examples. Use generic names: `example-provider`, `example-large-001`, `example-medium-001`, `example-small-001`, `large`/`medium`/`small` as aliases. Vendor names may only appear in: (1) Operations design page provider list (`docs/design/operations.md`), (2) `.claude/` skill/agent files, (3) third-party import paths/module names (e.g. `litellm.types.llms.openai`), (4) provider presets (`src/synthorg/providers/presets.py`) which are user-facing runtime data. Tests must use `test-provider`, `test-small-001`, etc.
 - **Property-based testing**: Python uses [Hypothesis](https://hypothesis.readthedocs.io/), React uses [fast-check](https://fast-check.dev/), Go uses `testing.F` fuzz functions. CI runs 10 deterministic examples per property test (`derandomize=True`, no flakes). When Hypothesis finds a failure, it is a **real bug**: read the shrunk example, fix the underlying bug, and add an explicit `@example(...)` decorator so the case is permanently covered. See [docs/reference/claude-reference.md](docs/reference/claude-reference.md) §"Property-based Testing (Hypothesis): Deep Dive" for profile catalog, local fuzzing commands, and failure-handling workflow.
-- **Flaky tests**: NEVER skip, dismiss, or ignore flaky tests -- always fix them fully and fundamentally. For timing-sensitive tests, mock `time.monotonic()` and `asyncio.sleep()` to make them deterministic instead of widening timing margins. For tasks that must block indefinitely until cancelled (e.g. simulating a slow provider or stubborn coroutine), use `asyncio.Event().wait()` instead of `asyncio.sleep(large_number)` -- it is cancellation-safe and carries no timing assumptions.
+- **Flaky tests**: NEVER skip, dismiss, or ignore flaky tests; always fix them fully and fundamentally. For timing-sensitive tests, mock `time.monotonic()` and `asyncio.sleep()` to make them deterministic instead of widening timing margins. For tasks that must block indefinitely until cancelled (e.g. simulating a slow provider or stubborn coroutine), use `asyncio.Event().wait()` instead of `asyncio.sleep(large_number)`; it is cancellation-safe and carries no timing assumptions.
 
 ## Git
 
-- **Commits**: `<type>: <description>` -- types: feat, fix, refactor, docs, test, chore, perf, ci
+- **Commits**: `<type>: <description>`. Types: feat, fix, refactor, docs, test, chore, perf, ci
 - **Enforced by**: commitizen (commit-msg hook)
-- **Signed commits**: required on `main` via branch protection -- all commits must be GPG/SSH signed. Exception: **GitHub App-signed commits from the release automation** (`synthorg-repo-bot`) also satisfy `required_signatures`. These are minted via the Git Data API (`POST /git/commits`) under the App installation token, so GitHub attaches a bot signature that verifies as `{verified: true, reason: "valid"}` even though no GPG/SSH key is in play. Used by `release.yml`, `dev-release.yml`, `auto-rollover.yml`, and `graduate.yml`; see [docs/reference/github-environments.md](docs/reference/github-environments.md#release_bot_app_).
+- **Signed commits**: required on `main` via branch protection. All commits must be GPG/SSH signed. Exception: **GitHub App-signed commits from the release automation** (`synthorg-repo-bot`) also satisfy `required_signatures`. These are minted via the Git Data API (`POST /git/commits`) under the App installation token, so GitHub attaches a bot signature that verifies as `{verified: true, reason: "valid"}` even though no GPG/SSH key is in play. Used by `release.yml`, `dev-release.yml`, `auto-rollover.yml`, and `graduate.yml`; see [docs/reference/github-environments.md](docs/reference/github-environments.md#release_bot_app_).
 - **Branches**: `<type>/<slug>` from main
-- **Pre-commit hooks**: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-json, check-merge-conflict, check-added-large-files, no-commit-to-branch (main), ruff check+format, gitleaks, hadolint (Dockerfile linting), golangci-lint + go vet (CLI, conditional on `cli/**/*.go`), no-em-dashes, no-redundant-timeout, check-single-migration-per-pr (at most 1 new migration per backend per PR), check-no-modify-migration (block editing existing migrations; bypass with `SYNTHORG_MIGRATION_SQUASH=1`), no-release-please-token (#1555: forbids new `RELEASE_PLEASE_TOKEN` references in any `.github/` YAML), workflow-shell-git-commits (#1555: scoped to `.github/workflows/*.yml` -- blocks every shell `git commit + git push` pair in the same `run:` block, unconditionally; local pushes never produce signed commits, so an App-token mint elsewhere in the job does not sanitise them -- writes MUST go through the Git Data API). **Note**: `eslint-web` runs at **pre-push only** (see Pre-push hooks below) -- TypeScript project-graph boot is 15-30s, so gating it on every commit penalises backend-only work.
+- **Pre-commit hooks**: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-json, check-merge-conflict, check-added-large-files, no-commit-to-branch (main), ruff check+format, gitleaks, hadolint (Dockerfile linting), golangci-lint + go vet (CLI, conditional on `cli/**/*.go`), no-em-dashes, no-redundant-timeout, check-single-migration-per-pr (at most 1 new migration per backend per PR), check-no-modify-migration (block editing existing migrations; bypass with `SYNTHORG_MIGRATION_SQUASH=1`), no-release-please-token (#1555: forbids new `RELEASE_PLEASE_TOKEN` references in any `.github/` YAML), workflow-shell-git-commits (#1555: scoped to `.github/workflows/*.yml`; blocks every shell `git commit + git push` pair in the same `run:` block, unconditionally. Local pushes never produce signed commits, so an App-token mint elsewhere in the job does not sanitise them; writes MUST go through the Git Data API). **Note**: `eslint-web` runs at **pre-push only** (see Pre-push hooks below) because TypeScript project-graph boot is 15-30s, so gating it on every commit penalises backend-only work.
 - **Hookify rules** (committed in `.claude/hookify.*.md`):
   - `block-pr-create`: blocks direct `gh pr create` (must use `/pre-pr-review`)
   - `enforce-parallel-tests`: enforces `-n 8` with pytest
   - `no-cd-prefix`: blocks `cd` prefix in Bash commands
   - `no-local-coverage`: blocks `--cov` flags locally (CI handles coverage)
-- **Pre-push hooks**: mypy type-check (affected modules only) + pytest unit tests (affected modules only) + golangci-lint + go vet + go test (CLI, conditional on `cli/**/*.go`) + eslint-web (web dashboard) + `orphan-fixtures` (opt-in via `SYNTHORG_CHECK_ORPHAN_FIXTURES=1`; silent no-op otherwise) (fast gate before push, skipped in pre-commit.ci -- dedicated CI jobs already run these). Foundational module changes (core, config, observability) or conftest changes trigger full runs.
-- **Pre-commit.ci**: autoupdate disabled (`autoupdate_schedule: never`) -- Renovate owns hook version bumps via `pre-commit` manager
-- **GitHub issue queries**: use `gh issue list` via Bash (not MCP tools) -- MCP `list_issues` has unreliable field data
-- **Merge strategy**: squash merge -- PR body becomes the squash commit message on main. Trailers (e.g. `Release-As`, `Closes #N`) must be in the PR body to land in the final commit.
-- **PR issue references**: preserve existing `Closes #NNN` references -- never remove unless explicitly asked
+- **Pre-push hooks**: mypy type-check (affected modules only) + pytest unit tests (affected modules only) + golangci-lint + go vet + go test (CLI, conditional on `cli/**/*.go`) + eslint-web (web dashboard) + `orphan-fixtures` (opt-in via `SYNTHORG_CHECK_ORPHAN_FIXTURES=1`; silent no-op otherwise) (fast gate before push, skipped in pre-commit.ci because dedicated CI jobs already run these). Foundational module changes (core, config, observability) or conftest changes trigger full runs.
+- **Pre-commit.ci**: autoupdate disabled (`autoupdate_schedule: never`); Renovate owns hook version bumps via `pre-commit` manager
+- **GitHub issue queries**: use `gh issue list` via Bash (not MCP tools); MCP `list_issues` has unreliable field data
+- **Merge strategy**: squash merge. PR body becomes the squash commit message on main. Trailers (e.g. `Release-As`, `Closes #N`) must be in the PR body to land in the final commit.
+- **PR issue references**: preserve existing `Closes #NNN` references; never remove unless explicitly asked
 
 ## Post-Implementation (MANDATORY)
 
-- **After finishing an issue implementation**: always create a feature branch (`<type>/<slug>`), commit, and push -- do NOT create a PR automatically
-- Do NOT leave work uncommitted on main -- branch, commit, push immediately after finishing
+- **After finishing an issue implementation**: always create a feature branch (`<type>/<slug>`), commit, and push; do NOT create a PR automatically
+- Do NOT leave work uncommitted on main; branch, commit, push immediately after finishing
 
 ## Pre-PR Review (MANDATORY)
 
-- **NEVER create a PR directly** -- `gh pr create` is blocked by hookify
-- **ALWAYS use `/pre-pr-review`** to create PRs -- it runs automated checks + review agents + fixes before creating the PR
+- **NEVER create a PR directly**: `gh pr create` is blocked by hookify
+- **ALWAYS use `/pre-pr-review`** to create PRs; it runs automated checks + review agents + fixes before creating the PR
 - For trivial/docs-only changes: `/pre-pr-review quick` skips agents but still runs automated checks
 - After the PR exists, use `/aurelio-review-pr` to handle external reviewer feedback
 - The `/commit-push-pr` command is effectively blocked (it calls `gh pr create` internally)
-- **Fix everything valid -- never skip**: When review agents find valid issues (including pre-existing issues in surrounding code, suggestions, and findings adjacent to the PR's changes), fix them all. No deferring, no "out of scope" skipping.
+- **Fix everything valid, never skip**: When review agents find valid issues (including pre-existing issues in surrounding code, suggestions, and findings adjacent to the PR's changes), fix them all. No deferring, no "out of scope" skipping.

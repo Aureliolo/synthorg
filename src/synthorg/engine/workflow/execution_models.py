@@ -27,7 +27,7 @@ class ExecutionFrame(BaseModel):
 
     The activation-time graph walker pushes a new frame whenever it
     resolves a ``SUBWORKFLOW`` node and pops it when the child graph
-    completes.  Each frame owns a private ``variables`` mapping --
+    completes.  Each frame owns a private ``variables`` mapping;
     children cannot read parent variables outside declared inputs
     because the walker receives a new frame-scoped context map.
 

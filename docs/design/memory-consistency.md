@@ -1,6 +1,6 @@
 ---
 title: Multi-Agent Memory Consistency
-description: Consistency model for shared organizational memory -- append-only writes, MVCC snapshot reads, conflict handling, and deployment rollout.
+description: "Consistency model for shared organizational memory: append-only writes, MVCC snapshot reads, conflict handling, and deployment rollout."
 ---
 
 # Multi-Agent Memory Consistency
@@ -64,7 +64,7 @@ snapshot row:
 ```
 
 Queries against the snapshot fetch active facts: `WHERE retracted_at IS NULL`. No log replay
-needed at read time -- reads are fast and consistent.
+needed at read time; reads are fast and consistent.
 
 ### Consistency Guarantees
 
@@ -72,7 +72,7 @@ needed at read time -- reads are fast and consistent.
 - **Readers see a consistent snapshot**: all writes committed before query time T were
   applied at query time.
 - **Concurrent writes on the same fact** are serialized via version counter (CAS-like
-  semantics -- last writer wins, earlier operation survives in the log for audit).
+  semantics: last writer wins, earlier operation survives in the log for audit).
 - **No lost updates**: every operation is durable in the log before the snapshot is updated.
 
 ---
@@ -131,7 +131,7 @@ Implementation:
    retracted.
 4. `snapshot_at(timestamp)` and `get_operation_log(fact_id)` enable time-travel queries on
    the `OrgFactStore` protocol.
-5. MVCC is the only implementation -- no feature flag, no backward-compatibility shims
+5. MVCC is the only implementation; no feature flag, no shim layer
    (pre-alpha, all data is ephemeral).
 
 Deviation note: MVCC methods live on `OrgFactStore` rather than `SharedKnowledgeStore`
@@ -150,7 +150,7 @@ on the snapshot table. The operation log structure is unchanged.
 ## Personal Memory
 
 Personal agent memories (per-`agent_id` operations on `MemoryBackend`) are **not** subject
-to cross-agent consistency constraints. Each agent owns its memory exclusively -- no concurrent
+to cross-agent consistency constraints. Each agent owns its memory exclusively; no concurrent
 writes from other agents, no MVCC overhead needed. Sequential writes with the existing
 `MemoryBackend.store()` semantics are sufficient.
 

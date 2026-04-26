@@ -140,8 +140,8 @@ def _has_error_str_exc_kwarg(keywords: Iterable[ast.keyword]) -> bool:
     """Return ``True`` if any keyword is ``error=str(<exc_like>)``.
 
     ``<exc_like>`` is ``ast.Name`` (``str(exc)``), ``ast.Attribute``
-    (``str(self._inner)``), or ``ast.Subscript`` (``str(exc.args[0])``)
-    -- all forms that could carry credential material through ``str``.
+    (``str(self._inner)``), or ``ast.Subscript`` (``str(exc.args[0])``):
+    all forms that could carry credential material through ``str``.
     """
     for kw in keywords:
         if kw.arg != "error":
@@ -281,7 +281,7 @@ def _save_baseline(locations: dict[str, list[tuple[int, int]]]) -> None:
     Enforces stable sort order (file keys alphabetical, entries sorted
     by ``(lineno, col_offset)``) so baselines diff cleanly. Validates
     the payload against :func:`_validate_baseline_payload` and aborts
-    -- with an informative error -- if validation fails, rather than
+    (with an informative error) if validation fails, rather than
     persisting a malformed snapshot. Also embeds staleness-tracking
     metadata (``generated_at`` in UTC, short ``commit`` SHA) so
     reviewers can see when the baseline was last refreshed.

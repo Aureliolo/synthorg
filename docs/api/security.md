@@ -5,7 +5,7 @@ search:
 
 # Security
 
-Security subsystem -- rule engine, trust strategies, autonomy levels, output scanning, and timeout policies.
+Security subsystem: rule engine, trust strategies, autonomy levels, output scanning, and timeout policies.
 
 ## Protocol
 

@@ -182,7 +182,7 @@ full error taxonomy and retry guidance.\
 #
 # The helpers below mutate ``result`` (a freshly constructed dict from
 # the enclosing comprehension in ``_normalize_nullable_unions``) in
-# place.  They must not be called on the original input schema --
+# place.  They must not be called on the original input schema;
 # ``inject_rfc9457_responses`` deep-copies it first.
 
 _SCHEMAS_PREFIX: Final[str] = "#/components/schemas/"

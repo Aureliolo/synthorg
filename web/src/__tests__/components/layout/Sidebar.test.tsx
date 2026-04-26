@@ -364,7 +364,7 @@ describe('Sidebar', () => {
     // close-on-navigate rather than just the last one.
     //
     // The subset size is bounded (max 3) because React Router's `navigate`
-    // schedules a setImmediate per call that only drains on unmount --
+    // schedules a setImmediate per call that only drains on unmount;
     // sweeping every route inside one mount would tip the test over the
     // --detect-async-leaks threshold. 3 routes per iteration x 10 runs
     // gives 30 ordered-pair navigations per CI run, which is enough to

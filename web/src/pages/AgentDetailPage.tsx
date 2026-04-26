@@ -19,7 +19,7 @@ import { TrainingSection } from './agents/TrainingSection'
 export default function AgentDetailPage() {
   // URLs use the agent's stable ID (or name as a fallback when an
   // agent has no explicit id), NOT the display name.  Display names
-  // can contain arbitrary characters -- unicode, quotes, slashes --
+  // can contain arbitrary characters (unicode, quotes, slashes)
   // and URL-encoding them produced failed backend lookups because
   // of case/trim normalisation quirks.  The id is URL-safe by
   // construction.  We resolve it back to the agent's name for the

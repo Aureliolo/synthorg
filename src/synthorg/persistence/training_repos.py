@@ -60,7 +60,7 @@ class TrainingPlanRepository(Protocol):
     ) -> TrainingPlan | None:
         """Return the most recently created plan for an agent.
 
-        Unlike :meth:`latest_pending`, this does not filter on status --
+        Unlike :meth:`latest_pending`, this does not filter on status;
         it returns the head of the plan history regardless of whether
         the plan is still pending, executed, or failed. Used to
         rehydrate the dashboard's training view after a reload.

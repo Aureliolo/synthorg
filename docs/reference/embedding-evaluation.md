@@ -9,7 +9,7 @@ description: LMEB-guided embedding model selection for agent memory retrieval, w
 
 The standard text embedding benchmark ([MTEB](https://huggingface.co/spaces/mteb/leaderboard))
 evaluates traditional passage retrieval. SynthOrg's memory system requires **long-horizon memory
-retrieval** -- fragmented, context-dependent, and temporally distant information across episodic,
+retrieval**: fragmented, context-dependent, and temporally distant information across episodic,
 procedural, semantic, and social memory types.
 
 The [LMEB benchmark](https://arxiv.org/abs/2603.12572) (Zhao et al., March 2026) evaluates
@@ -26,7 +26,7 @@ is that **MTEB performance does not generalize to memory retrieval**:
 
 Negative or near-zero correlations mean a model that tops MTEB may perform poorly on the memory
 retrieval tasks SynthOrg relies on. Procedural memory shows the strongest (but still weak) transfer,
-while dialogue memory shows **anti-correlation** -- the worst MTEB models sometimes outperform the
+while dialogue memory shows **anti-correlation**: the worst MTEB models sometimes outperform the
 best on dialogue retrieval.
 
 ---
@@ -38,10 +38,10 @@ is direct for three types; two SynthOrg types share a single LMEB category.
 
 | SynthOrg Category | LMEB Category | LMEB Task Examples | Evaluation Priority |
 |-------------------|---------------|-------------------|---------------------|
-| **EPISODIC** | Episodic | EPBench (54 tasks), KnowMeBench (15 tasks) -- temporal event recall | **High** |
-| **PROCEDURAL** | Procedural | Gorilla, ToolBench, ReMe, MemGovern, DeepPlanning (67 tasks) -- skill/action retrieval | **High** |
-| **SEMANTIC** | Semantic | QASPER, NovelQA, PeerQA, SciFact (15 tasks) -- factual knowledge recall | Medium |
-| **SOCIAL** | Dialogue | LoCoMo, LongMemEval, REALTALK, ConvoMem (42 tasks) -- multi-turn context | Medium |
+| **EPISODIC** | Episodic | EPBench (54 tasks), KnowMeBench (15 tasks): temporal event recall | **High** |
+| **PROCEDURAL** | Procedural | Gorilla, ToolBench, ReMe, MemGovern, DeepPlanning (67 tasks): skill/action retrieval | **High** |
+| **SEMANTIC** | Semantic | QASPER, NovelQA, PeerQA, SciFact (15 tasks): factual knowledge recall | Medium |
+| **SOCIAL** | Dialogue | LoCoMo, LongMemEval, REALTALK, ConvoMem (42 tasks): multi-turn context | Medium |
 | **WORKING** | (not applicable) | Working memory is in-context, not stored/retrieved | N/A |
 
 **Priority rationale**: episodic and procedural memory are the primary retrieval-dependent types in
@@ -69,9 +69,9 @@ All scores are NDCG@10 (with instruction prompts unless noted). Source: LMEB pap
 
 | Model | Params | Episodic | Procedural | Overall | Notes |
 |-------|--------|----------|------------|---------|-------|
-| EmbeddingGemma-300M | 307M | -- | -- | 56.03 (w/o inst.) | Outperforms 9B models without instructions |
-| Qwen3-Embedding-0.6B | 596M | -- | -- | ~53 | Competitive small model |
-| Qwen3-Embedding-4B | 4B | -- | 59.81 | ~58 | Strong procedural performance |
+| EmbeddingGemma-300M | 307M | - | - | 56.03 (w/o inst.) | Outperforms 9B models without instructions |
+| Qwen3-Embedding-0.6B | 596M | - | - | ~53 | Competitive small model |
+| Qwen3-Embedding-4B | 4B | - | 59.81 | ~58 | Strong procedural performance |
 
 ### Key Findings
 
@@ -103,7 +103,7 @@ retrieval patterns. Three tiers are recommended:
 **Recommended: bge-multilingual-gemma2 (9B)**
 
 - Best overall LMEB score (61.41 NDCG@10)
-- Best dialogue/social memory retrieval (59.60) -- the hardest category
+- Best dialogue/social memory retrieval (59.60), the hardest category
 - Strong episodic (70.88) and procedural (61.40)
 - Consistent instruction-following (+1.96 gain with prompts)
 - Multilingual support (relevant for international org simulations)
@@ -126,7 +126,7 @@ and instruction stability is preferred (performs consistently regardless of prom
 - Surprisingly competitive overall score (56.03 w/o instructions)
 - Runs on CPU with acceptable latency for async memory retrieval
 - Best cost-performance ratio in the LMEB evaluation
-- **Do not use instruction prompts** -- performance degrades with instructions for this model
+- **Do not use instruction prompts**: performance degrades with instructions for this model
 
 ### Embedder Configuration
 
@@ -168,14 +168,14 @@ graph LR
 
 ### Stage Details
 
-**Stage 1 -- Synthetic Data Generation**
+**Stage 1: Synthetic Data Generation**
 
 - Input: organization documents (policies, ADRs, procedures, coding standards, meeting notes)
 - Process: LLM generates realistic retrieval queries for each document chunk
 - Output: `(query, positive_document)` pairs
 - No GPU required (API-based LLM calls)
 
-**Stage 2 -- Hard Negative Mining**
+**Stage 2: Hard Negative Mining**
 
 - Input: query-document pairs + base embedding model
 - Process: embed all passages, compute query-passage similarity, select top-k highest-scoring
@@ -183,7 +183,7 @@ graph LR
 - Output: `(query, positive, [hard_negative_1, ..., hard_negative_k])` triples
 - GPU required (40 GB VRAM for embedding)
 
-**Stage 3 -- Contrastive Fine-Tuning**
+**Stage 3: Contrastive Fine-Tuning**
 
 - Input: training triples from Stage 2
 - Process: biencoder contrastive training with InfoNCE loss, temperature tau=0.02
@@ -191,7 +191,7 @@ graph LR
 - GPU required (80 GB VRAM for training, or reduced batch size on smaller GPUs)
 - Duration: 1-2 hours for typical org corpus (~500 documents)
 
-**Stage 4 -- Deploy**
+**Stage 4: Deploy**
 
 - Save fine-tuned model checkpoint to configured path
 - Update `Mem0EmbedderConfig` to point to the fine-tuned model (via custom Mem0 provider or
@@ -231,5 +231,5 @@ model's generic training does not cover domain-specific terminology and relation
 
 - Zhao et al., ["LMEB: Long-horizon Memory Embedding Benchmark"](https://arxiv.org/abs/2603.12572) (March 2026)
 - NVIDIA, ["Domain-Specific Embedding Fine-Tuning"](https://huggingface.co/blog/nvidia/domain-specific-embedding-finetune) (2026)
-- [LMEB GitHub Repository](https://github.com/KaLM-Embedding/LMEB) -- datasets, evaluation code, leaderboard
+- [LMEB GitHub Repository](https://github.com/KaLM-Embedding/LMEB): datasets, evaluation code, leaderboard
 - [LMEB HuggingFace Dataset](https://huggingface.co/datasets/KaLM-Embedding/LMEB)

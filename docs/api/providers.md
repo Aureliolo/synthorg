@@ -5,7 +5,7 @@ search:
 
 # Providers
 
-LLM provider abstraction -- protocol, base class, drivers, capabilities, routing, and resilience.
+LLM provider abstraction: protocol, base class, drivers, capabilities, routing, and resilience.
 
 ## Protocol
 

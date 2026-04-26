@@ -13,7 +13,7 @@ related: [690]
 
 The IBM/RPI survey "From Static Templates to Dynamic Runtime Graphs" (arXiv:2603.22386)
 introduces the Agentic Computation Graph (ACG) formalism to unify the vocabulary for
-describing agent workflows -- from static templates to dynamic runtime graphs, scheduling
+describing agent workflows: from static templates to dynamic runtime graphs, scheduling
 policies, execution traces, and mutation strategies. SynthOrg has all these concepts but
 expresses them through domain-specific names (execution loops, hybrid plans, turn records,
 coordination topology). This evaluation assesses whether adopting ACG vocabulary would
@@ -32,9 +32,9 @@ assessment and source file references.
 | ACG Concept | SynthOrg Equivalent | Source | Fidelity | Notes |
 |---|---|---|---|---|
 | **ACG Template** | `CompanyConfig` + Company YAML | `src/synthorg/core/company.py`, `src/synthorg/config/schema.py` | Partial | ACG templates are graph-level (workflow topology). SynthOrg's YAML is org-level (agent roster, tool permissions, budget). Closer analogue would be `WorkflowDefinition` for workflow templates. |
-| **Realized Graph** | `AgentContext` + `TaskExecution` + `CoordinationResult` | `src/synthorg/engine/context.py`, `src/synthorg/engine/coordination/models.py` | Strong | The realized graph IS the running state -- context, history, accumulated cost, current position. Multi-agent coordination adds `CoordinationPhaseResult` per phase. |
+| **Realized Graph** | `AgentContext` + `TaskExecution` + `CoordinationResult` | `src/synthorg/engine/context.py`, `src/synthorg/engine/coordination/models.py` | Strong | The realized graph IS the running state: context, history, accumulated cost, current position. Multi-agent coordination adds `CoordinationPhaseResult` per phase. |
 | **Execution Trace** | `tuple[TurnRecord, ...]` in `ExecutionResult` + observability events | `src/synthorg/engine/loop_protocol.py`, `src/synthorg/observability/events/` | Strong | SynthOrg's trace is richer than ACG baseline: per-turn cost, token usage, tool fingerprints, stagnation signals, quality scores. 100+ event constant domains. |
-| **Nodes (atomic actions)** | LLM calls (`call_provider`), tool invocations (`execute_tool_calls`), validation gates (`check_budget`, `check_stagnation`) | `src/synthorg/engine/loop_helpers.py` | Partial | Node typing is implicit in loop control flow, not a first-class abstraction. There is no `Node` type -- actions are identified by function names and turn records. |
+| **Nodes (atomic actions)** | LLM calls (`call_provider`), tool invocations (`execute_tool_calls`), validation gates (`check_budget`, `check_stagnation`) | `src/synthorg/engine/loop_helpers.py` | Partial | Node typing is implicit in loop control flow, not a first-class abstraction. There is no `Node` type; actions are identified by function names and turn records. |
 | **Edges (control/data flow)** | `SubtaskDefinition.dependencies` DAG, `DecompositionPlan.dependency_edges` | `src/synthorg/engine/decomposition/models.py` | Strong for multi-agent | Edges are explicit in multi-agent decomposition (dependency DAG). Implicit in single-agent loops (sequential execution order, no formal edge representation). |
 | **Scheduling Policies** | `AutoLoopConfig` + `select_loop_type()` + `CoordinationConfig` + `AutoTopologyConfig` | `src/synthorg/engine/loop_selector.py`, `src/synthorg/engine/routing/models.py` | Strong | Three-way loop selection (react/plan-execute/hybrid) and topology selection (SAS/centralized/decentralized/context-dependent) are scheduling policies. Budget-aware downgrade is a resource-constrained policy. |
 
@@ -52,20 +52,20 @@ assessment and source file references.
 | ACG Concept | SynthOrg Equivalent | Source | Fidelity | Notes |
 |---|---|---|---|---|
 | **Node cost** | `TurnRecord.cost` per turn, `TokenUsage` per completion | `src/synthorg/engine/loop_protocol.py`, `src/synthorg/providers/models.py` | Strong | Per-turn cost tracking with provider breakdown. Accumulated over execution via `ctx.accumulated_cost`. |
-| **Resource constraints** | `BudgetEnforcer` (3-layer), quota degradation, context budget | `src/synthorg/budget/enforcer.py`, `src/synthorg/engine/context_budget.py` | Strong -- exceeds ACG | SynthOrg's resource model is more sophisticated than ACG: multi-layer enforcement, per-agent daily limits, context fill tracking, risk budget. |
+| **Resource constraints** | `BudgetEnforcer` (3-layer), quota degradation, context budget | `src/synthorg/budget/enforcer.py`, `src/synthorg/engine/context_budget.py` | Strong (exceeds ACG) | SynthOrg's resource model is more sophisticated than ACG: multi-layer enforcement, per-agent daily limits, context fill tracking, risk budget. |
 | **Quality-cost tradeoffs** | Budget-aware loop downgrade (hybrid->plan_execute at 80%), model auto-downgrade, quota degradation strategies | `src/synthorg/engine/loop_selector.py`, `src/synthorg/budget/enforcer.py` | Strong | Explicit tradeoff mechanisms with hard budget caps. Downgrade-only at task boundaries (consistency guarantee). |
 
 ### Concepts SynthOrg Has That ACG Does Not Capture
 
-- **Progressive trust**: Agent trust levels (RESTRICTED/STANDARD/ELEVATED) with human
-  approval for promotion -- no ACG equivalent.
+- **Progressive trust**: agent trust levels (RESTRICTED/STANDARD/ELEVATED) with human
+  approval for promotion. No ACG equivalent.
 - **Personality and behavioral configuration**: `PersonalityConfig` with Big Five + behavioral
-  enums affecting decision style -- no ACG equivalent.
-- **Memory injection**: Episodic and procedural memory retrieval shaping context before
-  execution -- no ACG equivalent.
-- **Prompt profiles**: Verbosity adaptation by model tier -- no ACG equivalent.
-- **Autonomy levels**: 4 presets (full/semi/supervised/locked) with tool permission gating
-  -- no ACG equivalent.
+  enums affecting decision style. No ACG equivalent.
+- **Memory injection**: episodic and procedural memory retrieval shaping context before
+  execution. No ACG equivalent.
+- **Prompt profiles**: verbosity adaptation by model tier. No ACG equivalent.
+- **Autonomy levels**: 4 presets (full/semi/supervised/locked) with tool permission gating.
+  No ACG equivalent.
 
 ---
 
@@ -83,7 +83,7 @@ greater gains.
 complexity to loop type (simple->react, medium->plan_execute, complex->hybrid). The
 documentation for this design explicitly states that choosing the wrong loop for a task
 complexity degrades quality beyond what prompt tuning can recover. The budget-aware downgrade
-(hybrid->plan_execute at 80% monthly) is a deliberate quality tradeoff -- accepted because
+(hybrid->plan_execute at 80% monthly) is a deliberate quality tradeoff, accepted because
 the budget constraint makes the simpler structure correct.
 
 **Implication**: The loop selector is doing real structural work. Adding complexity to
@@ -98,7 +98,7 @@ validates investing in the auto-selector's classification accuracy over prompt l
 **SynthOrg validation**: Partially confirmed. The quality scoring system (L2+L3 in
 `src/synthorg/engine/quality/`) provides per-step quality signals. The hybrid loop's replan
 trigger uses these signals to decide whether to add a replan step (graph mutation). However,
-the quality verifier's confidence is not used to modulate mutation aggressiveness -- the
+the quality verifier's confidence is not used to modulate mutation aggressiveness; the
 replan threshold is fixed, not adaptive to verifier confidence.
 
 **Implication**: As the quality scoring system matures, consider making the replan threshold
@@ -162,7 +162,7 @@ SynthOrg currently attributes all failure information to the executing agent's
 
 ### Proposed Design
 
-**AgentContribution model** -- integrate with `CoordinationResult`:
+**AgentContribution model** integrates with `CoordinationResult`:
 
 Note: `CoordinationResult` has `model_config = ConfigDict(frozen=True)`. Adding
 `agent_contributions` directly is a breaking change. The recommended approach is a
@@ -203,7 +203,7 @@ class AgentContribution(BaseModel):
 minimum viable version introduces a `CoordinationResultWithAttribution` wrapper containing
 the original (immutable) `CoordinationResult` plus a list of `AgentContribution` objects
 populated per-agent subtask result using the existing keyword-heuristic from
-`infer_failure_category()`. This preserves `CoordinationResult` immutability -- no changes
+`infer_failure_category()`. This preserves `CoordinationResult` immutability with no changes
 to the frozen model.
 
 ---
@@ -214,10 +214,10 @@ to the frozen model.
 
 The infrastructure for agent removal exists and is production-grade:
 
-- `src/synthorg/hr/offboarding_service.py` -- `OffboardingService`: full pipeline for agent
+- `src/synthorg/hr/offboarding_service.py`: `OffboardingService`, the full pipeline for agent
   removal (task reassignment, memory archival, team notification, status termination)
-- `src/synthorg/core/enums.py` -- `FiringReason.PERFORMANCE` exists as a reason code
-- `src/synthorg/hr/performance/tracker.py` -- `PerformanceTracker`: rolling windows, trend
+- `src/synthorg/core/enums.py`: `FiringReason.PERFORMANCE` exists as a reason code
+- `src/synthorg/hr/performance/tracker.py`: `PerformanceTracker` providing rolling windows, trend
   detection (Theil-Sen), quality and collaboration scoring
 
 What does not exist: any automated trigger for `OffboardingService.offboard()` based on
@@ -231,7 +231,7 @@ Four signal categories that should drive pruning recommendations:
    Available from `AgentPerformanceSnapshot.quality_trend` in `hr/performance/tracker.py`.
 
 2. **Utilization**: Tasks assigned relative to team size. Low-utilization agents are
-   redundant overhead. Currently tracked via task records -- a task-per-agent-per-window
+   redundant overhead. Currently tracked via task records: a task-per-agent-per-window
    count would be the metric.
 
 3. **Skill redundancy**: High Jaccard similarity of required skills with another agent on
@@ -277,7 +277,7 @@ pipelines. Required fields:
 - `risk_level`: `ApprovalRiskLevel.MEDIUM`
 - `created_at`: ISO 8601 timestamp
 
-Pruning is never fully automated -- it is recommendation + human approval.
+Pruning is never fully automated; it is recommendation plus human approval.
 
 ### Safety Constraints
 
@@ -304,7 +304,7 @@ precisely for this. The only new infrastructure needed is:
 
 The ACG survey discusses AgentDropout (removing underperforming agents mid-run) and
 Adaptive Graph Pruning (removing redundant workflow nodes). SynthOrg's proposed pruning
-is more conservative -- it operates at the HR layer (between runs) rather than mid-execution.
+is more conservative; it operates at the HR layer (between runs) rather than mid-execution.
 Mid-execution dropout (removing an agent after it has started a subtask) is significantly
 more complex due to task handoff and context transfer requirements. The inter-run HR pruning
 is the correct first implementation target.
@@ -355,7 +355,7 @@ composition" rather than erroring.
 
 ## Summary of Recommendations
 
-1. **Bidirectional ACG glossary** in `docs/architecture/acg-glossary.md` -- no code changes
+1. **Bidirectional ACG glossary** in `docs/architecture/acg-glossary.md`; no code changes
 2. **Structural credit assignment**: Add `CoordinationResultWithAttribution` wrapper
    (frozen `CoordinationResult` + `AgentContribution` list); run attribution in
    `_post_execution_pipeline`; feed into `PerformanceTracker`

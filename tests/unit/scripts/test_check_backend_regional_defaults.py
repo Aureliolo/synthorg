@@ -4,7 +4,7 @@ Exercises every rule (currency, currency-symbol, _usd suffix, locale,
 localhost:<port>) plus the suppression marker, the allowlist paths,
 and the comment-line skip.
 
-Tests call ``_scan_file`` directly rather than spawning a subprocess --
+Tests call ``_scan_file`` directly rather than spawning a subprocess;
 the script's project-root discovery is file-based, so CLI invocation
 would require writing fixtures inside the real ``src/synthorg/`` tree,
 which causes order-dependent pollution with other tests that walk that

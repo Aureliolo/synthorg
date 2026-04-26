@@ -99,7 +99,7 @@ const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY || "6LdQkossA
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
 
-      // Client-side honeypot check -- show fake success to avoid dead UI
+      // Client-side honeypot check: show fake success to avoid dead UI
       const honeypot = form.querySelector<HTMLInputElement>('input[name="_gotcha"]');
       if (honeypot && honeypot.value) {
         form.classList.add("hidden");

@@ -56,7 +56,7 @@ This project is designed to handle LLM API keys, sandboxed code execution, and a
 
 ### Workflow & Supply Chain Security
 
-- **Zizmor** static analysis of GitHub Actions workflows (SARIF uploaded on push events only -- fork PRs lack `security-events: write`)
+- **Zizmor** static analysis of GitHub Actions workflows (SARIF uploaded on push events only; fork PRs lack `security-events: write`)
 - **OSSF Scorecard** supply chain maturity scoring (SARIF to Security tab, weekly + push to main)
 - All workflow actions pinned by full SHA with version comments
 - `permissions: {}` at workflow level with least-privilege per job

@@ -1,4 +1,4 @@
-# AGENTS.md -- SynthOrg (OpenCode)
+# AGENTS.md: SynthOrg (OpenCode)
 
 This project uses a shared configuration for both Claude Code and OpenCode.
 
@@ -9,7 +9,7 @@ Read CLAUDE.md for:
 - Quick commands (uv, pytest, ruff, mypy, docker, docs)
 - Git workflow, commit conventions, branch naming
 - Testing standards, coverage requirements
-- Design spec (docs/design/) -- MANDATORY reading before implementation
+- Design spec (docs/design/): MANDATORY reading before implementation
 - Logging, resilience, security patterns
 - Telemetry (opt-in product telemetry): privacy allowlist + forbidden patterns, environment resolution chain, Docker daemon enrichment
 

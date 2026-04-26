@@ -234,8 +234,8 @@ def resolve_task_transitions(
     """Return the TaskStatus path for a Kanban column move.
 
     The caller must apply these transitions sequentially to the task
-    via the TaskEngine.  Does NOT validate the column transition itself
-    -- call :func:`validate_column_transition` first.
+    via the TaskEngine.  Does NOT validate the column transition itself;
+    call :func:`validate_column_transition` first.
 
     Args:
         from_column: Source column.

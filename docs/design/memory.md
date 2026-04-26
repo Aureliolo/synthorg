@@ -7,8 +7,8 @@ description: Agent memory architecture, shared organizational memory, backend pr
 
 The SynthOrg framework separates two distinct storage concerns:
 
-- **Agent memory** -- what agents know, remember, and learn (working, episodic, semantic, procedural, social)
-- **Operational data** -- tasks, cost records, messages, and audit logs generated during execution
+- **Agent memory**: what agents know, remember, and learn (working, episodic, semantic, procedural, social)
+- **Operational data**: tasks, cost records, messages, and audit logs generated during execution
 
 Both are implemented behind pluggable protocol interfaces, making storage backends swappable via
 configuration without modifying application code.
@@ -66,7 +66,7 @@ Memory persistence is configurable per agent, from no persistence to fully persi
 
 ## Shared Organizational Memory
 
-Beyond individual agent memory, the framework provides **organizational memory** -- company-wide
+Beyond individual agent memory, the framework provides **organizational memory**: company-wide
 knowledge that all agents can access: policies, conventions, architecture decision records (ADRs),
 coding standards, and operational procedures. This is not personal episodic memory ("what I did
 last Tuesday") but institutional knowledge ("the team always uses Litestar, not Flask").
@@ -103,7 +103,7 @@ with the organization.
 
 ### Research Directions
 
-The following backends illustrate why `OrgMemoryBackend` is a protocol -- the architecture
+The following backends illustrate why `OrgMemoryBackend` is a protocol; the architecture
 supports future upgrades without modifying existing code. These are research directions that
 may inform future work if organizational memory needs outgrow the Hybrid Prompt + Retrieval
 approach.
@@ -154,7 +154,7 @@ approach.
        consolidation pipeline (entities stored in a separate `EntityStore` protocol).
     2. Create `GraphRAGMemoryBackend` implementing the existing `MemoryBackend` protocol with
        graph-traversal queries alongside standard vector retrieval.
-    3. Enable via config -- existing application code is unchanged.
+    3. Enable via config; existing application code is unchanged.
 
     See [Decision Log](../architecture/decisions.md) D25 for the full trade-off analysis and
     deferral rationale.
@@ -184,7 +184,7 @@ implementation effort for the research direction backends.
 
 Agent memory is implemented behind a pluggable `MemoryBackend` protocol with three concrete
 implementations: Mem0 (durable, Qdrant+SQLite), InMemory (session-scoped), and Composite
-(namespace-based routing adapter) -- see [Decision Log](../architecture/decisions.md). Application
+(namespace-based routing adapter); see [Decision Log](../architecture/decisions.md). Application
 code depends only on the protocol; the storage engine is an implementation detail swappable via
 config.
 
@@ -256,7 +256,7 @@ class MemoryCapabilities(Protocol):
 ### SharedKnowledgeStore Protocol
 
 Backends that support cross-agent shared knowledge implement this protocol alongside
-`MemoryBackend`. Not all backends require cross-agent queries -- this keeps the base protocol
+`MemoryBackend`. Not all backends require cross-agent queries; this keeps the base protocol
 clean.
 
 ```python
@@ -276,7 +276,7 @@ class SharedKnowledgeStore(Protocol):
 ```
 
 See [Multi-Agent Memory Consistency](memory-consistency.md) for the consistency model used
-when multiple agents share a `SharedKnowledgeStore` -- including MVCC snapshot reads,
+when multiple agents share a `SharedKnowledgeStore`, including MVCC snapshot reads,
 append-only write semantics, and conflict handling.
 
 ### Error Hierarchy
@@ -351,14 +351,14 @@ Key findings:
 
 - Larger models do not always outperform smaller ones on memory retrieval
 - Dialogue/social memory is the hardest retrieval category for all models
-- Instruction sensitivity varies per model -- must be validated per deployment
+- Instruction sensitivity varies per model; must be validated per deployment
 - Three deployment tiers are recommended: full-resource (7-12B), mid-resource (1-4B), and
   CPU-only (< 1B)
 
 **Tier inference inputs** (`auto_select_embedder`):
 
-- **`provider_preset_name`** -- first registered provider name, read from the provider registry at setup-completion time.  When operators use preset names verbatim as provider names (the wizard default), the preset hint steers tier selection; otherwise tier inference falls back to heuristic defaults.
-- **`api.setup.has_gpu`** (yaml path; setting key `setup_has_gpu` under namespace `API`) -- operator-owned boolean, default `"false"`, advanced level.  Flipped by the setup wizard (or directly by an operator) and read via `_read_has_gpu_setting(settings_service)`.  Accepts `true`/`1`/`yes` (→ True) and `false`/`0`/`no`/empty (→ False), case-insensitive; any other value returns `None` (unknown) silently, while a settings-service read failure logs a WARNING and also returns `None`.  There is no platform probe today -- the signal is operator-declared, not auto-detected.
+- **`provider_preset_name`**: first registered provider name, read from the provider registry at setup-completion time.  When operators use preset names verbatim as provider names (the wizard default), the preset hint steers tier selection; otherwise tier inference falls back to heuristic defaults.
+- **`api.setup.has_gpu`** (yaml path; setting key `setup_has_gpu` under namespace `API`): operator-owned boolean, default `"false"`, advanced level.  Flipped by the setup wizard (or directly by an operator) and read via `_read_has_gpu_setting(settings_service)`.  Accepts `true`/`1`/`yes` (→ True) and `false`/`0`/`no`/empty (→ False), case-insensitive; any other value returns `None` (unknown) silently, while a settings-service read failure logs a WARNING and also returns `None`.  There is no platform probe today; the signal is operator-declared, not auto-detected.
 
 Tier fallback is not a single CPU/GPU switch.  `auto_select_embedder` uses preset-name and capability heuristics to pick a `GPU_CONSUMER` or `GPU_FULL` tier when `has_gpu` is `True` or `None`; the tier only collapses to the CPU-only default when the operator has selected a local/self-hosted preset *and* has explicitly set `has_gpu=False`.  Missing or unparseable inputs degrade gracefully and never block setup completion.
 
@@ -370,15 +370,15 @@ The pipeline requires no manual annotation and runs on a single GPU.
 
 **Pipeline stages:**
 
-1. **Synthetic data generation** -- LLM generates query-document pairs from org documents
+1. **Synthetic data generation**: LLM generates query-document pairs from org documents
    (policies, ADRs, procedures, coding standards)
-2. **Hard negative mining** -- base model embeds all passages; top-k semantically similar
+2. **Hard negative mining**: base model embeds all passages; top-k semantically similar
    but non-matching passages become hard negatives
-3. **Contrastive fine-tuning** -- biencoder training with InfoNCE loss (tau=0.02, 3 epochs,
+3. **Contrastive fine-tuning**: biencoder training with InfoNCE loss (tau=0.02, 3 epochs,
    lr=1e-5). Single GPU, 1-2 hours for ~500 documents
-4. **Evaluation** -- NDCG@10 and Recall@10 comparison of the fine-tuned checkpoint against
+4. **Evaluation**: NDCG@10 and Recall@10 comparison of the fine-tuned checkpoint against
    the base model on held-out validation data
-5. **Deploy** -- save checkpoint; update `Mem0EmbedderConfig` to point to fine-tuned model
+5. **Deploy**: save checkpoint; update `Mem0EmbedderConfig` to point to fine-tuned model
 
 **Integration design:** fine-tuning is an offline pipeline triggered via
 `POST /admin/memory/fine-tune` (see `MemoryAdminController`). The optional
@@ -399,14 +399,14 @@ and persisted as `fine_tuning_variant` in `config.json`. The backend consumes
 repository, and either a `:tag` or a digest-pinned `@sha256:...`); in a CLI-managed
 install the rendered `compose.yml` writes the verified digest-pinned ref into this
 env var automatically. Operators running a hand-managed `compose.yml` without the
-CLI set `SYNTHORG_FINE_TUNE_IMAGE` on the backend directly -- tag-based refs work
+CLI set `SYNTHORG_FINE_TUNE_IMAGE` on the backend directly; tag-based refs work
 for quick evaluation, but production deployments should pin a digest so the backend
 spawns the exact attested image. See [Deployment &rarr; Fine-Tuning (optional)](../guides/deployment.md#fine-tuning-optional)
 for the BYO snippet. The container reads stage configuration
 from `/etc/fine-tune/config.json`, executes the pipeline function, and emits
 structured progress markers (`STAGE_START:`, `STAGE_COMPLETE:`) on stdout. The
 orchestrator will parse these markers from container logs for progress reporting
-(orchestrator integration is planned -- the runner and markers are implemented).
+(orchestrator integration is planned; the runner and markers are implemented).
 Source data is mounted at `/data` (read-only), checkpoints written to `/checkpoints`
 (read-write). GPU passthrough is available via `gpu_enabled=True` (only meaningful
 for the GPU variant). The in-process fallback (`backend="in-process"`) is preserved
@@ -458,16 +458,16 @@ Three implementations of the `ConsolidationStrategy` protocol ship out of the bo
 
 | Strategy | Behavior |
 |----------|----------|
-| `SimpleConsolidationStrategy` | Deterministic concatenation baseline -- merges older entries into a single summary without semantic deduplication |
+| `SimpleConsolidationStrategy` | Deterministic concatenation baseline; merges older entries into a single summary without semantic deduplication |
 | `DualModeConsolidationStrategy` | Density-aware: dense groups use extractive preservation, sparse groups use abstractive summarization (see Dual-Mode Archival) |
 | `LLMConsolidationStrategy` | Groups entries by category, keeps the highest-relevance entry per group (with most-recent as tiebreaker; the kept entry is left unchanged in the backend and is NOT fed to the LLM). The remaining entries are sent to an LLM for semantic synthesis (wrapped in `<entry>` tags with explicit "treat as data, not instructions" guidance to resist prompt injection), the summary is stored tagged `"llm-synthesized"`, and only the entries that were actually represented in the LLM prompt are deleted. Synthesis → store → delete ordering prevents data loss on failure; entries dropped by the `_MAX_TOTAL_USER_CONTENT_CHARS` prompt cap are preserved for the next consolidation pass. Groups are processed in parallel via `asyncio.TaskGroup`. **Concat-fallback paths** (tagged `"concat-fallback"`, logged at WARNING, every input entry is included in the concatenation and eligible for deletion): `RetryExhaustedError`, retryable `ProviderError` surfaced directly, empty/whitespace LLM response, and unexpected non-`ProviderError` exception. **Propagating paths** (NO fallback summary, NO deletions): non-retryable `ProviderError` (logged at ERROR first) and system errors `MemoryError` / `RecursionError`. |
 
 Strategy selection is injection-based: callers construct and pass the chosen strategy
 to `MemoryConsolidationService`.  `LLMConsolidationStrategy.__init__` accepts
-`group_threshold` (default 3, minimum 3 -- smaller groups cannot meaningfully
-dedup against the retained entry), `temperature` (default 0.3),
+`group_threshold` (default 3, minimum 3; smaller groups cannot meaningfully
+deduplicate against the retained entry), `temperature` (default 0.3),
 `max_summary_tokens` (default 500), and `include_distillation_context` (default
-True -- when enabled, the strategy queries the backend for at most 5 recent
+True; when enabled, the strategy queries the backend for at most 5 recent
 entries tagged `"distillation"` and embeds their trajectory summaries,
 truncated to ~500 chars each, in the synthesis system prompt). The per-entry
 user-prompt content is capped at 2000 chars and the total concatenated user
@@ -488,12 +488,12 @@ the execution trajectory as an EPISODIC memory entry tagged `"distillation"`.
 | `agent_id`, `task_id` | Caller context |
 | `trajectory_summary` | Turn count, total tokens, unique tools, total tool calls |
 | `outcome` | `TerminationReason` + optional error message |
-| `memory_tool_invocations` | `MemoryToolName` enum values (`SEARCH_MEMORY`, `RECALL_MEMORY`) extracted from `TurnRecord.tool_calls_made` (NOT memory entry IDs -- typed enum members, counted per invocation) |
+| `memory_tool_invocations` | `MemoryToolName` enum values (`SEARCH_MEMORY`, `RECALL_MEMORY`) extracted from `TurnRecord.tool_calls_made` (NOT memory entry IDs; typed enum members, counted per invocation) |
 | `created_at` | Capture timestamp |
 
 `AgentEngine` wires this into `_post_execution_pipeline` when
 `distillation_capture_enabled=True` is passed to the constructor (default False
-for opt-in behavior).  Capture fires regardless of termination reason --
+for opt-in behavior).  Capture fires regardless of termination reason;
 successful runs, errors, timeouts, and budget exhaustions all produce useful
 trajectory context for downstream consolidation.  The helper is non-critical:
 non-system failures log at WARNING and return `None`; system errors
@@ -519,7 +519,7 @@ dense content (code, structured data, identifiers). Based on research: Memex
 
 **Classification** is heuristic-based (`DensityClassifier`), using five weighted signals: code
 patterns, structured data markers, identifier density, numeric density, and line structure.  No LLM
-is needed for classification -- only for abstractive summarization.  Groups are classified by
+is needed for classification; only for abstractive summarization.  Groups are classified by
 majority vote: if most entries in a category group are dense, the group uses extractive mode.
 
 **Deterministic restore**: When entries are archived, the service builds an `archival_index`
@@ -550,8 +550,8 @@ Resolution order per category:
 
 ## Operational Data Persistence
 
-Agent memory is handled by the `MemoryBackend` protocol (Mem0 initial, custom stack future --
-see [Decision Log](../architecture/decisions.md)). **Operational data** -- tasks, cost records, messages, audit logs -- is a separate
+Agent memory is handled by the `MemoryBackend` protocol (Mem0 initial, custom stack future;
+see [Decision Log](../architecture/decisions.md)). **Operational data** (tasks, cost records, messages, audit logs) is a separate
 concern managed by a pluggable `PersistenceBackend` protocol. Application code depends only on
 repository protocols; the storage engine is an implementation detail swappable via config.
 
@@ -678,7 +678,7 @@ persistence:
 | `AgentRuntimeState` | `engine/agent_state.py` | `AgentStateRepository` | by agent_id, active agents |
 | Setting | `settings/models.py` | `SettingsRepository` | by namespace+key, by namespace, all |
 | `Artifact` | `core/artifact.py` | `ArtifactRepository` | by task_id, by created_by, by artifact_type |
-| `HandoffArtifact` | `engine/workflow/handoff.py` | (in-memory, per-execution frame) | Structured inter-stage handoff; `artifact_refs` resolve through `ArtifactRepository`. See [Verification & Quality -- Verification Stage](verification-quality.md#verification-stage) |
+| `HandoffArtifact` | `engine/workflow/handoff.py` | (in-memory, per-execution frame) | Structured inter-stage handoff; `artifact_refs` resolve through `ArtifactRepository`. See [Verification & Quality: Verification Stage](verification-quality.md#verification-stage) |
 | `Project` | `core/project.py` | `ProjectRepository` | by status, by lead |
 | `DecisionRecord` | `engine/decisions.py` | `DecisionRepository` | by task_id (version ASC), by agent (role=executor or reviewer, recorded_at DESC) |
 | Custom preset | `templates/preset_service.py` | `PersonalityPresetRepository` | by name |
@@ -711,7 +711,7 @@ Async throughout
 Each company gets its own database. The `PersistenceConfig` embedded in a company's `RootConfig`
 specifies the backend type and connection details (e.g., a unique SQLite file path or PostgreSQL
 database URL). The `create_backend(config)` factory returns an isolated `PersistenceBackend`
-instance per company -- no shared state, no cross-company data leakage.
+instance per company; no shared state, no cross-company data leakage.
 
 ```python
 # One database per company -- configured in each company's YAML
@@ -723,7 +723,7 @@ company_b_backend = create_backend(company_b_config.persistence)
 !!! warning "Planned"
 
     Runtime backend switching (e.g., migrating a company from SQLite to PostgreSQL during
-    operation) is a planned future capability. The protocol-based design already supports this --
+    operation) is a planned future capability. The protocol-based design already supports this:
     the engine would disconnect the current backend, connect a new one with different config,
     and migrate. Implementation details (data migration tooling, zero-downtime switchover,
     connection draining) are deferred to the PostgreSQL backend implementation.
@@ -759,8 +759,8 @@ similarity, time-series window functions) should follow the same template.
 
 ### Database-Enforced Invariants
 
-Critical invariants that cannot be violated under any deployment -- including multi-instance
-Postgres clusters -- are enforced by **database constraint triggers** rather than in-process
+Critical invariants that cannot be violated under any deployment (including multi-instance
+Postgres clusters) are enforced by **database constraint triggers** rather than in-process
 application locks. The triggers are the sole source of truth; the application catches
 constraint violations and maps them to domain errors.
 
@@ -788,7 +788,7 @@ instances that were only safe within a single process.
 ## Procedural Memory Auto-Generation
 
 When an agent fails a task, the engine's post-execution pipeline can automatically
-generate a **procedural memory entry** -- a structured "next time, do X when
+generate a **procedural memory entry**: a structured "next time, do X when
 encountering Y" lesson learned. This follows the
 [EvoSkill](https://arxiv.org/abs/2603.02766) three-agent separation principle:
 the **failed agent** does not write its own lesson; a separate **proposer LLM call**
@@ -872,7 +872,7 @@ implementations in ``memory/procedural/propagation/``:
 
 | Strategy | Scope | Tag |
 |----------|-------|-----|
-| ``NoPropagation`` | Agent-local only (safe default) | -- |
+| ``NoPropagation`` | Agent-local only (safe default) | - |
 | ``RoleScopedPropagation`` | Agents with same role | ``"propagated:{source_agent_id}"`` |
 | ``DepartmentScopedPropagation`` | Agents in same department | ``"propagated:{source_agent_id}"`` |
 
@@ -888,11 +888,11 @@ Organization-wide shared skills extend procedural memory with an `ORG` scope.
 
 **Extended `ProceduralMemoryProposal`** adds fields for org-scope lifecycle:
 
-- `scope: ProceduralMemoryScope` -- distribution scope
-- `supersedes: tuple[NotBlankStr, ...]` -- IDs of entries this supersedes
-- `superseded_by: NotBlankStr | None` -- tombstone marker (filtered from retrieval)
-- `application_count: int` -- how many times applied
-- `last_applied_at: AwareDatetime | None` -- last application timestamp
+- `scope: ProceduralMemoryScope`: distribution scope
+- `supersedes: tuple[NotBlankStr, ...]`: IDs of entries this supersedes
+- `superseded_by: NotBlankStr | None`: tombstone marker (filtered from retrieval)
+- `application_count: int`: how many times applied
+- `last_applied_at: AwareDatetime | None`: last application timestamp
 
 **`AutonomousSkillEvolver`** runs on the consolidation schedule:
 
@@ -943,21 +943,21 @@ the agent during execution.
     a token budget, and formats memories as `ChatMessage`(s) injected between the system prompt
     and task instruction. The agent passively receives memories.
 
-    **Pipeline (Linear -- single-source, default):**
+    **Pipeline (Linear, single-source, default):**
 
-    1. `MemoryBackend.retrieve()` -- fetch candidate memories (dense vector search)
+    1. `MemoryBackend.retrieve()`: fetch candidate memories (dense vector search)
     2. Rank by relevance + recency via linear combination
     3. Filter by `min_relevance` threshold
-    4. Apply `MemoryFilterStrategy` ([Decision Log](../architecture/decisions.md) D23, optional) -- exclude inferable content (fails **closed** on filter exceptions: returns empty to avoid bypassing privacy filters)
-    5. **Optional MMR diversity re-ranking** when `diversity_penalty_enabled: true`
-       -- balances relevance vs redundancy via Maximal Marginal Relevance with
+    4. Apply `MemoryFilterStrategy` ([Decision Log](../architecture/decisions.md) D23, optional): exclude inferable content (fails **closed** on filter exceptions: returns empty to avoid bypassing privacy filters)
+    5. **Optional MMR diversity re-ranking** when `diversity_penalty_enabled: true`,
+       balancing relevance vs redundancy via Maximal Marginal Relevance with
        word-bigram Jaccard similarity (see **Diversity Re-ranking** below).
        Filtering runs first so excluded entries do not act as MMR anchors and
        suppress diverse-but-visible candidates.
     6. Greedy token-budget packing
     7. Format as `ChatMessage` (configured role: SYSTEM or USER) with delimiters
 
-    **Pipeline (RRF hybrid search -- multi-source):**
+    **Pipeline (RRF hybrid search, multi-source):**
 
     When `fusion_strategy: rrf` is configured, the pipeline runs both dense and BM25 sparse
     search in parallel and fuses results:
@@ -979,7 +979,7 @@ the agent during execution.
     Shared memories (from `SharedKnowledgeStore`) are fetched in parallel, merged with personal
     memories (no `personal_boost` for shared), and ranked together.
 
-    **Ranking Algorithm (Linear -- default):**
+    **Ranking Algorithm (Linear, default):**
 
     1. `relevance = entry.relevance_score ?? config.default_relevance`
     2. Personal entries: `relevance = min(relevance + personal_boost, 1.0)`
@@ -1021,7 +1021,7 @@ the agent during execution.
     diversity is enabled, the backend over-fetches by a configurable
     `candidate_pool_multiplier` (default 3x, range 1--10) so MMR can promote
     diverse candidates that would otherwise fall below the top-K cutoff.  This
-    feature applies only to `ContextInjectionStrategy` -- a `model_validator`
+    feature applies only to `ContextInjectionStrategy`; a `model_validator`
     warns when `diversity_penalty_enabled=True` is combined with a strategy
     that ignores it (e.g. `TOOL_BASED`).
 
@@ -1039,7 +1039,7 @@ the agent during execution.
         with advisory validation at the `MemoryBackend.store()` boundary warns on missing tags
         but never blocks. The system prompt instructs agents what qualifies as non-inferable:
         design rationale, team decisions, "why not X," cross-repo knowledge. Uses existing
-        `MemoryMetadata.tags` and `MemoryQuery.tags` -- zero new models needed.
+        `MemoryMetadata.tags` and `MemoryQuery.tags`; zero new models needed.
 
 === "Tool-Based Retrieval"
 
@@ -1077,11 +1077,11 @@ the agent during execution.
 
     **MCP bridge evaluation**: Both context injection and tool-based strategies hold direct
     `MemoryBackend` references and run in-process. The memory hot path already bypasses MCP
-    by design -- no additional optimization needed.
+    by design; no additional optimization needed.
 
 === "Self-Editing Memory"
 
-    The agent has three structured memory blocks -- core, archival, and recall -- it reads AND
+    The agent has three structured memory blocks (core, archival, and recall) it reads AND
     writes during execution via dedicated tools. Core memory (SEMANTIC category, tagged ``"core"``)
     is always injected into the system prompt. Archival and recall memories are tool-searched on
     demand. Six tools are provided: ``core_memory_read``, ``core_memory_write``,
@@ -1115,20 +1115,20 @@ Strategy selection via config: ``memory.retrieval.strategy: context | tool_based
 
 ## Memory Service Layer
 
-`MemoryService` (at `src/synthorg/memory/service.py`) is the single entry point for `/memory/fine-tune/*` REST endpoints and the MCP memory tools. Controllers and handlers never reach into `app_state.persistence.*` directly -- the service owns the repository handle, audit logging, and typed error routing.
+`MemoryService` (at `src/synthorg/memory/service.py`) is the single entry point for `/memory/fine-tune/*` REST endpoints and the MCP memory tools. Controllers and handlers never reach into `app_state.persistence.*` directly; the service owns the repository handle, audit logging, and typed error routing.
 
 ### Fine-tune lifecycle
 
 `MemoryService` exposes the full fine-tune lifecycle as typed async methods:
 
-- `start_fine_tune(plan: FineTunePlan) -> FineTuneRun` -- starts a new pipeline from a `FineTunePlan`.
-- `resume_fine_tune(run_id: NotBlankStr) -> FineTuneRun` -- resume a previously failed or cancelled run.
-- `get_fine_tune_status(run_id: NotBlankStr | None = None) -> FineTuneStatus` -- snapshot of the active (or a specific) run.
-- `cancel_fine_tune() -> str | None` -- cancel the currently active run (destructive). Returns the cancelled run id (captured **before** cancel so the audit log can attribute it) or `None` if no run was active.
-- `run_preflight(plan: FineTunePlan) -> PreflightResult` -- local-env sanity check (source dir, output dir writability, override bounds).
-- `list_runs(*, limit: int, offset: int) -> tuple[tuple[FineTuneRun, ...], int]` -- paged historical runs + total count.
-- `get_active_embedder() -> ActiveEmbedderSnapshot` -- frozen snapshot of the active provider / model / checkpoint id from settings.
-- `rollback_checkpoint(checkpoint_id: NotBlankStr) -> CheckpointRecord` -- atomic swap of the active embedder back to *checkpoint_id* (destructive). The rollback-step helper logs a distinct `MEMORY_CHECKPOINT_ROLLBACK_FAILED` event if any intermediate step fails so operators can distinguish partial-rollback from the primary deploy failure.
+- `start_fine_tune(plan: FineTunePlan) -> FineTuneRun`: starts a new pipeline from a `FineTunePlan`.
+- `resume_fine_tune(run_id: NotBlankStr) -> FineTuneRun`: resume a previously failed or cancelled run.
+- `get_fine_tune_status(run_id: NotBlankStr | None = None) -> FineTuneStatus`: snapshot of the active (or a specific) run.
+- `cancel_fine_tune() -> str | None`: cancel the currently active run (destructive). Returns the cancelled run id (captured **before** cancel so the audit log can attribute it) or `None` if no run was active.
+- `run_preflight(plan: FineTunePlan) -> PreflightResult`: local-env sanity check (source dir, output dir writability, override bounds).
+- `list_runs(*, limit: int, offset: int) -> tuple[tuple[FineTuneRun, ...], int]`: paged historical runs + total count.
+- `get_active_embedder() -> ActiveEmbedderSnapshot`: frozen snapshot of the active provider / model / checkpoint id from settings.
+- `rollback_checkpoint(checkpoint_id: NotBlankStr) -> CheckpointRecord`: atomic swap of the active embedder back to *checkpoint_id* (destructive). The rollback-step helper logs a distinct `MEMORY_CHECKPOINT_ROLLBACK_FAILED` event if any intermediate step fails so operators can distinguish partial-rollback from the primary deploy failure.
 
 Destructive entries (`cancel_fine_tune`, `rollback_checkpoint`, and `delete_checkpoint` at the handler layer) are gated by the standard MCP guardrail triple (`actor`, literal `confirm=True`, non-blank `reason`) and emit `MCP_DESTRUCTIVE_OP_EXECUTED` with the resolved actor, reason, and `target_id` (the cancelled run id or the rolled-back / deleted checkpoint id).
 
@@ -1136,6 +1136,6 @@ Destructive entries (`cancel_fine_tune`, `rollback_checkpoint`, and `delete_chec
 
 ### BackendUnsupportedError routing
 
-Fine-tune orchestration is SQLite-backed. On a persistence backend that does not expose `fine_tune_runs` / `fine_tune_checkpoints`, the service raises a typed `BackendUnsupportedError` (`domain_code = "not_supported"`, frozen with `__slots__ = ("reason",)`) instead of a generic `NotImplementedError`. MCP handlers catch it and forward through the standard `not_supported()` envelope, which emits `MCP_HANDLER_NOT_IMPLEMENTED` at WARNING -- distinct from `MCP_HANDLER_CAPABILITY_GAP` (handler wired, primitive method missing) and `MCP_HANDLER_SERVICE_FALLBACK` (legacy helper, zero call sites). REST controllers map it to HTTP 501 with the same domain code.
+Fine-tune orchestration is SQLite-backed. On a persistence backend that does not expose `fine_tune_runs` / `fine_tune_checkpoints`, the service raises a typed `BackendUnsupportedError` (`domain_code = "not_supported"`, frozen with `__slots__ = ("reason",)`) instead of a generic `NotImplementedError`. MCP handlers catch it and forward through the standard `not_supported()` envelope, which emits `MCP_HANDLER_NOT_IMPLEMENTED` at WARNING; distinct from `MCP_HANDLER_CAPABILITY_GAP` (handler wired, primitive method missing) and `MCP_HANDLER_SERVICE_FALLBACK` (legacy helper, zero call sites). REST controllers map it to HTTP 501 with the same domain code.
 
 The typed error keeps the "which gap" question resolvable without string-matching exception messages: backend-unsupported is always exactly one error class and one emitted event.

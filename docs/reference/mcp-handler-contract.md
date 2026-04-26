@@ -12,11 +12,11 @@ SynthOrg exposes 200+ tools across 15 domains via its MCP server. Tools are clas
 
 ## Shared helper modules
 
-Three sibling modules under `src/synthorg/meta/mcp/handlers/` carry the handler infrastructure -- pick the right module when importing helpers:
+Three sibling modules under `src/synthorg/meta/mcp/handlers/` carry the handler infrastructure; pick the right module when importing helpers:
 
-- **`common.py`** -- response envelopes (`ok`, `err`, `not_supported`, `capability_gap`, `service_fallback`), pagination output (`PaginationMeta`, `paginate_sequence`, `dump_many`), guardrails (`require_destructive_guardrails`), placeholder factories (`make_placeholder_handler`, `make_handlers_for_tools`).
-- **`common_args.py`** -- every argument validator/extractor: `require_arg`, `require_non_blank`, `coerce_pagination`, `actor_id`, `require_actor_id`, `actor_label`, `get_optional_str`, `require_dict`, `parse_time_window`, `parse_str_sequence`.
-- **`common_logging.py`** -- structured-logging helpers for the three handler-layer log paths: `log_handler_argument_invalid`, `log_handler_invoke_failed` (accepts `**context` kwargs for correlation ids), `log_handler_guardrail_violated`. Owns a module-scoped logger keyed at `synthorg.meta.mcp.handlers` so test assertions see a single stable event source regardless of which domain emitted the event.
+- **`common.py`**: response envelopes (`ok`, `err`, `not_supported`, `capability_gap`, `service_fallback`), pagination output (`PaginationMeta`, `paginate_sequence`, `dump_many`), guardrails (`require_destructive_guardrails`), placeholder factories (`make_placeholder_handler`, `make_handlers_for_tools`).
+- **`common_args.py`**: every argument validator/extractor: `require_arg`, `require_non_blank`, `coerce_pagination`, `actor_id`, `require_actor_id`, `actor_label`, `get_optional_str`, `require_dict`, `parse_time_window`, `parse_str_sequence`.
+- **`common_logging.py`**: structured-logging helpers for the three handler-layer log paths: `log_handler_argument_invalid`, `log_handler_invoke_failed` (accepts `**context` kwargs for correlation ids), `log_handler_guardrail_violated`. Owns a module-scoped logger keyed at `synthorg.meta.mcp.handlers` so test assertions see a single stable event source regardless of which domain emitted the event.
 
 ## Envelope
 
@@ -47,13 +47,13 @@ In every case, catch `ArgumentValidationError` and return `err(exc)`. Never let 
 
 ## Structured logging
 
-Three centralized helpers in `common_logging.py` -- handlers must not redeclare them locally:
+Three centralized helpers in `common_logging.py`; handlers must not redeclare them locally:
 
 - `log_handler_argument_invalid(tool, exc)` after catching `ArgumentValidationError`.
 - `log_handler_invoke_failed(tool, exc, **context)` after catching a generic `Exception`. Pass correlation ids (e.g. `task_id=`, `decision_id=`) as keyword args. Keys that would shadow the canonical event fields (`tool_name`, `error_type`, `error`, `event`, `log_level`) are rejected with `ValueError` so audit trails cannot be silently corrupted.
 - `log_handler_guardrail_violated(tool, exc)` after catching `GuardrailViolationError`.
 
-All three route exception messages through `safe_error_description` (SEC-1) so secret-shaped fragments are scrubbed before reaching logs. Context kwargs on `log_handler_invoke_failed` are forwarded verbatim and are NOT scrubbed -- callers must not pass secrets through `**context`.
+All three route exception messages through `safe_error_description` (SEC-1) so secret-shaped fragments are scrubbed before reaching logs. Context kwargs on `log_handler_invoke_failed` are forwarded verbatim and are NOT scrubbed; callers must not pass secrets through `**context`.
 
 ## Destructive ops
 

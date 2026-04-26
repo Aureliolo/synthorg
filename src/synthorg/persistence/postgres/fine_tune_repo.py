@@ -493,7 +493,7 @@ ON CONFLICT (id) DO UPDATE SET
         """Deactivate all checkpoints and activate *checkpoint_id* atomically.
 
         The schema enforces ``UNIQUE INDEX (is_active) WHERE is_active = TRUE``
-        on Postgres, so the deactivate-then-activate order is mandatory --
+        on Postgres, so the deactivate-then-activate order is mandatory;
         flipping it would violate the partial unique index.
 
         Raises:

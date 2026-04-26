@@ -101,7 +101,7 @@ class TestGracefulShutdownFlow:
 
         The provider triggers shutdown on the first call but returns
         STOP (no tool calls), so the loop completes *before* the next
-        shutdown check.  This verifies the signal propagation path --
+        shutdown check.  This verifies the signal propagation path;
         test_shutdown_during_multi_turn_interrupts below covers the
         INTERRUPTED transition.
         """

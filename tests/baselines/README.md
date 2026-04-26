@@ -37,13 +37,13 @@ valid until per-test cost drifts.
 ## Updating the baseline
 
 The PreToolUse hook `scripts/check_no_edit_baseline.sh` blocks Claude
-from editing this file -- baseline refreshes require explicit user
+from editing this file; baseline refreshes require explicit user
 intent so we do not silently mask regressions.
 
 To refresh the baseline yourself:
 
 1. Check out the exact branch / commit whose source change justifies
-   the refresh (the candidate revision -- NOT a clean
+   the refresh (the candidate revision, NOT a clean
    `origin/main` checkout).  The numbers must reflect the same code
    the guard will compare against, otherwise `unit_timing.json`
    drifts away from the suite as soon as the change merges.  Then
@@ -73,7 +73,7 @@ To refresh the baseline yourself:
 4. Commit with an explicit `chore: refresh unit-timing baseline`
    message that links the source-code change which justifies the
    refresh.  Refreshing the baseline to mask a regression is a
-   documented anti-pattern -- the regression guard exists precisely
+   documented anti-pattern; the regression guard exists precisely
    to catch that.
 
 ## Why we removed `regression_threshold_secs`

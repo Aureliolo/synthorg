@@ -6,15 +6,15 @@ description: Task lifecycle, task definition, workflow types (sequential, parall
 # Task & Workflow Engine
 
 The task and workflow engine orchestrates how work flows through a synthetic
-organization -- from task creation and assignment through to review and
+organization, from task creation and assignment through to review and
 completion. This page covers the task-engine core: lifecycle, workflows,
 routing, and the single-writer state coordinator.
 
 Related pages:
 
-- [Agent Execution](agent-execution.md) -- per-agent execution loop, prompt profiles, stagnation, context budget, brain/hands/session
-- [Coordination](coordination.md) -- multi-agent topology, crash recovery, graceful shutdown, workspace isolation
-- [Verification & Quality](verification-quality.md) -- verification stage, harness middleware, review pipeline, intake engine
+- [Agent Execution](agent-execution.md): per-agent execution loop, prompt profiles, stagnation, context budget, brain/hands/session
+- [Coordination](coordination.md): multi-agent topology, crash recovery, graceful shutdown, workspace isolation
+- [Verification & Quality](verification-quality.md): verification stage, harness middleware, review pipeline, intake engine
 
 ---
 
@@ -186,7 +186,7 @@ graph LR
 
 The `SprintStatus` lifecycle is strictly linear: PLANNING, ACTIVE,
 IN_REVIEW, RETROSPECTIVE, COMPLETED.  Each sprint is a discrete
-lifecycle -- a new sprint is created after the previous one completes
+lifecycle; a new sprint is created after the previous one completes
 (no automatic cycling).  The `Sprint` model tracks task IDs, story
 points (committed and completed), dates, and duration.  Sprint backlog
 management functions enforce status-dependent gates (e.g. tasks can only be
@@ -203,16 +203,16 @@ rendering.  Template variables (`sprint_length`, `wip_limit`) allow users
 to customize workflow settings at template instantiation time.
 
 !!! info "Ceremony Scheduling"
-    Sprint ceremony runtime scheduling -- including pluggable strategies,
-    velocity calculation, 3-level config resolution, and sprint auto-transition
-    -- is documented on the dedicated [Ceremony Scheduling](ceremony-scheduling.md)
+    Sprint ceremony runtime scheduling (including pluggable strategies,
+    velocity calculation, 3-level config resolution, and sprint auto-transition)
+    is documented on the dedicated [Ceremony Scheduling](ceremony-scheduling.md)
     design page.
 
 ---
 
 ## Workflow Definitions (Visual Editor)
 
-A **WorkflowDefinition** is a design-time blueprint -- a visual directed graph that can be persisted, validated, and exported as YAML for the engine's coordination/decomposition system. This is distinct from the runtime `WorkflowConfig` (Kanban/Sprint settings above).
+A **WorkflowDefinition** is a design-time blueprint: a visual directed graph that can be persisted, validated, and exported as YAML for the engine's coordination/decomposition system. This is distinct from the runtime `WorkflowConfig` (Kanban/Sprint settings above).
 
 ### Node Types (`WorkflowNodeType`)
 
@@ -298,7 +298,7 @@ cancelled), `SUBWORKFLOW_COMPLETED` (subworkflow child graph finished),
 **Condition evaluator** (`condition_eval.py`): Safe string evaluator
 (no `eval()`/`exec()`). Supports boolean literals (`true`/`false`), context
 key lookup (truthy check), equality (`key == value`), inequality
-(`key != value`), compound operators (`AND`, `OR`, `NOT` --
+(`key != value`), compound operators (`AND`, `OR`, `NOT`,
 case-insensitive), and parenthesized groups. Operator precedence:
 NOT > AND > OR. Simple expressions without compound operators take a
 zero-overhead quick path. Parse errors are logged and resolve to `False`.
@@ -321,7 +321,7 @@ nodes/edges). Optimistic concurrency via version counter.
 Subworkflows are reusable workflow definitions published to a dedicated
 registry keyed by `(subworkflow_id, semver)` and invoked from a parent
 workflow via the `SUBWORKFLOW` node type. They exist alongside live
-workflow definitions -- any `WorkflowDefinition` with
+workflow definitions: any `WorkflowDefinition` with
 `is_subworkflow = True` is registered into the versioned `subworkflows`
 table and becomes referenceable.
 
@@ -386,7 +386,7 @@ exceptions on failure; scoring-based strategies return
 
 ---
 
-## TaskEngine -- Centralized State Coordination
+## TaskEngine: Centralized State Coordination
 
 All task state mutations flow through a single-writer `TaskEngine` that owns the
 authoritative task state. This eliminates race conditions when multiple agents
@@ -424,7 +424,7 @@ obs_loop -> observers
   `Task.model_validate({**task.model_dump(), **updates})` or
   `Task.with_transition(...)`); the existing instance is never mutated.
 - **Optimistic concurrency**: Per-task version counters held in-memory
-  (volatile).  An unknown task is seeded at version 1 on first access --
+  (volatile).  An unknown task is seeded at version 1 on first access;
   this is a heuristic baseline, **not** loaded from persistence.  Version
   tracking resets on engine restart; durable persistence of versions is a
   future enhancement.  Callers can pass `expected_version` to detect stale
@@ -432,7 +432,7 @@ obs_loop -> observers
   with `error_code="version_conflict"`.  Convenience methods raise
   `TaskVersionConflictError`.
 - **Read-through**: `get_task()` and `list_tasks()` bypass the queue and
-  read directly from persistence -- safe because TaskEngine is the sole writer.
+  read directly from persistence; safe because TaskEngine is the sole writer.
 - **Snapshot publishing**: On success, a `TaskStateChanged` event is published
   to the message bus for downstream consumers (WebSocket bridge, audit, etc.).
 
@@ -449,7 +449,7 @@ obs_loop -> observers
 ### Error Handling
 
 - **Typed errors**: `TaskNotFoundError` and `TaskVersionConflictError` provide
-  precise failure classification -- API controllers catch these directly instead
+  precise failure classification; API controllers catch these directly instead
   of parsing error strings.
 - **Error sanitization**: Internal exception details (file paths, URLs) are
   redacted via a shared ``sanitize_message()`` helper
@@ -471,7 +471,7 @@ outgoing stop never waits on.
   processing loop + observer dispatch loop) *first*, and only then
   commits `_running = True` under `_admission_lock` so `submit()`
   callers cannot observe a "running" engine before both loops are
-  attached. This ordering is load-bearing -- a `submit()` that saw
+  attached. This ordering is load-bearing: a `submit()` that saw
   `_running=True` before the loops were wired would enqueue work with
   no dispatcher ever picking it up. Raises `RuntimeError` if already
   running. Every call site must `await`.
@@ -521,7 +521,7 @@ at `ASSIGNED`).
 
 **Semantics:**
 
-- **Best-effort**: Sync failures are logged and swallowed -- agent execution
+- **Best-effort**: sync failures are logged and swallowed; agent execution
   is never blocked by a TaskEngine issue. Each sync failure is isolated and
   does not prevent subsequent transitions.
 - **Critical IN_PROGRESS**: The initial `ASSIGNED -> IN_PROGRESS` sync is
@@ -557,7 +557,7 @@ observers sequentially per event. If the observer queue is full, the
 event is logged at WARNING and dropped (best-effort delivery).
 
 **Notification semantics**: best-effort. Observer errors are logged at
-WARNING and swallowed (`MemoryError` and `RecursionError` propagate) --
+WARNING and swallowed (`MemoryError` and `RecursionError` propagate);
 a failing observer never blocks the mutation pipeline or prevents
 subsequent observers from running.
 
@@ -577,7 +577,7 @@ bridges TaskEngine state changes into the workflow execution lifecycle:
 
 ## See Also
 
-- [Agent Execution](agent-execution.md) -- per-agent execution loop, prompt profiles, context budget
-- [Coordination](coordination.md) -- multi-agent topology, crash recovery, graceful shutdown, workspace isolation
-- [Verification & Quality](verification-quality.md) -- verification stage, review pipeline, intake engine
-- [Design Overview](index.md) -- full index
+- [Agent Execution](agent-execution.md): per-agent execution loop, prompt profiles, context budget
+- [Coordination](coordination.md): multi-agent topology, crash recovery, graceful shutdown, workspace isolation
+- [Verification & Quality](verification-quality.md): verification stage, review pipeline, intake engine
+- [Design Overview](index.md): full index

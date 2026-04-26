@@ -41,7 +41,7 @@ class SandboxCredentialManager:
     patterns (API keys, secrets, tokens, passwords, credentials,
     private keys) from sandbox env overrides.
 
-    The matching is case-insensitive and uses substring matching --
+    The matching is case-insensitive and uses substring matching;
     any key containing a credential pattern is stripped.
     """
 

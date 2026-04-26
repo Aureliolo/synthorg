@@ -2,8 +2,8 @@
 
 Postgres stores ``updated_at`` as a native ``TIMESTAMPTZ`` column
 (SQLite stores ISO 8601 strings).  The repository converts to and
-from ISO strings at the boundary so the protocol surface --
-``tuple[str, str]`` -- is identical for both backends.
+from ISO strings at the boundary so the protocol surface
+(``tuple[str, str]``) is identical for both backends.
 """
 
 from collections.abc import Mapping, Sequence  # noqa: TC003

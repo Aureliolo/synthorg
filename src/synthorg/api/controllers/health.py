@@ -1,9 +1,9 @@
 """Liveness and readiness probe controllers.
 
-* ``/healthz`` (liveness) -- always 200 while the event loop is
+* ``/healthz`` (liveness): always 200 while the event loop is
   turning; no dependency probes. Kubernetes-style supervisors use
   this to decide whether to restart the process.
-* ``/readyz`` (readiness) -- 200 only when persistence + message
+* ``/readyz`` (readiness): 200 only when persistence + message
   bus are both healthy; otherwise 503. Used to gate traffic / block
   rollouts until dependencies are up.
 """
@@ -141,7 +141,7 @@ def _unavailable_response(
 ) -> Response[ApiResponse[ReadinessStatus]]:
     """Return a 503 ``unavailable`` readiness body.
 
-    Used when the probe TaskGroup itself raises an unexpected error --
+    Used when the probe TaskGroup itself raises an unexpected error;
     we still want to emit a well-formed envelope so operator tooling
     can parse it, rather than letting a 500 surface.
     """

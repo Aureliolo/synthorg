@@ -4,7 +4,7 @@ The un-synchronized ``start()`` at ``api/bus_bridge.py:148-187`` checks
 ``_running`` then sets it, and then iterates the channel list to
 ``await self._bus.subscribe(...)`` and ``self._tasks.append(...)``.
 Two concurrent starts can both pass the check, both flip ``_running``,
-and both subscribe + spawn polling tasks for every channel --
+and both subscribe + spawn polling tasks for every channel,
 duplicating work and leaking tasks.
 
 The fix wraps the whole body in ``self._lifecycle_lock`` so the

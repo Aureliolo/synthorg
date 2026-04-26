@@ -12,7 +12,7 @@ conditions:
 action: block
 ---
 
-**Do not run pytest with coverage locally -- CI handles it.**
+**Do not run pytest with coverage locally; CI handles it.**
 
 Coverage adds 20-40% overhead. Remove `--cov`, `--cov-report`, and `--cov-fail-under` from your command.
 

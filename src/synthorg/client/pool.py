@@ -38,7 +38,7 @@ class ClientPool:
         """Add or replace a client and its profile.
 
         Re-adding a previously deactivated client id resets the
-        active flag to ``True`` -- deactivation is a soft delete,
+        active flag to ``True``: deactivation is a soft delete,
         and ``add`` is the explicit "make this present and live"
         operation.
 
@@ -81,7 +81,7 @@ class ClientPool:
 
         Inactive clients remain visible to ``get_profile`` but are
         excluded from ``list_clients`` and ``list_profiles`` so the
-        runner and review stages stop selecting them. Idempotent --
+        runner and review stages stop selecting them. Idempotent:
         deactivating an already-inactive client is a no-op.
 
         Raises:
@@ -97,7 +97,7 @@ class ClientPool:
     async def reactivate(self, client_id: str) -> ClientProfile:
         """Re-enable a previously deactivated client.
 
-        Idempotent -- reactivating an already-active client is a
+        Idempotent: reactivating an already-active client is a
         no-op that returns the existing profile.
 
         Raises:

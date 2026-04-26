@@ -2,7 +2,7 @@
 
 This is a single-file replacement for eleven per-namespace files
 that would have contained near-identical assertions.  Each row of
-``_EXPECTED`` describes one newly-added setting from #1398/#1400 --
+``_EXPECTED`` describes one newly-added setting from #1398/#1400:
 expected namespace, key, type, default, numeric bounds, restart
 requirement, and required presence of ``yaml_path`` / ``group`` /
 ``description``.

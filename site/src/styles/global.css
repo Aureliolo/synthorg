@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* Self-hosted fonts (eliminates CLS from Google Fonts swap).
-   font-display: optional -- no layout shift; uses system fallback
+   font-display: optional eliminates layout shift; uses system fallback
    if the font does not load within ~100ms on first visit. */
 
 @font-face {

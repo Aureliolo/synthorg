@@ -6,7 +6,7 @@ description: Security architecture, hardening measures, and compliance posture o
 # Security
 
 SynthOrg is designed to run autonomous AI agents with real tools and real consequences.
-Security is not an afterthought -- it is a core architectural concern woven through
+Security is not an afterthought; it is a core architectural concern woven through
 every layer of the framework, from the application runtime to the CI/CD pipeline
 and container infrastructure.
 
@@ -26,7 +26,7 @@ with five built-in detectors:
 | **Credential Detector** | API keys, passwords, tokens, private keys in arguments or output |
 | **Path Traversal Detector** | `../`, absolute paths, symlink escape attempts |
 | **Destructive Operation Detector** | `rm -rf`, `git reset --hard`, destructive shell commands |
-| **Data Leak Detector** | PII patterns -- emails, SSNs, credit card numbers, phone numbers |
+| **Data Leak Detector** | PII patterns: emails, SSNs, credit card numbers, phone numbers |
 
 Rules are evaluated sequentially by priority. The first `DENY` or `ESCALATE`
 verdict wins. If a rule raises an exception, the engine defaults to **DENY**
@@ -37,49 +37,49 @@ verdict wins. If a rule raises an exception, the engine defaults to **DENY**
 After tool execution, the **output scanner** inspects results for sensitive data
 using the same credential and PII patterns. Configurable response policies:
 
-- **Redact** -- replace matches with `[REDACTED]` before returning to the agent
-- **Withhold** -- suppress the entire output
-- **Log-only** -- record the finding, return unmodified output
-- **Autonomy-tiered** -- different policies per autonomy level
+- **Redact**: replace matches with `[REDACTED]` before returning to the agent
+- **Withhold**: suppress the entire output
+- **Log-only**: record the finding, return unmodified output
+- **Autonomy-tiered**: different policies per autonomy level
 
 ### Progressive Trust
 
 Agents start with restricted permissions and earn autonomy over time.
 Four pluggable strategies behind the `TrustStrategy` protocol:
 
-1. **Disabled** -- all actions require approval regardless of history
-2. **Weighted** -- accumulate a trust score from successful actions
-3. **Per-category** -- independent trust tracks per action type (read, write, delete)
-4. **Milestone gates** -- unlock action categories after specific success thresholds
+1. **Disabled**: all actions require approval regardless of history
+2. **Weighted**: accumulate a trust score from successful actions
+3. **Per-category**: independent trust tracks per action type (read, write, delete)
+4. **Milestone gates**: unlock action categories after specific success thresholds
 
 ### Approval Workflow
 
 Actions that trigger `ESCALATE` verdicts create approval items with configurable
 timeout policies:
 
-- **Wait forever** -- block until a human responds
-- **Auto-deny** -- reject after timeout
-- **Tiered** -- different timeouts by risk level
-- **Escalation chain** -- escalate to supervisor on timeout
+- **Wait forever**: block until a human responds
+- **Auto-deny**: reject after timeout
+- **Tiered**: different timeouts by risk level
+- **Escalation chain**: escalate to supervisor on timeout
 
 Tasks are parked (suspended) while awaiting approval and resumed automatically
 on resolution.
 
 ### Authentication & Authorization
 
-- **HttpOnly cookie sessions** -- JWTs are delivered via HttpOnly, Secure, SameSite=Strict cookies (never exposed to JavaScript). Password changes rotate the session cookie so the embedded `pwd_sig` stays current.
-- **CSRF protection** -- double-submit cookie pattern: a non-HttpOnly CSRF cookie is set alongside the session cookie; JavaScript reads it and sends it as the `X-CSRF-Token` header on mutating requests. The middleware validates header-vs-cookie match using constant-time comparison.
-- **Account lockout** -- after exceeding a configurable threshold of failed login attempts within a sliding window, the account is temporarily locked (HTTP 429 with `Retry-After` header). Lockout state is restored from SQLite on restart.
-- **Refresh token rotation** -- optional single-use refresh tokens with replay detection; reuse of a consumed token logs the event and the affected session's refresh tokens are cascade-revoked.
-- **Concurrent session limits** -- configurable maximum active sessions per user; oldest sessions are revoked when the limit is exceeded.
+- **HttpOnly cookie sessions**: JWTs are delivered via HttpOnly, Secure, SameSite=Strict cookies (never exposed to JavaScript). Password changes rotate the session cookie so the embedded `pwd_sig` stays current.
+- **CSRF protection**: double-submit cookie pattern: a non-HttpOnly CSRF cookie is set alongside the session cookie; JavaScript reads it and sends it as the `X-CSRF-Token` header on mutating requests. The middleware validates header-vs-cookie match using constant-time comparison.
+- **Account lockout**: after exceeding a configurable threshold of failed login attempts within a sliding window, the account is temporarily locked (HTTP 429 with `Retry-After` header). Lockout state is restored from SQLite on restart.
+- **Refresh token rotation**: optional single-use refresh tokens with replay detection; reuse of a consumed token logs the event and the affected session's refresh tokens are cascade-revoked.
+- **Concurrent session limits**: configurable maximum active sessions per user; oldest sessions are revoked when the limit is exceeded.
 - **JWT bearer tokens** with password-change detection (`pwd_sig` claim, skipped for system user)
-- **System user (CLI)** -- internal identity bootstrapped at startup with a random Argon2id password hash. CLI tokens use `sub: "system"` with `iss: "synthorg-cli"` and skip `pwd_sig` validation (JWT HMAC signature is the sole authentication gate). The system user cannot log in, change its password, or be modified through the API.
+- **System user (CLI)**: internal identity bootstrapped at startup with a random Argon2id password hash. CLI tokens use `sub: "system"` with `iss: "synthorg-cli"` and skip `pwd_sig` validation (JWT HMAC signature is the sole authentication gate). The system user cannot log in, change its password, or be modified through the API.
 - **API key authentication** via HMAC-SHA256 deterministic hashing
 - **Argon2id password hashing** (time_cost=3, memory_cost=64 MB, parallelism=4)
-- **Timing-attack prevention** -- dummy hash computation for non-existent users
-- **Forced password change** -- `must_change_password` flag blocks API access
-- **One-time WebSocket tickets** -- short-lived (30 s), single-use, cryptographically random tokens exchanged via ``POST /api/v1/auth/ws-ticket`` (requires valid JWT). Prevents long-lived JWT leakage by replacing it with an ephemeral ticket in the WebSocket query parameter. In-memory store, monotonic clock expiry, per-process scope. JWT/API key auth middleware is scoped to HTTP requests only (`ScopeType.HTTP`) -- WebSocket connections bypass the middleware entirely and rely on handler-level ticket validation.
-- **Tiered rate limiting** -- three budgets surround the auth middleware. **IP floor** (outermost, un-gated) limits *every* request to 10,000 req/min by client IP, including ones the auth middleware rejects with 401 -- this protects against floods of forged-token traffic on protected endpoints that would otherwise bypass both user-gated tiers. **Unauthenticated** requests (only when ``scope["user"]`` is ``None``) are limited to 20 req/min by client IP (aggressive cap on brute-force against login/setup/logout). **Authenticated** requests (only when ``scope["user"]`` is set) are limited to 6,000 req/min by user ID (generous budget for normal dashboard usage, keyed by user ID so multi-user deployments behind a shared gateway or NAT do not collectively exhaust a single per-IP bucket). The floor default is sized above the authenticated per-user cap (10,000 ≥ 6,000) so a single user on a shared-NAT deployment cannot accidentally clip themselves on the floor before their per-user tier kicks in; config validation rejects a floor below the authenticated cap. The floor is still the aggregate-IP cap, so many active users behind one NAT can collectively exceed it -- raise ``floor_max_requests`` to ``N × auth_max_requests`` for large shared deployments. Auth runs before both user-gated tiers so ``scope["user"]`` is authoritatively populated for the ``check_throttle_handler`` branch; the IP floor runs before auth so invalid-auth floods still hit a rate cap. All three limits are configurable via ``api.rate_limit.floor_max_requests`` / ``unauth_max_requests`` / ``auth_max_requests`` in the YAML config (or ``SYNTHORG_API_RATE_LIMIT_FLOOR_MAX_REQUESTS`` / ``SYNTHORG_API_RATE_LIMIT_UNAUTH_MAX_REQUESTS`` / ``SYNTHORG_API_RATE_LIMIT_AUTH_MAX_REQUESTS`` environment variables for Docker deployments). These are bootstrap-only settings -- changes require a restart. The health endpoints (``/api/v1/healthz`` and ``/api/v1/readyz``) are excluded from rate limiting by default via ``rate_limit.exclude_paths``. The WebSocket path is excluded from all three tiers -- HTTP-style per-request rate limiting is inappropriate for persistent WebSocket connections. In-memory rate-limit storage is single-replica; multi-replica deployments with shared rate limiting require an external store (not yet supported).
+- **Timing-attack prevention**: dummy hash computation for non-existent users
+- **Forced password change**: `must_change_password` flag blocks API access
+- **One-time WebSocket tickets**: short-lived (30 s), single-use, cryptographically random tokens exchanged via ``POST /api/v1/auth/ws-ticket`` (requires valid JWT). Prevents long-lived JWT leakage by replacing it with an ephemeral ticket in the WebSocket query parameter. In-memory store, monotonic clock expiry, per-process scope. JWT/API key auth middleware is scoped to HTTP requests only (`ScopeType.HTTP`); WebSocket connections bypass the middleware entirely and rely on handler-level ticket validation.
+- **Tiered rate limiting**: three budgets surround the auth middleware. **IP floor** (outermost, un-gated) limits *every* request to 10,000 req/min by client IP, including ones the auth middleware rejects with 401; this protects against floods of forged-token traffic on protected endpoints that would otherwise bypass both user-gated tiers. **Unauthenticated** requests (only when ``scope["user"]`` is ``None``) are limited to 20 req/min by client IP (aggressive cap on brute-force against login/setup/logout). **Authenticated** requests (only when ``scope["user"]`` is set) are limited to 6,000 req/min by user ID (generous budget for normal dashboard usage, keyed by user ID so multi-user deployments behind a shared gateway or NAT do not collectively exhaust a single per-IP bucket). The floor default is sized above the authenticated per-user cap (10,000 ≥ 6,000) so a single user on a shared-NAT deployment cannot accidentally clip themselves on the floor before their per-user tier kicks in; config validation rejects a floor below the authenticated cap. The floor is still the aggregate-IP cap, so many active users behind one NAT can collectively exceed it. Raise ``floor_max_requests`` to ``N × auth_max_requests`` for large shared deployments. Auth runs before both user-gated tiers so ``scope["user"]`` is authoritatively populated for the ``check_throttle_handler`` branch; the IP floor runs before auth so invalid-auth floods still hit a rate cap. All three limits are configurable via ``api.rate_limit.floor_max_requests`` / ``unauth_max_requests`` / ``auth_max_requests`` in the YAML config (or ``SYNTHORG_API_RATE_LIMIT_FLOOR_MAX_REQUESTS`` / ``SYNTHORG_API_RATE_LIMIT_UNAUTH_MAX_REQUESTS`` / ``SYNTHORG_API_RATE_LIMIT_AUTH_MAX_REQUESTS`` environment variables for Docker deployments). These are bootstrap-only settings; changes require a restart. The health endpoints (``/api/v1/healthz`` and ``/api/v1/readyz``) are excluded from rate limiting by default via ``rate_limit.exclude_paths``. The WebSocket path is excluded from all three tiers; HTTP-style per-request rate limiting is inappropriate for persistent WebSocket connections. In-memory rate-limit storage is single-replica; multi-replica deployments with shared rate limiting require an external store (not yet supported).
 
     !!! warning "Migration note"
         The legacy ``max_requests`` field on ``RateLimitConfig`` has been removed.
@@ -87,7 +87,7 @@ on resolution.
         startup with a validation error directing operators to use
         ``unauth_max_requests`` and ``auth_max_requests`` instead.
 
-- **Per-operation rate limiting** -- layered on top of the global three-tier
+- **Per-operation rate limiting**: layered on top of the global three-tier
   limiter, individual expensive or abuse-prone operations carry a
   ``per_op_rate_limit`` guard that buckets requests per
   ``(operation, subject)`` via a sliding window. Operations default to
@@ -98,14 +98,14 @@ on resolution.
   ``Retry-After`` header. Pluggable behind a
   ``SlidingWindowStore`` protocol (default: in-memory; Redis reserved
   for cross-worker fairness). Operators tune individual operations
-  via ``api.per_op_rate_limit.overrides`` without restart -- the
+  via ``api.per_op_rate_limit.overrides`` without restart; the
   guard reads the live config on every request. Covers 85+ endpoints
   across memory, providers, agents, tasks, approvals, workflows,
   requests, meetings, users, webhooks, custom_rules, ontology,
   departments, scaling, connections, personalities, reviews,
   artifacts, backup, oauth, settings, setup, simulations, training,
   escalations, a2a, and auth ws-ticket.
-- **Per-operation inflight concurrency** -- a companion middleware
+- **Per-operation inflight concurrency**: a companion middleware
   (``PerOpConcurrencyMiddleware``) caps simultaneous long-running
   requests per ``(operation, subject)`` for six HIGH-tier endpoints
   (``memory.fine_tune`` shared with ``fine_tune_resume``,
@@ -145,7 +145,7 @@ surface:
 |---------|-----------|
 | **XSS prevention** | ESLint `no-restricted-syntax` rule bans `dangerouslySetInnerHTML` at write time. Override requires `// eslint-disable-next-line` with justification. |
 | **CSP nonce** | Per-request nonce generated by Caddy (`{http.request.uuid}`), substituted into `<meta name="csp-nonce">` in `index.html` via the `templates` directive, read at runtime by `lib/csp.ts`, and propagated to `CSPProvider` (Base UI) and `MotionConfig` (Motion) so every inline `<style>` tag the app injects carries the nonce. `style-src-elem` is locked to `'self' 'nonce-...'`; see [CSP Nonce Infrastructure](#csp-nonce-infrastructure) below. |
-| **Session cookies** | JWTs are stored in HttpOnly, Secure, SameSite=Strict cookies -- JavaScript never accesses the token. CSRF is mitigated via the double-submit cookie pattern (non-HttpOnly CSRF cookie + `X-CSRF-Token` header). The 401 interceptor clears auth state on session expiry. |
+| **Session cookies** | JWTs are stored in HttpOnly, Secure, SameSite=Strict cookies. JavaScript never accesses the token. CSRF is mitigated via the double-submit cookie pattern (non-HttpOnly CSRF cookie + `X-CSRF-Token` header). The 401 interceptor clears auth state on session expiry. |
 
 ### CSP Nonce Infrastructure
 
@@ -158,7 +158,7 @@ retain the narrowly-scoped `'unsafe-inline'` permission they need for layout pos
 1. **Generation.** `web/Caddyfile` uses Caddy's `{http.request.uuid}` placeholder, which
    produces a UUID (128-bit) per request. The value is stable within a single request, so
    the CSP header and response body both receive the same nonce. Caddy generates the UUID
-   from Go's `crypto/rand` -- it is cryptographically random.
+   from Go's `crypto/rand`. It is cryptographically random.
 2. **Injection.** The `templates` directive in the Caddyfile processes `web/index.html` at
    response time, substituting `{{placeholder "http.request.uuid"}}` with the per-request
    UUID. Every HTML response ships with a unique nonce in `<meta name="csp-nonce" content="...">`.
@@ -173,14 +173,14 @@ retain the narrowly-scoped `'unsafe-inline'` permission they need for layout pos
 
 #### Why the split directives
 
-Under CSP Level 2, `style-src 'unsafe-inline'` allows all inline styles -- both `<style>`
-elements and `style` attributes. CSP Level 3 separates these into two directives:
+Under CSP Level 2, `style-src 'unsafe-inline'` allows all inline styles (both `<style>`
+elements and `style` attributes). CSP Level 3 separates these into two directives:
 
-- `style-src-elem 'self' 'nonce-...'` -- every `<style>` element must either come from the
+- `style-src-elem 'self' 'nonce-...'`: every `<style>` element must either come from the
   same origin or carry the matching nonce. This locks down the higher-risk CSS-injection
   vector (where an attacker-controlled stylesheet can exfiltrate data via attribute-selector
   tricks).
-- `style-src-attr 'unsafe-inline'` -- inline `style` attributes on DOM elements are still
+- `style-src-attr 'unsafe-inline'`: inline `style` attributes on DOM elements are still
   permitted. Floating UI (used internally by Base UI for Popover/Menu/Select positioning) sets
   transient inline styles such as `style="position: fixed; top: ...; left: ..."` during
   layout. Per the CSP specification, `style` attributes cannot carry nonces, so this is the
@@ -189,10 +189,10 @@ elements and `style` attributes. CSP Level 3 separates these into two directives
 #### Why `style-src-attr 'unsafe-inline'` is not a practical XSS vector
 
 - Unlike `<script>` or `<style>` elements, a `style` attribute **cannot execute JavaScript**.
-- Data exfiltration via a `style` attribute is limited to single-element visual manipulation
-  -- no CSS selectors, no `@import`. `url(...)` loads are still gated by `img-src`/`font-src`.
+- Data exfiltration via a `style` attribute is limited to single-element visual manipulation:
+  no CSS selectors, no `@import`. `url(...)` loads are still gated by `img-src`/`font-src`.
 - Same-page UI redress via a malicious `position: fixed; z-index: 99999` is a
-  limited-surface attack -- an attacker who already has a way to inject a style
+  limited-surface attack: an attacker who already has a way to inject a style
   attribute into the dashboard has broader problems, and every interactive
   surface the dashboard exposes is either gated by React event handlers (not
   redressable by a sibling element) or a server-side confirmation step. Note
@@ -210,8 +210,7 @@ elements and `style` attributes. CSP Level 3 separates these into two directives
 - `style-src-attr`: Chrome 75+, Edge 79+. Not supported in Firefox
   ([bug 1529338](https://bugzilla.mozilla.org/show_bug.cgi?id=1529338)) or Safari.
 
-When a browser does not recognise `style-src-attr`, it falls back to `style-src` -- the
-directive-splitting is backwards-compatible.
+When a browser does not recognise `style-src-attr`, it falls back to `style-src`; older browsers without `style-src-attr` support still receive the same restriction.
 
 ### Security Headers
 
@@ -235,11 +234,11 @@ All API responses include:
 
 ### Distroless Runtime
 
-The backend runs on a **Wolfi-based, apko-composed distroless Python image** -- no
+The backend runs on a **Wolfi-based, apko-composed distroless Python image**: no
 shell, no package manager, minimal attack surface. The build uses a 2-stage Dockerfile:
 
-1. **Builder** -- compiles dependencies via uv, fixes venv symlink for Wolfi's Python path
-2. **Runtime** -- apko-composed Wolfi base (no shell, UID 65532)
+1. **Builder**: compiles dependencies via uv, fixes venv symlink for Wolfi's Python path
+2. **Runtime**: apko-composed Wolfi base (no shell, UID 65532)
 
 Base images are declared in `docker/*/apko.yaml` with relaxed package specs
 (e.g. `python-3.14`). Exact patch versions are resolved and pinned by
@@ -264,7 +263,7 @@ Resource limits (`deploy.resources.limits`) cap memory, CPU, and PIDs per contai
 - **apko lockfiles** (`docker/*/apko.lock.json`) reconciled weekly by `.github/workflows/apko-lock.yml`
 - **Renovate** auto-updates digests daily for the thin backend and sandbox Dockerfiles
 - **cosign keyless signing** on every pushed image (Sigstore OIDC-bound)
-- **Buildx SPDX SBOMs** (SLSA L1) auto-generated and pushed to GHCR as registry attestations (inspect via `docker buildx imagetools inspect`). Standalone CycloneDX JSON SBOMs are generated separately by Syft -- see [Software Bill of Materials](#software-bill-of-materials-sbom) below.
+- **Buildx SPDX SBOMs** (SLSA L1) auto-generated and pushed to GHCR as registry attestations (inspect via `docker buildx imagetools inspect`). Standalone CycloneDX JSON SBOMs are generated separately by Syft. See [Software Bill of Materials](#software-bill-of-materials-sbom) below.
 - **Build-level provenance** (SLSA L1) auto-generated by Docker Buildx
 - **SLSA Level 3 provenance** for CLI binary releases and container images (generated by `actions/attest-build-provenance`, Sigstore-signed, independently verifiable)
 - **Client-side verification**: The CLI (`synthorg start`, `synthorg update`) automatically verifies cosign signatures and SLSA provenance for container images before pulling. Verified digests are pinned in the compose file to prevent tag mutation attacks. Bypass with `--skip-verify` or `SYNTHORG_SKIP_VERIFY=1` for air-gapped environments (not recommended).
@@ -285,14 +284,14 @@ Resource limits (`deploy.resources.limits`) cap memory, CPU, and PIDs per contai
 | Pre-commit hooks | Renovate | Daily updates, version-pinned `rev:` tags |
 | CI binary tools | Renovate | Daily updates via regex managers (Trivy, Gitleaks, D2, apko) |
 | License | `dependency-review-action` | Permissive-only allowlist (MIT, Apache-2.0, BSD, ISC, etc.) |
-| Supply chain | Socket.dev | GitHub App -- detects typosquatting, malware, suspicious ownership changes |
+| Supply chain | Socket.dev | GitHub App; detects typosquatting, malware, suspicious ownership changes |
 
 ### Container Scanning
 
 Every container image is scanned before push:
 
-- **Trivy** -- CRITICAL = hard fail, HIGH = warn-only (`.trivyignore.yaml` for vetted CVEs)
-- **CIS Docker Benchmark** -- `trivy image --compliance docker-cis-1.6.0` run against all images (enforced -- any FAIL blocks the build)
+- **Trivy**: CRITICAL = hard fail, HIGH = warn-only (`.trivyignore.yaml` for vetted CVEs)
+- **CIS Docker Benchmark**: `trivy image --compliance docker-cis-1.6.0` run against all images (enforced; any FAIL blocks the build)
 
 Images are **only pushed to GHCR after vulnerability scans and CIS benchmark pass**.
 
@@ -305,7 +304,7 @@ Images are **only pushed to GHCR after vulnerability scans and CIS benchmark pas
     - Sigstore provenance bundle (`.sigstore.json`, verify via `cosign verify-blob-attestation`)
 - **Git commits**: GPG/SSH signed (enforced by branch protection ruleset)
 - **GitHub Actions**: All actions pinned by full SHA commit hash
-- **GitHub Releases**: Immutable releases enabled -- once published, assets and body cannot be modified (prevents supply chain tampering). Releases are created as drafts by Release Please, finalized after all assets are attached.
+- **GitHub Releases**: Immutable releases enabled; once published, assets and body cannot be modified (prevents supply chain tampering). Releases are created as drafts by Release Please, finalized after all assets are attached.
 
 ### Software Bill of Materials (SBOM)
 
@@ -327,11 +326,11 @@ Every release includes CycloneDX JSON SBOMs for all released artifacts:
 
 Every commit is checked locally before it reaches the remote:
 
-- **gitleaks** -- secret detection on every commit
-- **hadolint** -- Dockerfile linting
-- **ruff** -- Python linting and formatting
-- **commitizen** -- conventional commit message enforcement
-- **Large file prevention** -- blocks files over 1 MB
+- **gitleaks**: secret detection on every commit
+- **hadolint**: Dockerfile linting
+- **ruff**: Python linting and formatting
+- **commitizen**: conventional commit message enforcement
+- **Large file prevention**: blocks files over 1 MB
 
 Pre-push hooks run **mypy type checking** and **unit tests** as a fast gate.
 
@@ -387,7 +386,7 @@ content.
 The `protect-main` ruleset enforces:
 
 - **Signed commits** required
-- **No direct pushes** -- all changes via pull request
+- **No direct pushes**: all changes via pull request
 - **1 approving review** required (stale reviews dismissed on push)
 - **`ci-pass` status check** required before merge
 - **No branch deletion** or non-fast-forward pushes

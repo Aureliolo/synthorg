@@ -27,7 +27,7 @@ so a second caller can enter, detect the in-flight marker, and return
 concurrent ``get()`` may still observe the cache's previous value
 while the repository has already committed the new one; readers of a
 given id reach consistency as soon as the winning ``save()`` finishes
-its cache update.  This is an accepted trade-off of FWW semantics --
+its cache update.  This is an accepted trade-off of FWW semantics;
 the alternative (holding the lock across I/O) collapses to
 last-writer-wins because the second caller can no longer observe the
 first's in-flight marker.

@@ -532,13 +532,13 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
 
         Dual error-handling semantics (both layers are intentional):
 
-        * **Expected dispatcher failures** --
+        * **Expected dispatcher failures**:
           :meth:`NotificationDispatcher.dispatch` may raise for
           transient transport problems (SMTP timeout, webhook 5xx,
           etc.). Those are caught here and logged at WARNING via
           :data:`BUDGET_NOTIFICATION_FAILED` so a flaky notification
           channel can't break budget enforcement.
-        * **Unexpected internal bugs** -- if the method itself
+        * **Unexpected internal bugs**: if the method itself
           raises (e.g. a :class:`NotificationSeverity` coercion
           failure or a programming error importing the notification
           models), the exception escapes this try/except and

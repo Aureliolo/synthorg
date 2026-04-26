@@ -31,7 +31,7 @@ const VALID_STAGES: ReadonlySet<string> = new Set<FineTuneStage>([
 const log = createLogger('fine-tuning-store')
 
 interface FineTuningState {
-  // -- State --
+  // State
   status: FineTuneStatus | null
   checkpoints: readonly CheckpointRecord[]
   runs: readonly FineTuneRun[]
@@ -39,7 +39,7 @@ interface FineTuningState {
   loading: boolean
   error: string | null
 
-  // -- Actions --
+  // Actions
   fetchStatus: () => Promise<void>
   fetchCheckpoints: () => Promise<void>
   fetchRuns: () => Promise<void>

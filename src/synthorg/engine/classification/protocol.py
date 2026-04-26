@@ -70,7 +70,7 @@ class DetectionContext(BaseModel):
     def _validate_scope_fields(self) -> Self:
         """Enforce scope-field consistency.
 
-        ``SAME_TASK`` contexts must not carry task-tree data --
+        ``SAME_TASK`` contexts must not carry task-tree data;
         populating those fields would be a loader bug and could
         confuse detectors that expect empty tuples in SAME_TASK
         mode.

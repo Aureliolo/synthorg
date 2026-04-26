@@ -180,7 +180,7 @@ def compute_efficiency_ratios(  # noqa: PLR0913
     elif observed_tool_calls == 0:
         tool_call_ratio = 0.0
     else:
-        # Baseline expects zero tool calls but agent used tools --
+        # Baseline expects zero tool calls but agent used tools;
         # use raw count as ratio to signal unexpected extra calls.
         tool_call_ratio = float(observed_tool_calls)
 

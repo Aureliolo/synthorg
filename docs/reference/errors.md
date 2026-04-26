@@ -7,9 +7,9 @@ description: RFC 9457 problem type URIs, numeric error codes, and the NotFoundEr
 
 SynthOrg's REST API emits RFC 9457 [`Problem Details`](https://www.rfc-editor.org/rfc/rfc9457) responses on every error path. Every response carries three machine-readable fields that clients can discriminate on:
 
-- `type` -- a stable URI describing the error **category**
-- `error_code` -- an integer in one of the ranges below
-- `error_category` -- the category name matching the URI slug
+- `type`: a stable URI describing the error **category**
+- `error_code`: an integer in one of the ranges below
+- `error_category`: the category name matching the URI slug
 
 Clients should dispatch on `error_code` (most specific) and fall back to `error_category` for generic handling. Messages and titles are human-readable and may change without notice; the code is the contract.
 
@@ -54,7 +54,7 @@ The NotFound hierarchy is driven by a single `NotFoundError` class with domain-s
 
 | Code | Name | Resource |
 |------|------|----------|
-| 3000 | `RESOURCE_NOT_FOUND` | Fallback -- the resource type isn't in the table below |
+| 3000 | `RESOURCE_NOT_FOUND` | Fallback: the resource type isn't in the table below |
 | 3001 | `RECORD_NOT_FOUND` | Generic DB row not found |
 | 3002 | `ROUTE_NOT_FOUND` | HTTP path had no handler |
 | 3003 | `PROJECT_NOT_FOUND` | Project |
@@ -136,6 +136,6 @@ Clients that set `Accept: application/problem+json` receive a bare RFC 9457 body
 
 ## Further reading
 
-- [Design: security](../design/security.md) -- the SEC-1 rules behind the categories
+- [Design: security](../design/security.md): the SEC-1 rules behind the categories
 - [Guides: content-negotiation](../guides/content-negotiation.md) for client setup
-- `src/synthorg/api/errors.py` -- the authoritative enum and error classes
+- `src/synthorg/api/errors.py`: the authoritative enum and error classes

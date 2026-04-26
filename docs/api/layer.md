@@ -5,7 +5,7 @@ search:
 
 # API Layer
 
-Litestar REST + WebSocket API -- controllers, authentication, guards, and channels.
+Litestar REST + WebSocket API: controllers, authentication, guards, and channels.
 
 ## App
 

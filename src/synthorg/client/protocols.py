@@ -31,8 +31,8 @@ class ClientInterface(Protocol):
 
     * ``submit_requirement`` returns ``None`` when the client
       declines to participate in the current round.
-    * ``review_deliverable`` always returns a ``ClientFeedback``
-      -- rejection is expressed via ``accepted=False``.
+    * ``review_deliverable`` always returns a ``ClientFeedback``;
+      rejection is expressed via ``accepted=False``.
     """
 
     async def submit_requirement(

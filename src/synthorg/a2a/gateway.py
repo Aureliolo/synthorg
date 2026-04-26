@@ -450,7 +450,7 @@ async def _verify_peer_credentials(  # noqa: PLR0911
         raise
     except Exception as exc:
         # Credential verification sits alongside ``request``,
-        # ``credentials``, and raw auth headers in the local frame --
+        # ``credentials``, and raw auth headers in the local frame;
         # attaching ``exc_info=True`` would have structlog serialise
         # those into the event and reintroduce the SEC-1 leak. Log
         # the scrubbed type+message only.

@@ -8,8 +8,8 @@ Five-stage offline pipeline for domain-specific embedding fine-tuning:
 4. Evaluation (NDCG@10, Recall@10 comparison)
 5. Deploy (save checkpoint, update config)
 
-ML dependencies (torch, sentence-transformers) are optional --
-imported lazily inside stage functions.  Missing deps raise
+ML dependencies (torch, sentence-transformers) are optional;
+they are imported lazily inside stage functions.  Missing deps raise
 ``FineTuneDependencyError`` with install instructions.
 """
 

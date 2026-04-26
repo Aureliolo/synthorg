@@ -112,8 +112,8 @@ class JetStreamMessageBus:
         """Live probe against the NATS server.
 
         Checks that the client is both locally marked running and
-        actually connected, then calls ``nc.flush(timeout=<budget>)``
-        -- which waits for any pending publishes to ack and, when the
+        actually connected, then calls ``nc.flush(timeout=<budget>)``,
+        which waits for any pending publishes to ack and, when the
         queue is empty, resolves to a broker round-trip. The flush
         timeout is read from
         :class:`NatsConfig.health_flush_timeout_seconds` and is
@@ -306,7 +306,7 @@ class JetStreamMessageBus:
         scalar accessors instead of hydrating the full
         ``CommunicationBridgeConfig`` (which would validate 9 fields
         on every history query). Returns the module defaults
-        (100, 0.5) when no resolver is wired or the lookup fails --
+        (100, 0.5) when no resolver is wired or the lookup fails;
         a settings outage must not break history queries.
         """
         if self._config_resolver is None:

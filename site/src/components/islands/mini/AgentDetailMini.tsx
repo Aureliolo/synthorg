@@ -44,7 +44,7 @@ export default function AgentDetailMini({ tick }: Props) {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs" style={{ color: "var(--dp-text-secondary)" }}>
-              CTO -- C-Suite
+              CTO &middot; C-Suite
             </span>
             <span className="text-xs" style={{ color: "var(--dp-text-muted)" }}>
               Semi-Autonomous
@@ -94,7 +94,7 @@ export default function AgentDetailMini({ tick }: Props) {
         </div>
         <div className="h-[72px] overflow-hidden relative">
           <div className="dp-activity-scroll">
-            {/* Duplicated array for infinite scroll effect -- index key is intentional (static data) */}
+            {/* Duplicated array for infinite scroll effect; index key is intentional (static data) */}
             {[...activities, ...activities].map((a, i) => (
               <div key={i} className="flex items-start gap-2 px-2 py-1">
                 <span className="w-1 h-1 rounded-full mt-1.5 shrink-0" style={{ background: a.color }} />

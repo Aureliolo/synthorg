@@ -10,9 +10,9 @@ date: 2026-04-07
 ## Context
 
 The New Stack article "Agentic AI Control Plane: What It Needs in Production" argues that
-enterprise agentic AI requires a dedicated control-plane layer -- a system that inventories
+enterprise agentic AI requires a dedicated control-plane layer (a system that inventories
 agents, enforces behavioral policies at runtime, provides token metering and cost tracking,
-and delivers end-to-end observability. The article references Galileo Agent Control as an
+and delivers end-to-end observability). The article references Galileo Agent Control as an
 open-source example and frames this as a distinct architectural tier above individual agents.
 
 **SynthOrg is already building this control plane.** The HR module handles agent inventory,
@@ -31,19 +31,19 @@ everywhere" claim, and draws positioning implications.
 
 ### Primitive 1: Agent Inventory
 
-**What a control plane needs**: A queryable registry of all agents -- their identity,
-capabilities, status, and lifecycle state.
+**What a control plane needs**: A queryable registry of all agents (their identity,
+capabilities, status, and lifecycle state).
 
 **SynthOrg implementation**:
 
-- `src/synthorg/hr/registry.py` -- `AgentRegistryService`: in-memory agent identity store
+- `src/synthorg/hr/registry.py` defines `AgentRegistryService`: in-memory agent identity store
   with register, get, update, list, and remove operations.
-- `src/synthorg/hr/hiring_service.py` -- pipeline from request through approval to
+- `src/synthorg/hr/hiring_service.py`: pipeline from request through approval to
   instantiation, creating agents with full `AgentIdentity` (role, personality, skills, model
   config, tool permissions, authority, autonomy level).
-- `src/synthorg/hr/performance/tracker.py` -- `PerformanceTracker`: per-agent rolling
+- `src/synthorg/hr/performance/tracker.py` defines `PerformanceTracker`: per-agent rolling
   windows (7d, 30d, 90d), Theil-Sen trend detection, quality and collaboration scoring.
-- `src/synthorg/hr/evaluation/evaluator.py` -- `EvaluationService`: 5-pillar composite
+- `src/synthorg/hr/evaluation/evaluator.py` defines `EvaluationService`: 5-pillar composite
   scoring (intelligence, efficiency, resilience, governance, experience).
 
 **API surface**:
@@ -64,7 +64,7 @@ capabilities, status, and lifecycle state.
 ONBOARDING, ON_LEAVE, TERMINATED) is part of `AgentIdentity.status` and returned by
 `GET /agents/{id}`.
 
-**Gap -- G2**: No `GET /agents/{id}/health` endpoint exposing per-agent composite health
+**Gap G2**: No `GET /agents/{id}/health` endpoint exposing per-agent composite health
 (liveness + last-active timestamp + performance score + trust level). The performance data
 exists in `hr/performance/tracker.py` but is only surfaced at the department level via
 `GET /departments/{name}/health`, not per-agent. External control-plane consumers cannot
@@ -79,16 +79,16 @@ agents at runtime, without per-agent configuration.
 
 **SynthOrg implementation**:
 
-- `src/synthorg/security/service.py` -- `SecOpsService`: meta-agent coordinating evaluation.
+- `src/synthorg/security/service.py` defines `SecOpsService`: meta-agent coordinating evaluation.
   Takes `SecurityConfig` at construction; not a hot-reload singleton.
-- `src/synthorg/security/rules/engine.py` -- `RuleEngine`: sequential rule evaluation with
+- `src/synthorg/security/rules/engine.py` defines `RuleEngine`: sequential rule evaluation with
   fail-closed semantics (first DENY/ESCALATE wins; errors return DENY with CRITICAL risk).
-- `src/synthorg/security/rules/` -- 5 built-in detectors: `PolicyValidator` (fast-path
+- `src/synthorg/security/rules/` hosts 5 built-in detectors: `PolicyValidator` (fast-path
   hard-deny and auto-approve frozensets), `CredentialDetector`, `PathTraversalDetector`,
   `DestructiveOpDetector`, `DataLeakDetector`. Plus `CustomPolicyRule` for user-defined rules.
-- `src/synthorg/security/autonomy/resolver.py` -- 3-level inheritance chain: agent >
+- `src/synthorg/security/autonomy/resolver.py` implements a 3-level inheritance chain: agent >
   department > company. Most specific wins.
-- `src/synthorg/security/trust/service.py` -- `TrustService`: per-agent trust state with
+- `src/synthorg/security/trust/service.py` defines `TrustService`: per-agent trust state with
   mandatory human approval gate for ELEVATED promotion (defense-in-depth, enforced twice).
 
 **API surface**:
@@ -118,20 +118,20 @@ The policy enforcement path from configuration to runtime:
 6. All verdicts are logged to the audit trail
 
 **Constraint**: `SecOpsService` takes config at construction time. Policy changes do not
-propagate to running agent sessions -- they apply to the next session instantiation. This is
+propagate to running agent sessions; they apply to the next session instantiation. This is
 the correct safe default (mid-session policy changes would be inconsistent), but it means
 the "write once, enforce everywhere" claim applies across deployments and new sessions, not
 retroactively to active long-running sessions.
 
-**Gap -- G3**: Security policies are configured via `PUT /settings/{ns}/{key}` (key-value
+**Gap G3**: Security policies are configured via `PUT /settings/{ns}/{key}` (key-value
 pairs) but there is no bulk policy export/import. Operators cannot version-control their
 policy as a single declarative document, export it for peer review, or import a pre-approved
 policy bundle. The `SecurityConfig` Pydantic model is internally structured but has no
 serialization API endpoint.
 
-**Gap -- G5**: The `AuditLog` in `src/synthorg/security/audit.py` records every security
+**Gap G5**: The `AuditLog` in `src/synthorg/security/audit.py` records every security
 evaluation with agent, tool, verdict, and evidence, but there is no `GET /security/audit`
-query endpoint. The audit trail is write-only from an API perspective -- it can only be
+query endpoint. The audit trail is write-only from an API perspective; it can only be
 accessed via log sinks (file/syslog/HTTP) or by directly reading the persistence layer.
 
 ---
@@ -143,16 +143,16 @@ queryable history and enforcement at multiple boundaries.
 
 **SynthOrg implementation**:
 
-- `src/synthorg/budget/enforcer.py` -- `BudgetEnforcer`: three-layer enforcement:
+- `src/synthorg/budget/enforcer.py` defines `BudgetEnforcer`: three-layer enforcement:
   - Pre-flight: monthly hard stop, daily agent limit, provider quota check
   - In-flight: per-turn closure checking task limit, monthly limit, daily limit
   - Task boundary: model auto-downgrade when monthly utilization exceeds threshold
-- `src/synthorg/budget/tracker.py` -- `CostTracker`: in-memory store with TTL eviction
+- `src/synthorg/budget/tracker.py` defines `CostTracker`: in-memory store with TTL eviction
   (168h / 7 days), asyncio.Lock for concurrent writes, category breakdown, provider usage,
   orchestration ratio.
-- `src/synthorg/budget/quota.py` -- `QuotaTracker` with degradation strategies (alert,
+- `src/synthorg/budget/quota.py` provides `QuotaTracker` with degradation strategies (alert,
   fallback, queue) and `SubscriptionConfig`.
-- `src/synthorg/budget/coordination_metrics.py` -- 9 coordination metrics from Kim et al.
+- `src/synthorg/budget/coordination_metrics.py` exposes 9 coordination metrics from Kim et al.
   (2025): coordination efficiency, overhead, error amplification, message density,
   redundancy rate, Amdahl ceiling, straggler gap, token/speedup ratio, message overhead.
 
@@ -169,18 +169,18 @@ queryable history and enforcement at multiple boundaries.
 configuration. `GET /budget/records` returns paginated spending records with daily and period
 summaries. `GET /budget/agents/{agent_id}` provides per-agent cost totals.
 
-**Gap -- G6**: `CostTracker` is in-memory with TTL eviction; it is not a durable time-series
-store. Budget history granularity is limited -- the tracker supports `get_agent_cost(agent_id,
+**Gap G6**: `CostTracker` is in-memory with TTL eviction; it is not a durable time-series
+store. Budget history granularity is limited; the tracker supports `get_agent_cost(agent_id,
 start=)` and `get_total_cost(start=)` but the API does not expose multi-dimensional
 queries (e.g., spending by provider X for agent Y during period Z). External cost dashboards
 need this level of attribution. The persistence layer backing `GET /budget/records` needs
 inspection to confirm whether it provides richer query semantics than the in-memory tracker.
 
-**Gap -- G4**: The 9 coordination metrics (`budget/coordination_metrics.py`) are computed
+**Gap G4**: The 9 coordination metrics (`budget/coordination_metrics.py`) are computed
 internally and emitted as structured log events, but there is no `GET /coordination/metrics`
 endpoint. Operators cannot query the coordination efficiency, overhead ratio, or Amdahl
 ceiling for a completed multi-agent run. The `POST /tasks/{id}/coordinate` endpoint only
-triggers coordination -- it does not return or expose computed metrics. This is significant
+triggers coordination; it does not return or expose computed metrics. This is significant
 for control-plane positioning: coordination overhead is a key indicator of whether a
 multi-agent organization is operating efficiently.
 
@@ -189,18 +189,18 @@ multi-agent organization is operating efficiently.
 ### Primitive 4: Telemetry
 
 **What a control plane needs**: Exportable, structured telemetry that external monitoring
-systems can consume -- metrics (counters, gauges, histograms), traces, and logs in standard
+systems can consume: metrics (counters, gauges, histograms), traces, and logs in standard
 formats.
 
 **SynthOrg implementation**:
 
-- `src/synthorg/observability/setup.py` -- structlog + stdlib, idempotent `configure_logging()`,
+- `src/synthorg/observability/setup.py` provides structlog + stdlib, idempotent `configure_logging()`,
   100+ event constant modules in `observability/events/`.
-- `src/synthorg/observability/sinks.py` -- multi-sink routing: console, file (with rotation),
+- `src/synthorg/observability/sinks.py` handles multi-sink routing: console, file (with rotation),
   syslog, HTTP batch handler.
-- `src/synthorg/observability/http_handler.py` -- `HttpBatchHandler`: thread-safe queue,
+- `src/synthorg/observability/http_handler.py` defines `HttpBatchHandler`: thread-safe queue,
   configurable batch_size (default 100) and flush_interval (default 5s), retry with backoff.
-- `src/synthorg/observability/correlation.py` -- 3 correlation IDs (request_id, task_id,
+- `src/synthorg/observability/correlation.py` provides 3 correlation IDs (request_id, task_id,
   agent_id) propagated via structlog contextvars.
 
 **API surface**:
@@ -213,11 +213,12 @@ formats.
 | Generate report | `POST /reports/generate` | Spending, performance, task completion |
 | List log sinks | `GET /settings/observability/sinks` | Current sink configuration |
 | Test sink connectivity | `POST /settings/observability/sinks/_test` | CEO/manager |
-| Liveness/readiness | `GET /health` | Public, no auth |
+| Liveness | `GET /api/v1/healthz` | Public, process-alive check |
+| Readiness | `GET /api/v1/readyz` | Public, 200 when dependencies healthy, 503 otherwise |
 
-**Gap -- G1 (most significant)**: There is no Prometheus `/metrics` endpoint and no
+**Gap G1 (most significant)**: There is no Prometheus `/metrics` endpoint and no
 OpenTelemetry (OTLP) exporter. The HTTP batch handler (`SinkType.HTTP`) is a log forwarder
-that ships JSON log records to a configured URL -- it does not implement the Prometheus
+that ships JSON log records to a configured URL; it does not implement the Prometheus
 exposition format (counters, gauges, histograms with labels) or OTLP gRPC/HTTP. External
 monitoring systems (Prometheus/Grafana, Datadog, Honeycomb) need one of:
 - A `/metrics` endpoint scrapable by Prometheus
@@ -228,7 +229,7 @@ participate in standard metrics pipelines or distributed tracing systems. This i
 most significant gap for enterprise control-plane positioning.
 
 The 100+ structured event constants and correlation IDs provide the raw material for
-building proper observability exports -- the data model is sound, the export format is not.
+building proper observability exports; the data model is sound, the export format is not.
 
 ---
 
@@ -273,7 +274,7 @@ claim for custom rules to developers, not operators.
 SynthOrg provides an integrated control plane that competitors typically deliver as separate
 tools: inventory (HR module), policy enforcement (security module with hybrid rule engine),
 token metering (3-layer budget enforcement), and observability (100+ structured events). The
-integration advantage is that these components share context -- budget enforcement gates
+integration advantage is that these components share context: budget enforcement gates
 security escalation, performance tracking feeds autonomy decisions, trust levels gate
 model upgrades.
 
@@ -283,24 +284,24 @@ This integration is genuine and hard to replicate by composing separate tools.
 
 For enterprise positioning as an agentic control plane, the highest-priority gaps to close:
 
-1. **G1 (Telemetry export)** -- Required for enterprise observability requirements. A
+1. **G1 (Telemetry export)**: Required for enterprise observability requirements. A
    Prometheus `/metrics` endpoint and/or OTLP exporter would unblock integration with
    standard monitoring infrastructure. The event data model is already sound.
 
-2. **G3 (Policy-as-code)** -- Enterprise security teams want policies as versioned YAML/JSON
+2. **G3 (Policy-as-code)**: Enterprise security teams want policies as versioned YAML/JSON
    files, reviewable in pull requests. A `GET /policies/export` and `POST /policies/import`
    would enable GitOps-style policy management.
 
-3. **G4 (Coordination metrics API)** -- A `GET /coordination/metrics` endpoint exposing the
+3. **G4 (Coordination metrics API)**: A `GET /coordination/metrics` endpoint exposing the
    9 Kim et al. metrics would make SynthOrg uniquely differentiated: the only framework that
    exposes coordination efficiency and overhead as queryable API primitives.
 
 ### Recommended Framing
 
-SynthOrg should be framed as an **orchestrated agent control plane** -- distinct from
+SynthOrg should be framed as an **orchestrated agent control plane**, distinct from
 infrastructure control planes (Kubernetes, Terraform) that manage compute, and distinct from
 swarm-style agent frameworks that lack centralized policy enforcement. The value proposition:
-policy-as-code, metered coordination, and observable agent behavior -- all enforced from a
+policy-as-code, metered coordination, and observable agent behavior, all enforced from a
 single control surface.
 
 This framing is accurate today for inventory, policy, and metering. Telemetry export is the
@@ -312,21 +313,21 @@ gap between the internal capability and the external claim.
 
 Priority order for closing gaps to support control-plane positioning:
 
-1. **Prometheus `/metrics` endpoint** (G1) -- Add a `/metrics` route exposing key counters
+1. **Prometheus `/metrics` endpoint** (G1): Add a `/metrics` route exposing key counters
    and gauges from the budget tracker, task engine, and coordination metrics. The structlog
    event stream provides all the raw data. Scope: medium (new route + metrics aggregator).
 
-2. **`GET /agents/{id}/health` endpoint** (G2) -- Composite endpoint reading from
+2. **`GET /agents/{id}/health` endpoint** (G2): Composite endpoint reading from
    `PerformanceTracker.get_snapshot()`, `TrustService.get_trust_state()`, and last-active
    timestamp. Scope: small (new route + service composition).
 
-3. **Policy export/import** (G3) -- `GET /settings/security/export` serializing
+3. **Policy export/import** (G3): `GET /settings/security/export` serializing
    `SecurityConfig` to JSON, `POST /settings/security/import` validating and loading it.
    Scope: small-medium (serialization + validation).
 
-4. **Coordination metrics API** (G4) -- `GET /coordination/metrics` endpoint backed by
+4. **Coordination metrics API** (G4): `GET /coordination/metrics` endpoint backed by
    `CoordinationMetricsService`. Scope: medium (new route + metrics aggregation across
    completed coordination runs).
 
-5. **Audit log query API** (G5) -- `GET /security/audit` with filters for agent_id,
+5. **Audit log query API** (G5): `GET /security/audit` with filters for agent_id,
    verdict, time range, action_type. Scope: medium (new route + query layer over audit log).

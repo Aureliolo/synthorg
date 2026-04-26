@@ -1,7 +1,7 @@
 """Conformance tests for ``ApprovalRepository`` (SQLite + Postgres).
 
-The approval repository is not exposed on ``PersistenceBackend`` --
-``ApprovalStore`` wires it directly -- so this file builds the
+The approval repository is not exposed on ``PersistenceBackend``
+(``ApprovalStore`` wires it directly), so this file builds the
 backend-specific concrete repo over the migrated ``backend.get_db()``
 handle.  Both arms exercise the same protocol surface so SQLite and
 Postgres divergence (TEXT vs JSONB ``metadata`` / ``evidence_package``,

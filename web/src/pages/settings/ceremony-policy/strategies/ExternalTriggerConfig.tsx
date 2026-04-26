@@ -14,7 +14,7 @@ export function ExternalTriggerConfig({ config, onChange, disabled }: ExternalTr
   const [jsonError, setJsonError] = useState<string | null>(null)
 
   // Sync rawJson when config.sources changes externally (e.g. parent reset).
-  // rawJson is intentionally excluded from deps to avoid feedback loops --
+  // rawJson is intentionally excluded from deps to avoid feedback loops;
   // we only want to sync when the *prop* changes, not when the user edits.
   useEffect(() => {
     const incoming = JSON.stringify(config.sources ?? [], null, 2)

@@ -22,7 +22,7 @@ You detect inconsistencies between backend API definitions and frontend API cons
 
 ### 2. Type/Field Consistency (HIGH)
 - Frontend TypeScript types not matching backend Pydantic models
-- Field name mismatches (e.g., `created_at` vs `createdAt` -- check serialization config)
+- Field name mismatches (e.g., `created_at` vs `createdAt`; check serialization config)
 - Missing fields in frontend types that backend returns
 - Extra fields in frontend types that backend doesn't send
 - Enum value mismatches between Python and TypeScript

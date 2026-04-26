@@ -148,15 +148,15 @@ mcp:
 
 Two timeout values control server responsiveness:
 
-- **`connect_timeout_seconds`** (default: 10s, max: 120s) -- how long to wait for the initial connection to the MCP server. Increase this for remote servers with slow startup.
-- **`timeout_seconds`** (default: 30s, max: 600s) -- how long to wait for a single tool invocation to complete. Increase this for tools that perform long-running operations.
+- **`connect_timeout_seconds`** (default: 10s, max: 120s): how long to wait for the initial connection to the MCP server. Increase this for remote servers with slow startup.
+- **`timeout_seconds`** (default: 30s, max: 600s): how long to wait for a single tool invocation to complete. Increase this for tools that perform long-running operations.
 
 ### Result Caching
 
 Tool results are cached to avoid redundant invocations:
 
-- **`result_cache_ttl_seconds`** (default: 60s) -- how long cached results remain valid. Set to `0` to disable caching for a server.
-- **`result_cache_max_size`** (default: 256) -- maximum number of cached entries. Set to `0` to disable caching.
+- **`result_cache_ttl_seconds`** (default: 60s): how long cached results remain valid. Set to `0` to disable caching for a server.
+- **`result_cache_max_size`** (default: 256): maximum number of cached entries. Set to `0` to disable caching.
 
 Caching is key-based (same tool name + same arguments = cache hit). Tune the TTL based on how often the underlying data changes.
 
@@ -205,9 +205,9 @@ mcp:
 
 MCP tools are treated like any other tool in SynthOrg:
 
-- **All invocations pass through SecOps** -- the rule engine evaluates tool calls against security policies, autonomy levels, and trust configuration
+- **All invocations pass through SecOps**: the rule engine evaluates tool calls against security policies, autonomy levels, and trust configuration
 - **MCP tools are categorized as `mcp`** in the tool category taxonomy, which means they are gated by the agent's tool access level
-- **Output scanning** applies to MCP tool results -- secrets and PII are redacted according to the configured output scan policy
+- **Output scanning** applies to MCP tool results: secrets and PII are redacted according to the configured output scan policy
 - **Audit logging** records every MCP tool invocation when `security.audit_enabled` is `true`
 
 To restrict MCP tool access to specific agents, configure tool access levels and trust policies. See [Security & Trust Policies](security.md) for details.
@@ -216,6 +216,6 @@ To restrict MCP tool access to specific agents, configure tool access levels and
 
 ## See Also
 
-- [Company Configuration](company-config.md) -- full configuration reference
-- [Security & Trust Policies](security.md) -- tool access levels and security policies
-- [Design: Tools](../design/tools.md) -- tool architecture in the design spec
+- [Company Configuration](company-config.md): full configuration reference
+- [Security & Trust Policies](security.md): tool access levels and security policies
+- [Design: Tools](../design/tools.md): tool architecture in the design spec

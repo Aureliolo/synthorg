@@ -247,7 +247,7 @@ class TestShouldFireCeremony:
                 {"task_id": f"task-{i}", "milestone": "alpha"},
             )
 
-        # Ceremony with frequency but no milestone policy_override --
+        # Ceremony with frequency but no milestone policy_override;
         # strategy evaluates milestones regardless of policy_override
         ceremony = SprintCeremonyConfig(
             name="sprint_review",

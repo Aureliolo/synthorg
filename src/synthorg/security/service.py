@@ -570,7 +570,7 @@ class SecOpsService(SecOpsServiceSafetyMixin):
                 description = stripped
 
         # Cross-provider uncertainty check (if configured).
-        # Only run when a stripped description is available --
+        # Only run when a stripped description is available;
         # never broadcast raw verdict.reason (may contain PII).
         stripped_for_check = metadata.get("stripped_description")
         if self._uncertainty_checker is not None and stripped_for_check:

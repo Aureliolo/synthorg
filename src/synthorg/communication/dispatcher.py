@@ -155,7 +155,7 @@ class MessageDispatcher:
     async def dispatch(self, message: Message) -> DispatchResult:
         """Route a message to all matching handlers concurrently.
 
-        Handlers that raise ``Exception`` subclasses are isolated --
+        Handlers that raise ``Exception`` subclasses are isolated;
         their errors are captured without affecting other handlers.
         ``BaseException`` subclasses (e.g. ``KeyboardInterrupt``,
         ``CancelledError``) propagate through the ``TaskGroup``,

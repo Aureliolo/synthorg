@@ -5,13 +5,13 @@ description: Complete YAML reference for all SynthOrg configuration options.
 
 # Company Configuration
 
-SynthOrg organizations are configured via YAML. The configuration defines your company structure, agents, LLM providers, budget, security policies, memory, tools, and operational settings. All configuration is validated at load time using Pydantic -- invalid values produce clear error messages with field paths.
+SynthOrg organizations are configured via YAML. The configuration defines your company structure, agents, LLM providers, budget, security policies, memory, tools, and operational settings. All configuration is validated at load time using Pydantic; invalid values produce clear error messages with field paths.
 
 ---
 
 ## Overview
 
-Configuration is loaded from a YAML file and validated into a frozen Pydantic model (`RootConfig`). Once loaded, configuration is immutable -- runtime state changes (e.g. agent execution status) use separate mutable models.
+Configuration is loaded from a YAML file and validated into a frozen Pydantic model (`RootConfig`). Once loaded, configuration is immutable; runtime state changes (e.g. agent execution status) use separate mutable models.
 
 The configuration can be provided:
 
@@ -23,7 +23,7 @@ The configuration can be provided:
 
 ## Root Configuration
 
-The top-level configuration object. Only `company_name` is required -- all other fields have sensible defaults.
+The top-level configuration object. Only `company_name` is required; all other fields have sensible defaults.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -630,9 +630,9 @@ SynthOrg enforces the following cross-field validation rules at load time:
 
 ## See Also
 
-- [Agent Roles & Hierarchy](agents.md) -- detailed agent configuration
-- [Budget & Cost Control](budget.md) -- budget enforcement and cost tracking
-- [Security & Trust Policies](security.md) -- trust strategies and security rules
-- [Memory Configuration](memory.md) -- memory backends and retrieval
-- [Tool Integration (MCP)](mcp-tools.md) -- external tool configuration
-- [Design Specification](../design/index.md) -- full architecture reference
+- [Agent Roles & Hierarchy](agents.md): detailed agent configuration
+- [Budget & Cost Control](budget.md): budget enforcement and cost tracking
+- [Security & Trust Policies](security.md): trust strategies and security rules
+- [Memory Configuration](memory.md): memory backends and retrieval
+- [Tool Integration (MCP)](mcp-tools.md): external tool configuration
+- [Design Specification](../design/index.md): full architecture reference

@@ -1,11 +1,11 @@
 ---
 title: Fork setup
-description: Configure CI on a fresh fork or clone -- environments, labels, branch protection, and the release-bot GitHub App.
+description: Configure CI on a fresh fork or clone. Environments, labels, branch protection, and the release-bot GitHub App.
 ---
 
 # Fork setup
 
-If you have just forked or cloned this repository, the CI workflows will not run cleanly until you create a small set of GitHub-side artifacts: environments, labels, branch protection on `main`, and a GitHub App for the release pipeline. Push any commit to your fork (or open a pull request) and the **CI Preflight** workflow opens a tracking issue in your fork listing exactly what is missing -- this page is the long-form companion to that checklist.
+If you have just forked or cloned this repository, the CI workflows will not run cleanly until you create a small set of GitHub-side artifacts: environments, labels, branch protection on `main`, and a GitHub App for the release pipeline. Push any commit to your fork (or open a pull request) and the **CI Preflight** workflow opens a tracking issue in your fork listing exactly what is missing; this page is the long-form companion to that checklist.
 
 The preflight is non-blocking on pull requests and feature branches; it only fails the job on push to `main`. So the path of least resistance is: push, read the tracking issue, work through this page, push again, watch the issue auto-close.
 
@@ -19,7 +19,7 @@ After this, the `Missing labels` section of the preflight tracking issue should 
 
 ## 2. Create the GitHub environments
 
-CI uses seven GitHub environments for branch-policy gating and to scope secrets. The preflight job audits all of them unconditionally, so create every one even if your fork does not yet exercise the corresponding workflow -- a missing environment will keep the preflight tracking issue open.
+CI uses seven GitHub environments for branch-policy gating and to scope secrets. The preflight job audits all of them unconditionally, so create every one even if your fork does not yet exercise the corresponding workflow; a missing environment will keep the preflight tracking issue open.
 
 Create at **Settings -> Environments -> New environment**:
 
@@ -55,13 +55,13 @@ Steps:
 
 In your repository, go to **Settings -> Environments -> release** and add two secrets:
 
-- `RELEASE_BOT_APP_CLIENT_ID` -- the Client ID from step 6.
-- `RELEASE_BOT_APP_PRIVATE_KEY` -- the entire PEM file contents, including the `-----BEGIN ... PRIVATE KEY-----` header and `-----END ... PRIVATE KEY-----` footer.
+- `RELEASE_BOT_APP_CLIENT_ID`: the Client ID from step 6.
+- `RELEASE_BOT_APP_PRIVATE_KEY`: the entire PEM file contents, including the `-----BEGIN ... PRIVATE KEY-----` header and `-----END ... PRIVATE KEY-----` footer.
 
 Then duplicate the SAME values into the `apko-lock` environment under different names so the weekly lockfile-update cron can mint a token of its own. Settings -> Environments -> apko-lock:
 
-- `APKO_BOT_APP_CLIENT_ID` -- same Client ID as `RELEASE_BOT_APP_CLIENT_ID` above.
-- `APKO_BOT_APP_PRIVATE_KEY` -- same PEM contents as `RELEASE_BOT_APP_PRIVATE_KEY` above.
+- `APKO_BOT_APP_CLIENT_ID`: same Client ID as `RELEASE_BOT_APP_CLIENT_ID` above.
+- `APKO_BOT_APP_PRIVATE_KEY`: same PEM contents as `RELEASE_BOT_APP_PRIVATE_KEY` above.
 
 The credentials are duplicated rather than shared because GitHub-environment secrets are env-scoped: a workflow running under `release` cannot read a secret defined only in `apko-lock`, and vice versa. Both names point at the same App, so a key rotation only needs to update both copies once.
 
@@ -71,19 +71,19 @@ If you do not need the release pipeline at all (you are running a research fork 
 
 | Environment | Secret | Source |
 |-------------|--------|--------|
-| `atlas` | `ATLAS_TOKEN` | https://atlasgo.cloud/ -- free tier covers a single project |
-| `cloudflare-preview` | `CLOUDFLARE_API_TOKEN` | https://dash.cloudflare.com/profile/api-tokens -- Pages-deploy-scoped |
+| `atlas` | `ATLAS_TOKEN` | https://atlasgo.cloud/ (free tier covers a single project) |
+| `cloudflare-preview` | `CLOUDFLARE_API_TOKEN` | https://dash.cloudflare.com/profile/api-tokens (Pages-deploy-scoped) |
 | `cloudflare-preview` | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard sidebar |
 
-`image-push` needs no secrets -- the workflow uses the auto-provided `${{ github.token }}` against your fork's GHCR namespace. The environment exists purely for branch-policy gating.
+`image-push` needs no secrets; the workflow uses the auto-provided `${{ github.token }}` against your fork's GHCR namespace. The environment exists purely for branch-policy gating.
 
 ## 5. Branch protection on `main`
 
 The preflight checks for three things on `main`:
 
-- **Required signed commits** -- needed because the release pipeline produces commits, and branch protection rejects unsigned ones.
-- **Required status check `CI Pass`** -- the gate job that aggregates lint, type-check, and tests.
-- **Strict policy** ("Require branches to be up to date before merging") -- prevents stale PRs from merging.
+- **Required signed commits**: needed because the release pipeline produces commits, and branch protection rejects unsigned ones.
+- **Required status check `CI Pass`**: the gate job that aggregates lint, type-check, and tests.
+- **Strict policy** ("Require branches to be up to date before merging"): prevents stale PRs from merging.
 
 Configure at **Settings -> Branches -> Add rule** on `main`. The minimum to satisfy preflight is the three checkboxes above. Pull-request review counts and code-owner requirements are repository-policy decisions and not enforced by preflight.
 

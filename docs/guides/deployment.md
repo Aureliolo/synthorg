@@ -5,7 +5,7 @@ description: Run SynthOrg in production with Docker, hardening, and image verifi
 
 # Deployment (Docker)
 
-SynthOrg runs as two Docker containers -- a Python backend API and a Caddy + React web dashboard. This guide covers production deployment, environment configuration, security hardening, and operations.
+SynthOrg runs as two Docker containers: a Python backend API and a Caddy + React web dashboard. This guide covers production deployment, environment configuration, security hardening, and operations.
 
 ---
 
@@ -91,7 +91,7 @@ These environment variables are read by the code but were previously undocumente
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SYNTHORG_DATABASE_URL` | *(unset)* | Postgres connection URL (e.g. `postgres://user:pass@host:5432/synthorg`). Setting this switches the persistence backend from SQLite to Postgres regardless of `SYNTHORG_PERSISTENCE_BACKEND`. Query parameters are **not** supported in this URL -- `_postgres_config_from_url()` rejects them up front; route `sslmode` overrides through `SYNTHORG_POSTGRES_SSL_MODE` instead. |
+| `SYNTHORG_DATABASE_URL` | *(unset)* | Postgres connection URL (e.g. `postgres://user:pass@host:5432/synthorg`). Setting this switches the persistence backend from SQLite to Postgres regardless of `SYNTHORG_PERSISTENCE_BACKEND`. Query parameters are **not** supported in this URL; `_postgres_config_from_url()` rejects them up front; route `sslmode` overrides through `SYNTHORG_POSTGRES_SSL_MODE` instead. |
 | `SYNTHORG_POSTGRES_SSL_MODE` | `require` | Override Postgres SSL mode (`disable`, `require`, `verify-ca`, `verify-full`). When unset, the default comes from `PostgresConfig.ssl_mode` (`"require"`), which rejects plaintext connections. |
 | `SYNTHORG_NATS_URL` | `nats://localhost:4222` | NATS server URL for the distributed task queue. Required when `queue.enabled=true`. Must use `nats://`, `tls://`, or `nats+tls://`. |
 | `SYNTHORG_NATS_STREAM_PREFIX` | `SYNTHORG` | JetStream stream name prefix. The bus stream is `<prefix>_BUS`; the KV bucket is `<prefix>_BUS_CHANNELS`. |
@@ -109,10 +109,10 @@ Every registered setting automatically accepts an env-var override of the form `
 
 **Resolution chain** (first match wins, in `synthorg.telemetry.collector._resolve_environment`):
 
-1. `SYNTHORG_TELEMETRY_ENV` (operator override) -- always wins if non-empty.
-2. CI auto-detection -- `CI` / `GITLAB_CI` / `BUILDKITE` / `JENKINS_URL` / any `RUNPOD_*` present -> `"ci"`.
-3. `SYNTHORG_TELEMETRY_ENV_BAKED` (image-baked fallback) -- set by CI via `DEPLOYMENT_ENV` build-arg; see above.
-4. The parsed `TelemetryConfig.environment` value -- which itself defaults to `"dev"` when not configured.
+1. `SYNTHORG_TELEMETRY_ENV` (operator override): always wins if non-empty.
+2. CI auto-detection: `CI` / `GITLAB_CI` / `BUILDKITE` / `JENKINS_URL` / any `RUNPOD_*` present -> `"ci"`.
+3. `SYNTHORG_TELEMETRY_ENV_BAKED` (image-baked fallback): set by CI via `DEPLOYMENT_ENV` build-arg; see above.
+4. The parsed `TelemetryConfig.environment` value, which itself defaults to `"dev"` when not configured.
 
 ### Image build-args
 
@@ -156,7 +156,7 @@ The backend endpoints are unauthenticated so load-balancers and container orches
 
 - **Base image**: Pure apko Wolfi (Caddy + melange-packaged static assets, no Dockerfile)
 - **User**: UID 65532 (caddy)
-- **Health check**: `GET /healthz` via Caddy -- Caddy's own built-in liveness endpoint (distinct from the backend's `/api/v1/healthz`, see [Health Probes](#health-probes) above). Compose-level probe using `wget`; 10s interval, 3s timeout, 3 retries, 10s start period. The apko image intentionally ships no Dockerfile `HEALTHCHECK`, so the probe is declared alongside the service and targets `127.0.0.1` to avoid Docker DNS.
+- **Health check**: `GET /healthz` via Caddy, Caddy's own built-in liveness endpoint (distinct from the backend's `/api/v1/healthz`, see [Health Probes](#health-probes) above). Compose-level probe using `wget`; 10s interval, 3s timeout, 3 retries, 10s start period. The apko image intentionally ships no Dockerfile `HEALTHCHECK`, so the probe is declared alongside the service and targets `127.0.0.1` to avoid Docker DNS.
 - **Routing**: SPA routing (`try_files {path} /index.html`), API proxy to backend, WebSocket proxy, per-request CSP nonce via Caddy `templates` directive
 - **Caching**: `/index.html` is no-cache; `/assets/*` is immutable with 1-year max-age (content-hashed filenames)
 - **Static compression**: pre-compressed `.gz` files served via `file_server { precompressed gzip }`
@@ -173,10 +173,10 @@ The Docker Compose configuration follows the [CIS Docker Benchmark v1.6.0](https
 | Drop all capabilities | `cap_drop: [ALL]` | 5.12 |
 | Read-only root filesystem | `read_only: true` + tmpfs mounts | 5.25 |
 | PID limits | 256 (backend), 64 (web) | 5.28 |
-| Memory limits | 4G (backend), 256M (web) | -- |
-| CPU limits | 2.0 (backend), 0.5 (web) | -- |
-| Log rotation | json-file, 10MB max, 3 files | -- |
-| Tmpfs security | `noexec,nosuid,nodev` on `/tmp` | -- |
+| Memory limits | 4G (backend), 256M (web) | - |
+| CPU limits | 2.0 (backend), 0.5 (web) | - |
+| Log rotation | json-file, 10MB max, 3 files | - |
+| Tmpfs security | `noexec,nosuid,nodev` on `/tmp` | - |
 
 ### Security Headers (Caddy)
 
@@ -189,7 +189,7 @@ The web container sets the following response headers:
 - `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'nonce-{http.request.uuid}' 'unsafe-inline'; style-src-elem 'self' 'nonce-{http.request.uuid}'; style-src-attr 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`
 - `Strict-Transport-Security: max-age=63072000` (2 years)
 
-The CSP uses Level 3 directive splitting: `style-src-elem` locks `<style>` elements to the per-request nonce (injected by Caddy's `templates` directive substituting `{http.request.uuid}` into `<meta name="csp-nonce">`), while `style-src-attr 'unsafe-inline'` covers the transient inline positioning styles set by Floating UI (used internally by Base UI). See [`docs/security.md` → CSP Nonce Infrastructure](../security.md#csp-nonce-infrastructure) for the full flow -- any reverse proxy in front of the web container must preserve Caddy's template substitution and the matching CSP header, otherwise inline styles will be blocked.
+The CSP uses Level 3 directive splitting: `style-src-elem` locks `<style>` elements to the per-request nonce (injected by Caddy's `templates` directive substituting `{http.request.uuid}` into `<meta name="csp-nonce">`), while `style-src-attr 'unsafe-inline'` covers the transient inline positioning styles set by Floating UI (used internally by Base UI). See [`docs/security.md` → CSP Nonce Infrastructure](../security.md#csp-nonce-infrastructure) for the full flow; any reverse proxy in front of the web container must preserve Caddy's template substitution and the matching CSP header, otherwise inline styles will be blocked.
 
 ---
 
@@ -250,7 +250,7 @@ Fine-tuning also requires the sandbox to be enabled (`sandbox=true`). The backen
     synthorg stop && synthorg start               # compose.yml is regenerated automatically
     ```
 
-    `synthorg init` also prompts for this -- but only use `init` on a **fresh** data dir; it overwrites `config.json` and regenerates `compose.yml`. Existing installs should use `config set` as above.
+    `synthorg init` also prompts for this, but only use `init` on a **fresh** data dir; it overwrites `config.json` and regenerates `compose.yml`. Existing installs should use `config set` as above.
 
 === "Docker Compose (manual / BYO)"
 
@@ -379,7 +379,7 @@ synthorg logs      # view container logs
 
 ## See Also
 
-- [Quickstart Tutorial](quickstart.md) -- get started in 5 minutes
-- [User Guide](../user_guide.md) -- CLI commands and setup wizard
-- [Security](../security.md) -- security architecture reference
-- [Company Configuration](company-config.md) -- full configuration reference
+- [Quickstart Tutorial](quickstart.md): get started in 5 minutes
+- [User Guide](../user_guide.md): CLI commands and setup wizard
+- [Security](../security.md): security architecture reference
+- [Company Configuration](company-config.md): full configuration reference

@@ -54,8 +54,8 @@ def _row_to_session(row: Any) -> Session:
 class SQLiteSessionRepository:
     """SQLite-backed hybrid session repository.
 
-    The ``is_revoked`` method is synchronous and checks a local ``set``
-    -- it is called on every authenticated request and must not block
+    The ``is_revoked`` method is synchronous and checks a local ``set``;
+    it is called on every authenticated request and must not block
     the event loop.
 
     Args:

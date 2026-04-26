@@ -97,7 +97,7 @@ class EscalationExpirationSweeper:
         try:
             await task
         except asyncio.CancelledError:
-            # Expected -- we just cancelled the task.
+            # Expected: we just cancelled the task.
             pass
         except Exception as exc:
             # Best-effort shutdown: never propagate, but elevate to
@@ -151,8 +151,8 @@ class EscalationExpirationSweeper:
     async def _sweep_once(self) -> None:
         """Expire any rows whose deadline has passed.
 
-        Emits the same event constant on every iteration -- at ``info``
-        when rows were expired, at ``debug`` when the pass was clean --
+        Emits the same event constant on every iteration (at ``info``
+        when rows were expired, at ``debug`` when the pass was clean)
         so operators can detect a silent sweeper (store returns 0 due
         to a timezone / WHERE-clause bug) by the absence of debug logs.
         """

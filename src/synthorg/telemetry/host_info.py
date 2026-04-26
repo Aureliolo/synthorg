@@ -198,7 +198,7 @@ def _extract(info: Mapping[str, object]) -> DockerHostInfo:
 
     runtimes = info.get("Runtimes")
     result["docker_gpu_runtime_nvidia_available"] = bool(
-        isinstance(runtimes, dict) and _NVIDIA_RUNTIME_NAME in runtimes,
+        isinstance(runtimes, dict) and _NVIDIA_RUNTIME_NAME in runtimes
     )
 
     return result
@@ -269,7 +269,7 @@ async def _probe_daemon_info(aiodocker_mod: object) -> object | None:
     (client construction error, timeout, daemon error, non-dict
     response). Never raises. The :func:`asyncio.timeout` wrapper
     caps the probe at :data:`_DOCKER_INFO_TIMEOUT_SECONDS` because
-    ``aiodocker`` inherits aiohttp's 300 s ``sock_read`` default --
+    ``aiodocker`` inherits aiohttp's 300 s ``sock_read`` default;
     a wedged-but-reachable daemon would otherwise stall startup for
     up to five minutes.
     """

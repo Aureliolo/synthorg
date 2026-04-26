@@ -361,7 +361,7 @@ class CoordinationMetricsCollector:
         await self._fire_alerts(metrics, agent_id=agent_id, task_id=task_id)
         return metrics
 
-    # -- Private collection helpers --
+    # Private collection helpers
 
     async def _try_collect_efficiency(
         self, turns_mas: int, error_rate: float
@@ -684,8 +684,8 @@ class CoordinationMetricsCollector:
         body = (
             f"Coordination overhead is {overhead.value_percent:.1f}% "
             f"({overhead.turns_mas:.0f} MAS turns vs "
-            f"{overhead.turns_sas:.0f} SAS turns) -- "
-            f"agent={agent_id} task={task_id}"
+            f"{overhead.turns_sas:.0f} SAS turns); "
+            f"agent={agent_id}, task={task_id}"
         )
         try:
             await self._notification_dispatcher.dispatch(

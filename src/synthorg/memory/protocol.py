@@ -124,7 +124,7 @@ class MemoryBackend(Protocol):
     ) -> MemoryEntry | None:
         """Get a specific memory entry by ID.
 
-        Returns ``None`` when the entry does not exist --
+        Returns ``None`` when the entry does not exist;
         ``MemoryNotFoundError`` is never raised by this method.
 
         Args:

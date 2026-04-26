@@ -6,7 +6,7 @@ concerns in one place:
 1. **Response envelope** (``ok``, ``err``, ``PaginationMeta``,
    ``not_supported``, ``capability_gap``, ``service_fallback``) -- builds
    the JSON string the handler returns to the invoker.
-2. **Output helpers** (``dump_many``, ``paginate_sequence``) --
+2. **Output helpers** (``dump_many``, ``paginate_sequence``):
    Pydantic batch serialisation and in-memory pagination of an
    already-materialised sequence.
 3. **Guardrails** (``require_destructive_guardrails``) -- single source

@@ -62,7 +62,8 @@ You review test code for quality, correctness, and adherence to SynthOrg testing
 - `asyncio.sleep(large_number)` for blocking (use `asyncio.Event().wait()`)
 - Tests sensitive to execution speed
 
-### 9. Web Dashboard Tests -- when `web/src/**/*.test.*` files changed (CRITICAL)
+### 9. Web Dashboard Tests: when `web/src/**/*.test.*` files changed (CRITICAL)
+
 - Missing component mount/unmount cleanup (MAJOR)
 - Testing implementation details (internal component state) instead of user-visible behavior (MAJOR)
 - Missing async/await on Vitest assertions that return promises (CRITICAL)

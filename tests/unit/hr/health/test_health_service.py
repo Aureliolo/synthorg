@@ -182,7 +182,7 @@ class TestWindowPicking:
     """When multiple windows have data, the tightest populated wins.
 
     Picking the shortest populated horizon (tracker order is
-    shortest-to-longest) keeps the verdict responsive to fresh dips --
+    shortest-to-longest) keeps the verdict responsive to fresh dips;
     a recent regression would otherwise be averaged out against
     months of older successes in the 30d / 90d horizons.
     """

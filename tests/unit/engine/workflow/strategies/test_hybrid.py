@@ -251,7 +251,7 @@ class TestShouldFireCeremony:
         )
         assert strategy.should_fire_ceremony(ceremony, make_sprint(), ctx) is False
 
-    # -- Trigger branch coverage (Item 9) --
+    # Trigger branch coverage (Item 9)
 
     @pytest.mark.unit
     def test_sprint_start_trigger_never_fires(self) -> None:
@@ -325,7 +325,7 @@ class TestShouldFireCeremony:
         ctx = make_context(sprint_pct=1.0, total_tasks=10)
         assert strategy.should_fire_ceremony(ceremony, make_sprint(), ctx) is False
 
-    # -- Infinite firing prevention --
+    # Infinite firing prevention
 
     @pytest.mark.unit
     def test_percentage_trigger_does_not_refire_within_interval(self) -> None:

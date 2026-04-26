@@ -95,7 +95,7 @@ class SettingsEncryptor:
         """Create an encryptor from the ``SYNTHORG_SETTINGS_KEY`` env var.
 
         The encryption key is required for the application to start.
-        It must be set explicitly via the environment variable --
+        It must be set explicitly via the environment variable;
         ``synthorg init`` generates one automatically.
 
         Returns:

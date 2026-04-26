@@ -33,9 +33,9 @@ graph TD
 
 The budget enforcer checks spending at three boundaries:
 
-1. **Pre-flight** -- before a task is assigned, verify sufficient budget remains
-2. **In-flight** -- monitor spending during task execution (best-effort under concurrency)
-3. **Task-boundary** -- auto-downgrade to cheaper models at task assignment (never mid-execution)
+1. **Pre-flight**: before a task is assigned, verify sufficient budget remains
+2. **In-flight**: monitor spending during task execution (best-effort under concurrency)
+3. **Task-boundary**: auto-downgrade to cheaper models at task assignment (never mid-execution)
 
 ---
 
@@ -55,8 +55,8 @@ budget:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `total_monthly` | float | `100.0` | Monthly budget limit. Set to `0` to disable enforcement. |
-| `currency` | string | `"USD"` | ISO 4217 currency code for display. **Display only** -- SynthOrg does not convert LLM provider costs (token prices are USD-denominated). Changing this relabels the symbol but leaves the numeric values untouched. |
-| `reset_day` | int | `1` | Day of the month the budget resets (1--28) |
+| `currency` | string | `"USD"` | ISO 4217 currency code for display. **Display only**; SynthOrg does not convert LLM provider costs (token prices are USD-denominated). Changing this relabels the symbol but leaves the numeric values untouched. |
+| `reset_day` | int | `1` | Day of the month the budget resets (1-28) |
 | `per_task_limit` | float | `5.0` | Maximum cost allowed per individual task |
 | `per_agent_daily_limit` | float | `10.0` | Maximum cost per agent per day |
 
@@ -84,7 +84,7 @@ budget:
 |-------|------|---------|-------------|
 | `warn_at` | int | `75` | Warning threshold (percentage of `total_monthly`) |
 | `critical_at` | int | `90` | Critical alert threshold |
-| `hard_stop_at` | int | `100` | Hard stop -- reject new tasks |
+| `hard_stop_at` | int | `100` | Hard stop: reject new tasks |
 
 **What happens at each level:**
 
@@ -92,7 +92,7 @@ budget:
 |-----------|--------|
 | Below `warn_at` | Normal operation |
 | `warn_at` reached | Warning alert emitted, budget status visible in dashboard |
-| `critical_at` reached | Critical alert emitted. Auto-downgrade is independent -- it triggers at `auto_downgrade.threshold` (default 85%), not `critical_at`. |
+| `critical_at` reached | Critical alert emitted. Auto-downgrade is independent; it triggers at `auto_downgrade.threshold` (default 85%), not `critical_at`. |
 | `hard_stop_at` reached | New task assignment blocked, `BudgetExhaustedError` raised |
 
 !!! warning "Threshold ordering"
@@ -126,7 +126,7 @@ budget:
 
 !!! tip "Downgrades never happen mid-execution"
 
-    The `boundary` is always `"task_assignment"` -- an agent that starts a task on a large model will complete that task on the large model, even if the budget threshold is crossed during execution. The downgrade only applies to the *next* task assignment.
+    The `boundary` is always `"task_assignment"`; an agent that starts a task on a large model will complete that task on the large model, even if the budget threshold is crossed during execution. The downgrade only applies to the *next* task assignment.
 
 ### Downgrade Map
 
@@ -166,7 +166,7 @@ Every LLM API call is recorded as a cost record with full context:
 
     Every sum/average/budget-check site requires a single currency across the
     contributing rows. Mixing currencies raises
-    `MixedCurrencyAggregationError` (HTTP 409). This is by design -- FX
+    `MixedCurrencyAggregationError` (HTTP 409). This is by design: FX
     conversion is out of scope for the initial release; partition records by
     currency first, or apply your own conversion before aggregating.
 
@@ -184,8 +184,8 @@ Every LLM API call is recorded as a cost record with full context:
 
 The budget system provides two aggregation views:
 
-- **Daily summary** -- spending per agent and model for a given day
-- **Period summary** -- spending over a date range with trend data
+- **Daily summary**: spending per agent and model for a given day
+- **Period summary**: spending over a date range with trend data
 
 These are available via the dashboard budget page and the REST API.
 
@@ -205,7 +205,7 @@ departments:
     budget_percent: 20
 ```
 
-Department budgets are advisory -- the hard enforcement is at the company and per-agent levels. Department allocation helps with reporting and planning.
+Department budgets are advisory; the hard enforcement is at the company and per-agent levels. Department allocation helps with reporting and planning.
 
 ---
 
@@ -234,13 +234,13 @@ budget:
 
 **Scenario walkthrough:**
 
-1. **Day 1--15**: Normal operation. The CEO uses the `large` model, developers use `medium`.
+1. **Day 1-15**: Normal operation. The CEO uses the `large` model, developers use `medium`.
 2. **Day 16**: Spending reaches 70% (105 USD). A warning alert is emitted.
 3. **Day 18**: Spending reaches 80% (120 USD). Auto-downgrade triggers:
    - The CEO's *next* task uses `medium` instead of `large`
    - Developers' *next* tasks use `small` instead of `medium`
 4. **Day 22**: Spending reaches 85% (127.50 USD). Critical alert emitted.
-5. **Day 25**: Spending reaches 95% (142.50 USD). Hard stop -- new tasks are rejected until the budget resets on Day 1.
+5. **Day 25**: Spending reaches 95% (142.50 USD). Hard stop: new tasks are rejected until the budget resets on Day 1.
 
 ---
 
@@ -255,7 +255,7 @@ curl http://localhost:3001/api/v1/budget/config \
   -H "Cookie: ${SESSION}" | jq
 ```
 
-Returns the active `BudgetConfig` (limits, alert thresholds, cascade rules, currency). Current period spending and alert level are derived from the cost records stream (`/budget/records` summaries) or the WebSocket `budget` channel -- there is no separate `/budget/status` endpoint today.
+Returns the active `BudgetConfig` (limits, alert thresholds, cascade rules, currency). Current period spending and alert level are derived from the cost records stream (`/budget/records` summaries) or the WebSocket `budget` channel; there is no separate `/budget/status` endpoint today.
 
 ### List cost records
 
@@ -297,7 +297,7 @@ Risk enforcement (`risk_budget.enabled: true`) is handled internally by `RiskTra
 
 ## See Also
 
-- [Company Configuration](company-config.md) -- full configuration reference
-- [Agent Roles & Hierarchy](agents.md) -- per-agent model assignment
-- [Design: Budget & Cost](../design/budget.md) -- budget architecture in the design spec
-- [Notifications & Events](notifications-and-events.md) -- budget alert routing
+- [Company Configuration](company-config.md): full configuration reference
+- [Agent Roles & Hierarchy](agents.md): per-agent model assignment
+- [Design: Budget & Cost](../design/budget.md): budget architecture in the design spec
+- [Notifications & Events](notifications-and-events.md): budget alert routing

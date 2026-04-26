@@ -8,7 +8,7 @@ import { createLocalModelActions } from './providers/local-model-actions'
 export type { ProvidersState } from './providers/types'
 
 export const useProvidersStore = create<ProvidersState>()((set, get) => ({
-  // -- Defaults --
+  // Defaults
   providers: [],
   healthMap: {},
   listLoading: false,
@@ -36,7 +36,7 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
   pullProgress: null,
   deletingModel: false,
 
-  // -- Actions (delegated to focused modules) --
+  // Actions (delegated to focused modules)
   ...createListActions(set),
   ...createDetailActions(set),
   ...createCrudActions(set, get),

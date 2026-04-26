@@ -13,8 +13,8 @@ Agents are the core building blocks of a synthetic organization. Each agent has 
 
 An agent's configuration is split into two layers:
 
-- **Config layer** (frozen) -- identity, personality, role, model, department. Set at creation time and never mutated.
-- **Runtime state** (mutable-via-copy) -- execution status, current task, trust level, cost spent. Evolves during operation using `model_copy(update=...)`.
+- **Config layer** (frozen): identity, personality, role, model, department. Set at creation time and never mutated.
+- **Runtime state** (mutable-via-copy): execution status, current task, trust level, cost spent. Evolves during operation using `model_copy(update=...)`.
 
 This separation means you configure *who an agent is* in YAML, and the engine manages *what the agent is doing* at runtime.
 
@@ -51,7 +51,7 @@ agents:
 | `department` | string | *(required)* | Department this agent belongs to |
 | `level` | SeniorityLevel | `mid` | Seniority level (see table below) |
 | `personality` | dict | `{}` | Personality config injected into the system prompt (see [Personality](#personality-configuration)) |
-| `model` | dict | `{}` | Model assignment -- structured config with tier, priority, min_context |
+| `model` | dict | `{}` | Model assignment: structured config with tier, priority, min_context |
 | `memory` | dict | `{}` | Per-agent memory overrides |
 | `tools` | dict | `{}` | Tool access configuration |
 | `authority` | dict | `{}` | Delegation and approval authority |
@@ -74,9 +74,9 @@ Seniority determines an agent's authority scope, typical model tier, and positio
 | Level | Value | Authority Scope | Typical Model Tier |
 |-------|-------|-----------------|-------------------|
 | Junior | `junior` | Execute assigned tasks | Small |
-| Mid | `mid` | Execute tasks, limited delegation | Small--Medium |
+| Mid | `mid` | Execute tasks, limited delegation | Small/Medium |
 | Senior | `senior` | Delegate to juniors, review work | Medium |
-| Lead | `lead` | Team-level decisions, delegation | Medium--Large |
+| Lead | `lead` | Team-level decisions, delegation | Medium/Large |
 | Principal | `principal` | Cross-team technical decisions | Large |
 | Director | `director` | Department-level strategy | Large |
 | VP | `vp` | Multi-department oversight | Large |
@@ -280,13 +280,13 @@ Templates pre-populate agents, departments, and workflows. You can customize any
 |----------|--------|----------|----------|---------------|
 | `solo_founder` | 2 | Full | Kanban | Event-driven |
 | `startup` | 5 | Semi | Agile/Kanban | Hybrid |
-| `dev_shop` | 6--10 | Semi | Kanban | Hybrid |
-| `product_team` | 8--12 | Semi | Agile/Kanban | Meeting-based |
-| `agency` | 4--8 | Supervised | Pipeline | Hierarchical |
-| `full_company` | 8--15 | Semi | Agile | Hybrid |
-| `research_lab` | 5--10 | Full | Kanban | Event-driven |
-| `consultancy` | 4--6 | Supervised | Pipeline | Hierarchical |
-| `data_team` | 5--8 | Full | Kanban | Event-driven |
+| `dev_shop` | 6-10 | Semi | Kanban | Hybrid |
+| `product_team` | 8-12 | Semi | Agile/Kanban | Meeting-based |
+| `agency` | 4-8 | Supervised | Pipeline | Hierarchical |
+| `full_company` | 8-15 | Semi | Agile | Hybrid |
+| `research_lab` | 5-10 | Full | Kanban | Event-driven |
+| `consultancy` | 4-6 | Supervised | Pipeline | Hierarchical |
+| `data_team` | 5-8 | Full | Kanban | Event-driven |
 
 Templates support **inheritance** via the `extends` keyword (deep merge up to 10 levels) and **variables** with Jinja2 placeholders for customization.
 
@@ -330,8 +330,8 @@ The `priority_boost` field increases the priority of escalated tasks (0 = no cha
 
 ## See Also
 
-- [Company Configuration](company-config.md) -- full configuration reference
-- [Budget & Cost Control](budget.md) -- per-agent budgets and cost tracking
-- [Security & Trust Policies](security.md) -- autonomy levels and trust strategies
-- [Design: Agents](../design/agents.md) -- full design specification for agents
-- [Design: Organization](../design/organization.md) -- template system and hierarchy
+- [Company Configuration](company-config.md): full configuration reference
+- [Budget & Cost Control](budget.md): per-agent budgets and cost tracking
+- [Security & Trust Policies](security.md): autonomy levels and trust strategies
+- [Design: Agents](../design/agents.md): full design specification for agents
+- [Design: Organization](../design/organization.md): template system and hierarchy

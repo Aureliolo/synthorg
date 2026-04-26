@@ -7,11 +7,11 @@ added here.
 The interactive Scalar viewer (``reference.html``) is included so it is
 discoverable by search engines as a landing page for "SynthOrg REST API"
 queries. The raw OpenAPI schema (``openapi.json``) is intentionally
-excluded because Google does not render raw JSON in search results --
+excluded because Google does not render raw JSON in search results;
 including it produced permanent "Discovered, currently not indexed"
 noise in Search Console without any discoverability benefit.
 
-Exclusion is implemented by **omission from** ``EXTRA_PATHS`` below --
+Exclusion is implemented by **omission from** ``EXTRA_PATHS`` below;
 there is no explicit deny-list. To opt a non-Markdown asset out of the
 sitemap, simply leave it out of the tuple.
 

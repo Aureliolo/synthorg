@@ -290,7 +290,7 @@ class InMemoryMessageBus:
                     channel_name=channel_name,
                     delivered_at=now,
                 )
-                # Gate the delivery log on actual enqueue success --
+                # Gate the delivery log on actual enqueue success;
                 # a dropped envelope must not be counted as delivered.
                 if self._enqueue_or_drop(
                     queue,
@@ -549,7 +549,7 @@ class InMemoryMessageBus:
             self._queues.pop(key, None)
             waiters = self._waiters.pop(key, set())
         # Wake every pending ``receive()`` by resolving its per-waiter
-        # future. No sentinel puts, no bounded-queue backpressure --
+        # future. No sentinel puts, no bounded-queue backpressure:
         # ``unsubscribe()`` cannot block regardless of how many
         # waiters are active. ``set_result(None)`` on an already-done
         # future is illegal, so guard against the rare case where a

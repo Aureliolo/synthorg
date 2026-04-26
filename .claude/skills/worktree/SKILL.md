@@ -25,15 +25,17 @@ Create worktrees, copy settings, and generate Claude Code prompts.
 
 ### Input formats (3 modes, from most to least explicit)
 
-**Mode 1 -- Full explicit:**
-```
+**Mode 1: Full explicit:**
+
+```text
 /worktree setup
 feat/delegation-loop-prevention #12,#17 "Delegation + Loop Prevention"
 feat/parallel-execution #22 "Parallel Agent Execution"
 ```
 
-**Mode 2 -- Shorthand (issues + description only):**
-```
+**Mode 2: Shorthand (issues + description only):**
+
+```text
 /worktree setup
 #12,#17 "Delegation + Loop Prevention"
 #22 "Parallel Execution"
@@ -41,7 +43,7 @@ feat/parallel-execution #22 "Parallel Agent Execution"
 Branch names auto-generated from description: `feat/delegation-loop-prevention`.
 Default branch type prefix is `feat/` unless the user specifies otherwise or the issue labels suggest a different type (e.g., `type:bug` → `fix/`, `type:refactor` → `refactor/`).
 
-**Mode 3 -- Issue list only:**
+**Mode 3: Issue list only:**
 
 ```text
 /worktree setup --issues #26,#30,#133,#168
@@ -52,19 +54,19 @@ If no definitions are provided at all, ask the user via AskUserQuestion for:
 1. How many worktrees to create
 2. For each: issues and description (branch names auto-generated)
 
-**Mode 4 -- Description only (no issues):**
+**Mode 4: Description only (no issues):**
 
 ```text
 /worktree setup "improve setup wizard UX"
 ```
 
-Creates a worktree from the description alone -- branch name auto-generated (`feat/improve-setup-wizard-ux`), no issue fetching, no prompt generation. Useful for exploratory work, ad-hoc improvements, or tasks without a GitHub issue. All other setup steps (pre-flight, settings copy, dependency sync) still apply. Skip steps 5-6 (prompt generation and output) -- just report the worktree path and `cd <path> && claude` command.
+Creates a worktree from the description alone: branch name auto-generated (`feat/improve-setup-wizard-ux`), no issue fetching, no prompt generation. Useful for exploratory work, ad-hoc improvements, or tasks without a GitHub issue. All other setup steps (pre-flight, settings copy, dependency sync) still apply. Skip steps 5-6 (prompt generation and output); just report the worktree path and `cd <path> && claude` command.
 
 ### Directory naming
 
 Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (NO `wt-` prefix); the `wt-` prefix is added exclusively by the directory-path template:
 - Example: branch `feat/delegation-loop-prevention` → slug `delegation-loop-prevention` → directory `../synthorg-wt-delegation-loop-prevention`
-- Slug derivation: strip everything up to and including the first `/` in the branch name (covers `feat/`, `fix/`, `refactor/`, `chore/`, `docs/`, `test/`, `perf/`, `ci/`). Then **replace any remaining `/` characters with `-`** so nested branches like `feat/foo/bar` become slug `foo-bar` (never `foo/bar`). The slug must match `^[a-zA-Z0-9._-]+$` after derivation -- reject and abort if it does not.
+- Slug derivation: strip everything up to and including the first `/` in the branch name (covers `feat/`, `fix/`, `refactor/`, `chore/`, `docs/`, `test/`, `perf/`, `ci/`). Then **replace any remaining `/` characters with `-`** so nested branches like `feat/foo/bar` become slug `foo-bar` (never `foo/bar`). The slug must match `^[a-zA-Z0-9._-]+$` after derivation; reject and abort if it does not.
 - Directory template: `../<repo-name>-wt-<slug>` where `<slug>` is the bare derived slug (no `wt-` prefix on the slug itself). The `wt-` in the template is the only source of that prefix, so there is never a double prefix.
 - Repo name extracted from the repository's canonical root metadata (e.g. `basename $(git rev-parse --show-toplevel)`), not the current working directory basename. If running inside a linked worktree, derive the base repo name from shared Git metadata before composing `../<repo-name>-wt-<slug>`.
 
@@ -115,7 +117,7 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
    test -f .claude/settings.local.json
    ```
 
-   If missing, warn: "No .claude/settings.local.json found -- worktrees will prompt for tool permissions." Continue anyway.
+   If missing, warn: "No .claude/settings.local.json found. Worktrees will prompt for tool permissions." Continue anyway.
 
 3. **For each worktree definition**, run in sequence:
 
@@ -167,7 +169,7 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
    go -C <dir-path>/cli mod download
    ```
 
-   **IMPORTANT:** Never use `cd` to change into the worktree directory -- use `--project`, `--prefix`, or `-C` flags instead. `cd` poisons the shell cwd for all subsequent Bash calls.
+   **IMPORTANT:** Never use `cd` to change into the worktree directory; use `--project`, `--prefix`, or `-C` flags instead. `cd` poisons the shell cwd for all subsequent Bash calls.
 
 4. **Verify all worktrees created:**
 
@@ -225,7 +227,7 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
    - #<N>: <summarize acceptance criteria from issue body>
 
    ## Workflow
-   - Plan the full implementation before writing any code -- present the plan for approval
+   - Plan the full implementation before writing any code; present the plan for approval
    - **Write the plan incrementally in small sections, not as one huge file.** Large plan files repeatedly fail with partial / truncated responses. Build the plan section-by-section:
      1. Start with a short outline (section titles only, no body).
      2. Write each section as a separate small Write/Edit call (one section per tool call, <= ~150 lines per section).
@@ -238,12 +240,12 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
    ## Decision Protocol (MANDATORY)
    - For ANY major decision (architecture choice, library inclusion, scope change, feature toggle, data model design, API shape, whether to include/exclude something), use the AskUserQuestion tool to ask the user. NEVER make big decisions autonomously.
    - Present options with pros AND cons. Let the user decide.
-   - Examples of what requires AskUserQuestion: "Should we use X or Y approach?", "Should this feature include Z?", "The spec says X but Y might be better -- which do you prefer?", "This touches N files -- should we split into separate PRs?"
+   - Examples of what requires AskUserQuestion: "Should we use X or Y approach?", "Should this feature include Z?", "The spec says X but Y might be better; which do you prefer?", "This touches N files; should we split into separate PRs?"
 
    ## Quality Standards (MANDATORY)
    - Build BEST IN CLASS. No shortcuts, no "good enough", no "we can improve later".
    - NEVER defer anything. If a finding says "fix X", fix X completely. No TODOs, no stubs, no "phase 2" thinking.
-   - Still alpha: breaking API/interface changes are fine, no backward compatibility shims. BUT schema changes MUST ship proper Atlas migrations (never edit an existing migration; always generate a new one -- for SQLite: `atlas migrate diff <migration_name> --env sqlite`; for Postgres: `atlas migrate diff <migration_name> --env postgres`) so migration paths stay testable.
+   - Still alpha: breaking API/interface changes are fine, no backward compatibility shims. BUT schema changes MUST ship proper Atlas migrations (never edit an existing migration; always generate a new one. For SQLite: `atlas migrate diff <migration_name> --env sqlite`; for Postgres: `atlas migrate diff <migration_name> --env postgres`) so migration paths stay testable.
    - Every piece of work must meet the highest standard of security, UX, maintainability, and correctness.
    ~~~
 
@@ -261,17 +263,17 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
    wt.exe -w 0 new-tab --title "<slug>" -d "<forward-slash-path>"
    ```
 
-   Use forward-slash paths (`C:/Users/Aurelio/synthorg-wt-<slug>`) to avoid Bash interpreting `\t` / `\U` / `\N` as escape sequences. `-w 0` targets the current Windows Terminal window. No trailing command -- see the "Design note (do NOT regress)" block under the `launch` subcommand below for why.
+   Use forward-slash paths (`C:/Users/Aurelio/synthorg-wt-<slug>`) to avoid Bash interpreting `\t` / `\U` / `\N` as escape sequences. `-w 0` targets the current Windows Terminal window. No trailing command. See the "Design note (do NOT regress)" block under the `launch` subcommand below for why.
 
    If not in Windows Terminal or `wt.exe` is missing, skip auto-launch and instead tell the user to run `cd <path> && claude` manually in each target terminal.
 
-7. **Present the output** to the user by printing each worktree's prompt INLINE in chat as a copy-pasteable fenced code block. Do NOT write the prompt to a file -- the user copies directly from chat.
+7. **Present the output** to the user by printing each worktree's prompt INLINE in chat as a copy-pasteable fenced code block. Do NOT write the prompt to a file; the user copies directly from chat.
 
    **Fence nesting policy:** the prompt body generated in step 5e may itself contain triple-backtick code blocks (e.g. `` ```bash `` examples pulled from an issue body). To avoid the outer fence closing prematurely, choose an outer fence marker that never appears inside the body. In practice:
 
    - Scan the generated prompt body for the longest run of consecutive backticks (`longest_backticks`). Use an outer fence of `longest_backticks + 1` backticks (minimum 4 backticks). Include the `text` language tag on the outer fence so markdown lints are happy (e.g. ` ````text ... ```` `).
    - An acceptable fallback is a tilde outer fence (`~~~text ... ~~~`) since the prompt body will not contain tilde fences. Both are valid CommonMark; pick whichever renders cleanly in the chat UI.
-   - **Never** use plain ` ```text ` as the outer wrapper -- any inner `` ``` `` in the prompt body will close it.
+   - **Never** use plain ` ```text ` as the outer wrapper; any inner `` ``` `` in the prompt body will close it.
 
    Format per worktree (tilde-fence example; swap for 4+ backticks if preferred):
 
@@ -292,7 +294,7 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
    - Auto-launched: "N tabs opened in Windows Terminal. In each tab run `claude` and paste the corresponding prompt above."
    - Manual: "N worktrees ready. In each tab run `cd <path> && claude` and paste the corresponding prompt above."
 
-   **Do not save prompts to disk** -- the generated content is ephemeral scaffolding the user adapts on paste. Saving to `.claude/initial-prompt.md` creates stale artifacts that drift from what the user actually submitted.
+   **Do not save prompts to disk**; the generated content is ephemeral scaffolding the user adapts on paste. Saving to `.claude/initial-prompt.md` creates stale artifacts that drift from what the user actually submitted.
 
 ---
 
@@ -300,7 +302,7 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
 
 Open each worktree as a **plain terminal tab** in the current Windows Terminal window. Each tab uses the user's default profile (PowerShell, Git Bash, whatever they normally use) and lands in the worktree directory. The user then manually runs `claude` in each tab. Windows-only.
 
-**Design note (do NOT regress):** Do not pass `claude`, `bash launch.sh`, `pwsh -NoExit -File ...`, or any other command as the wt `new-tab` command. Any command replaces the profile's default commandline, changes the tab's process icon, and breaks the "looks like a normal terminal" expectation that the user explicitly required. Always pass only `-d <path>` (plus `-w 0` and `--title`). This was validated by testing `-d <path>` vs `-d <path> claude` vs `-d <path> bash -c 'claude; exec bash'` -- only the bare `-d <path>` form produced a tab indistinguishable from a manually-opened one.
+**Design note (do NOT regress):** Do not pass `claude`, `bash launch.sh`, `pwsh -NoExit -File ...`, or any other command as the wt `new-tab` command. Any command replaces the profile's default commandline, changes the tab's process icon, and breaks the "looks like a normal terminal" expectation that the user explicitly required. Always pass only `-d <path>` (plus `-w 0` and `--title`). This was validated by testing `-d <path>` vs `-d <path> claude` vs `-d <path> bash -c 'claude; exec bash'`. Only the bare `-d <path>` form produced a tab indistinguishable from a manually-opened one.
 
 ### Input format
 
@@ -321,7 +323,7 @@ Open each worktree as a **plain terminal tab** in the current Windows Terminal w
    ```
 
    - If `wt.exe` is missing: report "Windows Terminal not installed or not on PATH. Cannot launch." and stop.
-   - If `WT_SESSION` is unset: warn "Not running inside Windows Terminal -- tabs will open in a new window." Ask via AskUserQuestion whether to continue.
+   - If `WT_SESSION` is unset: warn "Not running inside Windows Terminal. Tabs will open in a new window." Ask via AskUserQuestion whether to continue.
 
 2. **List worktrees (excluding main):**
 
@@ -344,7 +346,7 @@ Open each worktree as a **plain terminal tab** in the current Windows Terminal w
    ```
 
    - `-w 0` targets the current Windows Terminal window (adds a tab, does not open a new window)
-   - `-d <path>` sets the tab's starting directory. Forward slashes work -- wt accepts them and the shell never rewrites them.
+   - `-d <path>` sets the tab's starting directory. Forward slashes work; wt accepts them and the shell never rewrites them.
    - No trailing command. The default profile starts naturally.
    - Keep calls sequential (one Bash call per worktree). Each call returns exit 0 immediately; wt fires-and-forgets.
 
@@ -355,7 +357,7 @@ Open each worktree as a **plain terminal tab** in the current Windows Terminal w
    In each tab, run: claude
    ```
 
-   Note: `launch` does not know the prompt content -- that is generated fresh by `setup`. If the user ran `/worktree launch` standalone (without a preceding `/worktree setup` in the same chat turn), the tab opens empty and the user types their own prompt. Do not tell them to paste from any file -- the skill no longer writes prompts to disk.
+   Note: `launch` does not know the prompt content; that is generated fresh by `setup`. If the user ran `/worktree launch` standalone (without a preceding `/worktree setup` in the same chat turn), the tab opens empty and the user types their own prompt. Do not tell them to paste from any file; the skill no longer writes prompts to disk.
 
 ### Platform note
 
@@ -397,8 +399,8 @@ Remove worktrees and clean up branches after PRs are merged.
 
    For each worktree branch:
    - If PR is **merged**: safe to remove. Proceed.
-   - If PR is **open**: warn user -- "Branch <name> has open PR #N. Still remove?" Ask via AskUserQuestion.
-   - If **no PR found**: warn -- "No PR found for <branch>. `git branch -D` will permanently delete any unpushed commits on this branch. Still remove?" Ask via AskUserQuestion.
+   - If PR is **open**: warn user: "Branch <name> has open PR #N. Still remove?" Ask via AskUserQuestion.
+   - If **no PR found**: warn: "No PR found for <branch>. `git branch -D` will permanently delete any unpushed commits on this branch. Still remove?" Ask via AskUserQuestion.
 
 5. **For each approved worktree**, remove it and track success:
 
@@ -406,15 +408,15 @@ Remove worktrees and clean up branches after PRs are merged.
    git worktree remove <path>
    ```
 
-   If removal fails (dirty worktree), warn the user and ask via AskUserQuestion whether to force-remove. Track which worktrees were **successfully removed** -- only these branches are eligible for deletion in Step 6.
+   If removal fails (dirty worktree), warn the user and ask via AskUserQuestion whether to force-remove. Track which worktrees were **successfully removed**. Only these branches are eligible for deletion in Step 6.
 
-6. **Delete local feature branches only for successfully removed worktrees.** These are squash-merged so git won't recognize them as merged -- use `-D`:
+6. **Delete local feature branches only for successfully removed worktrees.** These are squash-merged so git won't recognize them as merged. Use `-D`:
 
    ```bash
    git branch -D <successfully-removed-branch1> <successfully-removed-branch2> ...
    ```
 
-   Do NOT delete branches for worktrees that failed removal or where the user declined force-remove -- this would orphan the worktree.
+   Do NOT delete branches for worktrees that failed removal or where the user declined force-remove. This would orphan the worktree.
 
 7. **Verify clean state:**
 
@@ -435,7 +437,7 @@ Remove worktrees and clean up branches after PRs are merged.
    git branch -D <branch-name>
    ```
 
-   This handles gone branches that `/post-merge-cleanup` and `/clean_gone` would otherwise catch -- no need to run them separately after `/worktree cleanup`.
+   This handles gone branches that `/post-merge-cleanup` and `/clean_gone` would otherwise catch; no need to run them separately after `/worktree cleanup`.
 
 9. **Report summary:**
 
@@ -575,7 +577,7 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
    git -C <path> status --short
    ```
 
-   If dirty, warn and skip immediately: "Worktree <name> has uncommitted changes -- skipping rebase."
+   If dirty, warn and skip immediately: "Worktree <name> has uncommitted changes. Skipping rebase."
 
 3. **Then check ahead/behind status relative to main:**
 
@@ -585,9 +587,9 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
 
    This outputs two tab-separated numbers: `<left>\t<right>` where left = commits on main not on branch (behind), right = commits on branch not on main (ahead).
 
-   - If **0 behind AND 0 ahead**: fully up to date -- skip.
-   - If **0 behind AND N ahead**: branch is ahead but main hasn't moved -- skip (rebase is a no-op, branch already contains everything from main).
-   - If **M behind** (regardless of ahead count): this worktree needs rebasing. Warn the user -- "Worktree <name> is M commits behind main (and N ahead). Rebase may cause conflicts." Ask via AskUserQuestion: rebase anyway / skip / abort all.
+   - If **0 behind AND 0 ahead**: fully up to date. Skip.
+   - If **0 behind AND N ahead**: branch is ahead but main hasn't moved. Skip (rebase is a no-op, branch already contains everything from main).
+   - If **M behind** (regardless of ahead count): this worktree needs rebasing. Warn the user: "Worktree <name> is M commits behind main (and N ahead). Rebase may cause conflicts." Ask via AskUserQuestion: rebase anyway / skip / abort all.
 
 4. **For approved worktrees**, rebase:
 
@@ -624,12 +626,12 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
 
 - **Never force-remove** a worktree without asking the user first.
 - **Never delete branches** without checking PR merge status first.
-- **Always check `.claude/` local files exist** before copying -- warn if missing.
+- **Always check `.claude/` local files exist** before copying; warn if missing.
 - **Repo name detection**: extract from the repository's canonical root (`basename $(git rev-parse --show-toplevel)`), not the current directory basename. Strip any existing `wt-` prefix to avoid nested names when running from inside a linked worktree.
 - **Owner/repo detection**: extract from `git remote get-url origin`.
 - **Platform-aware paths**: derive worktree absolute paths dynamically at runtime. On Windows, convert to backslash paths for user-facing output. The `cd <path> && claude` instructions are for the user's own terminal, not Bash tool invocations.
 - Worktree directories are always siblings of the main repo directory (`../`).
-- When generating prompts, read the actual issue bodies -- do not guess or use stale information.
+- When generating prompts, read the actual issue bodies. Do not guess or use stale information.
 - Parse `spec:*` labels to auto-match source directories for prompt generation.
 - Parse `## Dependencies` sections to auto-detect implementation order.
 - **Input validation (CRITICAL):** Before interpolating any user-provided value into shell commands, validate:
@@ -638,7 +640,7 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
   - Label/filter values: must be a reasonable alphanumeric pattern (no shell metacharacters)
   - Owner/repo (from `git remote`): must match `^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$`
   - Directory paths: must not contain shell metacharacters (`;`, `|`, `&`, `$`, `` ` ``, `(`, `)`)
-  - Reject and warn if any value fails validation -- do not execute the command.
+  - Reject and warn if any value fails validation; do not execute the command.
 - **Package manager cache lock contention:** When multiple worktrees run package manager commands concurrently, they can serialize on global cache locks, causing all instances to appear stuck. The `setup` and `rebase` commands pre-sync dependencies sequentially to avoid this. If instances hang:
   - **uv**: lock at `$LOCALAPPDATA/uv/cache/.lock` (Windows), `$HOME/.cache/uv/.lock` (Linux), `~/Library/Caches/uv/.lock` (macOS). Check: `tasklist | findstr uv` (Windows) or `ps aux | grep uv`. Remove stale lock if no processes running.
   - **npm**: lock at `$LOCALAPPDATA/npm-cache/_locks/` (Windows), `$HOME/.npm/_locks/` (Linux/macOS). Check: `tasklist | findstr npm` or `ps aux | grep npm`.

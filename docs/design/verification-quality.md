@@ -9,15 +9,15 @@ This page covers the quality-assurance pipeline attached to agent output: the ve
 
 ## Verification Stage
 
-Verification is a first-class stage in the workflow engine. Three converging research sources -- Marco DeepResearch (verification-centric agent frameworks), GEMS (five-stage agent loop with explicit Verifier), and the Anthropic three-agent harness (Planner/Generator/Evaluator with calibrated grading) -- all converge on verification as a **separate agent with its own context**, not a self-evaluation inside the generator step.
+Verification is a first-class stage in the workflow engine. Three converging research sources (Marco DeepResearch on verification-centric agent frameworks, GEMS on the five-stage agent loop with explicit Verifier, and the Anthropic three-agent harness with Planner/Generator/Evaluator and calibrated grading) all converge on verification as a **separate agent with its own context**, not a self-evaluation inside the generator step.
 
 ### Workflow Node and Edge Types
 
 `WorkflowNodeType.VERIFICATION` is a control-flow node like `CONDITIONAL`. Three dedicated edge types route verification outcomes:
 
-- `VERIFICATION_PASS` -- artifact accepted
-- `VERIFICATION_FAIL` -- artifact rejected, routed to regeneration
-- `VERIFICATION_REFER` -- confidence below threshold, escalated to human review
+- `VERIFICATION_PASS`: artifact accepted
+- `VERIFICATION_FAIL`: artifact rejected, routed to regeneration
+- `VERIFICATION_REFER`: confidence below threshold, escalated to human review
 
 Blueprint validation enforces exactly one of each edge type per verification node.
 
@@ -25,9 +25,9 @@ Blueprint validation enforces exactly one of each edge type per verification nod
 
 Each verification node references a `VerificationRubric` by name. A rubric contains:
 
-- **Criteria** (`RubricCriterion`) -- weighted dimensions with `binary`, `ternary`, or `score` grade types
-- **Calibration examples** -- few-shot demonstrations for LLM graders
-- **Minimum confidence** -- below this threshold, the verdict is overridden to `REFER`
+- **Criteria** (`RubricCriterion`): weighted dimensions with `binary`, `ternary`, or `score` grade types
+- **Calibration examples**: few-shot demonstrations for LLM graders
+- **Minimum confidence**: below this threshold, the verdict is overridden to `REFER`
 
 Built-in rubrics: `frontend-design` (four criteria: design/originality/craft/functionality) and `default-task` (correctness/completeness/probe-adherence).
 
@@ -41,7 +41,7 @@ Acceptance criteria are decomposed into atomic binary probes (`AtomicProbe`) via
 
 ### Self-Evaluation Rejection
 
-> Self-evaluation -- where the generator also judges its own output -- is explicitly rejected. Prior research documents that self-evaluation produces over-confidence and fails to catch the generator's own blind spots. `VerificationResult.evaluator_agent_id` MUST differ from the generator agent ID -- enforced by model validator at construction.
+> Self-evaluation (where the generator also judges its own output) is explicitly rejected. Prior research documents that self-evaluation produces over-confidence and fails to catch the generator's own blind spots. `VerificationResult.evaluator_agent_id` MUST differ from the generator agent ID; enforced by model validator at construction.
 
 ### Pluggable Grading
 
@@ -72,7 +72,7 @@ Default chain: `checkpoint_resume`, `delegation_chain_hash`, `authority_deferenc
 
 **Optional middleware** (registered in `_AGENT_OPT_IN`, must be enabled explicitly):
 
-- `SemanticDriftDetector` (`after_model` slot) -- compares model output against task acceptance criteria using cosine similarity. Opt-in via `CompanyConfig.security.semantic_drift_enabled`. Fail-soft: logs warnings but never blocks.
+- `SemanticDriftDetector` (`after_model` slot): compares model output against task acceptance criteria using cosine similarity. Opt-in via `CompanyConfig.security.semantic_drift_enabled`. Fail-soft: logs warnings but never blocks.
 
 ### Coordination Middleware
 
@@ -118,12 +118,12 @@ execution semantics, and metadata tracking.
 
 Key design decisions:
 
-- **No new TaskStatus values** for pipeline tracking -- tasks stay `IN_REVIEW`
-  throughout; progress is tracked in task metadata.
-- **Short-circuit on FAIL** -- first failing stage sends the task back to
+- **No new TaskStatus values** for pipeline tracking; tasks stay `IN_REVIEW`
+  throughout, with progress tracked in task metadata.
+- **Short-circuit on FAIL**: first failing stage sends the task back to
   `IN_PROGRESS` for rework with the stage name and reason in metadata.
-- **Backward compatible** -- when no pipeline is configured, the existing
-  `ReviewGateService` single-stage behavior is preserved.
+- **Default fallback**: when no pipeline is configured, the existing
+  `ReviewGateService` single-stage behavior runs.
 
 ## Intake Engine
 
@@ -136,7 +136,7 @@ intake strategy contracts.
 
 ## See Also
 
-- [Task & Workflow Engine](engine.md) -- task dispatch, state coordination
-- [Agent Execution](agent-execution.md) -- per-agent execution loop
-- [Coordination](coordination.md) -- multi-agent topology, decomposition
-- [Design Overview](index.md) -- full index
+- [Task & Workflow Engine](engine.md): task dispatch, state coordination
+- [Agent Execution](agent-execution.md): per-agent execution loop
+- [Coordination](coordination.md): multi-agent topology, decomposition
+- [Design Overview](index.md): full index

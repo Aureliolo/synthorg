@@ -8,7 +8,7 @@ You are running in **OpenCode**, not Claude Code. Apply these overrides:
 
 ### Subagent spawning
 
-The rewritten skill launches 152 audit agents with custom embedded prompts via the `Agent` tool. These are NOT mapped to `.opencode/agents/` -- they use inline prompts defined in the skill itself. Spawn each agent with its prompt from the skill's Agent Roster section.
+The rewritten skill launches 152 audit agents with custom embedded prompts via the `Agent` tool. These are NOT mapped to `.opencode/agents/`; they use inline prompts defined in the skill itself. Spawn each agent with its prompt from the skill's Agent Roster section.
 
 ### Scope changes
 

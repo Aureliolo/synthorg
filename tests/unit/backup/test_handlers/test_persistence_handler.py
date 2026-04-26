@@ -244,6 +244,6 @@ class TestCheckIntegrity:
     def test_empty_file_is_treated_as_new_db(self, tmp_path: Path) -> None:
         db_file = tmp_path / "empty.db"
         db_file.write_bytes(b"")
-        # SQLite treats a zero-byte file as a new, valid database --
+        # SQLite treats a zero-byte file as a new, valid database;
         # PRAGMA integrity_check returns "ok".
         assert PersistenceComponentHandler._check_integrity(str(db_file)) is True

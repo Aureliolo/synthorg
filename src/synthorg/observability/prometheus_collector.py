@@ -268,7 +268,7 @@ class PrometheusCollector:
 
         Called from ``RequestLoggingMiddleware`` (``api/middleware.py``)
         once the response is fully constructed. ``route`` is a route
-        template (e.g. ``"/agents/{agent_id}"``), never a raw path --
+        template (e.g. ``"/agents/{agent_id}"``), never a raw path;
         the middleware resolves this via ``scope["route_handler"]``.
 
         Args:

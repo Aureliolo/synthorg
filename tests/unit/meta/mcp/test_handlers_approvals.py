@@ -432,7 +432,7 @@ class TestApprovalsReject:
         ]
         assert len(guardrail) == 1
         assert guardrail[0]["violation"] == "missing_confirm"
-        # Audit event must NOT fire when the guardrail blocks the op --
+        # Audit event must NOT fire when the guardrail blocks the op;
         # a false audit trail would claim a destructive action happened
         # when it did not.
         audit_events = [

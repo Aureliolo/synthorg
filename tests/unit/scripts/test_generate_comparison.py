@@ -27,7 +27,7 @@ def _import_script() -> ModuleType:
 gen = _import_script()
 
 
-# -- Fixtures --
+# Fixtures
 
 
 DIMS: list[dict[str, str]] = [
@@ -92,7 +92,7 @@ def _write_yaml(
     return f
 
 
-# -- _load_data --
+# _load_data
 
 
 @pytest.mark.unit
@@ -261,7 +261,7 @@ class TestResolveLastUpdated:
         assert "empty stdout" in err
 
 
-# -- Helper functions --
+# Helper functions
 
 
 HELPER_DIMS: list[dict[str, str]] = [
@@ -314,7 +314,7 @@ class TestHelpers:
         assert "WARNING" in capsys.readouterr().err
 
 
-# -- Markdown generation --
+# Markdown generation
 
 
 @pytest.mark.unit
@@ -371,7 +371,7 @@ class TestMarkdownGeneration:
         assert "[Website](https://example.com)" in text
 
 
-# -- main() --
+# main()
 
 
 @pytest.mark.unit

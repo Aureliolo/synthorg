@@ -65,7 +65,7 @@ class StateMachine[S: _HasValue]:
         config_event: Event constant emitted at CRITICAL when the
             current state has no entry in the table (i.e. the table
             is stale versus the enum). Should be a DEDICATED config-
-            error event -- not the same constant as ``invalid_event`` --
+            error event (not the same constant as ``invalid_event``)
             so dashboards and alerts can separate user-driven
             validation failures from configuration bugs.
         transition_event: Optional event constant emitted at INFO

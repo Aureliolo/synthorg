@@ -128,7 +128,7 @@ def load_baseline_snapshot(path: Path) -> BaselineSnapshot | None:  # noqa: C901
 
     Returns ``None`` only when the file does not exist (legitimate "no
     baseline yet" state on a fresh checkout).  Raises
-    :class:`BaselineMalformedError` for every other failure mode --
+    :class:`BaselineMalformedError` for every other failure mode:
     JSON parse errors, unreadable bytes, non-object top-level shape,
     missing or typo'd required fields, non-finite or non-positive
     numeric fields.  Surfacing malformed-baseline errors loudly is the

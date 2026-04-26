@@ -99,7 +99,7 @@ competitors:
     slug: synthorg
     url: "https://synthorg.io"
     repo: "https://github.com/Aureliolo/synthorg"
-    description: "Framework for building synthetic organizations; autonomous AI agents orchestrated as a virtual company"
+    description: "Framework for building synthetic organizations, autonomous AI agents orchestrated as a virtual company"
     license: "BUSL-1.1"
     language: "Python"
     category: virtual_org

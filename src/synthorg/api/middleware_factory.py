@@ -325,7 +325,7 @@ def _build_auth_and_csrf(
 
     # CSRF middleware: exempt login/setup (they set the cookie, client
     # cannot carry a CSRF token on the first request), logout (clients
-    # may need to clear a stale session whose CSRF cookie was lost --
+    # may need to clear a stale session whose CSRF cookie was lost;
     # e.g. on app version upgrade; CSRF-protecting logout is low value
     # since forcing a logout is a nuisance, not a compromise), and
     # health.

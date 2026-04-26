@@ -9,10 +9,10 @@ Three race sites are covered:
 1. ``clear()`` / ``aclear()`` racing concurrent ``record_task_metric``
    calls -- without the lock the clear can observe a partially-updated
    ``_task_metrics`` dict and mutators can observe a mid-clear state.
-2. ``get_collaboration_score()`` racing ``record_collaboration_event``
-   -- without the lock, ``list(self._collab_metrics[agent_id])`` can
+2. ``get_collaboration_score()`` racing ``record_collaboration_event``:
+   without the lock, ``list(self._collab_metrics[agent_id])`` can
    read an appended-mid-iteration list.
-3. ``set_inflection_sink()`` as an atomic "set once" operation --
+3. ``set_inflection_sink()`` as an atomic "set once" operation:
    without the lock, two concurrent setters both observe ``None`` and
    both succeed, silently overwriting the first.
 
@@ -114,7 +114,7 @@ class TestClearConcurrentWithRecord:
 
         # The specific race symptom we're guarding against is
         # ``RuntimeError: dictionary changed size during iteration`` /
-        # ``RuntimeError: set changed size during iteration`` --
+        # ``RuntimeError: set changed size during iteration``;
         # assert NO RuntimeError of that shape leaks, not just "no
         # errors at all", so a future regressor that raises a
         # different exception type doesn't hide the race.

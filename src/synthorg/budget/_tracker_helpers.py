@@ -2,8 +2,8 @@
 
 Extracted from :mod:`synthorg.budget.tracker` to keep that module under
 the 800-line limit after the #1446 same-currency invariant landed and
-pushed it over.  These helpers are all pure and framework-agnostic --
-filtering, aggregation, and the same-currency guard -- so they belong
+pushed it over.  These helpers are all pure and framework-agnostic
+(filtering, aggregation, and the same-currency guard) so they belong
 in a leaf module that the tracker composes.
 
 The tracker owns all state; this module is intentionally stateless.

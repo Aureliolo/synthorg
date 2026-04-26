@@ -9,7 +9,7 @@ By default SynthOrg writes structured JSON logs to files inside the Docker volum
 (`/data/logs/`).  For production multi-instance deployments you need those logs
 shipped to a centralized system for aggregation, search, and alerting.
 
-Three approaches are available -- they can be combined.
+Three approaches are available; they can be combined.
 
 | Approach | Mechanism | Best For |
 |----------|-----------|----------|
@@ -58,9 +58,9 @@ logging:
 
 | Field | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `syslog_host` | Yes | -- | Hostname or IP of the syslog receiver |
+| `syslog_host` | Yes | - | Hostname or IP of the syslog receiver |
 | `syslog_port` | No | `514` | Port (1--65535) |
-| `syslog_facility` | No | `user` | Syslog facility: `user`, `local0`--`local7`, `daemon`, `syslog`, `auth`, `kern` |
+| `syslog_facility` | No | `user` | Syslog facility: `user`, `local0` through `local7`, `daemon`, `syslog`, `auth`, `kern` |
 | `syslog_protocol` | No | `udp` | Transport: `udp` or `tcp` |
 | `level` | No | `info` | Minimum log level to ship |
 
@@ -94,7 +94,7 @@ log { source(s_synthorg); filter(f_synthorg); destination(d_synthorg); };
 
 - **Use TCP** when log loss is unacceptable (TCP retries on connection failure)
 - **Use UDP** for high-throughput, low-latency scenarios where occasional loss is tolerable
-- **Dedicated facility** (`local0`--`local7`) makes receiver-side filtering straightforward
+- **Dedicated facility** (`local0` through `local7`) makes receiver-side filtering straightforward
 - **Multiple syslog sinks** with different levels (e.g. ERROR to a pager, INFO to storage) are supported
 
 ---
@@ -141,7 +141,7 @@ logging:
 
 | Field | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `http_url` | Yes | -- | Endpoint URL (`http://` or `https://`) |
+| `http_url` | Yes | - | Endpoint URL (`http://` or `https://`) |
 | `http_headers` | No | `[]` | Extra headers as `[name, value]` pairs |
 | `http_batch_size` | No | `100` | Records per POST batch |
 | `http_flush_interval_seconds` | No | `5.0` | Seconds between automatic flushes |
@@ -269,7 +269,7 @@ logging:
 - When `compress_rotated` is `true`, rotated backups are stored as `.log.N.gz` instead of `.log.N`
 - Compression happens synchronously during rotation (fast for 10 MB files)
 - If compression fails, the uncompressed backup is retained
-- The active log file is never compressed -- only rotated backups
+- The active log file is never compressed; only rotated backups
 - Default: `false` (backward compatible)
 
 ### Disk Space Savings

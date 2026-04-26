@@ -16,7 +16,7 @@ SynthOrg aligns with emerging industry standards for agent-to-tool and agent-to-
 
 MCP provides a standardized interface for LLM agents to discover and invoke external tools. SynthOrg uses the official MCP SDK (`mcp` Python package) as the backbone of its tool integration system.
 
-The MCP bridge subsystem (`tools/mcp/`) connects to MCP-compliant tool servers, discovers available tools at runtime, and exposes them through the same `BaseTool` interface used by built-in tools. This means agents interact with MCP tools identically to native tools -- through the `ToolInvoker` with the same permission checking and sandboxing applied.
+The MCP bridge subsystem (`tools/mcp/`) connects to MCP-compliant tool servers, discovers available tools at runtime, and exposes them through the same `BaseTool` interface used by built-in tools. This means agents interact with MCP tools identically to native tools, through the `ToolInvoker` with the same permission checking and sandboxing applied.
 
 Key integration points:
 

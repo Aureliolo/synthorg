@@ -17,7 +17,7 @@ https://<your-host>/api/v1
 
 The prefix is configurable via the `api_prefix` field of `ApiConfig` (default `/api/v1`). Breaking changes bump the path version; additive changes (new fields, new endpoints, relaxed constraints) ship under the existing version.
 
-When running the server locally you also get two kinds of side paths -- documentation paths (mounted by Litestar at a **fixed** prefix independent of `api_prefix`) and API paths (relative to `api_prefix`):
+When running the server locally you also get two kinds of side paths: documentation paths (mounted by Litestar at a **fixed** prefix independent of `api_prefix`) and API paths (relative to `api_prefix`).
 
 **Documentation paths (fixed at `/docs/*`):**
 
@@ -30,8 +30,8 @@ When running the server locally you also get two kinds of side paths -- document
 
 | Path | Content |
 |---|---|
-| `/api/v1/healthz` | Liveness probe -- always returns 200 while the process is alive (used by supervisors to decide whether to restart the pod) |
-| `/api/v1/readyz` | Readiness probe -- returns 200 when persistence + message bus are healthy, 503 otherwise (used by load-balancers to gate traffic) |
+| `/api/v1/healthz` | Liveness probe; always returns 200 while the process is alive (used by supervisors to decide whether to restart the pod) |
+| `/api/v1/readyz` | Readiness probe; returns 200 when persistence + message bus are healthy, 503 otherwise (used by load-balancers to gate traffic) |
 | `/api/v1/ws` | WebSocket endpoint for server-sent events (approvals, meetings, task lifecycle) |
 
 The static snapshot on this page is produced by `scripts/export_openapi.py`, which takes the live Litestar schema and runs it through `inject_rfc9457_responses` to attach RFC 9457 error response shapes to every operation. The result is a superset of what `/docs/openapi.json` returns at runtime. The generated `reference.html` carries SEO metadata (descriptive `<title>`, `<meta description>`, `<link rel="canonical">`, and a screen-reader-only `<h1>`) so search engines can surface it as the primary "SynthOrg REST API" landing page; `openapi.json` is intentionally kept out of the sitemap because Google does not render raw JSON in search results.
@@ -44,7 +44,7 @@ SynthOrg uses **JWT session tokens** issued by the auth controller. The typical 
 
 1. **First-run setup.** On a fresh install, `POST /api/v1/auth/setup` creates the initial CEO account. After setup completes, this endpoint returns a conflict error.
 2. **Login.** `POST /api/v1/auth/login` with a username and password returns a `TokenResponse` carrying a signed JWT, its `expires_in` (seconds), and a `must_change_password` flag. Include the token on subsequent requests as `Authorization: Bearer <token>`. A server-side session record is created as a side effect and is retrievable via `GET /api/v1/auth/sessions`.
-3. **Password change.** New users are forced through `POST /api/v1/auth/change-password` before any other endpoint accepts their token -- the `require_password_changed` guard blocks everything else until the temporary password is rotated.
+3. **Password change.** New users are forced through `POST /api/v1/auth/change-password` before any other endpoint accepts their token; the `require_password_changed` guard blocks everything else until the temporary password is rotated.
 4. **Current identity.** `GET /api/v1/auth/me` returns the caller's `id`, `username`, `role`, and `must_change_password` flag (no session metadata).
 5. **WebSocket tickets.** Browsers can't set `Authorization` headers on WebSocket connections, so `POST /api/v1/auth/ws-ticket` mints a short-lived single-use ticket. The **preferred** way to present it is as the first WebSocket message (`{"action": "auth", "ticket": "<ticket>"}`) so the ticket never lands in URLs, access logs, or browser history. A legacy `/api/v1/ws?ticket=<ticket>` query-param form is also accepted and is validated before the WebSocket upgrade.
 6. **Session management.** `GET /api/v1/auth/sessions` lists the caller's active sessions by default; CEOs can pass `?scope=all` to list every user's sessions across the organization. `DELETE /api/v1/auth/sessions/{session_id}` revokes a specific session. `POST /api/v1/auth/logout` is the normal "log out of this browser" action and **attempts server-side revocation** of the JTI when a valid JWT is presented. Logout is **idempotent**: it always returns 204 with cookie-clearing headers (`Max-Age=0` session/CSRF/refresh cookies plus `Clear-Site-Data: "cookies"`), whether or not the caller is authenticated, so clients can recover from stale cookie state without a catch-22. Logout is excluded from both auth middleware and CSRF double-submit validation so recovery works from any stale-cookie state; the server-side revocation step is best-effort (a session-store failure still returns 204 and clears cookies rather than 500-ing the client). There is no bulk "revoke all" endpoint.
@@ -103,7 +103,8 @@ The API is organised into resource controllers. Every controller is mounted unde
 
 | Resource | Path | Purpose |
 |---|---|---|
-| Health | `/health` | Liveness + readiness |
+| Liveness | `/healthz` | Process-alive probe (always 200) |
+| Readiness | `/readyz` | Dependency probe (200 healthy, 503 otherwise) |
 | Providers | `/providers` | LLM provider runtime CRUD, model auto-discovery, health |
 | Budget | `/budget` | Cost tracking, spend reports, budget enforcement, risk budget |
 | Analytics | `/analytics` | Aggregated metrics across agents, tasks, and providers |
@@ -152,7 +153,7 @@ Real-time updates (approval requests, meeting state, task transitions, routing d
 
 Errors use [RFC 9457 Problem Details for HTTP APIs](https://datatracker.ietf.org/doc/html/rfc9457). The server supports two response shapes, selected via content negotiation:
 
-**Bare `application/problem+json`** -- returned when the client sends `Accept: application/problem+json`:
+**Bare `application/problem+json`** is returned when the client sends `Accept: application/problem+json`:
 
 ```json
 {
@@ -168,7 +169,7 @@ Errors use [RFC 9457 Problem Details for HTTP APIs](https://datatracker.ietf.org
 }
 ```
 
-**Envelope form** (`ApiResponse[T]`) -- the default, returned for `application/json` or no explicit `Accept` header:
+**Envelope form** (`ApiResponse[T]`) is the default, returned for `application/json` or no explicit `Accept` header:
 
 ```json
 {
@@ -188,7 +189,7 @@ Errors use [RFC 9457 Problem Details for HTTP APIs](https://datatracker.ietf.org
 }
 ```
 
-In both shapes, `instance` is the **request correlation ID** used for log tracing -- not the request URL path. The `error_code` field is a 4-digit machine-readable code grouped by category, and `error_category` is the lowercase category identifier:
+In both shapes, `instance` is the **request correlation ID** used for log tracing, not the request URL path. The `error_code` field is a 4-digit machine-readable code grouped by category, and `error_category` is the lowercase category identifier:
 
 | Range | `error_category` | Examples (`error_code` name) |
 |---|---|---|
@@ -207,7 +208,15 @@ The `type` URI points to the category section of the [Error Reference](../errors
 
 ## Rate Limiting
 
-The API applies three-tier rate limiting via `synthorg.api.config.RateLimitConfig` (layered on top of Litestar's built-in rate-limit middleware): an un-gated per-IP floor (default 10,000/min/IP, covers every request including those the auth middleware rejects with 401), a per-IP unauthenticated tier (default 20/min/IP, only fires when `scope["user"]` is unset), and a per-user authenticated tier (default 6,000/min/user). The floor default is sized above both user-gated caps so shared-NAT deployments do not clip legitimate traffic; a Pydantic validator on `RateLimitConfig` rejects a floor lower than either the authenticated or unauthenticated cap. All three are configurable per deployment -- see `docs/security.md` for tuning, and `synthorg.api.config.RateLimitConfig` for the source-of-truth field descriptions and validator logic. Clients that exceed any tier receive `429 Too Many Requests` carrying `error_code` 5000 (`RATE_LIMITED`) and a `Retry-After` header. In the envelope form the code lives at `error_detail.error_code`.
+The API applies three-tier rate limiting via `synthorg.api.config.RateLimitConfig`, layered on top of Litestar's built-in rate-limit middleware:
+
+- **Per-IP floor** (default 10,000/min/IP): un-gated, covers every request including those the auth middleware rejects with 401.
+- **Per-IP unauthenticated tier** (default 20/min/IP): only fires when `scope["user"]` is unset.
+- **Per-user authenticated tier** (default 6,000/min/user).
+
+The floor default is sized above both user-gated caps so shared-NAT deployments do not clip legitimate traffic. A Pydantic validator on `RateLimitConfig` rejects a floor lower than either the authenticated or unauthenticated cap. All three tiers are configurable per deployment; see `docs/security.md` for tuning, and `synthorg.api.config.RateLimitConfig` for the source-of-truth field descriptions and validator logic.
+
+Clients that exceed any tier receive `429 Too Many Requests` carrying `error_code` 5000 (`RATE_LIMITED`) and a `Retry-After` header. In the envelope form the code lives at `error_detail.error_code`.
 
 ---
 
@@ -219,8 +228,8 @@ CORS is disabled by default for non-local origins. Add trusted dashboard origins
 
 ## Further Reading
 
-- **[Interactive API Reference](reference.html)** -- every endpoint, request body, and response schema
-- **[OpenAPI Schema](openapi.json)** -- raw schema for codegen and tooling
-- **[Error Reference](../errors.md)** -- full error taxonomy and codes
-- **[Security](../security.md)** -- authn/authz design, trust levels, audit log
-- **[Architecture](../architecture/index.md)** -- where the API sits in the overall system
+- **[Interactive API Reference](reference.html)**: every endpoint, request body, and response schema
+- **[OpenAPI Schema](openapi.json)**: raw schema for codegen and tooling
+- **[Error Reference](../errors.md)**: full error taxonomy and codes
+- **[Security](../security.md)**: authn/authz design, trust levels, audit log
+- **[Architecture](../architecture/index.md)**: where the API sits in the overall system

@@ -1,7 +1,7 @@
 [project]
 name = "synthorg"
 dynamic = ["version"]
-description = "Framework for building synthetic organizations -- autonomous AI agents orchestrated as a virtual company"
+description = "Framework for building synthetic organizations, autonomous AI agents orchestrated as a virtual company"
 readme = "README.md"
 license = "BUSL-1.1"
 requires-python = ">=3.14"
@@ -126,7 +126,7 @@ dev = [
 #                      index so no CUDA runtime is bundled. ~2.3 GB smaller.
 #
 # The two extras are declared mutually exclusive so uv can lock them
-# independently -- one resolution pins CUDA torch, the other pins CPU torch.
+# independently; one resolution pins CUDA torch, the other pins CPU torch.
 # Build-time: the Dockerfile picks the extra via the FINE_TUNE_EXTRA build-arg.
 # Runtime: the CLI init flow prompts GPU vs CPU when fine-tuning is enabled.
 [tool.uv]
@@ -153,7 +153,7 @@ torch = [
 ]
 
 # ---------------------------------------------------------------------------
-# Ruff -- linter + formatter (replaces flake8, isort, pyupgrade, etc.)
+# Ruff: linter + formatter (replaces flake8, isort, pyupgrade, etc.)
 # ---------------------------------------------------------------------------
 [tool.ruff]
 target-version = "py314"
@@ -193,7 +193,7 @@ select = [
     "FURB",   # refurb
     "RUF",    # ruff-specific rules
     "S",      # flake8-bandit (security)
-    # "FAST" removed -- using Litestar, not FastAPI
+    # "FAST" removed: using Litestar, not FastAPI
     "ASYNC",  # flake8-async
     "FBT",    # flake8-boolean-trap
     "PL",     # pylint
@@ -243,7 +243,7 @@ known-first-party = ["synthorg"]
 docstring-code-format = true
 
 # ---------------------------------------------------------------------------
-# mypy -- static type checker (strict mode)
+# mypy: static type checker (strict mode)
 # ---------------------------------------------------------------------------
 [tool.mypy]
 python_version = "3.14"
@@ -307,7 +307,7 @@ init_typed = true
 warn_required_dynamic_aliases = true
 
 # ---------------------------------------------------------------------------
-# pyright -- IDE type checking only (not used in CI)
+# pyright: IDE type checking only (not used in CI)
 # ---------------------------------------------------------------------------
 [tool.pyright]
 pythonVersion = "3.14"
@@ -316,7 +316,7 @@ venvPath = "."
 venv = ".venv"
 
 # ---------------------------------------------------------------------------
-# commitizen -- conventional commits
+# commitizen: conventional commits
 # ---------------------------------------------------------------------------
 [tool.commitizen]
 name = "cz_conventional_commits"
@@ -324,7 +324,7 @@ version = "0.7.3" # x-release-please-version
 tag_format = "v$version"
 
 # ---------------------------------------------------------------------------
-# pytest -- test runner
+# pytest: test runner
 # ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -360,14 +360,14 @@ filterwarnings = [
     # finalizers emit ResourceWarning during xdist worker teardown.
     # These are GC-triggered cleanup warnings, not test failures.
     # The ``unraisableexception`` plugin promotes them to errors
-    # which randomly crash xdist workers. Safe to ignore -- the
+    # which randomly crash xdist workers. Safe to ignore; the
     # underlying resources are cleaned up by the OS on process exit.
     "ignore:unclosed event loop:ResourceWarning",
     "ignore:unclosed.*socket:ResourceWarning",
 ]
 
 # ---------------------------------------------------------------------------
-# coverage -- test coverage reporting
+# coverage: test coverage reporting
 # ---------------------------------------------------------------------------
 [tool.coverage.run]
 source = ["synthorg"]

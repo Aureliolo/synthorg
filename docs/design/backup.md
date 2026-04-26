@@ -5,7 +5,7 @@ description: Automated and manual backups, pluggable ComponentHandler protocol, 
 
 # Backup and Restore
 
-The backup system protects persistent data -- persistence DB, agent memory, and company configuration -- through automated and manual backups with configurable retention policies and validated restore.
+The backup system protects persistent data (persistence DB, agent memory, and company configuration) through automated and manual backups with configurable retention policies and validated restore.
 
 ---
 
@@ -44,7 +44,7 @@ The backup system protects persistent data -- persistence DB, agent memory, and 
 Backup settings live in the `backup` namespace with runtime editability via `BackupSettingsSubscriber`:
 
 - `enabled`: Toggle scheduler start/stop
-- `schedule_hours`: Reschedule interval (1--168 hours)
+- `schedule_hours`: Reschedule interval (1 to 168 hours)
 - `compression`, `on_shutdown`, `on_startup`: Advisory (read at use time)
 - `path`: Requires restart (not dispatched)
 
@@ -62,6 +62,6 @@ Backup settings live in the `backup` namespace with runtime editability via `Bac
 
 ## See Also
 
-- [Persistence](persistence.md) -- repository protocol, migrations, schema
-- [Deployment](deployment.md) -- container runtime
-- [Design Overview](index.md) -- full index
+- [Persistence](persistence.md): repository protocol, migrations, schema
+- [Deployment](deployment.md): container runtime
+- [Design Overview](index.md): full index

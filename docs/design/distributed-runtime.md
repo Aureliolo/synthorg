@@ -184,9 +184,9 @@ Both accessors satisfy the same `HistoryAccessor` protocol so each backend's `ge
 
 `nats-py` handles auto-reconnect transparently. The backend emits three new observability events on top of the existing bus event inventory:
 
-- `COMM_BUS_CONNECTED` -- initial connection established or reconnection succeeded
-- `COMM_BUS_RECONNECTING` -- client is attempting to reconnect after a disconnect
-- `COMM_BUS_DISCONNECTED` -- connection lost (paired with a later `RECONNECTING` or `CONNECTED`)
+- `COMM_BUS_CONNECTED`: initial connection established or reconnection succeeded
+- `COMM_BUS_RECONNECTING`: client is attempting to reconnect after a disconnect
+- `COMM_BUS_DISCONNECTED`: connection lost (paired with a later `RECONNECTING` or `CONNECTED`)
 
 All existing bus events (`COMM_BUS_STARTED`, `COMM_CHANNEL_CREATED`, `COMM_MESSAGE_PUBLISHED`, `COMM_MESSAGE_DELIVERED`, `COMM_SUBSCRIPTION_CREATED`, etc.) are emitted by the NATS backend with the same payload shape as the in-memory backend, so observability dashboards and log filters work identically regardless of which backend is active.
 
@@ -200,8 +200,8 @@ The task queue in Phase 4 builds on top of the NATS backend but does **not** go 
 
 A second JetStream stream named `SYNTHORG_TASKS` with `WorkQueuePolicy` retention. `WorkQueuePolicy` means: messages are deleted from the stream once any consumer successfully acks them. This is the native JetStream primitive for work queues and matches classic task-queue semantics.
 
-- **Subject (ready)**: `synthorg.tasks.ready.<task_id>` -- tasks the TaskEngine has transitioned to a runnable state
-- **Subject (dead)**: `synthorg.tasks.dead.<task_id>` -- dead-letter subject for tasks that exceeded `max_deliver`
+- **Subject (ready)**: `synthorg.tasks.ready.<task_id>` for tasks the TaskEngine has transitioned to a runnable state
+- **Subject (dead)**: `synthorg.tasks.dead.<task_id>`, the dead-letter subject for tasks that exceeded `max_deliver`
 
 ### Worker lifecycle
 
@@ -279,7 +279,7 @@ Non-interactive mode honors the existing `--yes` / `SYNTHORG_YES` convention by 
 
 These are the exact strings the picker shows and the exact framing this design page uses. Neither backend is marked "recommended". `internal` is marked **default** because it is the config default, not because it is better.
 
-**In-process queue (`internal`) -- default**
+**In-process queue (`internal`): default**
 
 Runs inside the backend container using `asyncio` queues. No extra services.
 
@@ -329,9 +329,9 @@ Every bus event emitted by the in-memory backend is emitted identically by the N
 
 The NATS backend adds three events scoped to connection lifecycle:
 
-- `COMM_BUS_CONNECTED` -- initial connection or successful reconnect
-- `COMM_BUS_RECONNECTING` -- reconnect attempt in progress
-- `COMM_BUS_DISCONNECTED` -- connection lost
+- `COMM_BUS_CONNECTED`: initial connection or successful reconnect
+- `COMM_BUS_RECONNECTING`: reconnect attempt in progress
+- `COMM_BUS_DISCONNECTED`: connection lost
 
 These are scoped to the NATS backend. The in-memory backend never emits them (there is no connection).
 
@@ -339,11 +339,11 @@ These are scoped to the NATS backend. The in-memory backend never emits them (th
 
 Once NATS is running, operators can inspect bus state without a Python interpreter:
 
-- `nats stream ls` -- list streams, including `SYNTHORG_BUS` and (if Phase 4 is running) `SYNTHORG_TASKS`
-- `nats stream info SYNTHORG_BUS` -- message counts, subject cardinality, retention policy
-- `nats consumer ls SYNTHORG_BUS` -- per-(channel, subscriber) durable consumers with pending / delivered / ack-pending counts
-- `nats sub 'synthorg.bus.channel.>'` -- tail messages across all bus channels in real time
-- `docker compose exec nats wget -qO- localhost:8222/varz` -- NATS monitoring HTTP endpoint, exposes Prometheus-compatible metrics (not mapped to a host port by default; use a compose override if external access is needed)
+- `nats stream ls`: list streams, including `SYNTHORG_BUS` and (if Phase 4 is running) `SYNTHORG_TASKS`
+- `nats stream info SYNTHORG_BUS`: message counts, subject cardinality, retention policy
+- `nats consumer ls SYNTHORG_BUS`: per-(channel, subscriber) durable consumers with pending / delivered / ack-pending counts
+- `nats sub 'synthorg.bus.channel.>'`: tail messages across all bus channels in real time
+- `docker compose exec nats wget -qO- localhost:8222/varz`: NATS monitoring HTTP endpoint, exposes Prometheus-compatible metrics (not mapped to a host port by default; use a compose override if external access is needed)
 
 ---
 
@@ -361,12 +361,12 @@ Points to resolve during Phase 1 review. Each becomes a decision the Phase 2 imp
 
 ## Related Reading
 
-- [Communication](communication.md) -- `MessageBus` protocol, message format, channel types
-- [Engine](engine.md) -- `TaskEngine` single-writer mutation queue, task lifecycle
-- [Deployment](deployment.md) -- container runtime, image verification
-- [Observability](observability.md) -- structured logging, correlation, sinks
-- [Notifications](notifications.md) -- notification dispatcher and sinks
-- [Architecture: Tech Stack](../architecture/tech-stack.md) -- Message Bus row in the stack table
-- [Roadmap: Scaling Path](../roadmap/future-vision.md#scaling-path) -- Phase 2 Local Multi-Process constraints
-- [Issue #236](https://github.com/Aureliolo/synthorg/issues/236) -- distributed/persistent message bus backend
-- [Issue #237](https://github.com/Aureliolo/synthorg/issues/237) -- distributed task queue
+- [Communication](communication.md): `MessageBus` protocol, message format, channel types
+- [Engine](engine.md): `TaskEngine` single-writer mutation queue, task lifecycle
+- [Deployment](deployment.md): container runtime, image verification
+- [Observability](observability.md): structured logging, correlation, sinks
+- [Notifications](notifications.md): notification dispatcher and sinks
+- [Architecture: Tech Stack](../architecture/tech-stack.md): Message Bus row in the stack table
+- [Roadmap: Scaling Path](../roadmap/future-vision.md#scaling-path): Phase 2 Local Multi-Process constraints
+- [Issue #236](https://github.com/Aureliolo/synthorg/issues/236): distributed/persistent message bus backend
+- [Issue #237](https://github.com/Aureliolo/synthorg/issues/237): distributed task queue

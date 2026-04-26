@@ -303,7 +303,7 @@ class TestSaveIfPendingConcurrency:
 
         Without this guard, ``save()`` releasing the store lock for
         repo I/O lets ``save_if_pending()`` enter, read the stale
-        cached ``PENDING`` item, and persist a competing decision --
+        cached ``PENDING`` item, and persist a competing decision,
         reopening the lost-update race that FWW is meant to close.
         """
         repo = GatedRepo()

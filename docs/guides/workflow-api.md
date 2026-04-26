@@ -5,7 +5,7 @@ description: curl tutorials for creating, versioning, activating, executing, and
 
 # Workflow API Tutorial
 
-This guide shows you how to drive the workflow engine programmatically. It walks the full lifecycle -- create a workflow definition, save a version, activate it into an execution, track per-node status, and cancel when needed -- with curl examples you can copy-paste.
+This guide shows you how to drive the workflow engine programmatically. It walks the full lifecycle (create a workflow definition, save a version, activate it into an execution, track per-node status, and cancel when needed) with curl examples you can copy-paste.
 
 The full schema for every endpoint is in the [OpenAPI reference](../openapi/index.md). This page is the narrative counterpart: when to call which endpoint, and how the pieces fit together.
 
@@ -125,7 +125,7 @@ curl -X POST "http://localhost:3001/api/v1/workflows/${WF_ID}/versions/rollback"
   -d '{"target_version": 1, "reason": "v2 introduced a routing bug"}' | jq
 ```
 
-Rollback writes a new revision whose content hash equals the restored version -- history is never mutated, just extended.
+Rollback writes a new revision whose content hash equals the restored version; history is never mutated, just extended.
 
 ## 6. Activate into an execution
 
@@ -172,7 +172,7 @@ curl "http://localhost:3001/api/v1/workflow-executions/${WFE_ID}" \
 
 Node statuses progress through: `pending` -> `task_created` -> `task_completed` / `task_failed` / `skipped` (for conditional branches not taken).
 
-Real-time updates are also available via the WebSocket `tasks` channel -- see [Notifications & Events](notifications-and-events.md).
+Real-time updates are also available via the WebSocket `tasks` channel; see [Notifications & Events](notifications-and-events.md).
 
 ## 8. List all executions for a definition
 
@@ -217,6 +217,6 @@ See the [engine design](../design/engine.md#subworkflows) for the full subworkfl
 
 ## See Also
 
-- [OpenAPI Reference](../openapi/index.md) -- full schema for every endpoint
-- [Design: Task & Workflow Engine](../design/engine.md) -- workflow types, node types, edge types, validation
-- [Notifications & Events](notifications-and-events.md) -- subscribe to task lifecycle events in real time
+- [OpenAPI Reference](../openapi/index.md): full schema for every endpoint
+- [Design: Task & Workflow Engine](../design/engine.md): workflow types, node types, edge types, validation
+- [Notifications & Events](notifications-and-events.md): subscribe to task lifecycle events in real time

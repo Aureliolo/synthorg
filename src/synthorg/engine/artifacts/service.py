@@ -6,8 +6,8 @@ save / delete artifacts without reaching into
 ``API_ARTIFACT_*`` logging so every mutation has the same audit shape.
 
 Content storage (upload / download / rollback) stays in the controller
-because it depends on :class:`ArtifactStorage` rather than the repository
--- a distinct boundary from persistence that already has its own
+because it depends on :class:`ArtifactStorage` rather than the repository,
+a distinct boundary from persistence that already has its own
 backing-store abstraction.
 """
 

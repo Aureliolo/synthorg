@@ -52,7 +52,7 @@ class TestLogfireReporterReportRaises:
         # delivery. ``logfire.configure`` is patched so it does NOT
         # spawn the background ``check_logfire_token`` thread that
         # would otherwise hit the real Logfire API with a bogus
-        # token and raise an unhandled 401 in a worker thread --
+        # token and raise an unhandled 401 in a worker thread;
         # pytest-threadexception surfaces those as test errors in
         # the full-suite run the pre-push hook triggers.
         monkeypatch.setenv(

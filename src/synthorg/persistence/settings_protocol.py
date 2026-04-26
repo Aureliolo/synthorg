@@ -162,7 +162,7 @@ class SettingsRepository(Protocol):
         """Atomically delete all settings in a namespace, returning the keys.
 
         Equivalent to :meth:`delete_namespace` but returns the keys
-        whose rows were actually removed in a single transaction --
+        whose rows were actually removed in a single transaction;
         callers (notably :class:`SettingsService.delete_namespace`)
         rely on this to scope per-key change-publish notifications to
         the subset that genuinely changed, without a TOCTOU

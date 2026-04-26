@@ -1,10 +1,10 @@
 ---
-name: tool-parity-checker
 description: Verifies Claude Code and OpenCode configuration parity; checks that changes to .claude/ or .opencode/ files maintain dual-tool compatibility
-tools:
-  - Read
-  - Grep
-  - Glob
+mode: subagent
+permission:
+  Read: allow
+  Grep: allow
+  Glob: allow
 ---
 
 # Tool Parity Checker Agent

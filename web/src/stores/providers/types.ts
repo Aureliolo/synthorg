@@ -17,26 +17,26 @@ import type {
 import type { ProviderWithName, ProviderSortKey } from '@/utils/providers'
 
 export interface ProvidersState {
-  // -- List view --
+  // List view
   providers: readonly ProviderWithName[]
   healthMap: Record<string, ProviderHealthSummary>
   listLoading: boolean
   listError: string | null
 
-  // -- Filters --
+  // Filters
   searchQuery: string
   healthFilter: ProviderHealthStatus | null
   sortBy: ProviderSortKey
   sortDirection: 'asc' | 'desc'
 
-  // -- Detail view --
+  // Detail view
   selectedProvider: ProviderWithName | null
   selectedProviderModels: readonly ProviderModelResponse[]
   selectedProviderHealth: ProviderHealthSummary | null
   detailLoading: boolean
   detailError: string | null
 
-  // -- CRUD / mutations --
+  // CRUD / mutations
   presets: readonly ProviderPreset[]
   presetsLoading: boolean
   presetsError: string | null
@@ -45,12 +45,12 @@ export interface ProvidersState {
   discoveringModels: boolean
   mutating: boolean
 
-  // -- Local model management --
+  // Local model management
   pullingModel: boolean
   pullProgress: PullProgressEvent | null
   deletingModel: boolean
 
-  // -- Actions --
+  // Actions
   fetchProviders: () => Promise<void>
   fetchProviderDetail: (name: string) => Promise<void>
   fetchPresets: () => Promise<void>

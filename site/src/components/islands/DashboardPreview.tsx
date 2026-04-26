@@ -150,7 +150,7 @@ export default function DashboardPreview() {
             ))}
           </div>
 
-          {/* Page content -- fixed height to prevent layout shift */}
+          {/* Page content: fixed height to prevent layout shift */}
           <div
             id="dp-tabpanel"
             className="p-4 h-[360px] sm:h-[420px] overflow-hidden flex items-start"

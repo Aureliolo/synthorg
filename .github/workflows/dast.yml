@@ -9,7 +9,7 @@ permissions: {}
 
 concurrency:
   group: ${{ github.workflow }}
-  cancel-in-progress: false  # Serialize -- only one DAST scan at a time
+  cancel-in-progress: false  # Serialize: only one DAST scan at a time
 
 jobs:
   zap-scan:
@@ -28,7 +28,7 @@ jobs:
 
       # Create env file with generated secrets (compose requires env_file: .env).
       # Postgres is a required compose service, so POSTGRES_PASSWORD must be set
-      # even for API-only scans -- the backend connects on startup.
+      # even for API-only scans; the backend connects on startup.
       - name: Create env file
         run: |
           cp docker/.env.example docker/.env
@@ -63,7 +63,7 @@ jobs:
       #
       # Uses the same system-user identity (sub=system, iss=synthorg-cli,
       # aud=synthorg-backend) that the Go CLI uses.  The system user is
-      # bootstrapped at backend startup and skips pwd_sig validation --
+      # bootstrapped at backend startup and skips pwd_sig validation;
       # the JWT HMAC signature is the sole auth gate.
       # See: src/synthorg/api/auth/middleware.py _resolve_jwt_user()
       - name: Generate DAST JWT
@@ -91,11 +91,11 @@ jobs:
       # -T 20 caps ZAP startup + passive scanning at 20 minutes.
       # -J/-r produce machine-parseable and human-readable report artifacts.
       # -z passes performance tuning directly to ZAP:
-      #   threadPerHost=5    -- faster on localhost (default 2)
-      #   maxRuleDurationInMins=5  -- no single rule dominates scan time
-      #   maxScanDurationInMins=30 -- hard cap on the active scan phase
+      #   threadPerHost=5            (faster on localhost; default 2)
+      #   maxRuleDurationInMins=5    (no single rule dominates scan time)
+      #   maxScanDurationInMins=30   (hard cap on the active scan phase)
       # Rules file promotes critical findings to FAIL and suppresses validated
-      # false positives -- see docs/security.md "DAST Tuning" for rationale.
+      # false positives; see docs/security.md "DAST Tuning" for rationale.
       - name: ZAP API Scan
         uses: zaproxy/action-api-scan@5158fe4d9d8fcc75ea204db81317cce7f9e5453d # v0.10.0
         env:
@@ -166,8 +166,8 @@ jobs:
 
           Likely cause: backend image failed to boot, OpenAPI spec
           regression broke the scanner target, or ZAP itself errored.
-          The scan-finding issue (created by the ZAP action) is separate
-          -- this tracking issue is for the workflow plumbing itself.
+          The scan-finding issue (created by the ZAP action) is separate;
+          this tracking issue is for the workflow plumbing itself.
           EOF
             echo 'TRACKING_ISSUE_BODY_EOF'
           } >> "$GITHUB_OUTPUT"

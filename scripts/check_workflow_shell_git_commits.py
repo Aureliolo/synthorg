@@ -176,7 +176,7 @@ def _scan_file(path: Path) -> list[tuple[str, str]]:
                 continue
             if has_push and commit_seen:
                 # Split-step violation: a prior step in this job
-                # committed, this step pushes. Flag the push step --
+                # committed, this step pushes. Flag the push step:
                 # the push is the visible side-effect, and flagging
                 # both would be noisy.
                 hits.append((str(job_id), str(step_key)))

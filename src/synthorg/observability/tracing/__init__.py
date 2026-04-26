@@ -10,8 +10,8 @@ Exposes a narrow surface for the rest of the codebase:
 * :func:`llm_span` / :func:`tool_span` context-manager helpers used by
   ``engine.loop_helpers`` and ``tools.invoker`` respectively.
 
-The rest of the codebase never imports :mod:`opentelemetry` directly
--- only this subsystem does. This keeps the OTel SDK's surface
+The rest of the codebase never imports :mod:`opentelemetry` directly;
+only this subsystem does. This keeps the OTel SDK's surface
 contained and makes the pluggable-protocol boundary explicit.
 """
 

@@ -179,7 +179,7 @@ class TestCustomRuleRepositoryConformance:
     async def test_non_utc_timestamps_normalised_on_round_trip(
         self, backend: PersistenceBackend
     ) -> None:
-        # Assert tzinfo AND the exact UTC instant for both timestamps --
+        # Assert tzinfo AND the exact UTC instant for both timestamps;
         # a backend that incorrectly shifted the wall-clock time but
         # kept the offset would still satisfy a tzinfo-only check.
         offset_tz = timezone(timedelta(hours=5))

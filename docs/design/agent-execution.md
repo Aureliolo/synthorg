@@ -5,7 +5,7 @@ description: Agent execution status, execution loops (ReAct, Plan-and-Execute, H
 
 # Agent Execution
 
-This page covers the agent-side execution plane: how a single agent runs a task. The engine dispatches work via the [TaskEngine](engine.md#taskengine----centralized-state-coordination); the agent receives it, enters an execution loop, and iterates through LLM turns and tool calls until completion or handoff. The loop type, prompt profile, stagnation guards, and context-budget policies are all pluggable per agent.
+This page covers the agent-side execution plane: how a single agent runs a task. The engine dispatches work via the [TaskEngine](engine.md#taskengine-centralized-state-coordination); the agent receives it, enters an execution loop, and iterates through LLM turns and tool calls until completion or handoff. The loop type, prompt profile, stagnation guards, and context-budget policies are all pluggable per agent.
 
 ## Agent Execution Status
 
@@ -14,7 +14,7 @@ execution state:
 
 | Status | Meaning |
 |--------|---------|
-| `IDLE` | Agent is not currently executing -- no active task or execution run. |
+| `IDLE` | Agent is not currently executing; no active task or execution run. |
 | `EXECUTING` | Agent is actively processing a task within an execution loop. |
 | `PAUSED` | Agent is waiting for an external event (e.g. approval gate). |
 
@@ -88,7 +88,7 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     | | |
     |---|---|
     | **Strengths** | Simple, proven, flexible. Easy to implement. Works well for short tasks. |
-    | **Weaknesses** | Token-heavy on long tasks (re-reads full context every turn). No long-term planning -- greedy step-by-step. |
+    | **Weaknesses** | Token-heavy on long tasks (re-reads full context every turn). No long-term planning; greedy step-by-step. |
     | **Best for** | Simple tasks, quick fixes, single-file changes. |
 
 === "Loop 2: Plan-and-Execute"
@@ -117,16 +117,16 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     | | |
     |---|---|
     | **Strengths** | Token-efficient for long tasks. Auditable plan artifact. Supports model tiering. |
-    | **Weaknesses** | Rigid -- plan may be wrong, replanning is expensive. Over-plans simple tasks. |
+    | **Weaknesses** | Rigid; plan may be wrong, replanning is expensive. Over-plans simple tasks. |
     | **Best for** | Complex multi-step tasks, epic-level work, tasks spanning multiple files. |
 
 === "Loop 3: Hybrid Plan + ReAct Steps"
 
     **Recommended for Complex Tasks**
 
-    The agent creates a high-level plan (3--7 steps). Each step is executed as a
+    The agent creates a high-level plan (3 to 7 steps). Each step is executed as a
     mini-ReAct loop with its own turn limit. After each step, the agent
-    checkpoints -- summarizing progress and optionally replanning remaining
+    checkpoints, summarizing progress and optionally replanning remaining
     steps. Checkpoints are natural points for human inspection or task
     suspension.
 
@@ -162,17 +162,17 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     When `execution_loop: "auto"`, the framework selects the loop via three
     layers:
 
-    1. **Rule matching** -- maps `estimated_complexity` to a loop type:
+    1. **Rule matching**: maps `estimated_complexity` to a loop type:
        simple -> ReAct, medium -> Plan-and-Execute, complex/epic -> Hybrid.
        Configurable via `AutoLoopConfig.rules` (a tuple of `AutoLoopRule`).
        When no rule matches, falls back to `default_loop_type` (default:
        react).  All loop types in rules, `hybrid_fallback`, and
        `default_loop_type` are validated against the known set at
        construction time.
-    2. **Budget-aware downgrade** -- when monthly budget utilization is at
+    2. **Budget-aware downgrade**: when monthly budget utilization is at
        or above `budget_tight_threshold` (default 80%), hybrid selections
        are downgraded to plan_execute to conserve budget.
-    3. **Hybrid fallback** -- when `hybrid_fallback` is set (default:
+    3. **Hybrid fallback**: when `hybrid_fallback` is set (default:
        `None`), redirects hybrid selections to the specified loop type.
        With `None` (default), the hybrid loop runs directly.
 
@@ -201,13 +201,13 @@ async run(
 
 **Pipeline steps:**
 
-1. **Validate inputs** -- agent must be `ACTIVE`, task must be `ASSIGNED` or
+1. **Validate inputs**: agent must be `ACTIVE`, task must be `ASSIGNED` or
    `IN_PROGRESS`. Raises `ExecutionStateError` on violation.
-2. **Pre-flight budget enforcement** -- if `BudgetEnforcer` is provided, check
+2. **Pre-flight budget enforcement**: if `BudgetEnforcer` is provided, check
    monthly hard stop and daily limit via `check_can_execute()`, then apply
    auto-downgrade via `resolve_model()`. Raises `BudgetExhaustedError` or
    `DailyLimitExceededError` on violation.
-3. **Project validation** -- if `ProjectRepository` is provided, validate that the
+3. **Project validation**: if `ProjectRepository` is provided, validate that the
    task's project exists (`ProjectNotFoundError` if not) and that the agent is a
    member of the project team (`ProjectAgentNotMemberError` if not; empty teams
    allow any agent). When the project has a non-zero budget and `BudgetEnforcer`
@@ -215,7 +215,7 @@ async run(
    `ProjectBudgetExhaustedError` when the project's accumulated cost has reached
    its budget. Pre-flight project budget checks are best-effort under concurrency
    (TOCTOU); the in-flight `BudgetChecker` closure provides the true safety net.
-4. **Build system prompt** -- calls `build_system_prompt()` with agent identity,
+4. **Build system prompt**: calls `build_system_prompt()` with agent identity,
    task, and resolved model tier. The tier determines a `PromptProfile` that
    controls prompt verbosity (see [Prompt Profiles](#prompt-profiles) below),
    including personality token trimming when the section exceeds the profile's
@@ -226,17 +226,17 @@ async run(
    Follows the **non-inferable-only principle**: system prompts include only
    information the agent cannot discover by reading the codebase or environment
    (role constraints, custom conventions, organizational policies).
-5. **Create context** -- `AgentContext.from_identity()` with the configured
+5. **Create context**: `AgentContext.from_identity()` with the configured
    `max_turns`.
-6. **Seed conversation** -- injects system prompt, optional memory messages, and
+6. **Seed conversation**: injects system prompt, optional memory messages, and
    formatted task instruction as initial messages.
-7. **Transition task** -- `ASSIGNED` -> `IN_PROGRESS` (pass-through if already
+7. **Transition task**: `ASSIGNED` -> `IN_PROGRESS` (pass-through if already
    `IN_PROGRESS`).
-8. **Prepare tools and budget** -- creates `ToolInvoker` from registry and
+8. **Prepare tools and budget**: creates `ToolInvoker` from registry and
    `BudgetChecker` from `BudgetEnforcer` (task + monthly + daily + project limits
    with pre-computed baselines and alert deduplication) or from task budget limit
    alone when no enforcer is configured.
-9. **Resolve execution loop** -- if `auto_loop_config` is set, calls
+9. **Resolve execution loop**: if `auto_loop_config` is set, calls
    `select_loop_type()` with the task's `estimated_complexity` and current
    budget utilization (via `BudgetEnforcer.get_budget_utilization_pct()`).
    Budget-aware downgrade: hybrid is downgraded to plan_execute when
@@ -246,7 +246,7 @@ async run(
    engine's `compaction_callback`, `plan_execute_config` (for
    plan-execute), and `hybrid_loop_config` (for hybrid), along with the
    approval gate and stagnation detector.
-10. **Delegate to loop** -- calls `ExecutionLoop.execute()` with context,
+10. **Delegate to loop**: calls `ExecutionLoop.execute()` with context,
    provider, tool invoker, budget checker, and completion config. If
    `timeout_seconds` is set, wraps the call in `asyncio.wait`; on expiry
    the run returns with `TerminationReason.ERROR` but cost recording and
@@ -261,7 +261,7 @@ async run(
    `APPROVAL_RESUMED` event is emitted. See
    [Communication: Event Stream](communication.md#event-stream--hitl-surface)
    for the full interrupt/resume protocol and `EvidencePackage` schema.
-11. **Record costs** -- records accumulated `TokenUsage` to `CostTracker` (if
+11. **Record costs**: records accumulated `TokenUsage` to `CostTracker` (if
     available), tagged with `project_id` for project-level cost aggregation.
     Cost recording failures are logged but do not affect the result.
 12. **Apply post-execution transitions:**
@@ -280,7 +280,7 @@ async run(
       agent/task identifiers) and no transition occurs.  The check
       runs in two phases: the approval controller calls
       ``check_can_decide`` as a **preflight** *before*
-      ``approval_store.save_if_pending`` -- this guarantees a rejected
+      ``approval_store.save_if_pending``; this guarantees a rejected
       self-review attempt never leaves a decided approval row or a
       broadcast WebSocket event behind.  ``complete_review``
       independently re-runs the check as defense-in-depth at the
@@ -291,14 +291,14 @@ async run(
 
       The service attempts to append a ``DecisionRecord`` to the
       auditable decisions drop-box (``DecisionRepository``) for every
-      completed review -- capturing executor, reviewer, outcome,
+      completed review, capturing executor, reviewer, outcome,
       approval-ID cross-reference, and an acceptance-criteria snapshot.
       This append is **best-effort**: known transient persistence
       failures (``QueryError`` / ``DuplicateRecordError``) are logged
       via ``logger.exception`` and do NOT roll back the state
       transition (the transition is the source of truth; the drop-box
       is the audit trail).  Programming errors (``ValidationError``,
-      ``TypeError``, ``AttributeError``) are deliberately NOT caught --
+      ``TypeError``, ``AttributeError``) are deliberately NOT caught;
       they propagate loudly so schema drift surfaces in dev/CI instead
       of being masked as silent audit loss.  See the "Review Gate
       Invariants" section of ``docs/design/security.md`` for the
@@ -329,18 +329,18 @@ async run(
       [AgentEngine <-> TaskEngine Incremental Sync](engine.md#agentengine--taskengine-incremental-sync)).
     - Transition failures are logged but do not discard the successful execution
       result.
-13. **Procedural memory generation** (non-critical) -- when
+13. **Procedural memory generation** (non-critical): when
     `ProceduralMemoryConfig` is enabled and the execution failed
     (recovery_result exists), a separate proposer LLM call analyzes the
     failure and stores a `PROCEDURAL` memory entry for future retrieval.
     Optionally materializes a SKILL.md file. Failures are logged but do
     not affect the result (see [Memory > Procedural Memory Auto-Generation](memory.md#procedural-memory-auto-generation)).
-14. **Return result** -- wraps `ExecutionResult` in `AgentRunResult` with
+14. **Return result**: wraps `ExecutionResult` in `AgentRunResult` with
     engine-level metadata.
 
 **Error handling:** `MemoryError` and `RecursionError` propagate
 unconditionally. `BudgetExhaustedError` (including `DailyLimitExceededError`)
-returns `TerminationReason.BUDGET_EXHAUSTED` without recovery -- budget
+returns `TerminationReason.BUDGET_EXHAUSTED` without recovery; budget
 exhaustion is a controlled stop, not a crash. All other exceptions are caught
 and wrapped in an `AgentRunResult` with `TerminationReason.ERROR`.
 
@@ -348,10 +348,10 @@ and wrapped in an `AgentRunResult` with `TerminationReason.ERROR`.
     `AgentRunResult` is a frozen Pydantic model wrapping `ExecutionResult`
     with engine metadata:
 
-    - `execution_result` -- outcome from the execution loop
-    - `system_prompt` -- the `SystemPrompt` used for this run
-    - `duration_seconds` -- wall-clock run time
-    - `agent_id`, `task_id` -- identifiers
+    - `execution_result`: outcome from the execution loop
+    - `system_prompt`: the `SystemPrompt` used for this run
+    - `duration_seconds`: wall-clock run time
+    - `agent_id`, `task_id`: identifiers
     - Computed fields: `termination_reason`, `total_turns`, `total_cost`,
       `is_success`, `completion_summary`
 
@@ -374,11 +374,11 @@ each model tier.
 When the personality section exceeds `max_personality_tokens`, progressive
 trimming enforces the budget as a secondary control after `personality_mode`:
 
-1. **Tier 1 -- Drop enums**: override mode to `"condensed"` (removes behavioral
+1. **Tier 1, Drop enums**: override mode to `"condensed"` (removes behavioral
    enum fields like risk_tolerance, creativity, verbosity, etc.)
-2. **Tier 2 -- Truncate description**: shorten `personality_description` to fit
+2. **Tier 2, Truncate description**: shorten `personality_description` to fit
    the remaining budget (word-boundary aware, appends `"..."`)
-3. **Tier 3 -- Minimal fallback**: override mode to `"minimal"`
+3. **Tier 3, Minimal fallback**: override mode to `"minimal"`
    (`communication_style` only)
 
 Trimming metadata is attached to `SystemPrompt.personality_trim_info`
@@ -450,17 +450,17 @@ class StagnationDetector(Protocol):
     def get_detector_type(self) -> str: ...
 ```
 
-Async protocol -- future implementations may consult external services or
+Async protocol; future implementations may consult external services or
 LLM-based analysis.
 
 ### Default Implementation: `ToolRepetitionDetector`
 
 Uses dual-signal detection:
 
-1. **Repetition ratio** -- excess duplicates divided by total fingerprint count
+1. **Repetition ratio**: excess duplicates divided by total fingerprint count
    in the window. A fingerprint appearing 3 times contributes 2 to the
    duplicate count.
-2. **Cycle detection** -- checks for repeating A->B->A->B patterns at the turn
+2. **Cycle detection**: checks for repeating A->B->A->B patterns at the turn
    level (`seq[-2k:-k] == seq[-k:]` for cycle lengths 2..len/2).
 
 Fingerprints are computed as `name:sha256(canonical_json_args)[:16]`,
@@ -479,10 +479,10 @@ sorted per-turn for order-independent comparison.
 
 ### Intervention Flow
 
-1. **No stagnation** -- execution continues normally
-2. **`INJECT_PROMPT`** -- a corrective USER-role message is injected into the
+1. **No stagnation**: execution continues normally
+2. **`INJECT_PROMPT`**: a corrective USER-role message is injected into the
    conversation (up to `max_corrections` times)
-3. **`TERMINATE`** -- execution terminates with `TerminationReason.STAGNATION`
+3. **`TERMINATE`**: execution terminates with `TerminationReason.STAGNATION`
    and stagnation metadata attached to the result
 
 ### Loop Integration
@@ -496,7 +496,7 @@ sorted per-turn for order-independent comparison.
   checked within the mini-ReAct sub-loop, corrections counter and
   window are step-scoped
 - `STAGNATION` termination leaves the task in its current state (like
-  `MAX_TURNS` -- the task is not failed, it's returned to the caller)
+  `MAX_TURNS`; the task is not failed, it's returned to the caller)
 
 ## Context Budget Management
 
@@ -508,11 +508,11 @@ system prompts, and compresses conversations at turn boundaries.
 
 `AgentContext` carries three context-budget fields:
 
-- `context_fill_tokens` -- estimated tokens in the full context (system prompt +
+- `context_fill_tokens`: estimated tokens in the full context (system prompt +
   conversation + tool definitions)
-- `context_capacity_tokens` -- the model's `max_context_tokens` from
+- `context_capacity_tokens`: the model's `max_context_tokens` from
   `ModelCapabilities`, or `None` when unknown
-- `context_fill_percent` -- computed percentage (`fill / capacity * 100`),
+- `context_fill_percent`: computed percentage (`fill / capacity * 100`),
   `None` when capacity is unknown
 
 Fill is re-estimated after each turn via `update_context_fill()` in
@@ -535,7 +535,7 @@ is derived from `CompressionMetadata.compactions_performed`.
 
 `CompactionCallback` is a type alias (`Callable[[AgentContext], Coroutine[...,
 AgentContext | None]]`) wired into `ReactLoop`, `PlanExecuteLoop`, and
-`HybridLoop` via their constructors -- the same injection pattern as `checkpoint_callback`,
+`HybridLoop` via their constructors; the same injection pattern as `checkpoint_callback`,
 `stagnation_detector`, and `approval_gate`.
 
 The default implementation (`make_compaction_callback` in
@@ -553,7 +553,7 @@ message when `context_fill_percent` exceeds a configurable threshold (default
 
 Assistant message snippets included in the summary are sanitized via
 ``sanitize_message()`` to redact file paths and URLs before injection into LLM
-context. Compaction errors are logged but never propagated -- compaction is
+context. Compaction errors are logged but never propagated; compaction is
 advisory, not critical.
 
 ### Compressed Checkpoint Recovery
@@ -590,15 +590,15 @@ The engine's architecture maps onto three decoupled planes. Each plane has a dis
 
 | Plane | SynthOrg Modules | Purpose |
 |-------|-----------------|---------|
-| **Brain** | `engine/agent_engine.py`, `AgentContext`, loop protocol (`ReactLoop`, `PlanExecuteLoop`, `HybridLoop`) | Inference loop, middleware, decision-making.  Stateless between turns -- all state lives in the immutable `AgentContext`. |
-| **Hands** | `ToolInvoker`, `tools/sandbox/`, `SandboxCredentialManager`, `engine/_validation.py::validate_task_metadata` | Tool execution, side effects, credential scope.  Credentials are stripped at the engine input boundary (task metadata validator) and at the sandbox boundary (credential manager) -- they never enter the brain or session planes. |
+| **Brain** | `engine/agent_engine.py`, `AgentContext`, loop protocol (`ReactLoop`, `PlanExecuteLoop`, `HybridLoop`) | Inference loop, middleware, decision-making.  Stateless between turns; all state lives in the immutable `AgentContext`. |
+| **Hands** | `ToolInvoker`, `tools/sandbox/`, `SandboxCredentialManager`, `engine/_validation.py::validate_task_metadata` | Tool execution, side effects, credential scope.  Credentials are stripped at the engine input boundary (task metadata validator) and at the sandbox boundary (credential manager); they never enter the brain or session planes. |
 | **Session** | `observability/events/`, `engine/session.py` (`Session.replay`), checkpoint/resume | Durable event history, replay, audit.  Every significant action emits a structured event; the event stream is the session's source of truth. |
 
 ### Resilience Property
 
 The brain can fail (crash, OOM, timeout) without losing session state.  Because every turn emits structured events (`execution.context.turn`, `execution.task.transition`, etc.) to the configured observability sinks, a new brain instance can reconstruct the execution context via `Session.replay(execution_id)`.
 
-`Session.replay()` walks the event log for a given execution and reconstructs `AgentContext` (turn count, accumulated cost, task status).  It is a **best-effort** read-only reconstruction -- conversation message content is not stored in events, so the replayed context has synthetic placeholder messages.  The `ReplayResult.replay_completeness` field (0.0--1.0) indicates how much state was recovered, scored by event coverage (engine start, context creation, turn contiguity, cost data, task transitions).
+`Session.replay()` walks the event log for a given execution and reconstructs `AgentContext` (turn count, accumulated cost, task status).  It is a **best-effort** read-only reconstruction; conversation message content is not stored in events, so the replayed context has synthetic placeholder messages.  The `ReplayResult.replay_completeness` field (0.0 to 1.0) indicates how much state was recovered, scored by event coverage (engine start, context creation, turn contiguity, cost data, task transitions).
 
 This is lighter-weight than full checkpoint/resume (`checkpoint/resume.py`), which persists complete `AgentContext` snapshots and supports mid-execution suspend/resume with full message history.  Use session replay for recovery after brain failure; use checkpoint/resume for deliberate pause/resume of long-running tasks.
 
@@ -606,8 +606,8 @@ This is lighter-weight than full checkpoint/resume (`checkpoint/resume.py`), whi
 
 Credentials never enter the brain or session planes.  Two enforcement points:
 
-1. **Task metadata validator** (`engine/_validation.py::validate_task_metadata`) -- rejects `Task.metadata` keys matching credential patterns (token, secret, api_key, password, bearer) at the engine input boundary before execution starts.
-2. **Sandbox credential manager** (`tools/sandbox/credential_manager.py`) -- strips credential-like environment variables before they enter sandbox containers.
+1. **Task metadata validator** (`engine/_validation.py::validate_task_metadata`): rejects `Task.metadata` keys matching credential patterns (token, secret, api_key, password, bearer) at the engine input boundary before execution starts.
+2. **Sandbox credential manager** (`tools/sandbox/credential_manager.py`): strips credential-like environment variables before they enter sandbox containers.
 
 See also: [Security > Credential Isolation Boundary](security.md#credential-isolation-boundary).
 
@@ -617,7 +617,7 @@ The Agentic Computation Graph (ACG) formalism (arXiv:2603.22386) provides a grap
 vocabulary for reasoning about agentic execution: nodes as atomic computation steps, edges
 as data/control flow, scheduling policies, resource constraints, and termination conditions.
 SynthOrg's engine maps closely to this vocabulary. The cross-reference below is maintained
-as a **bidirectional glossary** -- use ACG terms when discussing execution graphs with
+as a **bidirectional glossary**: use ACG terms when discussing execution graphs with
 external audiences; use SynthOrg terms in implementation discussions.
 
 ### Vocabulary Mapping
@@ -656,12 +656,12 @@ reasoning artifacts.
 
 **Known limitations**:
 
-- Fixed 80% threshold is not context-aware -- too aggressive for simple tasks, potentially
+- Fixed 80% threshold is not context-aware; too aggressive for simple tasks, potentially
   too late for complex multi-step tasks.
 - Epistemic markers ("wait", "hmm", "actually") are stripped or truncated. These carry
   disproportionate value for reasoning chains: empirical data (arXiv:2603.24472) shows
   their removal degrades accuracy by up to 63% on complex reasoning tasks (AIME24).
-- No memory offloading -- compacted context is discarded rather than written to
+- No memory offloading; compacted context is discarded rather than written to
   `MemoryBackend`. LangChain's Deep Agents offload at 20k tokens; SynthOrg has no
   equivalent.
 - Summarization quality is significantly below LLM-based approaches (LangChain uses
@@ -675,7 +675,7 @@ reasoning artifacts.
   Parameters: `{ strategy: "summarize"|"archive", preserve_markers: bool, reason: str }`.
 - **Architecture**: Tools cannot mutate `AgentContext` (frozen Pydantic). The tool returns
   a `metadata["compaction_directive"]` flag; the loop detects it after the tool batch
-  and calls `invoke_compaction()` -- preserving the immutable context pattern.
+  and calls `invoke_compaction()`, preserving the immutable context pattern.
 - Dual-threshold safety net: 80% soft (agent-guided, system prompt indicator already
   exists) / 95% hard (system auto-compact fallback). New `CompactionConfig` fields:
   `agent_controlled: bool`, `safety_threshold_percent: float = 95.0`.
@@ -691,7 +691,7 @@ reasoning artifacts.
 - Task-complexity-adaptive compaction policy using `task.estimated_complexity`:
   SIMPLE = aggressive; COMPLEX/EPIC = conservative with high marker preservation.
 
-**Phase 3**: Evaluate surprisal-based token cost (arXiv:2603.08462) -- per-token cost
+**Phase 3**: Evaluate surprisal-based token cost (arXiv:2603.08462): per-token cost
 weighted by surprisal under a frozen base model. Empirical results: 41% token reduction,
 <1.5% accuracy drop. **Not recommended for Phase 1/2**: inference cost (forward pass
 per token) is not justified until Phase 2 data validates the need.
@@ -700,14 +700,14 @@ If semantic token cost is needed before Phase 3, the recommended lighter proxy i
 **TF-IDF importance weighting**: build a TF-IDF corpus from the current context turns,
 score each token, and treat low-scoring tokens (below a tunable percentile threshold)
 as compressible filler. The resulting importance map can drive selective truncation in
-`_build_summary()` without any additional model inference -- a significantly cheaper
+`_build_summary()` without any additional model inference; a significantly cheaper
 approximation of the surprisal signal.
 
 ---
 
 ## See Also
 
-- [Task & Workflow Engine](engine.md) -- task dispatch, routing, state coordination
-- [Coordination](coordination.md) -- multi-agent topology, decomposition, workspace isolation
-- [Verification & Quality](verification-quality.md) -- verification stage, review pipeline, harness middleware
-- [Design Overview](index.md) -- full index
+- [Task & Workflow Engine](engine.md): task dispatch, routing, state coordination
+- [Coordination](coordination.md): multi-agent topology, decomposition, workspace isolation
+- [Verification & Quality](verification-quality.md): verification stage, review pipeline, harness middleware
+- [Design Overview](index.md): full index

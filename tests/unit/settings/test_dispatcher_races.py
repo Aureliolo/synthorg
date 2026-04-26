@@ -127,7 +127,7 @@ class TestStartDuringStop:
 
         async def signalling_poll() -> None:
             try:
-                # Block cancellably on an Event that is never set --
+                # Block cancellably on an Event that is never set;
                 # stop() will cancel us. When CancelledError fires,
                 # signal the lock-held event before letting
                 # cancellation propagate so the test sees the lock

@@ -187,7 +187,7 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
   const initial = loadPreferences()
   const reducedMotion = detectReducedMotion()
 
-  // Apply initial theme classes synchronously (wrapped for resilience --
+  // Apply initial theme classes synchronously (wrapped for resilience;
   // a corrupted localStorage value that bypasses isValid would crash the app)
   try {
     applyThemeClasses(initial)

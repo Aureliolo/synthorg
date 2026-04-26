@@ -508,7 +508,7 @@ class TelemetryCollector:
         kernel / Docker version / storage driver / NVIDIA-runtime
         availability without joining on a separate system.
 
-        Short-circuits when :attr:`is_functional` is ``False`` --
+        Short-circuits when :attr:`is_functional` is ``False``;
         the reporter is a :class:`NoopReporter`, so emitting the
         event would be discarded anyway, and the Docker socket
         probe (which crosses the ``asyncio.to_thread`` boundary
@@ -651,7 +651,7 @@ class TelemetryCollector:
             return str(uuid.uuid4())
 
         # Use the sanitised string with plain ``os`` / builtin I/O
-        # so the sanitiser and each sink sit on adjacent lines --
+        # so the sanitiser and each sink sit on adjacent lines:
         # the pattern CodeQL's static dataflow query matches on.
         # The inline PTH-rule suppressions below carry the same
         # rationale as the builder above.

@@ -544,7 +544,7 @@ class TestZeroOverrideAuditLog:
     ``0`` on an inflight-guarded operation, all concurrent requests must
     succeed (the guard is opt-out, not a silent cap of ``max=0``).  The
     middleware separately logs an ``API_GUARD_DENIED`` WARNING with a
-    note so the deliberately-uncapped state surfaces in audit logs --
+    note so the deliberately-uncapped state surfaces in audit logs,
     verified by reading the logs manually; structlog processors bypass
     pytest's ``caplog`` unless configured, so the log emission itself
     is not asserted here.  See ``inflight_middleware.py`` for the log

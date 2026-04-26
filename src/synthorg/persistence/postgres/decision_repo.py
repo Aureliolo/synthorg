@@ -190,7 +190,7 @@ class PostgresDecisionRepository:
             ValueError: If ``recorded_at`` is a naive datetime (no
                 tzinfo).
             ValidationError: If the model-level normalization rejects
-                the input. We deliberately do NOT wrap as QueryError --
+                the input. We deliberately do NOT wrap as QueryError;
                 malformed inputs are programming errors that must
                 surface loudly.
             QueryError: If the SQL operation fails.

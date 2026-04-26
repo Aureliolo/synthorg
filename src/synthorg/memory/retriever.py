@@ -439,7 +439,7 @@ class ContextInjectionStrategy:
         """Apply the configured memory filter, failing closed on errors.
 
         Runs BEFORE diversity re-ranking so entries excluded by the
-        privacy/non-inferability filter are not used as MMR anchors --
+        privacy/non-inferability filter are not used as MMR anchors;
         anchoring on filtered-out entries would suppress diverse but
         visible candidates textually similar to them.
 

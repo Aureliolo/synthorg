@@ -13,7 +13,7 @@ For the architecture (identity versioning, evolution, five-pillar evaluation), s
 
 ## Hiring
 
-Agents are hired via `POST /api/v1/agents` with a `CreateAgentOrgRequest` body. The DTO accepts only: `name`, `role`, `department`, `level` (one of the `SeniorityLevel` values), and the `model_provider` / `model_id` pair (both together or both omitted -- if omitted, the model matcher falls back to the provider catalog default).
+Agents are hired via `POST /api/v1/agents` with a `CreateAgentOrgRequest` body. The DTO accepts only: `name`, `role`, `department`, `level` (one of the `SeniorityLevel` values), and the `model_provider` / `model_id` pair (both together or both omitted; if omitted, the model matcher falls back to the provider catalog default).
 
 ```bash
 curl -X POST http://localhost:3001/api/v1/agents \
@@ -97,7 +97,7 @@ Planned (not yet implemented): automated task reassignment via `TaskReassignment
 
 ## Rehiring from archive (planned)
 
-A dedicated `POST /api/v1/agents/{agent_name}/rehire` endpoint -- which would restore archived memory into a new identity with a fresh hire date and version chain -- is **not yet implemented** in the agents controller. Until it ships, rehiring is a manual two-step: list archived agents via the existing listing, then recreate with `POST /api/v1/agents` using a fresh `CreateAgentOrgRequest` payload; memory restoration is performed out-of-band through the Memory Admin API. This planned surface sits alongside the same lifecycle automation called out in [Firing](#firing).
+A dedicated `POST /api/v1/agents/{agent_name}/rehire` endpoint (which would restore archived memory into a new identity with a fresh hire date and version chain) is **not yet implemented** in the agents controller. Until it ships, rehiring is a manual two-step: list archived agents via the existing listing, then recreate with `POST /api/v1/agents` using a fresh `CreateAgentOrgRequest` payload; memory restoration is performed out-of-band through the Memory Admin API. This planned surface sits alongside the same lifecycle automation called out in [Firing](#firing).
 
 ## Lifecycle events (WebSocket)
 
@@ -135,7 +135,7 @@ After the wizard completes, use `/api/v1/agents` for subsequent changes.
 
 ## See Also
 
-- [Agent Roles & Hierarchy](agents.md) -- role catalog, seniority levels
-- [Design: Agents](../design/agents.md) -- identity card, personality dimensions, identity versioning
-- [Design: HR & Agent Lifecycle](../design/hr-lifecycle.md) -- full lifecycle, performance tracking, evolution
-- [Security & Trust Policies](security.md) -- autonomy and tool permissions
+- [Agent Roles & Hierarchy](agents.md): role catalog, seniority levels
+- [Design: Agents](../design/agents.md): identity card, personality dimensions, identity versioning
+- [Design: HR & Agent Lifecycle](../design/hr-lifecycle.md): full lifecycle, performance tracking, evolution
+- [Security & Trust Policies](security.md): autonomy and tool permissions

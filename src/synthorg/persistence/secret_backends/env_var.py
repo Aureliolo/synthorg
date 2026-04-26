@@ -1,7 +1,7 @@
 """Environment variable secret backend (read-only).
 
 Secrets are read from environment variables with a configurable
-prefix.  This backend does not support store, delete, or rotate --
+prefix.  This backend does not support store, delete, or rotate;
 it is intended for development and simple deployments where secrets
 are managed externally (e.g. Docker secrets, systemd credentials).
 """

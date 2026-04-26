@@ -22,10 +22,10 @@ You audit resilience patterns in the SynthOrg codebase, ensuring retry, rate lim
 - `asyncio.sleep` used for retry delays outside of `RetryHandler` (MAJOR)
 - Retryable error type created without `is_retryable = True` (MAJOR)
 
-### 2. Manual Retry Detection -- Any Code (CRITICAL)
+### 2. Manual Retry Detection in Any Code (CRITICAL)
 
-- Manual retry/backoff patterns ANYWHERE: `for attempt in range(...)`, `while retries > 0`, `time.sleep` in retry loops -- retries belong in `RetryHandler` only (CRITICAL)
-- Error hierarchy overlap -- new exception classes that accidentally inherit from or shadow `ProviderError` (MAJOR)
+- Manual retry/backoff patterns ANYWHERE: `for attempt in range(...)`, `while retries > 0`, `time.sleep` in retry loops; retries belong in `RetryHandler` only (CRITICAL)
+- Error hierarchy overlap: new exception classes that accidentally inherit from or shadow `ProviderError` (MAJOR)
 - Code that catches broad `Exception`/`BaseException` and silently swallows provider errors that should propagate (MAJOR)
 
 ### 3. Error Hierarchy (HIGH)
@@ -65,7 +65,7 @@ You audit resilience patterns in the SynthOrg codebase, ensuring retry, rate lim
 - New error types missing `is_retryable` classification for I/O or network failures
 - Provider call site catching `ProviderError` without accounting for `RetryExhaustedError`
 - Engine/orchestration code importing from `providers/` without considering `RetryExhaustedError`
-- Non-retryable error types that should NOT be retryable -- verify they don't accidentally inherit retryable classification
+- Non-retryable error types that should NOT be retryable; verify they don't accidentally inherit retryable classification
 
 ## Severity Levels
 

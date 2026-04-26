@@ -1,8 +1,8 @@
 template:
   name: "Engineering Squad"
   description: >-
-    A lean engineering team built for shipping. No C-suite overhead
-    -- a Software Architect leads directly. Three backend developers,
+    A lean engineering team built for shipping. No C-suite overhead;
+    a Software Architect leads directly. Three backend developers,
     a frontend specialist, QA pipeline, and a DevOps engineer.
     Optimized for throughput with quality gates.
   version: "1.0.0"

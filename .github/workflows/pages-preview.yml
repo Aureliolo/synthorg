@@ -74,7 +74,7 @@ jobs:
             IS_CROSS_REPO=$(echo "$PR_JSON" | jq -r '.isCrossRepository')
 
             if [ "$PR_STATE" != "OPEN" ]; then
-              echo "::error::PR #$PR_NUMBER is $PR_STATE, not OPEN -- cannot deploy preview"
+              echo "::error::PR #$PR_NUMBER is $PR_STATE, not OPEN; cannot deploy preview"
               exit 1
             fi
             SAME_REPO=$( [ "$IS_CROSS_REPO" = "false" ] && echo "true" || echo "false" )
@@ -92,7 +92,7 @@ jobs:
           echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
           echo "same_repo=$SAME_REPO" >> "$GITHUB_OUTPUT"
 
-      # zizmor: ignore[untrusted-checkout] -- intentional: preview builds require
+      # zizmor: ignore[untrusted-checkout]; intentional: preview builds require
       # PR code. Mitigated: no secrets in this job, contents:read + pull-requests:read
       # only, persist-credentials:false. Deploy job uses artifacts, not checkout.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -110,8 +110,8 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
 
-      # D2 binary -- required by d2_fence.py at build time.
-      # D2 does not publish checksums or signatures in its releases --
+      # D2 binary, required by d2_fence.py at build time.
+      # D2 does not publish checksums or signatures in its releases;
       # integrity relies on HTTPS transport from GitHub. Accepted tradeoff:
       # D2 is a docs-only diagramming tool (not a security scanner).
       # Version managed by Renovate (regex manager in renovate.json).
@@ -138,7 +138,7 @@ jobs:
       - name: Build docs
         # TODO: Restore --strict once zensical supports it
         # https://github.com/zensical/backlog/issues/72
-        # SYNTHORG_VERSION intentionally omitted -- previews show "dev" banner
+        # SYNTHORG_VERSION intentionally omitted; previews show "dev" banner
         #
         # Retry up to 3 times with a 15-second backoff.  The D2 plugin
         # and zensical both occasionally race a transient GitHub raw
@@ -162,7 +162,7 @@ jobs:
             if [ "$attempt" -lt "$max_attempts" ]; then
               echo "::warning::zensical build failed (attempt ${attempt}/${max_attempts}); retrying after 15s"
               # Scrub partial build state so the retry does not inherit a
-              # half-written ``_site/`` or a stale D2 icon cache -- a
+              # half-written ``_site/`` or a stale D2 icon cache, since a
               # genuinely deterministic failure would otherwise be masked
               # by the first attempt's successful intermediate files.
               rm -rf _site .d2-cache
@@ -220,7 +220,7 @@ jobs:
 
           pr_number = os.environ["PR_NUMBER"]
           short_sha = os.environ["HEAD_SHA"][:7]
-          # Truncate to milliseconds -- Safari rejects microsecond-precision ISO timestamps
+          # Truncate to milliseconds; Safari rejects microsecond-precision ISO timestamps
           build_iso = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
           style = (
@@ -245,11 +245,11 @@ jobs:
           )
           banner = (
               f'<div style="{style}">'
-              f"Development Preview -- PR #{pr_number}"
-              f' -- <code style="background:rgba(0,0,0,0.1);'
+              f"Development Preview &middot; PR #{pr_number}"
+              f' &middot; <code style="background:rgba(0,0,0,0.1);'
               f'padding:2px 6px;border-radius:3px;font-size:12px">'
               f"{short_sha}</code>"
-              f' -- built <span id="preview-age"></span>'
+              f' &middot; built <span id="preview-age"></span>'
               f"</div>"
               f"{time_ago_js}"
           )
@@ -418,7 +418,7 @@ jobs:
           API_BASE="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/synthorg-pr-preview/deployments"
 
           # Paginate through all deployments for this branch
-          # Note: Cloudflare prevents deleting the most recent deployment per project -- that one will remain
+          # Note: Cloudflare prevents deleting the most recent deployment per project; that one will remain
           # Cloudflare Pages API rejects per_page=100 with page param; explicitly use documented default page size (25)
           echo "Fetching deployments for branch ${BRANCH}..."
           PER_PAGE=25
@@ -438,7 +438,7 @@ jobs:
               exit 1
             fi
 
-            # exit 1: if we can't list deployments, the token/account is likely misconfigured -- that warrants attention
+            # exit 1: if we can't list deployments, the token/account is likely misconfigured; that warrants attention
             if [ "$HTTP_CODE" -ge 400 ]; then
               echo "::error::Failed to list deployments (HTTP ${HTTP_CODE})"
               echo "$BODY" | jq -r '.errors[]?.message // empty' 2>/dev/null || echo "$BODY" | head -c 500
@@ -447,7 +447,7 @@ jobs:
 
             # Validate response structure before filtering
             if ! echo "$BODY" | jq -e '.result' > /dev/null 2>&1; then
-              echo "::warning::Unexpected API response structure -- .result field missing"
+              echo "::warning::Unexpected API response structure; .result field missing"
               echo "$BODY" | head -c 500
               exit 0
             fi
@@ -484,7 +484,7 @@ jobs:
             if [ "$DEL_CURL_EXIT" -ne 0 ] || [ "$DEL_CODE" = "000" ]; then
               echo "::warning::Failed to reach Cloudflare API for deletion of ${DEPLOY_ID} (curl transport error)"
             elif [ "$DEL_CODE" -ge 400 ]; then
-              echo "::warning::Failed to delete deployment ${DEPLOY_ID} (HTTP ${DEL_CODE}) -- may be the most recent deployment (Cloudflare restriction)"
+              echo "::warning::Failed to delete deployment ${DEPLOY_ID} (HTTP ${DEL_CODE}); may be the most recent deployment (Cloudflare restriction)"
             else
               COUNT=$((COUNT + 1))
             fi

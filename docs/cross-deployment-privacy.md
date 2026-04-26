@@ -65,7 +65,7 @@ Required fields when `enabled: true`:
 
 ## How to Inspect Events
 
-Enabling DEBUG logging for the `synthorg.meta.telemetry` logger emits queue/flush operational metadata (event type, queue depth, batch size, HTTP status). The full serialized event payload is **not logged** -- only diagnostics metadata is emitted:
+Enabling DEBUG logging for the `synthorg.meta.telemetry` logger emits queue/flush operational metadata (event type, queue depth, batch size, HTTP status). The full serialized event payload is **not logged**; only diagnostics metadata is emitted:
 
 ```yaml
 logging:
@@ -73,9 +73,9 @@ logging:
     synthorg.meta.telemetry: DEBUG
 ```
 
-Events are visible in the structured log output with event metadata (event type, queue depth, batch size, HTTP status). Note: the full serialized event payload is not logged -- only operational metadata is emitted for diagnostics. Event names:
-- `cross_deployment.event.queued` -- event buffered (logs event_type and pending count)
-- `cross_deployment.batch.flushed` -- batch sent to collector (logs event_count and HTTP status)
+Events are visible in the structured log output with event metadata (event type, queue depth, batch size, HTTP status). Note: the full serialized event payload is not logged; only operational metadata is emitted for diagnostics. Event names:
+- `cross_deployment.event.queued`: event buffered (logs event_type and pending count)
+- `cross_deployment.batch.flushed`: batch sent to collector (logs event_count and HTTP status)
 
 ## Data Retention
 
@@ -98,4 +98,4 @@ self_improvement:
     collector_enabled: true  # enable collector role
 ```
 
-The collector never sees unanonymized data -- it only receives the anonymized events described above.
+The collector never sees unanonymized data; it only receives the anonymized events described above.

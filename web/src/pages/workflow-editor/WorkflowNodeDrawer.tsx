@@ -91,7 +91,7 @@ export function WorkflowNodeDrawer({
         } catch {
           // Keep raw string so the user can continue editing.
         }
-        // Don't write raw strings or arrays back into config --
+        // Don't write raw strings or arrays back into config;
         // only successfully parsed plain objects are accepted.
         return
       }

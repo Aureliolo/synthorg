@@ -5,7 +5,7 @@ search:
 
 # Memory
 
-Persistent agent memory -- protocol, retrieval pipeline, shared org memory, consolidation, and archival.
+Persistent agent memory: protocol, retrieval pipeline, shared org memory, consolidation, and archival.
 
 ## Protocol
 

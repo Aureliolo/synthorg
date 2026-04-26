@@ -81,7 +81,7 @@ export async function ensureFreshAppState(): Promise<void> {
   try {
     localStorage.setItem(STORAGE_KEY, CURRENT_BUILD_ID)
   } catch (err) {
-    // Storage is unavailable or quota-exceeded.  Skip the reload --
+    // Storage is unavailable or quota-exceeded.  Skip the reload;
     // triggering it now would loop forever (next boot would see the
     // same mismatch, call logout again, fail to stamp again, reload).
     // Fall through to normal app bootstrap with the (now-cleared)

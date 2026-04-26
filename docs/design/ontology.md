@@ -14,38 +14,38 @@ ensuring all agents share the same understanding of domain terminology.
 
 ## Architecture
 
-```text
-                  @ontology_entity                     YAML config
-                     (decorator)                     (entities: section)
-                         |                                 |
-                         v                                 v
-                  +--------------+                +-----------------+
-                  |  Decorator   |                | Config Loader   |
-                  |  Registry    |                | (EntitiesConfig)|
-                  +--------------+                +-----------------+
-                         |                                 |
-                         +--------+   +--------------------+
-                                  |   |
-                                  v   v
-                           +----------------+
-                           | OntologyService|
-                           |  (orchestrator)|
-                           +----------------+
-                              |          |
-                    +---------+          +----------+
-                    v                               v
-           +----------------+            +-------------------+
-           |OntologyBackend |            | VersioningService |
-           |  (protocol)    |            | [EntityDefinition]|
-           +----------------+            +-------------------+
-                    |                               |
-                    v                               v
-           +----------------+            +-------------------+
-           | SQLite Backend |            | SQLiteVersionRepo |
-           | (entity_defs)  |            | (entity_def_vers) |
-           +----------------+            +-------------------+
-                    |                               |
-                    +---------- same DB -----------+
+```d2
+direction: down
+
+decorator: "@ontology_entity\n(decorator)"
+config: "YAML config\n(entities: section)"
+
+decorator_registry: "Decorator Registry"
+config_loader: "Config Loader\n(EntitiesConfig)"
+
+decorator -> decorator_registry
+config -> config_loader
+
+ontology_service: "OntologyService\n(orchestrator)"
+
+decorator_registry -> ontology_service
+config_loader -> ontology_service
+
+ontology_backend: "OntologyBackend\n(protocol)"
+versioning_service: "VersioningService\n[EntityDefinition]"
+
+ontology_service -> ontology_backend
+ontology_service -> versioning_service
+
+sqlite_backend: "SQLite Backend\n(entity_defs)"
+sqlite_version_repo: "SQLiteVersionRepo\n(entity_def_vers)"
+
+ontology_backend -> sqlite_backend
+versioning_service -> sqlite_version_repo
+
+same_db: "same DB"
+sqlite_backend -> same_db
+sqlite_version_repo -> same_db
 ```
 
 ## Entity Definitions
@@ -77,7 +77,7 @@ class Task(BaseModel):
 ```
 
 The decorator inspects the model's docstring and `Field(description=...)`
-annotations.  Registration is lazy -- the decorator stores a reference to
+annotations.  Registration is lazy; the decorator stores a reference to
 the class, and `EntityDefinition` objects are built on first access via
 `get_entity_registry()`.
 

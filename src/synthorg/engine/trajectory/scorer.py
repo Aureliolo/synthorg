@@ -2,7 +2,7 @@
 
 Implements three uncertainty signals from SRLM (arXiv:2603.15653):
 self-consistency filter, verbalized confidence (VC), and trace
-length (Len).  Joint scoring: ``s(p) = VC(p) + Len(p)`` --
+length (Len).  Joint scoring: ``s(p) = VC(p) + Len(p)``;
 least-negative wins.
 """
 
@@ -40,11 +40,11 @@ class TrajectoryScorer:
        fingerprints.  Candidates disagreeing with the majority are
        marked inconsistent.
     2. **Verbalized confidence (VC)**: ``log(nu / 100)`` where ``nu``
-       is the candidate's verbalized confidence (0--100).  Log-space
+       is the candidate's verbalized confidence (0 to 100).  Log-space
        so low confidence is heavily penalized.
     3. **Trace length (Len)**: ``-total_output_tokens`` (shorter is
        more confident).
-    4. **Joint**: ``VC + Len`` -- least-negative wins.
+    4. **Joint**: ``VC + Len``; least-negative wins.
 
     When VC is unavailable (``None``), scoring degrades gracefully
     to Len-only (VC score set to 0.0).
@@ -201,7 +201,7 @@ def _compute_vc_score(candidate: CandidateResult) -> float:
     """Compute log-space verbalized confidence score.
 
     ``VC(p) = log(nu / 100)`` where ``nu`` is the candidate's
-    single verbalized confidence value (0--100).
+    single verbalized confidence value (0 to 100).
 
     When verbalized_confidence is None, returns 0.0 (graceful
     degradation to Len-only scoring).

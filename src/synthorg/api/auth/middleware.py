@@ -78,9 +78,9 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
 
     Authentication priority:
 
-    1. **Session cookie** -- HttpOnly cookie set by login/setup.
+    1. **Session cookie**: HttpOnly cookie set by login/setup.
        Primary auth path for browser sessions.
-    2. **Authorization header** -- ``Bearer <token>``.
+    2. **Authorization header**: ``Bearer <token>``.
        Tokens with dots are JWTs (system user CLI tokens).
        Tokens without dots are API keys (HMAC-SHA256 lookup).
 
@@ -274,7 +274,7 @@ async def _resolve_jwt_user(
         )
         return None
 
-    # System users have a random password hash nobody knows --
+    # System users have a random password hash nobody knows;
     # pwd_sig validation is meaningless and skipped.  The shared
     # JWT secret signature is the sole authentication gate.
     # Additionally, require iss + aud to constrain which tokens
@@ -445,7 +445,7 @@ def create_auth_middleware_class(
     subclass whose ``__init__`` forwards the configured exclude
     list to ``super().__init__``.
 
-    The middleware is restricted to ``ScopeType.HTTP`` only --
+    The middleware is restricted to ``ScopeType.HTTP`` only;
     WebSocket connections use ticket-based auth handled entirely
     inside the WS handler (see ``controllers/ws.py``).
 

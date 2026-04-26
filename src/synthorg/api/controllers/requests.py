@@ -30,7 +30,7 @@ logger = get_logger(__name__)
 # transitions.  Without it ``scope``/``approve``/``reject`` have a
 # TOCTOU race between ``get`` and ``save``: two concurrent approvals
 # for the same request can both pass the status check and duplicate
-# ``intake_engine.process`` work.  The registry is process-local --
+# ``intake_engine.process`` work.  The registry is process-local;
 # cross-worker fairness requires a distributed lock and is out of
 # scope here; matches the in-memory scope of the sibling per-op
 # inflight store.  Lock creation is guarded by a plain

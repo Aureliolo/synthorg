@@ -89,7 +89,7 @@ const edgeTypes = { hierarchy: HierarchyEdge, communication: CommunicationEdge }
 const VIEWPORT_KEY = 'synthorg:orgchart:viewport'
 const COLLAPSED_DEPTS_KEY = 'synthorg:orgchart:collapsed-depts'
 
-// xyflow MiniMap props are typed as `number` and reject CSS vars --
+// xyflow MiniMap props are typed as `number` and reject CSS vars;
 // numeric constants with a comment pointing to the corresponding design
 // token prevent theme drift (see web/CLAUDE.md Design Token Rules).
 const MINIMAP_STROKE_WIDTH = 1.5 // var(--so-stroke-thin)

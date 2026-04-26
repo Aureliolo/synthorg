@@ -172,7 +172,7 @@ class TestRedactUrl:
 class TestMigrateBackendKwarg:
     """The atlas.migrate_* functions accept a backend kwarg.
 
-    The actual Atlas subprocess is not invoked in these unit tests --
+    The actual Atlas subprocess is not invoked in these unit tests;
     they verify the kwarg is forwarded to ``_run_atlas`` via a
     monkey-patched stub, and that ``_run_atlas`` resolves it against
     the correct installed revisions package when no explicit

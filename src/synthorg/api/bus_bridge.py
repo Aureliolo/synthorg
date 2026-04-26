@@ -317,7 +317,7 @@ class MessageBusBridge:
                     # ``_running=False`` otherwise and leak the
                     # orphaned subscription). Mark ``_stop_failed`` so
                     # ``start()`` cannot attach a second poller on the
-                    # same static ``_SUBSCRIBER_ID`` subscription --
+                    # same static ``_SUBSCRIBER_ID`` subscription;
                     # the operator must reconstruct the bridge to
                     # recover.
                     self._stop_failed = True

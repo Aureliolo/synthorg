@@ -491,7 +491,7 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
       bindings: readonly { channel: WsChannel; handler: WsEventHandler }[],
       options?: { unsubscribe?: boolean },
     ) {
-      // Best-effort teardown. Each leg is independently safe --
+      // Best-effort teardown. Each leg is independently safe:
       // ``offChannelEvent`` is a Map/Set delete (cannot throw) and
       // ``unsubscribe`` swallows its own send failures via ``log.error``.
       // A ``try``/``catch`` around each leg defends against future

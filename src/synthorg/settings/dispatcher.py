@@ -250,7 +250,7 @@ class SettingsChangeDispatcher:
                     # Only suppress when the cancellation came from
                     # the poll task completing (expected). If the
                     # task is still running, the CancelledError came
-                    # from the outer caller cancelling ``stop()`` --
+                    # from the outer caller cancelling ``stop()``;
                     # propagate it so lifecycle state does not get
                     # silently cleared mid-drain. Suppressing caller
                     # cancellation would violate the asyncio

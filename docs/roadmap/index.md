@@ -26,8 +26,8 @@ What works today:
 
 What's not there yet:
 
-- **End-to-end production runs** -- subsystems are integrated but the full autonomous loop (agents receiving work, executing, producing artifacts, iterating) has not been validated as a cohesive product
-- **Runtime configuration surface for agent evolution** -- the evolution service is implemented but wired at app init; runtime configuration via REST or UI is not yet exposed
+- **End-to-end production runs**: subsystems are integrated but the full autonomous loop (agents receiving work, executing, producing artifacts, iterating) has not been validated as a cohesive product
+- **Runtime configuration surface for agent evolution**: the evolution service is implemented but wired at app init; runtime configuration via REST or UI is not yet exposed
 
 ## Planned
 

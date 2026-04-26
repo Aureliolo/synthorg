@@ -13,7 +13,7 @@ SynthOrg has ~100 individually-resolved settings across 17 namespaces. Each sett
 
 Settings resolve through four layers, in priority order (first wins):
 
-1. **Database** -- values set via the REST API or dashboard persist here
+1. **Database**: values set via the REST API or dashboard persist here
 2. **Environment variables** (`SYNTHORG_<NAMESPACE>_<KEY>`)
 3. **YAML config file** (`synthorg-config.yaml` at boot)
 4. **Code defaults** (the `SettingDefinition.default` field)
@@ -118,11 +118,11 @@ Changing a restart-required setting writes the new value to the database but the
 
 The `SettingsChangeDispatcher` polls the `#settings` message bus channel and routes change events to registered `SettingsSubscriber` implementations. Concrete subscribers today:
 
-- `ProviderSettingsSubscriber` -- rebuilds `ModelRouter` on `routing_strategy` change via `AppState.swap_model_router()`
-- `MemorySettingsSubscriber` -- advisory logging for non-restart memory settings
-- `BackupSettingsSubscriber` -- toggles `BackupScheduler` on `enabled` change, reschedules on `schedule_hours` change
+- `ProviderSettingsSubscriber`: rebuilds `ModelRouter` on `routing_strategy` change via `AppState.swap_model_router()`
+- `MemorySettingsSubscriber`: advisory logging for non-restart memory settings
+- `BackupSettingsSubscriber`: toggles `BackupScheduler` on `enabled` change, reschedules on `schedule_hours` change
 
-Settings resolved via `ConfigResolver` bridge configs (e.g. `get_communication_bridge_config()`) are re-fetched at the top of each polling iteration in their consumers -- operator changes take effect within one poll cycle without restart.
+Settings resolved via `ConfigResolver` bridge configs (e.g. `get_communication_bridge_config()`) are re-fetched at the top of each polling iteration in their consumers, so operator changes take effect within one poll cycle without restart.
 
 ## Per-Operation Rate Limiting
 
@@ -183,7 +183,7 @@ Use `observability.custom_sinks` (JSON-typed) to add HTTP / syslog / OTLP shippi
 
 ## See Also
 
-- [Company Configuration](company-config.md) -- YAML bootstrap config reference
-- [Security & Trust Policies](security.md) -- autonomy, approvals, trust
-- [Centralized Logging](centralized-logging.md) -- log sink configuration
-- [Design: Observability](../design/observability.md) -- architecture and event taxonomy
+- [Company Configuration](company-config.md): YAML bootstrap config reference
+- [Security & Trust Policies](security.md): autonomy, approvals, trust
+- [Centralized Logging](centralized-logging.md): log sink configuration
+- [Design: Observability](../design/observability.md): architecture and event taxonomy

@@ -5,7 +5,7 @@ description: Practical how-to guides for configuring and operating SynthOrg.
 
 # Guides
 
-Practical guides for configuring, operating, and extending your synthetic organization. Each guide is self-contained with a clear goal -- start with the Quickstart Tutorial if you are new to SynthOrg.
+Practical guides for configuring, operating, and extending your synthetic organization. Each guide is self-contained with a clear goal. Start with the Quickstart Tutorial if you are new to SynthOrg.
 
 !!! tip "New to SynthOrg?"
 

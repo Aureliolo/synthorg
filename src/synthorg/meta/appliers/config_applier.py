@@ -129,11 +129,11 @@ class ConfigApplier:
         but is incompatible with several of our frozen sub-models
         (e.g. ``MappingProxyType`` wrappers, custom field serializers)
         which round-trip into shapes the parsers reject.  Cross-field
-        violations therefore surface at ``apply()`` time instead --
+        violations therefore surface at ``apply()`` time instead;
         follow-up work if we need preview-time guarantees for those
         rules too.
 
-        No state is ever mutated -- ``apply()`` remains the only path
+        No state is ever mutated; ``apply()`` remains the only path
         that touches real config.
 
         Args:

@@ -2,7 +2,7 @@
 
 Frozen Pydantic v2 models representing the A2A specification's
 wire-format types: JSON-RPC 2.0 envelope, Agent Cards, tasks,
-messages, and parts.  These are the external-facing models --
+messages, and parts.  These are the external-facing models;
 internal SynthOrg models are mapped to/from these via the
 ``task_mapper`` and ``message_mapper`` modules.
 """

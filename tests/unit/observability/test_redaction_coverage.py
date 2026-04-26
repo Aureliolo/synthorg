@@ -4,9 +4,9 @@ The structlog processor chain (``scrub_event_fields`` +
 ``format_exc_info``) already closes the ``error=str(exc)`` leak
 globally at runtime.  This test adds a second layer: static analysis
 that blocks any new ``logger.exception(..., error=str(exc))`` site
-from landing.  The pattern is itself a smell -- it signals a caller
-who is one processor-chain regression away from leaking credentials
--- so we keep new instances out of the tree entirely.
+from landing.  The pattern is itself a smell: it signals a caller
+who is one processor-chain regression away from leaking credentials,
+so we keep new instances out of the tree entirely.
 
 The baseline of already-grandfathered sites lives in
 ``scripts/_logger_exception_baseline.json``.  The gate script

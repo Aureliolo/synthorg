@@ -11,7 +11,7 @@ This document records the framework evaluation and migration decision that shape
 
 The initial web dashboard (v0.1.3, #347) was built with **Vue 3 + PrimeVue + Pinia + ECharts + VueFlow**. While functional, the UX audit (#762) identified severe problems across every page: static data presentation, missing interactivity, no visual hierarchy, inconsistent components, and lack of polish. The setup wizard was the only well-designed flow.
 
-Rather than incrementally fixing each page within the Vue stack, the team evaluated whether a framework migration would better serve the project's goals -- particularly around component ownership, keyboard-first interaction, animation richness, and AI-assisted development.
+Rather than incrementally fixing each page within the Vue stack, the team evaluated whether a framework migration would better serve the project's goals, particularly around component ownership, keyboard-first interaction, animation richness, and AI-assisted development.
 
 ## Framework Evaluation
 
@@ -34,13 +34,13 @@ The deciding factors were:
 
 1. **Component ownership**: shadcn/ui's copy-paste model means SynthOrg owns every component. No upstream dependency can break the UI on update. Components are customized in-place rather than fighting a library's opinion.
 
-2. **Keyboard-first interaction**: cmdk-base (the maintained cmdk port on Base UI Dialog) provides a production-ready command palette. This is central to SynthOrg's interaction model -- operators manage autonomous agents and need fast, keyboard-driven access to any action.
+2. **Keyboard-first interaction**: cmdk-base (the maintained cmdk port on Base UI Dialog) provides a production-ready command palette. This is central to SynthOrg's interaction model: operators manage autonomous agents and need fast, keyboard-driven access to any action.
 
-3. **Animation language**: Motion enables the "Warm Ops" design identity -- spring-based entrance animations, layout transitions, and gesture interactions that make an autonomous operations dashboard feel alive rather than static.
+3. **Animation language**: Motion enables the "Warm Ops" design identity: spring-based entrance animations, layout transitions, and gesture interactions that make an autonomous operations dashboard feel alive rather than static.
 
 4. **Accessibility**: Base UI primitives handle WAI-ARIA compliance at the component level. Combined with shadcn/ui's composable approach, accessibility is built-in rather than bolted-on.
 
-5. **AI-assisted development**: React's TypeScript integration produces more descriptive error messages, which improves the quality of AI-generated code contributions -- relevant given SynthOrg's development workflow.
+5. **AI-assisted development**: React's TypeScript integration produces more descriptive error messages, which improves the quality of AI-generated code contributions, relevant given SynthOrg's development workflow.
 
 See also: [Tech Stack decisions table](../architecture/tech-stack.md) (Web UI row).
 

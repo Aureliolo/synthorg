@@ -24,7 +24,7 @@ High-frequency destinations, always visible in the sidebar.
 Org overview: department health indicators (green/amber/red), recent activity widget, budget snapshot with sparkline, active task summary, agent status counts, approval badge count. The central "is the company healthy?" view.
 
 **API endpoints**: `GET /analytics/overview`, `GET /analytics/forecast`, `GET /budget/config`, `GET /departments`, `GET /departments/{name}/health`, `GET /activities`
-**WS channels**: `tasks`, `agents`, `budget`, `system`, `approvals` (all -- aggregated into health indicators and activity feed)
+**WS channels**: `tasks`, `agents`, `budget`, `system`, `approvals` (all aggregated into health indicators and activity feed)
 
 #### Org Chart (`/org`)
 
@@ -35,7 +35,7 @@ Living org visualization with real-time agent status. Two view modes toggled via
 
 Click agent nodes to open Agent Detail panel.
 
-"Edit Organization" button enters form-based edit mode (`/org/edit`) with sub-tabs: General (name, autonomy level, monthly budget, communication pattern), Agents (card grid with add/edit/delete), Departments (card grid with CRUD; nested team editing via the Department Edit drawer with create/rename/delete/reorder teams using @dnd-kit; reporting/policies editing remains deferred). This is the former Company page merged into the Org Chart -- same data domain, one destination.
+"Edit Organization" button enters form-based edit mode (`/org/edit`) with sub-tabs: General (name, autonomy level, monthly budget, communication pattern), Agents (card grid with add/edit/delete), Departments (card grid with CRUD; nested team editing via the Department Edit drawer with create/rename/delete/reorder teams using @dnd-kit; reporting/policies editing remains deferred). This is the former Company page merged into the Org Chart; same data domain, one destination.
 
 **API endpoints**: `GET /company`, `GET /company/departments`, `GET /departments`, `GET /departments/{name}`, `GET /departments/{name}/health`, `GET /agents`, `GET /agents/{name}`, `GET /messages` (communication view), `PATCH /agents/{name}` (drag-drop reassignment in hierarchy view). Edit mode adds: `PATCH /company`, `POST /departments`, `PATCH /departments/{name}`, `DELETE /departments/{name}`, `POST /company/reorder-departments`, `POST /agents`, `DELETE /agents/{name}`, `POST /departments/{name}/reorder-agents`, `POST /departments/{name}/teams`, `PATCH /departments/{name}/teams/{team_name}`, `DELETE /departments/{name}/teams/{team_name}`, `PATCH /departments/{name}/teams/reorder`.
 **WS channels**: `agents` (status changes, hired/fired). Communication view uses REST polling for message data (not WS).
@@ -51,14 +51,14 @@ Project filter dropdown available. Dedicated Projects page shipped (#946).
 
 #### Budget (`/budget`)
 
-P&L management dashboard -- not a billing tab. Current period spend vs budget, per-agent cost breakdown, per-department rollups, trend lines, cost anomaly highlights. Forecast sub-view (`/budget/forecast`) shows projected spend trajectories from the analytics engine.
+P&L management dashboard, not a billing tab. Current period spend vs budget, per-agent cost breakdown, per-department rollups, trend lines, cost anomaly highlights. Forecast sub-view (`/budget/forecast`) shows projected spend trajectories from the analytics engine.
 
 **API endpoints**: `GET /budget/config`, `GET /budget/records`, `GET /budget/agents/{id}`, `GET /analytics/overview`, `GET /analytics/trends`, `GET /analytics/forecast`
 **WS channels**: `budget`
 
 #### Approvals (`/approvals`)
 
-Pending decisions queue -- agents are blocked waiting for human action, so this is the highest-urgency page. Risk-level grouping with collapsible sections, urgency countdown indicators, batch select with approve/reject actions, detail drawer with approval timeline and metadata, filter bar with URL-synced state. Sidebar badge shows live pending count.
+Pending decisions queue: agents are blocked waiting for human action, so this is the highest-urgency page. Risk-level grouping with collapsible sections, urgency countdown indicators, batch select with approve/reject actions, detail drawer with approval timeline and metadata, filter bar with URL-synced state. Sidebar badge shows live pending count.
 
 **API endpoints**: `GET /approvals`, `GET /approvals/{id}`, `POST /approvals/{id}/approve`, `POST /approvals/{id}/reject`
 **WS channels**: `approvals`
@@ -71,7 +71,7 @@ Lower-frequency destinations in a collapsible "Workspace" section.
 
 Agent profiles as card grid. Each card shows name, role, department, status dot, hire date. Filtering by department, level, status. Search by name/role. Sort by name, department, level, status, hire date. Click navigates to the Agent Detail page at `/agents/{agentName}`.
 
-**Agent Detail page** (`/agents/{agentName}`) -- single scrollable page with these sections:
+**Agent Detail page** (`/agents/{agentName}`): single scrollable page with these sections:
 
 - **Identity header**: Large avatar, name, role, department badge, level badge, status with pulse, autonomy level badge, hire date
 - **Prose insights**: 1-3 generated narrative sentences from performance data (e.g. "Success rate of 94% across 127 completed tasks")
@@ -127,7 +127,7 @@ Detail page (`/artifacts/{artifactId}`) shows metadata grid (type, size, content
 
 #### Messages (`/messages`)
 
-Channel-filtered message feed for inspecting agent-to-agent communications. Two-column layout: channel list sidebar on the left, main message feed on the right. This is an investigative tool -- users examine delegation chains, audit coordination, debug inter-agent communication. Not a chat interface.
+Channel-filtered message feed for inspecting agent-to-agent communications. Two-column layout: channel list sidebar on the left, main message feed on the right. This is an investigative tool: users examine delegation chains, audit coordination, debug inter-agent communication. Not a chat interface.
 
 **Features**:
 
@@ -140,7 +140,7 @@ Channel-filtered message feed for inspecting agent-to-agent communications. Two-
 - **Real-time**: WebSocket-driven new message arrival with auto-scroll-to-bottom (when user is near bottom)
 - **Pagination**: "Load earlier messages" button for fetching older messages
 
-**URL params**: `?channel={name}`, `?type={messageType}`, `?priority={level}`, `?search={query}`, `?message={id}` (detail drawer). All filter params are optional and combinable independently -- `channel` is not required for type/priority/search filters.
+**URL params**: `?channel={name}`, `?type={messageType}`, `?priority={level}`, `?search={query}`, `?message={id}` (detail drawer). All filter params are optional and combinable independently; `channel` is not required for type/priority/search filters.
 
 **API endpoints**: `GET /messages`, `GET /messages/channels`
 **WS channels**: `messages`
@@ -156,7 +156,7 @@ Meeting history list with status/type filters. Click opens meeting detail (`/mee
 
 LLM provider management. CRUD cards for configured providers with health status display (up/degraded/down/unknown) and 24-hour health metrics (average response time, error rate percentage, call count, total tokens, cost). Connection test button. Preset-based creation flow with subscription auth support requiring ToS acceptance for applicable providers. Model auto-discovery with capability badges (tools, vision, streaming) per model. Provider list supports filtering and sorting by health status, name, and model count. Provider detail/edit at `/providers/{name}`.
 
-No WebSocket subscription -- provider changes are low-frequency admin operations. TanStack Query polling is sufficient.
+No WebSocket subscription; provider changes are low-frequency admin operations. TanStack Query polling is sufficient.
 
 **API endpoints**: `GET /providers`, `GET /providers/{name}`, `GET /providers/{name}/models`, `GET /providers/{name}/health`, `POST /providers`, `PUT /providers/{name}`, `DELETE /providers/{name}`, `POST /providers/{name}/test`, `GET /providers/presets`, `POST /providers/from-preset`, `POST /providers/{name}/discover-models`, `POST /providers/probe-preset`, `GET /providers/discovery-policy`, `POST /providers/discovery-policy/entries`, `POST /providers/discovery-policy/remove-entry`
 
@@ -169,7 +169,7 @@ Workflow definition list with card grid, search, and type filter. "Create Workfl
 
 #### Workflow Editor (`/workflows/editor`)
 
-Visual workflow designer -- a DAG-based editor for creating and editing workflow definitions that orchestrate multi-step agent pipelines. Operators build workflows by placing nodes on a canvas, connecting them with edges, and configuring each node's properties via a side drawer.
+Visual workflow designer: a DAG-based editor for creating and editing workflow definitions that orchestrate multi-step agent pipelines. Operators build workflows by placing nodes on a canvas, connecting them with edges, and configuring each node's properties via a side drawer.
 
 **Key features**:
 
@@ -189,7 +189,7 @@ Visual workflow designer -- a DAG-based editor for creating and editing workflow
 - **Diff viewer**: modal overlay showing node changes, edge changes, and metadata changes between any two versions
 - **Rollback**: restore a previous version's content as a new version (no history lost)
 
-No WebSocket subscription -- workflow definitions are persisted via REST and do not require real-time collaboration.
+No WebSocket subscription; workflow definitions are persisted via REST and do not require real-time collaboration.
 
 **API endpoints**: `GET /workflows`, `POST /workflows`, `GET /workflows/{id}`, `PATCH /workflows/{id}`, `DELETE /workflows/{id}`, `POST /workflows/{id}/validate`, `POST /workflows/{id}/export`, `GET /workflows/{id}/versions`, `GET /workflows/{id}/versions/{version_num}`, `GET /workflows/{id}/diff?from_version=N&to_version=M`, `POST /workflows/{id}/rollback`
 **WS channels**: (none)
@@ -199,7 +199,7 @@ No WebSocket subscription -- workflow definitions are persisted via REST and do 
 Registry listing of reusable subworkflow components. Card grid with search, I/O signature summary (input count / output count), version count, and latest version badge. Click opens a detail drawer showing version history, parent references, and delete action (blocked when parents pin the version).
 
 **API endpoints**: `GET /subworkflows`, `GET /subworkflows/search?q=`, `GET /subworkflows/{id}/versions`, `GET /subworkflows/{id}/versions/{version}`, `GET /subworkflows/{id}/versions/{version}/parents`, `POST /subworkflows`, `DELETE /subworkflows/{id}/versions/{version}`
-**WS channels**: (none -- refreshes via polling, 30s)
+**WS channels**: (none; refreshes via polling, 30s)
 
 #### Settings (`/settings`)
 
@@ -226,9 +226,9 @@ System-managed settings (e.g. `api/setup_complete`) are hidden from the GUI. Env
 
 #### Documentation (`/docs/`)
 
-Served as static MkDocs HTML by Caddy -- not a React page. The `/docs/` Caddy handle block serves pre-built documentation directly, bypassing the SPA's `try_files` fallback. The sidebar "Docs" link renders a plain `<a href>` (full-page navigation) instead of a React Router `<NavLink>`. MkDocs Material's own search, navigation, and dark mode function independently of the React app. Theme colors are customized via `docs/overrides/extra.css` to match the dashboard design system.
+Served as static MkDocs HTML by Caddy, not a React page. The `/docs/` Caddy handle block serves pre-built documentation directly, bypassing the SPA's `try_files` fallback. The sidebar "Docs" link renders a plain `<a href>` (full-page navigation) instead of a React Router `<NavLink>`. MkDocs Material's own search, navigation, and dark mode function independently of the React app. Theme colors are customized via `docs/overrides/extra.css` to match the dashboard design system.
 
-**API endpoints**: (none -- static HTML served by Caddy)
+**API endpoints**: (none; static HTML served by Caddy)
 **WS channels**: (none)
 
 ### Standalone Pages
@@ -249,7 +249,7 @@ Multi-step first-run flow. After account creation (conditional), a mode selectio
 
 ### Overlays
 
-Not pages -- triggered by user interaction, rendered over current page.
+Not pages; triggered by user interaction, rendered over current page.
 
 #### Command Palette
 
@@ -261,7 +261,7 @@ Global search overlay: navigate to any page, search agents by name, search tasks
 **Trigger**: Bell icon in sidebar bottom + unread badge
 Slide-in drawer aggregating system notifications: budget alerts, approval arrivals, agent status changes, system errors. Sources from WS `system`, `approvals`, and `budget` channels.
 
-**Category taxonomy** -- 17 notification categories with routing defaults and severity mappings:
+**Category taxonomy**: 17 notification categories with routing defaults and severity mappings:
 
 | Category | Default Route | Severity |
 |----------|--------------|----------|
@@ -298,23 +298,23 @@ Sidebar layout (220px expanded, 56px icon rail):
 
 - **Brand**: Logo / brand mark
 - **Primary**:
-    - Dashboard -- `LayoutDashboard` -- `/`
-    - Org Chart -- `GitBranch` -- `/org`
-    - Task Board -- `KanbanSquare` -- `/tasks`
-    - Budget -- `DollarSign` -- `/budget` (amber dot when >85% spent)
-    - Approvals -- `ShieldCheck` -- `/approvals` (badge: pending count)
+    - Dashboard, `LayoutDashboard`, `/`
+    - Org Chart, `GitBranch`, `/org`
+    - Task Board, `KanbanSquare`, `/tasks`
+    - Budget, `DollarSign`, `/budget` (amber dot when >85% spent)
+    - Approvals, `ShieldCheck`, `/approvals` (badge: pending count)
 - **Workspace** (collapsible label):
-    - Agents -- `Users` -- `/agents`
-    - Projects -- `FolderKanban` -- `/projects`
-    - Workflows -- `Workflow` -- `/workflows`
-    - Subworkflows -- `Layers` -- `/subworkflows`
-    - Artifacts -- `Package` -- `/artifacts`
-    - Messages -- `MessageSquare` -- `/messages` (badge: unread count)
-    - Meetings -- `Video` -- `/meetings`
-    - Providers -- `Cpu` -- `/providers`
-    - Docs -- `BookOpen` -- `/docs/` (external -- static HTML, not SPA)
-    - Fine-Tuning -- `Sparkles` -- `/settings/memory/fine-tuning`
-    - Settings -- `Settings` -- `/settings`
+    - Agents, `Users`, `/agents`
+    - Projects, `FolderKanban`, `/projects`
+    - Workflows, `Workflow`, `/workflows`
+    - Subworkflows, `Layers`, `/subworkflows`
+    - Artifacts, `Package`, `/artifacts`
+    - Messages, `MessageSquare`, `/messages` (badge: unread count)
+    - Meetings, `Video`, `/meetings`
+    - Providers, `Cpu`, `/providers`
+    - Docs, `BookOpen`, `/docs/` (external; static HTML, not SPA)
+    - Fine-Tuning, `Sparkles`, `/settings/memory/fine-tuning`
+    - Settings, `Settings`, `/settings`
 - **Bottom**:
     - Collapse toggle
     - Notifications bell + badge
@@ -324,7 +324,7 @@ Sidebar layout (220px expanded, 56px icon rail):
 
 **Icon source**: Lucide React (already a project dependency).
 
-**Visual separators**: Thin border lines between Primary, Workspace, and Bottom sections. No section headers for Primary -- items speak for themselves. "Workspace" label for secondary section, hidden when sidebar is collapsed to icon rail.
+**Visual separators**: Thin border lines between Primary, Workspace, and Bottom sections. No section headers for Primary; items speak for themselves. "Workspace" label for secondary section, hidden when sidebar is collapsed to icon rail.
 
 **Badge behaviors**:
 
@@ -404,7 +404,7 @@ Single WebSocket connection per session, established after login. Each page subs
 
 | Page | Channels | Events of Interest |
 |------|----------|--------------------|
-| **Dashboard** | `tasks`, `agents`, `budget`, `system`, `approvals` | All -- aggregated into health indicators, activity feed, badge counts |
+| **Dashboard** | `tasks`, `agents`, `budget`, `system`, `approvals` | All; aggregated into health indicators, activity feed, badge counts |
 | **Org Chart** (hierarchy) | `agents` | Agent hired/fired, status changes |
 | **Org Chart** (communication) | `agents` | Agent status changes. Message data via REST polling (`GET /messages`) |
 | **Org Chart** (edit mode) | `agents` | Agent hired/fired (triggers config refresh) |
@@ -419,10 +419,10 @@ Single WebSocket connection per session, established after login. Each page subs
 | **Projects** (detail) | `projects`, `tasks` | Project and task changes |
 | **Artifacts** (list) | `artifacts` | Artifact creation, deletion, upload events |
 | **Artifacts** (detail) | `artifacts` | Artifact changes for selected artifact |
-| **Providers** | (none) | N/A -- polling via TanStack Query |
+| **Providers** | (none) | N/A; polling via TanStack Query |
 | **Workflows** (list) | (none) | N/A |
-| **Subworkflows** | (none) | N/A -- refreshes via polling (30s) |
-| **Workflow Editor** | (none) | N/A -- REST API only, no real-time collaboration |
+| **Subworkflows** | (none) | N/A; refreshes via polling (30s) |
+| **Workflow Editor** | (none) | N/A; REST API only, no real-time collaboration |
 | **Settings** | `system` | Restart-required notifications |
 | **Notifications panel** | `system`, `approvals`, `budget` | System errors, new approvals, budget alerts |
 
@@ -444,7 +444,7 @@ Desktop-first with minimal tablet support. Mobile layout is not currently in sco
 | >=1280px | Full (220px) | Multi-column layouts | Standard desktop |
 | 1024--1279px | Auto-collapses to icon rail (56px) | Full width minus rail | Smaller desktops, split-screen |
 | 768--1023px | Hidden (hamburger toggle, 240px overlay) | Single column | Tablet landscape |
-| <768px | Hidden | "Use desktop or CLI" message | Not designed for mobile -- Go CLI covers quick-check use cases |
+| <768px | Hidden | "Use desktop or CLI" message | Not designed for mobile; Go CLI covers quick-check use cases |
 
 At tablet (768-1023px), the sidebar hamburger trigger is rendered in the StatusBar (top bar), not in the sidebar itself (which is hidden at that breakpoint). The overlay sidebar uses the shared `Drawer` component (`role="dialog"`, `aria-modal="true"`) with a blurred semi-transparent backdrop and auto-closes on navigation.
 
@@ -459,13 +459,13 @@ The density system (Dense/Balanced/Medium/Sparse from [Brand & UX](brand-and-ux.
 The activity feed is a Dashboard widget, not a persistent global element. Rationale:
 
 - A persistent drawer competes with page content for attention (violates principle #3: "navigation recedes, content shines")
-- The Dashboard is the natural home for activity summaries -- users who want more detail click through to the relevant page (principle #5: progressive disclosure)
+- The Dashboard is the natural home for activity summaries; users who want more detail click through to the relevant page (principle #5: progressive disclosure)
 - Linear, Vercel, and Grafana all use dashboard widgets for activity, not persistent drawers
-- The Dashboard already subscribes to all WS channels for its health indicators -- the activity widget is a natural aggregation
+- The Dashboard already subscribes to all WS channels for its health indicators; the activity widget is a natural aggregation
 
 ### Messages: Own page (not drawer)
 
-Messages have a dedicated API (`/messages` + channel filtering) and WebSocket channel -- this is a first-class domain. Agent-to-agent communications require investigation (delegation chains, coordination audits), which needs filters, scrolling, and context that a drawer cannot provide. The channel filtering model maps naturally to a page with a channel sidebar and message feed.
+Messages have a dedicated API (`/messages` + channel filtering) and WebSocket channel; this is a first-class domain. Agent-to-agent communications require investigation (delegation chains, coordination audits), which needs filters, scrolling, and context that a drawer cannot provide. The channel filtering model maps naturally to a page with a channel sidebar and message feed.
 
 ### Org Chart + Company: Merged with mode separation
 

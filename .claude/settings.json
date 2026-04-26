@@ -23,6 +23,21 @@
             "type": "command",
             "command": "bash scripts/check_git_c_cwd.sh",
             "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "python3 scripts/check_no_bulk_edit.py",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 scripts/check_no_bulk_edit.py",
+            "timeout": 5000
           }
         ]
       },

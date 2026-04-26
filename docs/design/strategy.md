@@ -1,4 +1,4 @@
-# Strategy Module -- Trendslop Mitigation
+# Strategy Module: Trendslop Mitigation
 
 > Structural mitigation against LLM tendency to recommend trendy, context-insensitive strategies ("trendslop") for strategic agent roles.
 
@@ -18,9 +18,9 @@ Controls how strategic agents frame their recommendations. Set per-agent via `Ag
 
 | Mode | Behavior | Default For |
 |------|----------|-------------|
-| `option_expander` | Present ALL options with lens analysis, no ranking | -- |
+| `option_expander` | Present ALL options with lens analysis, no ranking | - |
 | `advisor` | Recommend top 2-3 with reasoning and caveats | C-suite, VP |
-| `decision_maker` | Make final recommendation with full justification | -- |
+| `decision_maker` | Make final recommendation with full justification | - |
 | `context_dependent` | Resolves to advisor or decision_maker based on agent seniority | Director |
 
 Resolution: agent override > config default. `context_dependent` resolves to `decision_maker` for C-suite/VP, `advisor` otherwise.
@@ -121,12 +121,12 @@ Strategic sections are injected into the system prompt after autonomy instructio
 
 ### Injected Sections
 
-1. **Strategic Analysis Framework** -- maturity stage, industry, competitive position
-2. **Constitutional Principles** -- anti-trendslop rules from active pack
-3. **Contrarian Analysis** -- forced opposite-case consideration
-4. **Confidence Calibration** -- output format requirements
-5. **Assumption Surfacing** -- explicit assumption listing
-6. **Output Requirements** -- mode-specific output instructions
+1. **Strategic Analysis Framework**: maturity stage, industry, competitive position
+2. **Constitutional Principles**: anti-trendslop rules from active pack
+3. **Contrarian Analysis**: forced opposite-case consideration
+4. **Confidence Calibration**: output format requirements
+5. **Assumption Surfacing**: explicit assumption listing
+6. **Output Requirements**: mode-specific output instructions
 
 The strategy section is trimmable (removed first when over token budget).
 
@@ -175,7 +175,7 @@ strategy:
 ## Decision Records
 
 `DecisionRecord` includes three optional strategy metadata fields.
-All are nullable and default to `None` (or `()` for tuples) -- they
+All are nullable and default to `None` (or `()` for tuples); they
 are only populated when the strategy module is active during the
 meeting that produces the decision.
 

@@ -26,7 +26,7 @@ implemented behind a `RecoveryStrategy` protocol, making the system pluggable.
 |-------|------|-------------|
 | `task_execution` | `TaskExecution` | Updated execution after recovery (typically `FAILED`) |
 | `strategy_type` | `NotBlankStr` | Strategy identifier |
-| `context_snapshot` | `AgentContextSnapshot` | Redacted snapshot (turn count, accumulated cost, message count, max turns -- no message contents) |
+| `context_snapshot` | `AgentContextSnapshot` | Redacted snapshot (turn count, accumulated cost, message count, max turns; no message contents) |
 | `error_message` | `NotBlankStr` | Error that triggered recovery |
 | `failure_category` | `FailureCategory` | Machine-readable classification (`TOOL_FAILURE`, `STAGNATION`, `BUDGET_EXCEEDED`, `QUALITY_GATE_FAILED`, `TIMEOUT`, `DELEGATION_FAILED`, `UNKNOWN`) |
 | `failure_context` | `dict[str, Any]` | Structured strategy-specific failure metadata (deep-copied at construction; defaults to `{}`) |
@@ -37,14 +37,14 @@ implemented behind a `RecoveryStrategy` protocol, making the system pluggable.
 | `can_resume` | `bool` (computed) | `checkpoint_context_json is not None` |
 | `can_reassign` | `bool` (computed) | `retry_count < task.max_retries` |
 
-`failure_category` is inferred from the error message via `infer_failure_category()` (keyword-based heuristic).  `UNKNOWN` is the deliberate default when no keyword rule matches -- an honest classification is more useful than a silent `TOOL_FAILURE` lie that would masquerade unknown causes in dashboards, reports, and reconciliation prompts.  Checkpoint reconciliation messages include the category and any unmet criteria (both passed through `sanitize_message` to strip paths, URLs, and prompt-injection markers) so the resumed agent has structured context about what failed without carrying leaked secrets.
+`failure_category` is inferred from the error message via `infer_failure_category()` (keyword-based heuristic).  `UNKNOWN` is the deliberate default when no keyword rule matches; an honest classification is more useful than a silent `TOOL_FAILURE` lie that would masquerade unknown causes in dashboards, reports, and reconciliation prompts.  Checkpoint reconciliation messages include the category and any unmet criteria (both passed through `sanitize_message` to strip paths, URLs, and prompt-injection markers) so the resumed agent has structured context about what failed without carrying leaked secrets.
 
 **Cross-field invariants.** `RecoveryResult` enforces two cross-field rules at construction:
 
-- `stagnation_evidence` is set iff `failure_category` is `STAGNATION` (and the evidence verdict must not be `NO_STAGNATION` -- evidence that the detector ruled out stagnation cannot back a STAGNATION result).
+- `stagnation_evidence` is set iff `failure_category` is `STAGNATION` (and the evidence verdict must not be `NO_STAGNATION`; evidence that the detector ruled out stagnation cannot back a STAGNATION result).
 - `criteria_failed` must be non-empty when `failure_category` is `QUALITY_GATE_FAILED`.
 
-Strategies that only have an error string (`FailAndReassignStrategy`, `CheckpointRecoveryStrategy._build_resume_result`) use `infer_failure_category_without_evidence()`, which clamps `STAGNATION` / `QUALITY_GATE_FAILED` to `UNKNOWN` -- the unclamped helper would crash construction on any error message containing the keywords "stagnation", "quality", or "criteria" because those strategies cannot supply the required sidecar data.
+Strategies that only have an error string (`FailAndReassignStrategy`, `CheckpointRecoveryStrategy._build_resume_result`) use `infer_failure_category_without_evidence()`, which clamps `STAGNATION` / `QUALITY_GATE_FAILED` to `UNKNOWN`; the unclamped helper would crash construction on any error message containing the keywords "stagnation", "quality", or "criteria" because those strategies cannot supply the required sidecar data.
 
 **Transition-reason wire format.** After a recovery, the post-execution pipeline embeds `failure_category` (and a sanitized summary of `criteria_failed` when present) into the task-status transition reason as `"Post-recovery status: <status> (failure_category=<value>[, unmet_criteria=<summary>])"`.  The `(failure_category=<value>)` suffix is a hook for downstream consumers (e.g. routing / reassignment components) to read category metadata from status history without re-parsing the raw error message.  The key name (`failure_category`) and value format are a stable contract: future consumers will depend on it, so changes require a coordinated rollout.
 
@@ -55,7 +55,7 @@ Strategies that only have an error string (`FailAndReassignStrategy`, `Checkpoin
     **Default / MVP**
 
     The engine catches the failure at its outermost boundary, logs a redacted
-    `AgentContext` snapshot (turn count, accumulated cost -- excluding message
+    `AgentContext` snapshot (turn count, accumulated cost; excluding message
     contents to avoid leaking sensitive prompts/tool outputs), transitions the
     task to `FAILED`, and makes it available for reassignment (manual or
     automatic via the task router).
@@ -66,14 +66,14 @@ Strategies that only have an error string (`FailAndReassignStrategy`, `Checkpoin
     ```
 
     - Simple, no persistence dependency
-    - All progress is lost on crash -- acceptable for short single-agent tasks
+    - All progress is lost on crash; acceptable for short single-agent tasks
 
     On crash:
 
     1. Catch exception at the `AgentEngine` boundary (outermost `try/except`
        in `AgentEngine.run()`)
     2. Log at ERROR with redacted `AgentContextSnapshot` (turn count,
-       accumulated cost, message count, max turns -- message contents excluded)
+       accumulated cost, message count, max turns; message contents excluded)
     3. Transition `TaskExecution` -> `FAILED` with the exception as the failure
        reason
     4. `RecoveryResult.can_reassign` reports whether `retry_count < max_retries`
@@ -89,7 +89,7 @@ Strategies that only have an error string (`FailAndReassignStrategy`, `Checkpoin
     crash, the framework detects the failure (via heartbeat timeout or
     exception), loads the last checkpoint, and resumes execution from the exact
     turn where it left off. The immutable `model_copy(update=...)` pattern makes
-    checkpointing trivial -- each `AgentContext` is a complete, self-contained
+    checkpointing trivial; each `AgentContext` is a complete, self-contained
     frozen state that serializes cleanly via `model_dump_json()`.
 
     ```yaml
@@ -102,7 +102,7 @@ Strategies that only have an error string (`FailAndReassignStrategy`, `Checkpoin
         max_resume_attempts: 2             # retry limit before falling back to fail_reassign
     ```
 
-    - Preserves progress -- critical for long tasks (multi-step plans,
+    - Preserves progress; critical for long tasks (multi-step plans,
       epic-level work)
     - Requires persistence layer and reconciliation message on resume
     - Natural fit with the existing immutable state model
@@ -121,12 +121,12 @@ Strategies that only have an error string (`FailAndReassignStrategy`, `Checkpoin
     snapshot.
 
     - **Read-only reconstruction**: replays turn count, accumulated cost,
-      and task status transitions -- but not full conversation history
+      and task status transitions, but not full conversation history
       (events do not store message content; turns are represented as
       placeholder messages).
     - **No persistence dependency**: relies on whichever observability sink
       the operator configured (structlog file, OTLP backend, Postgres).
-    - **Best-effort**: `ReplayResult.replay_completeness` (0.0--1.0) indicates
+    - **Best-effort**: `ReplayResult.replay_completeness` (0.0 to 1.0) indicates
       how much state was recovered.
     - **Use case**: recovery after brain failure when checkpoint persistence
       is not configured or the checkpoint is stale.
@@ -146,8 +146,8 @@ The engine sets a shutdown event, stops accepting new tasks, and gives in-flight
 agents a grace period to finish their current turn. Agents check the shutdown
 event at turn boundaries (between LLM calls, before tool invocations) and exit
 cooperatively. After the grace period, remaining agents are force-cancelled.
-**All tasks terminated by this strategy -- whether they exited cooperatively or
-were force-cancelled -- are marked `INTERRUPTED`** by the engine layer.
+**All tasks terminated by this strategy (whether they exited cooperatively or
+were force-cancelled) are marked `INTERRUPTED`** by the engine layer.
 (Strategy 4 uses `SUSPENDED` for successfully checkpointed tasks instead;
 see [Strategy 4](#strategy-4-checkpoint-and-stop).)
 
@@ -160,19 +160,19 @@ graceful_shutdown:
 
 On shutdown signal:
 
-1. Set `shutdown_event` (`asyncio.Event`) -- agents check this at turn
+1. Set `shutdown_event` (`asyncio.Event`); agents check this at turn
    boundaries
 2. Stop accepting new tasks (drain gate closes)
 3. Wait up to `grace_seconds` for agents to exit cooperatively
-4. Force-cancel remaining agents (`task.cancel()`) -- tasks transition to
+4. Force-cancel remaining agents (`task.cancel()`); tasks transition to
    `INTERRUPTED`
 5. Cleanup phase (`cleanup_seconds`): persist cost records, close provider
    connections, flush logs
 
 !!! info "INTERRUPTED status"
-    `INTERRUPTED` indicates the task was stopped due to process shutdown --
-    regardless of whether the agent exited cooperatively or was force-cancelled
-    -- and is eligible for manual or automatic reassignment on restart. Valid
+    `INTERRUPTED` indicates the task was stopped due to process shutdown
+    (regardless of whether the agent exited cooperatively or was force-cancelled)
+    and is eligible for manual or automatic reassignment on restart. Valid
     transitions: `ASSIGNED -> INTERRUPTED`, `IN_PROGRESS -> INTERRUPTED`,
     `INTERRUPTED -> ASSIGNED`.
 
@@ -191,7 +191,7 @@ On shutdown signal:
 ### Strategy 2: Immediate Cancel
 
 All agent tasks are cancelled immediately via `task.cancel()` with no grace
-period. Fastest shutdown but highest data loss -- partial tool side effects,
+period. Fastest shutdown but highest data loss; partial tool side effects,
 billed-but-lost LLM responses. Tasks are marked `INTERRUPTED`.
 
 ```yaml
@@ -222,7 +222,7 @@ Stragglers are checkpointed via a `checkpoint_saver` callback, then cancelled.
 Successfully checkpointed tasks transition to `SUSPENDED` (not `INTERRUPTED`);
 failed checkpoints fall back to `INTERRUPTED`. On restart, the engine loads
 checkpoints and resumes execution from the exact point of interruption. This
-naturally extends [Checkpoint Recovery](#agent-crash-recovery) -- the only
+naturally extends [Checkpoint Recovery](#agent-crash-recovery); the only
 difference is whether the checkpoint was written proactively (graceful
 shutdown) or loaded from the last turn (crash recovery).
 
@@ -289,7 +289,7 @@ flowchart TD
           llm_max_retries: 2
     ```
 
-- True filesystem isolation -- agents cannot overwrite each other's work
+- True filesystem isolation; agents cannot overwrite each other's work
 - Maximum parallelism during execution; conflicts deferred to merge time
 - Leverages mature git infrastructure for merge, diff, and history
 
@@ -348,7 +348,7 @@ Strategy 2: Sequential Dependencies
 
 Strategy 3: File-Level Locking
 :   Files are locked at task assignment time. Eliminates conflicts at the source
-    but requires predicting file access -- difficult for LLM agents that
+    but requires predicting file access, difficult for LLM agents that
     discover what to edit as they go. Risk of deadlock if multiple agents need
     overlapping file sets.
 
@@ -379,16 +379,16 @@ and exceeded events when thresholds are crossed.
 **Watcher** (`DiskQuotaWatcher`): checks worktree disk usage via recursive
 directory size computation. Emits `WORKSPACE_DISK_WARNING` at the warning
 threshold and `WORKSPACE_DISK_EXCEEDED` at the limit. Does not delete
-worktrees directly -- signals the `WorkspaceManager` to act.
+worktrees directly; signals the `WorkspaceManager` to act.
 
 **Module**: `src/synthorg/engine/workspace/disk_quota.py`
 
 ## Task Decomposability & Coordination Topology
 
 Empirical research on agent scaling
-([Kim et al., 2025](https://arxiv.org/abs/2512.08296) -- 180 controlled
+([Kim et al., 2025](https://arxiv.org/abs/2512.08296); 180 controlled
 experiments across 3 LLM families and 4 benchmarks) demonstrates that **task
-decomposability is the strongest predictor of multi-agent effectiveness** --
+decomposability is the strongest predictor of multi-agent effectiveness**,
 stronger than team size, model capability, or coordination architecture.
 
 ### Task Structure Classification
@@ -403,8 +403,8 @@ Each task carries a `task_structure` field classifying its decomposability:
 
 Classification can be:
 
-- **Explicit** -- set in task config by the task creator or manager agent
-- **Inferred** -- derived from task properties (tool count, dependency graph,
+- **Explicit**: set in task config by the task creator or manager agent
+- **Inferred**: derived from task properties (tool count, dependency graph,
   acceptance criteria structure) by the task router
 
 ### Per-Task Coordination Topology
@@ -448,12 +448,12 @@ across held-out configurations.
 
 Per-task coordination-group size is **not** the same as per-company size. An
 Enterprise Org template with 20-50 agents does not run 20-50-agent coordination
-waves -- it runs small coordination groups drawn from the roster.
+waves; it runs small coordination groups drawn from the roster.
 
 | Scope | Bound | Enforcement |
 |-------|-------|-------------|
 | Per-coordination-group (agents in a single `coordination_topology` wave) | **3-4 agents** (recommended) | `CoordinationConfig.max_concurrency_per_wave` |
-| Per-task total team (orchestrator + sub-agents + verifiers) | **~7 agents** | Soft cap -- logged warning above threshold |
+| Per-task total team (orchestrator + sub-agents + verifiers) | **~7 agents** | Soft cap; logged warning above threshold |
 | Per-meeting participants | **3-5 ideal, 8 hard cap** | Enforced by meeting protocol token budgets and quadratic-growth warnings (see [Meeting Protocol](communication.md#meeting-protocol)) |
 | Per-company / org roster | **No hard bound** | Organizational-simulation fidelity, not per-task reasoning efficiency |
 
@@ -468,21 +468,21 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
 
 **Pipeline phases:**
 
-1. **Decompose** -- `DecompositionService` breaks the parent task into subtasks
+1. **Decompose**: `DecompositionService` breaks the parent task into subtasks
    with a dependency DAG. The LLM-backed decomposer routes task title,
    description, and acceptance criteria through `wrap_untrusted(TAG_TASK_DATA, ...)`
    before interpolating them into the prompt; the system prompt appends the
    canonical `untrusted_content_directive` so the model is told the fenced
    content is untrusted input. See [SEC-1: Prompt Safety](../reference/sec-prompt-safety.md).
-2. **Route** -- `TaskRoutingService` assigns each subtask to an agent based on
+2. **Route**: `TaskRoutingService` assigns each subtask to an agent based on
    skills, workload, and topology
-3. **Resolve topology** -- reads topology from routing decisions; falls back to
+3. **Resolve topology**: reads topology from routing decisions; falls back to
    `CENTRALIZED` if `AUTO` was not resolved upstream
-4. **Validate** -- fails the pipeline if all subtasks are unroutable
-5. **Dispatch** -- a `TopologyDispatcher` executes waves (workspace setup ->
+4. **Validate**: fails the pipeline if all subtasks are unroutable
+5. **Dispatch**: a `TopologyDispatcher` executes waves (workspace setup ->
    parallel execution -> merge -> teardown)
-6. **Rollup** -- aggregates subtask statuses into a `SubtaskStatusRollup`
-7. **Update parent** -- transitions the parent task via `TaskEngine` (if provided)
+6. **Rollup**: aggregates subtask statuses into a `SubtaskStatusRollup`
+7. **Update parent**: transitions the parent task via `TaskEngine` (if provided)
 
 Each phase produces a `CoordinationPhaseResult` (success/failure + duration).
 
@@ -504,14 +504,14 @@ After the pipeline completes, `build_agent_contributions()` in
 `coordination/attribution.py` produces a `tuple[AgentContribution, ...]` from
 routing decisions and wave outcomes:
 
-- **`AgentContribution`** -- frozen Pydantic model recording each agent's
-  `contribution_score` (0.0--1.0), `failure_attribution` classification, and
+- **`AgentContribution`**: frozen Pydantic model recording each agent's
+  `contribution_score` (0.0 to 1.0), `failure_attribution` classification, and
   optional `evidence` excerpt.
-- **Failure attribution categories** -- `"direct"` (agent's own failure),
+- **Failure attribution categories**: `"direct"` (agent's own failure),
   `"upstream_contamination"` (bad input from another agent),
   `"coordination_overhead"` (system-initiated: budget, shutdown, parking),
   `"quality_gate"` (failed quality check).
-- **Integration** -- contributions are fed into `PerformanceTracker
+- **Integration**: contributions are fed into `PerformanceTracker
   .record_coordination_contributions()` for trend analysis.
 
 ---
@@ -522,7 +522,7 @@ MCP tools for coordination and ceremony policy route through dedicated service f
 
 | Service | Module | Role |
 |---|---|---|
-| `CoordinationService` | `src/synthorg/coordination/service.py` | Read-only facade over `coordination_metrics_store`. Powers `synthorg_coordination_get_task_metrics` (newest-first lookup for a given `task_id`, or `None` mapped to a `not_found` envelope) and `synthorg_coordination_metrics_list` (paged metrics with `(items, total)` return shape). Triggering coordination is intentionally out of scope on the MCP surface -- callers trigger runs over REST (`POST /tasks/{task_id}/coordinate`) and inspect the resulting metrics via MCP. |
+| `CoordinationService` | `src/synthorg/coordination/service.py` | Read-only facade over `coordination_metrics_store`. Powers `synthorg_coordination_get_task_metrics` (newest-first lookup for a given `task_id`, or `None` mapped to a `not_found` envelope) and `synthorg_coordination_metrics_list` (paged metrics with `(items, total)` return shape). Triggering coordination is intentionally out of scope on the MCP surface; callers trigger runs over REST (`POST /tasks/{task_id}/coordinate`) and inspect the resulting metrics via MCP. |
 | `ScalingDecisionService` | `src/synthorg/hr/scaling/decision_service.py` | Read-only facade over the scaling decision history, scaling config, and the manual-trigger entry point. Powers `synthorg_scaling_list_decisions`, `synthorg_scaling_get_decision`, `synthorg_scaling_get_config`, and `synthorg_scaling_trigger`. `trigger` is the one write-shaped tool in the group and records an audit event with the resolved actor + reason. |
 | `CeremonyPolicyService` | `src/synthorg/coordination/ceremony_policy/service.py` | Glue between MCP handlers and the ceremony policy helpers in `api/controllers/ceremony_policy.py` + `engine/workflow/ceremony_policy.py`. Exposes `get_config`, `get_resolved`, and `get_active_strategy`. Returns a frozen `ActiveCeremonyStrategy` model that enforces the `strategy`/`sprint_id` coupling invariant via a cross-field validator: both fields are always either both set (a sprint is active and locked to a strategy) or both `None`. |
 
@@ -530,7 +530,7 @@ The services import `AppState` for re-use of the existing 3-level resolution (`s
 
 ## See Also
 
-- [Task & Workflow Engine](engine.md) -- task dispatch, state coordination
-- [Agent Execution](agent-execution.md) -- per-agent execution loop, prompt profiles
-- [Verification & Quality](verification-quality.md) -- review pipeline, verification stage
-- [Design Overview](index.md) -- full index
+- [Task & Workflow Engine](engine.md): task dispatch, state coordination
+- [Agent Execution](agent-execution.md): per-agent execution loop, prompt profiles
+- [Verification & Quality](verification-quality.md): review pipeline, verification stage
+- [Design Overview](index.md): full index

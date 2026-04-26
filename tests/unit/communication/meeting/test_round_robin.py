@@ -462,8 +462,8 @@ class TestRoundRobinInjectionDefense:
         """The leader's summary prompt also wraps each peer contribution.
 
         ``RoundRobinProtocol.run()`` rebuilds the transcript from the
-        collected ``contributions`` before passing it to ``_run_summary``
-        -- this is a SEPARATE code path from the per-turn transcript
+        collected ``contributions`` before passing it to ``_run_summary``;
+        this is a SEPARATE code path from the per-turn transcript
         build inside ``_run_discussion_rounds``.  If the summary-side
         rebuild were to drop the fence, an injected peer turn could
         hijack the leader's decisions/action-items output.  This test

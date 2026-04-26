@@ -1,6 +1,6 @@
 ---
 title: UX Design Guidelines
-description: Authoritative design guidelines for the SynthOrg web dashboard -- color system, component patterns, interaction design, animation language, accessibility, and responsive breakpoints.
+description: Authoritative design guidelines for the SynthOrg web dashboard. Covers color system, component patterns, interaction design, animation language, accessibility, and responsive breakpoints.
 ---
 
 # UX Design Guidelines
@@ -44,10 +44,10 @@ Metric cards, sparklines, and trend indicators assign color by data direction:
 
 | Data state | Color token | Visual meaning |
 |------------|-------------|----------------|
-| Improving / rising | `success` | Green -- things getting better |
-| Stable / normal | `accent` or `text-muted` | Neutral -- no action needed |
-| Declining / degrading | `warning` | Amber -- attention warranted |
-| Critical / threshold | `danger` | Red -- act now |
+| Improving / rising | `success` | Green: things getting better |
+| Stable / normal | `accent` or `text-muted` | Neutral: no action needed |
+| Declining / degrading | `warning` | Amber: attention warranted |
+| Critical / threshold | `danger` | Red: act now |
 
 #### Dark Mode Only
 
@@ -62,7 +62,7 @@ The dashboard is dark-mode only (confirmed in #762). All color tokens assume dar
 | Monospace | Geist Mono | `@fontsource-variable/geist-mono` (self-hosted) |
 | Sans-serif | Geist Sans | `@fontsource-variable/geist` (self-hosted) |
 
-All fonts self-hosted via `@fontsource` -- no external CDN dependencies.
+All fonts self-hosted via `@fontsource`; no external CDN dependencies.
 
 #### Type Scale
 
@@ -118,9 +118,9 @@ Base unit: **8px**. All spacing values follow a 4px sub-grid (half the 8px base 
 
 These 3 elements create instant "this is SynthOrg" recognition:
 
-1. **Warm soft blue accent** (`#38bdf8`) -- brand-neutral so state colors dominate, but present in links, focus rings, active nav, and sparkline defaults
-2. **Dark cards with subtle borders** -- `bg-card` (`#13131f`) with 1px `border` (`#1e1e2e`), 8px border-radius. Cards float above `bg-base` without heavy shadows
-3. **Monospace data values** -- Geist Mono for all numbers, metrics, agent names, and timestamps creates a "control room" feel where data is always legible and aligned
+1. **Warm soft blue accent** (`#38bdf8`): brand-neutral so state colors dominate, but present in links, focus rings, active nav, and sparkline defaults
+2. **Dark cards with subtle borders**: `bg-card` (`#13131f`) with 1px `border` (`#1e1e2e`), 8px border-radius. Cards float above `bg-base` without heavy shadows
+3. **Monospace data values**: Geist Mono for all numbers, metrics, agent names, and timestamps creates a "control room" feel where data is always legible and aligned
 
 ---
 
@@ -166,7 +166,7 @@ Status is **never communicated by color alone**. The encoding hierarchy:
 
 | Level | What to add | When |
 |-------|-------------|------|
-| 1. Color | State color (success/warning/danger/accent) | Always -- base layer |
+| 1. Color | State color (success/warning/danger/accent) | Always; base layer |
 | 2. Shape | Dot (6px circle) or icon (Lucide) | Always alongside color |
 | 3. Text label | "Active", "Error", "Warning" | For critical states and when space allows |
 | 4. Animation | Pulse or flash | Only during state transitions, never steady-state |
@@ -194,7 +194,7 @@ Status is **never communicated by color alone**. The encoding hierarchy:
 | Fill | Linear gradient, top: stroke color at 30% opacity, bottom: 0% opacity |
 | End dot | 2px radius circle, solid stroke color |
 | Draw animation | stroke-dasharray 200, 1s ease forwards, 200ms delay |
-| Color | Dynamic -- follows data state (success/accent/warning/danger) |
+| Color | Dynamic; follows data state (success/accent/warning/danger) |
 
 #### Progress bar
 
@@ -203,7 +203,7 @@ Status is **never communicated by color alone**. The encoding hierarchy:
 | Height | 2px (inline metric), 6px (department health) |
 | Border-radius | 1px (2px bar) or 3px (6px bar) |
 | Track color | `border` (`#1e1e2e`) |
-| Fill color | Dynamic -- follows data state |
+| Fill color | Dynamic; follows data state |
 | Fill animation | 900ms cubic-bezier(0.4, 0, 0.2, 1) |
 | Glow | 6px health bar only: `0 0 8px accent/30%` when healthy |
 
@@ -215,7 +215,7 @@ Status is **never communicated by color alone**. The encoding hierarchy:
 | Outer radius | 48px (default), 32px (compact) |
 | Stroke width | 6px |
 | Track color | `border` (`#1e1e2e`) |
-| Fill color | Dynamic -- follows data state (success/accent/warning/danger) |
+| Fill color | Dynamic; follows data state (success/accent/warning/danger) |
 | Fill animation | 900ms cubic-bezier(0.4, 0, 0.2, 1), clockwise from left |
 | Value label | Centered inside the arc, Geist Mono 18px weight 700, `text-primary` |
 | Sub-label | Below value label, 11px, `text-muted` (e.g. "of 100") |
@@ -313,10 +313,10 @@ For settings values, agent names, and editable fields:
 
 | Action | Behavior |
 |--------|----------|
-| Activate | Click on value -- field becomes editable input |
+| Activate | Click on value; field becomes editable input |
 | Visual cue | Subtle border appears around field, background lightens to `bg-surface` |
 | Save | Enter key or blur (focus loss) |
-| Cancel | Escape key -- reverts to previous value |
+| Cancel | Escape key; reverts to previous value |
 | Validation | Inline error message below field in `danger` color |
 | Loading | Input disabled, spinner replaces save icon |
 | Success | Brief flash of `success/10%` background, then fade |
@@ -419,7 +419,7 @@ When a value updates in real-time (via WebSocket):
 | Hold | 100ms | Holds the flash color |
 | Fade | 300ms | Fades back to default background |
 
-**No animation** on initial page load -- only on subsequent real-time updates after the page is settled.
+**No animation** on initial page load; only on subsequent real-time updates after the page is settled.
 
 ### 4.5 Real-Time Update Feedback
 
@@ -525,9 +525,9 @@ All foreground/background combinations verified with `scripts/wcag_check.py`. Th
 
 Status must **never** be color-only. Every status indicator includes:
 
-1. **Color** -- semantic state color (success/warning/danger/accent)
-2. **Shape** -- dot (6px circle) or icon (Lucide icon set)
-3. **Text label** -- explicit text for critical states ("Active", "Error", "Idle")
+1. **Color**: semantic state color (success/warning/danger/accent)
+2. **Shape**: dot (6px circle) or icon (Lucide icon set)
+3. **Text label**: explicit text for critical states ("Active", "Error", "Idle")
 
 For non-critical contexts where space is limited (e.g. compact table rows), color + shape is acceptable, but an `aria-label` must provide the text equivalent.
 
@@ -573,9 +573,9 @@ Scope inherited from [Page Structure & IA](page-structure.md). Desktop-first wit
 | >= 1280px | Expanded | Collapse to rail (56px) | 220px / 56px |
 | 1024 - 1279px | Collapsed (rail) | Expand to full | 56px / 220px |
 | 768 - 1023px | Hidden | Hamburger opens overlay | 0px / 240px (overlay) |
-| < 768px | Hidden | No toggle -- mobile not supported | 0px |
+| < 768px | Hidden | No toggle (mobile not supported) | 0px |
 
-Sidebar state is persisted in user preferences. When resizing from >= 1280px into the 1024-1279px range, the sidebar auto-collapses to the icon rail. The user's theme preference is not mutated -- the effective mode is computed locally by combining the preference with the current breakpoint. At tablet (768-1023px), the sidebar renders as a 240px overlay via the shared `Drawer` component (`role="dialog"`, `aria-modal="true"`) with a blurred semi-transparent backdrop. It is triggered by a hamburger button (`Menu` icon) in the StatusBar, with `aria-expanded` tracking. The overlay closes on: backdrop click, X button, Escape key, or navigation (clicking a nav item). Below 768px, a `MobileUnsupportedOverlay` shows "Desktop Required" with a CLI hint (`synthorg status`).
+Sidebar state is persisted in user preferences. When resizing from >= 1280px into the 1024-1279px range, the sidebar auto-collapses to the icon rail. The user's theme preference is not mutated; the effective mode is computed locally by combining the preference with the current breakpoint. At tablet (768-1023px), the sidebar renders as a 240px overlay via the shared `Drawer` component (`role="dialog"`, `aria-modal="true"`) with a blurred semi-transparent backdrop. It is triggered by a hamburger button (`Menu` icon) in the StatusBar, with `aria-expanded` tracking. The overlay closes on: backdrop click, X button, Escape key, or navigation (clicking a nav item). Below 768px, a `MobileUnsupportedOverlay` shows "Desktop Required" with a CLI hint (`synthorg status`).
 
 ---
 

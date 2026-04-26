@@ -96,7 +96,7 @@ def row_to_custom_rule(row: dict[str, Any]) -> CustomRuleDefinition:
             decoded_altitudes = json.loads(raw_altitudes)
         else:
             decoded_altitudes = raw_altitudes
-        # Reject anything that is not a list/tuple BEFORE coercing --
+        # Reject anything that is not a list/tuple BEFORE coercing;
         # ``list(dict_value)`` would silently iterate dict keys,
         # ``list(str_value)`` would yield characters, etc.  An
         # explicit type check fails loudly via MalformedRowError
