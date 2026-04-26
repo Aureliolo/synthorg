@@ -132,23 +132,33 @@ jobs:
             echo "skip=false" >>"$GITHUB_OUTPUT"
           fi
 
-      - name: Wait for pr-preview deployment to be live
+      - name: Wait for pr-preview deployment to serve THIS commit
         if: steps.pr.outputs.skip == 'false'
         env:
           PREVIEW_URL: "https://pr-${{ steps.pr.outputs.pr_number }}.synthorg-pr-preview.pages.dev"
+          # Cloudflare Pages updates the same alias URL when a new
+          # commit lands on the PR branch (CodeRabbit, 2026-04-26).
+          # An HTTP-200 check alone races the previous deployment
+          # still serving on the alias and would cause LHCI to score
+          # stale HTML against the wrong commit. Wait until the
+          # banner injected by pages-preview.yml carries this PR
+          # head's 7-char SHA before unblocking the LHCI run.
+          EXPECTED_SHORT_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          echo "Waiting for ${PREVIEW_URL} to respond 200..."
+          SHORT_SHA="${EXPECTED_SHORT_SHA:0:7}"
+          echo "Waiting for ${PREVIEW_URL} to respond 200 AND serve commit ${SHORT_SHA}..."
           for i in $(seq 1 30); do
+            BODY=$(curl -sS -L --max-time 15 "${PREVIEW_URL}" || true)
             STATUS=$(curl -sS -o /dev/null -w "%{http_code}" "${PREVIEW_URL}" || echo "000")
-            if [[ "${STATUS}" == "200" ]]; then
-              echo "pr-preview is live (HTTP 200)."
+            if [[ "${STATUS}" == "200" ]] && printf '%s' "${BODY}" | grep -q ">${SHORT_SHA}<"; then
+              echo "pr-preview is live (HTTP 200, banner SHA matches ${SHORT_SHA})."
               exit 0
             fi
-            echo "Attempt $i: HTTP ${STATUS}; waiting 10s..."
+            echo "Attempt $i: HTTP ${STATUS} (banner SHA match: $(printf '%s' "${BODY}" | grep -oE '>[0-9a-f]{7}<' | head -1 || echo 'none')); waiting 10s..."
             sleep 10
           done
-          echo "::error::pr-preview did not become healthy within 5 minutes."
+          echo "::error::pr-preview did not serve commit ${SHORT_SHA} within 5 minutes. Either pages-preview.yml has not finished, or Cloudflare's alias is still routing to a previous deployment."
           exit 1
 
       - name: Install lhci (reuse web's @lhci/cli)

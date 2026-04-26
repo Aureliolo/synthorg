@@ -70,21 +70,25 @@ fi
 BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
 NOW=$(date -u +%s)
 
-# Only throttle when an open PR exists for the current branch. The
+# Only throttle when an OPEN PR exists for the current branch. The
 # rationale for the rule is "every push burns CI + reviewer
 # rate-limit budget"; outside a PR there is no reviewer to burn and
 # no CI gate (most workflows are ``pull_request``-triggered), so a
 # throttle would just slow down ordinary feature work for no
-# benefit. ``gh pr view`` exits non-zero when there is no PR for
-# the branch; we treat that as "not in a review round" and skip.
-# If ``gh`` is unavailable or unauthenticated we fail OPEN (allow
-# the push) -- the script's job is to prevent reviewer-rate-limit
-# burn, not to gate developer pushes when the tooling is broken.
+# benefit. We check the PR ``state`` field explicitly (not just
+# ``gh``'s exit status, which could change semantics across
+# versions): a CLOSED or MERGED PR for the branch is not a review
+# round either. Anything other than literal ``OPEN`` falls
+# through. If ``gh`` is unavailable or unauthenticated we fail
+# OPEN (allow the push) -- the script's job is to prevent
+# reviewer-rate-limit burn, not to gate developer pushes when the
+# tooling is broken.
 if ! command -v gh >/dev/null 2>&1; then
     exit 0
 fi
-if ! gh pr view --json state,number --jq '.state' >/dev/null 2>&1; then
-    # No open PR for ``${BRANCH}``: not in a review round.
+PR_STATE="$(gh pr view --json state --jq '.state' 2>/dev/null || echo "")"
+if [[ "${PR_STATE}" != "OPEN" ]]; then
+    # No OPEN PR for ``${BRANCH}``: not in a review round.
     exit 0
 fi
 
@@ -109,6 +113,16 @@ LAST_BRANCH=""
 if [[ -f "${STATE_FILE}" ]]; then
     LAST_TS=$(jq -r '.timestamp // 0' "${STATE_FILE}" 2>/dev/null || echo 0)
     LAST_BRANCH=$(jq -r '.branch // ""' "${STATE_FILE}" 2>/dev/null || echo "")
+fi
+
+# A syntactically valid but corrupt state file (e.g. someone wrote
+# ``"timestamp":"oops"``) would yield a non-numeric LAST_TS and
+# crash the next arithmetic expansion under ``set -e``, which
+# would unexpectedly DENY the push. Coerce to 0 if non-numeric so
+# the script fails OPEN (the script's job is to throttle, not to
+# gate on its own state-file health).
+if ! [[ "${LAST_TS}" =~ ^[0-9]+$ ]]; then
+    LAST_TS=0
 fi
 
 DELTA=$(( NOW - LAST_TS ))
