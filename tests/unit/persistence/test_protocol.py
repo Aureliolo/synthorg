@@ -23,6 +23,12 @@ from synthorg.persistence.checkpoint_protocol import (
 )
 from synthorg.persistence.cost_record_protocol import CostRecordRepository
 from synthorg.persistence.decision_protocol import DecisionRepository
+from synthorg.persistence.idempotency_protocol import (
+    IdempotencyClaim,
+    IdempotencyOutcome,
+    IdempotencyRecord,
+    IdempotencyRepository,
+)
 from synthorg.persistence.message_protocol import MessageRepository
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
 from synthorg.persistence.preset_repository import (
@@ -530,6 +536,52 @@ class _FakeWorkflowExecutionRepository:
         return False
 
 
+class _FakeIdempotencyRepository:
+    """Minimal IdempotencyRepository conforming to the protocol shape."""
+
+    async def claim(
+        self,
+        *,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+        ttl_seconds: int,
+        now: Any,
+    ) -> IdempotencyClaim:
+        del scope, key, ttl_seconds, now
+        return IdempotencyClaim(outcome=IdempotencyOutcome.FRESH)
+
+    async def complete(
+        self,
+        *,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+        response_body: str,
+        response_hash: str,
+    ) -> None:
+        del scope, key, response_body, response_hash
+
+    async def fail(
+        self,
+        *,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+    ) -> None:
+        del scope, key
+
+    async def get(
+        self,
+        *,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+    ) -> IdempotencyRecord | None:
+        del scope, key
+        return None
+
+    async def cleanup_expired(self, now: Any) -> int:
+        del now
+        return 0
+
+
 class _FakeBackend:
     async def connect(self) -> None:
         pass
@@ -727,8 +779,8 @@ class _FakeBackend:
         return None
 
     @property
-    def idempotency_keys(self) -> Any:
-        return None
+    def idempotency_keys(self) -> _FakeIdempotencyRepository:
+        return _FakeIdempotencyRepository()
 
     @property
     def mcp_installations(self) -> Any:
@@ -797,6 +849,9 @@ class TestProtocolCompliance:
 
     def test_fake_message_repo_is_message_repository(self) -> None:
         assert isinstance(_FakeMessageRepository(), MessageRepository)
+
+    def test_fake_idempotency_repo_is_idempotency_repository(self) -> None:
+        assert isinstance(_FakeIdempotencyRepository(), IdempotencyRepository)
 
     def test_fake_lifecycle_repo_is_lifecycle_event_repository(self) -> None:
         assert isinstance(_FakeLifecycleEventRepository(), LifecycleEventRepository)

@@ -299,6 +299,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._training_results = None
         self._sessions = None
         self._refresh_tokens = None
+        self._idempotency_keys = None
         self._mcp_installations = None
         self._custom_rules = None
         self._org_facts = None

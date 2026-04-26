@@ -13,6 +13,7 @@ for matched routes -- 404 and 405 responses from the router bypass it.
 """
 
 import time
+from contextlib import suppress
 from types import MappingProxyType
 from typing import Any, Final
 
@@ -152,6 +153,11 @@ async def security_headers_hook(message: Message, scope: Scope) -> None:
     if is_docs:
         headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
         headers["Cache-Control"] = _DOCS_CACHE_CONTROL
+        # Defense-in-depth: even if an upstream layer set Pragma we
+        # actively clear it on /docs so the no-cache hint can never
+        # leak onto cacheable assets.
+        with suppress(KeyError):
+            del headers["Pragma"]
     else:
         headers["Pragma"] = _API_PRAGMA
 

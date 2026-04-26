@@ -43,7 +43,7 @@ from synthorg.api.errors import (
 )
 from synthorg.api.guards import HumanRole
 from synthorg.api.rate_limits.guard import per_op_rate_limit
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_SESSION_LISTED,
     API_SESSION_REVOKE_FAILED,
@@ -54,6 +54,7 @@ from synthorg.observability.events.security import (
     SECURITY_AUTH_SETUP_COMPLETE,
     SECURITY_AUTH_TOKEN_ISSUED,
     SECURITY_SESSION_FORCE_LOGOUT,
+    SECURITY_SESSION_LIMIT_ENFORCED,
     SECURITY_SESSION_REVOKED,
 )
 
@@ -171,10 +172,17 @@ class AuthController(Controller):
 
         auth_config = get_auth_config(app_state)
         if app_state.has_session_store:
-            await app_state.session_store.enforce_session_limit(
+            revoked = await app_state.session_store.enforce_session_limit(
                 user.id,
                 auth_config.max_concurrent_sessions,
             )
+            if revoked:
+                logger.info(
+                    SECURITY_SESSION_LIMIT_ENFORCED,
+                    user_id=user.id,
+                    revoked=revoked,
+                    max_sessions=auth_config.max_concurrent_sessions,
+                )
 
         logger.info(
             SECURITY_AUTH_SETUP_COMPLETE,
@@ -281,10 +289,17 @@ class AuthController(Controller):
 
         auth_config = get_auth_config(app_state)
         if app_state.has_session_store:
-            await app_state.session_store.enforce_session_limit(
+            revoked = await app_state.session_store.enforce_session_limit(
                 user.id,
                 auth_config.max_concurrent_sessions,
             )
+            if revoked:
+                logger.info(
+                    SECURITY_SESSION_LIMIT_ENFORCED,
+                    user_id=user.id,
+                    revoked=revoked,
+                    max_sessions=auth_config.max_concurrent_sessions,
+                )
 
         logger.info(
             SECURITY_AUTH_TOKEN_ISSUED,
@@ -378,7 +393,14 @@ class AuthController(Controller):
         # Revoke the old session before issuing a new one.
         old_jti = extract_jti(request)
         if old_jti and app_state.has_session_store:
-            await app_state.session_store.revoke(old_jti)
+            revoked = await app_state.session_store.revoke(old_jti)
+            if revoked:
+                logger.info(
+                    SECURITY_SESSION_REVOKED,
+                    session_id=old_jti,
+                    user_id=updated_user.id,
+                    reason="password_change_rotation",
+                )
 
         # Rotate session cookie so the new pwd_sig is embedded.
         token, expires_in, session_id = auth_service.create_token(
@@ -679,12 +701,13 @@ class AuthController(Controller):
             # trap users in the exact stale-cookie scenario the
             # idempotent contract was designed to fix.
             try:
-                await app_state.session_store.revoke(jti)
-                logger.info(
-                    SECURITY_SESSION_FORCE_LOGOUT,
-                    session_id=jti,
-                    user_id=user_id,
-                )
+                revoked = await app_state.session_store.revoke(jti)
+                if revoked:
+                    logger.info(
+                        SECURITY_SESSION_FORCE_LOGOUT,
+                        session_id=jti,
+                        user_id=user_id,
+                    )
             except MemoryError, RecursionError:
                 raise
             except Exception as err:
@@ -693,7 +716,7 @@ class AuthController(Controller):
                     session_id=jti,
                     user_id=user_id,
                     error_type=type(err).__name__,
-                    error=str(err),
+                    error=safe_error_description(err),
                 )
 
         auth_config = get_auth_config(

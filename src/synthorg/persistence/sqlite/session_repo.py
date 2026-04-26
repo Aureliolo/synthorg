@@ -22,10 +22,6 @@ from synthorg.observability.events.api import (
     API_SESSION_CREATE_FAILED,
     API_SESSION_REVOKE_FAILED,
 )
-from synthorg.observability.events.security import (
-    SECURITY_SESSION_LIMIT_ENFORCED,
-    SECURITY_SESSION_REVOKED,
-)
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 from synthorg.persistence.errors import QueryError
 
@@ -191,7 +187,10 @@ class SQLiteSessionRepository:
                 raise QueryError(msg) from exc
         if rowcount > 0:
             self._revoked.add(session_id)
-            logger.info(SECURITY_SESSION_REVOKED, session_id=session_id)
+            # Audit emission moved to service/controller layer per the
+            # persistence-boundary rule -- controllers that call
+            # ``revoke`` are responsible for logging
+            # SECURITY_SESSION_REVOKED.
             return True
         return False
 
@@ -240,7 +239,8 @@ class SQLiteSessionRepository:
                 )
                 raise QueryError(msg) from exc
         self._revoked.update(row["session_id"] for row in rows)
-        logger.info(SECURITY_SESSION_REVOKED, user_id=user_id, count=count)
+        # Audit emission moved to service/controller layer per the
+        # persistence-boundary rule.
         return count
 
     async def enforce_session_limit(
@@ -260,13 +260,11 @@ class SQLiteSessionRepository:
         for session in to_revoke:
             if await self.revoke(session.session_id):
                 revoked += 1
-        if revoked:
-            logger.info(
-                SECURITY_SESSION_LIMIT_ENFORCED,
-                user_id=user_id,
-                revoked=revoked,
-                max_sessions=max_sessions,
-            )
+        # Audit emission moved to service/controller layer per the
+        # persistence-boundary rule -- callers that invoke
+        # ``enforce_session_limit`` log SECURITY_SESSION_LIMIT_ENFORCED
+        # when ``revoked > 0`` so the auth chain entry sits with the
+        # decision rather than the storage commit.
         return revoked
 
     def is_revoked(self, session_id: str) -> bool:

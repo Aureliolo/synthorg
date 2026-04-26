@@ -23,7 +23,15 @@ class _FakeEvent:
         self.event_type = event_type
 
 
-def test_eviction_flag_flips_exactly_once_under_thread_concurrency() -> None:
+def test_eviction_logs_exactly_once_under_thread_concurrency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify the eviction warning fires exactly once across 1000
+    concurrent ``on_event`` calls -- not just that the boolean flag
+    eventually flipped (which would also pass if the log fired N
+    times)."""
+    from synthorg.telemetry import event_counter as ec_mod
+
     counter = InMemoryTelemetryEventCounter(max_events=10)
 
     # Pre-fill to capacity so the very first concurrent on_event triggers
@@ -32,12 +40,16 @@ def test_eviction_flag_flips_exactly_once_under_thread_concurrency() -> None:
     for i in range(10):
         counter.on_event(_FakeEvent(now, f"prefill.{i}"))  # type: ignore[arg-type]
 
-    # Sentinel: the flag flip is the public signal that "exactly one
-    # eviction log was emitted". The flag is set under self._lock, so
-    # in CPython under the GIL only one of the 1000 concurrent callers
-    # observes ``first_eviction=True``. Anything else would mean the
-    # flag was checked outside the lock (the bug the audit flagged).
     assert counter._eviction_logged is False
+
+    info_calls: list[str] = []
+    original_info = ec_mod.logger.info
+
+    def _spy(event: str, **kwargs: object) -> object:
+        info_calls.append(event)
+        return original_info(event, **kwargs)
+
+    monkeypatch.setattr(ec_mod.logger, "info", _spy)
 
     with ThreadPoolExecutor(max_workers=16) as pool:
         futures = [
@@ -50,4 +62,8 @@ def test_eviction_flag_flips_exactly_once_under_thread_concurrency() -> None:
         for fut in futures:
             fut.result()
 
-    assert counter._eviction_logged is True
+    eviction_logs = [e for e in info_calls if e == "telemetry.counter.evicted"]
+    assert len(eviction_logs) == 1, (
+        f"Expected exactly one eviction log; saw {len(eviction_logs)}"
+    )
+    assert getattr(counter, "_eviction_logged") is True  # noqa: B009

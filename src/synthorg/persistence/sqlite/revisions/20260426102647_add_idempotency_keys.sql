@@ -8,6 +8,8 @@ CREATE TABLE `idempotency_keys` (
   `created_at` text NOT NULL,
   `expires_at` text NOT NULL,
   PRIMARY KEY (`scope`, `key`),
+  CHECK (length(scope) > 0),
+  CHECK (length(key) > 0),
   CHECK (status IN ('in_flight', 'completed', 'failed'))
 );
 -- Create index "idx_idempotency_expires" to table: "idempotency_keys"

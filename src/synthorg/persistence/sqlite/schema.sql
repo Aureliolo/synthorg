@@ -1195,8 +1195,8 @@ CREATE INDEX idx_dr_entity_created
 -- reply rather than 409. Rows older than expires_at are reaped by
 -- the periodic cleanup task.
 CREATE TABLE idempotency_keys (
-    scope TEXT NOT NULL,
-    key TEXT NOT NULL,
+    scope TEXT NOT NULL CHECK(length(scope) > 0),
+    key TEXT NOT NULL CHECK(length(key) > 0),
     status TEXT NOT NULL CHECK(status IN ('in_flight', 'completed', 'failed')),
     response_hash TEXT,
     response_body TEXT,

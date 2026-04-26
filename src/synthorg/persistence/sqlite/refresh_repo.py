@@ -17,6 +17,7 @@ from synthorg.api.auth.refresh_record import RefreshRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_AUTH_REFRESH_CLEANUP,
+    API_AUTH_REFRESH_PERSISTENCE_ERROR,
 )
 from synthorg.observability.events.security import (
     SECURITY_AUTH_REFRESH_CONSUMED,
@@ -77,9 +78,12 @@ class SQLiteRefreshTokenRepository:
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
                 msg = "Failed to persist refresh token"
+                # Storage failure -- NOT an auth decision; emit under
+                # api.* so the cryptographic audit chain is not polluted
+                # with DB errors (#1599 PR review feedback).
                 logger.warning(
-                    SECURITY_AUTH_REFRESH_REJECTED,
-                    reason="create_failed",
+                    API_AUTH_REFRESH_PERSISTENCE_ERROR,
+                    operation="create",
                     session_id=session_id,
                     user_id=user_id,
                     error_type=type(exc).__name__,
@@ -111,8 +115,8 @@ class SQLiteRefreshTokenRepository:
                     await self._db.rollback()
                 msg = "Failed to consume refresh token"
                 logger.warning(
-                    SECURITY_AUTH_REFRESH_REJECTED,
-                    reason="consume_failed",
+                    API_AUTH_REFRESH_PERSISTENCE_ERROR,
+                    operation="consume",
                     token_hash=token_hash[:8],
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
@@ -182,8 +186,8 @@ class SQLiteRefreshTokenRepository:
                     await self._db.rollback()
                 msg = f"Failed to revoke refresh tokens for session {session_id!r}"
                 logger.warning(
-                    SECURITY_AUTH_REFRESH_REVOKED,
-                    reason="revoke_failed",
+                    API_AUTH_REFRESH_PERSISTENCE_ERROR,
+                    operation="revoke_by_session",
                     session_id=session_id,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
@@ -212,8 +216,8 @@ class SQLiteRefreshTokenRepository:
                     await self._db.rollback()
                 msg = f"Failed to revoke refresh tokens for user {user_id!r}"
                 logger.warning(
-                    SECURITY_AUTH_REFRESH_REVOKED,
-                    reason="revoke_failed",
+                    API_AUTH_REFRESH_PERSISTENCE_ERROR,
+                    operation="revoke_by_user",
                     user_id=user_id,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),

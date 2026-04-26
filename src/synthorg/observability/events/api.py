@@ -122,6 +122,16 @@ API_AUTH_LOCKOUT_CLEANUP: Final[str] = "api.auth.lockout_cleanup"
 # events.security as SECURITY_AUTH_REFRESH_* (audit-chained).
 API_AUTH_REFRESH_CLEANUP: Final[str] = "api.auth.refresh_cleanup"
 
+# Persistence-layer failures inside the auth repositories. These are
+# storage errors (DB connection drop, constraint violation, rollback
+# failure) -- NOT auth decisions -- so they stay under api.* and are
+# NOT signed by the audit chain. Repository code emits these on the
+# rollback branch to keep the operator-visible failure trail intact
+# without polluting the cryptographic decision record (#1599).
+API_AUTH_REFRESH_PERSISTENCE_ERROR: Final[str] = "api.auth.refresh.persistence_error"
+API_AUTH_LOCKOUT_PERSISTENCE_ERROR: Final[str] = "api.auth.lockout.persistence_error"
+API_AUTH_SESSION_PERSISTENCE_ERROR: Final[str] = "api.auth.session.persistence_error"
+
 # Cookie auth
 API_AUTH_COOKIE_USED: Final[str] = "api.auth.cookie_used"
 

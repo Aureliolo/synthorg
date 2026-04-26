@@ -27,6 +27,7 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_DECISION_RECORD_FAILED,
     APPROVAL_GATE_REVIEW_COMPLETED,
     APPROVAL_GATE_REVIEW_REWORK,
+    APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
     APPROVAL_GATE_TASK_NOT_FOUND,
     APPROVAL_GATE_TASK_UNASSIGNED,
 )
@@ -311,7 +312,7 @@ class ReviewGateService:
             )
         except Exception as exc:
             logger.warning(
-                APPROVAL_GATE_REVIEW_REWORK,
+                APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
                 task_id=task.id,
                 decided_by=decided_by,
                 target_status=target.value,

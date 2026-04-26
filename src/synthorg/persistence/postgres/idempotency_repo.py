@@ -1,16 +1,19 @@
 """Postgres-backed idempotency-key repository (#1599).
 
-The atomic primitive uses ``INSERT ... ON CONFLICT DO NOTHING
-RETURNING`` on the in-flight insert path; if the conflict fires we
-re-fetch the existing row to discriminate ``IN_FLIGHT`` from
-``COMPLETED`` and to overwrite expired/failed rows in a follow-up
-``UPDATE``. Postgres transaction isolation makes the pair safe
-without a process-wide lock.
+The atomic claim primitive is ``INSERT ... ON CONFLICT DO NOTHING
+RETURNING`` -- the unique-PK constraint serialises competing FRESH
+attempts at the database level rather than relying on
+``SELECT FOR UPDATE`` (which doesn't lock non-existent rows under
+``READ COMMITTED``). On conflict we re-fetch the existing row under
+``FOR UPDATE`` to discriminate ``IN_FLIGHT`` from ``COMPLETED`` and
+to overwrite expired/failed rows in a follow-up ``UPDATE``.
 """
 
 import json
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
+
+from psycopg import Error as PsycopgError
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -53,16 +56,35 @@ class PostgresIdempotencyRepository:
         ttl_seconds: int,
         now: datetime,
     ) -> IdempotencyClaim:
-        """Atomically claim ``(scope, key)`` for *ttl_seconds*."""
+        """Atomically claim ``(scope, key)`` for *ttl_seconds*.
+
+        Step 1 attempts ``INSERT ... ON CONFLICT DO NOTHING RETURNING``;
+        a returned row means we won the FRESH race. On conflict, step 2
+        re-fetches the existing row under ``FOR UPDATE`` and routes:
+        completed → cached response, in-flight → IN_FLIGHT, expired or
+        failed → overwrite back to in-flight and return FRESH.
+        """
         expires_at = now + timedelta(seconds=ttl_seconds)
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.transaction(),
-                conn.cursor(
-                    row_factory=self._dict_row,
-                ) as cur,
+                conn.cursor(row_factory=self._dict_row) as cur,
             ):
+                # Step 1: claim by INSERT. Postgres' unique PK guarantees
+                # exactly one of N concurrent callers wins.
+                await cur.execute(
+                    "INSERT INTO idempotency_keys "
+                    "(scope, key, status, created_at, expires_at) "
+                    "VALUES (%s, %s, 'in_flight', %s, %s) "
+                    "ON CONFLICT (scope, key) DO NOTHING "
+                    "RETURNING scope",
+                    (scope, key, now, expires_at),
+                )
+                if await cur.fetchone() is not None:
+                    return IdempotencyClaim(outcome=IdempotencyOutcome.FRESH)
+
+                # Step 2: ON CONFLICT fired. Lock and inspect the row.
                 await cur.execute(
                     "SELECT status, response_body, expires_at "
                     "FROM idempotency_keys "
@@ -70,37 +92,39 @@ class PostgresIdempotencyRepository:
                     (scope, key),
                 )
                 row = await cur.fetchone()
-                if row is not None:
-                    status = row["status"]
-                    row_expires = row["expires_at"]
-                    if row_expires > now and status == "completed":
-                        cached = row["response_body"]
-                        cached_str = json.dumps(cached) if cached is not None else None
-                        return IdempotencyClaim(
-                            outcome=IdempotencyOutcome.COMPLETED,
-                            cached_response=cached_str,
-                        )
-                    if row_expires > now and status == "in_flight":
-                        return IdempotencyClaim(
-                            outcome=IdempotencyOutcome.IN_FLIGHT,
-                        )
-                    await cur.execute(
-                        "UPDATE idempotency_keys "
-                        "SET status = 'in_flight', response_hash = NULL, "
-                        "response_body = NULL, "
-                        "created_at = %s, expires_at = %s "
-                        "WHERE scope = %s AND key = %s",
-                        (now, expires_at, scope, key),
+                if row is None:
+                    # Vanishingly rare race -- the row was deleted between
+                    # our conflict and the SELECT. Treat as FRESH and let
+                    # the caller proceed; if a second concurrent FRESH
+                    # attempts an INSERT it will re-conflict.
+                    return IdempotencyClaim(outcome=IdempotencyOutcome.FRESH)
+                status = row["status"]
+                row_expires = row["expires_at"]
+                if row_expires > now and status == "completed":
+                    cached = row["response_body"]
+                    # Postgres JSONB is auto-deserialised; re-serialise
+                    # to the protocol's ``str`` shape (matches SQLite's
+                    # TEXT-stored response_body so callers see one type).
+                    cached_str = json.dumps(cached) if cached is not None else None
+                    return IdempotencyClaim(
+                        outcome=IdempotencyOutcome.COMPLETED,
+                        cached_response=cached_str,
                     )
-                else:
-                    await cur.execute(
-                        "INSERT INTO idempotency_keys "
-                        "(scope, key, status, created_at, expires_at) "
-                        "VALUES (%s, %s, 'in_flight', %s, %s)",
-                        (scope, key, now, expires_at),
+                if row_expires > now and status == "in_flight":
+                    return IdempotencyClaim(
+                        outcome=IdempotencyOutcome.IN_FLIGHT,
                     )
-            return IdempotencyClaim(outcome=IdempotencyOutcome.FRESH)
-        except Exception as exc:
+                # Expired or failed -- overwrite as a fresh claim.
+                await cur.execute(
+                    "UPDATE idempotency_keys "
+                    "SET status = 'in_flight', response_hash = NULL, "
+                    "response_body = NULL, "
+                    "created_at = %s, expires_at = %s "
+                    "WHERE scope = %s AND key = %s",
+                    (now, expires_at, scope, key),
+                )
+                return IdempotencyClaim(outcome=IdempotencyOutcome.FRESH)
+        except PsycopgError as exc:
             logger.warning(
                 IDEMPOTENCY_PERSISTENCE_ERROR,
                 operation="claim",
@@ -119,14 +143,12 @@ class PostgresIdempotencyRepository:
         response_body: str,
         response_hash: str,
     ) -> None:
-        """Mark a claimed key as ``COMPLETED`` and persist the response."""
-        # response_body arrives as a serialized JSON string; cast back
-        # so Postgres stores it as JSONB.
-        try:
-            payload = json.loads(response_body)
-        except (json.JSONDecodeError, TypeError) as exc:
-            msg = "response_body must be JSON-serializable"
-            raise QueryError(msg) from exc
+        """Mark a claimed key as ``COMPLETED`` and persist the response.
+
+        ``response_body`` is the canonical JSON string produced by the
+        service layer; it goes straight into the JSONB column via
+        ``%s::jsonb`` -- no ``json.loads`` round-trip.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -134,9 +156,9 @@ class PostgresIdempotencyRepository:
                     "SET status = 'completed', response_body = %s::jsonb, "
                     "response_hash = %s "
                     "WHERE scope = %s AND key = %s",
-                    (json.dumps(payload), response_hash, scope, key),
+                    (response_body, response_hash, scope, key),
                 )
-        except Exception as exc:
+        except PsycopgError as exc:
             logger.warning(
                 IDEMPOTENCY_PERSISTENCE_ERROR,
                 operation="complete",
@@ -161,7 +183,7 @@ class PostgresIdempotencyRepository:
                     "WHERE scope = %s AND key = %s",
                     (scope, key),
                 )
-        except Exception as exc:
+        except PsycopgError as exc:
             logger.warning(
                 IDEMPOTENCY_PERSISTENCE_ERROR,
                 operation="fail",
@@ -194,7 +216,7 @@ class PostgresIdempotencyRepository:
                     (scope, key),
                 )
                 row = await cur.fetchone()
-        except Exception as exc:
+        except PsycopgError as exc:
             logger.warning(
                 IDEMPOTENCY_PERSISTENCE_ERROR,
                 operation="get",
@@ -228,7 +250,7 @@ class PostgresIdempotencyRepository:
                     (now,),
                 )
                 return int(cur.rowcount or 0)
-        except Exception as exc:
+        except PsycopgError as exc:
             logger.warning(
                 IDEMPOTENCY_PERSISTENCE_ERROR,
                 operation="cleanup_expired",

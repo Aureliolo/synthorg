@@ -262,15 +262,15 @@ class TestCacheControlPathSelection:
         self, test_client: TestClient[Any]
     ) -> None:
         """Docs paths serve cacheable, non-user-specific content -- the
-        ``Pragma: no-cache`` API hint MUST NOT bleed onto them."""
+        ``Pragma: no-cache`` API hint MUST NOT bleed onto them.
+
+        Strict ``is None`` check: an empty-string Pragma is still a
+        regression because some intermediaries treat any Pragma header
+        as a no-cache hint.
+        """
         response = test_client.get("/docs/openapi.json")
-        # The static-headers map sets ``Pragma: no-cache`` for every API
-        # response; the /docs path-aware branch must override it back to
-        # absent so SwaggerUI / Scalar assets remain cacheable.
         pragma = response.headers.get("pragma")
-        assert pragma is None or pragma == "", (
-            f"docs response unexpectedly carries Pragma={pragma!r}"
-        )
+        assert pragma is None, f"docs response unexpectedly carries Pragma={pragma!r}"
 
 
 # ── Request logging middleware ─────────────────────────────────

@@ -115,6 +115,10 @@ class IdempotencyService:
         logger.info(IDEMPOTENCY_CLAIM_FRESH, scope=scope, key=key)
         try:
             result = await callback()
+        except MemoryError, RecursionError:
+            # System errors must propagate immediately; do not touch
+            # the claim row. Project convention.
+            raise
         except Exception:
             await self._mark_failed_safely(scope=scope, key=key)
             raise
