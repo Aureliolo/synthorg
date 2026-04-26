@@ -138,6 +138,34 @@ class TestIdempotencyClaim:
         # the original lease cannot CAS-overwrite this fresh row.
         assert retry.claim_token is not None
         assert retry.claim_token != first.claim_token
+        # Verify the CAS guard actually rejects the stale token --
+        # otherwise a refactor that dropped ``AND claim_token = ?``
+        # or ``AND status = 'in_flight'`` from the UPDATE would let
+        # a slow worker overwrite the new lease's row, corrupting
+        # the cached response. Both ``complete`` and ``fail`` must
+        # return False for the original token, and the new lease's
+        # ``in_flight`` status must remain intact.
+        stale_complete = await backend.idempotency_keys.complete(
+            scope=_SCOPE,
+            key=key,
+            response_body='{"stale":true}',
+            response_hash="stale-hash",
+            claim_token=first.claim_token,
+        )
+        assert stale_complete is False
+        stale_fail = await backend.idempotency_keys.fail(
+            scope=_SCOPE,
+            key=key,
+            claim_token=first.claim_token,
+        )
+        assert stale_fail is False
+        # The row must still be in_flight under the NEW lease so the
+        # rightful winner can still complete it.
+        record = await backend.idempotency_keys.get(scope=_SCOPE, key=key)
+        assert record is not None
+        assert record.status is IdempotencyOutcome.IN_FLIGHT
+        assert record.response_body is None
+        assert record.response_hash is None
 
     async def test_concurrent_claims_only_one_wins(
         self,
