@@ -256,7 +256,12 @@ programmatic dispatch):
 }
 ```
 
-Shared envelope builders live in `src/synthorg/meta/mcp/handlers/common.py`:
+Shared handler infrastructure lives in three sibling modules under
+`src/synthorg/meta/mcp/handlers/`. The split keeps each module focused
+on one concern and below the 800-line file ceiling.
+
+**`common.py`** -- response envelopes, pagination output, guardrails,
+placeholder factories:
 
 - `ok(data, *, pagination=None)` -- success envelope with optional
   `PaginationMeta` metadata (frozen Pydantic model, `allow_inf_nan=False`).
@@ -269,11 +274,11 @@ Shared envelope builders live in `src/synthorg/meta/mcp/handlers/common.py`:
   operators can alert on unwired tools. After META-MCP-2 every tool is
   wired, so this path only fires for tools registered after PR1 that have
   not yet been given a concrete handler.
-- `service_fallback(tool_name, reason)` -- legacy helper retained in
-  `common.py` for future surgical use. Emits
-  `MCP_HANDLER_SERVICE_FALLBACK`; META-MCP-2 removed every call site and
-  the integration sweep at `tests/integration/mcp/test_tool_surface.py`
-  asserts zero emissions of this event across the full 204-tool surface.
+- `service_fallback(tool_name, reason)` -- helper retained in `common.py`
+  for future surgical use. Emits `MCP_HANDLER_SERVICE_FALLBACK`;
+  META-MCP-2 removed every call site and the integration sweep at
+  `tests/integration/mcp/test_tool_surface.py` asserts zero emissions of
+  this event across the full 204-tool surface.
 - `capability_gap(tool_name, reason)` -- live handler whose underlying
   primitive does not yet expose the required method (e.g. agent
   `activity_feed`, memory fine-tune orchestrator on a backend that
@@ -281,14 +286,63 @@ Shared envelope builders live in `src/synthorg/meta/mcp/handlers/common.py`:
   (`domain_code="not_supported"`) but emits the dedicated
   `MCP_HANDLER_CAPABILITY_GAP` INFO event so ops telemetry distinguishes
   "primitive missing method" from "handler unwired".
-- `require_arg(arguments, key, ty)` -- typed required-argument extraction
-  that raises `ArgumentValidationError` (ruff `EM101`-safe) on missing or
-  mistyped input.
 - `require_destructive_guardrails(arguments, actor)` -- single source of
   truth for the destructive-op precondition triple: non-`None` `actor`,
   literal `confirm=True`, non-blank `reason`. Raises
   `GuardrailViolationError` with a typed `violation` code
   (`"missing_actor"` / `"missing_confirm"` / `"missing_reason"`).
+- `paginate_sequence(seq, *, offset, limit, total=None)` -- in-memory
+  page slicing that returns `(page, PaginationMeta)`.
+- `dump_many(models)` -- batch Pydantic model serialisation to
+  JSON-mode dicts.
+
+**`common_args.py`** -- argument validators/extractors. Every helper
+raises `ArgumentValidationError` on bad input so handlers can convert
+to a stable `err(...)` envelope without catching framework-specific
+exceptions:
+
+- `require_arg(arguments, key, ty)` -- typed required-argument extraction
+  (ruff `EM101`-safe).
+- `require_non_blank(arguments, key)` -- required non-blank string,
+  whitespace-stripped.
+- `get_optional_str(arguments, key)` -- optional non-blank string;
+  returns `None` when missing/empty.
+- `require_dict(arguments, key, *, value_type=None, deep_copy=True)` --
+  required dict argument; pass `value_type=str` for `dict[str, str]`
+  validation. Defaults to deep-copying the input to decouple handler
+  mutations from caller payload.
+- `parse_time_window(arguments, *, until_required=True)` -- ISO 8601
+  since/until parsing with timezone-aware enforcement and
+  `since < until` ordering.
+- `parse_str_sequence(arguments, key)` -- optional sequence-of-non-blank-strings.
+- `coerce_pagination(arguments, *, default_limit=50)` -- offset/limit
+  parsing with strict bounds and explicit bool rejection.
+- `actor_id(actor)` / `require_actor_id(actor)` / `actor_label(actor)`
+  -- actor identity helpers. Use `actor_id` for optional attribution,
+  `require_actor_id` when attribution is mandatory (raises if
+  unidentifiable), `actor_label` only for emit-only paths where a
+  `"mcp-anonymous"` fallback is acceptable.
+
+**`common_logging.py`** -- the three handler-layer log helpers.
+Module-scoped logger keyed at `synthorg.meta.mcp.handlers` so test
+assertions see a single stable event source regardless of which domain
+handler emitted the event:
+
+- `log_handler_argument_invalid(tool, exc)` -- caught
+  `ArgumentValidationError`. Emits `MCP_HANDLER_ARGUMENT_INVALID` at
+  WARNING.
+- `log_handler_invoke_failed(tool, exc, **context)` -- generic
+  `Exception` from the service layer. `**context` carries optional
+  correlation ids (e.g. `task_id=`, `decision_id=`); keys that would
+  shadow the canonical event fields (`tool_name`, `error_type`,
+  `error`, `event`, `log_level`) are rejected with `ValueError`.
+- `log_handler_guardrail_violated(tool, exc)` -- caught
+  `GuardrailViolationError` from a destructive-op precondition.
+  Records only the typed `violation` code; the human message stays in
+  the response envelope.
+
+All three route exception messages through `safe_error_description`
+(SEC-1) so secret-shaped fragments are scrubbed before reaching logs.
 
 **Domain Codes.** Handlers set stable wire codes so callers can dispatch
 programmatically: `invalid_argument`, `guardrail_violated`, `not_supported`,

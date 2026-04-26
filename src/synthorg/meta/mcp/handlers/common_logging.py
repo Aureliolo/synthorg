@@ -36,13 +36,26 @@ if TYPE_CHECKING:
 
 logger = get_logger("synthorg.meta.mcp.handlers")
 
+_RESERVED_INVOKE_FAILED_KWARGS = frozenset(
+    {"tool_name", "error_type", "error", "event", "log_level"},
+)
+"""Reserved log-record keys :func:`log_handler_invoke_failed` injects.
+
+A caller passing one of these as ``**context`` would silently overwrite
+the canonical event field, corrupting audit trails. We reject the call
+loudly instead.
+"""
+
 
 def log_handler_argument_invalid(tool: str, exc: Exception) -> None:
     """Emit ``MCP_HANDLER_ARGUMENT_INVALID`` at WARNING with safe error context.
 
     Called by handlers that catch ``ArgumentValidationError`` after
     typed-arg extraction or validation. The wire shape is fixed:
-    ``tool_name``, ``error_type``, ``error`` (sanitised).
+    ``tool_name``, ``error_type``, ``error`` (sanitised). Error messages
+    are routed through :func:`safe_error_description` so secret-shaped
+    fragments (Authorization headers, Fernet ciphertexts, URI userinfo,
+    etc.) are scrubbed before logging (SEC-1).
 
     Args:
         tool: Full ``synthorg_<domain>_<action>`` tool name.
@@ -69,12 +82,30 @@ def log_handler_invoke_failed(
     to the originating request rather than appearing as an anonymous
     "record missing" line in the audit log.
 
+    Error messages are routed through :func:`safe_error_description` so
+    secret-shaped fragments are scrubbed before logging (SEC-1). The
+    ``**context`` kwargs are forwarded verbatim and are **not** scrubbed
+    -- callers are responsible for not passing secrets through ``context``.
+
     Args:
         tool: Full ``synthorg_<domain>_<action>`` tool name.
         exc: The caught exception.
         **context: Optional correlation kwargs added to the structured
-            event verbatim.
+            event verbatim. Keys that would shadow the canonical event
+            fields (``tool_name``, ``error_type``, ``error``, ``event``,
+            ``log_level``) are rejected with ``ValueError`` so audit
+            trails cannot be silently corrupted.
+
+    Raises:
+        ValueError: If ``context`` contains any reserved key listed
+            above.
     """
+    if reserved := _RESERVED_INVOKE_FAILED_KWARGS.intersection(context):
+        msg = (
+            f"context kwargs {sorted(reserved)!r} shadow reserved "
+            "MCP_HANDLER_INVOKE_FAILED event fields"
+        )
+        raise ValueError(msg)
     logger.warning(
         MCP_HANDLER_INVOKE_FAILED,
         tool_name=tool,
@@ -92,7 +123,8 @@ def log_handler_guardrail_violated(
 
     Records only the typed ``violation`` code; the human-readable
     message stays in the response envelope and never enters structured
-    logs.
+    logs (so the message itself cannot leak operator-supplied content
+    into observability sinks).
 
     Args:
         tool: Full ``synthorg_<domain>_<action>`` tool name.

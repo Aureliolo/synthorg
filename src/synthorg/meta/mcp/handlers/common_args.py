@@ -43,7 +43,7 @@ _TY_NON_BLANK = "non-blank string"
 _TY_AGENT = "identified agent"
 _TY_ISO_DT = "ISO 8601 datetime string"
 _TY_TZ_AWARE = "timezone-aware ISO 8601"
-_TY_WINDOW_ORDER = "earlier than until"
+_TY_WINDOW_ORDER = "before until"
 _TY_STR_SEQ = "sequence of non-blank strings"
 _TY_DICT_OBJ = "mapping of str -> object"
 _TY_DICT_OF_STR = "mapping of str -> str"
@@ -113,6 +113,12 @@ def get_optional_str(
     Distinguishes "missing / empty" (returns ``None``) from "wrong type
     or whitespace-only" (raises). Subsumes the per-domain ``_get_str``
     duplicates verbatim.
+
+    Note: the returned value is **not** stripped. The non-blank check
+    uses the stripped form, but the original (with leading/trailing
+    whitespace, if any) is preserved in the result -- callers that
+    need the canonical form should call ``.strip()`` themselves or
+    use :func:`require_non_blank` for required arguments.
 
     Args:
         arguments: Parsed tool arguments.
@@ -219,6 +225,33 @@ def parse_str_sequence(
     return tuple(NotBlankStr(item) for item in raw)
 
 
+def _now_utc() -> datetime:
+    """Return the current UTC time.
+
+    Wrapper around ``datetime.now(UTC)`` so tests can patch this single
+    seam (the stdlib ``datetime`` class is immutable and cannot be
+    patched directly).
+    """
+    return datetime.now(UTC)
+
+
+def _parse_iso_datetime(raw: Any, arg_name: str) -> datetime:
+    """Parse a timezone-aware ISO 8601 datetime arg or raise.
+
+    Shared by :func:`parse_time_window` for both ``since`` and ``until``
+    so the parsing-and-tzinfo-check pair lives in one place.
+    """
+    if not isinstance(raw, str) or not raw.strip():
+        raise invalid_argument(arg_name, _TY_ISO_DT)
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError as exc:
+        raise invalid_argument(arg_name, _TY_ISO_DT) from exc
+    if parsed.tzinfo is None:
+        raise invalid_argument(arg_name, _TY_TZ_AWARE)
+    return parsed
+
+
 def parse_time_window(
     arguments: dict[str, Any],
     *,
@@ -244,31 +277,14 @@ def parse_time_window(
             unparseable ``since`` or ``until``; naive datetime; missing
             ``until`` while required; ``since >= until``.
     """
-    raw_since = arguments.get(_ARG_SINCE)
-    if not isinstance(raw_since, str) or not raw_since.strip():
-        raise invalid_argument(_ARG_SINCE, _TY_ISO_DT)
-    try:
-        since = datetime.fromisoformat(raw_since)
-    except ValueError as exc:
-        raise invalid_argument(_ARG_SINCE, _TY_ISO_DT) from exc
-    if since.tzinfo is None:
-        raise invalid_argument(_ARG_SINCE, _TY_TZ_AWARE)
-
+    since = _parse_iso_datetime(arguments.get(_ARG_SINCE), _ARG_SINCE)
     raw_until = arguments.get(_ARG_UNTIL)
     if raw_until in (None, ""):
         if until_required:
             raise invalid_argument(_ARG_UNTIL, _TY_ISO_DT)
-        until = datetime.now(UTC)
+        until = _now_utc()
     else:
-        if not isinstance(raw_until, str):
-            raise invalid_argument(_ARG_UNTIL, _TY_ISO_DT)
-        try:
-            until = datetime.fromisoformat(raw_until)
-        except ValueError as exc:
-            raise invalid_argument(_ARG_UNTIL, _TY_ISO_DT) from exc
-        if until.tzinfo is None:
-            raise invalid_argument(_ARG_UNTIL, _TY_TZ_AWARE)
-
+        until = _parse_iso_datetime(raw_until, _ARG_UNTIL)
     if since >= until:
         raise invalid_argument(_ARG_SINCE, _TY_WINDOW_ORDER)
     return since, until
@@ -412,12 +428,18 @@ def actor_label(
 ) -> NotBlankStr:
     """Return a guaranteed-non-blank attribution string for emit-only paths.
 
-    Used by handlers that pass an attribution label to a service write
-    (e.g. ``message_service.send_message(actor_id=...)``) where the
-    field is non-optional and must always be present. Subsumes the six
-    per-domain ``_actor_name`` duplicates, including organization.py's
-    stricter handling of blank string ``.id`` values (a whitespace-only
-    string ``.id`` falls through to ``.name``).
+    Use this helper **only** when an attribution string is needed for
+    logging, audit emit, or non-destructive service writes where a
+    fallback identifier ("mcp-anonymous") is acceptable in place of a
+    real actor. For paths that require a real actor (destructive ops
+    are already covered by ``require_destructive_guardrails`` from
+    ``common``, but non-destructive writes that must not run
+    anonymously) prefer :func:`require_actor_id`, which raises
+    ``ArgumentValidationError`` when the actor cannot be identified.
+
+    Subsumes the six per-domain ``_actor_name`` duplicates, including
+    organization.py's stricter handling of blank string ``.id`` values
+    (a whitespace-only string ``.id`` falls through to ``.name``).
 
     Resolution order:
 

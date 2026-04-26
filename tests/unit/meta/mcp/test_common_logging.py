@@ -115,6 +115,26 @@ class TestLogHandlerInvokeFailed:
         message = logs[0]["error"]
         assert "abcdef.token.value" not in message
 
+    @pytest.mark.parametrize(
+        "reserved_key",
+        ["tool_name", "error_type", "error", "event", "log_level"],
+    )
+    def test_rejects_context_kwargs_that_shadow_reserved_fields(
+        self,
+        reserved_key: str,
+    ) -> None:
+        # If a caller passes one of the canonical event keys as a
+        # context kwarg, it would silently overwrite the structured
+        # field that ``log_handler_invoke_failed`` injects. Reject
+        # loudly with ``ValueError`` rather than corrupting the audit
+        # trail.
+        with pytest.raises(ValueError, match=reserved_key):
+            log_handler_invoke_failed(
+                "tool",
+                RuntimeError("x"),
+                **{reserved_key: "attacker-controlled"},
+            )
+
 
 class TestLogHandlerGuardrailViolated:
     """Pin the wire shape of ``log_handler_guardrail_violated``."""

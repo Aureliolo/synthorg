@@ -1,12 +1,14 @@
 """Unit tests for the centralized MCP handler argument helpers.
 
-These cover the six new helpers in ``handlers.common_args`` that
-absorb the per-domain duplicates: ``require_actor_id``, ``actor_label``,
-``get_optional_str``, ``require_dict``, ``parse_time_window``, and
-``parse_str_sequence``. The existing helpers (``require_arg``,
-``require_non_blank``, ``actor_id``, ``coerce_pagination``) keep their
-coverage in ``test_common_envelope.py`` -- this file pins the new
-contracts only.
+Covers every public helper in
+:mod:`synthorg.meta.mcp.handlers.common_args` -- both the helpers
+introduced by the centralization refactor (``require_actor_id``,
+``actor_label``, ``get_optional_str``, ``require_dict``,
+``parse_time_window``, ``parse_str_sequence``) and the existing
+helpers that were moved verbatim from ``common.py``
+(``coerce_pagination``, ``require_arg``, ``require_non_blank``,
+``actor_id``). ``test_common_envelope.py`` continues to test the
+envelope helpers that stayed in ``common.py``.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -19,6 +21,7 @@ import pytest
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handlers.common_args import (
     actor_label,
+    coerce_pagination,
     get_optional_str,
     parse_str_sequence,
     parse_time_window,
@@ -79,6 +82,11 @@ class TestActorLabel:
         uid = UUID("12345678-1234-5678-1234-567812345678")
         assert actor_label(_Actor(id=uid)) == str(uid)
 
+    def test_coerces_int_id_via_str(self) -> None:
+        # Non-string non-UUID ids (e.g. integer surrogate keys) must be
+        # string-coerced rather than rejected.
+        assert actor_label(_Actor(id=12345)) == "12345"
+
     def test_falls_back_to_name(self) -> None:
         assert actor_label(_Actor(id=None, name="alice")) == "alice"
 
@@ -91,10 +99,19 @@ class TestActorLabel:
     def test_blank_name_falls_through_to_fallback(self) -> None:
         assert actor_label(_Actor(id=None, name="   ")) == "mcp-anonymous"
 
+    def test_blank_string_id_with_none_name_returns_fallback(self) -> None:
+        # Blank string id and absent name -> neither is usable; fall back.
+        # A whitespace-only string id must not be returned as an audit
+        # identifier; doing so would create unhelpful audit trails with
+        # "   " as the actor.
+        assert actor_label(_Actor(id="   ", name=None)) == "mcp-anonymous"
+
     def test_blank_string_id_falls_through_to_name(self) -> None:
-        # A whitespace-only string ``id`` is not a usable identifier; the
-        # helper must fall through to ``name``. organization.py's variant
-        # already enforced this; consolidation preserves it.
+        # A whitespace-only string id is not a usable identifier; the
+        # helper falls through to the next resolution step (``name``).
+        # organization.py's variant already enforced this; consolidation
+        # preserves it. Without this rule, audit logs would record
+        # whitespace-only attribution strings.
         assert actor_label(_Actor(id="   ", name="alice")) == "alice"
 
     def test_custom_fallback_respected(self) -> None:
@@ -113,14 +130,20 @@ class TestGetOptionalStr:
     def test_returns_string_when_present(self) -> None:
         assert get_optional_str({"k": "value"}, "k") == "value"
 
-    def test_returns_none_when_missing(self) -> None:
-        assert get_optional_str({}, "k") is None
-
-    def test_returns_none_when_value_is_none(self) -> None:
-        assert get_optional_str({"k": None}, "k") is None
-
-    def test_returns_none_when_empty_string(self) -> None:
-        assert get_optional_str({"k": ""}, "k") is None
+    @pytest.mark.parametrize(
+        ("arguments", "label"),
+        [
+            ({}, "missing key"),
+            ({"k": None}, "explicit None"),
+            ({"k": ""}, "empty string"),
+        ],
+    )
+    def test_returns_none_for_absent_or_empty(
+        self,
+        arguments: dict[str, Any],
+        label: str,
+    ) -> None:
+        assert get_optional_str(arguments, "k") is None
 
     def test_raises_on_whitespace_only(self) -> None:
         with pytest.raises(ArgumentValidationError):
@@ -133,6 +156,13 @@ class TestGetOptionalStr:
     def test_raises_on_dict(self) -> None:
         with pytest.raises(ArgumentValidationError):
             get_optional_str({"k": {"nested": "x"}}, "k")
+
+    def test_returned_value_preserves_whitespace(self) -> None:
+        # Docstring documents that the returned value is NOT stripped:
+        # validation uses the stripped form, but the original is
+        # preserved verbatim. Pin that contract here so a future
+        # refactor doesn't silently start stripping at this seam.
+        assert get_optional_str({"k": "  hello  "}, "k") == "  hello  "
 
 
 class TestRequireDict:
@@ -162,20 +192,43 @@ class TestRequireDict:
         result = require_dict({"k": {"a": "1"}}, "k", value_type=str)
         assert result == {"a": "1"}
 
+    def test_value_type_none_accepts_none_values(self) -> None:
+        # With no ``value_type`` constraint, ``None`` values are accepted
+        # verbatim. Pin the contract so a future refactor doesn't quietly
+        # start filtering or rejecting them.
+        result = require_dict({"k": {"a": None, "b": 1}}, "k")
+        assert result == {"a": None, "b": 1}
+
+    def test_value_type_str_rejects_none_values(self) -> None:
+        # When ``value_type=str`` is set, ``None`` is not a string and
+        # must be rejected -- isinstance(None, str) is False.
+        with pytest.raises(ArgumentValidationError):
+            require_dict({"k": {"a": None}}, "k", value_type=str)
+
     def test_deep_copy_default_decouples_from_input(self) -> None:
         original: dict[str, Any] = {"k": {"nested": [1, 2]}}
         result = require_dict(original, "k")
-        # Mutating the returned dict must not affect the original input.
+        # Mutating the returned dict's nested mutables must not affect
+        # the original input.
         result["nested"].append(3)
         assert original["k"]["nested"] == [1, 2]
 
-    def test_deep_copy_disabled_returns_shallow_copy(self) -> None:
+    def test_deep_copy_disabled_shares_nested_mutables(self) -> None:
+        # Behavior contract: with ``deep_copy=False`` the outer dict is
+        # a fresh copy (mutating ``result`` keys doesn't affect the
+        # input) but nested mutables are shared (mutating a nested list
+        # DOES leak through to the input). Asserting on observable
+        # behavior rather than ``is`` identity, so a future refactor
+        # that swaps ``dict(raw)`` for ``dict.copy()`` or similar still
+        # passes if the contract holds.
         original: dict[str, Any] = {"k": {"nested": [1, 2]}}
         result = require_dict(original, "k", deep_copy=False)
-        # The outer dict is a copy (the implementation uses dict(raw)),
-        # but nested mutables are shared.
-        assert result is not original["k"]
-        assert result["nested"] is original["k"]["nested"]
+        # Mutating outer-level keys: must not leak into the original.
+        result["new_key"] = "x"
+        assert "new_key" not in original["k"]
+        # Mutating nested mutable: DOES leak (shared reference).
+        result["nested"].append(99)
+        assert original["k"]["nested"] == [1, 2, 99]
 
 
 class TestParseTimeWindow:
@@ -196,18 +249,27 @@ class TestParseTimeWindow:
             parse_time_window({"until": self._UNTIL})
         assert ei.value.argument == "since"
 
+    def test_raises_on_blank_whitespace_since(self) -> None:
+        with pytest.raises(ArgumentValidationError) as ei:
+            parse_time_window({"since": "   ", "until": self._UNTIL})
+        assert ei.value.argument == "since"
+
     def test_raises_on_missing_until_when_required(self) -> None:
         with pytest.raises(ArgumentValidationError) as ei:
             parse_time_window({"since": self._SINCE})
         assert ei.value.argument == "until"
 
     def test_missing_until_defaults_to_now_when_optional(self) -> None:
+        # The implementation routes ``datetime.now(UTC)`` through the
+        # private ``_now_utc`` seam so tests can patch a single mockable
+        # function (the stdlib ``datetime`` class is immutable and can't
+        # be patched directly). Patch only that seam; everything else
+        # in the parser exercises the real code path.
         fixed = datetime(2026, 5, 1, tzinfo=UTC)
         with patch(
-            "synthorg.meta.mcp.handlers.common_args.datetime",
-        ) as mock_dt:
-            mock_dt.now.return_value = fixed
-            mock_dt.fromisoformat = datetime.fromisoformat
+            "synthorg.meta.mcp.handlers.common_args._now_utc",
+            return_value=fixed,
+        ):
             since, until = parse_time_window(
                 {"since": self._SINCE},
                 until_required=False,
@@ -227,10 +289,19 @@ class TestParseTimeWindow:
                 {"since": self._SINCE, "until": "2026-04-02T00:00:00"},
             )
 
-    def test_raises_when_since_not_earlier_than_until(self) -> None:
+    def test_raises_when_since_strictly_after_until(self) -> None:
         with pytest.raises(ArgumentValidationError):
             parse_time_window(
                 {"since": self._UNTIL, "until": self._SINCE},
+            )
+
+    def test_raises_when_since_equals_until(self) -> None:
+        # Boundary: ``since == until`` is rejected (windows must be
+        # non-empty). The implementation uses ``>=``; this test pins
+        # that the equality case is part of the rejection set.
+        with pytest.raises(ArgumentValidationError):
+            parse_time_window(
+                {"since": self._SINCE, "until": self._SINCE},
             )
 
     def test_raises_on_malformed_since(self) -> None:
@@ -267,14 +338,20 @@ class TestParseStrSequence:
         result = parse_str_sequence({"k": ("a", "b")}, "k")
         assert result == ("a", "b")
 
-    def test_returns_none_when_missing(self) -> None:
-        assert parse_str_sequence({}, "k") is None
-
-    def test_returns_none_when_value_is_none(self) -> None:
-        assert parse_str_sequence({"k": None}, "k") is None
-
-    def test_returns_none_when_value_is_empty_string(self) -> None:
-        assert parse_str_sequence({"k": ""}, "k") is None
+    @pytest.mark.parametrize(
+        ("arguments", "label"),
+        [
+            ({}, "missing key"),
+            ({"k": None}, "explicit None"),
+            ({"k": ""}, "empty string"),
+        ],
+    )
+    def test_returns_none_for_absent_or_empty(
+        self,
+        arguments: dict[str, Any],
+        label: str,
+    ) -> None:
+        assert parse_str_sequence(arguments, "k") is None
 
     def test_raises_when_not_list_or_tuple(self) -> None:
         with pytest.raises(ArgumentValidationError):
@@ -294,7 +371,79 @@ class TestParseStrSequence:
 
     def test_accepts_empty_list(self) -> None:
         # Existing behavior in analytics.py: an empty list is a valid
-        # parse (returns ``()``); only ``None`` / ``""`` map to None.
-        # Callers that need non-empty enforce that themselves.
+        # parse and returns ``()``; only ``None`` / ``""`` map to None.
+        # Non-empty validation is the caller's domain-specific rule and
+        # belongs in the caller, not in this generic helper.
         result = parse_str_sequence({"k": []}, "k")
         assert result == ()
+
+
+class TestCoercePagination:
+    """``coerce_pagination`` parses offset/limit args with strict bounds.
+
+    Moved from ``common.py`` to ``common_args.py`` during the
+    centralization refactor; previously covered only via ``paginate_sequence``
+    integration tests in ``test_common_envelope.py``. These tests pin
+    the helper's contract directly.
+    """
+
+    def test_returns_defaults_when_missing(self) -> None:
+        assert coerce_pagination({}) == (0, 50)
+
+    def test_returns_defaults_when_empty_strings(self) -> None:
+        assert coerce_pagination({"offset": "", "limit": ""}) == (0, 50)
+
+    def test_default_limit_override(self) -> None:
+        assert coerce_pagination({}, default_limit=200) == (0, 200)
+
+    def test_returns_explicit_values(self) -> None:
+        assert coerce_pagination({"offset": 10, "limit": 25}) == (10, 25)
+
+    def test_coerces_numeric_strings(self) -> None:
+        # JSON-RPC payloads can deliver pagination args as strings;
+        # the helper coerces via ``int()`` after rejecting bools.
+        assert coerce_pagination({"offset": "5", "limit": "50"}) == (5, 50)
+
+    def test_rejects_negative_offset(self) -> None:
+        with pytest.raises(ArgumentValidationError) as ei:
+            coerce_pagination({"offset": -1})
+        assert ei.value.argument == "offset"
+
+    def test_rejects_zero_limit(self) -> None:
+        with pytest.raises(ArgumentValidationError) as ei:
+            coerce_pagination({"limit": 0})
+        assert ei.value.argument == "limit"
+
+    def test_rejects_negative_limit(self) -> None:
+        with pytest.raises(ArgumentValidationError):
+            coerce_pagination({"limit": -5})
+
+    def test_rejects_bool_offset(self) -> None:
+        # ``isinstance(True, int)`` is True in Python; rejecting bools
+        # explicitly prevents ``confirm: true`` accidentally satisfying
+        # an int field.
+        with pytest.raises(ArgumentValidationError):
+            coerce_pagination({"offset": True})
+
+    def test_rejects_bool_limit(self) -> None:
+        with pytest.raises(ArgumentValidationError):
+            coerce_pagination({"limit": True})
+
+    def test_rejects_non_numeric_string(self) -> None:
+        with pytest.raises(ArgumentValidationError):
+            coerce_pagination({"offset": "abc"})
+
+    def test_rejects_dict_value(self) -> None:
+        with pytest.raises(ArgumentValidationError):
+            coerce_pagination({"limit": {"a": 1}})
+
+    def test_rejects_invalid_default_limit(self) -> None:
+        # The ``default_limit`` is validated through the same gate so a
+        # caller passing ``default_limit=0`` cannot smuggle an invalid
+        # default past the bound check.
+        with pytest.raises(ArgumentValidationError):
+            coerce_pagination({}, default_limit=0)
+
+    def test_rejects_bool_default_limit(self) -> None:
+        with pytest.raises(ArgumentValidationError):
+            coerce_pagination({}, default_limit=True)
