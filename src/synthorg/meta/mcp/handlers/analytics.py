@@ -334,6 +334,17 @@ async def _reports_get(
         report = await app_state.reports_service.get_report(report_id)
         if report is None:
             missing = LookupError(f"Report {report_id} not found")
+            # Missing-record paths are an observable error path: log
+            # via the centralized helper with the requested id as
+            # correlation context so operators investigating a 404 can
+            # tie it to the originating request without scraping client
+            # logs. Routes through safe_error_description (SEC-1) for
+            # the error message.
+            log_handler_invoke_failed(
+                "synthorg_reports_get",
+                missing,
+                report_id=str(report_id),
+            )
             return err(missing, domain_code="not_found")
         logger.info(
             MCP_HANDLER_INVOKE_SUCCESS,
