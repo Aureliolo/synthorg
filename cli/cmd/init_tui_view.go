@@ -62,19 +62,20 @@ func (m setupTUI) View() tea.View {
 // ── Phase views ─────────────────────────────────────────────────────
 
 func (m setupTUI) viewReinit() []string {
-	content := []string{
+	content := make([]string, 0, 9)
+	content = append(content,
 		"",
 		sLabel.Render("Configuration already exists at:"),
 		sCmd.Render(m.reinitPath),
 		"",
-		sWarn.Render("\u26a0") + "  A new JWT secret will be generated.",
+		sWarn.Render("\u26a0")+"  A new JWT secret will be generated.",
 		"   Running containers will need a restart.",
 		"",
-		"", // placeholder for buttons -- needs box width to center
-		"",
-	}
-	w := contentBoxWidth(content)
-	content[7] = btnPair("Overwrite", "Cancel", m.focus == fReinitOverwrite, w)
+	)
+	btnIdx := len(content)
+	content = append(content, "", "") // button placeholder + trailing blank
+	w := contentBoxWidth(content, m.width)
+	content[btnIdx] = btnPair("Overwrite", "Cancel", m.focus == fReinitOverwrite, w)
 	o := renderBox("Existing Configuration", content, w)
 	o = append(o, sDim.Render("\u2190\u2192 toggle  enter select  esc cancel"))
 	return o
@@ -85,11 +86,10 @@ func (m setupTUI) viewSetup() []string {
 	// own internal padding. We compute width from the non-toggle content first
 	// (longest contributor is the data-directory path), then render toggles at
 	// that width.
-	prelim := []string{
-		"",
-		flabel("Data directory", m.focus == fDataDir),
-		"  " + m.dataDir.View(),
-	}
+	dataDirLabel := flabel("Data directory", m.focus == fDataDir)
+	dataDirValue := "  " + m.dataDir.View()
+
+	prelim := []string{"", dataDirLabel, dataDirValue}
 	if m.advExpanded {
 		prelim = append(prelim,
 			"  "+m.backendPort.View(),
@@ -102,12 +102,12 @@ func (m setupTUI) viewSetup() []string {
 			prelim = append(prelim, "  "+m.natsPort.View())
 		}
 	}
-	w := contentBoxWidth(prelim)
+	w := contentBoxWidth(prelim, m.width)
 
 	content := []string{
 		"",
-		flabel("Data directory", m.focus == fDataDir),
-		"  " + m.dataDir.View(),
+		dataDirLabel,
+		dataDirValue,
 		"",
 		m.persistenceToggle(w),
 		"",
@@ -413,9 +413,11 @@ func (m setupTUI) viewTelemetry() []string {
 			sCmd.Render("telemetry_opt_in true"),
 		)
 	}
-	content = append(content, "", "", "") // spacer, button placeholder, spacer
-	w := contentBoxWidth(content)
-	content[len(content)-2] = btnPairEx("Yes", "No", m.focus == fTelYes, btnWarn, w)
+	content = append(content, "")
+	btnIdx := len(content)
+	content = append(content, "", "") // button placeholder + trailing blank
+	w := contentBoxWidth(content, m.width)
+	content[btnIdx] = btnPairEx("Yes", "No", m.focus == fTelYes, btnWarn, w)
 	o := renderBox("Telemetry", content, w)
 	o = append(o, sDim.Render("\u2190\u2192 toggle  enter select  y/n shortcut"))
 	return o
@@ -448,11 +450,11 @@ func (m setupTUI) viewSummary() []string {
 		"",
 		sLabel.Render("Start SynthOrg now?"),
 		"",
-		"", // button placeholder
-		"",
 	)
-	w := contentBoxWidth(content)
-	content[len(content)-2] = btnPair("Yes, start", "No, exit", m.focus == fStartYes, w)
+	btnIdx := len(content)
+	content = append(content, "", "") // button placeholder + trailing blank
+	w := contentBoxWidth(content, m.width)
+	content[btnIdx] = btnPair("Yes, start", "No, exit", m.focus == fStartYes, w)
 	o := renderBox("Ready", content, w)
 	o = append(o, sDim.Render("\u2190\u2192 toggle  enter select"))
 	return o
@@ -572,15 +574,34 @@ func (m setupTUI) buildSummary() summaryData {
 
 // ── Box primitives ──────────────────────────────────────────────────
 
+// boxBorderOverhead is the width of the border + padding `brow` and
+// `boxTop`/`boxBottom` add around content (`│ <content> │` or
+// `╭<title><hz>╮`). Used to translate terminal width into a content-cell
+// ceiling for contentBoxWidth.
+const boxBorderOverhead = 4
+
 // contentBoxWidth returns the inner width to use when wrapping a slice of
 // content lines in a bordered box: the larger of boxW and the widest
 // rendered content row, so a long path or wide toggle row widens the whole
 // box uniformly instead of pushing one row's right border past the others.
-func contentBoxWidth(content []string) int {
+//
+// terminalWidth (typically setupTUI.width) clamps the result so an
+// unusually long path cannot render a box wider than the terminal. A
+// terminalWidth of 0 -- the pre-WindowSizeMsg state -- skips the clamp
+// (the next render will correct it). The boxW floor is preserved even
+// when the terminal is narrower than boxW + boxBorderOverhead, matching
+// the pre-clamp behavior on cramped terminals.
+func contentBoxWidth(content []string, terminalWidth int) int {
 	w := boxW
 	for _, line := range content {
 		if cw := lipgloss.Width(line); cw > w {
 			w = cw
+		}
+	}
+	if terminalWidth > 0 {
+		ceiling := terminalWidth - boxBorderOverhead
+		if ceiling > boxW && w > ceiling {
+			w = ceiling
 		}
 	}
 	return w
