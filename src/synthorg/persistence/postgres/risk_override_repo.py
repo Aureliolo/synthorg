@@ -126,7 +126,7 @@ class PostgresRiskOverrideRepository:
             return None
         try:
             return _row_to_override(row)
-        except (ValueError, ValidationError) as exc:
+        except (ValueError, ValidationError, TypeError) as exc:
             msg = f"Failed to deserialize risk override {override_id!r}"
             logger.warning(
                 PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,

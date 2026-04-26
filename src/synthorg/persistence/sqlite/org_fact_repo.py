@@ -264,6 +264,15 @@ class SQLiteOrgFactRepository:
     async def save(self, fact: OrgFact) -> None:
         """Publish a fact: append PUBLISH to log, upsert snapshot."""
         db = self._db
+        # Marshal every Python value into its SQLite-bound shape BEFORE
+        # the transaction opens.  ``format_iso_utc`` raises
+        # ``ValueError`` on a naive ``created_at`` (defending against
+        # a regression that bypasses the ``AwareDatetime`` type
+        # guard); doing the marshal up here keeps that error path
+        # outside the ``try`` block, so we never strand a
+        # ``BEGIN IMMEDIATE`` transaction holding the write lock.
+        created_at_iso = format_iso_utc(fact.created_at)
+        tags_json = _tags_to_json(fact.tags)
         async with self._write_lock:
             try:
                 await db.execute("BEGIN IMMEDIATE")
@@ -302,7 +311,7 @@ class SQLiteOrgFactRepository:
                         fact.id,
                         fact.content,
                         fact.category.value,
-                        _tags_to_json(fact.tags),
+                        tags_json,
                         fact.author.agent_id,
                         (
                             fact.author.seniority.value
@@ -315,7 +324,7 @@ class SQLiteOrgFactRepository:
                             if fact.author.autonomy_level
                             else None
                         ),
-                        format_iso_utc(fact.created_at),
+                        created_at_iso,
                         version,
                     ),
                 )
