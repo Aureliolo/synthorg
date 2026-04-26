@@ -81,6 +81,7 @@ test = [
     "psycopg[binary]==3.3.3",
     "psycopg_pool==3.3.0",
     "testcontainers[postgres]==4.14.2",
+    "pytest-codspeed>=4.4.0",
 ]
 docs = [
     "zensical==0.0.36",

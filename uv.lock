@@ -2605,6 +2605,24 @@ wheels = [
 ]
 
 [[package]]
+name = "pytest-codspeed"
+version = "4.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cffi" },
+    { name = "pytest" },
+    { name = "rich" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/52/bc/9070fdbfb479a0e92a12652a68875de157dc9be7dc4865a06a519e3a1877/pytest_codspeed-4.4.0.tar.gz", hash = "sha256:edb7c101d9c50439a42cf02cfa9c0ac92da618841636bbebf87c3fa54669442a", size = 201093, upload-time = "2026-04-14T15:13:20.014Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f2/8a/24c7997d95f8bda081b8d4346750a5db0d9d8405183ee5cb9062f7381476/pytest_codspeed-4.4.0-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:413666266762f9cef1321ba971a9e127b97a1f1dad40ddfd2184c2bc5ac157f9", size = 820242, upload-time = "2026-04-14T15:13:09.191Z" },
+    { url = "https://files.pythonhosted.org/packages/8b/7f/3912bf6c2bcddb69189d23213f28e5bc058fd4c78fca15dd0010938154b0/pytest_codspeed-4.4.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:e258e6c3d5a8a02ae02a64831be3acd44c19210ffbf13321bdbb8c111c5c6fe4", size = 829190, upload-time = "2026-04-14T15:13:10.762Z" },
+    { url = "https://files.pythonhosted.org/packages/d8/f4/2cc5e10847aee4233690aa511df6b6f1c2c09f9d8ae506628a138f4ba201/pytest_codspeed-4.4.0-cp314-cp314t-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:56d5dd94dcb69460f916acb9c69865d0171b98acec3ce256645d0c0275b553d7", size = 827557, upload-time = "2026-04-14T15:13:12.553Z" },
+    { url = "https://files.pythonhosted.org/packages/7f/57/982ce8aa81089b285730dca8404c76af648af41e46d95012be54452913e6/pytest_codspeed-4.4.0-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:33c38e0e797c74506004f231fc53eab0e412987de281755f714018334381aa3a", size = 835388, upload-time = "2026-04-14T15:13:14.232Z" },
+    { url = "https://files.pythonhosted.org/packages/99/36/9e84323c6be426728e897133f8e9f3e65a90c26c137e190ca9b27bf304c3/pytest_codspeed-4.4.0-py3-none-any.whl", hash = "sha256:a6aab2fa73523f538e7729c20ccf4a1e8e921324c9877a816b05334135950fd9", size = 203809, upload-time = "2026-04-14T15:13:18.72Z" },
+]
+
+[[package]]
 name = "pytest-cov"
 version = "7.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3287,6 +3305,7 @@ dev = [
     { name = "psycopg-pool" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "pytest-codspeed" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },
     { name = "pytest-randomly" },
@@ -3325,6 +3344,7 @@ test = [
     { name = "psycopg-pool" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "pytest-codspeed" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },
     { name = "pytest-timeout" },
@@ -3389,6 +3409,7 @@ dev = [
     { name = "psycopg-pool", specifier = "==3.3.0" },
     { name = "pytest", specifier = "==9.0.3" },
     { name = "pytest-asyncio", specifier = "==1.3.0" },
+    { name = "pytest-codspeed", specifier = ">=4.4.0" },
     { name = "pytest-cov", specifier = "==7.1.0" },
     { name = "pytest-mock", specifier = "==3.15.1" },
     { name = "pytest-randomly", specifier = "==4.1.0" },
@@ -3424,6 +3445,7 @@ test = [
     { name = "psycopg-pool", specifier = "==3.3.0" },
     { name = "pytest", specifier = "==9.0.3" },
     { name = "pytest-asyncio", specifier = "==1.3.0" },
+    { name = "pytest-codspeed", specifier = ">=4.4.0" },
     { name = "pytest-cov", specifier = "==7.1.0" },
     { name = "pytest-mock", specifier = "==3.15.1" },
     { name = "pytest-timeout", specifier = "==2.4.0" },
