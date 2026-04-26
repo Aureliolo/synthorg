@@ -1,14 +1,19 @@
 """Unit tests for the centralized MCP handler argument helpers.
 
 Covers every public helper in
-:mod:`synthorg.meta.mcp.handlers.common_args` -- both the helpers
-introduced by the centralization refactor (``require_actor_id``,
-``actor_label``, ``get_optional_str``, ``require_dict``,
-``parse_time_window``, ``parse_str_sequence``) and the existing
-helpers that were moved verbatim from ``common.py``
-(``coerce_pagination``, ``require_arg``, ``require_non_blank``,
-``actor_id``). ``test_common_envelope.py`` continues to test the
-envelope helpers that stayed in ``common.py``.
+:mod:`synthorg.meta.mcp.handlers.common_args`. Tests are grouped per
+helper:
+
+* New in the centralization refactor: ``require_actor_id``,
+  ``actor_label``, ``get_optional_str``, ``require_dict``,
+  ``parse_time_window``, ``parse_str_sequence``.
+* Moved verbatim from the original ``common.py`` and now re-tested
+  here so the new module owns its own coverage net: ``require_arg``,
+  ``require_non_blank``, ``actor_id``, ``coerce_pagination``.
+
+``test_common_envelope.py`` continues to cover the envelope helpers
+that stayed in ``common.py`` (``ok``, ``err``, ``paginate_sequence``,
+``require_destructive_guardrails``, etc.).
 """
 
 from datetime import UTC, datetime, timedelta
@@ -20,13 +25,16 @@ import pytest
 
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handlers.common_args import (
+    actor_id,
     actor_label,
     coerce_pagination,
     get_optional_str,
     parse_str_sequence,
     parse_time_window,
     require_actor_id,
+    require_arg,
     require_dict,
+    require_non_blank,
 )
 
 pytestmark = pytest.mark.unit
@@ -447,3 +455,108 @@ class TestCoercePagination:
     def test_rejects_bool_default_limit(self) -> None:
         with pytest.raises(ArgumentValidationError):
             coerce_pagination({}, default_limit=True)
+
+
+class TestRequireArg:
+    """``require_arg`` extracts a typed required argument or raises.
+
+    Moved from ``common.py`` to ``common_args.py`` during the
+    centralization refactor. Tests live here so the module owns its
+    own coverage; ``test_common_envelope.py`` still exercises the
+    helper indirectly via envelope tests.
+    """
+
+    def test_returns_value_when_type_matches(self) -> None:
+        assert require_arg({"k": "v"}, "k", str) == "v"
+
+    def test_raises_when_missing(self) -> None:
+        with pytest.raises(ArgumentValidationError) as ei:
+            require_arg({}, "k", str)
+        assert ei.value.argument == "k"
+
+    def test_raises_when_value_is_none(self) -> None:
+        with pytest.raises(ArgumentValidationError):
+            require_arg({"k": None}, "k", str)
+
+    def test_raises_on_wrong_type(self) -> None:
+        with pytest.raises(ArgumentValidationError):
+            require_arg({"k": 42}, "k", str)
+
+    def test_accepts_int_when_int_expected(self) -> None:
+        assert require_arg({"k": 7}, "k", int) == 7
+
+    def test_rejects_bool_when_int_expected(self) -> None:
+        # ``isinstance(True, int)`` is True in Python; the helper must
+        # reject bools so a ``confirm: true`` payload never satisfies
+        # an int field.
+        with pytest.raises(ArgumentValidationError):
+            require_arg({"k": True}, "k", int)
+
+
+class TestRequireNonBlank:
+    """``require_non_blank`` extracts a non-blank stripped string.
+
+    Moved from ``common.py`` to ``common_args.py`` during the
+    centralization refactor.
+    """
+
+    def test_returns_stripped_value(self) -> None:
+        assert require_non_blank({"k": "  value  "}, "k") == "value"
+
+    def test_returns_value_when_already_clean(self) -> None:
+        assert require_non_blank({"k": "value"}, "k") == "value"
+
+    def test_raises_when_missing(self) -> None:
+        with pytest.raises(ArgumentValidationError) as ei:
+            require_non_blank({}, "k")
+        assert ei.value.argument == "k"
+
+    def test_raises_on_empty_string(self) -> None:
+        with pytest.raises(ArgumentValidationError):
+            require_non_blank({"k": ""}, "k")
+
+    def test_raises_on_whitespace_only(self) -> None:
+        with pytest.raises(ArgumentValidationError):
+            require_non_blank({"k": "   "}, "k")
+
+    def test_raises_on_non_string(self) -> None:
+        with pytest.raises(ArgumentValidationError):
+            require_non_blank({"k": 42}, "k")
+
+    def test_raises_on_none(self) -> None:
+        with pytest.raises(ArgumentValidationError):
+            require_non_blank({"k": None}, "k")
+
+
+class TestActorId:
+    """``actor_id`` returns a stable audit identifier or ``None``.
+
+    Moved from ``common.py`` to ``common_args.py`` during the
+    centralization refactor. ``require_actor_id`` is the raising
+    counterpart and has its own test class above.
+    """
+
+    def test_returns_id_when_present(self) -> None:
+        assert actor_id(_Actor(id="agent-1")) == "agent-1"
+
+    def test_coerces_uuid_id_via_str(self) -> None:
+        uid = UUID("12345678-1234-5678-1234-567812345678")
+        assert actor_id(_Actor(id=uid)) == str(uid)
+
+    def test_falls_back_to_name(self) -> None:
+        assert actor_id(_Actor(id=None, name="alice")) == "alice"
+
+    def test_strips_whitespace_from_name(self) -> None:
+        assert actor_id(_Actor(id=None, name="  alice  ")) == "alice"
+
+    def test_returns_none_for_none_actor(self) -> None:
+        assert actor_id(None) is None
+
+    def test_returns_none_for_blank_name(self) -> None:
+        assert actor_id(_Actor(id=None, name="   ")) is None
+
+    def test_returns_none_for_no_identifier(self) -> None:
+        assert actor_id(_Actor(id=None, name=None)) is None
+
+    def test_returns_none_for_non_string_name(self) -> None:
+        assert actor_id(_Actor(id=None, name=42)) is None

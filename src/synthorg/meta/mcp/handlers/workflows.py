@@ -13,7 +13,6 @@ Destructive ops -- ``workflows_delete``, ``subworkflows_delete``, and
 emit ``MCP_DESTRUCTIVE_OP_EXECUTED`` on success.
 """
 
-import copy
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -649,24 +648,22 @@ async def _workflow_versions_get(
 
 
 WORKFLOW_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    copy.deepcopy(
-        {
-            "synthorg_workflows_list": _workflows_list,
-            "synthorg_workflows_get": _workflows_get,
-            "synthorg_workflows_create": _workflows_create,
-            "synthorg_workflows_update": _workflows_update,
-            "synthorg_workflows_delete": _workflows_delete,
-            "synthorg_workflows_validate": _workflows_validate,
-            "synthorg_subworkflows_list": _subworkflows_list,
-            "synthorg_subworkflows_get": _subworkflows_get,
-            "synthorg_subworkflows_create": _subworkflows_create,
-            "synthorg_subworkflows_delete": _subworkflows_delete,
-            "synthorg_workflow_executions_list": _workflow_executions_list,
-            "synthorg_workflow_executions_get": _workflow_executions_get,
-            "synthorg_workflow_executions_start": _workflow_executions_start,
-            "synthorg_workflow_executions_cancel": _workflow_executions_cancel,
-            "synthorg_workflow_versions_list": _workflow_versions_list,
-            "synthorg_workflow_versions_get": _workflow_versions_get,
-        },
-    ),
+    {
+        "synthorg_workflows_list": _workflows_list,
+        "synthorg_workflows_get": _workflows_get,
+        "synthorg_workflows_create": _workflows_create,
+        "synthorg_workflows_update": _workflows_update,
+        "synthorg_workflows_delete": _workflows_delete,
+        "synthorg_workflows_validate": _workflows_validate,
+        "synthorg_subworkflows_list": _subworkflows_list,
+        "synthorg_subworkflows_get": _subworkflows_get,
+        "synthorg_subworkflows_create": _subworkflows_create,
+        "synthorg_subworkflows_delete": _subworkflows_delete,
+        "synthorg_workflow_executions_list": _workflow_executions_list,
+        "synthorg_workflow_executions_get": _workflow_executions_get,
+        "synthorg_workflow_executions_start": _workflow_executions_start,
+        "synthorg_workflow_executions_cancel": _workflow_executions_cancel,
+        "synthorg_workflow_versions_list": _workflow_versions_list,
+        "synthorg_workflow_versions_get": _workflow_versions_get,
+    },
 )

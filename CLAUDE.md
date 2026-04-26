@@ -154,11 +154,11 @@ See [docs/reference/persistence-boundary.md](docs/reference/persistence-boundary
 
 ## MCP Handler Layer
 
-SynthOrg exposes 200+ tools across 15 domains via its MCP server. Adding a new handler means implementing the `ToolHandler` protocol in `src/synthorg/meta/mcp/handlers/<domain>.py`. Handler infrastructure lives in three sibling modules under `src/synthorg/meta/mcp/handlers/`:
+SynthOrg exposes 200+ tools across 17 domains via its MCP server. Adding a new handler means implementing the `ToolHandler` protocol in `src/synthorg/meta/mcp/handlers/<domain>.py`. Handler infrastructure lives in three sibling modules under `src/synthorg/meta/mcp/handlers/`:
 
 - **`common.py`** -- response envelopes (`ok`, `err`, `capability_gap`, `not_supported`, `service_fallback`), pagination output (`PaginationMeta`, `paginate_sequence`, `dump_many`), guardrails (`require_destructive_guardrails`), and placeholder factories.
 - **`common_args.py`** -- argument validators/extractors (`require_arg`, `require_non_blank`, `get_optional_str`, `require_dict`, `parse_time_window`, `parse_str_sequence`, `coerce_pagination`, `actor_id`, `require_actor_id`, `actor_label`).
-- **`common_logging.py`** -- the three handler-layer log helpers (`log_handler_argument_invalid`, `log_handler_invoke_failed`, `log_handler_guardrail_violated`). Owns a module-scoped logger keyed at `synthorg.meta.mcp.handlers` -- one of the rare carve-outs from the `get_logger(__name__)` rule (see "Logging" below).
+- **`common_logging.py`** -- the three handler-layer log helpers covering the three log paths every domain handler exercises: `log_handler_argument_invalid` (caught `ArgumentValidationError`), `log_handler_invoke_failed` (any other `Exception` from the service layer, with optional correlation kwargs), and `log_handler_guardrail_violated` (caught `GuardrailViolationError` from a destructive-op precondition). Owns a module-scoped logger keyed at `synthorg.meta.mcp.handlers` -- one of the rare carve-outs from the `get_logger(__name__)` rule (see "Logging" above).
 
 Handlers run `require_destructive_guardrails(arguments, actor)` on any `admin_tool`, route through service-layer facades (never into `app_state.persistence.*` directly), and emit the three log paths via `common_logging` helpers (no per-handler `_log_*` duplicates).
 

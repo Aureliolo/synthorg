@@ -106,8 +106,7 @@ def _get_dict(arguments: dict[str, Any], key: str) -> dict[str, str] | None:
     raw = arguments.get(key)
     if raw in (None, ""):
         return None
-    validated = require_dict(arguments, key, value_type=str)
-    return dict(validated)
+    return require_dict(arguments, key, value_type=str)
 
 
 def _parse_message(arguments: dict[str, Any]) -> Message:

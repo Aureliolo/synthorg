@@ -46,6 +46,53 @@ the canonical event field, corrupting audit trails. We reject the call
 loudly instead.
 """
 
+_SENSITIVE_CONTEXT_KEY_FRAGMENTS = frozenset(
+    {
+        "password",
+        "passwd",
+        "secret",
+        "token",
+        "apikey",
+        "api_key",
+        "authorization",
+        "credential",
+        "credentials",
+        "private_key",
+        "privatekey",
+    },
+)
+"""Substrings that, when found in a context kwarg key, indicate a credential.
+
+``log_handler_invoke_failed`` forwards ``**context`` kwargs verbatim
+without routing them through :func:`safe_error_description` -- they are
+correlation ids, not error messages. To prevent a developer from
+accidentally piping a credential into observability sinks, reject any
+kwarg whose key (case-insensitively) contains one of these fragments.
+"""
+
+
+def _reject_sensitive_context_keys(context: dict[str, Any]) -> None:
+    """Raise ``ValueError`` if any context key looks like a credential field.
+
+    Defensive check on top of the reserved-kwarg guard. Catches mistakes
+    like ``log_handler_invoke_failed(tool, exc, api_key="...")``. This
+    runs before the actual log emission so the bad call is fail-fast at
+    the point of misuse, not deferred to a downstream observability
+    pipeline.
+    """
+    suspect = sorted(
+        key
+        for key in context
+        if any(fragment in key.lower() for fragment in _SENSITIVE_CONTEXT_KEY_FRAGMENTS)
+    )
+    if suspect:
+        msg = (
+            f"context kwargs {suspect!r} look like credential fields; "
+            "MCP_HANDLER_INVOKE_FAILED context is forwarded verbatim "
+            "and would leak the value into observability sinks"
+        )
+        raise ValueError(msg)
+
 
 def log_handler_argument_invalid(tool: str, exc: Exception) -> None:
     """Emit ``MCP_HANDLER_ARGUMENT_INVALID`` at WARNING with safe error context.
@@ -85,7 +132,12 @@ def log_handler_invoke_failed(
     Error messages are routed through :func:`safe_error_description` so
     secret-shaped fragments are scrubbed before logging (SEC-1). The
     ``**context`` kwargs are forwarded verbatim and are **not** scrubbed
-    -- callers are responsible for not passing secrets through ``context``.
+    -- callers must not pass credentials, tokens, or other secrets
+    through ``context``. This function defensively rejects context keys
+    whose name suggests a credential (``password``, ``token``,
+    ``api_key``, ``authorization``, ``secret``, etc.) so a slip is
+    caught at the call site instead of leaking into observability
+    sinks.
 
     Args:
         tool: Full ``synthorg_<domain>_<action>`` tool name.
@@ -94,11 +146,13 @@ def log_handler_invoke_failed(
             event verbatim. Keys that would shadow the canonical event
             fields (``tool_name``, ``error_type``, ``error``, ``event``,
             ``log_level``) are rejected with ``ValueError`` so audit
-            trails cannot be silently corrupted.
+            trails cannot be silently corrupted. Keys that look like
+            credential fields are rejected for the same reason.
 
     Raises:
         ValueError: If ``context`` contains any reserved key listed
-            above.
+            above, or any key whose name suggests it carries a
+            credential.
     """
     if reserved := _RESERVED_INVOKE_FAILED_KWARGS.intersection(context):
         msg = (
@@ -106,6 +160,7 @@ def log_handler_invoke_failed(
             "MCP_HANDLER_INVOKE_FAILED event fields"
         )
         raise ValueError(msg)
+    _reject_sensitive_context_keys(context)
     logger.warning(
         MCP_HANDLER_INVOKE_FAILED,
         tool_name=tool,

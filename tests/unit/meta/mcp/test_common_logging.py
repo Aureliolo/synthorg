@@ -135,6 +135,59 @@ class TestLogHandlerInvokeFailed:
                 **{reserved_key: "attacker-controlled"},
             )
 
+    @pytest.mark.parametrize(
+        "sensitive_key",
+        [
+            "password",
+            "passwd",
+            "secret",
+            "token",
+            "apikey",
+            "api_key",
+            "authorization",
+            "credential",
+            "credentials",
+            "private_key",
+            "privatekey",
+            # Variants with prefixes/suffixes; substring match catches them.
+            "service_token",
+            "user_password",
+            "Authorization",  # case-insensitive match
+            "API_KEY",
+        ],
+    )
+    def test_rejects_credential_shaped_context_keys(
+        self,
+        sensitive_key: str,
+    ) -> None:
+        # ``**context`` is forwarded verbatim without scrubbing. To
+        # prevent a developer accidentally piping a credential through
+        # the audit log, keys whose name suggests a credential are
+        # rejected fail-fast with ``ValueError``.
+        with pytest.raises(ValueError, match="credential"):
+            log_handler_invoke_failed(
+                "tool",
+                RuntimeError("x"),
+                **{sensitive_key: "would-have-leaked"},
+            )
+
+    def test_correlation_ids_with_safe_names_pass_through(self) -> None:
+        # Sanity check: legitimate correlation kwargs aren't false-
+        # positives. ``task_id``, ``decision_id``, ``request_id`` are
+        # the established pattern in coordination.py and elsewhere.
+        with structlog.testing.capture_logs() as logs:
+            log_handler_invoke_failed(
+                "tool",
+                RuntimeError("x"),
+                task_id="task-7",
+                decision_id="decision-3",
+                request_id="req-42",
+            )
+        record = logs[0]
+        assert record["task_id"] == "task-7"
+        assert record["decision_id"] == "decision-3"
+        assert record["request_id"] == "req-42"
+
 
 class TestLogHandlerGuardrailViolated:
     """Pin the wire shape of ``log_handler_guardrail_violated``."""
