@@ -53,6 +53,21 @@ from synthorg.observability.events.meeting import (
 logger = get_logger(__name__)
 
 
+def _format_transcript_entry(agent_id: str, content: str) -> str:
+    """Render a single transcript entry with SEC-1 fencing.
+
+    Centralises the security-critical formatting used by both the
+    discussion-round transcript build and the leader-summary transcript
+    rebuild so the two paths cannot drift out of sync (#1596).  The
+    ``[agent_id]:`` prefix sits outside the fence as model-trusted
+    attribution; the agent's free-form output goes inside the fence.
+    """
+    return f"[{agent_id}]:\n" + wrap_untrusted(
+        TAG_PEER_CONTRIBUTION,
+        content,
+    )
+
+
 def _build_turn_prompt(
     agenda_text: str,
     transcript: list[str],
@@ -161,8 +176,7 @@ class RoundRobinProtocol:
         # ``<peer-contribution>`` fence so a literal closing tag in the
         # content cannot inject into the leader's summary prompt (#1596).
         transcript = [
-            f"[{c.agent_id}]:\n" + wrap_untrusted(TAG_PEER_CONTRIBUTION, c.content)
-            for c in contributions
+            _format_transcript_entry(c.agent_id, c.content) for c in contributions
         ]
 
         # Summary phase
@@ -307,9 +321,8 @@ class RoundRobinProtocol:
                 # contribution cannot escape and inject into downstream
                 # turns or the leader's summary prompt (#1596).
                 transcript.append(
-                    f"[{participant_id}]:\n"
-                    + wrap_untrusted(
-                        TAG_PEER_CONTRIBUTION,
+                    _format_transcript_entry(
+                        participant_id,
                         contribution.content,
                     )
                 )

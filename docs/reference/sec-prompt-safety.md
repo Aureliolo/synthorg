@@ -51,9 +51,9 @@ This list is non-exhaustive; treat it as a navigational starting point for new S
 - `AgentIntake._build_prompt` (`engine/intake/strategies/agent_intake.py`)
 - Meeting protocol prompt builders (peer-contribution wrapping):
     - `build_agenda_prompt` (`communication/meeting/_prompts.py`) -- wraps agenda title / context / items in `TAG_TASK_DATA`
-    - `RoundRobinProtocol` transcript builders -- wrap each turn's content in `TAG_PEER_CONTRIBUTION`
-    - `StructuredPhasesProtocol._build_conflict_check_prompt` / `_build_discussion_prompt` / `_build_synthesis_prompt`
-    - `PositionPapersProtocol._build_synthesis_prompt`
+    - `RoundRobinProtocol.run` and `RoundRobinProtocol._run_discussion_rounds` (`communication/meeting/round_robin.py`) -- both transcript-build paths wrap each turn's content via the shared `_format_transcript_entry` helper using `TAG_PEER_CONTRIBUTION`
+    - `_build_conflict_check_prompt` / `_build_discussion_prompt` / `_build_synthesis_prompt` (`communication/meeting/structured_phases.py`)
+    - `_build_synthesis_prompt` (`communication/meeting/position_papers.py`)
     - `_render_system_prompt` in `communication/meeting/agent_caller.py` appends the directive listing both `TAG_TASK_DATA` and `TAG_PEER_CONTRIBUTION` for every meeting LLM call
 
 ### Completion config pinning
