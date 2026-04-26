@@ -3,8 +3,12 @@
 Thin wrapper over :class:`UserRepository` so the ``/users`` controller
 does not reach into ``app_state.persistence.users`` directly. CEO /
 SYSTEM / constraint-violation policy stays in the controller (those are
-HTTP / audit-log concerns) but CRUD mechanics live here with uniform
-``API_USER_*`` logging.
+HTTP and authorization concerns); CRUD mechanics live here and emit
+``SECURITY_USER_*`` audit events (``security.user.created`` / ``updated``
+/ ``deleted`` / ``delete_failed``) so every successful or aborted user
+mutation is signed by the audit chain. Operational-only events such as
+listing or save failures stay under ``api.user.*`` and do not enter the
+chain.
 """
 
 from typing import TYPE_CHECKING
@@ -13,10 +17,14 @@ from synthorg.api.auth.models import User  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
-    API_USER_CREATED,
-    API_USER_DELETED,
     API_USER_LISTED,
-    API_USER_UPDATED,
+)
+from synthorg.observability.events.security import (
+    SECURITY_AUTH_REFRESH_REVOKED,
+    SECURITY_USER_CREATED,
+    SECURITY_USER_DELETE_FAILED,
+    SECURITY_USER_DELETED,
+    SECURITY_USER_UPDATED,
 )
 
 if TYPE_CHECKING:
@@ -131,7 +139,7 @@ class UserService:
         """Persist a freshly-constructed user."""
         await self._repo.save(user)
         logger.info(
-            API_USER_CREATED,
+            SECURITY_USER_CREATED,
             user_id=user.id,
             role=user.role.value,
         )
@@ -148,11 +156,11 @@ class UserService:
 
         ``intent`` distinguishes updates in the audit log (role change,
         org-role grant, org-role revoke); extra ``audit_fields`` are
-        forwarded into the ``API_USER_UPDATED`` event verbatim.
+        forwarded into the ``SECURITY_USER_UPDATED`` event verbatim.
         """
         await self._repo.save(user)
         logger.info(
-            API_USER_UPDATED,
+            SECURITY_USER_UPDATED,
             user_id=user.id,
             intent=intent,
             **audit_fields,
@@ -194,18 +202,31 @@ class UserService:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
+                # Distinct event from SECURITY_USER_DELETED so a
+                # forensic reader cannot mistake the aborted delete
+                # for a successful one.
                 logger.warning(
-                    API_USER_DELETED,
+                    SECURITY_USER_DELETE_FAILED,
                     user_id=user_id,
                     note="refresh-token cascade failed; aborting user delete",
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
                 raise
+            if revoked_refresh_tokens:
+                # Repo no longer logs SECURITY_AUTH_REFRESH_REVOKED
+                # (persistence-boundary rule); service layer emits the
+                # signed audit event with the cascading user_id.
+                logger.info(
+                    SECURITY_AUTH_REFRESH_REVOKED,
+                    user_id=user_id,
+                    revoked=revoked_refresh_tokens,
+                    note="cascade_during_user_delete",
+                )
         deleted = await self._repo.delete(user_id)
         if deleted:
             logger.info(
-                API_USER_DELETED,
+                SECURITY_USER_DELETED,
                 user_id=user_id,
                 deleted_by_user_id=deleted_by_user_id,
                 cascade_refresh_tokens=revoked_refresh_tokens,

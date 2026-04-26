@@ -43,16 +43,21 @@ from synthorg.api.errors import (
 )
 from synthorg.api.guards import HumanRole
 from synthorg.api.rate_limits.guard import per_op_rate_limit
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
-    API_AUTH_FAILED,
-    API_AUTH_PASSWORD_CHANGED,
-    API_AUTH_SETUP_COMPLETE,
-    API_AUTH_TOKEN_ISSUED,
-    API_SESSION_FORCE_LOGOUT,
     API_SESSION_LISTED,
     API_SESSION_REVOKE_FAILED,
-    API_SESSION_REVOKED,
+)
+from synthorg.observability.events.security import (
+    SECURITY_AUTH_ACCOUNT_LOCKED,
+    SECURITY_AUTH_FAILED,
+    SECURITY_AUTH_LOCKOUT_CLEARED,
+    SECURITY_AUTH_PASSWORD_CHANGED,
+    SECURITY_AUTH_SETUP_COMPLETE,
+    SECURITY_AUTH_TOKEN_ISSUED,
+    SECURITY_SESSION_FORCE_LOGOUT,
+    SECURITY_SESSION_LIMIT_ENFORCED,
+    SECURITY_SESSION_REVOKED,
 )
 
 logger = get_logger(__name__)
@@ -94,6 +99,59 @@ not collide with the global rate limiter.
 _VALID_SCOPES: frozenset[str] = frozenset({"own", "all"})
 
 
+async def _record_failed_login(
+    app_state: Any,
+    username: str,
+    request: Request[Any, Any, Any],
+) -> None:
+    """Record a failed login attempt and raise on lockout.
+
+    Extracted from :meth:`AuthController.login` so the parent stays
+    under the McCabe-complexity ceiling. Per the persistence-boundary
+    rule (#1599) the repo no longer logs ``SECURITY_AUTH_ACCOUNT_LOCKED``;
+    this helper emits the signed audit event with the controller-side
+    context (threshold + duration) and raises ``AccountLockedError``
+    so the caller's flow short-circuits before the generic
+    ``invalid_credentials`` log line.
+    """
+    if not app_state.has_lockout_store:
+        return
+    client = request.client
+    ip = client.host if client else ""
+    locked = await app_state.lockout_store.record_failure(
+        username,
+        ip_address=ip,
+    )
+    if not locked:
+        return
+    logger.warning(
+        SECURITY_AUTH_ACCOUNT_LOCKED,
+        username=username,
+        threshold=app_state.lockout_store.threshold,
+        duration_minutes=(app_state.lockout_store.lockout_duration_seconds // 60),
+    )
+    raise AccountLockedError(
+        retry_after=app_state.lockout_store.lockout_duration_seconds,
+    )
+
+
+async def _record_successful_login(app_state: Any, username: str) -> None:
+    """Clear the lockout state and emit the audit event when warranted.
+
+    Repo returns whether a lock was actually cleared; we only emit
+    ``SECURITY_AUTH_LOCKOUT_CLEARED`` when there was something to
+    clear so a routine successful login does not chain a no-op
+    decision into the audit log.
+    """
+    if not app_state.has_lockout_store:
+        return
+    if await app_state.lockout_store.record_success(username):
+        logger.info(
+            SECURITY_AUTH_LOCKOUT_CLEARED,
+            username=username,
+        )
+
+
 class AuthController(Controller):
     """Authentication endpoints: setup, login, password change, me, sessions, logout."""
 
@@ -123,7 +181,7 @@ class AuthController(Controller):
 
         if data.username == SYSTEM_USERNAME:
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="setup_reserved_username",
                 username=data.username,
             )
@@ -132,7 +190,7 @@ class AuthController(Controller):
 
         ceo_count = await persistence.users.count_by_role(HumanRole.CEO)
         if ceo_count > 0:
-            logger.warning(API_AUTH_FAILED, reason="setup_already_completed")
+            logger.warning(SECURITY_AUTH_FAILED, reason="setup_already_completed")
             msg = "Setup already completed"
             raise ConflictError(msg)
 
@@ -153,7 +211,7 @@ class AuthController(Controller):
         post_ceo_count = await persistence.users.count_by_role(HumanRole.CEO)
         if post_ceo_count > 1:
             await persistence.users.delete(user.id)
-            logger.warning(API_AUTH_FAILED, reason="setup_race_detected")
+            logger.warning(SECURITY_AUTH_FAILED, reason="setup_race_detected")
             msg = "Setup already completed"
             raise ConflictError(msg)
 
@@ -169,13 +227,20 @@ class AuthController(Controller):
 
         auth_config = get_auth_config(app_state)
         if app_state.has_session_store:
-            await app_state.session_store.enforce_session_limit(
+            revoked = await app_state.session_store.enforce_session_limit(
                 user.id,
                 auth_config.max_concurrent_sessions,
             )
+            if revoked:
+                logger.info(
+                    SECURITY_SESSION_LIMIT_ENFORCED,
+                    user_id=user.id,
+                    revoked=revoked,
+                    max_sessions=auth_config.max_concurrent_sessions,
+                )
 
         logger.info(
-            API_AUTH_SETUP_COMPLETE,
+            SECURITY_AUTH_SETUP_COMPLETE,
             user_id=user.id,
             username=user.username,
         )
@@ -220,7 +285,7 @@ class AuthController(Controller):
         ):
             await auth_service.verify_password_async(data.password, _DUMMY_ARGON2_HASH)
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="account_locked",
                 username=data.username,
             )
@@ -245,27 +310,16 @@ class AuthController(Controller):
             password_valid = False
 
         if not password_valid:
-            # Record failure for lockout tracking
-            if app_state.has_lockout_store:
-                client = request.client
-                ip = client.host if client else ""
-                locked = await app_state.lockout_store.record_failure(
-                    data.username, ip_address=ip
-                )
-                if locked:
-                    raise AccountLockedError(
-                        retry_after=app_state.lockout_store.lockout_duration_seconds,
-                    )
+            await _record_failed_login(app_state, data.username, request)
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="invalid_credentials",
             )
             msg = "Invalid credentials"
             raise UnauthorizedError(msg)
 
-        # Clear lockout on success
-        if app_state.has_lockout_store:
-            await app_state.lockout_store.record_success(data.username)
+        # Clear lockout on success.
+        await _record_successful_login(app_state, data.username)
 
         token, expires_in, session_id = auth_service.create_token(user)
 
@@ -279,13 +333,20 @@ class AuthController(Controller):
 
         auth_config = get_auth_config(app_state)
         if app_state.has_session_store:
-            await app_state.session_store.enforce_session_limit(
+            revoked = await app_state.session_store.enforce_session_limit(
                 user.id,
                 auth_config.max_concurrent_sessions,
             )
+            if revoked:
+                logger.info(
+                    SECURITY_SESSION_LIMIT_ENFORCED,
+                    user_id=user.id,
+                    revoked=revoked,
+                    max_sessions=auth_config.max_concurrent_sessions,
+                )
 
         logger.info(
-            API_AUTH_TOKEN_ISSUED,
+            SECURITY_AUTH_TOKEN_ISSUED,
             user_id=user.id,
             username=user.username,
         )
@@ -322,7 +383,7 @@ class AuthController(Controller):
         auth_user = request.scope.get("user")
         if not isinstance(auth_user, AuthenticatedUser):
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="change_password_auth_required",
                 path=str(request.url.path),
             )
@@ -330,7 +391,7 @@ class AuthController(Controller):
             raise UnauthorizedError(msg)
         if is_system_user(auth_user.user_id):
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="system_user_modification_blocked",
                 user_id=auth_user.user_id,
             )
@@ -344,7 +405,7 @@ class AuthController(Controller):
         user = await persistence.users.get(auth_user.user_id)
         if user is None:
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="user_not_found_for_password_change",
                 user_id=auth_user.user_id,
             )
@@ -355,7 +416,7 @@ class AuthController(Controller):
             data.current_password, user.password_hash
         ):
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="invalid_current_password",
                 user_id=user.id,
             )
@@ -376,7 +437,14 @@ class AuthController(Controller):
         # Revoke the old session before issuing a new one.
         old_jti = extract_jti(request)
         if old_jti and app_state.has_session_store:
-            await app_state.session_store.revoke(old_jti)
+            revoked = await app_state.session_store.revoke(old_jti)
+            if revoked:
+                logger.info(
+                    SECURITY_SESSION_REVOKED,
+                    session_id=old_jti,
+                    user_id=updated_user.id,
+                    reason="password_change_rotation",
+                )
 
         # Rotate session cookie so the new pwd_sig is embedded.
         token, expires_in, session_id = auth_service.create_token(
@@ -392,7 +460,7 @@ class AuthController(Controller):
         auth_config = get_auth_config(app_state)
 
         logger.info(
-            API_AUTH_PASSWORD_CHANGED,
+            SECURITY_AUTH_PASSWORD_CHANGED,
             user_id=user.id,
             username=user.username,
         )
@@ -430,7 +498,7 @@ class AuthController(Controller):
         auth_user = request.scope.get("user")
         if not isinstance(auth_user, AuthenticatedUser):
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="me_auth_required",
                 path=str(request.url.path),
             )
@@ -476,7 +544,7 @@ class AuthController(Controller):
         auth_user = request.scope.get("user")
         if not isinstance(auth_user, AuthenticatedUser):
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="ws_ticket_auth_required",
                 path=str(request.url.path),
             )
@@ -485,7 +553,7 @@ class AuthController(Controller):
 
         if is_system_user(auth_user.user_id):
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="system_user_ws_ticket_blocked",
                 user_id=auth_user.user_id,
             )
@@ -495,7 +563,7 @@ class AuthController(Controller):
 
         if auth_user.auth_method != AuthMethod.JWT:
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="ws_ticket_requires_jwt",
                 auth_method=auth_user.auth_method.value,
                 user_id=auth_user.user_id,
@@ -511,7 +579,7 @@ class AuthController(Controller):
             ticket = app_state.ticket_store.create(ws_user)
         except TicketLimitExceededError:
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="ws_ticket_limit_exceeded",
                 user_id=auth_user.user_id,
             )
@@ -542,7 +610,7 @@ class AuthController(Controller):
         auth_user = request.scope.get("user")
         if not isinstance(auth_user, AuthenticatedUser):
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="unauthenticated_session_list",
             )
             msg = "Authentication required"
@@ -601,7 +669,7 @@ class AuthController(Controller):
         auth_user = request.scope.get("user")
         if not isinstance(auth_user, AuthenticatedUser):
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="unauthenticated_session_revoke",
             )
             msg = "Authentication required"
@@ -617,7 +685,7 @@ class AuthController(Controller):
         # Return 404 for not-owned (prevents session ID enum).
         if session.user_id != auth_user.user_id and auth_user.role != HumanRole.CEO:
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="session_not_owned",
                 session_id=session_id[:8],
                 user_id=auth_user.user_id,
@@ -628,7 +696,7 @@ class AuthController(Controller):
         revoked = await store.revoke(session_id)
         if revoked:
             logger.info(
-                API_SESSION_REVOKED,
+                SECURITY_SESSION_REVOKED,
                 session_id=session_id,
                 revoked_by=auth_user.user_id,
             )
@@ -677,12 +745,13 @@ class AuthController(Controller):
             # trap users in the exact stale-cookie scenario the
             # idempotent contract was designed to fix.
             try:
-                await app_state.session_store.revoke(jti)
-                logger.info(
-                    API_SESSION_FORCE_LOGOUT,
-                    session_id=jti,
-                    user_id=user_id,
-                )
+                revoked = await app_state.session_store.revoke(jti)
+                if revoked:
+                    logger.info(
+                        SECURITY_SESSION_FORCE_LOGOUT,
+                        session_id=jti,
+                        user_id=user_id,
+                    )
             except MemoryError, RecursionError:
                 raise
             except Exception as err:
@@ -691,7 +760,7 @@ class AuthController(Controller):
                     session_id=jti,
                     user_id=user_id,
                     error_type=type(err).__name__,
-                    error=str(err),
+                    error=safe_error_description(err),
                 )
 
         auth_config = get_auth_config(

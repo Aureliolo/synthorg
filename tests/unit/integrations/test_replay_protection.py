@@ -124,12 +124,12 @@ class TestReplayProtector:
         get hashed.
         """
         from synthorg.integrations.webhooks.replay_protection import (
-            _MAX_NONCE_CHARS,
+            MAX_NONCE_CHARS,
         )
 
         clock = _FakeClock()
         protector = ReplayProtector(window_seconds=300, clock=clock)
-        big_nonce = "a" * (_MAX_NONCE_CHARS + 1)
+        big_nonce = "a" * (MAX_NONCE_CHARS + 1)
         assert protector.check(nonce=big_nonce, timestamp=clock.now) is False
         assert not protector._seen
 

@@ -20,8 +20,10 @@ from litestar.types import ASGIApp, Receive, Scope, Send  # noqa: TC002
 from synthorg.api.auth.config import AuthConfig  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
-    API_CSRF_REJECTED,
     API_CSRF_SKIPPED,
+)
+from synthorg.observability.events.security import (
+    SECURITY_CSRF_REJECTED,
 )
 
 logger = get_logger(__name__)
@@ -104,7 +106,7 @@ class CsrfMiddleware:
 
         if not csrf_cookie or not csrf_header:
             logger.warning(
-                API_CSRF_REJECTED,
+                SECURITY_CSRF_REJECTED,
                 reason="missing_csrf_token",
                 path=path,
                 has_cookie=bool(csrf_cookie),
@@ -115,7 +117,7 @@ class CsrfMiddleware:
 
         if not _hmac.compare_digest(csrf_header, csrf_cookie):
             logger.warning(
-                API_CSRF_REJECTED,
+                SECURITY_CSRF_REJECTED,
                 reason="csrf_token_mismatch",
                 path=path,
             )

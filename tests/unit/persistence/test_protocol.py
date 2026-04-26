@@ -23,6 +23,12 @@ from synthorg.persistence.checkpoint_protocol import (
 )
 from synthorg.persistence.cost_record_protocol import CostRecordRepository
 from synthorg.persistence.decision_protocol import DecisionRepository
+from synthorg.persistence.idempotency_protocol import (
+    IdempotencyClaim,
+    IdempotencyOutcome,
+    IdempotencyRecord,
+    IdempotencyRepository,
+)
 from synthorg.persistence.message_protocol import MessageRepository
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
 from synthorg.persistence.preset_repository import (
@@ -530,6 +536,59 @@ class _FakeWorkflowExecutionRepository:
         return False
 
 
+class _FakeIdempotencyRepository:
+    """Minimal IdempotencyRepository conforming to the protocol shape."""
+
+    async def claim(
+        self,
+        *,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+        ttl_seconds: int,
+        now: Any,
+    ) -> IdempotencyClaim:
+        del scope, key, ttl_seconds, now
+        return IdempotencyClaim(
+            outcome=IdempotencyOutcome.FRESH,
+            claim_token="fake-token",
+        )
+
+    async def complete(
+        self,
+        *,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+        response_body: str,
+        response_hash: str,
+        claim_token: str,
+    ) -> bool:
+        del scope, key, response_body, response_hash, claim_token
+        return True
+
+    async def fail(
+        self,
+        *,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+        claim_token: str,
+    ) -> bool:
+        del scope, key, claim_token
+        return True
+
+    async def get(
+        self,
+        *,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+    ) -> IdempotencyRecord | None:
+        del scope, key
+        return None
+
+    async def cleanup_expired(self, now: Any) -> int:
+        del now
+        return 0
+
+
 class _FakeBackend:
     async def connect(self) -> None:
         pass
@@ -727,6 +786,10 @@ class _FakeBackend:
         return None
 
     @property
+    def idempotency_keys(self) -> _FakeIdempotencyRepository:
+        return _FakeIdempotencyRepository()
+
+    @property
     def mcp_installations(self) -> Any:
         return None
 
@@ -793,6 +856,15 @@ class TestProtocolCompliance:
 
     def test_fake_message_repo_is_message_repository(self) -> None:
         assert isinstance(_FakeMessageRepository(), MessageRepository)
+
+    def test_fake_idempotency_repo_is_idempotency_repository(self) -> None:
+        # Assert through the backend so a regression that nulls or
+        # mistypes ``_FakeBackend.idempotency_keys`` fails here, not
+        # only the standalone-class check that would happily pass even
+        # if the backend forgot to wire the repo at all.
+        backend = _FakeBackend()
+        assert isinstance(backend.idempotency_keys, IdempotencyRepository)
+        assert isinstance(_FakeIdempotencyRepository(), IdempotencyRepository)
 
     def test_fake_lifecycle_repo_is_lifecycle_event_repository(self) -> None:
         assert isinstance(_FakeLifecycleEventRepository(), LifecycleEventRepository)

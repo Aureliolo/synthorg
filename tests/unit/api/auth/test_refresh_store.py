@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import aiosqlite
 import pytest
 
+from synthorg.api.auth.refresh_record import RefreshRejectReason
 from synthorg.persistence.sqlite.refresh_repo import (
     SQLiteRefreshTokenRepository as RefreshStore,
 )
@@ -36,11 +37,11 @@ class TestRefreshCreate:
             expires_at=_FUTURE,
         )
         # Verify via consume
-        record = await store.consume("hash-1")
-        assert record is not None
-        assert record.session_id == "sess-1"
-        assert record.user_id == "user-1"
-        assert record.used is True
+        outcome = await store.consume("hash-1")
+        assert outcome.record is not None
+        assert outcome.record.session_id == "sess-1"
+        assert outcome.record.user_id == "user-1"
+        assert outcome.record.used is True
 
 
 class TestRefreshConsume:
@@ -51,12 +52,12 @@ class TestRefreshConsume:
             user_id="user-1",
             expires_at=_FUTURE,
         )
-        record = await store.consume("hash-c1")
-        assert record is not None
-        assert record.used is True
+        outcome = await store.consume("hash-c1")
+        assert outcome.record is not None
+        assert outcome.record.used is True
 
     async def test_consume_single_use(self, store: RefreshStore) -> None:
-        """Second consume of the same token returns None (replay)."""
+        """Second consume of the same token rejects with REPLAY_DETECTED."""
         await store.create(
             token_hash="hash-c2",
             session_id="sess-1",
@@ -64,37 +65,47 @@ class TestRefreshConsume:
             expires_at=_FUTURE,
         )
         first = await store.consume("hash-c2")
-        assert first is not None
+        assert first.record is not None
         second = await store.consume("hash-c2")
-        assert second is None
+        assert second.record is None
+        assert second.reject_reason is RefreshRejectReason.REPLAY_DETECTED
 
-    async def test_consume_nonexistent_returns_none(self, store: RefreshStore) -> None:
-        result = await store.consume("nonexistent-hash")
-        assert result is None
+    async def test_consume_nonexistent_rejects_not_found(
+        self,
+        store: RefreshStore,
+    ) -> None:
+        outcome = await store.consume("nonexistent-hash")
+        assert outcome.record is None
+        assert outcome.reject_reason is RefreshRejectReason.NOT_FOUND_OR_EXPIRED
 
-    async def test_consume_expired_returns_none(self, store: RefreshStore) -> None:
+    async def test_consume_expired_rejects_not_found(
+        self,
+        store: RefreshStore,
+    ) -> None:
         await store.create(
             token_hash="hash-expired",
             session_id="sess-1",
             user_id="user-1",
             expires_at=_PAST,
         )
-        result = await store.consume("hash-expired")
-        assert result is None
+        outcome = await store.consume("hash-expired")
+        assert outcome.record is None
+        assert outcome.reject_reason is RefreshRejectReason.NOT_FOUND_OR_EXPIRED
 
     async def test_consume_rejects_revoked_session(self, store: RefreshStore) -> None:
-        """Token belonging to a revoked session is rejected."""
+        """Token belonging to a revoked session reports session_revoked."""
         await store.create(
             token_hash="hash-revoked-sess",
             session_id="revoked-sess",
             user_id="user-1",
             expires_at=_FUTURE,
         )
-        result = await store.consume(
+        outcome = await store.consume(
             "hash-revoked-sess",
             is_session_revoked=lambda sid: sid == "revoked-sess",
         )
-        assert result is None
+        assert outcome.record is None
+        assert outcome.reject_reason is RefreshRejectReason.SESSION_REVOKED
 
     async def test_consume_allows_non_revoked_session(
         self, store: RefreshStore
@@ -106,12 +117,12 @@ class TestRefreshConsume:
             user_id="user-1",
             expires_at=_FUTURE,
         )
-        result = await store.consume(
+        outcome = await store.consume(
             "hash-valid-sess",
             is_session_revoked=lambda sid: False,
         )
-        assert result is not None
-        assert result.session_id == "valid-sess"
+        assert outcome.record is not None
+        assert outcome.record.session_id == "valid-sess"
 
 
 class TestRefreshRevoke:
@@ -138,11 +149,15 @@ class TestRefreshRevoke:
         revoked = await store.revoke_by_session("sess-1")
         assert revoked == 2
 
-        # h1 and h2 should be unusable
-        assert await store.consume("h1") is None
-        assert await store.consume("h2") is None
+        # h1 and h2 should be unusable -- revoke flags ``used = TRUE``
+        # so consume sees a replay.
+        for ref in ("h1", "h2"):
+            outcome = await store.consume(ref)
+            assert outcome.record is None
+            assert outcome.reject_reason is RefreshRejectReason.REPLAY_DETECTED
         # h3 should still work
-        assert await store.consume("h3") is not None
+        h3_outcome = await store.consume("h3")
+        assert h3_outcome.record is not None
 
     async def test_revoke_by_user(self, store: RefreshStore) -> None:
         await store.create(
@@ -160,8 +175,11 @@ class TestRefreshRevoke:
 
         revoked = await store.revoke_by_user("user-1")
         assert revoked == 1
-        assert await store.consume("u1-h1") is None
-        assert await store.consume("u2-h1") is not None
+        revoked_outcome = await store.consume("u1-h1")
+        assert revoked_outcome.record is None
+        assert revoked_outcome.reject_reason is RefreshRejectReason.REPLAY_DETECTED
+        active_outcome = await store.consume("u2-h1")
+        assert active_outcome.record is not None
 
 
 class TestRefreshCleanup:
@@ -196,6 +214,9 @@ class TestRefreshCleanup:
         removed = await store.cleanup_expired()
         assert removed == 1  # only the expired row
         # Used token still in DB (replay detection works)
-        assert await store.consume("used") is None  # already consumed
+        used_outcome = await store.consume("used")
+        assert used_outcome.record is None
+        assert used_outcome.reject_reason is RefreshRejectReason.REPLAY_DETECTED
         # Active token still consumable
-        assert await store.consume("active") is not None
+        active_outcome = await store.consume("active")
+        assert active_outcome.record is not None

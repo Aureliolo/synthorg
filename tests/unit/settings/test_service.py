@@ -7,6 +7,7 @@ import pytest
 from cryptography.fernet import Fernet
 from pydantic import BaseModel, ConfigDict
 
+from synthorg.observability.events.security import SECURITY_SETTINGS_CHANGED
 from synthorg.persistence.settings_protocol import SettingsRepository
 from synthorg.settings.encryption import SettingsEncryptor
 from synthorg.settings.enums import (
@@ -925,3 +926,226 @@ class TestValidatorPattern:
         )
         with pytest.raises(SettingValidationError, match="does not match"):
             await svc.set("budget", "hostname", "INVALID HOST!")
+
+
+# ── Security Audit Emission Tests (#1599) ───────────────────────
+
+
+def _install_logger_info_spy(
+    monkeypatch: pytest.MonkeyPatch,
+    module: Any,
+) -> list[str]:
+    """Spy on *module*'s ``logger.info`` and return the captured events.
+
+    structlog routes events through a custom processor pipeline that
+    bypasses pytest's stdlib ``caplog`` capture, so each test in this
+    class would otherwise duplicate the same wrap-and-monkeypatch
+    boilerplate. The helper returns the list the spy appends event
+    names to; the original ``logger.info`` is still invoked so any
+    downstream processors keep firing.
+    """
+    captured: list[str] = []
+    original_info = module.logger.info
+
+    def _spy(event: str, **kwargs: Any) -> Any:
+        captured.append(event)
+        return original_info(event, **kwargs)
+
+    monkeypatch.setattr(module.logger, "info", _spy)
+    return captured
+
+
+def _build_audit_registry(*, audited: bool, operation: str) -> SettingsRegistry:
+    """Register the setting definitions exercised by the audit matrix."""
+    registry = SettingsRegistry()
+    ns = SettingNamespace.SECURITY if audited else SettingNamespace.BUDGET
+    if operation == "set_many_two_keys":
+        for key in ("opt_in", "second_flag"):
+            registry.register(
+                _make_definition(
+                    namespace=ns,
+                    key=key,
+                    setting_type=SettingType.BOOLEAN,
+                    default="false",
+                    yaml_path=None,
+                ),
+            )
+        return registry
+    if audited:
+        registry.register(
+            _make_definition(
+                namespace=ns,
+                key="opt_in",
+                setting_type=SettingType.BOOLEAN,
+                default="false",
+                yaml_path=None,
+            ),
+        )
+    else:
+        registry.register(
+            _make_definition(
+                namespace=ns,
+                key="total_monthly",
+                setting_type=SettingType.FLOAT,
+                yaml_path=None,
+            ),
+        )
+    return registry
+
+
+def _wire_audit_mock_repo(
+    mock_repo: AsyncMock,
+    *,
+    audited: bool,
+    operation: str,
+) -> None:
+    """Stub the per-operation success path on *mock_repo*.
+
+    Otherwise an unset mock returns a ``MagicMock`` that the service
+    silently coerces into a falsy/truthy value the test never
+    intended.
+    """
+    if operation.startswith("set_many"):
+        mock_repo.set_many.return_value = True
+    elif operation == "delete_namespace":
+        sample_key = "opt_in" if audited else "total_monthly"
+        mock_repo.delete_namespace_returning_keys.return_value = [sample_key]
+
+
+async def _invoke_audit_operation(
+    *,
+    svc: SettingsService,
+    operation: str,
+    audited: bool,
+) -> None:
+    """Dispatch *operation* against *svc* with audit-matrix inputs."""
+    ns_str = "security" if audited else "budget"
+    key = "opt_in" if audited else "total_monthly"
+    value = "true" if audited else "200.0"
+    if operation == "set":
+        await svc.set(ns_str, key, value)
+        return
+    if operation == "delete":
+        await svc.delete(ns_str, key)
+        return
+    if operation == "set_many_one_key":
+        await svc.set_many(
+            [(ns_str, key, value)],
+            expected_updated_at_map={(ns_str, key): ""},
+        )
+        return
+    if operation == "set_many_two_keys":
+        await svc.set_many(
+            [
+                (ns_str, "opt_in", "true"),
+                (ns_str, "second_flag", "true"),
+            ],
+            expected_updated_at_map={
+                (ns_str, "opt_in"): "",
+                (ns_str, "second_flag"): "",
+            },
+        )
+        return
+    if operation == "delete_namespace":
+        await svc.delete_namespace(ns_str)
+        return
+    msg = f"Unknown operation: {operation}"  # pragma: no cover
+    raise AssertionError(msg)
+
+
+@pytest.mark.unit
+class TestSecuritySettingsAuditEmission:
+    """``SECURITY_SETTINGS_CHANGED`` must be emitted on `set` / `delete`
+    paths only when the namespace is in the audited set.
+
+    structlog routes events through a custom processor pipeline that
+    bypasses pytest's stdlib ``caplog`` capture. We hook the service
+    module's ``logger.info`` directly to capture event names as the
+    underlying `logger.info(EVENT, **kwargs)` calls land.
+    """
+
+    @pytest.mark.parametrize(
+        ("operation", "namespace_kind", "expected_count"),
+        [
+            # ``set`` / ``delete`` / ``delete_namespace`` emit exactly
+            # one event when the namespace is audited; ``set_many``
+            # emits one per audited key (so the 2-key audited row
+            # asserts count == 2).
+            ("set", "audited", 1),
+            ("set", "non_audited", 0),
+            ("delete", "audited", 1),
+            ("delete", "non_audited", 0),
+            ("set_many_one_key", "audited", 1),
+            ("set_many_two_keys", "audited", 2),
+            ("set_many_one_key", "non_audited", 0),
+            ("delete_namespace", "audited", 1),
+            ("delete_namespace", "non_audited", 0),
+        ],
+    )
+    async def test_security_event_emission_matrix(  # noqa: PLR0913
+        self,
+        mock_repo: AsyncMock,
+        config: _FakeConfig,
+        monkeypatch: pytest.MonkeyPatch,
+        operation: str,
+        namespace_kind: str,
+        expected_count: int,
+    ) -> None:
+        """``SECURITY_SETTINGS_CHANGED`` fires once per write to an audited
+        namespace and never for a non-audited one.
+
+        ``set_many`` emits per audited key, so the 2-key audited row
+        asserts ``count == 2``. ``delete_namespace`` is exercised here
+        only with non-empty results; the empty-result path stays in
+        :meth:`test_delete_namespace_no_rows_does_not_emit` because the
+        assertion (``result == 0``) is distinct.
+        """
+        from synthorg.settings import service as service_mod
+
+        audited = namespace_kind == "audited"
+        registry = _build_audit_registry(audited=audited, operation=operation)
+        _wire_audit_mock_repo(mock_repo, audited=audited, operation=operation)
+
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+        )
+        captured = _install_logger_info_spy(monkeypatch, service_mod)
+
+        await _invoke_audit_operation(
+            svc=svc,
+            operation=operation,
+            audited=audited,
+        )
+        assert captured.count(SECURITY_SETTINGS_CHANGED) == expected_count
+
+    async def test_delete_namespace_no_rows_does_not_emit(
+        self,
+        mock_repo: AsyncMock,
+        config: _FakeConfig,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """An empty ``delete_namespace`` must not fire the audit event."""
+        from synthorg.settings import service as service_mod
+
+        registry = SettingsRegistry()
+        registry.register(
+            _make_definition(
+                namespace=SettingNamespace.SECURITY,
+                key="opt_in",
+                setting_type=SettingType.BOOLEAN,
+                default="false",
+                yaml_path=None,
+            ),
+        )
+        mock_repo.delete_namespace_returning_keys.return_value = []
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+        )
+        captured = _install_logger_info_spy(monkeypatch, service_mod)
+        result = await svc.delete_namespace("security")
+        assert result == 0
+        assert SECURITY_SETTINGS_CHANGED not in captured

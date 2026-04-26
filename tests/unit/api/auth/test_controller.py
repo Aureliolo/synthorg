@@ -689,10 +689,22 @@ class TestLogoutIdempotency:
 
         headers = make_auth_headers(role=HumanRole.CEO)
         token = headers["Authorization"].removeprefix("Bearer ")
+        # Enforce iss/aud verification on the test-side decode so a
+        # regression in ``create_token``/``make_auth_headers`` that
+        # drops or mis-sets the hardened claims would surface here
+        # rather than silently let the test pass while production
+        # middleware rejects the same token.
+        from synthorg.api.auth.system_user import (
+            USER_AUDIENCE,
+            USER_ISSUER,
+        )
+
         expected_jti = jwt.decode(
             token,
             _TEST_JWT_SECRET,
             algorithms=["HS256"],
+            issuer=USER_ISSUER,
+            audience=USER_AUDIENCE,
         )["jti"]
 
         response = bare_client.post(

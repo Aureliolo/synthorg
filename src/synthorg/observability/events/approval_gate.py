@@ -24,8 +24,9 @@ APPROVAL_GATE_RESUME_CONTEXT_LOADED: Final[str] = "approval_gate.resume.context_
 APPROVAL_GATE_REVIEW_TRANSITION_FAILED: Final[str] = (
     "approval_gate.review.transition_failed"
 )
-APPROVAL_GATE_SELF_REVIEW_PREVENTED: Final[str] = "approval_gate.self_review.prevented"
-APPROVAL_GATE_DECISION_RECORDED: Final[str] = "approval_gate.decision.recorded"
+# approval_gate.self_review.prevented and approval_gate.decision.recorded
+# moved to events.security as SECURITY_APPROVAL_SELF_REVIEW_PREVENTED and
+# SECURITY_APPROVAL_DECISION_RECORDED (audit-chained).
 APPROVAL_GATE_DECISION_RECORD_FAILED: Final[str] = (
     "approval_gate.decision.record_failed"
 )

@@ -13,6 +13,7 @@ for matched routes -- 404 and 405 responses from the router bypass it.
 """
 
 import time
+from contextlib import suppress
 from types import MappingProxyType
 from typing import Any, Final
 
@@ -68,7 +69,13 @@ _DOCS_CSP: Final[str] = (
 
 # Cache-Control for API data endpoints (named constant for test
 # clarity; applied via _SECURITY_HEADERS).
-_API_CACHE_CONTROL: Final[str] = "no-store"
+#
+# OWASP REST guidance + RFC 7234 best practice: combine no-store,
+# no-cache, must-revalidate, and max-age=0 so legacy proxies and
+# browsers that ignore one directive still skip caching. Every API
+# response in this app is operator-authenticated and should never be
+# cached, so the strongest possible value applies globally (#1599).
+_API_CACHE_CONTROL: Final[str] = "no-store, no-cache, must-revalidate, max-age=0"
 
 # Cache-Control for documentation paths -- OpenAPI spec and Scalar UI
 # are public, unauthenticated, non-user-specific content safe for
@@ -89,6 +96,14 @@ _SECURITY_HEADERS: Final[MappingProxyType[str, str]] = MappingProxyType(
         "Cache-Control": _API_CACHE_CONTROL,
     }
 )
+
+# HTTP/1.0 Pragma directive -- applied to API paths but NOT to /docs
+# (which serves cacheable, non-user-specific assets and explicitly
+# overrides Cache-Control to ``public, max-age=300``). Co-locating
+# Pragma with the API Cache-Control keeps the two cache hints
+# consistent: a /docs response carries neither Pragma nor a no-cache
+# directive, so legacy proxies still cache the SwaggerUI bundle.
+_API_PRAGMA: Final[str] = "no-cache"
 
 
 async def security_headers_hook(message: Message, scope: Scope) -> None:
@@ -138,6 +153,13 @@ async def security_headers_hook(message: Message, scope: Scope) -> None:
     if is_docs:
         headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
         headers["Cache-Control"] = _DOCS_CACHE_CONTROL
+        # Defense-in-depth: even if an upstream layer set Pragma we
+        # actively clear it on /docs so the no-cache hint can never
+        # leak onto cacheable assets.
+        with suppress(KeyError):
+            del headers["Pragma"]
+    else:
+        headers["Pragma"] = _API_PRAGMA
 
 
 def _log_request_completion(

@@ -16,6 +16,7 @@ dependency injection, and RFC 9457 error translation are exercised
 on the real HTTP path.
 """
 
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -230,7 +231,14 @@ class TestWebhooksController:
         state = {"app_state": app_state}
 
         request = MagicMock()
-        request.body = AsyncMock(return_value=b"{}")
+
+        # The receiver buffers the body via ``request.stream()`` so it
+        # can abort on overflow without a single large allocation. Mock
+        # an async iterator that yields the body once, then completes.
+        async def _stream_empty() -> AsyncIterator[bytes]:
+            yield b"{}"
+
+        request.stream = _stream_empty
         request.headers = {}
 
         ctrl = WebhooksController(owner=WebhooksController)  # type: ignore[arg-type]
@@ -275,7 +283,11 @@ class TestWebhooksController:
         secret = "supersecret"
         sig = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
         request = MagicMock()
-        request.body = AsyncMock(return_value=body)
+
+        async def _stream_body() -> AsyncIterator[bytes]:
+            yield body
+
+        request.stream = _stream_body
         request.headers = {
             "X-Signature": sig,
             "X-Timestamp": "not-a-number",

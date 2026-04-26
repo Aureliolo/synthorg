@@ -25,14 +25,16 @@ from synthorg.engine.errors import (
     TaskNotFoundError,
     TaskVersionConflictError,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_RESUME_CONTEXT_LOADED,
     APPROVAL_GATE_RESUME_FAILED,
     APPROVAL_GATE_RESUME_TRIGGERED,
     APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
-    APPROVAL_GATE_SELF_REVIEW_PREVENTED,
     APPROVAL_GATE_TASK_NOT_FOUND,
+)
+from synthorg.observability.events.security import (
+    SECURITY_APPROVAL_SELF_REVIEW_PREVENTED,
 )
 
 if TYPE_CHECKING:
@@ -114,7 +116,7 @@ async def preflight_review_gate(
         await review_gate.check_can_decide(task_id=task_id, decided_by=decided_by)
     except SelfReviewError:
         logger.warning(
-            APPROVAL_GATE_SELF_REVIEW_PREVENTED,
+            SECURITY_APPROVAL_SELF_REVIEW_PREVENTED,
             approval_id=approval_id,
             task_id=task_id,
             decided_by=decided_by,
@@ -134,12 +136,12 @@ async def preflight_review_gate(
         not_found_msg = "Associated task could not be found"
         raise NotFoundError(not_found_msg) from exc
     except TaskInternalError as exc:
-        logger.exception(
+        logger.warning(
             APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
             approval_id=approval_id,
             task_id=task_id,
             error_type=type(exc).__name__,
-            error=str(exc),
+            error=safe_error_description(exc),
         )
         unavailable_msg = "Internal server error"
         raise ServiceUnavailableError(unavailable_msg) from exc
@@ -183,7 +185,7 @@ async def try_review_gate_transition(  # noqa: PLR0913
         )
     except SelfReviewError:
         logger.warning(
-            APPROVAL_GATE_SELF_REVIEW_PREVENTED,
+            SECURITY_APPROVAL_SELF_REVIEW_PREVENTED,
             approval_id=approval_id,
             task_id=task_id,
             decided_by=decided_by,
@@ -213,12 +215,12 @@ async def try_review_gate_transition(  # noqa: PLR0913
         conflict_msg = "A concurrent modification was detected; retry the request"
         raise ConflictError(conflict_msg) from exc
     except TaskInternalError as exc:
-        logger.exception(
+        logger.warning(
             APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
             approval_id=approval_id,
             task_id=task_id,
             error_type=type(exc).__name__,
-            error=str(exc),
+            error=safe_error_description(exc),
         )
         unavailable_msg = "Internal server error"
         raise ServiceUnavailableError(unavailable_msg) from exc

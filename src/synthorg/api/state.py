@@ -17,6 +17,7 @@ from synthorg.api.rate_limits.config import PerOpRateLimitConfig  # noqa: TC001
 from synthorg.api.rate_limits.inflight_config import (
     PerOpConcurrencyConfig,  # noqa: TC001
 )
+from synthorg.api.services.idempotency_service import IdempotencyService
 from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.api.state_services import AppStateServicesMixin
 from synthorg.approval.protocol import ApprovalStoreProtocol  # noqa: TC001
@@ -180,6 +181,7 @@ class AppState(AppStateServicesMixin):
         "_events_read_service",
         "_fine_tune_orchestrator",
         "_health_prober_service",
+        "_idempotency_service",
         "_integration_health_facade_service",
         "_interrupt_store",
         "_lockout_store",
@@ -341,6 +343,10 @@ class AppState(AppStateServicesMixin):
         self._tunnel_provider = tunnel_provider
         self._webhook_event_bridge = webhook_event_bridge
         self._webhook_replay_protector: object | None = None
+        # Lazily constructed when first accessed via the property; the
+        # service wraps ``persistence.idempotency_keys`` and lives only
+        # if a persistence backend is configured.
+        self._idempotency_service: IdempotencyService | None = None
         self._a2a_card_builder: AgentCardBuilder | None = None
         self._a2a_client: A2AClient | None = None
         self._a2a_peer_registry: PeerRegistry | None = None
@@ -479,6 +485,21 @@ class AppState(AppStateServicesMixin):
     def persistence(self) -> PersistenceBackend:
         """Return persistence backend or raise 503."""
         return self._require_service(self._persistence, "persistence")  # type: ignore[no-any-return]
+
+    @property
+    def idempotency_service(self) -> IdempotencyService:
+        """Return the idempotency service, lazily wrapping ``idempotency_keys``.
+
+        Raises ``ServiceUnavailableError`` (503) when persistence is
+        not configured -- the service has no in-memory fallback because
+        idempotency must survive restart by definition.
+        """
+        if self._idempotency_service is not None:
+            return self._idempotency_service
+        backend = self._require_service(self._persistence, "persistence")
+        service = IdempotencyService(backend.idempotency_keys)
+        self._idempotency_service = service
+        return service
 
     @property
     def shutdown_requested(self) -> asyncio.Event:

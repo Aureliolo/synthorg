@@ -12,7 +12,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import datetime
 
-    from synthorg.api.auth.refresh_record import RefreshRecord
+    from synthorg.api.auth.refresh_record import (
+        RefreshConsumeOutcome,
+    )
     from synthorg.api.auth.session import Session
 
 
@@ -97,8 +99,13 @@ class LockoutRepository(Protocol):
         """Record a failed login attempt; return ``True`` if now locked."""
         ...
 
-    async def record_success(self, username: str) -> None:
-        """Clear failure count on successful login."""
+    async def record_success(self, username: str) -> bool:
+        """Clear failure count on successful login.
+
+        Returns ``True`` when a previously-locked account was
+        unlocked (caller logs ``SECURITY_AUTH_LOCKOUT_CLEARED``);
+        ``False`` when no lockout was in effect.
+        """
         ...
 
     async def cleanup_expired(self) -> int:
@@ -112,6 +119,11 @@ class LockoutRepository(Protocol):
     @property
     def lockout_duration_seconds(self) -> int:
         """Return the lockout duration in seconds for Retry-After."""
+        ...
+
+    @property
+    def threshold(self) -> int:
+        """Failed-attempt threshold; used by the auth controller audit."""
         ...
 
 
@@ -134,8 +146,17 @@ class RefreshTokenRepository(Protocol):
         token_hash: str,
         *,
         is_session_revoked: Callable[[str], bool] | None = None,
-    ) -> RefreshRecord | None:
-        """Atomically consume a refresh token (single-use rotation)."""
+    ) -> RefreshConsumeOutcome:
+        """Atomically consume a refresh token (single-use rotation).
+
+        Returns a structured outcome that carries either the
+        consumed :class:`RefreshRecord` (success) or a typed
+        :class:`RefreshRejectReason` (``session_revoked`` /
+        ``replay_detected`` / ``not_found_or_expired``) so the
+        service layer can emit ``SECURITY_AUTH_REFRESH_REJECTED``
+        with an accurate reason. The repo MUST NOT log the audit
+        event itself per the persistence-boundary rule.
+        """
         ...
 
     async def revoke_by_session(self, session_id: str) -> int:

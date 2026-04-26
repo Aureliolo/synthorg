@@ -64,7 +64,7 @@ class TestListVersions:
         agent_registry: AgentRegistryService,
     ) -> None:
         fake_persistence.identity_versions.clear()
-        agent_registry.clear()
+        await agent_registry.clear()
         identity = await _seed_versions(agent_registry)
         resp = test_client.get(
             f"/api/v1/agents/{identity.id}/versions",
@@ -84,7 +84,7 @@ class TestListVersions:
         agent_registry: AgentRegistryService,
     ) -> None:
         fake_persistence.identity_versions.clear()
-        agent_registry.clear()
+        await agent_registry.clear()
         identity = await _seed_versions(agent_registry, updates=2)
         resp = test_client.get(
             f"/api/v1/agents/{identity.id}/versions",
@@ -122,7 +122,7 @@ class TestGetVersion:
         agent_registry: AgentRegistryService,
     ) -> None:
         fake_persistence.identity_versions.clear()
-        agent_registry.clear()
+        await agent_registry.clear()
         identity = await _seed_versions(agent_registry)
         resp = test_client.get(
             f"/api/v1/agents/{identity.id}/versions/1",
@@ -141,7 +141,7 @@ class TestGetVersion:
         agent_registry: AgentRegistryService,
     ) -> None:
         fake_persistence.identity_versions.clear()
-        agent_registry.clear()
+        await agent_registry.clear()
         identity = await _seed_versions(agent_registry)
         resp = test_client.get(
             f"/api/v1/agents/{identity.id}/versions/42",
@@ -162,7 +162,7 @@ class TestDiff:
         agent_registry: AgentRegistryService,
     ) -> None:
         fake_persistence.identity_versions.clear()
-        agent_registry.clear()
+        await agent_registry.clear()
         identity = await _seed_versions(agent_registry, updates=1)
         resp = test_client.get(
             f"/api/v1/agents/{identity.id}/versions/diff",
@@ -196,7 +196,7 @@ class TestDiff:
         expected_status: int,
     ) -> None:
         fake_persistence.identity_versions.clear()
-        agent_registry.clear()
+        await agent_registry.clear()
         identity = await _seed_versions(agent_registry, updates=1)
         resp = test_client.get(
             f"/api/v1/agents/{identity.id}/versions/diff",
@@ -217,7 +217,7 @@ class TestRollback:
         agent_registry: AgentRegistryService,
     ) -> None:
         fake_persistence.identity_versions.clear()
-        agent_registry.clear()
+        await agent_registry.clear()
         identity = await _seed_versions(agent_registry, updates=2)
         resp = test_client.post(
             f"/api/v1/agents/{identity.id}/versions/rollback",
@@ -239,7 +239,7 @@ class TestRollback:
         agent_registry: AgentRegistryService,
     ) -> None:
         fake_persistence.identity_versions.clear()
-        agent_registry.clear()
+        await agent_registry.clear()
         identity = await _seed_versions(agent_registry, updates=1)
         test_client.post(
             f"/api/v1/agents/{identity.id}/versions/rollback",
@@ -268,9 +268,9 @@ class TestRollback:
         from the earlier ``get_version`` branch instead.
         """
         fake_persistence.identity_versions.clear()
-        agent_registry.clear()
+        await agent_registry.clear()
         identity = await _seed_versions(agent_registry)
-        agent_registry.clear()
+        await agent_registry.clear()
         resp = test_client.post(
             f"/api/v1/agents/{identity.id}/versions/rollback",
             json={"target_version": 1},
@@ -287,7 +287,7 @@ class TestRollback:
         agent_registry: AgentRegistryService,
     ) -> None:
         fake_persistence.identity_versions.clear()
-        agent_registry.clear()
+        await agent_registry.clear()
         identity = await _seed_versions(agent_registry)
         resp = test_client.post(
             f"/api/v1/agents/{identity.id}/versions/rollback",
@@ -310,7 +310,7 @@ class TestRollback:
         the audit trail -- not just that the endpoint returned 200.
         """
         fake_persistence.identity_versions.clear()
-        agent_registry.clear()
+        await agent_registry.clear()
         identity = await _seed_versions(agent_registry, updates=1)
 
         captured: dict[str, str] = {}
@@ -349,7 +349,7 @@ class TestRollback:
     ) -> None:
         """``evolve_identity`` raising ``ValueError`` maps to a clean 400."""
         fake_persistence.identity_versions.clear()
-        agent_registry.clear()
+        await agent_registry.clear()
         identity = await _seed_versions(agent_registry)
 
         msg = "immutable field mismatch"
@@ -435,7 +435,7 @@ class TestReadEndpointsOwnership:
         params: dict[str, int] | None,
     ) -> None:
         fake_persistence.identity_versions.clear()
-        agent_registry.clear()
+        await agent_registry.clear()
         alice = await _seed_versions(agent_registry, updates=1)
         bob = await _seed_versions(agent_registry)
         await _forge_cross_wired_snapshot(
@@ -464,7 +464,7 @@ class TestReadEndpointsOwnership:
     ) -> None:
         """``list_versions`` filters forged rows and adjusts ``total`` accordingly."""
         fake_persistence.identity_versions.clear()
-        agent_registry.clear()
+        await agent_registry.clear()
         alice = await _seed_versions(agent_registry)
         bob = await _seed_versions(agent_registry)
         await _forge_cross_wired_snapshot(

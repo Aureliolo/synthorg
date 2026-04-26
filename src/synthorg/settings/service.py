@@ -15,6 +15,7 @@ from synthorg.communication.enums import MessageType
 from synthorg.communication.message import Message, MessageMetadata, TextPart
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
+from synthorg.observability.events.security import SECURITY_SETTINGS_CHANGED
 from synthorg.observability.events.settings import (
     SETTINGS_CACHE_INVALIDATED,
     SETTINGS_DELETE_FAILED,
@@ -46,6 +47,44 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _SENSITIVE_MASK = "********"
+
+# Namespaces whose changes always represent a security decision and must
+# be appended to the cryptographic audit chain. Settings in these
+# namespaces affect authentication, authorization, autonomy gating, or
+# encryption -- a forensic investigator needs to be able to prove the
+# change order is intact.
+_AUDITED_SETTING_NAMESPACES: frozenset[str] = frozenset(
+    {"auth", "security", "autonomy", "encryption", "rbac"},
+)
+
+
+def _emit_security_setting_changed(
+    namespace: str,
+    *,
+    action_type: str,
+    key: str | None = None,
+    **extra: object,
+) -> None:
+    """Emit ``SECURITY_SETTINGS_CHANGED`` when *namespace* is audited.
+
+    Centralises the gate so set / set_many / delete / delete_namespace
+    use a single, consistent payload shape -- and so a future
+    namespace addition only has to touch
+    :data:`_AUDITED_SETTING_NAMESPACES`.
+
+    ``key`` is optional because ``delete_namespace`` operates on the
+    whole namespace and substitutes ``count`` via ``extra`` instead.
+    """
+    if namespace not in _AUDITED_SETTING_NAMESPACES:
+        return
+    payload: dict[str, object] = {
+        "namespace": namespace,
+        "action_type": action_type,
+        **extra,
+    }
+    if key is not None:
+        payload["key"] = key
+    logger.info(SECURITY_SETTINGS_CHANGED, **payload)
 
 
 def _now_iso() -> str:
@@ -622,6 +661,7 @@ class SettingsService:
 
         self._invalidate_cache(namespace, key)
         logger.info(SETTINGS_VALUE_SET, namespace=namespace, key=key)
+        _emit_security_setting_changed(namespace, key=key, action_type="set")
         await self._publish_change(namespace, key, definition)
 
         display_value = _SENSITIVE_MASK if definition.sensitive else value
@@ -679,6 +719,11 @@ class SettingsService:
         for namespace, key, definition in definitions:
             self._invalidate_cache(namespace, key)
             logger.info(SETTINGS_VALUE_SET, namespace=namespace, key=key)
+            _emit_security_setting_changed(
+                namespace,
+                key=key,
+                action_type="set_many",
+            )
             await self._publish_change(namespace, key, definition)
 
         return updated_at
@@ -793,6 +838,7 @@ class SettingsService:
             namespace=namespace,
             key=key,
         )
+        _emit_security_setting_changed(namespace, key=key, action_type="delete")
 
         await self._publish_change(namespace, key, definition)
 
@@ -853,6 +899,11 @@ class SettingsService:
         logger.info(
             SETTINGS_VALUE_DELETED,
             namespace=namespace,
+            count=deleted,
+        )
+        _emit_security_setting_changed(
+            namespace,
+            action_type="delete_namespace",
             count=deleted,
         )
 

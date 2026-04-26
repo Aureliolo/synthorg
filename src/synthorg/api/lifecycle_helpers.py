@@ -6,7 +6,8 @@ Split out of ``lifecycle_builder.py`` so neither file exceeds the
 """
 
 import asyncio
-from typing import TYPE_CHECKING
+import inspect
+from typing import TYPE_CHECKING, Any
 
 from synthorg.notifications.factory import build_notification_dispatcher
 from synthorg.observability import get_logger, safe_error_description
@@ -29,6 +30,8 @@ from synthorg.settings.subscribers import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from synthorg.api.state import AppState
     from synthorg.backup.service import BackupService
     from synthorg.communication.bus_protocol import MessageBus
@@ -102,48 +105,77 @@ async def _resolve_lifecycle_cleanup_enabled(app_state: AppState) -> bool:
         return True
 
 
-async def _run_cleanup_tick(app_state: AppState) -> None:
-    """Run one tick of the WS ticket / session / lockout cleanup cycle.
+async def _run_cleanup_step(
+    action: Callable[[], Awaitable[Any] | Any],
+    *,
+    event: str,
+    failure_message: str,
+) -> None:
+    """Run *action* and log any non-system exception under *event*.
 
-    Split out of :func:`_ticket_cleanup_loop` so the loop itself stays
-    under the McCabe-complexity ceiling: each per-store cleanup is
-    wrapped in a compact try/except that lets the overall cycle keep
-    making progress when any one store fails transiently.
+    ``action`` may return either an awaitable (async cleanup) or a
+    synchronous result (e.g. ``ticket_store.cleanup_expired()``). The
+    caller decides whether to gate the call on a ``has_*`` predicate
+    before invoking the helper, keeping the helper's surface
+    deliberately narrow.
+
+    ``MemoryError`` / ``RecursionError`` propagate so the parent loop
+    can crash on truly fatal failures rather than masking them as a
+    routine cleanup blip.
     """
     try:
-        app_state.ticket_store.cleanup_expired()
+        result = action()
+        # Use ``inspect.isawaitable`` so Tasks, Futures, and any
+        # ``__await__``-implementing custom awaitable returned by a
+        # cleanup hook are awaited too -- ``asyncio.iscoroutine``
+        # only matches bare coroutines and would silently skip the
+        # rest.
+        if inspect.isawaitable(result):
+            await result
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
         logger.warning(
-            API_WS_TICKET_CLEANUP,
-            error="Periodic ticket cleanup failed",
+            event,
+            error=failure_message,
             error_type=type(exc).__name__,
             error_desc=safe_error_description(exc),
         )
-    try:
-        if app_state.has_session_store:
-            await app_state.session_store.cleanup_expired()
-    except MemoryError, RecursionError:
-        raise
-    except Exception as exc:
-        logger.warning(
-            API_SESSION_CLEANUP,
-            error="Periodic session cleanup failed",
-            error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+
+
+async def _run_cleanup_tick(app_state: AppState) -> None:
+    """Run one cleanup-cycle tick across every store.
+
+    Covers WS tickets, sessions, lockouts, and idempotency keys. Each
+    store's cleanup is delegated to :func:`_run_cleanup_step` so a
+    transient failure in one store cannot abort the others.
+    """
+    from synthorg.observability.events.idempotency import (  # noqa: PLC0415
+        IDEMPOTENCY_CLEANUP,
+    )
+
+    await _run_cleanup_step(
+        app_state.ticket_store.cleanup_expired,
+        event=API_WS_TICKET_CLEANUP,
+        failure_message="Periodic ticket cleanup failed",
+    )
+    if app_state.has_session_store:
+        await _run_cleanup_step(
+            app_state.session_store.cleanup_expired,
+            event=API_SESSION_CLEANUP,
+            failure_message="Periodic session cleanup failed",
         )
-    try:
-        if app_state.has_lockout_store:
-            await app_state.lockout_store.cleanup_expired()
-    except MemoryError, RecursionError:
-        raise
-    except Exception as exc:
-        logger.warning(
-            API_AUTH_LOCKOUT_CLEANUP,
-            error="Periodic lockout cleanup failed",
-            error_type=type(exc).__name__,
-            error_desc=safe_error_description(exc),
+    if app_state.has_lockout_store:
+        await _run_cleanup_step(
+            app_state.lockout_store.cleanup_expired,
+            event=API_AUTH_LOCKOUT_CLEANUP,
+            failure_message="Periodic lockout cleanup failed",
+        )
+    if app_state.has_persistence:
+        await _run_cleanup_step(
+            app_state.idempotency_service.cleanup_expired,
+            event=IDEMPOTENCY_CLEANUP,
+            failure_message="Periodic idempotency cleanup failed",
         )
 
 

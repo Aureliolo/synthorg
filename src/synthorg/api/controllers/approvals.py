@@ -49,14 +49,16 @@ from synthorg.core.enums import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
-    API_APPROVAL_APPROVED,
     API_APPROVAL_CONFLICT,
     API_APPROVAL_CREATED,
     API_APPROVAL_PUBLISH_FAILED,
-    API_APPROVAL_REJECTED,
-    API_AUTH_FAILED,
     API_RESOURCE_NOT_FOUND,
     API_VALIDATION_FAILED,
+)
+from synthorg.observability.events.security import (
+    SECURITY_APPROVAL_APPROVED,
+    SECURITY_APPROVAL_REJECTED,
+    SECURITY_AUTH_FAILED,
 )
 
 logger = get_logger(__name__)
@@ -231,7 +233,7 @@ def _resolve_decision(
     if not isinstance(auth_user, AuthenticatedUser):
         msg = "Authentication required"
         logger.warning(
-            API_AUTH_FAILED,
+            SECURITY_AUTH_FAILED,
             approval_id=approval_id,
             note="No authenticated user in request scope",
         )
@@ -251,7 +253,7 @@ def _log_approval_decision(
     Context resumption and review-gate transitions are handled
     separately by ``_signal_resume_intent``.
     """
-    event = API_APPROVAL_APPROVED if approved else API_APPROVAL_REJECTED
+    event = SECURITY_APPROVAL_APPROVED if approved else SECURITY_APPROVAL_REJECTED
     logger.info(
         event,
         approval_id=approval_id,
@@ -481,7 +483,7 @@ class ApprovalsController(Controller):
         if not isinstance(auth_user, AuthenticatedUser):
             msg = "Authentication required"
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 endpoint="create_approval",
                 note="No authenticated user in request scope",
             )

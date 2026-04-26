@@ -16,10 +16,11 @@ from litestar.params import Parameter
 from litestar.response import ServerSentEvent
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.api.auth.config import SSE_REVALIDATE_INTERVAL_SECONDS
 from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import ApiValidationError, NotFoundError, UnauthorizedError
-from synthorg.api.guards import require_approval_roles, require_read_access
+from synthorg.api.guards import _READ_ROLES, require_approval_roles, require_read_access
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.communication.event_stream.interrupt import (
@@ -32,7 +33,7 @@ from synthorg.communication.event_stream.interrupt import (
 from synthorg.communication.event_stream.stream import EventStreamHub  # noqa: TC001
 from synthorg.communication.event_stream.types import StreamEvent  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.event_stream import (
     EVENT_STREAM_CLIENT_CONNECTED,
     EVENT_STREAM_CLIENT_DISCONNECTED,
@@ -47,6 +48,53 @@ _SSE_KEEPALIVE_SECONDS = 30.0
 # to alphanumerics + dash + underscore to block path-traversal-shaped or
 # control-character session IDs reaching the hub.
 _SESSION_ID_PATTERN = r"^[a-zA-Z0-9_-]{1,128}$"
+
+# Maximum consecutive revalidation failures (transient persistence
+# blips) before the SSE stream terminates so the client can reconnect
+# against a healthy replica (#1599).
+_SSE_REVALIDATE_MAX_FAILURES: int = 3
+
+
+async def _user_revocation_reason(
+    app_state: AppState,
+    user_id: str,
+    session_id: str | None,
+) -> tuple[str | None, bool]:
+    """Return ``(reason, ok)``: reason is None when still authorised.
+
+    Checks the user record (deleted / role-missing / demoted) **and**
+    the session-revocation set (an admin ``DELETE /sessions/{jti}``
+    must kick a live SSE stream within one revalidation interval).
+
+    ``ok`` is False when the persistence call itself failed (transient
+    backend error). Callers tolerate ``_SSE_REVALIDATE_MAX_FAILURES``
+    consecutive ``ok=False`` ticks before tearing down the stream.
+    """
+    try:
+        db_user = await app_state.persistence.users.get(user_id)
+    except Exception as exc:
+        logger.warning(
+            EVENT_STREAM_PROJECTION_FAILED,
+            note="sse_revalidate_persistence_error",
+            user_id=user_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None, False
+    if db_user is None:
+        return "user_deleted", True
+    role = getattr(db_user, "role", None)
+    if role is None:
+        return "user_role_missing", True
+    if role not in _READ_ROLES:
+        return "role_demoted", True
+    if (
+        session_id is not None
+        and app_state.has_session_store
+        and app_state.session_store.is_revoked(session_id)
+    ):
+        return "session_revoked", True
+    return None, True
 
 
 # ── DTOs ─────────────────────────────────────────────────────────
@@ -188,45 +236,176 @@ async def _resolve_interrupt(
 # ── SSE stream ───────────────────────────────────────────────────
 
 
+async def _serialise_stream_event(
+    event: StreamEvent,
+    session_id: str,
+) -> dict[str, str] | None:
+    """Render a hub event as an SSE frame, or ``None`` on serialise failure.
+
+    Extracted from :func:`_sse_event_stream` so the loop body stays
+    under the McCabe / branch / statement ceilings. Failures are
+    logged at WARNING and skipped; the parent loop should ``continue``.
+    """
+    try:
+        data = _json.dumps(event.model_dump(mode="json"))
+    except MemoryError, RecursionError:
+        raise
+    except Exception as serialize_exc:
+        logger.warning(
+            EVENT_STREAM_PROJECTION_FAILED,
+            session_id=session_id,
+            event_id=event.id,
+            note="Failed to serialize event, skipping",
+            error_type=type(serialize_exc).__name__,
+            error=safe_error_description(serialize_exc),
+        )
+        return None
+    return {"event": event.type.value, "data": data}
+
+
+class _RevalidationVerdict(BaseModel):
+    """Outcome of one revalidation tick.
+
+    Attributes:
+        consecutive_failures: Updated transient-failure counter the
+            caller threads back into the loop.
+        revoked_event: SSE frame to yield when the user is no longer
+            authorised (or the persistence backend is repeatedly
+            unavailable). ``None`` when the loop should keep running.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    consecutive_failures: int
+    revoked_event: dict[str, str] | None = None
+
+
+async def _run_revalidation_tick(
+    *,
+    app_state: AppState,
+    user: AuthenticatedUser,
+    consecutive_failures: int,
+) -> _RevalidationVerdict:
+    """Execute one revalidation check and return what the loop should do.
+
+    Centralises the failure-counter / role-check / session-revocation
+    decision tree so :func:`_sse_event_stream` does not exceed the
+    McCabe complexity ceiling (#1599). The caller advances its
+    ``next_revalidate_ts`` regardless of the verdict.
+    """
+    reason, ok = await _user_revocation_reason(
+        app_state,
+        user.user_id,
+        user.session_id,
+    )
+    if not ok:
+        new_failures = consecutive_failures + 1
+        if new_failures >= _SSE_REVALIDATE_MAX_FAILURES:
+            return _RevalidationVerdict(
+                consecutive_failures=new_failures,
+                revoked_event={
+                    "event": "revoked",
+                    "data": _json.dumps({"reason": "backend_unavailable"}),
+                },
+            )
+        return _RevalidationVerdict(consecutive_failures=new_failures)
+    if reason is not None:
+        return _RevalidationVerdict(
+            consecutive_failures=0,
+            revoked_event={
+                "event": "revoked",
+                "data": _json.dumps({"reason": reason}),
+            },
+        )
+    return _RevalidationVerdict(consecutive_failures=0)
+
+
 async def _sse_event_stream(
     hub: EventStreamHub,
     session_id: str,
+    *,
+    app_state: AppState | None = None,
+    user: AuthenticatedUser | None = None,
 ) -> AsyncIterator[dict[str, str]]:
-    """Yield SSE events from the hub for the given session."""
+    """Yield SSE events from the hub for the given session.
+
+    When ``app_state`` and ``user`` are supplied, the loop tracks an
+    independent revalidation deadline (``SSE_REVALIDATE_INTERVAL_SECONDS``)
+    and fires it even on busy streams that never hit a keepalive
+    timeout (#1599). On revocation, yields a final ``revoked`` event
+    and terminates the stream. Tolerates ``_SSE_REVALIDATE_MAX_FAILURES``
+    transient persistence errors before escalating.
+    """
+    consecutive_failures = 0
     queue = hub.subscribe(session_id)
     logger.info(
         EVENT_STREAM_CLIENT_CONNECTED,
         session_id=session_id,
     )
+    revalidation_armed = app_state is not None and user is not None
+    loop_now = asyncio.get_event_loop().time()
+    next_keepalive_ts = loop_now + _SSE_KEEPALIVE_SECONDS
+    # When auth context is absent (anonymous / unit-test stream), arming
+    # the revalidation deadline at ``loop_now`` would make ``timeout``
+    # collapse to 0 on the first iteration and busy-loop the wait_for.
+    # Only arm the timer when there is something to revalidate.
+    next_revalidate_ts: float | None = (
+        loop_now + SSE_REVALIDATE_INTERVAL_SECONDS if revalidation_armed else None
+    )
     try:
         while True:
+            now = asyncio.get_event_loop().time()
+            if next_revalidate_ts is None:
+                timeout = max(0.0, next_keepalive_ts - now)
+            else:
+                timeout = max(0.0, min(next_keepalive_ts, next_revalidate_ts) - now)
             try:
                 event: StreamEvent = await asyncio.wait_for(
                     queue.get(),
-                    timeout=_SSE_KEEPALIVE_SECONDS,
+                    timeout=timeout,
                 )
-                try:
-                    data = _json.dumps(event.model_dump(mode="json"))
-                except MemoryError, RecursionError:
-                    raise
-                except Exception:
-                    logger.warning(
-                        EVENT_STREAM_PROJECTION_FAILED,
-                        session_id=session_id,
-                        event_id=event.id,
-                        note="Failed to serialize event, skipping",
-                        exc_info=True,
-                    )
-                    continue
-                yield {"event": event.type.value, "data": data}
+                frame = await _serialise_stream_event(event, session_id)
+                if frame is not None:
+                    yield frame
             except TimeoutError:
+                # Timer fired; decide which deadline expired. Both can
+                # be due simultaneously after a long-blocking event was
+                # delivered; emit keepalive first, revalidate second.
+                pass
+            now = asyncio.get_event_loop().time()
+            if now >= next_keepalive_ts:
                 yield {"event": "keepalive", "data": "{}"}
+                next_keepalive_ts = now + _SSE_KEEPALIVE_SECONDS
+            if (
+                revalidation_armed
+                and next_revalidate_ts is not None
+                and now >= next_revalidate_ts
+                and app_state is not None
+                and user is not None
+            ):
+                next_revalidate_ts = now + SSE_REVALIDATE_INTERVAL_SECONDS
+                verdict = await _run_revalidation_tick(
+                    app_state=app_state,
+                    user=user,
+                    consecutive_failures=consecutive_failures,
+                )
+                consecutive_failures = verdict.consecutive_failures
+                if verdict.revoked_event is not None:
+                    yield verdict.revoked_event
+                    return
     finally:
-        hub.unsubscribe(session_id, queue)
-        logger.info(
-            EVENT_STREAM_CLIENT_DISCONNECTED,
-            session_id=session_id,
-        )
+        # Unsubscribe must run before the disconnect log: a raise here
+        # leaves the queue subscribed to the hub, which would leak
+        # memory as new events keep enqueueing to a dead client. Log
+        # the disconnect regardless, then re-raise so the caller (and
+        # the SSE iterator harness) sees the failure.
+        try:
+            hub.unsubscribe(session_id, queue)
+        finally:
+            logger.info(
+                EVENT_STREAM_CLIENT_DISCONNECTED,
+                session_id=session_id,
+            )
 
 
 # ── Controllers ──────────────────────────────────────────────────
@@ -246,6 +425,7 @@ class EventStreamController(Controller):
     async def stream(
         self,
         state: State,
+        request: Request[Any, Any, Any],
         session_id: Annotated[
             NotBlankStr,
             Parameter(
@@ -258,6 +438,7 @@ class EventStreamController(Controller):
 
         Args:
             state: Application state.
+            request: Incoming HTTP request (for authenticated user).
             session_id: Session to subscribe to.
 
         Returns:
@@ -265,7 +446,15 @@ class EventStreamController(Controller):
         """
         app_state: AppState = state.app_state
         hub = _require_hub(app_state)
-        return ServerSentEvent(content=_sse_event_stream(hub, session_id))
+        user = getattr(request, "user", None)
+        return ServerSentEvent(
+            content=_sse_event_stream(
+                hub,
+                session_id,
+                app_state=app_state,
+                user=user if isinstance(user, AuthenticatedUser) else None,
+            ),
+        )
 
     @post(
         "/resume/{interrupt_id:str}",

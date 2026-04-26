@@ -235,6 +235,43 @@ class TestCacheControlPathSelection:
             == "same-origin-allow-popups"
         )
 
+    def test_api_responses_carry_strict_cache_directives(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        """Every directive in the strengthened Cache-Control is present."""
+        response = test_client.get("/api/v1/healthz")
+        cache_header = response.headers.get("cache-control") or ""
+        for directive in (
+            "no-store",
+            "no-cache",
+            "must-revalidate",
+            "max-age=0",
+        ):
+            assert directive in cache_header, (
+                f"missing {directive!r} in {cache_header!r}"
+            )
+
+    def test_api_responses_carry_pragma_no_cache(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        """The HTTP/1.0 Pragma directive is set on every API response."""
+        response = test_client.get("/api/v1/healthz")
+        assert response.headers.get("pragma") == "no-cache"
+
+    def test_docs_responses_omit_pragma_header(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        """Docs paths serve cacheable, non-user-specific content -- the
+        ``Pragma: no-cache`` API hint MUST NOT bleed onto them.
+
+        Strict ``is None`` check: an empty-string Pragma is still a
+        regression because some intermediaries treat any Pragma header
+        as a no-cache hint.
+        """
+        response = test_client.get("/docs/openapi.json")
+        pragma = response.headers.get("pragma")
+        assert pragma is None, f"docs response unexpectedly carries Pragma={pragma!r}"
+
 
 # ── Request logging middleware ─────────────────────────────────
 

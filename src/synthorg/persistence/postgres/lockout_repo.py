@@ -6,6 +6,7 @@ in-memory ``{username: monotonic_unlock_time}`` map backs O(1)
 synchronous ``is_locked`` checks on the auth hot path.
 """
 
+import asyncio
 import threading
 import time
 from datetime import UTC, datetime, timedelta
@@ -14,9 +15,8 @@ from typing import TYPE_CHECKING, Any
 from synthorg.api.auth.config import AuthConfig  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
-    API_AUTH_ACCOUNT_LOCKED,
     API_AUTH_LOCKOUT_CLEANUP,
-    API_AUTH_LOCKOUT_CLEARED,
+    API_AUTH_LOCKOUT_RESTORED,
 )
 
 if TYPE_CHECKING:
@@ -52,13 +52,28 @@ class PostgresLockoutRepository:
         self._duration = timedelta(minutes=config.lockout_duration_minutes)
         self._duration_seconds = config.lockout_duration_minutes * 60
         self._locked: dict[str, float] = {}
+        # ``_locked_lock`` is held briefly for sync dict mutations and
+        # by the auth hot-path ``is_locked`` reader. Holding it across
+        # an async DB transaction would block every concurrent
+        # ``is_locked`` (the lock is a real ``threading.Lock``, not an
+        # asyncio primitive). Instead, ``_write_lock`` (asyncio)
+        # serialises competing ``record_failure`` /
+        # ``record_success`` callers so their DB tx + cache mutation
+        # land as a single atomic unit relative to other writers,
+        # while readers stay unblocked.
         self._locked_lock: threading.Lock = threading.Lock()
+        self._write_lock: asyncio.Lock = asyncio.Lock()
         self._dict_row = _import_dict_row()
 
     @property
     def lockout_duration_seconds(self) -> int:
         """Return the lockout duration in seconds for Retry-After."""
         return self._duration_seconds
+
+    @property
+    def threshold(self) -> int:
+        """Failed-attempt threshold; used by the controller's audit log."""
+        return self._threshold
 
     def is_locked(self, username: str) -> bool:
         """Sync O(1) lockout check for the auth hot path."""
@@ -130,9 +145,12 @@ class PostgresLockoutRepository:
                         self._locked[uname] = mono_now + remaining
                         restored += 1
         if restored:
+            # Cache rehydration only -- no NEW lockout decision is
+            # being made here. Emitting SECURITY_AUTH_ACCOUNT_LOCKED
+            # would chain a duplicate decision into the audit log on
+            # every restart for every still-locked account.
             logger.info(
-                API_AUTH_ACCOUNT_LOCKED,
-                note="Restored lockout state from database",
+                API_AUTH_LOCKOUT_RESTORED,
                 restored=restored,
             )
         return restored
@@ -147,57 +165,76 @@ class PostgresLockoutRepository:
         now = datetime.now(UTC)
         window_start = now - self._window
 
-        async with (
-            self._pool.connection() as conn,
-            conn.transaction(),
-            conn.cursor() as cur,
-        ):
-            await cur.execute(
-                "INSERT INTO login_attempts "
-                "(username, attempted_at, ip_address) "
-                "VALUES (%s, %s, %s)",
-                (username, now, ip_address),
-            )
-            await cur.execute(
-                "SELECT COUNT(*) FROM login_attempts "
-                "WHERE username = %s AND attempted_at >= %s",
-                (username, window_start),
-            )
-            row = await cur.fetchone()
+        # Hold ``_write_lock`` across the entire DB tx + cache
+        # mutation so a concurrent ``record_success`` cannot
+        # interleave: without this serialisation the two methods
+        # could commit in DB-order T1->T2 but mutate the cache in
+        # opposite order, leaving ``_locked`` claiming a lockout the
+        # DB already cleared.
+        async with self._write_lock:
+            async with (
+                self._pool.connection() as conn,
+                conn.transaction(),
+                conn.cursor() as cur,
+            ):
+                await cur.execute(
+                    "INSERT INTO login_attempts "
+                    "(username, attempted_at, ip_address) "
+                    "VALUES (%s, %s, %s)",
+                    (username, now, ip_address),
+                )
+                await cur.execute(
+                    "SELECT COUNT(*) FROM login_attempts "
+                    "WHERE username = %s AND attempted_at >= %s",
+                    (username, window_start),
+                )
+                row = await cur.fetchone()
+                count = row[0] if row else 0
+                now_locked = count >= self._threshold
+            # ``conn.transaction()`` commits on successful exit.
+            # Mutate the cache only AFTER the inner async-with
+            # releases without raising (commit succeeded) but BEFORE
+            # releasing ``_write_lock``, so no sibling writer can
+            # sneak in between commit and cache write.
+            # ``_locked_lock`` is taken briefly for the dict op so
+            # the auth hot-path ``is_locked`` reader is not blocked
+            # by the surrounding async tx.
+            if now_locked:
+                with self._locked_lock:
+                    self._locked[username] = time.monotonic() + self._duration_seconds
+        # Caller logs SECURITY_AUTH_ACCOUNT_LOCKED with the contextual
+        # fields (attempts, threshold, duration); persistence does not
+        # emit decision events (#1599 persistence-boundary rule).
+        return now_locked
 
-        count = row[0] if row else 0
-        if count >= self._threshold:
-            with self._locked_lock:
-                self._locked[username] = time.monotonic() + self._duration_seconds
-            logger.warning(
-                API_AUTH_ACCOUNT_LOCKED,
-                username=username,
-                attempts=count,
-                threshold=self._threshold,
-                duration_minutes=self._duration.total_seconds() / 60,
-            )
-            return True
-        return False
+    async def record_success(self, username: str) -> bool:
+        """Clear failure count on successful login.
 
-    async def record_success(self, username: str) -> None:
-        """Clear failure count on successful login."""
+        Returns ``True`` if a previously-locked account was unlocked
+        (caller logs ``SECURITY_AUTH_LOCKOUT_CLEARED``); ``False``
+        when no lockout was in effect.
+        """
         username = username.lower()
-        async with (
-            self._pool.connection() as conn,
-            conn.transaction(),
-            conn.cursor() as cur,
-        ):
-            await cur.execute(
-                "DELETE FROM login_attempts WHERE username = %s",
-                (username,),
-            )
-        with self._locked_lock:
-            was_locked = self._locked.pop(username, None) is not None
-        if was_locked:
-            logger.info(
-                API_AUTH_LOCKOUT_CLEARED,
-                username=username,
-            )
+        # Same write-lock serialisation as ``record_failure``: cache
+        # mutation must follow the DB commit AND no concurrent
+        # ``record_failure`` can interleave between our commit and
+        # our cache pop.
+        async with self._write_lock:
+            async with (
+                self._pool.connection() as conn,
+                conn.transaction(),
+                conn.cursor() as cur,
+            ):
+                await cur.execute(
+                    "DELETE FROM login_attempts WHERE username = %s",
+                    (username,),
+                )
+            # Cache pop only after the inner async-with commits;
+            # commit failure leaves ``_locked`` intact (the user is
+            # still locked per durable state until the next attempt
+            # actually commits the delete).
+            with self._locked_lock:
+                return self._locked.pop(username, None) is not None
 
     async def cleanup_expired(self) -> int:
         """Remove old attempt records outside the recovery horizon.

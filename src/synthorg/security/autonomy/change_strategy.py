@@ -5,11 +5,11 @@ from datetime import UTC, datetime
 from synthorg.core.enums import AutonomyLevel, DowngradeReason, compare_autonomy
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
-from synthorg.observability.events.autonomy import (
-    AUTONOMY_DOWNGRADE_TRIGGERED,
-    AUTONOMY_PROMOTION_DENIED,
-    AUTONOMY_PROMOTION_REQUESTED,
-    AUTONOMY_RECOVERY_REQUESTED,
+from synthorg.observability.events.security import (
+    SECURITY_AUTONOMY_DOWNGRADE_TRIGGERED,
+    SECURITY_AUTONOMY_PROMOTION_DENIED,
+    SECURITY_AUTONOMY_PROMOTION_REQUESTED,
+    SECURITY_AUTONOMY_RECOVERY_REQUESTED,
 )
 from synthorg.security.autonomy.models import AutonomyOverride
 
@@ -64,12 +64,12 @@ class HumanOnlyPromotionStrategy:
             Always ``False``.
         """
         logger.info(
-            AUTONOMY_PROMOTION_REQUESTED,
+            SECURITY_AUTONOMY_PROMOTION_REQUESTED,
             agent_id=agent_id,
             target=target.value,
         )
         logger.info(
-            AUTONOMY_PROMOTION_DENIED,
+            SECURITY_AUTONOMY_PROMOTION_DENIED,
             agent_id=agent_id,
             target=target.value,
             reason="human approval required",
@@ -122,7 +122,7 @@ class HumanOnlyPromotionStrategy:
         self._overrides[agent_id] = override
 
         logger.warning(
-            AUTONOMY_DOWNGRADE_TRIGGERED,
+            SECURITY_AUTONOMY_DOWNGRADE_TRIGGERED,
             agent_id=agent_id,
             reason=reason.value,
             new_level=new_level.value,
@@ -143,7 +143,7 @@ class HumanOnlyPromotionStrategy:
             Always ``False``.
         """
         logger.info(
-            AUTONOMY_RECOVERY_REQUESTED,
+            SECURITY_AUTONOMY_RECOVERY_REQUESTED,
             agent_id=agent_id,
         )
         return False

@@ -94,20 +94,58 @@ class ApprovalStore:
         # race where two callers' differing payloads silently stomp one
         # another.
         self._saves_in_flight: set[str] = set()
+        # Generation counter incremented by ``clear``. A ``save`` that
+        # captures the current generation under the lock and observes
+        # a different generation when it tries to repopulate
+        # ``_items`` aborts the cache write so a clear cannot be
+        # silently undone by an in-flight save. Wrapping at 2**64 is
+        # not a concern -- the value is only ever compared for
+        # equality.
+        self._generation: int = 0
 
-    def clear(self) -> None:
-        """Reset all approval items for test isolation.
+    async def clear(self) -> None:
+        """Reset the in-memory approval cache (cache-only).
 
-        **Test-only.**  Intentionally synchronous and does not acquire
-        ``self._lock`` so it can be called from sync test-reset fixtures
-        (`tests/unit/api/conftest.py`) that run between tests when no
-        async operations are in flight.  Calling this concurrently with
-        ``save`` / ``get`` / ``list_items`` could race -- production
-        code must not invoke it; use the async CRUD methods instead.
+        ``ApprovalStore`` is an in-memory cache fronting an optional
+        durable :class:`ApprovalRepository`; ``clear`` deliberately
+        does NOT delete persisted rows. The next ``get`` / ``list_items``
+        on a configured repo will repopulate from durable storage --
+        which is the intended contract for tenant-teardown and test
+        isolation, the only callers. Reaching into the repo to delete
+        every persisted approval would be an order-of-magnitude
+        wider blast radius than any caller currently needs and there
+        is no ``ApprovalRepository.clear``/``delete_all`` method on
+        purpose -- destructive bulk deletes belong in administrative
+        tooling, not the cache wrapper.
+
+        Holds the same ``self._lock`` as the CRUD methods so a
+        concurrent ``save`` / ``get`` / ``list_items`` cannot observe
+        a partially-cleared cache (#1599). The generation counter is
+        bumped under the lock; in-flight saves that captured the old
+        generation will refuse to repopulate ``_items`` after the
+        clear lands. The ``_saves_in_flight`` markers are deliberately
+        preserved so a sibling save still observes the in-flight slot
+        for first-writer-wins semantics -- the generation guard
+        prevents the post-clear cache resurrection without sacrificing
+        save dedup.
+        """
+        async with self._lock:
+            cleared_count = len(self._items)
+            self._items.clear()
+            self._generation += 1
+        logger.info(API_APPROVAL_STORE_CLEARED, cleared_count=cleared_count)
+
+    def reset_for_test_sync(self) -> None:
+        """Synchronous reset for sync pytest fixtures only.
+
+        Bypasses ``self._lock`` -- callers must guarantee no async
+        operations are in flight. Production code MUST use the async
+        ``clear`` instead.
         """
         cleared_count = len(self._items)
         self._items.clear()
         self._saves_in_flight.clear()
+        self._generation += 1
         logger.info(API_APPROVAL_STORE_CLEARED, cleared_count=cleared_count)
 
     async def add(self, item: ApprovalItem) -> None:
@@ -270,6 +308,10 @@ class ApprovalStore:
                 )
                 return None
             self._saves_in_flight.add(item.id)
+            # Capture the generation under the lock so a ``clear``
+            # that lands during ``repo.save`` can be detected when
+            # we re-acquire the lock to repopulate the cache.
+            captured_generation = self._generation
         try:
             if self._repo is not None:
                 try:
@@ -286,6 +328,33 @@ class ApprovalStore:
                     await asyncio.shield(self._invalidate_cache(item.id))
                     raise
             async with self._lock:
+                if self._generation != captured_generation:
+                    # ``clear`` ran during the repo write -- do NOT
+                    # repopulate the cache, otherwise this save
+                    # would silently undo the clear. The repo commit
+                    # already landed, so a subsequent ``get`` will
+                    # fall through to the repo and observe it. The
+                    # save itself succeeded: returning ``None`` here
+                    # would misreport a durable write as a not-found
+                    # / dedup-skip and confuse callers that branch
+                    # on the return value (the conventional contract
+                    # is None == "no such id" / "concurrent dedup
+                    # claimed it"). Return ``item`` so the caller
+                    # sees the persisted state.
+                    #
+                    # Defensive eviction: if some sibling re-cached an
+                    # entry under this id between ``clear`` and our
+                    # arrival here, drop it so the next ``get``
+                    # / ``list_items`` falls through to the repo and
+                    # observes the post-clear truth instead of a
+                    # stale cached copy this save did not write.
+                    self._items.pop(item.id, None)
+                    logger.info(
+                        API_APPROVAL_STORE_CLEARED,
+                        note="save_aborted_by_concurrent_clear",
+                        approval_id=item.id,
+                    )
+                    return item
                 self._items[item.id] = item
             return item
         finally:

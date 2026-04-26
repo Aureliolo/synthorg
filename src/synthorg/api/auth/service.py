@@ -12,10 +12,12 @@ import argon2
 import jwt
 
 from synthorg.api.auth.models import User  # noqa: TC001
-from synthorg.observability import get_logger
-from synthorg.observability.events.api import (
-    API_AUTH_FAILED,
-    API_AUTH_REFRESH_CREATED,
+from synthorg.api.auth.system_user import USER_AUDIENCE, USER_ISSUER
+from synthorg.api.guards import HumanRole
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.security import (
+    SECURITY_AUTH_FAILED,
+    SECURITY_AUTH_REFRESH_CREATED,
 )
 
 if TYPE_CHECKING:
@@ -63,7 +65,7 @@ class AuthService:
         if not secret:
             msg = "JWT secret not configured"
             logger.error(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="jwt_secret_missing",
                 operation=operation,
             )
@@ -101,18 +103,20 @@ class AuthService:
             return _hasher.verify(password_hash, password)
         except argon2.exceptions.VerifyMismatchError:
             return False
-        except argon2.exceptions.VerificationError:
+        except argon2.exceptions.VerificationError as exc:
             logger.warning(
-                API_AUTH_FAILED,
+                SECURITY_AUTH_FAILED,
                 reason="hash_verification_error",
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
-        except argon2.exceptions.InvalidHashError:
-            logger.error(
-                API_AUTH_FAILED,
+        except argon2.exceptions.InvalidHashError as exc:
+            logger.error(  # noqa: TRY400 -- structlog event constant; not the stdlib `error` shape
+                SECURITY_AUTH_FAILED,
                 reason="invalid_hash_data_corruption",
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
@@ -157,7 +161,7 @@ class AuthService:
         self,
         user: User,
     ) -> tuple[str, int, str]:
-        """Create a JWT for the given user.
+        """Create a JWT for the given **human** user.
 
         The token includes a ``pwd_sig`` claim -- a 16-character
         truncated SHA-256 of the stored password hash.  This is
@@ -170,15 +174,34 @@ class AuthService:
         A ``jti`` (JWT ID) claim is included for per-token session
         tracking and revocation.
 
+        SYSTEM-role tokens are minted by the Go CLI with
+        :data:`SYSTEM_ISSUER` / :data:`SYSTEM_AUDIENCE` -- never by
+        this method. Calling ``create_token`` with a SYSTEM user
+        would mint a token bearing :data:`USER_ISSUER` /
+        :data:`USER_AUDIENCE`, which the middleware's
+        ``_resolve_jwt_user`` immediately rejects (per-role iss/aud
+        enforcement). We fail-fast with ``ValueError`` here so a
+        future caller that accidentally passes a SYSTEM user
+        surfaces the problem at mint time, not at the next request.
+
         Args:
-            user: Authenticated user.
+            user: Authenticated human user.
 
         Returns:
             Tuple of (encoded JWT, expiry seconds, session ID).
 
         Raises:
             SecretNotConfiguredError: If the JWT secret is empty.
+            ValueError: If *user* has the SYSTEM role -- mint via
+                the CLI's system-token path instead.
         """
+        if user.role is HumanRole.SYSTEM:
+            msg = (
+                "create_token cannot mint SYSTEM-role tokens; "
+                "system tokens are issued by the CLI with "
+                "SYSTEM_ISSUER / SYSTEM_AUDIENCE"
+            )
+            raise ValueError(msg)
         secret = self._require_secret("create_token")
         now = datetime.now(UTC)
         expiry_seconds = self._config.jwt_expiry_minutes * 60
@@ -187,6 +210,8 @@ class AuthService:
             user.password_hash.encode(),
         ).hexdigest()[:16]
         payload: dict[str, Any] = {
+            "iss": USER_ISSUER,
+            "aud": USER_AUDIENCE,
             "sub": user.id,
             "username": user.username,
             "role": user.role.value,
@@ -206,11 +231,15 @@ class AuthService:
     def decode_token(self, token: str) -> dict[str, Any]:
         """Decode and validate a JWT.
 
-        Audience (``aud``) verification is intentionally disabled
-        here (``verify_aud=False``) because audience validation is
-        performed per-role in the auth middleware's
-        ``_resolve_jwt_user``.  System-user tokens require
-        ``aud=synthorg-backend``; regular user tokens omit ``aud``.
+        Issuer (``iss``) and audience (``aud``) verification is
+        intentionally deferred to the auth middleware's
+        ``_resolve_jwt_user``: the canonical pair differs by role
+        (``synthorg-cli`` / ``synthorg-backend`` for CLI-minted
+        SYSTEM tokens vs. ``synthorg-api`` / ``synthorg-api`` for
+        API-minted user tokens), and the middleware loads the user
+        record before deciding which pair to enforce. Both claims are
+        ``require``-listed here so a missing claim fails decode rather
+        than reaching the middleware as ``None``.
 
         Args:
             token: Encoded JWT string.
@@ -227,7 +256,11 @@ class AuthService:
             token,
             secret,
             algorithms=[self._config.jwt_algorithm],
-            options={"require": ["exp", "iat", "sub", "jti"], "verify_aud": False},
+            options={
+                "require": ["exp", "iat", "sub", "jti", "iss", "aud"],
+                "verify_aud": False,
+                "verify_iss": False,
+            },
         )
 
     async def persist_refresh_token(
@@ -267,7 +300,7 @@ class AuthService:
             expires_at=expires_at,
         )
         logger.info(
-            API_AUTH_REFRESH_CREATED,
+            SECURITY_AUTH_REFRESH_CREATED,
             session_id=session_id,
             user_id=user_id,
         )

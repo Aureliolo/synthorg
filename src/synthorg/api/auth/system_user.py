@@ -38,6 +38,14 @@ SYSTEM_ISSUER: Final[str] = "synthorg-cli"
 # aud="synthorg-backend" -- keep in sync.
 SYSTEM_AUDIENCE: Final[str] = "synthorg-backend"
 
+# Issuer / audience for human user JWTs minted by the API. Distinct
+# from the system pair so a leaked CLI token cannot be replayed as a
+# user token (or vice versa) -- both iss and aud are validated in the
+# auth middleware. The API mints user tokens itself, so there is no
+# cross-language coordination here.
+USER_ISSUER: Final[str] = "synthorg-api"
+USER_AUDIENCE: Final[str] = "synthorg-api"
+
 
 def is_system_user(user_id: str) -> bool:
     """Check whether *user_id* is the system user.

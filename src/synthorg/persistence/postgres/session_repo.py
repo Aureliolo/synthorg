@@ -15,8 +15,6 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_SESSION_CLEANUP,
-    API_SESSION_LIMIT_ENFORCED,
-    API_SESSION_REVOKED,
 )
 
 if TYPE_CHECKING:
@@ -170,7 +168,8 @@ class PostgresSessionRepository:
             count = cur.rowcount
         if count > 0:
             self._revoked.add(session_id)
-            logger.info(API_SESSION_REVOKED, session_id=session_id)
+            # Audit emission moved to service/controller layer per the
+            # persistence-boundary rule.
             return True
         return False
 
@@ -199,7 +198,8 @@ class PostgresSessionRepository:
                 )
                 rows = await cur.fetchall()
         self._revoked.update(row["session_id"] for row in rows)
-        logger.info(API_SESSION_REVOKED, user_id=user_id, count=count)
+        # Audit emission moved to service/controller layer per the
+        # persistence-boundary rule.
         return count
 
     async def enforce_session_limit(
@@ -219,13 +219,9 @@ class PostgresSessionRepository:
         for session in to_revoke:
             if await self.revoke(session.session_id):
                 revoked += 1
-        if revoked:
-            logger.info(
-                API_SESSION_LIMIT_ENFORCED,
-                user_id=user_id,
-                revoked=revoked,
-                max_sessions=max_sessions,
-            )
+        # Audit emission moved to service/controller layer per the
+        # persistence-boundary rule -- callers log
+        # SECURITY_SESSION_LIMIT_ENFORCED on ``revoked > 0``.
         return revoked
 
     def is_revoked(self, session_id: str) -> bool:

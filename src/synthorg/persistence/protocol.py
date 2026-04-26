@@ -58,6 +58,9 @@ from synthorg.persistence.fine_tune_protocol import (
     FineTuneCheckpointRepository,  # noqa: TC001
     FineTuneRunRepository,  # noqa: TC001
 )
+from synthorg.persistence.idempotency_protocol import (
+    IdempotencyRepository,  # noqa: TC001
+)
 from synthorg.persistence.mcp_protocol import (
     McpInstallationRepository,  # noqa: TC001
 )
@@ -167,6 +170,10 @@ class PersistenceBackend(Protocol):
             state persistence.
         webhook_receipts: Repository for webhook receipt log
             persistence.
+        idempotency_keys: Repository for persistent idempotency keys
+            (#1599) -- atomic claim/complete/fail primitive shared by
+            webhook receivers, the backup endpoint, and any other
+            retry-prone surface that needs cross-restart deduplication.
         training_plans: Repository for training plan persistence.
         training_results: Repository for training result persistence.
         custom_rules: Repository for custom signal rule persistence.
@@ -397,6 +404,11 @@ class PersistenceBackend(Protocol):
     @property
     def webhook_receipts(self) -> WebhookReceiptRepository:
         """Repository for webhook receipt log persistence."""
+        ...
+
+    @property
+    def idempotency_keys(self) -> IdempotencyRepository:
+        """Repository for persistent idempotency keys (#1599)."""
         ...
 
     @property

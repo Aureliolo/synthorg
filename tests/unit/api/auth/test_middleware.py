@@ -1,5 +1,6 @@
 """Tests for ApiAuthMiddleware."""
 
+import hashlib
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -15,6 +16,11 @@ from synthorg.api.guards import HumanRole
 from synthorg.config.schema import RootConfig
 from tests.unit.api.conftest import _TEST_JWT_SECRET as _SECRET
 from tests.unit.api.conftest import FakePersistenceBackend
+
+
+def _pwd_sig(password_hash: str) -> str:
+    """Mirror AuthService.create_token's pwd_sig derivation."""
+    return hashlib.sha256(password_hash.encode()).hexdigest()[:16]
 
 
 class _FakeState:
@@ -702,6 +708,8 @@ class TestAuthMiddlewareSystemUser:
         """Regular user JWT without pwd_sig is still rejected."""
         import jwt as pyjwt
 
+        from synthorg.api.auth.system_user import USER_AUDIENCE, USER_ISSUER
+
         svc = _make_auth_service()
         user = _make_user(svc)
         persistence = FakePersistenceBackend()
@@ -712,8 +720,81 @@ class TestAuthMiddlewareSystemUser:
         now = datetime.now(UTC)
         token = pyjwt.encode(
             {
+                "iss": USER_ISSUER,
+                "aud": USER_AUDIENCE,
                 "sub": user.id,
                 "jti": "no-pwd-sig",
+                "iat": now,
+                "exp": now + timedelta(seconds=60),
+            },
+            _SECRET,
+            algorithm="HS256",
+        )
+
+        app = _build_app(auth_service=svc, persistence=persistence)
+        with TestClient(app) as client:
+            resp = client.get(
+                "/protected",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 401
+
+    async def test_user_jwt_with_wrong_issuer_returns_401(self) -> None:
+        """User JWT with wrong iss is rejected so a CLI token can't replay."""
+        import jwt as pyjwt
+
+        from synthorg.api.auth.system_user import USER_AUDIENCE
+
+        svc = _make_auth_service()
+        user = _make_user(svc)
+        persistence = FakePersistenceBackend()
+        await persistence.connect()
+        await persistence.users.save(user)
+
+        now = datetime.now(UTC)
+        # Issuer set to the SYSTEM CLI value -- replay attempt.
+        token = pyjwt.encode(
+            {
+                "iss": "synthorg-cli",
+                "aud": USER_AUDIENCE,
+                "sub": user.id,
+                "pwd_sig": _pwd_sig(user.password_hash),
+                "jti": "wrong-iss",
+                "iat": now,
+                "exp": now + timedelta(seconds=60),
+            },
+            _SECRET,
+            algorithm="HS256",
+        )
+
+        app = _build_app(auth_service=svc, persistence=persistence)
+        with TestClient(app) as client:
+            resp = client.get(
+                "/protected",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 401
+
+    async def test_user_jwt_with_wrong_audience_returns_401(self) -> None:
+        """User JWT with wrong aud is rejected."""
+        import jwt as pyjwt
+
+        from synthorg.api.auth.system_user import USER_ISSUER
+
+        svc = _make_auth_service()
+        user = _make_user(svc)
+        persistence = FakePersistenceBackend()
+        await persistence.connect()
+        await persistence.users.save(user)
+
+        now = datetime.now(UTC)
+        token = pyjwt.encode(
+            {
+                "iss": USER_ISSUER,
+                "aud": "synthorg-backend",
+                "sub": user.id,
+                "pwd_sig": _pwd_sig(user.password_hash),
+                "jti": "wrong-aud",
                 "iat": now,
                 "exp": now + timedelta(seconds=60),
             },

@@ -20,9 +20,8 @@ import aiosqlite  # noqa: TC002
 from synthorg.api.auth.config import AuthConfig  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
-    API_AUTH_ACCOUNT_LOCKED,
     API_AUTH_LOCKOUT_CLEANUP,
-    API_AUTH_LOCKOUT_CLEARED,
+    API_AUTH_LOCKOUT_RESTORED,
 )
 
 logger = get_logger(__name__)
@@ -63,6 +62,11 @@ class SQLiteLockoutRepository:
     def lockout_duration_seconds(self) -> int:
         """Return the lockout duration in seconds for Retry-After."""
         return self._duration_seconds
+
+    @property
+    def threshold(self) -> int:
+        """Failed-attempt threshold; used by the controller's audit log."""
+        return self._threshold
 
     def is_locked(self, username: str) -> bool:
         """Sync O(1) lockout check for the auth hot path."""
@@ -119,9 +123,12 @@ class SQLiteLockoutRepository:
                     self._locked[uname] = mono_now + remaining
                     restored += 1
         if restored:
+            # Cache rehydration only -- no NEW lockout decision is
+            # being made here. Emitting SECURITY_AUTH_ACCOUNT_LOCKED
+            # would chain a duplicate decision into the audit log on
+            # every restart for every still-locked account.
             logger.info(
-                API_AUTH_ACCOUNT_LOCKED,
-                note="Restored lockout state from database",
+                API_AUTH_LOCKOUT_RESTORED,
                 restored=restored,
             )
         return restored
@@ -158,26 +165,31 @@ class SQLiteLockoutRepository:
             except Exception:
                 await self._db.rollback()
                 raise
+            # Cache mutation MUST happen while still holding
+            # ``_write_lock`` so a concurrent ``record_success``
+            # cannot interleave between our commit and our cache
+            # write -- otherwise two writers can commit DB-order
+            # T1->T2 but mutate the cache T2->T1, leaving
+            # ``_locked`` inconsistent with durable state.
+            # ``_locked_lock`` is taken briefly for the dict op so
+            # the auth hot-path ``is_locked`` reader is not blocked
+            # by the surrounding async tx.
+            if now_locked:
+                with self._locked_lock:
+                    self._locked[username] = time.monotonic() + self._duration_seconds
+        # Caller logs SECURITY_AUTH_ACCOUNT_LOCKED with the contextual
+        # fields (attempts, threshold, duration) the controller
+        # already tracks; persistence does not emit decision events
+        # (#1599 persistence-boundary rule).
+        return now_locked
 
-        # Only mark the user locked after the DB commit has
-        # succeeded; otherwise a commit failure would leave the
-        # cache out of sync with persisted state and block logins
-        # for a lockout the DB does not know about.
-        if now_locked:
-            with self._locked_lock:
-                self._locked[username] = time.monotonic() + self._duration_seconds
-            logger.warning(
-                API_AUTH_ACCOUNT_LOCKED,
-                username=username,
-                attempts=count,
-                threshold=self._threshold,
-                duration_minutes=self._duration.total_seconds() / 60,
-            )
-            return True
-        return False
+    async def record_success(self, username: str) -> bool:
+        """Clear failure count on successful login.
 
-    async def record_success(self, username: str) -> None:
-        """Clear failure count on successful login."""
+        Returns ``True`` if a previously-locked account was unlocked
+        (caller logs ``SECURITY_AUTH_LOCKOUT_CLEARED``); ``False``
+        when there was no prior lockout (no audit emission warranted).
+        """
         username = username.lower()
         async with self._write_lock:
             await self._db.execute("BEGIN IMMEDIATE")
@@ -192,13 +204,11 @@ class SQLiteLockoutRepository:
             except Exception:
                 await self._db.rollback()
                 raise
-        with self._locked_lock:
-            was_locked = self._locked.pop(username, None) is not None
-        if was_locked:
-            logger.info(
-                API_AUTH_LOCKOUT_CLEARED,
-                username=username,
-            )
+            # Cache pop while still holding ``_write_lock`` so a
+            # concurrent ``record_failure`` cannot insert + flip
+            # ``_locked`` between our commit and our pop.
+            with self._locked_lock:
+                return self._locked.pop(username, None) is not None
 
     async def cleanup_expired(self) -> int:
         """Remove old attempt records outside the recovery horizon.
