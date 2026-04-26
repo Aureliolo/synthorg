@@ -4,20 +4,21 @@ name: Lighthouse CI
 # dashboard (run against the production-built ``vite preview``) and
 # the Astro marketing site (run against the deployed pr-preview URL).
 #
-# The dashboard job is independent of the pr-preview deployment --
-# it builds + serves locally inside the runner. The site job runs
-# only after the ``Deploy Preview`` job in ``pages-preview.yml``
-# succeeds, so the Cloudflare Pages URL is live.
+# Why no top-level ``paths:`` filter:
+#   ``Lighthouse Pass`` is a REQUIRED status check on ``main`` (see
+#   ``.github/branch_protection.yml``). A workflow-level ``paths:``
+#   filter would prevent the workflow from starting on PRs that
+#   don't touch ``web/`` / ``site/`` / ``docs/``, leaving the
+#   required check absent / pending and blocking unrelated merges
+#   (CodeRabbit, 2026-04-26). Same architecture as
+#   ``codspeed-web.yml``: workflow always triggers; the ``changes``
+#   gate job below detects whether dashboard / site files were
+#   touched and skips the heavy jobs otherwise; ``lighthouse-pass``
+#   aggregates so the required context always reports.
 
 on:
   pull_request:
     branches: [main]
-    paths:
-      - "web/**"
-      - "site/**"
-      - "docs/**"
-      - "mkdocs.yml"
-      - ".github/workflows/lighthouse.yml"
   workflow_dispatch:
 
 permissions: {}
@@ -27,18 +28,41 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # ── Gate: detect which surfaces actually changed ──
+  changes:
+    name: Detect lighthouse-relevant changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      dashboard: ${{ steps.filter.outputs.dashboard }}
+      site: ${{ steps.filter.outputs.site }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            dashboard:
+              - 'web/**'
+              - 'docs/openapi/openapi.json'
+              - '.github/workflows/lighthouse.yml'
+            site:
+              - 'site/**'
+              - 'docs/**'
+              - 'mkdocs.yml'
+              - '.github/workflows/lighthouse.yml'
+              - '.github/workflows/pages-preview.yml'
+
   # ── Dashboard: Lighthouse against vite preview ──
-  #
-  # The workflow's ``on.pull_request.paths`` is a UNION of
-  # ``web/`` / ``site/`` / ``docs/`` / ``mkdocs.yml`` / the workflow
-  # file. Any of those entries triggers the workflow, so this
-  # dashboard job runs whenever the workflow does. If you need
-  # finer-grained gating (e.g. dashboard-only when ``web/``
-  # actually changed), add a ``dorny/paths-filter`` step to this
-  # job; today the cost of running a full LHCI on every triggering
-  # PR is acceptable.
   lighthouse-dashboard:
     name: Lighthouse Dashboard
+    needs: changes
+    if: needs.changes.outputs.dashboard == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -75,23 +99,14 @@ jobs:
           LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
 
   # ── Marketing site: Lighthouse against pr-preview URL ──
-  #
-  # This job is a sibling of ``lighthouse-dashboard`` -- both fire
-  # whenever the workflow's ``on.pull_request.paths`` matches. The
-  # site path-filter step below narrows the heavy work (preview
-  # poll + LHCI run) to PRs that actually touched the site
-  # surface; ``lighthouse-pass`` reports success when the site
-  # job is skipped on a web-only PR.
   lighthouse-site:
     name: Lighthouse Site
+    needs: changes
+    if: needs.changes.outputs.site == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
-      # ``pull-requests: read`` is required by
-      # ``dorny/paths-filter@v4`` on ``pull_request`` events; without
-      # it the action 403s when fetching the PR file list.
       contents: read
-      pull-requests: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -102,30 +117,6 @@ jobs:
           node-version: 24.15.0
           cache: npm
           cache-dependency-path: web/package-lock.json
-
-      # The workflow-level ``paths:`` filter is a UNION (web/ OR site/
-      # OR docs/), so this job runs whenever ``codspeed-web`` /
-      # ``codspeed-python`` need to. Without an inner filter the site
-      # job would burn a full LHCI run on every web-only PR -- the
-      # ``Wait for pr-preview`` step would then poll a URL that the
-      # ``pages-preview`` workflow never deployed (its trigger is
-      # ``site/**`` only) and time out at 5 minutes. Running this
-      # filter here gates the heavy steps (``Wait for pr-preview``,
-      # ``Install lhci``, ``Lighthouse CI (site)``) on whether the PR
-      # actually touched the site surface; PR-number resolution still
-      # runs unconditionally because it is cheap and only reads
-      # ``github.event``.
-      - name: Detect site-surface changes
-        id: changes
-        uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
-        with:
-          filters: |
-            site-surface:
-              - 'site/**'
-              - 'docs/**'
-              - 'mkdocs.yml'
-              - '.github/workflows/lighthouse.yml'
-              - '.github/workflows/pages-preview.yml'
 
       - name: Resolve PR number
         id: pr
@@ -142,7 +133,7 @@ jobs:
           fi
 
       - name: Wait for pr-preview deployment to be live
-        if: steps.pr.outputs.skip == 'false' && steps.changes.outputs.site-surface == 'true'
+        if: steps.pr.outputs.skip == 'false'
         env:
           PREVIEW_URL: "https://pr-${{ steps.pr.outputs.pr_number }}.synthorg-pr-preview.pages.dev"
         run: |
@@ -161,44 +152,54 @@ jobs:
           exit 1
 
       - name: Install lhci (reuse web's @lhci/cli)
-        if: steps.pr.outputs.skip == 'false' && steps.changes.outputs.site-surface == 'true'
+        if: steps.pr.outputs.skip == 'false'
         # Retry transient npm registry 5xx / network blips with
         # exponential backoff.
         run: npm --prefix web ci --fetch-retries=5 --fetch-retry-factor=2 --fetch-retry-mintimeout=2000
 
       - name: Lighthouse CI (site)
-        if: steps.pr.outputs.skip == 'false' && steps.changes.outputs.site-surface == 'true'
+        if: steps.pr.outputs.skip == 'false'
         env:
           LHCI_PR_PREVIEW_URL: "https://pr-${{ steps.pr.outputs.pr_number }}.synthorg-pr-preview.pages.dev"
           LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
         working-directory: site
         run: npx --prefix ../web lhci autorun
 
-      - name: Note skipped on web-only PR
-        if: steps.changes.outputs.site-surface != 'true'
-        run: |
-          echo "::notice::Skipping lighthouse-site: PR did not touch the site surface (site/, docs/, mkdocs.yml, lighthouse.yml, pages-preview.yml)."
-
   # ── Aggregator gate ──
   lighthouse-pass:
     name: Lighthouse Pass
     if: always()
-    needs: [lighthouse-dashboard, lighthouse-site]
+    needs: [changes, lighthouse-dashboard, lighthouse-site]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
     steps:
       - name: Check results
         env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
           DASHBOARD_RESULT: ${{ needs.lighthouse-dashboard.result }}
           SITE_RESULT: ${{ needs.lighthouse-site.result }}
+          DASHBOARD_RAN: ${{ needs.changes.outputs.dashboard }}
+          SITE_RAN: ${{ needs.changes.outputs.site }}
         run: |
-          # Skipped jobs (path-filter said "no relevant change") count
-          # as passing; only "failure" / "cancelled" propagate.
-          for r in "${DASHBOARD_RESULT}" "${SITE_RESULT}"; do
-            if [[ "${r}" == "failure" || "${r}" == "cancelled" ]]; then
-              echo "Lighthouse checks failed. Results: dashboard=${DASHBOARD_RESULT}, site=${SITE_RESULT}"
+          set -euo pipefail
+          if [[ "$CHANGES_RESULT" == "failure" || "$CHANGES_RESULT" == "cancelled" ]]; then
+            echo "Path-detection job failed: $CHANGES_RESULT"
+            exit 1
+          fi
+          # Only check a sub-job's result if its filter said it should
+          # have run. If the filter said skip, the job is "skipped"
+          # and that's the desired no-op outcome on irrelevant PRs.
+          if [[ "$DASHBOARD_RAN" == "true" ]]; then
+            if [[ "$DASHBOARD_RESULT" == "failure" || "$DASHBOARD_RESULT" == "cancelled" ]]; then
+              echo "Lighthouse Dashboard failed: $DASHBOARD_RESULT"
               exit 1
             fi
-          done
-          echo "Lighthouse checks passed (results: dashboard=${DASHBOARD_RESULT}, site=${SITE_RESULT})"
+          fi
+          if [[ "$SITE_RAN" == "true" ]]; then
+            if [[ "$SITE_RESULT" == "failure" || "$SITE_RESULT" == "cancelled" ]]; then
+              echo "Lighthouse Site failed: $SITE_RESULT"
+              exit 1
+            fi
+          fi
+          echo "Lighthouse Pass: dashboard ran=${DASHBOARD_RAN} (${DASHBOARD_RESULT}), site ran=${SITE_RAN} (${SITE_RESULT})"

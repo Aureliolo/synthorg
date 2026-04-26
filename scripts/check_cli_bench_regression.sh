@@ -134,7 +134,16 @@ ensure_benchstat() {
     # GOPATH/bin is on PATH via setup-go's default PATH config in
     # GitHub Actions; on a local shell it must already be present.
     if ! command -v benchstat >/dev/null 2>&1; then
-        export PATH="${PATH}:$(go env GOPATH)/bin"
+        local gopath_bin
+        gopath_bin="$(go env GOPATH)/bin"
+        export PATH="${PATH}:${gopath_bin}"
+    fi
+    # Re-verify after the PATH fallback. Without this re-check the
+    # script would push past install/PATH wiring and fail later at the
+    # benchstat invocation with a less actionable error path.
+    if ! command -v benchstat >/dev/null 2>&1; then
+        echo "::error::benchstat unavailable after install + PATH fallback. Check that 'go install golang.org/x/perf/cmd/benchstat@...' succeeded and that \$(go env GOPATH)/bin is on PATH."
+        return 1
     fi
 }
 

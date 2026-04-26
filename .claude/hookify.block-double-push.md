@@ -12,7 +12,7 @@ If an open PR exists for the current branch, this rule fires. Per the project's 
 
 If a second push within the throttle window (default 5 minutes) is genuinely required, the override is one-shot and out-of-band. **The model cannot create the override itself**; the script `scripts/check_no_throttle_override_creation.sh` rejects any `Bash`, `Write`, or `Edit` tool call referencing the flag path. The user creates the flag in their own shell:
 
-```
+```bash
 printf '%s\n' "$(git branch --show-current)" >.claude/state/allow-double-push.flag
 git push <args>
 ```

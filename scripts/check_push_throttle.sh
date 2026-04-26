@@ -35,7 +35,17 @@
 
 set -euo pipefail
 
-THROTTLE_MIN="${SYNTHORG_PUSH_THROTTLE_MIN:-5}"
+# Validate ``SYNTHORG_PUSH_THROTTLE_MIN`` before arithmetic: a
+# non-integer value (e.g. user types ``5min`` by mistake) would
+# crash the script under ``set -e`` and unexpectedly DENY the push,
+# which is the opposite of the safe default (allow on tooling
+# failure). Coerce to the project default of 5 if invalid.
+THROTTLE_MIN_RAW="${SYNTHORG_PUSH_THROTTLE_MIN:-5}"
+if [[ "${THROTTLE_MIN_RAW}" =~ ^[0-9]+$ ]] && [[ "${THROTTLE_MIN_RAW}" -gt 0 ]]; then
+    THROTTLE_MIN="${THROTTLE_MIN_RAW}"
+else
+    THROTTLE_MIN=5
+fi
 REPO_ROOT_DIR="${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo .)}"
 STATE_DIR="${REPO_ROOT_DIR}/.claude/state"
 STATE_FILE="${STATE_DIR}/last-push.json"
@@ -108,16 +118,19 @@ if [[ "${OVERRIDE}" -eq 0 && "${LAST_BRANCH}" == "${BRANCH}" && "${LAST_TS}" -gt
     REMAINING=$(( THROTTLE_SEC - DELTA ))
     REMAINING_MIN=$(( (REMAINING + 59) / 60 ))
     LAST_HUMAN=$(date -u -d "@${LAST_TS}" +"%H:%M:%SZ" 2>/dev/null || date -ur "${LAST_TS}" +"%H:%M:%SZ" 2>/dev/null || echo "${LAST_TS}")
-    REASON="Push to '${BRANCH}' blocked: previous push was at ${LAST_HUMAN} (${DELTA}s ago). Minimum interval is ${THROTTLE_MIN} minutes; wait ~${REMAINING_MIN} more min and batch any pending fixes into ONE push. To override, the user (not the model) must run: printf '%s\\\\n' \\\"\$(git branch --show-current)\\\" >.claude/state/allow-double-push.flag && git push <args>. The flag is consumed on use; each override authorises exactly one push. Each push triggers full CI + CodeRabbit re-runs; doubling that costs real money."
-    cat <<ENDJSON
-{
-  "hookSpecificOutput": {
-    "hookEventName": "PreToolUse",
-    "permissionDecision": "deny",
-    "permissionDecisionReason": "${REASON}"
-  }
-}
-ENDJSON
+    REASON="Push to '${BRANCH}' blocked: previous push was at ${LAST_HUMAN} (${DELTA}s ago). Minimum interval is ${THROTTLE_MIN} minutes; wait ~${REMAINING_MIN} more min and batch any pending fixes into ONE push. To override, the user (not the model) must run, in their own shell, the documented two-step command from .claude/hookify.block-double-push.md (write the current branch name into .claude/state/allow-double-push.flag, then re-run git push). The flag is consumed on use; each override authorises exactly one push. Each push triggers full CI + CodeRabbit re-runs; doubling that costs real money."
+    # Build the JSON via ``jq -n --arg`` so REASON contents (e.g. an
+    # exotic branch name with quotes / backticks / newlines) cannot
+    # break the output structure and cause the hook contract to
+    # parse-fail. Falling back to a hand-written here-doc would
+    # require a bespoke escape pass and was the prior bug.
+    jq -n --arg reason "${REASON}" '{
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: $reason
+      }
+    }'
     exit 2
 fi
 
