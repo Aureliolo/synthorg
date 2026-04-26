@@ -4,18 +4,18 @@ argument-hint: "<scope: full | src/ | web/ | cli/ | docs/> [--report-only]"
 allowed-tools: ["Agent", "Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "WebFetch", "mcp__github__issue_write", "mcp__github__issue_read", "mcp__github__list_issues", "mcp__github__search_issues"]
 ---
 
-# /codebase-audit -- Full Codebase Audit
+# /codebase-audit: Full Codebase Audit
 
 Launch 152 specialized agents to audit the entire codebase (or a targeted scope), write findings to `_audit/latest/findings/`, build an index, REWORK report, JSON export, and DIFF (vs. previous run), then triage with the user.
 
 ## Key Principles
 
-1. **File-based output** -- agents write to `_audit/latest/findings/`, not in-session. Scales to 50+ agents.
-2. **One concern per agent** -- each agent searches for exactly ONE type of issue.
-3. **Architecture context in every prompt** -- no blind agents. All get the Architecture Brief.
-4. **Severity-tagged findings** -- critical/high/medium/low/info with file:line references.
-5. **Triage together** -- user reviews INDEX.md before any issues are created.
-6. **Rerunnable** -- creates a new run directory under `_audit/runs/<timestamp>/` and repoints the `_audit/latest` symlink. Older runs are preserved; never delete `_audit/runs/*`.
+1. **File-based output**: agents write to `_audit/latest/findings/`, not in-session. Scales to 50+ agents.
+2. **One concern per agent**: each agent searches for exactly ONE type of issue.
+3. **Architecture context in every prompt**: no blind agents. All get the Architecture Brief.
+4. **Severity-tagged findings**: critical/high/medium/low/info with file:line references.
+5. **Triage together**: user reviews INDEX.md before any issues are created.
+6. **Rerunnable**: creates a new run directory under `_audit/runs/<timestamp>/` and repoints the `_audit/latest` symlink. Older runs are preserved; never delete `_audit/runs/*`.
 
 ---
 
@@ -32,7 +32,7 @@ Launch 152 specialized agents to audit the entire codebase (or a targeted scope)
 | `docs/` | `docs/`, `site/`, `src/synthorg/` | 17, 20, 42, 48-51, 73-86, 103-104, 107-108, 123 |
 
 Flags:
-- `--report-only` -- skip issue creation, findings files only
+- `--report-only`: skip issue creation, findings files only
 
 ### Setup output directory
 
@@ -54,13 +54,13 @@ Verify `_audit/` is in `.gitignore`. If not, add it.
 
 Read these files to build context injected into EVERY agent prompt:
 
-1. `src/synthorg/observability/__init__.py` + `_logger.py` -- logging stack
-2. `src/synthorg/observability/events/` -- list all event constant modules
-3. `src/synthorg/api/auto_wire.py` -- service wiring
-4. `src/synthorg/api/app.py` -- route registration
-5. `web/src/router/routes.ts` -- frontend routing
-6. `web/src/stores/` -- list all stores
-7. `docs/DESIGN_SPEC.md` -- spec index
+1. `src/synthorg/observability/__init__.py` + `_logger.py`: logging stack
+2. `src/synthorg/observability/events/`: list all event constant modules
+3. `src/synthorg/api/auto_wire.py`: service wiring
+4. `src/synthorg/api/app.py`: route registration
+5. `web/src/router/routes.ts`: frontend routing
+6. `web/src/stores/`: list all stores
+7. `docs/DESIGN_SPEC.md`: spec index
 8. Existing open issues: `gh issue list --state open --limit 200 --json number,title,labels`
 
 Produce an **Architecture Brief** (~400 words) covering:
@@ -77,7 +77,7 @@ Produce an **Architecture Brief** (~400 words) covering:
 
 **Python syntax note (PEP 758, Python 3.14)**: `except A, B:` without parentheses is *valid and preferred* when NOT binding the exception to a name. Do NOT flag this as a syntax error, style issue, or convention violation. Parentheses are only required when binding (`except (A, B) as exc:`). The codebase deliberately uses the unparenthesized form per `CLAUDE.md` and ruff configuration. This rule prevents a common false positive.
 
-**Em-dash ban**: never emit em-dash characters in finding output, descriptions, or proposals. Use `--` instead. Pre-commit blocks em-dashes via `no-em-dashes` hook -- findings that contain them are inadmissible.
+**Em-dash ban**: never emit em-dash characters in finding output, descriptions, or proposals. Use `--` instead. Pre-commit blocks em-dashes via `no-em-dashes` hook; findings that contain them are inadmissible.
 
 **Vendor-agnostic naming**: never reference real vendor names (Anthropic, OpenAI, Claude, GPT) in finding text or proposed code changes outside `.claude/` skill bodies. Use `example-provider`, `example-large-001`, etc.
 
@@ -183,7 +183,7 @@ Report to user after each batch: "Batch X complete (N/{AGENTS_LAUNCHED} agents d
 
 ### Wave 1: Observability & Logging (5 agents)
 
-**Agent 01 -- missing-logger** (haiku)
+**Agent 01: missing-logger** (haiku)
 File: `_audit/latest/findings/01-missing-logger.md`
 
 ```text
