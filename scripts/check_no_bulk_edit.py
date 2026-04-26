@@ -18,10 +18,25 @@ import re
 import sys
 
 _BULK_BASH_PATTERNS = (
-    re.compile(r"\bsed\s+(?:-[a-zA-Z]*i|--in-place\b)"),
-    re.compile(r"\bawk\s+(?:-[a-zA-Z]*i\b|.*-i\s+inplace)"),
-    re.compile(r"\bperl\s+(?:-[a-zA-Z]*i\b|-pi\b|-pie\b)"),
-    re.compile(r"\bgawk\s+(?:-[a-zA-Z]*i\b|.*-i\s+inplace)"),
+    # sed -i / sed --in-place (also gsed on macOS GNU-coreutils setups)
+    re.compile(r"\b(?:sed|gsed)\s+(?:-[a-zA-Z]*i\b|--in-place\b)"),
+    # awk / gawk with -i inplace; bound to a single command segment so an
+    # unrelated awk earlier in a piped command does not falsely match.
+    re.compile(r"\b(?:g?awk)\s+[^;|&]*\B-i\s+inplace\b"),
+    # perl in-place: covers -i, -pi, -pie, -ne -i, plus bundled numeric
+    # record-separator switches (-0pi, -0777i, -pi -e, etc.) that the
+    # narrow form would miss.
+    re.compile(
+        r"\bperl\s+(?:-[a-zA-Z]*\d*[a-zA-Z]*i\b|-pi\b|-pie\b|-0\d*[a-zA-Z]*i\b)"
+    ),
+    # Stream-redirect overwrite of an existing tracked source file
+    # (`> path/foo.py`, `>> path/foo.md`). 2> stderr redirection is
+    # excluded by the negative lookbehind. Limited to known extensions
+    # so that stdout redirection to /dev/null, sockets, or arbitrary
+    # log files is not flagged as a bulk-edit.
+    re.compile(
+        r"(?<![0-9])>>?\s*[^/\s][^\s]*\.(?:py|md|ts|tsx|js|jsx|json|yaml|yml|toml|sh|go|css|astro)\b"
+    ),
 )
 
 

@@ -18,7 +18,7 @@ const priorityColors: Record<TaskCard["priority"], string> = {
   low: "#94a3b8",
 };
 
-// All tasks in the system -- they cycle through columns based on tick
+// All tasks in the system; they cycle through columns based on tick
 const allTasks: TaskCard[] = [
   { id: 1, title: "Init project", priority: "medium", assignee: "CTO" },
   { id: 2, title: "Setup CI pipeline", priority: "high", assignee: "CTO" },

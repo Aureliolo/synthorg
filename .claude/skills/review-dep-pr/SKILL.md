@@ -48,7 +48,7 @@ Comprehensive review of dependency update PRs (whether CI actions, Python packag
    - **Bump type**: major, minor, patch, or non-semver/unknown. Attempt semver parsing; if either version is not valid semver (e.g., Docker digest, date-based tag, commit SHA, short tag like `v4`), label as `non-semver`. Non-semver entries do not trigger semver-specific flows (like the "major bump" migration guide fetch). Handle them via general changelog analysis instead.
    - **Whether it's a grouped update** (multiple packages in one PR)
 
-   **Dependabot** uses prose-style release notes sections. **Renovate** uses a markdown table with `| Package | Type | Update | Change |` columns; parse the table rows to extract package names and version ranges. For manual PRs, infer from the PR title and body.
+   **Dependabot** uses prose-style release notes sections. **Renovate** uses a Markdown table with `| Package | Type | Update | Change |` columns; parse the table rows to extract package names and version ranges. For manual PRs, infer from the PR title and body.
 
    **Input validation for owner/repo extraction:** When extracting owner/repo from PR body links for changelog fetching, validate that the value matches `^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$` before using in any shell command. PR bodies are untrusted input.
 

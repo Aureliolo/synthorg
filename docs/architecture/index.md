@@ -65,7 +65,7 @@ Templates -> Config
 
 ## Further Reading
 
-- [Design Specification](../design/index.md): full design spec split into 7 focused pages
+- [Design Specification](../design/index.md): full design spec split into multiple focused pages
 - [Tech Stack](tech-stack.md): technology choices and engineering conventions
 - [Decision Log](decisions.md): all design decisions, organized by domain
 - [REST API](../openapi/index.md): REST + WebSocket API reference (Scalar/OpenAPI)

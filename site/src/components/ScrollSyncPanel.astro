@@ -1,12 +1,12 @@
 ---
-// Scroll-Synced Split Panel -- 4-step "How It Works" with sticky visualization
+// Scroll-Synced Split Panel: 4-step "How It Works" with sticky visualization
 ---
 
 <section id="how-it-works" class="py-16 px-6">
   <div class="max-w-6xl mx-auto">
     <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">See How It Works</h2>
     <p class="text-gray-400 text-center max-w-2xl mx-auto mb-16">
-      Set up a full AI organization in minutes -- from a solo builder to a 30+ agent enterprise.
+      Set up a full AI organization in minutes, from a solo builder to a 30+ agent enterprise.
     </p>
 
     <div class="md:grid md:grid-cols-[1fr_auto_1fr] md:gap-8">
@@ -367,20 +367,20 @@
     statusEls.forEach((el) => setFill(el, "#94a3b8"));
 
     if (step === 0) {
-      // Step 1: Template selection -- show empty department frames only
+      // Step 1: Template selection: show empty department frames only
       allDepts.forEach(show);
       deptLabels.forEach((el) => el.setAttribute("opacity", "0.5"));
     }
 
     if (step === 1) {
-      // Step 2: Agents configured -- departments + agents, NO edges yet
+      // Step 2: Agents configured: departments + agents, NO edges yet
       allDepts.forEach(show);
       deptLabels.forEach((el) => el.setAttribute("opacity", "0.5"));
       allNodes.forEach(show);
     }
 
     if (step === 2) {
-      // Step 3: Collaboration -- all edges active, communication flowing
+      // Step 3: Collaboration: all edges active, communication flowing
       allDepts.forEach(show);
       deptLabels.forEach((el) => el.setAttribute("opacity", "0.5"));
       allNodes.forEach(show);
@@ -400,7 +400,7 @@
     }
 
     if (step === 3) {
-      // Step 4: Observe -- all done, metrics visible
+      // Step 4: Observe: all done, metrics visible
       allDepts.forEach(show);
       deptLabels.forEach((el) => el.setAttribute("opacity", "0.5"));
       allNodes.forEach(show);
@@ -435,7 +435,7 @@
     disableSvgAnimations();
   }
 
-  // Observer always runs (even with reduced motion -- only animations are disabled)
+  // Observer always runs (even with reduced motion; only animations are disabled)
   const observer = new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {

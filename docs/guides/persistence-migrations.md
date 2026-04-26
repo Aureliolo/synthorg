@@ -118,7 +118,7 @@ is the symptom the boundary is designed to catch.  Instead:
 
 A full single-baseline squash collapses every historical revision
 into one `00000000000000_baseline.sql` per backend, derived from the
-current `schema.sql`.  Run rarely; the revision history is the
+current `schema.sql`.  Run this rarely; the revision history is the
 audit trail between squashes.
 
 Per backend (sqlite first, then postgres):

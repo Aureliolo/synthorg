@@ -111,7 +111,7 @@ export default function ComparisonTable({
   dimensions,
   categories,
 }: Props) {
-  // -- State --
+  // State
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [licenseFilter, setLicenseFilter] = useState<string | null>(null);
   const [featureFilter, setFeatureFilter] = useState<string | null>(null);
@@ -127,7 +127,7 @@ export default function ComparisonTable({
   const [canScrollRight, setCanScrollRight] = useState(false);
   const tableWrapRef = useRef<HTMLDivElement>(null);
 
-  // -- Scroll hint detection --
+  // Scroll hint detection
   useEffect(() => {
     const el = tableWrapRef.current;
     if (!el) return;
@@ -147,7 +147,7 @@ export default function ComparisonTable({
     };
   }, [hiddenColumns, fullWidth]);
 
-  // -- Escape key to exit full-width mode --
+  // Escape key to exit full-width mode
   useEffect(() => {
     if (!fullWidth) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -157,7 +157,7 @@ export default function ComparisonTable({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [fullWidth]);
 
-  // -- Close column picker on outside click --
+  // Close column picker on outside click
   const pickerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!showColumnPicker) return;
@@ -170,13 +170,13 @@ export default function ComparisonTable({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showColumnPicker]);
 
-  // -- Visible dimensions --
+  // Visible dimensions
   const visibleDimensions = useMemo(
     () => dimensions.filter((d) => !hiddenColumns.has(d.key)),
     [dimensions, hiddenColumns],
   );
 
-  // -- Category lookup --
+  // Category lookup
   const categoryMap = useMemo(() => {
     const map: Record<string, string> = {};
     for (const cat of categories) {
@@ -185,7 +185,7 @@ export default function ComparisonTable({
     return map;
   }, [categories]);
 
-  // -- Filtering (SynthOrg always passes) --
+  // Filtering (SynthOrg always passes)
   const filtered = useMemo(() => {
     let result = competitors;
 
@@ -219,7 +219,7 @@ export default function ComparisonTable({
     return result;
   }, [competitors, categoryFilter, licenseFilter, featureFilter, search]);
 
-  // -- Sorting (SynthOrg always pinned to top) --
+  // Sorting (SynthOrg always pinned to top)
   const sorted = useMemo(() => {
     const synthorg = filtered.filter((c) => c.is_synthorg);
     const rest = filtered.filter((c) => !c.is_synthorg);
@@ -251,10 +251,10 @@ export default function ComparisonTable({
     return [...synthorg, ...rest];
   }, [filtered, sortBy, categoryMap]);
 
-  // -- Whether any filter is active (for SynthOrg "pinned" badge) --
+  // Whether any filter is active (for SynthOrg "pinned" badge)
   const hasActiveFilter = !!(categoryFilter || licenseFilter || featureFilter || search.trim());
 
-  // -- Handlers --
+  // Handlers
   const handleSort = useCallback(
     (key: string) => {
       setSortBy((prev) =>
@@ -298,7 +298,7 @@ export default function ComparisonTable({
   }, []);
 
 
-  // -- Unique categories present in data --
+  // Unique categories present in data
   const availableCategories = useMemo(() => {
     const seen = new Set<string>();
     for (const c of competitors) {
@@ -307,7 +307,7 @@ export default function ComparisonTable({
     return categories.filter((cat) => seen.has(cat.key));
   }, [competitors, categories]);
 
-  // -- Unique licenses present in data --
+  // Unique licenses present in data
   const availableLicenses = useMemo(() => {
     const seen = new Set<string>();
     for (const c of competitors) {

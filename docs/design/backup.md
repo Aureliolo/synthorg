@@ -44,7 +44,7 @@ The backup system protects persistent data (persistence DB, agent memory, and co
 Backup settings live in the `backup` namespace with runtime editability via `BackupSettingsSubscriber`:
 
 - `enabled`: Toggle scheduler start/stop
-- `schedule_hours`: Reschedule interval (1--168 hours)
+- `schedule_hours`: Reschedule interval (1 to 168 hours)
 - `compression`, `on_shutdown`, `on_startup`: Advisory (read at use time)
 - `path`: Requires restart (not dispatched)
 

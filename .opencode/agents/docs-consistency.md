@@ -33,18 +33,18 @@ Read the current `CLAUDE.md` and `README.md` in full, plus the relevant `docs/de
 
 ### CLAUDE.md (CRITICAL: guides all future development)
 
-11. Code Conventions: do documented patterns match what's actually in the code? New patterns used but not documented? Documented patterns no longer followed? (CRITICAL)
-12. Logging section: are event import paths, logger patterns, and rules accurate? (CRITICAL)
-13. Resilience section: does it match actual retry/rate-limit implementation? (MAJOR)
-14. Package Structure: does it match actual directory layout? (MAJOR)
-15. Testing section: are markers, commands, and conventions current? (MEDIUM)
-16. Any other section that gives instructions that don't match reality (CRITICAL)
+1. Code Conventions: do documented patterns match what's actually in the code? New patterns used but not documented? Documented patterns no longer followed? (CRITICAL)
+2. Logging section: are event import paths, logger patterns, and rules accurate? (CRITICAL)
+3. Resilience section: does it match actual retry/rate-limit implementation? (MAJOR)
+4. Package Structure: does it match actual directory layout? (MAJOR)
+5. Testing section: are markers, commands, and conventions current? (MEDIUM)
+6. Any other section that gives instructions that don't match reality (CRITICAL)
 
 ### README.md
 
-17. Installation, usage, and getting-started instructions: still accurate? (MAJOR)
-18. Feature descriptions: do they match what's actually built? (MEDIUM)
-19. Links: any dead links or references to things that moved? (MINOR)
+1. Installation, usage, and getting-started instructions: still accurate? (MAJOR)
+2. Feature descriptions: do they match what's actually built? (MEDIUM)
+3. Links: any dead links or references to things that moved? (MINOR)
 
 ## Severity Levels
 

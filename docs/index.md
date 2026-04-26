@@ -1,6 +1,6 @@
 # SynthOrg Documentation
 
-**Framework for building synthetic organizations**: autonomous AI agents orchestrated as a virtual company.
+**Framework for building synthetic organizations**, autonomous AI agents orchestrated as a virtual company.
 
 SynthOrg lets you define agents with roles, hierarchy, budgets, and tools, then orchestrate them to collaborate on complex tasks as a virtual organization.
 

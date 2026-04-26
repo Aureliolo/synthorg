@@ -82,10 +82,11 @@ function runHookScript(
   toolName?: string,
 ): HookOutcome {
   // Pick the interpreter from the script extension. Bash scripts run via
-  // ``bash``; Python scripts run via ``python`` so the shebang is honored
-  // on Windows where ``./script.py`` would not resolve. Add new extensions
-  // here if a hook script in another language is introduced.
-  const interpreter = scriptPath.endsWith(".py") ? "python" : "bash";
+  // ``bash``; Python scripts run via ``python3`` so the shebang is honored
+  // on Windows where ``./script.py`` would not resolve, and on modern Linux
+  // distros that ship only ``python3`` (no unversioned ``python``). Add new
+  // extensions here if a hook script in another language is introduced.
+  const interpreter = scriptPath.endsWith(".py") ? "python3" : "bash";
   let result: ReturnType<typeof spawnSync>;
   try {
     const envelope: Record<string, unknown> = { tool_input: toolInput };
@@ -168,7 +169,7 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
     tool: {
       execute: {
         before: async (input, output) => {
-          // Edit / Write PreToolUse hooks -- bulk-edit guard / migration /
+          // Edit / Write PreToolUse hooks: bulk-edit guard / migration /
           // baseline / triage-gate lock
           if (input.tool === "edit" || input.tool === "write") {
             const filePath = typeof output.args?.file_path === "string"
@@ -236,7 +237,7 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
             // block-pr-create: block direct gh pr create
             if (/gh\s+pr\s+create/i.test(command)) {
               throw new Error(
-                "PR creation blocked. Use `/pre-pr-review` instead -- it runs automated checks + review agents + fixes before creating the PR. For trivial or docs-only changes: `/pre-pr-review quick` skips agents but still runs automated checks.",
+                "PR creation blocked. Use `/pre-pr-review` instead; it runs automated checks + review agents + fixes before creating the PR. For trivial or docs-only changes: `/pre-pr-review quick` skips agents but still runs automated checks.",
               );
             }
 
@@ -253,7 +254,7 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
             // no-cd-prefix: block cd prefix in Bash commands (with optional leading whitespace)
             if (/^\s*cd\s+/i.test(command)) {
               throw new Error(
-                "BLOCKED: Do not use `cd` in Bash commands -- it poisons the cwd for all subsequent calls. The working directory is ALREADY set to the project root. Run commands directly. For Go commands: use `go -C cli <command>`. For subdir tools without a `-C`/`--prefix` equivalent: use `bash -c \"cd <dir> && <cmd>\"`.",
+                "BLOCKED: Do not use `cd` in Bash commands; it poisons the cwd for all subsequent calls. The working directory is ALREADY set to the project root. Run commands directly. For Go commands: use `go -C cli <command>`. For subdir tools without a `-C`/`--prefix` equivalent: use `bash -c \"cd <dir> && <cmd>\"`.",
               );
             }
 
@@ -263,11 +264,11 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
               /--cov\b/.test(command)
             ) {
               throw new Error(
-                "Do not run pytest with coverage locally -- CI handles it. Coverage adds 20-40% overhead. Remove `--cov`, `--cov-report`, and `--cov-fail-under` from your command.",
+                "Do not run pytest with coverage locally; CI handles it. Coverage adds 20-40% overhead. Remove `--cov`, `--cov-report`, and `--cov-fail-under` from your command.",
               );
             }
 
-            // check_push_rebased.sh -- block push if branch is behind main
+            // check_push_rebased.sh: block push if branch is behind main
             if (command.includes("git push")) {
               const outcome = runHookScript(
                 "scripts/check_push_rebased.sh",
@@ -280,7 +281,7 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
               }
             }
 
-            // check_no_atlas_rehash.sh -- block `atlas migrate hash` rehash.
+            // check_no_atlas_rehash.sh: block `atlas migrate hash` rehash.
             // We invoke the hook for every bash command: a ``command.includes("atlas")``
             // prefilter would let wrapper invocations (``migrate_hash``,
             // ``migrate.hash``, shell aliases, subprocess wrappers) bypass the
@@ -299,7 +300,7 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
               }
             }
 
-            // check_bash_no_write.sh -- block file writes via Bash
+            // check_bash_no_write.sh: block file writes via Bash
             const bashWriteOutcome = runHookScript(
               "scripts/check_bash_no_write.sh",
               { command },
@@ -310,7 +311,7 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
               throw new Error(bashWriteDeny);
             }
 
-            // check_git_c_cwd.sh -- block unnecessary git -C to cwd
+            // check_git_c_cwd.sh: block unnecessary git -C to cwd
             if (command.includes("git") && command.includes("-C")) {
               const outcome = runHookScript(
                 "scripts/check_git_c_cwd.sh",
@@ -342,7 +343,7 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
             tool_input: { file_path: filePath },
           });
 
-          // check_web_design_system.py -- validate design tokens on web file edits
+          // check_web_design_system.py: validate design tokens on web file edits
           if (filePath.includes("web/src/")) {
             try {
               execSync(
@@ -360,7 +361,7 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
             }
           }
 
-          // check_backend_regional_defaults.py -- backend regional-defaults audit
+          // check_backend_regional_defaults.py: backend regional-defaults audit
           if (filePath.includes("src/synthorg/") && filePath.endsWith(".py")) {
             try {
               execSync(

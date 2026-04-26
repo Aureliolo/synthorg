@@ -126,7 +126,7 @@ Strategies that only have an error string (`FailAndReassignStrategy`, `Checkpoin
       placeholder messages).
     - **No persistence dependency**: relies on whichever observability sink
       the operator configured (structlog file, OTLP backend, Postgres).
-    - **Best-effort**: `ReplayResult.replay_completeness` (0.0--1.0) indicates
+    - **Best-effort**: `ReplayResult.replay_completeness` (0.0 to 1.0) indicates
       how much state was recovered.
     - **Use case**: recovery after brain failure when checkpoint persistence
       is not configured or the checkpoint is stale.
@@ -505,7 +505,7 @@ After the pipeline completes, `build_agent_contributions()` in
 routing decisions and wave outcomes:
 
 - **`AgentContribution`**: frozen Pydantic model recording each agent's
-  `contribution_score` (0.0--1.0), `failure_attribution` classification, and
+  `contribution_score` (0.0 to 1.0), `failure_attribution` classification, and
   optional `evidence` excerpt.
 - **Failure attribution categories**: `"direct"` (agent's own failure),
   `"upstream_contamination"` (bad input from another agent),

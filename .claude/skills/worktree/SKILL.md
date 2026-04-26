@@ -26,14 +26,16 @@ Create worktrees, copy settings, and generate Claude Code prompts.
 ### Input formats (3 modes, from most to least explicit)
 
 **Mode 1: Full explicit:**
-```
+
+```text
 /worktree setup
 feat/delegation-loop-prevention #12,#17 "Delegation + Loop Prevention"
 feat/parallel-execution #22 "Parallel Agent Execution"
 ```
 
 **Mode 2: Shorthand (issues + description only):**
-```
+
+```text
 /worktree setup
 #12,#17 "Delegation + Loop Prevention"
 #22 "Parallel Execution"
@@ -225,7 +227,7 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
    - #<N>: <summarize acceptance criteria from issue body>
 
    ## Workflow
-   - Plan the full implementation before writing any code -- present the plan for approval
+   - Plan the full implementation before writing any code; present the plan for approval
    - **Write the plan incrementally in small sections, not as one huge file.** Large plan files repeatedly fail with partial / truncated responses. Build the plan section-by-section:
      1. Start with a short outline (section titles only, no body).
      2. Write each section as a separate small Write/Edit call (one section per tool call, <= ~150 lines per section).
@@ -238,12 +240,12 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
    ## Decision Protocol (MANDATORY)
    - For ANY major decision (architecture choice, library inclusion, scope change, feature toggle, data model design, API shape, whether to include/exclude something), use the AskUserQuestion tool to ask the user. NEVER make big decisions autonomously.
    - Present options with pros AND cons. Let the user decide.
-   - Examples of what requires AskUserQuestion: "Should we use X or Y approach?", "Should this feature include Z?", "The spec says X but Y might be better -- which do you prefer?", "This touches N files -- should we split into separate PRs?"
+   - Examples of what requires AskUserQuestion: "Should we use X or Y approach?", "Should this feature include Z?", "The spec says X but Y might be better; which do you prefer?", "This touches N files; should we split into separate PRs?"
 
    ## Quality Standards (MANDATORY)
    - Build BEST IN CLASS. No shortcuts, no "good enough", no "we can improve later".
    - NEVER defer anything. If a finding says "fix X", fix X completely. No TODOs, no stubs, no "phase 2" thinking.
-   - Still alpha: breaking API/interface changes are fine, no backward compatibility shims. BUT schema changes MUST ship proper Atlas migrations (never edit an existing migration; always generate a new one -- for SQLite: `atlas migrate diff <migration_name> --env sqlite`; for Postgres: `atlas migrate diff <migration_name> --env postgres`) so migration paths stay testable.
+   - Still alpha: breaking API/interface changes are fine, no backward compatibility shims. BUT schema changes MUST ship proper Atlas migrations (never edit an existing migration; always generate a new one. For SQLite: `atlas migrate diff <migration_name> --env sqlite`; for Postgres: `atlas migrate diff <migration_name> --env postgres`) so migration paths stay testable.
    - Every piece of work must meet the highest standard of security, UX, maintainability, and correctness.
    ~~~
 

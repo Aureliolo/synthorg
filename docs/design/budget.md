@@ -17,15 +17,15 @@ level through departments to individual teams.
 ```mermaid
 graph TD
     Company["Company Budget (100 per month)"]
-    Company --> Eng["Engineering (50%) -- 50"]
-    Company --> QA["Quality/QA (10%) -- 10"]
-    Company --> Product["Product (15%) -- 15"]
-    Company --> Ops["Operations (10%) -- 10"]
-    Company --> Reserve["Reserve (15%) -- 15"]
+    Company --> Eng["Engineering (50%) = 50"]
+    Company --> QA["Quality/QA (10%) = 10"]
+    Company --> Product["Product (15%) = 15"]
+    Company --> Ops["Operations (10%) = 10"]
+    Company --> Reserve["Reserve (15%) = 15"]
 
-    Eng --> Backend["Backend Team (40%) -- 20"]
-    Eng --> Frontend["Frontend Team (30%) -- 15"]
-    Eng --> DevOps["DevOps Team (30%) -- 15"]
+    Eng --> Backend["Backend Team (40%) = 20"]
+    Eng --> Frontend["Frontend Team (30%) = 15"]
+    Eng --> DevOps["DevOps Team (30%) = 15"]
 ```
 
 !!! abstract "Note"

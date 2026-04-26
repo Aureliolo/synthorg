@@ -22,7 +22,7 @@ can be added without modifying dispatcher logic.
 ## NotificationDispatcher
 
 The `NotificationDispatcher` fans out each `Notification` to all registered sinks
-concurrently via `asyncio.TaskGroup`. Failures in individual sinks are isolated --
+concurrently via `asyncio.TaskGroup`. Failures in individual sinks are isolated:
 a failing Slack webhook does not prevent ntfy or email delivery. All errors are
 logged with structured event constants and collected into an `ExceptionGroup` that
 preserves per-sink context.

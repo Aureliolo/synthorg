@@ -55,7 +55,7 @@ Only report violations with HIGH confidence. Do not flag:
 - Tailwind `duration-*` classes (CSS transition durations, not Motion)
 - Internal component padding in sidebar, form fields, command palette
 - Table cell padding (`<td>`/`<th>` elements)
-- Storybook `.stories.tsx` demo wrappers
+- Storybook `.stories.tsx`/`.stories.ts` demo wrappers
 
 ## Reference
 

@@ -56,7 +56,7 @@ budget:
 |-------|------|---------|-------------|
 | `total_monthly` | float | `100.0` | Monthly budget limit. Set to `0` to disable enforcement. |
 | `currency` | string | `"USD"` | ISO 4217 currency code for display. **Display only**; SynthOrg does not convert LLM provider costs (token prices are USD-denominated). Changing this relabels the symbol but leaves the numeric values untouched. |
-| `reset_day` | int | `1` | Day of the month the budget resets (1--28) |
+| `reset_day` | int | `1` | Day of the month the budget resets (1-28) |
 | `per_task_limit` | float | `5.0` | Maximum cost allowed per individual task |
 | `per_agent_daily_limit` | float | `10.0` | Maximum cost per agent per day |
 
@@ -234,7 +234,7 @@ budget:
 
 **Scenario walkthrough:**
 
-1. **Day 1--15**: Normal operation. The CEO uses the `large` model, developers use `medium`.
+1. **Day 1-15**: Normal operation. The CEO uses the `large` model, developers use `medium`.
 2. **Day 16**: Spending reaches 70% (105 USD). A warning alert is emitted.
 3. **Day 18**: Spending reaches 80% (120 USD). Auto-downgrade triggers:
    - The CEO's *next* task uses `medium` instead of `large`

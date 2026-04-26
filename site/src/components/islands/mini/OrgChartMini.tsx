@@ -24,7 +24,7 @@ const hierarchyEdges = [
   { from: "design", to: "ux" },
 ];
 
-// Communication patterns that cycle -- shows agents talking to each other
+// Communication patterns that cycle through agents talking to each other
 // Realistic communication: hierarchy + peer-to-peer within/across teams
 const commPatterns: { from: string; to: string }[][] = [
   [{ from: "eng1", to: "eng2" }],                                          // devs collaborating

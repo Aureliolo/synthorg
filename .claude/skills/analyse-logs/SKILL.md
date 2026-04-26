@@ -236,9 +236,9 @@ Report each discrepancy with:
 - Suggested fix (add logger routing, wrap foreign library, remove print statement)
 
 **Severity**:
-- `synthorg.*` logger missing from files = **BUG** in sink routing (must fix)
-- Foreign library (uvicorn, litellm, etc.) only in Docker = **WARNING** (should be captured but may be acceptable)
-- Raw unstructured text (no logger pattern) = **BUG** (likely a `print()` statement or uncaught exception going to stderr)
+- `synthorg.*` logger missing from files: **BUG** in sink routing (must fix)
+- Foreign library (uvicorn, litellm, etc.) only in Docker: **WARNING** (should be captured but may be acceptable)
+- Raw unstructured text (no logger pattern): **BUG** (likely a `print()` statement or uncaught exception going to stderr)
 
 ---
 

@@ -1,5 +1,5 @@
 site_name: SynthOrg Documentation
-site_description: Framework for building synthetic organizations -- autonomous AI agents orchestrated as a virtual company
+site_description: Framework for building synthetic organizations, autonomous AI agents orchestrated as a virtual company
 site_url: https://synthorg.io/docs
 site_dir: _site/docs
 repo_url: https://github.com/Aureliolo/synthorg
