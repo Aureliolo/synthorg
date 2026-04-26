@@ -5,7 +5,7 @@ description: Seniority and authority levels, role catalog, dynamic roles, hiring
 
 # HR & Agent Lifecycle
 
-This page covers the operational lifecycle of every agent in a synthetic organization -- from hiring through performance tracking, promotion, evolution, and offboarding. The HR subsystem is how SynthOrg simulates a workforce: closed-loop hiring when new skills are needed, performance-driven pruning when agents fail to deliver, and pluggable evolution for agents that need to adapt their identity.
+This page covers the operational lifecycle of every agent in a synthetic organization, from hiring through performance tracking, promotion, evolution, and offboarding. The HR subsystem is how SynthOrg simulates a workforce: closed-loop hiring when new skills are needed, performance-driven pruning when agents fail to deliver, and pluggable evolution for agents that need to adapt their identity.
 
 See [Agents](agents.md) for the identity layer (personality, skills, tool namespaces, identity versioning).
 
@@ -26,60 +26,60 @@ See [Agents](agents.md) for the identity layer (personality, skills, tool namesp
 
 ## Role Catalog
 
-The role catalog is extensible -- users can add [custom roles](#dynamic-roles) via config.
+The role catalog is extensible; users can add [custom roles](#dynamic-roles) via config.
 The built-in catalog covers common organizational roles:
 
 === "C-Suite / Executive"
 
-    - **CEO** -- Overall strategy, final decision authority, cross-department coordination
-    - **CTO** -- Technical vision, architecture decisions, technology choices
-    - **CFO** -- Budget management, cost optimization, resource allocation
-    - **COO** -- Operations, process optimization, workflow management
-    - **CPO** -- Product strategy, roadmap, feature prioritization
+    - **CEO**: Overall strategy, final decision authority, cross-department coordination
+    - **CTO**: Technical vision, architecture decisions, technology choices
+    - **CFO**: Budget management, cost optimization, resource allocation
+    - **COO**: Operations, process optimization, workflow management
+    - **CPO**: Product strategy, roadmap, feature prioritization
 
 === "Product & Design"
 
-    - **Product Manager** -- Requirements, user stories, prioritization, stakeholder communication
-    - **UX Designer** -- User research, wireframes, user flows, usability
-    - **UI Designer** -- Visual design, component design, design systems
-    - **UX Researcher** -- User interviews, analytics, A/B test design
-    - **Technical Writer** -- Documentation, API docs, user guides
+    - **Product Manager**: Requirements, user stories, prioritization, stakeholder communication
+    - **UX Designer**: User research, wireframes, user flows, usability
+    - **UI Designer**: Visual design, component design, design systems
+    - **UX Researcher**: User interviews, analytics, A/B test design
+    - **Technical Writer**: Documentation, API docs, user guides
 
 === "Engineering"
 
-    - **Software Architect** -- System design, technology decisions, patterns
-    - **Frontend Developer** (Junior/Mid/Senior) -- UI implementation, components, state management
-    - **Backend Developer** (Junior/Mid/Senior) -- APIs, business logic, databases
-    - **Full-Stack Developer** (Junior/Mid/Senior) -- End-to-end implementation
-    - **DevOps/SRE Engineer** -- Infrastructure, CI/CD, monitoring, deployment
-    - **Database Engineer** -- Schema design, query optimization, migrations
-    - **Security Engineer** -- Security audits, vulnerability assessment, secure coding
+    - **Software Architect**: System design, technology decisions, patterns
+    - **Frontend Developer** (Junior/Mid/Senior): UI implementation, components, state management
+    - **Backend Developer** (Junior/Mid/Senior): APIs, business logic, databases
+    - **Full-Stack Developer** (Junior/Mid/Senior): End-to-end implementation
+    - **DevOps/SRE Engineer**: Infrastructure, CI/CD, monitoring, deployment
+    - **Database Engineer**: Schema design, query optimization, migrations
+    - **Security Engineer**: Security audits, vulnerability assessment, secure coding
 
 === "Quality Assurance"
 
-    - **QA Lead** -- Test strategy, quality gates, release readiness
-    - **QA Engineer** -- Test plans, manual testing, bug reporting
-    - **Automation Engineer** -- Test frameworks, CI integration, E2E tests
-    - **Performance Engineer** -- Load testing, profiling, optimization
+    - **QA Lead**: Test strategy, quality gates, release readiness
+    - **QA Engineer**: Test plans, manual testing, bug reporting
+    - **Automation Engineer**: Test frameworks, CI integration, E2E tests
+    - **Performance Engineer**: Load testing, profiling, optimization
 
 === "Data & Analytics"
 
-    - **Data Analyst** -- Metrics, dashboards, business intelligence
-    - **Data Engineer** -- Pipelines, ETL, data infrastructure
-    - **ML Engineer** -- Model training, inference, MLOps
+    - **Data Analyst**: Metrics, dashboards, business intelligence
+    - **Data Engineer**: Pipelines, ETL, data infrastructure
+    - **ML Engineer**: Model training, inference, MLOps
 
 === "Operations & Support"
 
-    - **Project Manager** -- Timelines, dependencies, risk management, status tracking
-    - **Scrum Master** -- Agile ceremonies, impediment removal, team health
-    - **HR Manager** -- Hiring recommendations, team composition, performance tracking
-    - **Security Operations** -- Request validation, safety checks, approval workflows
+    - **Project Manager**: Timelines, dependencies, risk management, status tracking
+    - **Scrum Master**: Agile ceremonies, impediment removal, team health
+    - **HR Manager**: Hiring recommendations, team composition, performance tracking
+    - **Security Operations**: Request validation, safety checks, approval workflows
 
 === "Creative & Marketing"
 
-    - **Content Writer** -- Blog posts, marketing copy, social media
-    - **Brand Strategist** -- Messaging, positioning, competitive analysis
-    - **Growth Marketer** -- Campaigns, analytics, conversion optimization
+    - **Content Writer**: Blog posts, marketing copy, social media
+    - **Brand Strategist**: Messaging, positioning, competitive analysis
+    - **Growth Marketer**: Campaigns, analytics, conversion optimization
 
 ---
 
@@ -119,35 +119,35 @@ step.
 
 **Pipeline:**
 
-1. **Source selection** -- select senior agents as knowledge sources (pluggable: role top
+1. **Source selection**: select senior agents as knowledge sources (pluggable: role top
    performers, department diversity sampling, user-curated list, or composite)
-2. **Extraction** -- extract procedural memories, semantic knowledge, and tool usage patterns
+2. **Extraction**: extract procedural memories, semantic knowledge, and tool usage patterns
    from source agents in parallel
-3. **Curation** -- reduce candidates to a ranked subset (pluggable: relevance score or LLM-curated)
-4. **Guard chain** -- sanitization (mandatory, non-bypassable), volume caps (per-content-type
+3. **Curation**: reduce candidates to a ranked subset (pluggable: relevance score or LLM-curated)
+4. **Guard chain**: sanitization (mandatory, non-bypassable), volume caps (per-content-type
    hard limits), review gate (human approval via ApprovalStore)
-5. **Storage** -- seed approved items into the new agent's memory backend with training tags
+5. **Storage**: seed approved items into the new agent's memory backend with training tags
 
 **Per-hire customization:**
 
-- `override_sources` -- explicit agent IDs bypassing the selector
-- `content_types` -- enable/disable specific extractors
-- `custom_caps` -- override default volume caps per content type
-- `skip_training` -- bypass the step entirely
+- `override_sources`: explicit agent IDs bypassing the selector
+- `content_types`: enable/disable specific extractors
+- `custom_caps`: override default volume caps per content type
+- `skip_training`: bypass the step entirely
 
 **Safe defaults:** RoleTopPerformers (top 3), RelevanceScoreCuration, all guards enabled,
 human review required. Idempotent by plan ID.
 
 !!! info "Design decisions ([Decision Log](../architecture/decisions.md) D8)"
 
-    - **D8.1 -- Source:** Templates + LLM customization. Templates for common roles
+    - **D8.1: Source.** Templates + LLM customization. Templates for common roles
       (reuses existing [template system](organization.md#template-system)). LLM generates
       config for novel roles not covered by templates. Approval gate catches invalid/bad
       configs before instantiation.
-    - **D8.2 -- Persistence:** Operational store via `PersistenceBackend`. YAML stays as
-      bootstrap seed -- operational store wins for runtime state. Enables rehiring and
+    - **D8.2: Persistence.** Operational store via `PersistenceBackend`. YAML stays as
+      bootstrap seed; operational store wins for runtime state. Enables rehiring and
       auditable history.
-    - **D8.3 -- Hot-plug:** Agents are hot-pluggable at runtime via a dedicated
+    - **D8.3: Hot-plug.** Agents are hot-pluggable at runtime via a dedicated
       company/registry service (not `AgentEngine`, which remains the per-agent task runner).
       Thread-safe registry, wired into message bus + tools + budget.
 
@@ -158,8 +158,8 @@ human review required. Idempotent by plan ID.
 The pruning service automates performance-driven agent removal with mandatory human approval.
 
 - **`PruningPolicy`** protocol with two implementations:
-    - `ThresholdPruningPolicy` -- prunes agents with quality AND collaboration below thresholds for N+ consecutive windows (7d/30d/90d).
-    - `TrendPruningPolicy` -- prunes agents with declining Theil-Sen trend across all three windows.
+    - `ThresholdPruningPolicy`: prunes agents with quality AND collaboration below thresholds for N+ consecutive windows (7d/30d/90d).
+    - `TrendPruningPolicy`: prunes agents with declining Theil-Sen trend across all three windows.
 - **`PruningService`** runs as a periodic background task, evaluates all active agents, and creates CRITICAL-risk approval items for eligible candidates.
 - On human approval, delegates to `OffboardingService` with `FiringReason.PERFORMANCE`.
 - Approval deduplication prevents multiple pending approvals per agent.
@@ -223,7 +223,7 @@ Orchestrated by ``ScalingService`` in ``hr/scaling/service.py``.
 
 Each strategy supports a headless (rule-based) path and an optional agent-delegated
 path (``agent_delegate`` config field). Agent delegation is protocol-stubbed but not
-implemented -- the headless path is always used.
+implemented; the headless path is always used.
 
 **PerformancePruningStrategy** coordinates with the evolution system: when
 ``defer_during_evolution`` is True (default), agents with recent evolution
@@ -233,12 +233,12 @@ adaptations are skipped.
 
 All decisions flow through guards sequentially before execution:
 
-1. **ConflictResolver** -- priority-ordered resolution. Default: BudgetCap (0) >
+1. **ConflictResolver**: priority-ordered resolution. Default: BudgetCap (0) >
    PerformancePruning (1) > SkillGap (2) > Workload (3). HOLD from BudgetCap
    blocks HIRE from lower-priority strategies.
-2. **CooldownGuard** -- per action-type + target cooldown (default 1 hour).
-3. **RateLimitGuard** -- global daily caps (default 3 hires, 1 prune per day).
-4. **ApprovalGateGuard** -- routes decisions through ``ApprovalStore`` as
+2. **CooldownGuard**: per action-type + target cooldown (default 1 hour).
+3. **RateLimitGuard**: global daily caps (default 3 hires, 1 prune per day).
+4. **ApprovalGateGuard**: routes decisions through ``ApprovalStore`` as
    ``ApprovalItem`` entries for human approval.
 
 ### Configuration
@@ -293,11 +293,11 @@ human decision.
 
 !!! info "Design decisions ([Decision Log](../architecture/decisions.md) D9, D10)"
 
-    - **D9 -- Task Reassignment:** Pluggable `TaskReassignmentStrategy` protocol. Initial
-      strategy: queue-return -- tasks return to unassigned queue, existing `TaskRoutingService`
+    - **D9: Task Reassignment.** Pluggable `TaskReassignmentStrategy` protocol. Initial
+      strategy: queue-return; tasks return to unassigned queue, existing `TaskRoutingService`
       re-routes with priority boost for reassigned tasks. Future strategies:
       same-department/lowest-load, manager-decides (LLM), HR agent decides.
-    - **D10 -- Memory Archival:** Pluggable `MemoryArchivalStrategy` protocol. Initial
+    - **D10: Memory Archival.** Pluggable `MemoryArchivalStrategy` protocol. Initial
       strategy: full snapshot, read-only. Pipeline: retrieve all memories, archive to
       `ArchivalStore`, selectively promote semantic+procedural memories to
       `OrgMemoryBackend` (rule-based), clean hot store, mark agent TERMINATED. Rehiring
@@ -329,8 +329,8 @@ agent_metrics:
 
 ???+ note "Design decisions ([Decision Log](../architecture/decisions.md) D2, D3, D11, D12)"
 
-    **D2 -- Quality Scoring:** Pluggable `QualityScoringStrategy` protocol. Initial
-    strategy: layered combination --
+    **D2: Quality Scoring.** Pluggable `QualityScoringStrategy` protocol. Initial
+    strategy: layered combination, comprising:
 
     1. **FREE:** Objective CI signals (test pass/fail, lint, coverage delta)
     2. **Small daily cost (illustrative):** Small-model LLM judge (different family
@@ -348,8 +348,8 @@ agent_metrics:
 
     ---
 
-    **D3 -- Collaboration Scoring:** Pluggable `CollaborationScoringStrategy` protocol.
-    Initial strategy: automated behavioral telemetry --
+    **D3: Collaboration Scoring.** Pluggable `CollaborationScoringStrategy` protocol.
+    Initial strategy: automated behavioral telemetry, computed as:
 
     ```
     collaboration_score = weighted_average(
@@ -371,8 +371,8 @@ agent_metrics:
 
     ---
 
-    **D11 -- Rolling Windows:** Pluggable `MetricsWindowStrategy` protocol. Initial
-    strategy: multiple simultaneous windows --
+    **D11: Rolling Windows.** Pluggable `MetricsWindowStrategy` protocol. Initial
+    strategy: multiple simultaneous windows:
 
     - **7d** for acute regressions
     - **30d** for sustained patterns
@@ -383,7 +383,7 @@ agent_metrics:
 
     ---
 
-    **D12 -- Trend Detection:** Pluggable `TrendDetectionStrategy` protocol. Initial
+    **D12: Trend Detection.** Pluggable `TrendDetectionStrategy` protocol. Initial
     strategy: Theil-Sen regression slope per window + configurable thresholds classify
     trends as improving/stable/declining. Theil-Sen has 29.3% outlier breakdown (tolerates
     ~1 in 3 bad data points). Minimum 5 data points. Future strategies:
@@ -444,7 +444,7 @@ Per-run efficiency ratios measured against ``IdealTrajectoryBaseline``:
 - **PTE**: Prefill Token Equivalents (hardware-aware cost metric, from arXiv:2604.05404)
 - **PTE ratio**: observed PTE / ideal PTE
 
-Baselines are human-curated and versioned -- not auto-updated from observed runs.
+Baselines are human-curated and versioned, not auto-updated from observed runs.
 
 ### Quality Erosion Detection
 
@@ -486,16 +486,16 @@ Agents can move between seniority levels based on performance:
 
 !!! info "Design decisions ([Decision Log](../architecture/decisions.md) D13, D14, D15)"
 
-    - **D13 -- Promotion Criteria:** Pluggable `PromotionCriteriaStrategy` protocol. Initial
+    - **D13: Promotion Criteria.** Pluggable `PromotionCriteriaStrategy` protocol. Initial
       strategy: configurable threshold gates. `ThresholdEvaluator` with
       `min_criteria_met: int` (N of M) + `required_criteria: list[str]`. Setting `min=total`
       gives AND; `min=1` gives OR. Default: junior-to-mid = 2 of 3 criteria,
       mid-to-senior = all.
-    - **D14 -- Promotion Approval:** Pluggable `PromotionApprovalStrategy` protocol. Initial
+    - **D14: Promotion Approval.** Pluggable `PromotionApprovalStrategy` protocol. Initial
       strategy: senior+ requires human approval. Junior-to-mid auto-promotes (low cost
       impact: small-to-medium ~4x). Demotions: auto-apply for cost-saving (model downgrade),
       human approval for authority-reducing demotions.
-    - **D15 -- Model Mapping:** Pluggable `ModelMappingStrategy` protocol. Initial strategy:
+    - **D15: Model Mapping.** Pluggable `ModelMappingStrategy` protocol. Initial strategy:
       default ON (`hr.promotions.model_follows_seniority: true`). Model changes at task
       boundaries only (never mid-execution, consistent with
       [auto-downgrade](budget.md#cost-controls)). Per-agent `preferred_model` overrides seniority
@@ -508,7 +508,7 @@ Agents can move between seniority levels based on performance:
 Agents improve over time through a pluggable evolution pipeline that closes the loop
 between execution outcomes, learned knowledge, and agent behavior. The system follows
 the [EvoSkill](https://arxiv.org/abs/2603.02766) three-agent separation principle:
-the executing agent does not propose its own identity changes -- a separate analyzer
+the executing agent does not propose its own identity changes; a separate analyzer
 does.
 
 ### Architecture
@@ -622,7 +622,7 @@ evolution:
 
 !!! note "Runtime wiring status"
     The evolution config, service, and factory are implemented. As of today,
-    ``build_evolution_service()`` has no production callers -- the service is
+    ``build_evolution_service()`` has no production callers; the service is
     wired in tests and designed for app-init integration. REST API + dashboard
     for runtime evolution management are planned.
 
@@ -647,24 +647,24 @@ recommended weights (equal 0.2 each).
 The `EvaluationService` orchestrates scoring, delegating to pluggable
 `PillarScoringStrategy` implementations. The efficiency pillar is computed inline
 from `WindowMetrics`. Human-calibrated LLM labeling uses the existing
-`LlmCalibrationSampler` infrastructure -- calibration drift above a configurable
+`LlmCalibrationSampler` infrastructure; calibration drift above a configurable
 threshold reduces the intelligence pillar's confidence, signaling the need for
 more human labels.
 
 ???+ note "Design decisions ([Decision Log](../architecture/decisions.md) D24)"
 
-    **D24 -- Five-Pillar Evaluation:** Pluggable `PillarScoringStrategy` protocol with
+    **D24: Five-Pillar Evaluation.** Pluggable `PillarScoringStrategy` protocol with
     single `EvaluationContext` bag. Each pillar has a default strategy:
 
-    - **Intelligence:** `QualityBlendIntelligenceStrategy` -- blends CI quality score
+    - **Intelligence**: `QualityBlendIntelligenceStrategy` blends CI quality score
       (70%) with LLM calibration score (30%). High calibration drift reduces confidence.
-    - **Efficiency:** Inline computation from `WindowMetrics` -- normalized cost (40%),
+    - **Efficiency**: Inline computation from `WindowMetrics`; normalized cost (40%),
       time (30%), token (30%) efficiency scores.
-    - **Resilience:** `TaskBasedResilienceStrategy` -- success rate (40%), recovery rate
+    - **Resilience**: `TaskBasedResilienceStrategy`; success rate (40%), recovery rate
       (25%), quality consistency (20%), streak bonus (15%).
-    - **Governance:** `AuditBasedGovernanceStrategy` -- audit compliance (50%), trust
+    - **Governance**: `AuditBasedGovernanceStrategy`; audit compliance (50%), trust
       level (30%), autonomy compliance (20%).
-    - **Experience:** `FeedbackBasedUxStrategy` -- clarity (25%), helpfulness (25%),
+    - **Experience**: `FeedbackBasedUxStrategy`; clarity (25%), helpfulness (25%),
       trust (20%), tone (15%), satisfaction (15%).
 
     All metrics toggleable via `EvaluationConfig` per-pillar sub-configs. Weight
@@ -677,14 +677,14 @@ more human labels.
 
 Client agents are synthetic or real external actors that submit task requirements
 and review deliverables. Unlike internal agents (which execute tasks), client agents
-drive the organization from the outside -- generating workloads and evaluating outputs.
+drive the organization from the outside, generating workloads and evaluating outputs.
 
 All client types implement `ClientInterface` from `synthorg.client.protocols`:
 
-- **AIClient** -- LLM-backed persona that generates requirements and reviews
+- **AIClient**: LLM-backed persona that generates requirements and reviews
   deliverables autonomously.
-- **HumanClient** -- Delegates decisions to a human via the API/dashboard.
-- **HybridClient** -- AI drafts, human confirms.
+- **HumanClient**: delegates decisions to a human via the API/dashboard.
+- **HybridClient**: AI drafts, human confirms.
 
 Client behavior is configured via `ClientProfile` (persona, expertise domains,
 strictness level) and driven by pluggable strategies for requirement generation
@@ -709,7 +709,7 @@ MCP handlers and REST controllers never reach into HR repositories directly; eve
 
 ## See Also
 
-- [Agents](agents.md) -- agent identity, personality, skills, identity versioning
-- [Organization](organization.md) -- company types, departments, templates
-- [Budget & Cost](budget.md) -- performance-driven downgrade, risk budget
-- [Design Overview](index.md) -- full index
+- [Agents](agents.md): agent identity, personality, skills, identity versioning
+- [Organization](organization.md): company types, departments, templates
+- [Budget & Cost](budget.md): performance-driven downgrade, risk budget
+- [Design Overview](index.md): full index
