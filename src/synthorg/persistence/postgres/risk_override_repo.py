@@ -18,7 +18,6 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
     PERSISTENCE_RISK_OVERRIDE_REVOKE_FAILED,
-    PERSISTENCE_RISK_OVERRIDE_REVOKED,
     PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
 )
 from synthorg.persistence._shared import normalize_utc
@@ -210,12 +209,6 @@ class PostgresRiskOverrideRepository:
             )
             raise QueryError(msg) from exc
 
-        if revoked:
-            logger.info(
-                PERSISTENCE_RISK_OVERRIDE_REVOKED,
-                override_id=override_id,
-                revoked_by=revoked_by,
-            )
         return revoked
 
 
