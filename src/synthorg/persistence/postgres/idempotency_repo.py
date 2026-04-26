@@ -94,77 +94,52 @@ class PostgresIdempotencyRepository:
                     conn.cursor(row_factory=self._dict_row) as cur,
                 ):
                     new_token = secrets.token_hex(16)
-                    await cur.execute(
-                        "INSERT INTO idempotency_keys "
-                        "(scope, key, status, claim_token, "
-                        "created_at, expires_at) "
-                        "VALUES (%s, %s, 'in_flight', %s, %s, %s) "
-                        "ON CONFLICT (scope, key) DO NOTHING "
-                        "RETURNING scope",
-                        (scope, key, new_token, now, expires_at),
-                    )
-                    if await cur.fetchone() is not None:
+                    if await self._attempt_insert(
+                        cur,
+                        scope=scope,
+                        key=key,
+                        new_token=new_token,
+                        now=now,
+                        expires_at=expires_at,
+                    ):
                         return IdempotencyClaim(
                             outcome=IdempotencyOutcome.FRESH,
-                            claim_token=new_token,
+                            claim_token=NotBlankStr(new_token),
                         )
 
-                    await cur.execute(
-                        "SELECT status, response_body, expires_at "
-                        "FROM idempotency_keys "
-                        "WHERE scope = %s AND key = %s FOR UPDATE",
-                        (scope, key),
+                    classified = await self._select_for_update_and_classify(
+                        cur,
+                        scope=scope,
+                        key=key,
+                        now=now,
                     )
-                    row = await cur.fetchone()
-                    if row is None:
+                    if classified is None:
                         # Row vanished between our conflict and the
                         # SELECT (concurrent cleanup). Retry the whole
-                        # protocol; the next INSERT either wins FRESH
-                        # or re-conflicts against a sibling that just
-                        # re-inserted.
+                        # protocol.
                         last_status = "row_vanished"
                         continue
-
-                    status = row["status"]
-                    row_expires = row["expires_at"]
-                    if row_expires > now and status == "completed":
-                        cached = row["response_body"]
-                        # Always serialise: a stored JSONB ``null``
-                        # round-trips through psycopg as Python None
-                        # but is a *legitimate cached null response*,
-                        # not a missing body. Conditional ``None``
-                        # passthrough would lose that distinction and
-                        # also violate the IdempotencyClaim invariant
-                        # (COMPLETED requires non-None cached_response).
-                        # ``json.dumps(None)`` -> ``"null"``.
-                        cached_str = json.dumps(cached)
+                    outcome, cached_str = classified
+                    if outcome is IdempotencyOutcome.COMPLETED:
                         return IdempotencyClaim(
                             outcome=IdempotencyOutcome.COMPLETED,
                             cached_response=cached_str,
                         )
-                    if row_expires > now and status == "in_flight":
+                    if outcome is IdempotencyOutcome.IN_FLIGHT:
                         return IdempotencyClaim(
                             outcome=IdempotencyOutcome.IN_FLIGHT,
                         )
-                    # Expired or failed -- rotate the lease token so a
-                    # stale worker holding the old one cannot CAS
-                    # against the new claim. ``created_at`` is
-                    # intentionally NOT in the SET clause: it records
-                    # the original insertion time so
-                    # ``IdempotencyRecord.created_at`` (per the
-                    # protocol contract) stays meaningful across
-                    # re-claims.
-                    await cur.execute(
-                        "UPDATE idempotency_keys "
-                        "SET status = 'in_flight', claim_token = %s, "
-                        "response_hash = NULL, response_body = NULL, "
-                        "expires_at = %s "
-                        "WHERE scope = %s AND key = %s",
-                        (new_token, expires_at, scope, key),
+                    # Expired or failed -- rotate the lease.
+                    await self._reclaim_update(
+                        cur,
+                        scope=scope,
+                        key=key,
+                        new_token=new_token,
+                        expires_at=expires_at,
                     )
                     return IdempotencyClaim(
                         outcome=IdempotencyOutcome.FRESH,
-                        claim_token=new_token,
+                        claim_token=NotBlankStr(new_token),
                     )
         except PsycopgError as exc:
             logger.warning(
@@ -190,6 +165,99 @@ class PostgresIdempotencyRepository:
             f"{_CLAIM_INSERT_RETRIES} insert/select retries"
         )
         raise QueryError(msg)
+
+    async def _attempt_insert(  # noqa: PLR0913
+        self,
+        cur: Any,
+        *,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+        new_token: str,
+        now: AwareDatetime,
+        expires_at: AwareDatetime,
+    ) -> bool:
+        """Try to win FRESH via ``INSERT ... ON CONFLICT DO NOTHING``.
+
+        Returns ``True`` when the insert landed (we own the lease);
+        ``False`` on conflict (the caller must SELECT FOR UPDATE to
+        decide what to do with the existing row).
+        """
+        await cur.execute(
+            "INSERT INTO idempotency_keys "
+            "(scope, key, status, claim_token, "
+            "created_at, expires_at) "
+            "VALUES (%s, %s, 'in_flight', %s, %s, %s) "
+            "ON CONFLICT (scope, key) DO NOTHING "
+            "RETURNING scope",
+            (scope, key, new_token, now, expires_at),
+        )
+        return await cur.fetchone() is not None
+
+    async def _select_for_update_and_classify(
+        self,
+        cur: Any,
+        *,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+        now: AwareDatetime,
+    ) -> tuple[IdempotencyOutcome, str | None] | None:
+        """Lock the existing row and classify the next outcome.
+
+        Returns ``None`` when the row vanished (caller retries the
+        whole protocol). Otherwise returns ``(outcome, cached_str)``:
+        - ``COMPLETED`` + non-None ``cached_str``
+        - ``IN_FLIGHT`` + ``None``
+        - ``FRESH`` + ``None`` (caller must run the reclaim UPDATE)
+        """
+        await cur.execute(
+            "SELECT status, response_body, expires_at "
+            "FROM idempotency_keys "
+            "WHERE scope = %s AND key = %s FOR UPDATE",
+            (scope, key),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        status = row["status"]
+        row_expires = row["expires_at"]
+        if row_expires > now and status == "completed":
+            cached = row["response_body"]
+            # Always serialise: a stored JSONB ``null`` round-trips
+            # through psycopg as Python None but is a *legitimate
+            # cached null response*, not a missing body. Conditional
+            # ``None`` passthrough would lose that distinction and
+            # also violate the IdempotencyClaim invariant (COMPLETED
+            # requires non-None cached_response).
+            cached_str = json.dumps(cached)
+            return (IdempotencyOutcome.COMPLETED, cached_str)
+        if row_expires > now and status == "in_flight":
+            return (IdempotencyOutcome.IN_FLIGHT, None)
+        # Expired OR failed -- caller will reclaim with a fresh lease.
+        return (IdempotencyOutcome.FRESH, None)
+
+    async def _reclaim_update(
+        self,
+        cur: Any,
+        *,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+        new_token: str,
+        expires_at: AwareDatetime,
+    ) -> None:
+        """Rotate an expired/failed row to a fresh in-flight lease.
+
+        ``created_at`` is intentionally NOT in the SET clause so
+        ``IdempotencyRecord.created_at`` keeps its original-insertion
+        semantics across re-claims (per the protocol contract).
+        """
+        await cur.execute(
+            "UPDATE idempotency_keys "
+            "SET status = 'in_flight', claim_token = %s, "
+            "response_hash = NULL, response_body = NULL, "
+            "expires_at = %s "
+            "WHERE scope = %s AND key = %s",
+            (new_token, expires_at, scope, key),
+        )
 
     async def complete(
         self,

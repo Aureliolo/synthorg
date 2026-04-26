@@ -22,6 +22,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_AUTH_REFRESH_PERSISTENCE_ERROR,
 )
+from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
 from synthorg.persistence.errors import QueryError
 
 # Persistence-boundary rule (#1599): SECURITY_AUTH_REFRESH_* events are
@@ -74,8 +75,8 @@ class SQLiteRefreshTokenRepository:
                         token_hash,
                         session_id,
                         user_id,
-                        expires_at.isoformat(),
-                        now.isoformat(),
+                        format_iso_utc(expires_at),
+                        format_iso_utc(now),
                     ),
                 )
                 await self._db.commit()
@@ -103,7 +104,7 @@ class SQLiteRefreshTokenRepository:
         is_session_revoked: Callable[[str], bool] | None = None,
     ) -> RefreshConsumeOutcome:
         """Atomically consume a refresh token (single-use rotation)."""
-        now = datetime.now(UTC).isoformat()
+        now = format_iso_utc(datetime.now(UTC))
         async with self._write_lock:
             try:
                 cursor = await self._db.execute(
@@ -138,9 +139,9 @@ class SQLiteRefreshTokenRepository:
                     token_hash=row["token_hash"],
                     session_id=row["session_id"],
                     user_id=row["user_id"],
-                    expires_at=datetime.fromisoformat(row["expires_at"]),
+                    expires_at=parse_iso_utc(row["expires_at"]),
                     used=bool(row["used"]),
-                    created_at=datetime.fromisoformat(row["created_at"]),
+                    created_at=parse_iso_utc(row["created_at"]),
                 ),
             )
 
@@ -221,7 +222,7 @@ class SQLiteRefreshTokenRepository:
         returns the count per the persistence-boundary rule
         (#1599 -- repositories do not emit operational events).
         """
-        now = datetime.now(UTC).isoformat()
+        now = format_iso_utc(datetime.now(UTC))
         async with self._write_lock:
             try:
                 cursor = await self._db.execute(

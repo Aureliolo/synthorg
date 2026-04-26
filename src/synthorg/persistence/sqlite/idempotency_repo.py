@@ -91,7 +91,18 @@ class SQLiteIdempotencyRepository:
                     expires_at=expires_at,
                 )
                 await self._db.commit()
-            except (sqlite3.Error, aiosqlite.Error) as exc:
+            except MemoryError, RecursionError:
+                # System errors must propagate without touching the
+                # row -- attempting rollback under OOM may itself fail.
+                raise
+            except Exception as exc:
+                # Catch broadly so a non-SQL failure (parse_iso_utc on
+                # a corrupt row, IdempotencyClaim model_validator,
+                # ...) still triggers rollback + structured logging
+                # rather than skipping straight past the gate. SQL
+                # errors stay wrapped in QueryError to preserve the
+                # existing exception contract; everything else
+                # re-raises verbatim so its semantic is not lost.
                 with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
                     await self._db.rollback()
                 logger.warning(
@@ -101,8 +112,10 @@ class SQLiteIdempotencyRepository:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-                msg = "Failed to claim idempotency key"
-                raise QueryError(msg) from exc
+                if isinstance(exc, sqlite3.Error | aiosqlite.Error):
+                    msg = "Failed to claim idempotency key"
+                    raise QueryError(msg) from exc
+                raise
         return claim
 
     async def _fetch_idempotency_row(
