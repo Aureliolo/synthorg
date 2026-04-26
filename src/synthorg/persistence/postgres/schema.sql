@@ -1209,7 +1209,14 @@ CREATE TABLE idempotency_keys (
     -- cannot CAS-overwrite the new lease's cached response.
     claim_token TEXT NOT NULL CHECK (length(trim(claim_token)) > 0),
     response_hash TEXT,
-    response_body JSONB,
+    -- Cached HTTP response body. Stored as TEXT (not JSONB) so the
+    -- bytes round-trip verbatim -- JSONB would canonicalise key
+    -- order and whitespace, breaking ``response_hash`` integrity
+    -- checks and diverging from the SQLite backend's TEXT
+    -- semantics. The service layer enforces JSON-validity on the
+    -- way in (via ``json.dumps``); the column is free text on the
+    -- DB side because we never query into it via JSONB operators.
+    response_body TEXT,
     created_at TIMESTAMPTZ NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL CHECK (expires_at > created_at),
     -- Cached-response invariant: the (response_hash, response_body)

@@ -145,20 +145,29 @@ class TestIdempotencyClaim:
     ) -> None:
         """``asyncio.gather`` 10 simultaneous claims -- exactly one FRESH.
 
-        All 10 coroutines block on the same ``asyncio.Event`` until the
-        last has been scheduled, then the event is set so they race
-        into ``claim`` together. Without the barrier, the loop's
-        sequential ``backend.idempotency_keys.claim(...)`` calls inside
-        the comprehension can resolve before the next task even starts
-        (especially under SQLite's BEGIN IMMEDIATE serialisation),
-        which leaves the test asserting the trivial sequential
-        outcome rather than the concurrent race that motivates it.
+        Uses a real arrival-counter barrier rather than ``asyncio.sleep(0)``
+        so the gate cannot be released until every coroutine has
+        actually reached ``await cond.wait_for(...)``. ``sleep(0)``
+        only yields once and is not a guaranteed scheduling point on
+        every event-loop implementation -- under load some tasks may
+        not have reached the wait by the time the gate fires, leaving
+        the test asserting a sequential outcome rather than the
+        concurrent race that motivates it.
         """
         key = NotBlankStr("key-race")
-        start_evt = asyncio.Event()
+        n_tasks = 10
+        cond = asyncio.Condition()
+        arrived = 0
 
         async def _gated_claim() -> IdempotencyClaim:
-            await start_evt.wait()
+            nonlocal arrived
+            async with cond:
+                arrived += 1
+                if arrived == n_tasks:
+                    # Last arrival releases everyone simultaneously.
+                    cond.notify_all()
+                else:
+                    await cond.wait_for(lambda: arrived == n_tasks)
             return await backend.idempotency_keys.claim(
                 scope=_SCOPE,
                 key=key,
@@ -166,13 +175,9 @@ class TestIdempotencyClaim:
                 now=_now(),
             )
 
-        tasks = [asyncio.create_task(_gated_claim()) for _ in range(10)]
-        # Yield once so every task reaches ``await start_evt.wait()``
-        # before we release the gate -- otherwise the first to be
-        # scheduled could win without anyone else having started.
-        await asyncio.sleep(0)
-        start_evt.set()
-        results = await asyncio.gather(*tasks)
+        results = await asyncio.gather(
+            *[_gated_claim() for _ in range(n_tasks)],
+        )
         fresh = [r for r in results if r.outcome is IdempotencyOutcome.FRESH]
         in_flight = [r for r in results if r.outcome is IdempotencyOutcome.IN_FLIGHT]
         assert len(fresh) == 1

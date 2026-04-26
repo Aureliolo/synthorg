@@ -5,7 +5,7 @@ CREATE TABLE "idempotency_keys" (
   "status" text NOT NULL,
   "claim_token" text NOT NULL,
   "response_hash" text NULL,
-  "response_body" jsonb NULL,
+  "response_body" text NULL,
   "created_at" timestamptz NOT NULL,
   "expires_at" timestamptz NOT NULL,
   PRIMARY KEY ("scope", "key"),

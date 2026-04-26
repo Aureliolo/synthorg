@@ -139,21 +139,39 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
         Caller MUST hold the per-key lock so the deque mutations and
         the decision are atomic against concurrent ``acquire`` calls
         on the same key.
+
+        Pruning uses the bucket's *largest observed* window so a
+        short-window acquire on a shared key cannot evict events that
+        a longer-window concurrent acquire still needs. The
+        allow/deny decision counts only events inside the *current*
+        call's window, leaving older-but-still-relevant events in the
+        deque for any larger-window acquire on the same key.
         """
-        # Remember the largest observed window per key; GC uses this
-        # to avoid prematurely evicting a long-window bucket when a
-        # short-window acquire triggers a sweep.
+        # Track the largest observed window per key (also used by GC).
         bucket.window_seconds = max(bucket.window_seconds, window_seconds)
-        cutoff = now - float(window_seconds)
-        while bucket.timestamps and bucket.timestamps[0] <= cutoff:
+        # Prune by the largest window so events still relevant to a
+        # longer-window acquire are not lost.
+        prune_cutoff = now - float(bucket.window_seconds)
+        while bucket.timestamps and bucket.timestamps[0] <= prune_cutoff:
             bucket.timestamps.popleft()
-        if len(bucket.timestamps) >= max_requests:
-            oldest = bucket.timestamps[0]
+        # Decide allow/deny against the CURRENT call's window. Iterate
+        # from the right (newest) and stop at the first event outside
+        # the window; events earlier than that count toward longer
+        # windows but not this one.
+        decision_cutoff = now - float(window_seconds)
+        in_window = 0
+        oldest_in_window: float | None = None
+        for ts in reversed(bucket.timestamps):
+            if ts <= decision_cutoff:
+                break
+            in_window += 1
+            oldest_in_window = ts
+        if in_window >= max_requests and oldest_in_window is not None:
             # Minimum 0.001s so a client seeing retry_after=0 never
             # hot-loops on sub-millisecond clock jitter while a window
             # is still active.
             retry_after = max(
-                oldest + float(window_seconds) - now,
+                oldest_in_window + float(window_seconds) - now,
                 0.001,
             )
             return RateLimitOutcome(
@@ -162,7 +180,7 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
                 remaining=0,
             )
         bucket.timestamps.append(now)
-        remaining = max(max_requests - len(bucket.timestamps), 0)
+        remaining = max(max_requests - in_window - 1, 0)
         return RateLimitOutcome(
             allowed=True,
             retry_after_seconds=None,

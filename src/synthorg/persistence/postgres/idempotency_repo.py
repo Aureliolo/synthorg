@@ -9,7 +9,6 @@ attempts at the database level rather than relying on
 to overwrite expired/failed rows in a follow-up ``UPDATE``.
 """
 
-import json
 import secrets
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
@@ -221,14 +220,12 @@ class PostgresIdempotencyRepository:
         status = row["status"]
         row_expires = row["expires_at"]
         if row_expires > now and status == "completed":
-            cached = row["response_body"]
-            # Always serialise: a stored JSONB ``null`` round-trips
-            # through psycopg as Python None but is a *legitimate
-            # cached null response*, not a missing body. Conditional
-            # ``None`` passthrough would lose that distinction and
-            # also violate the IdempotencyClaim invariant (COMPLETED
-            # requires non-None cached_response).
-            cached_str = json.dumps(cached)
+            # ``response_body`` is TEXT (not JSONB) so the verbatim
+            # bytes round-trip back to the caller -- matching the
+            # SQLite backend and preserving the ``response_hash``
+            # contract (a JSONB column would canonicalise key order
+            # and whitespace, breaking re-hash equality).
+            cached_str = row["response_body"]
             return (IdempotencyOutcome.COMPLETED, cached_str)
         if row_expires > now and status == "in_flight":
             return (IdempotencyOutcome.IN_FLIGHT, None)
@@ -271,10 +268,12 @@ class PostgresIdempotencyRepository:
         """Mark a claimed key as ``COMPLETED`` if *claim_token* matches.
 
         ``response_body`` is the canonical JSON string produced by the
-        service layer; it goes straight into the JSONB column via
-        ``%s::jsonb`` -- no ``json.loads`` round-trip. Returns
-        ``True`` when the row's stored token matched and the UPDATE
-        landed; ``False`` when the lease has rotated.
+        service layer; it goes straight into the TEXT column verbatim
+        so the bytes round-trip back to the caller (preserves the
+        ``response_hash`` integrity contract and stays in lockstep
+        with the SQLite backend). Returns ``True`` when the row's
+        stored token matched and the UPDATE landed; ``False`` when
+        the lease has rotated.
         """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -288,7 +287,7 @@ class PostgresIdempotencyRepository:
                 # unlikely with 16 random bytes).
                 await cur.execute(
                     "UPDATE idempotency_keys "
-                    "SET status = 'completed', response_body = %s::jsonb, "
+                    "SET status = 'completed', response_body = %s, "
                     "response_hash = %s "
                     "WHERE scope = %s AND key = %s "
                     "AND claim_token = %s "
@@ -377,33 +376,18 @@ class PostgresIdempotencyRepository:
             return None
         try:
             status = IdempotencyOutcome(row["status"])
-            # ``response_body`` is a JSONB column. For COMPLETED rows we
-            # serialise it back to a canonical JSON string (a stored
-            # JSONB ``null`` round-trips as Python ``None`` but is a
-            # legitimate cached null response). For non-COMPLETED rows
-            # the schema CHECK forces SQL NULL; we preserve the raw
-            # value rather than masking to ``None`` so the
-            # ``IdempotencyRecord`` validator surfaces corruption (a
-            # non-NULL response_body on an in_flight/failed row violates
-            # the schema invariant and must not be silently swallowed).
-            cached = row["response_body"]
-            cached_str: str | None
-            if status is IdempotencyOutcome.COMPLETED:
-                cached_str = json.dumps(cached)
-            elif cached is None:
-                cached_str = None
-            else:
-                # Non-NULL JSONB on a non-completed row -- corruption.
-                # Stringify so the validator's ``response_body must be
-                # None when status is X`` branch fires and the error
-                # is logged + wrapped in QueryError below.
-                cached_str = json.dumps(cached)
+            # ``response_body`` is TEXT (not JSONB) so the bytes flow
+            # through verbatim -- matches SQLite and preserves the
+            # ``response_hash`` round-trip. Pass through as-is; the
+            # ``IdempotencyRecord`` validator below catches schema
+            # violations (response_body NULL/non-NULL must agree
+            # with status).
             return IdempotencyRecord(
                 scope=NotBlankStr(str(row["scope"])),
                 key=NotBlankStr(str(row["key"])),
                 status=status,
                 response_hash=row["response_hash"],
-                response_body=cached_str,
+                response_body=row["response_body"],
                 created_at=row["created_at"],
                 expires_at=row["expires_at"],
             )
