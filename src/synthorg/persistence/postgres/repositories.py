@@ -373,11 +373,12 @@ class PostgresCostRecordRepository:
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to save cost record for agent {record.agent_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_COST_RECORD_SAVE_FAILED,
                 agent_id=record.agent_id,
                 task_id=record.task_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -414,10 +415,10 @@ class PostgresCostRecordRepository:
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = "Failed to query cost records"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_COST_RECORD_QUERY_FAILED,
-                error=str(exc),
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         try:
@@ -428,10 +429,10 @@ class PostgresCostRecordRepository:
             # in the event payload so callers can tell them apart;
             # retrying a ValidationError will never succeed.
             msg = "Failed to deserialize cost records"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_COST_RECORD_QUERY_FAILED,
-                error=str(exc),
                 error_type="ValidationError",
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_COST_RECORD_QUERIED, count=len(records))
@@ -478,10 +479,11 @@ class PostgresCostRecordRepository:
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = "Failed to aggregate cost records"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_COST_RECORD_AGGREGATE_FAILED,
                 agent_id=agent_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:

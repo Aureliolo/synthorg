@@ -1,23 +1,23 @@
-"""Security subsystem -- SecOps agent, rule engine, audit, and models.
+"""Security subsystem: SecOps agent, rule engine, audit, and models.
 
 Public API:
 
-- ``SecOpsService`` -- the meta-agent coordinating security.
-- ``SecurityConfig`` -- top-level security configuration.
-- ``SecurityVerdict`` / ``SecurityVerdictType`` -- evaluation results.
-- ``SecurityContext`` -- tool invocation context for evaluation.
-- ``AuditEntry`` / ``AuditLog`` -- audit recording.
+- ``SecOpsService``: the meta-agent coordinating security.
+- ``SecurityConfig``: top-level security configuration.
+- ``SecurityVerdict`` / ``SecurityVerdictType``: evaluation results.
+- ``SecurityContext``: tool invocation context for evaluation.
+- ``AuditEntry`` / ``AuditLog``: audit recording.
 - ``OutputScanResult`` / ``ScanOutcome`` / ``OutputScanner``:
   post-tool output scanning.
-- ``OutputScanResponsePolicy`` -- protocol for output scan policies.
+- ``OutputScanResponsePolicy``: protocol for output scan policies.
 - ``RedactPolicy`` / ``WithholdPolicy`` / ``LogOnlyPolicy``
-  / ``AutonomyTieredPolicy`` -- policy implementations.
+  / ``AutonomyTieredPolicy``: policy implementations.
 - ``OutputScanPolicyType`` / ``build_output_scan_policy``:
   config-driven policy selection.
-- ``SecurityInterceptionStrategy`` -- protocol for the ToolInvoker.
-- ``ActionTypeRegistry`` / ``ActionTypeCategory`` -- action taxonomy.
-- ``RuleEngine`` / ``SecurityRule`` -- rule evaluation.
-- ``CustomPolicyRule`` -- user-defined policy rule wrapper.
+- ``SecurityInterceptionStrategy``: protocol for the ToolInvoker.
+- ``ActionTypeRegistry`` / ``ActionTypeCategory``: action taxonomy.
+- ``RuleEngine`` / ``SecurityRule``: rule evaluation.
+- ``CustomPolicyRule``: user-defined policy rule wrapper.
 """
 
 from synthorg.security.action_types import (

@@ -74,9 +74,9 @@ Seniority determines an agent's authority scope, typical model tier, and positio
 | Level | Value | Authority Scope | Typical Model Tier |
 |-------|-------|-----------------|-------------------|
 | Junior | `junior` | Execute assigned tasks | Small |
-| Mid | `mid` | Execute tasks, limited delegation | Small--Medium |
+| Mid | `mid` | Execute tasks, limited delegation | Small/Medium |
 | Senior | `senior` | Delegate to juniors, review work | Medium |
-| Lead | `lead` | Team-level decisions, delegation | Medium--Large |
+| Lead | `lead` | Team-level decisions, delegation | Medium/Large |
 | Principal | `principal` | Cross-team technical decisions | Large |
 | Director | `director` | Department-level strategy | Large |
 | VP | `vp` | Multi-department oversight | Large |
@@ -280,13 +280,13 @@ Templates pre-populate agents, departments, and workflows. You can customize any
 |----------|--------|----------|----------|---------------|
 | `solo_founder` | 2 | Full | Kanban | Event-driven |
 | `startup` | 5 | Semi | Agile/Kanban | Hybrid |
-| `dev_shop` | 6--10 | Semi | Kanban | Hybrid |
-| `product_team` | 8--12 | Semi | Agile/Kanban | Meeting-based |
-| `agency` | 4--8 | Supervised | Pipeline | Hierarchical |
-| `full_company` | 8--15 | Semi | Agile | Hybrid |
-| `research_lab` | 5--10 | Full | Kanban | Event-driven |
-| `consultancy` | 4--6 | Supervised | Pipeline | Hierarchical |
-| `data_team` | 5--8 | Full | Kanban | Event-driven |
+| `dev_shop` | 6-10 | Semi | Kanban | Hybrid |
+| `product_team` | 8-12 | Semi | Agile/Kanban | Meeting-based |
+| `agency` | 4-8 | Supervised | Pipeline | Hierarchical |
+| `full_company` | 8-15 | Semi | Agile | Hybrid |
+| `research_lab` | 5-10 | Full | Kanban | Event-driven |
+| `consultancy` | 4-6 | Supervised | Pipeline | Hierarchical |
+| `data_team` | 5-8 | Full | Kanban | Event-driven |
 
 Templates support **inheritance** via the `extends` keyword (deep merge up to 10 levels) and **variables** with Jinja2 placeholders for customization.
 

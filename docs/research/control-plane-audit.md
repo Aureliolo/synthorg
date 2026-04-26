@@ -213,7 +213,8 @@ formats.
 | Generate report | `POST /reports/generate` | Spending, performance, task completion |
 | List log sinks | `GET /settings/observability/sinks` | Current sink configuration |
 | Test sink connectivity | `POST /settings/observability/sinks/_test` | CEO/manager |
-| Liveness/readiness | `GET /health` | Public, no auth |
+| Liveness | `GET /api/v1/healthz` | Public, process-alive check |
+| Readiness | `GET /api/v1/readyz` | Public, 200 when dependencies healthy, 503 otherwise |
 
 **Gap G1 (most significant)**: There is no Prometheus `/metrics` endpoint and no
 OpenTelemetry (OTLP) exporter. The HTTP batch handler (`SinkType.HTTP`) is a log forwarder

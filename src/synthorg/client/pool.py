@@ -97,7 +97,7 @@ class ClientPool:
     async def reactivate(self, client_id: str) -> ClientProfile:
         """Re-enable a previously deactivated client.
 
-        Idempotent -- reactivating an already-active client is a
+        Idempotent: reactivating an already-active client is a
         no-op that returns the existing profile.
 
         Raises:

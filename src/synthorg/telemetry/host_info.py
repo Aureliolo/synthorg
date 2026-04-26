@@ -198,7 +198,7 @@ def _extract(info: Mapping[str, object]) -> DockerHostInfo:
 
     runtimes = info.get("Runtimes")
     result["docker_gpu_runtime_nvidia_available"] = bool(
-        isinstance(runtimes, dict) and _NVIDIA_RUNTIME_NAME in runtimes,
+        isinstance(runtimes, dict) and _NVIDIA_RUNTIME_NAME in runtimes
     )
 
     return result

@@ -684,8 +684,8 @@ class CoordinationMetricsCollector:
         body = (
             f"Coordination overhead is {overhead.value_percent:.1f}% "
             f"({overhead.turns_mas:.0f} MAS turns vs "
-            f"{overhead.turns_sas:.0f} SAS turns) -- "
-            f"agent={agent_id} task={task_id}"
+            f"{overhead.turns_sas:.0f} SAS turns); "
+            f"agent={agent_id}, task={task_id}"
         )
         try:
             await self._notification_dispatcher.dispatch(

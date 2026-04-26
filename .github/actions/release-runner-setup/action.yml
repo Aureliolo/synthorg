@@ -5,7 +5,7 @@ description: >-
   a short-lived installation token for the `synthorg-repo-bot` GitHub App.
   The minted token is exposed on the `token` output so downstream steps can
   use it for API calls that produce signed commits AND fire downstream
-  workflows -- the two constraints PAT + GITHUB_TOKEN could not satisfy
+  workflows; the two constraints PAT + GITHUB_TOKEN could not satisfy
   together. See docs/reference/github-environments.md#release_bot_app_ for
   provisioning.
 
@@ -17,13 +17,13 @@ description: >-
 inputs:
   # IMPORTANT: input descriptions deliberately do NOT use ${{ ... }}
   # syntax, even for documentation examples. GitHub Actions evaluates
-  # every expression in this file at template-load time -- composite
+  # every expression in this file at template-load time; composite
   # actions cannot access the ``secrets`` context, so any stray
   # ``${{ secrets.X }}`` in a description (even as a usage hint)
   # fails the whole action with "Unrecognized named-value: 'secrets'"
   # and breaks every caller. See https://docs.github.com/en/actions/
-  # sharing-automations/creating-actions/metadata-syntax-for-github-actions
-  # -- composite actions only see ``inputs``, ``steps``, ``env``,
+  # sharing-automations/creating-actions/metadata-syntax-for-github-actions:
+  # composite actions only see ``inputs``, ``steps``, ``env``,
   # ``github``, ``runner``, ``job``, and ``matrix`` contexts.
   client-id:
     description: "GitHub App Client ID (the Iv23... string shown on the App's settings page). Callers typically pass secrets.RELEASE_BOT_APP_CLIENT_ID (the secret lives on the release deployment environment). The older actions/create-github-app-token input `app-id` accepted the numeric App ID; v3.1 deprecated that in favour of `client-id`, so we pass `client-id` through directly."

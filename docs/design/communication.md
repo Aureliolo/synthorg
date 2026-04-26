@@ -454,7 +454,7 @@ department, or per conflict type.
         mandatory-justification header in middleware metadata for downstream
         prompt injection, and logs all detections for audit. Coordination-level
         analog scans rollup summaries before parent-task updates. See
-        [S1 Multi-Agent Architecture Decision §3](../research/s1-multi-agent-decision.md#section-3--risk-mitigation-register-15-emergent-risks-from-paper-1),
+        [S1 Multi-Agent Architecture Decision §3](../research/s1-multi-agent-decision.md#section-3-risk-mitigation-register-15-emergent-risks-from-paper-1),
         [Verification & Quality: Harness Middleware Layer](verification-quality.md#harness-middleware-layer),
         and [#1260](https://github.com/Aureliolo/synthorg/issues/1260).
 
@@ -560,7 +560,7 @@ registered and selected per meeting type. Cost bounds are enforced by
     correlated-source clusters, preserve minority reports in an extended
     `DissentRecord.minority_evidence` field) mitigates both risks. Tracked as
     a constraint on [#1251](https://github.com/Aureliolo/synthorg/issues/1251). See
-    [S1 Multi-Agent Architecture Decision §3](../research/s1-multi-agent-decision.md#section-3--risk-mitigation-register-15-emergent-risks-from-paper-1).
+    [S1 Multi-Agent Architecture Decision §3](../research/s1-multi-agent-decision.md#section-3-risk-mitigation-register-15-emergent-risks-from-paper-1).
 
 === "Protocol 1: Round-Robin Transcript"
 

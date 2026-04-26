@@ -44,14 +44,14 @@ The following table compares major multi-agent frameworks that informed the desi
 
 - **Task decomposability is the primary predictor** of multi-agent success. Parallelizable tasks gain up to +81%, while sequential tasks degrade -39% to -70% under all multi-agent system variants. This directly informs the task decomposition subsystem.
 - **Coordination metrics suite** (efficiency, overhead, error amplification, message density, redundancy) explains 52.4% of performance variance (R^2=0.524). Adopted in the LLM call analytics system.
-- **Tiered coordination overhead** (`O%`): optimal band is 200--300%, with over-coordination above 400%. Informs the orchestration ratio metric interpretation.
+- **Tiered coordination overhead** (`O%`): optimal band is 200-300%, with over-coordination above 400%. Informs the orchestration ratio metric interpretation.
 - **Error taxonomy** (logical contradiction, numerical drift, context omission, coordination failure) with architecture-specific patterns. Adopted as opt-in classification in the coordination error classification pipeline.
 - **Auto topology selection** achieves 87% accuracy from measurable task properties. Informs the auto topology selector in the task routing subsystem.
 - **Centralized verification** contains error amplification to 4.4x vs 17.2x for independent agents.
 
 !!! note "Applicability"
 
-    The paper tested identical agents on individual tasks. SynthOrg uses role-differentiated agents in an organizational structure. Thresholds (e.g., 45% capability ceiling, 3--4 agent sweet spot) are directional and will be validated empirically in this context.
+    The paper tested identical agents on individual tasks. SynthOrg uses role-differentiated agents in an organizational structure. Thresholds (e.g., 45% capability ceiling, 3-4 agent sweet spot) are directional and will be validated empirically in this context.
 
 ---
 

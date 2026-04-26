@@ -207,7 +207,15 @@ The `type` URI points to the category section of the [Error Reference](../errors
 
 ## Rate Limiting
 
-The API applies three-tier rate limiting via `synthorg.api.config.RateLimitConfig` (layered on top of Litestar's built-in rate-limit middleware): an un-gated per-IP floor (default 10,000/min/IP, covers every request including those the auth middleware rejects with 401), a per-IP unauthenticated tier (default 20/min/IP, only fires when `scope["user"]` is unset), and a per-user authenticated tier (default 6,000/min/user). The floor default is sized above both user-gated caps so shared-NAT deployments do not clip legitimate traffic; a Pydantic validator on `RateLimitConfig` rejects a floor lower than either the authenticated or unauthenticated cap. All three are configurable per deployment; see `docs/security.md` for tuning, and `synthorg.api.config.RateLimitConfig` for the source-of-truth field descriptions and validator logic. Clients that exceed any tier receive `429 Too Many Requests` carrying `error_code` 5000 (`RATE_LIMITED`) and a `Retry-After` header. In the envelope form the code lives at `error_detail.error_code`.
+The API applies three-tier rate limiting via `synthorg.api.config.RateLimitConfig`, layered on top of Litestar's built-in rate-limit middleware:
+
+- **Per-IP floor** (default 10,000/min/IP): un-gated, covers every request including those the auth middleware rejects with 401.
+- **Per-IP unauthenticated tier** (default 20/min/IP): only fires when `scope["user"]` is unset.
+- **Per-user authenticated tier** (default 6,000/min/user).
+
+The floor default is sized above both user-gated caps so shared-NAT deployments do not clip legitimate traffic. A Pydantic validator on `RateLimitConfig` rejects a floor lower than either the authenticated or unauthenticated cap. All three tiers are configurable per deployment; see `docs/security.md` for tuning, and `synthorg.api.config.RateLimitConfig` for the source-of-truth field descriptions and validator logic.
+
+Clients that exceed any tier receive `429 Too Many Requests` carrying `error_code` 5000 (`RATE_LIMITED`) and a `Retry-After` header. In the envelope form the code lives at `error_detail.error_code`.
 
 ---
 

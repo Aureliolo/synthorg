@@ -78,9 +78,9 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
 
     Authentication priority:
 
-    1. **Session cookie** -- HttpOnly cookie set by login/setup.
+    1. **Session cookie**: HttpOnly cookie set by login/setup.
        Primary auth path for browser sessions.
-    2. **Authorization header** -- ``Bearer <token>``.
+    2. **Authorization header**: ``Bearer <token>``.
        Tokens with dots are JWTs (system user CLI tokens).
        Tokens without dots are API keys (HMAC-SHA256 lookup).
 

@@ -226,17 +226,17 @@ Read the current `CLAUDE.md` and `README.md` in full, plus the relevant `docs/de
 10. Any other section that describes behavior, structure, or patterns that have changed (MAJOR)
 
 **CLAUDE.md (CRITICAL: this guides all future development):**
-11. Code Conventions: do documented patterns match what's actually in the code? New patterns used but not documented? Documented patterns no longer followed? (CRITICAL)
-12. Logging section: are event import paths, logger patterns, and rules accurate? (CRITICAL)
-13. Resilience section: does it match the actual retry/rate-limit implementation? (MAJOR)
-14. Package Structure: does it match the actual directory layout? (MAJOR)
-15. Testing section: are markers, commands, and conventions current? (MEDIUM)
-16. Any other section that gives instructions that don't match reality (CRITICAL)
+1. Code Conventions: do documented patterns match what's actually in the code? New patterns used but not documented? Documented patterns no longer followed? (CRITICAL)
+2. Logging section: are event import paths, logger patterns, and rules accurate? (CRITICAL)
+3. Resilience section: does it match the actual retry/rate-limit implementation? (MAJOR)
+4. Package Structure: does it match the actual directory layout? (MAJOR)
+5. Testing section: are markers, commands, and conventions current? (MEDIUM)
+6. Any other section that gives instructions that don't match reality (CRITICAL)
 
 **README.md:**
-17. Installation, usage, and getting-started instructions: still accurate? (MAJOR)
-18. Feature descriptions: do they match what's actually built? (MEDIUM)
-19. Links: any dead links or references to things that moved? (MINOR)
+1. Installation, usage, and getting-started instructions: still accurate? (MAJOR)
+2. Feature descriptions: do they match what's actually built? (MEDIUM)
+3. Links: any dead links or references to things that moved? (MINOR)
 
 **Key principle:** It is better to flag a false positive than to let documentation drift silently. When in doubt, flag it.
 
@@ -254,10 +254,10 @@ The **logging-audit** agent prompt must check for these violations (see CLAUDE.m
 
 For every function touched by the PR, analyze its logic and suggest missing logging where appropriate:
 
-7. Error/except paths that don't `logger.warning()` or `logger.error()` with context before raising or returning (SUGGESTION)
-8. State transitions (status changes, lifecycle events, mode switches) that don't `logger.info()` (SUGGESTION)
-9. Object creation, entry/exit of key functions, or important branching decisions that don't `logger.debug()` (SUGGESTION)
-10. Any other code path that would benefit from logging for debuggability or operational visibility; think about what an operator investigating a production issue would want to see (SUGGESTION)
+1. Error/except paths that don't `logger.warning()` or `logger.error()` with context before raising or returning (SUGGESTION)
+2. State transitions (status changes, lifecycle events, mode switches) that don't `logger.info()` (SUGGESTION)
+3. Object creation, entry/exit of key functions, or important branching decisions that don't `logger.debug()` (SUGGESTION)
+4. Any other code path that would benefit from logging for debuggability or operational visibility; think about what an operator investigating a production issue would want to see (SUGGESTION)
 
 **Exclusions; do NOT flag these for coverage suggestions:**
 - Pure data models, Pydantic `BaseModel` subclasses, enums, TypedDict definitions

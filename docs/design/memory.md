@@ -465,7 +465,7 @@ Three implementations of the `ConsolidationStrategy` protocol ship out of the bo
 Strategy selection is injection-based: callers construct and pass the chosen strategy
 to `MemoryConsolidationService`.  `LLMConsolidationStrategy.__init__` accepts
 `group_threshold` (default 3, minimum 3; smaller groups cannot meaningfully
-dedup against the retained entry), `temperature` (default 0.3),
+deduplicate against the retained entry), `temperature` (default 0.3),
 `max_summary_tokens` (default 500), and `include_distillation_context` (default
 True; when enabled, the strategy queries the backend for at most 5 recent
 entries tagged `"distillation"` and embeds their trajectory summaries,

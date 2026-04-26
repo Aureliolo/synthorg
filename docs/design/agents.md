@@ -319,7 +319,7 @@ Identity version history is exposed under `/api/v1/agents/{agent_id}/versions`
 | `GET` | `/` | read | Paginated list of version snapshots (`offset`, `limit` default 20) |
 | `GET` | `/{version_num}` | read | Single version snapshot by monotonic version number |
 | `GET` | `/diff?from_version=N&to_version=M` | read | Field-level `AgentIdentityDiff` between two versions (`from_version < to_version` required) |
-| `POST` | `/rollback` | write | Restore a prior version.  Body: `{target_version: int, reason?: str}`.  Executed via `evolve_identity`, producing a new snapshot whose content hash equals the restored version; rollbacks never mutate history. |
+| `POST` | `/rollback` | write | Restore a prior version.  Body: `{"target_version": <int>, "reason": "<text>"}` (reason optional).  Executed via `evolve_identity`, producing a new snapshot whose content hash equals the restored version; rollbacks never mutate history. |
 
 All endpoints additionally verify that the stored snapshot's encoded owner id
 matches the path `agent_id` (cross-agent rows are rejected with 400).

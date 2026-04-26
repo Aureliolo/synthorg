@@ -97,7 +97,7 @@ class EscalationExpirationSweeper:
         try:
             await task
         except asyncio.CancelledError:
-            # Expected -- we just cancelled the task.
+            # Expected: we just cancelled the task.
             pass
         except Exception as exc:
             # Best-effort shutdown: never propagate, but elevate to
