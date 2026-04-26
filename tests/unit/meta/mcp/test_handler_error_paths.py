@@ -225,8 +225,8 @@ class TestEveryHandlerEmitsCentralizedLogEvent:
     """
 
     _SAMPLE_HANDLERS: tuple[str, ...] = (
-        # One simple "list" handler per domain; failure path hits
-        # ``except Exception`` after the service raises.
+        # One simple "list" / "get" handler per domain; failure path
+        # hits ``except Exception`` after the service raises.
         "synthorg_agents_list",
         "synthorg_tasks_list",
         "synthorg_workflows_list",
@@ -239,17 +239,29 @@ class TestEveryHandlerEmitsCentralizedLogEvent:
         "synthorg_webhooks_list",
         "synthorg_meta_list_rules",
         "synthorg_signals_get_org_snapshot",
-        "synthorg_quality_list_grades",
+        "synthorg_quality_list_scores",
         "synthorg_analytics_get_overview",
-        "synthorg_memory_checkpoints_list",
+        "synthorg_memory_list_checkpoints",
         "synthorg_coordination_metrics_list",
-        "synthorg_infra_get_health",
+        "synthorg_health_check",
     )
 
-    @pytest.mark.parametrize(
-        "tool_name",
-        [t for t in _SAMPLE_HANDLERS if t in _HANDLER_MAP],
-    )
+    def test_sample_handlers_all_exist(self) -> None:
+        """Catch stale entries in ``_SAMPLE_HANDLERS``.
+
+        If a handler name in the curated list disappears from the
+        registry (rename, deletion, or typo), this test fails loudly
+        rather than the parametrized test below silently dropping it
+        and pretending coverage exists.
+        """
+        missing = [tool for tool in self._SAMPLE_HANDLERS if tool not in _HANDLER_MAP]
+        assert not missing, (
+            f"_SAMPLE_HANDLERS references handler names not in the "
+            f"registry: {missing}. Update the curated list or rename "
+            f"the handlers."
+        )
+
+    @pytest.mark.parametrize("tool_name", _SAMPLE_HANDLERS)
     async def test_failure_emits_centralized_event(
         self,
         tool_name: str,
@@ -296,16 +308,27 @@ class TestDestructiveHandlersExerciseGuardrailBranch:
         "synthorg_agents_delete",
         "synthorg_tasks_delete",
         "synthorg_workflows_delete",
-        "synthorg_approvals_delete",
         "synthorg_messages_delete",
         "synthorg_webhooks_delete",
         "synthorg_subworkflows_delete",
+        "synthorg_settings_delete",
+        "synthorg_users_delete",
+        "synthorg_projects_delete",
     )
 
-    @pytest.mark.parametrize(
-        "tool_name",
-        [t for t in _DESTRUCTIVE_TOOLS if t in _HANDLER_MAP],
-    )
+    def test_destructive_tools_all_exist(self) -> None:
+        """Catch stale entries in ``_DESTRUCTIVE_TOOLS``.
+
+        Same self-check as above for the destructive-op sample list.
+        """
+        missing = [tool for tool in self._DESTRUCTIVE_TOOLS if tool not in _HANDLER_MAP]
+        assert not missing, (
+            f"_DESTRUCTIVE_TOOLS references handler names not in the "
+            f"registry: {missing}. Update the curated list or rename "
+            f"the handlers."
+        )
+
+    @pytest.mark.parametrize("tool_name", _DESTRUCTIVE_TOOLS)
     async def test_missing_confirm_routes_through_guardrail_logger(
         self,
         tool_name: str,

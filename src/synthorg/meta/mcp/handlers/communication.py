@@ -42,9 +42,9 @@ from synthorg.meta.mcp.handlers.common import (
     require_destructive_guardrails,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    actor_label,
     coerce_pagination,
     get_optional_str,
+    require_actor_id,
     require_arg,
     require_dict,
 )
@@ -200,7 +200,7 @@ async def _messages_send(
         message = _parse_message(arguments)
         await app_state.message_service.send_message(
             message=message,
-            actor_id=actor_label(actor),
+            actor_id=require_actor_id(actor),
         )
         return ok({"id": str(message.id)})
     except ArgumentValidationError as exc:
@@ -227,7 +227,7 @@ async def _messages_delete(
             removed = await app_state.message_service.delete_message(
                 channel=channel,
                 message_id=message_id,
-                actor_id=actor_label(resolved_actor),
+                actor_id=require_actor_id(resolved_actor),
                 reason=reason,
             )
         except CapabilityNotSupportedError as exc:
@@ -236,7 +236,7 @@ async def _messages_delete(
             logger.info(
                 MCP_DESTRUCTIVE_OP_EXECUTED,
                 tool_name=tool,
-                actor=actor_label(resolved_actor),
+                actor=require_actor_id(resolved_actor),
                 reason=reason,
                 removed=removed,
             )
@@ -454,7 +454,7 @@ async def _connections_create(
             connection_type=connection_type,
             auth_method=auth_method,
             credentials=credentials,
-            actor_id=actor_label(actor),
+            actor_id=require_actor_id(actor),
             base_url=base_url,
             metadata=metadata,
         )
@@ -480,13 +480,13 @@ async def _connections_delete(
         name = _require_str(arguments, _ARG_NAME)
         await app_state.connection_service.delete_connection(
             name=name,
-            actor_id=actor_label(resolved_actor),
+            actor_id=require_actor_id(resolved_actor),
             reason=reason,
         )
         logger.info(
             MCP_DESTRUCTIVE_OP_EXECUTED,
             tool_name=tool,
-            actor=actor_label(resolved_actor),
+            actor=require_actor_id(resolved_actor),
             reason=reason,
             connection_name=name,
         )
@@ -604,7 +604,7 @@ async def _webhooks_create(
         definition = _parse_webhook_definition(arguments, require_id=False)
         stored = await app_state.webhook_service.create_webhook(
             definition=definition,
-            actor_id=actor_label(actor),
+            actor_id=require_actor_id(actor),
         )
         return ok(stored.model_dump(mode="json"))
     except ArgumentValidationError as exc:
@@ -639,7 +639,7 @@ async def _webhooks_update(
     try:
         stored = await app_state.webhook_service.update_webhook(
             definition=definition,
-            actor_id=actor_label(actor),
+            actor_id=require_actor_id(actor),
         )
         return ok(stored.model_dump(mode="json"))
     except KeyError as exc:
@@ -667,7 +667,7 @@ async def _webhooks_delete(
         webhook_id = _require_str(arguments, _ARG_WEBHOOK_ID)
         removed = await app_state.webhook_service.delete_webhook(
             definition_id=webhook_id,
-            actor_id=actor_label(resolved_actor),
+            actor_id=require_actor_id(resolved_actor),
             reason=reason,
         )
         if not removed:
@@ -678,7 +678,7 @@ async def _webhooks_delete(
         logger.info(
             MCP_DESTRUCTIVE_OP_EXECUTED,
             tool_name=tool,
-            actor=actor_label(resolved_actor),
+            actor=require_actor_id(resolved_actor),
             reason=reason,
             webhook_id=webhook_id,
             removed=removed,

@@ -18,6 +18,7 @@ from synthorg.meta.analytics.models import (
 )
 from synthorg.meta.mcp.handlers.analytics import ANALYTICS_HANDLERS
 from synthorg.meta.reports.models import Report, ReportStatus
+from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
 
@@ -228,8 +229,27 @@ class TestReportsHandlers:
         response = await handler(
             app_state=fake_app_state,
             arguments={"template": "org_overview"},
+            actor=make_test_actor(name="reporter"),
         )
         assert json.loads(response)["status"] == "ok"
+
+    async def test_generate_rejects_anonymous_actor(
+        self,
+        fake_app_state: SimpleNamespace,
+    ) -> None:
+        # Report generation persists ``author_id`` and must reject
+        # anonymous callers rather than silently storing
+        # ``"mcp-anonymous"`` (the previous behaviour). With ``actor=None``
+        # the handler hits ``require_actor_id`` -> ArgumentValidationError.
+        handler = ANALYTICS_HANDLERS["synthorg_reports_generate"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"template": "org_overview"},
+            actor=None,
+        )
+        body = json.loads(response)
+        assert body["status"] == "error"
+        assert body["domain_code"] == "invalid_argument"
 
     async def test_generate_requires_template(
         self,
@@ -239,5 +259,6 @@ class TestReportsHandlers:
         response = await handler(
             app_state=fake_app_state,
             arguments={},
+            actor=make_test_actor(name="reporter"),
         )
         assert json.loads(response)["status"] == "error"

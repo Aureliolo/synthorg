@@ -22,9 +22,9 @@ from synthorg.meta.mcp.handlers.common import (
     ok,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    actor_label,
     coerce_pagination,
     get_optional_str,
+    require_actor_id,
     require_arg,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
@@ -249,7 +249,7 @@ async def _reviews_create(
         comments = _get_optional_str(arguments, "comments")
         record = await app_state.review_facade_service.create_review(
             task_id=task_id,
-            reviewer_id=actor_label(actor),
+            reviewer_id=require_actor_id(actor),
             verdict=verdict,
             comments=comments,
         )
@@ -278,7 +278,7 @@ async def _reviews_update(
             review_id=review_id,
             verdict=verdict,
             comments=comments,
-            actor_id=actor_label(actor),
+            actor_id=require_actor_id(actor),
         )
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)

@@ -18,7 +18,11 @@ from typing import TYPE_CHECKING, Any
 from pydantic import ValidationError
 
 from synthorg.core.enums import ApprovalStatus
-from synthorg.meta.mcp.errors import invalid_argument
+from synthorg.meta.mcp.errors import (
+    ArgumentValidationError,
+    GuardrailViolationError,
+    invalid_argument,
+)
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
@@ -34,7 +38,11 @@ from synthorg.meta.mcp.handlers.common_args import (
     coerce_pagination,
     parse_time_window,
 )
-from synthorg.meta.mcp.handlers.common_logging import log_handler_invoke_failed
+from synthorg.meta.mcp.handlers.common_logging import (
+    log_handler_argument_invalid,
+    log_handler_guardrail_violated,
+    log_handler_invoke_failed,
+)
 from synthorg.meta.models import ImprovementProposal
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_DESTRUCTIVE_OP_EXECUTED
@@ -95,6 +103,9 @@ async def _snapshot(
             until=until,
         )
         return ok(snapshot.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid("synthorg_signals_get_org_snapshot", exc)
+        return err(exc)
     except Exception as exc:
         log_handler_invoke_failed("synthorg_signals_get_org_snapshot", exc)
         return err(exc)
@@ -118,6 +129,9 @@ def _make_window_handler(
             fn: Callable[..., Any] = getattr(app_state.signals_service, method_name)
             result = await fn(since=since, until=until)
             return ok(result.model_dump(mode="json"))
+        except ArgumentValidationError as exc:
+            log_handler_argument_invalid(tool_name, exc)
+            return err(exc)
         except Exception as exc:
             log_handler_invoke_failed(tool_name, exc)
             return err(exc)
@@ -141,6 +155,9 @@ async def _list_proposals(
         )
         pagination_meta = PaginationMeta(total=total, offset=offset, limit=limit)
         return ok(dump_many(page), pagination=pagination_meta)
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid("synthorg_signals_get_proposals", exc)
+        return err(exc)
     except Exception as exc:
         log_handler_invoke_failed("synthorg_signals_get_proposals", exc)
         return err(exc)
@@ -169,6 +186,12 @@ async def _submit_proposal(
             target_id=str(item.id),
         )
         return ok(item.model_dump(mode="json"))
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool_name, exc)
+        return err(exc)
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool_name, exc)
+        return err(exc)
     except Exception as exc:
         log_handler_invoke_failed(tool_name, exc)
         return err(exc)

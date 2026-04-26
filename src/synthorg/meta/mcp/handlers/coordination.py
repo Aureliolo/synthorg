@@ -39,6 +39,7 @@ from synthorg.meta.mcp.handlers.common import (
 from synthorg.meta.mcp.handlers.common_args import (
     coerce_pagination,
     require_non_blank,
+    require_non_blank_value,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
@@ -231,7 +232,7 @@ async def _scaling_trigger(
         return err(bad)
     try:
         agent_ids = tuple(
-            NotBlankStr(_require_non_blank_value(v, "agent_ids")) for v in raw_ids
+            NotBlankStr(require_non_blank_value(v, "agent_ids")) for v in raw_ids
         )
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
@@ -332,12 +333,6 @@ async def _ceremony_policy_get_active_strategy(
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=active.model_dump(mode="json"))
-
-
-def _require_non_blank_value(value: Any, arg_name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise invalid_argument(arg_name, _TY_NON_BLANK)
-    return value.strip()
 
 
 COORDINATION_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(

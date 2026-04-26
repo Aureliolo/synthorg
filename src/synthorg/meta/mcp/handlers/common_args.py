@@ -104,6 +104,32 @@ def require_non_blank(arguments: dict[str, Any], key: str) -> str:
     return raw.strip()
 
 
+def require_non_blank_value(value: Any, arg_name: str) -> str:
+    """Validate an already-extracted value is a non-blank stripped string.
+
+    Companion to :func:`require_non_blank` for cases where the value
+    has already been pulled out of the arguments dict (e.g. iterating
+    list elements where the parent list has been validated but each
+    element still needs the non-blank check). Uses the same
+    ``ArgumentValidationError`` / ``domain_code=invalid_argument``
+    contract so handler call sites get the same envelope shape.
+
+    Args:
+        value: Extracted candidate value (any type).
+        arg_name: Argument or field name for the error envelope.
+
+    Returns:
+        The value with surrounding whitespace stripped.
+
+    Raises:
+        ArgumentValidationError: If ``value`` is not a string, or is
+            blank after stripping.
+    """
+    if not isinstance(value, str) or not value.strip():
+        raise invalid_argument(arg_name, _TY_NON_BLANK)
+    return value.strip()
+
+
 def get_optional_str(
     arguments: dict[str, Any],
     key: str,
