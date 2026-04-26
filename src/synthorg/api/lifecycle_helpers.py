@@ -102,7 +102,7 @@ async def _resolve_lifecycle_cleanup_enabled(app_state: AppState) -> bool:
         return True
 
 
-async def _run_cleanup_tick(app_state: AppState) -> None:
+async def _run_cleanup_tick(app_state: AppState) -> None:  # noqa: C901
     """Run one tick of the WS ticket / session / lockout cleanup cycle.
 
     Split out of :func:`_ticket_cleanup_loop` so the loop itself stays
@@ -142,6 +142,22 @@ async def _run_cleanup_tick(app_state: AppState) -> None:
         logger.warning(
             API_AUTH_LOCKOUT_CLEANUP,
             error="Periodic lockout cleanup failed",
+            error_type=type(exc).__name__,
+            error_desc=safe_error_description(exc),
+        )
+    try:
+        if app_state.has_persistence:
+            await app_state.idempotency_service.cleanup_expired()
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        from synthorg.observability.events.idempotency import (  # noqa: PLC0415
+            IDEMPOTENCY_CLEANUP,
+        )
+
+        logger.warning(
+            IDEMPOTENCY_CLEANUP,
+            error="Periodic idempotency cleanup failed",
             error_type=type(exc).__name__,
             error_desc=safe_error_description(exc),
         )

@@ -58,6 +58,9 @@ from synthorg.persistence.fine_tune_protocol import (
     FineTuneCheckpointRepository,  # noqa: TC001
     FineTuneRunRepository,  # noqa: TC001
 )
+from synthorg.persistence.idempotency_protocol import (
+    IdempotencyRepository,  # noqa: TC001
+)
 from synthorg.persistence.mcp_protocol import (
     McpInstallationRepository,  # noqa: TC001
 )
@@ -397,6 +400,11 @@ class PersistenceBackend(Protocol):
     @property
     def webhook_receipts(self) -> WebhookReceiptRepository:
         """Repository for webhook receipt log persistence."""
+        ...
+
+    @property
+    def idempotency_keys(self) -> IdempotencyRepository:
+        """Repository for persistent idempotency keys (#1599)."""
         ...
 
     @property

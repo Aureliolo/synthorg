@@ -1191,3 +1191,20 @@ CREATE TABLE drift_reports (
 );
 CREATE INDEX idx_dr_entity_created
     ON drift_reports (entity_name, created_at DESC);
+
+-- Persistent idempotency keys for retry-prone endpoints (#1599).
+-- A claim row goes through (in_flight) -> (completed | failed); the
+-- cached response_body lets a duplicate caller receive the same
+-- reply rather than 409. Rows older than expires_at are reaped by
+-- the periodic cleanup task.
+CREATE TABLE idempotency_keys (
+    scope TEXT NOT NULL,
+    key TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('in_flight', 'completed', 'failed')),
+    response_hash TEXT,
+    response_body JSONB,
+    created_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (scope, key)
+);
+CREATE INDEX idx_idempotency_expires ON idempotency_keys (expires_at);

@@ -244,6 +244,7 @@ class TestEventConstants:
             "execution",
             "git",
             "hr",
+            "idempotency",
             "inflection",
             "mcp",
             "meeting",

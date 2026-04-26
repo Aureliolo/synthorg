@@ -74,7 +74,7 @@ class WebhooksController(Controller):
             per_op_rate_limit_from_policy("webhooks.receive", key="ip"),
         ],
     )
-    async def receive_webhook(  # noqa: C901, PLR0915
+    async def receive_webhook(  # noqa: C901, PLR0912, PLR0915
         self,
         state: State,
         request: Request[Any, Any, Any],
@@ -220,15 +220,55 @@ class WebhooksController(Controller):
         except json.JSONDecodeError, UnicodeDecodeError:
             payload = {"raw": body.decode("utf-8", errors="replace")}
 
-        # Publish to message bus.
         bus = state["app_state"].message_bus
+        normalized_payload = payload if isinstance(payload, dict) else {"data": payload}
+
+        # Persistent idempotency: if the request carried a nonce, scope
+        # to (connection_type, nonce) so a retry hitting a different
+        # process replica still short-circuits to the cached response
+        # instead of double-publishing to the bus. Requests without a
+        # nonce skip the persistent check (the in-memory ReplayProtector
+        # has already enforced its window above).
+        if nonce:
+            from synthorg.core.types import NotBlankStr  # noqa: PLC0415
+
+            scope = NotBlankStr(f"webhooks:{conn.connection_type}")
+            idem_key = NotBlankStr(f"{connection_name}:{nonce}")
+
+            async def _publish_and_accept() -> dict[str, object]:
+                await publish_webhook_event(
+                    bus=bus,
+                    connection_name=connection_name,
+                    event_type=event_type,
+                    payload=normalized_payload,
+                )
+                logger.info(
+                    WEBHOOK_ACCEPTED,
+                    connection_name=connection_name,
+                    event_type=event_type,
+                )
+                return {"status": "accepted", "event_type": event_type}
+
+            cached, _fresh = await state[
+                "app_state"
+            ].idempotency_service.run_idempotent(
+                scope=scope,
+                key=idem_key,
+                callback=_publish_and_accept,
+            )
+            if cached is None:
+                # Persistent claim couldn't resolve in time -- surface
+                # 409 so the caller retries.
+                msg = "Concurrent in-flight webhook delivery"
+                raise ConflictError(msg)
+            return ApiResponse(data=cached)
+
         await publish_webhook_event(
             bus=bus,
             connection_name=connection_name,
             event_type=event_type,
-            payload=payload if isinstance(payload, dict) else {"data": payload},
+            payload=normalized_payload,
         )
-
         logger.info(
             WEBHOOK_ACCEPTED,
             connection_name=connection_name,

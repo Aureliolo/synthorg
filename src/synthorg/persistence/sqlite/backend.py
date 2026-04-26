@@ -70,6 +70,9 @@ from synthorg.persistence.sqlite.hr_repositories import (
     SQLiteLifecycleEventRepository,
     SQLiteTaskMetricRepository,
 )
+from synthorg.persistence.sqlite.idempotency_repo import (
+    SQLiteIdempotencyRepository,
+)
 from synthorg.persistence.sqlite.lockout_repo import (
     SQLiteLockoutRepository,
 )
@@ -214,6 +217,7 @@ class SQLitePersistenceBackend:
         self._custom_rules: SQLiteCustomRuleRepository | None = None
         self._sessions: SQLiteSessionRepository | None = None
         self._refresh_tokens: SQLiteRefreshTokenRepository | None = None
+        self._idempotency_keys: SQLiteIdempotencyRepository | None = None
         self._mcp_installations: SQLiteMcpInstallationRepository | None = None
         self._org_facts: SQLiteOrgFactRepository | None = None
         self._ontology_entities: SQLiteOntologyEntityRepository | None = None
@@ -504,6 +508,10 @@ class SQLitePersistenceBackend:
             write_lock=self._shared_write_lock,
         )
         self._refresh_tokens = SQLiteRefreshTokenRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._idempotency_keys = SQLiteIdempotencyRepository(
             self._db,
             write_lock=self._shared_write_lock,
         )
@@ -911,6 +919,14 @@ class SQLitePersistenceBackend:
         return self._require_connected(
             self._refresh_tokens,
             "refresh_tokens",
+        )
+
+    @property
+    def idempotency_keys(self) -> SQLiteIdempotencyRepository:
+        """Repository for persistent idempotency keys (#1599)."""
+        return self._require_connected(
+            self._idempotency_keys,
+            "idempotency_keys",
         )
 
     @property

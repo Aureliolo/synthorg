@@ -4,6 +4,11 @@ All endpoints require CEO or the internal SYSTEM role
 (used by the CLI for ``synthorg backup`` / ``synthorg wipe``).
 """
 
+from typing import TYPE_CHECKING, Annotated
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
 from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.exceptions import (
@@ -11,6 +16,7 @@ from litestar.exceptions import (
     InternalServerException,
     NotFoundException,
 )
+from litestar.params import Parameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.cursor import decode_cursor
@@ -38,6 +44,7 @@ from synthorg.backup.models import (
     RestoreRequest,
     RestoreResponse,
 )
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.backup import (
     BACKUP_FAILED,
@@ -46,6 +53,19 @@ from synthorg.observability.events.backup import (
 )
 
 logger = get_logger(__name__)
+
+
+async def _do_backup_as_dict(
+    backup_callable: Callable[[], Awaitable[BackupManifest]],
+) -> dict[str, object]:
+    """Bridge a ``BackupManifest``-returning callable to JSON dict.
+
+    The idempotency service caches a JSON-serialized response. The
+    backup service returns a Pydantic model, so we serialize via
+    ``model_dump`` for caching and re-validate on cache hit.
+    """
+    manifest = await backup_callable()
+    return manifest.model_dump(mode="json")
 
 
 class BackupController(Controller):
@@ -63,37 +83,65 @@ class BackupController(Controller):
     async def create_backup(
         self,
         state: State,
+        idempotency_key: Annotated[
+            str | None,
+            Parameter(
+                header="Idempotency-Key",
+                description=(
+                    "RFC-style retry-safe key. Same key within 24h "
+                    "returns the cached manifest instead of starting "
+                    "a second backup."
+                ),
+                required=False,
+            ),
+        ] = None,
     ) -> ApiResponse[BackupManifest]:
         """Trigger a manual backup.
 
         Args:
             state: Application state.
+            idempotency_key: Optional caller-supplied retry token.
 
         Returns:
             Manifest of the created backup.
         """
         app_state: AppState = state.app_state
-        try:
-            manifest = await app_state.backup_service.create_backup(
-                BackupTrigger.MANUAL,
+
+        async def _do_backup() -> BackupManifest:
+            try:
+                return await app_state.backup_service.create_backup(
+                    BackupTrigger.MANUAL,
+                )
+            except BackupInProgressError as exc:
+                logger.warning(
+                    BACKUP_FAILED,
+                    error=str(exc),
+                )
+                raise ClientException(
+                    str(exc),
+                    status_code=409,
+                ) from exc
+            except BackupError as exc:
+                logger.error(
+                    BACKUP_FAILED,
+                    error=str(exc),
+                    exc_info=True,
+                )
+                msg = "Backup operation failed"
+                raise InternalServerException(msg) from exc
+
+        if idempotency_key:
+            cached, _fresh = await app_state.idempotency_service.run_idempotent(
+                scope=NotBlankStr("backup"),
+                key=NotBlankStr(idempotency_key),
+                callback=lambda: _do_backup_as_dict(_do_backup),
             )
-        except BackupInProgressError as exc:
-            logger.warning(
-                BACKUP_FAILED,
-                error=str(exc),
-            )
-            raise ClientException(
-                str(exc),
-                status_code=409,
-            ) from exc
-        except BackupError as exc:
-            logger.error(
-                BACKUP_FAILED,
-                error=str(exc),
-                exc_info=True,
-            )
-            msg = "Backup operation failed"
-            raise InternalServerException(msg) from exc
+            if cached is None:
+                msg = "Concurrent in-flight backup with this idempotency key"
+                raise ClientException(msg, status_code=409)
+            return ApiResponse(data=BackupManifest.model_validate(cached))
+
+        manifest = await _do_backup()
         return ApiResponse(data=manifest)
 
     @get()

@@ -72,6 +72,9 @@ from synthorg.persistence.postgres.hr_repositories import (
     PostgresLifecycleEventRepository,
     PostgresTaskMetricRepository,
 )
+from synthorg.persistence.postgres.idempotency_repo import (
+    PostgresIdempotencyRepository,
+)
 from synthorg.persistence.postgres.lockout_repo import (
     PostgresLockoutRepository,
 )
@@ -242,6 +245,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._training_results: PostgresTrainingResultRepository | None = None
         self._sessions: PostgresSessionRepository | None = None
         self._refresh_tokens: PostgresRefreshTokenRepository | None = None
+        self._idempotency_keys: PostgresIdempotencyRepository | None = None
         self._mcp_installations: PostgresMcpInstallationRepository | None = None
         self._custom_rules: PostgresCustomRuleRepository | None = None
         self._org_facts: PostgresOrgFactRepository | None = None
@@ -374,6 +378,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._training_results = PostgresTrainingResultRepository(pool)
         self._sessions = PostgresSessionRepository(pool)
         self._refresh_tokens = PostgresRefreshTokenRepository(pool)
+        self._idempotency_keys = PostgresIdempotencyRepository(pool)
         self._mcp_installations = PostgresMcpInstallationRepository(pool)
         self._custom_rules = PostgresCustomRuleRepository(pool)
         self._org_facts = PostgresOrgFactRepository(pool)
@@ -666,6 +671,14 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         return self._require_connected(
             self._refresh_tokens,
             "refresh_tokens",
+        )
+
+    @property
+    def idempotency_keys(self) -> PostgresIdempotencyRepository:
+        """Repository for persistent idempotency keys (#1599)."""
+        return self._require_connected(
+            self._idempotency_keys,
+            "idempotency_keys",
         )
 
     @property
