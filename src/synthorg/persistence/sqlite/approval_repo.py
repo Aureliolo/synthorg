@@ -18,7 +18,7 @@ from synthorg.observability.events.api import (
     API_APPROVAL_REPO_FETCHED,
     API_APPROVAL_REPO_LISTED,
 )
-from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
+from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
 logger = get_logger(__name__)
@@ -66,14 +66,14 @@ def _row_to_item(row: Row) -> ApprovalItem:
             requested_by=str(row["requested_by"]),
             risk_level=ApprovalRiskLevel(str(row["risk_level"])),
             status=ApprovalStatus(str(row["status"])),
-            created_at=parse_iso_utc(str(row["created_at"])),
+            created_at=coerce_row_timestamp(row["created_at"]),
             expires_at=(
-                parse_iso_utc(str(row["expires_at"]))
+                coerce_row_timestamp(row["expires_at"])
                 if row["expires_at"] is not None
                 else None
             ),
             decided_at=(
-                parse_iso_utc(str(row["decided_at"]))
+                coerce_row_timestamp(row["decided_at"])
                 if row["decided_at"] is not None
                 else None
             ),

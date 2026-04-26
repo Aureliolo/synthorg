@@ -126,7 +126,7 @@ class PostgresSsrfViolationRepository:
             return None
         try:
             return _row_to_violation(row)
-        except (ValueError, ValidationError) as exc:
+        except (ValueError, ValidationError, TypeError) as exc:
             msg = f"Failed to deserialize SSRF violation {violation_id!r}"
             logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
@@ -185,7 +185,7 @@ class PostgresSsrfViolationRepository:
         for row in rows:
             try:
                 results.append(_row_to_violation(row))
-            except (ValueError, ValidationError) as exc:
+            except (ValueError, ValidationError, TypeError) as exc:
                 # Do not silently drop malformed violation rows:
                 # list_violations is how operators audit the full
                 # history of blocked SSRF attempts, so returning a

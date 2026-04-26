@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import ValidationError
+from pydantic import AwareDatetime, ValidationError
 
 from synthorg.core.enums import (
     AutonomyLevel,
@@ -492,11 +492,23 @@ class PostgresOrgFactRepository:
 
     async def snapshot_at(
         self,
-        timestamp: datetime,
+        timestamp: AwareDatetime,
     ) -> tuple[OperationLogSnapshot, ...]:
-        """Point-in-time snapshot of all facts at a given timestamp."""
+        """Point-in-time snapshot of all facts at a given timestamp.
+
+        ``timestamp`` must be timezone-aware so psycopg binds it to the
+        ``TIMESTAMPTZ`` parameter at a known instant; a naive datetime
+        would otherwise bind in the session timezone and silently
+        produce a wrong-but-plausible snapshot.  The signature is
+        :class:`pydantic.AwareDatetime` to make that contract explicit.
+        """
         dict_row = self._dict_row
-        timestamp = normalize_utc(timestamp)
+        if timestamp.tzinfo is None:
+            msg = (
+                "snapshot_at requires a timezone-aware timestamp, "
+                f"got naive {timestamp!r}"
+            )
+            raise ValueError(msg)
         sql = """\
 WITH latest_ops AS (
     SELECT fact_id, operation_type, content, tags, category,

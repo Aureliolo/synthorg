@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 import aiosqlite  # noqa: TC002
-from pydantic import ValidationError
+from pydantic import AwareDatetime, ValidationError
 
 from synthorg.core.enums import (
     AutonomyLevel,
@@ -37,11 +37,7 @@ from synthorg.observability.events.org_memory import (
     ORG_MEMORY_ROW_PARSE_FAILED,
     ORG_MEMORY_WRITE_FAILED,
 )
-from synthorg.persistence._shared import (
-    coerce_row_timestamp,
-    format_iso_utc,
-    normalize_utc,
-)
+from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 
 logger = get_logger(__name__)
 
@@ -500,11 +496,16 @@ class SQLiteOrgFactRepository:
 
     async def snapshot_at(
         self,
-        timestamp: datetime,
+        timestamp: AwareDatetime,
     ) -> tuple[OperationLogSnapshot, ...]:
-        """Point-in-time snapshot of all facts at a given timestamp."""
+        """Point-in-time snapshot of all facts at a given timestamp.
+
+        ``timestamp`` must be timezone-aware; ``format_iso_utc`` will
+        raise ``ValueError`` on a naive datetime so a regression that
+        bypasses the type guard surfaces immediately rather than
+        binding a misinterpreted instant into the WHERE clause.
+        """
         db = self._db
-        timestamp = normalize_utc(timestamp)
         query_ts = format_iso_utc(timestamp)
         sql = """\
 WITH latest_ops AS (

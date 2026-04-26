@@ -164,7 +164,7 @@ class PostgresRiskOverrideRepository:
         for row in rows:
             try:
                 results.append(_row_to_override(row))
-            except (ValueError, ValidationError) as exc:
+            except (ValueError, ValidationError, TypeError) as exc:
                 # Never silently drop a malformed active override:
                 # callers rely on ``list_active`` to return the full
                 # current policy set, so a partial result would be a

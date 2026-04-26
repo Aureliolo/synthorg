@@ -12,7 +12,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
     PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
 )
-from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
+from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
 from synthorg.persistence.errors import DuplicateRecordError, PersistenceError
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 
@@ -147,7 +147,7 @@ class SQLiteSsrfViolationRepository:
             return None
         try:
             return _row_to_violation(row)
-        except (ValueError, ValidationError) as exc:
+        except (ValueError, ValidationError, TypeError) as exc:
             msg = f"Failed to deserialize SSRF violation {violation_id!r}"
             logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
@@ -197,7 +197,7 @@ class SQLiteSsrfViolationRepository:
         for row in rows:
             try:
                 results.append(_row_to_violation(row))
-            except (ValueError, ValidationError) as exc:
+            except (ValueError, ValidationError, TypeError) as exc:
                 # Surface corrupted audit rows as a hard failure.
                 # Silently skipping would hide security-relevant
                 # events from operators auditing SSRF block history
@@ -292,7 +292,7 @@ def _row_to_violation(row: Any) -> SsrfViolation:
 
     return SsrfViolation(
         id=id_,
-        timestamp=parse_iso_utc(timestamp),
+        timestamp=coerce_row_timestamp(timestamp),
         url=url,
         hostname=hostname,
         port=port,
@@ -301,5 +301,10 @@ def _row_to_violation(row: Any) -> SsrfViolation:
         provider_name=provider_name,
         status=SsrfViolationStatus(status),
         resolved_by=resolved_by,
-        resolved_at=(parse_iso_utc(resolved_at) if resolved_at else None),
+        # Distinguish SQL NULL from empty string: only ``None``
+        # represents an unresolved violation; an empty string is
+        # corrupt data and must surface via the strict marshaller.
+        resolved_at=(
+            coerce_row_timestamp(resolved_at) if resolved_at is not None else None
+        ),
     )
