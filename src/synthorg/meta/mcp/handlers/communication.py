@@ -24,7 +24,6 @@ from pydantic import ValidationError
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.communication.meeting.enums import MeetingStatus
 from synthorg.communication.message import Message
-from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import ConnectionType
 from synthorg.integrations.webhooks.models import WebhookDefinition
 from synthorg.meta.mcp.errors import (
@@ -42,20 +41,29 @@ from synthorg.meta.mcp.handlers.common import (
     ok,
     require_destructive_guardrails,
 )
-from synthorg.meta.mcp.handlers.common_args import coerce_pagination, require_arg
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.meta.mcp.handlers.common_args import (
+    actor_label,
+    coerce_pagination,
+    get_optional_str,
+    require_arg,
+    require_dict,
+)
+from synthorg.meta.mcp.handlers.common_logging import (
+    log_handler_argument_invalid,
+    log_handler_guardrail_violated,
+    log_handler_invoke_failed,
+)
+from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
     MCP_DESTRUCTIVE_OP_EXECUTED,
-    MCP_HANDLER_ARGUMENT_INVALID,
     MCP_HANDLER_CAPABILITY_GAP,
-    MCP_HANDLER_GUARDRAIL_VIOLATED,
-    MCP_HANDLER_INVOKE_FAILED,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from synthorg.core.agent import AgentIdentity
+    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 
@@ -75,7 +83,6 @@ _ARG_WEBHOOK_ID = "webhook_id"
 _ARG_DEFINITION = "definition"
 
 _TY_STRING = "non-blank string"
-_TY_DICT = "mapping of str -> str"
 _TY_UUID = "UUID string"
 _TY_MESSAGE_OBJ = "Message object"
 _TY_WEBHOOK_OBJ = "WebhookDefinition object"
@@ -86,94 +93,21 @@ _TY_CONNECTION_TYPE = "ConnectionType string"
 # ── Shared helpers ───────────────────────────────────────────────────
 
 
-def _actor_name(actor: AgentIdentity | None) -> NotBlankStr:
-    """Return a stable audit identifier, preferring ``actor.id``.
-
-    ``actor.id`` is a stable UUID that never changes across agent
-    renames or display-name collisions, so it makes a better audit
-    trail than the mutable display name.  Falls back to ``actor.name``
-    only when no ID is available, and ``"mcp-anonymous"`` when neither
-    is present.
-    """
-    if actor is None:
-        return NotBlankStr("mcp-anonymous")
-    actor_id = getattr(actor, "id", None)
-    if actor_id is not None:
-        return NotBlankStr(str(actor_id))
-    name = getattr(actor, "name", None)
-    if isinstance(name, str) and name.strip():
-        return NotBlankStr(name)
-    return NotBlankStr("mcp-anonymous")
-
-
-def _log_invalid(tool: str, exc: ArgumentValidationError) -> None:
-    """Emit ``MCP_HANDLER_ARGUMENT_INVALID`` at WARNING for client-input errors."""
-    logger.warning(
-        MCP_HANDLER_ARGUMENT_INVALID,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-
-
-def _log_invoke_failed(tool: str, exc: Exception) -> None:
-    """Emit ``MCP_HANDLER_INVOKE_FAILED`` at WARNING with safe error context."""
-    logger.warning(
-        MCP_HANDLER_INVOKE_FAILED,
-        tool_name=tool,
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-
-
-def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
-    """Emit ``MCP_HANDLER_GUARDRAIL_VIOLATED`` for destructive-op rejections."""
-    logger.warning(
-        MCP_HANDLER_GUARDRAIL_VIOLATED,
-        tool_name=tool,
-        violation=exc.violation,
-    )
-
-
-def _get_str(arguments: dict[str, Any], key: str) -> NotBlankStr | None:
-    """Extract an optional non-blank string argument."""
-    raw = arguments.get(key)
-    if raw in (None, ""):
-        return None
-    if not isinstance(raw, str) or not raw.strip():
-        raise invalid_argument(key, _TY_STRING)
-    return NotBlankStr(raw)
-
-
 def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
     """Extract a required non-blank string or raise ``ArgumentValidationError``."""
-    value = _get_str(arguments, key)
+    value = get_optional_str(arguments, key)
     if value is None:
         raise invalid_argument(key, _TY_STRING)
     return value
 
 
 def _get_dict(arguments: dict[str, Any], key: str) -> dict[str, str] | None:
-    """Extract an optional ``dict[str, str]`` argument."""
+    """Extract an optional ``dict[str, str]`` argument; ``None`` when absent."""
     raw = arguments.get(key)
     if raw in (None, ""):
         return None
-    if not isinstance(raw, dict):
-        raise invalid_argument(key, _TY_DICT)
-    out: dict[str, str] = {}
-    for k, v in raw.items():
-        if not isinstance(k, str) or not isinstance(v, str):
-            raise invalid_argument(key, _TY_DICT)
-        out[k] = v
-    return out
-
-
-def _require_dict(arguments: dict[str, Any], key: str) -> dict[str, str]:
-    """Extract a required ``dict[str, str]`` argument or raise."""
-    value = _get_dict(arguments, key)
-    if value is None:
-        raise invalid_argument(key, _TY_DICT)
-    return value
+    validated = require_dict(arguments, key, value_type=str)
+    return dict(validated)
 
 
 def _parse_message(arguments: dict[str, Any]) -> Message:
@@ -211,7 +145,7 @@ async def _messages_list(
 ) -> str:
     """List messages on a channel (paginated)."""
     try:
-        channel = _get_str(arguments, _ARG_CHANNEL)
+        channel = get_optional_str(arguments, _ARG_CHANNEL)
         offset, limit = coerce_pagination(arguments)
         messages, total = await app_state.message_service.list_messages(
             channel=channel,
@@ -221,10 +155,10 @@ async def _messages_list(
         pagination = PaginationMeta(total=total, offset=offset, limit=limit)
         return ok(dump_many(messages), pagination=pagination)
     except ArgumentValidationError as exc:
-        _log_invalid("synthorg_messages_list", exc)
+        log_handler_argument_invalid("synthorg_messages_list", exc)
         return err(exc)
     except Exception as exc:
-        _log_invoke_failed("synthorg_messages_list", exc)
+        log_handler_invoke_failed("synthorg_messages_list", exc)
         return err(exc)
 
 
@@ -249,10 +183,10 @@ async def _messages_get(
             )
         return ok(message.model_dump(mode="json"))
     except ArgumentValidationError as exc:
-        _log_invalid("synthorg_messages_get", exc)
+        log_handler_argument_invalid("synthorg_messages_get", exc)
         return err(exc)
     except Exception as exc:
-        _log_invoke_failed("synthorg_messages_get", exc)
+        log_handler_invoke_failed("synthorg_messages_get", exc)
         return err(exc)
 
 
@@ -267,14 +201,14 @@ async def _messages_send(
         message = _parse_message(arguments)
         await app_state.message_service.send_message(
             message=message,
-            actor_id=_actor_name(actor),
+            actor_id=actor_label(actor),
         )
         return ok({"id": str(message.id)})
     except ArgumentValidationError as exc:
-        _log_invalid("synthorg_messages_send", exc)
+        log_handler_argument_invalid("synthorg_messages_send", exc)
         return err(exc)
     except Exception as exc:
-        _log_invoke_failed("synthorg_messages_send", exc)
+        log_handler_invoke_failed("synthorg_messages_send", exc)
         return err(exc)
 
 
@@ -294,7 +228,7 @@ async def _messages_delete(
             removed = await app_state.message_service.delete_message(
                 channel=channel,
                 message_id=message_id,
-                actor_id=_actor_name(resolved_actor),
+                actor_id=actor_label(resolved_actor),
                 reason=reason,
             )
         except CapabilityNotSupportedError as exc:
@@ -303,19 +237,19 @@ async def _messages_delete(
             logger.info(
                 MCP_DESTRUCTIVE_OP_EXECUTED,
                 tool_name=tool,
-                actor=_actor_name(resolved_actor),
+                actor=actor_label(resolved_actor),
                 reason=reason,
                 removed=removed,
             )
         return ok({"removed": removed})
     except GuardrailViolationError as exc:
-        _log_guardrail(tool, exc)
+        log_handler_guardrail_violated(tool, exc)
         return err(exc)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_invoke_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
 
@@ -343,7 +277,7 @@ async def _meetings_list(
     """List meeting records (paginated, optionally filtered)."""
     try:
         status = _parse_meeting_status(arguments)
-        meeting_type = _get_str(arguments, _ARG_MEETING_TYPE)
+        meeting_type = get_optional_str(arguments, _ARG_MEETING_TYPE)
         offset, limit = coerce_pagination(arguments)
         records, total = await app_state.meeting_service.list_meetings(
             status=status,
@@ -354,10 +288,10 @@ async def _meetings_list(
         pagination = PaginationMeta(total=total, offset=offset, limit=limit)
         return ok(dump_many(records), pagination=pagination)
     except ArgumentValidationError as exc:
-        _log_invalid("synthorg_meetings_list", exc)
+        log_handler_argument_invalid("synthorg_meetings_list", exc)
         return err(exc)
     except Exception as exc:
-        _log_invoke_failed("synthorg_meetings_list", exc)
+        log_handler_invoke_failed("synthorg_meetings_list", exc)
         return err(exc)
 
 
@@ -378,10 +312,10 @@ async def _meetings_get(
             )
         return ok(record.model_dump(mode="json"))
     except ArgumentValidationError as exc:
-        _log_invalid("synthorg_meetings_get", exc)
+        log_handler_argument_invalid("synthorg_meetings_get", exc)
         return err(exc)
     except Exception as exc:
-        _log_invoke_failed("synthorg_meetings_get", exc)
+        log_handler_invoke_failed("synthorg_meetings_get", exc)
         return err(exc)
 
 
@@ -398,7 +332,7 @@ async def _meetings_create(
     except CapabilityNotSupportedError as exc:
         return _map_capability_not_supported(tool, exc)
     except Exception as exc:
-        _log_invoke_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(None)
 
@@ -416,7 +350,7 @@ async def _meetings_update(
     except CapabilityNotSupportedError as exc:
         return _map_capability_not_supported(tool, exc)
     except Exception as exc:
-        _log_invoke_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(None)
 
@@ -436,10 +370,10 @@ async def _meetings_delete(
         except CapabilityNotSupportedError as exc:
             return _map_capability_not_supported(tool, exc)
     except GuardrailViolationError as exc:
-        _log_guardrail(tool, exc)
+        log_handler_guardrail_violated(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_invoke_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(None)
 
@@ -471,10 +405,10 @@ async def _connections_list(
         pagination = PaginationMeta(total=total, offset=offset, limit=limit)
         return ok(dump_many(connections), pagination=pagination)
     except ArgumentValidationError as exc:
-        _log_invalid("synthorg_connections_list", exc)
+        log_handler_argument_invalid("synthorg_connections_list", exc)
         return err(exc)
     except Exception as exc:
-        _log_invoke_failed("synthorg_connections_list", exc)
+        log_handler_invoke_failed("synthorg_connections_list", exc)
         return err(exc)
 
 
@@ -495,10 +429,10 @@ async def _connections_get(
             )
         return ok(connection.model_dump(mode="json"))
     except ArgumentValidationError as exc:
-        _log_invalid("synthorg_connections_get", exc)
+        log_handler_argument_invalid("synthorg_connections_get", exc)
         return err(exc)
     except Exception as exc:
-        _log_invoke_failed("synthorg_connections_get", exc)
+        log_handler_invoke_failed("synthorg_connections_get", exc)
         return err(exc)
 
 
@@ -513,24 +447,24 @@ async def _connections_create(
         name = _require_str(arguments, _ARG_NAME)
         connection_type = _parse_connection_type(arguments)
         auth_method = _require_str(arguments, _ARG_AUTH_METHOD)
-        credentials = _require_dict(arguments, _ARG_CREDENTIALS)
-        base_url = _get_str(arguments, _ARG_BASE_URL)
+        credentials = require_dict(arguments, _ARG_CREDENTIALS)
+        base_url = get_optional_str(arguments, _ARG_BASE_URL)
         metadata = _get_dict(arguments, _ARG_METADATA)
         connection = await app_state.connection_service.create_connection(
             name=name,
             connection_type=connection_type,
             auth_method=auth_method,
             credentials=credentials,
-            actor_id=_actor_name(actor),
+            actor_id=actor_label(actor),
             base_url=base_url,
             metadata=metadata,
         )
         return ok(connection.model_dump(mode="json"))
     except ArgumentValidationError as exc:
-        _log_invalid("synthorg_connections_create", exc)
+        log_handler_argument_invalid("synthorg_connections_create", exc)
         return err(exc)
     except Exception as exc:
-        _log_invoke_failed("synthorg_connections_create", exc)
+        log_handler_invoke_failed("synthorg_connections_create", exc)
         return err(exc)
 
 
@@ -547,25 +481,25 @@ async def _connections_delete(
         name = _require_str(arguments, _ARG_NAME)
         await app_state.connection_service.delete_connection(
             name=name,
-            actor_id=_actor_name(resolved_actor),
+            actor_id=actor_label(resolved_actor),
             reason=reason,
         )
         logger.info(
             MCP_DESTRUCTIVE_OP_EXECUTED,
             tool_name=tool,
-            actor=_actor_name(resolved_actor),
+            actor=actor_label(resolved_actor),
             reason=reason,
             connection_name=name,
         )
         return ok(None)
     except GuardrailViolationError as exc:
-        _log_guardrail(tool, exc)
+        log_handler_guardrail_violated(tool, exc)
         return err(exc)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_invoke_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
 
@@ -586,10 +520,10 @@ async def _connections_check_health(
             )
         return ok(connection.model_dump(mode="json"))
     except ArgumentValidationError as exc:
-        _log_invalid("synthorg_connections_check_health", exc)
+        log_handler_argument_invalid("synthorg_connections_check_health", exc)
         return err(exc)
     except Exception as exc:
-        _log_invoke_failed("synthorg_connections_check_health", exc)
+        log_handler_invoke_failed("synthorg_connections_check_health", exc)
         return err(exc)
 
 
@@ -629,10 +563,10 @@ async def _webhooks_list(
         pagination = PaginationMeta(total=total, offset=offset, limit=limit)
         return ok(dump_many(definitions), pagination=pagination)
     except ArgumentValidationError as exc:
-        _log_invalid("synthorg_webhooks_list", exc)
+        log_handler_argument_invalid("synthorg_webhooks_list", exc)
         return err(exc)
     except Exception as exc:
-        _log_invoke_failed("synthorg_webhooks_list", exc)
+        log_handler_invoke_failed("synthorg_webhooks_list", exc)
         return err(exc)
 
 
@@ -653,10 +587,10 @@ async def _webhooks_get(
             )
         return ok(definition.model_dump(mode="json"))
     except ArgumentValidationError as exc:
-        _log_invalid("synthorg_webhooks_get", exc)
+        log_handler_argument_invalid("synthorg_webhooks_get", exc)
         return err(exc)
     except Exception as exc:
-        _log_invoke_failed("synthorg_webhooks_get", exc)
+        log_handler_invoke_failed("synthorg_webhooks_get", exc)
         return err(exc)
 
 
@@ -671,20 +605,20 @@ async def _webhooks_create(
         definition = _parse_webhook_definition(arguments, require_id=False)
         stored = await app_state.webhook_service.create_webhook(
             definition=definition,
-            actor_id=_actor_name(actor),
+            actor_id=actor_label(actor),
         )
         return ok(stored.model_dump(mode="json"))
     except ArgumentValidationError as exc:
-        _log_invalid("synthorg_webhooks_create", exc)
+        log_handler_argument_invalid("synthorg_webhooks_create", exc)
         return err(exc)
     except KeyError as exc:
-        _log_invoke_failed("synthorg_webhooks_create", exc)
+        log_handler_invoke_failed("synthorg_webhooks_create", exc)
         return err(exc, domain_code="conflict")
     except ValueError as exc:
-        _log_invoke_failed("synthorg_webhooks_create", exc)
+        log_handler_invoke_failed("synthorg_webhooks_create", exc)
         return err(exc, domain_code="conflict")
     except Exception as exc:
-        _log_invoke_failed("synthorg_webhooks_create", exc)
+        log_handler_invoke_failed("synthorg_webhooks_create", exc)
         return err(exc)
 
 
@@ -698,26 +632,26 @@ async def _webhooks_update(
     try:
         definition = _parse_webhook_definition(arguments, require_id=True)
     except ArgumentValidationError as exc:
-        _log_invalid("synthorg_webhooks_update", exc)
+        log_handler_argument_invalid("synthorg_webhooks_update", exc)
         return err(exc)
     except Exception as exc:
-        _log_invoke_failed("synthorg_webhooks_update", exc)
+        log_handler_invoke_failed("synthorg_webhooks_update", exc)
         return err(exc)
     try:
         stored = await app_state.webhook_service.update_webhook(
             definition=definition,
-            actor_id=_actor_name(actor),
+            actor_id=actor_label(actor),
         )
         return ok(stored.model_dump(mode="json"))
     except KeyError as exc:
         missing = LookupError(f"Webhook {definition.id} not found")
-        _log_invoke_failed("synthorg_webhooks_update", exc)
+        log_handler_invoke_failed("synthorg_webhooks_update", exc)
         return err(missing, domain_code="not_found")
     except ValueError as exc:
-        _log_invoke_failed("synthorg_webhooks_update", exc)
+        log_handler_invoke_failed("synthorg_webhooks_update", exc)
         return err(exc, domain_code="conflict")
     except Exception as exc:
-        _log_invoke_failed("synthorg_webhooks_update", exc)
+        log_handler_invoke_failed("synthorg_webhooks_update", exc)
         return err(exc)
 
 
@@ -734,7 +668,7 @@ async def _webhooks_delete(
         webhook_id = _require_str(arguments, _ARG_WEBHOOK_ID)
         removed = await app_state.webhook_service.delete_webhook(
             definition_id=webhook_id,
-            actor_id=_actor_name(resolved_actor),
+            actor_id=actor_label(resolved_actor),
             reason=reason,
         )
         if not removed:
@@ -745,20 +679,20 @@ async def _webhooks_delete(
         logger.info(
             MCP_DESTRUCTIVE_OP_EXECUTED,
             tool_name=tool,
-            actor=_actor_name(resolved_actor),
+            actor=actor_label(resolved_actor),
             reason=reason,
             webhook_id=webhook_id,
             removed=removed,
         )
         return ok({"removed": removed})
     except GuardrailViolationError as exc:
-        _log_guardrail(tool, exc)
+        log_handler_guardrail_violated(tool, exc)
         return err(exc)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
+        log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
-        _log_invoke_failed(tool, exc)
+        log_handler_invoke_failed(tool, exc)
         return err(exc)
 
 
@@ -776,7 +710,7 @@ async def _tunnel_get_status(
         status = await app_state.tunnel_service.get_status()
         return ok(status.to_dict())
     except Exception as exc:
-        _log_invoke_failed("synthorg_tunnel_get_status", exc)
+        log_handler_invoke_failed("synthorg_tunnel_get_status", exc)
         return err(exc)
 
 
@@ -791,7 +725,7 @@ async def _tunnel_connect(
         status = await app_state.tunnel_service.connect()
         return ok(status.to_dict())
     except Exception as exc:
-        _log_invoke_failed("synthorg_tunnel_connect", exc)
+        log_handler_invoke_failed("synthorg_tunnel_connect", exc)
         return err(exc)
 
 
