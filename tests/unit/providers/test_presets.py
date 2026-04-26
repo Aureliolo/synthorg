@@ -265,3 +265,89 @@ class TestProviderPresets:
         assert preset is not None
         assert isinstance(preset, CloudPreset)
         assert preset.litellm_provider == "ollama"
+
+    def test_cloud_preset_deserialises_via_kind_discriminator(self) -> None:
+        """JSON with ``kind='cloud'`` round-trips into a ``CloudPreset``.
+
+        Pydantic discriminated unions rely on the discriminator field
+        landing at deserialisation; a regression here would silently
+        coerce JSON into the wrong concrete type and break consumers
+        that branch on ``isinstance``.
+        """
+        from pydantic import TypeAdapter
+
+        from synthorg.providers.presets import ProviderPreset
+
+        adapter: TypeAdapter[CloudPreset | LocalPreset] = TypeAdapter(ProviderPreset)
+        result = adapter.validate_python(
+            {
+                "kind": "cloud",
+                "name": "test-cloud",
+                "display_name": "Test Cloud",
+                "description": "Round-trip test",
+                "driver": "litellm",
+                "litellm_provider": "test-cloud",
+                "auth_type": "api_key",
+                "supported_auth_types": ["api_key"],
+            }
+        )
+        assert isinstance(result, CloudPreset)
+        assert result.kind == "cloud"
+        assert result.name == "test-cloud"
+
+    def test_local_preset_deserialises_via_kind_discriminator(self) -> None:
+        """JSON with ``kind='local'`` round-trips into a ``LocalPreset``."""
+        from pydantic import TypeAdapter
+
+        from synthorg.providers.presets import ProviderPreset
+
+        adapter: TypeAdapter[CloudPreset | LocalPreset] = TypeAdapter(ProviderPreset)
+        result = adapter.validate_python(
+            {
+                "kind": "local",
+                "name": "test-local",
+                "display_name": "Test Local",
+                "description": "Round-trip test",
+                "driver": "litellm",
+                "litellm_provider": "openai",
+                "auth_type": "none",
+                "candidate_urls": ["http://localhost:9000"],
+                "requires_base_url": True,
+            }
+        )
+        assert isinstance(result, LocalPreset)
+        assert result.kind == "local"
+        assert result.candidate_urls == ("http://localhost:9000",)
+
+    def test_unknown_kind_is_rejected_by_discriminator(self) -> None:
+        """JSON with an unknown ``kind`` value fails fast."""
+        from pydantic import TypeAdapter, ValidationError
+
+        from synthorg.providers.presets import ProviderPreset
+
+        adapter: TypeAdapter[CloudPreset | LocalPreset] = TypeAdapter(ProviderPreset)
+        with pytest.raises(ValidationError, match=r"(discriminat|tag)"):
+            adapter.validate_python(
+                {
+                    "kind": "satellite",
+                    "name": "x",
+                    "display_name": "X",
+                    "description": "X",
+                    "driver": "litellm",
+                    "litellm_provider": "x",
+                    "auth_type": "api_key",
+                }
+            )
+
+    def test_list_probable_presets_invariant_all_have_candidate_urls(self) -> None:
+        """Every preset in ``list_probable_presets()`` must carry URLs.
+
+        Property-style invariant that survives future preset additions.
+        Catches the regression where a new local preset is added with
+        empty ``candidate_urls`` but accidentally included.
+        """
+        for preset in list_probable_presets():
+            assert preset.candidate_urls, (
+                f"Preset {preset.name!r} appears in list_probable_presets() "
+                f"but has no candidate_urls"
+            )

@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Check, Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { createLogger } from '@/lib/logger'
+import { getErrorMessage } from '@/utils/errors'
 import { ProviderLogo } from './ProviderLogo'
 import type {
   LocalPreset,
@@ -9,12 +11,18 @@ import type {
   ProviderConfig,
 } from '@/api/types/providers'
 
+const log = createLogger('detected-local-list')
+
 /**
- * Map of local preset name → cloud-counterpart preset name.
+ * Local preset name → cloud-counterpart preset name.
  *
- * When a detected local preset has an entry here, the row renders an
- * extra `[Add cloud]` button that lets the user configure the hosted
- * variant instead of (or in addition to) the local one.
+ * When a detected local preset has an entry in this map, its row
+ * renders an additional `[Add cloud]` button that opens the
+ * credential form pre-filled with the hosted variant.  Today this
+ * is `ollama` → `ollama-cloud`; add more entries here when other
+ * local backends gain cloud counterparts (e.g. one day
+ * `'lm-studio': 'lm-studio-cloud'`).  Keep both preset names valid
+ * entries in `PROVIDER_PRESETS` on the backend.
  */
 const LOCAL_TO_CLOUD_COUNTERPART: Readonly<Record<string, string>> = {
   ollama: 'ollama-cloud',
@@ -150,12 +158,18 @@ export function DetectedLocalList({
     setAdding({ name: cloudPresetName, kind: 'cloud' })
     try {
       onAddCloud(cloudPresetName)
-    } finally {
-      // Cloud add opens the modal synchronously; clear the in-flight
-      // marker on the next tick so the button briefly reflects intent
-      // without keeping the row disabled forever.
-      setTimeout(() => setAdding(null), 0)
+    } catch (err) {
+      // ``onAddCloud`` opens the modal synchronously; the only way
+      // it can throw is a programming bug in the caller.  Surface
+      // it for debugging without leaving the row disabled forever.
+      log.error('onAddCloud handler raised', getErrorMessage(err))
+      setAdding(null)
+      return
     }
+    // Cloud add opens the modal synchronously; clear the in-flight
+    // marker on the next tick so the button briefly reflects intent
+    // without keeping the row disabled forever.
+    setTimeout(() => setAdding(null), 0)
   }
 
   return (

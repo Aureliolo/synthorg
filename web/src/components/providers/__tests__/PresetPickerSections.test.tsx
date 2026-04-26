@@ -159,4 +159,24 @@ describe('PresetPickerSections', () => {
     fireEvent.click(screen.getByRole('button', { name: /Configure manually/ }))
     expect(onConfigureManually).toHaveBeenCalledTimes(1)
   })
+
+  it('shows only successful detected rows when probe returned mixed results', () => {
+    // ollama probe succeeded; lm-studio probe failed.  The component
+    // should render Ollama in the detected list and silently omit
+    // LM Studio (it does not appear as an X mark).  The section
+    // header still renders because at least one preset succeeded.
+    render(
+      <PresetPickerSections
+        {...makeProps({
+          probeResults: {
+            ollama: { url: 'http://localhost:11434', model_count: 4, candidates_tried: 1 },
+          },
+        })}
+      />,
+    )
+    expect(screen.getByText(/Detected on this machine/)).toBeInTheDocument()
+    expect(screen.getByText(/at http:\/\/localhost:11434/)).toBeInTheDocument()
+    // LM Studio is filtered out: it returned no URL, so no row is rendered.
+    expect(screen.queryByText('LM Studio')).not.toBeInTheDocument()
+  })
 })

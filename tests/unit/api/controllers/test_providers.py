@@ -416,3 +416,67 @@ class TestProbeLocalEndpoint:
 
         assert "vllm" not in response.data.results
         assert "vllm" not in response.data.errors
+
+    async def test_empty_probable_list_returns_empty_envelope(self) -> None:
+        """No probable presets => empty envelope, never raises.
+
+        Defensive guard against the silent-degradation case where a
+        future refactor empties every local preset's candidate_urls.
+        """
+        from unittest.mock import patch
+
+        state, _ = _make_provider_state_and_mgmt()
+        ctrl = _provider_controller()
+
+        with patch(
+            "synthorg.api.controllers.providers.list_probable_presets",
+            return_value=(),
+        ):
+            response = await ctrl.probe_local.fn(ctrl, state=state)
+
+        assert response.data.results == {}
+        assert response.data.errors == {}
+
+    def test_probe_local_rate_limit_returns_429_when_exhausted(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """The probe-local guard surfaces a 429 once its bucket drains.
+
+        Drains the (20, 60) per-user bucket and asserts the next call
+        receives a 429.  Locks the rate-limit policy in place so a
+        future refactor can't silently remove the guard from the
+        controller.  ``probe_preset_urls`` is mocked so each call
+        returns instantly without any real HTTP traffic.
+        """
+        from unittest.mock import patch
+
+        from synthorg.providers.probing import ProbeResult
+
+        async def fast_probe(_name: str) -> ProbeResult:
+            return ProbeResult(url=None, model_count=0, candidates_tried=0)
+
+        with patch(
+            "synthorg.api.controllers.providers.probe_preset_urls",
+            side_effect=fast_probe,
+        ):
+            # Drain the bucket; one user, sequential calls.
+            for _ in range(20):
+                resp = test_client.post(
+                    "/api/v1/providers/probe-local",
+                    json={},
+                    headers=make_auth_headers("ceo"),
+                )
+                # 200 (success), 502/503 (transient) all mean "the
+                # guard let it through".  429 here would invalidate
+                # the test setup.
+                assert resp.status_code != 429, (
+                    "Bucket drained earlier than expected -- check fixture"
+                )
+            # 21st call hits the cap.
+            resp = test_client.post(
+                "/api/v1/providers/probe-local",
+                json={},
+                headers=make_auth_headers("ceo"),
+            )
+            assert resp.status_code == 429

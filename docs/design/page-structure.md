@@ -158,7 +158,7 @@ LLM provider management. CRUD cards for configured providers with health status 
 
 No WebSocket subscription; provider changes are low-frequency admin operations. TanStack Query polling is sufficient.
 
-**API endpoints**: `GET /providers`, `GET /providers/{name}`, `GET /providers/{name}/models`, `GET /providers/{name}/health`, `POST /providers`, `PUT /providers/{name}`, `DELETE /providers/{name}`, `POST /providers/{name}/test`, `GET /providers/presets`, `POST /providers/from-preset`, `POST /providers/{name}/discover-models`, `POST /providers/probe-preset`, `GET /providers/discovery-policy`, `POST /providers/discovery-policy/entries`, `POST /providers/discovery-policy/remove-entry`
+**API endpoints**: `GET /providers`, `GET /providers/{name}`, `GET /providers/{name}/models`, `GET /providers/{name}/health`, `POST /providers`, `PUT /providers/{name}`, `DELETE /providers/{name}`, `POST /providers/{name}/test`, `GET /providers/presets`, `POST /providers/from-preset`, `POST /providers/{name}/discover-models`, `POST /providers/probe-local`, `GET /providers/discovery-policy`, `POST /providers/discovery-policy/entries`, `POST /providers/discovery-policy/remove-entry`
 
 #### Workflows (`/workflows`)
 
@@ -244,6 +244,8 @@ Full-page authentication. JWT-based. On success, redirects to `/` (Dashboard) or
 #### Setup Wizard (`/setup`)
 
 Multi-step first-run flow. After account creation (conditional), a mode selection gate asks the user to choose **Guided Setup** (recommended, full wizard) or **Quick Setup** (minimal: company name + provider, configure rest later in Settings). Guided mode steps: account (conditional), mode selection, template selection, company creation, provider setup, agent configuration, theme customization, and completion. Quick mode steps: account (conditional), mode selection, company creation, provider setup, and completion. Providers are configured before agents so model assignment is available. Each step is URL-addressable (`/setup/{step}`). The mode selection step is hidden from the progress bar. Redirects to `/` if setup is already complete.
+
+**Provider step layout** (`web/src/pages/setup/ProvidersStep.tsx`): a three-section picker reused on both the wizard and the Settings → Providers page. (a) **Cloud providers** -- a logo-and-name grid for hosted providers; click a card to open the credential form pre-filled with that preset. (b) **Detected on this machine** -- only renders when an auto-detect probe found a reachable local server; rows include the URL, model count, and `[Add local]` / `[Add cloud]` buttons (the cloud variant is offered when a local preset has a hosted counterpart, e.g. local Ollama → Ollama Cloud). The probe is a single batch call to `POST /providers/probe-local` issued once on mount, with a manual rescan button. (c) **Configure manually** -- opens the credential form in custom-endpoint mode. The "Detected" section is hidden entirely when nothing was detected; vLLM is intentionally omitted from auto-detect because its default port (8000) collides with the SynthOrg backend.
 
 **API endpoints**: `GET /setup/status`, `GET /setup/templates`, `POST /setup/company`, `POST /setup/agent`, `GET /setup/agents`, `PUT /setup/agents/{agent_index}/name`, `PUT /setup/agents/{agent_index}/model`, `PUT /setup/agents/{agent_index}/personality`, `POST /setup/agents/{agent_index}/randomize-name`, `GET /setup/personality-presets`, `GET /setup/name-locales/available`, `GET /setup/name-locales`, `PUT /setup/name-locales`, `POST /setup/complete`
 

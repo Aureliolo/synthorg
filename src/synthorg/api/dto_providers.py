@@ -391,6 +391,24 @@ class ProbeLocalResponse(BaseModel):
     results: dict[str, ProbePresetResponse] = Field(default_factory=dict)
     errors: dict[str, str] = Field(default_factory=dict)
 
+    @model_validator(mode="after")
+    def _validate_disjoint_results_errors(self) -> Self:
+        """Enforce that ``results`` and ``errors`` share no preset name.
+
+        A preset either succeeds (lands in ``results``) or fails
+        (lands in ``errors``); both at once is a service-layer bug.
+        Validating here moves the invariant from prose to type and
+        catches misconstruction at the API boundary.
+        """
+        overlap = set(self.results) & set(self.errors)
+        if overlap:
+            msg = (
+                f"ProbeLocalResponse.results and .errors overlap on "
+                f"preset(s): {sorted(overlap)!r}"
+            )
+            raise ValueError(msg)
+        return self
+
 
 def to_provider_response(config: ProviderConfig) -> ProviderResponse:
     """Convert a ProviderConfig to a safe ProviderResponse.
@@ -416,8 +434,9 @@ def to_provider_response(config: ProviderConfig) -> ProviderResponse:
         else None
     )
     preset = get_preset(config.preset_name) if config.preset_name else None
-    # Local-management capability flags only exist on LocalPreset; cloud
-    # providers don't expose model lifecycle ops via this surface.
+    # Local-management capability flags (pull/delete/config) live only
+    # on LocalPreset and are exposed back to the dashboard through this
+    # ProviderResponse DTO.  Cloud providers default them to False.
     local_preset = preset if isinstance(preset, LocalPreset) else None
     return ProviderResponse(
         driver=config.driver,

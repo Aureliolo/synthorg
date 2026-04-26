@@ -28,6 +28,18 @@ const AUTH_OPTIONS: { value: AuthType; label: string }[] = [
   { value: 'none', label: 'None' },
 ]
 
+const AUTH_TYPE_VALUES: ReadonlySet<AuthType> = new Set([
+  'api_key',
+  'oauth',
+  'custom_header',
+  'subscription',
+  'none',
+])
+
+function isAuthType(value: string): value is AuthType {
+  return AUTH_TYPE_VALUES.has(value as AuthType)
+}
+
 /** Optional store-override props for using this drawer outside the Settings page. */
 export interface ProviderFormOverrides {
   presets: readonly ProviderPreset[]
@@ -119,7 +131,19 @@ export function ProviderFormModal({
     }
   }, [open, mode, fetchPresetsFn])
 
-  // Render-phase state sync: capture previous values before comparisons
+  // ── Render-phase state sync ──────────────────────────────────
+  // We mirror props (open / mode / provider / initialPreset / the
+  // chosen preset) into local controlled inputs by comparing each
+  // prop to its prior value via refs and conditionally calling
+  // setState during render.  This is React's documented pattern for
+  // "Adjusting state when a prop changes":
+  //   https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
+  // We use ``useRef`` instead of ``useState`` for the "previous"
+  // value so the comparison itself does not schedule an extra
+  // render.  Going through ``useEffect`` here would (a) trip the
+  // ``@eslint-react/set-state-in-effect`` rule and (b) double-fire
+  // under React StrictMode in dev; the render-phase pattern avoids
+  // both.  Each setState below is idempotent under repeat invocation.
   const prevProviderRef = useRef<typeof provider | undefined>(undefined)
   const prevModeRef = useRef<typeof mode | undefined>(undefined)
   const prevOpenRef = useRef<typeof open | undefined>(undefined)
@@ -129,20 +153,20 @@ export function ProviderFormModal({
   const openChanged = open !== prevOpenRef.current
   const selectedPresetChanged = selectedPreset !== prevSelectedPresetRef.current
 
-  // Clear credentials when switching to edit mode
+  // 1. Clear credentials when transitioning into edit mode.
   if (open && mode === 'edit' && (openChanged || modeChanged || providerChanged)) {
     setSelectedPreset(null)
     setApiKey('')
     setSubscriptionToken('')
   }
 
-  // Seed selected preset from `initialPreset` when the modal opens in
-  // create mode.  ``null`` keeps the user in custom mode by default.
+  // 2. Seed selected preset from ``initialPreset`` on create-mode
+  //    open.  ``null`` keeps the user in custom mode by default.
   if (open && mode === 'create' && openChanged && initialPreset !== undefined) {
     setSelectedPreset(initialPreset ?? '__custom__')
   }
 
-  // Pre-fill in edit mode (also fires on reopen with same provider)
+  // 3. Pre-fill from the provider when entering edit mode.
   if (open && mode === 'edit' && provider && (openChanged || modeChanged || providerChanged)) {
     setName(provider.name)
     setAuthType(provider.auth_type)
@@ -151,7 +175,8 @@ export function ProviderFormModal({
     setTosAccepted(provider.tos_accepted_at !== null)
   }
 
-  // When user selection changes, auto-fill form fields (or reset for custom)
+  // 4. Sync form fields when the user picks a different preset
+  //    (or switches to custom mode).
   if (selectedPresetChanged) {
     if (selectedPreset === '__custom__') {
       setName('')
@@ -172,7 +197,8 @@ export function ProviderFormModal({
     }
   }
 
-  // Update all prev refs after comparisons
+  // Update ref snapshots so the next render compares against the
+  // values we just observed.
   prevModeRef.current = mode
   prevProviderRef.current = provider
   prevOpenRef.current = open
@@ -198,9 +224,12 @@ export function ProviderFormModal({
   })()
 
   const handleAuthTypeChange = useCallback((value: string) => {
-    const newType = value as AuthType
-    setAuthType(newType)
-    if (newType === 'subscription' && !tosAccepted) {
+    if (!isAuthType(value)) {
+      log.warn('Ignoring unknown auth_type value', value)
+      return
+    }
+    setAuthType(value)
+    if (value === 'subscription' && !tosAccepted) {
       setShowTosDialog(true)
     }
   }, [tosAccepted])
@@ -217,8 +246,19 @@ export function ProviderFormModal({
     setTosAccepted(false)
   }, [])
 
-  // Reset form when mode switches (e.g., edit -> create without closing)
-  if ((modeChanged || openChanged) && mode === 'create' && open) {
+  // 5. Reset form on edit→create transition (or first create-mode
+  //    open) ONLY when no explicit ``initialPreset`` is provided.
+  //    When the caller seeds a preset, block 2 already set it and
+  //    the selectedPreset-changed path (block 4) will fill the form;
+  //    a blanket resetForm() here would clobber that seed because
+  //    React batches all setState calls in this render and the last
+  //    write wins.
+  if (
+    (modeChanged || openChanged) &&
+    mode === 'create' &&
+    open &&
+    initialPreset === undefined
+  ) {
     resetForm()
   }
 

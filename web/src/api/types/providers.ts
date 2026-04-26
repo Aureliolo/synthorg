@@ -170,9 +170,9 @@ export interface CloudPreset extends BasePresetFields {
 export interface LocalPreset extends BasePresetFields {
   kind: 'local'
   readonly candidate_urls: readonly string[]
-  supports_model_pull: boolean
-  supports_model_delete: boolean
-  supports_model_config: boolean
+  readonly supports_model_pull: boolean
+  readonly supports_model_delete: boolean
+  readonly supports_model_config: boolean
 }
 
 /** Discriminated union of every preset kind, keyed by ``kind``. */

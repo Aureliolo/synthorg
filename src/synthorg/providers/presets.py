@@ -407,10 +407,16 @@ def list_probable_presets() -> tuple[LocalPreset, ...]:
 
 
 def candidate_urls_for(preset: CloudPreset | LocalPreset) -> tuple[str, ...]:
-    """Return candidate URLs for any preset (empty for cloud presets).
+    """Return candidate URLs for any preset.
 
-    Lets consumers iterate across the union without ``isinstance``
-    branches when they only care about the URLs.
+    Cloud presets always return an empty tuple (they have no
+    auto-detect surface).  Lets consumers iterate across the union
+    without ``isinstance`` branches when they only care about the
+    URL list.
+
+    Returns:
+        Tuple of candidate URLs for ``LocalPreset`` instances; empty
+        tuple for ``CloudPreset`` instances.
     """
     return preset.candidate_urls if isinstance(preset, LocalPreset) else ()
 
@@ -418,10 +424,16 @@ def candidate_urls_for(preset: CloudPreset | LocalPreset) -> tuple[str, ...]:
 def default_models_for(
     preset: CloudPreset | LocalPreset,
 ) -> tuple[ProviderModelConfig, ...]:
-    """Return default models for any preset (empty for local presets).
+    """Return default models for any preset.
 
-    Lets consumers iterate across the union without ``isinstance``
+    Local presets always return an empty tuple (they discover models
+    from the running server, not from a prefilled list).  Lets
+    consumers iterate across the union without ``isinstance``
     branches when they only care about the prefilled model list.
+
+    Returns:
+        Tuple of model configs for ``CloudPreset`` instances; empty
+        tuple for ``LocalPreset`` instances.
     """
     return preset.default_models if isinstance(preset, CloudPreset) else ()
 
