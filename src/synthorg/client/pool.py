@@ -38,7 +38,7 @@ class ClientPool:
         """Add or replace a client and its profile.
 
         Re-adding a previously deactivated client id resets the
-        active flag to ``True`` -- deactivation is a soft delete,
+        active flag to ``True``: deactivation is a soft delete,
         and ``add`` is the explicit "make this present and live"
         operation.
 

@@ -124,7 +124,7 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
 
     **Recommended for Complex Tasks**
 
-    The agent creates a high-level plan (3--7 steps). Each step is executed as a
+    The agent creates a high-level plan (3 to 7 steps). Each step is executed as a
     mini-ReAct loop with its own turn limit. After each step, the agent
     checkpoints, summarizing progress and optionally replanning remaining
     steps. Checkpoints are natural points for human inspection or task
@@ -598,7 +598,7 @@ The engine's architecture maps onto three decoupled planes. Each plane has a dis
 
 The brain can fail (crash, OOM, timeout) without losing session state.  Because every turn emits structured events (`execution.context.turn`, `execution.task.transition`, etc.) to the configured observability sinks, a new brain instance can reconstruct the execution context via `Session.replay(execution_id)`.
 
-`Session.replay()` walks the event log for a given execution and reconstructs `AgentContext` (turn count, accumulated cost, task status).  It is a **best-effort** read-only reconstruction; conversation message content is not stored in events, so the replayed context has synthetic placeholder messages.  The `ReplayResult.replay_completeness` field (0.0--1.0) indicates how much state was recovered, scored by event coverage (engine start, context creation, turn contiguity, cost data, task transitions).
+`Session.replay()` walks the event log for a given execution and reconstructs `AgentContext` (turn count, accumulated cost, task status).  It is a **best-effort** read-only reconstruction; conversation message content is not stored in events, so the replayed context has synthetic placeholder messages.  The `ReplayResult.replay_completeness` field (0.0 to 1.0) indicates how much state was recovered, scored by event coverage (engine start, context creation, turn contiguity, cost data, task transitions).
 
 This is lighter-weight than full checkpoint/resume (`checkpoint/resume.py`), which persists complete `AgentContext` snapshots and supports mid-execution suspend/resume with full message history.  Use session replay for recovery after brain failure; use checkpoint/resume for deliberate pause/resume of long-running tasks.
 

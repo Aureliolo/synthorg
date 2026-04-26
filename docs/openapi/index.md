@@ -103,7 +103,8 @@ The API is organised into resource controllers. Every controller is mounted unde
 
 | Resource | Path | Purpose |
 |---|---|---|
-| Health | `/health` | Liveness + readiness |
+| Liveness | `/healthz` | Process-alive probe (always 200) |
+| Readiness | `/readyz` | Dependency probe (200 healthy, 503 otherwise) |
 | Providers | `/providers` | LLM provider runtime CRUD, model auto-discovery, health |
 | Budget | `/budget` | Cost tracking, spend reports, budget enforcement, risk budget |
 | Analytics | `/analytics` | Aggregated metrics across agents, tasks, and providers |

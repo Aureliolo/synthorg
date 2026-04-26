@@ -100,8 +100,12 @@ When no closing keyword is found and the PR doesn't look like partial/investigat
    tmpfile="$(mktemp)"
    gh pr view NUMBER --json body --jq '.body' > "$tmpfile"
 
-   # 2. Idempotent: only append if not already present
-   if ! grep -q "Closes #N" "$tmpfile"; then
+   # 2. Idempotent: only append if no closing keyword already references the
+   #    issue. Match the standard GitHub closing keywords (case-insensitive)
+   #    against both the bare `#N` form and full URL forms (e.g. `/issues/N`,
+   #    `org/repo#N`) so a previous reference using a different keyword or
+   #    URL form is not duplicated.
+   if ! grep -qiE "(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]:]+([a-zA-Z0-9._/-]+)?#N\b|(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]:]+https?://[^[:space:]]+/issues/N\b" "$tmpfile"; then
      printf '\n\nCloses #N\n' >> "$tmpfile"
    fi
 
@@ -300,7 +304,7 @@ The conventions-enforcer agent checks for project-specific code conventions from
 5. Missing `copy.deepcopy()` at system boundaries (tool execution, LLM provider serialization, inter-agent delegation) (MAJOR)
 
 **Vendor names (CRITICAL):**
-6. Real vendor names (Anthropic, OpenAI, Claude, GPT, etc.) in project-owned code, docstrings, comments, tests, or config examples (CRITICAL); allowed only in: Operations design page, `.claude/` files, third-party import paths
+6. Real vendor names (Anthropic, OpenAI, Claude, GPT, etc.) in project-owned code, docstrings, comments, tests, or config examples (CRITICAL); allowed only in: Operations design page, `.claude/` skill/agent files, third-party import paths/module names, and provider presets (`src/synthorg/providers/presets.py`) which are user-facing runtime data
 7. Test code using real vendor names instead of `test-provider`, `test-small-001`, etc. (CRITICAL)
 
 **Python 3.14 conventions (MAJOR):**
