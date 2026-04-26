@@ -6,6 +6,8 @@ Production-safe ``clear`` must hold the same lock as ``register`` and
 
 import asyncio
 import uuid
+from collections.abc import Coroutine
+from typing import Any
 
 import pytest
 
@@ -25,10 +27,34 @@ def _make_identity(suffix: str) -> AgentIdentity:
     )
 
 
+async def _record_outcome(
+    coro: Coroutine[Any, Any, Any],
+    sink: list[BaseException | None],
+) -> None:
+    """Run *coro* under TaskGroup without aborting siblings on failure.
+
+    Per CLAUDE.md async-concurrency rule: when running tasks in a
+    TaskGroup where one task's failure must NOT cancel the others,
+    wrap each body in a small helper that catches Exception and
+    records a safe outcome (re-raising only ``MemoryError`` /
+    ``RecursionError``). That keeps the per-task assertion surface
+    intact under structured concurrency.
+    """
+    try:
+        await coro
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        sink.append(exc)
+    else:
+        sink.append(None)
+
+
 async def test_clear_concurrent_with_register_no_partial_state() -> None:
     """``clear`` racing with 50 ``register`` calls leaves no half-cleared state."""
     registry = AgentRegistryService()
     barrier = asyncio.Barrier(51)
+    results: list[BaseException | None] = []
 
     async def register_one(suffix: str) -> None:
         await barrier.wait()
@@ -38,12 +64,10 @@ async def test_clear_concurrent_with_register_no_partial_state() -> None:
         await barrier.wait()
         await registry.clear()
 
-    register_tasks = [register_one(f"{i:03d}") for i in range(50)]
-    results = await asyncio.gather(
-        clear_under_lock(),
-        *register_tasks,
-        return_exceptions=True,
-    )
+    async with asyncio.TaskGroup() as tg:
+        tg.create_task(_record_outcome(clear_under_lock(), results))
+        for i in range(50):
+            tg.create_task(_record_outcome(register_one(f"{i:03d}"), results))
 
     # Only ``AgentAlreadyRegisteredError`` is a tolerable concurrency
     # outcome: the clear ran between this register's lock acquisition
@@ -52,7 +76,7 @@ async def test_clear_concurrent_with_register_no_partial_state() -> None:
     for outcome in results:
         if isinstance(outcome, BaseException):
             assert isinstance(outcome, AgentAlreadyRegisteredError), (
-                f"unexpected gather exception: {type(outcome).__name__}: {outcome}"
+                f"unexpected task exception: {type(outcome).__name__}: {outcome}"
             )
         else:
             assert outcome is None

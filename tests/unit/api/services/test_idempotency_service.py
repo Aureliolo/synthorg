@@ -222,6 +222,7 @@ async def test_run_idempotent_in_flight_resolves_to_completed_via_poll(
                 scope=NotBlankStr("test"),
                 key=NotBlankStr("key-1"),
                 status=IdempotencyOutcome.COMPLETED,
+                response_hash="resolved-hash",
                 response_body='{"status": "resolved"}',
                 created_at=datetime.now(UTC),
                 expires_at=datetime.now(UTC),

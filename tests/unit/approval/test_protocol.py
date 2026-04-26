@@ -6,6 +6,8 @@ instead of silently breaking the abstraction for engine, security, and
 hr callers.
 """
 
+import inspect
+
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
@@ -29,10 +31,32 @@ class TestApprovalStoreProtocol:
         store = ApprovalStore()
         assert isinstance(store, ApprovalStoreProtocol)
 
+    def test_clear_is_async_on_protocol_and_concrete(self) -> None:
+        """``clear`` must be a coroutine function on both sides.
+
+        The async signature is what carries the lock-holding contract;
+        a sync override would silently bypass ``self._lock`` and
+        reintroduce the partial-clear race the hardening fixed.
+        """
+        assert inspect.iscoroutinefunction(ApprovalStoreProtocol.clear)
+        assert inspect.iscoroutinefunction(ApprovalStore.clear)
+
     def test_concrete_satisfies_test_reset_protocol(self) -> None:
         """``ApprovalStore`` also satisfies the test-only reset hatch."""
         store = ApprovalStore()
         assert isinstance(store, SyncResettableApprovalStore)
+
+    def test_reset_for_test_sync_is_synchronous(self) -> None:
+        """``reset_for_test_sync`` must NOT be a coroutine function.
+
+        Sync pytest fixtures call it without an event loop; making it
+        async would either hang the fixture or require everyone to
+        rewrite to async, defeating the escape-hatch purpose.
+        """
+        assert not inspect.iscoroutinefunction(
+            SyncResettableApprovalStore.reset_for_test_sync,
+        )
+        assert not inspect.iscoroutinefunction(ApprovalStore.reset_for_test_sync)
 
     def test_protocol_surface_is_stable(self) -> None:
         """The protocol's public method names are the agreed surface."""

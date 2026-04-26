@@ -51,6 +51,7 @@ from synthorg.observability.events.backup import (
     BACKUP_NOT_FOUND,
     BACKUP_RESTORE_FAILED,
 )
+from synthorg.observability.events.idempotency import IDEMPOTENCY_CLAIM_IN_FLIGHT
 
 logger = get_logger(__name__)
 
@@ -138,6 +139,12 @@ class BackupController(Controller):
                 callback=lambda: _do_backup_as_dict(_do_backup),
             )
             if cached is None:
+                logger.warning(
+                    IDEMPOTENCY_CLAIM_IN_FLIGHT,
+                    scope="backup",
+                    idempotency_key=idempotency_key,
+                    endpoint="backup.create",
+                )
                 msg = "Concurrent in-flight backup with this idempotency key"
                 raise ClientException(msg, status_code=409)
             return ApiResponse(data=BackupManifest.model_validate(cached))

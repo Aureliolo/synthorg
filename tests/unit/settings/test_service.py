@@ -930,6 +930,30 @@ class TestValidatorPattern:
 # ── Security Audit Emission Tests (#1599) ───────────────────────
 
 
+def _install_logger_info_spy(
+    monkeypatch: pytest.MonkeyPatch,
+    module: Any,
+) -> list[str]:
+    """Spy on *module*'s ``logger.info`` and return the captured events.
+
+    structlog routes events through a custom processor pipeline that
+    bypasses pytest's stdlib ``caplog`` capture, so each test in this
+    class would otherwise duplicate the same wrap-and-monkeypatch
+    boilerplate. The helper returns the list the spy appends event
+    names to; the original ``logger.info`` is still invoked so any
+    downstream processors keep firing.
+    """
+    captured: list[str] = []
+    original_info = module.logger.info
+
+    def _spy(event: str, **kwargs: Any) -> Any:
+        captured.append(event)
+        return original_info(event, **kwargs)
+
+    monkeypatch.setattr(module.logger, "info", _spy)
+    return captured
+
+
 @pytest.mark.unit
 class TestSecuritySettingsAuditEmission:
     """``SECURITY_SETTINGS_CHANGED`` must be emitted on `set` / `delete`
@@ -964,14 +988,7 @@ class TestSecuritySettingsAuditEmission:
             registry=registry,
             config=config,
         )
-        captured: list[str] = []
-        original_info = service_mod.logger.info
-
-        def _spy(event: str, **kwargs: Any) -> Any:
-            captured.append(event)
-            return original_info(event, **kwargs)
-
-        monkeypatch.setattr(service_mod.logger, "info", _spy)
+        captured = _install_logger_info_spy(monkeypatch, service_mod)
         await svc.set("security", "opt_in", "true")
         assert "security.settings.changed" in captured
 
@@ -997,14 +1014,7 @@ class TestSecuritySettingsAuditEmission:
             registry=registry,
             config=config,
         )
-        captured: list[str] = []
-        original_info = service_mod.logger.info
-
-        def _spy(event: str, **kwargs: Any) -> Any:
-            captured.append(event)
-            return original_info(event, **kwargs)
-
-        monkeypatch.setattr(service_mod.logger, "info", _spy)
+        captured = _install_logger_info_spy(monkeypatch, service_mod)
         await svc.set("budget", "total_monthly", "200.0")
         assert "security.settings.changed" not in captured
 
@@ -1031,13 +1041,6 @@ class TestSecuritySettingsAuditEmission:
             registry=registry,
             config=config,
         )
-        captured: list[str] = []
-        original_info = service_mod.logger.info
-
-        def _spy(event: str, **kwargs: Any) -> Any:
-            captured.append(event)
-            return original_info(event, **kwargs)
-
-        monkeypatch.setattr(service_mod.logger, "info", _spy)
+        captured = _install_logger_info_spy(monkeypatch, service_mod)
         await svc.delete("security", "opt_in")
         assert "security.settings.changed" in captured

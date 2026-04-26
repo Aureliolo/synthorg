@@ -95,6 +95,32 @@ class IdempotencyRecord(BaseModel):
     created_at: AwareDatetime
     expires_at: AwareDatetime
 
+    @model_validator(mode="after")
+    def _validate_response_columns_match_status(self) -> Self:
+        """Enforce response-column invariant tied to ``status``.
+
+        ``response_hash`` and ``response_body`` are both present iff
+        ``status`` is :data:`IdempotencyOutcome.COMPLETED`. Rejects
+        rows that would let a caller observe a half-written success
+        (e.g. body without hash, or hash on a row whose status is
+        still in-flight). Catches both buggy writes and corrupt rows
+        loaded from disk.
+        """
+        if self.status is IdempotencyOutcome.COMPLETED:
+            if self.response_hash is None or self.response_body is None:
+                msg = (
+                    "response_hash and response_body must both be set "
+                    "when status is COMPLETED"
+                )
+                raise ValueError(msg)
+        elif self.response_hash is not None or self.response_body is not None:
+            msg = (
+                "response_hash and response_body must both be None when "
+                f"status is {self.status.value!r}"
+            )
+            raise ValueError(msg)
+        return self
+
 
 @runtime_checkable
 class IdempotencyRepository(Protocol):
