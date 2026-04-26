@@ -19,7 +19,7 @@ For each changed `web/src/**/*.{tsx,ts}` file in the diff, check for these viola
 
 Hardcoded `transition: { duration: N }` or `transition={{ duration: N }}` instead of importing presets from `@/lib/motion` (`tweenDefault`, `tweenFast`, `tweenExitFast`, `springDefault`, etc.) or using the `useAnimationPreset()` hook.
 
-**Skip:** `lib/motion.ts` (preset definitions), `hooks/useAnimationPreset.ts`, `.stories.tsx` files, `ThemePreview.tsx` (intentional demo).
+**Skip:** `lib/motion.ts` (preset definitions), `hooks/useAnimationPreset.ts`, `.stories.tsx`/`.stories.ts` files, `ThemePreview.tsx` (intentional demo).
 
 ### 2. Card container padding (MEDIUM)
 

@@ -23,7 +23,7 @@ The skill below references `subagent_type` values from Claude Code plugins. In O
 | `go-reviewer` | `.opencode/agents/go-reviewer.md` |
 | `pr-review-toolkit:code-simplifier` | `.opencode/agents/code-reviewer.md` (use code-reviewer with simplification focus) |
 | `.claude/agents/design-token-audit.md` | `.opencode/agents/design-token-audit.md` |
-| `.claude/agents/tool-parity-checker.md` | `.opencode/agents/tool-parity-checker.md` (read from `.claude/agents/`) |
+| `.claude/agents/tool-parity-checker.md` | `.opencode/agents/tool-parity-checker.md` |
 
 Custom prompts defined inline in the skill (logging-audit, resilience-audit, conventions-enforcer, frontend-reviewer, api-contract-drift, infra-reviewer, test-quality-reviewer, async-concurrency-reviewer, go-conventions-enforcer, docs-consistency, issue-resolution-verifier) should use the matching `.opencode/agents/<name>.md` as the base agent, then append the custom prompt from the skill.
 

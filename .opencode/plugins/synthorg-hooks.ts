@@ -79,11 +79,21 @@ function runHookScript(
   scriptPath: string,
   toolInput: Record<string, unknown>,
   timeoutMs: number = 10000,
+  toolName?: string,
 ): HookOutcome {
+  // Pick the interpreter from the script extension. Bash scripts run via
+  // ``bash``; Python scripts run via ``python`` so the shebang is honored
+  // on Windows where ``./script.py`` would not resolve. Add new extensions
+  // here if a hook script in another language is introduced.
+  const interpreter = scriptPath.endsWith(".py") ? "python" : "bash";
   let result: ReturnType<typeof spawnSync>;
   try {
-    const input = JSON.stringify({ tool_input: toolInput });
-    result = spawnSync("bash", [scriptPath], {
+    const envelope: Record<string, unknown> = { tool_input: toolInput };
+    if (toolName) {
+      envelope.tool_name = toolName;
+    }
+    const input = JSON.stringify(envelope);
+    result = spawnSync(interpreter, [scriptPath], {
       input,
       timeout: timeoutMs,
       encoding: "utf-8",
@@ -106,24 +116,25 @@ function runHookScript(
     };
   }
   const stdout = _stdoutString(result.stdout as string | null);
+  const stderr = _stdoutString(result.stderr as string | null);
   if (result.status === 2) {
-    // Status 2 is the hook-contract "deny" exit code. Still try to parse
-    // a structured ``hookSpecificOutput`` envelope so we surface the
-    // operator-authored ``permissionDecisionReason`` (or equivalent
-    // authored text) instead of dumping the raw JSON blob into the
-    // raised error. Fall back to legacy free-text / the synthetic
-    // "Hook denied this action" string when no envelope is present.
+    // Status 2 is the hook-contract "deny" exit code. Prefer a structured
+    // ``hookSpecificOutput`` envelope on stdout, then fall back to free-text
+    // stdout, then to stderr (Python hooks write the human-readable reason
+    // there), then to the synthetic "Hook denied this action" string.
     const envelope = _parseEnvelope(stdout);
     if (envelope && envelope.outcome !== "allow") {
       return envelope;
     }
-    return {
-      outcome: "deny",
-      reason: stdout.length > 0 ? stdout : "Hook denied this action",
-    };
+    if (stdout.length > 0) {
+      return { outcome: "deny", reason: stdout };
+    }
+    if (stderr.length > 0) {
+      return { outcome: "deny", reason: stderr };
+    }
+    return { outcome: "deny", reason: "Hook denied this action" };
   }
   if (result.status !== 0) {
-    const stderr = _stdoutString(result.stderr as string | null);
     return {
       outcome: "error",
       reason:
@@ -157,21 +168,28 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
     tool: {
       execute: {
         before: async (input, output) => {
-          // Edit / Write PreToolUse hooks -- migration / baseline / triage-gate lock
+          // Edit / Write PreToolUse hooks -- bulk-edit guard / migration /
+          // baseline / triage-gate lock
           if (input.tool === "edit" || input.tool === "write") {
             const filePath = typeof output.args?.file_path === "string"
               ? output.args.file_path as string
               : "";
 
-            // Block bulk Edit (replace_all=true) without explicit user approval.
-            // The user must approve every bulk edit before it runs.
-            if (input.tool === "edit" && output.args?.replace_all === true) {
-              const oldString = typeof output.args?.old_string === "string"
-                ? output.args.old_string as string
-                : "<old_string>";
-              throw new Error(
-                `BLOCKED: Edit with replace_all=true is a bulk edit. The user must explicitly approve every bulk edit before it runs. Either ask the user to confirm bulk replacement of \`${oldString}\` in \`${filePath}\`, or do per-occurrence edits with replace_all=false (one Edit call per occurrence with enough context to make old_string unique).`,
+            // Bulk-edit guard runs first so the operator-authored Python
+            // script is the single source of truth for the rule (matches
+            // the Claude Code config in .claude/settings.json).
+            if (input.tool === "edit") {
+              const editArgs = (output.args ?? {}) as Record<string, unknown>;
+              const bulkOutcome = runHookScript(
+                "scripts/check_no_bulk_edit.py",
+                editArgs,
+                5000,
+                "Edit",
               );
+              const bulkDeny = denyReasonFromOutcome(bulkOutcome);
+              if (bulkDeny) {
+                throw new Error(bulkDeny);
+              }
             }
 
             const payload = { tool_input: { file_path: filePath } } as Record<string, unknown>;
@@ -197,22 +215,22 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
           if (input.tool === "bash" || input.tool === "shell") {
             const command = (output.args?.command as string) ?? "";
 
-            // Block in-place bulk-edit shell commands (sed -i, awk -i inplace,
-            // perl -i, perl -pi, gawk -i inplace). Bulk edits require explicit
-            // user approval; the Edit tool with replace_all=false is the
-            // sanctioned per-occurrence path.
-            const _bulkPatterns: Array<{ re: RegExp; label: string }> = [
-              { re: /\bsed\s+(?:-[a-zA-Z]*i|--in-place\b)/, label: "sed -i / sed --in-place" },
-              { re: /\bawk\s+(?:-[a-zA-Z]*i\b|.*-i\s+inplace)/, label: "awk -i inplace" },
-              { re: /\bperl\s+(?:-[a-zA-Z]*i\b|-pi\b|-pie\b)/, label: "perl -i / perl -pi" },
-              { re: /\bgawk\s+(?:-[a-zA-Z]*i\b|.*-i\s+inplace)/, label: "gawk -i inplace" },
-            ];
-            for (const { re, label } of _bulkPatterns) {
-              if (re.test(command)) {
-                throw new Error(
-                  `BLOCKED: detected an in-place bulk-edit shell command (${label}). Bulk edits require explicit user approval. Use the Edit tool with replace_all=false for per-occurrence edits, or ask the user to approve the bulk operation.`,
-                );
-              }
+            // Bulk-edit guard for shell commands: defers to the Python script
+            // so the rule lives in one place (sed -i, awk -i inplace, perl -i,
+            // perl -pi, gawk -i inplace). Bulk edits require explicit user
+            // approval; the Edit tool with replace_all=false is the sanctioned
+            // per-occurrence path. This check runs BEFORE other Bash hooks
+            // (push_rebased, atlas_rehash, bash_no_write, git_c_cwd) so a
+            // bulk-edit block fails fast.
+            const bulkOutcome = runHookScript(
+              "scripts/check_no_bulk_edit.py",
+              { command },
+              5000,
+              "Bash",
+            );
+            const bulkDeny = denyReasonFromOutcome(bulkOutcome);
+            if (bulkDeny) {
+              throw new Error(bulkDeny);
             }
 
             // block-pr-create: block direct gh pr create
@@ -314,11 +332,11 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
             ? output.args.file_path as string
             : "";
 
-          // Both audit scripts enter hook-mode only when they see a
-          // ``tool_input.file_path`` JSON payload on stdin (``--hook``
-          // CLI is equivalent but harder to spell portably); without
-          // it they either dump usage or silently scan the whole tree.
-          // Pass the ``filePath`` explicitly so the scripts validate
+          // Both audit scripts (web_design_system, backend_regional_defaults)
+          // enter hook-mode only when they see a ``tool_input.file_path`` JSON
+          // payload on stdin (``--hook`` CLI is equivalent but harder to spell
+          // portably); without it they either dump usage or silently scan the
+          // whole tree. Pass the ``filePath`` explicitly so the scripts validate
           // exactly the file that was just edited / written.
           const hookPayload = JSON.stringify({
             tool_input: { file_path: filePath },
