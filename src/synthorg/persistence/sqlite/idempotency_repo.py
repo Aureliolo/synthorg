@@ -14,6 +14,7 @@ import sqlite3
 from datetime import datetime  # noqa: TC003
 
 import aiosqlite
+from pydantic import AwareDatetime  # noqa: TC002
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -59,7 +60,7 @@ class SQLiteIdempotencyRepository:
         scope: NotBlankStr,
         key: NotBlankStr,
         ttl_seconds: int,
-        now: datetime,
+        now: AwareDatetime,
     ) -> IdempotencyClaim:
         """Atomically claim ``(scope, key)`` for *ttl_seconds*."""
         from datetime import timedelta  # noqa: PLC0415
@@ -269,7 +270,7 @@ class SQLiteIdempotencyRepository:
             expires_at=_parse_dt(row["expires_at"]),
         )
 
-    async def cleanup_expired(self, now: datetime) -> int:
+    async def cleanup_expired(self, now: AwareDatetime) -> int:
         """Delete expired rows and return the count removed."""
         async with self._write_lock:
             try:

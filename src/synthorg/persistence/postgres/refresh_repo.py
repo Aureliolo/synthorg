@@ -9,15 +9,19 @@ from collections.abc import Callable  # noqa: TC003
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from psycopg import Error as PsycopgError
+
 from synthorg.api.auth.refresh_record import (
     RefreshConsumeOutcome,
     RefreshRecord,
     RefreshRejectReason,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_AUTH_REFRESH_CLEANUP,
+    API_AUTH_REFRESH_PERSISTENCE_ERROR,
 )
+from synthorg.persistence.errors import QueryError
 
 # Persistence-boundary rule (#1599): SECURITY_AUTH_REFRESH_* events are
 # auth decisions, not storage facts. Repos must not emit them; the
@@ -60,20 +64,35 @@ class PostgresRefreshTokenRepository:
     ) -> None:
         """Store a new refresh token."""
         now = datetime.now(UTC)
-        async with self._pool.connection() as conn, conn.cursor() as cur:
-            await cur.execute(
-                "INSERT INTO refresh_tokens "
-                "(token_hash, session_id, user_id, expires_at, "
-                "used, created_at) "
-                "VALUES (%s, %s, %s, %s, FALSE, %s)",
-                (
-                    token_hash,
-                    session_id,
-                    user_id,
-                    expires_at,
-                    now,
-                ),
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.transaction(),
+                conn.cursor() as cur,
+            ):
+                await cur.execute(
+                    "INSERT INTO refresh_tokens "
+                    "(token_hash, session_id, user_id, expires_at, "
+                    "used, created_at) "
+                    "VALUES (%s, %s, %s, %s, FALSE, %s)",
+                    (
+                        token_hash,
+                        session_id,
+                        user_id,
+                        expires_at,
+                        now,
+                    ),
+                )
+        except PsycopgError as exc:
+            logger.warning(
+                API_AUTH_REFRESH_PERSISTENCE_ERROR,
+                operation="create",
+                token_hash=token_hash[:8],
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
+            msg = "Failed to persist refresh token"
+            raise QueryError(msg) from exc
 
     async def consume(
         self,
@@ -85,26 +104,38 @@ class PostgresRefreshTokenRepository:
         dict_row = self._dict_row
         now = datetime.now(UTC)
 
-        async with (
-            self._pool.connection() as conn,
-            conn.cursor(row_factory=dict_row) as cur,
-        ):
-            await cur.execute(
-                "UPDATE refresh_tokens SET used = TRUE "
-                "WHERE token_hash = %s AND used = FALSE "
-                "AND expires_at > %s "
-                "RETURNING token_hash, session_id, user_id, "
-                "expires_at, used, created_at",
-                (token_hash, now),
-            )
-            row = await cur.fetchone()
-            replay_row: dict[str, Any] | None = None
-            if row is None:
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.transaction(),
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
                 await cur.execute(
-                    "SELECT used FROM refresh_tokens WHERE token_hash = %s",
-                    (token_hash,),
+                    "UPDATE refresh_tokens SET used = TRUE "
+                    "WHERE token_hash = %s AND used = FALSE "
+                    "AND expires_at > %s "
+                    "RETURNING token_hash, session_id, user_id, "
+                    "expires_at, used, created_at",
+                    (token_hash, now),
                 )
-                replay_row = await cur.fetchone()
+                row = await cur.fetchone()
+                replay_row: dict[str, Any] | None = None
+                if row is None:
+                    await cur.execute(
+                        "SELECT used FROM refresh_tokens WHERE token_hash = %s",
+                        (token_hash,),
+                    )
+                    replay_row = await cur.fetchone()
+        except PsycopgError as exc:
+            logger.warning(
+                API_AUTH_REFRESH_PERSISTENCE_ERROR,
+                operation="consume",
+                token_hash=token_hash[:8],
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = "Failed to consume refresh token"
+            raise QueryError(msg) from exc
 
         if row is not None:
             if is_session_revoked and is_session_revoked(row["session_id"]):
@@ -137,13 +168,28 @@ class PostgresRefreshTokenRepository:
         (persistence-boundary rule -- repos do not emit decision
         events).
         """
-        async with self._pool.connection() as conn, conn.cursor() as cur:
-            await cur.execute(
-                "UPDATE refresh_tokens SET used = TRUE "
-                "WHERE session_id = %s AND used = FALSE",
-                (session_id,),
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.transaction(),
+                conn.cursor() as cur,
+            ):
+                await cur.execute(
+                    "UPDATE refresh_tokens SET used = TRUE "
+                    "WHERE session_id = %s AND used = FALSE",
+                    (session_id,),
+                )
+                return cur.rowcount
+        except PsycopgError as exc:
+            logger.warning(
+                API_AUTH_REFRESH_PERSISTENCE_ERROR,
+                operation="revoke_by_session",
+                session_id=session_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            return cur.rowcount
+            msg = f"Failed to revoke refresh tokens for session {session_id!r}"
+            raise QueryError(msg) from exc
 
     async def revoke_by_user(self, user_id: str) -> int:
         """Mark all refresh tokens for a user as used.
@@ -152,23 +198,52 @@ class PostgresRefreshTokenRepository:
         (persistence-boundary rule -- repos do not emit decision
         events).
         """
-        async with self._pool.connection() as conn, conn.cursor() as cur:
-            await cur.execute(
-                "UPDATE refresh_tokens SET used = TRUE "
-                "WHERE user_id = %s AND used = FALSE",
-                (user_id,),
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.transaction(),
+                conn.cursor() as cur,
+            ):
+                await cur.execute(
+                    "UPDATE refresh_tokens SET used = TRUE "
+                    "WHERE user_id = %s AND used = FALSE",
+                    (user_id,),
+                )
+                return cur.rowcount
+        except PsycopgError as exc:
+            logger.warning(
+                API_AUTH_REFRESH_PERSISTENCE_ERROR,
+                operation="revoke_by_user",
+                user_id=user_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            return cur.rowcount
+            msg = f"Failed to revoke refresh tokens for user {user_id!r}"
+            raise QueryError(msg) from exc
 
     async def cleanup_expired(self) -> int:
         """Remove expired tokens."""
         now = datetime.now(UTC)
-        async with self._pool.connection() as conn, conn.cursor() as cur:
-            await cur.execute(
-                "DELETE FROM refresh_tokens WHERE expires_at <= %s",
-                (now,),
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.transaction(),
+                conn.cursor() as cur,
+            ):
+                await cur.execute(
+                    "DELETE FROM refresh_tokens WHERE expires_at <= %s",
+                    (now,),
+                )
+                count = cur.rowcount
+        except PsycopgError as exc:
+            logger.warning(
+                API_AUTH_REFRESH_PERSISTENCE_ERROR,
+                operation="cleanup_expired",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            count = cur.rowcount
+            msg = "Failed to cleanup expired refresh tokens"
+            raise QueryError(msg) from exc
         if count:
             logger.info(API_AUTH_REFRESH_CLEANUP, removed=count)
         return count
