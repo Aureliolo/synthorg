@@ -3,7 +3,7 @@ import { AlertTriangle, Check, Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { createLogger } from '@/lib/logger'
-import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import { ProviderLogo } from './ProviderLogo'
 import type {
   LocalPreset,
@@ -176,7 +176,10 @@ export function DetectedLocalList({
       // ``onAddCloud`` opens the modal synchronously; the only way
       // it can throw is a programming bug in the caller.  Surface
       // it for debugging without leaving the row disabled forever.
-      log.error('onAddCloud handler raised', getErrorMessage(err))
+      // Use ``sanitizeForLog`` rather than ``getErrorMessage`` so any
+      // attacker-controlled string in the caller's error path is
+      // truncated, control-char stripped, and bidi-override safe.
+      log.error('onAddCloud handler raised', sanitizeForLog(err))
       setAdding(null)
       return
     }
@@ -226,6 +229,11 @@ export function DetectedLocalList({
               adding && cloudCounterpart && adding.name === cloudCounterpart
                 ? adding.kind
                 : null
+            // ``rowAdding`` disables both buttons on this row whenever
+            // either the local preset or its cloud counterpart is
+            // mid-add.  Single source of truth keeps the row's
+            // disabled state consistent across the two actions.
+            const rowAdding = isAddingThis ?? isAddingCloudCounterpart
             return (
               <DetectedLocalRow
                 key={preset.name}
@@ -235,7 +243,7 @@ export function DetectedLocalList({
                 alreadyAddedCloud={Boolean(
                   cloudCounterpart && cloudCounterpart in providers,
                 )}
-                adding={isAddingThis ?? isAddingCloudCounterpart}
+                adding={rowAdding}
                 onAddLocal={handleAddLocal}
                 onAddCloud={onAddCloud ? handleAddCloud : undefined}
               />

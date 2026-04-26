@@ -80,3 +80,15 @@ export const SomeConfigured: Story = {
     onSelect: (name) => alert(`Picked ${name}`),
   },
 }
+
+// Documents the zero-presets edge case -- the grid renders an empty
+// container without throwing.  Useful for visualising the layout
+// before the presets fetch resolves and for keyboard-tab order
+// regression checks.
+export const Empty: Story = {
+  args: {
+    presets: [],
+    addedPresets: new Set(),
+    onSelect: (name) => alert(`Picked ${name}`),
+  },
+}

@@ -594,16 +594,21 @@ class ProviderManagementService:
             )
         except Exception as exc:
             msg = f"Failed to persist provider configuration: {type(exc).__name__}"
-            # SEC-1: ``error=str(exc)`` would leak credential material via
-            # exception text, so we redact via ``safe_error_description``.
-            # ``exc_info=True`` keeps the stack trace attached for
-            # debugging without re-introducing the leak path.
+            # SEC-1: ``error=str(exc)`` would leak credential material
+            # via exception text, so we redact via
+            # ``safe_error_description``.  ``exc_info=True`` would
+            # re-introduce the leak path -- tracebacks attach the
+            # exception args (which can include credentials when the
+            # raise originated in a credential-bearing call) -- so we
+            # deliberately omit it.  The redacted error text plus
+            # ``error_type`` is enough to triage; the full trace lives
+            # only in the in-process exception object that
+            # ``ProviderValidationError`` wraps via ``from exc``.
             logger.warning(
                 PROVIDER_VALIDATION_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
                 provider_count=len(new_providers),
-                exc_info=True,
             )
             raise ProviderValidationError(msg) from exc
 
