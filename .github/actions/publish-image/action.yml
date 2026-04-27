@@ -127,17 +127,17 @@ runs:
             docker manifest create --amend "${REPO}:${t}" \
               "${REPO}:sha-${SHORT_SHA}-amd64"
           fi
-          PUSH_OUT=$(docker manifest push "${REPO}:${t}")
+          docker manifest push "${REPO}:${t}"
 
           # Capture the manifest digest of the sha-<short> tag as the
           # canonical output -- that is what cosign + attest will sign.
-          # `docker manifest push` may emit additional status lines
-          # alongside the digest on some Docker versions, so extract the
-          # last sha256 token explicitly -- a multiline DIGEST would
-          # silently corrupt cosign / attest-build-provenance subject
-          # refs downstream.
+          # `docker manifest push` stdout is unreliable across Docker
+          # versions: some print `sha256:<hex>`, some print only
+          # `Created manifest list <ref>` with no digest. Read it back
+          # from the registry via buildx imagetools, which always
+          # returns the canonical manifest digest.
           if [ "$t" = "sha-${SHORT_SHA}" ]; then
-            DIGEST="$(printf '%s\n' "$PUSH_OUT" | grep -Eo 'sha256:[0-9a-f]{64}' | tail -n1)"
+            DIGEST="$(docker buildx imagetools inspect "${REPO}:${t}" --format '{{.Manifest.Digest}}')"
           fi
         done <<< "$META_TAGS"
 

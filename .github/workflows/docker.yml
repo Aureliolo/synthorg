@@ -204,7 +204,13 @@ jobs:
 
       - name: Validate compose files
         run: |
-          echo "POSTGRES_PASSWORD=ci-validation-dummy" > docker/.env
+          # Placeholder values for compose interpolation. The Dockerfile is
+          # never built during `compose config`, so these values just need
+          # to silence "variable not set" warnings; they are not consumed.
+          {
+            echo "POSTGRES_PASSWORD=ci-validation-dummy"
+            echo "BASE_IMAGE=ci-validation-dummy:placeholder"
+          } > docker/.env
           docker compose -f docker/compose.yml config --quiet
           docker compose -f docker/compose.yml -f docker/compose.distributed.yml --profile distributed config --quiet
           docker compose -f docker/compose.yml -f docker/compose.override.yml config --quiet
@@ -843,13 +849,14 @@ jobs:
             docker manifest create --amend "${REPO}:${t}" \
               "${REPO}:${SHA_TAG}-amd64" \
               "${REPO}:${SHA_TAG}-arm64"
-            PUSH_OUT=$(docker manifest push "${REPO}:${t}")
-            # Extract the sha256 digest explicitly; `docker manifest
-            # push` can emit extra status lines on some Docker versions,
-            # and a multiline DIGEST would silently corrupt cosign /
-            # attest-build-provenance subject refs below.
+            docker manifest push "${REPO}:${t}"
+            # `docker manifest push` stdout is unreliable across Docker
+            # versions: some emit `sha256:<hex>`, some only print
+            # `Created manifest list <ref>` with no digest. Read the
+            # canonical manifest digest back from the registry via
+            # buildx imagetools, which is deterministic.
             if [ "$t" = "${SHA_TAG}" ]; then
-              DIGEST="$(printf '%s\n' "$PUSH_OUT" | grep -Eo 'sha256:[0-9a-f]{64}' | tail -n1)"
+              DIGEST="$(docker buildx imagetools inspect "${REPO}:${t}" --format '{{.Manifest.Digest}}')"
             fi
           done
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"

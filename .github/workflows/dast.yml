@@ -11,6 +11,9 @@ concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: false  # Serialize: only one DAST scan at a time
 
+env:
+  TRIVY_VERSION: 0.70.0
+
 jobs:
   zap-scan:
     name: ZAP API Scan
@@ -21,6 +24,9 @@ jobs:
       # findings (not one per run). Removing issues:write would cause the action
       # to fail. The auto-created issue is updated in-place on subsequent runs.
       issues: write
+      # build-apko-base uploads a Trivy SARIF for the locally-built base
+      # image; this scope is required by that composite action.
+      security-events: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -36,8 +42,26 @@ jobs:
           echo "SYNTHORG_SETTINGS_KEY=$(python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')" >> docker/.env
           echo "POSTGRES_PASSWORD=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')" >> docker/.env
 
-      # Build backend image locally (no push, no registry credentials)
+      # Build the apko-composed Wolfi base image locally, mirroring CI's
+      # backend-base build. The backend Dockerfile has no default for
+      # `BASE_IMAGE` (PR #1465 / Scorecard Pinned-Dependencies), so the
+      # DAST workflow must supply a pinned reference. Building the base
+      # in-workflow yields a `sha-<short>` tag tied to the current commit
+      # -- no floating registry tag is consulted.
+      - name: Build apko base image
+        id: base
+        uses: ./.github/actions/build-apko-base
+        with:
+          image-name: backend
+          apko-yaml: docker/backend/apko.yaml
+          trivy-version: ${{ env.TRIVY_VERSION }}
+
+      # Build the backend application image. Compose passes the
+      # workflow-built `BASE_IMAGE` through to the Dockerfile via the
+      # backend.build.args mapping in docker/compose.yml.
       - name: Build backend image
+        env:
+          BASE_IMAGE: ghcr.io/aureliolo/synthorg-backend-base:${{ steps.base.outputs.tag }}
         run: docker compose -f docker/compose.yml build backend
 
       # Start backend only (no web/caddy needed for API scan)
