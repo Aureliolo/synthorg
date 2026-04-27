@@ -13,6 +13,7 @@ from synthorg.core.company import (
     ReviewRequirements,
     Team,
     WorkflowHandoff,
+    _identity_key,
 )
 from synthorg.core.enums import AutonomyLevel, CompanyType
 from synthorg.security.timeout.config import (
@@ -626,3 +627,40 @@ class TestCompanyConfigApprovalTimeout:
         )
         assert isinstance(cfg.approval_timeout, DenyOnTimeoutConfig)
         assert cfg.approval_timeout.timeout_minutes == 60.0
+
+
+# ── _identity_key ──────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestIdentityKey:
+    """Tests for the namespaced identity-key helper."""
+
+    def test_id_branch_uses_id_namespace(self) -> None:
+        """When ``id_`` is provided it takes precedence and is normalized."""
+        assert _identity_key("Backend Developer", "backend-1") == ("id", "backend-1")
+
+    def test_name_branch_uses_name_namespace(self) -> None:
+        """When ``id_`` is None, the name is used in the ``name`` namespace."""
+        assert _identity_key("Backend Developer", None) == (
+            "name",
+            "backend developer",
+        )
+
+    def test_id_branch_normalizes_case_and_whitespace(self) -> None:
+        """ID values are case-folded and stripped via ``normalize_identifier``."""
+        assert _identity_key("Anything", "  Backend-1  ") == ("id", "backend-1")
+
+    def test_name_branch_normalizes_case_and_whitespace(self) -> None:
+        """Name values are case-folded and stripped via ``normalize_identifier``."""
+        assert _identity_key("  Backend Developer  ", None) == (
+            "name",
+            "backend developer",
+        )
+
+    def test_namespaces_prevent_cross_collision(self) -> None:
+        """Same canonical string in different namespaces does not collide."""
+        id_keyed = _identity_key("ignored", "alice")
+        name_keyed = _identity_key("alice", None)
+        assert id_keyed != name_keyed
+        assert id_keyed[1] == name_keyed[1] == "alice"

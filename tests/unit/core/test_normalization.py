@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 
 import pytest
-from hypothesis import given
+from hypothesis import example, given
 from hypothesis import strategies as st
 
 from synthorg.core.normalization import find_by_name_ci, normalize_identifier
@@ -28,7 +28,7 @@ class TestNormalizeIdentifier:
             ("ΣΊΓΜΑ", "σίγμα"),
             # Turkish capital dotted-I (U+0130): Unicode default case-folding
             # produces 'i' followed by combining dot above (U+0307).  This
-            # documents Python's locale-independent behaviour -- it is NOT
+            # documents Python's locale-independent behaviour; it is NOT
             # Turkish-locale-aware, but is consistent across platforms.
             ("İstanbul", "i̇stanbul"),
             # Empty / whitespace-only.
@@ -43,11 +43,22 @@ class TestNormalizeIdentifier:
     ) -> None:
         assert normalize_identifier(value) == expected
 
+    # ``casefold()`` is chosen over ``.lower()``: ß folds to "ss"
+    # (lower keeps it), Greek final-sigma forms unify, and Turkish
+    # dotted-I folds to ``i̇``.  ``.lower()`` would silently
+    # break case-insensitive comparisons across these scripts.
+    @example(value="Straße")
+    @example(value="ΣΊΓΜΑ")
+    @example(value="İstanbul")
     @given(value=st.text())
     def test_matches_strip_casefold_contract(self, value: str) -> None:
         """Pin the contract: behaviour must equal ``value.strip().casefold()``."""
         assert normalize_identifier(value) == value.strip().casefold()
 
+    @example(value="Straße")
+    @example(value="ΣΊΓΜΑ")
+    @example(value="İstanbul")
+    @example(value="  Café\n")
     @given(value=st.text())
     def test_idempotent(self, value: str) -> None:
         """Applying the helper twice yields the same result as once."""
@@ -57,7 +68,11 @@ class TestNormalizeIdentifier:
 
 @pytest.mark.unit
 class TestFindByNameCi:
-    """``find_by_name_ci`` linear search."""
+    """Linear case- and whitespace-insensitive search via ``normalize_identifier``.
+
+    Both the target and each candidate value are normalized before
+    comparison, so ``"Alice "`` matches ``"alice"`` and vice versa.
+    """
 
     @dataclass
     class Item:
