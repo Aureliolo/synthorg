@@ -9,11 +9,15 @@ import { useCallback, useMemo, useState } from 'react'
  * - ``selectedIds``: ``ReadonlySet`` of currently-selected row ids,
  *   safe to pass directly to row components without copying.
  * - ``toggle(id)``: flip the membership of a single id.
- * - ``toggleAll(ids)``: header-checkbox handler. When the current
- *   selection is empty or partial, selects every visible id; when
- *   every visible id is already selected, clears the selection.
- * - ``clear()``: drop every selection (used by the BulkActionBar's
- *   built-in Clear button and after a successful bulk action).
+ * - ``toggleAll(ids)``: header-checkbox handler scoped to the
+ *   *visible* ids passed in. When every visible id is already
+ *   selected, deselects ONLY those visible ids (selections from rows
+ *   currently filtered out are preserved). Otherwise selects every
+ *   visible id while leaving any pre-existing hidden selections
+ *   untouched. A no-op when ``ids`` is empty.
+ * - ``clear()``: drop every selection across the whole hook (visible
+ *   AND hidden), used by the BulkActionBar's built-in Clear button
+ *   and after a successful bulk action.
  * - ``isAllSelected(ids)`` / ``isPartiallySelected(ids)``: tri-state
  *   checkbox indicators for the header. ``isPartiallySelected``
  *   returns true when at least one but not every visible id is

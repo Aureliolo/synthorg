@@ -141,9 +141,14 @@ export function ErrorBanner({
       })
     }, 1000)
     return () => clearInterval(id)
-  }, [retryAfterSeconds])
+    // ``seedSignature`` covers ``retryResetToken`` changes too: when a
+    // fresh error arrives with the same ``retryAfterSeconds`` but a new
+    // token, render-phase reseed sets ``remaining`` back to the initial
+    // value AND this effect fires to start a new interval (without it
+    // the previous interval -- already cleared at zero -- would not
+    // restart, leaving the disabled-Retry state stuck).
+  }, [retryAfterSeconds, seedSignature])
   const retryDisabled = remaining !== null && remaining > 0
-  const retryLabel = retryDisabled ? `Retry in ${remaining}s` : 'Retry'
 
   return (
     <div
@@ -176,15 +181,34 @@ export function ErrorBanner({
         {(onRetry || action) && (
           <div className="mt-2 flex flex-wrap gap-2">
             {onRetry && (
-              <Button
-                size="xs"
-                variant="outline"
-                onClick={onRetry}
-                disabled={retryDisabled}
-                aria-live={retryDisabled ? 'polite' : undefined}
-              >
-                {retryLabel}
-              </Button>
+              <div className="inline-flex items-center gap-2">
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={onRetry}
+                  disabled={retryDisabled}
+                >
+                  Retry
+                </Button>
+                {retryDisabled && (
+                  /*
+                   * Countdown text rendered as a separate ``aria-hidden``
+                   * sibling so the per-second ticks don't mutate the
+                   * Retry button's accessible name (the previous design
+                   * caused screen readers to re-announce ``Retry in 12s``
+                   * every second). Sighted users still see the timer; the
+                   * button's disabled state is what assistive tech
+                   * conveys, and re-enabling fires a single state change
+                   * announcement instead of N per-second updates.
+                   */
+                  <span
+                    aria-hidden="true"
+                    className="font-mono text-[11px] text-muted-foreground"
+                  >
+                    Retry in {remaining}s
+                  </span>
+                )}
+              </div>
             )}
             {action && (isActionObject(action) ? (
               <Button size="xs" variant="ghost" onClick={action.onClick}>
