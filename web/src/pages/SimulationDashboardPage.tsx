@@ -11,6 +11,7 @@ import {
 } from '@/api/endpoints/clients'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ListHeader } from '@/components/ui/list-header'
 import { MetricCard } from '@/components/ui/metric-card'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonCard } from '@/components/ui/skeleton'
@@ -77,7 +78,7 @@ export default function SimulationDashboardPage() {
   if (loading && runs.length === 0) {
     return (
       <div className="space-y-section-gap">
-        <h1 className="text-lg font-semibold text-foreground">Simulations</h1>
+        <ListHeader title="Simulations" />
         <SkeletonCard />
       </div>
     )
@@ -99,12 +100,7 @@ export default function SimulationDashboardPage() {
 
   return (
     <div className="space-y-section-gap">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Simulations</h1>
-        <span className="text-sm text-muted-foreground">
-          {runs.length} runs
-        </span>
-      </div>
+      <ListHeader title="Simulations" count={runs.length} countLabel={`${runs.length} runs`} />
 
       {error && (
         <ErrorBanner severity="error" title="Simulation error" description={error} />

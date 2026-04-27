@@ -4,6 +4,7 @@ import { useSubworkflowsStore } from '@/stores/subworkflows'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { ListHeader } from '@/components/ui/list-header'
 import { SearchInput } from '@/components/ui/search-input'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { SubworkflowSummary } from '@/api/types/workflows'
@@ -49,12 +50,7 @@ export default function SubworkflowsPage() {
 
   return (
     <div className="space-y-section-gap">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Subworkflows</h1>
-        <span className="text-sm text-muted-foreground">
-          {filteredSubworkflows.length} subworkflow{filteredSubworkflows.length !== 1 ? 's' : ''}
-        </span>
-      </div>
+      <ListHeader title="Subworkflows" count={filteredSubworkflows.length} />
 
       {error && (
         <ErrorBanner severity="error" title="Could not load subworkflows" description={error} />

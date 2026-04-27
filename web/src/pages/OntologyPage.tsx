@@ -5,6 +5,7 @@ import { Shapes } from 'lucide-react'
 import { useOntologyData } from '@/hooks/useOntologyData'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { ListHeader } from '@/components/ui/list-header'
 import { EntityCatalog } from './ontology/EntityCatalog'
 import { DriftMonitor } from './ontology/DriftMonitor'
 import { OntologySkeleton } from './ontology/OntologySkeleton'
@@ -27,17 +28,12 @@ export default function OntologyPage() {
   }
 
   const header = (
-    <div className="flex items-center justify-between">
-      <div>
-        <h1 className="text-lg font-semibold text-foreground">Ontology</h1>
-        <p className="text-sm text-muted-foreground">
-          Entity definitions, versioning, and semantic drift monitoring
-        </p>
-      </div>
-      <span className="text-sm text-muted-foreground">
-        {totalEntities} entities ({coreCount} core, {userCount} user)
-      </span>
-    </div>
+    <ListHeader
+      title="Ontology"
+      description="Entity definitions, versioning, and semantic drift monitoring"
+      count={totalEntities}
+      countLabel={`${totalEntities} entities (${coreCount} core, ${userCount} user)`}
+    />
   )
 
   // Truly-empty ontology (no data, no filters) -- skip both EntityCatalog

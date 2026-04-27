@@ -12,6 +12,7 @@ import {
 } from '@/api/endpoints/clients'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ListHeader } from '@/components/ui/list-header'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { createLogger } from '@/lib/logger'
@@ -120,7 +121,7 @@ export default function RequestQueuePage() {
   if (loading && requests.length === 0) {
     return (
       <div className="space-y-section-gap">
-        <h1 className="text-lg font-semibold text-foreground">Request Queue</h1>
+        <ListHeader title="Request Queue" />
         <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-3">
           <SkeletonCard />
           <SkeletonCard />
@@ -137,12 +138,7 @@ export default function RequestQueuePage() {
 
   return (
     <div className="space-y-section-gap">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Request Queue</h1>
-        <span className="text-sm text-muted-foreground">
-          {requests.length} total
-        </span>
-      </div>
+      <ListHeader title="Request Queue" count={requests.length} />
 
       {error && (
         <ErrorBanner severity="error" title="Could not load request queue" description={error} />
