@@ -9,6 +9,8 @@ bytes in and receive the same bytes back unchanged.
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+import psycopg
+
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_CONNECTION_SECRET_DELETE_FAILED,
@@ -57,7 +59,7 @@ class PostgresConnectionSecretRepository:
                     (str(secret_id), encrypted_value, int(key_version), now),
                 )
                 await conn.commit()
-        except Exception as exc:
+        except psycopg.Error as exc:
             msg = f"Failed to store connection secret {secret_id!r}"
             logger.warning(
                 PERSISTENCE_CONNECTION_SECRET_STORE_FAILED,
@@ -77,7 +79,7 @@ class PostgresConnectionSecretRepository:
                     (str(secret_id),),
                 )
                 row = await cur.fetchone()
-        except Exception as exc:
+        except psycopg.Error as exc:
             msg = f"Failed to retrieve connection secret {secret_id!r}"
             logger.warning(
                 PERSISTENCE_CONNECTION_SECRET_RETRIEVE_FAILED,
@@ -100,7 +102,7 @@ class PostgresConnectionSecretRepository:
                 )
                 deleted = cur.rowcount > 0
                 await conn.commit()
-        except Exception as exc:
+        except psycopg.Error as exc:
             msg = f"Failed to delete connection secret {secret_id!r}"
             logger.warning(
                 PERSISTENCE_CONNECTION_SECRET_DELETE_FAILED,

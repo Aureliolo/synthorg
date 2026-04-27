@@ -61,9 +61,17 @@ class InMemoryMcpInstallationRepository:
         limit: int | None = None,
         offset: int = 0,
     ) -> tuple[McpInstallation, ...]:
-        """List all installations ordered by ``installed_at`` ASC."""
+        """List all installations ordered by ``installed_at, catalog_entry_id`` ASC.
+
+        Tiebreaker on ``catalog_entry_id`` matches the durable backends
+        so the in-memory shim produces identical pagination windows for
+        rows that share an ``installed_at`` instant.
+        """
         rows = tuple(
-            sorted(self._store.values(), key=lambda i: i.installed_at),
+            sorted(
+                self._store.values(),
+                key=lambda i: (i.installed_at, i.catalog_entry_id),
+            ),
         )
         effective_offset = max(0, int(offset))
         if limit is None:
