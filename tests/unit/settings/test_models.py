@@ -95,6 +95,47 @@ class TestSettingDefinition:
                 group="Limits",
             )
 
+    def test_read_only_post_init_defaults_false(self) -> None:
+        defn = SettingDefinition(
+            namespace=SettingNamespace.BUDGET,
+            key="total_monthly",
+            type=SettingType.FLOAT,
+            description="Monthly budget in the configured currency",
+            group="Limits",
+        )
+        assert defn.read_only_post_init is False
+
+    def test_read_only_post_init_requires_restart_required(self) -> None:
+        # read_only_post_init implies the value is baked at boot; it
+        # would be misleading to advertise the entry as live-mutable
+        # while the service rejects writes. The cross-field validator
+        # enforces the implication so misconfiguration fails at
+        # construction time.
+        with pytest.raises(ValidationError) as excinfo:
+            SettingDefinition(
+                namespace=SettingNamespace.OBSERVABILITY,
+                key="log_directory",
+                type=SettingType.STRING,
+                description="Log output directory (env-only)",
+                group="Logging",
+                read_only_post_init=True,
+                restart_required=False,
+            )
+        assert "restart_required" in str(excinfo.value)
+
+    def test_read_only_post_init_with_restart_required_ok(self) -> None:
+        defn = SettingDefinition(
+            namespace=SettingNamespace.OBSERVABILITY,
+            key="log_directory",
+            type=SettingType.STRING,
+            description="Log output directory (env-only)",
+            group="Logging",
+            read_only_post_init=True,
+            restart_required=True,
+        )
+        assert defn.read_only_post_init is True
+        assert defn.restart_required is True
+
 
 class TestSettingValue:
     """Tests for SettingValue construction and immutability."""

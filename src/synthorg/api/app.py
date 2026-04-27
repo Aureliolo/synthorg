@@ -521,9 +521,47 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         backup_service,
     )
     plugins: list[ChannelsPlugin] = [channels_plugin]
+    # Resolve api.rate_limiter_enabled at boot.  The flag is
+    # restart_required=True + read_only_post_init=True so the DB
+    # layer is rejected at write time; only env > YAML > registry
+    # default participate.  Initialise from the YAML-baked
+    # ``api_config.rate_limiter_enabled`` and let the env override
+    # only when it provides an explicitly recognized token.  An
+    # unrecognized token (e.g. typo "yse") must NOT silently
+    # override the YAML or default value -- log a warning and keep
+    # the YAML value.
+    rate_limiter_enabled = api_config.rate_limiter_enabled
+    _rate_limit_env = (
+        os.environ.get("SYNTHORG_API_RATE_LIMITER_ENABLED", "").strip().lower()
+    )
+    if _rate_limit_env == "":
+        pass  # YAML / registry default already applied above.
+    elif _rate_limit_env in ("true", "1", "yes"):
+        rate_limiter_enabled = True
+    elif _rate_limit_env in ("false", "0", "no"):
+        rate_limiter_enabled = False
+    else:
+        logger.warning(
+            API_APP_STARTUP,
+            note=(
+                "Unrecognized SYNTHORG_API_RATE_LIMITER_ENABLED value;"
+                " keeping the YAML / registry value"
+            ),
+            env_value=_rate_limit_env,
+            yaml_value=api_config.rate_limiter_enabled,
+        )
+    if not rate_limiter_enabled:
+        logger.warning(
+            API_APP_STARTUP,
+            note=(
+                "global rate limiter disabled by api.rate_limiter_enabled;"
+                " do not deploy this configuration to production"
+            ),
+        )
     middleware = _build_middleware(
         api_config,
         a2a_enabled=effective_config.a2a.enabled,
+        rate_limiter_enabled=rate_limiter_enabled,
     )
 
     # Integration controllers add ~20 routes (~0.7s of Litestar

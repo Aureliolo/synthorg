@@ -309,13 +309,16 @@ async def _maybe_promote_first_owner(app_state: AppState) -> None:
         return
     try:
         users = await app_state.persistence.users.list_users()
+    except asyncio.CancelledError:
+        raise
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_APP_STARTUP,
             note="Owner auto-promote skipped: failed to list users",
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return
     if not users:
@@ -336,13 +339,17 @@ async def _maybe_promote_first_owner(app_state: AppState) -> None:
     )
     try:
         await app_state.persistence.users.save(promoted)
+    except asyncio.CancelledError:
+        raise
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_APP_STARTUP,
             note="Owner auto-promote failed",
-            exc_info=True,
+            user_id=first.id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return
     logger.info(
@@ -377,13 +384,18 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
             "setup_complete",
         )
         is_complete = setup_entry.value == "true"
+    except asyncio.CancelledError:
+        raise
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_APP_STARTUP,
             note="Could not read setup_complete setting; skipping agent bootstrap",
-            exc_info=True,
+            namespace="api",
+            key="setup_complete",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         is_complete = False
 
@@ -401,13 +413,16 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
             config_resolver=app_state.config_resolver,
             agent_registry=app_state.agent_registry,
         )
+    except asyncio.CancelledError:
+        raise
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             SETUP_AGENT_BOOTSTRAP_FAILED,
             error="Agent bootstrap failed at startup (non-fatal)",
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error_desc=safe_error_description(exc),
         )
 
 
@@ -557,6 +572,69 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
             error=("Failed to apply ws_auth_timeout_seconds; using built-in default"),
             error_type=type(exc).__name__,
             error_desc=safe_error_description(exc),
+        )
+
+    from synthorg.api.auth.token_size import (  # noqa: PLC0415
+        _DEFAULT_AUTH_TOKEN_BYTES,
+        set_auth_token_bytes,
+    )
+
+    try:
+        set_auth_token_bytes(
+            await app_state.config_resolver.get_int(
+                SettingNamespace.SECURITY.value,
+                "auth_token_bytes",
+            )
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        # Make the safe default *real*: the warning previously only
+        # logged ``fallback_bytes`` without applying it, so a prior
+        # successful resolve that left the cache at a non-default
+        # value would persist after this branch fired.  Force the
+        # cache back to the registered default so the operator-facing
+        # log claim matches process state.
+        set_auth_token_bytes(_DEFAULT_AUTH_TOKEN_BYTES)
+        logger.warning(
+            API_APP_STARTUP,
+            error=("Failed to apply security.auth_token_bytes; using built-in default"),
+            error_type=type(exc).__name__,
+            error_desc=safe_error_description(exc),
+            fallback_bytes=_DEFAULT_AUTH_TOKEN_BYTES,
+        )
+
+    from synthorg.engine.timeout_enforcement import (  # noqa: PLC0415
+        set_timeout_enforcement_enabled,
+    )
+
+    try:
+        set_timeout_enforcement_enabled(
+            value=await app_state.config_resolver.get_bool(
+                SettingNamespace.ENGINE.value,
+                "timeout_enforcement_enabled",
+            )
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        # Make the safe default *real*: the warning previously logged
+        # ``fallback_enabled=True`` but did not actually call the
+        # setter, so a misconfigured deployment whose resolver had
+        # already returned False on a prior request would keep
+        # enforcement off even after this branch fires.  Force the
+        # cache back to True so the operator-facing log claim
+        # matches process state.
+        set_timeout_enforcement_enabled(value=True)
+        logger.warning(
+            API_APP_STARTUP,
+            error=(
+                "Failed to apply engine.timeout_enforcement_enabled;"
+                " keeping enforcement on (safe default)"
+            ),
+            error_type=type(exc).__name__,
+            error_desc=safe_error_description(exc),
+            fallback_enabled=True,
         )
 
     if app_state.oauth_token_manager is not None:

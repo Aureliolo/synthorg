@@ -13,6 +13,7 @@ import jwt
 
 from synthorg.api.auth.models import User  # noqa: TC001
 from synthorg.api.auth.system_user import USER_AUDIENCE, USER_ISSUER
+from synthorg.api.auth.token_size import get_auth_token_bytes
 from synthorg.api.guards import HumanRole
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
@@ -333,6 +334,7 @@ class AuthService:
         """Generate a cryptographically secure API key.
 
         Returns:
-            URL-safe base64 string (43 chars).
+            URL-safe base64 string sized by ``security.auth_token_bytes``
+            (default 32 bytes / 43 base64 chars).
         """
-        return secrets.token_urlsafe(32)
+        return secrets.token_urlsafe(get_auth_token_bytes())

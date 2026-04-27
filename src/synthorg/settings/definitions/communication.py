@@ -48,6 +48,54 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COMMUNICATION,
+        key="bus_bridge_drain_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="10.0",
+        description=(
+            "Hard deadline for the bus bridge stop() drain. The drain"
+            " is wrapped in asyncio.wait_for so the lifecycle lock"
+            " cannot be held indefinitely if a polling task ignores"
+            " cancellation. Resolved at stop() entry."
+        ),
+        group="Bus Bridge",
+        level=SettingLevel.ADVANCED,
+        min_value=1.0,
+        max_value=300.0,
+        yaml_path="communication.bus_bridge.drain_timeout_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
+        key="nats_url",
+        type=SettingType.STRING,
+        default="nats://nats:4222",
+        description=(
+            "NATS server URL.  Sourced from SYNTHORG_NATS_URL env >"
+            " YAML (communication.nats.url) > default at process"
+            " start.  Read-only post-init: the bus driver opens its"
+            " connection once at boot, so a runtime change requires"
+            " a process restart."
+        ),
+        group="NATS",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        # Override the auto-derived ``SYNTHORG_COMMUNICATION_NATS_URL``
+        # with the established operator-facing name ``SYNTHORG_NATS_URL``.
+        # The Docker-compose template, the local-dev shell setup, and
+        # external operator runbooks already use this short form;
+        # honouring it here preserves the existing operator surface
+        # while still routing the value through the registry.
+        env_var_override="SYNTHORG_NATS_URL",
+        yaml_path="communication.nats.url",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
         key="webhook_bridge_poll_timeout_seconds",
         type=SettingType.FLOAT,
         default="1.0",

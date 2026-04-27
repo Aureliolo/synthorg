@@ -53,6 +53,11 @@ class _FakeAppState:
             (),
             {"is_revoked": lambda _self, _jti: is_revoked},
         )()
+        # The SSE stream resolves api.sse_keepalive_seconds through
+        # app_state.config_resolver when wired; the fake exposes
+        # has_config_resolver=False so the helper returns the
+        # registered fallback constant (which the test monkeypatches).
+        self.has_config_resolver = False
 
 
 async def test_revocation_reason_returns_user_deleted_when_user_missing() -> None:
@@ -112,8 +117,10 @@ async def test_sse_event_stream_emits_revoked_when_role_demoted(
     from synthorg.api.controllers import events as events_mod
 
     # Fast-path: shrink keepalive + revalidate cadence so the test
-    # doesn't wait minutes for the revalidation tick.
-    monkeypatch.setattr(events_mod, "_SSE_KEEPALIVE_SECONDS", 0.01)
+    # doesn't wait minutes for the revalidation tick. The fake
+    # AppState exposes has_config_resolver=False so the helper
+    # returns the fallback constant we patch here.
+    monkeypatch.setattr(events_mod, "_SSE_KEEPALIVE_FALLBACK_SECONDS", 0.01)
     monkeypatch.setattr(events_mod, "SSE_REVALIDATE_INTERVAL_SECONDS", 0.02)
 
     demoted = _make_user(role=HumanRole.SYSTEM)

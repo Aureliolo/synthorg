@@ -307,11 +307,19 @@ def _tame_third_party_loggers() -> None:
 
 
 def _apply_console_level_override(config: LogConfig) -> LogConfig:
-    """Override the console sink level from ``SYNTHORG_LOG_LEVEL``.
+    """Override the console sink level from the configured override.
 
-    When the env var is set, finds the CONSOLE sink in ``config.sinks``
-    and replaces its level.  Invalid values fall back to INFO with a
-    stderr warning.
+    Resolves the override through the documented chain for the
+    ``observability.log_level_console`` registry entry, minus the DB
+    leg (the settings service is not yet available at this bootstrap
+    site -- DB-driven runtime updates flow through a future
+    ``SettingsChangeDispatcher`` subscriber, tracked as a follow-up):
+
+    1. ``SYNTHORG_LOG_LEVEL`` env var (operator-facing override)
+    2. ``LogConfig.console_level`` (YAML, ``logging.console_level``)
+    3. unset -- per-sink / root_level default applies
+
+    Invalid values fall back to INFO with a stderr warning.
 
     Args:
         config: Current logging configuration.
@@ -319,7 +327,10 @@ def _apply_console_level_override(config: LogConfig) -> LogConfig:
     Returns:
         Possibly updated config with the console sink level overridden.
     """
-    raw = os.environ.get("SYNTHORG_LOG_LEVEL", "").strip().lower()
+    env_raw = os.environ.get("SYNTHORG_LOG_LEVEL", "").strip()
+    yaml_raw = config.console_level.strip()
+    raw = env_raw or yaml_raw
+    source = "env" if env_raw else "yaml" if yaml_raw else None
     if not raw:
         return config
 
@@ -328,8 +339,9 @@ def _apply_console_level_override(config: LogConfig) -> LogConfig:
     except ValueError:
         valid = ", ".join(lvl.value.lower() for lvl in LogLevel)
         print(  # noqa: T201
-            f"WARNING: Invalid SYNTHORG_LOG_LEVEL={raw!r}. "
-            f"Valid values: {valid}. Falling back to INFO.",
+            f"WARNING: Invalid console-level override {raw!r} "
+            f"(source={source}). Valid values: {valid}. "
+            "Falling back to INFO.",
             file=sys.stderr,
             flush=True,
         )
@@ -345,8 +357,9 @@ def _apply_console_level_override(config: LogConfig) -> LogConfig:
             new_sinks.append(sink)
     if not found_console:
         print(  # noqa: T201
-            f"WARNING: SYNTHORG_LOG_LEVEL={raw!r} set but no CONSOLE "
-            "sink found in config -- env var has no effect.",
+            f"WARNING: console-level override {raw!r} (source={source}) "
+            "set but no CONSOLE sink found in config -- override has "
+            "no effect.",
             file=sys.stderr,
             flush=True,
         )

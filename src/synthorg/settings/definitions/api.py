@@ -485,6 +485,26 @@ _r.register(
     )
 )
 
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="sse_keepalive_seconds",
+        type=SettingType.FLOAT,
+        default="30.0",
+        description=(
+            "Idle interval after which the AG-UI SSE stream emits a"
+            " keepalive frame so intermediaries (load balancers, proxies)"
+            " do not close the connection. Resolved once per stream open;"
+            " a runtime change applies to subsequent streams."
+        ),
+        group="WebSocket",
+        level=SettingLevel.ADVANCED,
+        min_value=1.0,
+        max_value=600.0,
+        yaml_path="api.sse_keepalive_seconds",
+    )
+)
+
 # ── Query limits (controller clamps) ─────────────────────────────
 
 _r.register(
@@ -643,11 +663,16 @@ _r.register(
         description=(
             "Master kill switch for the three-tier global rate"
             " limiter (IP floor + unauthenticated + authenticated)."
-            " Disable only in trusted dev environments."
+            " Disable only in trusted dev environments.  Resolves"
+            " through DB > env (SYNTHORG_API_RATE_LIMITER_ENABLED)"
+            " > YAML > code default; the DB layer is rejected at"
+            " write time because the middleware stack is baked at"
+            " app construction (read_only_post_init=True)."
         ),
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
         restart_required=True,
+        read_only_post_init=True,
     )
 )
 

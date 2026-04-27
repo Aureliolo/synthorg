@@ -43,7 +43,43 @@ from synthorg.observability.events.event_stream import (
 
 logger = get_logger(__name__)
 
-_SSE_KEEPALIVE_SECONDS = 30.0
+_SSE_KEEPALIVE_FALLBACK_SECONDS = 30.0
+"""Fallback keepalive interval when the resolver is unavailable.
+
+Mirrors the registry default for ``api.sse_keepalive_seconds`` so a
+test harness or anonymous stream that bypasses :class:`AppState` still
+emits keepalives at the documented cadence.
+"""
+
+
+async def _resolve_sse_keepalive_seconds(app_state: AppState | None) -> float:
+    """Resolve the SSE keepalive interval through the settings chain.
+
+    Falls back to :data:`_SSE_KEEPALIVE_FALLBACK_SECONDS` when the
+    application state has no :class:`ConfigResolver` wired (test
+    harness, anonymous boot path).  Resolver outages collapse to the
+    same fallback so a transient settings outage cannot break the
+    keepalive cadence on a long-lived stream.
+    """
+    if app_state is None or not getattr(app_state, "has_config_resolver", False):
+        return _SSE_KEEPALIVE_FALLBACK_SECONDS
+    try:
+        return await app_state.config_resolver.get_float("api", "sse_keepalive_seconds")
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            EVENT_STREAM_PROJECTION_FAILED,
+            note="failed to resolve api.sse_keepalive_seconds; using fallback",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            fallback_seconds=_SSE_KEEPALIVE_FALLBACK_SECONDS,
+        )
+        return _SSE_KEEPALIVE_FALLBACK_SECONDS
+
+
 # Session IDs flow into a hub keyed on the value -- restrict the alphabet
 # to alphanumerics + dash + underscore to block path-traversal-shaped or
 # control-character session IDs reaching the hub.
@@ -343,8 +379,9 @@ async def _sse_event_stream(
         session_id=session_id,
     )
     revalidation_armed = app_state is not None and user is not None
+    keepalive_seconds = await _resolve_sse_keepalive_seconds(app_state)
     loop_now = asyncio.get_event_loop().time()
-    next_keepalive_ts = loop_now + _SSE_KEEPALIVE_SECONDS
+    next_keepalive_ts = loop_now + keepalive_seconds
     # When auth context is absent (anonymous / unit-test stream), arming
     # the revalidation deadline at ``loop_now`` would make ``timeout``
     # collapse to 0 on the first iteration and busy-loop the wait_for.
@@ -375,7 +412,7 @@ async def _sse_event_stream(
             now = asyncio.get_event_loop().time()
             if now >= next_keepalive_ts:
                 yield {"event": "keepalive", "data": "{}"}
-                next_keepalive_ts = now + _SSE_KEEPALIVE_SECONDS
+                next_keepalive_ts = now + keepalive_seconds
             if (
                 revalidation_armed
                 and next_revalidate_ts is not None

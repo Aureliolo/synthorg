@@ -6,6 +6,7 @@ max-memories enforcement into a single maintenance entry point.
 
 from collections.abc import Mapping  # noqa: TC003
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from synthorg.core.enums import MemoryCategory  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -25,6 +26,10 @@ from synthorg.memory.consolidation.strategy import (
 from synthorg.memory.models import MemoryEntry, MemoryQuery
 from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.settings.kill_switch import resolve_bool_with_fallback
+
+if TYPE_CHECKING:
+    from synthorg.settings.resolver import ConfigResolver
 from synthorg.observability.events.consolidation import (
     ARCHIVAL_ENTRY_STORED,
     ARCHIVAL_FAILED,
@@ -71,7 +76,7 @@ class MemoryConsolidationService:
             standalone when the settings layer is not wired in.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         backend: MemoryBackend,
@@ -79,6 +84,7 @@ class MemoryConsolidationService:
         strategy: ConsolidationStrategy | None = None,
         archival_store: ArchivalStore | None = None,
         max_enforce_batch: int = _MAX_ENFORCE_BATCH,
+        config_resolver: ConfigResolver | None = None,
     ) -> None:
         if not (_MAX_ENFORCE_BATCH_MIN <= max_enforce_batch <= _MAX_ENFORCE_BATCH_MAX):
             msg = (
@@ -92,6 +98,12 @@ class MemoryConsolidationService:
         self._strategy = strategy
         self._archival_store = archival_store
         self._max_enforce_batch = max_enforce_batch
+        # Resolver gate for the runtime ``memory.consolidation_enabled``
+        # kill switch.  When wired, ``run_consolidation`` reads the
+        # current value per cycle so an operator can pause without
+        # restart; when None (test harness, standalone construction),
+        # we fall back to the YAML-baked ``config.enabled`` field.
+        self._config_resolver = config_resolver
         self._retention = RetentionEnforcer(
             config=config.retention,
             backend=backend,
@@ -108,11 +120,13 @@ class MemoryConsolidationService:
         is configured and enabled.  Per-entry archival failures are
         logged and skipped -- they do not abort the entire batch.
 
-        Gated by the ``memory.consolidation_enabled`` kill-switch
-        (mirrored to :attr:`ConsolidationConfig.enabled`): when
-        ``False`` the call short-circuits immediately without touching
-        the backend or strategy, so operators can pause consolidation
-        mid-flight without tearing down scheduling.
+        Gated by the ``memory.consolidation_enabled`` kill-switch:
+        when ``False`` the call short-circuits immediately without
+        touching the backend or strategy, so operators can pause
+        consolidation mid-flight without tearing down scheduling.
+        The flag is resolved per call when a ``ConfigResolver`` is
+        wired (runtime-controllable); without a resolver we fall back
+        to the YAML-baked ``config.enabled`` field.
 
         Args:
             agent_id: Agent whose memories to consolidate.
@@ -120,14 +134,34 @@ class MemoryConsolidationService:
         Returns:
             Consolidation result (including archival count).
         """
-        if not self._config.enabled:
+        enabled = await resolve_bool_with_fallback(
+            resolver=self._config_resolver,
+            namespace="memory",
+            key="consolidation_enabled",
+            fallback=self._config.enabled,
+        )
+        if not enabled:
             logger.info(
                 CONSOLIDATION_SKIPPED,
                 agent_id=agent_id,
                 reason="disabled_by_setting",
             )
             return ConsolidationResult()
+        return await self._run_consolidation_unchecked(agent_id)
 
+    async def _run_consolidation_unchecked(
+        self,
+        agent_id: NotBlankStr,
+    ) -> ConsolidationResult:
+        """Run consolidation without re-checking the kill-switch.
+
+        Internal helper called by ``run_consolidation`` (after the gate
+        passes) and by ``run_maintenance`` (which has already evaluated
+        the gate once for the whole maintenance cycle).  Keeping this
+        helper private prevents external callers from bypassing the
+        ``memory.consolidation_enabled`` setting while still letting
+        the maintenance flow resolve the flag exactly once.
+        """
         if self._strategy is None:
             logger.info(CONSOLIDATION_SKIPPED, agent_id=agent_id)
             return ConsolidationResult()
@@ -283,7 +317,13 @@ class MemoryConsolidationService:
         Returns:
             Consolidation result from the consolidation step.
         """
-        if not self._config.enabled:
+        enabled = await resolve_bool_with_fallback(
+            resolver=self._config_resolver,
+            namespace="memory",
+            key="consolidation_enabled",
+            fallback=self._config.enabled,
+        )
+        if not enabled:
             logger.info(
                 CONSOLIDATION_SKIPPED,
                 agent_id=agent_id,
@@ -299,7 +339,7 @@ class MemoryConsolidationService:
                 agent_category_overrides=agent_category_overrides,
                 agent_default_retention_days=agent_default_retention_days,
             )
-            result = await self.run_consolidation(agent_id)
+            result = await self._run_consolidation_unchecked(agent_id)
             await self.enforce_max_memories(agent_id)
         except Exception as exc:
             logger.warning(

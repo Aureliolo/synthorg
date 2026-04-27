@@ -116,6 +116,16 @@ Enforced by `scripts/check_web_design_system.py` (PostToolUse hook on every `web
 
 See [docs/reference/persistence-boundary.md](docs/reference/persistence-boundary.md) for the three sanctioned exception categories, in-memory fallback naming rules, and migration-hash guardrails.
 
+## Configuration Precedence (MANDATORY)
+
+For every mutable setting: **DB > env (`SYNTHORG_<NAMESPACE>_<KEY>`) > YAML > code default**, resolved through `SettingsService` / `ConfigResolver`. First-cold-read emits one INFO `settings.value.resolved` carrying `source` + `yaml_path`; subsequent reads stay at DEBUG.
+
+Two sanctioned exceptions: **init-time only** (DB credentials, bootstrap secrets -- env-only, **no** registry entry) and **read-only post-init** (log directory, NATS URL, worker count -- registered with `read_only_post_init=True` for /settings discoverability; `SettingsService.set()` raises `SettingReadOnlyError`).
+
+Direct `os.environ.get(...)` reads in application code outside startup are forbidden. New settings register in `src/synthorg/settings/definitions/<namespace>.py` and are consumed via `ConfigResolver.get_*`.
+
+See [docs/reference/configuration-precedence.md](docs/reference/configuration-precedence.md) for the full source matrix, exception registry, and migration recipe.
+
 ## Shell Usage
 
 - **NEVER use `cd` in Bash commands**: the working directory is already set to the project root. Use absolute paths or run commands directly. Do NOT prefix commands with `cd C:/Users/Aurelio/synthorg &&`. Exception: `bash -c "cd <dir> && <cmd>"` is safe (runs in a child process, no cwd side effects). Use this for tools without a `-C` flag, e.g. `bash -c "cd web && npm install"` since `npm --prefix` is broken for bare `npm install`.
@@ -152,6 +162,7 @@ See [docs/reference/persistence-boundary.md](docs/reference/persistence-boundary
 - **All state transitions** must log at INFO
 - **DEBUG** for object creation, internal flow, entry/exit of key functions
 - Pure data models, enums, and re-exports do NOT need logging
+- **Source-of-resolution audit**: every `(namespace, key)` resolved through `SettingsService` emits one INFO `settings.value.resolved` event on its first cold read per process, carrying `source` (`db` / `env` / `yaml` / `default`) and `yaml_path`; subsequent resolutions stay at DEBUG. This is the audit trail an operator uses to confirm which surface supplied each configuration value at startup. See [docs/reference/configuration-precedence.md](docs/reference/configuration-precedence.md) for the rule.
 - **Secret-log redaction (SEC-1)**: on credential-bearing paths (OAuth, secret backends, settings encryption, A2A client/gateway, API auth middleware, persistence repos), never use `logger.exception(EVENT, error=str(exc))`; use `logger.warning(EVENT, error_type=type(exc).__name__, error=safe_error_description(exc))` from `synthorg.observability` instead. A pre-commit gate (`scripts/check_logger_exception_str_exc.py`) blocks new violations above a moving baseline (`scripts/_logger_exception_baseline.json`); the baseline only shrinks as grandfathered sites are converted, so each PR that touches a flagged file should opportunistically convert sites in the same diff. See [docs/reference/sec-prompt-safety.md](docs/reference/sec-prompt-safety.md) for the full rule, the `scrub_event_fields` belt-and-braces masking, and the gate's detection semantics.
 
 ## MCP Handler Layer

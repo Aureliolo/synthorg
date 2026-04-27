@@ -20,6 +20,7 @@ import time
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.api.auth.models import AuthenticatedUser  # noqa: TC001
+from synthorg.api.auth.token_size import get_auth_token_bytes
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_WS_TICKET_CLEANUP,
@@ -36,8 +37,6 @@ class TicketLimitExceededError(Exception):
     """Raised when a user exceeds the per-user pending ticket cap."""
 
 
-# 32 bytes → 256 bits of entropy, encoded as 43 URL-safe base64 chars.
-_TOKEN_BYTES: int = 32
 _MAX_PENDING_PER_USER: int = 5
 
 
@@ -58,9 +57,14 @@ class _TicketEntry(BaseModel):
 class WsTicketStore:
     """In-memory store for one-time WebSocket auth tickets.
 
-    Each ticket is a cryptographically random URL-safe token
-    (43 characters, 256-bit entropy).  Tickets expire after
-    *ttl_seconds* or on first use, whichever comes first.
+    Each ticket is a cryptographically random URL-safe token whose
+    length and entropy are governed by the
+    ``security.auth_token_bytes`` setting (default 32 bytes, which
+    encodes to 43 URL-safe base64 characters and 256 bits of
+    entropy).  ``secrets.token_urlsafe(N)`` produces
+    ``ceil(N * 8 / 6)`` characters and ``N * 8`` bits of entropy.
+    Tickets expire after *ttl_seconds* or on first use, whichever
+    comes first.
 
     Args:
         ttl_seconds: Ticket lifetime in seconds (default 30).
@@ -134,7 +138,7 @@ class WsTicketStore:
             msg = f"Ticket limit exceeded for user {user.user_id}"
             raise TicketLimitExceededError(msg)
 
-        ticket = secrets.token_urlsafe(_TOKEN_BYTES)
+        ticket = secrets.token_urlsafe(get_auth_token_bytes())
         entry = _TicketEntry(
             user=user,
             expires_at=time.monotonic() + self._ttl,

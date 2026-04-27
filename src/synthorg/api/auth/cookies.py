@@ -9,6 +9,7 @@ import secrets
 from litestar.datastructures import Cookie
 
 from synthorg.api.auth.config import AuthConfig  # noqa: TC001
+from synthorg.api.auth.token_size import get_auth_token_bytes
 
 
 def make_session_cookie(
@@ -181,6 +182,7 @@ def generate_csrf_token() -> str:
     """Generate a cryptographically random CSRF token.
 
     Returns:
-        URL-safe base64 string with 256 bits of entropy.
+        URL-safe base64 string sized by ``security.auth_token_bytes``
+        (default 32 bytes / 256 bits of entropy).
     """
-    return secrets.token_urlsafe(32)
+    return secrets.token_urlsafe(get_auth_token_bytes())

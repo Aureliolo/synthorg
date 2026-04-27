@@ -45,3 +45,22 @@ _r.register(
         yaml_path="a2a.push_verification_clock_skew_seconds",
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.A2A,
+        key="max_message_parts",
+        type=SettingType.INTEGER,
+        default="100",
+        description=(
+            "Maximum number of message parts accepted in a single"
+            " A2A message/send JSON-RPC request. Resolved per request"
+            " so a runtime change applies on the next inbound message."
+        ),
+        group="Gateway",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=10000,
+        yaml_path="a2a.max_message_parts",
+    )
+)

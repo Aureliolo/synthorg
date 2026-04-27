@@ -59,6 +59,7 @@ from synthorg.observability.events.meta import (
     META_ROLLOUT_REGRESSION_DETECTED,
     META_SERVICE_CLOSE_FAILED,
 )
+from synthorg.settings.kill_switch import resolve_bool_with_fallback
 
 _SECRET_PATHS: frozenset[str] = frozenset(
     {
@@ -133,6 +134,7 @@ if TYPE_CHECKING:
     from synthorg.meta.rollout.roster import OrgRoster
     from synthorg.meta.telemetry.protocol import AnalyticsEmitter
     from synthorg.providers.base import BaseCompletionProvider
+    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -180,6 +182,15 @@ class SelfImprovementService:
             Defaults to a null aggregator that emits no samples; the
             service layer wires ``TrackerGroupAggregator`` when the
             performance tracker is available.
+        approval_store: Optional approval-gate store; required when
+            ``config.enabled`` is True so the gate can enforce its
+            policy. Construction fails fast if missing.
+        config_resolver: Optional resolver wired into the
+            ``engine.evolution_enabled`` kill-switch lookup. When
+            ``None`` (test harness, anonymous boot), the per-call
+            resolver short-circuits to the YAML-baked
+            ``config.enabled`` fallback so the standalone constructor
+            still works.
     """
 
     def __init__(  # noqa: PLR0913
@@ -196,6 +207,7 @@ class SelfImprovementService:
         snapshot_builder: SnapshotBuilder | None = None,
         group_aggregator: GroupSignalAggregator | None = None,
         approval_store: ApprovalStoreProtocol | None = None,
+        config_resolver: ConfigResolver | None = None,
     ) -> None:
         if config.enabled and approval_store is None:
             # Fail-fast so callers notice at construction time rather
@@ -208,6 +220,7 @@ class SelfImprovementService:
             )
             raise ValueError(msg)
         self._config = config
+        self._config_resolver = config_resolver
         # Hold direct references for facade methods (trigger_cycle,
         # get_config). Rollout strategies still receive these via the
         # build helper below; the references here are *not* a parallel
@@ -307,12 +320,32 @@ class SelfImprovementService:
         Evaluates rules, generates proposals, filters through
         guards, and returns proposals ready for human approval.
 
+        Gated by ``engine.evolution_enabled``: when False the cycle
+        short-circuits before rule evaluation so an operator can
+        suspend the self-improvement loop without restarting the
+        process.  Without a resolver wired we fall back to
+        ``config.enabled`` (the YAML-baked switch) so standalone /
+        test paths still honour the documented default.
+
         Args:
             snapshot: Current org-wide signal snapshot.
 
         Returns:
             Proposals that passed all guards (awaiting approval).
         """
+        evolution_enabled = await resolve_bool_with_fallback(
+            resolver=self._config_resolver,
+            namespace="engine",
+            key="evolution_enabled",
+            fallback=self._config.enabled,
+        )
+        if not evolution_enabled:
+            logger.info(
+                META_CYCLE_NO_TRIGGERS,
+                reason="evolution_disabled_by_setting",
+            )
+            return ()
+
         logger.info(META_CYCLE_STARTED)
 
         # Step 1: Evaluate rules.

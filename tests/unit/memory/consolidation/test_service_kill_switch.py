@@ -121,3 +121,37 @@ class TestConsolidationKillSwitch:
             and log.get("scope") == "maintenance"
             for log in logs
         )
+
+    async def test_run_maintenance_resolves_kill_switch_once_per_cycle(
+        self,
+    ) -> None:
+        """The kill-switch is resolved exactly once per maintenance cycle.
+
+        Resolving twice (in ``run_maintenance`` and again in
+        ``run_consolidation``) opens a window where the flag flips
+        mid-cycle and partial state is left behind: retention runs but
+        consolidation skips, or vice versa.  ``run_maintenance`` must
+        resolve once and pass the value into ``run_consolidation`` via
+        the private ``_enabled`` parameter so the whole cycle observes
+        the same snapshot.
+        """
+        backend = AsyncMock()
+        backend.retrieve = AsyncMock(return_value=())
+        backend.delete = AsyncMock(return_value=True)
+        backend.count = AsyncMock(return_value=0)
+
+        resolver = AsyncMock()
+        resolver.get_bool = AsyncMock(return_value=True)
+
+        service = MemoryConsolidationService(
+            backend=backend,
+            config=ConsolidationConfig(enabled=True),
+            config_resolver=resolver,
+        )
+
+        await service.run_maintenance(_AGENT_ID)
+
+        assert resolver.get_bool.await_count == 1, (
+            f"Expected exactly one kill-switch resolution per maintenance "
+            f"cycle, got {resolver.get_bool.await_count}"
+        )

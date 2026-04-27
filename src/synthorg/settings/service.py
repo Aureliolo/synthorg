@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from synthorg.communication.enums import MessageType
 from synthorg.communication.message import Message, MessageMetadata, TextPart
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import SECURITY_SETTINGS_CHANGED
 from synthorg.observability.events.settings import (
     SETTINGS_CACHE_INVALIDATED,
@@ -33,6 +33,7 @@ from synthorg.settings.config_bridge import extract_from_config
 from synthorg.settings.enums import SettingSource, SettingType
 from synthorg.settings.errors import (
     SettingNotFoundError,
+    SettingReadOnlyError,
     SettingsEncryptionError,
     SettingValidationError,
 )
@@ -95,6 +96,33 @@ def _now_iso() -> str:
 def _env_var_name(namespace: str, key: str) -> str:
     """Build env var name: ``SYNTHORG_{NAMESPACE}_{KEY}`` (uppercased)."""
     return f"SYNTHORG_{namespace.upper()}_{key.upper()}"
+
+
+def _reject_if_read_only(definition: SettingDefinition, *, action: str) -> None:
+    """Raise ``SettingReadOnlyError`` for read-only-post-init settings.
+
+    The registry entry exists for discoverability via the /settings
+    API; the resolved value is sourced from environment variables or
+    YAML at process startup.  Mutation surfaces (``set``, ``set_many``,
+    ``delete``, ``delete_namespace``) must reject so an operator does
+    not believe the override took effect when the running process keeps
+    the boot-time value.
+    """
+    if not definition.read_only_post_init:
+        return
+    logger.warning(
+        SETTINGS_VALIDATION_FAILED,
+        namespace=definition.namespace,
+        key=definition.key,
+        reason="read_only_post_init",
+        action=action,
+    )
+    msg = (
+        f"Setting {definition.namespace}/{definition.key} is sourced"
+        f" from env / YAML at startup and cannot be modified at runtime"
+        f" (action={action!r}). Update the env var or YAML and restart."
+    )
+    raise SettingReadOnlyError(msg)
 
 
 def _validate_value(definition: SettingDefinition, value: str) -> None:
@@ -227,6 +255,40 @@ class SettingsService:
         self._encryptor = encryptor
         self._message_bus = message_bus
         self._cache: dict[tuple[str, str], SettingValue] = {}
+        # Source-of-resolution audit: every (namespace, key) emits one
+        # INFO SETTINGS_VALUE_RESOLVED on the first cold read of the
+        # process so operators can see which source won at startup.
+        # Subsequent resolutions stay at DEBUG. The check+add pair is
+        # purely CPU-bound and asyncio cannot interleave it (no
+        # awaits between the membership test and the set mutation),
+        # so no lock is required for cooperative concurrency.
+        self._resolution_logged: set[tuple[str, str]] = set()
+
+    def _emit_resolved(
+        self,
+        definition: SettingDefinition,
+        source: str,
+    ) -> None:
+        """Log a setting resolution; promote to INFO on first cold read.
+
+        Every ``(namespace, key)`` pair emits exactly one INFO
+        ``SETTINGS_VALUE_RESOLVED`` event during the lifetime of the
+        process so operators can audit which source supplied each
+        configuration value at startup.  Subsequent resolutions for
+        the same pair stay at DEBUG to avoid log spam.
+        """
+        cache_key = (definition.namespace, definition.key)
+        first_read = cache_key not in self._resolution_logged
+        if first_read:
+            self._resolution_logged.add(cache_key)
+        log = logger.info if first_read else logger.debug
+        log(
+            SETTINGS_VALUE_RESOLVED,
+            namespace=definition.namespace,
+            key=definition.key,
+            source=source,
+            yaml_path=definition.yaml_path,
+        )
 
     async def _resolve_db(
         self,
@@ -278,12 +340,20 @@ class SettingsService:
             raise SettingsEncryptionError(msg)
         try:
             return self._encryptor.decrypt(raw_value)
-        except SettingsEncryptionError:
-            logger.exception(
+        except SettingsEncryptionError as exc:
+            # SEC-1: settings encryption is a credential-bearing path;
+            # ``logger.exception`` would attach a traceback that may
+            # leak the encrypted payload or the encryptor's internal
+            # state via the cryptography exception chain.  Use
+            # ``logger.warning`` with ``safe_error_description`` per
+            # CLAUDE.md ``## Logging``.
+            logger.warning(
                 SETTINGS_ENCRYPTION_ERROR,
                 namespace=definition.namespace,
                 key=definition.key,
                 reason="decrypt_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
@@ -313,25 +383,39 @@ class SettingsService:
             if cached is not None:
                 return cached
 
-        setting_value = await self._resolve_db(definition)
-        if setting_value is not None:
-            # Direct dict mutation is intentional: the previous
-            # copy-on-write pattern {**self._cache, k: v} had a
-            # TOCTOU race under concurrent TaskGroup reads (the
-            # spread sees a stale snapshot after an await).  In
-            # asyncio's cooperative concurrency, dict item assignment
-            # is a single-opcode operation and safe without locking.
-            if not definition.sensitive:
-                self._cache[cache_key] = setting_value
-            logger.debug(
-                SETTINGS_VALUE_RESOLVED,
-                namespace=namespace,
-                key=key,
-                source="db",
-            )
-            return setting_value
+        # Read-only-post-init entries are sourced exclusively from env /
+        # YAML / code default at process startup; the DB row (if any --
+        # left over from a pre-rename schema or a stale ops mistake) MUST
+        # NOT be consulted, otherwise the running process would surface
+        # a value the operator believed was overridden out via
+        # ``set()`` -- which we already reject on the write side.
+        if not definition.read_only_post_init:
+            setting_value = await self._resolve_db(definition)
+            if setting_value is not None:
+                # Direct dict mutation is intentional: the previous
+                # copy-on-write pattern {**self._cache, k: v} had a
+                # TOCTOU race under concurrent TaskGroup reads (the
+                # spread sees a stale snapshot after an await).  In
+                # asyncio's cooperative concurrency, dict item assignment
+                # is a single-opcode operation and safe without locking.
+                if not definition.sensitive:
+                    self._cache[cache_key] = setting_value
+                self._emit_resolved(definition, source="db")
+                return setting_value
 
-        return self._resolve_fallback(definition)
+        fallback = self._resolve_fallback(definition)
+        # Read-only-post-init: cache the first-read snapshot so
+        # subsequent ``/settings`` queries and ``SETTINGS_VALUE_RESOLVED``
+        # events report the *same* value the runtime captured at boot.
+        # Without this snapshot, a mid-process mutation of ``os.environ``
+        # or the in-memory config object would let the resolved value
+        # drift away from what middleware / NATS clients / worker pools
+        # locked in at startup, and ``/settings`` would lie about
+        # reality.  Sensitive read-only-post-init values are still
+        # bypassed (they should never survive in cache).
+        if definition.read_only_post_init and not definition.sensitive:
+            self._cache[cache_key] = fallback
+        return fallback
 
     async def get_entry(self, namespace: str, key: str) -> SettingEntry:
         """Resolve a setting and return it with its definition.
@@ -476,10 +560,14 @@ class SettingsService:
         ns = definition.namespace
         key = definition.key
 
-        env_name = _env_var_name(ns, key)
+        env_name = (
+            definition.env_var_override
+            if definition.env_var_override is not None
+            else _env_var_name(ns, key)
+        )
         env_val = os.environ.get(env_name)
         if env_val is not None:
-            logger.debug(SETTINGS_VALUE_RESOLVED, namespace=ns, key=key, source="env")
+            self._emit_resolved(definition, source="env")
             return SettingValue(
                 namespace=ns,
                 key=key,
@@ -490,9 +578,7 @@ class SettingsService:
         if definition.yaml_path is not None:
             yaml_val = extract_from_config(self._config, definition.yaml_path)
             if yaml_val is not None:
-                logger.debug(
-                    SETTINGS_VALUE_RESOLVED, namespace=ns, key=key, source="yaml"
-                )
+                self._emit_resolved(definition, source="yaml")
                 return SettingValue(
                     namespace=ns,
                     key=key,
@@ -505,7 +591,7 @@ class SettingsService:
         # will raise ValueError on empty, giving a clear error at the
         # consumer layer rather than here).
         default = definition.default if definition.default is not None else ""
-        logger.debug(SETTINGS_VALUE_RESOLVED, namespace=ns, key=key, source="default")
+        self._emit_resolved(definition, source="default")
         return SettingValue(
             namespace=ns,
             key=key,
@@ -525,6 +611,12 @@ class SettingsService:
         """
         ns = definition.namespace
         key = definition.key
+
+        # Read-only-post-init: ignore any DB row (mirrors the per-key
+        # ``get()`` short-circuit so batch reads do not surface a
+        # stale override).
+        if definition.read_only_post_init:
+            db_hit = None
 
         if db_hit is not None:
             raw_value, updated_at = db_hit
@@ -559,6 +651,7 @@ class SettingsService:
                         updated_at=updated_at,
                     )
             display = _SENSITIVE_MASK if definition.sensitive else value
+            self._emit_resolved(definition, source="db")
             return SettingEntry(
                 definition=definition,
                 value=display,
@@ -603,6 +696,13 @@ class SettingsService:
         definition = self._registry.get(namespace, key)
         if definition is None:
             return "", ""
+        # Read-only-post-init entries are never written via the service,
+        # so CAS callers must observe the same "no DB override" sentinel
+        # the read path returns -- returning a stale row here would let
+        # a CAS preflight succeed against a value the runtime no longer
+        # honours.
+        if definition.read_only_post_init:
+            return "", ""
         setting_value = await self._resolve_db(definition)
         if setting_value is None:
             return "", ""
@@ -628,6 +728,8 @@ class SettingsService:
             logger.warning(SETTINGS_NOT_FOUND, namespace=namespace, key=key)
             msg = f"Unknown setting: {namespace}/{key}"
             raise SettingNotFoundError(msg)
+
+        _reject_if_read_only(definition, action="set")
 
         try:
             _validate_value(definition, value)
@@ -758,6 +860,8 @@ class SettingsService:
                 msg = f"Unknown setting: {namespace}/{key}"
                 raise SettingNotFoundError(msg)
 
+            _reject_if_read_only(definition, action="set_many")
+
             try:
                 _validate_value(definition, value)
             except SettingValidationError:
@@ -804,12 +908,15 @@ class SettingsService:
             raise SettingsEncryptionError(msg)
         try:
             return self._encryptor.encrypt(value)
-        except SettingsEncryptionError:
-            logger.exception(
+        except SettingsEncryptionError as exc:
+            # SEC-1: same rationale as ``_decrypt_if_sensitive``.
+            logger.warning(
                 SETTINGS_ENCRYPTION_ERROR,
                 namespace=definition.namespace,
                 key=definition.key,
                 reason="encrypt_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
@@ -828,6 +935,8 @@ class SettingsService:
             logger.warning(SETTINGS_NOT_FOUND, namespace=namespace, key=key)
             msg = f"Unknown setting: {namespace}/{key}"
             raise SettingNotFoundError(msg)
+
+        _reject_if_read_only(definition, action="delete")
 
         await self._repository.delete(NotBlankStr(namespace), NotBlankStr(key))
 
@@ -866,6 +975,20 @@ class SettingsService:
         Raises:
             PersistenceError: If the persistence layer fails.
         """
+        # Read-only-post-init keys in this namespace are reported as a
+        # WARNING but do not block the whole-namespace delete: the
+        # writable overrides the operator wants to clear should not be
+        # held hostage by the presence of a read-only entry.  Reads
+        # already bypass the DB for read-only-post-init definitions
+        # (see ``_resolve_with_db_lookup``), so any stale row that
+        # ``delete_namespace_returning_keys`` removes is a no-op for
+        # the running process.
+        readonly_definition_keys = {
+            d.key
+            for d in self._registry.list_namespace(namespace)
+            if d.read_only_post_init
+        }
+
         # Atomic delete-and-return-keys: the repository removes every
         # override row under *namespace* in one transaction and returns
         # exactly the keys whose row was actually removed.  This avoids
@@ -886,6 +1009,22 @@ class SettingsService:
             )
             raise
         deleted = len(removed_keys)
+
+        # Now that we know exactly which keys were actually removed,
+        # report the read-only intersection so the audit log reflects
+        # what the storage layer did (not what was registered).  An
+        # earlier emit would have claimed sweep even for read-only
+        # definitions whose rows never existed or whose deletion the
+        # repository skipped; this version is precise.
+        swept_readonly = sorted(set(removed_keys) & readonly_definition_keys)
+        if swept_readonly:
+            logger.warning(
+                SETTINGS_VALIDATION_FAILED,
+                namespace=namespace,
+                action="delete_namespace",
+                reason="read_only_post_init_swept",
+                read_only_keys=swept_readonly,
+            )
 
         self._invalidate_namespace_cache(namespace)
 
@@ -970,11 +1109,15 @@ class SettingsService:
             raise
         except Exception as exc:
             # Notification failure should not break settings writes.
+            # Settings is a credential-bearing path so use the
+            # SEC-1-compliant ``safe_error_description`` redactor and
+            # do NOT pass exc_info=True -- the traceback could leak
+            # sensitive payload through the cryptography exception
+            # chain.
             logger.warning(
                 SETTINGS_NOTIFICATION_FAILED,
                 namespace=namespace,
                 key=key,
-                error=str(exc),
                 error_type=type(exc).__name__,
-                exc_info=True,
+                error=safe_error_description(exc),
             )

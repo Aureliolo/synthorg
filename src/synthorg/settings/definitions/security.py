@@ -96,3 +96,34 @@ _r.register(
         yaml_path="security.retention_cleanup_paused",
     )
 )
+
+# ── Auth token entropy budget ────────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SECURITY,
+        key="auth_token_bytes",
+        type=SettingType.INTEGER,
+        default="32",
+        description=(
+            "Entropy budget (bytes) for URL-safe auth-surface tokens"
+            " minted by secrets.token_urlsafe: WebSocket tickets,"
+            " password-reset tokens, refresh tokens, OAuth state"
+            " tokens. 32 bytes resolves to 256 bits of entropy and"
+            " 43 URL-safe base64 chars.  Resolves through"
+            " DB > env (SYNTHORG_SECURITY_AUTH_TOKEN_BYTES) > YAML"
+            " > code default; the DB layer is rejected at write time"
+            " because changing the byte length mid-run would silently"
+            " invalidate existing tokens (a 32-byte token decoded"
+            " under a 64-byte expectation fails verification) --"
+            " ``read_only_post_init=True``."
+        ),
+        group="Authentication",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        min_value=16,
+        max_value=64,
+        yaml_path="security.auth_token_bytes",
+    )
+)

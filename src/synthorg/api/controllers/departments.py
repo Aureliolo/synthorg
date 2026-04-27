@@ -222,10 +222,39 @@ async def _get_dept_ceremony_override(
 # is handled via settings-service CAS (compare-and-swap on ``updated_at``).
 # Every mutation reads the current versioned value, mutates in-memory,
 # then writes with ``expected_updated_at``; a losing writer gets
-# ``VersionConflictError`` and retries.  ``_DEPT_POLICY_CAS_MAX_ATTEMPTS``
-# bounds the retry so a sustained contention burst surfaces instead of
-# spinning forever.
-_DEPT_POLICY_CAS_MAX_ATTEMPTS: Final[int] = 3
+# ``VersionConflictError`` and retries. The retry budget resolves through
+# ``coordination.department_policy_cas_retry_attempts`` so an operator
+# can tune a sustained-contention burst without restarting the process;
+# the constant below is the fallback when the resolver is unavailable.
+_DEPT_POLICY_CAS_FALLBACK_ATTEMPTS: Final[int] = 3
+
+
+async def _resolve_dept_policy_cas_attempts(app_state: AppState) -> int:
+    """Resolve the CAS retry budget through the settings chain.
+
+    Falls back to :data:`_DEPT_POLICY_CAS_FALLBACK_ATTEMPTS` when the
+    application has no resolver wired or the lookup fails. A
+    transient settings outage must not collapse the retry budget to
+    zero, so the fallback equals the registered default.
+    """
+    if not getattr(app_state, "has_config_resolver", False):
+        return _DEPT_POLICY_CAS_FALLBACK_ATTEMPTS
+    try:
+        return await app_state.config_resolver.get_int(
+            "coordination",
+            "department_policy_cas_retry_attempts",
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="departments.ceremony_policy.cas_retry_resolve",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            fallback=_DEPT_POLICY_CAS_FALLBACK_ATTEMPTS,
+        )
+        return _DEPT_POLICY_CAS_FALLBACK_ATTEMPTS
 
 
 async def _load_dept_policies_versioned(
@@ -318,12 +347,13 @@ async def _mutate_dept_policies_with_retry(
     """Read-modify-write the policies JSON with bounded CAS retry.
 
     ``new_value`` of ``None`` persists the explicit-inherit sentinel;
-    a dict sets the override.  Retries up to
-    ``_DEPT_POLICY_CAS_MAX_ATTEMPTS`` times on
+    a dict sets the override.  Retries up to the
+    ``coordination.department_policy_cas_retry_attempts`` setting on
     :class:`VersionConflictError` before surfacing the last conflict.
     """
-    last_attempt = _DEPT_POLICY_CAS_MAX_ATTEMPTS - 1
-    for attempt in range(_DEPT_POLICY_CAS_MAX_ATTEMPTS):
+    max_attempts = await _resolve_dept_policy_cas_attempts(app_state)
+    last_attempt = max_attempts - 1
+    for attempt in range(max_attempts):
         policies, expected = await _load_dept_policies_versioned(app_state)
         policies[department_name] = (
             None if new_value is None else copy.deepcopy(new_value)

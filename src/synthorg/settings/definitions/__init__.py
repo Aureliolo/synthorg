@@ -24,6 +24,7 @@ from synthorg.settings.definitions import (
     security,
     settings_ns,
     tools,
+    workers,
 )
 
 __all__ = [
@@ -46,4 +47,5 @@ __all__ = [
     "security",
     "settings_ns",
     "tools",
+    "workers",
 ]

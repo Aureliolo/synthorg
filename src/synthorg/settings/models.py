@@ -47,6 +47,14 @@ class SettingDefinition(BaseModel):
         level: Visibility level for progressive disclosure.
         sensitive: Whether the value should be encrypted at rest.
         restart_required: Whether changes require a restart.
+        read_only_post_init: Whether the setting is sourced exclusively
+            from env / YAML at process startup and rejects mutation via
+            ``SettingsService.set()`` and friends.  The registry entry
+            exists for discoverability so operators can introspect the
+            value through the standard /settings API; mutation through
+            that surface raises ``SettingReadOnlyError``.  Always implies
+            ``restart_required=True``; the cross-field validator
+            enforces the implication.
         enum_values: Allowed values when ``type`` is ``ENUM``.
         validator_pattern: Regex pattern for string validation.
         min_value: Minimum for numeric types (inclusive).
@@ -77,6 +85,25 @@ class SettingDefinition(BaseModel):
         default=False,
         description="Change takes effect after restart",
     )
+    read_only_post_init: bool = Field(
+        default=False,
+        description=(
+            "Sourced from env / YAML at startup; mutation via"
+            " SettingsService is rejected. Implies restart_required=True."
+        ),
+    )
+    env_var_override: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Override the auto-derived ``SYNTHORG_{NAMESPACE}_{KEY}``"
+            " env var name with a custom one (e.g. ``SYNTHORG_LOG_DIR``"
+            " for ``observability.log_directory``).  Used when an"
+            " established operator-facing env var name predates the"
+            " auto-derivation rule.  When set, the resolver looks up"
+            " *only* this name; the auto-derived name is not"
+            " consulted."
+        ),
+    )
     enum_values: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Allowed values for ENUM type",
@@ -106,6 +133,16 @@ class SettingDefinition(BaseModel):
             msg = (
                 f"ENUM setting {self.namespace}/{self.key}"
                 f" requires non-empty enum_values"
+            )
+            raise ValueError(msg)
+        if self.read_only_post_init and not self.restart_required:
+            # read_only_post_init implies the value is baked in at boot;
+            # callers will hit confusing UX if they see it succeed at
+            # registration but reject mutation later. Force the implied
+            # invariant so misconfiguration fails at definition time.
+            msg = (
+                f"Setting {self.namespace}/{self.key} marked"
+                f" read_only_post_init must also set restart_required=True"
             )
             raise ValueError(msg)
         _check_numeric_field(self.min_value, "min_value", self.type)

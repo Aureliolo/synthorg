@@ -7,7 +7,6 @@ dispatched via the ``Detector`` protocol.  The pipeline never raises
 exceptions -- all errors are caught and logged.
 """
 
-import asyncio
 import copy
 from types import MappingProxyType
 from typing import TYPE_CHECKING
@@ -48,6 +47,7 @@ from synthorg.engine.classification.semantic_detectors import (
     SemanticMissingReferenceDetector,
     SemanticNumericalVerificationDetector,
 )
+from synthorg.engine.timeout_enforcement import engine_timeout
 from synthorg.observability import get_logger
 from synthorg.observability.events.classification import (
     CLASSIFICATION_COMPLETE,
@@ -554,7 +554,7 @@ async def _safe_detect(  # noqa: PLR0913
     without stopping the pipeline.
     """
     try:
-        async with asyncio.timeout(timeout_seconds):
+        async with engine_timeout(timeout_seconds):
             return await detector.detect(context)
     except MemoryError, RecursionError:
         raise

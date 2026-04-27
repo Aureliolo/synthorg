@@ -11,7 +11,13 @@ _r.register(
         namespace=SettingNamespace.OBSERVABILITY,
         key="root_log_level",
         type=SettingType.ENUM,
-        default="debug",
+        # Production-unsafe default: a "debug" registry default leaks
+        # verbose payloads to HTTP log sinks and wastes bandwidth in
+        # deployments that have not explicitly set the value. The
+        # operator escape hatch for incident-response verbose logging
+        # is the SYNTHORG_LOG_LEVEL env var (consumed by
+        # _apply_console_level_override at boot).
+        default="info",
         description="Root logger level",
         group="Logging",
         enum_values=("debug", "info", "warning", "error", "critical"),
@@ -161,5 +167,56 @@ _r.register(
         min_value=1.0,
         max_value=60.0,
         yaml_path="logging.audit_chain.signing_timeout_seconds",
+    )
+)
+
+# ── Multi-surface settings (#1613) ─────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.OBSERVABILITY,
+        key="log_directory",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Log output directory. Sourced from the SYNTHORG_LOG_DIR env"
+            " var > YAML (logging.log_dir) > unset at process start."
+            " Read-only post-init: the directory is opened once at"
+            " bootstrap_logging and a runtime change requires a"
+            " process restart."
+        ),
+        group="Logging",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        env_var_override="SYNTHORG_LOG_DIR",
+        yaml_path="logging.log_dir",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.OBSERVABILITY,
+        key="log_level_console",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Override the console sink's log level distinct from the root"
+            " logger.  Empty string means 'use the root_log_level / sink"
+            " default'.  Accepts debug / info / warning / error / critical"
+            " (case-insensitive) or the empty string.  Sourced from"
+            " DB > env (SYNTHORG_LOG_LEVEL) > YAML (logging.console_level)"
+            " > unset.  Mutable at runtime: the next call to"
+            " _apply_console_level_override applies the new value."
+        ),
+        group="Logging",
+        level=SettingLevel.ADVANCED,
+        # ``(?i:...)`` is an inline case-insensitive group so mixed-case
+        # inputs like ``Info`` or ``Debug`` validate the same as
+        # ``info`` / ``DEBUG``; the description advertises
+        # case-insensitivity, the validator must honour it.
+        validator_pattern=r"^(?:|(?i:debug|info|warning|error|critical))$",
+        env_var_override="SYNTHORG_LOG_LEVEL",
+        yaml_path="logging.console_level",
     )
 )

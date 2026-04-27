@@ -6,6 +6,7 @@ requests are validated against the peer allowlist and connection
 catalog credentials.
 """
 
+import asyncio
 import json
 from typing import Any
 
@@ -42,6 +43,7 @@ from synthorg.observability.events.a2a import (
     A2A_TASK_CANCELLED,
     A2A_TASK_CREATED,
 )
+from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
 
 logger = get_logger(__name__)
 
@@ -53,8 +55,47 @@ _SUPPORTED_METHODS = frozenset(
     }
 )
 
-# Maximum number of message parts in a single message/send request.
-_MAX_MESSAGE_PARTS = 100
+# Fallback maximum number of message parts in a single message/send
+# request when the resolver is unavailable.  Mirrors the registry
+# default for ``a2a.max_message_parts`` so a test harness or a boot
+# path that bypasses :class:`AppState` still enforces the documented
+# ceiling.
+_MAX_MESSAGE_PARTS_FALLBACK = 100
+
+
+async def _resolve_max_message_parts(app_state: Any) -> int:
+    """Resolve the maximum message-parts cap through the settings chain.
+
+    Falls back to :data:`_MAX_MESSAGE_PARTS_FALLBACK` when the
+    application state has no :class:`ConfigResolver` wired or the
+    resolver lookup fails.  A transient settings outage must not let
+    an oversized message slip through, so the fallback is the same
+    value as the registered default.
+    """
+    if app_state is None or not getattr(app_state, "has_config_resolver", False):
+        return _MAX_MESSAGE_PARTS_FALLBACK
+    try:
+        value: int = await app_state.config_resolver.get_int("a2a", "max_message_parts")
+        return value  # noqa: TRY300 -- explicit return type; not a try-success path
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        # SETTINGS_FETCH_FAILED is the correct surface for an
+        # internal settings-resolution failure; A2A_JSONRPC_INVALID_PARAMS
+        # would mislead operators into thinking a client request was
+        # malformed.
+        logger.warning(
+            SETTINGS_FETCH_FAILED,
+            namespace="a2a",
+            key="max_message_parts",
+            note="failed to resolve a2a.max_message_parts; using fallback",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            fallback=_MAX_MESSAGE_PARTS_FALLBACK,
+        )
+        return _MAX_MESSAGE_PARTS_FALLBACK
 
 
 def _error_response(
@@ -573,16 +614,17 @@ async def _handle_message_send(
             JSONRPC_INVALID_PARAMS,
             "'parts' must be an array",
         )
-    if len(parts) > _MAX_MESSAGE_PARTS:
+    max_parts = await _resolve_max_message_parts(app_state)
+    if len(parts) > max_parts:
         logger.warning(
             A2A_JSONRPC_INVALID_PARAMS,
             reason="too many parts",
             count=len(parts),
-            max=_MAX_MESSAGE_PARTS,
+            max=max_parts,
         )
         raise _A2AMethodError(
             JSONRPC_INVALID_PARAMS,
-            f"Too many message parts (max {_MAX_MESSAGE_PARTS})",
+            f"Too many message parts (max {max_parts})",
         )
 
     text_parts = [

@@ -40,6 +40,7 @@ from synthorg.observability.events.training import (
     HR_TRAINING_SKIPPED,
     HR_TRAINING_STORE_FAILED,
 )
+from synthorg.settings.kill_switch import resolve_bool_with_fallback
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -51,6 +52,7 @@ if TYPE_CHECKING:
         TrainingGuard,
     )
     from synthorg.memory.protocol import MemoryBackend
+    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -113,6 +115,7 @@ class TrainingService:
         memory_backend: MemoryBackend,
         training_namespace: str = "training",
         training_tags: tuple[str, ...] = ("learned_from_seniors",),
+        config_resolver: ConfigResolver | None = None,
     ) -> None:
         self._selector = selector
         # Deep copy + freeze so external mutation of the caller-owned
@@ -125,6 +128,12 @@ class TrainingService:
         self._memory_backend = memory_backend
         self._training_namespace = training_namespace
         self._training_tags = training_tags
+        # Optional resolver for the runtime ``hr.training_enabled``
+        # kill switch.  When wired, ``execute`` reads the flag at the
+        # entry point so an operator can pause ingestion without
+        # restart; without a resolver the registry default (``True``)
+        # applies.
+        self._config_resolver = config_resolver
         self._executed_plan_ids: set[str] = set()
         self._idempotency_lock = asyncio.Lock()
         self._sessions: OrderedDict[str, TrainingPlan] = OrderedDict()
@@ -138,12 +147,36 @@ class TrainingService:
         the memory backend.  Concurrent calls are serialized on the
         idempotency lock so exactly one caller performs the run.
 
+        Gated by ``hr.training_enabled``: when ``False`` the call
+        short-circuits before idempotency / lock acquisition, so an
+        operator can pause training without tearing down the
+        scheduler or rewriting plans.
+
         Args:
             plan: Training plan to execute.
 
         Returns:
             Training result with pipeline metrics.
         """
+        enabled = await resolve_bool_with_fallback(
+            resolver=self._config_resolver,
+            namespace="hr",
+            key="training_enabled",
+            fallback=True,
+        )
+        if not enabled:
+            logger.info(
+                HR_TRAINING_SKIPPED,
+                plan_id=plan.id,
+                reason="training_disabled_by_setting",
+            )
+            now = datetime.now(UTC)
+            return TrainingResult(
+                plan_id=plan.id,
+                new_agent_id=plan.new_agent_id,
+                started_at=now,
+                completed_at=now,
+            )
         result, _ran = await self._execute_locked(plan)
         return result
 
