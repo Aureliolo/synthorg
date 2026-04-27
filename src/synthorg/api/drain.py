@@ -32,9 +32,15 @@ The middleware is instance-based: a single object is shared
 across all requests. The inflight counter and ``_idle`` event
 are mutated only between ``await`` points, so on the
 single-threaded asyncio loop they are atomic relative to other
-coroutines without needing a lock. Tests cover normal
-completion, the 503 short-circuit, and the drain-timeout
-fallback.
+coroutines without needing a lock. Concretely: the request
+path runs ``check drain gate -> inc inflight -> clear idle ->
+await app``, with no ``await`` between the gate check and the
+counter mutation. Another task (``begin_drain``) cannot
+interleave between any of those steps -- coroutines only yield
+at ``await`` points -- so a request cannot pass the gate, see
+the drain start mid-flight, and silently slip past teardown.
+Tests cover normal completion, the 503 short-circuit, and the
+drain-timeout fallback.
 """
 
 import asyncio
@@ -43,6 +49,7 @@ from typing import TYPE_CHECKING
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_APP_DRAIN_COMPLETED,
+    API_APP_DRAIN_SEND_FAILED,
     API_APP_DRAIN_STARTED,
     API_APP_DRAIN_TIMEOUT,
 )
@@ -240,7 +247,6 @@ async def _send_drain_response(send: Send) -> None:
         raise
     except Exception as exc:
         logger.debug(
-            API_APP_DRAIN_STARTED,
-            detail="drain_response_send_failed",
+            API_APP_DRAIN_SEND_FAILED,
             error_type=type(exc).__name__,
         )

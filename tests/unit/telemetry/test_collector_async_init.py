@@ -11,7 +11,7 @@ through ``Path.read_text`` or ``codecs.open``.
 
 import asyncio
 import os
-import time
+import threading
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -23,6 +23,7 @@ import structlog.testing
 from synthorg.observability.events.telemetry import (
     TELEMETRY_DEPLOYMENT_ID_CREATED,
     TELEMETRY_DEPLOYMENT_ID_LOADED,
+    TELEMETRY_SHUTDOWN_WITHOUT_START,
 )
 from synthorg.telemetry.collector import TelemetryCollector
 from synthorg.telemetry.config import TelemetryBackend, TelemetryConfig
@@ -159,25 +160,29 @@ class TestStartLoadsDeploymentIdAsynchronously:
 
         Records three event-ordering markers in a list:
         ``slow_func_start`` (the sync helper enters the executor
-        thread), ``heartbeat_fired`` (a ``call_later`` scheduled by
-        the to_thread spy), and ``slow_func_end`` (the sync helper
+        thread), ``heartbeat_fired`` (scheduled on the loop from the
+        to_thread spy), and ``slow_func_end`` (the sync helper
         finishes). If ``start()`` correctly offloads via
         ``asyncio.to_thread``, the event loop runs the heartbeat
         callback BETWEEN the start and end markers. If the load is
         on the loop's thread, the heartbeat fires only after
         ``slow_func_end``.
 
-        Asserts on order rather than elapsed time so the test is
-        robust under CI scheduler jitter.
+        Synchronisation is event-driven (``threading.Event`` + an
+        explicit ``call_soon_threadsafe``) rather than wall-clock
+        sleep, so the assertion is deterministic under CI scheduler
+        jitter rather than timing-sensitive.
         """
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
 
         loop = asyncio.get_running_loop()
         events: list[str] = []
+        heartbeat_seen = threading.Event()
 
         def record_heartbeat() -> None:
             events.append("heartbeat_fired")
+            heartbeat_seen.set()
 
         original_to_thread = asyncio.to_thread
 
@@ -185,7 +190,15 @@ class TestStartLoadsDeploymentIdAsynchronously:
             inner: Callable[..., Any], *args: object, **kwargs: object
         ) -> Any:
             events.append("slow_func_start")
-            time.sleep(0.05)
+            # Ask the loop (running on a different thread) to fire
+            # the heartbeat callback NOW. Waiting on the threading
+            # Event proves the loop is not blocked: if the load were
+            # running on the loop thread itself, the callback would
+            # be queued behind us and the wait would time out.
+            loop.call_soon_threadsafe(record_heartbeat)
+            if not heartbeat_seen.wait(timeout=2.0):
+                msg = "loop did not run the heartbeat callback within 2 s"
+                raise AssertionError(msg)
             try:
                 return inner(*args, **kwargs)
             finally:
@@ -194,10 +207,6 @@ class TestStartLoadsDeploymentIdAsynchronously:
         async def slow_to_thread(
             func: Callable[..., Any], *args: Any, **kwargs: Any
         ) -> object:
-            # Schedule the heartbeat to fire ~10 ms after to_thread
-            # starts. If the loop is blocked, this callback waits
-            # behind the sync work.
-            loop.call_later(0.01, record_heartbeat)
             return await original_to_thread(instrumented_helper, func, *args, **kwargs)
 
         try:
@@ -460,8 +469,11 @@ class TestShutdownGuards:
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
         # No await collector.start() here.
-        await collector.shutdown()
+        with structlog.testing.capture_logs() as logs:
+            await collector.shutdown()
         assert collector.deployment_id is None
+        events = [log["event"] for log in logs]
+        assert TELEMETRY_SHUTDOWN_WITHOUT_START in events
 
 
 @pytest.mark.unit

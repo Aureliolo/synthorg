@@ -119,13 +119,20 @@ class SlackNotificationSink:
             )
 
     async def close(self) -> None:
-        """Close the underlying HTTP client (idempotent)."""
+        """Close the underlying HTTP client (idempotent).
+
+        ``self._client`` is cleared only after ``aclose()`` succeeds:
+        if the close raises (network error, cancellation, ...), the
+        reference stays so a subsequent ``close()`` can retry. Without
+        that, an exception or cancellation would silently leak the
+        still-open HTTP client and break the idempotency contract.
+        """
         async with self._lifecycle_lock:
             if self._client is None:
                 return
             client = self._client
-            self._client = None
             await client.aclose()
+            self._client = None
 
     async def __aenter__(self) -> Self:
         """Start the sink; return self for ``async with`` callers."""
@@ -152,6 +159,12 @@ class SlackNotificationSink:
         """
         client = self._client
         if client is None:
+            logger.warning(
+                NOTIFICATION_SLACK_FAILED,
+                notification_id=notification.id,
+                error_type="RuntimeError",
+                detail="send_called_before_start",
+            )
             msg = "SlackNotificationSink.send called before start()"
             raise RuntimeError(msg)
         payload = _build_slack_payload(notification)

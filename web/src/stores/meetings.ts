@@ -371,6 +371,14 @@ export interface MeetingsState {
 
 let listRequestSeq = 0
 let detailRequestSeq = 0
+// Generation token bumped by ``dispose()``. The seq counters reset
+// to zero on dispose so a new fetch starts fresh, but a still-in-flight
+// request from before the dispose could otherwise win the
+// ``seq === current`` check by collision (its captured seq could
+// match a fresh post-dispose seq value). Pairing seq with the epoch
+// makes that scenario impossible: a stale request always sees a
+// different ``epoch`` and short-circuits.
+let requestEpoch = 0
 
 /** Reset module-level request seq counters -- test-only. */
 export function _resetRequestSeqs(): void {
@@ -389,11 +397,12 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
   triggering: false,
 
   fetchMeetings: async (filters) => {
+    const epoch = requestEpoch
     const seq = ++listRequestSeq
     set({ loading: true, error: null })
     try {
       const result = await meetingsApi.listMeetings(filters)
-      if (seq !== listRequestSeq) return // stale response
+      if (epoch !== requestEpoch || seq !== listRequestSeq) return // stale
       // Sync selectedMeeting with fresh data
       const currentSelected = get().selectedMeeting
       const freshSelected = currentSelected
@@ -406,7 +415,7 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
         selectedMeeting: freshSelected,
       })
     } catch (err) {
-      if (seq !== listRequestSeq) {
+      if (epoch !== requestEpoch || seq !== listRequestSeq) {
         log.warn('Discarding error from stale list request:', getErrorMessage(err))
         return
       }
@@ -415,6 +424,7 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
   },
 
   fetchMeeting: async (meetingId) => {
+    const epoch = requestEpoch
     const seq = ++detailRequestSeq
     const current = get().selectedMeeting
     set({
@@ -424,10 +434,10 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
     })
     try {
       const meeting = await meetingsApi.getMeeting(meetingId)
-      if (seq !== detailRequestSeq) return // stale response
+      if (epoch !== requestEpoch || seq !== detailRequestSeq) return // stale
       set({ selectedMeeting: meeting, loadingDetail: false, detailError: null })
     } catch (err) {
-      if (seq !== detailRequestSeq) {
+      if (epoch !== requestEpoch || seq !== detailRequestSeq) {
         log.warn('Discarding error from stale detail request:', getErrorMessage(err))
         return
       }
@@ -515,9 +525,12 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
     })
   },
   dispose: () => {
-    // Reset module-level request-seq counters so stale-response
-    // checks do not leak across tests when a different test exercises
-    // this store via a component import (#1600 Phase 5).
+    // Bump the generation token so any in-flight request from
+    // before the dispose can never collide with post-dispose seq
+    // values (the captured ``epoch`` will not match the new
+    // ``requestEpoch``). Resetting the seq counters keeps fresh
+    // calls starting from zero (#1600 Phase 5).
+    requestEpoch += 1
     _resetRequestSeqs()
   },
 }))

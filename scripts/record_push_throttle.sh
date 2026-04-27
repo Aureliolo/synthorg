@@ -127,6 +127,23 @@ fi
 BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
 NOW=$(date -u +%s)
 
+# PR-only throttle semantics: only record the timestamp during an
+# active review round (i.e. an OPEN PR exists for this branch).
+# The PreToolUse partner short-circuits when no OPEN PR exists, so
+# recording outside a PR would just leave a stale timestamp that
+# would (incorrectly) throttle the *first* push after the PR opens.
+# Match the partner's PR detection so the two halves agree on which
+# pushes count. ``gh`` missing or unauthenticated falls through to
+# "no record" -- the script's job is throttling, not gating on its
+# own tooling health.
+if ! command -v gh >/dev/null 2>&1; then
+    exit 0
+fi
+PR_STATE="$(gh pr view --json state --jq '.state' 2>/dev/null || echo "")"
+if [[ "${PR_STATE}" != "OPEN" ]]; then
+    exit 0
+fi
+
 if ! mkdir -p "${STATE_DIR}" 2>/dev/null; then
     exit 0
 fi

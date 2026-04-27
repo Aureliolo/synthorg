@@ -442,7 +442,13 @@ class TestETagMiddleware:
     async def test_inner_app_returns_without_final_chunk_flushes_buffer(
         self,
     ) -> None:
-        """Inner app returns mid-buffer; middleware flushes start + buffered body."""
+        """Inner app returns mid-buffer; middleware flushes start + buffered body.
+
+        The captured ``Content-Length`` (1024 in this stub) must be
+        replaced with ``len(body) == 0`` on the truncation path so the
+        client does not receive an invalid response with a
+        Content-Length that does not match the body.
+        """
 
         async def truncating_app(
             scope: dict[str, Any],
@@ -453,7 +459,10 @@ class TestETagMiddleware:
                 {
                     "type": "http.response.start",
                     "status": 200,
-                    "headers": [(b"content-type", b"application/json")],
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"content-length", b"1024"),
+                    ],
                 },
             )
             # Returns without sending an ``http.response.body``;
@@ -467,5 +476,9 @@ class TestETagMiddleware:
         )
         assert len(recorder.messages) == 2
         assert recorder.messages[0]["status"] == 200
+        # Content-Length must reflect the actual buffered body length
+        # (zero), not the 1024 the inner app originally announced.
+        headers = dict(recorder.messages[0]["headers"])
+        assert headers[b"content-length"] == b"0"
         assert recorder.messages[1]["body"] == b""
         assert recorder.messages[1]["more_body"] is False

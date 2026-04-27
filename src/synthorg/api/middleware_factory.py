@@ -392,10 +392,16 @@ def _build_middleware(
     # Middleware order (outside-in, i.e. request flow):
     #   1. ip_floor -- un-gated IP cap; counts every request
     #   2. ETagMiddleware -- conditional GET / 304 short-circuit on
-    #      allowlisted read-only endpoints. Sits before auth so a
-    #      cached read on settings/providers/etc. costs zero auth
-    #      cycles when the client has the current ETag (#1600
-    #      Phase 4).
+    #      allowlisted read-only endpoints (#1600 Phase 4). Today
+    #      this is a *bandwidth* optimisation only: the middleware
+    #      computes the ETag from the rendered response body, so the
+    #      inner stack (auth, handler, serialisation) still runs on
+    #      every request. The 304 short-circuit only avoids the
+    #      response body on the wire. Reaching the documented
+    #      "cached read costs zero auth cycles" goal needs a stable
+    #      validator (e.g. a per-resource version stamp) plumbed in
+    #      front of the inner stack -- tracked as a follow-up to
+    #      #1600 rather than scoped here.
     #   3. auth_middleware -- resolves identity, populates scope["user"]
     #   4. csrf_middleware -- validates double-submit for cookie sessions
     #   5. unauth_rl -- 20/min/IP for requests where user is None

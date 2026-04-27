@@ -332,6 +332,11 @@ export function _resetPendingTransitions(): void {
 
 let listRequestSeq = 0
 let detailRequestSeq = 0
+// Generation token bumped by ``dispose()``. Pairs with the seq
+// counters so a still-in-flight request from before a dispose can
+// never collide with fresh post-dispose seq values (the captured
+// epoch always differs from the current epoch after a bump).
+let requestEpoch = 0
 
 /** Reset module-level detailRequestSeq -- test-only. */
 export function _resetDetailRequestSeq(): void {
@@ -350,11 +355,12 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
   selectedIds: new Set<string>(),
 
   fetchApprovals: async (filters) => {
+    const epoch = requestEpoch
     const seq = ++listRequestSeq
     set({ loading: true, error: null })
     try {
       const result = await approvalsApi.listApprovals(filters)
-      if (seq !== listRequestSeq) return // stale response
+      if (epoch !== requestEpoch || seq !== listRequestSeq) return // stale
       // Merge: preserve items with pending optimistic transitions
       const merged = result.data.map((serverItem) => {
         if (pendingTransitions.has(serverItem.id)) {
@@ -374,21 +380,22 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       const freshSelected = currentSelected ? merged.find((a) => a.id === currentSelected.id) ?? currentSelected : null
       set({ approvals: merged, total: result.total ?? merged.length, loading: false, selectedIds: prunedSelected, selectedApproval: freshSelected })
     } catch (err) {
-      if (seq !== listRequestSeq) return
+      if (epoch !== requestEpoch || seq !== listRequestSeq) return
       log.warn('Failed to fetch approvals', sanitizeForLog(err))
       set({ loading: false, error: getErrorMessage(err) })
     }
   },
 
   fetchApproval: async (id) => {
+    const epoch = requestEpoch
     const seq = ++detailRequestSeq
     set({ loadingDetail: true, detailError: null, selectedApproval: null })
     try {
       const approval = await approvalsApi.getApproval(id)
-      if (seq !== detailRequestSeq) return // stale response
+      if (epoch !== requestEpoch || seq !== detailRequestSeq) return // stale
       set({ selectedApproval: approval, loadingDetail: false, detailError: null })
     } catch (err) {
-      if (seq !== detailRequestSeq) return // stale error
+      if (epoch !== requestEpoch || seq !== detailRequestSeq) return // stale
       log.warn('Failed to fetch approval detail', sanitizeForLog(err))
       set({ loadingDetail: false, detailError: getErrorMessage(err) })
     }
@@ -658,10 +665,13 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
     return { succeeded, failed, failedReasons }
   },
   dispose: () => {
-    // Reset module-level state so stale-response checks and
-    // optimistic-transition tracking do not leak across tests when
-    // a different test exercises this store via a component import
-    // (#1600 Phase 5).
+    // Bump the generation token so any in-flight request from
+    // before the dispose can never collide with post-dispose seq
+    // values (the captured ``epoch`` will not match the new
+    // ``requestEpoch``). Resetting the seq counters and the
+    // optimistic-transition set keeps fresh calls starting from
+    // clean state (#1600 Phase 5).
+    requestEpoch += 1
     _resetPendingTransitions()
     _resetDetailRequestSeq()
     listRequestSeq = 0

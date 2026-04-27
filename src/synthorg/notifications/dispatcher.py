@@ -55,7 +55,15 @@ class NotificationDispatcher:
         min_severity: Minimum severity to dispatch.
     """
 
-    __slots__ = ("_lifecycle_lock", "_min_severity", "_sinks", "_started")
+    __slots__ = (
+        "_dispatch_idle",
+        "_dispatch_inflight",
+        "_lifecycle_lock",
+        "_min_severity",
+        "_sinks",
+        "_started",
+        "_stopping",
+    )
 
     def __init__(
         self,
@@ -67,6 +75,17 @@ class NotificationDispatcher:
         self._min_severity = min_severity
         self._lifecycle_lock = asyncio.Lock()
         self._started = False
+        # Dispatch gate: ``aclose`` flips ``_stopping`` so any
+        # ``dispatch`` that arrives during shutdown short-circuits
+        # before touching ``sink.send``; ``_dispatch_inflight`` +
+        # ``_dispatch_idle`` let ``aclose`` wait for in-flight sends
+        # to drain before closing sinks. The counter / event pair
+        # is mutated only between ``await`` points (single-threaded
+        # asyncio), so no separate lock is needed.
+        self._stopping = False
+        self._dispatch_inflight = 0
+        self._dispatch_idle = asyncio.Event()
+        self._dispatch_idle.set()
         for sink in sinks:
             logger.info(
                 NOTIFICATION_SINK_REGISTERED,
@@ -116,10 +135,20 @@ class NotificationDispatcher:
             )
 
     async def aclose(self) -> None:
-        """Close every registered sink (idempotent)."""
+        """Close every registered sink (idempotent).
+
+        Flips ``_stopping`` so ``dispatch()`` calls that arrive
+        during shutdown short-circuit before invoking ``sink.send``,
+        then waits for any in-flight sends to drain before tearing
+        down the sinks. This prevents the use-after-close window
+        where ``dispatch`` could call ``sink.send`` while
+        ``_safe_close`` is closing the same sink's underlying client.
+        """
         async with self._lifecycle_lock:
             if not self._started:
                 return
+            self._stopping = True
+            await self._dispatch_idle.wait()
             sinks = list(self._sinks)
             async with asyncio.TaskGroup() as tg:
                 for sink in sinks:
@@ -179,6 +208,17 @@ class NotificationDispatcher:
         Args:
             notification: The notification to deliver.
         """
+        # Shutdown gate: once ``aclose`` flips ``_stopping``, no new
+        # dispatches reach the sinks. The check is sync so it cannot
+        # interleave with ``aclose`` between this point and the
+        # counter bump below.
+        if self._stopping:
+            logger.debug(
+                NOTIFICATION_FILTERED,
+                notification_id=notification.id,
+                detail="dispatcher_stopping",
+            )
+            return
         # Snapshot the sink list so register() during dispatch is safe.
         sinks = list(self._sinks)
         if not sinks:
@@ -191,6 +231,12 @@ class NotificationDispatcher:
         if self._should_filter(notification):
             return
 
+        # Track in-flight dispatch so ``aclose`` can wait for the
+        # send fan-out to finish before closing sinks. Counter +
+        # event pair mutated only between awaits (single-threaded
+        # asyncio); no separate lock needed.
+        self._dispatch_inflight += 1
+        self._dispatch_idle.clear()
         errors: list[str | None] = [None] * len(sinks)
         try:
             async with asyncio.TaskGroup() as tg:
@@ -204,6 +250,10 @@ class NotificationDispatcher:
                     raise exc from eg
             self._log_exception_group(notification, errors, eg)
             return
+        finally:
+            self._dispatch_inflight -= 1
+            if self._dispatch_inflight == 0:
+                self._dispatch_idle.set()
 
         self._log_result(notification, errors)
 

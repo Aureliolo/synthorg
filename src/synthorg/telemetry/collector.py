@@ -383,6 +383,13 @@ class TelemetryCollector:
                         timeout_seconds=_DEPLOYMENT_ID_LOAD_TIMEOUT_SECONDS,
                         using_generated_id=True,
                     )
+                except MemoryError, RecursionError:
+                    # System-level errors must propagate so operators
+                    # see the real condition; downgrading them to a
+                    # generated UUID would mask runaway-recursion or
+                    # out-of-memory states behind a healthy-looking
+                    # telemetry boot.
+                    raise
                 except Exception as exc:
                     # The sync helper is documented to never raise,
                     # but a future regression must not crash start()
@@ -809,7 +816,7 @@ def _load_or_create_deployment_id_sync(data_dir: Path) -> str:  # noqa: C901, PL
                             error_type="ValueError",
                         )
                     else:
-                        logger.debug(
+                        logger.info(
                             TELEMETRY_DEPLOYMENT_ID_LOADED,
                             deployment_id=stored,
                         )
@@ -865,7 +872,7 @@ def _load_or_create_deployment_id_sync(data_dir: Path) -> str:  # noqa: C901, PL
             # ``to_thread`` keeps the OS-level race semantics atomic.
             peer_id = _read_peer_deployment_id(id_path_str)
             if peer_id is not None:
-                logger.debug(
+                logger.info(
                     TELEMETRY_DEPLOYMENT_ID_LOADED,
                     deployment_id=peer_id,
                 )
@@ -878,11 +885,17 @@ def _load_or_create_deployment_id_sync(data_dir: Path) -> str:  # noqa: C901, PL
                 using_generated_id=True,
             )
         else:
-            logger.debug(
+            logger.info(
                 TELEMETRY_DEPLOYMENT_ID_CREATED,
                 deployment_id=new_id,
             )
             return new_id
+    except MemoryError, RecursionError:
+        # System-level errors must propagate so operators see the
+        # real condition; downgrading them to a generated UUID would
+        # mask out-of-memory or runaway-recursion behind a healthy
+        # telemetry boot.
+        raise
     except Exception as exc:
         # Belt-and-suspenders: the helper is documented to never raise,
         # but a future regression must not bubble an exception across

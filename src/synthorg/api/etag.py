@@ -116,14 +116,26 @@ def match_etag(if_none_match: str | None, etag: str) -> bool:
     return False
 
 
+def _matches_path_prefix(path: str, prefix: str) -> bool:
+    """Return ``True`` when ``path`` is exactly ``prefix`` or a sub-path.
+
+    Bare ``str.startswith`` would also accept siblings like
+    ``/api/v1/providers-extra`` for the ``/api/v1/providers`` allowlist
+    entry, leaking ETag/cache treatment to unrelated routes. Require
+    either an exact match or a ``/`` boundary so only the intended
+    routes qualify.
+    """
+    return path == prefix or path.startswith(f"{prefix}/")
+
+
 def _is_etag_path(path: str) -> bool:
     """Return ``True`` when ``path`` is in the allowlist."""
-    return any(path.startswith(prefix) for prefix in _ETAG_PATH_PREFIXES)
+    return any(_matches_path_prefix(path, prefix) for prefix in _ETAG_PATH_PREFIXES)
 
 
 def _is_public_cache_path(path: str) -> bool:
     """Return ``True`` when ``path`` should advertise ``public`` cache."""
-    return any(path.startswith(prefix) for prefix in _PUBLIC_CACHE_PREFIXES)
+    return any(_matches_path_prefix(path, prefix) for prefix in _PUBLIC_CACHE_PREFIXES)
 
 
 def _read_if_none_match(headers: list[tuple[bytes, bytes]]) -> str | None:
@@ -247,8 +259,23 @@ async def _emit_passthrough(
     captured_start: dict[str, object],
     body: bytes,
 ) -> None:
-    """Forward a non-200 (or final-flush) response with no ETag handling."""
-    await send(captured_start)  # type: ignore[arg-type]
+    """Forward a non-200 (or final-flush) response with no ETag handling.
+
+    The captured ``Content-Length`` (if any) is replaced with
+    ``len(body)`` because the truncation-fallback path may have
+    captured fewer bytes than the inner app originally promised; an
+    unmatched length would produce an invalid response on the very
+    cleanup path this helper exists to make safe.
+    """
+    headers_value = captured_start.get("headers", [])
+    headers: list[tuple[bytes, bytes]] = (
+        list(headers_value) if isinstance(headers_value, list | tuple) else []
+    )
+    headers = [(k, v) for k, v in headers if k.lower() != b"content-length"]
+    headers.append((b"content-length", str(len(body)).encode("ascii")))
+    forwarded_start = dict(captured_start)
+    forwarded_start["headers"] = headers
+    await send(forwarded_start)  # type: ignore[arg-type]
     await send(
         {
             "type": "http.response.body",

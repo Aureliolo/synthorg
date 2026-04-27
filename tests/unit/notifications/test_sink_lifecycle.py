@@ -291,11 +291,12 @@ class TestDispatcherLifecycle:
     async def test_dispatcher_close_alias_routes_through_aclose(self) -> None:
         """Legacy ``close()`` method has been removed; ``aclose`` is the API."""
         dispatcher = NotificationDispatcher(sinks=())
-        assert not hasattr(dispatcher, "close") or callable(
-            getattr(dispatcher, "close", None)
-        )
-        # Confirm the canonical entry point is ``aclose``.
+        # The canonical entry point is ``aclose``; ``close`` must not
+        # exist as an alias (a permissive ``or callable`` check would
+        # let a regression that re-introduces a no-op ``close`` slip
+        # through).
         assert callable(dispatcher.aclose)
+        assert not hasattr(dispatcher, "close")
 
 
 @pytest.mark.unit
