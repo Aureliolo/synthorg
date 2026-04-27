@@ -65,14 +65,18 @@ def registry() -> SettingsRegistry:
 
 @pytest.fixture
 def repo() -> AsyncMock:
+    # ``AsyncMock(spec=SettingsRepository)`` already stubs every async
+    # method on the protocol; configure the per-test return values via
+    # ``.return_value`` rather than reassigning each attribute to a
+    # fresh ``AsyncMock`` (the prior pattern was redundant).
     repo = AsyncMock(spec=SettingsRepository)
-    repo.get = AsyncMock(return_value=None)
-    repo.set = AsyncMock(return_value=True)
-    repo.set_many = AsyncMock(return_value=True)
-    repo.delete = AsyncMock(return_value=True)
-    repo.get_namespace = AsyncMock(return_value=())
-    repo.get_all = AsyncMock(return_value=())
-    repo.delete_namespace_returning_keys = AsyncMock(return_value=("log_directory",))
+    repo.get.return_value = None
+    repo.set.return_value = True
+    repo.set_many.return_value = True
+    repo.delete.return_value = True
+    repo.get_namespace.return_value = ()
+    repo.get_all.return_value = ()
+    repo.delete_namespace_returning_keys.return_value = ("log_directory",)
     return repo
 
 
