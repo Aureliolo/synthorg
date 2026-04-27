@@ -170,7 +170,13 @@ class TrainingService:
                 plan_id=plan.id,
                 reason="training_disabled_by_setting",
             )
-            return TrainingResult(plan_id=plan.id)
+            now = datetime.now(UTC)
+            return TrainingResult(
+                plan_id=plan.id,
+                new_agent_id=plan.new_agent_id,
+                started_at=now,
+                completed_at=now,
+            )
         result, _ran = await self._execute_locked(plan)
         return result
 
