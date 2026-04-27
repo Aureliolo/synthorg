@@ -237,3 +237,141 @@ export interface AddAllowlistEntryRequest {
 export interface RemoveAllowlistEntryRequest {
   host_port: string
 }
+
+// ── Post-CRUD provider capabilities (audit log, rate-limits, ──────────
+//    preset overrides, credentials rotate, manual model add, sync) ────
+
+/** Stable string set for ProviderAuditEvent.event_type. */
+export type ProviderAuditEventType =
+  | 'provider_created'
+  | 'provider_updated'
+  | 'provider_deleted'
+  | 'provider_credentials_rotated'
+  | 'provider_rate_limits_updated'
+  | 'preset_override_updated'
+  | 'model_added'
+  | 'model_removed'
+  | 'model_config_updated'
+  | 'model_pulled'
+  | 'models_synced'
+
+export interface ProviderAuditActor {
+  readonly id: string
+  readonly label: string
+}
+
+/** One row in the provider mutation audit log (append-only). */
+export interface ProviderAuditEvent {
+  readonly id: number
+  readonly provider_name: string
+  readonly event_type: ProviderAuditEventType
+  readonly actor: ProviderAuditActor
+  readonly payload: Readonly<Record<string, unknown>>
+  /** ISO 8601 UTC timestamp. */
+  readonly occurred_at: string
+}
+
+/**
+ * Effective rate-limit configuration for one provider.
+ *
+ * ``0`` means "unlimited" on both fields, matching the persisted
+ * ``RateLimiterConfig`` semantics.  Display layers should render
+ * "Unlimited" when the value is exactly ``0``.
+ */
+export interface RateLimitsConfig {
+  readonly requests_per_minute: number
+  readonly concurrent_requests: number
+}
+
+/**
+ * Partial-update payload for the rate-limit PATCH endpoint.
+ *
+ * Either field may be omitted; at least one must be present (the
+ * backend rejects empty patches with HTTP 422).  Pass ``0`` to set
+ * a cap to "unlimited"; pass a positive int to apply a new cap.
+ */
+export interface RateLimitsUpdateRequest {
+  requests_per_minute?: number
+  concurrent_requests?: number
+}
+
+/**
+ * Persisted operator override on top of an in-code provider preset.
+ *
+ * ``null`` fields fall back to the in-code preset; non-``null`` fields
+ * replace the preset's corresponding field at read time.
+ */
+export interface PresetOverride {
+  readonly preset_name: string
+  readonly default_models: readonly ProviderModelConfig[] | null
+  readonly supported_auth_types: readonly AuthType[] | null
+  readonly candidate_urls: readonly string[] | null
+  readonly base_url: string | null
+  /** ISO 8601 UTC timestamp; null when the row was never written. */
+  readonly updated_at: string | null
+  readonly updated_by: string | null
+}
+
+/**
+ * Partial-update payload for the preset-override PATCH endpoint.
+ *
+ * ``undefined`` (omitted) means "leave unchanged"; ``null`` means
+ * "clear the override and inherit from the base preset".
+ */
+export interface PresetOverrideUpdateRequest {
+  default_models?: readonly ProviderModelConfig[] | null
+  supported_auth_types?: readonly AuthType[] | null
+  candidate_urls?: readonly string[] | null
+  base_url?: string | null
+}
+
+/**
+ * Discriminated-union rotation payload keyed by ``auth_type``.
+ *
+ * The variant must match the provider's persisted ``auth_type``;
+ * the backend rejects mismatches with HTTP 422.
+ */
+export type CredentialsRotateRequest =
+  | {
+      auth_type: 'api_key'
+      api_key: string
+    }
+  | {
+      auth_type: 'subscription'
+      subscription_token: string
+      tos_accepted: boolean
+    }
+  | {
+      auth_type: 'custom_header'
+      custom_header_name: string
+      custom_header_value: string
+    }
+  | {
+      auth_type: 'oauth'
+      oauth_token_url: string
+      oauth_client_id: string
+      oauth_client_secret: string
+      oauth_scope?: string
+    }
+
+export interface AddModelRequest {
+  model: ProviderModelConfig
+}
+
+export interface SyncModelsRequest {
+  /**
+   * When ``true`` (default), the persisted list is replaced with the
+   * merged discovered+enriched set.  When ``false``, only new ids are
+   * appended; existing models keep their persisted config verbatim.
+   */
+  replace_existing?: boolean
+  /** Optional preset hint for discovery shape (Ollama vs standard). */
+  preset_hint?: string
+}
+
+export interface SyncModelsResponse {
+  readonly added: readonly string[]
+  readonly removed: readonly string[]
+  readonly updated: readonly string[]
+  readonly models: readonly ProviderModelConfig[]
+}
