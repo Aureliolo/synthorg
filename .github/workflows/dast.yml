@@ -67,11 +67,15 @@ jobs:
           SETTINGS_KEY=$(python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')
           PAGINATION_CURSOR_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
           POSTGRES_PW=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
+          # printf '%s\n' (not echo) so a generated value starting with
+          # `-n` / `-e` is treated as data, not as a builtin flag.  Each
+          # value goes through %s with no escape interpretation, so
+          # backslashes from base64 / urlsafe_b64 are also preserved.
           {
-            echo "SYNTHORG_JWT_SECRET=$JWT_SECRET"
-            echo "SYNTHORG_SETTINGS_KEY=$SETTINGS_KEY"
-            echo "SYNTHORG_PAGINATION_CURSOR_SECRET=$PAGINATION_CURSOR_SECRET"
-            echo "POSTGRES_PASSWORD=$POSTGRES_PW"
+            printf '%s\n' "SYNTHORG_JWT_SECRET=$JWT_SECRET"
+            printf '%s\n' "SYNTHORG_SETTINGS_KEY=$SETTINGS_KEY"
+            printf '%s\n' "SYNTHORG_PAGINATION_CURSOR_SECRET=$PAGINATION_CURSOR_SECRET"
+            printf '%s\n' "POSTGRES_PASSWORD=$POSTGRES_PW"
           } >> docker/.env
 
       # Build the apko-composed Wolfi base image locally, mirroring CI's
