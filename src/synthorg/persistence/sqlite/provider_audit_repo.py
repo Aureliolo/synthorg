@@ -191,7 +191,7 @@ class SQLiteProviderAuditRepo:
             label=str(row["actor_label"]),
         )
         return ProviderAuditEvent(
-            id=int(row["id"]),  # type: ignore[arg-type]
+            id=int(str(row["id"])),
             provider_name=str(row["provider_name"]),
             event_type=str(row["event_type"]),  # type: ignore[arg-type]
             actor=actor,

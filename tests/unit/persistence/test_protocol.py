@@ -230,6 +230,38 @@ class _FakeAuditRepository:
         return 0
 
 
+class _FakeProviderAuditRepo:
+    """Stub conforming to the ``ProviderAuditRepo`` protocol."""
+
+    async def record(self, event: object) -> object:
+        return event
+
+    async def list(
+        self,
+        *,
+        provider_name: str,
+        after_id: int | None = None,
+        limit: int = 50,
+    ) -> tuple[tuple[object, ...], bool]:
+        return ((), False)
+
+    async def purge_before_id(self, *, before_id: int) -> int:
+        return 0
+
+
+class _FakePresetOverrideRepo:
+    """Stub conforming to the ``PresetOverrideRepo`` protocol."""
+
+    async def get(self, preset_name: str) -> object | None:
+        return None
+
+    async def upsert(self, override: object) -> object:
+        return override
+
+    async def delete(self, preset_name: str) -> bool:
+        return False
+
+
 class _FakeDecisionRepository:
     async def append_with_next_version(
         self,
@@ -645,6 +677,14 @@ class _FakeBackend:
     @property
     def audit_entries(self) -> _FakeAuditRepository:
         return _FakeAuditRepository()
+
+    @property
+    def provider_audit_events(self) -> _FakeProviderAuditRepo:
+        return _FakeProviderAuditRepo()
+
+    @property
+    def preset_overrides(self) -> _FakePresetOverrideRepo:
+        return _FakePresetOverrideRepo()
 
     @property
     def decision_records(self) -> _FakeDecisionRepository:

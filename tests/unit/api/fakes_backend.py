@@ -317,6 +317,64 @@ class FakeTrainingResultRepository:
         return max(agent_results, key=lambda r: r.completed_at)
 
 
+class _FakeProviderAuditRepo:
+    """Minimal in-memory ``ProviderAuditRepo`` stub for tests.
+
+    Records all events under one provider key with monotonically
+    increasing integer ids; supports keyset pagination on ``id``.
+    """
+
+    def __init__(self) -> None:
+        self._events: list[Any] = []
+        self._next_id = 1
+
+    async def record(self, event: Any) -> Any:
+        saved = event.model_copy(update={"id": self._next_id})
+        self._next_id += 1
+        self._events.append(saved)
+        return saved
+
+    async def list(
+        self,
+        *,
+        provider_name: NotBlankStr,
+        after_id: int | None = None,
+        limit: int = 50,
+    ) -> tuple[tuple[Any, ...], bool]:
+        rows = sorted(
+            (e for e in self._events if e.provider_name == provider_name),
+            key=lambda e: e.id,
+            reverse=True,
+        )
+        if after_id is not None:
+            rows = [e for e in rows if e.id < after_id]
+        page = rows[:limit]
+        has_more = len(rows) > limit
+        return tuple(page), has_more
+
+    async def purge_before_id(self, *, before_id: int) -> int:
+        before = len(self._events)
+        self._events = [e for e in self._events if e.id >= before_id]
+        return before - len(self._events)
+
+
+class _FakePresetOverrideRepo:
+    """Minimal in-memory ``PresetOverrideRepo`` stub for tests."""
+
+    def __init__(self) -> None:
+        self._overrides: dict[str, Any] = {}
+
+    async def get(self, preset_name: NotBlankStr) -> Any | None:
+        return self._overrides.get(preset_name)
+
+    async def upsert(self, override: Any) -> Any:
+        self._overrides[override.preset_name] = override
+        return override
+
+    async def delete(self, preset_name: NotBlankStr) -> bool:
+        return self._overrides.pop(preset_name, None) is not None
+
+
 class FakeCustomRuleRepository:
     """In-memory fake for ``CustomRuleRepository``."""
 
@@ -399,6 +457,8 @@ class FakePersistenceBackend:
         self._collaboration_metrics = FakeCollaborationMetricRepository()
         self._parked_contexts = FakeParkedContextRepository()
         self._audit_entries = FakeAuditRepository()
+        self._provider_audit_events = _FakeProviderAuditRepo()
+        self._preset_overrides = _FakePresetOverrideRepo()
         self._decision_records = FakeDecisionRepository()
         self._users = FakeUserRepository()
         self._api_keys = FakeApiKeyRepository()
@@ -523,6 +583,14 @@ class FakePersistenceBackend:
     @property
     def audit_entries(self) -> FakeAuditRepository:
         return self._audit_entries
+
+    @property
+    def provider_audit_events(self) -> _FakeProviderAuditRepo:
+        return self._provider_audit_events
+
+    @property
+    def preset_overrides(self) -> _FakePresetOverrideRepo:
+        return self._preset_overrides
 
     @property
     def decision_records(self) -> FakeDecisionRepository:
