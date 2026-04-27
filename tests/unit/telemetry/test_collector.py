@@ -91,26 +91,42 @@ class TestTelemetryCollector:
             collector = TelemetryCollector(config=config, data_dir=tmp_path)
         assert collector.is_functional is True
 
-    def test_generates_deployment_id(self, tmp_path: Path) -> None:
+    async def test_generates_deployment_id(self, tmp_path: Path) -> None:
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
-        assert collector.deployment_id is not None
-        assert len(collector.deployment_id) == 36  # UUID4 with hyphens: 8-4-4-4-12
+        try:
+            await collector.start()
+            assert collector.deployment_id is not None
+            assert len(collector.deployment_id) == 36  # UUID4 with hyphens
+        finally:
+            await collector.shutdown()
 
-    def test_persists_deployment_id(self, tmp_path: Path) -> None:
+    async def test_persists_deployment_id(self, tmp_path: Path) -> None:
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         c1 = TelemetryCollector(config=config, data_dir=tmp_path)
         c2 = TelemetryCollector(config=config, data_dir=tmp_path)
-        assert c1.deployment_id == c2.deployment_id
+        try:
+            await c1.start()
+            await c2.start()
+            assert c1.deployment_id == c2.deployment_id
+        finally:
+            await c1.shutdown()
+            await c2.shutdown()
 
-    def test_deployment_id_file_created(self, tmp_path: Path) -> None:
+    async def test_deployment_id_file_created(self, tmp_path: Path) -> None:
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
-        id_file = tmp_path / "telemetry_id"
-        assert id_file.exists()
-        assert id_file.read_text(encoding="utf-8").strip() == collector.deployment_id
+        try:
+            await collector.start()
+            id_file = tmp_path / "telemetry_id"
+            assert id_file.exists()
+            assert (
+                id_file.read_text(encoding="utf-8").strip() == collector.deployment_id
+            )
+        finally:
+            await collector.shutdown()
 
-    def test_deployment_id_read_error_generates_new(self, tmp_path: Path) -> None:
+    async def test_deployment_id_read_error_generates_new(self, tmp_path: Path) -> None:
         """OSError on read falls back to generating a new ID.
 
         Patches :func:`os.path.exists` (the post-sanitiser read
@@ -121,8 +137,11 @@ class TestTelemetryCollector:
         (``normcase``+``normpath``) makes the patch cross-platform.
         """
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
+        # Pure string normalisation, no I/O. Mirrors the production
+        # sanitiser so the patch's match string lines up with the
+        # path the collector hands to ``os.path.exists``.
         deployment_file_str = os.path.normcase(
-            os.path.normpath(str(tmp_path / "telemetry_id")),
+            os.path.normpath(str(tmp_path / "telemetry_id")),  # noqa: ASYNC240
         )
         read_error = OSError("permission denied")
         original_exists = os.path.exists
@@ -132,15 +151,21 @@ class TestTelemetryCollector:
                 raise read_error
             return original_exists(path)
 
-        with patch(
-            "synthorg.telemetry.collector.os.path.exists",
-            side_effect=exists_side_effect,
-        ):
-            collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        try:
+            with patch(
+                "synthorg.telemetry.collector.os.path.exists",
+                side_effect=exists_side_effect,
+            ):
+                await collector.start()
             assert collector.deployment_id is not None
-            assert len(collector.deployment_id) == 36  # UUID4 with hyphens: 8-4-4-4-12
+            assert len(collector.deployment_id) == 36  # UUID4 with hyphens
+        finally:
+            await collector.shutdown()
 
-    def test_deployment_id_write_error_still_returns(self, tmp_path: Path) -> None:
+    async def test_deployment_id_write_error_still_returns(
+        self, tmp_path: Path
+    ) -> None:
         """OSError on the atomic create still returns the generated ID.
 
         Patches :func:`os.open` (the ``O_CREAT | O_EXCL`` sink used
@@ -150,8 +175,9 @@ class TestTelemetryCollector:
         adjacent for CodeQL and the ID survives a concurrent peer.
         """
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
+        # Pure string normalisation, no I/O.
         deployment_file_str = os.path.normcase(
-            os.path.normpath(str(tmp_path / "telemetry_id")),
+            os.path.normpath(str(tmp_path / "telemetry_id")),  # noqa: ASYNC240
         )
         write_error = OSError("disk full")
         original_os_open = os.open
@@ -168,15 +194,21 @@ class TestTelemetryCollector:
                 raise write_error
             return original_os_open(path, flags, mode)
 
-        with patch(
-            "synthorg.telemetry.collector.os.open",
-            side_effect=os_open_side_effect,
-        ):
-            collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        try:
+            with patch(
+                "synthorg.telemetry.collector.os.open",
+                side_effect=os_open_side_effect,
+            ):
+                await collector.start()
             assert collector.deployment_id is not None
-            assert len(collector.deployment_id) == 36  # UUID4 with hyphens: 8-4-4-4-12
+            assert len(collector.deployment_id) == 36  # UUID4 with hyphens
+        finally:
+            await collector.shutdown()
 
-    def test_deployment_id_concurrent_peer_wins_race(self, tmp_path: Path) -> None:
+    async def test_deployment_id_concurrent_peer_wins_race(
+        self, tmp_path: Path
+    ) -> None:
         """``FileExistsError`` on atomic create reuses the peer's UUID.
 
         Regression guard for the TOCTOU race: two replicas racing
@@ -188,8 +220,9 @@ class TestTelemetryCollector:
         """
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         deployment_file = tmp_path / "telemetry_id"
+        # Pure string normalisation, no I/O.
         deployment_file_str = os.path.normcase(
-            os.path.normpath(str(deployment_file)),
+            os.path.normpath(str(deployment_file)),  # noqa: ASYNC240
         )
         peer_uuid = "12345678-1234-5678-1234-567812345678"
         original_os_open = os.open
@@ -208,12 +241,16 @@ class TestTelemetryCollector:
                 raise FileExistsError(17, "File exists", path)
             return original_os_open(path, flags, mode)
 
-        with patch(
-            "synthorg.telemetry.collector.os.open",
-            side_effect=os_open_side_effect,
-        ):
-            collector = TelemetryCollector(config=config, data_dir=tmp_path)
-        assert collector.deployment_id == peer_uuid
+        collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        try:
+            with patch(
+                "synthorg.telemetry.collector.os.open",
+                side_effect=os_open_side_effect,
+            ):
+                await collector.start()
+            assert collector.deployment_id == peer_uuid
+        finally:
+            await collector.shutdown()
 
     async def test_send_heartbeat_disabled(self, tmp_path: Path) -> None:
         """Heartbeat should be a no-op when disabled."""
@@ -227,25 +264,33 @@ class TestTelemetryCollector:
         """Heartbeat with noop backend should succeed silently."""
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
-        await collector.send_heartbeat(
-            _HeartbeatParams(
-                agent_count=5,
-                department_count=3,
-                template_name="startup",
-            ),
-        )
+        try:
+            await collector.start()
+            await collector.send_heartbeat(
+                _HeartbeatParams(
+                    agent_count=5,
+                    department_count=3,
+                    template_name="startup",
+                ),
+            )
+        finally:
+            await collector.shutdown()
 
     async def test_send_session_summary_noop(self, tmp_path: Path) -> None:
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
-        await collector.send_session_summary(
-            _SessionSummaryParams(
-                tasks_created=10,
-                tasks_completed=8,
-                tasks_failed=2,
-                provider_count=2,
-            ),
-        )
+        try:
+            await collector.start()
+            await collector.send_session_summary(
+                _SessionSummaryParams(
+                    tasks_created=10,
+                    tasks_completed=8,
+                    tasks_failed=2,
+                    provider_count=2,
+                ),
+            )
+        finally:
+            await collector.shutdown()
 
     async def test_start_and_shutdown(self, tmp_path: Path) -> None:
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
@@ -270,6 +315,13 @@ class TestTelemetryCollectorWithMockReporter:
     async def test_heartbeat_event_structure(self, tmp_path: Path) -> None:
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
+
+        # Bypass the lifecycle so the mock reporter sees only the
+        # heartbeat call this test asserts on (not an extra startup
+        # event from ``start()``). The deployment-id load is the
+        # only side effect ``start()`` performs that ``_build_event``
+        # depends on; setting it directly is the equivalent stub.
+        collector._deployment_id = "00000000-0000-4000-8000-000000000001"
 
         mock_reporter = AsyncMock()
         collector._reporter = mock_reporter
@@ -299,6 +351,7 @@ class TestTelemetryCollectorWithMockReporter:
     async def test_session_summary_event_structure(self, tmp_path: Path) -> None:
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        collector._deployment_id = "00000000-0000-4000-8000-000000000001"
 
         mock_reporter = AsyncMock()
         collector._reporter = mock_reporter
@@ -325,6 +378,7 @@ class TestTelemetryCollectorWithMockReporter:
         """Reporter raising Exception should not crash the collector."""
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        collector._deployment_id = "00000000-0000-4000-8000-000000000001"
 
         mock_reporter = AsyncMock()
         mock_reporter.report.side_effect = RuntimeError("network down")
@@ -343,6 +397,7 @@ class TestTelemetryCollectorWithMockReporter:
         """After reporter failure, next send still works."""
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        collector._deployment_id = "00000000-0000-4000-8000-000000000001"
 
         mock_reporter = AsyncMock()
         mock_reporter.report.side_effect = [
@@ -500,6 +555,10 @@ class TestCollectorEnvironmentPropagation:
         monkeypatch.setenv("SYNTHORG_TELEMETRY_ENV", "pre-release")
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        # Build event without going through the lifecycle: stub the
+        # deployment-id directly because this test only asserts the
+        # environment field that ``_build_event`` reads from config.
+        collector._deployment_id = "00000000-0000-4000-8000-000000000001"
         event = collector._build_event("deployment.heartbeat")
         assert event.environment == "pre-release"
 
@@ -522,6 +581,7 @@ class TestCollectorEnvironmentPropagation:
             environment="test-env",
         )
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        collector._deployment_id = "00000000-0000-4000-8000-000000000001"
         mock_reporter = AsyncMock()
         collector._reporter = mock_reporter
 
@@ -563,6 +623,7 @@ class TestCollectorEnvironmentPropagation:
             environment="dev",
         )
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        collector._deployment_id = "00000000-0000-4000-8000-000000000001"
         mock_reporter = AsyncMock()
         collector._reporter = mock_reporter
 
@@ -594,6 +655,7 @@ class TestCollectorEnvironmentPropagation:
             environment="integration-test",
         )
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        collector._deployment_id = "00000000-0000-4000-8000-000000000001"
         mock_reporter = AsyncMock()
         collector._reporter = mock_reporter
 
