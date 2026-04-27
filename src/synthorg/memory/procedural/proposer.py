@@ -12,6 +12,21 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from synthorg.budget.call_category import LLMCallCategory
+
+# ``CostTracker`` is part of ``ProceduralMemoryProposer.__init__``'s
+# annotation, so it must resolve at runtime when downstream tooling
+# evaluates type hints (DI containers, doc generators).  Importing at
+# module top -- not under ``TYPE_CHECKING`` -- keeps the name in module
+# globals.
+from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.prompt_safety import (
+    TAG_TASK_DATA,
+    TAG_TOOL_RESULT,
+    untrusted_content_directive,
+    wrap_untrusted,
+)
 from synthorg.memory.procedural.models import (
     FailureAnalysisPayload,
     ProceduralMemoryConfig,
@@ -24,6 +39,7 @@ from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_MEMORY_PROPOSER_INIT,
     PROCEDURAL_MEMORY_SKIPPED,
 )
+from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import ProviderError
 from synthorg.providers.models import ChatMessage, CompletionConfig
@@ -44,7 +60,8 @@ _SYSTEM_PROMPT = (
     '(e.g. ["Step 1", "Step 2"]).\n'
     '- "confidence": Your confidence in this proposal (0.0-1.0).\n'
     '- "tags": List of semantic tags (e.g. ["timeout", "tool_failure"]).\n\n'
-    "Respond ONLY with the JSON object, no markdown fences or explanation."
+    "Respond ONLY with the JSON object, no markdown fences or explanation.\n\n"
+    + untrusted_content_directive((TAG_TASK_DATA, TAG_TOOL_RESULT))
 )
 
 _JSON_FENCE_PATTERN = re.compile(
@@ -85,23 +102,31 @@ def _extract_json(text: str) -> dict[str, Any] | None:
 def _build_user_message(payload: FailureAnalysisPayload) -> str:
     """Format the payload into a user message for the proposer LLM.
 
-    Uses structural delimiters to prevent format confusion when
-    task descriptions or error messages contain prompt-like text.
+    SEC-1: every attacker-controllable field (task title, description,
+    error message, termination reason, tool list) is wrapped in its
+    appropriate ``TAG_*`` fence so the proposer LLM treats them as
+    data.  The matching ``untrusted_content_directive`` is appended
+    to ``_SYSTEM_PROMPT``.
     """
     tools = ", ".join(payload.tool_calls_made) if payload.tool_calls_made else "none"
-    return (
-        "[BEGIN FAILURE CONTEXT]\n"
-        f"Task: {payload.task_title}\n"
+    task_block = (
+        f"Title: {payload.task_title}\n"
         f"Description: {payload.task_description}\n"
         f"Type: {payload.task_type.value}\n"
-        f"Error: {payload.error_message}\n"
-        f"Termination: {payload.termination_reason}\n"
+        f"Termination: {payload.termination_reason}"
+    )
+    return (
+        "## Failure context\n"
+        + wrap_untrusted(TAG_TASK_DATA, task_block)
+        + "\n\n## Error message\n"
+        + wrap_untrusted(TAG_TASK_DATA, payload.error_message)
+        + "\n\n## Tool calls made\n"
+        + wrap_untrusted(TAG_TOOL_RESULT, tools)
+        + "\n\n## Run metadata (trusted)\n"
         f"Recovery strategy: {payload.strategy_type}\n"
         f"Turns completed: {payload.turn_count}\n"
-        f"Tools used: {tools}\n"
         f"Retry {payload.retry_count}/{payload.max_retries} "
-        f"(can reassign: {payload.can_reassign})\n"
-        "[END FAILURE CONTEXT]"
+        f"(can reassign: {payload.can_reassign})"
     )
 
 
@@ -115,6 +140,11 @@ class ProceduralMemoryProposer:
     Args:
         provider: Completion provider for the proposer LLM call.
         config: Procedural memory configuration.
+        cost_tracker: Optional :class:`CostTracker`.  When wired, the
+            provider chokepoint emits a ``CostRecord`` for each
+            proposer call attributed to the owning agent and a
+            per-task ``task_id``; when ``None``, the scope is a
+            silent no-op (used by tests and probes).
     """
 
     def __init__(
@@ -122,9 +152,11 @@ class ProceduralMemoryProposer:
         *,
         provider: CompletionProvider,
         config: ProceduralMemoryConfig,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         self._provider = provider
         self._config = config
+        self._cost_tracker = cost_tracker
         self._completion_config = CompletionConfig(
             temperature=config.temperature,
             max_tokens=config.max_tokens,
@@ -161,11 +193,17 @@ class ProceduralMemoryProposer:
                     content=_build_user_message(payload),
                 ),
             ]
-            response = await self._provider.complete(
-                messages,
-                self._config.model,
-                config=self._completion_config,
-            )
+            async with cost_recording_scope(
+                cost_tracker=self._cost_tracker,
+                agent_id=NotBlankStr("system"),
+                task_id=NotBlankStr(f"system:procedural:propose:{payload.task_id}"),
+                call_category=LLMCallCategory.SYSTEM,
+            ):
+                response = await self._provider.complete(
+                    messages,
+                    self._config.model,
+                    config=self._completion_config,
+                )
         except MemoryError, RecursionError:
             raise
         except ProviderError as exc:

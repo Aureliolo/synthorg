@@ -16,13 +16,15 @@ from synthorg.communication.meeting.models import (
 )
 from synthorg.core.enums import Priority
 
-AgentCaller = Callable[[str, str, int], Awaitable[AgentResponse]]
+AgentCaller = Callable[[str, str, int, str], Awaitable[AgentResponse]]
 """Callback to invoke an agent during a meeting.
 
-Signature: ``(agent_id, prompt, max_tokens) -> AgentResponse``
+Signature: ``(agent_id, prompt, max_tokens, meeting_id) -> AgentResponse``
 
 The orchestrator constructs this from the engine layer, decoupling
-protocol implementations from the execution engine.
+protocol implementations from the execution engine.  ``meeting_id``
+is threaded through so cost-recording attribution carries the real
+meeting identifier per turn instead of a synthetic placeholder.
 """
 
 TaskCreator = Callable[[str, str | None, Priority], None]

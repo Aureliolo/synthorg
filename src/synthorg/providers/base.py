@@ -24,6 +24,7 @@ from synthorg.observability.events.provider import (
 from synthorg.observability.metrics_hub import record_provider_error
 
 from .capabilities import ModelCapabilities  # noqa: TC001
+from .cost_recording import current_cost_context, emit_cost_record_from_context
 from .errors import InvalidRequestError, RateLimitError, classify_provider_error
 from .models import (
     ChatMessage,
@@ -180,6 +181,21 @@ class BaseCompletionProvider(ABC):
             PROVIDER_CALL_SUCCESS,
             model=model,
         )
+
+        # Cost recording chokepoint: when a ``cost_recording_scope`` is
+        # open in the current asyncio task, emit a CostRecord. Sites
+        # without a scope (probes, tests, and the engine path which
+        # records via ``record_execution_costs`` post-execution) see no
+        # change. Recording errors are logged and swallowed inside the
+        # helper -- never surface to the caller.
+        ctx = current_cost_context()
+        if ctx is not None:
+            await emit_cost_record_from_context(
+                ctx,
+                result,
+                model=model,
+                provider=self._provider_label(),
+            )
         return result
 
     async def stream(
@@ -194,6 +210,19 @@ class BaseCompletionProvider(ABC):
 
         Only the initial connection setup is retried; mid-stream errors
         are not retried.
+
+        .. note::
+
+            Unlike :meth:`complete`, ``stream`` does **not** fire the
+            cost-recording chokepoint.  Streaming responses surface
+            usage as a terminal ``StreamEventType.USAGE`` chunk, so the
+            recording logic would have to consume the iterator to
+            extract token counts -- conflating cost recording with the
+            stream-consumption contract.  Until streaming becomes a
+            mainstream LLM call path in this codebase, callers using
+            ``stream()`` are responsible for emitting their own
+            ``CostRecord`` from the final usage chunk.  No call site in
+            the current diff uses ``stream()`` for paid LLM work.
 
         Args:
             messages: Conversation history.

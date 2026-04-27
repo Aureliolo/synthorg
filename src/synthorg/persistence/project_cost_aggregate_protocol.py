@@ -7,18 +7,17 @@ Protocol in ``persistence/<domain>_protocol.py`` per project convention.
 The value object (:class:`ProjectCostAggregate`) stays in
 ``budget/project_cost_aggregate`` because budget code consumes it.
 
-The currency-aware invariant described in CLAUDE.md (cost-bearing
-aggregations must reject mixed-currency increments via
-``MixedCurrencyAggregationError``) is a separate follow-up: it requires
-a schema column migration, a model field, and caller updates in
-``CostTracker`` / ``BudgetEnforcer``. This protocol tracks the current
-non-currency-aware surface; once the follow-up lands, a ``currency``
-parameter will be added to ``increment`` here and the schema column
-will be enforced at the repo boundary.
+The protocol enforces the currency-aware invariant described in
+CLAUDE.md: cost-bearing aggregations must reject mixed-currency
+increments via :class:`MixedCurrencyAggregationError`.  ``increment``
+takes a required ``currency`` keyword argument; concrete backends
+validate that the project's existing currency (if any) matches the
+incoming currency and raise on mismatch.
 """
 
 from typing import Protocol, runtime_checkable
 
+from synthorg.budget.currency import CurrencyCode  # noqa: TC001
 from synthorg.budget.project_cost_aggregate import (
     ProjectCostAggregate,  # noqa: TC001
 )
@@ -50,13 +49,28 @@ class ProjectCostAggregateRepository(Protocol):
         cost: float,
         input_tokens: int,
         output_tokens: int,
+        *,
+        currency: CurrencyCode,
     ) -> ProjectCostAggregate:
         """Atomically increment the project's cost aggregate.
 
         Creates a new aggregate row on the first call for a project.
-        Subsequent calls increment the existing totals.
+        Subsequent calls increment the existing totals only when the
+        incoming ``currency`` matches the aggregate's currency; a
+        mismatch raises :class:`MixedCurrencyAggregationError`.
+
+        Args:
+            project_id: Project to increment.
+            cost: Cost amount denominated in ``currency``.
+            input_tokens: Input token count to add.
+            output_tokens: Output token count to add.
+            currency: ISO 4217 currency for ``cost``.
 
         Returns:
             The updated aggregate after the increment.
+
+        Raises:
+            MixedCurrencyAggregationError: If the project already has
+                an aggregate row in a different currency.
         """
         ...

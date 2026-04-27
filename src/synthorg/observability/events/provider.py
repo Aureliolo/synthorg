@@ -110,6 +110,11 @@ PROVIDER_HEALTH_PRUNED: Final[str] = "provider.health.pruned"
 PROVIDER_HEALTH_AUTO_PRUNED: Final[str] = "provider.health.auto_pruned"
 PROVIDER_HEALTH_CLEARED: Final[str] = "provider.health.cleared"
 
+# ── Provider cost recording chokepoint ───────────────────────
+PROVIDER_COST_RECORDED: Final[str] = "provider.cost.recorded"
+PROVIDER_COST_SKIPPED: Final[str] = "provider.cost.skipped"
+PROVIDER_COST_FAILED: Final[str] = "provider.cost.failed"
+
 # ── Local model management ──────────────────────────────────
 PROVIDER_MODEL_PULL_STARTED: Final[str] = "provider.model.pull_started"
 PROVIDER_MODEL_PULL_COMPLETED: Final[str] = "provider.model.pull_completed"

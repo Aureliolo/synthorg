@@ -38,6 +38,14 @@ The new helper is covered by `tests/unit/persistence/_shared/test_datetime_marsh
 
 Adding a new shared helper: extract the duplicated logic into `_shared/`, add a `test_*_helpers.py` unit suite alongside it, and add a conformance test that runs against both backends.
 
+## In-memory invariant pins (interim, schema-deferred)
+
+When a Pydantic model gains a required field but the corresponding column hasn't been added yet (e.g. an Atlas migration is queued in a follow-up issue), the repository may carry a process-local `_pinned_<field>` map keyed by the row's primary key, plus a true **per-key lock registry** (not a fixed-size stripe set): `_lock_registry: dict[str, asyncio.Lock]` lazily populated under a small `_registry_lock` so each primary key gets its own dedicated `asyncio.Lock`. Concurrent operations on different keys never block each other; the per-key lock is held across the full critical section -- check-and-set + DB I/O + deserialize -- so concurrent first-writes for the *same* key cannot diverge the in-memory dict from the durable row. Mismatched-pin writes raise the same domain error a column constraint would (e.g. `MixedCurrencyAggregationError`). On any failure mode (DB error, missing RETURNING row, deserialize failure) a `try`/`finally` around the I/O block rolls the pin back so a retry isn't blocked by a phantom pin. The read path (`get`) uses a bare `dict.get` -- atomic under the GIL, never yields -- and falls back to a sane neutral default (`DEFAULT_CURRENCY` for currency, etc.) when no pin is present, with a DEBUG log per pin-miss. The schema-gap notice is emitted at INFO **once per process** via a module-level guard, not per repo instance, so test suites that build many repositories don't flood the log.
+
+Canonical example: `ProjectCostAggregateRepository` in `persistence/{sqlite,postgres}/project_cost_aggregate_repo.py`. The `currency: CurrencyCode` field is required on `ProjectCostAggregate` but the durable column is queued under #1597; both repos hold `_pinned_currencies: dict[str, str]` plus the per-key `_lock_registry: dict[str, asyncio.Lock]` (guarded by `_registry_lock` for lazy init) and emit `PERSISTENCE_PROJECT_COST_AGG_CURRENCY_PIN_MISSING` at INFO once per process.
+
+This pattern is interim by construction. Each pin must reference an issue tracking the schema follow-up; once the column lands, the pin and its DEBUG/INFO logging come out in the same change.
+
 ## In-memory fallbacks
 
 In-memory fallbacks in `persistence/integration_stubs.py` are named `InMemoryXRepository` (NOT `StubXRepository`) to signal that they are *working* repositories, just process-local and non-durable. These still require durable SQLite + Postgres counterparts (tracked in issue #1517); the `InMemory*` naming does not relax that obligation.

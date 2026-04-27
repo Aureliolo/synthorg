@@ -7,12 +7,13 @@ Litestar route handlers.
 import asyncio
 import math
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, NamedTuple, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.api.errors import ServiceUnavailableError
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
+from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.trends import BucketSize, TrendDataPoint, bucket_cost_records
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.enums import AgentStatus
@@ -200,13 +201,72 @@ def _sparkline_start(now: datetime) -> datetime:
     ) - timedelta(days=6)
 
 
+class DepartmentCostAggregate(NamedTuple):
+    """Aggregated cost view for a department.
+
+    Returned by :func:`_aggregate_dept_cost`.  Named fields prevent
+    callers from mis-ordering ``total_cost`` / ``currency`` / ``trend``
+    when destructuring -- a code smell with bare 3-tuples of mixed
+    types.
+
+    Attributes:
+        total_cost: Sum of cost across the matched cost records,
+            denominated in ``currency``.
+        currency: ISO 4217 code shared by every contributing record;
+            ``None`` only when no records matched.
+        trend: 7-day daily spend sparkline.
+    """
+
+    total_cost: float
+    currency: CurrencyCode | None
+    trend: tuple[TrendDataPoint, ...]
+
+
 def _aggregate_dept_cost(
     cost_records: tuple[CostRecord, ...],
     agent_id_set: frozenset[str],
     now: datetime,
-) -> tuple[float, tuple[TrendDataPoint, ...]]:
-    """Filter cost records to department agents and compute totals."""
+    *,
+    dept_name: str | None = None,
+) -> DepartmentCostAggregate:
+    """Filter cost records to department agents and compute totals.
+
+    Args:
+        cost_records: All cost records in scope.
+        agent_id_set: Department agent ids used to filter records.
+        now: Reference timestamp for the trend bucketing.
+        dept_name: Optional department identifier surfaced in the
+            mixed-currency warning so operators can locate the
+            offending department without correlating against the
+            calling endpoint.
+
+    Raises:
+        MixedCurrencyAggregationError: If the matched cost records span
+            more than one currency.  Cost summation across currencies
+            is meaningless without an FX policy and is rejected at the
+            aggregator boundary; the caller must scope the input to a
+            single currency window.
+    """
     dept_records = tuple(r for r in cost_records if r.agent_id in agent_id_set)
+    currencies = {r.currency for r in dept_records}
+    if len(currencies) > 1:
+        sorted_currencies = sorted(currencies)
+        logger.warning(
+            API_REQUEST_ERROR,
+            reason="mixed_currency_aggregation",
+            scope="department_cost_aggregate",
+            dept_name=dept_name,
+            currencies=sorted_currencies,
+            record_count=len(dept_records),
+        )
+        msg = (
+            f"Department aggregate spans currencies {sorted_currencies}; "
+            f"refusing to sum without an FX policy"
+        )
+        raise MixedCurrencyAggregationError(
+            msg,
+            currencies=frozenset(currencies),
+        )
     total = round(
         math.fsum(r.cost for r in dept_records),
         BUDGET_ROUNDING_PRECISION,
@@ -217,7 +277,8 @@ def _aggregate_dept_cost(
         now,
         BucketSize.DAY,
     )
-    return total, trend
+    currency = next(iter(currencies)) if currencies else None
+    return DepartmentCostAggregate(total_cost=total, currency=currency, trend=trend)
 
 
 def _build_degraded_health(
@@ -254,12 +315,16 @@ def _build_health_from_data(  # noqa: PLR0913
     *,
     currency: CurrencyCode = DEFAULT_CURRENCY,
 ) -> DepartmentHealth:
-    """Build DepartmentHealth from resolved query results."""
+    """Build DepartmentHealth from resolved query results.
+
+    Raises:
+        MixedCurrencyAggregationError: Propagated from
+            ``_aggregate_dept_cost`` if the department's cost records
+            span more than one currency.
+    """
     agent_id_set = frozenset(agent_ids)
-    dept_cost_7d, cost_trend = _aggregate_dept_cost(
-        cost_records,
-        agent_id_set,
-        now,
+    aggregate = _aggregate_dept_cost(
+        cost_records, agent_id_set, now, dept_name=dept_name
     )
     return DepartmentHealth(
         department_name=dept_name,
@@ -268,12 +333,12 @@ def _build_health_from_data(  # noqa: PLR0913
         avg_performance_score=_mean_optional(
             [s.overall_quality_score for s in snapshots],
         ),
-        department_cost_7d=dept_cost_7d,
-        cost_trend=cost_trend,
+        department_cost_7d=aggregate.total_cost,
+        cost_trend=aggregate.trend,
         collaboration_score=_mean_optional(
             [s.overall_collaboration_score for s in snapshots],
         ),
-        currency=currency,
+        currency=aggregate.currency if aggregate.currency is not None else currency,
     )
 
 

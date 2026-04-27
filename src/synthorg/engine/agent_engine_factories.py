@@ -53,6 +53,7 @@ class AgentEngineFactoriesMixin:
     _security_config: Any
     _budget_enforcer: Any
     _audit_log: Any
+    _cost_tracker: Any
 
     def _make_approval_gate(self) -> ApprovalGate | None:
         """Build an ApprovalGate if an approval store is configured."""
@@ -150,6 +151,7 @@ class AgentEngineFactoriesMixin:
             provider_registry=self._provider_registry,
             provider_configs=self._provider_configs,
             model_resolver=self._model_resolver,
+            cost_tracker=self._cost_tracker,
         )
 
     def _make_tool_invoker(

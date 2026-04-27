@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.project_cost_aggregate import (
     ProjectCostAggregate,
 )
@@ -20,6 +21,7 @@ def _make_mock_repo() -> AsyncMock:
         return_value=ProjectCostAggregate(
             project_id="proj-1",
             total_cost=1.0,
+            currency=DEFAULT_CURRENCY,
             total_input_tokens=100,
             total_output_tokens=50,
             record_count=1,
@@ -40,11 +42,16 @@ class TestTrackerProjectAggregate:
 
         await tracker.record(record)
 
+        # Compare currency against the input record rather than a
+        # hardcoded literal so the assertion follows the fixture's
+        # source of truth -- changing ``make_cost_record`` default
+        # currency does not silently desync this test.
         repo.increment.assert_awaited_once_with(
             "proj-1",
             1.0,
             record.input_tokens,
             record.output_tokens,
+            currency=record.currency,
         )
 
     async def test_record_skips_repo_when_no_project_id(self) -> None:

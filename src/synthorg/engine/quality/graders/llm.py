@@ -17,9 +17,10 @@ import json
 import math
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.budget.call_category import LLMCallCategory
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_UNTRUSTED_ARTIFACT,
     untrusted_content_directive,
@@ -42,6 +43,7 @@ from synthorg.observability.events.verification import (
     VERIFICATION_GRADING_STARTED,
     VERIFICATION_VERDICT_OVERRIDDEN_TO_REFER,
 )
+from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
@@ -50,6 +52,9 @@ from synthorg.providers.models import (
 )
 from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
 from synthorg.providers.resilience.errors import RetryExhaustedError
+
+if TYPE_CHECKING:
+    from synthorg.budget.tracker import CostTracker
 
 logger = get_logger(__name__)
 
@@ -196,6 +201,7 @@ class LLMRubricGrader:
         provider: CompletionProvider,
         model_id: NotBlankStr,
         min_confidence_override: float | None = None,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         """Store dependencies and validate override bounds."""
         if min_confidence_override is not None and not (
@@ -211,6 +217,7 @@ class LLMRubricGrader:
         self._provider = provider
         self._model_id = model_id
         self._min_confidence_override = min_confidence_override
+        self._cost_tracker = cost_tracker
 
     @property
     def name(self) -> str:
@@ -394,15 +401,27 @@ class LLMRubricGrader:
             parameters_schema=_GRADER_TOOL_SCHEMA,
         )
         try:
-            return await self._provider.complete(
-                messages=messages,
-                model=self._model_id,
-                tools=[tool],
-                config=CompletionConfig(
-                    temperature=0.0,
-                    max_tokens=_DEFAULT_MAX_TOKENS,
-                ),
-            )
+            async with cost_recording_scope(
+                cost_tracker=self._cost_tracker,
+                # The grading LLM call is verification work performed
+                # by the evaluator on the generator's artifact.  Charge
+                # it to the evaluator (the agent doing the grading)
+                # rather than to the generator (the artifact producer);
+                # the task_id already encodes the evaluator identity
+                # for cross-reference.
+                agent_id=evaluator_agent_id,
+                task_id=NotBlankStr(f"system:verification:{evaluator_agent_id}"),
+                call_category=LLMCallCategory.SYSTEM,
+            ):
+                return await self._provider.complete(
+                    messages=messages,
+                    model=self._model_id,
+                    tools=[tool],
+                    config=CompletionConfig(
+                        temperature=0.0,
+                        max_tokens=_DEFAULT_MAX_TOKENS,
+                    ),
+                )
         except MemoryError, RecursionError:
             raise
         except RetryExhaustedError:

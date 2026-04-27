@@ -6,33 +6,47 @@ and whether to retry with corrected queries when results are poor.
 
 import builtins
 import json
-from typing import TYPE_CHECKING
 
+from synthorg.budget.call_category import LLMCallCategory
+
+# ``CostTracker``, ``CompletionProvider``, ``RetrievalQuery`` and
+# ``FinalRetrievalResult`` are part of ``SupervisorRouter``'s public
+# annotation surface (constructor + ``route`` + ``evaluate_for_retry``)
+# so they must resolve at runtime when downstream tooling evaluates
+# type hints (DI containers, doc generators).
+from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.prompt_safety import (
+    TAG_TASK_DATA,
+    untrusted_content_directive,
+    wrap_untrusted,
+)
 from synthorg.memory.retrieval.hierarchical.models import (
     RetrievalRetryCorrection,
     WorkerRoutingDecision,
+)
+from synthorg.memory.retrieval.models import (  # noqa: TC001
+    FinalRetrievalResult,
+    RetrievalQuery,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_HIERARCHICAL_RETRY,
     MEMORY_HIERARCHICAL_ROUTING,
 )
+from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.memory.retrieval.models import (
-        FinalRetrievalResult,
-        RetrievalQuery,
-    )
-    from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
 
 logger = get_logger(__name__)
 
 _VALID_WORKERS = frozenset({"semantic", "episodic", "procedural"})
 
-_ROUTING_SYSTEM_PROMPT = """\
+_UNTRUSTED_DIRECTIVE = untrusted_content_directive((TAG_TASK_DATA,))
+
+_ROUTING_SYSTEM_PROMPT = (
+    """\
 You are a memory retrieval router. Given a query, decide which memory \
 workers to invoke. Available workers:
 - semantic: Full-spectrum hybrid search across all memory types
@@ -42,9 +56,13 @@ workers to invoke. Available workers:
 Respond with JSON: {{"workers": ["worker1", ...], "reason": "..."}}
 Select 1 to {max_workers} workers. Prefer "semantic" for broad queries. \
 Use "episodic" for time-sensitive questions and "procedural" for how-to.
-"""
 
-_RETRY_SYSTEM_PROMPT = """\
+"""
+    + _UNTRUSTED_DIRECTIVE
+)
+
+_RETRY_SYSTEM_PROMPT = (
+    """\
 You are evaluating retrieval quality. The original query returned \
 {count} results with an average score of {avg_score:.2f}.
 
@@ -54,7 +72,10 @@ Decide if a retry is needed. If so, suggest ONE of:
 
 Respond with JSON: {{"retry": true/false, "corrected_query": "..." \
 or null, "alternative_strategy": "..." or null, "reason": "..."}}
+
 """
+    + _UNTRUSTED_DIRECTIVE
+)
 
 _DEFAULT_QUALITY_THRESHOLD = 0.3
 _DEFAULT_FALLBACK_WORKERS = ("semantic",)
@@ -82,6 +103,7 @@ class SupervisorRouter:
         reflective_retry_enabled: bool = True,
         max_retry_count: int = 2,
         quality_threshold: float = _DEFAULT_QUALITY_THRESHOLD,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         self._provider = provider
         self._model = model
@@ -89,6 +111,7 @@ class SupervisorRouter:
         self._retry_enabled = reflective_retry_enabled
         self._max_retries = max_retry_count
         self._quality_threshold = quality_threshold
+        self._cost_tracker = cost_tracker
 
     @property
     def reflective_retry_enabled(self) -> bool:
@@ -179,14 +202,25 @@ class SupervisorRouter:
         system_prompt = _ROUTING_SYSTEM_PROMPT.format(
             max_workers=self._max_workers,
         )
+        # SEC-1: ``query.text`` is operator-controlled but ultimately
+        # sourced from upstream agent reasoning that may have ingested
+        # untrusted content; wrap it in a ``<task-data>`` fence so the
+        # routing model treats it as data rather than instruction.
+        wrapped_query = wrap_untrusted(TAG_TASK_DATA, query.text)
         messages: list[ChatMessage] = [
             ChatMessage(role=MessageRole.SYSTEM, content=system_prompt),
-            ChatMessage(role=MessageRole.USER, content=query.text),
+            ChatMessage(role=MessageRole.USER, content=wrapped_query),
         ]
-        response = await self._provider.complete(
-            messages,
-            self._model,
-        )
+        async with cost_recording_scope(
+            cost_tracker=self._cost_tracker,
+            agent_id=query.agent_id,
+            task_id=NotBlankStr("system:memory:retrieval_route"),
+            call_category=LLMCallCategory.SYSTEM,
+        ):
+            response = await self._provider.complete(
+                messages,
+                self._model,
+            )
         if response.content is None:
             msg = "LLM returned empty content for routing"
             raise ValueError(msg)
@@ -230,8 +264,13 @@ class SupervisorRouter:
             count=len(result.candidates),
             avg_score=avg_score,
         )
+        # SEC-1: wrap the untrusted ``query.text`` so a malicious
+        # query body cannot inject instructions into the retry
+        # evaluator.  The candidate-count summary is fixed-format
+        # numeric data, so it stays outside the fence.
+        wrapped_query = wrap_untrusted(TAG_TASK_DATA, query.text)
         user_content = (
-            f"Original query: {query.text}\n"
+            f"Original query:\n{wrapped_query}\n"
             f"Results: {len(result.candidates)} candidates, "
             f"avg score: {avg_score:.2f}"
         )
@@ -239,10 +278,16 @@ class SupervisorRouter:
             ChatMessage(role=MessageRole.SYSTEM, content=system_prompt),
             ChatMessage(role=MessageRole.USER, content=user_content),
         ]
-        response = await self._provider.complete(
-            messages,
-            self._model,
-        )
+        async with cost_recording_scope(
+            cost_tracker=self._cost_tracker,
+            agent_id=query.agent_id,
+            task_id=NotBlankStr("system:memory:retrieval_retry"),
+            call_category=LLMCallCategory.SYSTEM,
+        ):
+            response = await self._provider.complete(
+                messages,
+                self._model,
+            )
         if response.content is None:
             return None
         try:

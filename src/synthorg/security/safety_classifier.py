@@ -28,8 +28,9 @@ from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.enums import ApprovalRiskLevel  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_INFO_STRIP_COMPLETE,
@@ -39,6 +40,7 @@ from synthorg.observability.events.security import (
     SECURITY_TIER_CLASSIFIED,
     SECURITY_TIER_SAFE_TOOL,
 )
+from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.family import get_family, providers_excluding_family
 from synthorg.providers.models import (
@@ -54,6 +56,7 @@ from synthorg.security.rules.data_leak_detector import PII_PATTERNS
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from synthorg.budget.tracker import CostTracker
     from synthorg.config.schema import ProviderConfig
     from synthorg.providers.base import BaseCompletionProvider
     from synthorg.providers.registry import ProviderRegistry
@@ -305,10 +308,12 @@ class SafetyClassifier:
         provider_registry: ProviderRegistry,
         provider_configs: Mapping[str, ProviderConfig],
         config: SafetyClassifierConfig,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         self._registry = provider_registry
         self._configs = provider_configs
         self._config = config
+        self._cost_tracker = cost_tracker
         self._stripper = InformationStripper()
 
     def classify_tier(self, action_type: str) -> PermissionTier:
@@ -421,18 +426,24 @@ class SafetyClassifier:
             risk_level,
         )
 
-        response = await asyncio.wait_for(
-            driver.complete(
-                messages,
-                model,
-                tools=[_SAFETY_VERDICT_TOOL],
-                config=CompletionConfig(
-                    temperature=0.0,
-                    max_tokens=256,
+        async with cost_recording_scope(
+            cost_tracker=self._cost_tracker,
+            agent_id=NotBlankStr("system"),
+            task_id=NotBlankStr("system:security:safety_classifier"),
+            call_category=LLMCallCategory.SYSTEM,
+        ):
+            response = await asyncio.wait_for(
+                driver.complete(
+                    messages,
+                    model,
+                    tools=[_SAFETY_VERDICT_TOOL],
+                    config=CompletionConfig(
+                        temperature=0.0,
+                        max_tokens=256,
+                    ),
                 ),
-            ),
-            timeout=self._config.timeout_seconds,
-        )
+                timeout=self._config.timeout_seconds,
+            )
 
         return self._parse_response(
             response,

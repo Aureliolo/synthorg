@@ -11,6 +11,13 @@ from typing import TYPE_CHECKING, Any, Final
 
 from pydantic import ValidationError
 
+from synthorg.budget.call_category import LLMCallCategory
+
+# ``CostTracker`` is part of ``SeparateAnalyzerProposer.__init__``'s
+# public annotation, so it must resolve at runtime when downstream
+# tooling evaluates type hints (DI containers, doc generators).
+from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.evolution.models import (
     AdaptationProposal,
 )
@@ -26,13 +33,13 @@ from synthorg.observability.events.evolution import (
     EVOLUTION_PROPOSER_INIT,
     EVOLUTION_PROPOSER_PARSE_ERROR,
 )
+from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import ProviderError
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
 
 if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
     from synthorg.engine.evolution.protocols import EvolutionContext
 
 logger = get_logger(__name__)
@@ -283,7 +290,7 @@ class SeparateAnalyzerProposer:
         max_tokens: Maximum tokens to generate (default: 2000).
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         provider: CompletionProvider,
         *,
@@ -291,6 +298,7 @@ class SeparateAnalyzerProposer:
         temperature: float = 0.3,
         max_tokens: int = 2000,
         summary_cap: int = _DEFAULT_SUMMARY_CAP,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         if summary_cap < 0:
             msg = f"summary_cap must be non-negative; got {summary_cap}"
@@ -305,6 +313,7 @@ class SeparateAnalyzerProposer:
         self._provider = provider
         self._model = model
         self._summary_cap = summary_cap
+        self._cost_tracker = cost_tracker
         self._completion_config = CompletionConfig(
             temperature=temperature,
             max_tokens=max_tokens,
@@ -351,11 +360,17 @@ class SeparateAnalyzerProposer:
                     ),
                 ),
             ]
-            response = await self._provider.complete(
-                messages,
-                self._model,
-                config=self._completion_config,
-            )
+            async with cost_recording_scope(
+                cost_tracker=self._cost_tracker,
+                agent_id=agent_id,
+                task_id=NotBlankStr("system:evolution:propose"),
+                call_category=LLMCallCategory.SYSTEM,
+            ):
+                response = await self._provider.complete(
+                    messages,
+                    self._model,
+                    config=self._completion_config,
+                )
         except MemoryError, RecursionError:
             raise
         except ProviderError as exc:

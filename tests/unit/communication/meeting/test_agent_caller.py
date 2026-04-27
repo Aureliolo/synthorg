@@ -84,6 +84,7 @@ def _completion(
 
 
 _AGENT_ID = "agent-sarah"
+_MEETING_ID = "meeting-test-001"
 
 
 def _build_caller(
@@ -132,7 +133,7 @@ class TestBuildMeetingAgentCaller:
             response=response,
         )
 
-        result = await caller(_AGENT_ID, "Agenda: queueing", 500)
+        result = await caller(_AGENT_ID, "Agenda: queueing", 500, _MEETING_ID)
         assert isinstance(result, AgentResponse)
         assert result.agent_id == _AGENT_ID
         assert result.content == "I propose adding a queue."
@@ -146,7 +147,7 @@ class TestBuildMeetingAgentCaller:
             structlog.testing.capture_logs() as cap,
             pytest.raises(UnknownMeetingAgentError) as exc_info,
         ):
-            await caller(_AGENT_ID, "prompt", 100)
+            await caller(_AGENT_ID, "prompt", 100, _MEETING_ID)
         # LookupError-compatible so callers can catch with existing
         # lookup-failure handlers.
         assert isinstance(exc_info.value, LookupError)
@@ -166,7 +167,7 @@ class TestBuildMeetingAgentCaller:
             identity=identity,
             response=_completion(content=""),
         )
-        result = await caller(_AGENT_ID, "prompt", 100)
+        result = await caller(_AGENT_ID, "prompt", 100, _MEETING_ID)
         assert result.content == ""
 
     async def test_provider_error_propagates(self) -> None:
@@ -176,14 +177,14 @@ class TestBuildMeetingAgentCaller:
             provider_error=RuntimeError("provider boom"),
         )
         with pytest.raises(RuntimeError, match="provider boom"):
-            await caller(_AGENT_ID, "prompt", 100)
+            await caller(_AGENT_ID, "prompt", 100, _MEETING_ID)
 
     async def test_logs_called_and_responded_events(self) -> None:
         identity = _identity()
         caller, _reg, _providers = _build_caller(identity=identity)
 
         with structlog.testing.capture_logs() as cap:
-            await caller(_AGENT_ID, "prompt", 100)
+            await caller(_AGENT_ID, "prompt", 100, _MEETING_ID)
         events = [e.get("event") for e in cap]
         assert MEETING_AGENT_CALLED in events
         assert MEETING_AGENT_RESPONDED in events
@@ -191,13 +192,13 @@ class TestBuildMeetingAgentCaller:
     async def test_dispatches_to_agent_provider(self) -> None:
         identity = _identity(provider="example-provider")
         caller, _reg, provider_registry = _build_caller(identity=identity)
-        await caller(_AGENT_ID, "prompt", 256)
+        await caller(_AGENT_ID, "prompt", 256, _MEETING_ID)
         provider_registry.get.assert_called_once_with("example-provider")
 
     async def test_passes_max_tokens_into_completion_config(self) -> None:
         identity = _identity()
         caller, _reg, provider_registry = _build_caller(identity=identity)
-        await caller(_AGENT_ID, "agenda", 777)
+        await caller(_AGENT_ID, "agenda", 777, _MEETING_ID)
         provider = provider_registry.get.return_value
         provider.complete.assert_awaited_once()
         call = provider.complete.await_args
@@ -213,7 +214,7 @@ class TestBuildMeetingAgentCaller:
         identity = _identity()
         assert identity.model.max_tokens == 4096
         caller, _reg, provider_registry = _build_caller(identity=identity)
-        await caller(_AGENT_ID, "agenda", 10_000)
+        await caller(_AGENT_ID, "agenda", 10_000, _MEETING_ID)
         provider = provider_registry.get.return_value
         config = provider.complete.await_args.kwargs["config"]
         # min(10_000, 4096) == 4096.  Without the clamp the per-turn
@@ -232,7 +233,7 @@ class TestBuildMeetingAgentCaller:
             structlog.testing.capture_logs() as cap,
             pytest.raises(RuntimeError, match="provider boom"),
         ):
-            await caller(_AGENT_ID, "prompt", 100)
+            await caller(_AGENT_ID, "prompt", 100, _MEETING_ID)
 
         failures = [e for e in cap if e.get("event") == MEETING_AGENT_CALL_FAILED]
         assert len(failures) == 1
@@ -263,7 +264,7 @@ class TestBuildMeetingAgentCaller:
             status=identity.status,
         )
         caller, _reg, provider_registry = _build_caller(identity=identity)
-        await caller(_AGENT_ID, "agenda", 100)
+        await caller(_AGENT_ID, "agenda", 100, _MEETING_ID)
         messages = provider_registry.get.return_value.complete.await_args.args[0]
         system_content = messages[0].content or ""
         assert "Personality traits" not in system_content
@@ -290,7 +291,7 @@ class TestBuildMeetingAgentCaller:
         caller, _reg, provider_registry = _build_caller(
             identity=_identity(),
         )
-        await caller(_AGENT_ID, "agenda", 100)
+        await caller(_AGENT_ID, "agenda", 100, _MEETING_ID)
         messages = provider_registry.get.return_value.complete.await_args.args[0]
         system_content = messages[0].content or ""
         expected = untrusted_content_directive(
@@ -308,7 +309,7 @@ class TestBuildUnconfiguredMeetingAgentCaller:
             structlog.testing.capture_logs() as cap,
             pytest.raises(MeetingAgentCallerNotConfiguredError) as exc_info,
         ):
-            await caller("agent-1", "prompt", 100)
+            await caller("agent-1", "prompt", 100, _MEETING_ID)
         assert exc_info.value.agent_id == "agent-1"
         assert exc_info.value.missing_dependencies == (
             "agent_registry",

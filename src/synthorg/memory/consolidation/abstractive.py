@@ -7,13 +7,27 @@ if the LLM call fails.
 
 import asyncio
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.budget.call_category import LLMCallCategory
+
+# ``CostTracker`` is part of ``AbstractiveSummarizer.__init__``'s public
+# annotation, so it must resolve at runtime when downstream tooling
+# evaluates type hints (DI containers, doc generators).  Importing at
+# module top -- not under ``TYPE_CHECKING`` -- keeps the name in module
+# globals.
+from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.prompt_safety import (
+    TAG_UNTRUSTED_ARTIFACT,
+    untrusted_content_directive,
+    wrap_untrusted,
+)
 from synthorg.memory.models import MemoryEntry  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.consolidation import (
     DUAL_MODE_ABSTRACTIVE_FALLBACK,
     DUAL_MODE_ABSTRACTIVE_SUMMARY,
 )
+from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import ProviderError
 from synthorg.providers.models import ChatMessage, CompletionConfig
@@ -26,7 +40,8 @@ _TRUNCATE_LENGTH = 200
 _SYSTEM_PROMPT = (
     "You are a memory consolidation assistant. Summarize the following "
     "memory content concisely, preserving key decisions, events, and "
-    "learnings. Be factual, specific, and brief."
+    "learnings. Be factual, specific, and brief.\n\n"
+    + untrusted_content_directive((TAG_UNTRUSTED_ARTIFACT,))
 )
 
 
@@ -61,18 +76,25 @@ class AbstractiveSummarizer:
         model: NotBlankStr,
         max_summary_tokens: int = 200,
         temperature: float = 0.3,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         if not model or not model.strip():
             msg = "model must be a non-blank string"
             raise ValueError(msg)
         self._provider = provider
         self._model = model
+        self._cost_tracker = cost_tracker
         self._config = CompletionConfig(
             temperature=temperature,
             max_tokens=max_summary_tokens,
         )
 
-    async def summarize(self, content: str) -> str:
+    async def summarize(
+        self,
+        content: str,
+        *,
+        agent_id: NotBlankStr | None = None,
+    ) -> str:
         """Generate an abstractive summary of the given content.
 
         Falls back to truncation if the LLM call fails with a
@@ -81,20 +103,39 @@ class AbstractiveSummarizer:
 
         Args:
             content: The sparse/conversational text to summarize.
+            agent_id: Owning agent for cost attribution.  When
+                ``None`` and a ``cost_tracker`` was wired, the call
+                is attributed to ``"system"`` with ``task_id``
+                ``"system:memory:abstractive"``.
 
         Returns:
             Summary text.
         """
         try:
+            # SEC-1: ``content`` is the raw memory body, which may
+            # have absorbed adversarial peer/tool output upstream.
+            # Wrap it in a ``<untrusted-artifact>`` fence; the system
+            # prompt carries the matching directive.
             messages = [
                 ChatMessage(role=MessageRole.SYSTEM, content=_SYSTEM_PROMPT),
-                ChatMessage(role=MessageRole.USER, content=content),
+                ChatMessage(
+                    role=MessageRole.USER,
+                    content=wrap_untrusted(TAG_UNTRUSTED_ARTIFACT, content),
+                ),
             ]
-            response = await self._provider.complete(
-                messages,
-                self._model,
-                config=self._config,
-            )
+            attribution_agent: NotBlankStr = agent_id or NotBlankStr("system")
+            attribution_task: NotBlankStr = NotBlankStr("system:memory:abstractive")
+            async with cost_recording_scope(
+                cost_tracker=self._cost_tracker,
+                agent_id=attribution_agent,
+                task_id=attribution_task,
+                call_category=LLMCallCategory.SYSTEM,
+            ):
+                response = await self._provider.complete(
+                    messages,
+                    self._model,
+                    config=self._config,
+                )
             if response.content and response.content.strip():
                 logger.debug(
                     DUAL_MODE_ABSTRACTIVE_SUMMARY,
@@ -163,7 +204,7 @@ class AbstractiveSummarizer:
             tasks: dict[NotBlankStr, asyncio.Task[str]] = {}
             for entry in entries:
                 tasks[entry.id] = tg.create_task(
-                    self.summarize(entry.content),
+                    self.summarize(entry.content, agent_id=entry.agent_id),
                 )
 
         for entry_id, task in tasks.items():

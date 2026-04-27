@@ -1,6 +1,7 @@
 """Unit tests for CostTracker project-level queries."""
 
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -8,6 +9,9 @@ from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
 
 from .conftest import make_cost_record
+
+if TYPE_CHECKING:
+    from synthorg.budget.project_cost_aggregate import ProjectCostAggregate
 
 
 def _make_project_record(  # noqa: PLR0913
@@ -141,19 +145,94 @@ class TestGetProjectRecords:
         assert records[0].cost == pytest.approx(0.20)
 
 
+class _PinningRepo:
+    """Minimal in-memory repo that pins currency per project.
+
+    Mirrors the contract Postgres / SQLite enforce: first increment
+    pins the currency; subsequent increments in a different currency
+    raise ``MixedCurrencyAggregationError``.
+    """
+
+    def __init__(self) -> None:
+        self.pinned: dict[str, str] = {}
+        self._totals: dict[str, tuple[float, int, int, int]] = {}
+
+    async def get(self, project_id: str) -> ProjectCostAggregate | None:
+        from synthorg.budget.project_cost_aggregate import (
+            ProjectCostAggregate,
+        )
+
+        if project_id not in self.pinned:
+            return None
+        cost, in_t, out_t, count = self._totals[project_id]
+        return ProjectCostAggregate(
+            project_id=project_id,
+            total_cost=cost,
+            currency=self.pinned[project_id],
+            total_input_tokens=in_t,
+            total_output_tokens=out_t,
+            record_count=count,
+            last_updated=datetime.now(UTC),
+        )
+
+    async def increment(
+        self,
+        project_id: str,
+        cost: float,
+        input_tokens: int,
+        output_tokens: int,
+        *,
+        currency: str,
+    ) -> ProjectCostAggregate:
+        from synthorg.budget.errors import (
+            MixedCurrencyAggregationError,
+        )
+        from synthorg.budget.project_cost_aggregate import (
+            ProjectCostAggregate,
+        )
+
+        pinned = self.pinned.get(project_id)
+        if pinned is None:
+            self.pinned[project_id] = currency
+        elif pinned != currency:
+            msg = f"project {project_id!r} pinned {pinned!r}; got {currency!r}"
+            raise MixedCurrencyAggregationError(
+                msg,
+                currencies=frozenset({pinned, currency}),
+                project_id=project_id,
+            )
+        prev_cost, prev_in, prev_out, prev_count = self._totals.get(
+            project_id, (0.0, 0, 0, 0)
+        )
+        new_totals = (
+            prev_cost + cost,
+            prev_in + input_tokens,
+            prev_out + output_tokens,
+            prev_count + 1,
+        )
+        self._totals[project_id] = new_totals
+        return ProjectCostAggregate(
+            project_id=project_id,
+            total_cost=new_totals[0],
+            currency=self.pinned[project_id],
+            total_input_tokens=new_totals[1],
+            total_output_tokens=new_totals[2],
+            record_count=new_totals[3],
+            last_updated=datetime.now(UTC),
+        )
+
+
 @pytest.mark.unit
 class TestPerProjectCurrencyGuardWithoutBudgetConfig:
     """Without a budget_config, project_cost_repo-backed trackers must
-    still refuse to collapse mixed-currency rows into one project aggregate.
+    still refuse to collapse mixed-currency rows into one project
+    aggregate.  Enforcement now lives in the repository (Postgres /
+    SQLite); the tracker propagates the error.
     """
 
     async def test_first_record_pins_project_currency(self) -> None:
         """A subsequent USD write after an initial USD record is accepted."""
-        from unittest.mock import AsyncMock
-
-        tracker = CostTracker(
-            project_cost_repo=AsyncMock(),
-        )
+        tracker = CostTracker(project_cost_repo=_PinningRepo())
         await tracker.record(_make_project_record(project_id="proj-x", currency="USD"))
         await tracker.record(
             _make_project_record(
@@ -166,13 +245,11 @@ class TestPerProjectCurrencyGuardWithoutBudgetConfig:
 
     async def test_second_record_in_different_currency_raises(self) -> None:
         """Switching currency mid-stream within the same project raises."""
-        from unittest.mock import AsyncMock
-
-        from synthorg.budget.errors import MixedCurrencyAggregationError
-
-        tracker = CostTracker(
-            project_cost_repo=AsyncMock(),
+        from synthorg.budget.errors import (
+            MixedCurrencyAggregationError,
         )
+
+        tracker = CostTracker(project_cost_repo=_PinningRepo())
         await tracker.record(_make_project_record(project_id="proj-y", currency="USD"))
         with pytest.raises(MixedCurrencyAggregationError) as exc_info:
             await tracker.record(
@@ -187,11 +264,7 @@ class TestPerProjectCurrencyGuardWithoutBudgetConfig:
 
     async def test_different_projects_may_use_different_currencies(self) -> None:
         """The per-project pin is scoped to project_id, not global."""
-        from unittest.mock import AsyncMock
-
-        tracker = CostTracker(
-            project_cost_repo=AsyncMock(),
-        )
+        tracker = CostTracker(project_cost_repo=_PinningRepo())
         await tracker.record(_make_project_record(project_id="proj-a", currency="USD"))
         await tracker.record(_make_project_record(project_id="proj-b", currency="EUR"))
         # Both projects accepted their own currency; no raise.

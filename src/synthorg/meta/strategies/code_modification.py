@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_CONFIG_VALUE,
     TAG_TASK_DATA,
@@ -37,8 +39,10 @@ from synthorg.observability.events.meta import (
     META_CODE_SCOPE_VIOLATION,
     META_PROPOSAL_GENERATED,
 )
+from synthorg.providers.cost_recording import cost_recording_scope
 
 if TYPE_CHECKING:
+    from synthorg.budget.tracker import CostTracker
     from synthorg.meta.config import SelfImprovementConfig
     from synthorg.meta.validation.scope_validator import ScopeValidator
     from synthorg.providers.base import BaseCompletionProvider
@@ -96,8 +100,10 @@ class CodeModificationStrategy:
         config: SelfImprovementConfig,
         provider: BaseCompletionProvider,
         scope_validator: ScopeValidator,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         self._config = config
+        self._cost_tracker = cost_tracker
         self._provider = provider
         self._scope_validator = scope_validator
         self._code_config = config.code_modification
@@ -282,11 +288,17 @@ class CodeModificationStrategy:
             temperature=self._code_config.temperature,
             max_tokens=self._code_config.max_tokens,
         )
-        response = await self._provider.complete(
-            messages=messages,
-            model=str(self._code_config.llm_model),
-            config=config,
-        )
+        async with cost_recording_scope(
+            cost_tracker=self._cost_tracker,
+            agent_id=NotBlankStr("system"),
+            task_id=NotBlankStr("system:meta:code_modification"),
+            call_category=LLMCallCategory.SYSTEM,
+        ):
+            response = await self._provider.complete(
+                messages=messages,
+                model=str(self._code_config.llm_model),
+                config=config,
+            )
         return response.content
 
     def _parse_code_changes(

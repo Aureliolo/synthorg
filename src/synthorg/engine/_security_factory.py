@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from synthorg.approval.protocol import ApprovalStoreProtocol
+    from synthorg.budget.tracker import CostTracker
     from synthorg.config.schema import ProviderConfig
     from synthorg.core.agent import AgentIdentity
     from synthorg.providers.registry import ProviderRegistry
@@ -54,6 +55,7 @@ def make_security_interceptor(  # noqa: PLR0913
     provider_registry: ProviderRegistry | None = None,
     provider_configs: Mapping[str, ProviderConfig] | None = None,
     model_resolver: ModelResolver | None = None,
+    cost_tracker: CostTracker | None = None,
 ) -> SecurityInterceptionStrategy | None:
     """Build the SecOps security interceptor if configured.
 
@@ -68,6 +70,10 @@ def make_security_interceptor(  # noqa: PLR0913
         provider_configs: Provider config dict for family lookup.
         model_resolver: Optional model resolver for multi-provider
             uncertainty checks.
+        cost_tracker: Optional cost tracker.  Threaded into the
+            UncertaintyChecker so cross-provider uncertainty calls
+            emit ``CostRecord``s through the provider chokepoint
+            instead of silently bypassing the cost-recording layer.
 
     Returns:
         A ``SecOpsService`` interceptor, or ``None`` if security is
@@ -151,6 +157,7 @@ def make_security_interceptor(  # noqa: PLR0913
             provider_registry=provider_registry,  # type: ignore[arg-type]
             model_resolver=model_resolver,
             config=cfg.uncertainty_check,
+            cost_tracker=cost_tracker,
         )
 
     return SecOpsService(

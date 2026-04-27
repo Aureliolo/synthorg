@@ -87,6 +87,39 @@ property on `TokenUsage` (the model embedded in `CompletionResponse`). Spending 
 models (`AgentSpending`, `DepartmentSpending`, `PeriodSpending`) extend a shared
 `_SpendingTotals` base class that also carries the per-aggregation currency.
 
+### Recording Paths
+
+`CostRecord` emission flows through two complementary paths:
+
+1. **Provider-layer chokepoint** (`synthorg.providers.cost_recording`). A
+   `cost_recording_scope(...)` async context manager binds per-call recording
+   context (`agent_id`, `task_id`, `project_id`, `call_category`, `currency`,
+   `cost_tracker`) to the current `asyncio.Task` via `contextvars`. Inside
+   `BaseCompletionProvider.complete()`, the chokepoint reads the active context
+   after a successful response and emits a `CostRecord` to the bound tracker.
+   Every non-engine LLM call site (memory consolidation, classification,
+   verification graders, intake, evolution, HR judges, security evaluators,
+   meetings, Chief of Staff, etc.) opens this scope so every paid LLM call is
+   accounted for. A pre-push lint
+   (`scripts/check_provider_complete_chokepoint.py`) blocks any new call site
+   that bypasses the chokepoint.
+2. **Engine post-execution recorder** (`synthorg.engine.cost_recording`). The
+   main agent execution loop builds per-turn `TurnRecord`s (carrying additional
+   metadata the chokepoint cannot reconstruct, e.g. cumulative retry counts and
+   PTE token-response inflation) and emits `CostRecord`s after the loop
+   completes. Engine call sites do **not** open the chokepoint scope, so the
+   chokepoint stays silent on the engine path and there is no double-counting.
+
+Both paths converge on the same `CostTracker.record()` API and the same
+same-currency invariants apply.
+
+Streaming completions (`BaseCompletionProvider.stream()`) currently bypass the
+chokepoint -- usage arrives as a terminal `StreamEventType.USAGE` chunk that the
+chokepoint would have to consume from the iterator, conflating cost recording
+with the stream-consumption contract. No call site uses `stream()` for paid LLM
+work today; when streaming becomes a mainstream call path the chokepoint will
+be extended.
+
 The `GET /budget/records` endpoint returns paginated cost records alongside two server-computed
 summaries (aggregated from **all** matching records, not just the current page):
 

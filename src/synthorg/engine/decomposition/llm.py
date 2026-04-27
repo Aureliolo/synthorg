@@ -4,10 +4,19 @@ Uses an LLM provider with tool calling to break a task into subtasks.
 Falls back to parsing JSON from content when tool calls are absent.
 """
 
-from typing import TYPE_CHECKING
-
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.budget.call_category import LLMCallCategory
+
+# ``CostTracker``, ``CompletionProvider``, ``Task``,
+# ``DecompositionContext``, ``DecompositionPlan``, and
+# ``CompletionResponse`` appear in public annotations of
+# ``LlmDecompositionStrategy`` (constructor + ``decompose``), so they
+# must resolve at runtime when downstream tooling evaluates type hints
+# (DI containers, doc generators).
+from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.core.task import Task  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.llm_prompt import (
     build_decomposition_tool,
     build_retry_message,
@@ -15,6 +24,10 @@ from synthorg.engine.decomposition.llm_prompt import (
     build_task_message,
     parse_content_response,
     parse_tool_call_response,
+)
+from synthorg.engine.decomposition.models import (  # noqa: TC001
+    DecompositionContext,
+    DecompositionPlan,
 )
 from synthorg.engine.errors import (
     DecompositionDepthError,
@@ -30,24 +43,14 @@ from synthorg.observability.events.decomposition import (
     DECOMPOSITION_LLM_RETRY,
     DECOMPOSITION_VALIDATION_ERROR,
 )
+from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
+    CompletionResponse,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.task import Task
-    from synthorg.engine.decomposition.models import (
-        DecompositionContext,
-        DecompositionPlan,
-    )
-    from synthorg.providers.models import (
-        CompletionResponse,
-    )
-    from synthorg.providers.protocol import (
-        CompletionProvider,
-    )
+from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -86,7 +89,7 @@ class LlmDecompositionStrategy:
     parse/validation failures up to ``max_retries`` times.
     """
 
-    __slots__ = ("_config", "_model", "_provider")
+    __slots__ = ("_config", "_cost_tracker", "_model", "_provider")
 
     def __init__(
         self,
@@ -94,6 +97,7 @@ class LlmDecompositionStrategy:
         provider: CompletionProvider,
         model: str,
         config: LlmDecompositionConfig | None = None,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         """Initialize the LLM decomposition strategy.
 
@@ -102,6 +106,8 @@ class LlmDecompositionStrategy:
             model: Model identifier to use for decomposition.
             config: Optional strategy configuration. Uses defaults
                 if not provided.
+            cost_tracker: Optional CostTracker reference; when wired
+                each LLM call records via the chokepoint.
 
         Raises:
             ValueError: If model is blank.
@@ -113,6 +119,7 @@ class LlmDecompositionStrategy:
         self._provider = provider
         self._model = model
         self._config = config or LlmDecompositionConfig()
+        self._cost_tracker = cost_tracker
 
     async def decompose(
         self,
@@ -174,12 +181,18 @@ class LlmDecompositionStrategy:
                 attempt=attempt,
             )
 
-            response = await self._provider.complete(
-                messages,
-                self._model,
-                tools=[tool_def],
-                config=comp_config,
-            )
+            async with cost_recording_scope(
+                cost_tracker=self._cost_tracker,
+                agent_id=NotBlankStr("system"),
+                task_id=task.id,
+                call_category=LLMCallCategory.SYSTEM,
+            ):
+                response = await self._provider.complete(
+                    messages,
+                    self._model,
+                    tools=[tool_def],
+                    config=comp_config,
+                )
             last_response = response
 
             logger.debug(

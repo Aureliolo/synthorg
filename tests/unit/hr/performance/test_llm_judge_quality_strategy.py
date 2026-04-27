@@ -1,7 +1,9 @@
 """Tests for LlmJudgeQualityStrategy."""
 
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -10,12 +12,85 @@ from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.llm_judge_quality_strategy import (
     LlmJudgeQualityStrategy,
 )
+from synthorg.providers.base import BaseCompletionProvider
+from synthorg.providers.cost_recording import drain_pending_cost_records
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage
 
 from .conftest import make_acceptance_criterion, make_task_metric
 
+if TYPE_CHECKING:
+    from synthorg.providers.capabilities import ModelCapabilities
+    from synthorg.providers.models import (
+        ChatMessage,
+        CompletionConfig,
+        StreamChunk,
+        ToolDefinition,
+    )
+
 NOW = datetime(2026, 3, 15, 12, 0, 0, tzinfo=UTC)
+
+
+class _ChokepointStubProvider(BaseCompletionProvider):
+    """Concrete BaseCompletionProvider so the cost chokepoint fires.
+
+    Records each call into ``complete_calls`` so tests can introspect
+    the prompt (replacing the legacy ``MagicMock.call_args`` pattern).
+    """
+
+    def __init__(self, response: CompletionResponse) -> None:
+        super().__init__()
+        self._response = response
+        self.complete_calls: list[
+            tuple[
+                tuple[ChatMessage, ...],
+                str,
+                tuple[ToolDefinition, ...] | None,
+                CompletionConfig | None,
+            ]
+        ] = []
+
+    async def _do_complete(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> CompletionResponse:
+        self.complete_calls.append(
+            (
+                tuple(messages),
+                model,
+                tuple(tools) if tools is not None else None,
+                config,
+            ),
+        )
+        return self._response
+
+    async def _do_stream(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        async def _gen() -> AsyncIterator[StreamChunk]:
+            # Empty async generator: the unconditional-False guard
+            # keeps the function's coroutine-shape without producing
+            # any chunks.  mypy gets the silencer.
+            if False:
+                yield  # type: ignore[unreachable]
+
+        return _gen()
+
+    async def _do_get_model_capabilities(
+        self,
+        model: str,
+    ) -> ModelCapabilities:
+        msg = "not implemented"
+        raise NotImplementedError(msg)
 
 
 def _make_provider(
@@ -24,21 +99,26 @@ def _make_provider(
     cost: float = 0.001,
     input_tokens: int = 200,
     output_tokens: int = 50,
-) -> AsyncMock:
-    """Build a mock CompletionProvider returning the given content."""
-    provider = AsyncMock()
-    provider.complete.return_value = CompletionResponse(
-        content=content,
-        tool_calls=(),
-        finish_reason=FinishReason.STOP,
-        usage=TokenUsage(
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cost=cost,
+) -> _ChokepointStubProvider:
+    """Build a BaseCompletionProvider stub returning the given content.
+
+    Subclasses ``BaseCompletionProvider`` so the cost-recording
+    chokepoint fires inside ``complete()`` whenever a
+    ``cost_recording_scope`` is open in the calling task.
+    """
+    return _ChokepointStubProvider(
+        CompletionResponse(
+            content=content,
+            tool_calls=(),
+            finish_reason=FinishReason.STOP,
+            usage=TokenUsage(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost=cost,
+            ),
+            model=NotBlankStr("test-small-001"),
         ),
-        model=NotBlankStr("test-small-001"),
     )
-    return provider
 
 
 @pytest.mark.unit
@@ -299,16 +379,14 @@ class TestErrorHandling:
 
 @pytest.mark.unit
 class TestCostTracking:
-    """Cost recording via CostTracker."""
+    """Cost recording via the BaseCompletionProvider chokepoint."""
 
     async def test_cost_recorded_on_success(self) -> None:
-        """Successful scoring records cost via CostTracker."""
+        """Successful scoring emits a CostRecord through the chokepoint."""
+        from synthorg.budget.tracker import CostTracker
+
         provider = _make_provider(cost=0.002)
-        cost_tracker = MagicMock()
-        cost_tracker.record = AsyncMock()
-        # budget_config=None triggers the DEFAULT_CURRENCY fallback so the
-        # CostRecord validator does not see a MagicMock currency.
-        cost_tracker.budget_config = None
+        cost_tracker = CostTracker()
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
             model=NotBlankStr("test-small-001"),
@@ -323,8 +401,10 @@ class TestCostTracking:
             acceptance_criteria=(),
         )
 
-        cost_tracker.record.assert_awaited_once()
-        cost_record = cost_tracker.record.await_args[0][0]
+        await drain_pending_cost_records()
+        records = await cost_tracker.get_records()
+        assert len(records) == 1
+        cost_record = records[0]
         assert cost_record.cost == 0.002
         assert cost_record.currency == DEFAULT_CURRENCY
         assert cost_record.agent_id == "agent-001"
@@ -333,11 +413,31 @@ class TestCostTracking:
 
     async def test_no_cost_recorded_on_failure(self) -> None:
         """Failed scoring does not record cost."""
-        provider = AsyncMock()
-        provider.complete.side_effect = RuntimeError("fail")
-        cost_tracker = MagicMock()
-        cost_tracker.record = AsyncMock()
-        cost_tracker.budget_config = None
+        from synthorg.budget.tracker import CostTracker
+
+        # Use a stub provider that raises -- AsyncMock is not a
+        # BaseCompletionProvider so the chokepoint would not fire on it.
+        class _RaisingProvider(_ChokepointStubProvider):
+            async def _do_complete(  # type: ignore[override]
+                self,
+                messages: object,
+                model: object,
+                **kwargs: object,
+            ) -> object:
+                _ = (messages, model, kwargs)
+                msg = "fail"
+                raise RuntimeError(msg)
+
+        provider = _RaisingProvider(
+            CompletionResponse(
+                content="",
+                tool_calls=(),
+                finish_reason=FinishReason.STOP,
+                usage=TokenUsage(input_tokens=0, output_tokens=0, cost=0.0),
+                model=NotBlankStr("test-small-001"),
+            ),
+        )
+        cost_tracker = CostTracker()
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
             model=NotBlankStr("test-small-001"),
@@ -352,7 +452,9 @@ class TestCostTracking:
             acceptance_criteria=(),
         )
 
-        cost_tracker.record.assert_not_called()
+        await drain_pending_cost_records()
+        records = await cost_tracker.get_records()
+        assert records == ()
 
     async def test_no_cost_tracker_is_fine(self) -> None:
         """Works without a cost tracker (cost tracking optional)."""
@@ -379,7 +481,7 @@ class TestPromptConstruction:
     """Prompt construction for the LLM."""
 
     async def test_criteria_included_in_prompt(self) -> None:
-        """Acceptance criteria descriptions appear in the LLM prompt."""
+        """Acceptance criteria descriptions appear in the USER prompt."""
         provider = _make_provider()
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
@@ -398,17 +500,18 @@ class TestPromptConstruction:
             acceptance_criteria=criteria,
         )
 
-        # Inspect the prompt sent to the provider.
-        call_args = provider.complete.call_args
-        messages = call_args.kwargs.get("messages") or call_args[0][0]
-        prompt_text = messages[0].content
-        assert "All tests pass" in prompt_text
-        assert "No lint errors" in prompt_text
-        assert "[MET]" in prompt_text
-        assert "[NOT MET]" in prompt_text
+        # SEC-1: criteria are routed through the USER message (fenced),
+        # not the SYSTEM message which carries trusted instructions.
+        messages, *_ = provider.complete_calls[-1]
+        user_text = messages[1].content
+        assert user_text is not None
+        assert "All tests pass" in user_text
+        assert "No lint errors" in user_text
+        assert "[MET]" in user_text
+        assert "[NOT MET]" in user_text
 
     async def test_delimiters_in_prompt(self) -> None:
-        """Prompt uses delimiters for user-controlled text."""
+        """SEC-1: criteria are USER-fenced and SYSTEM carries the directive."""
         provider = _make_provider()
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
@@ -424,11 +527,16 @@ class TestPromptConstruction:
             acceptance_criteria=criteria,
         )
 
-        call_args = provider.complete.call_args
-        messages = call_args.kwargs.get("messages") or call_args[0][0]
-        prompt_text = messages[0].content
-        assert "---BEGIN CRITERIA---" in prompt_text
-        assert "---END CRITERIA---" in prompt_text
+        messages, *_ = provider.complete_calls[-1]
+        system_text = messages[0].content
+        user_text = messages[1].content
+        assert system_text is not None
+        assert user_text is not None
+        # USER message carries the wrapped criteria payload.
+        assert "<criteria-json>" in user_text
+        assert "</criteria-json>" in user_text
+        # SYSTEM message carries the directive listing the tag.
+        assert "criteria-json" in system_text
 
     async def test_braces_in_criteria_escaped(self) -> None:
         """Curly braces in criteria descriptions are escaped for str.format()."""
@@ -452,10 +560,11 @@ class TestPromptConstruction:
             acceptance_criteria=criteria,
         )
 
-        call_args = provider.complete.call_args
-        messages = call_args.kwargs.get("messages") or call_args[0][0]
-        prompt_text = messages[0].content
-        assert "{valid JSON}" in prompt_text
+        # Criteria payload lives in the USER message (SYSTEM is fixed).
+        messages, *_ = provider.complete_calls[-1]
+        user_text = messages[1].content
+        assert user_text is not None
+        assert "{valid JSON}" in user_text
 
 
 @pytest.mark.unit
@@ -463,14 +572,25 @@ class TestCostRecordingResilience:
     """Cost recording failures do not discard valid scores."""
 
     async def test_cost_failure_does_not_discard_score(self) -> None:
-        """If cost recording fails, the LLM score is still returned."""
+        """If cost recording fails, the LLM score is still returned.
+
+        The chokepoint inside ``BaseCompletionProvider.complete``
+        swallows tracker failures (logs at WARNING) so the LLM call
+        result is preserved.  This test exercises that contract via a
+        ``CostTracker`` subclass whose ``record`` raises.
+        """
+        from synthorg.budget.tracker import CostTracker
+
+        class _RaisingCostTracker(CostTracker):
+            async def record(self, cost_record: object) -> None:
+                _ = cost_record
+                msg = "DB unavailable"
+                raise RuntimeError(msg)
+
         provider = _make_provider(
             content='{"score": 8.0, "rationale": "Great work"}',
         )
-        cost_tracker = MagicMock()
-        cost_tracker.record = AsyncMock(
-            side_effect=RuntimeError("DB unavailable"),
-        )
+        cost_tracker = _RaisingCostTracker()
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
             model=NotBlankStr("test-small-001"),

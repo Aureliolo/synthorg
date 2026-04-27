@@ -7,8 +7,20 @@ logic resides in the workspace strategy layer.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
+from collections.abc import Mapping  # noqa: TC003
 
+from synthorg.budget.call_category import LLMCallCategory
+
+# These types appear in ``LlmSemanticAnalyzer.__init__`` and ``analyze``
+# annotations and must resolve at runtime when downstream tooling
+# evaluates type hints (DI containers, doc generators).
+from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.workspace.config import SemanticAnalysisConfig  # noqa: TC001
+from synthorg.engine.workspace.models import (  # noqa: TC001
+    MergeConflict,
+    Workspace,
+)
 from synthorg.engine.workspace.semantic_analyzer import filter_files
 from synthorg.engine.workspace.semantic_llm_prompt import (
     build_review_message,
@@ -22,18 +34,13 @@ from synthorg.observability.events.workspace import (
     WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
     WORKSPACE_SEMANTIC_ANALYSIS_START,
 )
+from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
     ToolDefinition,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.engine.workspace.config import SemanticAnalysisConfig
-    from synthorg.engine.workspace.models import MergeConflict, Workspace
-    from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -51,7 +58,7 @@ class LlmSemanticAnalyzer:
         config: Optional semantic analysis configuration.
     """
 
-    __slots__ = ("_config", "_model", "_provider")
+    __slots__ = ("_config", "_cost_tracker", "_model", "_provider")
 
     def __init__(
         self,
@@ -59,12 +66,14 @@ class LlmSemanticAnalyzer:
         provider: CompletionProvider,
         model: str,
         config: SemanticAnalysisConfig | None = None,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         if not model or not model.strip():
             msg = "model must be a non-blank string"
             raise ValueError(msg)
         self._provider = provider
         self._model = model
+        self._cost_tracker = cost_tracker
 
         if config is None:
             from synthorg.engine.workspace.config import (  # noqa: PLC0415
@@ -213,12 +222,18 @@ class LlmSemanticAnalyzer:
             failure, or ``None`` to signal a retry.
         """
         try:
-            response = await self._provider.complete(
-                messages,
-                self._model,
-                tools=[tool_def],
-                config=comp_config,
-            )
+            async with cost_recording_scope(
+                cost_tracker=self._cost_tracker,
+                agent_id=NotBlankStr("system"),
+                task_id=NotBlankStr(f"system:workspace:{workspace.workspace_id}"),
+                call_category=LLMCallCategory.SYSTEM,
+            ):
+                response = await self._provider.complete(
+                    messages,
+                    self._model,
+                    tools=[tool_def],
+                    config=comp_config,
+                )
         except asyncio.CancelledError:
             raise
         except Exception as exc:

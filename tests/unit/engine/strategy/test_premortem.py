@@ -137,8 +137,9 @@ class TestDefaultPremortemExecutor:
         config = PremortemConfig(participants=PremortemParticipation.NONE)
 
         async def dummy_caller(
-            agent_id: str, prompt: str, tokens: int
+            agent_id: str, prompt: str, tokens: int, context_id: str
         ) -> AgentResponse:
+            del context_id
             return AgentResponse(agent_id=agent_id, content="response")
 
         output = await executor.execute(
@@ -159,8 +160,9 @@ class TestDefaultPremortemExecutor:
         config = PremortemConfig(participants=PremortemParticipation.ALL)
 
         async def dummy_caller(
-            agent_id: str, prompt: str, tokens: int
+            agent_id: str, prompt: str, tokens: int, context_id: str
         ) -> AgentResponse:
+            del context_id
             return AgentResponse(agent_id=agent_id, content="response")
 
         output = await executor.execute(
@@ -182,8 +184,9 @@ class TestDefaultPremortemExecutor:
         called_agents = []
 
         async def tracking_caller(
-            agent_id: str, prompt: str, tokens: int
+            agent_id: str, prompt: str, tokens: int, context_id: str
         ) -> AgentResponse:
+            del context_id
             called_agents.append(agent_id)
             return AgentResponse(agent_id=agent_id, content="response")
 
@@ -207,8 +210,9 @@ class TestDefaultPremortemExecutor:
         called_agents = []
 
         async def tracking_caller(
-            agent_id: str, prompt: str, tokens: int
+            agent_id: str, prompt: str, tokens: int, context_id: str
         ) -> AgentResponse:
+            del context_id
             called_agents.append(agent_id)
             return AgentResponse(agent_id=agent_id, content="response")
 
@@ -233,8 +237,9 @@ class TestDefaultPremortemExecutor:
         token_allocations = []
 
         async def tracking_caller(
-            agent_id: str, prompt: str, tokens: int
+            agent_id: str, prompt: str, tokens: int, context_id: str
         ) -> AgentResponse:
+            del context_id
             token_allocations.append(tokens)
             return AgentResponse(agent_id=agent_id, content="response")
 
@@ -260,8 +265,9 @@ class TestDefaultPremortemExecutor:
         allocations: dict[str, int] = {}
 
         async def tracking_caller(
-            agent_id: str, prompt: str, tokens: int
+            agent_id: str, prompt: str, tokens: int, context_id: str
         ) -> AgentResponse:
+            del context_id
             allocations[agent_id] = tokens
             return AgentResponse(agent_id=agent_id, content="response")
 
@@ -287,8 +293,9 @@ class TestDefaultPremortemExecutor:
         allocations: dict[str, int] = {}
 
         async def tracking_caller(
-            agent_id: str, prompt: str, tokens: int
+            agent_id: str, prompt: str, tokens: int, context_id: str
         ) -> AgentResponse:
+            del context_id
             allocations[agent_id] = tokens
             return AgentResponse(agent_id=agent_id, content="response")
 
@@ -314,8 +321,9 @@ class TestDefaultPremortemExecutor:
         captured_prompts = []
 
         async def tracking_caller(
-            agent_id: str, prompt: str, tokens: int
+            agent_id: str, prompt: str, tokens: int, context_id: str
         ) -> AgentResponse:
+            del context_id
             captured_prompts.append(prompt)
             return AgentResponse(agent_id=agent_id, content="response")
 
@@ -340,8 +348,9 @@ class TestDefaultPremortemExecutor:
         captured_prompts = []
 
         async def tracking_caller(
-            agent_id: str, prompt: str, tokens: int
+            agent_id: str, prompt: str, tokens: int, context_id: str
         ) -> AgentResponse:
+            del context_id
             captured_prompts.append(prompt)
             return AgentResponse(agent_id=agent_id, content="response")
 
@@ -364,8 +373,9 @@ class TestDefaultPremortemExecutor:
         config = PremortemConfig(participants=PremortemParticipation.ALL)
 
         async def failure_caller(
-            agent_id: str, prompt: str, tokens: int
+            agent_id: str, prompt: str, tokens: int, context_id: str
         ) -> AgentResponse:
+            del context_id
             return AgentResponse(
                 agent_id=agent_id,
                 content="This could fail if the database goes down",
@@ -390,8 +400,9 @@ class TestDefaultPremortemExecutor:
         config = PremortemConfig(participants=PremortemParticipation.ALL)
 
         async def assumption_caller(
-            agent_id: str, prompt: str, tokens: int
+            agent_id: str, prompt: str, tokens: int, context_id: str
         ) -> AgentResponse:
+            del context_id
             return AgentResponse(
                 agent_id=agent_id,
                 content="Key assumption: our users will adopt this immediately",
@@ -418,8 +429,9 @@ class TestDefaultPremortemExecutor:
         response_count = 0
 
         async def counting_caller(
-            agent_id: str, prompt: str, tokens: int
+            agent_id: str, prompt: str, tokens: int, context_id: str
         ) -> AgentResponse:
+            del context_id
             nonlocal response_count
             response_count += 1
             return AgentResponse(
@@ -448,8 +460,9 @@ class TestDefaultPremortemExecutor:
         config = PremortemConfig(participants=PremortemParticipation.ALL)
 
         async def dummy_caller(
-            agent_id: str, prompt: str, tokens: int
+            agent_id: str, prompt: str, tokens: int, context_id: str
         ) -> AgentResponse:
+            del context_id
             return AgentResponse(agent_id=agent_id, content="response")
 
         output = await executor.execute(
@@ -474,8 +487,9 @@ class TestDefaultPremortemExecutor:
         called_agents = []
 
         async def tracking_caller(
-            agent_id: str, prompt: str, tokens: int
+            agent_id: str, prompt: str, tokens: int, context_id: str
         ) -> AgentResponse:
+            del context_id
             called_agents.append(agent_id)
             return AgentResponse(agent_id=agent_id, content="response")
 
@@ -499,8 +513,9 @@ class TestDefaultPremortemExecutor:
         called_agents = []
 
         async def tracking_caller(
-            agent_id: str, prompt: str, tokens: int
+            agent_id: str, prompt: str, tokens: int, context_id: str
         ) -> AgentResponse:
+            del context_id
             called_agents.append(agent_id)
             return AgentResponse(agent_id=agent_id, content="response")
 
@@ -515,3 +530,50 @@ class TestDefaultPremortemExecutor:
 
         assert len(called_agents) == 1
         assert called_agents[0] == "agent_1"
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        ("context_id_input", "participant_ids", "expected_seen"),
+        [
+            # Caller-supplied id flows through to every participant.
+            ("ctx-123", ("agent_1", "agent_2"), ["ctx-123", "ctx-123"]),
+            # Omitted -> ``execute`` default applies the
+            # ``_PREMORTEM_TASK_ID_FALLBACK`` constant.
+            (None, ("agent_1",), ["system:premortem"]),
+            # Whitespace-only -> ``execute`` strips and substitutes
+            # the fallback so ``cost_recording_scope`` never sees a
+            # blank task id.
+            ("   ", ("agent_1",), ["system:premortem"]),
+        ],
+        ids=["explicit", "default-fallback", "blank-normalised"],
+    )
+    async def test_context_id_forwarding(
+        self,
+        context_id_input: str | None,
+        participant_ids: tuple[str, ...],
+        expected_seen: list[str],
+    ) -> None:
+        """``context_id`` flows through ``execute`` to ``agent_caller``."""
+        executor = DefaultPremortemExecutor()
+        config = PremortemConfig(participants=PremortemParticipation.ALL)
+        seen_context_ids: list[str] = []
+
+        async def capturing_caller(
+            agent_id: str, prompt: str, tokens: int, context_id: str
+        ) -> AgentResponse:
+            del prompt, tokens
+            seen_context_ids.append(context_id)
+            return AgentResponse(agent_id=agent_id, content="response")
+
+        kwargs: dict[str, object] = {
+            "synthesis_text": "Test decision",
+            "participant_ids": participant_ids,
+            "agent_caller": capturing_caller,
+            "config": config,
+            "token_budget": 1000,
+        }
+        if context_id_input is not None:
+            kwargs["context_id"] = context_id_input
+        await executor.execute(**kwargs)  # type: ignore[arg-type]
+
+        assert seen_context_ids == expected_seen

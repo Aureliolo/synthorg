@@ -287,7 +287,12 @@ class DualModeConsolidationStrategy:
         else:
             async with asyncio.TaskGroup() as tg:
                 tasks = [
-                    tg.create_task(self._summarizer.summarize(e.content))
+                    tg.create_task(
+                        self._summarizer.summarize(
+                            e.content,
+                            agent_id=e.agent_id,
+                        )
+                    )
                     for e in entries
                 ]
             parts = [t.result() for t in tasks]

@@ -42,7 +42,7 @@ class TestBudgetController:
             input_tokens=100,
             output_tokens=50,
             cost=0.01,
-            currency="EUR",
+            currency="USD",
             timestamp=datetime(2026, 3, 1, tzinfo=UTC),
         )
         await cost_tracker.record(record)
@@ -64,7 +64,7 @@ class TestBudgetController:
             input_tokens=100,
             output_tokens=50,
             cost=0.05,
-            currency="EUR",
+            currency="USD",
             timestamp=datetime(2026, 3, 1, tzinfo=UTC),
         )
         await cost_tracker.record(record)
@@ -120,7 +120,7 @@ class TestBudgetSummaries:
                     input_tokens=100,
                     output_tokens=50,
                     cost=0.01,
-                    currency="EUR",
+                    currency="USD",
                     timestamp=datetime(2026, 3, day, tzinfo=UTC),
                 ),
             )
@@ -155,7 +155,7 @@ class TestBudgetSummaries:
                     input_tokens=100,
                     output_tokens=50,
                     cost=cost,
-                    currency="EUR",
+                    currency="USD",
                     timestamp=datetime(2026, 3, 1, tzinfo=UTC),
                 ),
             )
@@ -194,7 +194,7 @@ class TestBudgetSummaries:
                     input_tokens=100,
                     output_tokens=50,
                     cost=0.10,
-                    currency="EUR",
+                    currency="USD",
                     timestamp=datetime(2026, 3, 1, tzinfo=UTC),
                 ),
             )
@@ -224,7 +224,7 @@ class TestBudgetSummaries:
                     input_tokens=100,
                     output_tokens=50,
                     cost=0.10,
-                    currency="EUR",
+                    currency="USD",
                     timestamp=datetime(2026, 3, 1, tzinfo=UTC),
                 ),
             )
@@ -240,6 +240,76 @@ class TestBudgetSummaries:
         assert body["period_summary"]["total_cost"] == pytest.approx(0.20)
         assert body["period_summary"]["total_input_tokens"] == 200
         assert body["period_summary"]["total_output_tokens"] == 100
+
+
+@pytest.mark.unit
+class TestBuildSummariesCurrencyInvariant:
+    """Same-currency invariant in ``_build_summaries``.
+
+    Audit finding 126: cost summation across currencies is meaningless
+    without an FX policy and must be rejected at the aggregator
+    boundary.  ``_build_summaries`` raises
+    ``MixedCurrencyAggregationError`` when any record's currency
+    differs from the requested ``currency`` (or when records span
+    multiple currencies).
+    """
+
+    def _make(
+        self,
+        *,
+        currency: str = "USD",
+        cost: float = 0.10,
+    ) -> CostRecord:
+        return CostRecord(
+            agent_id="alice",
+            task_id="task-1",
+            provider="test-provider",
+            model="test-model-001",
+            input_tokens=100,
+            output_tokens=50,
+            cost=cost,
+            currency=currency,
+            timestamp=datetime(2026, 3, 1, tzinfo=UTC),
+        )
+
+    def test_same_currency_accepted(self) -> None:
+        from synthorg.api.controllers.budget import _build_summaries
+
+        records = (self._make(currency="USD"), self._make(currency="USD"))
+        daily, period = _build_summaries(records, currency="USD")
+        assert period.record_count == 2
+        assert period.currency == "USD"
+        assert len(daily) == 1
+
+    @pytest.mark.parametrize(
+        ("record_currencies", "summary_currency"),
+        [
+            # Two records spanning different currencies.
+            pytest.param(("USD", "EUR"), "USD", id="multi-currency-records"),
+            # Single record whose currency does not match the
+            # caller-requested summary currency.
+            pytest.param(("EUR",), "USD", id="record-currency-mismatch"),
+        ],
+    )
+    def test_mixed_currency_raises(
+        self,
+        record_currencies: tuple[str, ...],
+        summary_currency: str,
+    ) -> None:
+        from synthorg.api.controllers.budget import _build_summaries
+        from synthorg.budget.errors import MixedCurrencyAggregationError
+
+        records = tuple(self._make(currency=cur) for cur in record_currencies)
+        with pytest.raises(MixedCurrencyAggregationError):
+            _build_summaries(records, currency=summary_currency)
+
+    def test_empty_records_no_invariant_check(self) -> None:
+        from synthorg.api.controllers.budget import _build_summaries
+
+        daily, period = _build_summaries((), currency="USD")
+        assert daily == ()
+        assert period.record_count == 0
+        assert period.currency == "USD"
 
 
 @pytest.mark.unit

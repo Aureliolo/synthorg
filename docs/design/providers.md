@@ -84,6 +84,20 @@ whether the backend is a cloud API, OpenRouter, Ollama, or a custom endpoint.
             cost_per_1k_output: 0.0
     ```
 
+## Cost Recording
+
+Every successful **scoped** `provider.complete()` call attributes a `CostRecord` to the agent and task that originated the work. Attribution flows through a `ContextVar` middleware rather than through per-call kwargs, which keeps the provider interface uniform across cloud APIs, OpenRouter, Ollama, and custom adapters. Calls made outside any `cost_recording_scope` -- infrastructure probes, model discovery, the engine turn loop, tests -- read `None` for the active context and are intentionally **not** attributed: the engine's post-execution recorder owns engine turns, and probe / discovery traffic is not user spend.
+
+- **Scope contract**: callers wrap a `provider.complete()` invocation in `cost_recording_scope(cost_tracker, agent_id, task_id, project_id, call_category, currency)` from `synthorg.providers.cost_recording`. The scope is an `@asynccontextmanager` that sets a per-`asyncio.Task` `ContextVar`, yields, and resets on exit. Nested scopes shadow the outer one and are restored on exit; concurrent tasks see independent scopes.
+- **Chokepoint**: `BaseCompletionProvider.complete()` reads the scope's context after a successful response, builds a `CostRecord` from `result.usage` + `result.provider_metadata` (`_synthorg_latency_ms`, `_synthorg_cache_hit`, `_synthorg_retry_count`, `_synthorg_retry_reason`) + `result.finish_reason`, and submits it via `cost_tracker.record(record)`. Calls outside any scope (probes, model discovery, tests) are no-ops.
+- **Skip rule**: usage with both zero tokens and zero cost is skipped (matches the engine post-execution recorder). Free-tier providers with non-zero tokens still record.
+- **Failure isolation**: any exception from `cost_tracker.record(...)` other than `MemoryError` / `RecursionError` is logged at WARNING (`PROVIDER_COST_FAILED`) and swallowed -- the user-visible provider response never depends on recording success.
+- **Engine path**: the engine loop deliberately does NOT open a scope around its turn-level `provider.complete()` call. The post-execution `record_execution_costs(...)` recorder remains authoritative for engine turns because it accumulates per-turn metadata (turn number, retry counts, tool-response tokens for PTE) that the chokepoint cannot see synchronously. The chokepoint reads `None` and is a no-op for engine calls -- no double-counting.
+- **Streaming gap**: `provider.stream()` does not fire the chokepoint. Streaming responses surface usage as a terminal `StreamEventType.USAGE` chunk, which the chokepoint cannot inspect synchronously without consuming the iterator and conflating recording with the stream-consumption contract. All cost-attributable LLM call sites in SynthOrg use `complete()`; a future PR can extend recording to `stream()` by hooking the terminal usage chunk.
+- **AST gate**: `scripts/check_provider_complete_chokepoint.py` (pre-push + CI) walks `src/synthorg/` for `Await(Call(Attribute(_, "complete")))` nodes on `BaseCompletionProvider` instances and asserts each call site is either in an explicit allowlist (chokepoint itself, engine loop helpers, connection probes, health prober, registry docstring example) or has a `cost_recording_scope` opened in the same function.
+
+This pattern mirrors `synthorg.observability.correlation.correlation_scope`, which is the established codebase precedent for cross-cutting per-call context bindings (`request_id` / `task_id` / `agent_id`).
+
 ## LiteLLM Integration
 
 The framework uses **LiteLLM** as the provider abstraction layer:

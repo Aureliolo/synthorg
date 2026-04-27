@@ -19,6 +19,7 @@ class TestProjectCostAggregate:
         agg = ProjectCostAggregate(
             project_id="proj-1",
             total_cost=10.5,
+            currency="USD",
             total_input_tokens=1000,
             total_output_tokens=500,
             record_count=3,
@@ -26,6 +27,7 @@ class TestProjectCostAggregate:
         )
         assert agg.project_id == "proj-1"
         assert agg.total_cost == 10.5
+        assert agg.currency == "USD"
         assert agg.total_input_tokens == 1000
         assert agg.total_output_tokens == 500
         assert agg.record_count == 3
@@ -34,6 +36,7 @@ class TestProjectCostAggregate:
         agg = ProjectCostAggregate(
             project_id="proj-1",
             total_cost=1.0,
+            currency="USD",
             total_input_tokens=100,
             total_output_tokens=50,
             record_count=1,
@@ -47,6 +50,7 @@ class TestProjectCostAggregate:
             ProjectCostAggregate(
                 project_id="   ",
                 total_cost=0.0,
+                currency="USD",
                 total_input_tokens=0,
                 total_output_tokens=0,
                 record_count=0,
@@ -58,6 +62,7 @@ class TestProjectCostAggregate:
             ProjectCostAggregate(
                 project_id="proj-1",
                 total_cost=-1.0,
+                currency="USD",
                 total_input_tokens=0,
                 total_output_tokens=0,
                 record_count=0,
@@ -69,6 +74,7 @@ class TestProjectCostAggregate:
             ProjectCostAggregate(
                 project_id="proj-1",
                 total_cost=0.0,
+                currency="USD",
                 total_input_tokens=-1,
                 total_output_tokens=0,
                 record_count=0,
@@ -80,6 +86,7 @@ class TestProjectCostAggregate:
             ProjectCostAggregate(
                 project_id="proj-1",
                 total_cost=float("nan"),
+                currency="USD",
                 total_input_tokens=0,
                 total_output_tokens=0,
                 record_count=0,
@@ -91,6 +98,19 @@ class TestProjectCostAggregate:
             ProjectCostAggregate(
                 project_id="proj-1",
                 total_cost=float("inf"),
+                currency="USD",
+                total_input_tokens=0,
+                total_output_tokens=0,
+                record_count=0,
+                last_updated=datetime.now(UTC),
+            )
+
+    def test_rejects_unknown_currency(self) -> None:
+        with pytest.raises(ValidationError):
+            ProjectCostAggregate(
+                project_id="proj-1",
+                total_cost=1.0,
+                currency="ZZZ",
                 total_input_tokens=0,
                 total_output_tokens=0,
                 record_count=0,
@@ -111,7 +131,9 @@ class TestProjectCostAggregate:
                 cost: float,
                 input_tokens: int,
                 output_tokens: int,
+                *,
+                currency: str,
             ) -> None:
-                return None
+                _ = currency
 
         assert isinstance(_RepoStub(), ProjectCostAggregateRepository)

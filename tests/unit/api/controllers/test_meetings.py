@@ -334,6 +334,74 @@ class TestMeetingController:
         assert item["contribution_rank"] == []
         assert item["meeting_duration_seconds"] == 120.0
 
+    def test_trigger_rejects_context_exceeding_settings_cap(
+        self,
+        meeting_client: TestClient[Any],
+        mock_scheduler: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Endpoint enforces ``api.max_meeting_context_keys`` from settings.
+
+        Patches ``_resolve_max_context_keys`` to return 1 so the test
+        does not need a fully wired settings backend, then submits a
+        context with 2 keys and asserts the controller short-circuits
+        with a validation error before calling the scheduler.
+        """
+        from synthorg.api.controllers import meetings as _meetings_module
+
+        async def _capped_at_one(_app_state: object) -> int:
+            return 1
+
+        monkeypatch.setattr(
+            _meetings_module,
+            "_resolve_max_context_keys",
+            _capped_at_one,
+        )
+        resp = meeting_client.post(
+            "/api/v1/meetings/trigger",
+            json={
+                "event_name": "deploy_complete",
+                "context": {"k1": "v1", "k2": "v2"},
+            },
+        )
+        # ApiValidationError -> structured 4xx envelope (RFC 9457).
+        assert resp.status_code in {400, 422}, resp.text
+        body = resp.json()
+        assert body["success"] is False
+        # Scheduler must not be called when validation fails before
+        # dispatch -- otherwise the cap is decorative.
+        mock_scheduler.trigger_event.assert_not_awaited()
+
+    def test_trigger_accepts_context_at_settings_cap(
+        self,
+        meeting_client: TestClient[Any],
+        mock_scheduler: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Exact-cap context passes validation and reaches the scheduler."""
+        from synthorg.api.controllers import meetings as _meetings_module
+
+        async def _capped_at_two(_app_state: object) -> int:
+            return 2
+
+        monkeypatch.setattr(
+            _meetings_module,
+            "_resolve_max_context_keys",
+            _capped_at_two,
+        )
+        record = _make_record("mtg-cap-ok")
+        mock_scheduler.trigger_event.return_value = (record,)
+
+        resp = meeting_client.post(
+            "/api/v1/meetings/trigger",
+            json={
+                "event_name": "deploy_complete",
+                "context": {"k1": "v1", "k2": "v2"},
+            },
+        )
+        assert resp.status_code == 200
+        mock_scheduler.trigger_event.assert_awaited_once()
+
     def test_oversized_meeting_id_rejected(
         self,
         meeting_client: TestClient[Any],
@@ -479,12 +547,22 @@ class TestTriggerMeetingRequestValidation:
         with pytest.raises(ValueError, match="whitespace"):
             TriggerMeetingRequest(event_name="   ", context={})
 
-    def test_rejects_too_many_context_keys(self) -> None:
+    def test_accepts_too_many_context_keys_at_model_layer(self) -> None:
+        """The aggregate key cap is enforced controller-side now.
+
+        ``TriggerMeetingRequest`` only validates per-key/per-value
+        invariants; ``trigger_meeting`` reads
+        ``api.max_meeting_context_keys`` from the settings backend at
+        request time and raises :class:`ApiValidationError` when the
+        cap is exceeded.  See ``test_rejects_too_many_context_keys``
+        below for the controller-layer assertion.
+        """
         from synthorg.api.controllers.meetings import TriggerMeetingRequest
 
         ctx: dict[str, str | list[str]] = {f"key-{i}": "val" for i in range(21)}
-        with pytest.raises(ValueError, match="at most 20 keys"):
-            TriggerMeetingRequest(event_name="evt", context=ctx)
+        # No raise: the model-level check no longer covers key count.
+        request = TriggerMeetingRequest(event_name="evt", context=ctx)
+        assert len(request.context) == 21
 
     def test_rejects_oversized_context_key(self) -> None:
         from synthorg.api.controllers.meetings import TriggerMeetingRequest
@@ -538,6 +616,105 @@ class TestTriggerMeetingRequestValidation:
         req = TriggerMeetingRequest(event_name="evt", context={key: value})
         assert len(req.context) == 1
         assert req.context[key] == value
+
+
+@pytest.mark.unit
+class TestResolveMaxContextKeysFallback:
+    """``_resolve_max_context_keys`` settings-backend fallback contract.
+
+    The helper falls back to ``_MAX_CONTEXT_KEYS_FALLBACK`` (20) when
+    the config resolver is unavailable or raises.  These tests guard
+    that contract so a settings backend outage does not break meeting
+    triggers.
+    """
+
+    async def test_returns_fallback_when_config_resolver_absent(self) -> None:
+        from unittest.mock import MagicMock as _MagicMock
+
+        from synthorg.api.controllers.meetings import _resolve_max_context_keys
+
+        app_state = _MagicMock()
+        app_state.has_config_resolver = False
+        result = await _resolve_max_context_keys(app_state)
+        assert result == 20  # _MAX_CONTEXT_KEYS_FALLBACK
+
+    async def test_returns_fallback_on_resolver_exception(self) -> None:
+        from unittest.mock import AsyncMock as _AsyncMock
+        from unittest.mock import MagicMock as _MagicMock
+
+        from synthorg.api.controllers.meetings import _resolve_max_context_keys
+
+        app_state = _MagicMock()
+        app_state.has_config_resolver = True
+        app_state.config_resolver.get_int = _AsyncMock(
+            side_effect=RuntimeError("settings backend down"),
+        )
+        result = await _resolve_max_context_keys(app_state)
+        assert result == 20
+
+    async def test_propagates_cancelled_error(self) -> None:
+        import asyncio as _asyncio
+        from unittest.mock import AsyncMock as _AsyncMock
+        from unittest.mock import MagicMock as _MagicMock
+
+        from synthorg.api.controllers.meetings import _resolve_max_context_keys
+
+        app_state = _MagicMock()
+        app_state.has_config_resolver = True
+        app_state.config_resolver.get_int = _AsyncMock(
+            side_effect=_asyncio.CancelledError(),
+        )
+        with pytest.raises(_asyncio.CancelledError):
+            await _resolve_max_context_keys(app_state)
+
+    async def test_returns_resolved_value_on_success(self) -> None:
+        from unittest.mock import AsyncMock as _AsyncMock
+        from unittest.mock import MagicMock as _MagicMock
+
+        from synthorg.api.controllers.meetings import _resolve_max_context_keys
+
+        app_state = _MagicMock()
+        app_state.has_config_resolver = True
+        app_state.config_resolver.get_int = _AsyncMock(return_value=50)
+        result = await _resolve_max_context_keys(app_state)
+        assert result == 50
+
+    async def test_negative_resolved_value_falls_back(self) -> None:
+        """Negative caps are nonsensical; fall back to the registry default."""
+        from unittest.mock import AsyncMock as _AsyncMock
+        from unittest.mock import MagicMock as _MagicMock
+
+        from synthorg.api.controllers.meetings import _resolve_max_context_keys
+
+        app_state = _MagicMock()
+        app_state.has_config_resolver = True
+        app_state.config_resolver.get_int = _AsyncMock(return_value=-5)
+        result = await _resolve_max_context_keys(app_state)
+        assert result == 20  # _MAX_CONTEXT_KEYS_FALLBACK
+
+    async def test_recovery_log_after_fallback(self) -> None:
+        """A failure-then-success sequence emits the recovery signal."""
+        from unittest.mock import AsyncMock as _AsyncMock
+        from unittest.mock import MagicMock as _MagicMock
+
+        import structlog.testing
+
+        from synthorg.api.controllers.meetings import _resolve_max_context_keys
+        from synthorg.observability.events.api import API_SETTINGS_BACKEND_RECOVERED
+
+        app_state = _MagicMock()
+        app_state.has_config_resolver = True
+        app_state.config_resolver.get_int = _AsyncMock(
+            side_effect=[RuntimeError("settings backend down"), 30],
+        )
+        # First call: raises -> fallback (arms the recovery flag).
+        await _resolve_max_context_keys(app_state)
+        # Second call: succeeds -> emits recovery event.
+        with structlog.testing.capture_logs() as cap:
+            result = await _resolve_max_context_keys(app_state)
+        events = [e["event"] for e in cap]
+        assert API_SETTINGS_BACKEND_RECOVERED in events
+        assert result == 30
 
 
 def _create_app_without_explicit_meetings() -> Any:

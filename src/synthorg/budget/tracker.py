@@ -114,13 +114,6 @@ class CostTracker(CostTrackerSummaryMixin):
         self._department_resolver = department_resolver
         self._auto_prune_threshold = auto_prune_threshold
         self._project_cost_repo = project_cost_repo
-        # When no budget_config is attached, a project-scoped aggregate is
-        # still durable via ``project_cost_repo``.  We remember the first
-        # currency seen per project_id so a subsequent record in a
-        # different currency cannot silently collapse into the same total.
-        # This is process-local state (rebuilt on restart) but matches the
-        # lifetime of the aggregate repo reference the caller holds.
-        self._project_currencies: dict[str, str] = {}
         logger.debug(
             BUDGET_TRACKER_CREATED,
             has_budget_config=budget_config is not None,
@@ -181,35 +174,21 @@ class CostTracker(CostTrackerSummaryMixin):
                 task_id=cost_record.task_id,
                 project_id=cost_record.project_id,
             )
-        # Per-project guard: without a budget_config we cannot compare
-        # against a single configured currency, but we still must not let
-        # the durable project aggregate collapse mixed-currency rows into
-        # a single running total.  The first record for a project defines
-        # the currency; subsequent records in a different currency raise.
-        if (
-            self._budget_config is None
-            and self._project_cost_repo is not None
-            and cost_record.project_id is not None
-        ):
-            pinned = self._project_currencies.get(cost_record.project_id)
-            if pinned is None:
-                self._project_currencies[cost_record.project_id] = cost_record.currency
-            elif pinned != cost_record.currency:
-                msg = (
-                    f"Record currency {cost_record.currency!r} does not match "
-                    f"project {cost_record.project_id!r} aggregate currency "
-                    f"{pinned!r}"
-                )
-                raise MixedCurrencyAggregationError(
-                    msg,
-                    currencies=frozenset({cost_record.currency, pinned}),
-                    agent_id=cost_record.agent_id,
-                    task_id=cost_record.task_id,
-                    project_id=cost_record.project_id,
-                )
-        # Lock protects in-memory list only.  DB aggregate update is
-        # best-effort and runs outside the lock to avoid blocking other
-        # callers on I/O.
+        # Per-project same-currency invariant is enforced by the
+        # repository (``ProjectCostAggregateRepository.increment``)
+        # which raises ``MixedCurrencyAggregationError`` when the
+        # incoming currency differs from the project's pinned
+        # currency.  No tracker-side pin is required.
+
+        # Run the durable aggregate update FIRST -- a
+        # ``MixedCurrencyAggregationError`` from the per-project pin
+        # must surface before the in-memory list is mutated.  Appending
+        # only on success closes the concurrency window where a
+        # ``_snapshot()`` call could observe the entry between an
+        # append and a rollback.  DB I/O runs outside ``_lock`` so
+        # concurrent in-memory readers/writers don't block on it.
+        await self._update_project_aggregate(cost_record)
+
         async with self._lock:
             self._records.append(cost_record)
             logger.info(
@@ -218,8 +197,6 @@ class CostTracker(CostTrackerSummaryMixin):
                 model=cost_record.model,
                 cost=cost_record.cost,
             )
-
-        await self._update_project_aggregate(cost_record)
 
     async def prune_expired(self, *, now: datetime | None = None) -> int:
         """Remove records older than the 168-hour (7-day) cost window.
@@ -504,7 +481,10 @@ class CostTracker(CostTrackerSummaryMixin):
         """Best-effort update of the durable project cost aggregate.
 
         No-op when the record has no ``project_id`` or no repository
-        is configured.  Failures are logged at WARNING and swallowed.
+        is configured.  Failures (other than
+        :class:`MixedCurrencyAggregationError`, which propagates as a
+        data-integrity error the caller must see) are logged at
+        WARNING and swallowed.
         """
         if self._project_cost_repo is None or cost_record.project_id is None:
             return
@@ -515,13 +495,29 @@ class CostTracker(CostTrackerSummaryMixin):
                 cost_record.cost,
                 cost_record.input_tokens,
                 cost_record.output_tokens,
+                currency=cost_record.currency,
             )
             logger.debug(
                 BUDGET_PROJECT_COST_AGGREGATED,
                 project_id=cost_record.project_id,
                 cost=cost_record.cost,
+                currency=cost_record.currency,
             )
         except MemoryError, RecursionError:
+            raise
+        except MixedCurrencyAggregationError as exc:
+            # Mixed-currency increments are a caller-contract violation;
+            # surface to the caller rather than silently swallowing --
+            # but log first so operators see the rejection in telemetry
+            # alongside successful aggregations.
+            logger.warning(
+                BUDGET_PROJECT_COST_AGGREGATION_FAILED,
+                project_id=cost_record.project_id,
+                cost=cost_record.cost,
+                currency=cost_record.currency,
+                error_type=type(exc).__qualname__,
+                reason="mixed_currency_aggregation",
+            )
             raise
         except Exception:
             logger.warning(

@@ -2,13 +2,14 @@
 
 import json
 from collections.abc import Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
+from synthorg.budget.call_category import LLMCallCategory
 from synthorg.client.models import GenerationContext, TaskRequirement
 from synthorg.core.enums import Complexity, Priority, TaskType
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     untrusted_content_directive,
@@ -16,9 +17,13 @@ from synthorg.engine.prompt_safety import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.client import CLIENT_REQUIREMENT_GENERATED
+from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
+
+if TYPE_CHECKING:
+    from synthorg.budget.tracker import CostTracker
 
 logger = get_logger(__name__)
 
@@ -42,7 +47,7 @@ class LLMGenerator:
     handle them uniformly.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         provider: CompletionProvider,
@@ -50,6 +55,7 @@ class LLMGenerator:
         persona: str = _DEFAULT_PERSONA,
         temperature: float = 0.7,
         max_tokens: int = 2048,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         """Initialize the LLM generator.
 
@@ -66,9 +72,12 @@ class LLMGenerator:
                 requirement generation benefits from variety; pin to
                 0.0 for reproducible eval runs).
             max_tokens: Maximum tokens in the completion response.
+            cost_tracker: Optional cost tracker; when wired the
+                chokepoint emits a CostRecord for each LLM call.
         """
         self._provider = provider
         self._model = model
+        self._cost_tracker = cost_tracker
         # SEC-1: ensure the persona always carries the untrusted-content
         # directive. A caller-supplied persona without it would silently
         # weaken fence semantics; normalize by appending the directive
@@ -98,11 +107,23 @@ class LLMGenerator:
             response cannot be parsed into valid requirements.
         """
         messages = self._build_prompt(context)
-        response = await self._provider.complete(
-            messages=messages,
-            model=self._model,
-            config=self._completion_config,
-        )
+        # Per-project task_id so cost rollups attribute each
+        # requirement-generation batch to the project being simulated
+        # rather than collapsing every client-sim run into one bucket.
+        async with cost_recording_scope(
+            cost_tracker=self._cost_tracker,
+            agent_id=NotBlankStr("system"),
+            task_id=NotBlankStr(
+                f"system:client:requirement_generator:{context.project_id}"
+            ),
+            call_category=LLMCallCategory.SYSTEM,
+            project_id=context.project_id,
+        ):
+            response = await self._provider.complete(
+                messages=messages,
+                model=self._model,
+                config=self._completion_config,
+            )
         content = response.content or ""
         payload = self._extract_json_array(content)
         if payload is None:

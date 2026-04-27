@@ -305,7 +305,9 @@ class TestMeetingOrchestratorErrorHandling:
             agent_id: str,
             prompt: str,
             max_tokens: int,
+            meeting_id: str,
         ) -> object:
+            del agent_id, prompt, max_tokens, meeting_id
             msg = "Agent unreachable"
             raise RuntimeError(msg)
 

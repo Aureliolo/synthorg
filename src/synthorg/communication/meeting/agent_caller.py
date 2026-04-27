@@ -21,27 +21,37 @@ module only runs a single agent's inference.
 
 from typing import TYPE_CHECKING
 
+from synthorg.budget.call_category import LLMCallCategory
+
+# ``CostTracker``, ``AgentRegistryService``, ``ProviderRegistry`` and
+# ``AgentCaller`` are part of the public ``build_meeting_agent_caller``
+# signature so they must resolve at runtime when downstream tooling
+# evaluates type hints (DI containers, doc generators).  Importing at
+# module top -- not under ``TYPE_CHECKING`` -- keeps the names in
+# module globals.
+from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.communication.meeting.models import AgentResponse
+from synthorg.communication.meeting.protocol import AgentCaller  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_PEER_CONTRIBUTION,
     TAG_TASK_DATA,
     untrusted_content_directive,
 )
+from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.meeting import (
     MEETING_AGENT_CALL_FAILED,
     MEETING_AGENT_CALLED,
     MEETING_AGENT_RESPONDED,
 )
+from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
+from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
 
 if TYPE_CHECKING:
-    from synthorg.communication.meeting.protocol import AgentCaller
     from synthorg.core.agent import AgentIdentity
-    from synthorg.hr.registry import AgentRegistryService
-    from synthorg.providers.registry import ProviderRegistry
 
 logger = get_logger(__name__)
 
@@ -65,12 +75,15 @@ def build_meeting_agent_caller(
     *,
     agent_registry: AgentRegistryService,
     provider_registry: ProviderRegistry,
+    cost_tracker: CostTracker | None = None,
 ) -> AgentCaller:
     """Construct a meeting :data:`AgentCaller` backed by real services.
 
     Args:
         agent_registry: Source of truth for agent identities.
         provider_registry: Source of truth for LLM providers.
+        cost_tracker: Optional cost tracker; when wired each meeting
+            turn records via the chokepoint.
 
     Returns:
         An async callback matching the :data:`AgentCaller` contract.
@@ -80,11 +93,19 @@ def build_meeting_agent_caller(
         agent_id: str,
         prompt: str,
         max_tokens: int,
+        meeting_id: str,
     ) -> AgentResponse:
         typed_agent_id = NotBlankStr(agent_id)
+        # Validate meeting_id at the call boundary so a blank /
+        # whitespace-only id surfaces as a clean ``ValueError`` here
+        # rather than as a generic NotBlankStr failure inside
+        # ``cost_recording_scope`` (where the prefixed
+        # ``f"meeting:{meeting_id}"`` would mask the real cause).
+        cleaned_meeting_id = NotBlankStr(meeting_id.strip())
         logger.info(
             MEETING_AGENT_CALLED,
             agent_id=agent_id,
+            meeting_id=cleaned_meeting_id,
             max_tokens=max_tokens,
             prompt_length=len(prompt),
         )
@@ -93,6 +114,7 @@ def build_meeting_agent_caller(
             logger.warning(
                 MEETING_AGENT_CALL_FAILED,
                 agent_id=agent_id,
+                meeting_id=cleaned_meeting_id,
                 error_type="UnknownMeetingAgentError",
             )
             raise UnknownMeetingAgentError(typed_agent_id)
@@ -106,11 +128,17 @@ def build_meeting_agent_caller(
             max_tokens=effective_max_tokens,
         )
         try:
-            response = await provider.complete(
-                messages,
-                str(identity.model.model_id),
-                config=config,
-            )
+            async with cost_recording_scope(
+                cost_tracker=cost_tracker,
+                agent_id=typed_agent_id,
+                task_id=NotBlankStr(f"meeting:{cleaned_meeting_id}"),
+                call_category=LLMCallCategory.COORDINATION,
+            ):
+                response = await provider.complete(
+                    messages,
+                    str(identity.model.model_id),
+                    config=config,
+                )
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -260,10 +288,12 @@ def build_unconfigured_meeting_agent_caller(
         agent_id: str,
         _prompt: str,
         _max_tokens: int,
+        meeting_id: str,
     ) -> AgentResponse:
         logger.warning(
             MEETING_AGENT_CALL_FAILED,
             agent_id=agent_id,
+            meeting_id=meeting_id,
             error_type="MeetingAgentCallerNotConfiguredError",
             missing_dependencies=missing_dependencies,
         )

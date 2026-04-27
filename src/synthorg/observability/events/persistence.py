@@ -298,6 +298,9 @@ PERSISTENCE_PROJECT_COST_AGG_FETCH_FAILED: Final[str] = (
 PERSISTENCE_PROJECT_COST_AGG_DESERIALIZE_FAILED: Final[str] = (
     "persistence.project_cost_agg.deserialize_failed"
 )
+PERSISTENCE_PROJECT_COST_AGG_CURRENCY_PIN_MISSING: Final[str] = (
+    "persistence.project_cost_agg.currency_pin_missing"
+)
 
 # -- Workflow definition events -----------------------------------------------
 
