@@ -18,7 +18,7 @@ interface CheckpointRowProps {
 
 function CheckpointRow({ checkpoint: cp, onDeploy, onRollback, onDelete }: CheckpointRowProps) {
   return (
-    <tr className="border-b border-border/50">
+    <tr>
       <td className="py-2 pr-4 font-mono text-xs">
         {formatDateOnly(cp.created_at)}
       </td>
@@ -129,7 +129,7 @@ export function CheckpointTable() {
             <th className="pb-2">Actions</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className="divide-y divide-border">
           {checkpoints.map((cp) => (
             <CheckpointRow
               key={cp.id}

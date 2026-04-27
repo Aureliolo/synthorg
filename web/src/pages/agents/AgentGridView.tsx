@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Link } from 'react-router'
 import { Users } from 'lucide-react'
 import { AgentCard } from '@/components/ui/agent-card'
@@ -14,7 +15,7 @@ interface AgentGridViewProps {
   className?: string
 }
 
-function AgentGridItem({ agent }: { agent: AgentConfig }) {
+function AgentGridItemComponent({ agent }: { agent: AgentConfig }) {
   return (
     <StaggerItem>
       <Link
@@ -32,6 +33,8 @@ function AgentGridItem({ agent }: { agent: AgentConfig }) {
     </StaggerItem>
   )
 }
+
+const AgentGridItem = memo(AgentGridItemComponent)
 
 export function AgentGridView({ agents, className }: AgentGridViewProps) {
   if (agents.length === 0) {

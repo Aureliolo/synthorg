@@ -52,7 +52,7 @@ function CapabilityBadges({ model }: { model: ProviderModelResponse }) {
 function ProviderModelRow({ model, supportsDelete, supportsConfig, onDelete, onConfigure }: ProviderModelRowProps) {
   const hasActions = supportsDelete || supportsConfig
   return (
-    <tr className="border-b border-border/50 last:border-0">
+    <tr>
       <td className="py-2 pr-4 font-mono text-foreground">{model.id}</td>
       <td className="py-2 pr-4 text-text-secondary">{model.alias ?? '--'}</td>
       <td className="py-2 pr-4">
@@ -139,7 +139,7 @@ export function ProviderModelList({
                 {hasActions && <th className="pb-2 font-medium text-right">Actions</th>}
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-border">
               {models.map((model) => (
                 <ProviderModelRow
                   key={model.id}
