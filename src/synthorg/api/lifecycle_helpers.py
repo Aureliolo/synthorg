@@ -580,6 +580,30 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
             error_desc=safe_error_description(exc),
         )
 
+    try:
+        from synthorg.engine.timeout_enforcement import (  # noqa: PLC0415
+            set_timeout_enforcement_enabled,
+        )
+
+        set_timeout_enforcement_enabled(
+            value=await app_state.config_resolver.get_bool(
+                SettingNamespace.ENGINE.value,
+                "timeout_enforcement_enabled",
+            )
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            error=(
+                "Failed to apply engine.timeout_enforcement_enabled;"
+                " keeping enforcement on (safe default)"
+            ),
+            error_type=type(exc).__name__,
+            error_desc=safe_error_description(exc),
+        )
+
     if app_state.oauth_token_manager is not None:
         app_state.oauth_token_manager.set_config_resolver(
             app_state.config_resolver,
