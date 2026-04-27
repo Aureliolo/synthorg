@@ -51,6 +51,9 @@ rulesets:
           do_not_enforce_on_create: false
           required_status_checks:
             - context: "CI Pass"
+            - context: "CodSpeed Python Pass"
+            - context: "CodSpeed Web Pass"
+            - context: "Lighthouse Pass"
 
   - name: protect-main-reviews
     target: branch

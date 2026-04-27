@@ -578,6 +578,13 @@ jobs:
       - name: Production build
         run: npm run build
         working-directory: web
+      # Bundle-size budgets are enforced inside the same job to reuse
+      # the just-built ``dist/`` artifact -- a separate job would have
+      # to ``npm ci`` + ``npm run build`` again, doubling Vite's
+      # cost (~2-3 min) per PR.
+      - name: size-limit budget check
+        run: npm run size
+        working-directory: web
 
   # ── Dashboard: Security Audit ──
   dashboard-audit:

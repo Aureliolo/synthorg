@@ -221,10 +221,14 @@ function getRequestInterceptor(): (config: Record<string, unknown>) => Record<st
 // import below will error until this mock is extended.
 import type * as CsrfModule from '@/utils/csrf'
 type CsrfExports = keyof typeof CsrfModule
-const _csrfMockExports: Record<CsrfExports, unknown> = { getCsrfToken: true }
+const _csrfMockExports: Record<CsrfExports, unknown> = {
+  getCsrfToken: true,
+  parseCsrfTokenFromCookieString: true,
+}
 void _csrfMockExports
 vi.mock('@/utils/csrf', () => ({
   getCsrfToken: vi.fn(),
+  parseCsrfTokenFromCookieString: vi.fn(),
 }))
 
 describe('apiClient request interceptor (CSRF)', () => {

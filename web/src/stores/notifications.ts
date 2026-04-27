@@ -11,6 +11,11 @@ import { create } from 'zustand'
 import { createLogger } from '@/lib/logger'
 import * as browserNotifications from '@/services/browser-notifications'
 import { useToastStore } from '@/stores/toast'
+// Internal callers below (``enqueueXxx`` payload builders) use
+// ``sanitizeWsString`` directly. The same symbol is re-exported
+// further down so existing external imports from
+// ``@/stores/notifications`` keep working unchanged.
+import { sanitizeWsString } from '@/utils/ws-sanitize'
 import type {
   NotificationCategory,
   NotificationItem,
@@ -187,39 +192,16 @@ function countUnread(items: readonly NotificationItem[]): number {
   return items.filter((i) => !i.read).length
 }
 
-const MAX_STRING_LEN = 128
-
-/**
- * Clamp a WS-supplied string for safe storage and display.
- *
- * React escapes HTML at render time, so XSS via the default text path is
- * already covered. This helper adds defense-in-depth for the
- * non-presentational paths:
- *  - strips C0 controls and DELETE (U+0000..U+001F, U+007F) that would
- *    corrupt log lines, terminal output, and notification tooltips,
- *    except the common whitespace set (TAB U+0009, LF U+000A, CR U+000D)
- *    so multi-line messages retain their line structure,
- *  - strips bidi-override characters (U+202A..U+202E, U+2066..U+2069)
- *    that can flip on-screen token order in sensitive UI (CVE-2021-42574),
- *  - trims surrounding whitespace and caps length at `maxLen`. The length
- *    cap iterates by Unicode code points so surrogate pairs (emojis, rare
- *    CJK) are never split mid-character.
- *
- * Returns `undefined` for non-strings so callers can pass the result
- * directly into an optional field without widening the type.
- */
-export function sanitizeWsString(value: unknown, maxLen: number = MAX_STRING_LEN): string | undefined {
-  if (typeof value !== 'string') return undefined
-  const stripped = value
-    // eslint-disable-next-line no-control-regex
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
-    .replace(/[\u202A-\u202E\u2066-\u2069]/g, '')
-    .trim()
-  if (stripped.length === 0) return undefined
-  const codePoints = [...stripped]
-  if (codePoints.length <= maxLen) return stripped
-  return codePoints.slice(0, maxLen).join('')
-}
+// ``sanitizeWsString`` and ``MAX_STRING_LEN`` live in
+// ``@/utils/ws-sanitize`` so benchmark + unit-test imports can pull
+// them in without dragging this store's side effects (toast queue,
+// persistence subscription, ``localStorage`` hydration) into the
+// import graph. We re-export here so existing call sites that
+// import from ``@/stores/notifications`` keep working unchanged.
+export {
+  MAX_WS_STRING_LEN as MAX_STRING_LEN,
+  sanitizeWsString,
+} from '@/utils/ws-sanitize'
 
 // ---------------------------------------------------------------------------
 // Store

@@ -1,6 +1,10 @@
 # Audit artifacts
 _audit/
 
+# Per-repo Claude/OpenCode runtime state (not config). Currently:
+# - last-push.json (used by scripts/check_push_throttle.sh)
+.claude/state/
+
 # Python
 __pycache__/
 *.py[cod]

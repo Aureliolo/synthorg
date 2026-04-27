@@ -45,7 +45,8 @@ uv run mypy src/ tests/                    # type-check (strict)
 uv run python -m pytest tests/ -m unit -n 8            # unit tests only
 uv run python -m pytest tests/ -m integration -n 8     # integration tests only
 uv run python -m pytest tests/ -m e2e -n 8             # e2e tests only
-uv run python -m pytest tests/ -n 8 --cov=synthorg --cov-fail-under=80  # full suite + coverage
+uv run python -m pytest tests/ -n 8 --ignore=tests/benchmarks/ --cov=synthorg --cov-fail-under=80  # full suite + coverage (benchmarks excluded)
+uv run python -m pytest tests/benchmarks/ --codspeed -n0  # Python perf benchmarks (CodSpeed CPU Simulation; -n0 required, pytest-codspeed runs serial)
 HYPOTHESIS_PROFILE=dev uv run python -m pytest tests/ -m unit -n 8 -k properties   # property tests (dev, 1000 examples)
 HYPOTHESIS_PROFILE=fuzz uv run python -m pytest tests/ -m unit -n 8 --timeout=0    # deep fuzzing (10,000 examples, no deadline, all @given tests)
 uv run pre-commit run --all-files          # all pre-commit hooks
@@ -194,8 +195,10 @@ When tests fail due to timeout, slowness, or xdist resource contention:
 
 ## Testing
 
-- **Markers**: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.e2e`, `@pytest.mark.slow`
-- **Coverage**: 80% minimum (enforced in CI)
+- **Markers**: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.e2e`, `@pytest.mark.slow`.
+- **Performance benchmarks** under `tests/benchmarks/` use `@pytest.mark.benchmark` (registered for pytest-codspeed). Benches are intentionally NOT marked `unit`; `pytest -m unit -n 8` skips them and the dedicated CI job `codspeed-python` runs them via `--codspeed`. Locally, run `uv run python -m pytest tests/benchmarks/ --codspeed -n0`.
+- **Heap-ceiling tests** (peak-heap assertions via `tracemalloc`) live under `tests/unit/perf/` and are marked `@pytest.mark.unit` because they are real assertions on a captured peak-heap value, not throughput measurements. They run on every `pytest -m unit -n 8` invocation.
+- **Coverage**: 80% minimum (enforced in CI; benchmarks are excluded via `--ignore=tests/benchmarks/` in coverage runs)
 - **Async**: `asyncio_mode = "auto"`; no manual `@pytest.mark.asyncio` needed
 - **Timeout**: 30 seconds per test (global in `pyproject.toml`; do not add per-file `pytest.mark.timeout(30)` markers; non-default overrides like `timeout(60)` are allowed)
 - **Parallelism**: `pytest-xdist` via `-n 8`. **ALWAYS** include `-n 8` when running pytest locally, never run tests sequentially. CI uses `-n auto` (fewer cores on runners).
@@ -213,6 +216,7 @@ When tests fail due to timeout, slowness, or xdist resource contention:
 - **Pre-commit hooks**: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-json, check-merge-conflict, check-added-large-files, no-commit-to-branch (main), ruff check+format, gitleaks, hadolint (Dockerfile linting), golangci-lint + go vet (CLI, conditional on `cli/**/*.go`), no-em-dashes, no-redundant-timeout, check-single-migration-per-pr (at most 1 new migration per backend per PR), check-no-modify-migration (block editing existing migrations; bypass with `SYNTHORG_MIGRATION_SQUASH=1`), no-release-please-token (#1555: forbids new `RELEASE_PLEASE_TOKEN` references in any `.github/` YAML), workflow-shell-git-commits (#1555: scoped to `.github/workflows/*.yml`; blocks every shell `git commit + git push` pair in the same `run:` block, unconditionally. Local pushes never produce signed commits, so an App-token mint elsewhere in the job does not sanitise them; writes MUST go through the Git Data API). **Note**: `eslint-web` runs at **pre-push only** (see Pre-push hooks below) because TypeScript project-graph boot is 15-30s, so gating it on every commit penalises backend-only work.
 - **Hookify rules** (committed in `.claude/hookify.*.md`):
   - `block-pr-create`: blocks direct `gh pr create` (must use `/pre-pr-review`)
+  - `block-double-push`: blocks a second `git push` within the 5-min throttle window **when an open PR exists for the current branch** (outside a PR, normal feature pushes are unthrottled). Override is one-shot and out-of-band: the user must create `.claude/state/allow-double-push.flag` in their own shell with the current branch name as the first line, e.g. `printf '%s\n' "$(git branch --show-current)" >.claude/state/allow-double-push.flag && git push <args>`. The flag is consumed (deleted) on use. The model cannot create the flag itself: `scripts/check_no_throttle_override_creation.sh` is registered as a PreToolUse hook on `Bash|Write|Edit|NotebookEdit` and rejects any tool call that references the flag path. Tunable via `SYNTHORG_PUSH_THROTTLE_MIN` (minutes); state file `.claude/state/last-push.json`, gitignored.
   - `enforce-parallel-tests`: enforces `-n 8` with pytest
   - `no-cd-prefix`: blocks `cd` prefix in Bash commands
   - `no-local-coverage`: blocks `--cov` flags locally (CI handles coverage)

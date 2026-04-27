@@ -101,6 +101,19 @@ class TaskEngineLoopsMixin:
             self._fail_remaining_futures(saved_in_flight)
         except BaseException:
             self._fail_remaining_futures(self._in_flight)
+            # Consume the exception from the underlying processing
+            # task so asyncio does not emit "Future exception was
+            # never retrieved" when the Future is garbage-collected.
+            # The exception is being re-raised below; this only
+            # marks it as retrieved on the original Task object
+            # (``asyncio.shield`` may have created an inner wrapper
+            # whose ``await`` retrieval did not propagate the
+            # ``_log_traceback`` clearing back to the wrapped task --
+            # observed under MemoryError / RecursionError dispatch
+            # paths in ``test_task_engine_extended.py``).
+            if self._processing_task.done():
+                with contextlib.suppress(BaseException):
+                    self._processing_task.exception()
             raise
         finally:
             self._processing_task = None
@@ -179,6 +192,18 @@ class TaskEngineLoopsMixin:
             except (MemoryError, RecursionError) as exc:
                 if not envelope.future.done():
                     envelope.future.set_exception(exc)
+                    # Mark the exception as retrieved on the
+                    # envelope future. The caller awaiting that
+                    # future may have already unwound (the
+                    # processing task is about to re-raise this
+                    # fatal error and abort drain), so without an
+                    # explicit retrieval asyncio emits "Future
+                    # exception was never retrieved" when the
+                    # envelope is garbage-collected. The exception
+                    # itself is being re-raised below; we only need
+                    # to clear the Future's _log_traceback flag.
+                    with contextlib.suppress(BaseException):
+                        envelope.future.exception()
                 raise
             except Exception:
                 logger.exception(

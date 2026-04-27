@@ -8,84 +8,32 @@ import { useToastStore } from '@/stores/toast'
 import { useThemeStore } from '@/stores/theme'
 import { cancelPendingPersist } from '@/stores/notifications'
 import { defaultHandlers } from '@/mocks/handlers'
+import { cookieJar, installCookieShim } from '@/cookie-shim'
 
 // jsdom's `document.cookie` is backed by `tough-cookie`'s Promise-based
-// `CookieJar`. Every get/set -- including read-only reads from our CSRF
-// interceptor (`api/client.ts` -> `utils/csrf.ts` -> `document.cookie`) and
-// MSW 2.x's own cookie-jar reads (`getAllDocumentCookies` during handler
-// setup) -- schedules a `createPromiseCallback` that Vitest's
-// `--detect-async-leaks` treats as a leaked Promise. 19 of the 69 pre-shim
-// baseline leaks traced back to this path (17 from `getCsrfToken` /
-// `getAllDocumentCookies` plus 2 adjacent tough-cookie frames); see
-// `docs/design/web-http-adapter.md` for the full investigation.
-//
-// Replace the jsdom descriptor on `Document.prototype` (not on the
-// instance: `getCsrfToken`-style reads resolve through the prototype chain,
-// and `__tests__/utils/csrf.test.ts` layers its own `Document.prototype`
-// mocks on top -- capturing this shim's descriptor as its "original" and
-// restoring it in `afterEach`). Semantics preserved: `document.cookie`
-// stringifies the jar as `k=v; k=v`; assignment parses the first `k=v`
-// pair, and delete-style writes (`Max-Age=0` or a past `Expires=`) remove
-// the entry so `utils/app-version.ts::clearClientVisibleCookies` behaves
-// like the real browser. Prod is untouched: this file is only loaded via
-// `vitest.config.ts::setupFiles` and never enters the Vite production
-// bundle; the `typeof document !== 'undefined'` check is defense-in-depth.
+// `CookieJar`, which schedules a `createPromiseCallback` for every
+// get/set and inflates `--detect-async-leaks`. The shim shared with
+// `bench-setup.ts` lives in `@/cookie-shim` and replaces the
+// `Document.prototype` descriptor with a synchronous in-memory jar.
+// Behaviour is documented in that module; the jar is exported so the
+// per-test teardown below can reset cookie state without re-touching
+// the DOM (avoiding jsdom's tough-cookie cost).
 const CSRF_SEED_VALUE = 'test-csrf-token'
-const cookieJar: Record<string, string> = Object.create(null) as Record<
-  string,
-  string
->
-if (typeof document !== 'undefined') {
-  Object.defineProperty(Document.prototype, 'cookie', {
-    configurable: true,
-    get: () =>
-      Object.entries(cookieJar)
-        .map(([k, v]) => `${k}=${v}`)
-        .join('; '),
-    set: (raw: string) => {
-      if (typeof raw !== 'string') return
-      const segments = raw.split(';')
-      const pair = segments[0] ?? ''
-      const eq = pair.indexOf('=')
-      if (eq === -1) return
-      const name = pair.slice(0, eq).trim()
-      const value = pair.slice(eq + 1).trim()
-      // Belt-and-suspenders prototype-pollution guard. The jar uses
-      // `Object.create(null)` (no prototype chain), so none of these names
-      // can actually pollute `Object.prototype` through `cookieJar[name] =
-      // value`. We still reject them so the shim never stores a key that a
-      // future refactor (spread, `Object.assign`, iteration into a
-      // prototype-carrying object) could weaponise. Diverging from RFC 6265
-      // is acceptable here because production code never emits these names
-      // as cookies.
-      if (
-        !name ||
-        name === '__proto__' ||
-        name === 'constructor' ||
-        name === 'prototype'
-      )
-        return
-      const isDelete = segments.slice(1).some((segment) => {
-        const attr = segment.trim().toLowerCase()
-        if (attr === 'max-age=0') return true
-        if (!attr.startsWith('expires=')) return false
-        const expiresAt = Date.parse(attr.slice('expires='.length))
-        return Number.isFinite(expiresAt) && expiresAt <= Date.now()
-      })
-      if (isDelete) {
-        delete cookieJar[name]
-        return
-      }
-      cookieJar[name] = value
-    },
-  })
-}
+installCookieShim()
 
 // Global MSW server: every default endpoint handler is registered up front
 // so tests that do not configure their own overrides get a predictable
 // happy-path response for any request. Requests that fall through to a
 // path with no handler fail the test loudly (`onUnhandledRequest: 'error'`)
 // so new endpoints cannot ship without a matching default handler.
+//
+// This file is loaded ONLY by the ``unit`` project in
+// ``vitest.config.ts``; the ``bench`` project loads
+// ``./src/bench-setup.ts`` (no MSW, no React, no Motion). Splitting
+// the two projects is the architectural fix for CodSpeed Web --
+// previously ``test.setupFiles`` was shared with bench mode, and
+// MSW's ``setupServer().listen()`` tripped its global-interceptor
+// invariant on the second ``.bench.ts`` file.
 export const server = setupServer(...defaultHandlers)
 
 beforeAll(() => {

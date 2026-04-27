@@ -1,0 +1,266 @@
+name: Lighthouse CI
+
+# Web Vitals + Lighthouse perf-score gates for both the React 19
+# dashboard (run against the production-built ``vite preview``) and
+# the Astro marketing site (run against the deployed pr-preview URL).
+#
+# Why no top-level ``paths:`` filter:
+#   ``Lighthouse Pass`` is a REQUIRED status check on ``main`` (see
+#   ``.github/branch_protection.yml``). A workflow-level ``paths:``
+#   filter would prevent the workflow from starting on PRs that
+#   don't touch ``web/`` / ``site/`` / ``docs/``, leaving the
+#   required check absent / pending and blocking unrelated merges
+#   (CodeRabbit, 2026-04-26). Same architecture as
+#   ``codspeed-web.yml``: workflow always triggers; the ``changes``
+#   gate job below detects whether dashboard / site files were
+#   touched and skips the heavy jobs otherwise; ``lighthouse-pass``
+#   aggregates so the required context always reports.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # ── Gate: detect which surfaces actually changed ──
+  changes:
+    name: Detect lighthouse-relevant changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      dashboard: ${{ steps.filter.outputs.dashboard }}
+      site: ${{ steps.filter.outputs.site }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            dashboard:
+              - 'web/**'
+              - 'docs/openapi/openapi.json'
+              # Direct inputs of the dashboard job that do not live
+              # under web/. ``setup-python-uv`` is the composite
+              # action; ``export_openapi.py`` regenerates the
+              # OpenAPI types the dashboard build consumes. PRs
+              # that touch only these still need to validate the
+              # dashboard audit.
+              - 'scripts/export_openapi.py'
+              - '.github/actions/setup-python-uv/**'
+              - '.github/workflows/lighthouse.yml'
+            site:
+              - 'site/**'
+              - 'docs/**'
+              - 'mkdocs.yml'
+              # ``lighthouse-site`` reuses ``web/``'s @lhci/cli
+              # toolchain (npm --prefix web ci + npx --prefix
+              # ../web lhci autorun); a toolchain-only bump
+              # (web/package.json / lock) needs to revalidate
+              # the site audit too.
+              - 'web/package.json'
+              - 'web/package-lock.json'
+              # ``pages-preview.yml`` is included because its
+              # own ``paths:`` covers itself, so a change to it
+              # WILL redeploy the preview and the wait loop will
+              # see fresh content. ``lighthouse.yml`` is
+              # deliberately NOT in this filter even though a
+              # change to it could affect the site audit:
+              # ``pages-preview.yml`` is not triggered by
+              # changes to ``lighthouse.yml``, so the wait loop
+              # would time out against a stale preview.
+              # Lighthouse-config-only PRs are still covered by
+              # the ``dashboard`` filter, which builds the
+              # preview itself locally.
+              - '.github/workflows/pages-preview.yml'
+
+  # ── Dashboard: Lighthouse against vite preview ──
+  lighthouse-dashboard:
+    name: Lighthouse Dashboard
+    needs: changes
+    if: needs.changes.outputs.dashboard == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24.15.0
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Set up Python + uv (OpenAPI export)
+        uses: ./.github/actions/setup-python-uv
+
+      - name: Export OpenAPI schema for type codegen
+        run: uv run python scripts/export_openapi.py
+
+      - name: Install dashboard deps
+        # Retry transient npm registry 5xx / network blips with
+        # exponential backoff so a flaky registry doesn't fail
+        # the gate.
+        run: npm --prefix web ci --fetch-retries=5 --fetch-retry-factor=2 --fetch-retry-mintimeout=2000
+
+      - name: Build dashboard (production)
+        run: npm --prefix web run build
+
+      - name: Lighthouse CI (dashboard)
+        run: npm --prefix web run lighthouse
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+
+  # ── Marketing site: Lighthouse against pr-preview URL ──
+  lighthouse-site:
+    name: Lighthouse Site
+    needs: changes
+    if: needs.changes.outputs.site == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24.15.0
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Resolve PR number
+        id: pr
+        env:
+          PR_EVENT_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${PR_EVENT_NUMBER:-}" ]]; then
+            echo "::warning::Skipping lighthouse-site: no PR number resolvable (likely workflow_dispatch on a branch). The marketing-site Lighthouse audit only runs against the deployed pr-preview URL."
+            echo "skip=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "pr_number=${PR_EVENT_NUMBER}" >>"$GITHUB_OUTPUT"
+            # Compose the preview URL once here; downstream steps
+            # reuse via steps.pr.outputs.preview_url so the host
+            # template never drifts across the wait loop and the
+            # LHCI invocation (CodeRabbit, 2026-04-26).
+            echo "preview_url=https://pr-${PR_EVENT_NUMBER}.synthorg-pr-preview.pages.dev" >>"$GITHUB_OUTPUT"
+            echo "skip=false" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Wait for pr-preview deployment to serve THIS commit
+        if: steps.pr.outputs.skip == 'false'
+        env:
+          PREVIEW_URL: ${{ steps.pr.outputs.preview_url }}
+          # Cloudflare Pages updates the same alias URL when a new
+          # commit lands on the PR branch (CodeRabbit, 2026-04-26).
+          # An HTTP-200 check alone races the previous deployment
+          # still serving on the alias and would cause LHCI to score
+          # stale HTML against the wrong commit. Wait until the
+          # banner injected by pages-preview.yml carries this PR
+          # head's 7-char SHA before unblocking the LHCI run.
+          EXPECTED_SHORT_SHA: ${{ github.event.pull_request.head.sha }}
+        # NOTE: deliberately no ``set -o pipefail`` here. The earlier
+        # version used ``printf '%s' "${BODY}" | grep -q ">${SHA}<"``,
+        # but with ``pipefail`` the SIGPIPE that ``grep -q`` triggers
+        # on its first match (closing the pipe before printf is done)
+        # bubbled up as exit 141, making the conditional false even
+        # though the banner SHA matched. Replaced with a pure bash
+        # glob match so there is no subprocess / pipe at all.
+        run: |
+          set -eu
+          SHORT_SHA="${EXPECTED_SHORT_SHA:0:7}"
+          BANNER_NEEDLE=">${SHORT_SHA}<"
+          echo "Waiting for ${PREVIEW_URL} to respond 200 AND serve commit ${SHORT_SHA}..."
+          for i in $(seq 1 30); do
+            # Both BODY and STATUS follow redirects (-L) so they refer
+            # to the SAME final resource. Without -L on STATUS, a
+            # Cloudflare 308 alias-redirect would report 308 even
+            # when BODY contains the matching banner, causing a
+            # false 5-minute timeout (CodeRabbit, 2026-04-26).
+            BODY=$(curl -sS -L --max-time 15 "${PREVIEW_URL}" || true)
+            STATUS=$(curl -sS -L --max-time 15 -o /dev/null -w "%{http_code}" "${PREVIEW_URL}" || echo "000")
+            if [[ "${STATUS}" == "200" && "${BODY}" == *"${BANNER_NEEDLE}"* ]]; then
+              echo "pr-preview is live (HTTP 200, banner SHA matches ${SHORT_SHA})."
+              exit 0
+            fi
+            # Diagnostic: which 7-char SHA does the banner currently
+            # advertise? Bash regex against the body is enough; no
+            # external grep needed.
+            CURRENT="none"
+            if [[ "${BODY}" =~ \>([0-9a-f]{7})\< ]]; then
+              CURRENT="${BASH_REMATCH[1]}"
+            fi
+            echo "Attempt $i: HTTP ${STATUS} (banner SHA: ${CURRENT}); waiting 10s..."
+            sleep 10
+          done
+          echo "::error::pr-preview did not serve commit ${SHORT_SHA} within 5 minutes. Either pages-preview.yml has not finished, or Cloudflare's alias is still routing to a previous deployment."
+          exit 1
+
+      - name: Install lhci (reuse web's @lhci/cli)
+        if: steps.pr.outputs.skip == 'false'
+        # Retry transient npm registry 5xx / network blips with
+        # exponential backoff.
+        run: npm --prefix web ci --fetch-retries=5 --fetch-retry-factor=2 --fetch-retry-mintimeout=2000
+
+      - name: Lighthouse CI (site)
+        if: steps.pr.outputs.skip == 'false'
+        env:
+          LHCI_PR_PREVIEW_URL: ${{ steps.pr.outputs.preview_url }}
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+        working-directory: site
+        run: npx --prefix ../web lhci autorun
+
+  # ── Aggregator gate ──
+  lighthouse-pass:
+    name: Lighthouse Pass
+    if: always()
+    needs: [changes, lighthouse-dashboard, lighthouse-site]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Check results
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          DASHBOARD_RESULT: ${{ needs.lighthouse-dashboard.result }}
+          SITE_RESULT: ${{ needs.lighthouse-site.result }}
+          DASHBOARD_RAN: ${{ needs.changes.outputs.dashboard }}
+          SITE_RAN: ${{ needs.changes.outputs.site }}
+        run: |
+          set -euo pipefail
+          if [[ "$CHANGES_RESULT" == "failure" || "$CHANGES_RESULT" == "cancelled" ]]; then
+            echo "Path-detection job failed: $CHANGES_RESULT"
+            exit 1
+          fi
+          # Only check a sub-job's result if its filter said it should
+          # have run. If the filter said skip, the job is "skipped"
+          # and that's the desired no-op outcome on irrelevant PRs.
+          if [[ "$DASHBOARD_RAN" == "true" ]]; then
+            if [[ "$DASHBOARD_RESULT" == "failure" || "$DASHBOARD_RESULT" == "cancelled" ]]; then
+              echo "Lighthouse Dashboard failed: $DASHBOARD_RESULT"
+              exit 1
+            fi
+          fi
+          if [[ "$SITE_RAN" == "true" ]]; then
+            if [[ "$SITE_RESULT" == "failure" || "$SITE_RESULT" == "cancelled" ]]; then
+              echo "Lighthouse Site failed: $SITE_RESULT"
+              exit 1
+            fi
+          fi
+          echo "Lighthouse Pass: dashboard ran=${DASHBOARD_RAN} (${DASHBOARD_RESULT}), site ran=${SITE_RAN} (${SITE_RESULT})"
