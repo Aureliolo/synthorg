@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Annotated
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-from litestar import Controller, delete, get, post, put
+from litestar import Controller, delete, get, patch, post, put
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 from litestar.response import ServerSentEvent
@@ -41,6 +41,8 @@ from synthorg.api.dto_discovery import (
 )
 from synthorg.api.dto_provider_capabilities import (
     ProviderAuditEvent,  # noqa: TC001 -- runtime litestar response model
+    RateLimitsResponse,  # noqa: TC001 -- runtime litestar response model
+    RateLimitsUpdateRequest,  # noqa: TC001 -- runtime litestar request body
 )
 from synthorg.api.dto_providers import (
     ProviderModelResponse,
@@ -912,6 +914,96 @@ class ProviderController(Controller):
             )
             raise ApiError(msg)
         return ApiResponse(data=to_provider_model_response(model))
+
+    # ── Rate-limit overrides ────────────────────────────────────
+
+    @get(
+        "/{name:str}/rate-limits",
+        guards=[require_read_access],
+    )
+    async def get_rate_limits(
+        self,
+        state: State,
+        name: PathName,
+    ) -> ApiResponse[RateLimitsResponse]:
+        """Read the persisted rate-limit configuration for one provider.
+
+        Args:
+            state: Application state.
+            name: Provider name.
+
+        Returns:
+            ``RateLimitsResponse`` with ``0`` meaning unlimited.
+
+        Raises:
+            NotFoundError: If the provider does not exist.
+        """
+        app_state: AppState = state.app_state
+        try:
+            data = await app_state.provider_management.get_rate_limits(name)
+        except ProviderNotFoundError as exc:
+            msg = f"Provider {name!r} not found"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="provider",
+                name=name,
+            )
+            raise NotFoundError(msg) from exc
+        return ApiResponse(data=data)
+
+    @patch(
+        "/{name:str}/rate-limits",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy(
+                "providers.update_rate_limits",
+                key="user",
+            ),
+        ],
+    )
+    async def update_rate_limits(
+        self,
+        state: State,
+        name: PathName,
+        data: RateLimitsUpdateRequest,
+    ) -> ApiResponse[RateLimitsResponse]:
+        """Apply a partial update to the provider's rate-limit config.
+
+        Args:
+            state: Application state.
+            name: Provider name.
+            data: Partial-update payload; at least one field required.
+
+        Returns:
+            ``RateLimitsResponse`` reflecting the new effective config.
+
+        Raises:
+            NotFoundError: If the provider does not exist.
+            ApiValidationError: If the merged config fails validation.
+        """
+        app_state: AppState = state.app_state
+        try:
+            updated = await app_state.provider_management.update_rate_limits(
+                name,
+                data,
+            )
+        except ProviderNotFoundError as exc:
+            msg = f"Provider {name!r} not found"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="provider",
+                name=name,
+            )
+            raise NotFoundError(msg) from exc
+        except ProviderValidationError as exc:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="provider",
+                name=name,
+                error=str(exc),
+            )
+            raise ApiValidationError(str(exc)) from exc
+        return ApiResponse(data=updated)
 
     # ── Audit log (read access) ─────────────────────────────────
 

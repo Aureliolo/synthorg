@@ -19,6 +19,8 @@ from synthorg.api.dto import (
 from synthorg.api.dto_provider_capabilities import (
     ProviderAuditActor,
     ProviderAuditEventType,
+    RateLimitsResponse,
+    RateLimitsUpdateRequest,
 )
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
@@ -902,6 +904,98 @@ class ProviderManagementService:
                 },
             )
             return updated
+
+    # ── Rate-limit overrides ─────────────────────────────────
+
+    async def get_rate_limits(self, name: str) -> RateLimitsResponse:
+        """Read the persisted rate-limit configuration for one provider.
+
+        Args:
+            name: Provider name.
+
+        Returns:
+            ``RateLimitsResponse`` with ``0`` meaning unlimited per the
+            existing ``RateLimiterConfig`` semantics.
+
+        Raises:
+            ProviderNotFoundError: If the provider does not exist.
+        """
+        config = await self.get_provider(name)
+        rl = config.rate_limiter
+        return RateLimitsResponse(
+            requests_per_minute=rl.max_requests_per_minute,
+            concurrent_requests=rl.max_concurrent,
+        )
+
+    async def update_rate_limits(
+        self,
+        name: str,
+        request: RateLimitsUpdateRequest,
+        *,
+        actor: ProviderAuditActor | None = None,
+    ) -> RateLimitsResponse:
+        """Apply a partial update to a provider's rate-limit config.
+
+        Reads the current ``RateLimiterConfig``, merges the explicit
+        fields from ``request`` (``model_dump(exclude_unset=True)``),
+        validates, persists, hot-reloads the ProviderRegistry, audits.
+
+        Args:
+            name: Provider name.
+            request: Partial-update payload.  Empty patches are
+                rejected at the DTO layer.
+            actor: Optional audit actor; defaults to ``_SYSTEM_ACTOR``.
+
+        Returns:
+            ``RateLimitsResponse`` reflecting the new effective config.
+
+        Raises:
+            ProviderNotFoundError: If the provider does not exist.
+            ProviderValidationError: If the merged config fails
+                validation (negative values, etc.).
+        """
+        async with self._lock:
+            providers = await self._config_resolver.get_provider_configs()
+            existing = providers.get(name)
+            if existing is None:
+                msg = f"Provider {name!r} not found"
+                logger.warning(PROVIDER_NOT_FOUND, provider=name, error=msg)
+                raise ProviderNotFoundError(msg)
+
+            updates = request.model_dump(exclude_unset=True)
+            current = existing.rate_limiter
+            new_rl = current.model_copy(
+                update={
+                    # Wire field name → persisted field name.
+                    **(
+                        {"max_requests_per_minute": updates["requests_per_minute"]}
+                        if "requests_per_minute" in updates
+                        else {}
+                    ),
+                    **(
+                        {"max_concurrent": updates["concurrent_requests"]}
+                        if "concurrent_requests" in updates
+                        else {}
+                    ),
+                },
+            )
+            updated = existing.model_copy(update={"rate_limiter": new_rl})
+            new_providers = {**providers, name: updated}
+            await self._validate_and_persist(new_providers)
+
+            await self._audit(
+                provider_name=name,
+                event_type="provider_rate_limits_updated",
+                actor=actor,
+                payload={
+                    "fields_changed": sorted(updates.keys()),
+                    **updates,
+                },
+            )
+            return RateLimitsResponse(
+                requests_per_minute=new_rl.max_requests_per_minute,
+                concurrent_requests=new_rl.max_concurrent,
+            )
 
     def _build_router(
         self,

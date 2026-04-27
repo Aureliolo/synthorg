@@ -132,70 +132,58 @@ class ProviderAuditEvent(BaseModel):
 class RateLimitsResponse(BaseModel):
     """Effective rate-limit configuration for one provider.
 
+    Maps the persisted :class:`synthorg.core.resilience_config.RateLimiterConfig`
+    to a wire shape.  Both fields use ``0`` to mean "unlimited" on the
+    storage side and on the wire (matching the existing config
+    semantics; the client-side rate limiter treats ``0`` as no cap).
+
     Attributes:
-        requests_per_minute: Per-provider RPM cap (``None`` = unlimited).
-        requests_per_hour: Per-provider RPH cap (``None`` = unlimited).
+        requests_per_minute: Per-provider RPM cap (``0`` = unlimited).
         concurrent_requests: Max concurrent in-flight requests
-            (``None`` = unlimited).
-        tokens_per_minute: Per-provider TPM cap (``None`` = unlimited).
+            (``0`` = unlimited).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    requests_per_minute: int | None = Field(
-        default=None,
-        ge=1,
-        description="Per-provider RPM cap; null = unlimited",
+    requests_per_minute: int = Field(
+        default=0,
+        ge=0,
+        description="Per-provider RPM cap; 0 = unlimited",
     )
-    requests_per_hour: int | None = Field(
-        default=None,
-        ge=1,
-        description="Per-provider RPH cap; null = unlimited",
-    )
-    concurrent_requests: int | None = Field(
-        default=None,
-        ge=1,
-        description="Max concurrent in-flight requests; null = unlimited",
-    )
-    tokens_per_minute: int | None = Field(
-        default=None,
-        ge=1,
-        description="Per-provider TPM cap; null = unlimited",
+    concurrent_requests: int = Field(
+        default=0,
+        ge=0,
+        description="Max concurrent in-flight requests; 0 = unlimited",
     )
 
 
 class RateLimitsUpdateRequest(BaseModel):
     """Partial-update payload for ``PATCH /providers/{name}/rate-limits``.
 
-    Every field is optional; ``None`` means "leave unchanged" rather
-    than "set to unlimited" -- callers send the explicit ``Unset``
-    sentinel via ``model_dump(exclude_unset=True)`` to disambiguate.
-    At least one field MUST be set; an empty patch is HTTP 422 (callers
-    should not call PATCH without intent to change something).
+    Every field is optional; omitting a field means "leave unchanged".
+    Pass ``0`` to set a cap to "unlimited" (matching the persisted
+    ``RateLimiterConfig`` semantics).  Pass a positive int to apply a
+    new cap.  Negative values are rejected.
 
-    To set a limit to "unlimited", pass ``-1`` (sentinel) which the
-    service layer converts to ``None`` on the persisted record.  The
-    DTO accepts ``-1`` as the only non-``None`` non-positive value.
+    At least one field MUST be present in the body; an empty patch is
+    rejected with HTTP 422 (callers should not PATCH without intent to
+    change something).
 
     Attributes:
-        requests_per_minute: New RPM cap, ``-1`` for unlimited, or
+        requests_per_minute: New RPM cap (``0`` = unlimited), or unset
+            to leave unchanged.
+        concurrent_requests: New concurrent cap (``0`` = unlimited), or
             unset to leave unchanged.
-        requests_per_hour: New RPH cap, ``-1`` for unlimited, or unset.
-        concurrent_requests: New concurrent cap, ``-1`` for unlimited,
-            or unset.
-        tokens_per_minute: New TPM cap, ``-1`` for unlimited, or unset.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    requests_per_minute: int | None = Field(default=None, ge=-1)
-    requests_per_hour: int | None = Field(default=None, ge=-1)
-    concurrent_requests: int | None = Field(default=None, ge=-1)
-    tokens_per_minute: int | None = Field(default=None, ge=-1)
+    requests_per_minute: int | None = Field(default=None, ge=0)
+    concurrent_requests: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def _at_least_one_field(self) -> Self:
-        """Reject empty patches (no fields set) and reject ``0`` caps."""
+        """Reject empty patches (no fields set)."""
         explicit = self.model_dump(exclude_unset=True)
         if not explicit:
             msg = (
@@ -203,16 +191,6 @@ class RateLimitsUpdateRequest(BaseModel):
                 "patch has no effect"
             )
             raise ValueError(msg)
-        # Reject ``0`` explicitly; only ``-1`` (unlimited sentinel) and
-        # positive ints are meaningful caps.  ``ge=-1`` accepts 0 via
-        # Pydantic but the wire contract is ``positive | -1 | unset``.
-        for field, value in explicit.items():
-            if value == 0:
-                msg = (
-                    f"{field}: cap must be a positive int or -1 (unlimited); "
-                    "use null/unset to leave unchanged"
-                )
-                raise ValueError(msg)
         return self
 
 
