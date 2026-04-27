@@ -106,12 +106,19 @@ export function ErrorBanner({
   // Reject ``Infinity`` and ``NaN``: either would lock the Retry button
   // forever (``Infinity > 0`` is true and never decrements; ``Math.ceil(NaN)``
   // is ``NaN`` which fails every ``<= 1`` comparison).
-  const initialRemaining =
+  // Compute an absolute deadline (ms since epoch) per cooldown so the
+  // displayed remaining is always derived from wall-clock time rather
+  // than ``prev - 1`` per tick. Browsers throttle ``setInterval`` in
+  // backgrounded tabs (typically to 1 Hz max, more aggressively under
+  // load), so a decrement-per-tick countdown drifts behind real time
+  // and can keep the Retry button disabled past the actual cooldown
+  // expiry. Recomputing from the deadline keeps the timer correct even
+  // after the tab returns to the foreground.
+  const isValidCooldown =
     typeof retryAfterSeconds === 'number' &&
     Number.isFinite(retryAfterSeconds) &&
     retryAfterSeconds > 0
-      ? Math.ceil(retryAfterSeconds)
-      : null
+  const initialRemaining = isValidCooldown ? Math.ceil(retryAfterSeconds) : null
   const [remaining, setRemaining] = useState<number | null>(initialRemaining)
   // Track ``retryAfterSeconds`` AND ``retryResetToken`` so a fresh
   // 429 with the SAME duration but a NEW token (e.g. a different error
@@ -129,29 +136,32 @@ export function ErrorBanner({
     setRemaining(initialRemaining)
   }
   useEffect(() => {
-    if (
-      typeof retryAfterSeconds !== 'number' ||
-      !Number.isFinite(retryAfterSeconds) ||
-      retryAfterSeconds <= 0
-    )
-      return
+    if (!isValidCooldown) return
+    // Compute the absolute expiry once per cooldown inside the effect
+    // (calling ``Date.now()`` during render violates React's purity
+    // rules; effects are the canonical place for "now"). Each tick
+    // recomputes ``remaining`` from the deadline so a backgrounded
+    // tab whose ``setInterval`` was throttled catches up to wall-clock
+    // time on the next tick instead of drifting behind by N seconds.
+    const deadline = Date.now() + retryAfterSeconds * 1000
     const id = setInterval(() => {
-      setRemaining((prev) => {
-        if (prev === null || prev <= 1) {
-          clearInterval(id)
-          return null
-        }
-        return prev - 1
-      })
+      const next = Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
+      if (next <= 0) {
+        clearInterval(id)
+        setRemaining(null)
+        return
+      }
+      setRemaining(next)
     }, 1000)
     return () => clearInterval(id)
     // ``seedSignature`` covers ``retryResetToken`` changes too: when a
     // fresh error arrives with the same ``retryAfterSeconds`` but a new
     // token, render-phase reseed sets ``remaining`` back to the initial
-    // value AND this effect fires to start a new interval (without it
-    // the previous interval -- already cleared at zero -- would not
-    // restart, leaving the disabled-Retry state stuck).
-  }, [retryAfterSeconds, seedSignature])
+    // value AND this effect fires to compute a fresh deadline + start
+    // a new interval (without it the previous interval -- already
+    // cleared at zero -- would not restart, leaving the disabled-Retry
+    // state stuck).
+  }, [retryAfterSeconds, seedSignature, isValidCooldown])
   const retryDisabled = remaining !== null && remaining > 0
 
   return (
