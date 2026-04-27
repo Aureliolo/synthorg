@@ -181,104 +181,130 @@ jobs:
             exit 1
           fi
 
-          # ── Step 2: Read current cla-signatures.json from cla-signatures branch ──
-          GH_TOKEN="$APP_TOKEN" \
-            gh api "repos/$GITHUB_REPOSITORY/contents/.github/cla-signatures.json?ref=cla-signatures" \
-              --jq '.content' \
-            | base64 -d > /tmp/cla-current.json
-          echo "Current signatures:"
-          jq '.' /tmp/cla-current.json
+          # ── Steps 2-5: read-modify-write loop with retry on non-fast-forward ──
+          # Two contributors signing simultaneously on different PRs will
+          # race here: both read the same cla-signatures tip, both build
+          # a commit with that tip as parent, and the second PATCH /git/refs
+          # returns 422 (non-fast-forward). We don't want to lose that
+          # signer's record; retry by re-reading the latest tip and rebuilding
+          # the commit with the new parent. Idempotency on COMMENTER_ID
+          # means a re-fetch that already includes our signature short-circuits
+          # cleanly.
+          MAX_ATTEMPTS=5
+          attempt=0
+          while : ; do
+            attempt=$((attempt + 1))
+            if [ "$attempt" -gt "$MAX_ATTEMPTS" ]; then
+              echo "::error::Failed to PATCH cla-signatures ref after $MAX_ATTEMPTS attempts (concurrent writes?)"
+              exit 1
+            fi
+            echo "── Attempt $attempt/$MAX_ATTEMPTS ──"
 
-          # ── Step 3: Idempotency -- skip if commenter already signed ──
-          if jq -e --argjson id "$COMMENTER_ID" \
-              '.signedContributors | map(.id) | index($id)' \
-              /tmp/cla-current.json > /dev/null; then
-            echo "::notice::Commenter id $COMMENTER_ID already in signedContributors; nothing to record."
-            echo "already_signed=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+            # Step 2: Read current cla-signatures.json from cla-signatures branch.
+            GH_TOKEN="$APP_TOKEN" \
+              gh api "repos/$GITHUB_REPOSITORY/contents/.github/cla-signatures.json?ref=cla-signatures" \
+                --jq '.content' \
+              | base64 -d > /tmp/cla-current.json
 
-          # ── Step 4: Build the new signatures file ──
-          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          jq \
-            --arg name "$COMMENTER_LOGIN" \
-            --argjson id "$COMMENTER_ID" \
-            --argjson comment_id "$COMMENT_ID" \
-            --arg created_at "$NOW" \
-            --argjson repoId "$REPO_ID" \
-            --argjson pr "$PR_NUMBER" \
-            '.signedContributors += [{
-              name: $name,
-              id: $id,
-              comment_id: $comment_id,
-              created_at: $created_at,
-              repoId: $repoId,
-              pullRequestNo: $pr
-            }]' \
-            /tmp/cla-current.json > /tmp/cla-new.json
-          echo "New signatures:"
-          jq '.' /tmp/cla-new.json
+            # Step 3: Idempotency -- if our signature already landed
+            # (either we recorded it ourselves on a prior attempt, or a
+            # concurrent CLA run inserted us between reads), exit success.
+            if jq -e --argjson id "$COMMENTER_ID" \
+                '.signedContributors | map(.id) | index($id)' \
+                /tmp/cla-current.json > /dev/null; then
+              echo "::notice::Commenter id $COMMENTER_ID already in signedContributors; nothing to record."
+              echo "already_signed=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
 
-          # ── Step 5: Mint a signed commit on cla-signatures via Git Data API ──
-          # Pretty-print the JSON with a trailing newline so contributor-
-          # assistant + jq + manual edits all read the same canonical
-          # shape. The action emits 2-space-indented JSON; match that.
-          jq --indent 2 '.' /tmp/cla-new.json > /tmp/cla-final.json
-          # Append a trailing newline (jq omits it).
-          printf '\n' >> /tmp/cla-final.json
+            # Step 4: Build the new signatures file (canonical 2-space
+            # indent + trailing newline matches the contributor-assistant
+            # action's historical shape).
+            NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            jq --indent 2 \
+              --arg name "$COMMENTER_LOGIN" \
+              --argjson id "$COMMENTER_ID" \
+              --argjson comment_id "$COMMENT_ID" \
+              --arg created_at "$NOW" \
+              --argjson repoId "$REPO_ID" \
+              --argjson pr "$PR_NUMBER" \
+              '.signedContributors += [{
+                name: $name,
+                id: $id,
+                comment_id: $comment_id,
+                created_at: $created_at,
+                repoId: $repoId,
+                pullRequestNo: $pr
+              }]' \
+              /tmp/cla-current.json > /tmp/cla-final.json
+            printf '\n' >> /tmp/cla-final.json
 
-          BLOB_CONTENT_B64=$(base64 -w0 < /tmp/cla-final.json)
-          BLOB_SHA=$(jq -n \
-              --arg content "$BLOB_CONTENT_B64" \
-              '{content: $content, encoding: "base64"}' \
-            | GH_TOKEN="$APP_TOKEN" \
-                gh api --method POST \
-                  "repos/$GITHUB_REPOSITORY/git/blobs" \
-                  --input - --jq '.sha')
-          echo "Created blob: $BLOB_SHA"
+            # Step 5: Mint blob → tree → commit → ref-PATCH.
+            BLOB_CONTENT_B64=$(base64 -w0 < /tmp/cla-final.json)
+            BLOB_SHA=$(jq -n \
+                --arg content "$BLOB_CONTENT_B64" \
+                '{content: $content, encoding: "base64"}' \
+              | GH_TOKEN="$APP_TOKEN" \
+                  gh api --method POST \
+                    "repos/$GITHUB_REPOSITORY/git/blobs" \
+                    --input - --jq '.sha')
+            BRANCH_INFO=$(GH_TOKEN="$APP_TOKEN" \
+              gh api "repos/$GITHUB_REPOSITORY/branches/cla-signatures")
+            PARENT_SHA=$(jq -r '.commit.sha' <<< "$BRANCH_INFO")
+            BASE_TREE_SHA=$(jq -r '.commit.commit.tree.sha' <<< "$BRANCH_INFO")
+            NEW_TREE_SHA=$(jq -n \
+                --arg base_tree "$BASE_TREE_SHA" \
+                --arg blob "$BLOB_SHA" \
+                '{
+                  base_tree: $base_tree,
+                  tree: [{
+                    path: ".github/cla-signatures.json",
+                    mode: "100644",
+                    type: "blob",
+                    sha: $blob
+                  }]
+                }' \
+              | GH_TOKEN="$APP_TOKEN" \
+                  gh api --method POST \
+                    "repos/$GITHUB_REPOSITORY/git/trees" \
+                    --input - --jq '.sha')
+            COMMIT_MESSAGE="@$COMMENTER_LOGIN has signed the CLA in $GITHUB_REPOSITORY#$PR_NUMBER"
+            NEW_COMMIT_SHA=$(jq -n \
+                --arg msg "$COMMIT_MESSAGE" \
+                --arg tree "$NEW_TREE_SHA" \
+                --arg parent "$PARENT_SHA" \
+                '{message: $msg, tree: $tree, parents: [$parent]}' \
+              | GH_TOKEN="$APP_TOKEN" \
+                  gh api --method POST \
+                    "repos/$GITHUB_REPOSITORY/git/commits" \
+                    --input - --jq '.sha')
+            echo "Built commit $NEW_COMMIT_SHA on parent $PARENT_SHA"
 
-          BRANCH_INFO=$(GH_TOKEN="$APP_TOKEN" \
-            gh api "repos/$GITHUB_REPOSITORY/branches/cla-signatures")
-          PARENT_SHA=$(jq -r '.commit.sha' <<< "$BRANCH_INFO")
-          BASE_TREE_SHA=$(jq -r '.commit.commit.tree.sha' <<< "$BRANCH_INFO")
-          echo "Parent commit: $PARENT_SHA"
-          echo "Base tree:     $BASE_TREE_SHA"
-
-          NEW_TREE_SHA=$(jq -n \
-              --arg base_tree "$BASE_TREE_SHA" \
-              --arg blob "$BLOB_SHA" \
-              '{
-                base_tree: $base_tree,
-                tree: [{
-                  path: ".github/cla-signatures.json",
-                  mode: "100644",
-                  type: "blob",
-                  sha: $blob
-                }]
-              }' \
-            | GH_TOKEN="$APP_TOKEN" \
-                gh api --method POST \
-                  "repos/$GITHUB_REPOSITORY/git/trees" \
-                  --input - --jq '.sha')
-          echo "Created tree: $NEW_TREE_SHA"
-
-          COMMIT_MESSAGE="@$COMMENTER_LOGIN has signed the CLA in $GITHUB_REPOSITORY#$PR_NUMBER"
-          NEW_COMMIT_SHA=$(jq -n \
-              --arg msg "$COMMIT_MESSAGE" \
-              --arg tree "$NEW_TREE_SHA" \
-              --arg parent "$PARENT_SHA" \
-              '{message: $msg, tree: $tree, parents: [$parent]}' \
-            | GH_TOKEN="$APP_TOKEN" \
-                gh api --method POST \
-                  "repos/$GITHUB_REPOSITORY/git/commits" \
-                  --input - --jq '.sha')
-          echo "Created commit: $NEW_COMMIT_SHA"
-
-          GH_TOKEN="$APP_TOKEN" \
-            gh api --method PATCH \
-              "repos/$GITHUB_REPOSITORY/git/refs/heads/cla-signatures" \
-              -f sha="$NEW_COMMIT_SHA"
-          echo "Updated cla-signatures ref to $NEW_COMMIT_SHA"
+            # Issue the ref PATCH. force=false (the default) makes a
+            # non-fast-forward update return 422; capture the body so
+            # we can distinguish "lost the race" from other failures.
+            patch_body=$(jq -n --arg sha "$NEW_COMMIT_SHA" '{sha: $sha}')
+            patch_status=$(printf '%s' "$patch_body" \
+              | GH_TOKEN="$APP_TOKEN" \
+                  gh api --method PATCH \
+                    "repos/$GITHUB_REPOSITORY/git/refs/heads/cla-signatures" \
+                    --input - >/tmp/patch-resp 2>/tmp/patch-err \
+              && echo ok || echo fail)
+            if [ "$patch_status" = "ok" ]; then
+              echo "Updated cla-signatures ref to $NEW_COMMIT_SHA"
+              break
+            fi
+            if grep -q "fast forward" /tmp/patch-err 2>/dev/null \
+                || grep -q "Update is not a fast forward" /tmp/patch-err 2>/dev/null; then
+              backoff=$((attempt * attempt))
+              echo "::warning::Concurrent write detected on cla-signatures (attempt $attempt); retrying in ${backoff}s"
+              sleep "$backoff"
+              continue
+            fi
+            echo "::error::Unexpected gh api PATCH failure on cla-signatures ref:"
+            cat /tmp/patch-err
+            exit 1
+          done
 
           # ── Step 6: Verify signature ──
           VERIFY=$(GH_TOKEN="$APP_TOKEN" \
@@ -292,28 +318,73 @@ jobs:
           fi
           echo "Signature verified: verified=$VERIFIED reason=$REASON"
 
+          # ── Step 7: Compute pending unsigned PR authors ──
+          # /tmp/cla-final.json holds the post-signature state for THIS
+          # mint. Extract the set of signed logins, subtract from the PR
+          # author set, then subtract the bot allowlist (these never
+          # need a CLA -- they match the contributor-assistant action's
+          # `allowlist:` input on cla-check).
+          jq -r '.signedContributors[].name' /tmp/cla-final.json \
+            | sort -u > /tmp/cla-signed
+          # PR_AUTHORS already collected earlier in /tmp/pr-authors.
+          # Bot allowlist (mirror of cla-check.allowlist input).
+          printf '%s\n' \
+            'dependabot[bot]' \
+            'renovate[bot]' \
+            'synthorg-repo-bot[bot]' \
+            'github-actions[bot]' \
+            | sort -u > /tmp/cla-bot-allowlist
+          comm -23 /tmp/pr-authors /tmp/cla-bot-allowlist > /tmp/cla-required
+          comm -23 /tmp/cla-required /tmp/cla-signed > /tmp/cla-pending
+          PENDING_COUNT=$(wc -l < /tmp/cla-pending | tr -d '[:space:]')
+          PENDING_LIST=$(sed 's/^/@/' /tmp/cla-pending | paste -sd ', ')
+          echo "Required signers (excluding bot allowlist):"
+          cat /tmp/cla-required
+          echo "Pending unsigned authors after this mint: $PENDING_COUNT"
+          if [ "$PENDING_COUNT" -gt 0 ]; then
+            echo "$PENDING_LIST"
+          fi
+
           # Outputs for downstream steps.
-          echo "commit_sha=$NEW_COMMIT_SHA" >> "$GITHUB_OUTPUT"
-          echo "pr_head_sha=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
-          echo "already_signed=false" >> "$GITHUB_OUTPUT"
+          {
+            echo "commit_sha=$NEW_COMMIT_SHA"
+            echo "pr_head_sha=$PR_HEAD_SHA"
+            echo "already_signed=false"
+            echo "pending_count=$PENDING_COUNT"
+            echo "pending_list=$PENDING_LIST"
+          } >> "$GITHUB_OUTPUT"
         id: record
 
-      - name: Post all-signed confirmation comment
+      - name: Post signature confirmation comment
         if: steps.record.outputs.already_signed == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.issue.number }}
+          COMMENTER_LOGIN: ${{ github.event.comment.user.login }}
+          PENDING_COUNT: ${{ steps.record.outputs.pending_count }}
+          PENDING_LIST: ${{ steps.record.outputs.pending_list }}
         run: |
           set -euo pipefail
+          # On a multi-author PR, recording one signature does not
+          # necessarily satisfy the CLA gate. Pick the comment body
+          # accordingly so the thread does not falsely declare the PR
+          # signed while other authors are still unsigned.
+          if [ "$PENDING_COUNT" -eq 0 ]; then
+            body="All contributors have signed the CLA. Thank you!"
+          else
+            body="Recorded @${COMMENTER_LOGIN}'s CLA signature. Still waiting on ${PENDING_COUNT} contributor(s): ${PENDING_LIST}. Each remaining author needs to reply with the sign-text comment to complete the CLA gate."
+          fi
           if ! gh api --method POST \
             "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
-            -f body="All contributors have signed the CLA. Thank you!"; then
-            echo "::error::Failed to post all-signed confirmation comment to PR #$PR_NUMBER"
+            -f body="$body"; then
+            echo "::error::Failed to post CLA confirmation comment to PR #$PR_NUMBER"
             exit 1
           fi
 
       - name: Re-run the cla-check workflow on PR head SHA
-        if: steps.record.outputs.already_signed == 'false'
+        if: >-
+          steps.record.outputs.already_signed == 'false'
+          && steps.record.outputs.pending_count == '0'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_HEAD_SHA: ${{ steps.record.outputs.pr_head_sha }}

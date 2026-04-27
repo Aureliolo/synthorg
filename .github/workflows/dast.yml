@@ -13,6 +13,12 @@ concurrency:
 
 env:
   TRIVY_VERSION: 0.70.0
+  # COMPOSE_FILE makes every `docker compose` invocation in this job pick
+  # up both the base + DAST overlay automatically (colon separator on
+  # Linux runners), so we don't repeat `-f docker/compose.yml -f
+  # docker/compose.dast.yml` on every step. Workflow-scoped so the
+  # build / start / exec / logs / down calls share the same view.
+  COMPOSE_FILE: docker/compose.yml:docker/compose.dast.yml
 
 jobs:
   zap-scan:
@@ -86,12 +92,13 @@ jobs:
       # workflow-built `BASE_IMAGE` through to the Dockerfile via the
       # backend.build.args mapping in docker/compose.yml. The DAST
       # overlay (compose.dast.yml) is a no-op at build time -- it only
-      # patches runtime fields (depends_on, environment) -- but we pass
-      # both files for symmetry with `up` and `down`.
+      # patches runtime fields (depends_on, environment) -- but it is
+      # picked up automatically via the workflow-scoped COMPOSE_FILE
+      # env var (above) for symmetry with `up`, `exec`, `logs`, `down`.
       - name: Build backend image
         env:
           BASE_IMAGE: ghcr.io/aureliolo/synthorg-backend-base:${{ steps.base.outputs.tag }}
-        run: docker compose -f docker/compose.yml -f docker/compose.dast.yml build backend
+        run: docker compose build backend
 
       # Start backend only. The DAST overlay swaps the backend onto
       # SQLite + internal bus, so neither postgres nor nats start (no
@@ -99,7 +106,7 @@ jobs:
       # Images subscription that the DAST workflow does not carry).
       # data-init still runs to chown the bind-mounted /data volume.
       - name: Start backend
-        run: docker compose -f docker/compose.yml -f docker/compose.dast.yml up -d backend
+        run: docker compose up -d backend
 
       - name: Wait for healthy
         run: |
@@ -121,7 +128,7 @@ jobs:
             exit 0
           fi
           echo "::error::Backend failed to start within 60s"
-          docker compose -f docker/compose.yml -f docker/compose.dast.yml logs backend
+          docker compose logs backend
           exit 1
 
       # Generate a long-lived system-user JWT so ZAP can scan authenticated
@@ -137,7 +144,7 @@ jobs:
         id: jwt
         run: |
           set -euo pipefail
-          TOKEN=$(docker compose -f docker/compose.yml -f docker/compose.dast.yml exec -T backend \
+          TOKEN=$(docker compose exec -T backend \
             python -c "
           import os, jwt, datetime, uuid
           secret = os.environ['SYNTHORG_JWT_SECRET']
@@ -199,7 +206,7 @@ jobs:
 
       - name: Stop backend
         if: always()
-        run: docker compose -f docker/compose.yml -f docker/compose.dast.yml down
+        run: docker compose down
 
   report-failure:
     name: Open / update tracking issue on schedule failure
