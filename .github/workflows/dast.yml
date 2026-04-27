@@ -128,7 +128,14 @@ jobs:
             exit 0
           fi
           echo "::error::Backend failed to start within 60s"
-          docker compose logs backend
+          # Capture the whole compose project's diagnostic state so a
+          # scheduled-run failure is triageable without rerun: ps shows
+          # which deps started, which exited, and exit codes; logs (no
+          # service arg) emits every service so a `data-init` chown
+          # failure or stuck dependency surfaces alongside backend's
+          # own output. Tail-bound to keep the artifact size sane.
+          docker compose ps
+          docker compose logs --tail=500
           exit 1
 
       # Generate a long-lived system-user JWT so ZAP can scan authenticated
