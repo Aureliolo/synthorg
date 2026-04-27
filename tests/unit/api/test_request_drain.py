@@ -266,7 +266,7 @@ class TestRequestDrainMiddleware:
             order.append(f"app-saw:{message['type']}")
 
         class _Tracked(RequestDrainMiddleware):
-            async def begin_drain(self) -> None:  # type: ignore[override]
+            async def begin_drain(self) -> None:
                 order.append("begin_drain")
                 await super().begin_drain()
 
