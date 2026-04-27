@@ -167,6 +167,48 @@ class TestConnectionRepository:
         assert [c.name for c in page_two] == ["c", "d"]
         assert [c.name for c in unbounded] == ["a", "b", "c", "d", "e"]
 
+    async def test_list_all_offset_beyond_collection_returns_empty(
+        self, backend: PersistenceBackend
+    ) -> None:
+        for name in ("a", "b", "c"):
+            await backend.connections.save(_connection(name))
+
+        page = await backend.connections.list_all(limit=10, offset=100)
+
+        assert page == ()
+
+    async def test_list_all_negative_limit_returns_empty(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.connections.save(_connection("only"))
+
+        # Both ``limit=0`` and ``limit=-1`` are documented as returning ()
+        # without hitting the database.
+        assert await backend.connections.list_all(limit=0) == ()
+        assert await backend.connections.list_all(limit=-1) == ()
+
+    async def test_save_round_trips_partial_zero_rate_limiter(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # Edge case the audit flagged: ``rpm > 0`` + ``concurrent == 0`` is a
+        # legitimate config but the deserialization predicate
+        # ``if rate_limit_rpm or rate_limit_concurrent`` would still yield
+        # truthy. Confirm the round-trip preserves the partial-zero shape.
+        rate_limiter = RateLimiterConfig(
+            max_requests_per_minute=60,
+            max_concurrent=0,
+        )
+        await backend.connections.save(
+            _connection("partial-zero", rate_limiter=rate_limiter),
+        )
+
+        fetched = await backend.connections.get(NotBlankStr("partial-zero"))
+
+        assert fetched is not None
+        assert fetched.rate_limiter is not None
+        assert fetched.rate_limiter.max_requests_per_minute == 60
+        assert fetched.rate_limiter.max_concurrent == 0
+
     async def test_list_by_type_pagination(self, backend: PersistenceBackend) -> None:
         for name in ("a", "b", "c"):
             await backend.connections.save(
@@ -426,6 +468,20 @@ class TestWebhookReceiptRepository:
         )
 
         assert [r.id for r in rows] == ["r-2", "r-3"]
+
+    async def test_get_by_connection_offset_beyond_collection(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.connections.save(_connection("github-bot"))
+        await backend.webhook_receipts.log(_receipt())
+
+        rows = await backend.webhook_receipts.get_by_connection(
+            NotBlankStr("github-bot"),
+            limit=10,
+            offset=100,
+        )
+
+        assert rows == ()
 
     async def test_get_by_connection_filters_by_name(
         self, backend: PersistenceBackend

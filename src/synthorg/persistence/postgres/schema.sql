@@ -881,7 +881,7 @@ CREATE TABLE connections (
     connection_type TEXT NOT NULL CHECK (
         connection_type IN (
             'github', 'slack', 'smtp', 'database',
-            'generic_http', 'oauth_app'
+            'generic_http', 'oauth_app', 'a2a_peer'
         )
     ),
     auth_method TEXT NOT NULL CHECK (

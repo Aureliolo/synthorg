@@ -1,5 +1,7 @@
 -- Create index "idx_approvals_status_created_at" to table: "approvals"
 CREATE INDEX "idx_approvals_status_created_at" ON "approvals" ("status", "created_at" DESC);
+-- Modify "connections" table
+ALTER TABLE "connections" DROP CONSTRAINT "connections_connection_type_check", ADD CONSTRAINT "connections_connection_type_check" CHECK (connection_type = ANY (ARRAY['github'::text, 'slack'::text, 'smtp'::text, 'database'::text, 'generic_http'::text, 'oauth_app'::text, 'a2a_peer'::text]));
 -- Create index "idx_oplog_category_ts" to table: "org_facts_operation_log"
 CREATE INDEX "idx_oplog_category_ts" ON "org_facts_operation_log" ("category", "timestamp" DESC);
 -- Create index "idx_rt_session_used" to table: "refresh_tokens"

@@ -222,11 +222,13 @@ class SQLiteConnectionRepository:
         offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List all connections, sorted by name for determinism."""
+        if limit is not None and limit <= 0:
+            return ()
         sql = f"SELECT {_SELECT_COLS} FROM connections ORDER BY name ASC"  # noqa: S608
         params: tuple[object, ...] = ()
         if limit is not None:
             sql += " LIMIT ? OFFSET ?"
-            params = (int(limit), int(offset))
+            params = (int(limit), max(0, int(offset)))
         try:
             async with self._db.execute(sql, params) as cursor:
                 rows = await cursor.fetchall()
@@ -238,7 +240,16 @@ class SQLiteConnectionRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        return tuple(_row_to_connection(row) for row in rows)
+        try:
+            return tuple(_row_to_connection(row) for row in rows)
+        except (ValueError, TypeError) as exc:
+            msg = "Failed to deserialize connection rows"
+            logger.warning(
+                PERSISTENCE_CONNECTION_DESERIALIZE_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
 
     async def list_by_type(
         self,
@@ -248,6 +259,8 @@ class SQLiteConnectionRepository:
         offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List connections of *connection_type*, sorted by name."""
+        if limit is not None and limit <= 0:
+            return ()
         sql = (
             f"SELECT {_SELECT_COLS} FROM connections "  # noqa: S608
             "WHERE connection_type = ? ORDER BY name ASC"
@@ -255,7 +268,7 @@ class SQLiteConnectionRepository:
         params: tuple[object, ...] = (connection_type.value,)
         if limit is not None:
             sql += " LIMIT ? OFFSET ?"
-            params = (*params, int(limit), int(offset))
+            params = (*params, int(limit), max(0, int(offset)))
         try:
             async with self._db.execute(sql, params) as cursor:
                 rows = await cursor.fetchall()
@@ -268,7 +281,20 @@ class SQLiteConnectionRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        return tuple(_row_to_connection(row) for row in rows)
+        try:
+            return tuple(_row_to_connection(row) for row in rows)
+        except (ValueError, TypeError) as exc:
+            msg = (
+                f"Failed to deserialize connection rows of type "
+                f"{connection_type.value!r}"
+            )
+            logger.warning(
+                PERSISTENCE_CONNECTION_DESERIALIZE_FAILED,
+                connection_type=connection_type.value,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
 
     async def delete(self, name: NotBlankStr) -> bool:
         """Delete a connection by name; return ``True`` if a row was removed."""

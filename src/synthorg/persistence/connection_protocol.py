@@ -37,7 +37,8 @@ class ConnectionRepository(Protocol):
 
         Sorted by ``name`` ascending; pass ``limit=None`` (default) to
         retain the legacy fetch-all semantics, or set both to consume
-        a paginated window.
+        a paginated window. ``limit <= 0`` returns ``()``; negative
+        ``offset`` is treated as ``0``.
         """
         ...
 
@@ -48,7 +49,10 @@ class ConnectionRepository(Protocol):
         limit: int | None = None,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
-        """List connections of a specific type with optional limit/offset."""
+        """List connections of a specific type with optional limit/offset.
+
+        ``limit <= 0`` returns ``()``; negative ``offset`` is treated as ``0``.
+        """
         ...
 
     async def delete(self, name: NotBlankStr) -> bool:

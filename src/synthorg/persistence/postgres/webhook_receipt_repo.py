@@ -83,9 +83,20 @@ class PostgresWebhookReceiptRepository:
         if receipt.payload_json:
             try:
                 payload_obj: Any = json.loads(receipt.payload_json)
-            except ValueError, TypeError:
-                # Quarantine malformed JSON as a string under a stable key
-                # so downstream readers still get a deserializable value.
+            except (ValueError, TypeError) as exc:
+                # Quarantine malformed JSON as a string under a stable key so
+                # downstream readers still get a deserializable value.  Log
+                # at WARNING so operators see a signal that an upstream
+                # webhook source is emitting non-JSON payloads; without this
+                # the corruption is invisible.
+                logger.warning(
+                    PERSISTENCE_WEBHOOK_RECEIPT_LOG_FAILED,
+                    receipt_id=str(receipt.id),
+                    connection_name=str(receipt.connection_name),
+                    reason="payload_json_malformed_quarantined",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
                 payload_obj = {"raw": receipt.payload_json}
         else:
             payload_obj = {}
@@ -148,7 +159,7 @@ class PostgresWebhookReceiptRepository:
                     f"SELECT {_SELECT_COLS} FROM webhook_receipts "  # noqa: S608
                     "WHERE connection_name = %s "
                     "ORDER BY received_at DESC, id ASC LIMIT %s OFFSET %s",
-                    (str(connection_name), int(limit), int(offset)),
+                    (str(connection_name), int(limit), max(0, int(offset))),
                 )
                 rows = await cur.fetchall()
         except Exception as exc:

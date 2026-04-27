@@ -192,7 +192,12 @@ def _create_composite_backend(
             children[name] = _LEAF_REGISTRY.build(name, config, embedder=embedder)
         except StrategyFactoryNotFoundError as exc:
             msg = f"Composite child '{name}' is not a recognized backend"
-            logger.exception(MEMORY_BACKEND_UNKNOWN, backend=name)
+            logger.warning(
+                MEMORY_BACKEND_UNKNOWN,
+                backend=name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise MemoryConfigError(msg) from exc
     backend = CompositeBackend(
         children=children,
@@ -281,5 +286,10 @@ def create_memory_backend(
         return _REGISTRY.build(config.backend, config, embedder=embedder)
     except StrategyFactoryNotFoundError as exc:
         msg = f"Unknown memory backend: {config.backend!r}"
-        logger.exception(MEMORY_BACKEND_UNKNOWN, backend=config.backend)
+        logger.warning(
+            MEMORY_BACKEND_UNKNOWN,
+            backend=config.backend,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         raise MemoryConfigError(msg) from exc

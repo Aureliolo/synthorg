@@ -37,7 +37,7 @@ export const subworkflowsHandlers = [
     HttpResponse.json(successFor<typeof searchSubworkflows>([])),
   ),
   http.get('/api/v1/subworkflows/:id/versions', () =>
-    HttpResponse.json(successFor<typeof listVersions>([])),
+    HttpResponse.json(paginatedFor<typeof listVersions>(emptyPage<string>())),
   ),
   http.get('/api/v1/subworkflows/:id/versions/:version', ({ params }) =>
     HttpResponse.json(
@@ -50,7 +50,7 @@ export const subworkflowsHandlers = [
     ),
   ),
   http.get('/api/v1/subworkflows/:id/versions/:version/parents', () =>
-    HttpResponse.json(successFor<typeof listParents>([])),
+    HttpResponse.json(paginatedFor<typeof listParents>(emptyPage())),
   ),
   http.post('/api/v1/subworkflows', async ({ request }) => {
     let body: unknown

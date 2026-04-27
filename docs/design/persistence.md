@@ -140,6 +140,37 @@ in `src/synthorg/api/controllers/departments.py::_mutate_dept_policies_with_retr
 and should be reused verbatim for any future JSON-blob settings that are
 mutated from multiple workers.
 
+### Repository pagination contract
+
+The `limit: int | None = None, offset: int = 0` keyword-only signature is the
+canonical pagination shape for `list_*`/`query` methods across the repository
+layer. `limit=None` preserves fetch-all semantics so internal callers that do
+not paginate are unaffected; setting it pushes `LIMIT`/`OFFSET` down to the
+database. The pattern is implemented by:
+
+- `TaskRepository.list_tasks` (filterable + paginated; documented in detail
+  below).
+- `ConnectionRepository.list_all`, `list_by_type` (paginated since the
+  durable backends landed; in-memory stubs and durable repos share the
+  signature).
+- `WebhookReceiptRepository.get_by_connection` (already had `limit`; gained
+  `offset` so callers can walk the receipt log without re-issuing).
+- `SessionRepository.list_all`, `list_by_user`.
+- `McpInstallationRepository.list_all` (deterministic order via
+  `installed_at ASC, catalog_entry_id ASC` so pages are stable across
+  identical-timestamp inserts).
+- `CostRecordRepository.query` (filtered; orders by `timestamp DESC,
+  agent_id ASC` before slicing).
+- `OrgFactRepository.query` (existing `limit=5` default kept; `offset`
+  added) and `list_by_category`.
+- `OntologyEntityRepository.list_entities`, `search` (legacy 1000-row cap
+  preserved when `limit=None`).
+- `ApiKeyRepository.list_by_user`.
+
+API endpoints that expose these reads wrap the page in a `PaginatedResponse`
+via `synthorg.api.pagination.paginate_cursor` (see the next section); the
+repository layer itself stays cursor-agnostic.
+
 ### Task pagination contract
 
 The `TaskRepository` protocol ships two paginated read methods that every

@@ -538,9 +538,10 @@ INSERT INTO conflict_escalations (
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 # ``execute`` per id keeps the payload-per-id contract
                 # subscribers depend on while reusing the single
-                # connection. Postgres coalesces NOTIFYs at COMMIT time
-                # so this is also cheaper than the per-id-commit path
-                # the loop previously used.
+                # connection. Each payload is distinct (id+status), so
+                # Postgres' duplicate-NOTIFY coalescing at COMMIT does not
+                # apply; the win is the eliminated per-id pool checkout
+                # the loop previously incurred.
                 for escalation_id in valid_ids:
                     payload = f"{escalation_id}:{status}"
                     await cur.execute(

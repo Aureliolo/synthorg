@@ -110,5 +110,10 @@ def create_backend(config: PersistenceConfig) -> PersistenceBackend:
         return _REGISTRY.build(config)
     except StrategyFactoryNotFoundError as exc:
         msg = f"Unknown persistence backend: {config.backend!r}"
-        logger.exception(PERSISTENCE_BACKEND_UNKNOWN, backend=config.backend)
+        logger.warning(
+            PERSISTENCE_BACKEND_UNKNOWN,
+            backend=config.backend,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         raise PersistenceConnectionError(msg) from exc

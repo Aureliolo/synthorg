@@ -453,6 +453,31 @@ class TestMCPCatalogController:
         assert len(response.data) >= 8
         assert response.pagination.offset == 0
 
+    async def test_browse_rejects_tampered_cursor(self) -> None:
+        from synthorg.api.controllers.mcp_catalog import MCPCatalogController
+        from synthorg.api.cursor import CursorSecret, InvalidCursorError
+        from synthorg.integrations.mcp_catalog.service import CatalogService
+
+        state = {
+            "app_state": MagicMock(
+                mcp_catalog_service=CatalogService(),
+                cursor_secret=CursorSecret.ephemeral(),
+            ),
+        }
+        ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
+
+        # Tampered cursor that does not carry an HMAC signature recognised
+        # by ``cursor_secret``. Controller-level: confirm the decode error
+        # surfaces as ``InvalidCursorError`` (mapped to HTTP 400 by the
+        # exception handler) rather than corrupted data.
+        with pytest.raises(InvalidCursorError):
+            await ctrl.browse_catalog.fn(
+                ctrl,
+                state=state,
+                limit=10,
+                cursor="not-a-real-cursor",
+            )
+
     async def test_install_connectionless_entry(self) -> None:
         from synthorg.api.controllers.mcp_catalog import (
             InstallEntryRequest,

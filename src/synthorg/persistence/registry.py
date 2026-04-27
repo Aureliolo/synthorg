@@ -18,6 +18,7 @@ from synthorg.observability.events.registry import (
     REGISTRY_FACTORY_INVOKED,
     REGISTRY_FACTORY_NOT_FOUND,
 )
+from synthorg.observability.redaction import safe_error_description
 
 if TYPE_CHECKING:
     from synthorg.persistence.config import PersistenceConfig
@@ -92,11 +93,17 @@ class PersistenceBackendRegistry:
             )
         try:
             backend = factory(config)
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            # Persistence factories take a ``PersistenceConfig`` whose
+            # ``PostgresConfig`` carries ``SecretStr`` credentials.  Use
+            # ``logger.warning`` + ``safe_error_description`` so frame-locals
+            # are not captured in logs (SEC-1).
+            logger.warning(
                 REGISTRY_FACTORY_FAILED,
                 kind=self._KIND,
                 name=name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         logger.debug(

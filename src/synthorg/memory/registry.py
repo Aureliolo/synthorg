@@ -18,6 +18,7 @@ from synthorg.observability.events.registry import (
     REGISTRY_FACTORY_INVOKED,
     REGISTRY_FACTORY_NOT_FOUND,
 )
+from synthorg.observability.redaction import safe_error_description
 
 if TYPE_CHECKING:
     from synthorg.memory.backends.mem0.config import Mem0EmbedderConfig
@@ -97,11 +98,16 @@ class MemoryBackendRegistry:
             )
         try:
             backend = factory(config, embedder=embedder)
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            # Memory factories may close over an embedder containing API
+            # credentials.  Use ``logger.warning`` + ``safe_error_description``
+            # to avoid frame-local capture in logs (SEC-1, defensive).
+            logger.warning(
                 REGISTRY_FACTORY_FAILED,
                 kind=self._KIND,
                 name=name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         logger.debug(

@@ -134,7 +134,7 @@ class SQLiteWebhookReceiptRepository:
                 f"SELECT {_SELECT_COLS} FROM webhook_receipts "  # noqa: S608
                 "WHERE connection_name = ? "
                 "ORDER BY received_at DESC, id ASC LIMIT ? OFFSET ?",
-                (str(connection_name), int(limit), int(offset)),
+                (str(connection_name), int(limit), max(0, int(offset))),
             ) as cursor:
                 rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
