@@ -299,6 +299,16 @@ class TeamController(Controller):
             team_map: dict[str, dict[str, Any]] = {
                 normalize_identifier(str(t.get("name", ""))): t for t in teams
             }
+            if len(team_map) != len(teams):
+                # Defense-in-depth: Department validation should reject
+                # case-collision team names at write time, but if persisted
+                # data ever contains them, refuse to reorder rather than
+                # silently dropping the overwritten entries.
+                msg = (
+                    "Cannot reorder teams: stored team names contain "
+                    "case-insensitive duplicates"
+                )
+                raise ApiValidationError(msg)
             current_names = set(team_map)
             requested_order = [normalize_identifier(n) for n in data.team_names]
             requested_names = set(requested_order)
