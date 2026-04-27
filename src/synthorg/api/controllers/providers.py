@@ -40,11 +40,15 @@ from synthorg.api.dto_discovery import (
     RemoveAllowlistEntryRequest,
 )
 from synthorg.api.dto_provider_capabilities import (
+    AddModelRequest,  # noqa: TC001 -- runtime litestar request body
+    CredentialsRotateRequest,  # noqa: TC001 -- runtime litestar request body
     PresetOverride,  # noqa: TC001 -- runtime litestar response model
     PresetOverrideUpdateRequest,  # noqa: TC001 -- runtime litestar request body
     ProviderAuditEvent,  # noqa: TC001 -- runtime litestar response model
     RateLimitsResponse,  # noqa: TC001 -- runtime litestar response model
     RateLimitsUpdateRequest,  # noqa: TC001 -- runtime litestar request body
+    SyncModelsRequest,  # noqa: TC001 -- runtime litestar request body
+    SyncModelsResponse,  # noqa: TC001 -- runtime litestar response model
 )
 from synthorg.api.dto_providers import (
     ProviderModelResponse,
@@ -916,6 +920,156 @@ class ProviderController(Controller):
             )
             raise ApiError(msg)
         return ApiResponse(data=to_provider_model_response(model))
+
+    # ── Manual model add + bulk sync ────────────────────────────
+
+    @post(
+        "/{name:str}/models",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy("providers.add_model", key="user"),
+        ],
+    )
+    async def add_model(
+        self,
+        state: State,
+        name: PathName,
+        data: AddModelRequest,
+    ) -> ApiResponse[ProviderResponse]:
+        """Add a single ``ProviderModelConfig`` to the persisted list.
+
+        Args:
+            state: Application state.
+            name: Provider name.
+            data: Payload carrying the new model spec.
+
+        Returns:
+            Updated provider response (secrets stripped).
+
+        Raises:
+            NotFoundError: If the provider does not exist.
+            ConflictError: If a model with the same id is already
+                persisted on the provider.
+        """
+        app_state: AppState = state.app_state
+        try:
+            updated = await app_state.provider_management.add_model(name, data)
+        except ProviderNotFoundError as exc:
+            msg = f"Provider {name!r} not found"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="provider",
+                name=name,
+            )
+            raise NotFoundError(msg) from exc
+        except ProviderAlreadyExistsError as exc:
+            logger.warning(
+                API_RESOURCE_CONFLICT,
+                resource="model",
+                name=data.model.id,
+                provider=name,
+            )
+            raise ConflictError(str(exc)) from exc
+        return ApiResponse(data=to_provider_response(updated))
+
+    @post(
+        "/{name:str}/models/sync",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy("providers.sync_models", key="user"),
+        ],
+    )
+    async def sync_models(
+        self,
+        state: State,
+        name: PathName,
+        data: SyncModelsRequest,
+    ) -> ApiResponse[SyncModelsResponse]:
+        """Re-run discovery + pricing enrichment for the provider.
+
+        Args:
+            state: Application state.
+            name: Provider name.
+            data: Sync request (``replace_existing`` flag, optional
+                ``preset_hint``).
+
+        Returns:
+            ``SyncModelsResponse`` with the diff and the new model
+            list.
+
+        Raises:
+            NotFoundError: If the provider does not exist.
+        """
+        app_state: AppState = state.app_state
+        try:
+            result = await app_state.provider_management.sync_models(name, data)
+        except ProviderNotFoundError as exc:
+            msg = f"Provider {name!r} not found"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="provider",
+                name=name,
+            )
+            raise NotFoundError(msg) from exc
+        return ApiResponse(data=result)
+
+    # ── Credentials rotation ────────────────────────────────────
+
+    @post(
+        "/{name:str}/credentials/rotate",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy(
+                "providers.rotate_credentials",
+                key="user",
+            ),
+        ],
+    )
+    async def rotate_credentials(
+        self,
+        state: State,
+        name: PathName,
+        data: CredentialsRotateRequest,
+    ) -> ApiResponse[ProviderResponse]:
+        """Rotate the secret credentials on an existing provider.
+
+        Args:
+            state: Application state.
+            name: Provider name.
+            data: Discriminated-union rotation payload keyed by
+                ``auth_type``.
+
+        Returns:
+            Updated provider response (secrets stripped).
+
+        Raises:
+            NotFoundError: If the provider does not exist.
+            ApiValidationError: If the rotation payload's ``auth_type``
+                does not match the provider's persisted ``auth_type``.
+        """
+        app_state: AppState = state.app_state
+        try:
+            updated = await app_state.provider_management.rotate_credentials(
+                name,
+                data,
+            )
+        except ProviderNotFoundError as exc:
+            msg = f"Provider {name!r} not found"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="provider",
+                name=name,
+            )
+            raise NotFoundError(msg) from exc
+        except ProviderValidationError as exc:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="provider",
+                name=name,
+                error=str(exc),
+            )
+            raise ApiValidationError(str(exc)) from exc
+        return ApiResponse(data=to_provider_response(updated))
 
     # ── Preset overrides ────────────────────────────────────────
 

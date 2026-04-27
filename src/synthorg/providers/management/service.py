@@ -7,6 +7,7 @@ and hot-reload of ProviderRegistry + ModelRouter in AppState.
 import asyncio
 import json
 import time
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.api.dto import (
@@ -17,10 +18,14 @@ from synthorg.api.dto import (
     UpdateProviderRequest,
 )
 from synthorg.api.dto_provider_capabilities import (
+    AddModelRequest,
+    CredentialsRotateRequest,
     ProviderAuditActor,
     ProviderAuditEventType,
     RateLimitsResponse,
     RateLimitsUpdateRequest,
+    SyncModelsRequest,
+    SyncModelsResponse,
 )
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
@@ -90,6 +95,72 @@ if TYPE_CHECKING:
 # tests).  Real user mutations pass an explicit ``ProviderAuditActor``
 # from the controller derived from ``AuthenticatedUser``.
 _SYSTEM_ACTOR = ProviderAuditActor(id="system", label="provider-management")
+
+
+def _mask_secret(secret: str) -> str:
+    """Mask a secret for safe inclusion in audit logs.
+
+    Returns a string of the form ``"abcd***xyz9"`` with the first 4
+    and last 4 characters preserved and the middle replaced by
+    ``***``.  Secrets shorter than 8 characters are masked entirely
+    (``"********"``) so the prefix/suffix never overlap and reveal
+    the whole value.
+    """
+    short_threshold = 8
+    if len(secret) < short_threshold:
+        return "*" * 8
+    return f"{secret[:4]}***{secret[-4:]}"
+
+
+def _credentials_update_fields(
+    request: CredentialsRotateRequest,
+) -> tuple[dict[str, object], str]:
+    """Build the ``ProviderConfig.model_copy(update=...)`` field map.
+
+    Returns ``(field_updates, masked_secret_for_audit)``.  The masked
+    secret is suitable for direct inclusion in audit-row payloads
+    per the SEC-1 secret-log rule.
+    """
+    auth_type = request.auth_type
+    if auth_type == AuthType.API_KEY:
+        secret = request.api_key.get_secret_value()  # type: ignore[union-attr]
+        return ({"api_key": secret}, _mask_secret(secret))
+    if auth_type == AuthType.SUBSCRIPTION:
+        secret = request.subscription_token.get_secret_value()  # type: ignore[union-attr]
+        return (
+            {
+                "subscription_token": secret,
+                "tos_accepted_at": (
+                    datetime.now(UTC).isoformat()
+                    if request.tos_accepted  # type: ignore[union-attr]
+                    else None
+                ),
+            },
+            _mask_secret(secret),
+        )
+    if auth_type == AuthType.CUSTOM_HEADER:
+        secret = request.custom_header_value.get_secret_value()  # type: ignore[union-attr]
+        return (
+            {
+                "custom_header_name": request.custom_header_name,  # type: ignore[union-attr]
+                "custom_header_value": secret,
+            },
+            _mask_secret(secret),
+        )
+    if auth_type == AuthType.OAUTH:
+        secret = request.oauth_client_secret.get_secret_value()  # type: ignore[union-attr]
+        return (
+            {
+                "oauth_token_url": request.oauth_token_url,  # type: ignore[union-attr]
+                "oauth_client_id": request.oauth_client_id,  # type: ignore[union-attr]
+                "oauth_client_secret": secret,
+                "oauth_scope": request.oauth_scope,  # type: ignore[union-attr]
+            },
+            _mask_secret(secret),
+        )
+    msg = f"Unsupported auth_type for rotation: {auth_type!r}"
+    raise ProviderValidationError(msg)
+
 
 logger = get_logger(__name__)
 
@@ -901,6 +972,232 @@ class ProviderManagementService:
                     "fields_changed": sorted(
                         local_params.model_dump(exclude_unset=True).keys(),
                     ),
+                },
+            )
+            return updated
+
+    # ── Manual model add + bulk model sync ───────────────────
+
+    async def add_model(
+        self,
+        name: str,
+        request: AddModelRequest,
+        *,
+        actor: ProviderAuditActor | None = None,
+    ) -> ProviderConfig:
+        """Add a single ``ProviderModelConfig`` to the persisted list.
+
+        Conflict (model with the same id already exists) raises
+        ``ProviderAlreadyExistsError`` so the controller can surface
+        HTTP 409.
+
+        Args:
+            name: Provider name.
+            request: Payload containing the new ``ProviderModelConfig``.
+            actor: Optional audit actor; defaults to ``_SYSTEM_ACTOR``.
+
+        Returns:
+            The updated provider config.
+
+        Raises:
+            ProviderNotFoundError: If the provider does not exist.
+            ProviderAlreadyExistsError: If a model with the requested
+                id already exists on the provider.
+        """
+        async with self._lock:
+            providers = await self._config_resolver.get_provider_configs()
+            existing = providers.get(name)
+            if existing is None:
+                msg = f"Provider {name!r} not found"
+                logger.warning(PROVIDER_NOT_FOUND, provider=name, error=msg)
+                raise ProviderNotFoundError(msg)
+
+            new_model = request.model
+            if any(m.id == new_model.id for m in existing.models):
+                msg = f"Model {new_model.id!r} already exists on provider {name!r}"
+                logger.warning(
+                    PROVIDER_ALREADY_EXISTS,
+                    provider=name,
+                    model=new_model.id,
+                    error=msg,
+                )
+                raise ProviderAlreadyExistsError(msg)
+
+            updated = existing.model_copy(
+                update={"models": (*existing.models, new_model)},
+            )
+            new_providers = {**providers, name: updated}
+            await self._validate_and_persist(new_providers)
+
+            await self._audit(
+                provider_name=name,
+                event_type="model_added",
+                actor=actor,
+                payload={"model_id": new_model.id, "alias": new_model.alias},
+            )
+            return updated
+
+    async def sync_models(
+        self,
+        name: str,
+        request: SyncModelsRequest,
+        *,
+        actor: ProviderAuditActor | None = None,
+    ) -> SyncModelsResponse:
+        """Re-run discovery + pricing enrichment and merge with persisted.
+
+        ``replace_existing=True`` (the default) replaces the persisted
+        list entirely with the merged discovered+enriched set.
+        ``replace_existing=False`` keeps existing models verbatim and
+        only appends models the discovery surfaced as new.
+
+        Args:
+            name: Provider name.
+            request: Sync request (replace_existing flag, optional
+                preset_hint).
+            actor: Optional audit actor; defaults to ``_SYSTEM_ACTOR``.
+
+        Returns:
+            ``SyncModelsResponse`` with the diff (added / removed /
+            updated) plus the new persisted model list.
+
+        Raises:
+            ProviderNotFoundError: If the provider does not exist.
+        """
+        existing = await self.get_provider(name)
+        # Run discovery in the existing path (no lock; the discovery
+        # endpoint is idempotent and we re-read state under the lock
+        # before persisting).
+        discovered = await self.discover_models_for_provider(name)
+        # Pricing enrichment is already applied by the existing
+        # ``discover_models_for_provider`` for cloud providers via
+        # litellm.model_cost; local providers carry zero costs.
+
+        prev_by_id = {m.id: m for m in existing.models}
+        disc_by_id = {m.id: m for m in discovered}
+
+        added: list[str] = []
+        removed: list[str] = []
+        updated: list[str] = []
+        new_models: list[ProviderModelConfig] = []
+        if request.replace_existing:
+            # Replace with discovered set; track added vs updated.
+            for m in discovered:
+                if m.id not in prev_by_id:
+                    added.append(m.id)
+                elif prev_by_id[m.id].model_dump() != m.model_dump():
+                    updated.append(m.id)
+                new_models.append(m)
+            removed.extend(
+                prev_id for prev_id in prev_by_id if prev_id not in disc_by_id
+            )
+        else:
+            # Append-only: keep existing verbatim, append only new ones.
+            new_models.extend(existing.models)
+            for m in discovered:
+                if m.id not in prev_by_id:
+                    new_models.append(m)
+                    added.append(m.id)
+
+        async with self._lock:
+            providers = await self._config_resolver.get_provider_configs()
+            current = providers.get(name)
+            if current is None:
+                # Race: provider deleted between the discover read and
+                # the lock acquisition.
+                msg = f"Provider {name!r} not found"
+                logger.warning(PROVIDER_NOT_FOUND, provider=name, error=msg)
+                raise ProviderNotFoundError(msg)
+            updated_config = current.model_copy(
+                update={"models": tuple(new_models)},
+            )
+            new_providers = {**providers, name: updated_config}
+            await self._validate_and_persist(new_providers)
+
+        await self._audit(
+            provider_name=name,
+            event_type="models_synced",
+            actor=actor,
+            payload={
+                "added_count": len(added),
+                "removed_count": len(removed),
+                "updated_count": len(updated),
+                "replace_existing": request.replace_existing,
+            },
+        )
+
+        return SyncModelsResponse(
+            added=tuple(sorted(added)),
+            removed=tuple(sorted(removed)),
+            updated=tuple(sorted(updated)),
+            models=tuple(new_models),
+        )
+
+    # ── Credentials rotation ─────────────────────────────────
+
+    async def rotate_credentials(
+        self,
+        name: str,
+        request: CredentialsRotateRequest,
+        *,
+        actor: ProviderAuditActor | None = None,
+    ) -> ProviderConfig:
+        """Rotate the secret credentials on an existing provider.
+
+        Validates the request variant matches the provider's persisted
+        ``auth_type`` (e.g. you cannot rotate an ``api_key`` provider
+        with a ``subscription`` payload), applies the new secret, and
+        hot-reloads the registry.  The audit row carries ONLY the
+        masked credential prefix (first 4 + ``***`` + last 4) per the
+        SEC-1 secret-log rule; plaintext is never persisted to the
+        audit log.
+
+        Args:
+            name: Provider name.
+            request: Discriminated-union rotation payload keyed by
+                ``auth_type``.
+            actor: Optional audit actor; defaults to ``_SYSTEM_ACTOR``.
+
+        Returns:
+            The updated provider config (secrets stripped is the
+            controller's responsibility via ``to_provider_response``).
+
+        Raises:
+            ProviderNotFoundError: If the provider does not exist.
+            ProviderValidationError: If ``request.auth_type`` does not
+                match the provider's persisted ``auth_type``.
+        """
+        async with self._lock:
+            providers = await self._config_resolver.get_provider_configs()
+            existing = providers.get(name)
+            if existing is None:
+                msg = f"Provider {name!r} not found"
+                logger.warning(PROVIDER_NOT_FOUND, provider=name, error=msg)
+                raise ProviderNotFoundError(msg)
+            if existing.auth_type != request.auth_type:
+                msg = (
+                    f"Provider {name!r} has auth_type {existing.auth_type.value!r}; "
+                    f"rotation payload is {request.auth_type.value!r}"
+                )
+                logger.warning(
+                    PROVIDER_VALIDATION_FAILED,
+                    provider=name,
+                    error=msg,
+                )
+                raise ProviderValidationError(msg)
+
+            update_fields, masked_secret = _credentials_update_fields(request)
+            updated = existing.model_copy(update=update_fields)
+            new_providers = {**providers, name: updated}
+            await self._validate_and_persist(new_providers)
+
+            await self._audit(
+                provider_name=name,
+                event_type="provider_credentials_rotated",
+                actor=actor,
+                payload={
+                    "auth_type": existing.auth_type.value,
+                    "masked_secret": masked_secret,
                 },
             )
             return updated
