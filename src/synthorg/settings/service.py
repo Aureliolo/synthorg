@@ -33,6 +33,7 @@ from synthorg.settings.config_bridge import extract_from_config
 from synthorg.settings.enums import SettingSource, SettingType
 from synthorg.settings.errors import (
     SettingNotFoundError,
+    SettingReadOnlyError,
     SettingsEncryptionError,
     SettingValidationError,
 )
@@ -95,6 +96,33 @@ def _now_iso() -> str:
 def _env_var_name(namespace: str, key: str) -> str:
     """Build env var name: ``SYNTHORG_{NAMESPACE}_{KEY}`` (uppercased)."""
     return f"SYNTHORG_{namespace.upper()}_{key.upper()}"
+
+
+def _reject_if_read_only(definition: SettingDefinition, *, action: str) -> None:
+    """Raise ``SettingReadOnlyError`` for read-only-post-init settings.
+
+    The registry entry exists for discoverability via the /settings
+    API; the resolved value is sourced from environment variables or
+    YAML at process startup.  Mutation surfaces (``set``, ``set_many``,
+    ``delete``, ``delete_namespace``) must reject so an operator does
+    not believe the override took effect when the running process keeps
+    the boot-time value.
+    """
+    if not definition.read_only_post_init:
+        return
+    logger.warning(
+        SETTINGS_VALIDATION_FAILED,
+        namespace=definition.namespace,
+        key=definition.key,
+        reason="read_only_post_init",
+        action=action,
+    )
+    msg = (
+        f"Setting {definition.namespace}/{definition.key} is sourced"
+        f" from env / YAML at startup and cannot be modified at runtime"
+        f" (action={action!r}). Update the env var or YAML and restart."
+    )
+    raise SettingReadOnlyError(msg)
 
 
 def _validate_value(definition: SettingDefinition, value: str) -> None:
@@ -629,6 +657,8 @@ class SettingsService:
             msg = f"Unknown setting: {namespace}/{key}"
             raise SettingNotFoundError(msg)
 
+        _reject_if_read_only(definition, action="set")
+
         try:
             _validate_value(definition, value)
         except SettingValidationError:
@@ -758,6 +788,8 @@ class SettingsService:
                 msg = f"Unknown setting: {namespace}/{key}"
                 raise SettingNotFoundError(msg)
 
+            _reject_if_read_only(definition, action="set_many")
+
             try:
                 _validate_value(definition, value)
             except SettingValidationError:
@@ -829,6 +861,8 @@ class SettingsService:
             msg = f"Unknown setting: {namespace}/{key}"
             raise SettingNotFoundError(msg)
 
+        _reject_if_read_only(definition, action="delete")
+
         await self._repository.delete(NotBlankStr(namespace), NotBlankStr(key))
 
         self._invalidate_cache(namespace, key)
@@ -866,6 +900,14 @@ class SettingsService:
         Raises:
             PersistenceError: If the persistence layer fails.
         """
+        # Read-only-post-init guard: even one read-only definition in
+        # the namespace must block the whole-namespace delete. A bulk
+        # operation that silently leaves the read-only row in place
+        # would mislead the caller; rejecting up front forces the
+        # operator to delete writable keys explicitly.
+        for definition in self._registry.list_namespace(namespace):
+            _reject_if_read_only(definition, action="delete_namespace")
+
         # Atomic delete-and-return-keys: the repository removes every
         # override row under *namespace* in one transaction and returns
         # exactly the keys whose row was actually removed.  This avoids
