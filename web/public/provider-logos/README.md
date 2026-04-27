@@ -18,16 +18,24 @@ Per-asset provenance:
 |---|---|
 | `anthropic.svg` | `anthropic` |
 | `azure.svg` | `azure` |
+| `cerebras.svg` | `cerebras` |
+| `cohere.svg` | `cohere` |
 | `deepseek.svg` | `deepseek` |
+| `fireworks_ai.svg` | `fireworks` |
 | `gemini.svg` | `gemini` |
 | `groq.svg` | `groq` |
 | `lm-studio.svg` | `lmstudio` |
 | `mistral.svg` | `mistral` |
+| `moonshot.svg` | `moonshot` |
+| `nvidia_nim.svg` | `nvidia` |
 | `ollama.svg` | `ollama` |
 | `ollama-cloud.svg` | `ollama` (same mark as local Ollama) |
 | `openai.svg` | `openai` |
 | `openrouter.svg` | `openrouter` |
+| `sambanova.svg` | `sambanova` |
+| `together_ai.svg` | `together` |
 | `vllm.svg` | `vllm` |
+| `xai.svg` | `xai` |
 
 Re-fetch base path:
 `https://raw.githubusercontent.com/lobehub/lobe-icons/master/packages/static-svg/icons/<slug>.svg`

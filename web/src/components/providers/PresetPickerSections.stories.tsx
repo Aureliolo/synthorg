@@ -18,6 +18,7 @@ const cloud: CloudPreset[] = [
     supported_auth_types: ['api_key', 'subscription'],
     default_base_url: null,
     requires_base_url: false,
+    is_featured: true,
     default_models: [],
   },
   {
@@ -31,6 +32,7 @@ const cloud: CloudPreset[] = [
     supported_auth_types: ['api_key'],
     default_base_url: null,
     requires_base_url: false,
+    is_featured: true,
     default_models: [],
   },
   {
@@ -44,6 +46,7 @@ const cloud: CloudPreset[] = [
     supported_auth_types: ['api_key'],
     default_base_url: 'https://ollama.com',
     requires_base_url: false,
+    is_featured: true,
     default_models: [],
   },
 ]
@@ -59,6 +62,7 @@ const local: LocalPreset[] = [
     auth_type: 'none',
     default_base_url: 'http://localhost:11434',
     requires_base_url: true,
+    is_featured: true,
     candidate_urls: ['http://localhost:11434'],
     supports_model_pull: true,
     supports_model_delete: true,
@@ -74,6 +78,7 @@ const local: LocalPreset[] = [
     auth_type: 'none',
     default_base_url: 'http://localhost:1234/v1',
     requires_base_url: true,
+    is_featured: true,
     candidate_urls: ['http://localhost:1234/v1'],
     supports_model_pull: false,
     supports_model_delete: false,
