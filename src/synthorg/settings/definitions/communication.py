@@ -82,6 +82,12 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         read_only_post_init=True,
+        # Override the auto-derived ``SYNTHORG_COMMUNICATION_NATS_URL``
+        # with the established operator-facing name ``SYNTHORG_NATS_URL``.
+        # The Docker-compose template, the local-dev shell setup, and
+        # external operator runbooks already use this short form;
+        # honouring it here preserves the existing operator surface
+        # while still routing the value through the registry.
         env_var_override="SYNTHORG_NATS_URL",
         yaml_path="communication.nats.url",
     )

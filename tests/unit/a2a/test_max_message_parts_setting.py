@@ -49,7 +49,11 @@ async def test_uses_resolver_value_when_wired() -> None:
 
 
 async def test_resolver_outage_falls_back() -> None:
-    state: Any = _AppStateWithResolver(value=0)
+    # ``value`` is irrelevant here because ``get_int`` is replaced
+    # with a side_effect that raises before returning; pass any
+    # placeholder.  Use a clearly arbitrary sentinel so a future
+    # reader does not assume the value matters.
+    state: Any = _AppStateWithResolver(value=-1)
     state.config_resolver.get_int.side_effect = RuntimeError("transient")
     result = await gateway_mod._resolve_max_message_parts(state)
     assert result == gateway_mod._MAX_MESSAGE_PARTS_FALLBACK

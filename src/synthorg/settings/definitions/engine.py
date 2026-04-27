@@ -99,10 +99,17 @@ _r.register(
         namespace=SettingNamespace.ENGINE,
         key="evolution_enabled",
         type=SettingType.BOOLEAN,
-        default="true",
+        # Default "false" matches ``SelfImprovementConfig.enabled``
+        # (False) so the resolver-up and resolver-down paths produce
+        # the same boolean -- a mismatch would let the kill-switch
+        # flip behaviour during a settings outage.  The feature is
+        # opt-in by design (research/experimental); operators turn
+        # it on per-deployment via YAML or the /settings UI.
+        default="false",
         description=(
             "Master kill switch for the agent evolution system."
-            " When False, evolution triggers never fire."
+            " When False (default), evolution triggers never fire;"
+            " set True to opt the deployment into evolution cycles."
         ),
         group="Evolution",
         level=SettingLevel.ADVANCED,

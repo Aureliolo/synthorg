@@ -25,8 +25,15 @@ import asyncio
 import contextlib
 from typing import TYPE_CHECKING
 
+from synthorg.observability import get_logger
+from synthorg.observability.events.task_engine import (
+    TASK_ENGINE_TIMEOUT_ENFORCEMENT_SET,
+)
+
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+logger = get_logger(__name__)
 
 _enforcement_enabled: bool = True
 """Process-wide cache for ``engine.timeout_enforcement_enabled``.
@@ -47,10 +54,19 @@ def set_timeout_enforcement_enabled(*, value: bool) -> None:
 
     Called from :mod:`synthorg.api.lifecycle_helpers` once at startup
     after resolving ``engine.timeout_enforcement_enabled`` through the
-    settings chain.
+    settings chain.  Emits a single INFO state-transition log when the
+    cached value actually changes, so an operator can correlate later
+    timeout behaviour with the toggle.
     """
     global _enforcement_enabled  # noqa: PLW0603
+    previous = _enforcement_enabled
     _enforcement_enabled = value
+    if previous != value:
+        logger.info(
+            TASK_ENGINE_TIMEOUT_ENFORCEMENT_SET,
+            previous=previous,
+            current=value,
+        )
 
 
 @contextlib.asynccontextmanager

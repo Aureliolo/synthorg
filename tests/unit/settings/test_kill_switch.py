@@ -45,10 +45,23 @@ async def test_resolver_outage_falls_back() -> None:
     assert result is True
 
 
-async def test_system_errors_propagate() -> None:
+@pytest.mark.parametrize(
+    "exc_type",
+    [MemoryError, RecursionError],
+    ids=["memory_error", "recursion_error"],
+)
+async def test_system_errors_propagate(exc_type: type[BaseException]) -> None:
+    """Both ``MemoryError`` and ``RecursionError`` re-raise unchanged.
+
+    The PEP 758 ``except MemoryError, RecursionError: raise`` clause in
+    ``resolve_bool_with_fallback`` is the contract that lets the
+    interpreter surface unrecoverable conditions; covering each type
+    independently catches a regression that would otherwise demote one
+    of them to a silent fallback.
+    """
     resolver: Any = AsyncMock()
-    resolver.get_bool = AsyncMock(side_effect=MemoryError())
-    with pytest.raises(MemoryError):
+    resolver.get_bool = AsyncMock(side_effect=exc_type())
+    with pytest.raises(exc_type):
         await resolve_bool_with_fallback(
             resolver=resolver,
             namespace="engine",

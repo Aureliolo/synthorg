@@ -37,3 +37,8 @@ TASK_ENGINE_OBSERVER_QUEUE_FULL: Final[str] = "task_engine.observer.queue_full"
 TASK_ENGINE_OBSERVER_DRAIN_TIMEOUT: Final[str] = "task_engine.observer.drain_timeout"
 TASK_ENGINE_LOOP_DIED: Final[str] = "task_engine.loop.died"
 TASK_ENGINE_OBSERVER_LOOP_DIED: Final[str] = "task_engine.observer_loop.died"
+TASK_ENGINE_TIMEOUT_ENFORCEMENT_SET: Final[str] = "task_engine.timeout_enforcement.set"
+"""Emitted when the process-wide ``engine.timeout_enforcement_enabled`` cache
+flips. Logged at INFO so an operator can correlate timeout-behaviour changes
+with config events; the toggle is a runtime state transition that affects
+every engine coroutine entering ``engine_timeout``."""
