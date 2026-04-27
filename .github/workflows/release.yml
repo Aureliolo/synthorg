@@ -264,38 +264,47 @@ jobs:
           gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "$NEW_BODY"
           echo "Highlights prepended to PR #$PR_NUMBER"
 
-      # ── Mark CI Pass satisfied on the release PR ──
+      # ── Mark required status checks satisfied on the release PR ──
       # release-please opened / updated the PR using the
       # synthorg-repo-bot App installation token. GitHub's
       # anti-recursion rule blocks `pull_request` workflows for
       # events created by the workflow's own installation token,
-      # so ci.yml never auto-fires on release PRs.
+      # so ci.yml / codspeed-python.yml / codspeed-web.yml /
+      # lighthouse.yml never auto-fire on release PRs.
       #
       # The previous fix (#1593) used `gh workflow run ci.yml
       # --ref <release-branch>` to nudge ci.yml via
       # workflow_dispatch -- but workflow_dispatch runs produce a
       # check_suite with empty `pull_requests`, so the resulting
-      # `CI Pass` check_run does NOT appear in the PR's status
-      # rollup. Branch protection still saw the check on the SHA,
-      # but the merge UI showed "CI Pass -- Expected, waiting"
-      # forever (visible to a human viewer; not a real check
-      # failure but indistinguishable from one in the UI).
+      # check_run does NOT appear in the PR's status rollup.
+      # Branch protection still saw the check on the SHA, but the
+      # merge UI showed "<Check> -- Expected, waiting" forever
+      # (visible to a human viewer; not a real check failure but
+      # indistinguishable from one in the UI).
       #
       # Release PRs touch only CHANGELOG.md, version.txt, and the
-      # manifest -- there is no source code that ci.yml could
-      # meaningfully test. We therefore post the `CI Pass`
-      # *commit status* (not check_run) directly on the PR head
-      # SHA. Statuses are in the rollup unconditionally, satisfy
-      # branch protection's required-check evaluation, and don't
-      # require any workflow run at all. ci.yml's
-      # `is_release_please` skip stays in place as defense-in-
-      # depth in case release-please's identity ever changes.
+      # manifest -- there is no source code that any of these
+      # workflows could meaningfully test or benchmark. We
+      # therefore post each required *commit status* (not
+      # check_run) directly on the PR head SHA. Statuses are in
+      # the rollup unconditionally, satisfy branch protection's
+      # required-check evaluation, and don't require any workflow
+      # run at all. ci.yml's `is_release_please` skip stays in
+      # place as defense-in-depth in case release-please's
+      # identity ever changes.
+      #
+      # The required-context list MUST stay in sync with
+      # `.github/branch_protection.yml` (the spec) and the live
+      # `protect-main` ruleset. The branch-protection drift audit
+      # in ci.yml will surface the spec side; new required
+      # contexts must be added here at the same time, or the
+      # release PR will silently re-block.
       #
       # Resolves the head SHA AT THIS POINT (after the BSL Change
-      # Date Contents-API commit) so the status posts on the
+      # Date Contents-API commit) so the statuses post on the
       # final SHA the PR will be merged at, not the
       # release-please-action output captured before that commit.
-      - name: Post CI Pass status on release PR
+      - name: Post required-check statuses on release PR
         if: steps.release.outputs.pr != ''
         env:
           GH_TOKEN: ${{ github.token }}
@@ -303,8 +312,17 @@ jobs:
         run: |
           set -euo pipefail
           HEAD_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" --jq '.object.sha')
-          gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
-            -f "state=success" \
-            -f "context=CI Pass" \
-            -f "description=release-please PR -- CI auto-passes (no source changes to test)"
-          echo "Posted CI Pass=success on $HEAD_SHA"
+          DESCRIPTION="release-please PR -- auto-passes (no source changes to test)"
+          # Keep in sync with .github/branch_protection.yml ::
+          # rulesets[name=protect-main] :: required_status_checks.
+          for context in \
+            "CI Pass" \
+            "CodSpeed Python Pass" \
+            "CodSpeed Web Pass" \
+            "Lighthouse Pass"; do
+            gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
+              -f "state=success" \
+              -f "context=$context" \
+              -f "description=$DESCRIPTION"
+            echo "Posted '$context'=success on $HEAD_SHA"
+          done
