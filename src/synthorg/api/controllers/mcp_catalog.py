@@ -10,12 +10,17 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.api.dto import ApiResponse
+from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
 from synthorg.api.errors import (
     ApiValidationError,
     NotFoundError,
 )
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    paginate_cursor,
+)
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.integrations.connections.models import CatalogEntry  # noqa: TC001
 from synthorg.integrations.errors import (
@@ -78,11 +83,19 @@ class MCPCatalogController(Controller):
     async def browse_catalog(
         self,
         state: State,
-    ) -> ApiResponse[tuple[CatalogEntry, ...]]:
-        """List all curated MCP server entries."""
-        service = state["app_state"].mcp_catalog_service
-        entries = await service.browse()
-        return ApiResponse(data=entries)
+        limit: CursorLimit = DEFAULT_LIMIT,
+        cursor: CursorParam = None,
+    ) -> PaginatedResponse[CatalogEntry]:
+        """List all curated MCP server entries (cursor-paginated)."""
+        app_state = state["app_state"]
+        entries = await app_state.mcp_catalog_service.browse()
+        page, meta = paginate_cursor(
+            entries,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
+        return PaginatedResponse(data=page, pagination=meta)
 
     @get(
         "/catalog/search",
@@ -93,11 +106,19 @@ class MCPCatalogController(Controller):
         self,
         state: State,
         q: str = Parameter(description="Search query"),
-    ) -> ApiResponse[tuple[CatalogEntry, ...]]:
-        """Search catalog by name, description, or tags."""
-        service = state["app_state"].mcp_catalog_service
-        entries = await service.search(q)
-        return ApiResponse(data=entries)
+        limit: CursorLimit = DEFAULT_LIMIT,
+        cursor: CursorParam = None,
+    ) -> PaginatedResponse[CatalogEntry]:
+        """Search catalog by name, description, or tags (cursor-paginated)."""
+        app_state = state["app_state"]
+        entries = await app_state.mcp_catalog_service.search(q)
+        page, meta = paginate_cursor(
+            entries,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
+        return PaginatedResponse(data=page, pagination=meta)
 
     @get(
         "/catalog/{entry_id:str}",

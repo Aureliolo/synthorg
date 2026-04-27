@@ -432,12 +432,26 @@ class TestIntegrationHealthController:
 class TestMCPCatalogController:
     async def test_browse_returns_bundled_entries(self) -> None:
         from synthorg.api.controllers.mcp_catalog import MCPCatalogController
+        from synthorg.api.cursor import CursorSecret
         from synthorg.integrations.mcp_catalog.service import CatalogService
 
-        state = {"app_state": MagicMock(mcp_catalog_service=CatalogService())}
+        state = {
+            "app_state": MagicMock(
+                mcp_catalog_service=CatalogService(),
+                cursor_secret=CursorSecret.ephemeral(),
+            ),
+        }
         ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
-        response = await ctrl.browse_catalog.fn(ctrl, state=state)
+        response = await ctrl.browse_catalog.fn(
+            ctrl,
+            state=state,
+            limit=50,
+            cursor=None,
+        )
+        # Bundled catalog has at least 8 entries; cursor pagination
+        # returns the first page plus pagination metadata.
         assert len(response.data) >= 8
+        assert response.pagination.offset == 0
 
     async def test_install_connectionless_entry(self) -> None:
         from synthorg.api.controllers.mcp_catalog import (
