@@ -12,6 +12,7 @@ from synthorg.budget.coordination_config import (
     DetectionScope,
     ErrorCategory,
 )
+from synthorg.core.normalization import normalize_identifier
 from synthorg.engine.classification.models import (
     ErrorFinding,
     ErrorSeverity,
@@ -319,7 +320,7 @@ class AuthorityBreachDetector:
             Findings for each distinct denied tool invocation.
         """
         identity = execution_result.context.identity
-        denied = {name.strip().casefold() for name in identity.tools.denied}
+        denied = {normalize_identifier(name) for name in identity.tools.denied}
         if not denied:
             return []
 
@@ -332,7 +333,7 @@ class AuthorityBreachDetector:
         seen: set[str] = set()
         findings: list[ErrorFinding] = []
         for name in attempted:
-            key = name.strip().casefold()
+            key = normalize_identifier(name)
             if key in seen or key not in denied:
                 continue
             seen.add(key)
@@ -372,7 +373,7 @@ class AuthorityBreachDetector:
         """
         identity = context.execution_result.context.identity
         allowed = {
-            role.strip().casefold() for role in identity.authority.can_delegate_to
+            normalize_identifier(role) for role in identity.authority.can_delegate_to
         }
         if not allowed:
             return []
@@ -380,7 +381,7 @@ class AuthorityBreachDetector:
         for req in context.delegation_requests:
             if req.delegator_id != context.agent_id:
                 continue
-            target = req.delegatee_id.strip().casefold()
+            target = normalize_identifier(req.delegatee_id)
             if target in allowed:
                 continue
             findings.append(

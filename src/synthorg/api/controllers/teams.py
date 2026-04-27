@@ -16,7 +16,7 @@ from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.company import Team
-from synthorg.core.normalization import casefold_equals
+from synthorg.core.normalization import normalize_identifier
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -103,9 +103,9 @@ def _find_department(
     Raises:
         NotFoundError: If not found.
     """
-    target = name.strip().casefold()
+    target = normalize_identifier(name)
     for idx, dept in enumerate(depts):
-        if str(dept.get("name", "")).strip().casefold() == target:
+        if normalize_identifier(str(dept.get("name", ""))) == target:
             return idx, dept
     msg = f"Department {name!r} not found"
     raise NotFoundError(msg)
@@ -127,9 +127,9 @@ def _find_team(
     Raises:
         NotFoundError: If not found.
     """
-    target = team_name.strip().casefold()
+    target = normalize_identifier(team_name)
     for idx, team in enumerate(teams):
-        if str(team.get("name", "")).strip().casefold() == target:
+        if normalize_identifier(str(team.get("name", ""))) == target:
             return idx, team
     msg = f"Team {team_name!r} not found"
     raise NotFoundError(msg)
@@ -148,11 +148,11 @@ def _check_team_name_unique(
         name: Name to check.
         exclude_index: Optional index to skip (for rename checks).
     """
-    target = name.strip().casefold()
+    target = normalize_identifier(name)
     for idx, team in enumerate(teams):
         if idx == exclude_index:
             continue
-        if str(team.get("name", "")).strip().casefold() == target:
+        if normalize_identifier(str(team.get("name", ""))) == target:
             msg = f"Team {name!r} already exists in this department"
             raise ConflictError(msg)
 
@@ -296,8 +296,10 @@ class TeamController(Controller):
             dept_idx, dept = _find_department(depts, dept_name)
 
             teams: list[dict[str, Any]] = list(dept.get("teams", []))
-            current_names = {str(t.get("name", "")).strip().casefold() for t in teams}
-            requested_names = {n.strip().casefold() for n in data.team_names}
+            current_names = {
+                normalize_identifier(str(t.get("name", ""))) for t in teams
+            }
+            requested_names = {normalize_identifier(n) for n in data.team_names}
 
             if current_names != requested_names:
                 msg = (
@@ -308,9 +310,9 @@ class TeamController(Controller):
 
             # Build name->team lookup for reordering.
             team_map: dict[str, dict[str, Any]] = {
-                str(t.get("name", "")).strip().casefold(): t for t in teams
+                normalize_identifier(str(t.get("name", ""))): t for t in teams
             }
-            reordered = [team_map[n.strip().casefold()] for n in data.team_names]
+            reordered = [team_map[normalize_identifier(n)] for n in data.team_names]
 
             dept = {**dept, "teams": reordered}
             depts[dept_idx] = dept
@@ -431,17 +433,17 @@ class TeamController(Controller):
             team_idx, team = _find_team(teams, team_name)
 
             if reassign_to is not None:
-                if casefold_equals(reassign_to, team_name):
+                if normalize_identifier(reassign_to) == normalize_identifier(team_name):
                     msg = "Cannot reassign members to the team being deleted"
                     raise ApiValidationError(msg)
                 target_idx, target = _find_team(teams, reassign_to)
                 # Merge members (deduplicate, case-insensitive).
                 existing_members = list(target.get("members", []))
-                existing_lower = {m.strip().casefold() for m in existing_members}
+                existing_lower = {normalize_identifier(m) for m in existing_members}
                 for member in team.get("members", []):
-                    if member.strip().casefold() not in existing_lower:
+                    if normalize_identifier(member) not in existing_lower:
                         existing_members.append(member)
-                        existing_lower.add(member.strip().casefold())
+                        existing_lower.add(normalize_identifier(member))
 
                 updated_target = {**target, "members": existing_members}
                 _validate_team_model(updated_target)

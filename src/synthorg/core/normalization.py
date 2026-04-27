@@ -15,14 +15,19 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def casefold_equals(a: str, b: str) -> bool:
-    """Return ``True`` when ``a`` and ``b`` compare equal after casefolding.
+def normalize_identifier(value: str) -> str:
+    """Normalize an identifier for case-insensitive comparison.
 
-    Leading and trailing whitespace is stripped before comparison so
-    ``"Alice "`` matches ``"alice"``. Callers that need the exact
-    whitespace-sensitive form should do the comparison themselves.
+    Strips whitespace and applies Unicode case-folding for robust
+    matching across Latin, Greek, Turkish, and other scripts.
+
+    Args:
+        value: Identifier to normalize (e.g. agent name, role, capability).
+
+    Returns:
+        Normalized string suitable for case-insensitive comparison.
     """
-    return a.strip().casefold() == b.strip().casefold()
+    return value.strip().casefold()
 
 
 def find_by_name_ci[T](
@@ -45,9 +50,9 @@ def find_by_name_ci[T](
     Returns:
         The first matching item, or ``None``.
     """
-    target_normalised = target.strip().casefold()
+    target_normalised = normalize_identifier(target)
     for item in items:
         value = getattr(item, name_attr, None)
-        if isinstance(value, str) and value.strip().casefold() == target_normalised:
+        if isinstance(value, str) and normalize_identifier(value) == target_normalised:
             return item
     return None

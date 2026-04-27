@@ -8,6 +8,7 @@ convenient group-based access control.
 import fnmatch
 from typing import TYPE_CHECKING
 
+from synthorg.core.normalization import normalize_identifier
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
     MCP_SCOPING_FILTERED,
@@ -63,14 +64,14 @@ class MCPToolScoper:
         Returns:
             Sorted tuple of visible tool definitions.
         """
-        denied_lower = frozenset(n.strip().casefold() for n in denied)
-        allowed_lower = frozenset(n.strip().casefold() for n in allowed)
+        denied_lower = frozenset(normalize_identifier(n) for n in denied)
+        allowed_lower = frozenset(normalize_identifier(n) for n in allowed)
 
         all_tools = self._registry.get_all()
         result: list[MCPToolDef] = []
 
         for tool in all_tools:
-            name_lower = tool.name.strip().casefold()
+            name_lower = normalize_identifier(tool.name)
 
             # Priority 1: explicit denial
             if name_lower in denied_lower:
@@ -113,9 +114,9 @@ def _matches_any(capability: str, patterns: tuple[str, ...]) -> bool:
     Returns:
         ``True`` if any pattern matches.
     """
-    cap_lower = capability.strip().casefold()
+    cap_lower = normalize_identifier(capability)
     for pattern in patterns:
-        pat_lower = pattern.strip().casefold()
+        pat_lower = normalize_identifier(pattern)
         if fnmatch.fnmatch(cap_lower, pat_lower):
             return True
     return False

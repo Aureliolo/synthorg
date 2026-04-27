@@ -19,6 +19,7 @@ from synthorg.core.enums import (
     StrategicOutputMode,
     WorkflowType,
 )
+from synthorg.core.normalization import normalize_identifier
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.config import EmbedderOverrideConfig  # noqa: TC001
 from synthorg.observability import get_logger
@@ -481,13 +482,13 @@ class CompanyTemplate(BaseModel):
     @model_validator(mode="after")
     def _validate_unique_department_names(self) -> Self:
         """Department names must be unique (case-insensitive)."""
-        names = [d.name.strip().casefold() for d in self.departments]
+        names = [normalize_identifier(d.name) for d in self.departments]
         if len(names) != len(set(names)):
             dup_keys = {n for n, c in Counter(names).items() if c > 1}
             dupes = sorted(
                 d.name
                 for d in self.departments
-                if d.name.strip().casefold() in dup_keys
+                if normalize_identifier(d.name) in dup_keys
             )
             msg = f"Duplicate department names: {dupes}"
             logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
@@ -497,11 +498,11 @@ class CompanyTemplate(BaseModel):
     @model_validator(mode="after")
     def _validate_unique_pack_names(self) -> Self:
         """Pack names in uses_packs must be unique (case-insensitive)."""
-        normalized = [p.strip().casefold() for p in self.uses_packs]
+        normalized = [normalize_identifier(p) for p in self.uses_packs]
         if len(normalized) != len(set(normalized)):
             dup_keys = {n for n, c in Counter(normalized).items() if c > 1}
             dupes = sorted(
-                p for p in self.uses_packs if p.strip().casefold() in dup_keys
+                p for p in self.uses_packs if normalize_identifier(p) in dup_keys
             )
             msg = f"Duplicate pack names in uses_packs: {dupes}"
             logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)

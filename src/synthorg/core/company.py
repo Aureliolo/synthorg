@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.enums import AutonomyLevel, CompanyType
 from synthorg.core.middleware_config import MiddlewareConfig
+from synthorg.core.normalization import normalize_identifier
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.company import (
@@ -45,8 +46,8 @@ def _identity_key(
         returns ``("name", "backend developer")``.
     """
     if id_ is not None:
-        return ("id", id_.strip().casefold())
-    return ("name", name.strip().casefold())
+        return ("id", normalize_identifier(id_))
+    return ("name", normalize_identifier(name))
 
 
 class ReportingLine(BaseModel):
@@ -192,7 +193,7 @@ class ApprovalChain(BaseModel):
             msg = "Approval chain must have at least one approver"
             logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
-        normalized = [a.strip().casefold() for a in self.approvers]
+        normalized = [normalize_identifier(a) for a in self.approvers]
         if len(normalized) != len(set(normalized)):
             dupes = sorted(a for a, c in Counter(normalized).items() if c > 1)
             msg = f"Duplicate approvers in approval chain: {dupes}"
@@ -244,7 +245,7 @@ class DepartmentPolicies(BaseModel):
 
 def _reject_same_department(from_dept: str, to_dept: str, label: str) -> None:
     """Reject cross-department models where from and to are the same."""
-    if from_dept.strip().casefold() == to_dept.strip().casefold():
+    if normalize_identifier(from_dept) == normalize_identifier(to_dept):
         msg = (
             f"{label} must be between different departments: "
             f"{from_dept!r} == {to_dept!r}"
@@ -341,10 +342,12 @@ class Team(BaseModel):
     @model_validator(mode="after")
     def _validate_no_duplicate_members(self) -> Self:
         """Ensure no duplicate members (case-insensitive)."""
-        normalized = [m.strip().casefold() for m in self.members]
+        normalized = [normalize_identifier(m) for m in self.members]
         if len(normalized) != len(set(normalized)):
             dup_keys = {m for m, c in Counter(normalized).items() if c > 1}
-            dupes = sorted(m for m in self.members if m.strip().casefold() in dup_keys)
+            dupes = sorted(
+                m for m in self.members if normalize_identifier(m) in dup_keys
+            )
             msg = f"Duplicate members in team {self.name!r}: {dupes}"
             logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
@@ -448,11 +451,11 @@ class Department(BaseModel):
     @model_validator(mode="after")
     def _validate_unique_team_names(self) -> Self:
         """Ensure no duplicate team names within a department (case-insensitive)."""
-        names = [t.name.strip().casefold() for t in self.teams]
+        names = [normalize_identifier(t.name) for t in self.teams]
         if len(names) != len(set(names)):
             dup_keys = {n for n, c in Counter(names).items() if c > 1}
             dupes = sorted(
-                t.name for t in self.teams if t.name.strip().casefold() in dup_keys
+                t.name for t in self.teams if normalize_identifier(t.name) in dup_keys
             )
             msg = f"Duplicate team names in department {self.name!r}: {dupes}"
             logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
@@ -562,11 +565,11 @@ class HRRegistry(BaseModel):
     @model_validator(mode="after")
     def _validate_no_duplicate_active_agents(self) -> Self:
         """Ensure no duplicate entries in active_agents (case-insensitive)."""
-        normalized = [a.strip().casefold() for a in self.active_agents]
+        normalized = [normalize_identifier(a) for a in self.active_agents]
         if len(normalized) != len(set(normalized)):
             dup_keys = {a for a, c in Counter(normalized).items() if c > 1}
             dupes = sorted(
-                a for a in self.active_agents if a.strip().casefold() in dup_keys
+                a for a in self.active_agents if normalize_identifier(a) in dup_keys
             )
             msg = f"Duplicate entries in active_agents: {dupes}"
             logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
@@ -625,7 +628,7 @@ class Company(BaseModel):
     def _validate_departments(self) -> Self:
         """Validate department names are unique and budgets do not exceed 100%."""
         # Unique department names (normalized for case-insensitive comparison)
-        names = [d.name.strip().casefold() for d in self.departments]
+        names = [normalize_identifier(d.name) for d in self.departments]
         if len(names) != len(set(names)):
             dupes = sorted(n for n, c in Counter(names).items() if c > 1)
             msg = f"Duplicate department names: {dupes}"
@@ -636,13 +639,13 @@ class Company(BaseModel):
         known = set(names)
         for handoff in self.workflow_handoffs:
             for dept in (handoff.from_department, handoff.to_department):
-                if dept.strip().casefold() not in known:
+                if normalize_identifier(dept) not in known:
                     msg = f"Workflow handoff references unknown department: {dept!r}"
                     logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
                     raise ValueError(msg)
         for escalation in self.escalation_paths:
             for dept in (escalation.from_department, escalation.to_department):
-                if dept.strip().casefold() not in known:
+                if normalize_identifier(dept) not in known:
                     msg = f"Escalation path references unknown department: {dept!r}"
                     logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
                     raise ValueError(msg)

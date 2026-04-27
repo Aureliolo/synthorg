@@ -9,6 +9,7 @@ from synthorg.core.enums import (
     DepartmentName,
     SeniorityLevel,
 )
+from synthorg.core.normalization import normalize_identifier
 from synthorg.core.role import Role, SeniorityInfo
 from synthorg.observability import get_logger
 from synthorg.observability.events.role import ROLE_LOOKUP_MISS
@@ -442,7 +443,7 @@ def get_builtin_role(name: str) -> Role | None:
     Returns:
         The matching Role, or ``None`` if not found.
     """
-    result = _BUILTIN_ROLES_BY_NAME.get(name.strip().casefold())
+    result = _BUILTIN_ROLES_BY_NAME.get(normalize_identifier(name))
     if result is None:
         logger.debug(ROLE_LOOKUP_MISS, role_name=name)
     return result

@@ -3,32 +3,56 @@
 from dataclasses import dataclass
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
-from synthorg.core.normalization import casefold_equals, find_by_name_ci
+from synthorg.core.normalization import find_by_name_ci, normalize_identifier
 
 
 @pytest.mark.unit
-class TestCasefoldEquals:
-    """``casefold_equals`` handles Unicode + whitespace."""
+class TestNormalizeIdentifier:
+    """``normalize_identifier`` strips whitespace and case-folds."""
 
     @pytest.mark.parametrize(
-        ("left", "right", "expected"),
+        ("value", "expected"),
         [
-            ("alice", "alice", True),
-            ("Alice", "alice", True),
-            ("  Alice ", "alice", True),
-            ("alice", "bob", False),
-            # 'straße'.casefold() == 'strasse' -- .lower() would keep the ß.
-            ("Straße", "STRASSE", True),
+            ("alice", "alice"),
+            ("Alice", "alice"),
+            ("  Alice ", "alice"),
+            ("\tBob\n", "bob"),
+            # German sharp-s: casefold() expands ß → ss; .lower() would not.
+            ("Straße", "strasse"),
+            ("STRASSE", "strasse"),
+            # Greek capital sigma → lowercase sigma (final-sigma is preserved
+            # in casefold; both ΣΊΓΜΑ and σίγμα fold to the same form).
+            ("ΣΊΓΜΑ", "σίγμα"),
+            # Turkish capital dotted-I (U+0130): Unicode default case-folding
+            # produces 'i' followed by combining dot above (U+0307).  This
+            # documents Python's locale-independent behaviour -- it is NOT
+            # Turkish-locale-aware, but is consistent across platforms.
+            ("İstanbul", "i̇stanbul"),
+            # Empty / whitespace-only.
+            ("", ""),
+            ("   ", ""),
         ],
     )
-    def test_casefold_equals_variants(
+    def test_normalize_identifier_variants(
         self,
-        left: str,
-        right: str,
-        expected: bool,
+        value: str,
+        expected: str,
     ) -> None:
-        assert casefold_equals(left, right) is expected
+        assert normalize_identifier(value) == expected
+
+    @given(value=st.text())
+    def test_matches_strip_casefold_contract(self, value: str) -> None:
+        """Pin the contract: behaviour must equal ``value.strip().casefold()``."""
+        assert normalize_identifier(value) == value.strip().casefold()
+
+    @given(value=st.text())
+    def test_idempotent(self, value: str) -> None:
+        """Applying the helper twice yields the same result as once."""
+        once = normalize_identifier(value)
+        assert normalize_identifier(once) == once
 
 
 @pytest.mark.unit
@@ -64,3 +88,7 @@ class TestFindByNameCi:
 
     def test_empty_iterable(self) -> None:
         assert find_by_name_ci((), "anything") is None
+
+    def test_match_strips_and_casefolds_target(self) -> None:
+        items = (self.Item("Alice"),)
+        assert find_by_name_ci(items, "  ALICE  ") is items[0]
