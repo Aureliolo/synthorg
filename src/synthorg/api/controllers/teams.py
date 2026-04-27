@@ -24,6 +24,7 @@ from synthorg.observability.events.api import (
     API_TEAM_DELETED,
     API_TEAM_REORDERED,
     API_TEAM_UPDATED,
+    API_VALIDATION_FAILED,
 )
 
 logger = get_logger(__name__)
@@ -296,17 +297,39 @@ class TeamController(Controller):
             dept_idx, dept = _find_department(depts, dept_name)
 
             teams: list[dict[str, Any]] = list(dept.get("teams", []))
+            stored_names = [str(t.get("name", "")) for t in teams]
             team_map: dict[str, dict[str, Any]] = {
-                normalize_identifier(str(t.get("name", ""))): t for t in teams
+                normalize_identifier(name): t
+                for name, t in zip(stored_names, teams, strict=True)
             }
             if len(team_map) != len(teams):
                 # Defense-in-depth: Department validation should reject
                 # case-collision team names at write time, but if persisted
                 # data ever contains them, refuse to reorder rather than
                 # silently dropping the overwritten entries.
+                normalized_to_originals: dict[str, list[str]] = {}
+                for name in stored_names:
+                    normalized_to_originals.setdefault(
+                        normalize_identifier(name), []
+                    ).append(name)
+                colliding = sorted(
+                    {
+                        name
+                        for originals in normalized_to_originals.values()
+                        if len(originals) > 1
+                        for name in originals
+                    }
+                )
                 msg = (
                     "Cannot reorder teams: stored team names contain "
                     "case-insensitive duplicates"
+                )
+                logger.warning(
+                    API_VALIDATION_FAILED,
+                    department=dept_name,
+                    reason="stored_team_name_collision",
+                    stored_names=stored_names,
+                    colliding=colliding,
                 )
                 raise ApiValidationError(msg)
             current_names = set(team_map)
@@ -314,13 +337,32 @@ class TeamController(Controller):
             requested_names = set(requested_order)
 
             if len(requested_order) != len(requested_names):
+                duplicates = sorted(
+                    n for n in requested_order if requested_order.count(n) > 1
+                )
                 msg = "team_names must not contain duplicates (case-insensitive)"
+                logger.warning(
+                    API_VALIDATION_FAILED,
+                    department=dept_name,
+                    reason="duplicate_team_names_in_request",
+                    requested=list(data.team_names),
+                    duplicates=sorted(set(duplicates)),
+                )
                 raise ApiValidationError(msg)
 
             if current_names != requested_names:
                 msg = (
                     "team_names must contain exactly the current team "
                     f"names: {sorted(current_names)}"
+                )
+                logger.warning(
+                    API_VALIDATION_FAILED,
+                    department=dept_name,
+                    reason="team_names_set_mismatch",
+                    requested=list(data.team_names),
+                    stored=sorted(current_names),
+                    missing=sorted(current_names - requested_names),
+                    extra=sorted(requested_names - current_names),
                 )
                 raise ApiValidationError(msg)
 
@@ -451,9 +493,14 @@ class TeamController(Controller):
                 target_idx, target = _find_team(teams, reassign_to)
                 # Merge members (deduplicate, case-insensitive).
                 existing_members = list(target.get("members", []))
-                existing_lower = {normalize_identifier(m) for m in existing_members}
+                # Coerce to str so a corrupted persisted member (None, int,
+                # ...) raises a 422 via _validate_team_model below rather
+                # than a 500 from normalize_identifier.
+                existing_lower = {
+                    normalize_identifier(str(m)) for m in existing_members
+                }
                 for member in team.get("members", []):
-                    member_normalized = normalize_identifier(member)
+                    member_normalized = normalize_identifier(str(member))
                     if member_normalized not in existing_lower:
                         existing_members.append(member)
                         existing_lower.add(member_normalized)
