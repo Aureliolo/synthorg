@@ -140,10 +140,26 @@ jobs:
         run: |
           set -euo pipefail
 
+          # ── Step 0: Defense-in-depth COMMENTER_LOGIN format guard ──
+          # GitHub usernames are restricted to [a-zA-Z0-9-] (no leading
+          # / trailing hyphen, max 39 chars). Validate up-front so the
+          # value is provably safe before it flows into grep, jq --arg,
+          # and the commit message body. Belt-and-braces: if a future
+          # GitHub change ever loosens username syntax, this guard keeps
+          # the workflow's invariants intact.
+          if ! [[ "$COMMENTER_LOGIN" =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,38}$ ]]; then
+            echo "::error::COMMENTER_LOGIN '$COMMENTER_LOGIN' does not match GitHub username grammar"
+            exit 1
+          fi
+
           # ── Step 1: Validate commenter is a PR contributor ──
           GH_TOKEN="$GITHUB_TOKEN_RW" \
             gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha' > /tmp/pr-head-sha
           PR_HEAD_SHA=$(cat /tmp/pr-head-sha)
+          if [[ -z "$PR_HEAD_SHA" || ! "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Failed to extract a valid 40-hex PR head SHA (got: '$PR_HEAD_SHA')"
+            exit 1
+          fi
           echo "PR head SHA: $PR_HEAD_SHA"
 
           # Collect distinct PR commit authors (login). Some commits may
@@ -153,6 +169,10 @@ jobs:
             gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/commits" \
               --jq '.[].author.login | select(.)' \
             | sort -u > /tmp/pr-authors
+          if [ ! -s /tmp/pr-authors ]; then
+            echo "::error::Failed to fetch PR commit authors (empty list); cannot validate commenter"
+            exit 1
+          fi
           echo "PR commit authors:"
           cat /tmp/pr-authors
 
@@ -284,9 +304,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.issue.number }}
         run: |
-          gh api --method POST \
+          set -euo pipefail
+          if ! gh api --method POST \
             "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
-            -f body="All contributors have signed the CLA. Thank you!"
+            -f body="All contributors have signed the CLA. Thank you!"; then
+            echo "::error::Failed to post all-signed confirmation comment to PR #$PR_NUMBER"
+            exit 1
+          fi
 
       - name: Re-run the cla-check workflow on PR head SHA
         if: steps.record.outputs.already_signed == 'false'
@@ -303,7 +327,10 @@ jobs:
             "repos/$GITHUB_REPOSITORY/actions/workflows/cla.yml/runs?head_sha=$PR_HEAD_SHA&event=pull_request_target&per_page=1" \
             --jq '.workflow_runs[0].id // empty')
           if [ -z "$LAST_RUN" ]; then
-            echo "::notice::No prior cla-check run found for $PR_HEAD_SHA; nothing to re-run."
+            # Visible warning, not a quiet ::notice::: if the prior run is
+            # missing, the PR's CLA gate will not auto-flip green and the
+            # contributor will need a fresh push to re-trigger cla-check.
+            echo "::warning::No prior cla-check run found for $PR_HEAD_SHA; PR gate will not auto-flip green until next push."
             exit 0
           fi
           echo "Re-running cla-check workflow run: $LAST_RUN"

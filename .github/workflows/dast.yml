@@ -33,18 +33,40 @@ jobs:
           persist-credentials: false
 
       # Create env file with generated secrets (compose requires
-      # env_file: .env).  POSTGRES_PASSWORD is unused under the DAST
-      # overlay (compose.dast.yml swaps the backend onto SQLite +
-      # internal bus, dropping the postgres + nats services), but
+      # env_file: .env).
+      #
+      # POSTGRES_PASSWORD is unused under the DAST overlay
+      # (compose.dast.yml swaps the backend onto SQLite + internal
+      # bus, dropping the postgres + nats services), but
       # docker/.env.example still declares it with a `:?Set ...`
       # required-variable check, so we generate a value to keep
       # `docker compose config` happy at parse time.
+      #
+      # SYNTHORG_PAGINATION_CURSOR_SECRET is a hard-required boot
+      # guard: the backend exits with RuntimeError when the env var
+      # is unset, because an ephemeral per-process key silently
+      # invalidates every outstanding cursor token across restarts
+      # (see src/synthorg/api/app.py).  The same boot guard holds in
+      # dev / pre-release / prod, so DAST mirrors prod and generates
+      # a per-run value here.
       - name: Create env file
         run: |
+          set -euo pipefail
           cp docker/.env.example docker/.env
-          echo "SYNTHORG_JWT_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')" >> docker/.env
-          echo "SYNTHORG_SETTINGS_KEY=$(python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')" >> docker/.env
-          echo "POSTGRES_PASSWORD=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')" >> docker/.env
+          # Each generation runs in its own VAR=$(...) so a Python failure
+          # surfaces immediately as a non-zero exit (set -e + pipefail)
+          # rather than appending an empty value and surfacing later as a
+          # confusing `compose config` parse error.
+          JWT_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')
+          SETTINGS_KEY=$(python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')
+          PAGINATION_CURSOR_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
+          POSTGRES_PW=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
+          {
+            echo "SYNTHORG_JWT_SECRET=$JWT_SECRET"
+            echo "SYNTHORG_SETTINGS_KEY=$SETTINGS_KEY"
+            echo "SYNTHORG_PAGINATION_CURSOR_SECRET=$PAGINATION_CURSOR_SECRET"
+            echo "POSTGRES_PASSWORD=$POSTGRES_PW"
+          } >> docker/.env
 
       # Build the apko-composed Wolfi base image locally, mirroring CI's
       # backend-base build. The backend Dockerfile has no default for
@@ -81,13 +103,23 @@ jobs:
 
       - name: Wait for healthy
         run: |
-          for i in $(seq 1 30); do
+          set -euo pipefail
+          # Poll readyz for up to 60s. break-on-success + post-loop guard
+          # makes the failure path explicit, instead of relying on `exit 0`
+          # inside the loop body that a future refactor could move into a
+          # function or subshell.
+          healthy=false
+          for _ in $(seq 1 30); do
             if curl -sf http://localhost:3001/api/v1/readyz > /dev/null 2>&1; then
-              echo "Backend healthy"
-              exit 0
+              healthy=true
+              break
             fi
             sleep 2
           done
+          if [ "$healthy" = "true" ]; then
+            echo "Backend healthy"
+            exit 0
+          fi
           echo "::error::Backend failed to start within 60s"
           docker compose -f docker/compose.yml -f docker/compose.dast.yml logs backend
           exit 1
@@ -104,6 +136,7 @@ jobs:
       - name: Generate DAST JWT
         id: jwt
         run: |
+          set -euo pipefail
           TOKEN=$(docker compose -f docker/compose.yml -f docker/compose.dast.yml exec -T backend \
             python -c "
           import os, jwt, datetime, uuid
@@ -119,6 +152,10 @@ jobs:
           }
           print(jwt.encode(payload, secret, algorithm='HS256'))
           ")
+          if [ -z "$TOKEN" ]; then
+            echo "::error::DAST JWT generation produced an empty token (docker compose exec or python failed)"
+            exit 1
+          fi
           echo "::add-mask::$TOKEN"
           echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
 

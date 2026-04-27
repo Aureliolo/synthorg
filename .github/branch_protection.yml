@@ -25,6 +25,12 @@ rulesets:
     conditions:
       ref_name:
         include: ["~ALL"]
+        # No carve-outs: every ref under this ruleset must satisfy the
+        # required_signatures rule below. The cla-signatures branch
+        # used to need an exclusion because contributor-assistant
+        # committed with GITHUB_TOKEN; cla.yml's cla-sign job now
+        # mints commits via the App token + Git Data API, producing
+        # GitHub-verified signatures, so the carve-out is gone.
         exclude: []
     rules:
       - type: code_quality
