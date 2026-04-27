@@ -52,7 +52,7 @@ logger = get_logger(__name__)
 #     return well under their cap. Realistic headline budget is 25
 #     (drain) + ~26 s (services) = ~51 s.
 #
-# Recommended ``terminationGracePeriodSeconds: 45`` per
+# Recommended ``terminationGracePeriodSeconds: 60`` per
 # ``docs/design/deployment.md``. Operators that consistently hit
 # drain timeouts should raise the grace and document the incident.
 # Raising any *individual* budget should come with a note explaining

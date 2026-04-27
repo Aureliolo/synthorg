@@ -658,9 +658,12 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
     return { succeeded, failed, failedReasons }
   },
   dispose: () => {
-    // Reserved for future teardown of timers / listeners. Today the
-    // approvals store schedules no async resources; this method
-    // exists so the test-setup ``afterEach`` contract is uniform
-    // across domain stores (#1600 Phase 5).
+    // Reset module-level state so stale-response checks and
+    // optimistic-transition tracking do not leak across tests when
+    // a different test exercises this store via a component import
+    // (#1600 Phase 5).
+    _resetPendingTransitions()
+    _resetDetailRequestSeq()
+    listRequestSeq = 0
   },
 }))

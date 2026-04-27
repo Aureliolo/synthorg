@@ -240,7 +240,7 @@ class TestStartIsConcurrencySafe:
         def counting_os_open(
             path: str,
             flags: int,
-            mode: int = 0o777,
+            mode: int = 0o600,
         ) -> int:
             if flags & os.O_EXCL:
                 excl_calls.append(flags)
@@ -277,7 +277,7 @@ class TestStartIsConcurrencySafe:
             def counting_os_open(
                 path: str,
                 flags: int,
-                mode: int = 0o777,
+                mode: int = 0o600,
             ) -> int:
                 if flags & os.O_EXCL:
                     excl_calls.append(flags)
@@ -521,3 +521,48 @@ class TestThreeWayInstanceRace:
             await c1.shutdown()
             await c2.shutdown()
             await c3.shutdown()
+
+
+@pytest.mark.unit
+class TestStartDeadlineBound:
+    """``start()`` enforces a hard deadline so a hung filesystem cannot block boot."""
+
+    async def test_start_falls_back_to_generated_id_on_deadline(
+        self, tmp_path: Path
+    ) -> None:
+        """A loader that exceeds the ``asyncio.wait_for`` budget yields a fallback UUID.
+
+        We patch ``asyncio.wait_for`` to raise ``TimeoutError`` directly
+        rather than really blocking for five seconds; the test pins the
+        contract that the fallback path engages without hanging the
+        suite.
+        """
+        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
+        collector = TelemetryCollector(config=config, data_dir=tmp_path)
+
+        async def fake_wait_for(*_args: object, **_kwargs: object) -> str:
+            raise TimeoutError
+
+        try:
+            with (
+                patch(
+                    "synthorg.telemetry.collector.asyncio.wait_for",
+                    side_effect=fake_wait_for,
+                ),
+                structlog.testing.capture_logs() as logs,
+            ):
+                await collector.start()
+            # A UUID4 fallback must have been assigned.
+            assert collector.deployment_id is not None
+            assert len(collector.deployment_id) == 36
+            # The fallback path must NOT emit the "loaded from disk"
+            # event; the deployment is now an in-memory splinter.
+            events = [log["event"] for log in logs]
+            assert TELEMETRY_DEPLOYMENT_ID_LOADED not in events
+            # And the fallback log must flag itself so dashboards can
+            # detect splinter deployments.
+            assert any(log.get("using_generated_id") is True for log in logs), (
+                f"expected using_generated_id=True in {logs!r}"
+            )
+        finally:
+            await collector.shutdown()

@@ -13,23 +13,22 @@ The notification subsystem delivers operator-facing alerts for events that requi
 
 All notification adapters implement the `NotificationSink` protocol:
 
-- ``async send(notification: Notification) -> None``: deliver a single notification
-- ``async close() -> None``: release resources (connections, file handles)
+- ``async start() -> None``: open external resources (HTTP clients, sockets). Idempotent: a second call is a no-op. Stateless adapters (`Console`, `Email`) implement this as a no-op for protocol uniformity.
+- ``async close() -> None``: release resources. Idempotent.
+- ``async send(notification: Notification) -> None``: deliver a single notification. Adapters that hold state (`Slack`, `Ntfy`) raise `RuntimeError` if `send()` is called before `start()`.
+- ``async __aenter__() / __aexit__(...)``: async context-manager pair that wraps `start()` / `close()`, so a sink instance can be driven directly via `async with sink:` outside the dispatcher (useful in scripts and tests).
 
-The protocol is intentionally minimal so new adapters (PagerDuty, Teams, Discord, etc.)
-can be added without modifying dispatcher logic.
+The lifecycle is guarded by an `asyncio.Lock` on stateful adapters so concurrent `start()` / `close()` calls collapse to a single open / close. The protocol is intentionally minimal so new adapters (PagerDuty, Teams, Discord, etc.) can be added without modifying dispatcher logic.
 
 ## NotificationDispatcher
 
-The `NotificationDispatcher` fans out each `Notification` to all registered sinks
-concurrently via `asyncio.TaskGroup`. Failures in individual sinks are isolated:
-a failing Slack webhook does not prevent ntfy or email delivery. All errors are
-logged with structured event constants and collected into an `ExceptionGroup` that
-preserves per-sink context.
+The `NotificationDispatcher` is itself driven by an `async start()` / `async aclose()` pair (wired into the API lifecycle in `src/synthorg/api/lifecycle_builder.py`). On startup it fans out `start()` to every registered sink through `asyncio.TaskGroup`; sinks whose start fails are dropped from the active set so the rest of the dispatch flow keeps working.
+
+Each `dispatch(notification)` call fans out to the active sinks concurrently via `asyncio.TaskGroup`. Failures in individual sinks are isolated: a failing Slack webhook does not prevent ntfy or email delivery. All errors are logged with structured event constants (`error_type` + `safe_error_description`, never raw `str(exc)` so webhook URLs / SMTP credentials never reach the log sink) and collected into an `ExceptionGroup` that preserves per-sink context.
 
 The dispatcher applies **severity-based filtering**: notifications below the
-configured `min_severity` threshold are dropped before fan-out. An explicit
-`close()` method tears down all sinks in parallel.
+configured `min_severity` threshold are dropped before fan-out. `aclose()`
+tears down all sinks in parallel using the same TaskGroup pattern.
 
 ## Adapters
 

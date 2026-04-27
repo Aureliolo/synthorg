@@ -29,9 +29,12 @@ Lifecycle:
   budget for the in-flight count to reach zero.
 
 The middleware is instance-based: a single object is shared
-across all requests, with the inflight counter and lock guarded
-together. Tests cover normal completion, the 503 short-circuit,
-and the drain-timeout fallback.
+across all requests. The inflight counter and ``_idle`` event
+are mutated only between ``await`` points, so on the
+single-threaded asyncio loop they are atomic relative to other
+coroutines without needing a lock. Tests cover normal
+completion, the 503 short-circuit, and the drain-timeout
+fallback.
 """
 
 import asyncio
@@ -72,7 +75,6 @@ class RequestDrainMiddleware:
         "_drain_timeout",
         "_idle",
         "_inflight",
-        "_lock",
     )
 
     def __init__(
@@ -87,7 +89,6 @@ class RequestDrainMiddleware:
         self._app = app
         self._drain_started = asyncio.Event()
         self._inflight = 0
-        self._lock = asyncio.Lock()
         self._idle = asyncio.Event()
         self._idle.set()
         self._drain_timeout = drain_timeout_seconds
@@ -123,16 +124,17 @@ class RequestDrainMiddleware:
         if self._drain_started.is_set():
             await _send_drain_response(send)
             return
-        async with self._lock:
-            self._inflight += 1
-            self._idle.clear()
+        # Single-threaded asyncio: counter + event ops have no
+        # ``await`` between them, so they are atomic relative to
+        # other coroutines and need no lock.
+        self._inflight += 1
+        self._idle.clear()
         try:
             await self._app(scope, receive, send)
         finally:
-            async with self._lock:
-                self._inflight -= 1
-                if self._inflight == 0:
-                    self._idle.set()
+            self._inflight -= 1
+            if self._inflight == 0:
+                self._idle.set()
 
     def _wrap_lifespan_receive(self, receive: Receive) -> Receive:
         """Wrap the lifespan receive so ``lifespan.shutdown`` triggers drain.
@@ -208,22 +210,37 @@ class RequestDrainMiddleware:
 
 
 async def _send_drain_response(send: Send) -> None:
-    """Send a 503 with ``Retry-After: 5`` to a request after drain start."""
-    await send(
-        {
-            "type": "http.response.start",
-            "status": 503,
-            "headers": [
-                (b"content-type", b"application/json"),
-                (b"content-length", str(len(_DRAIN_RESPONSE_BODY)).encode()),
-                (b"retry-after", b"5"),
-            ],
-        },
-    )
-    await send(
-        {
-            "type": "http.response.body",
-            "body": _DRAIN_RESPONSE_BODY,
-            "more_body": False,
-        },
-    )
+    """Send a 503 with ``Retry-After: 5`` to a request after drain start.
+
+    Client disconnects during shutdown are common; the ASGI ``send``
+    callable may raise if the peer is already gone. Swallow these
+    errors so they do not crash the lifespan layer; ``MemoryError``
+    and ``RecursionError`` always propagate.
+    """
+    try:
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 503,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"content-length", str(len(_DRAIN_RESPONSE_BODY)).encode()),
+                    (b"retry-after", b"5"),
+                ],
+            },
+        )
+        await send(
+            {
+                "type": "http.response.body",
+                "body": _DRAIN_RESPONSE_BODY,
+                "more_body": False,
+            },
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.debug(
+            API_APP_DRAIN_STARTED,
+            detail="drain_response_send_failed",
+            error_type=type(exc).__name__,
+        )

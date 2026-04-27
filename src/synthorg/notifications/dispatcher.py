@@ -8,7 +8,7 @@ from synthorg.notifications.models import (
     Notification,
     NotificationSeverity,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.notification import (
     NOTIFICATION_DISPATCH_FAILED,
     NOTIFICATION_DISPATCHED,
@@ -151,7 +151,8 @@ class NotificationDispatcher:
             logger.warning(
                 NOTIFICATION_SINK_START_FAILED,
                 sink_name=sink.sink_name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     @staticmethod
@@ -165,7 +166,8 @@ class NotificationDispatcher:
             logger.warning(
                 NOTIFICATION_SINK_CLOSE_FAILED,
                 sink_name=sink.sink_name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def dispatch(self, notification: Notification) -> None:
@@ -248,11 +250,12 @@ class NotificationDispatcher:
     ) -> None:
         """Log ExceptionGroup with per-sink context preserved."""
         partial_errors = [e for e in errors if e is not None]
+        error_types = sorted({type(e).__name__ for e in eg.exceptions})
         logger.warning(
             NOTIFICATION_DISPATCH_FAILED,
             notification_id=notification.id,
             category=notification.category,
-            error=f"TaskGroup errors: {eg.exceptions}",
+            error_types=error_types,
             partial_sink_errors=partial_errors,
         )
 
@@ -269,11 +272,12 @@ class NotificationDispatcher:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            errors[index] = str(exc)
+            description = safe_error_description(exc)
+            errors[index] = description
             logger.warning(
                 NOTIFICATION_DISPATCH_FAILED,
                 notification_id=notification.id,
                 sink_name=sink.sink_name,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=description,
             )

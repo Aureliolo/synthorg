@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Self
 import httpx
 
 from synthorg.notifications.adapters.ntfy import _validate_outbound_url
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.notification import (
     NOTIFICATION_SLACK_DELIVERED,
     NOTIFICATION_SLACK_FAILED,
@@ -171,6 +171,7 @@ class SlackNotificationSink:
             logger.warning(
                 NOTIFICATION_SLACK_FAILED,
                 notification_id=notification.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise

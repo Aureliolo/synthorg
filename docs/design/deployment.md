@@ -66,9 +66,9 @@ The backend tears down in three stages so requests are not cancelled mid-transac
 
 1. **HTTP request drain (25 s budget)**: `RequestDrainMiddleware` (`src/synthorg/api/drain.py`) is wrapped around the Litestar ASGI app as the outermost layer. The first `on_shutdown` hook flips the drain gate; new requests after that return `503 Service Unavailable` with `Retry-After: 5`, while in-flight requests have up to 25 s to finish. A drain that exceeds the budget is logged at WARNING (`api.app.drain.timeout`) and service teardown begins regardless. The budget lives at `_DRAIN_TIMEOUT_SECONDS` in `src/synthorg/api/lifecycle.py`.
 2. **Service teardown (~26 s worst case)**: `_safe_shutdown` runs the per-service shutdown budgets in `src/synthorg/api/lifecycle.py`: TaskEngine 8 s drain (16 s outer hard cap + 1 s slack), then meeting (2 s), perf (2 s), backup (5 s), settings (2 s), bridge (2 s), distributed queue (3 s), message bus (3 s), persistence (5 s), approval timeout (1 s).
-3. **Uvicorn graceful close**: `uvicorn.run` is invoked with `timeout_graceful_shutdown=30`, which covers the slowest service teardown step plus a small safety margin after the drain returns.
+3. **Uvicorn graceful close**: `uvicorn.run` is invoked with `timeout_graceful_shutdown=60`, which covers the drain budget plus the full service teardown sequence with headroom for the absolute worst case.
 
-**Recommended `terminationGracePeriodSeconds: 45`** for both Kubernetes pods and Docker Compose stacks. The realistic budget is `25 (drain) + ~26 (services) ≈ 51 s` worst case, but in practice the drain and service teardown overlap (services start after the drain returns), so 45 s gives ~95% of restarts a clean exit. Operators that consistently hit drain timeouts should raise the grace and document the incident motivating the change.
+**Recommended `terminationGracePeriodSeconds: 60`** for both Kubernetes pods and Docker Compose stacks. The realistic budget is `25 (drain) + ~26 (services) ≈ 51 s` and the absolute worst case is ~67 s if every service hits its individual cap; 60 s covers the realistic worst case with headroom. Operators that consistently hit drain timeouts should raise the grace and document the incident motivating the change.
 
 Kubernetes example:
 
@@ -76,7 +76,7 @@ Kubernetes example:
 apiVersion: v1
 kind: Pod
 spec:
-  terminationGracePeriodSeconds: 45
+  terminationGracePeriodSeconds: 60
   containers:
     - name: backend
       image: ghcr.io/aureliolo/synthorg-backend@sha256:...
@@ -88,7 +88,7 @@ Docker Compose example:
 services:
   backend:
     image: ghcr.io/aureliolo/synthorg-backend@sha256:...
-    stop_grace_period: 45s
+    stop_grace_period: 60s
     stop_signal: SIGTERM
 ```
 

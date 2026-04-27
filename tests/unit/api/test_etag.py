@@ -317,3 +317,155 @@ class TestETagMiddleware:
         etag0 = dict(recorders[0].messages[0]["headers"]).get(b"etag")
         etag1 = dict(recorders[1].messages[0]["headers"]).get(b"etag")
         assert etag0 != etag1
+
+    async def test_304_strips_content_length_and_content_type(self) -> None:
+        """304 Not Modified must drop body-shape headers per RFC 7232."""
+        body = b'{"value":1}'
+        etag = compute_etag(body)
+
+        async def app(
+            scope: dict[str, Any],
+            receive: Any,
+            send: Any,
+        ) -> None:
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 200,
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"content-length", str(len(body)).encode()),
+                    ],
+                },
+            )
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": body,
+                    "more_body": False,
+                },
+            )
+
+        recorder = _Recorder()
+        await ETagMiddleware(app)(
+            _http_scope(path="/api/v1/settings", if_none_match=etag),
+            _empty_receive,
+            recorder,
+        )
+        headers = dict(recorder.messages[0]["headers"])
+        assert recorder.messages[0]["status"] == 304
+        assert b"etag" in headers
+        assert b"cache-control" in headers
+        assert b"content-length" not in headers
+        assert b"content-type" not in headers
+
+    async def test_existing_cache_control_is_not_overwritten(self) -> None:
+        """The middleware must respect an upstream-set Cache-Control header."""
+
+        async def app(
+            scope: dict[str, Any],
+            receive: Any,
+            send: Any,
+        ) -> None:
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 200,
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"cache-control", b"no-store"),
+                    ],
+                },
+            )
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": b"{}",
+                    "more_body": False,
+                },
+            )
+
+        recorder = _Recorder()
+        await ETagMiddleware(app)(
+            _http_scope(path="/api/v1/settings"),
+            _empty_receive,
+            recorder,
+        )
+        cache_values = [
+            v for k, v in recorder.messages[0]["headers"] if k == b"cache-control"
+        ]
+        assert cache_values == [b"no-store"]
+
+    async def test_streaming_response_skips_etag_and_buffers_nothing(self) -> None:
+        """Multi-chunk responses are forwarded as-is with no ETag and no buffering."""
+        chunks = [b"chunk-1", b"chunk-2", b"chunk-3"]
+
+        async def streaming_app(
+            scope: dict[str, Any],
+            receive: Any,
+            send: Any,
+        ) -> None:
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 200,
+                    "headers": [(b"content-type", b"application/json")],
+                },
+            )
+            for idx, chunk in enumerate(chunks):
+                await send(
+                    {
+                        "type": "http.response.body",
+                        "body": chunk,
+                        "more_body": idx < len(chunks) - 1,
+                    },
+                )
+
+        recorder = _Recorder()
+        await ETagMiddleware(streaming_app)(
+            _http_scope(path="/api/v1/settings"),
+            _empty_receive,
+            recorder,
+        )
+        # 1 start + 3 body messages, all forwarded as-is.
+        assert len(recorder.messages) == 1 + len(chunks)
+        headers = dict(recorder.messages[0]["headers"])
+        assert b"etag" not in headers
+        assert b"cache-control" not in headers
+        bodies = [m["body"] for m in recorder.messages[1:]]
+        assert bodies == chunks
+        # The middle chunks must keep ``more_body=True``; only the last is False.
+        assert recorder.messages[-1]["more_body"] is False
+        for msg in recorder.messages[1:-1]:
+            assert msg["more_body"] is True
+
+    async def test_inner_app_returns_without_final_chunk_flushes_buffer(
+        self,
+    ) -> None:
+        """Inner app returns mid-buffer; middleware flushes start + buffered body."""
+
+        async def truncating_app(
+            scope: dict[str, Any],
+            receive: Any,
+            send: Any,
+        ) -> None:
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 200,
+                    "headers": [(b"content-type", b"application/json")],
+                },
+            )
+            # Returns without sending an ``http.response.body``;
+            # the middleware must still close out the response.
+
+        recorder = _Recorder()
+        await ETagMiddleware(truncating_app)(
+            _http_scope(path="/api/v1/settings"),
+            _empty_receive,
+            recorder,
+        )
+        assert len(recorder.messages) == 2
+        assert recorder.messages[0]["status"] == 200
+        assert recorder.messages[1]["body"] == b""
+        assert recorder.messages[1]["more_body"] is False

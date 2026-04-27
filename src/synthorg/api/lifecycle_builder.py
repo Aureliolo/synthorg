@@ -23,7 +23,7 @@ from synthorg.api.lifecycle_helpers import (
     _maybe_promote_first_owner,
     _ticket_cleanup_loop,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APP_SHUTDOWN,
     API_APP_STARTUP,
@@ -268,10 +268,16 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 )
             except MemoryError, RecursionError:
                 raise
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                # Phase 2 auto-wire pulls operator settings (incl.
+                # secret-bearing config). Avoid logger.exception here
+                # so traceback frame-locals never serialize raw
+                # secrets to the log sink.
+                logger.error(  # noqa: TRY400
                     API_APP_STARTUP,
-                    error="Phase 2 auto-wire failed",
+                    detail="phase_2_auto_wire_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 await _safe_shutdown(
                     task_engine,

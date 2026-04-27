@@ -515,9 +515,9 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
     })
   },
   dispose: () => {
-    // Reserved for future teardown of timers / listeners. Today the
-    // meetings store schedules no async resources; this method exists
-    // so the test-setup ``afterEach`` contract is uniform across
-    // domain stores (#1600 Phase 5).
+    // Reset module-level request-seq counters so stale-response
+    // checks do not leak across tests when a different test exercises
+    // this store via a component import (#1600 Phase 5).
+    _resetRequestSeqs()
   },
 }))

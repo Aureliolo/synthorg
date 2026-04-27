@@ -242,3 +242,57 @@ class TestRequestDrainMiddleware:
             RequestDrainMiddleware(_ok_app, drain_timeout_seconds=0)
         with pytest.raises(ValueError, match="must be > 0"):
             RequestDrainMiddleware(_ok_app, drain_timeout_seconds=-1.0)
+
+    async def test_lifespan_shutdown_drains_before_inner_app_sees_message(
+        self,
+    ) -> None:
+        """``begin_drain`` must run before the inner Litestar app sees shutdown.
+
+        The inner Litestar app's ``on_shutdown`` hooks kick off the
+        per-service teardown; they must only fire after in-flight HTTP
+        requests have finished, so the drain has to land before the
+        shutdown message reaches the inner app.
+        """
+        order: list[str] = []
+
+        async def inner_app(
+            scope: dict[str, Any],
+            receive: Any,
+            send: Any,
+        ) -> None:
+            if scope["type"] != "lifespan":
+                return
+            message = await receive()
+            order.append(f"app-saw:{message['type']}")
+
+        class _Tracked(RequestDrainMiddleware):
+            async def begin_drain(self) -> None:  # type: ignore[override]
+                order.append("begin_drain")
+                await super().begin_drain()
+
+        async def fake_receive() -> dict[str, Any]:
+            return {"type": "lifespan.shutdown"}
+
+        tracked = _Tracked(inner_app, drain_timeout_seconds=1.0)
+        await tracked({"type": "lifespan"}, fake_receive, _Recorder())
+        assert order == ["begin_drain", "app-saw:lifespan.shutdown"]
+
+    async def test_inflight_decremented_when_inner_app_raises(self) -> None:
+        """The finally block must run even if the inner app raises."""
+
+        async def failing_app(
+            scope: dict[str, Any],
+            receive: Any,
+            send: Any,
+        ) -> None:
+            msg = "boom"
+            raise RuntimeError(msg)
+
+        mw = RequestDrainMiddleware(failing_app, drain_timeout_seconds=1.0)
+        recorder = _Recorder()
+        with pytest.raises(RuntimeError, match="boom"):
+            await mw(_http_scope(), _empty_receive, recorder)
+        assert mw.inflight == 0
+        # The drain can still complete promptly because no work is
+        # outstanding.
+        await mw.begin_drain()
