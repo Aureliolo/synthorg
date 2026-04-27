@@ -204,7 +204,13 @@ jobs:
 
       - name: Validate compose files
         run: |
-          echo "POSTGRES_PASSWORD=ci-validation-dummy" > docker/.env
+          # Placeholder values for compose interpolation. The Dockerfile is
+          # never built during `compose config`, so these values just need
+          # to silence "variable not set" warnings; they are not consumed.
+          {
+            echo "POSTGRES_PASSWORD=ci-validation-dummy"
+            echo "BASE_IMAGE=ci-validation-dummy:placeholder"
+          } > docker/.env
           docker compose -f docker/compose.yml config --quiet
           docker compose -f docker/compose.yml -f docker/compose.distributed.yml --profile distributed config --quiet
           docker compose -f docker/compose.yml -f docker/compose.override.yml config --quiet
