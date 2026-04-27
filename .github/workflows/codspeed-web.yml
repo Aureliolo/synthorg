@@ -100,7 +100,7 @@ jobs:
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
           BENCH_RESULT: ${{ needs.codspeed-web.result }}
-          BENCH_RAN: ${{ needs.changes.outputs.changed }}
+          WEB_CHANGED: ${{ needs.changes.outputs.changed }}
         run: |
           # When no web files changed, the bench job is skipped on
           # purpose; report success so the required status is
@@ -109,7 +109,7 @@ jobs:
             echo "Path-detection job failed: $CHANGES_RESULT"
             exit 1
           fi
-          if [[ "$BENCH_RAN" != "true" ]]; then
+          if [[ "$WEB_CHANGED" != "true" ]]; then
             echo "No web-relevant changes detected -- bench skipped, gate passes."
             exit 0
           fi

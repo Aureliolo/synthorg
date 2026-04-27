@@ -240,8 +240,8 @@ jobs:
           CHANGES_RESULT: ${{ needs.changes.result }}
           DASHBOARD_RESULT: ${{ needs.lighthouse-dashboard.result }}
           SITE_RESULT: ${{ needs.lighthouse-site.result }}
-          DASHBOARD_RAN: ${{ needs.changes.outputs.dashboard }}
-          SITE_RAN: ${{ needs.changes.outputs.site }}
+          DASHBOARD_CHANGED: ${{ needs.changes.outputs.dashboard }}
+          SITE_CHANGED: ${{ needs.changes.outputs.site }}
         run: |
           set -euo pipefail
           if [[ "$CHANGES_RESULT" == "failure" || "$CHANGES_RESULT" == "cancelled" ]]; then
@@ -251,16 +251,16 @@ jobs:
           # Only check a sub-job's result if its filter said it should
           # have run. If the filter said skip, the job is "skipped"
           # and that's the desired no-op outcome on irrelevant PRs.
-          if [[ "$DASHBOARD_RAN" == "true" ]]; then
+          if [[ "$DASHBOARD_CHANGED" == "true" ]]; then
             if [[ "$DASHBOARD_RESULT" == "failure" || "$DASHBOARD_RESULT" == "cancelled" ]]; then
               echo "Lighthouse Dashboard failed: $DASHBOARD_RESULT"
               exit 1
             fi
           fi
-          if [[ "$SITE_RAN" == "true" ]]; then
+          if [[ "$SITE_CHANGED" == "true" ]]; then
             if [[ "$SITE_RESULT" == "failure" || "$SITE_RESULT" == "cancelled" ]]; then
               echo "Lighthouse Site failed: $SITE_RESULT"
               exit 1
             fi
           fi
-          echo "Lighthouse Pass: dashboard ran=${DASHBOARD_RAN} (${DASHBOARD_RESULT}), site ran=${SITE_RAN} (${SITE_RESULT})"
+          echo "Lighthouse Pass: dashboard changed=${DASHBOARD_CHANGED} (${DASHBOARD_RESULT}), site changed=${SITE_CHANGED} (${SITE_RESULT})"
