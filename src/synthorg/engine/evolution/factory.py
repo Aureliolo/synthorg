@@ -2,6 +2,7 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.registry import StrategyRegistry
 from synthorg.engine.evolution.models import (
     AdaptationAxis,
     AdaptationProposal,  # used by _NoOpProposer
@@ -160,59 +161,73 @@ def _build_trigger(
     return CompositeTrigger(triggers=tuple(triggers))
 
 
+def _build_self_report(
+    config: EvolutionConfig,
+    *,
+    provider: CompletionProvider,
+) -> AdaptationProposer:
+    from synthorg.engine.evolution.proposers.self_report import (  # noqa: PLC0415
+        SelfReportProposer,
+    )
+
+    return SelfReportProposer(
+        provider,
+        model=config.proposer.model,
+        temperature=config.proposer.temperature,
+    )
+
+
+def _build_separate_analyzer(
+    config: EvolutionConfig,
+    *,
+    provider: CompletionProvider,
+) -> AdaptationProposer:
+    from synthorg.engine.evolution.proposers.separate_analyzer import (  # noqa: PLC0415
+        SeparateAnalyzerProposer,
+    )
+
+    return SeparateAnalyzerProposer(
+        provider,
+        model=config.proposer.model,
+        temperature=config.proposer.temperature,
+        max_tokens=config.proposer.max_tokens,
+    )
+
+
+def _build_composite_proposer(
+    config: EvolutionConfig,
+    *,
+    provider: CompletionProvider,
+) -> AdaptationProposer:
+    from synthorg.engine.evolution.proposers.composite import (  # noqa: PLC0415
+        CompositeProposer,
+    )
+
+    return CompositeProposer(
+        failure_proposer=_build_separate_analyzer(config, provider=provider),
+        success_proposer=_build_self_report(config, provider=provider),
+    )
+
+
+_PROPOSER_REGISTRY: StrategyRegistry[AdaptationProposer] = StrategyRegistry(
+    {
+        "self_report": _build_self_report,
+        "separate_analyzer": _build_separate_analyzer,
+        "composite": _build_composite_proposer,
+    },
+    kind="proposer",
+)
+
+
 def _build_proposer(
     config: EvolutionConfig,
     *,
     provider: CompletionProvider | None,
 ) -> AdaptationProposer:
-    """Build proposer from config."""
-    from synthorg.engine.evolution.proposers.self_report import (  # noqa: PLC0415
-        SelfReportProposer,
-    )
-
-    proposer_cfg = config.proposer
+    """Build proposer from config; falls back to no-op when no provider."""
     if provider is None:
         return _NoOpProposer()
-
-    if proposer_cfg.type == "self_report":
-        return SelfReportProposer(
-            provider,
-            model=proposer_cfg.model,
-            temperature=proposer_cfg.temperature,
-        )
-
-    from synthorg.engine.evolution.proposers.separate_analyzer import (  # noqa: PLC0415
-        SeparateAnalyzerProposer,
-    )
-
-    if proposer_cfg.type == "separate_analyzer":
-        return SeparateAnalyzerProposer(
-            provider,
-            model=proposer_cfg.model,
-            temperature=proposer_cfg.temperature,
-            max_tokens=proposer_cfg.max_tokens,
-        )
-
-    # Composite: use both.
-    from synthorg.engine.evolution.proposers.composite import (  # noqa: PLC0415
-        CompositeProposer,
-    )
-
-    failure_proposer = SeparateAnalyzerProposer(
-        provider,
-        model=proposer_cfg.model,
-        temperature=proposer_cfg.temperature,
-        max_tokens=proposer_cfg.max_tokens,
-    )
-    success_proposer = SelfReportProposer(
-        provider,
-        model=proposer_cfg.model,
-        temperature=proposer_cfg.temperature,
-    )
-    return CompositeProposer(
-        failure_proposer=failure_proposer,
-        success_proposer=success_proposer,
-    )
+    return _PROPOSER_REGISTRY.build(config.proposer.type, config, provider=provider)
 
 
 def _build_guard(

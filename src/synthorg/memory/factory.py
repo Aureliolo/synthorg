@@ -2,18 +2,21 @@
 
 Each company gets its own ``MemoryBackend`` instance.  The factory
 dispatches to concrete backend implementations based on
-``config.backend``.
+``config.backend`` via :class:`MemoryBackendRegistry`.
 """
 
 import builtins
 from typing import TYPE_CHECKING
 
+from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.memory.config import CompanyMemoryConfig  # noqa: TC001
+from synthorg.observability.redaction import safe_error_description
 
 if TYPE_CHECKING:
     from synthorg.memory.backends.mem0.config import Mem0EmbedderConfig
 from synthorg.memory.errors import MemoryConfigError
 from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
+from synthorg.memory.registry import MemoryBackendRegistry
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_BACKEND_CONFIG_INVALID,
@@ -80,10 +83,10 @@ def _create_mem0_backend(
             embedder=embedder,
         )
     except (builtins.MemoryError, RecursionError) as exc:
-        logger.exception(
+        logger.warning(
             MEMORY_BACKEND_SYSTEM_ERROR,
             operation="create_mem0_backend",
-            error=str(exc),
+            error=safe_error_description(exc),
             error_type=type(exc).__name__,
         )
         raise
@@ -103,10 +106,10 @@ def _create_mem0_backend(
             max_memories_per_agent=config.options.max_memories_per_agent,
         )
     except (builtins.MemoryError, RecursionError) as exc:
-        logger.exception(
+        logger.warning(
             MEMORY_BACKEND_SYSTEM_ERROR,
             operation="create_mem0_backend",
-            error=str(exc),
+            error=safe_error_description(exc),
             error_type=type(exc).__name__,
         )
         raise
@@ -181,23 +184,16 @@ def _create_composite_backend(
     # Collect unique backend names from routes + default.
     names: set[str] = set(composite_cfg.routes.values())
     names.add(composite_cfg.default)
-    # Create each child backend once.
+    # Create each leaf backend once via the leaf registry (composite
+    # children may not themselves be composite).
     children: dict[str, MemoryBackend] = {}
     for name in sorted(names):
-        if name == "mem0":
-            children[name] = _create_mem0_backend(
-                config,
-                embedder=embedder,
-            )
-        elif name == "inmemory":
-            children[name] = _create_inmemory_backend(config)
-        else:
+        try:
+            children[name] = _LEAF_REGISTRY.build(name, config, embedder=embedder)
+        except StrategyFactoryNotFoundError as exc:
             msg = f"Composite child '{name}' is not a recognized backend"
-            logger.error(
-                MEMORY_BACKEND_UNKNOWN,
-                backend=name,
-            )
-            raise MemoryConfigError(msg)
+            logger.exception(MEMORY_BACKEND_UNKNOWN, backend=name)
+            raise MemoryConfigError(msg) from exc
     backend = CompositeBackend(
         children=children,
         config=composite_cfg,
@@ -208,6 +204,55 @@ def _create_composite_backend(
         children=sorted(children.keys()),
     )
     return backend
+
+
+def _build_mem0_entry(
+    config: CompanyMemoryConfig,
+    *,
+    embedder: Mem0EmbedderConfig | None,
+) -> MemoryBackend:
+    return _create_mem0_backend(config, embedder=embedder)
+
+
+def _build_inmemory_entry(
+    config: CompanyMemoryConfig,
+    *,
+    embedder: Mem0EmbedderConfig | None,  # noqa: ARG001
+) -> MemoryBackend:
+    return _create_inmemory_backend(config)
+
+
+def _build_composite_entry(
+    config: CompanyMemoryConfig,
+    *,
+    embedder: Mem0EmbedderConfig | None,
+) -> MemoryBackend:
+    return _create_composite_backend(config, embedder=embedder)
+
+
+# Leaf registry (mem0, inmemory) used by the composite child loop -- a
+# composite child must itself be a non-composite backend to keep the
+# wiring acyclic.
+_LEAF_REGISTRY: MemoryBackendRegistry = MemoryBackendRegistry(
+    {
+        "mem0": _build_mem0_entry,
+        "inmemory": _build_inmemory_entry,
+    },
+)
+
+# Top-level registry used by ``create_memory_backend``.
+_REGISTRY: MemoryBackendRegistry = MemoryBackendRegistry(
+    {
+        "mem0": _build_mem0_entry,
+        "inmemory": _build_inmemory_entry,
+        "composite": _build_composite_entry,
+    },
+)
+
+
+def default_registry() -> MemoryBackendRegistry:
+    """Return the module-level registry containing the built-in backends."""
+    return _REGISTRY
 
 
 def create_memory_backend(
@@ -232,12 +277,9 @@ def create_memory_backend(
         MemoryConfigError: If the backend is not recognized or
             required configuration is missing.
     """
-    if config.backend == "mem0":
-        return _create_mem0_backend(config, embedder=embedder)
-    if config.backend == "inmemory":
-        return _create_inmemory_backend(config)
-    if config.backend == "composite":
-        return _create_composite_backend(config, embedder=embedder)
-    msg = f"Unknown memory backend: {config.backend!r}"
-    logger.error(MEMORY_BACKEND_UNKNOWN, backend=config.backend)
-    raise MemoryConfigError(msg)
+    try:
+        return _REGISTRY.build(config.backend, config, embedder=embedder)
+    except StrategyFactoryNotFoundError as exc:
+        msg = f"Unknown memory backend: {config.backend!r}"
+        logger.exception(MEMORY_BACKEND_UNKNOWN, backend=config.backend)
+        raise MemoryConfigError(msg) from exc

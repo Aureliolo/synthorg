@@ -5,10 +5,17 @@ from synthorg.api.rate_limits.inflight_config import (
     PerOpConcurrencyConfig,  # noqa: TC001
 )
 from synthorg.api.rate_limits.inflight_protocol import InflightStore  # noqa: TC001
-from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.core.registry import StrategyRegistry
 
-logger = get_logger(__name__)
+
+def _build_memory(_config: PerOpConcurrencyConfig) -> InflightStore:
+    return InMemoryInflightStore()
+
+
+_REGISTRY: StrategyRegistry[InflightStore] = StrategyRegistry(
+    {"memory": _build_memory},
+    kind="inflight_store",
+)
 
 
 def build_inflight_store(config: PerOpConcurrencyConfig) -> InflightStore:
@@ -19,15 +26,8 @@ def build_inflight_store(config: PerOpConcurrencyConfig) -> InflightStore:
 
     Returns:
         A concrete :class:`InflightStore` implementation.
+
+    Raises:
+        StrategyFactoryNotFoundError: If ``config.backend`` is not registered.
     """
-    if config.backend == "memory":
-        return InMemoryInflightStore()
-    # Defensive: ``config.backend`` is a ``Literal["memory"]`` union
-    # today and the settings-enum is restricted to ``("memory",)``,
-    # so reaching this branch requires either a bypass of Pydantic
-    # validation or a new backend landed without its factory entry.
-    # Fail loud so the drift is obvious rather than silently
-    # falling through to an in-memory backend under a different name.
-    msg = f"Unknown per-op inflight backend: {config.backend!r}"  # type: ignore[unreachable]
-    logger.error(API_APP_STARTUP, backend=config.backend, error="unknown_backend")
-    raise ValueError(msg)
+    return _REGISTRY.build(config.backend, config)

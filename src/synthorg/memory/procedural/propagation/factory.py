@@ -2,6 +2,7 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.registry import StrategyRegistry
 from synthorg.memory.procedural.propagation.department_scoped import (
     DepartmentScopedPropagation,
 )
@@ -11,16 +12,32 @@ from synthorg.memory.procedural.propagation.no_propagation import (
 from synthorg.memory.procedural.propagation.role_scoped import (
     RoleScopedPropagation,
 )
-from synthorg.observability import get_logger
-from synthorg.observability.events.propagation import (
-    PROPAGATION_STRATEGY_UNKNOWN_TYPE,
-)
 
 if TYPE_CHECKING:
     from synthorg.memory.procedural.propagation.config import PropagationConfig
     from synthorg.memory.procedural.propagation.protocol import PropagationStrategy
 
-logger = get_logger(__name__)
+
+def _build_none(_config: PropagationConfig) -> PropagationStrategy:
+    return NoPropagation()
+
+
+def _build_role_scoped(config: PropagationConfig) -> PropagationStrategy:
+    return RoleScopedPropagation(max_targets=config.max_propagation_targets)
+
+
+def _build_department_scoped(config: PropagationConfig) -> PropagationStrategy:
+    return DepartmentScopedPropagation(max_targets=config.max_propagation_targets)
+
+
+_REGISTRY: StrategyRegistry[PropagationStrategy] = StrategyRegistry(
+    {
+        "none": _build_none,
+        "role_scoped": _build_role_scoped,
+        "department_scoped": _build_department_scoped,
+    },
+    kind="propagation",
+)
 
 
 def build_propagation_strategy(
@@ -35,16 +52,6 @@ def build_propagation_strategy(
         Configured propagation strategy instance.
 
     Raises:
-        ValueError: If strategy type is unknown.
+        StrategyFactoryNotFoundError: If ``config.type`` is not registered.
     """
-    if config.type == "none":
-        return NoPropagation()
-    if config.type == "role_scoped":
-        return RoleScopedPropagation(max_targets=config.max_propagation_targets)
-    if config.type == "department_scoped":
-        return DepartmentScopedPropagation(
-            max_targets=config.max_propagation_targets,
-        )
-    msg = f"Unknown propagation strategy type: {config.type}"  # type: ignore[unreachable]
-    logger.warning(PROPAGATION_STRATEGY_UNKNOWN_TYPE, strategy_type=config.type)
-    raise ValueError(msg)
+    return _REGISTRY.build(config.type, config)

@@ -2,6 +2,7 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.registry import StrategyRegistry
 from synthorg.memory.procedural.pruning.hybrid_strategy import (
     HybridPruningStrategy,
 )
@@ -9,16 +10,31 @@ from synthorg.memory.procedural.pruning.pareto_strategy import (
     ParetoPruningStrategy,
 )
 from synthorg.memory.procedural.pruning.ttl_strategy import TtlPruningStrategy
-from synthorg.observability import get_logger
-from synthorg.observability.events.procedural_memory import (
-    PROCEDURAL_PRUNING_UNKNOWN_TYPE,
-)
 
 if TYPE_CHECKING:
     from synthorg.memory.procedural.pruning.config import PruningConfig
     from synthorg.memory.procedural.pruning.protocol import PruningStrategy
 
-logger = get_logger(__name__)
+
+def _build_ttl(config: PruningConfig) -> PruningStrategy:
+    return TtlPruningStrategy(max_age_days=config.max_age_days)
+
+
+def _build_pareto(config: PruningConfig) -> PruningStrategy:
+    return ParetoPruningStrategy(max_entries=config.max_entries)
+
+
+def _build_hybrid(config: PruningConfig) -> PruningStrategy:
+    return HybridPruningStrategy(
+        ttl_strategy=TtlPruningStrategy(max_age_days=config.max_age_days),
+        pareto_strategy=ParetoPruningStrategy(max_entries=config.max_entries),
+    )
+
+
+_REGISTRY: StrategyRegistry[PruningStrategy] = StrategyRegistry(
+    {"ttl": _build_ttl, "pareto": _build_pareto, "hybrid": _build_hybrid},
+    kind="pruning",
+)
 
 
 def build_pruning_strategy(config: PruningConfig) -> PruningStrategy:
@@ -31,16 +47,6 @@ def build_pruning_strategy(config: PruningConfig) -> PruningStrategy:
         Configured pruning strategy instance.
 
     Raises:
-        ValueError: If strategy type is unknown.
+        StrategyFactoryNotFoundError: If ``config.type`` is not registered.
     """
-    if config.type == "ttl":
-        return TtlPruningStrategy(max_age_days=config.max_age_days)
-    if config.type == "pareto":
-        return ParetoPruningStrategy(max_entries=config.max_entries)
-    if config.type == "hybrid":
-        ttl = TtlPruningStrategy(max_age_days=config.max_age_days)
-        pareto = ParetoPruningStrategy(max_entries=config.max_entries)
-        return HybridPruningStrategy(ttl_strategy=ttl, pareto_strategy=pareto)
-    msg = f"Unknown pruning strategy type: {config.type}"  # type: ignore[unreachable]
-    logger.warning(PROCEDURAL_PRUNING_UNKNOWN_TYPE, type=config.type)
-    raise ValueError(msg)
+    return _REGISTRY.build(config.type, config)

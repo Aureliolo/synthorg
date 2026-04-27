@@ -324,6 +324,10 @@ class TestEventConstants:
             # Added in META-MCP-2 for infrastructure facade audit events
             # (projects + operator-request ledger).
             "infrastructure",
+            # Generic registry events (REGISTRY_BUILT etc.) emitted by
+            # StrategyRegistry and the persistence/memory backend
+            # registries that consolidate factory dispatch.
+            "registry",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected
