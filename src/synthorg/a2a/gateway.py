@@ -74,7 +74,8 @@ async def _resolve_max_message_parts(app_state: Any) -> int:
     if app_state is None or not getattr(app_state, "has_config_resolver", False):
         return _MAX_MESSAGE_PARTS_FALLBACK
     try:
-        return await app_state.config_resolver.get_int("a2a", "max_message_parts")
+        value: int = await app_state.config_resolver.get_int("a2a", "max_message_parts")
+        return value  # noqa: TRY300 -- explicit return type; not a try-success path
     except asyncio.CancelledError:
         raise
     except MemoryError, RecursionError:

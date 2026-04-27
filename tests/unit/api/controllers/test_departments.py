@@ -211,7 +211,7 @@ class TestDepartmentCeremonyPolicyCas:
         from unittest.mock import AsyncMock
 
         from synthorg.api.controllers.departments import (
-            _DEPT_POLICY_CAS_MAX_ATTEMPTS,
+            _DEPT_POLICY_CAS_FALLBACK_ATTEMPTS,
             _mutate_dept_policies_with_retry,
         )
         from synthorg.api.errors import VersionConflictError
@@ -226,9 +226,13 @@ class TestDepartmentCeremonyPolicyCas:
         # loop runs to exhaustion.
         set_mock = AsyncMock(side_effect=VersionConflictError("forced conflict"))
         settings_service.set = set_mock  # type: ignore[method-assign]
+        # has_config_resolver=False so the retry helper falls back to
+        # the registered default attempts count, matching the
+        # standalone construction path the test simulates.
         app_state = SimpleNamespace(
             has_settings_service=True,
             settings_service=settings_service,
+            has_config_resolver=False,
         )
 
         with pytest.raises(VersionConflictError):
@@ -238,5 +242,6 @@ class TestDepartmentCeremonyPolicyCas:
                 {"strategy": "task_driven"},
             )
 
-        # Retry loop must be bounded exactly by the configured cap.
-        assert set_mock.await_count == _DEPT_POLICY_CAS_MAX_ATTEMPTS
+        # Retry loop must be bounded exactly by the configured cap
+        # (fallback constant since no resolver is wired).
+        assert set_mock.await_count == _DEPT_POLICY_CAS_FALLBACK_ATTEMPTS

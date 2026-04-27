@@ -47,19 +47,22 @@ async def test_resolver_outage_falls_back_and_log_once() -> None:
     resolver.get_float = AsyncMock(side_effect=RuntimeError("transient"))
     bridge = _make_bridge(resolver)
 
-    # Three consecutive failures: the warning suppression gate latches
+    # Two consecutive failures: the warning suppression gate latches
     # after the first emission, so the in-process flag should flip True
-    # exactly once.
-    assert bridge._drain_timeout_fallback_logged is False
-    timeout = await bridge._get_stop_drain_timeout()
-    assert timeout == _STOP_DRAIN_TIMEOUT_SECONDS
-    assert bridge._drain_timeout_fallback_logged is True
-    timeout = await bridge._get_stop_drain_timeout()
-    assert timeout == _STOP_DRAIN_TIMEOUT_SECONDS
-    assert bridge._drain_timeout_fallback_logged is True
+    # exactly once and stay True until recovery clears it.
+    assert not bridge._drain_timeout_fallback_logged
+    timeout1: float = await bridge._get_stop_drain_timeout()
+    after_first: bool = bridge._drain_timeout_fallback_logged
+    timeout2: float = await bridge._get_stop_drain_timeout()
+    after_second: bool = bridge._drain_timeout_fallback_logged
+
+    assert timeout1 == _STOP_DRAIN_TIMEOUT_SECONDS
+    assert timeout2 == _STOP_DRAIN_TIMEOUT_SECONDS
+    assert after_first
+    assert after_second
 
     # Recovery clears the flag so the next failure-run can log again.
     resolver.get_float = AsyncMock(return_value=15.0)
-    timeout = await bridge._get_stop_drain_timeout()
-    assert timeout == 15.0
-    assert bridge._drain_timeout_fallback_logged is False
+    timeout3 = await bridge._get_stop_drain_timeout()
+    assert timeout3 == 15.0
+    assert not bridge._drain_timeout_fallback_logged

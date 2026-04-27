@@ -175,13 +175,10 @@ class MeetingOrchestrator:
             )
             return MeetingRecord(
                 meeting_id=meeting_id,
-                meeting_type=meeting_type_name,
-                protocol=protocol_type,
-                leader_id=leader_id,
-                participant_ids=participant_ids,
+                meeting_type_name=meeting_type_name,
+                protocol_type=protocol_type,
                 status=MeetingStatus.CANCELLED,
                 token_budget=token_budget,
-                tokens_used=0,
             )
 
         self._validate_inputs(
