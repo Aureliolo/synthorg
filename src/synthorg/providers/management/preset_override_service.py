@@ -145,8 +145,16 @@ class PresetOverrideService:
         updates: dict[str, object],
         actor: ProviderAuditActor,
     ) -> PresetOverride:
-        """Merge ``updates`` onto ``existing`` (or a blank base)."""
-        base = (
+        """Merge ``updates`` onto ``existing`` (or a blank base).
+
+        The merged dict carries mixed-type values (datetime, list,
+        ``None``, str) so the local type is ``dict[str, Any]``;
+        ``PresetOverride.model_validate`` enforces the per-field
+        contract.
+        """
+        from typing import Any  # noqa: PLC0415
+
+        base: dict[str, Any] = (
             existing.model_dump()
             if existing is not None
             else {
@@ -157,11 +165,13 @@ class PresetOverrideService:
                 "base_url": None,
             }
         )
-        for k, v in updates.items():
-            base[k] = v
-        base["updated_at"] = datetime.now(UTC)
-        base["updated_by"] = actor.id
-        return PresetOverride.model_validate(base)
+        merged: dict[str, Any] = {
+            **base,
+            **updates,
+            "updated_at": datetime.now(UTC),
+            "updated_by": actor.id,
+        }
+        return PresetOverride.model_validate(merged)
 
     @staticmethod
     def _validate_against_preset(

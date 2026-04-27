@@ -158,7 +158,13 @@ def _credentials_update_fields(
             },
             _mask_secret(secret),
         )
-    msg = f"Unsupported auth_type for rotation: {auth_type!r}"
+    # The discriminated-union covers every AuthType variant supported
+    # by the rotation contract, so this line is reachable only if the
+    # union is extended without updating this dispatch.  The
+    # ``# type: ignore[unreachable]`` keeps mypy quiet on the
+    # exhaustive-match status quo while preserving the runtime guard
+    # for future variants.
+    msg = f"Unsupported auth_type for rotation: {auth_type!r}"  # type: ignore[unreachable]
     raise ProviderValidationError(msg)
 
 

@@ -175,7 +175,7 @@ class SQLitePresetOverrideRepo:
         )
         auth_types_raw = _decode_json_list(row["supported_auth_types_json"])
         auth_types: tuple[AuthType, ...] | None = (
-            tuple(AuthType(a) for a in auth_types_raw)
+            tuple(AuthType(str(a)) for a in auth_types_raw)
             if auth_types_raw is not None
             else None
         )
