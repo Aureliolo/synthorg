@@ -401,6 +401,17 @@ class ApiConfig(BaseModel):
             " IP floor, unauthenticated by IP, authenticated by user ID"
         ),
     )
+    rate_limiter_enabled: bool = Field(
+        default=True,
+        description=(
+            "Master kill switch for the three-tier global rate limiter."
+            " Mirrors the ``api.rate_limiter_enabled`` registry entry"
+            " (read_only_post_init=True): the boot-time resolver in"
+            " ``api/app.py`` reads SYNTHORG_API_RATE_LIMITER_ENABLED"
+            " first and falls through to this YAML field, then the"
+            " registry default."
+        ),
+    )
     per_op_rate_limit: PerOpRateLimitConfig = Field(
         default_factory=PerOpRateLimitConfig,
         description="Per-operation throttling (layered on the global limiter)",

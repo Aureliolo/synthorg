@@ -112,6 +112,8 @@ class MemoryConsolidationService:
     async def run_consolidation(
         self,
         agent_id: NotBlankStr,
+        *,
+        _enabled: bool | None = None,
     ) -> ConsolidationResult:
         """Run memory consolidation for an agent.
 
@@ -130,16 +132,23 @@ class MemoryConsolidationService:
 
         Args:
             agent_id: Agent whose memories to consolidate.
+            _enabled: Internal pre-resolved kill-switch value supplied
+                by ``run_maintenance`` so the cycle resolves the flag
+                exactly once.  Direct callers should leave this unset
+                and let the service resolve per call.
 
         Returns:
             Consolidation result (including archival count).
         """
-        enabled = await resolve_bool_with_fallback(
-            resolver=self._config_resolver,
-            namespace="memory",
-            key="consolidation_enabled",
-            fallback=self._config.enabled,
-        )
+        if _enabled is None:
+            enabled = await resolve_bool_with_fallback(
+                resolver=self._config_resolver,
+                namespace="memory",
+                key="consolidation_enabled",
+                fallback=self._config.enabled,
+            )
+        else:
+            enabled = _enabled
         if not enabled:
             logger.info(
                 CONSOLIDATION_SKIPPED,
@@ -325,7 +334,7 @@ class MemoryConsolidationService:
                 agent_category_overrides=agent_category_overrides,
                 agent_default_retention_days=agent_default_retention_days,
             )
-            result = await self.run_consolidation(agent_id)
+            result = await self.run_consolidation(agent_id, _enabled=True)
             await self.enforce_max_memories(agent_id)
         except Exception as exc:
             logger.warning(

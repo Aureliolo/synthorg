@@ -54,9 +54,17 @@ operator-visible.  Registered with `read_only_post_init=True` (which
 implies `restart_required=True`); `SettingsService.set()`,
 `set_many()`, `delete()`, and `delete_namespace()` raise
 `SettingReadOnlyError` so an operator does not believe the override
-took effect when the running process keeps the boot-time value.  The
-value still resolves through the env -> YAML -> default chain at first
-read so the /settings UI shows the truth.
+took effect when the running process keeps the boot-time value.
+
+For these entries, the precedence chain collapses to **env > YAML >
+default** -- the DB row is never consulted on reads (`get`,
+`get_namespace`, `get_all`, `get_page`, `get_versioned`).  The DB step
+is bypassed regardless of whether a stale row exists, because the
+running process resolves its bootstrap value once and holds onto it;
+a row left over from a pre-rename schema or an ops mistake on a peer
+node would otherwise surface a value the runtime no longer honours.
+The /settings UI therefore reflects the actual running value, sourced
+from the env var or YAML at first read.
 
 ## Source matrix
 
@@ -64,9 +72,9 @@ read so the /settings UI shows the truth.
 |---|---|---|---|
 | `observability.root_log_level` | DB > env > YAML > default | No | Standard mutable. |
 | `observability.log_level_console` | DB > env (`SYNTHORG_LOG_LEVEL`) > unset | No | Mutable; overrides only the console sink, not the root logger. |
-| `observability.log_directory` | env (`SYNTHORG_LOG_DIR`) > YAML > unset | **Yes** | Read-only-post-init.  Path-traversal still rejected at boot. |
-| `communication.nats_url` | env (`SYNTHORG_NATS_URL`) > YAML > default | **Yes** | Read-only-post-init. |
-| `workers.count` | env (`SYNTHORG_WORKERS`) > YAML > default | **Yes** | Read-only-post-init. |
+| `observability.log_directory` | env (`SYNTHORG_LOG_DIR`) > YAML > unset | **Yes** | Read-only-post-init (DB bypassed on reads).  Path-traversal still rejected at boot. |
+| `communication.nats_url` | env (`SYNTHORG_NATS_URL`) > YAML > default | **Yes** | Read-only-post-init (DB bypassed on reads). |
+| `workers.count` | env (`SYNTHORG_WORKERS`) > YAML > default | **Yes** | Read-only-post-init (DB bypassed on reads). |
 | Telemetry opt-in | env (`SYNTHORG_TELEMETRY`) > YAML (`telemetry.enabled`) > default | **Yes** | **No registry entry.**  Read once in `TelemetryCollector.__init__`; runtime mutation has no effect.  Promotion to a registry entry is tracked as follow-up. |
 | SQLite path | env (`SYNTHORG_DB_PATH`) > YAML | **Yes** | **No registry entry.**  Init-time exception. |
 | Postgres URL | env (`SYNTHORG_DATABASE_URL`) > YAML | **Yes** | **No registry entry.**  Credentials; init-time exception. |

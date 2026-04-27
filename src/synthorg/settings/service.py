@@ -383,18 +383,25 @@ class SettingsService:
             if cached is not None:
                 return cached
 
-        setting_value = await self._resolve_db(definition)
-        if setting_value is not None:
-            # Direct dict mutation is intentional: the previous
-            # copy-on-write pattern {**self._cache, k: v} had a
-            # TOCTOU race under concurrent TaskGroup reads (the
-            # spread sees a stale snapshot after an await).  In
-            # asyncio's cooperative concurrency, dict item assignment
-            # is a single-opcode operation and safe without locking.
-            if not definition.sensitive:
-                self._cache[cache_key] = setting_value
-            self._emit_resolved(definition, source="db")
-            return setting_value
+        # Read-only-post-init entries are sourced exclusively from env /
+        # YAML / code default at process startup; the DB row (if any --
+        # left over from a pre-rename schema or a stale ops mistake) MUST
+        # NOT be consulted, otherwise the running process would surface
+        # a value the operator believed was overridden out via
+        # ``set()`` -- which we already reject on the write side.
+        if not definition.read_only_post_init:
+            setting_value = await self._resolve_db(definition)
+            if setting_value is not None:
+                # Direct dict mutation is intentional: the previous
+                # copy-on-write pattern {**self._cache, k: v} had a
+                # TOCTOU race under concurrent TaskGroup reads (the
+                # spread sees a stale snapshot after an await).  In
+                # asyncio's cooperative concurrency, dict item assignment
+                # is a single-opcode operation and safe without locking.
+                if not definition.sensitive:
+                    self._cache[cache_key] = setting_value
+                self._emit_resolved(definition, source="db")
+                return setting_value
 
         return self._resolve_fallback(definition)
 
@@ -593,6 +600,12 @@ class SettingsService:
         ns = definition.namespace
         key = definition.key
 
+        # Read-only-post-init: ignore any DB row (mirrors the per-key
+        # ``get()`` short-circuit so batch reads do not surface a
+        # stale override).
+        if definition.read_only_post_init:
+            db_hit = None
+
         if db_hit is not None:
             raw_value, updated_at = db_hit
             value = raw_value
@@ -670,6 +683,13 @@ class SettingsService:
         """
         definition = self._registry.get(namespace, key)
         if definition is None:
+            return "", ""
+        # Read-only-post-init entries are never written via the service,
+        # so CAS callers must observe the same "no DB override" sentinel
+        # the read path returns -- returning a stale row here would let
+        # a CAS preflight succeed against a value the runtime no longer
+        # honours.
+        if definition.read_only_post_init:
             return "", ""
         setting_value = await self._resolve_db(definition)
         if setting_value is None:

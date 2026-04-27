@@ -171,3 +171,42 @@ async def test_read_only_resolves_through_env(
     monkeypatch.setenv("SYNTHORG_OBSERVABILITY_LOG_DIRECTORY", "/var/log/synthorg")
     value = await service.get("observability", "log_directory")
     assert value.value == "/var/log/synthorg"
+
+
+# ── DB row is ignored on reads ───────────────────────────────────
+
+
+async def test_get_bypasses_db_for_read_only_post_init(
+    service: SettingsService, repo: AsyncMock
+) -> None:
+    # A leftover row (from a prior schema or an ops mistake on a peer
+    # node) must not surface from get() -- the running process has
+    # already locked in the boot-time value, so reading the DB would
+    # show a value the runtime no longer honours.
+    repo.get.return_value = ("/from/db", "2026-04-27T12:00:00+00:00")
+    value = await service.get("observability", "log_directory")
+    assert value.value == ""  # falls through to env (unset) -> default
+    repo.get.assert_not_awaited()
+
+
+async def test_get_namespace_bypasses_db_for_read_only_post_init(
+    service: SettingsService, repo: AsyncMock
+) -> None:
+    repo.get_namespace.return_value = (
+        ("log_directory", "/from/db", "2026-04-27T12:00:00+00:00"),
+    )
+    entries = await service.get_namespace("observability")
+    log_dir = next(e for e in entries if e.definition.key == "log_directory")
+    assert log_dir.value == ""
+    # get_namespace still issues the batch DB query (writable settings in
+    # the same namespace need it); the per-entry resolver is responsible
+    # for ignoring the row when the definition is read-only-post-init.
+
+
+async def test_get_versioned_returns_no_override_for_read_only_post_init(
+    service: SettingsService, repo: AsyncMock
+) -> None:
+    repo.get.return_value = ("/from/db", "2026-04-27T12:00:00+00:00")
+    value, updated_at = await service.get_versioned("observability", "log_directory")
+    assert (value, updated_at) == ("", "")
+    repo.get.assert_not_awaited()

@@ -589,6 +589,13 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
+        # Make the safe default *real*: the warning previously only
+        # logged ``fallback_bytes`` without applying it, so a prior
+        # successful resolve that left the cache at a non-default
+        # value would persist after this branch fired.  Force the
+        # cache back to the registered default so the operator-facing
+        # log claim matches process state.
+        set_auth_token_bytes(_DEFAULT_AUTH_TOKEN_BYTES)
         logger.warning(
             API_APP_STARTUP,
             error=("Failed to apply security.auth_token_bytes; using built-in default"),
