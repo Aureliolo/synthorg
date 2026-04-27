@@ -77,6 +77,27 @@ read so the /settings UI shows the truth.
 For the full inventory of `SYNTHORG_*` env vars, see
 [environment-variables.md](environment-variables.md).
 
+## Custom env var names (`env_var_override`)
+
+The default env var name for a registered setting is auto-derived
+as ``SYNTHORG_<NAMESPACE>_<KEY>``.  When an established
+operator-facing env var name predates this rule (e.g. the
+Docker-compose template already sets ``SYNTHORG_LOG_DIR``), the
+registry definition can set ``env_var_override="SYNTHORG_LOG_DIR"``
+and the resolver will look up that exact name instead.  Settings
+currently using overrides:
+
+| Registry key | Override env var |
+|---|---|
+| `observability/log_directory` | `SYNTHORG_LOG_DIR` |
+| `observability/log_level_console` | `SYNTHORG_LOG_LEVEL` |
+| `communication/nats_url` | `SYNTHORG_NATS_URL` |
+| `workers/count` | `SYNTHORG_WORKERS` |
+
+When `env_var_override` is set, the auto-derived name is **not**
+consulted -- only the override.  This keeps the operator surface
+clean: there is exactly one env var name per setting.
+
 ## Adding a new setting
 
 1. Decide whether the setting is mutable at runtime.

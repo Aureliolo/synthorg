@@ -189,6 +189,7 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         read_only_post_init=True,
+        env_var_override="SYNTHORG_LOG_DIR",
         yaml_path="logging.log_dir",
     )
 )
@@ -211,5 +212,6 @@ _r.register(
         group="Logging",
         level=SettingLevel.ADVANCED,
         validator_pattern=r"^(?:|debug|info|warning|error|critical|DEBUG|INFO|WARNING|ERROR|CRITICAL)$",
+        env_var_override="SYNTHORG_LOG_LEVEL",
     )
 )

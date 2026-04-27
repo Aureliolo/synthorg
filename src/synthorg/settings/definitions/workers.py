@@ -30,6 +30,7 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         read_only_post_init=True,
+        env_var_override="SYNTHORG_WORKERS",
         min_value=1,
         max_value=64,
         yaml_path="server.workers",

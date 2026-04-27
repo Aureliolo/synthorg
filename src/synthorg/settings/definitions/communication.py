@@ -82,6 +82,7 @@ _r.register(
         level=SettingLevel.ADVANCED,
         restart_required=True,
         read_only_post_init=True,
+        env_var_override="SYNTHORG_NATS_URL",
         yaml_path="communication.nats.url",
     )
 )

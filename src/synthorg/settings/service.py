@@ -541,7 +541,11 @@ class SettingsService:
         ns = definition.namespace
         key = definition.key
 
-        env_name = _env_var_name(ns, key)
+        env_name = (
+            definition.env_var_override
+            if definition.env_var_override is not None
+            else _env_var_name(ns, key)
+        )
         env_val = os.environ.get(env_name)
         if env_val is not None:
             self._emit_resolved(definition, source="env")

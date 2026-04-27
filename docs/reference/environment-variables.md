@@ -98,7 +98,11 @@ SYNTHORG_<NAMESPACE>_<KEY>
 ```
 
 where the namespace and key are the registry tuple (uppercased,
-underscore-joined).  Examples:
+underscore-joined).  A handful of settings carry a custom
+`env_var_override` that supersedes the auto-derived name (see the
+table at [configuration-precedence.md](configuration-precedence.md)
+§ "Custom env var names"); for those entries, only the override
+name is consulted.  Examples of the auto-derived shape:
 
 | Registry key | Auto-derived env var |
 |---|---|

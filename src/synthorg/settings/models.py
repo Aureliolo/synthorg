@@ -92,6 +92,18 @@ class SettingDefinition(BaseModel):
             " SettingsService is rejected. Implies restart_required=True."
         ),
     )
+    env_var_override: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Override the auto-derived ``SYNTHORG_{NAMESPACE}_{KEY}``"
+            " env var name with a custom one (e.g. ``SYNTHORG_LOG_DIR``"
+            " for ``observability.log_directory``).  Used when an"
+            " established operator-facing env var name predates the"
+            " auto-derivation rule.  When set, the resolver looks up"
+            " *only* this name; the auto-derived name is not"
+            " consulted."
+        ),
+    )
     enum_values: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Allowed values for ENUM type",
