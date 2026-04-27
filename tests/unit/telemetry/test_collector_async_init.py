@@ -18,7 +18,12 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+import structlog.testing
 
+from synthorg.observability.events.telemetry import (
+    TELEMETRY_DEPLOYMENT_ID_CREATED,
+    TELEMETRY_DEPLOYMENT_ID_LOADED,
+)
 from synthorg.telemetry.collector import TelemetryCollector
 from synthorg.telemetry.config import TelemetryBackend, TelemetryConfig
 
@@ -45,53 +50,34 @@ def _clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
 class TestConstructorIsPureConstruction:
     """``__init__`` must not touch the filesystem (#1600)."""
 
-    def test_constructor_does_not_call_os_open(self, tmp_path: Path) -> None:
-        """No ``os.open`` in the constructor when telemetry is enabled.
+    @pytest.mark.parametrize(
+        ("patch_target", "label"),
+        [
+            ("synthorg.telemetry.collector.os.open", "os.open"),
+            ("synthorg.telemetry.collector.os.path.exists", "os.path.exists"),
+            ("builtins.open", "builtin open()"),
+        ],
+    )
+    def test_constructor_does_not_call_filesystem_syscall(
+        self, tmp_path: Path, patch_target: str, label: str
+    ) -> None:
+        """Constructor performs zero filesystem syscalls (#1600).
 
-        Patches the ``os.open`` symbol the collector imports so any
-        constructor-time call raises immediately; if the assertion in
-        ``patched_os_open`` fires, the constructor is still doing
-        atomic-create I/O on the event loop's thread.
+        Patches the named syscall so any constructor-time call raises
+        immediately. Each parameter exercises one syscall the prior
+        synchronous ``__init__`` used: ``os.open`` (atomic create),
+        ``os.path.exists`` (existence probe), ``builtins.open`` (the
+        existing-file read). All three must stay on the
+        ``asyncio.to_thread`` side of the lifecycle boundary in
+        ``start()``.
         """
 
-        def patched_os_open(*_args: object, **_kwargs: object) -> int:
-            msg = "os.open called from constructor"
+        def patched(*_args: object, **_kwargs: object) -> object:
+            msg = f"{label} called from constructor"
             raise AssertionError(msg)
 
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
-        with patch(
-            "synthorg.telemetry.collector.os.open",
-            side_effect=patched_os_open,
-        ):
-            TelemetryCollector(config=config, data_dir=tmp_path)
-
-    def test_constructor_does_not_call_os_path_exists(self, tmp_path: Path) -> None:
-        """No ``os.path.exists`` probe in the constructor."""
-
-        def patched_exists(*_args: object, **_kwargs: object) -> bool:
-            msg = "os.path.exists called from constructor"
-            raise AssertionError(msg)
-
-        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
-        with patch(
-            "synthorg.telemetry.collector.os.path.exists",
-            side_effect=patched_exists,
-        ):
-            TelemetryCollector(config=config, data_dir=tmp_path)
-
-    def test_constructor_does_not_call_builtin_open(self, tmp_path: Path) -> None:
-        """No builtin ``open`` from the constructor.
-
-        Catches a regression where the collector reads the existing
-        ID file via ``open(...)`` directly during construction.
-        """
-
-        def patched_open(*_args: object, **_kwargs: object) -> object:
-            msg = "builtin open() called from constructor"
-            raise AssertionError(msg)
-
-        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
-        with patch("builtins.open", side_effect=patched_open):
+        with patch(patch_target, side_effect=patched):
             TelemetryCollector(config=config, data_dir=tmp_path)
 
     def test_constructor_leaves_deployment_id_unloaded(self, tmp_path: Path) -> None:
@@ -135,7 +121,7 @@ class TestStartLoadsDeploymentIdAsynchronously:
             await collector.shutdown()
 
     async def test_start_uses_to_thread_for_blocking_io(self, tmp_path: Path) -> None:
-        """The deployment-id load goes through ``asyncio.to_thread``.
+        """The deployment-id load goes through ``asyncio.to_thread`` (#1600).
 
         Spies on ``asyncio.to_thread`` and asserts at least one call
         matched the load helper. We do not pin the exact call count
@@ -169,25 +155,41 @@ class TestStartLoadsDeploymentIdAsynchronously:
             await collector.shutdown()
 
     async def test_start_does_not_block_event_loop(self, tmp_path: Path) -> None:
-        """A heartbeat ``call_soon`` fires while the load is in flight.
+        """A scheduled callback fires *during* the load, not after it.
 
-        Replaces the sync I/O helper with a slow stand-in (50 ms
-        sleep). If ``start()`` correctly offloads via
+        Records three event-ordering markers in a list:
+        ``slow_func_start`` (the sync helper enters the executor
+        thread), ``heartbeat_fired`` (a ``call_later`` scheduled by
+        the to_thread spy), and ``slow_func_end`` (the sync helper
+        finishes). If ``start()`` correctly offloads via
         ``asyncio.to_thread``, the event loop runs the heartbeat
-        callback while the thread blocks; if the load is on the loop,
-        the callback only fires after the sleep completes and the
-        elapsed time spans the full sleep.
+        callback BETWEEN the start and end markers. If the load is
+        on the loop's thread, the heartbeat fires only after
+        ``slow_func_end``.
+
+        Asserts on order rather than elapsed time so the test is
+        robust under CI scheduler jitter.
         """
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
 
         loop = asyncio.get_running_loop()
-        heartbeat_at: list[float] = []
+        events: list[str] = []
 
         def record_heartbeat() -> None:
-            heartbeat_at.append(loop.time())
+            events.append("heartbeat_fired")
 
         original_to_thread = asyncio.to_thread
+
+        def instrumented_helper(
+            inner: Callable[..., Any], *args: object, **kwargs: object
+        ) -> Any:
+            events.append("slow_func_start")
+            time.sleep(0.05)
+            try:
+                return inner(*args, **kwargs)
+            finally:
+                events.append("slow_func_end")
 
         async def slow_to_thread(
             func: Callable[..., Any], *args: Any, **kwargs: Any
@@ -196,44 +198,26 @@ class TestStartLoadsDeploymentIdAsynchronously:
             # starts. If the loop is blocked, this callback waits
             # behind the sync work.
             loop.call_later(0.01, record_heartbeat)
-            return await original_to_thread(
-                _slow_then(func, 0.05),
-                *args,
-                **kwargs,
-            )
+            return await original_to_thread(instrumented_helper, func, *args, **kwargs)
 
         try:
-            start_t = loop.time()
             with patch(
                 "synthorg.telemetry.collector.asyncio.to_thread",
                 side_effect=slow_to_thread,
             ):
                 await collector.start()
-            assert heartbeat_at, "heartbeat never fired during load"
-            elapsed_when_heartbeat_fired = heartbeat_at[0] - start_t
-            assert elapsed_when_heartbeat_fired < 0.05, (
-                "heartbeat fired only after the blocking work finished; "
-                "the load is still on the event loop's thread "
-                f"(fired at {elapsed_when_heartbeat_fired * 1000:.1f} ms)"
+            assert "heartbeat_fired" in events, (
+                f"heartbeat never fired during load; events were: {events}"
+            )
+            slow_start = events.index("slow_func_start")
+            heartbeat = events.index("heartbeat_fired")
+            slow_end = events.index("slow_func_end")
+            assert slow_start < heartbeat < slow_end, (
+                "heartbeat fired outside the load window; the load is "
+                f"blocking the event loop. events: {events}"
             )
         finally:
             await collector.shutdown()
-
-
-def _slow_then(func: Callable[..., Any], delay_s: float) -> Callable[..., Any]:
-    """Wrap a callable so it sleeps before delegating.
-
-    The sleep happens inside the executor thread the
-    ``asyncio.to_thread`` helper hands the wrapper to, so the loop
-    is free to schedule callbacks while it blocks. Returns a
-    plain callable; the caller passes its own args / kwargs.
-    """
-
-    def wrapper(*args: object, **kwargs: object) -> Any:
-        time.sleep(delay_s)
-        return func(*args, **kwargs)
-
-    return wrapper
 
 
 @pytest.mark.unit
@@ -343,3 +327,197 @@ class TestDisabledCollectorPerformsNoIo:
             assert not id_file.exists()
         finally:
             await collector.shutdown()
+
+    async def test_disabled_collector_does_not_create_data_dir(
+        self, tmp_path: Path
+    ) -> None:
+        """A disabled collector never materialises its data_dir.
+
+        Catches a regression where the disabled-guard moves below the
+        ``os.makedirs`` call in the sync helper. The data_dir is
+        passed as a not-yet-existing subdirectory; the disabled
+        collector must leave it absent.
+        """
+        config = TelemetryConfig(enabled=False)
+        data_dir = tmp_path / "never_created"
+        collector = TelemetryCollector(config=config, data_dir=data_dir)
+        try:
+            await collector.start()
+            assert not data_dir.exists()
+        finally:
+            await collector.shutdown()
+
+
+@pytest.mark.unit
+class TestStartLoadsExistingFileEmitsEvents:
+    """Event emission on the load + create paths (#1600).
+
+    Pins the new ``TELEMETRY_DEPLOYMENT_ID_LOADED`` and
+    ``TELEMETRY_DEPLOYMENT_ID_CREATED`` constants. Without these
+    tests, a future refactor could silently drop the
+    ``logger.debug(...)`` call and lose the observability signal.
+    """
+
+    async def test_existing_file_emits_loaded_event(self, tmp_path: Path) -> None:
+        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
+        collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        existing_id = "12345678-1234-5678-1234-567812345678"
+        (tmp_path / "telemetry_id").write_text(existing_id, encoding="utf-8")
+        try:
+            with structlog.testing.capture_logs() as logs:
+                await collector.start()
+            events = [log["event"] for log in logs]
+            assert TELEMETRY_DEPLOYMENT_ID_LOADED in events, (
+                f"expected TELEMETRY_DEPLOYMENT_ID_LOADED, got events: {events}"
+            )
+            assert collector.deployment_id == existing_id
+        finally:
+            await collector.shutdown()
+
+    async def test_new_file_emits_created_event(self, tmp_path: Path) -> None:
+        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
+        collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        try:
+            with structlog.testing.capture_logs() as logs:
+                await collector.start()
+            events = [log["event"] for log in logs]
+            assert TELEMETRY_DEPLOYMENT_ID_CREATED in events, (
+                f"expected TELEMETRY_DEPLOYMENT_ID_CREATED, got events: {events}"
+            )
+        finally:
+            await collector.shutdown()
+
+
+@pytest.mark.unit
+class TestStartIdempotenceAndSideEffects:
+    """``start()`` lifecycle invariants beyond the basic happy path."""
+
+    async def test_second_start_skips_to_thread_when_id_already_loaded(
+        self, tmp_path: Path
+    ) -> None:
+        """Sequential second ``start()`` does not re-enter ``to_thread``.
+
+        Validates the ``if self._deployment_id is None`` guard. If
+        the guard is regressed, the spy will see two calls.
+        """
+        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
+        collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        try:
+            await collector.start()
+
+            original_to_thread = asyncio.to_thread
+            call_count = 0
+
+            async def counting_to_thread(
+                func: Callable[..., Any], *args: Any, **kwargs: Any
+            ) -> object:
+                nonlocal call_count
+                call_count += 1
+                return await original_to_thread(func, *args, **kwargs)
+
+            with patch(
+                "synthorg.telemetry.collector.asyncio.to_thread",
+                side_effect=counting_to_thread,
+            ):
+                await collector.start()
+
+            assert call_count == 0, (
+                f"second start() re-entered to_thread {call_count}x; "
+                "the deployment_id guard is regressed"
+            )
+        finally:
+            await collector.shutdown()
+
+    async def test_start_creates_heartbeat_task(self, tmp_path: Path) -> None:
+        """``start()`` schedules the heartbeat after the load completes.
+
+        A regression that drops the ``asyncio.create_task(...)`` call
+        would leave ``_heartbeat_task`` as ``None``; production would
+        stop emitting heartbeats silently.
+        """
+        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
+        collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        try:
+            await collector.start()
+            heartbeat_task = collector._heartbeat_task
+            assert heartbeat_task is not None
+            assert not heartbeat_task.done()
+        finally:
+            await collector.shutdown()
+
+
+@pytest.mark.unit
+class TestShutdownGuards:
+    """``shutdown()`` invariants under abnormal lifecycles."""
+
+    async def test_shutdown_without_start_is_safe(self, tmp_path: Path) -> None:
+        """``shutdown()`` on an enabled collector that never had ``start()``
+        called returns cleanly and emits the WARNING signal.
+
+        Without the guard at ``shutdown()``, ``_build_event``'s
+        non-None assertion would crash the whole shutdown path.
+        """
+        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
+        collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        # No await collector.start() here.
+        await collector.shutdown()
+        assert collector.deployment_id is None
+
+
+@pytest.mark.unit
+class TestCorruptDeploymentIdFile:
+    """Existing-but-corrupt ID file falls back to a new UUID (#1600)."""
+
+    @pytest.mark.parametrize(
+        "stored_content",
+        [
+            "not-a-uuid",
+            "12345678-1234",  # truncated
+            "",  # empty after strip
+            "        ",  # whitespace only
+        ],
+    )
+    async def test_corrupt_file_generates_new_id(
+        self, tmp_path: Path, stored_content: str
+    ) -> None:
+        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
+        (tmp_path / "telemetry_id").write_text(stored_content, encoding="utf-8")
+        collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        try:
+            await collector.start()
+            assert collector.deployment_id is not None
+            assert len(collector.deployment_id) == 36
+            assert collector.deployment_id != stored_content.strip()
+        finally:
+            await collector.shutdown()
+
+
+@pytest.mark.unit
+class TestThreeWayInstanceRace:
+    """Three independent collectors converge to one deployment ID."""
+
+    async def test_three_concurrent_instances_share_one_id(
+        self, tmp_path: Path
+    ) -> None:
+        """Three replicas racing on the same data_dir converge.
+
+        Exercises the ``O_CREAT|O_EXCL`` + peer-recovery path more
+        aggressively than the two-coroutine same-instance test does.
+        At most one replica wins the atomic create; the other two
+        re-read its UUID.
+        """
+        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
+        c1 = TelemetryCollector(config=config, data_dir=tmp_path)
+        c2 = TelemetryCollector(config=config, data_dir=tmp_path)
+        c3 = TelemetryCollector(config=config, data_dir=tmp_path)
+        try:
+            await asyncio.gather(c1.start(), c2.start(), c3.start())
+            assert c1.deployment_id is not None
+            assert c1.deployment_id == c2.deployment_id == c3.deployment_id
+            id_file = tmp_path / "telemetry_id"
+            assert id_file.exists()
+            assert id_file.read_text(encoding="utf-8").strip() == c1.deployment_id
+        finally:
+            await c1.shutdown()
+            await c2.shutdown()
+            await c3.shutdown()
