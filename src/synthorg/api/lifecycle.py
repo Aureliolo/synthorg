@@ -52,9 +52,11 @@ logger = get_logger(__name__)
 #     return well under their cap. Realistic headline budget is 25
 #     (drain) + ~26 s (services) = ~51 s.
 #
-# Recommended ``terminationGracePeriodSeconds: 60`` per
-# ``docs/design/deployment.md``. Operators that consistently hit
-# drain timeouts should raise the grace and document the incident.
+# Recommended ``terminationGracePeriodSeconds: 75`` per
+# ``docs/design/deployment.md`` -- 8 s headroom over the absolute
+# worst-case 67 s so the orchestrator never SIGKILLs the process
+# mid-teardown. Operators that consistently hit drain timeouts
+# should raise the grace and document the incident.
 # Raising any *individual* budget should come with a note explaining
 # which production incident motivated the change.
 _TASK_ENGINE_SHUTDOWN_SECONDS: float = 8.0

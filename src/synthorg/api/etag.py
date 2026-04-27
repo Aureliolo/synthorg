@@ -246,7 +246,7 @@ async def _emit_response(
 
     headers_value = captured_start.get("headers", [])
     headers: list[tuple[bytes, bytes]] = (
-        list(headers_value) if isinstance(headers_value, list) else []
+        list(headers_value) if isinstance(headers_value, list | tuple) else []
     )
     etag = compute_etag(body)
     cache_default = (

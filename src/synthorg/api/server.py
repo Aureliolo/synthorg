@@ -97,10 +97,12 @@ def run_server(config: RootConfig) -> None:
         # (25 s) so uvicorn's graceful-shutdown window covers both
         # the drain wait and the slowest service teardown step.
         # Realistic worst case is ~51 s (drain + services), absolute
-        # worst case ~67 s; 60 s leaves headroom inside the
-        # recommended ``terminationGracePeriodSeconds: 60``. See
+        # worst case ~67 s if every per-service budget hits its cap;
+        # 75 s gives ~8 s headroom over the absolute worst case so
+        # the orchestrator's ``terminationGracePeriodSeconds: 75``
+        # never SIGKILLs the process mid-teardown. See
         # ``docs/design/deployment.md`` for the full math.
-        timeout_graceful_shutdown=60,
+        timeout_graceful_shutdown=75,
         **ssl_kwargs,
         **proxy_kwargs,
     )

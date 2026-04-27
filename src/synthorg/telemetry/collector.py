@@ -380,17 +380,28 @@ class TelemetryCollector:
             if self._heartbeat_task is not None and not self._heartbeat_task.done():
                 return
             if self._deployment_id is None:
+                # Pre-generate the candidate UUID and pass it to the
+                # worker thread. ``asyncio.wait_for`` cancels the
+                # awaiting coroutine on timeout but does NOT cancel
+                # the underlying thread; if the worker eventually
+                # completes after the deadline it will persist to
+                # disk. Sharing the candidate guarantees the in-memory
+                # fallback and any post-deadline disk write agree on
+                # the same UUID, so a subsequent restart cannot load
+                # a different on-disk value and split-brain the
+                # deployment identity across boots.
+                candidate_id = str(uuid.uuid4())
                 try:
                     self._deployment_id = await asyncio.wait_for(
-                        self._load_or_create_deployment_id(),
+                        self._load_or_create_deployment_id(candidate_id),
                         timeout=_DEPLOYMENT_ID_LOAD_TIMEOUT_SECONDS,
                     )
                 except TimeoutError:
                     # Hung filesystem (stale NFS handle, slow disk).
-                    # Fall back to an in-memory UUID so the collector
-                    # can still emit events, and surface the splinter
+                    # Fall back to the candidate UUID so the collector
+                    # can still emit events; surface the splinter
                     # state via ``using_generated_id=True``.
-                    self._deployment_id = str(uuid.uuid4())
+                    self._deployment_id = candidate_id
                     logger.warning(
                         TELEMETRY_REPORT_FAILED,
                         detail="deployment_id_load_timeout",
@@ -413,7 +424,7 @@ class TelemetryCollector:
                     # rather than ``logger.exception`` (which would
                     # attach a traceback that adds no actionable
                     # context beyond the structured fields).
-                    self._deployment_id = str(uuid.uuid4())
+                    self._deployment_id = candidate_id
                     logger.warning(
                         TELEMETRY_REPORT_FAILED,
                         detail="deployment_id_load_unexpected_error",
@@ -726,8 +737,8 @@ class TelemetryCollector:
                     error_type=type(exc).__name__,
                 )
 
-    async def _load_or_create_deployment_id(self) -> str:
-        """Load deployment ID from file or create a new UUID (async).
+    async def _load_or_create_deployment_id(self, candidate_id: str) -> str:
+        """Load deployment ID from file or persist ``candidate_id`` (async).
 
         Offloads the entire path-validation + filesystem sequence to
         ``asyncio.to_thread`` so the event loop's thread never blocks
@@ -738,15 +749,26 @@ class TelemetryCollector:
         ``to_thread`` calls would let two coroutines interleave
         between read and create.
 
+        ``candidate_id`` is the UUID the *caller* generated before
+        spawning the worker. Passing it down ensures the timeout
+        fallback in ``start()`` and the value the worker eventually
+        persists agree on the same string, so the deployment ID
+        cannot split-brain between the in-memory value and the
+        on-disk file when the worker outlives the ``asyncio.wait_for``
+        deadline.
+
         Returns a valid UUID string in all cases (never raises).
         Logs warnings on I/O errors.
         """
         return await asyncio.to_thread(
-            _load_or_create_deployment_id_sync, self._data_dir
+            _load_or_create_deployment_id_sync, self._data_dir, candidate_id
         )
 
 
-def _load_or_create_deployment_id_sync(data_dir: Path) -> str:  # noqa: C901, PLR0912
+def _load_or_create_deployment_id_sync(
+    data_dir: Path,
+    candidate_id: str,
+) -> str:
     """Synchronous path-validate + load + atomic-create + peer-recover.
 
     Runs inside ``asyncio.to_thread`` so the event loop's thread is
@@ -756,6 +778,11 @@ def _load_or_create_deployment_id_sync(data_dir: Path) -> str:  # noqa: C901, PL
     in one helper so the OS-level race semantics are preserved
     end-to-end; splitting the helper across multiple ``to_thread``
     calls would let two coroutines interleave between read and create.
+
+    ``candidate_id`` is the UUID the async caller pre-generated. It
+    is the value persisted on the create branch, so the timeout
+    fallback in ``start()`` and any post-deadline disk write the
+    worker may still produce agree on the same string.
 
     Applies the OWASP path-injection recipe (``os.path.normpath`` +
     :py:meth:`str.startswith` on the normalised full path +
@@ -772,155 +799,14 @@ def _load_or_create_deployment_id_sync(data_dir: Path) -> str:  # noqa: C901, PL
     so a future contract violation (unexpected exception type) cannot
     bubble out of the ``to_thread`` boundary and crash ``start()``.
     """
-    new_id = str(uuid.uuid4())
     try:
-        # Build the full target path as a normalised, case-folded
-        # string: the ``str(os.path.normcase(os.path.normpath(
-        # os.path.join(base, name))))`` recipe from OWASP / CodeQL.
-        # ``normpath`` collapses ``..`` and redundant ``/`` so the
-        # prefix check below cannot be bypassed with
-        # ``/data/../etc/telemetry_id``; ``normcase`` lower-cases on
-        # Windows (no-op on POSIX) so the comparison is
-        # case-insensitive where the filesystem is. The ``PTH*`` ruff
-        # lints (prefer ``Path``) are intentionally suppressed: CodeQL's
-        # ``py/path-injection`` query only recognises string-based
-        # ``normpath``/``startswith`` + ``os.path``/builtin I/O as a
-        # sanitiser + sink pair; the equivalent ``Path`` methods leave
-        # the sinks flagged even with a valid guard.
-        id_path_str = os.path.normcase(
-            os.path.normpath(
-                os.path.join(  # noqa: PTH118
-                    os.fspath(data_dir),
-                    "telemetry_id",
-                ),
-            ),
-        )
-        data_root = os.path.normcase(os.path.normpath(str(Path("/data"))))
-        # Require a strict descendant of a trusted root (``root + sep``).
-        # Equality (``path == root``) is rejected because the caller
-        # would still derive ``parent / "telemetry"`` above this
-        # function, and a path equal to the root would escape one level
-        # up (``/data`` -> ``/telemetry``). ``_TEMP_ROOT`` is computed
-        # once at module load so this helper never re-resolves the
-        # temp dir on every ``start()``.
-        if not (
-            id_path_str.startswith(data_root + os.sep)
-            or (_TEMP_ROOT is not None and id_path_str.startswith(_TEMP_ROOT + os.sep))
-        ):
-            logger.warning(
-                TELEMETRY_REPORT_FAILED,
-                detail="data_dir_not_trusted",
-                value=id_path_str,
-                using_generated_id=True,
-            )
-            return new_id
-
-        # Use the sanitised string with plain ``os`` / builtin I/O so
-        # the sanitiser and each sink sit on adjacent lines: the
-        # pattern CodeQL's static dataflow query matches on. The
-        # inline PTH-rule suppressions below carry the same rationale
-        # as the upstream sanitiser.
-        try:
-            if os.path.exists(id_path_str):  # noqa: PTH110
-                with open(id_path_str, encoding="utf-8") as fh:  # noqa: PTH123
-                    stored = fh.read().strip()
-                if stored:
-                    try:
-                        uuid.UUID(stored)
-                    except ValueError:
-                        logger.warning(
-                            TELEMETRY_REPORT_FAILED,
-                            detail="deployment_id_invalid",
-                            error_type="ValueError",
-                        )
-                        # Repair: drop the corrupt file so the
-                        # atomic-create path below can write a fresh
-                        # UUID. Without this, every subsequent boot
-                        # would re-detect the same corruption and
-                        # keep falling back to a generated ID,
-                        # permanently fragmenting deployment
-                        # telemetry until an operator manually
-                        # deletes the file. Unlink errors are
-                        # swallowed: if we lost the right to delete,
-                        # the create below will hit ``FileExistsError``
-                        # again and the next boot retries.
-                        with contextlib.suppress(OSError):
-                            os.unlink(id_path_str)  # noqa: PTH108
-                    else:
-                        logger.info(
-                            TELEMETRY_DEPLOYMENT_ID_LOADED,
-                            deployment_id=stored,
-                        )
-                        return stored
-        except OSError as exc:
-            logger.warning(
-                TELEMETRY_REPORT_FAILED,
-                detail="deployment_id_read",
-                error_type=type(exc).__name__,
-            )
-
-        try:
-            os.makedirs(  # noqa: PTH103
-                os.path.dirname(id_path_str),  # noqa: PTH120
-                exist_ok=True,
-            )
-            # Atomic exclusive create: under concurrent startups (e.g.
-            # two backend replicas mounting the same ``/data`` volume)
-            # the prior ``exists`` + ``open("w")`` pair could overwrite
-            # a peer's freshly-written UUID and leave each replica with
-            # a different deployment ID. ``O_CREAT | O_EXCL`` with the
-            # final mode bits set atomically wins-or-loses the race;
-            # if a peer wrote first we re-read and reuse its UUID so
-            # the persisted ID stays stable.
-            fd = os.open(
-                id_path_str,
-                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-                0o600,
-            )
-            fd_owned = True
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                    # Once ``fdopen`` returns, the file object owns
-                    # the fd; the ``with`` block's ``__exit__`` will
-                    # close it on any exception path.
-                    fd_owned = False
-                    fh.write(new_id)
-            except BaseException:
-                # If ``fdopen`` itself raised (very rare: invalid fd,
-                # EOPNOTSUPP), the fd was never adopted and we still
-                # own it. Close it ourselves; if the file object DID
-                # take ownership and the failure happened later,
-                # ``__exit__`` already closed the fd and ``os.close``
-                # below would raise ``OSError(EBADF)`` masking the
-                # original exception. Skip the close in that case.
-                if fd_owned:
-                    os.close(fd)
-                raise
-        except FileExistsError:
-            # A peer wrote first. Re-read with retry: the peer may
-            # have created the file via ``O_CREAT|O_EXCL`` but not
-            # yet finished ``write()``. Retrying inside the same
-            # ``to_thread`` keeps the OS-level race semantics atomic.
-            peer_id = _read_peer_deployment_id(id_path_str)
-            if peer_id is not None:
-                logger.info(
-                    TELEMETRY_DEPLOYMENT_ID_LOADED,
-                    deployment_id=peer_id,
-                )
-                return peer_id
-        except OSError as exc:
-            logger.warning(
-                TELEMETRY_REPORT_FAILED,
-                detail="deployment_id_write",
-                error_type=type(exc).__name__,
-                using_generated_id=True,
-            )
-        else:
-            logger.info(
-                TELEMETRY_DEPLOYMENT_ID_CREATED,
-                deployment_id=new_id,
-            )
-            return new_id
+        id_path_str = _resolve_telemetry_id_path(data_dir)
+        if id_path_str is None:
+            return candidate_id
+        existing = _read_existing_deployment_id(id_path_str)
+        if existing is not None:
+            return existing
+        return _atomic_create_or_recover(id_path_str, candidate_id)
     except MemoryError, RecursionError:
         # System-level errors must propagate so operators see the
         # real condition; downgrading them to a generated UUID would
@@ -928,19 +814,155 @@ def _load_or_create_deployment_id_sync(data_dir: Path) -> str:  # noqa: C901, PL
         # telemetry boot.
         raise
     except Exception as exc:
-        # Belt-and-suspenders: the helper is documented to never raise,
-        # but a future regression must not bubble an exception across
-        # the ``to_thread`` boundary. Fall back to the in-memory UUID
-        # generated at the top of the function. Warning, not exception,
-        # to match the structured-log pattern used elsewhere in the
-        # module (categorical detail + error_type, no traceback).
+        # Belt-and-suspenders: each helper is documented to never
+        # raise, but a future regression must not bubble an exception
+        # across the ``to_thread`` boundary. Fall back to the candidate
+        # UUID. Warning, not exception, to match the structured-log
+        # pattern used elsewhere in the module (categorical detail +
+        # error_type, no traceback).
         logger.warning(
             TELEMETRY_REPORT_FAILED,
             detail="deployment_id_load_unexpected_helper_error",
             error_type=type(exc).__name__,
             using_generated_id=True,
         )
-    return new_id
+    return candidate_id
+
+
+def _resolve_telemetry_id_path(data_dir: Path) -> str | None:
+    """Build + validate the on-disk path for the deployment-id file.
+
+    Returns the sanitised path string if it is a strict descendant
+    of a trusted root (``/data`` or the module-cached temp root), or
+    ``None`` (with a structured warning) if not. Implements the OWASP
+    path-injection recipe -- ``os.path.normpath`` collapses ``..``
+    and redundant separators, ``os.path.normcase`` lower-cases on
+    Windows so the comparison is case-insensitive where the
+    filesystem is, and the ``startswith(root + sep)`` check is the
+    sanitiser CodeQL's ``py/path-injection`` query tracks across
+    the sinks downstream.
+    """
+    id_path_str = os.path.normcase(
+        os.path.normpath(
+            os.path.join(  # noqa: PTH118
+                os.fspath(data_dir),
+                "telemetry_id",
+            ),
+        ),
+    )
+    data_root = os.path.normcase(os.path.normpath(str(Path("/data"))))
+    if not (
+        id_path_str.startswith(data_root + os.sep)
+        or (_TEMP_ROOT is not None and id_path_str.startswith(_TEMP_ROOT + os.sep))
+    ):
+        logger.warning(
+            TELEMETRY_REPORT_FAILED,
+            detail="data_dir_not_trusted",
+            value=id_path_str,
+            using_generated_id=True,
+        )
+        return None
+    return id_path_str
+
+
+def _read_existing_deployment_id(id_path_str: str) -> str | None:
+    """Return a valid UUID from the on-disk file, or ``None`` if absent / corrupt.
+
+    Corrupt files (non-UUID content) are unlinked so the
+    atomic-create branch can write a fresh value; without this
+    repair every subsequent boot would re-detect the same
+    corruption and keep falling back to a generated ID,
+    permanently fragmenting deployment telemetry until an
+    operator manually deleted the file. Read errors are logged
+    with a categorical detail and treated as "not present" so
+    the create path runs.
+    """
+    try:
+        if not os.path.exists(id_path_str):  # noqa: PTH110
+            return None
+        with open(id_path_str, encoding="utf-8") as fh:  # noqa: PTH123
+            stored = fh.read().strip()
+    except OSError as exc:
+        logger.warning(
+            TELEMETRY_REPORT_FAILED,
+            detail="deployment_id_read",
+            error_type=type(exc).__name__,
+        )
+        return None
+    if not stored:
+        return None
+    try:
+        uuid.UUID(stored)
+    except ValueError:
+        logger.warning(
+            TELEMETRY_REPORT_FAILED,
+            detail="deployment_id_invalid",
+            error_type="ValueError",
+        )
+        with contextlib.suppress(OSError):
+            os.unlink(id_path_str)  # noqa: PTH108
+        return None
+    logger.info(
+        TELEMETRY_DEPLOYMENT_ID_LOADED,
+        deployment_id=stored,
+    )
+    return stored
+
+
+def _atomic_create_or_recover(id_path_str: str, candidate_id: str) -> str:
+    """Try ``O_CREAT|O_EXCL`` write; on race, re-read the peer's UUID.
+
+    Wins-or-loses the race atomically so concurrent startups never
+    overwrite each other's freshly-written UUID. On ``FileExistsError``
+    a peer wrote first; the partial-write retry re-reads with a
+    short backoff inside the same ``to_thread`` so the OS-level
+    race semantics are preserved end-to-end.
+
+    Returns the successfully-persisted UUID (either ``candidate_id``
+    on the win or the peer's UUID on the loss) or ``candidate_id``
+    if the write failed without producing a peer file we can read.
+    """
+    try:
+        os.makedirs(  # noqa: PTH103
+            os.path.dirname(id_path_str),  # noqa: PTH120
+            exist_ok=True,
+        )
+        fd = os.open(
+            id_path_str,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        fd_owned = True
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fd_owned = False
+                fh.write(candidate_id)
+        except BaseException:
+            if fd_owned:
+                os.close(fd)
+            raise
+    except FileExistsError:
+        peer_id = _read_peer_deployment_id(id_path_str)
+        if peer_id is not None:
+            logger.info(
+                TELEMETRY_DEPLOYMENT_ID_LOADED,
+                deployment_id=peer_id,
+            )
+            return peer_id
+        return candidate_id
+    except OSError as exc:
+        logger.warning(
+            TELEMETRY_REPORT_FAILED,
+            detail="deployment_id_write",
+            error_type=type(exc).__name__,
+            using_generated_id=True,
+        )
+        return candidate_id
+    logger.info(
+        TELEMETRY_DEPLOYMENT_ID_CREATED,
+        deployment_id=candidate_id,
+    )
+    return candidate_id
 
 
 def _read_peer_deployment_id(id_path_str: str) -> str | None:

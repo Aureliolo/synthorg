@@ -27,9 +27,9 @@ export interface CommandItem {
 
 // ---------------------------------------------------------------------------
 // Module-level store (singleton, shared across all hook instances).
-// Note (#1600 Phase 5): this hook adds NO ``document.addEventListener``
+// Note (#1600 Phase 5): this hook adds NO `document.addEventListener`
 // or other DOM listeners; subscriptions go through a closed-over
-// ``Set<Listener>`` and ``useSyncExternalStore``. There is therefore
+// `Set<Listener>` and `useSyncExternalStore`. There is therefore
 // no listener-cleanup teardown to maintain. Audit confirmed by
 // review agents on 2026-04-25; revisit only if a future change adds
 // a real DOM listener.

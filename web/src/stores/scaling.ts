@@ -19,6 +19,13 @@ const log = createLogger('scaling')
 // spawn overlapping request storms.
 let wsRefreshInFlight = false
 let wsRefreshQueued = false
+// Generation token bumped by ``dispose()`` so a refresh that was
+// in flight when the store was torn down (e.g. across test
+// boundaries) cannot still write into the post-dispose store.
+// fetchDecisions / fetchSignals capture the epoch at call time
+// and short-circuit if it has changed by the time their network
+// roundtrip resolves.
+let wsRefreshEpoch = 0
 
 interface ScalingState {
   // Data
@@ -110,23 +117,29 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
   },
 
   fetchDecisions: async () => {
+    const epoch = wsRefreshEpoch
     try {
       const result = await getScalingDecisions({ limit: 50 })
+      if (epoch !== wsRefreshEpoch) return
       set({
         decisions: result.data,
         totalDecisions: result.total ?? result.data.length,
       })
     } catch (err) {
+      if (epoch !== wsRefreshEpoch) return
       log.error('Failed to fetch decisions', err)
       throw err
     }
   },
 
   fetchSignals: async () => {
+    const epoch = wsRefreshEpoch
     try {
       const signals = await getScalingSignals()
+      if (epoch !== wsRefreshEpoch) return
       set({ signals })
     } catch (err) {
+      if (epoch !== wsRefreshEpoch) return
       log.error('Failed to fetch signals', err)
       throw err
     }
@@ -178,9 +191,13 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
     void runRefresh()
   },
   dispose: () => {
-    // Reserved for future teardown of timers / listeners. Today the
-    // scaling store schedules no async resources; this method exists
-    // so the test-setup ``afterEach`` contract is uniform across
-    // domain stores (#1600 Phase 5).
+    // Bump the generation token so any in-flight WS refresh that
+    // was spawned before the dispose cannot write into the
+    // post-dispose store, and reset the coalescer flags so the
+    // next ``updateFromWsEvent`` does not see a stale "in flight"
+    // marker and silently suppress its own refresh (#1600 Phase 5).
+    wsRefreshEpoch += 1
+    wsRefreshInFlight = false
+    wsRefreshQueued = false
   },
 }))
