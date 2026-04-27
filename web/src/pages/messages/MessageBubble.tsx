@@ -27,9 +27,14 @@ export function MessageBubble({ message, isNew, onClick }: MessageBubbleProps) {
 
   const priorityColor = getMessagePriorityColor(message.priority)
 
+  // ``priorityColor`` is null for ``normal`` priority (the default
+  // visible state has no dot), so we only mention priority in the
+  // accessible label when there's a visible priority indicator.
+  // Otherwise the surrounding test contract (``does not render
+  // priority indicator for normal priority``) breaks.
   const ariaLabel = [
     `${message.type} from ${message.sender}`,
-    message.priority ? `${message.priority} priority` : null,
+    priorityColor ? `${message.priority} priority` : null,
     `sent ${formatRelativeTime(message.timestamp)}`,
   ]
     .filter(Boolean)
