@@ -104,3 +104,72 @@ async def test_concurrent_first_reads_emit_info_at_most_once(
     # check + set add (no awaits between). Even with 10 concurrent
     # readers the event fires exactly once.
     assert len(info_events) == 1, f"concurrent first-read race: {info_events}"
+
+
+# ── Source coverage: db / env / default ────────────────────────
+
+
+async def test_db_source_logged() -> None:
+    repo = AsyncMock(spec=SettingsRepository)
+    repo.get = AsyncMock(return_value=("error", "2026-04-27T00:00:00Z"))
+    repo.get_namespace = AsyncMock(return_value=())
+    repo.get_all = AsyncMock(return_value=())
+    registry = SettingsRegistry()
+    registry.register(_definition())
+    svc = SettingsService(
+        repository=repo,
+        registry=registry,
+        config=_FakeConfig(),
+    )
+    with structlog.testing.capture_logs() as logs:
+        await svc.get("observability", "root_log_level")
+    events = _resolved(logs)
+    info_events = [e for e in events if e["log_level"] == "info"]
+    assert len(info_events) == 1
+    assert info_events[0]["source"] == "db"
+
+
+async def test_env_source_logged(monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = AsyncMock(spec=SettingsRepository)
+    repo.get = AsyncMock(return_value=None)
+    repo.get_namespace = AsyncMock(return_value=())
+    repo.get_all = AsyncMock(return_value=())
+    registry = SettingsRegistry()
+    registry.register(_definition())
+    # Empty config so YAML resolution returns None and env wins.
+    empty_config: Any = _FakeConfig.model_construct()
+    svc = SettingsService(
+        repository=repo,
+        registry=registry,
+        config=empty_config,
+    )
+    monkeypatch.setenv("SYNTHORG_OBSERVABILITY_ROOT_LOG_LEVEL", "warning")
+    with structlog.testing.capture_logs() as logs:
+        await svc.get("observability", "root_log_level")
+    events = _resolved(logs)
+    info_events = [e for e in events if e["log_level"] == "info"]
+    assert len(info_events) == 1
+    assert info_events[0]["source"] == "env"
+
+
+async def test_default_source_logged(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Drop yaml_path so the YAML resolver can't supply a value.
+    defn = _definition().model_copy(update={"yaml_path": None})
+    repo = AsyncMock(spec=SettingsRepository)
+    repo.get = AsyncMock(return_value=None)
+    repo.get_namespace = AsyncMock(return_value=())
+    repo.get_all = AsyncMock(return_value=())
+    registry = SettingsRegistry()
+    registry.register(defn)
+    svc = SettingsService(
+        repository=repo,
+        registry=registry,
+        config=_FakeConfig(),
+    )
+    monkeypatch.delenv("SYNTHORG_OBSERVABILITY_ROOT_LOG_LEVEL", raising=False)
+    with structlog.testing.capture_logs() as logs:
+        await svc.get("observability", "root_log_level")
+    events = _resolved(logs)
+    info_events = [e for e in events if e["log_level"] == "info"]
+    assert len(info_events) == 1
+    assert info_events[0]["source"] == "default"

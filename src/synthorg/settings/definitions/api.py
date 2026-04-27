@@ -663,11 +663,16 @@ _r.register(
         description=(
             "Master kill switch for the three-tier global rate"
             " limiter (IP floor + unauthenticated + authenticated)."
-            " Disable only in trusted dev environments."
+            " Disable only in trusted dev environments.  Sourced"
+            " from SYNTHORG_API_RATE_LIMITER_ENABLED env var at boot;"
+            " runtime mutation through the /settings API is rejected"
+            " (read_only_post_init) because the middleware stack is"
+            " baked at app construction."
         ),
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
         restart_required=True,
+        read_only_post_init=True,
     )
 )
 

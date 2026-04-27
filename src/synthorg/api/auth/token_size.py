@@ -6,19 +6,18 @@ shares the same entropy budget so an operator cannot accidentally
 weaken one path while hardening another.  The shared budget resolves
 through the standard precedence chain at process startup -- the
 :data:`security.auth_token_bytes` setting is ``restart_required=True``
-because changing token byte length mid-run would silently invalidate
-existing tokens (a 32-byte token decoded under a 64-byte expectation
-fails verification).
+**and** ``read_only_post_init=True``: operators cannot change it
+through the /settings API at runtime; updates require an env / YAML
+change followed by a process restart.  This is enforced because
+changing token byte length mid-run would silently invalidate existing
+tokens (a 32-byte token decoded under a 64-byte expectation fails
+verification).
 
 The startup hook in :mod:`synthorg.api.lifecycle_helpers` calls
 :func:`set_auth_token_bytes` once with the resolved value before the
 first request is served.  Tests that need a different value can call
 the same setter directly.
 """
-
-from synthorg.observability import get_logger
-
-logger = get_logger(__name__)
 
 _DEFAULT_AUTH_TOKEN_BYTES: int = 32
 """Fallback entropy budget when the resolver is unavailable.

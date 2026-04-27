@@ -67,7 +67,7 @@ read so the /settings UI shows the truth.
 | `observability.log_directory` | env (`SYNTHORG_LOG_DIR`) > YAML > unset | **Yes** | Read-only-post-init.  Path-traversal still rejected at boot. |
 | `communication.nats_url` | env (`SYNTHORG_NATS_URL`) > YAML > default | **Yes** | Read-only-post-init. |
 | `workers.count` | env (`SYNTHORG_WORKERS`) > YAML > default | **Yes** | Read-only-post-init. |
-| `telemetry.enabled` | DB > env (`SYNTHORG_TELEMETRY`) > YAML > default | No | Standard mutable. |
+| Telemetry opt-in | env (`SYNTHORG_TELEMETRY`) > YAML (`telemetry.enabled`) > default | **Yes** | **No registry entry.**  Read once in `TelemetryCollector.__init__`; runtime mutation has no effect.  Promotion to a registry entry is tracked as follow-up. |
 | SQLite path | env (`SYNTHORG_DB_PATH`) > YAML | **Yes** | **No registry entry.**  Init-time exception. |
 | Postgres URL | env (`SYNTHORG_DATABASE_URL`) > YAML | **Yes** | **No registry entry.**  Credentials; init-time exception. |
 | JWT secret | env (`SYNTHORG_JWT_SECRET`) | **Yes** | **No registry entry.**  Bootstrap secret. |

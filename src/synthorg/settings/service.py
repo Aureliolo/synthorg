@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from synthorg.communication.enums import MessageType
 from synthorg.communication.message import Message, MessageMetadata, TextPart
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import SECURITY_SETTINGS_CHANGED
 from synthorg.observability.events.settings import (
     SETTINGS_CACHE_INVALIDATED,
@@ -340,12 +340,20 @@ class SettingsService:
             raise SettingsEncryptionError(msg)
         try:
             return self._encryptor.decrypt(raw_value)
-        except SettingsEncryptionError:
-            logger.exception(
+        except SettingsEncryptionError as exc:
+            # SEC-1: settings encryption is a credential-bearing path;
+            # ``logger.exception`` would attach a traceback that may
+            # leak the encrypted payload or the encryptor's internal
+            # state via the cryptography exception chain.  Use
+            # ``logger.warning`` with ``safe_error_description`` per
+            # CLAUDE.md ``## Logging``.
+            logger.warning(
                 SETTINGS_ENCRYPTION_ERROR,
                 namespace=definition.namespace,
                 key=definition.key,
                 reason="decrypt_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
@@ -864,12 +872,15 @@ class SettingsService:
             raise SettingsEncryptionError(msg)
         try:
             return self._encryptor.encrypt(value)
-        except SettingsEncryptionError:
-            logger.exception(
+        except SettingsEncryptionError as exc:
+            # SEC-1: same rationale as ``_decrypt_if_sensitive``.
+            logger.warning(
                 SETTINGS_ENCRYPTION_ERROR,
                 namespace=definition.namespace,
                 key=definition.key,
                 reason="encrypt_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
@@ -1040,11 +1051,13 @@ class SettingsService:
             raise
         except Exception as exc:
             # Notification failure should not break settings writes.
+            # Settings is a credential-bearing path so use the
+            # SEC-1-compliant ``safe_error_description`` redactor.
             logger.warning(
                 SETTINGS_NOTIFICATION_FAILED,
                 namespace=namespace,
                 key=key,
-                error=str(exc),
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 exc_info=True,
             )

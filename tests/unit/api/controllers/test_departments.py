@@ -245,3 +245,52 @@ class TestDepartmentCeremonyPolicyCas:
         # Retry loop must be bounded exactly by the configured cap
         # (fallback constant since no resolver is wired).
         assert set_mock.await_count == _DEPT_POLICY_CAS_FALLBACK_ATTEMPTS
+
+    async def test_resolver_provided_attempt_count_is_honored(
+        self,
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        """CAS retry loop respects a resolver-provided budget.
+
+        When ``app_state.config_resolver`` returns 7 for the dept
+        policy CAS retry attempts setting, the mutation helper must
+        run exactly 7 attempts before surfacing
+        ``VersionConflictError``.
+        """
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        from synthorg.api.controllers.departments import (
+            _mutate_dept_policies_with_retry,
+        )
+        from synthorg.api.errors import VersionConflictError
+
+        config = RootConfig(company_name="test")
+        settings_service = SettingsService(
+            repository=fake_persistence.settings,
+            registry=get_registry(),
+            config=config,
+        )
+        set_mock = AsyncMock(side_effect=VersionConflictError("forced conflict"))
+        settings_service.set = set_mock  # type: ignore[method-assign]
+
+        resolver = AsyncMock()
+        resolver.get_int = AsyncMock(return_value=7)
+        app_state = SimpleNamespace(
+            has_settings_service=True,
+            settings_service=settings_service,
+            has_config_resolver=True,
+            config_resolver=resolver,
+        )
+
+        with pytest.raises(VersionConflictError):
+            await _mutate_dept_policies_with_retry(
+                app_state,  # type: ignore[arg-type]
+                "dept-a",
+                {"strategy": "task_driven"},
+            )
+
+        assert set_mock.await_count == 7
+        resolver.get_int.assert_awaited_once_with(
+            "coordination", "department_policy_cas_retry_attempts"
+        )

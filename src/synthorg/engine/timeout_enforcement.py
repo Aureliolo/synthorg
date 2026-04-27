@@ -2,28 +2,31 @@
 
 The ``engine.timeout_enforcement_enabled`` setting lets a dev operator
 disable engine timeouts globally for step-through debugging.  The flag
-is read once at startup and cached in a module-local variable so the
-hot detector / classifier / evaluation paths can decide between a real
-``asyncio.timeout`` and a ``contextlib.nullcontext`` without touching
-the resolver per request.
+is a **standard mutable setting** (not ``read_only_post_init``); the
+module caches the resolved value purely as a hot-path optimisation so
+the detector / classifier / evaluation gates can decide between a
+real ``asyncio.timeout`` and a ``contextlib.nullcontext`` without
+touching the resolver on every coroutine entry.  An operator change
+takes effect on the next call to :func:`set_timeout_enforcement_enabled`
+(currently invoked once at startup; runtime hot-reload is a follow-up).
 
 The startup hook in :mod:`synthorg.api.lifecycle_helpers` calls
 :func:`set_timeout_enforcement_enabled` once after resolving the
 setting; tests and ad-hoc callers can call the same setter directly.
-Production deployments should always keep enforcement on -- a missing
-timeout silently lets a hung detector starve the engine.
+If the setter is never called (test harness, anonymous boot path),
+the cached value defaults to ``True`` -- the safe option, so a
+misconfigured deployment that never resolves the setting still
+enforces timeouts and a hung detector still surfaces as
+``TimeoutError``.  Production deployments should always keep
+enforcement on.
 """
 
 import asyncio
 import contextlib
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
-
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
-
-logger = get_logger(__name__)
 
 _enforcement_enabled: bool = True
 """Process-wide cache for ``engine.timeout_enforcement_enabled``.

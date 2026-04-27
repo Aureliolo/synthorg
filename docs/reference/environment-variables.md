@@ -1,6 +1,6 @@
 # Environment Variables
 
-On-demand reference for all `SYNTHORG_*` environment variables the
+On-demand reference for the `SYNTHORG_*` environment variables the
 backend reads.  The precedence rule that governs **mutable** settings
 is in [configuration-precedence.md](configuration-precedence.md); the
 short version is `DB > env > YAML > default`.  Variables in this page
@@ -79,7 +79,7 @@ fall into three categories:
 
 | Variable | Default | Registry key | Purpose |
 |---|---|---|---|
-| `SYNTHORG_LOG_LEVEL` | unset | `observability/log_level_console` (mutable) | Override the console sink's log level distinct from the root logger.  Applied at boot via `_apply_console_level_override`; runtime mutation through the registry takes effect on the next subscriber-driven rebuild. |
+| `SYNTHORG_LOG_LEVEL` | unset | `observability/log_level_console` (mutable) | Override the console sink's log level distinct from the root logger.  **Exception to the standard chain:** the registry chain is `DB > env > unset` -- there is no YAML layer for this entry.  Applied at boot via `_apply_console_level_override`; runtime mutation through the registry takes effect on the next subscriber-driven rebuild. |
 
 ## Workers (init-time, registry for discoverability)
 

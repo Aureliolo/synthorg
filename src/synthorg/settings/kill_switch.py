@@ -46,9 +46,14 @@ async def resolve_bool_with_fallback(
         namespace: Setting namespace (e.g. ``"engine"``).
         key: Setting key within the namespace.
         fallback: Value to return when no resolver is wired or the
-            lookup fails.  Should match the registered registry default
-            so the resolver-down behaviour mirrors the documented
-            contract.
+            lookup fails.  **Callers must pass the same value as the
+            registered ``SettingDefinition.default``**: a mismatch
+            would cause divergent behaviour between resolver-up and
+            resolver-down paths (an operator who sees the documented
+            default in the registry would observe a different actual
+            value during a settings outage).  This invariant is the
+            caller's responsibility -- the helper has no way to look
+            up the registered default itself.
 
     Returns:
         The resolved boolean, or *fallback* on missing resolver / outage.

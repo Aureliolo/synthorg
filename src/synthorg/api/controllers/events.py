@@ -61,7 +61,7 @@ async def _resolve_sse_keepalive_seconds(app_state: AppState | None) -> float:
     same fallback so a transient settings outage cannot break the
     keepalive cadence on a long-lived stream.
     """
-    if app_state is None or not app_state.has_config_resolver:
+    if app_state is None or not getattr(app_state, "has_config_resolver", False):
         return _SSE_KEEPALIVE_FALLBACK_SECONDS
     try:
         return await app_state.config_resolver.get_float("api", "sse_keepalive_seconds")

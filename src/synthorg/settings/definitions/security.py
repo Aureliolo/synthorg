@@ -110,14 +110,18 @@ _r.register(
             " minted by secrets.token_urlsafe: WebSocket tickets,"
             " password-reset tokens, refresh tokens, OAuth state"
             " tokens. 32 bytes resolves to 256 bits of entropy and"
-            " 43 URL-safe base64 chars. restart_required because"
-            " changing the byte length mid-run silently invalidates"
-            " existing tokens (a 32-byte token decoded under a"
-            " 64-byte expectation fails verification)."
+            " 43 URL-safe base64 chars.  Sourced from"
+            " SYNTHORG_SECURITY_AUTH_TOKEN_BYTES env > YAML > default"
+            " at boot; runtime mutation through the /settings API is"
+            " rejected (read_only_post_init) because changing the"
+            " byte length mid-run would silently invalidate existing"
+            " tokens (a 32-byte token decoded under a 64-byte"
+            " expectation fails verification)."
         ),
         group="Authentication",
         level=SettingLevel.ADVANCED,
         restart_required=True,
+        read_only_post_init=True,
         min_value=16,
         max_value=64,
         yaml_path="security.auth_token_bytes",

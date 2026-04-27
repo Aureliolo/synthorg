@@ -21,6 +21,7 @@ from synthorg.observability.events.api import (
     API_APP_SHUTDOWN,
     API_APP_STARTUP,
     API_BRIDGE_CHANNEL_DEAD,
+    API_BUS_BRIDGE_DRAIN_RESOLVE_ERROR,
     API_BUS_BRIDGE_POLL_ERROR,
     API_BUS_BRIDGE_SUBSCRIBE_FAILED,
 )
@@ -38,6 +39,14 @@ _MAX_CONSECUTIVE_ERRORS: Final[int] = 30
 """Fallback error budget used when no resolver is wired in."""
 _STOP_DRAIN_TIMEOUT_SECONDS: Final[float] = 10.0
 """Fallback hard deadline for the ``stop()`` drain.
+
+10 seconds is the standard graceful-shutdown grace period across
+SynthOrg lifecycle-bound services: ~5 s for in-flight polling tasks
+to consume their final batch and exit cleanly + ~5 s buffer for
+flaky NATS reconnects, slow downstream Litestar channel pushes, or
+test-harness teardown.  Anything longer hands too much latency to
+operators waiting for SIGTERM; anything shorter risks killing
+in-flight bus messages mid-publish.
 
 Mirrors the registry default for
 ``communication.bus_bridge_drain_timeout_seconds`` so a bridge
@@ -154,7 +163,7 @@ class MessageBusBridge:
         except Exception:
             if not self._drain_timeout_fallback_logged:
                 logger.warning(
-                    API_BUS_BRIDGE_POLL_ERROR,
+                    API_BUS_BRIDGE_DRAIN_RESOLVE_ERROR,
                     error=(
                         "failed to resolve bus_bridge_drain_timeout_seconds;"
                         " using fallback (logging suppressed until recovery)"

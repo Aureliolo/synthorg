@@ -108,3 +108,56 @@ async def test_log_level_console_validator_rejects_garbage(
 
     with pytest.raises(SettingValidationError):
         await service.set("observability", "log_level_console", "verbose")
+
+
+# ── Env / YAML fallthrough for the read-only entries ────────────
+
+
+async def test_log_directory_resolves_through_env(
+    service: SettingsService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``observability.log_directory`` reads SYNTHORG_LOG_DIR at boot."""
+    monkeypatch.setenv("SYNTHORG_OBSERVABILITY_LOG_DIRECTORY", "/var/log/synthorg")
+    value = await service.get("observability", "log_directory")
+    assert value.value == "/var/log/synthorg"
+
+
+async def test_nats_url_resolves_through_env(
+    service: SettingsService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``communication.nats_url`` reads the env override."""
+    monkeypatch.setenv("SYNTHORG_COMMUNICATION_NATS_URL", "nats://override:4223")
+    value = await service.get("communication", "nats_url")
+    assert value.value == "nats://override:4223"
+
+
+async def test_nats_url_falls_back_to_default(
+    service: SettingsService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without env or YAML, ``nats_url`` returns the registered default."""
+    monkeypatch.delenv("SYNTHORG_COMMUNICATION_NATS_URL", raising=False)
+    value = await service.get("communication", "nats_url")
+    assert value.value == "nats://nats:4222"
+
+
+async def test_workers_count_resolves_through_env(
+    service: SettingsService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``workers.count`` reads SYNTHORG_WORKERS at boot."""
+    monkeypatch.setenv("SYNTHORG_WORKERS_COUNT", "4")
+    value = await service.get("workers", "count")
+    assert value.value == "4"
+
+
+async def test_workers_count_falls_back_to_default(
+    service: SettingsService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without env, ``workers.count`` returns the registered default."""
+    monkeypatch.delenv("SYNTHORG_WORKERS_COUNT", raising=False)
+    value = await service.get("workers", "count")
+    assert value.value == "1"
