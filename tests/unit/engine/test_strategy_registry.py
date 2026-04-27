@@ -14,17 +14,23 @@ from synthorg.engine.assignment._shared import (
     STRATEGY_NAME_MANUAL,
     STRATEGY_NAME_ROLE_BASED,
 )
-from synthorg.engine.assignment.auction import AuctionAssignmentStrategy
-from synthorg.engine.assignment.cost_optimized import CostOptimizedAssignmentStrategy
-from synthorg.engine.assignment.hierarchical import HierarchicalAssignmentStrategy
-from synthorg.engine.assignment.load_balanced import LoadBalancedAssignmentStrategy
 from synthorg.engine.assignment.manual import ManualAssignmentStrategy
+from synthorg.engine.assignment.pool_filters import (
+    HierarchicalPoolFilter,
+    IdentityPoolFilter,
+)
 from synthorg.engine.assignment.protocol import TaskAssignmentStrategy
+from synthorg.engine.assignment.rankers import (
+    AuctionBidRanker,
+    CostDescendingRanker,
+    ScoreDescendingRanker,
+    WorkloadAscendingRanker,
+)
 from synthorg.engine.assignment.registry import (
     STRATEGY_MAP,
     build_strategy_map,
 )
-from synthorg.engine.assignment.role_based import RoleBasedAssignmentStrategy
+from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrategy
 from synthorg.engine.routing.scorer import AgentTaskScorer
 
 pytestmark = pytest.mark.unit
@@ -53,20 +59,24 @@ class TestStrategyMap:
         assert isinstance(STRATEGY_MAP["manual"], ManualAssignmentStrategy)
         assert isinstance(
             STRATEGY_MAP["role_based"],
-            RoleBasedAssignmentStrategy,
+            ScoringBasedAssignmentStrategy,
         )
+        assert STRATEGY_MAP["role_based"].name == "role_based"
         assert isinstance(
             STRATEGY_MAP["load_balanced"],
-            LoadBalancedAssignmentStrategy,
+            ScoringBasedAssignmentStrategy,
         )
+        assert STRATEGY_MAP["load_balanced"].name == "load_balanced"
         assert isinstance(
             STRATEGY_MAP["cost_optimized"],
-            CostOptimizedAssignmentStrategy,
+            ScoringBasedAssignmentStrategy,
         )
+        assert STRATEGY_MAP["cost_optimized"].name == "cost_optimized"
         assert isinstance(
             STRATEGY_MAP["auction"],
-            AuctionAssignmentStrategy,
+            ScoringBasedAssignmentStrategy,
         )
+        assert STRATEGY_MAP["auction"].name == "auction"
 
     def test_map_is_immutable(self) -> None:
         """STRATEGY_MAP is a MappingProxyType and rejects mutation."""
@@ -82,24 +92,33 @@ class TestProtocolConformance:
 
     def test_role_based_satisfies_protocol(self) -> None:
         scorer = AgentTaskScorer()
-        assert isinstance(
-            RoleBasedAssignmentStrategy(scorer),
-            TaskAssignmentStrategy,
+        strategy = ScoringBasedAssignmentStrategy(
+            name="role_based",
+            scorer=scorer,
+            pool_filter=IdentityPoolFilter(),
+            ranker=ScoreDescendingRanker(),
         )
+        assert isinstance(strategy, TaskAssignmentStrategy)
 
     def test_load_balanced_satisfies_protocol(self) -> None:
         scorer = AgentTaskScorer()
-        assert isinstance(
-            LoadBalancedAssignmentStrategy(scorer),
-            TaskAssignmentStrategy,
+        strategy = ScoringBasedAssignmentStrategy(
+            name="load_balanced",
+            scorer=scorer,
+            pool_filter=IdentityPoolFilter(),
+            ranker=WorkloadAscendingRanker(),
         )
+        assert isinstance(strategy, TaskAssignmentStrategy)
 
     def test_cost_optimized_satisfies_protocol(self) -> None:
         scorer = AgentTaskScorer()
-        assert isinstance(
-            CostOptimizedAssignmentStrategy(scorer),
-            TaskAssignmentStrategy,
+        strategy = ScoringBasedAssignmentStrategy(
+            name="cost_optimized",
+            scorer=scorer,
+            pool_filter=IdentityPoolFilter(),
+            ranker=CostDescendingRanker(),
         )
+        assert isinstance(strategy, TaskAssignmentStrategy)
 
     def test_hierarchical_satisfies_protocol(self) -> None:
         scorer = AgentTaskScorer()
@@ -120,17 +139,23 @@ class TestProtocolConformance:
             ),
         )
         hierarchy = HierarchyResolver(company)
-        assert isinstance(
-            HierarchicalAssignmentStrategy(scorer, hierarchy),
-            TaskAssignmentStrategy,
+        strategy = ScoringBasedAssignmentStrategy(
+            name="hierarchical",
+            scorer=scorer,
+            pool_filter=HierarchicalPoolFilter(hierarchy),
+            ranker=ScoreDescendingRanker(),
         )
+        assert isinstance(strategy, TaskAssignmentStrategy)
 
     def test_auction_satisfies_protocol(self) -> None:
         scorer = AgentTaskScorer()
-        assert isinstance(
-            AuctionAssignmentStrategy(scorer),
-            TaskAssignmentStrategy,
+        strategy = ScoringBasedAssignmentStrategy(
+            name="auction",
+            scorer=scorer,
+            pool_filter=IdentityPoolFilter(),
+            ranker=AuctionBidRanker(),
         )
+        assert isinstance(strategy, TaskAssignmentStrategy)
 
 
 class TestBuildStrategyMap:
@@ -167,10 +192,9 @@ class TestBuildStrategyMap:
 
         assert len(result) == 6
         assert STRATEGY_NAME_HIERARCHICAL in result
-        assert isinstance(
-            result[STRATEGY_NAME_HIERARCHICAL],
-            HierarchicalAssignmentStrategy,
-        )
+        hier = result[STRATEGY_NAME_HIERARCHICAL]
+        assert isinstance(hier, ScoringBasedAssignmentStrategy)
+        assert hier.name == "hierarchical"
 
     def test_returns_mapping_proxy(self) -> None:
         """Result is MappingProxyType."""

@@ -1,12 +1,14 @@
-"""Unit tests for HierarchicalAssignmentStrategy."""
+"""Unit tests for the hierarchical scoring strategy."""
 
 import pytest
 
 from synthorg.communication.delegation.hierarchy import HierarchyResolver
 from synthorg.core.company import Company, Department, Team
 from synthorg.core.enums import Complexity, SeniorityLevel
-from synthorg.engine.assignment.hierarchical import HierarchicalAssignmentStrategy
 from synthorg.engine.assignment.models import AssignmentRequest
+from synthorg.engine.assignment.pool_filters import HierarchicalPoolFilter
+from synthorg.engine.assignment.rankers import ScoreDescendingRanker
+from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrategy
 from synthorg.engine.routing.scorer import AgentTaskScorer
 
 from .conftest import make_assignment_agent, make_assignment_task
@@ -14,8 +16,21 @@ from .conftest import make_assignment_agent, make_assignment_task
 pytestmark = pytest.mark.unit
 
 
+def _hierarchical_strategy(
+    scorer: AgentTaskScorer,
+    hierarchy: HierarchyResolver,
+) -> ScoringBasedAssignmentStrategy:
+    """Build the hierarchical composition (registry's "hierarchical" entry)."""
+    return ScoringBasedAssignmentStrategy(
+        name="hierarchical",
+        scorer=scorer,
+        pool_filter=HierarchicalPoolFilter(hierarchy),
+        ranker=ScoreDescendingRanker(),
+    )
+
+
 class TestHierarchicalAssignmentStrategy:
-    """HierarchicalAssignmentStrategy tests."""
+    """Tests for the hierarchical composition."""
 
     @pytest.fixture
     def hierarchy(self) -> HierarchyResolver:
@@ -44,7 +59,7 @@ class TestHierarchicalAssignmentStrategy:
     ) -> None:
         """Delegator's direct report in pool is selected."""
         scorer = AgentTaskScorer()
-        strategy = HierarchicalAssignmentStrategy(scorer, hierarchy)
+        strategy = _hierarchical_strategy(scorer, hierarchy)
 
         dev1 = make_assignment_agent(
             "dev-1",
@@ -75,7 +90,7 @@ class TestHierarchicalAssignmentStrategy:
     ) -> None:
         """Multiple reports, highest score wins."""
         scorer = AgentTaskScorer()
-        strategy = HierarchicalAssignmentStrategy(scorer, hierarchy)
+        strategy = _hierarchical_strategy(scorer, hierarchy)
 
         dev1 = make_assignment_agent(
             "dev-1",
@@ -109,7 +124,7 @@ class TestHierarchicalAssignmentStrategy:
     ) -> None:
         """No direct report match -> finds transitive subordinate."""
         scorer = AgentTaskScorer()
-        strategy = HierarchicalAssignmentStrategy(scorer, hierarchy)
+        strategy = _hierarchical_strategy(scorer, hierarchy)
 
         # manager -> lead -> dev-1; dev-1 is a transitive subordinate
         dev1 = make_assignment_agent(
@@ -139,7 +154,7 @@ class TestHierarchicalAssignmentStrategy:
     ) -> None:
         """delegation_chain[-1] takes precedence over created_by."""
         scorer = AgentTaskScorer()
-        strategy = HierarchicalAssignmentStrategy(scorer, hierarchy)
+        strategy = _hierarchical_strategy(scorer, hierarchy)
 
         dev1 = make_assignment_agent(
             "dev-1",
@@ -170,7 +185,7 @@ class TestHierarchicalAssignmentStrategy:
     ) -> None:
         """Single-element delegation_chain resolves correctly."""
         scorer = AgentTaskScorer()
-        strategy = HierarchicalAssignmentStrategy(scorer, hierarchy)
+        strategy = _hierarchical_strategy(scorer, hierarchy)
 
         dev1 = make_assignment_agent(
             "dev-1",
@@ -200,7 +215,7 @@ class TestHierarchicalAssignmentStrategy:
     ) -> None:
         """Delegator has no reports -> selected=None."""
         scorer = AgentTaskScorer()
-        strategy = HierarchicalAssignmentStrategy(scorer, hierarchy)
+        strategy = _hierarchical_strategy(scorer, hierarchy)
 
         # dev-1 has no reports; only unrelated agent in pool
         other = make_assignment_agent(
@@ -229,7 +244,7 @@ class TestHierarchicalAssignmentStrategy:
     ) -> None:
         """Delegator not in hierarchy -> selected=None."""
         scorer = AgentTaskScorer()
-        strategy = HierarchicalAssignmentStrategy(scorer, hierarchy)
+        strategy = _hierarchical_strategy(scorer, hierarchy)
 
         dev1 = make_assignment_agent(
             "dev-1",
@@ -257,7 +272,7 @@ class TestHierarchicalAssignmentStrategy:
     ) -> None:
         """Delegator has reports but none are in available_agents."""
         scorer = AgentTaskScorer()
-        strategy = HierarchicalAssignmentStrategy(scorer, hierarchy)
+        strategy = _hierarchical_strategy(scorer, hierarchy)
 
         # lead has dev-1 and dev-2 as reports, but neither is
         # in the pool -- only an unrelated agent is.
@@ -288,7 +303,7 @@ class TestHierarchicalAssignmentStrategy:
     ) -> None:
         """Subordinates exist but all score below min_score."""
         scorer = AgentTaskScorer()
-        strategy = HierarchicalAssignmentStrategy(scorer, hierarchy)
+        strategy = _hierarchical_strategy(scorer, hierarchy)
 
         # dev-1 is a direct report of lead but has mismatched skills
         dev1 = make_assignment_agent(
@@ -320,4 +335,4 @@ class TestHierarchicalAssignmentStrategy:
     ) -> None:
         """Strategy name is 'hierarchical'."""
         scorer = AgentTaskScorer()
-        assert HierarchicalAssignmentStrategy(scorer, hierarchy).name == "hierarchical"
+        assert _hierarchical_strategy(scorer, hierarchy).name == "hierarchical"

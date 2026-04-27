@@ -3,20 +3,58 @@
 import pytest
 
 from synthorg.core.enums import AgentStatus, Complexity, SeniorityLevel
-from synthorg.engine.assignment.cost_optimized import CostOptimizedAssignmentStrategy
-from synthorg.engine.assignment.load_balanced import LoadBalancedAssignmentStrategy
 from synthorg.engine.assignment.manual import ManualAssignmentStrategy
 from synthorg.engine.assignment.models import (
     AgentWorkload,
     AssignmentRequest,
 )
-from synthorg.engine.assignment.role_based import RoleBasedAssignmentStrategy
+from synthorg.engine.assignment.pool_filters import IdentityPoolFilter
+from synthorg.engine.assignment.rankers import (
+    CostDescendingRanker,
+    ScoreDescendingRanker,
+    WorkloadAscendingRanker,
+)
+from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrategy
 from synthorg.engine.errors import NoEligibleAgentError, TaskAssignmentError
 from synthorg.engine.routing.scorer import AgentTaskScorer
 
 from .conftest import make_assignment_agent, make_assignment_task
 
 pytestmark = pytest.mark.unit
+
+
+def _role_based_strategy(scorer: AgentTaskScorer) -> ScoringBasedAssignmentStrategy:
+    """Build the role-based composition (the registry's "role_based" entry)."""
+    return ScoringBasedAssignmentStrategy(
+        name="role_based",
+        scorer=scorer,
+        pool_filter=IdentityPoolFilter(),
+        ranker=ScoreDescendingRanker(),
+    )
+
+
+def _load_balanced_strategy(
+    scorer: AgentTaskScorer,
+) -> ScoringBasedAssignmentStrategy:
+    """Build the load-balanced composition (the registry's "load_balanced" entry)."""
+    return ScoringBasedAssignmentStrategy(
+        name="load_balanced",
+        scorer=scorer,
+        pool_filter=IdentityPoolFilter(),
+        ranker=WorkloadAscendingRanker(),
+    )
+
+
+def _cost_optimized_strategy(
+    scorer: AgentTaskScorer,
+) -> ScoringBasedAssignmentStrategy:
+    """Build the cost-optimized composition (the registry's "cost_optimized" entry)."""
+    return ScoringBasedAssignmentStrategy(
+        name="cost_optimized",
+        scorer=scorer,
+        pool_filter=IdentityPoolFilter(),
+        ranker=CostDescendingRanker(),
+    )
 
 
 class TestManualAssignmentStrategy:
@@ -102,7 +140,7 @@ class TestRoleBasedAssignmentStrategy:
     def test_best_scoring_agent_selected(self) -> None:
         """Highest-scoring agent is selected."""
         scorer = AgentTaskScorer()
-        strategy = RoleBasedAssignmentStrategy(scorer)
+        strategy = _role_based_strategy(scorer)
 
         # Backend dev has matching skills
         backend = make_assignment_agent(
@@ -133,7 +171,7 @@ class TestRoleBasedAssignmentStrategy:
     def test_alternatives_populated(self) -> None:
         """Non-selected viable agents appear in alternatives."""
         scorer = AgentTaskScorer()
-        strategy = RoleBasedAssignmentStrategy(scorer)
+        strategy = _role_based_strategy(scorer)
 
         agent1 = make_assignment_agent(
             "dev-1",
@@ -161,7 +199,7 @@ class TestRoleBasedAssignmentStrategy:
     def test_no_viable_agents_returns_none_selected(self) -> None:
         """Returns selected=None when no agents score above threshold."""
         scorer = AgentTaskScorer(min_score=0.1)
-        strategy = RoleBasedAssignmentStrategy(scorer)
+        strategy = _role_based_strategy(scorer)
 
         # Agent with completely non-matching skills
         agent = make_assignment_agent(
@@ -187,7 +225,7 @@ class TestRoleBasedAssignmentStrategy:
     def test_no_required_skills_seniority_only_fallback(self) -> None:
         """Without required_skills, scoring falls back to seniority."""
         scorer = AgentTaskScorer()
-        strategy = RoleBasedAssignmentStrategy(scorer)
+        strategy = _role_based_strategy(scorer)
 
         agent = make_assignment_agent("dev-1", level=SeniorityLevel.MID)
         task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
@@ -205,7 +243,7 @@ class TestRoleBasedAssignmentStrategy:
     def test_name_property(self) -> None:
         """Strategy name is 'role_based'."""
         scorer = AgentTaskScorer()
-        assert RoleBasedAssignmentStrategy(scorer).name == "role_based"
+        assert _role_based_strategy(scorer).name == "role_based"
 
 
 class TestLoadBalancedAssignmentStrategy:
@@ -214,7 +252,7 @@ class TestLoadBalancedAssignmentStrategy:
     def test_lowest_workload_wins(self) -> None:
         """Agent with lowest workload is selected."""
         scorer = AgentTaskScorer()
-        strategy = LoadBalancedAssignmentStrategy(scorer)
+        strategy = _load_balanced_strategy(scorer)
 
         busy = make_assignment_agent(
             "busy-dev",
@@ -252,7 +290,7 @@ class TestLoadBalancedAssignmentStrategy:
     def test_ties_broken_by_score(self) -> None:
         """Equal workload is broken by higher score."""
         scorer = AgentTaskScorer()
-        strategy = LoadBalancedAssignmentStrategy(scorer)
+        strategy = _load_balanced_strategy(scorer)
 
         # Both have same workload, but better_dev has matching skills
         better_dev = make_assignment_agent(
@@ -293,7 +331,7 @@ class TestLoadBalancedAssignmentStrategy:
     def test_empty_workloads_falls_back_to_capability(self) -> None:
         """Without workloads, falls back to capability-only sorting."""
         scorer = AgentTaskScorer()
-        strategy = LoadBalancedAssignmentStrategy(scorer)
+        strategy = _load_balanced_strategy(scorer)
 
         best = make_assignment_agent(
             "best-dev",
@@ -336,7 +374,7 @@ class TestLoadBalancedAssignmentStrategy:
     ) -> None:
         """Parametrized test for various workload distributions."""
         scorer = AgentTaskScorer()
-        strategy = LoadBalancedAssignmentStrategy(scorer)
+        strategy = _load_balanced_strategy(scorer)
 
         agents = tuple(
             make_assignment_agent(
@@ -369,7 +407,7 @@ class TestLoadBalancedAssignmentStrategy:
     def test_no_eligible_returns_none(self) -> None:
         """Returns selected=None when no agents score above threshold."""
         scorer = AgentTaskScorer()
-        strategy = LoadBalancedAssignmentStrategy(scorer)
+        strategy = _load_balanced_strategy(scorer)
 
         agent = make_assignment_agent(
             "qa",
@@ -393,7 +431,7 @@ class TestLoadBalancedAssignmentStrategy:
     def test_partial_workload_data_falls_back(self) -> None:
         """Incomplete workload data falls back to score-based ranking."""
         scorer = AgentTaskScorer()
-        strategy = LoadBalancedAssignmentStrategy(scorer)
+        strategy = _load_balanced_strategy(scorer)
 
         known = make_assignment_agent(
             "known-dev",
@@ -429,7 +467,7 @@ class TestLoadBalancedAssignmentStrategy:
     def test_name_property(self) -> None:
         """Strategy name is 'load_balanced'."""
         scorer = AgentTaskScorer()
-        assert LoadBalancedAssignmentStrategy(scorer).name == "load_balanced"
+        assert _load_balanced_strategy(scorer).name == "load_balanced"
 
 
 class TestScorerBasedStrategies:
@@ -438,7 +476,7 @@ class TestScorerBasedStrategies:
     def test_inactive_agents_excluded_from_scoring(self) -> None:
         """Scorer-based strategies exclude non-ACTIVE agents."""
         scorer = AgentTaskScorer()
-        strategy = CostOptimizedAssignmentStrategy(scorer)
+        strategy = _cost_optimized_strategy(scorer)
 
         active = make_assignment_agent(
             "active-dev",
@@ -472,7 +510,7 @@ class TestMaxConcurrentTasksEnforcement:
     def test_agent_at_capacity_excluded(self) -> None:
         """Agent at max_concurrent_tasks is not selected."""
         scorer = AgentTaskScorer()
-        strategy = RoleBasedAssignmentStrategy(scorer)
+        strategy = _role_based_strategy(scorer)
 
         busy = make_assignment_agent(
             "busy-dev",
@@ -514,7 +552,7 @@ class TestMaxConcurrentTasksEnforcement:
     def test_no_limit_keeps_all_agents(self) -> None:
         """Without max_concurrent_tasks, all agents are eligible."""
         scorer = AgentTaskScorer()
-        strategy = RoleBasedAssignmentStrategy(scorer)
+        strategy = _role_based_strategy(scorer)
 
         busy = make_assignment_agent(
             "busy-dev",
@@ -557,7 +595,7 @@ class TestMaxConcurrentTasksEnforcement:
     def test_all_agents_at_capacity_returns_none(self) -> None:
         """Returns selected=None when all agents are at capacity."""
         scorer = AgentTaskScorer()
-        strategy = RoleBasedAssignmentStrategy(scorer)
+        strategy = _role_based_strategy(scorer)
 
         dev1 = make_assignment_agent(
             "dev-1",
@@ -597,7 +635,7 @@ class TestMaxConcurrentTasksEnforcement:
     def test_max_concurrent_with_empty_workloads(self) -> None:
         """max_concurrent_tasks set but no workloads → no filtering."""
         scorer = AgentTaskScorer()
-        strategy = RoleBasedAssignmentStrategy(scorer)
+        strategy = _role_based_strategy(scorer)
 
         dev = make_assignment_agent(
             "solo-dev",

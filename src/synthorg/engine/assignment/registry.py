@@ -1,10 +1,11 @@
 """Strategy registry and factory for task assignment.
 
-``STRATEGY_MAP`` provides all pre-built strategies except
-``HierarchicalAssignmentStrategy`` as an immutable mapping.
-``build_strategy_map`` is the preferred factory when a
-``HierarchyResolver`` is available (adds the hierarchical
-strategy) or a custom ``AgentTaskScorer`` is needed.
+``STRATEGY_MAP`` provides all pre-built strategies except the
+hierarchical composition (which requires a ``HierarchyResolver``)
+as an immutable mapping. ``build_strategy_map`` is the preferred
+factory when a ``HierarchyResolver`` is available (adds the
+hierarchical composition) or a custom ``AgentTaskScorer`` is
+needed.
 """
 
 from types import MappingProxyType
@@ -18,12 +19,18 @@ from synthorg.engine.assignment._shared import (
     STRATEGY_NAME_MANUAL,
     STRATEGY_NAME_ROLE_BASED,
 )
-from synthorg.engine.assignment.auction import AuctionAssignmentStrategy
-from synthorg.engine.assignment.cost_optimized import CostOptimizedAssignmentStrategy
-from synthorg.engine.assignment.hierarchical import HierarchicalAssignmentStrategy
-from synthorg.engine.assignment.load_balanced import LoadBalancedAssignmentStrategy
 from synthorg.engine.assignment.manual import ManualAssignmentStrategy
-from synthorg.engine.assignment.role_based import RoleBasedAssignmentStrategy
+from synthorg.engine.assignment.pool_filters import (
+    HierarchicalPoolFilter,
+    IdentityPoolFilter,
+)
+from synthorg.engine.assignment.rankers import (
+    AuctionBidRanker,
+    CostDescendingRanker,
+    ScoreDescendingRanker,
+    WorkloadAscendingRanker,
+)
+from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrategy
 from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.observability import get_logger
 
@@ -39,24 +46,36 @@ logger = get_logger(__name__)
 
 _DEFAULT_SCORER = AgentTaskScorer()
 
-# Excludes HierarchicalAssignmentStrategy -- it requires a
-# HierarchyResolver at construction.  Use
+# Excludes the hierarchical composition -- it requires a
+# HierarchyResolver at construction. Use
 # build_strategy_map(hierarchy=...) to get a complete map
 # that includes all strategies.
 STRATEGY_MAP: MappingProxyType[str, TaskAssignmentStrategy] = MappingProxyType(
     {
         STRATEGY_NAME_MANUAL: ManualAssignmentStrategy(),
-        STRATEGY_NAME_ROLE_BASED: RoleBasedAssignmentStrategy(
-            _DEFAULT_SCORER,
+        STRATEGY_NAME_ROLE_BASED: ScoringBasedAssignmentStrategy(
+            name=STRATEGY_NAME_ROLE_BASED,
+            scorer=_DEFAULT_SCORER,
+            pool_filter=IdentityPoolFilter(),
+            ranker=ScoreDescendingRanker(),
         ),
-        STRATEGY_NAME_LOAD_BALANCED: LoadBalancedAssignmentStrategy(
-            _DEFAULT_SCORER,
+        STRATEGY_NAME_LOAD_BALANCED: ScoringBasedAssignmentStrategy(
+            name=STRATEGY_NAME_LOAD_BALANCED,
+            scorer=_DEFAULT_SCORER,
+            pool_filter=IdentityPoolFilter(),
+            ranker=WorkloadAscendingRanker(),
         ),
-        STRATEGY_NAME_COST_OPTIMIZED: CostOptimizedAssignmentStrategy(
-            _DEFAULT_SCORER,
+        STRATEGY_NAME_COST_OPTIMIZED: ScoringBasedAssignmentStrategy(
+            name=STRATEGY_NAME_COST_OPTIMIZED,
+            scorer=_DEFAULT_SCORER,
+            pool_filter=IdentityPoolFilter(),
+            ranker=CostDescendingRanker(),
         ),
-        STRATEGY_NAME_AUCTION: AuctionAssignmentStrategy(
-            _DEFAULT_SCORER,
+        STRATEGY_NAME_AUCTION: ScoringBasedAssignmentStrategy(
+            name=STRATEGY_NAME_AUCTION,
+            scorer=_DEFAULT_SCORER,
+            pool_filter=IdentityPoolFilter(),
+            ranker=AuctionBidRanker(),
         ),
     },
 )
@@ -69,10 +88,9 @@ def build_strategy_map(
 ) -> MappingProxyType[str, TaskAssignmentStrategy]:
     """Build a strategy map, optionally including hierarchical.
 
-    When ``hierarchy`` is provided, includes the
-    ``HierarchicalAssignmentStrategy`` in the returned map.
-    Otherwise, returns the same strategies as the static
-    ``STRATEGY_MAP``.
+    When ``hierarchy`` is provided, includes the hierarchical
+    composition in the returned map. Otherwise, returns the same
+    strategies as the static ``STRATEGY_MAP``.
 
     Args:
         hierarchy: Optional hierarchy resolver for the
@@ -93,24 +111,38 @@ def build_strategy_map(
 
     strategies: dict[str, TaskAssignmentStrategy] = {
         STRATEGY_NAME_MANUAL: ManualAssignmentStrategy(),
-        STRATEGY_NAME_ROLE_BASED: RoleBasedAssignmentStrategy(
-            effective_scorer,
+        STRATEGY_NAME_ROLE_BASED: ScoringBasedAssignmentStrategy(
+            name=STRATEGY_NAME_ROLE_BASED,
+            scorer=effective_scorer,
+            pool_filter=IdentityPoolFilter(),
+            ranker=ScoreDescendingRanker(),
         ),
-        STRATEGY_NAME_LOAD_BALANCED: LoadBalancedAssignmentStrategy(
-            effective_scorer,
+        STRATEGY_NAME_LOAD_BALANCED: ScoringBasedAssignmentStrategy(
+            name=STRATEGY_NAME_LOAD_BALANCED,
+            scorer=effective_scorer,
+            pool_filter=IdentityPoolFilter(),
+            ranker=WorkloadAscendingRanker(),
         ),
-        STRATEGY_NAME_COST_OPTIMIZED: CostOptimizedAssignmentStrategy(
-            effective_scorer,
+        STRATEGY_NAME_COST_OPTIMIZED: ScoringBasedAssignmentStrategy(
+            name=STRATEGY_NAME_COST_OPTIMIZED,
+            scorer=effective_scorer,
+            pool_filter=IdentityPoolFilter(),
+            ranker=CostDescendingRanker(),
         ),
-        STRATEGY_NAME_AUCTION: AuctionAssignmentStrategy(
-            effective_scorer,
+        STRATEGY_NAME_AUCTION: ScoringBasedAssignmentStrategy(
+            name=STRATEGY_NAME_AUCTION,
+            scorer=effective_scorer,
+            pool_filter=IdentityPoolFilter(),
+            ranker=AuctionBidRanker(),
         ),
     }
 
     if hierarchy is not None:
-        strategies[STRATEGY_NAME_HIERARCHICAL] = HierarchicalAssignmentStrategy(
-            effective_scorer,
-            hierarchy,
+        strategies[STRATEGY_NAME_HIERARCHICAL] = ScoringBasedAssignmentStrategy(
+            name=STRATEGY_NAME_HIERARCHICAL,
+            scorer=effective_scorer,
+            pool_filter=HierarchicalPoolFilter(hierarchy),
+            ranker=ScoreDescendingRanker(),
         )
 
     return MappingProxyType(strategies)

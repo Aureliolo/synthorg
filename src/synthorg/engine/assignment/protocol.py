@@ -26,13 +26,11 @@ class TaskAssignmentStrategy(Protocol):
     * **``ManualAssignmentStrategy``** raises ``NoEligibleAgentError``
       when the designated agent is not found or not ACTIVE, and
       ``TaskAssignmentError`` when ``task.assigned_to`` is ``None``.
-    * **Scoring-based strategies** (``RoleBasedAssignmentStrategy``,
-      ``LoadBalancedAssignmentStrategy``,
-      ``CostOptimizedAssignmentStrategy``,
-      ``HierarchicalAssignmentStrategy``,
-      ``AuctionAssignmentStrategy``) return
-      ``AssignmentResult(selected=None, ...)`` when no agent meets
-      the minimum score threshold.
+    * **Scoring-based strategies** (the
+      ``ScoringBasedAssignmentStrategy`` compositions for role-based,
+      load-balanced, cost-optimized, hierarchical, and auction)
+      return ``AssignmentResult(selected=None, ...)`` when no agent
+      meets the minimum score threshold.
 
     ``TaskAssignmentService`` propagates both patterns: it re-raises
     ``TaskAssignmentError`` (including its subclass

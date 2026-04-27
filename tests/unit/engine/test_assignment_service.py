@@ -17,7 +17,9 @@ from synthorg.engine.assignment.manual import ManualAssignmentStrategy
 from synthorg.engine.assignment.models import (
     AssignmentRequest,
 )
-from synthorg.engine.assignment.role_based import RoleBasedAssignmentStrategy
+from synthorg.engine.assignment.pool_filters import IdentityPoolFilter
+from synthorg.engine.assignment.rankers import ScoreDescendingRanker
+from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrategy
 from synthorg.engine.assignment.service import TaskAssignmentService
 from synthorg.engine.errors import TaskAssignmentError
 from synthorg.engine.routing.scorer import AgentTaskScorer
@@ -67,7 +69,12 @@ class TestTaskAssignmentService:
     def test_delegates_to_strategy(self) -> None:
         """Service delegates to the configured strategy."""
         scorer = AgentTaskScorer()
-        strategy = RoleBasedAssignmentStrategy(scorer)
+        strategy = ScoringBasedAssignmentStrategy(
+            name="role_based",
+            scorer=scorer,
+            pool_filter=IdentityPoolFilter(),
+            ranker=ScoreDescendingRanker(),
+        )
         service = TaskAssignmentService(strategy)
 
         agent = _make_agent(
@@ -104,7 +111,12 @@ class TestTaskAssignmentService:
     ) -> None:
         """Service accepts CREATED, FAILED, INTERRUPTED, and SUSPENDED tasks."""
         scorer = AgentTaskScorer()
-        strategy = RoleBasedAssignmentStrategy(scorer)
+        strategy = ScoringBasedAssignmentStrategy(
+            name="role_based",
+            scorer=scorer,
+            pool_filter=IdentityPoolFilter(),
+            ranker=ScoreDescendingRanker(),
+        )
         service = TaskAssignmentService(strategy)
 
         agent = _make_agent("dev-1", primary_skills=("python",))
@@ -139,7 +151,12 @@ class TestTaskAssignmentService:
     ) -> None:
         """Service rejects tasks with non-assignable statuses."""
         scorer = AgentTaskScorer()
-        strategy = RoleBasedAssignmentStrategy(scorer)
+        strategy = ScoringBasedAssignmentStrategy(
+            name="role_based",
+            scorer=scorer,
+            pool_filter=IdentityPoolFilter(),
+            ranker=ScoreDescendingRanker(),
+        )
         service = TaskAssignmentService(strategy)
 
         agent = _make_agent("dev-1")
@@ -214,7 +231,12 @@ class TestTaskAssignmentService:
     def test_result_contains_strategy_name(self) -> None:
         """Result contains the name of the strategy used."""
         scorer = AgentTaskScorer()
-        strategy = RoleBasedAssignmentStrategy(scorer)
+        strategy = ScoringBasedAssignmentStrategy(
+            name="role_based",
+            scorer=scorer,
+            pool_filter=IdentityPoolFilter(),
+            ranker=ScoreDescendingRanker(),
+        )
         service = TaskAssignmentService(strategy)
 
         agent = _make_agent("dev-1", primary_skills=("python",))
