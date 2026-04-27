@@ -222,14 +222,14 @@ The module carries two name-spaces: `TELEMETRY_*` constants are observability lo
 
 | Constant | Level | When fired |
 |----------|-------|------------|
-| `TELEMETRY_ENABLED` | INFO | `start()` finished loading the deployment ID and the collector is live. Carries `backend` and `deployment_id`. |
+| `TELEMETRY_ENABLED` | INFO | `start()` finished the deployment-ID lifecycle and the collector is live. The `deployment_id` carried here may be persisted on disk OR a generated UUID fallback if the load timed out / failed; the `using_generated_id` flag on the upstream `TELEMETRY_REPORT_FAILED` event distinguishes them. |
 | `TELEMETRY_DISABLED` | DEBUG | Constructor saw `enabled=false`; the collector is inert (no on-disk trace). |
 | `TELEMETRY_ENVIRONMENT_RESOLVED` | INFO | The four-level environment chain in `_resolve_environment` overrode the configured value. Carries both the configured and resolved tags. |
 | `TELEMETRY_DEPLOYMENT_ID_LOADED` | INFO | Existing `telemetry_id` file read from disk during `start()` (or after a peer wrote first). Carries `deployment_id`. |
 | `TELEMETRY_DEPLOYMENT_ID_CREATED` | INFO | This replica won the `O_CREAT\|O_EXCL` race and persisted a fresh UUID. Carries `deployment_id`. |
 | `TELEMETRY_HEARTBEAT_SENT` | DEBUG | Heartbeat event delivered successfully. |
 | `TELEMETRY_SESSION_SUMMARY_SENT` | DEBUG | Session summary delivered on shutdown. |
-| `TELEMETRY_REPORT_FAILED` | WARNING | Privacy-scrubber rejection, reporter delivery error, deployment-id read/write failure (`detail` is one of `deployment_id_read`, `write`, `peer_read`, `peer_file_deleted`, `peer_file_unreadable`, `peer_file_decode_error`, `peer_read_exhausted`, `invalid`, `load_timeout`, `load_unexpected_error`, `load_unexpected_helper_error`), or snapshot-provider failure. UUID-fallback paths carry `using_generated_id=True` so dashboards can detect splinter deployments. |
+| `TELEMETRY_REPORT_FAILED` | WARNING | Privacy-scrubber rejection, reporter delivery error, snapshot-provider failure, or any deployment-ID lifecycle failure. The `detail` field is one of: `invalid_env_value`, `data_dir_not_trusted`, `deployment_id_read`, `deployment_id_write`, `deployment_id_invalid`, `deployment_id_peer_read`, `deployment_id_peer_file_deleted`, `deployment_id_peer_file_unreadable`, `deployment_id_peer_file_decode_error`, `deployment_id_peer_read_exhausted`, `deployment_id_load_timeout`, `deployment_id_load_unexpected_error`, `deployment_id_load_unexpected_helper_error`, `session_summary_snapshot_failed`, `send_session_summary_failed`, `send_shutdown_event_failed`, `reporter_shutdown_failed`. UUID-fallback paths carry `using_generated_id=True` so dashboards can detect splinter deployments. |
 | `TELEMETRY_SHUTDOWN_WITHOUT_START` | WARNING | `shutdown()` invoked on an enabled collector that never had `start()` called (or whose `start()` failed before the deployment ID loaded). Surfaces silent init failure. |
 
 ### Uvicorn Integration

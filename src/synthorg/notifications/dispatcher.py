@@ -127,6 +127,12 @@ class NotificationDispatcher:
             for sink in failed:
                 with _ignore_value_error():
                     self._sinks.remove(sink)
+            # Reset the dispatch gate so a restart after a clean
+            # ``aclose()`` accepts dispatches again. Without this, the
+            # ``_stopping`` flag flipped by aclose() would persist
+            # across the restart and silently drop every later
+            # ``dispatch()`` call.
+            self._stopping = False
             self._started = True
             logger.info(
                 NOTIFICATION_DISPATCHER_STARTED,

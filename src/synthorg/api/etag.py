@@ -33,8 +33,12 @@ import hashlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from synthorg.observability import get_logger
+
 if TYPE_CHECKING:
     from litestar.types import ASGIApp, Receive, Scope, Send
+
+logger = get_logger(__name__)
 
 
 @dataclass(slots=True)
@@ -60,8 +64,8 @@ _ETAG_PATH_PREFIXES: tuple[str, ...] = (
     "/api/v1/departments",
     "/api/v1/company",
     "/api/v1/meta/analytics",
-    "/healthz",
-    "/readyz",
+    "/api/v1/healthz",
+    "/api/v1/readyz",
 )
 
 # Path prefixes that are deployment-wide reference data (public
@@ -70,8 +74,8 @@ _PUBLIC_CACHE_PREFIXES: tuple[str, ...] = (
     "/api/v1/template-packs",
     "/api/v1/providers",
     "/api/v1/ontology",
-    "/healthz",
-    "/readyz",
+    "/api/v1/healthz",
+    "/api/v1/readyz",
 )
 
 _DEFAULT_PRIVATE_CACHE: bytes = b"private, must-revalidate"
@@ -139,16 +143,21 @@ def _is_public_cache_path(path: str) -> bool:
 
 
 def _read_if_none_match(headers: list[tuple[bytes, bytes]]) -> str | None:
-    """Extract the ``If-None-Match`` header value (case-insensitive)."""
-    for name, value in headers:
-        if name.lower() == b"if-none-match":
-            return value.decode("latin-1")
-    return None
+    """Extract the ``If-None-Match`` header value (case-insensitive).
 
-
-def _has_header(headers: list[tuple[bytes, bytes]], target: bytes) -> bool:
-    """Return ``True`` when ``target`` (lower-cased) is in ``headers``."""
-    return any(name.lower() == target for name, _ in headers)
+    HTTP allows the same header to appear more than once; per RFC 9110
+    repeated values are equivalent to a single value with the entries
+    joined by ``,``. Returning the first occurrence only would mean a
+    matching tag carried by a later occurrence loses the 304 path.
+    Build a comma-joined merged value so :func:`match_etag` walks all
+    of them.
+    """
+    values = [
+        value.decode("latin-1")
+        for name, value in headers
+        if name.lower() == b"if-none-match"
+    ]
+    return ", ".join(values) if values else None
 
 
 class ETagMiddleware:
@@ -243,10 +252,20 @@ async def _emit_response(
     cache_default = (
         _DEFAULT_PUBLIC_CACHE if _is_public_cache_path(path) else _DEFAULT_PRIVATE_CACHE
     )
-    extended_headers = [(k, v) for k, v in headers if k.lower() != b"etag"]
+    # Drop any existing ``etag`` and ``cache-control`` and reinstall
+    # the policy this middleware owns. We replace (not append-if-missing)
+    # because the global ``security_headers_hook`` runs as a Litestar
+    # ``before_send`` and unconditionally sets ``Cache-Control:
+    # no-store, no-cache, must-revalidate, max-age=0`` on every API
+    # response; without this overwrite, allowlisted reads would never
+    # advertise the validator-friendly ``private``/``public`` policy
+    # documented in the module header and clients would not retain
+    # ETags for conditional GETs.
+    extended_headers = [
+        (k, v) for k, v in headers if k.lower() not in {b"etag", b"cache-control"}
+    ]
     extended_headers.append((b"etag", etag.encode("latin-1")))
-    if not _has_header(extended_headers, b"cache-control"):
-        extended_headers.append((b"cache-control", cache_default))
+    extended_headers.append((b"cache-control", cache_default))
 
     if match_etag(if_none_match, etag):
         await _emit_not_modified(send, extended_headers)

@@ -137,12 +137,26 @@ class NtfyNotificationSink:
         reference stays so a subsequent ``close()`` can retry. Without
         that, an exception or cancellation would silently leak the
         still-open HTTP client and break the idempotency contract.
+        Failures are logged before re-raising so standalone
+        ``async with`` users see them too -- ``NotificationDispatcher``
+        only sees the post-raise log path via ``_safe_close``.
         """
         async with self._lifecycle_lock:
             if self._client is None:
                 return
             client = self._client
-            await client.aclose()
+            try:
+                await client.aclose()
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    NOTIFICATION_NTFY_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    detail="close_failed",
+                )
+                raise
             self._client = None
 
     async def __aenter__(self) -> Self:

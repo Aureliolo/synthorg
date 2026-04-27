@@ -552,7 +552,17 @@ class TestStartDeadlineBound:
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
 
-        async def fake_wait_for(*_args: object, **_kwargs: object) -> str:
+        async def fake_wait_for(
+            awaitable: object, *_args: object, **_kwargs: object
+        ) -> str:
+            # Close the deployment-id loader coroutine so it is not
+            # left pending and Python does not emit
+            # ``RuntimeWarning: coroutine ... was never awaited`` --
+            # the production wait_for would have either completed
+            # the awaitable or cancelled it before raising.
+            close = getattr(awaitable, "close", None)
+            if callable(close):
+                close()
             raise TimeoutError
 
         try:

@@ -359,8 +359,19 @@ class TestETagMiddleware:
         assert b"content-length" not in headers
         assert b"content-type" not in headers
 
-    async def test_existing_cache_control_is_not_overwritten(self) -> None:
-        """The middleware must respect an upstream-set Cache-Control header."""
+    async def test_existing_cache_control_is_replaced(self) -> None:
+        """ETag middleware overwrites upstream Cache-Control on allowlisted GETs.
+
+        The global ``security_headers_hook`` runs as a Litestar
+        ``before_send`` and unconditionally pins
+        ``Cache-Control: no-store, no-cache, must-revalidate,
+        max-age=0`` on every API response. Without an explicit
+        replace, the validator-friendly ``private``/``public``
+        policy this middleware advertises would never reach the
+        client and conditional GETs would not work. The simulated
+        upstream below mirrors that behaviour and the assertion
+        pins that the middleware overrides it.
+        """
 
         async def app(
             scope: dict[str, Any],
@@ -394,7 +405,9 @@ class TestETagMiddleware:
         cache_values = [
             v for k, v in recorder.messages[0]["headers"] if k == b"cache-control"
         ]
-        assert cache_values == [b"no-store"]
+        # Single Cache-Control header carrying the private policy
+        # this middleware owns; the upstream ``no-store`` is dropped.
+        assert cache_values == [b"private, must-revalidate"]
 
     async def test_streaming_response_skips_etag_and_buffers_nothing(self) -> None:
         """Multi-chunk responses are forwarded as-is with no ETag and no buffering."""
@@ -438,6 +451,35 @@ class TestETagMiddleware:
         assert recorder.messages[-1]["more_body"] is False
         for msg in recorder.messages[1:-1]:
             assert msg["more_body"] is True
+
+    async def test_repeated_if_none_match_headers_merge_on_match(self) -> None:
+        """Multiple If-None-Match headers are merged so any matching tag wins."""
+        body = b'{"value":1}'
+        etag = compute_etag(body)
+        scope = _http_scope(path="/api/v1/settings")
+        # Append a SECOND If-None-Match header carrying the matching tag;
+        # a first-occurrence-only reader would miss this and return 200.
+        scope["headers"] = [
+            (b"if-none-match", b'W/"unrelated-old-etag"'),
+            (b"if-none-match", etag.encode("latin-1")),
+        ]
+        recorder = _Recorder()
+        await ETagMiddleware(_ok_app_factory(body))(scope, _empty_receive, recorder)
+        assert recorder.messages[0]["status"] == 304
+
+    async def test_probe_path_uses_api_v1_prefix(self) -> None:
+        """``/api/v1/healthz`` is in the allowlist (probes are not at the root)."""
+        body = b'{"ok":true}'
+        recorder = _Recorder()
+        await ETagMiddleware(_ok_app_factory(body))(
+            _http_scope(path="/api/v1/healthz"),
+            _empty_receive,
+            recorder,
+        )
+        headers = dict(recorder.messages[0]["headers"])
+        assert b"etag" in headers
+        # Health probes are deployment-wide reference data -> public cache.
+        assert b"public" in headers[b"cache-control"]
 
     async def test_inner_app_returns_without_final_chunk_flushes_buffer(
         self,

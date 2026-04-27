@@ -315,6 +315,14 @@ class TelemetryCollector:
         self._heartbeat_snapshot_provider = heartbeat_snapshot_provider
         self._session_summary_snapshot_provider = session_summary_snapshot_provider
         self._lifecycle_lock = asyncio.Lock()
+        # ``shutdown()`` flips this so a stray second ``start()`` is
+        # rejected loudly rather than silently re-using a torn-down
+        # reporter. Restart-after-shutdown is not a supported flow:
+        # the reporter holds transports that were aclose()'d in
+        # shutdown(), and the heartbeat task cannot be re-scheduled
+        # safely on a different loop without re-validating that
+        # contract end-to-end.
+        self._closed: bool = False
 
         if not config.enabled:
             logger.debug(TELEMETRY_DISABLED)
@@ -361,6 +369,12 @@ class TelemetryCollector:
         thread-pool timeout never crashes ``start()``.
         """
         async with self._lifecycle_lock:
+            if self._closed:
+                # Restart after a clean shutdown is not supported;
+                # raising loudly is better than silently using a
+                # torn-down reporter / a stale heartbeat task slot.
+                msg = "TelemetryCollector.start() called after shutdown()"
+                raise RuntimeError(msg)
             if not self._config.enabled:
                 return
             if self._heartbeat_task is not None and not self._heartbeat_task.done():
@@ -486,6 +500,10 @@ class TelemetryCollector:
                     error_type=type(exc).__name__,
                     exc_info=True,
                 )
+
+            # Mark the collector terminal AFTER teardown so a stray
+            # ``start()`` call cannot resurrect a torn-down reporter.
+            self._closed = True
 
     async def send_heartbeat(
         self,
@@ -815,6 +833,19 @@ def _load_or_create_deployment_id_sync(data_dir: Path) -> str:  # noqa: C901, PL
                             detail="deployment_id_invalid",
                             error_type="ValueError",
                         )
+                        # Repair: drop the corrupt file so the
+                        # atomic-create path below can write a fresh
+                        # UUID. Without this, every subsequent boot
+                        # would re-detect the same corruption and
+                        # keep falling back to a generated ID,
+                        # permanently fragmenting deployment
+                        # telemetry until an operator manually
+                        # deletes the file. Unlink errors are
+                        # swallowed: if we lost the right to delete,
+                        # the create below will hit ``FileExistsError``
+                        # again and the next boot retries.
+                        with contextlib.suppress(OSError):
+                            os.unlink(id_path_str)  # noqa: PTH108
                     else:
                         logger.info(
                             TELEMETRY_DEPLOYMENT_ID_LOADED,

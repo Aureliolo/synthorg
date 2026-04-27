@@ -79,8 +79,8 @@ EXIT_CODE=$(printf '%s' "${PAYLOAD}" \
     | jq -r '.tool_response.exit_code // .tool_response.exitCode // empty' \
     2>/dev/null || echo "")
 IS_ERROR=$(printf '%s' "${PAYLOAD}" \
-    | jq -r '.tool_response.isError // .tool_response.is_error // false' \
-    2>/dev/null || echo "false")
+    | jq -r '.tool_response.isError // .tool_response.is_error // empty' \
+    2>/dev/null || echo "")
 SUCCESS_FIELD=$(printf '%s' "${PAYLOAD}" \
     | jq -r '.tool_response.success // empty' \
     2>/dev/null || echo "")
@@ -102,11 +102,17 @@ if [[ -n "${EXIT_CODE}" ]] && [[ "${EXIT_CODE}" != "0" ]]; then
 fi
 # At this point: no failure signal observed. We treat the push as
 # successful only if AT LEAST ONE positive signal is present (a
-# numeric ``exit_code == 0``, or ``isError == false`` plus a
-# ``stdout`` field, or an explicit ``success == true``). Without
-# that, exit 0 without recording -- the cost of skipping the
-# record is one un-throttled push; the cost of recording on a
+# numeric ``exit_code == 0``, or ``isError`` *explicitly* false
+# plus a ``stdout`` field, or an explicit ``success == true``).
+# Without that, exit 0 without recording -- the cost of skipping
+# the record is one un-throttled push; the cost of recording on a
 # malformed payload is the very bug we are trying to fix.
+#
+# IS_ERROR is parsed with ``// empty`` so an absent / parse-failed
+# field shows up as the empty string and CANNOT slip into the
+# ``isError == false`` positive-signal branch. Earlier the default
+# was ``false``, which let a malformed payload that happened to
+# carry a ``stdout`` key trigger a record write.
 HAS_POSITIVE_SIGNAL=0
 if [[ "${EXIT_CODE}" == "0" ]]; then
     HAS_POSITIVE_SIGNAL=1
