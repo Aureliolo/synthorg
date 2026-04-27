@@ -84,6 +84,12 @@ describe('useBulkSelection', () => {
     expect(result.current.isPartiallySelected(['b', 'c'])).toBe(false)
   })
 
+  it('isPartiallySelected returns false for an empty visible set', () => {
+    const { result } = renderHook(() => useBulkSelection())
+    act(() => result.current.toggle('a'))
+    expect(result.current.isPartiallySelected([])).toBe(false)
+  })
+
   it('toggle is involution (calling it twice returns to the original state)', () => {
     const { result } = renderHook(() => useBulkSelection())
     const before = result.current.selectedIds.size

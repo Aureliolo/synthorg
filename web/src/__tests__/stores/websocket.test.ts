@@ -680,19 +680,38 @@ const connectPromise = useWebSocketStore.getState().connect()
       // Heartbeat is now armed; arm the pong timer too by advancing
       // through one ping cycle without responding with a pong.
       await vi.advanceTimersByTimeAsync(WS_HEARTBEAT_INTERVAL_MS)
+      // Sanity: with a heartbeat interval + an unanswered pong timer
+      // armed, vitest's fake-timer scheduler must report at least two
+      // pending timers. If teardown silently fails to clear them,
+      // ``getTimerCount()`` will still be > 0 after the call below.
+      expect(vi.getTimerCount()).toBeGreaterThanOrEqual(2)
 
       const beforeTeardown = ws.sentMessages.length
+      const ticketCallsBefore = ticketState.calls
       useWebSocketStore.getState().teardown()
 
-      // After teardown, advancing well past the heartbeat + pong
-      // windows must not produce a single additional outbound message
-      // and must not spawn a reconnect attempt.
+      // Direct assertion: every armed module-scope timer is gone.
+      // ``getTimerCount()`` is the unambiguous signal that the
+      // teardown's ``stopHeartbeat`` + ``clearTimeout(reconnectTimer)``
+      // calls did the right thing -- the indirect ``no further
+      // sentMessages / no new instance`` checks below remain as
+      // belt-and-braces invariants but cannot, on their own,
+      // distinguish "timer cleared" from "timer fired but its
+      // closure no-op'd via the socket-identity guard".
+      expect(vi.getTimerCount()).toBe(0)
+
+      // Belt-and-braces: advancing well past the heartbeat + pong +
+      // reconnect windows must produce zero outbound messages, zero
+      // new MockWebSocket instances, AND zero new ticket fetches
+      // (the latter is the deterministic signal that no ghost
+      // doConnect was kicked off).
       const instancesBefore = MockWebSocket.instances.length
       await vi.advanceTimersByTimeAsync(
         WS_HEARTBEAT_INTERVAL_MS * 5 + WS_RECONNECT_BASE_DELAY * 5,
       )
       expect(ws.sentMessages.length).toBe(beforeTeardown)
       expect(MockWebSocket.instances.length).toBe(instancesBefore)
+      expect(ticketState.calls).toBe(ticketCallsBefore)
       expect(useWebSocketStore.getState().connected).toBe(false)
       expect(useWebSocketStore.getState().reconnectExhausted).toBe(false)
     })
