@@ -205,13 +205,18 @@ _r.register(
             " logger.  Empty string means 'use the root_log_level / sink"
             " default'.  Accepts debug / info / warning / error / critical"
             " (case-insensitive) or the empty string.  Sourced from"
-            " DB > env (SYNTHORG_LOG_LEVEL) > unset.  Mutable at runtime:"
-            " the next call to _apply_console_level_override applies"
-            " the new value."
+            " DB > env (SYNTHORG_LOG_LEVEL) > YAML (logging.console_level)"
+            " > unset.  Mutable at runtime: the next call to"
+            " _apply_console_level_override applies the new value."
         ),
         group="Logging",
         level=SettingLevel.ADVANCED,
-        validator_pattern=r"^(?:|debug|info|warning|error|critical|DEBUG|INFO|WARNING|ERROR|CRITICAL)$",
+        # ``(?i:...)`` is an inline case-insensitive group so mixed-case
+        # inputs like ``Info`` or ``Debug`` validate the same as
+        # ``info`` / ``DEBUG``; the description advertises
+        # case-insensitivity, the validator must honour it.
+        validator_pattern=r"^(?:|(?i:debug|info|warning|error|critical))$",
         env_var_override="SYNTHORG_LOG_LEVEL",
+        yaml_path="logging.console_level",
     )
 )

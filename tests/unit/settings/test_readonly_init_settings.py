@@ -153,16 +153,33 @@ async def test_delete_writable_setting_still_works(
 # ── delete_namespace() ───────────────────────────────────────────
 
 
-async def test_delete_namespace_rejects_when_any_definition_is_read_only(
-    service: SettingsService, repo: AsyncMock
+async def test_delete_namespace_sweeps_with_warning_when_mixed(
+    service: SettingsService,
+    repo: AsyncMock,
 ) -> None:
-    # Even one read-only definition in the namespace must block the
-    # whole-namespace delete: a bulk operation that silently leaves
-    # the read-only row in place would be misleading; rejecting up
-    # front forces the operator to delete by key.
-    with pytest.raises(SettingReadOnlyError):
-        await service.delete_namespace("observability")
-    repo.delete_namespace_returning_keys.assert_not_awaited()
+    # A namespace that contains a mix of writable and read-only-post-init
+    # definitions must NOT be hostage to the read-only entry: writable
+    # overrides the operator wants to clear should still go through.
+    # Reads already bypass DB for read-only entries, so any stale row
+    # that gets swept here is already a no-op for the running process.
+    # The service still emits a WARNING that lists the read-only keys
+    # so an operator auditing the deletion can see exactly which rows
+    # were swept.
+    import structlog.testing  # local import keeps dep optional for other tests
+
+    with structlog.testing.capture_logs() as logs:
+        deleted = await service.delete_namespace("observability")
+
+    repo.delete_namespace_returning_keys.assert_awaited_once()
+    assert deleted == 1  # the fake returns ("log_directory",)
+    swept_logs = [
+        log
+        for log in logs
+        if log.get("event") == "settings.validation.failed"
+        and log.get("reason") == "read_only_post_init_swept"
+    ]
+    assert swept_logs, logs
+    assert swept_logs[0].get("read_only_keys") == ["log_directory"]
 
 
 # ── Resolution still works through env / YAML ────────────────────

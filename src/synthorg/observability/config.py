@@ -528,6 +528,12 @@ class LogConfig(BaseModel):
         sinks: Tuple of sink configurations.
         enable_correlation: Whether to enable correlation ID tracking.
         log_dir: Directory for log files.
+        console_level: Optional override for the console sink's log
+            level, distinct from ``root_level``.  Empty string means
+            "use the per-sink level / root_level default".  Mirrors the
+            ``observability.log_level_console`` registry entry; the
+            console-override applier reads DB > env > YAML (this field)
+            > unset.
         container_log_shipping: Container log shipping configuration.
     """
 
@@ -558,6 +564,15 @@ class LogConfig(BaseModel):
     log_dir: NotBlankStr = Field(
         default="logs",
         description="Directory for log files",
+    )
+    console_level: str = Field(
+        default="",
+        description=(
+            "Optional console-sink level override (mutable); empty string"
+            " means use the per-sink / root level. The applier resolves"
+            " DB > env (SYNTHORG_LOG_LEVEL) > YAML (this field) > unset"
+            " through the observability.log_level_console registry entry."
+        ),
     )
     container_log_shipping: ContainerLogShippingConfig = Field(
         default_factory=ContainerLogShippingConfig,

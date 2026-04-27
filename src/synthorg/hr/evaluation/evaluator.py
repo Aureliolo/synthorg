@@ -215,18 +215,29 @@ class EvaluationService:
         resolver is wired.
         """
         cfg = self._config
-        intelligence_enabled = await resolve_bool_with_fallback(
-            resolver=self._config_resolver,
-            namespace="hr",
-            key="evaluation_quality_enabled",
-            fallback=cfg.intelligence.enabled,
-        )
-        resilience_enabled = await resolve_bool_with_fallback(
-            resolver=self._config_resolver,
-            namespace="hr",
-            key="evaluation_task_count_enabled",
-            fallback=cfg.resilience.enabled,
-        )
+        # The two resolver lookups are independent; running them
+        # concurrently in a ``TaskGroup`` keeps the per-evaluation
+        # latency bounded by a single resolver round-trip rather than
+        # two sequential ones.
+        async with asyncio.TaskGroup() as tg:
+            intelligence_task = tg.create_task(
+                resolve_bool_with_fallback(
+                    resolver=self._config_resolver,
+                    namespace="hr",
+                    key="evaluation_quality_enabled",
+                    fallback=cfg.intelligence.enabled,
+                ),
+            )
+            resilience_task = tg.create_task(
+                resolve_bool_with_fallback(
+                    resolver=self._config_resolver,
+                    namespace="hr",
+                    key="evaluation_task_count_enabled",
+                    fallback=cfg.resilience.enabled,
+                ),
+            )
+        intelligence_enabled = intelligence_task.result()
+        resilience_enabled = resilience_task.result()
         return [
             (
                 EvaluationPillar.INTELLIGENCE,
@@ -452,18 +463,28 @@ class EvaluationService:
         restart.  Falls back to the YAML-baked ``cfg.cost_enabled`` /
         ``cfg.time_enabled`` fields when no resolver is wired.
         """
-        cost_enabled = await resolve_bool_with_fallback(
-            resolver=self._config_resolver,
-            namespace="hr",
-            key="evaluation_cost_enabled",
-            fallback=cfg.cost_enabled,
-        )
-        latency_enabled = await resolve_bool_with_fallback(
-            resolver=self._config_resolver,
-            namespace="hr",
-            key="evaluation_latency_enabled",
-            fallback=cfg.time_enabled,
-        )
+        # Mirror ``_get_pillar_configs``: the cost and latency lookups
+        # are independent, so a ``TaskGroup`` saves a resolver
+        # round-trip per efficiency calculation.
+        async with asyncio.TaskGroup() as tg:
+            cost_task = tg.create_task(
+                resolve_bool_with_fallback(
+                    resolver=self._config_resolver,
+                    namespace="hr",
+                    key="evaluation_cost_enabled",
+                    fallback=cfg.cost_enabled,
+                ),
+            )
+            latency_task = tg.create_task(
+                resolve_bool_with_fallback(
+                    resolver=self._config_resolver,
+                    namespace="hr",
+                    key="evaluation_latency_enabled",
+                    fallback=cfg.time_enabled,
+                ),
+            )
+        cost_enabled = cost_task.result()
+        latency_enabled = latency_task.result()
         results: list[tuple[str, float, float]] = []
         if cost_enabled and window.avg_cost_per_task is not None:
             score = max(

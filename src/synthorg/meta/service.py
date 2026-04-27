@@ -182,6 +182,15 @@ class SelfImprovementService:
             Defaults to a null aggregator that emits no samples; the
             service layer wires ``TrackerGroupAggregator`` when the
             performance tracker is available.
+        approval_store: Optional approval-gate store; required when
+            ``config.enabled`` is True so the gate can enforce its
+            policy. Construction fails fast if missing.
+        config_resolver: Optional resolver wired into the
+            ``engine.evolution_enabled`` kill-switch lookup. When
+            ``None`` (test harness, anonymous boot), the per-call
+            resolver short-circuits to the YAML-baked
+            ``config.enabled`` fallback so the standalone constructor
+            still works.
     """
 
     def __init__(  # noqa: PLR0913

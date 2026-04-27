@@ -173,13 +173,20 @@ class MeetingOrchestrator:
                 meeting_type=meeting_type_name,
                 reason="meetings_disabled_by_setting",
             )
-            return MeetingRecord(
+            cancelled_record = MeetingRecord(
                 meeting_id=meeting_id,
                 meeting_type_name=meeting_type_name,
                 protocol_type=protocol_type,
                 status=MeetingStatus.CANCELLED,
                 token_budget=token_budget,
             )
+            # Persist the cancellation in ``self._records`` so
+            # ``get_records()`` reports it alongside successful and
+            # protocol-failed runs; an audit trail that silently drops
+            # kill-switch cancellations would mislead operators
+            # reconstructing what happened during a paused window.
+            self._records.append(cancelled_record)
+            return cancelled_record
 
         self._validate_inputs(
             meeting_id,

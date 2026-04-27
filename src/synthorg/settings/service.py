@@ -403,7 +403,19 @@ class SettingsService:
                 self._emit_resolved(definition, source="db")
                 return setting_value
 
-        return self._resolve_fallback(definition)
+        fallback = self._resolve_fallback(definition)
+        # Read-only-post-init: cache the first-read snapshot so
+        # subsequent ``/settings`` queries and ``SETTINGS_VALUE_RESOLVED``
+        # events report the *same* value the runtime captured at boot.
+        # Without this snapshot, a mid-process mutation of ``os.environ``
+        # or the in-memory config object would let the resolved value
+        # drift away from what middleware / NATS clients / worker pools
+        # locked in at startup, and ``/settings`` would lie about
+        # reality.  Sensitive read-only-post-init values are still
+        # bypassed (they should never survive in cache).
+        if definition.read_only_post_init and not definition.sensitive:
+            self._cache[cache_key] = fallback
+        return fallback
 
     async def get_entry(self, namespace: str, key: str) -> SettingEntry:
         """Resolve a setting and return it with its definition.
@@ -963,14 +975,16 @@ class SettingsService:
         Raises:
             PersistenceError: If the persistence layer fails.
         """
-        # Read-only-post-init guard: even one read-only definition in
-        # the namespace must block the whole-namespace delete. A bulk
-        # operation that silently leaves the read-only row in place
-        # would mislead the caller; rejecting up front forces the
-        # operator to delete writable keys explicitly.  Aggregate
-        # every read-only key under the namespace into a single error
-        # message so the operator does not have to retry to discover
-        # additional offenders.
+        # Read-only-post-init keys in this namespace are reported as a
+        # WARNING but do not block the whole-namespace delete: the
+        # writable overrides the operator wants to clear should not be
+        # held hostage by the presence of a read-only entry.  Reads
+        # already bypass the DB for read-only-post-init definitions
+        # (see ``_resolve_with_db_lookup``), so any stale row that
+        # ``delete_namespace_returning_keys`` removes is a no-op for
+        # the running process; the warning still fires so an operator
+        # auditing the change can see exactly which read-only rows
+        # were swept.
         readonly_keys = [
             d.key
             for d in self._registry.list_namespace(namespace)
@@ -981,17 +995,9 @@ class SettingsService:
                 SETTINGS_VALIDATION_FAILED,
                 namespace=namespace,
                 action="delete_namespace",
-                reason="read_only_post_init",
+                reason="read_only_post_init_swept",
                 read_only_keys=readonly_keys,
             )
-            keys_csv = ", ".join(readonly_keys)
-            msg = (
-                f"Cannot delete namespace {namespace!r}: contains"
-                f" read_only_post_init settings ({keys_csv}). Update"
-                f" the env / YAML and restart, or delete the writable"
-                f" keys individually."
-            )
-            raise SettingReadOnlyError(msg)
 
         # Atomic delete-and-return-keys: the repository removes every
         # override row under *namespace* in one transaction and returns
