@@ -521,9 +521,25 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         backup_service,
     )
     plugins: list[ChannelsPlugin] = [channels_plugin]
+    # Resolve api.rate_limiter_enabled at boot.  The flag is
+    # restart_required=True so a single env-or-default read is the
+    # canonical source -- the DB precedence layer activates only on
+    # the next process start when an operator changes the setting.
+    rate_limiter_enabled = os.environ.get(
+        "SYNTHORG_API_RATE_LIMITER_ENABLED", "true"
+    ).strip().lower() in ("true", "1", "yes")
+    if not rate_limiter_enabled:
+        logger.warning(
+            API_APP_STARTUP,
+            note=(
+                "global rate limiter disabled by api.rate_limiter_enabled;"
+                " do not deploy this configuration to production"
+            ),
+        )
     middleware = _build_middleware(
         api_config,
         a2a_enabled=effective_config.a2a.enabled,
+        rate_limiter_enabled=rate_limiter_enabled,
     )
 
     # Integration controllers add ~20 routes (~0.7s of Litestar

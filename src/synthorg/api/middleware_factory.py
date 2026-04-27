@@ -347,6 +347,7 @@ def _build_middleware(
     api_config: ApiConfig,
     *,
     a2a_enabled: bool = False,
+    rate_limiter_enabled: bool = True,
 ) -> list[Middleware]:
     """Build the middleware stack from configuration.
 
@@ -410,16 +411,34 @@ def _build_middleware(
     #   8. PerOpConcurrencyMiddleware -- per-op inflight cap;
     #      innermost so ``scope["user"]`` is already populated and the
     #      permit is held only during actual handler execution.
+    #
+    # When ``api.rate_limiter_enabled`` is False (dev only, opt-in
+    # via the registry), the three global rate-limit tiers are
+    # omitted from the chain.  PerOpConcurrencyMiddleware and the
+    # per-op guard surface still apply since they have their own
+    # master switches.
+    if rate_limiter_enabled:
+        return [
+            ip_floor.middleware,
+            ETagMiddleware,
+            auth_middleware,
+            csrf_middleware,
+            unauth_rl.middleware,
+            RequestLoggingMiddleware,
+            auth_rl.middleware,
+            # Pass an instance: ``ASGIMiddleware`` (litestar 2.15+) is
+            # instance-based, not class-based.  Stateless -- no per-request
+            # state on the middleware itself (see its docstring).
+            PerOpConcurrencyMiddleware(),
+        ]
+    # ETagMiddleware is not a rate-limit tier; keep it in both branches.
+    # The three global rate-limit tiers (ip_floor / unauth_rl / auth_rl)
+    # are omitted when the gate is False; ETag bandwidth optimisation
+    # remains active.
     return [
-        ip_floor.middleware,
         ETagMiddleware,
         auth_middleware,
         csrf_middleware,
-        unauth_rl.middleware,
         RequestLoggingMiddleware,
-        auth_rl.middleware,
-        # Pass an instance: ``ASGIMiddleware`` (litestar 2.15+) is
-        # instance-based, not class-based.  Stateless -- no per-request
-        # state on the middleware itself (see its docstring).
         PerOpConcurrencyMiddleware(),
     ]

@@ -8,7 +8,7 @@ from action items, and records audit trail entries.
 from collections import Counter
 from collections.abc import Mapping  # noqa: TC003
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from synthorg.communication.meeting.config import MeetingProtocolConfig  # noqa: TC001
@@ -45,6 +45,10 @@ from synthorg.observability.events.meeting import (
     MEETING_TASKS_CAPPED,
     MEETING_VALIDATION_FAILED,
 )
+from synthorg.settings.kill_switch import resolve_bool_with_fallback
+
+if TYPE_CHECKING:
+    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -84,6 +88,7 @@ class MeetingOrchestrator:
 
     __slots__ = (
         "_agent_caller",
+        "_config_resolver",
         "_lens_assigner",
         "_protocol_registry",
         "_records",
@@ -91,7 +96,7 @@ class MeetingOrchestrator:
         "_task_creator",
     )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         protocol_registry: Mapping[MeetingProtocolType, MeetingProtocol],
@@ -99,6 +104,7 @@ class MeetingOrchestrator:
         task_creator: TaskCreator | None = None,
         strategy_config: Any = None,  # typed as Any to avoid circular import
         lens_assigner: Any = None,  # typed as Any to avoid circular import
+        config_resolver: ConfigResolver | None = None,
     ) -> None:
         self._protocol_registry: MappingProxyType[
             MeetingProtocolType, MeetingProtocol
@@ -107,6 +113,7 @@ class MeetingOrchestrator:
         self._task_creator = task_creator
         self._strategy_config = strategy_config
         self._lens_assigner = lens_assigner
+        self._config_resolver = config_resolver
         self._records: list[MeetingRecord] = []
 
     async def run_meeting(  # noqa: PLR0913
@@ -148,6 +155,34 @@ class MeetingOrchestrator:
         """
         meeting_id = f"mtg-{uuid4().hex[:12]}"
         protocol_type = protocol_config.protocol
+
+        # ``communication.meetings_enabled`` kill switch: when False
+        # the orchestrator records a CANCELLED meeting (no protocol
+        # invocation, no agent calls) so an operator can suspend the
+        # meetings subsystem without tearing down the scheduler.
+        meetings_enabled = await resolve_bool_with_fallback(
+            resolver=self._config_resolver,
+            namespace="communication",
+            key="meetings_enabled",
+            fallback=True,
+        )
+        if not meetings_enabled:
+            logger.info(
+                MEETING_FAILED,
+                meeting_id=meeting_id,
+                meeting_type=meeting_type_name,
+                reason="meetings_disabled_by_setting",
+            )
+            return MeetingRecord(
+                meeting_id=meeting_id,
+                meeting_type=meeting_type_name,
+                protocol=protocol_type,
+                leader_id=leader_id,
+                participant_ids=participant_ids,
+                status=MeetingStatus.CANCELLED,
+                token_budget=token_budget,
+                tokens_used=0,
+            )
 
         self._validate_inputs(
             meeting_id,
