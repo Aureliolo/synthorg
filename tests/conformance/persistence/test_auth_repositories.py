@@ -120,6 +120,41 @@ class TestSessionRepository:
         rows = await backend.sessions.list_all()
         assert {s.session_id for s in rows} >= {"sess_x", "sess_y"}
 
+    async def test_list_all_pagination(self, backend: PersistenceBackend) -> None:
+        # Sessions are ordered by created_at DESC; build them with
+        # forced timestamps so the page contents are deterministic
+        # under both backends.
+        now = datetime.now(UTC)
+        for i in range(4):
+            sess = await _make_session(backend, f"sess_pg_{i}")
+            sess = sess.model_copy(update={"created_at": now - timedelta(seconds=i)})
+            await backend.sessions.create(sess)
+
+        # newest-first: sess_pg_0, sess_pg_1, sess_pg_2, sess_pg_3
+        page = await backend.sessions.list_all(limit=2, offset=1)
+
+        assert [s.session_id for s in page] == ["sess_pg_1", "sess_pg_2"]
+
+    async def test_list_by_user_pagination(self, backend: PersistenceBackend) -> None:
+        now = datetime.now(UTC)
+        for i in range(3):
+            sess = await _make_session(
+                backend,
+                f"sess_user_{i}",
+                "user_carol",
+                "carol",
+            )
+            sess = sess.model_copy(update={"created_at": now - timedelta(seconds=i)})
+            await backend.sessions.create(sess)
+
+        page = await backend.sessions.list_by_user(
+            "user_carol",
+            limit=2,
+            offset=0,
+        )
+
+        assert [s.session_id for s in page] == ["sess_user_0", "sess_user_1"]
+
     async def test_revoke_marks_session(self, backend: PersistenceBackend) -> None:
         await backend.sessions.create(await _make_session(backend, "sess_r"))
         assert backend.sessions.is_revoked("sess_r") is False

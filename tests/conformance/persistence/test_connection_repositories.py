@@ -154,6 +154,33 @@ class TestConnectionRepository:
 
         assert deleted is False
 
+    async def test_list_all_pagination(self, backend: PersistenceBackend) -> None:
+        for name in ("a", "b", "c", "d", "e"):
+            await backend.connections.save(_connection(name))
+
+        page_one = await backend.connections.list_all(limit=2, offset=0)
+        page_two = await backend.connections.list_all(limit=2, offset=2)
+        unbounded = await backend.connections.list_all()
+
+        # Sorted by name ASC; per-test database means only our 5 rows exist.
+        assert [c.name for c in page_one] == ["a", "b"]
+        assert [c.name for c in page_two] == ["c", "d"]
+        assert [c.name for c in unbounded] == ["a", "b", "c", "d", "e"]
+
+    async def test_list_by_type_pagination(self, backend: PersistenceBackend) -> None:
+        for name in ("a", "b", "c"):
+            await backend.connections.save(
+                _connection(name, connection_type=ConnectionType.GITHUB),
+            )
+
+        page = await backend.connections.list_by_type(
+            ConnectionType.GITHUB,
+            limit=1,
+            offset=1,
+        )
+
+        assert [c.name for c in page] == ["b"]
+
 
 class TestConnectionSecretRepository:
     async def test_store_and_retrieve_round_trip(
@@ -379,6 +406,26 @@ class TestWebhookReceiptRepository:
         )
 
         assert len(rows) == 2
+
+    async def test_get_by_connection_offset(self, backend: PersistenceBackend) -> None:
+        await backend.connections.save(_connection("github-bot"))
+        now = datetime.now(UTC)
+        for i in range(4):
+            await backend.webhook_receipts.log(
+                _receipt(
+                    receipt_id=f"r-{i}",
+                    received_at=now - timedelta(seconds=i),
+                ),
+            )
+
+        # Newest-first => r-0, r-1, r-2, r-3. offset=2 limit=2 -> r-2, r-3.
+        rows = await backend.webhook_receipts.get_by_connection(
+            NotBlankStr("github-bot"),
+            limit=2,
+            offset=2,
+        )
+
+        assert [r.id for r in rows] == ["r-2", "r-3"]
 
     async def test_get_by_connection_filters_by_name(
         self, backend: PersistenceBackend

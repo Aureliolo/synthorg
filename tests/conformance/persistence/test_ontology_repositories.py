@@ -141,6 +141,37 @@ class TestOntologyEntityRepository:
         assert "Searchable" in {e.name for e in by_name}
         assert "Searchable" in {e.name for e in by_def}
 
+    async def test_list_entities_pagination(self, backend: PersistenceBackend) -> None:
+        for name in ("AlphaEnt", "BetaEnt", "GammaEnt", "DeltaEnt"):
+            await backend.ontology_entities.register(_entity(name))
+
+        page = await backend.ontology_entities.list_entities(limit=2, offset=1)
+
+        # The protocol does not guarantee a sort order; the contract
+        # this assertion covers is that ``limit`` returns ``<= limit``
+        # rows and ``offset`` skips at least one row.
+        assert len(page) == 2
+        full = await backend.ontology_entities.list_entities()
+        assert len(full) >= 4
+        assert page[0] != full[0]  # offset advanced past the first row
+
+    async def test_search_pagination(self, backend: PersistenceBackend) -> None:
+        for i in range(4):
+            await backend.ontology_entities.register(
+                _entity(
+                    f"PagedEnt{i}",
+                    definition=f"common-pagination-marker entry {i}",
+                ),
+            )
+
+        page = await backend.ontology_entities.search(
+            "pagination-marker",
+            limit=2,
+            offset=0,
+        )
+
+        assert len(page) == 2
+
     async def test_backend_name_matches_fixture(
         self, backend: PersistenceBackend, request: pytest.FixtureRequest
     ) -> None:

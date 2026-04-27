@@ -140,6 +140,21 @@ class TestApiKeyRepository:
         keys = await backend.api_keys.list_by_user(NotBlankStr("user_alice"))
         assert len(keys) == 2
 
+    async def test_list_by_user_pagination(self, backend: PersistenceBackend) -> None:
+        await backend.users.save(_make_user())
+        for i in range(4):
+            await backend.api_keys.save(_make_api_key(f"key_pg_{i}"))
+
+        page = await backend.api_keys.list_by_user(
+            NotBlankStr("user_alice"),
+            limit=2,
+            offset=1,
+        )
+
+        # ORDER BY created_at; per-test database means only our 4 rows
+        # exist, so offset=1 limit=2 yields the second + third rows.
+        assert len(page) == 2
+
     async def test_delete(self, backend: PersistenceBackend) -> None:
         await backend.users.save(_make_user())
         await backend.api_keys.save(_make_api_key())

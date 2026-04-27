@@ -102,6 +102,42 @@ class TestOrgFactRepository:
         assert {"lp1", "lp2"} <= ids
         assert "other" not in ids
 
+    async def test_list_by_category_pagination(
+        self, backend: PersistenceBackend
+    ) -> None:
+        for i in range(4):
+            await backend.org_facts.save(
+                _fact(
+                    f"pg_{i}",
+                    category=OrgFactCategory.CORE_POLICY,
+                ),
+            )
+
+        page = await backend.org_facts.list_by_category(
+            OrgFactCategory.CORE_POLICY,
+            limit=2,
+            offset=1,
+        )
+
+        # ORDER BY created_at DESC; per-test database means only our 4
+        # rows exist. offset=1, limit=2 yields the second + third.
+        assert len(page) == 2
+
+    async def test_query_offset(self, backend: PersistenceBackend) -> None:
+        for i in range(3):
+            await backend.org_facts.save(
+                _fact(f"qoff_{i}", "Common ship statement."),
+            )
+
+        page = await backend.org_facts.query(
+            text="ship",
+            limit=10,
+            offset=1,
+        )
+
+        # All three match; offset=1 drops the first result.
+        assert len(page) == 2
+
     async def test_delete_retracts_fact(self, backend: PersistenceBackend) -> None:
         await backend.org_facts.save(_fact("doomed"))
         deleted = await backend.org_facts.delete(
