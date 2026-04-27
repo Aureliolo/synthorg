@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.7.4](https://github.com/Aureliolo/synthorg/compare/v0.7.3...v0.7.4) (2026-04-27)
+
+
+### Features
+
+* **perf:** continuous performance regression detection across all surfaces ([#1637](https://github.com/Aureliolo/synthorg/issues/1637)) ([074a8f1](https://github.com/Aureliolo/synthorg/commit/074a8f1107f1bd97f72bd2b746b1b3b196d9452f))
+* **providers:** redesign wizard step + batch probe + Ollama Cloud preset + brand logos ([#1636](https://github.com/Aureliolo/synthorg/issues/1636)) ([e33620c](https://github.com/Aureliolo/synthorg/commit/e33620c82654954d342134a1df5a3b21a1524b83))
+
+
+### Bug Fixes
+
+* **ci:** dedicated apko-bot App + direct CI Pass status post ([#1615](https://github.com/Aureliolo/synthorg/issues/1615)) ([694f642](https://github.com/Aureliolo/synthorg/commit/694f642fa85bb0e623c856b8874e7127a66a8c91))
+* **ci:** drop stale release-please ruleset exclusion ([#1634](https://github.com/Aureliolo/synthorg/issues/1634)) ([93ea557](https://github.com/Aureliolo/synthorg/commit/93ea5570cfa96d174e67a8197b332582b8768c1a))
+* **cli:** grow init wizard box to fit long content + show NATS as healthy ([#1626](https://github.com/Aureliolo/synthorg/issues/1626)) ([3034091](https://github.com/Aureliolo/synthorg/commit/30340911518df0bb58534936757e14db9fedd286))
+* cost / budget / currency invariants ([#1598](https://github.com/Aureliolo/synthorg/issues/1598)) ([#1632](https://github.com/Aureliolo/synthorg/issues/1632)) ([fdeb293](https://github.com/Aureliolo/synthorg/commit/fdeb29377371088fca0e9e334fd47397f1adfb06))
+* **security:** auth, session, and audit-chain security hardening ([#1599](https://github.com/Aureliolo/synthorg/issues/1599)) ([#1624](https://github.com/Aureliolo/synthorg/issues/1624)) ([04efd3d](https://github.com/Aureliolo/synthorg/commit/04efd3d7fd4da5b4f03721bf3a2967cb4e8cb112))
+
+
+### Refactoring
+
+* **ci:** apko ARG_MAX fix + remove post-release canaries + tracking-issue lifecycle ([#1619](https://github.com/Aureliolo/synthorg/issues/1619)) ([6eb2153](https://github.com/Aureliolo/synthorg/commit/6eb21535787fd9ca4a1d083f04976c127db23453))
+* extract datetime marshalling module for persistence layer ([#1608](https://github.com/Aureliolo/synthorg/issues/1608)) ([#1620](https://github.com/Aureliolo/synthorg/issues/1620)) ([870cc40](https://github.com/Aureliolo/synthorg/commit/870cc402b756fa8b7cb1b5fb7e72e25a3742b3c0))
+* **mcp:** centralize handler infrastructure (logging + arg validation) ([#1623](https://github.com/Aureliolo/synthorg/issues/1623)) ([eb6e0e0](https://github.com/Aureliolo/synthorg/commit/eb6e0e03975076e8d46c798032eab061ef9147ff))
+
+
+### CI/CD
+
+* post all required-check statuses on release-please PRs ([#1639](https://github.com/Aureliolo/synthorg/issues/1639)) ([bba4aa3](https://github.com/Aureliolo/synthorg/commit/bba4aa37cc85e8582483644976cbfceb37c0dc75))
+* update apko lockfiles ([#1622](https://github.com/Aureliolo/synthorg/issues/1622)) ([049daa8](https://github.com/Aureliolo/synthorg/commit/049daa8029c9410a2c8022028029f6c4d35a78d0))
+
+
+### Maintenance
+
+* **docs:** finish ASCII em-dash scrub (batch 2) ([#1630](https://github.com/Aureliolo/synthorg/issues/1630)) ([7e3ec5a](https://github.com/Aureliolo/synthorg/commit/7e3ec5a761f31dab63c252ba8b9e02462e3a2d2e))
+
 ## [0.7.3](https://github.com/Aureliolo/synthorg/compare/v0.7.2...v0.7.3) (2026-04-25)
 
 
