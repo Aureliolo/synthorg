@@ -83,6 +83,27 @@ interface WebSocketState {
     bindings: readonly { channel: WsChannel; handler: WsEventHandler }[],
     options?: { unsubscribe?: boolean },
   ) => void
+  /**
+   * Synchronous, idempotent teardown for the global ``afterEach`` in
+   * ``web/src/test-setup.tsx``. Resets every module-scope handle
+   * (heartbeat / pong / reconnect timers, socket reference, generation
+   * counter, subscription bookkeeping, channel handlers) and the
+   * observable store state, including ``reconnectExhausted`` which
+   * ``disconnect()`` deliberately leaves alone.
+   *
+   * This is the canonical "I am about to start a fresh test" hook;
+   * relying on ``disconnect()`` alone is insufficient because
+   * (a) ``disconnect()`` does not reset ``reconnectExhausted``, and
+   * (b) a prior test that crashed before its own teardown could leave
+   * a stale ``setInterval`` armed under fake timers, and the next test
+   * advancing timers would re-trigger that interval against a freshly
+   * mocked WebSocket.
+   *
+   * Per ``web/CLAUDE.md`` ("Test teardown"), every store with timers
+   * must expose an equivalent hook and register it in the global
+   * ``afterEach``.
+   */
+  teardown: () => void
 }
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -526,6 +547,52 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
           }
         }
       }
+    },
+
+    teardown() {
+      // Step 1: mark the connection as intentionally torn down so any
+      // in-flight ``onclose`` handler does not re-arm
+      // ``scheduleReconnect`` while we are still resetting.
+      intentionalClose = true
+      shouldBeConnected = false
+      connectGeneration++
+      connectPromise = null
+      reconnectAttempts = 0
+      // Step 2: clear every module-scope timer handle. ``stopHeartbeat``
+      // covers the heartbeat + pong pair; the reconnect timer is
+      // separate.
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer)
+        reconnectTimer = null
+      }
+      stopHeartbeat()
+      // Step 3: detach event handlers BEFORE close so a synchronous
+      // ``onclose`` in MockWebSocket (or any other implementation that
+      // fires close synchronously) cannot run with stale module state
+      // and accidentally reschedule reconnects via ``scheduleReconnect``.
+      if (socket) {
+        socket.onopen = null
+        socket.onclose = null
+        socket.onerror = null
+        socket.onmessage = null
+        try {
+          socket.close()
+        } catch {
+          // Best-effort: a half-closed mock or a socket that already
+          // raised on construction must not block the teardown.
+        }
+        socket = null
+      }
+      // Step 4: drop subscription bookkeeping + handler registrations
+      // so the next test starts with empty maps and arrays.
+      pendingSubscriptions = []
+      activeSubscriptions.length = 0
+      channelHandlers.clear()
+      // Step 5: reset observable store state. Unlike ``disconnect()``,
+      // teardown also clears ``reconnectExhausted`` so a previous test
+      // that exhausted the reconnect budget cannot leak that flag into
+      // a fresh test.
+      set({ connected: false, reconnectExhausted: false, subscribedChannels: [] })
     },
   }
 })

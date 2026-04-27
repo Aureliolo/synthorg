@@ -6,6 +6,7 @@ import { MotionGlobalConfig } from 'motion/react'
 import { setupServer } from 'msw/node'
 import { useToastStore } from '@/stores/toast'
 import { useThemeStore } from '@/stores/theme'
+import { useWebSocketStore } from '@/stores/websocket'
 import { cancelPendingPersist } from '@/stores/notifications'
 import { defaultHandlers } from '@/mocks/handlers'
 import { cookieJar, installCookieShim } from '@/cookie-shim'
@@ -227,7 +228,7 @@ beforeEach(() => {
   useThemeStore.getState().reattach()
 })
 
-afterEach(() => {
+afterEach(async () => {
   useToastStore.getState().dismissAll()
   // Notifications store debounces localStorage persistence with a 300ms
   // setTimeout; drop any pending handle so it does not outlive the test.
@@ -237,4 +238,21 @@ afterEach(() => {
   // `--detect-async-leaks` does not count it per-test. Paired with
   // the ``reattach()`` in the ``beforeEach`` above.
   useThemeStore.getState().teardown()
+  // WebSocket store keeps module-scope timer handles (heartbeat / pong /
+  // reconnect) and a singleton ``socket`` reference. Run teardown FIRST
+  // (synchronously) so it bumps ``connectGeneration`` and flips
+  // ``shouldBeConnected`` to false BEFORE we drain real microtasks --
+  // any in-flight ``doConnect`` chain that resumes during the drain is
+  // then guaranteed to fall through its stale-generation guard without
+  // creating a "ghost" socket that bleeds into the next test (#1635
+  // root cause).
+  useWebSocketStore.getState().teardown()
+  // Drain pending real-microtask + setImmediate hops so MSW's
+  // undici-backed response chain (intentionally outside the fake-timer
+  // scheduler -- see test-setup's ``toFake`` allowlist where present)
+  // settles before the next test's beforeEach runs. Multiple rounds
+  // because the chain spans SEVERAL macrotask hops.
+  for (let i = 0; i < 5; i++) {
+    await new Promise<void>((resolve) => setImmediate(resolve))
+  }
 })
