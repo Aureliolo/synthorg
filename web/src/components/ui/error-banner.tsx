@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import { AlertTriangle, Info, WifiOff, X, AlertCircle } from 'lucide-react'
-import { isValidElement, useEffect, useState } from 'react'
+import { isValidElement, useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from './button'
 
@@ -118,10 +118,14 @@ export function ErrorBanner({
   // instance) restarts the countdown -- without the token, an
   // identical-duration follow-up would silently leave Retry enabled
   // because the countdown ran to zero on the previous error.
+  // ``useRef`` (not ``useState``) for the previous-signature sentinel:
+  // we don't need to trigger a render when the signature changes (we
+  // reseed ``remaining`` directly), and ``useRef`` avoids the extra
+  // render-phase state update + commit that ``useState`` would force.
   const seedSignature = `${retryAfterSeconds ?? ''}|${retryResetToken ?? ''}`
-  const [seedKey, setSeedKey] = useState<string>(seedSignature)
-  if (seedKey !== seedSignature) {
-    setSeedKey(seedSignature)
+  const prevSeedRef = useRef<string>(seedSignature)
+  if (prevSeedRef.current !== seedSignature) {
+    prevSeedRef.current = seedSignature
     setRemaining(initialRemaining)
   }
   useEffect(() => {
