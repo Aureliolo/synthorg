@@ -416,7 +416,9 @@ BUILTIN_ROLES: tuple[Role, ...] = (
 
 # ── Lookup Maps (built once at import time) ──────────────────────
 
-_BUILTIN_ROLES_BY_NAME: dict[str, Role] = {r.name.casefold(): r for r in BUILTIN_ROLES}
+_BUILTIN_ROLES_BY_NAME: dict[str, Role] = {
+    normalize_identifier(r.name): r for r in BUILTIN_ROLES
+}
 if len(_BUILTIN_ROLES_BY_NAME) != len(BUILTIN_ROLES):
     _msg = "Duplicate built-in role names after case-normalization"
     raise ValueError(_msg)

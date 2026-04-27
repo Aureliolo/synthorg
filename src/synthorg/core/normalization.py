@@ -14,8 +14,12 @@ upstream.
 
 from typing import TYPE_CHECKING
 
+from synthorg.observability import get_logger
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+logger = get_logger(__name__)
 
 
 def normalize_identifier(value: str) -> str:

@@ -440,6 +440,34 @@ class TestReorderTeams:
         )
         assert resp.status_code == 422
 
+    def test_reorder_teams_duplicate_names_rejected(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(
+            test_client,
+            [_dept_with_teams(teams=[_team("alpha"), _team("beta")])],
+        )
+        resp = test_client.patch(
+            "/api/v1/departments/engineering/teams/reorder",
+            json={"team_names": ["alpha", "alpha"]},
+        )
+        assert resp.status_code == 422
+
+    def test_reorder_teams_case_insensitive_duplicates_rejected(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(
+            test_client,
+            [_dept_with_teams(teams=[_team("alpha"), _team("beta")])],
+        )
+        resp = test_client.patch(
+            "/api/v1/departments/engineering/teams/reorder",
+            json={"team_names": ["Alpha", "ALPHA"]},
+        )
+        assert resp.status_code == 422
+
     def test_reorder_zero_teams(
         self,
         test_client: TestClient[Any],

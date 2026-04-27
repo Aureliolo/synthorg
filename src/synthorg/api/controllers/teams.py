@@ -296,10 +296,16 @@ class TeamController(Controller):
             dept_idx, dept = _find_department(depts, dept_name)
 
             teams: list[dict[str, Any]] = list(dept.get("teams", []))
-            current_names = {
-                normalize_identifier(str(t.get("name", ""))) for t in teams
+            team_map: dict[str, dict[str, Any]] = {
+                normalize_identifier(str(t.get("name", ""))): t for t in teams
             }
-            requested_names = {normalize_identifier(n) for n in data.team_names}
+            current_names = set(team_map)
+            requested_order = [normalize_identifier(n) for n in data.team_names]
+            requested_names = set(requested_order)
+
+            if len(requested_order) != len(requested_names):
+                msg = "team_names must not contain duplicates (case-insensitive)"
+                raise ApiValidationError(msg)
 
             if current_names != requested_names:
                 msg = (
@@ -308,11 +314,7 @@ class TeamController(Controller):
                 )
                 raise ApiValidationError(msg)
 
-            # Build name->team lookup for reordering.
-            team_map: dict[str, dict[str, Any]] = {
-                normalize_identifier(str(t.get("name", ""))): t for t in teams
-            }
-            reordered = [team_map[normalize_identifier(n)] for n in data.team_names]
+            reordered = [team_map[name] for name in requested_order]
 
             dept = {**dept, "teams": reordered}
             depts[dept_idx] = dept
@@ -441,9 +443,10 @@ class TeamController(Controller):
                 existing_members = list(target.get("members", []))
                 existing_lower = {normalize_identifier(m) for m in existing_members}
                 for member in team.get("members", []):
-                    if normalize_identifier(member) not in existing_lower:
+                    member_normalized = normalize_identifier(member)
+                    if member_normalized not in existing_lower:
                         existing_members.append(member)
-                        existing_lower.add(normalize_identifier(member))
+                        existing_lower.add(member_normalized)
 
                 updated_target = {**target, "members": existing_members}
                 _validate_team_model(updated_target)
