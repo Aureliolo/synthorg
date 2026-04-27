@@ -74,12 +74,9 @@ export function DriftMonitor({ reports, loading, error }: DriftMonitorProps) {
                 <th className="pb-2 font-medium">Version</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-border">
               {reports.map((report) => (
-                <tr
-                  key={report.entity_name}
-                  className="border-b border-border/50 last:border-0"
-                >
+                <tr key={report.entity_name}>
                   <td className="py-2.5 pr-4 font-medium text-foreground">
                     {report.entity_name}
                   </td>

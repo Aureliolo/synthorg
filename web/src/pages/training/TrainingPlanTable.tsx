@@ -51,7 +51,7 @@ interface TrainingPlanTableRowProps {
 
 function TrainingPlanTableRow({ row, onExecute }: TrainingPlanTableRowProps) {
   return (
-    <tr className="border-b border-border/50">
+    <tr>
       <td className="p-card">
         <Link
           to={`/agents/${encodeURIComponent(row.agentName)}`}
@@ -128,7 +128,7 @@ export function TrainingPlanTable({ rows, onExecute }: TrainingPlanTableProps) {
             <th className="p-card text-right font-medium text-muted-foreground">Actions</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className="divide-y divide-border">
           {rows.map((row) => (
             <TrainingPlanTableRow
               key={row.agentName}

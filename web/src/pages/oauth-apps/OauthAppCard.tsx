@@ -7,6 +7,7 @@ import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('oauth-app-card')
 
@@ -64,7 +65,7 @@ export function OauthAppCard({
         revealTimerRef.current = null
       }, REVEAL_TTL_MS)
     } catch (err) {
-      log.warn('Reveal secret failed:', getErrorMessage(err))
+      log.warn('Reveal secret failed:', sanitizeForLog(err))
       useToastStore.getState().add({
         variant: 'error',
         title: 'Reveal failed',
@@ -84,7 +85,7 @@ export function OauthAppCard({
         title: 'Client ID copied',
       })
     } catch (err) {
-      log.warn('Copy client_id failed:', getErrorMessage(err))
+      log.warn('Copy client_id failed:', sanitizeForLog(err))
       useToastStore.getState().add({
         variant: 'error',
         title: 'Copy failed',

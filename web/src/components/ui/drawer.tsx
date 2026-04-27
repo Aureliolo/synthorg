@@ -6,9 +6,10 @@ import { createLogger } from '@/lib/logger'
 
 const log = createLogger('Drawer')
 
-export type DrawerWidth = 'narrow' | 'default' | 'wide'
+export type DrawerWidth = 'compact' | 'narrow' | 'default' | 'wide'
 
 const DRAWER_WIDTH_CLASS: Record<DrawerWidth, string> = {
+  compact: 'w-[var(--so-drawer-width-compact)]',
   narrow: 'w-[var(--so-drawer-width-narrow)]',
   default: 'w-[var(--so-drawer-width-default)]',
   wide: 'w-[var(--so-drawer-width-wide)]',
@@ -23,7 +24,10 @@ interface DrawerPropsBase {
    * Named width variant. Defaults to `'default'`, which matches the
    * previous `w-[40vw] min-w-80 max-w-xl` behaviour via the
    * `--so-drawer-width-default` token. Use `'wide'` for template compare
-   * or large-form drawers, `'narrow'` for mobile-friendly contexts.
+   * or large-form drawers, `'narrow'` for mobile-friendly contexts, and
+   * `'compact'` for content-light drawers (single-field edits, simple
+   * confirmations) where the default 45vw collapses too much horizontal
+   * room on smaller viewports.
    */
   width?: DrawerWidth
   /** Additional class names merged into the content wrapper (e.g. `"p-0"` to remove default padding). */

@@ -3,21 +3,12 @@ import type { Connection, HealthReport } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import { ConnectionHealthBadge } from '@/components/ui/connection-health-badge'
 import { cn } from '@/lib/utils'
+import { formatRelativeTime } from '@/utils/format'
 import { TypeBadge } from './TypeBadge'
 
 function formatTimestamp(value: string | null): string {
   if (!value) return 'never'
-  const parsed = Date.parse(value)
-  if (Number.isNaN(parsed)) return 'never'
-  const diffMs = Date.now() - parsed
-  if (diffMs < 0) return 'just now'
-  const mins = Math.floor(diffMs / 60_000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
+  return formatRelativeTime(value)
 }
 
 export interface ConnectionCardProps {

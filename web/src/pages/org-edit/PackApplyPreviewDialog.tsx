@@ -105,7 +105,7 @@ export function PackApplyPreviewDialog({
 
               {/* Preview table */}
               {wouldExceed && mode === 'scale_existing' && (
-                <div className="rounded border border-border overflow-hidden">
+                <div className="overflow-x-auto rounded border border-border">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="border-b border-border bg-bg-surface">
@@ -114,9 +114,9 @@ export function PackApplyPreviewDialog({
                         <th className="px-3 py-1.5 text-right font-medium text-text-muted">After %</th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-border">
                       {preview.departments.map((d) => (
-                        <tr key={d.name} className="border-b border-border last:border-b-0">
+                        <tr key={d.name}>
                           <td className="px-3 py-1.5 text-text-primary">{d.name}</td>
                           <td className="px-3 py-1.5 text-right font-mono text-text-secondary">
                             {d.before.toFixed(1)}

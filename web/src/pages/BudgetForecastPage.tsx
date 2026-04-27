@@ -25,13 +25,13 @@ function ProjectionRow({ point, cumulative, currency, totalMonthly }: {
   return (
     <tr>
       <td className="px-4 py-2 font-mono text-xs text-foreground">{point.day}</td>
-      <td className="w-28 px-4 py-2 text-right font-mono text-xs text-text-secondary">
+      <td className="min-w-[7ch] px-4 py-2 text-right font-mono text-xs text-text-secondary">
         {formatCurrency(point.projected_spend, currency)}
       </td>
-      <td className="w-28 px-4 py-2 text-right font-mono text-xs text-text-secondary">
+      <td className="min-w-[7ch] px-4 py-2 text-right font-mono text-xs text-text-secondary">
         {formatCurrency(cumulative, currency)}
       </td>
-      <td className="w-24 px-4 py-2 text-right font-mono text-xs text-text-muted">
+      <td className="min-w-[6ch] px-4 py-2 text-right font-mono text-xs text-text-muted">
         {budgetPct.toFixed(1)}%
       </td>
     </tr>
@@ -144,27 +144,29 @@ export default function BudgetForecastPage() {
 
       <SectionCard title="Daily Projections" icon={Calendar}>
         {forecast && forecast.daily_projections.length > 0 ? (
-          <table className="w-full rounded-lg border border-border">
-            <thead>
-              <tr className="border-b border-border bg-surface">
-                <th scope="col" className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-text-muted">Day</th>
-                <th scope="col" className="w-28 px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-text-muted">Projected Spend</th>
-                <th scope="col" className="w-28 px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-text-muted">Cumulative</th>
-                <th scope="col" className="w-24 px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-text-muted">% of Budget</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {forecast.daily_projections.map((point, idx) => (
-                <ProjectionRow
-                  key={point.day}
-                  point={point}
-                  cumulative={cumulativeValues[idx] ?? 0}
-                  currency={currency}
-                  totalMonthly={budgetConfig?.total_monthly ?? 0}
-                />
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border bg-surface">
+                  <th scope="col" className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-text-muted">Day</th>
+                  <th scope="col" className="min-w-[7ch] px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-text-muted">Projected Spend</th>
+                  <th scope="col" className="min-w-[7ch] px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-text-muted">Cumulative</th>
+                  <th scope="col" className="min-w-[6ch] px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-text-muted">% of Budget</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {forecast.daily_projections.map((point, idx) => (
+                  <ProjectionRow
+                    key={point.day}
+                    point={point}
+                    cumulative={cumulativeValues[idx] ?? 0}
+                    currency={currency}
+                    totalMonthly={budgetConfig?.total_monthly ?? 0}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : !error && (
           <EmptyState
             icon={Calendar}

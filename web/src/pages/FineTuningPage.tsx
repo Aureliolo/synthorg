@@ -5,6 +5,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { ACTIVE_STAGES } from '@/api/endpoints/fine-tuning'
 import type { WsEvent } from '@/api/types/websocket'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ListHeader } from '@/components/ui/list-header'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { useFineTuningStore } from '@/stores/fine-tuning'
@@ -98,7 +99,7 @@ export default function FineTuningPage() {
 
   return (
     <div className="flex flex-col gap-section-gap">
-      <h1 className="text-2xl font-semibold text-foreground">Embedding Fine-Tuning</h1>
+      <ListHeader title="Embedding Fine-Tuning" />
 
       {hasDependencyFailure && <DependencyMissingBanner />}
 

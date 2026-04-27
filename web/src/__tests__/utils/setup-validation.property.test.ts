@@ -28,12 +28,20 @@ const makeCompanyResponse = (): SetupCompanyResponse => ({
   agents: [],
 })
 
-const makeProvider = (): ProviderConfig => ({
+const makeProvider = (modelIds: readonly string[] = ['test-model-001']): ProviderConfig => ({
   driver: 'test-provider',
   litellm_provider: null,
   auth_type: 'api_key',
   base_url: null,
-  models: [],
+  models: modelIds.map((id) => ({
+    id,
+    alias: null,
+    max_context: 8192,
+    cost_per_1k_input: 0,
+    cost_per_1k_output: 0,
+    estimated_latency_ms: null,
+    local_params: null,
+  })),
   has_api_key: true,
   has_oauth_credentials: false,
   has_custom_header: false,
@@ -105,7 +113,7 @@ describe('setup-validation property tests', () => {
     )
   })
 
-  it('providers step is valid when all referenced providers exist', () => {
+  it('providers step is valid when all referenced providers exist with at least one model that the agent references', () => {
     fc.assert(
       fc.property(
         fc.array(
@@ -114,7 +122,9 @@ describe('setup-validation property tests', () => {
         ),
         (providerNames) => {
           const unique = [...new Set(providerNames)]
-          const agents = unique.map((p) => makeAgent({ model_provider: p }))
+          const agents = unique.map((p) =>
+            makeAgent({ model_provider: p, model_id: 'test-model-001' }),
+          )
           const providers: Record<string, ProviderConfig> = Object.create(null) as Record<string, ProviderConfig>
           for (const name of unique) {
             providers[name] = makeProvider()

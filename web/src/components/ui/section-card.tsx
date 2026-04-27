@@ -27,7 +27,7 @@ export function SectionCard({
         className,
       )}
     >
-      <div className="flex items-center gap-2 border-b border-border px-card py-3">
+      <div className="flex items-center gap-2 border-b border-border p-card">
         {Icon && <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
         <h3 id={titleId} className="flex-1 text-sm font-semibold text-foreground">{title}</h3>
         {action}

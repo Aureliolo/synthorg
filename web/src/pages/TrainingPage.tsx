@@ -1,6 +1,7 @@
 import { GraduationCap, Users } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { ListHeader } from '@/components/ui/list-header'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { listAgents } from '@/api/endpoints/agents'
@@ -109,12 +110,7 @@ export default function TrainingPage() {
 
   return (
     <div className="space-y-section-gap">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Training</h1>
-        <span className="text-sm text-muted-foreground">
-          {rows.length} agents
-        </span>
-      </div>
+      <ListHeader title="Training" count={rows.length} countLabel={`${rows.length} agents`} />
 
       {error && (
         <ErrorBanner severity="error" title="Could not load training plans" description={error} />

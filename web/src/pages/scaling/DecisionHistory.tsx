@@ -27,7 +27,7 @@ interface DecisionRowProps {
 
 function DecisionRow({ decision }: DecisionRowProps) {
   return (
-    <tr className="border-b border-border/50 last:border-0">
+    <tr>
       <td className="py-2 pr-2">
         <div className="flex items-center gap-2">
           <StatusBadge
@@ -58,29 +58,31 @@ export function DecisionHistory({ decisions }: DecisionHistoryProps) {
           description="Trigger an evaluation to generate scaling decisions"
         />
       ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
-              <th scope="col" className="py-2 pr-2">
-                Action
-              </th>
-              <th scope="col" className="py-2 pr-2">
-                Rationale
-              </th>
-              <th scope="col" className="py-2 pr-2">
-                Strategy
-              </th>
-              <th scope="col" className="py-2 text-right">
-                Confidence
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {decisions.map((d) => (
-              <DecisionRow key={d.id} decision={d} />
-            ))}
-          </tbody>
-        </table>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
+                <th scope="col" className="py-2 pr-2">
+                  Action
+                </th>
+                <th scope="col" className="py-2 pr-2">
+                  Rationale
+                </th>
+                <th scope="col" className="py-2 pr-2">
+                  Strategy
+                </th>
+                <th scope="col" className="py-2 text-right">
+                  Confidence
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {decisions.map((d) => (
+                <DecisionRow key={d.id} decision={d} />
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </SectionCard>
   )

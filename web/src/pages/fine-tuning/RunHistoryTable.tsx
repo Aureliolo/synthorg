@@ -20,7 +20,7 @@ const STAGE_STATUS_MAP: Record<FineTuneStage, 'active' | 'idle' | 'error' | 'off
 
 function RunRow({ run }: { run: FineTuneRun }) {
   return (
-    <tr className="border-b border-border/50">
+    <tr>
       <td className="py-2 pr-4 font-mono text-xs">
         {formatDateTime(run.started_at)}
       </td>
@@ -71,7 +71,7 @@ export function RunHistoryTable() {
             <th className="pb-2">Source</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className="divide-y divide-border">
           {runs.map((run) => (
             <RunRow key={run.id} run={run} />
           ))}

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { MetricCard } from '@/components/ui/metric-card'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { ListHeader } from '@/components/ui/list-header'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useBudgetData } from '@/hooks/useBudgetData'
 import {
@@ -84,10 +85,12 @@ export default function BudgetPage() {
 
   return (
     <div className="space-y-section-gap">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Budget</h1>
-        <PeriodSelector value={aggregationPeriod} onChange={setAggregationPeriod} />
-      </div>
+      <ListHeader
+        title="Budget"
+        primaryAction={
+          <PeriodSelector value={aggregationPeriod} onChange={setAggregationPeriod} />
+        }
+      />
 
       {error && (
         <ErrorBanner severity="error" title="Could not load budget" description={error} />

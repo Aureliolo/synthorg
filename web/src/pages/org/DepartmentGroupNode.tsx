@@ -3,24 +3,25 @@ import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
 import { ChevronDown, ChevronRight, Plus, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AgentRuntimeStatus } from '@/lib/utils'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { useOrgChartPrefs } from '@/stores/org-chart-prefs'
 import type { DepartmentGroupData } from './build-org-tree'
 
 export type DepartmentGroupType = Node<DepartmentGroupData, 'department'>
 
 /**
- * Visual mapping for each agent runtime status in the dept card's
- * status-dot strip.  Each dot gets a bg color PLUS a matching
- * ring/outline so it stands out against the dark card background
- * -- the old 6 px gray "idle" dot was nearly invisible, which made
- * the Status Dots toggle look like it did nothing.  Colors are
- * drawn directly from the Warm Ops semantic token palette.
+ * Per-status ring color for the dept card's status-dot strip. Each dot
+ * gets a colored ring on top of `<StatusBadge>`'s semantic bg so it
+ * stands out against the dark card background -- the old 6 px gray
+ * "idle" dot was nearly invisible, which made the Status Dots toggle
+ * look like it did nothing. Bg color is owned by `<StatusBadge>` via
+ * `getStatusColor(status)`; only the ring class lives here.
  */
-const STATUS_DOT_STYLES: Record<AgentRuntimeStatus, { dot: string; label: string }> = {
-  active: { dot: 'bg-success ring-success/30', label: 'Active' },
-  idle: { dot: 'bg-accent/60 ring-accent/30', label: 'Idle' },
-  error: { dot: 'bg-danger ring-danger/30', label: 'Error' },
-  offline: { dot: 'bg-text-muted ring-text-muted/30', label: 'Offline' },
+const STATUS_DOT_RING: Record<AgentRuntimeStatus, string> = {
+  active: 'ring-success/30',
+  idle: 'ring-accent/30',
+  error: 'ring-danger/30',
+  offline: 'ring-text-muted/30',
 }
 
 const MAX_STATUS_DOTS = 10
@@ -167,26 +168,20 @@ function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupTyp
         )}
 
         {/* Status dots row -- one dot per agent (capped at 10 +N).
-            Each dot gets a visible ring so it reads clearly on the
-            dark card background and a `title` tooltip so the user
-            can identify which agent/status it represents.  Hidden
-            when the user disables dots in the view menu. */}
+            Each dot is a `<StatusBadge>` with a status-color ring
+            from `STATUS_DOT_RING` and an `aria-label` that surfaces
+            "<agentId>: <status>" to assistive tech.  Hidden when
+            the user disables dots in the view menu. */}
         {showStatusDots && visibleDots.length > 0 && (
           <div className="flex items-center gap-1.5 pt-1" aria-label="Agent status overview">
-            {visibleDots.map((dot) => {
-              const styles = STATUS_DOT_STYLES[dot.runtimeStatus]
-              return (
-                <span
-                  key={dot.agentId}
-                  className={cn(
-                    'size-2.5 rounded-full ring-2',
-                    styles.dot,
-                  )}
-                  aria-label={`${dot.agentId}: ${styles.label}`}
-                  title={`${dot.agentId}: ${styles.label}`}
-                />
-              )
-            })}
+            {visibleDots.map((dot) => (
+              <StatusBadge
+                key={dot.agentId}
+                status={dot.runtimeStatus}
+                dotClassName={cn('size-2.5 ring-2', STATUS_DOT_RING[dot.runtimeStatus])}
+                ariaLabel={`${dot.agentId}: ${dot.runtimeStatus}`}
+              />
+            ))}
             {hiddenDotCount > 0 && (
               <span className="font-mono text-micro text-text-muted">+{hiddenDotCount}</span>
             )}
@@ -207,10 +202,7 @@ function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupTyp
           <Users className="size-5" aria-hidden="true" />
           <span className="font-sans text-xs">No agents yet</span>
           {showAddAgentButton && (
-            <span
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-background/50 px-2 py-1 text-micro text-text-secondary"
-              title="Add agent"
-            >
+            <span className="inline-flex items-center gap-1 rounded-md border border-border bg-background/50 px-2 py-1 text-micro text-text-secondary">
               <Plus className="size-3" aria-hidden="true" />
               Add agent
             </span>
@@ -227,10 +219,7 @@ function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupTyp
        */}
       {!isEmpty && showAddAgentButton && (
         <div className="mt-auto flex items-center justify-center pt-5">
-          <span
-            className="inline-flex items-center gap-1 rounded-md border border-dashed border-border bg-background/30 px-2 py-0.5 text-micro text-text-muted"
-            title="Add agent"
-          >
+          <span className="inline-flex items-center gap-1 rounded-md border border-dashed border-border bg-background/30 px-2 py-0.5 text-micro text-text-muted">
             <Plus className="size-3" aria-hidden="true" />
             Add agent
           </span>

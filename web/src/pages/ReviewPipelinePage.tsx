@@ -16,6 +16,7 @@ import {
 } from '@/api/endpoints/clients'
 import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { ListHeader } from '@/components/ui/list-header'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { createLogger } from '@/lib/logger'
@@ -111,9 +112,7 @@ export default function ReviewPipelinePage() {
   if (loading) {
     return (
       <div className="space-y-section-gap">
-        <h1 className="text-lg font-semibold text-foreground">
-          Review Pipeline
-        </h1>
+        <ListHeader title="Review Pipeline" />
         <SkeletonCard />
       </div>
     )
@@ -122,9 +121,7 @@ export default function ReviewPipelinePage() {
   if (error || !pipeline) {
     return (
       <div className="space-y-section-gap">
-        <h1 className="text-lg font-semibold text-foreground">
-          Review Pipeline
-        </h1>
+        <ListHeader title="Review Pipeline" />
         <ErrorBanner severity="error" title="Pipeline result not available" description={error ?? undefined} />
       </div>
     )
@@ -132,12 +129,7 @@ export default function ReviewPipelinePage() {
 
   return (
     <div className="space-y-section-gap">
-      <div>
-        <h1 className="text-lg font-semibold text-foreground">
-          Review Pipeline
-        </h1>
-        <p className="text-sm text-text-secondary">Task {pipeline.task_id}</p>
-      </div>
+      <ListHeader title="Review Pipeline" description={`Task ${pipeline.task_id}`} />
 
       <SectionCard title="Overall verdict" icon={ShieldCheck}>
         <div className="flex items-center gap-2 text-sm">

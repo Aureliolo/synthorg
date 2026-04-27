@@ -15,12 +15,26 @@ export interface AgentSpendingTableProps {
   currency?: string
 }
 
+// Proportional column widths (character-based) so the table grows with
+// the viewport instead of clamping to fixed pixel widths that overflow
+// on narrower screens. ``flex-1`` for the name column lets it absorb
+// available space; numeric columns size to a sensible character cap.
+// Defined once so header + body cells reference the same source; drift
+// between the two would silently misalign columns.
+const COLUMN_WIDTHS: Record<SortKey, string> = {
+  agentName: 'flex-1 min-w-[12ch]',
+  totalCost: 'min-w-[10ch]',
+  budgetPercent: 'min-w-[8ch]',
+  taskCount: 'min-w-[6ch]',
+  costPerTask: 'min-w-[10ch]',
+}
+
 const COLUMNS: { key: SortKey; label: string; width: string; sortable: boolean }[] = [
-  { key: 'agentName', label: 'Agent', width: 'flex-1', sortable: true },
-  { key: 'totalCost', label: 'Total Cost', width: 'w-28', sortable: true },
-  { key: 'budgetPercent', label: '% of Budget', width: 'w-24', sortable: true },
-  { key: 'taskCount', label: 'Tasks', width: 'w-20', sortable: true },
-  { key: 'costPerTask', label: 'Cost/Task', width: 'w-28', sortable: true },
+  { key: 'agentName', label: 'Agent', width: COLUMN_WIDTHS.agentName, sortable: true },
+  { key: 'totalCost', label: 'Total Cost', width: COLUMN_WIDTHS.totalCost, sortable: true },
+  { key: 'budgetPercent', label: '% of Budget', width: COLUMN_WIDTHS.budgetPercent, sortable: true },
+  { key: 'taskCount', label: 'Tasks', width: COLUMN_WIDTHS.taskCount, sortable: true },
+  { key: 'costPerTask', label: 'Cost/Task', width: COLUMN_WIDTHS.costPerTask, sortable: true },
 ]
 
 function compareRows(
@@ -75,19 +89,19 @@ function SpendingRow({ row, currency }: {
 }) {
   return (
     <div className="flex items-center gap-4 px-4 py-3">
-      <span className="flex-1 truncate text-[13px] font-medium text-foreground">
+      <span className={cn(COLUMN_WIDTHS.agentName, 'truncate text-[13px] font-medium text-foreground')}>
         {row.agentName}
       </span>
-      <span className="w-28 text-right font-mono text-xs text-foreground">
+      <span className={cn(COLUMN_WIDTHS.totalCost, 'text-right font-mono text-xs text-foreground')}>
         {formatCurrency(row.totalCost, currency)}
       </span>
-      <span className="w-24 text-right font-mono text-xs text-text-secondary">
+      <span className={cn(COLUMN_WIDTHS.budgetPercent, 'text-right font-mono text-xs text-text-secondary')}>
         {row.budgetPercent.toFixed(1)}%
       </span>
-      <span className="w-20 text-right font-mono text-xs text-text-secondary">
+      <span className={cn(COLUMN_WIDTHS.taskCount, 'text-right font-mono text-xs text-text-secondary')}>
         {row.taskCount}
       </span>
-      <span className="w-28 text-right font-mono text-xs text-text-muted">
+      <span className={cn(COLUMN_WIDTHS.costPerTask, 'text-right font-mono text-xs text-text-muted')}>
         {formatCurrency(row.costPerTask, currency)}
       </span>
     </div>

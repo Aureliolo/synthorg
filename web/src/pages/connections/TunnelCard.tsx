@@ -12,6 +12,7 @@ import { useToastStore } from '@/stores/toast'
 import { useTunnelStore } from '@/stores/tunnel'
 import type { TunnelPhase } from '@/stores/tunnel'
 import { getCsrfToken } from '@/utils/csrf'
+import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('TunnelCard')
 
@@ -58,10 +59,10 @@ export function TunnelCard() {
           keepalive: true,
           headers,
         }).catch((err: unknown) => {
-          log.warn('Tunnel auto-stop fetch rejected', err)
+          log.warn('Tunnel auto-stop fetch rejected', sanitizeForLog(err))
         })
       } catch (err) {
-        log.warn('Tunnel auto-stop failed', err)
+        log.warn('Tunnel auto-stop failed', sanitizeForLog(err))
       }
     }
     window.addEventListener('pagehide', handler)
@@ -85,7 +86,7 @@ export function TunnelCard() {
         title: 'URL copied',
       })
     } catch (err) {
-      log.warn('Failed to copy tunnel URL', err)
+      log.warn('Failed to copy tunnel URL', sanitizeForLog(err))
       useToastStore.getState().add({
         variant: 'error',
         title: 'Could not copy URL',

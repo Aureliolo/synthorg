@@ -5,6 +5,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ListHeader } from '@/components/ui/list-header'
 import { MetadataGrid } from '@/components/ui/metadata-grid'
+import { ProgressIndicator } from '@/components/ui/progress-indicator'
 import { SectionCard } from '@/components/ui/section-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToastStore } from '@/stores/toast'
@@ -50,14 +51,22 @@ function ReportPeriodCard({ period, generating, onGenerate }: ReportPeriodCardPr
   const isThisPeriodBusy = generating === period
   return (
     <SectionCard title={title} icon={FileText}>
-      <Button
-        size="sm"
-        onClick={() => onGenerate(period)}
-        disabled={isBusy}
-      >
-        <Play className="size-3" aria-hidden="true" />
-        {isThisPeriodBusy ? 'Generating…' : 'Generate'}
-      </Button>
+      <div className="flex flex-col gap-grid-gap">
+        <Button
+          size="sm"
+          onClick={() => onGenerate(period)}
+          disabled={isBusy}
+        >
+          <Play className="size-3" aria-hidden="true" />
+          {isThisPeriodBusy ? 'Generating…' : 'Generate'}
+        </Button>
+        {isThisPeriodBusy && (
+          <ProgressIndicator
+            variant="indeterminate"
+            label={`Generating ${title}`}
+          />
+        )}
+      </div>
     </SectionCard>
   )
 }

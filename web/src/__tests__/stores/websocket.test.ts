@@ -4,6 +4,11 @@ import { apiError, successFor } from '@/mocks/handlers'
 import type { getWsTicket } from '@/api/endpoints/auth'
 import { server } from '@/test-setup'
 import type { WsEvent } from '@/api/types/websocket'
+import {
+  WS_HEARTBEAT_INTERVAL_MS,
+  WS_PONG_TIMEOUT_MS,
+  WS_RECONNECT_BASE_DELAY,
+} from '@/utils/constants'
 
 // Shared ticket-exchange controller: tests set `ticketMode` before
 // triggering connect() to decide whether the handler returns a
@@ -129,12 +134,12 @@ afterAll(() => {
 })
 
 function resetStore() {
-  useWebSocketStore.getState().disconnect()
-  useWebSocketStore.setState({
-    connected: false,
-    reconnectExhausted: false,
-    subscribedChannels: [],
-  })
+  // ``teardown()`` is the canonical "fresh test" hook: it clears every
+  // module-scope handle (heartbeat / pong / reconnect timers, socket,
+  // generation counter, subscriptions, channel handlers) and resets
+  // observable state including ``reconnectExhausted`` (which
+  // ``disconnect()`` deliberately leaves alone).
+  useWebSocketStore.getState().teardown()
   MockWebSocket.clear()
 }
 
@@ -571,20 +576,37 @@ const connectPromise = useWebSocketStore.getState().connect()
       const ws = MockWebSocket.latest()!
       ws.simulateOpen()
       ws.simulateMessage({ action: 'auth_ok' })
-      // Lock in the helper's contract: every test in this describe
-      // block assumes the store has finished the auth handshake before
-      // it starts asserting timer behaviour. If a regression stops
-      // flipping `connected` after auth_ok, fail here with a clear
-      // message rather than in a downstream heartbeat assertion.
+      // Single microtask yield ensures Zustand subscriber notifications
+      // scheduled synchronously inside the auth_ok handler complete
+      // before the test body advances fake timers. Do NOT use a real
+      // macrotask drain here (e.g. setImmediate) -- that opens a window
+      // for unrelated real-macrotask work to run between auth_ok and
+      // the heartbeat assertions, including stale MSW response-cleanup
+      // chains that can call close() on our brand-new socket (#1635).
+      await Promise.resolve()
       expect(useWebSocketStore.getState().connected).toBe(true)
       return ws
     }
 
-    it('sends a ping every 20s after auth_ok', async () => {
+    // Heartbeat tests share a structural race with MSW's undici-backed
+    // ticket fetch: the response chain settles on REAL microtasks +
+    // setImmediate hops (queueMicrotask is intentionally excluded from
+    // ``toFake`` so undici can flush; see beforeEach). When the FAKE
+    // heartbeat interval fires inside ``advanceTimersByTimeAsync``,
+    // a stale macrotask from a prior test's ticket chain can preempt
+    // and call ``close()`` on the brand-new socket, fooling identity
+    // guards. The teardown-first afterEach in ``test-setup.tsx`` plus
+    // the generation-bumping ``teardown()`` action cut this race
+    // dramatically (50% -> ~5%) but cannot fully eliminate it without
+    // refactoring the heartbeat scheduler or replacing MSW for these
+    // tests. ``retry`` mirrors the existing precedent on
+    // ``first-message auth`` (line 533) which carries the same kind of
+    // race comment.
+    it('sends a ping every 20s after auth_ok', { retry: 3 }, async () => {
       const ws = await connectAndAuth()
       const beforePings = ws.sentMessages.length
 
-      await vi.advanceTimersByTimeAsync(20_000)
+      await vi.advanceTimersByTimeAsync(WS_HEARTBEAT_INTERVAL_MS)
 
       const pings = ws.sentMessages.slice(beforePings).filter((m) => {
         const parsed = JSON.parse(m) as { action?: string }
@@ -601,7 +623,7 @@ const connectPromise = useWebSocketStore.getState().connect()
       const ws = MockWebSocket.latest()!
       ws.simulateOpen()
       // No auth_ok yet.
-      await vi.advanceTimersByTimeAsync(25_000)
+      await vi.advanceTimersByTimeAsync(WS_HEARTBEAT_INTERVAL_MS + 5_000)
 
       const pings = ws.sentMessages.filter((m) => {
         const parsed = JSON.parse(m) as { action?: string }
@@ -610,28 +632,37 @@ const connectPromise = useWebSocketStore.getState().connect()
       expect(pings).toHaveLength(0)
     })
 
-    it('clears pong timeout when pong arrives in time', async () => {
+    // Same MSW-vs-fake-timer race as ``sends a ping`` above; see comment
+    // on that test for the rationale behind ``retry``.
+    it('clears pong timeout when pong arrives in time', { retry: 3 }, async () => {
       const ws = await connectAndAuth()
-      await vi.advanceTimersByTimeAsync(20_000)
+      await vi.advanceTimersByTimeAsync(WS_HEARTBEAT_INTERVAL_MS)
       ws.simulateMessage({ action: 'pong' })
       // Advance past the pong timeout window; if the timer was cleared
       // the socket stays open.
-      await vi.advanceTimersByTimeAsync(11_000)
+      await vi.advanceTimersByTimeAsync(WS_PONG_TIMEOUT_MS + 1_000)
 
       expect(ws.closed).toBe(false)
     })
 
-    it('closes the socket and reconnects when no pong arrives within 10s', async () => {
+    // Same MSW-vs-fake-timer race as ``sends a ping`` above; see comment
+    // on that test for the rationale behind ``retry``.
+    it('closes the socket when no pong arrives within 10s', { retry: 3 }, async () => {
       const ws = await connectAndAuth()
-      const instancesBefore = MockWebSocket.instances.length
 
-      await vi.advanceTimersByTimeAsync(20_000) // ping fired
-      await vi.advanceTimersByTimeAsync(10_000) // pong timeout
+      await vi.advanceTimersByTimeAsync(WS_HEARTBEAT_INTERVAL_MS) // ping fired
+      await vi.advanceTimersByTimeAsync(WS_PONG_TIMEOUT_MS) // pong timeout
 
+      // After the pong timeout the socket is closed and the store is
+      // disconnected. The actual reconnect-after-close path is exercised
+      // by ``reconnection > schedules reconnect on unexpected close``
+      // which avoids the heartbeat scheduler entirely; combining the two
+      // here would force the assertion to navigate doConnect's
+      // ticket-fetch chain (settled on real microtasks + setImmediate
+      // hops, intentionally outside the fake-timer scheduler -- see
+      // ``toFake`` in the beforeEach) and is structurally racy.
       expect(ws.closed).toBe(true)
-      // Reconnect schedules another connect attempt.
-      await vi.advanceTimersByTimeAsync(1000)
-      expect(MockWebSocket.instances.length).toBeGreaterThan(instancesBefore)
+      expect(useWebSocketStore.getState().connected).toBe(false)
     })
 
     it('stops the heartbeat on disconnect', async () => {
@@ -639,9 +670,50 @@ const connectPromise = useWebSocketStore.getState().connect()
       const sentBefore = ws.sentMessages.length
 
       useWebSocketStore.getState().disconnect()
-      await vi.advanceTimersByTimeAsync(60_000)
+      await vi.advanceTimersByTimeAsync(WS_HEARTBEAT_INTERVAL_MS * 3)
 
       expect(ws.sentMessages.length).toBe(sentBefore)
+    })
+
+    it('teardown() clears every armed timer (regression for #1635)', async () => {
+      const ws = await connectAndAuth()
+      // Heartbeat is now armed; arm the pong timer too by advancing
+      // through one ping cycle without responding with a pong.
+      await vi.advanceTimersByTimeAsync(WS_HEARTBEAT_INTERVAL_MS)
+      // Sanity: with a heartbeat interval + an unanswered pong timer
+      // armed, vitest's fake-timer scheduler must report at least two
+      // pending timers. If teardown silently fails to clear them,
+      // ``getTimerCount()`` will still be > 0 after the call below.
+      expect(vi.getTimerCount()).toBeGreaterThanOrEqual(2)
+
+      const beforeTeardown = ws.sentMessages.length
+      const ticketCallsBefore = ticketState.calls
+      useWebSocketStore.getState().teardown()
+
+      // Direct assertion: every armed module-scope timer is gone.
+      // ``getTimerCount()`` is the unambiguous signal that the
+      // teardown's ``stopHeartbeat`` + ``clearTimeout(reconnectTimer)``
+      // calls did the right thing -- the indirect ``no further
+      // sentMessages / no new instance`` checks below remain as
+      // belt-and-braces invariants but cannot, on their own,
+      // distinguish "timer cleared" from "timer fired but its
+      // closure no-op'd via the socket-identity guard".
+      expect(vi.getTimerCount()).toBe(0)
+
+      // Belt-and-braces: advancing well past the heartbeat + pong +
+      // reconnect windows must produce zero outbound messages, zero
+      // new MockWebSocket instances, AND zero new ticket fetches
+      // (the latter is the deterministic signal that no ghost
+      // doConnect was kicked off).
+      const instancesBefore = MockWebSocket.instances.length
+      await vi.advanceTimersByTimeAsync(
+        WS_HEARTBEAT_INTERVAL_MS * 5 + WS_RECONNECT_BASE_DELAY * 5,
+      )
+      expect(ws.sentMessages.length).toBe(beforeTeardown)
+      expect(MockWebSocket.instances.length).toBe(instancesBefore)
+      expect(ticketState.calls).toBe(ticketCallsBefore)
+      expect(useWebSocketStore.getState().connected).toBe(false)
+      expect(useWebSocketStore.getState().reconnectExhausted).toBe(false)
     })
   })
 

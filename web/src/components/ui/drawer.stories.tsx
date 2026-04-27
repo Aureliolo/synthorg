@@ -98,6 +98,56 @@ export const Headerless: Story = {
   },
 }
 
+export const Compact: Story = {
+  args: {
+    open: true,
+    onClose: () => {},
+    title: 'Quick edit',
+    width: 'compact',
+    children: (
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Compact drawers are tuned for content-light flows (single-field
+          edits, confirmations) where the default 45vw consumes too much
+          horizontal space on narrow viewports.
+        </p>
+      </div>
+    ),
+  },
+}
+
+export const Narrow: Story = {
+  args: {
+    open: true,
+    onClose: () => {},
+    title: 'Narrow drawer',
+    width: 'narrow',
+    children: (
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Narrow drawer for mobile-friendly contexts.
+        </p>
+      </div>
+    ),
+  },
+}
+
+export const Wide: Story = {
+  args: {
+    open: true,
+    onClose: () => {},
+    title: 'Wide drawer',
+    width: 'wide',
+    children: (
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Wide drawer for template compare and other large forms.
+        </p>
+      </div>
+    ),
+  },
+}
+
 export const ScrollableContent: Story = {
   args: {
     open: true,

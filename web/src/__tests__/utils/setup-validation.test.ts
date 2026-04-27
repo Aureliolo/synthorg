@@ -6,7 +6,7 @@ import {
   validateProvidersStep,
   validateThemeStep,
 } from '@/utils/setup-validation'
-import type { ProviderConfig } from '@/api/types/providers'
+import type { ProviderConfig, ProviderModelConfig } from '@/api/types/providers'
 import type { SetupAgentSummary, SetupCompanyResponse } from '@/api/types/setup'
 
 const makeAgent = (overrides: Partial<SetupAgentSummary> = {}): SetupAgentSummary => ({
@@ -33,12 +33,23 @@ const makeCompanyResponse = (
   ...overrides,
 })
 
+const makeModel = (overrides: Partial<ProviderModelConfig> = {}): ProviderModelConfig => ({
+  id: 'test-model-001',
+  alias: null,
+  max_context: 8192,
+  cost_per_1k_input: 0,
+  cost_per_1k_output: 0,
+  estimated_latency_ms: null,
+  local_params: null,
+  ...overrides,
+})
+
 const makeProvider = (overrides: Partial<ProviderConfig> = {}): ProviderConfig => ({
   driver: 'test-provider',
   litellm_provider: null,
   auth_type: 'api_key',
   base_url: null,
-  models: [],
+  models: [makeModel()],
   has_api_key: true,
   has_oauth_credentials: false,
   has_custom_header: false,
@@ -222,6 +233,55 @@ describe('validateProvidersStep', () => {
       },
     })
     expect(result.valid).toBe(true)
+  })
+
+  it('returns invalid when a configured provider has no models', () => {
+    const result = validateProvidersStep({
+      agents: [makeAgent({ model_provider: 'empty-provider' })],
+      providers: { 'empty-provider': makeProvider({ models: [] }) },
+    })
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.includes('no models'))).toBe(true)
+  })
+
+  it('names the specific empty provider when only one of multiple is empty', () => {
+    const result = validateProvidersStep({
+      agents: [makeAgent({ model_provider: 'provider-a', model_id: 'test-model-001' })],
+      providers: {
+        'provider-a': makeProvider(),
+        'provider-empty': makeProvider({ models: [] }),
+      },
+    })
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.includes('provider-empty'))).toBe(true)
+    expect(result.errors.every((e) => !e.includes('provider-a"'))).toBe(true)
+  })
+
+  it('returns invalid when an agent references a non-existent provider (explicit unit coverage)', () => {
+    const result = validateProvidersStep({
+      agents: [makeAgent({ model_provider: 'nonexistent-provider' })],
+      providers: { 'real-provider': makeProvider() },
+    })
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.includes('nonexistent-provider'))).toBe(true)
+  })
+
+  it('returns invalid when an agent references a model the provider does not expose', () => {
+    const result = validateProvidersStep({
+      agents: [
+        makeAgent({
+          model_provider: 'test-provider',
+          model_id: 'model-not-on-provider',
+        }),
+      ],
+      providers: {
+        'test-provider': makeProvider({ models: [makeModel({ id: 'test-model-001' })] }),
+      },
+    })
+    expect(result.valid).toBe(false)
+    expect(
+      result.errors.some((e) => e.includes('model-not-on-provider')),
+    ).toBe(true)
   })
 })
 
