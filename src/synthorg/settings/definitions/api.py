@@ -485,6 +485,26 @@ _r.register(
     )
 )
 
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="sse_keepalive_seconds",
+        type=SettingType.FLOAT,
+        default="30.0",
+        description=(
+            "Idle interval after which the AG-UI SSE stream emits a"
+            " keepalive frame so intermediaries (load balancers, proxies)"
+            " do not close the connection. Resolved once per stream open;"
+            " a runtime change applies to subsequent streams."
+        ),
+        group="WebSocket",
+        level=SettingLevel.ADVANCED,
+        min_value=1.0,
+        max_value=600.0,
+        yaml_path="api.sse_keepalive_seconds",
+    )
+)
+
 # ── Query limits (controller clamps) ─────────────────────────────
 
 _r.register(
