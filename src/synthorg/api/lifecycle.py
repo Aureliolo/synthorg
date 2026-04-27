@@ -39,11 +39,25 @@ logger = get_logger(__name__)
 
 
 # Per-service shutdown budgets (seconds). The total budget is bounded so
-# container orchestrators (Docker 30s default, Kubernetes 30s default
-# ``terminationGracePeriodSeconds``) have headroom before SIGKILL kicks.
-# Raising a budget should come with a note explaining which production
-# incident motivated the change.
-_TASK_ENGINE_SHUTDOWN_SECONDS: float = 10.0
+# container orchestrators have headroom before SIGKILL kicks. The current
+# math (#1600 Phase 3):
+#
+#   drain (25)  +  task_engine outer (8 * 2 + 1 = 17)  +
+#   meeting (2) +  perf (2)  +  backup (5)  +  settings (2)  +
+#   bridge (2)  +  distributed (3)  +  bus (3)  +  persistence (5)  +
+#   approval (1)
+#   = 25 + 42 = ~67 s worst case if the drain is held for its full
+#     budget AND every service uses its full budget. In practice the
+#     drain runs concurrently with no service work and most services
+#     return well under their cap. Realistic headline budget is 25
+#     (drain) + ~26 s (services) = ~51 s.
+#
+# Recommended ``terminationGracePeriodSeconds: 45`` per
+# ``docs/design/deployment.md``. Operators that consistently hit
+# drain timeouts should raise the grace and document the incident.
+# Raising any *individual* budget should come with a note explaining
+# which production incident motivated the change.
+_TASK_ENGINE_SHUTDOWN_SECONDS: float = 8.0
 _MEETING_SCHEDULER_SHUTDOWN_SECONDS: float = 2.0
 _PERFORMANCE_TRACKER_SHUTDOWN_SECONDS: float = 2.0
 _BACKUP_SHUTDOWN_SECONDS: float = 5.0
@@ -53,6 +67,14 @@ _DISTRIBUTED_QUEUE_SHUTDOWN_SECONDS: float = 3.0
 _MESSAGE_BUS_SHUTDOWN_SECONDS: float = 3.0
 _PERSISTENCE_SHUTDOWN_SECONDS: float = 5.0
 _APPROVAL_TIMEOUT_SHUTDOWN_SECONDS: float = 1.0
+_DRAIN_TIMEOUT_SECONDS: float = 25.0
+"""Default budget for :class:`RequestDrainMiddleware`.
+
+Maximum time the on_shutdown drain hook waits for in-flight HTTP
+requests to complete after the drain gate flips. Exceeding this
+budget is logged at WARNING (``API_APP_DRAIN_TIMEOUT``) and the
+service-teardown sequence continues regardless.
+"""
 
 
 class _AsyncStartStop(Protocol):

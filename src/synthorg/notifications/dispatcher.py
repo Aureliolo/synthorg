@@ -1,6 +1,7 @@
 """Notification dispatcher -- fan-out to registered sinks."""
 
 import asyncio
+import contextlib
 from typing import TYPE_CHECKING
 
 from synthorg.notifications.models import (
@@ -11,9 +12,13 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.notification import (
     NOTIFICATION_DISPATCH_FAILED,
     NOTIFICATION_DISPATCHED,
+    NOTIFICATION_DISPATCHER_CLOSED,
+    NOTIFICATION_DISPATCHER_STARTED,
     NOTIFICATION_FILTERED,
     NOTIFICATION_NO_SINKS,
+    NOTIFICATION_SINK_CLOSE_FAILED,
     NOTIFICATION_SINK_REGISTERED,
+    NOTIFICATION_SINK_START_FAILED,
 )
 
 if TYPE_CHECKING:
@@ -27,6 +32,11 @@ _SEVERITY_ORDER: dict[NotificationSeverity, int] = {
     NotificationSeverity.ERROR: 2,
     NotificationSeverity.CRITICAL: 3,
 }
+
+
+def _ignore_value_error() -> contextlib.AbstractContextManager[None]:
+    """Suppress ``ValueError`` from list operations on a possibly-stale sink."""
+    return contextlib.suppress(ValueError)
 
 
 class NotificationDispatcher:
@@ -45,7 +55,7 @@ class NotificationDispatcher:
         min_severity: Minimum severity to dispatch.
     """
 
-    __slots__ = ("_min_severity", "_sinks")
+    __slots__ = ("_lifecycle_lock", "_min_severity", "_sinks", "_started")
 
     def __init__(
         self,
@@ -55,6 +65,8 @@ class NotificationDispatcher:
     ) -> None:
         self._sinks = list(sinks)
         self._min_severity = min_severity
+        self._lifecycle_lock = asyncio.Lock()
+        self._started = False
         for sink in sinks:
             logger.info(
                 NOTIFICATION_SINK_REGISTERED,
@@ -64,6 +76,10 @@ class NotificationDispatcher:
     def register(self, sink: NotificationSink) -> None:
         """Register an additional sink.
 
+        Only safe before ``start()``; sinks added afterwards are
+        handed straight to ``dispatch()`` without their ``start()``
+        being invoked.
+
         Args:
             sink: Notification sink to add.
         """
@@ -72,6 +88,85 @@ class NotificationDispatcher:
             NOTIFICATION_SINK_REGISTERED,
             sink_name=sink.sink_name,
         )
+
+    async def start(self) -> None:
+        """Start every registered sink (idempotent).
+
+        Fans out ``sink.start()`` across registered sinks via
+        ``asyncio.TaskGroup``. A single sink failing its start is
+        dropped from the active set so subsequent ``dispatch()``
+        calls skip it; one bad sink does not abort the whole group.
+        """
+        async with self._lifecycle_lock:
+            if self._started:
+                return
+            sinks = list(self._sinks)
+            failed: list[NotificationSink] = []
+            async with asyncio.TaskGroup() as tg:
+                for sink in sinks:
+                    tg.create_task(self._safe_start(sink, failed))
+            for sink in failed:
+                with _ignore_value_error():
+                    self._sinks.remove(sink)
+            self._started = True
+            logger.info(
+                NOTIFICATION_DISPATCHER_STARTED,
+                sinks=len(self._sinks),
+                failed=len(failed),
+            )
+
+    async def aclose(self) -> None:
+        """Close every registered sink (idempotent)."""
+        async with self._lifecycle_lock:
+            if not self._started:
+                return
+            sinks = list(self._sinks)
+            async with asyncio.TaskGroup() as tg:
+                for sink in sinks:
+                    tg.create_task(self._safe_close(sink))
+            self._started = False
+            logger.info(
+                NOTIFICATION_DISPATCHER_CLOSED,
+                sinks=len(sinks),
+            )
+
+    @staticmethod
+    async def _safe_start(
+        sink: NotificationSink,
+        failed: list[NotificationSink],
+    ) -> None:
+        """Run ``sink.start()`` with per-sink error isolation.
+
+        Catches every exception except ``MemoryError`` /
+        ``RecursionError`` so one failing sink does not abort the
+        TaskGroup. Adds the sink to ``failed`` so the outer
+        ``start()`` can drop it from the active set.
+        """
+        try:
+            await sink.start()
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            failed.append(sink)
+            logger.warning(
+                NOTIFICATION_SINK_START_FAILED,
+                sink_name=sink.sink_name,
+                error=str(exc),
+            )
+
+    @staticmethod
+    async def _safe_close(sink: NotificationSink) -> None:
+        """Run ``sink.close()`` with per-sink error isolation."""
+        try:
+            await sink.close()
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                NOTIFICATION_SINK_CLOSE_FAILED,
+                sink_name=sink.sink_name,
+                error=str(exc),
+            )
 
     async def dispatch(self, notification: Notification) -> None:
         """Deliver a notification to all registered sinks.
@@ -109,22 +204,6 @@ class NotificationDispatcher:
             return
 
         self._log_result(notification, errors)
-
-    async def close(self) -> None:
-        """Close all sinks that support cleanup."""
-        for sink in self._sinks:
-            if hasattr(sink, "close"):
-                try:
-                    await sink.close()
-                except MemoryError, RecursionError:
-                    raise
-                except Exception:
-                    logger.warning(
-                        NOTIFICATION_DISPATCH_FAILED,
-                        sink_name=sink.sink_name,
-                        error="close() failed",
-                        exc_info=True,
-                    )
 
     def _should_filter(self, notification: Notification) -> bool:
         """Return True if the notification is below min_severity."""

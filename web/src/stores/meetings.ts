@@ -359,6 +359,14 @@ export interface MeetingsState {
   // Real-time
   handleWsEvent: (event: WsEvent) => void
   upsertMeeting: (meeting: MeetingResponse) => void
+
+  // Lifecycle (#1600 Phase 5). Reserved for teardown of timers /
+  // listeners; today this store schedules no async resources, so
+  // ``dispose`` is a no-op. The afterEach in ``web/src/test-setup.tsx``
+  // calls it so the contract is uniform across domain stores and a
+  // future addition (e.g. a ``setInterval``-driven poller) can be
+  // plumbed through this method without changing every test file.
+  dispose: () => void
 }
 
 let listRequestSeq = 0
@@ -505,5 +513,11 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
         ...(idx === -1 ? { total: s.total + 1 } : {}),
       }
     })
+  },
+  dispose: () => {
+    // Reserved for future teardown of timers / listeners. Today the
+    // meetings store schedules no async resources; this method exists
+    // so the test-setup ``afterEach`` contract is uniform across
+    // domain stores (#1600 Phase 5).
   },
 }))

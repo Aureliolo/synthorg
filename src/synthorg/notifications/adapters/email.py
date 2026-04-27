@@ -91,6 +91,12 @@ class EmailNotificationSink:
         """Return the sink identifier."""
         return "email"
 
+    async def start(self) -> None:
+        """No-op: SMTP connections are opened per ``send`` call."""
+
+    async def close(self) -> None:
+        """No-op: SMTP connections are closed per ``send`` call."""
+
     async def send(self, notification: Notification) -> None:
         """Send the notification via SMTP.
 

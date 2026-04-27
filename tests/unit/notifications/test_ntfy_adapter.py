@@ -31,13 +31,14 @@ class TestNtfyNotificationSink:
             server_url="https://ntfy.example.com",
             topic="alerts",
         )
-        n = Notification(
-            category=NotificationCategory.BUDGET,
-            severity=NotificationSeverity.WARNING,
-            title="Budget alert",
-            source="test",
-        )
-        await sink.send(n)
+        async with sink:
+            n = Notification(
+                category=NotificationCategory.BUDGET,
+                severity=NotificationSeverity.WARNING,
+                title="Budget alert",
+                source="test",
+            )
+            await sink.send(n)
         assert route.called
         request = route.calls.last.request
         assert request.headers["Title"] == "Budget alert"
@@ -53,13 +54,14 @@ class TestNtfyNotificationSink:
             topic="t",
             token="tk_secret",
         )
-        n = Notification(
-            category=NotificationCategory.SYSTEM,
-            severity=NotificationSeverity.CRITICAL,
-            title="Shutdown",
-            source="test",
-        )
-        await sink.send(n)
+        async with sink:
+            n = Notification(
+                category=NotificationCategory.SYSTEM,
+                severity=NotificationSeverity.CRITICAL,
+                title="Shutdown",
+                source="test",
+            )
+            await sink.send(n)
         assert route.called
         request = route.calls.last.request
         assert request.headers["Authorization"] == "Bearer tk_secret"
@@ -74,15 +76,16 @@ class TestNtfyNotificationSink:
             server_url="https://ntfy.example.com",
             topic="t",
         )
-        n = Notification(
-            category=NotificationCategory.AGENT,
-            severity=NotificationSeverity.INFO,
-            title="Test",
-            source="test",
-        )
-        # Adapter logs the error and re-raises for the dispatcher to track
-        with pytest.raises(httpx.HTTPStatusError):
-            await sink.send(n)
+        async with sink:
+            n = Notification(
+                category=NotificationCategory.AGENT,
+                severity=NotificationSeverity.INFO,
+                title="Test",
+                source="test",
+            )
+            # Adapter logs the error and re-raises for the dispatcher to track
+            with pytest.raises(httpx.HTTPStatusError):
+                await sink.send(n)
 
     async def test_close_before_any_send(self) -> None:
         sink = NtfyNotificationSink(
@@ -101,14 +104,17 @@ class TestNtfyNotificationSink:
             server_url="https://ntfy.example.com",
             topic="t",
         )
-        n = Notification(
-            category=NotificationCategory.SYSTEM,
-            severity=NotificationSeverity.INFO,
-            title="Close test",
-            source="test",
-        )
-        await sink.send(n)
-        await sink.close()
+        await sink.start()
+        try:
+            n = Notification(
+                category=NotificationCategory.SYSTEM,
+                severity=NotificationSeverity.INFO,
+                title="Close test",
+                source="test",
+            )
+            await sink.send(n)
+        finally:
+            await sink.close()
 
     def test_rejects_loopback_url(self) -> None:
         with pytest.raises(ValueError, match="loopback"):

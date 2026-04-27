@@ -39,6 +39,11 @@ interface ScalingState {
   fetchSignals: () => Promise<void>
   evaluateNow: () => Promise<ScalingDecisionResponse[]>
   updateFromWsEvent: (event: WsEvent) => void
+
+  // Lifecycle (#1600 Phase 5). No-op today; future timers / listeners
+  // should be torn down here so the global ``afterEach`` in
+  // ``web/src/test-setup.tsx`` releases them deterministically.
+  dispose: () => void
 }
 
 export const useScalingStore = create<ScalingState>()((set, get) => ({
@@ -171,5 +176,11 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
     }
 
     void runRefresh()
+  },
+  dispose: () => {
+    // Reserved for future teardown of timers / listeners. Today the
+    // scaling store schedules no async resources; this method exists
+    // so the test-setup ``afterEach`` contract is uniform across
+    // domain stores (#1600 Phase 5).
   },
 }))

@@ -315,6 +315,11 @@ interface ApprovalsState {
   // Batch operations
   batchApprove: (ids: string[], comment?: string) => Promise<{ succeeded: number; failed: number; failedReasons: string[] }>
   batchReject: (ids: string[], reason: string) => Promise<{ succeeded: number; failed: number; failedReasons: string[] }>
+
+  // Lifecycle (#1600 Phase 5). No-op today; future timers / listeners
+  // should be torn down here so the global ``afterEach`` in
+  // ``web/src/test-setup.tsx`` releases them deterministically.
+  dispose: () => void
 }
 
 const pendingTransitions = new Set<string>()
@@ -651,5 +656,11 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
     }
     // (failed IDs are already rolled back and restored to selectedIds by the targeted rollback)
     return { succeeded, failed, failedReasons }
+  },
+  dispose: () => {
+    // Reserved for future teardown of timers / listeners. Today the
+    // approvals store schedules no async resources; this method
+    // exists so the test-setup ``afterEach`` contract is uniform
+    // across domain stores (#1600 Phase 5).
   },
 }))

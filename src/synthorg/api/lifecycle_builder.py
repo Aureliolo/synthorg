@@ -573,7 +573,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
         )
         if app_state.has_notification_dispatcher:
             await _try_stop(
-                app_state.notification_dispatcher.close(),
+                app_state.notification_dispatcher.aclose(),
                 API_APP_SHUTDOWN,
                 "Failed to stop notification dispatcher",
             )

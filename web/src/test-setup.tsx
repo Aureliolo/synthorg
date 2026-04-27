@@ -4,9 +4,12 @@ import type { ComponentProps, ReactNode, Ref } from 'react'
 import { afterAll, afterEach, beforeAll, beforeEach, vi } from 'vitest'
 import { MotionGlobalConfig } from 'motion/react'
 import { setupServer } from 'msw/node'
-import { useToastStore } from '@/stores/toast'
-import { useThemeStore } from '@/stores/theme'
+import { useApprovalsStore } from '@/stores/approvals'
+import { useMeetingsStore } from '@/stores/meetings'
 import { cancelPendingPersist } from '@/stores/notifications'
+import { useScalingStore } from '@/stores/scaling'
+import { useThemeStore } from '@/stores/theme'
+import { useToastStore } from '@/stores/toast'
 import { defaultHandlers } from '@/mocks/handlers'
 import { cookieJar, installCookieShim } from '@/cookie-shim'
 
@@ -237,4 +240,11 @@ afterEach(() => {
   // `--detect-async-leaks` does not count it per-test. Paired with
   // the ``reattach()`` in the ``beforeEach`` above.
   useThemeStore.getState().teardown()
+  // Domain stores expose ``dispose()`` per the test teardown contract
+  // (#1600 Phase 5). No-ops today; future timers / listeners added to
+  // these stores must be torn down here so ``--detect-async-leaks``
+  // stays under the CI ceiling.
+  useMeetingsStore.getState().dispose()
+  useApprovalsStore.getState().dispose()
+  useScalingStore.getState().dispose()
 })

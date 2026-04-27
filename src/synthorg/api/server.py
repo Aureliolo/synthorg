@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Any
 import uvicorn
 
 from synthorg.api.app import create_app
+from synthorg.api.drain import RequestDrainMiddleware
+from synthorg.api.lifecycle import _DRAIN_TIMEOUT_SECONDS
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
@@ -68,8 +70,21 @@ def run_server(config: RootConfig) -> None:
         proxy_kwargs["proxy_headers"] = True
 
     app = create_app(config=config)
-    uvicorn.run(
+    # Wrap the Litestar app in the request-drain middleware as the
+    # outermost ASGI layer (#1600 Phase 3). The wrap happens here
+    # rather than in ``create_app`` so unit tests retrieve a raw
+    # ``Litestar`` for ``TestClient``; production uvicorn always
+    # gets the drain wrapper. The drain middleware itself
+    # intercepts ``lifespan.shutdown`` and runs ``begin_drain``
+    # before forwarding the message to Litestar, so the per-service
+    # ``on_shutdown`` hooks only start once in-flight HTTP traffic
+    # has drained.
+    drain_app = RequestDrainMiddleware(
         app,
+        drain_timeout_seconds=_DRAIN_TIMEOUT_SECONDS,
+    )
+    uvicorn.run(
+        drain_app,
         host=server.host,
         port=server.port,
         workers=server.workers,
@@ -78,6 +93,12 @@ def run_server(config: RootConfig) -> None:
         ws_ping_timeout=ws_timeout,
         access_log=False,
         log_config=None,
+        # Pair with the in-process request-drain middleware budget
+        # (25 s) so uvicorn's graceful-shutdown window covers both
+        # the drain wait and the slowest service teardown step.
+        # See ``docs/design/deployment.md`` for the full math and
+        # the recommended ``terminationGracePeriodSeconds: 45``.
+        timeout_graceful_shutdown=30,
         **ssl_kwargs,
         **proxy_kwargs,
     )

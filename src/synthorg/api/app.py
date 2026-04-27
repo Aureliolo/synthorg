@@ -744,6 +744,16 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     startup = [*startup, telemetry_collector.start]
     shutdown = [*shutdown, telemetry_collector.shutdown]
 
+    # Bring up the notification dispatcher's HTTP-bearing sinks
+    # (slack/ntfy ``httpx.AsyncClient``) lazily under their lifecycle
+    # locks. Stateless sinks (console/email) implement no-op
+    # start()/close() so the fan-out treats every adapter uniformly.
+    # Shutdown registration lives in ``lifecycle_builder._safe_shutdown``
+    # via ``notification_dispatcher.aclose`` so audit-style shutdown
+    # notifications can fire during service teardown before sink
+    # close() runs.
+    startup = [*startup, notification_dispatcher.start]
+
     if _skip_lifecycle_shutdown:
         shutdown = []
 

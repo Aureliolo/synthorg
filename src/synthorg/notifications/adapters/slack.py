@@ -1,7 +1,8 @@
 """Slack notification sink -- webhook POST."""
 
+import asyncio
 import math
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 import httpx
 
@@ -13,6 +14,8 @@ from synthorg.observability.events.notification import (
 )
 
 if TYPE_CHECKING:
+    from types import TracebackType
+
     from synthorg.notifications.models import Notification
 
 logger = get_logger(__name__)
@@ -54,6 +57,13 @@ def _build_slack_payload(notification: Notification) -> dict[str, object]:
 class SlackNotificationSink:
     """Notification sink that posts to a Slack incoming webhook.
 
+    The ``httpx.AsyncClient`` is created lazily inside ``start()``
+    and closed inside ``close()`` so a never-started sink leaks
+    nothing (#1600). Both methods are idempotent under the
+    ``_lifecycle_lock``: a second ``start()`` is a no-op, a
+    ``close()`` before ``start()`` is a no-op, concurrent calls
+    converge on a single client instance.
+
     Args:
         webhook_url: Slack incoming webhook URL.
         webhook_timeout_seconds: HTTP timeout for webhook POST calls,
@@ -68,7 +78,12 @@ class SlackNotificationSink:
             or if *webhook_timeout_seconds* is not positive.
     """
 
-    __slots__ = ("_client", "_webhook_url")
+    __slots__ = (
+        "_client",
+        "_lifecycle_lock",
+        "_webhook_timeout_seconds",
+        "_webhook_url",
+    )
 
     def __init__(
         self,
@@ -84,25 +99,64 @@ class SlackNotificationSink:
             )
             raise ValueError(msg)
         self._webhook_url = webhook_url
-        self._client = httpx.AsyncClient(
-            timeout=webhook_timeout_seconds,
-            follow_redirects=False,
-        )
+        self._webhook_timeout_seconds = webhook_timeout_seconds
+        self._client: httpx.AsyncClient | None = None
+        self._lifecycle_lock = asyncio.Lock()
 
     @property
     def sink_name(self) -> str:
         """Return the sink identifier."""
         return "slack"
 
+    async def start(self) -> None:
+        """Create the underlying HTTP client (idempotent)."""
+        async with self._lifecycle_lock:
+            if self._client is not None:
+                return
+            self._client = httpx.AsyncClient(
+                timeout=self._webhook_timeout_seconds,
+                follow_redirects=False,
+            )
+
+    async def close(self) -> None:
+        """Close the underlying HTTP client (idempotent)."""
+        async with self._lifecycle_lock:
+            if self._client is None:
+                return
+            client = self._client
+            self._client = None
+            await client.aclose()
+
+    async def __aenter__(self) -> Self:
+        """Start the sink; return self for ``async with`` callers."""
+        await self.start()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        """Close the sink on ``async with`` exit (ignores exception args)."""
+        await self.close()
+
     async def send(self, notification: Notification) -> None:
         """Post the notification to Slack.
+
+        Raises:
+            RuntimeError: If called before ``start()``.
 
         Args:
             notification: The notification to deliver.
         """
+        client = self._client
+        if client is None:
+            msg = "SlackNotificationSink.send called before start()"
+            raise RuntimeError(msg)
         payload = _build_slack_payload(notification)
         try:
-            response = await self._client.post(
+            response = await client.post(
                 self._webhook_url,
                 json=payload,
             )
@@ -120,7 +174,3 @@ class SlackNotificationSink:
                 error=str(exc),
             )
             raise
-
-    async def close(self) -> None:
-        """Close the underlying HTTP client."""
-        await self._client.aclose()

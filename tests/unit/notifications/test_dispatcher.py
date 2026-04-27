@@ -40,6 +40,12 @@ class _FakeSink:
             raise RuntimeError(msg)
         self.calls.append(notification)
 
+    async def start(self) -> None:
+        """No-op (stateless sink); satisfies the protocol."""
+
+    async def close(self) -> None:
+        """No-op (stateless sink); satisfies the protocol."""
+
 
 @pytest.mark.unit
 class TestNotificationDispatcher:
@@ -124,6 +130,12 @@ class TestNotificationDispatcher:
 
             async def send(self, notification: Notification) -> None:
                 raise MemoryError
+
+            async def start(self) -> None:
+                pass
+
+            async def close(self) -> None:
+                pass
 
         dispatcher = NotificationDispatcher(sinks=(_MemSink(),))
         with pytest.raises(MemoryError):

@@ -18,11 +18,23 @@ class _GoodSink:
     async def send(self, notification: Notification) -> None:
         pass
 
+    async def start(self) -> None:
+        pass
+
+    async def close(self) -> None:
+        pass
+
 
 class _BadSink:
     """Missing sink_name property."""
 
     async def send(self, notification: Notification) -> None:
+        pass
+
+    async def start(self) -> None:
+        pass
+
+    async def close(self) -> None:
         pass
 
 
