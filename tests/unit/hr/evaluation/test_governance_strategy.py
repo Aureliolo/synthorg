@@ -1,31 +1,35 @@
-"""Tests for Responsibility/Governance pillar strategy."""
+"""Tests for the Responsibility/Governance pillar composition."""
 
 import pytest
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.evaluation.config import EvaluationConfig, GovernanceConfig
+from synthorg.hr.evaluation.configurable_scorer import ConfigurablePillarScorer
 from synthorg.hr.evaluation.enums import EvaluationPillar
-from synthorg.hr.evaluation.governance_strategy import AuditBasedGovernanceStrategy
+from synthorg.hr.evaluation.extractors.governance import GovernanceMetricExtractor
 from tests.unit.hr.evaluation.conftest import make_evaluation_context
 
 pytestmark = pytest.mark.unit
 
 
 @pytest.fixture
-def strategy() -> AuditBasedGovernanceStrategy:
-    return AuditBasedGovernanceStrategy()
+def strategy() -> ConfigurablePillarScorer:
+    return ConfigurablePillarScorer(
+        EvaluationPillar.GOVERNANCE,
+        GovernanceMetricExtractor(),
+    )
 
 
 class TestAuditBasedGovernanceStrategy:
-    """AuditBasedGovernanceStrategy tests."""
+    """Composed governance scorer behaviour tests."""
 
-    def test_protocol_properties(self, strategy: AuditBasedGovernanceStrategy) -> None:
-        assert strategy.name == "audit_based_governance"
+    def test_protocol_properties(self, strategy: ConfigurablePillarScorer) -> None:
+        assert strategy.name == "configurable[governance]"
         assert strategy.pillar == EvaluationPillar.GOVERNANCE
 
     async def test_no_data_returns_neutral(
         self,
-        strategy: AuditBasedGovernanceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         """No audit data, no trust level, autonomy disabled -> neutral."""
         cfg = EvaluationConfig(
@@ -38,7 +42,7 @@ class TestAuditBasedGovernanceStrategy:
 
     async def test_all_allows(
         self,
-        strategy: AuditBasedGovernanceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         ctx = make_evaluation_context()
         ctx = ctx.model_copy(
@@ -57,7 +61,7 @@ class TestAuditBasedGovernanceStrategy:
 
     async def test_all_denies(
         self,
-        strategy: AuditBasedGovernanceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         ctx = make_evaluation_context()
         ctx = ctx.model_copy(
@@ -75,7 +79,7 @@ class TestAuditBasedGovernanceStrategy:
 
     async def test_mixed_verdicts(
         self,
-        strategy: AuditBasedGovernanceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         ctx = make_evaluation_context()
         ctx = ctx.model_copy(
@@ -93,7 +97,7 @@ class TestAuditBasedGovernanceStrategy:
 
     async def test_audit_compliance_disabled(
         self,
-        strategy: AuditBasedGovernanceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         cfg = EvaluationConfig(
             governance=GovernanceConfig(audit_compliance_enabled=False),
@@ -110,7 +114,7 @@ class TestAuditBasedGovernanceStrategy:
 
     async def test_trust_level_disabled(
         self,
-        strategy: AuditBasedGovernanceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         cfg = EvaluationConfig(
             governance=GovernanceConfig(trust_level_enabled=False),
@@ -127,7 +131,7 @@ class TestAuditBasedGovernanceStrategy:
 
     async def test_trust_demotions_penalize(
         self,
-        strategy: AuditBasedGovernanceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         ctx_no_demotions = make_evaluation_context()
         ctx_no_demotions = ctx_no_demotions.model_copy(
@@ -151,7 +155,7 @@ class TestAuditBasedGovernanceStrategy:
 
     async def test_autonomy_downgrades_penalize(
         self,
-        strategy: AuditBasedGovernanceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         ctx_clean = make_evaluation_context()
         ctx_clean = ctx_clean.model_copy(
@@ -175,7 +179,7 @@ class TestAuditBasedGovernanceStrategy:
 
     async def test_unknown_trust_level_falls_back_to_neutral(
         self,
-        strategy: AuditBasedGovernanceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         """Unrecognized trust level maps to neutral score (5.0)."""
         ctx = make_evaluation_context()

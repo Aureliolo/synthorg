@@ -111,12 +111,12 @@ class TestEvaluationService:
             EvaluationPillar.EFFICIENCY,
         }
 
-    async def test_efficiency_inline_computation(
+    async def test_efficiency_pillar_via_configurable_scorer(
         self,
         service: EvaluationService,
         tracker: PerformanceTracker,
     ) -> None:
-        """Efficiency pillar is computed inline, not by a strategy."""
+        """Efficiency pillar is now produced by the standard composite path."""
         agent_id = NotBlankStr("agent-001")
         for i in range(6):
             await tracker.record_task_metric(
@@ -136,7 +136,7 @@ class TestEvaluationService:
             if ps.pillar == EvaluationPillar.EFFICIENCY
         ]
         assert len(eff_scores) == 1
-        assert eff_scores[0].strategy_name == "inline_efficiency"
+        assert eff_scores[0].strategy_name == "configurable[efficiency]"
 
     async def test_efficiency_metric_toggles(
         self,
@@ -172,6 +172,12 @@ class TestEvaluationService:
         tracker: PerformanceTracker,
     ) -> None:
         """Efficiency uses 7d window when 30d is absent."""
+        from synthorg.hr.evaluation.configurable_scorer import (
+            ConfigurablePillarScorer,
+        )
+        from synthorg.hr.evaluation.extractors.efficiency import (
+            EfficiencyMetricExtractor,
+        )
         from synthorg.hr.evaluation.models import EvaluationContext
         from synthorg.hr.performance.models import WindowMetrics
 
@@ -197,8 +203,11 @@ class TestEvaluationService:
             config=EvaluationConfig(),
             snapshot=snapshot,
         )
-        svc = EvaluationService(tracker=tracker)
-        result = await svc._score_efficiency(ctx)
+        scorer = ConfigurablePillarScorer(
+            EvaluationPillar.EFFICIENCY,
+            EfficiencyMetricExtractor(),
+        )
+        result = await scorer.score(context=ctx)
         assert result.score > 0.0
         assert result.confidence > 0.0
 
@@ -207,6 +216,12 @@ class TestEvaluationService:
         tracker: PerformanceTracker,
     ) -> None:
         """Efficiency returns neutral when no windows are available."""
+        from synthorg.hr.evaluation.configurable_scorer import (
+            ConfigurablePillarScorer,
+        )
+        from synthorg.hr.evaluation.extractors.efficiency import (
+            EfficiencyMetricExtractor,
+        )
         from synthorg.hr.evaluation.models import EvaluationContext
 
         snapshot = make_snapshot(windows=())
@@ -216,8 +231,11 @@ class TestEvaluationService:
             config=EvaluationConfig(),
             snapshot=snapshot,
         )
-        svc = EvaluationService(tracker=tracker)
-        result = await svc._score_efficiency(ctx)
+        scorer = ConfigurablePillarScorer(
+            EvaluationPillar.EFFICIENCY,
+            EfficiencyMetricExtractor(),
+        )
+        result = await scorer.score(context=ctx)
         assert result.score == 5.0
         assert result.confidence == 0.0
 

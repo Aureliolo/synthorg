@@ -82,45 +82,48 @@ async def test_efficiency_cost_submetric_gated_by_evaluation_cost_enabled(
     tracker_with_no_data: Any,
 ) -> None:
     """Cost sub-metric drops out when evaluation_cost_enabled=False."""
-    from synthorg.hr.performance.models import WindowMetrics
+    from synthorg.hr.evaluation.extractors.efficiency import (
+        EfficiencyMetricExtractor,
+    )
 
     resolver = _make_resolver({"hr/evaluation_cost_enabled": False})
-    service = EvaluationService(
-        tracker=tracker_with_no_data,
-        config=EvaluationConfig(),
-        config_resolver=resolver,
-    )
-    cfg = service._config.efficiency
-    window = WindowMetrics(
-        window_size="30d",
-        data_point_count=10,
-        tasks_completed=10,
-        tasks_failed=0,
-        avg_cost_per_task=0.5,
-        currency=DEFAULT_CURRENCY,
-        avg_completion_time_seconds=120.0,
-        avg_tokens_per_task=1000,
-    )
-    scores = await service._compute_efficiency_sub_scores(cfg, window)
-    names = {name for name, _w, _s in scores}
-    assert "cost" not in names
-    assert "time" in names
-    assert "tokens" in names
+    extractor = EfficiencyMetricExtractor(config_resolver=resolver)
+    context = _make_efficiency_context()
+    metrics = await extractor.extract(context)
+    assert "cost" not in metrics.weights
+    assert "time" in metrics.weights
+    assert "tokens" in metrics.weights
 
 
 async def test_efficiency_time_submetric_gated_by_evaluation_latency_enabled(
     tracker_with_no_data: Any,
 ) -> None:
     """Time sub-metric drops out when evaluation_latency_enabled=False."""
-    from synthorg.hr.performance.models import WindowMetrics
+    from synthorg.hr.evaluation.extractors.efficiency import (
+        EfficiencyMetricExtractor,
+    )
 
     resolver = _make_resolver({"hr/evaluation_latency_enabled": False})
-    service = EvaluationService(
-        tracker=tracker_with_no_data,
-        config=EvaluationConfig(),
-        config_resolver=resolver,
+    extractor = EfficiencyMetricExtractor(config_resolver=resolver)
+    context = _make_efficiency_context()
+    metrics = await extractor.extract(context)
+    assert "time" not in metrics.weights
+    assert "cost" in metrics.weights
+    assert "tokens" in metrics.weights
+
+
+def _make_efficiency_context() -> Any:
+    """Build a minimal EvaluationContext for extractor unit tests.
+
+    The window has every sub-metric populated so we observe which
+    ones the extractor drops based on the resolver's kill switches.
+    """
+    from synthorg.hr.performance.models import WindowMetrics
+    from tests.unit.hr.evaluation.conftest import (
+        make_evaluation_context,
+        make_snapshot,
     )
-    cfg = service._config.efficiency
+
     window = WindowMetrics(
         window_size="30d",
         data_point_count=10,
@@ -131,8 +134,6 @@ async def test_efficiency_time_submetric_gated_by_evaluation_latency_enabled(
         avg_completion_time_seconds=120.0,
         avg_tokens_per_task=1000,
     )
-    scores = await service._compute_efficiency_sub_scores(cfg, window)
-    names = {name for name, _w, _s in scores}
-    assert "time" not in names
-    assert "cost" in names
-    assert "tokens" in names
+    snapshot = make_snapshot(agent_id="agent-001", windows=(window,))
+    base = make_evaluation_context()
+    return base.model_copy(update={"snapshot": snapshot})

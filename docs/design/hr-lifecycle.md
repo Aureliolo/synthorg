@@ -644,28 +644,40 @@ Each pillar and its individual metrics can be independently enabled/disabled via
 proportionally to remaining enabled ones. All pillars ship enabled by default with
 recommended weights (equal 0.2 each).
 
-The `EvaluationService` orchestrates scoring, delegating to pluggable
-`PillarScoringStrategy` implementations. The efficiency pillar is computed inline
-from `WindowMetrics`. Human-calibrated LLM labeling uses the existing
-`LlmCalibrationSampler` infrastructure; calibration drift above a configurable
-threshold reduces the intelligence pillar's confidence, signaling the need for
-more human labels.
+The `EvaluationService` orchestrates scoring, delegating to a pluggable
+`PillarScoringStrategy` per pillar. The default per-pillar strategy is
+`ConfigurablePillarScorer` composed with the corresponding per-pillar
+`MetricExtractor` (one extractor per file under
+`hr/evaluation/extractors/`). The composite owns the shared
+"redistribute weights → weighted-average → clamp → confidence → log →
+`PillarScore`" pipeline so each extractor stays focused on the
+per-pillar data extraction. Human-calibrated LLM labeling uses the
+existing `LlmCalibrationSampler` infrastructure; calibration drift
+above a configurable threshold reduces the intelligence pillar's
+confidence (via the extractor's `confidence_multiplier`), signaling
+the need for more human labels.
 
 ???+ note "Design decisions ([Decision Log](../architecture/decisions.md) D24)"
 
     **D24: Five-Pillar Evaluation.** Pluggable `PillarScoringStrategy` protocol with
-    single `EvaluationContext` bag. Each pillar has a default strategy:
+    single `EvaluationContext` bag. The default per-pillar strategy is
+    `ConfigurablePillarScorer` composed with a per-pillar `MetricExtractor`:
 
-    - **Intelligence**: `QualityBlendIntelligenceStrategy` blends CI quality score
-      (70%) with LLM calibration score (30%). High calibration drift reduces confidence.
-    - **Efficiency**: Inline computation from `WindowMetrics`; normalized cost (40%),
-      time (30%), token (30%) efficiency scores.
-    - **Resilience**: `TaskBasedResilienceStrategy`; success rate (40%), recovery rate
+    - **Intelligence**: `IntelligenceMetricExtractor` blends CI quality score (70%)
+      with LLM calibration score (30%). High calibration drift reduces confidence
+      via the extractor's drift multiplier.
+    - **Efficiency**: `EfficiencyMetricExtractor` normalizes cost (40%), time (30%),
+      and token (30%) sub-metrics from the 30d window (with 7d fallback). The cost
+      and time sub-metrics are runtime-gated by the `hr.evaluation_cost_enabled`
+      and `hr.evaluation_latency_enabled` kill switches via the optional
+      `ConfigResolver`.
+    - **Resilience**: `ResilienceMetricExtractor`; success rate (40%), recovery rate
       (25%), quality consistency (20%), streak bonus (15%).
-    - **Governance**: `AuditBasedGovernanceStrategy`; audit compliance (50%), trust
+    - **Governance**: `GovernanceMetricExtractor`; audit compliance (50%), trust
       level (30%), autonomy compliance (20%).
-    - **Experience**: `FeedbackBasedUxStrategy`; clarity (25%), helpfulness (25%),
-      trust (20%), tone (15%), satisfaction (15%).
+    - **Experience**: `ExperienceMetricExtractor`; clarity (25%), helpfulness (25%),
+      trust (20%), tone (15%), satisfaction (15%). Custom confidence saturation at
+      `min_feedback_count * 3` data points.
 
     All metrics toggleable via `EvaluationConfig` per-pillar sub-configs. Weight
     redistribution follows the `BehavioralTelemetryStrategy` pattern. Pull-based

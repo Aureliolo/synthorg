@@ -379,10 +379,16 @@ Tasks can be assigned through multiple strategies:
 | **Cost-optimized** | Assign to cheapest capable agent |
 
 All six strategies are implemented behind the `TaskAssignmentStrategy` protocol.
-Scoring-based strategies filter out agents at capacity via
-`AssignmentRequest.max_concurrent_tasks`. `ManualAssignmentStrategy` raises
-exceptions on failure; scoring-based strategies return
-`AssignmentResult(selected=None)`.
+The five scoring-based strategies (role_based, load_balanced, cost_optimized,
+hierarchical, auction) are all instances of `ScoringBasedAssignmentStrategy`
+composed with different `(CandidatePoolFilter, CandidateRanker)` pairs:
+hierarchical uses `HierarchicalPoolFilter` to narrow the pool to subordinates of
+the task's delegator before scoring; the other four use `IdentityPoolFilter` and
+differ only in the ranker (score-descending, workload-ascending, cost-ascending,
+or auction-bid). Manual assignment is its own class. Scoring-based strategies
+filter out agents at capacity via `AssignmentRequest.max_concurrent_tasks`.
+`ManualAssignmentStrategy` raises exceptions on failure; scoring-based strategies
+return `AssignmentResult(selected=None)`.
 
 ---
 

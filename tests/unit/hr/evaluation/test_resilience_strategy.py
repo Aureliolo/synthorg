@@ -1,10 +1,17 @@
-"""Tests for Reliability/Resilience pillar strategy."""
+"""Tests for the Reliability/Resilience pillar composition.
+
+The composition is ``ConfigurablePillarScorer(RESILIENCE,
+ResilienceMetricExtractor())``; assertions exercise the composed
+behaviour (same scores/confidence as the prior dedicated strategy)
+plus a small extractor-only test for sub-metric weight presence.
+"""
 
 import pytest
 
 from synthorg.hr.evaluation.config import EvaluationConfig, ResilienceConfig
+from synthorg.hr.evaluation.configurable_scorer import ConfigurablePillarScorer
 from synthorg.hr.evaluation.enums import EvaluationPillar
-from synthorg.hr.evaluation.resilience_strategy import TaskBasedResilienceStrategy
+from synthorg.hr.evaluation.extractors.resilience import ResilienceMetricExtractor
 from tests.unit.hr.evaluation.conftest import (
     make_evaluation_context,
     make_resilience_metrics,
@@ -14,20 +21,23 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.fixture
-def strategy() -> TaskBasedResilienceStrategy:
-    return TaskBasedResilienceStrategy()
+def strategy() -> ConfigurablePillarScorer:
+    return ConfigurablePillarScorer(
+        EvaluationPillar.RESILIENCE,
+        ResilienceMetricExtractor(),
+    )
 
 
 class TestTaskBasedResilienceStrategy:
-    """TaskBasedResilienceStrategy tests."""
+    """Composed resilience scorer behaviour tests."""
 
-    def test_protocol_properties(self, strategy: TaskBasedResilienceStrategy) -> None:
-        assert strategy.name == "task_based_resilience"
+    def test_protocol_properties(self, strategy: ConfigurablePillarScorer) -> None:
+        assert strategy.name == "configurable[resilience]"
         assert strategy.pillar == EvaluationPillar.RESILIENCE
 
     async def test_no_metrics_returns_neutral(
         self,
-        strategy: TaskBasedResilienceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         ctx = make_evaluation_context()
         result = await strategy.score(context=ctx)
@@ -36,7 +46,7 @@ class TestTaskBasedResilienceStrategy:
 
     async def test_all_metrics_enabled(
         self,
-        strategy: TaskBasedResilienceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         rm = make_resilience_metrics(
             total_tasks=20,
@@ -56,7 +66,7 @@ class TestTaskBasedResilienceStrategy:
 
     async def test_perfect_agent(
         self,
-        strategy: TaskBasedResilienceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         rm = make_resilience_metrics(
             total_tasks=20,
@@ -73,7 +83,7 @@ class TestTaskBasedResilienceStrategy:
 
     async def test_all_failures(
         self,
-        strategy: TaskBasedResilienceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         rm = make_resilience_metrics(
             total_tasks=10,
@@ -90,7 +100,7 @@ class TestTaskBasedResilienceStrategy:
 
     async def test_success_rate_disabled(
         self,
-        strategy: TaskBasedResilienceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         cfg = EvaluationConfig(
             resilience=ResilienceConfig(success_rate_enabled=False),
@@ -105,7 +115,7 @@ class TestTaskBasedResilienceStrategy:
 
     async def test_only_streak_enabled(
         self,
-        strategy: TaskBasedResilienceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         cfg = EvaluationConfig(
             resilience=ResilienceConfig(
@@ -123,7 +133,7 @@ class TestTaskBasedResilienceStrategy:
 
     async def test_zero_tasks_returns_neutral(
         self,
-        strategy: TaskBasedResilienceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         rm = make_resilience_metrics(
             total_tasks=0,
