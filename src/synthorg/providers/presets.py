@@ -112,6 +112,34 @@ class CloudPreset(_BasePreset):
             raise ValueError(msg)
         return self
 
+    @model_validator(mode="after")
+    def _validate_soft_preset_shape(self) -> Self:
+        """Ensure soft presets follow the API-key-only contract.
+
+        Soft presets are auto-derived from ``litellm.model_cost`` and
+        cannot reasonably support subscription / OAuth / custom-header
+        auth without per-provider research.  Today only
+        :func:`_make_soft_preset` constructs ``is_featured=False``
+        instances, but encoding the invariant on the type prevents a
+        future caller from minting a misconfigured soft preset.
+        """
+        if self.is_featured:
+            return self
+        if self.auth_type != AuthType.API_KEY:
+            msg = (
+                f"Soft preset {self.name!r} (is_featured=False) must use "
+                f"AuthType.API_KEY; got {self.auth_type!r}."
+            )
+            raise ValueError(msg)
+        if self.supported_auth_types != (AuthType.API_KEY,):
+            msg = (
+                f"Soft preset {self.name!r} (is_featured=False) must declare "
+                f"supported_auth_types=(API_KEY,); got "
+                f"{self.supported_auth_types!r}."
+            )
+            raise ValueError(msg)
+        return self
+
 
 class LocalPreset(_BasePreset):
     """Self-hosted LLM server (auto-detect via candidate URLs).
@@ -486,6 +514,13 @@ models).  Featured presets render in the wizard's primary grid."""
 
 
 # ── Auto-derived "soft" presets from litellm.model_cost ────────
+#
+# Maintainer note: when bumping the LiteLLM dependency, scan the
+# upstream changelog for new provider namespaces.  Any new IAM-bound
+# (AWS sigv4 / GCP ADC / IBM IAM), OAuth-bound, or local-only
+# namespace MUST be added to the denylist or the deny-prefix tuple
+# before the upgrade ships -- otherwise the auto-derive layer will
+# surface it as an API-key paste, which will fail at first call.
 
 _LITELLM_NAMESPACE_DENYLIST: Final[frozenset[str]] = frozenset(
     {
@@ -533,10 +568,24 @@ _LITELLM_NAMESPACE_DENYLIST: Final[frozenset[str]] = frozenset(
 )
 """LiteLLM provider namespaces excluded from auto-derived soft presets.
 
-Either the auth shape is incompatible with API-key paste (cloud IAM,
-local with no auth, OAuth-bound), the surface is embedding/audio/image
-only, the namespace is deprecated, or it duplicates a featured
-preset's :func:`litellm_provider`.
+Reasons a namespace lands here:
+
+* the auth shape is incompatible with API-key paste (cloud IAM such
+  as AWS Bedrock or GCP Vertex AI; OAuth-bound such as GitHub
+  Copilot);
+* the deployment model requires a base URL or self-hosted server
+  that does not fit the SaaS preset surface (local Ollama variants,
+  generic OpenAI-compatible wrappers, HuggingFace TGI);
+* the namespace is deprecated or superseded by a curated featured
+  preset (e.g. bare ``cohere`` is the deprecated completions path
+  while ``cohere_chat`` is curated above);
+* the namespace duplicates a featured preset's
+  :func:`litellm_provider`.
+
+The ``mode``-based filter in :func:`_iter_litellm_chat_namespaces`
+already drops embedding / audio / image-only providers; this
+denylist is the auth-shape and deployment-model layer on top of
+that filter.
 """
 
 _LITELLM_NAMESPACE_DENY_PREFIXES: Final[tuple[str, ...]] = (
@@ -567,18 +616,27 @@ def _is_denied_namespace(namespace: str) -> bool:
 def _humanise_namespace(namespace: str) -> str:
     """Turn a LiteLLM namespace into a Title Case display name.
 
+    Pure title-casing on a string with underscores and hyphens
+    converted to spaces.  Featured presets set ``display_name``
+    explicitly via the constructor and never reach this helper.
+
     Examples:
         ``"perplexity"`` -> ``"Perplexity"``
-        ``"nvidia_nim"`` -> ``"Nvidia Nim"`` (curated names override).
-
-    The result is a fallback for soft presets only; featured presets
-    set ``display_name`` explicitly.
+        ``"nvidia_nim"`` -> ``"Nvidia Nim"``
+        ``"together_ai"`` -> ``"Together Ai"``
     """
     return namespace.replace("_", " ").replace("-", " ").title()
 
 
 def _make_soft_preset(namespace: str) -> CloudPreset:
-    """Build a generic API-key-only ``CloudPreset`` for a LiteLLM namespace."""
+    """Build a generic API-key-only ``CloudPreset`` for a LiteLLM namespace.
+
+    The auto-generated ``description`` quotes the namespace via
+    ``{namespace!r}`` and the wizard renders it through React's plain
+    text path (no ``dangerouslySetInnerHTML``); a future LiteLLM
+    upgrade introducing an unusual namespace string cannot inject
+    HTML or script content into the picker.
+    """
     return CloudPreset(
         name=namespace,
         display_name=_humanise_namespace(namespace),
@@ -599,6 +657,12 @@ def _iter_litellm_chat_namespaces() -> tuple[str, ...]:
     ``litellm.model_cost`` declares it via ``litellm_provider`` and has
     ``mode in {"chat", "completion"}``.  Embedding / audio / image
     providers are filtered out.
+
+    The walk is defensive: non-dict entries, missing or empty
+    ``litellm_provider`` strings, missing ``mode`` fields, and a
+    missing ``litellm.model_cost`` attribute itself are all silently
+    skipped.  A future LiteLLM upgrade with malformed entries cannot
+    crash module load.
     """
     seen: set[str] = set()
     cost_table = getattr(litellm, "model_cost", {}) or {}
@@ -620,9 +684,11 @@ def _build_soft_presets(
     """Auto-derive soft presets for every non-excluded LiteLLM namespace.
 
     Skips namespaces already covered by a featured preset's
-    :attr:`litellm_provider` and any namespace in
-    :data:`_LITELLM_NAMESPACE_DENYLIST`.  Returned in alphabetical
-    order by namespace.
+    :attr:`litellm_provider`, any namespace listed in
+    :data:`_LITELLM_NAMESPACE_DENYLIST`, and any namespace whose
+    prefix matches an entry in
+    :data:`_LITELLM_NAMESPACE_DENY_PREFIXES`.  Returned in
+    alphabetical order by namespace.
     """
     covered: frozenset[str] = frozenset(p.litellm_provider for p in featured)
     softs: list[CloudPreset] = []
@@ -641,6 +707,65 @@ because ``litellm.model_cost`` is itself a static module-level table.
 """
 
 
+def _audit_presets(presets: tuple[CloudPreset | LocalPreset, ...]) -> None:
+    """Validate cross-cutting preset invariants at module load.
+
+    Catches mistakes that the per-instance Pydantic validators
+    cannot see:
+
+    * duplicate ``name`` across the merged tuple (would shadow in
+      :data:`_PRESET_LOOKUP` silently);
+    * duplicate ``litellm_provider`` between featured and soft
+      (the dedupe in :func:`_build_soft_presets` should prevent this,
+      but a manual edit could regress it);
+    * featured presets ordered after a soft preset (the API contract
+      surfaces featured first).
+
+    Raises :class:`ValueError` on any violation so a misconfiguration
+    fails the import rather than reaching runtime.
+    """
+    seen_names: dict[str, CloudPreset | LocalPreset] = {}
+    seen_namespaces: dict[str, CloudPreset | LocalPreset] = {}
+    saw_soft = False
+    for preset in presets:
+        if preset.name in seen_names:
+            other = seen_names[preset.name]
+            msg = f"Duplicate preset name {preset.name!r}: {other!r} and {preset!r}"
+            raise ValueError(msg)
+        seen_names[preset.name] = preset
+
+        if preset.litellm_provider in seen_namespaces:
+            other = seen_namespaces[preset.litellm_provider]
+            # Multiple presets sharing one litellm_provider is allowed
+            # by design for ollama (ollama / ollama-cloud), lm-studio
+            # / vllm (both use openai), and similar local re-uses.
+            # Only reject the collision when *both* sides are CloudPresets
+            # *and* one of them is a soft preset, because that means the
+            # auto-derive layer leaked a duplicate of a featured entry.
+            both_cloud = isinstance(preset, CloudPreset) and isinstance(
+                other, CloudPreset
+            )
+            either_soft = not (preset.is_featured and other.is_featured)
+            if both_cloud and either_soft:
+                msg = (
+                    f"Duplicate litellm_provider {preset.litellm_provider!r} "
+                    f"between {other.name!r} and {preset.name!r}; soft "
+                    f"presets must dedupe against featured."
+                )
+                raise ValueError(msg)
+        else:
+            seen_namespaces[preset.litellm_provider] = preset
+
+        if not preset.is_featured:
+            saw_soft = True
+        elif saw_soft:
+            msg = (
+                f"Featured preset {preset.name!r} appears after a soft preset; "
+                "PROVIDER_PRESETS must list featured entries first."
+            )
+            raise ValueError(msg)
+
+
 PROVIDER_PRESETS: tuple[CloudPreset | LocalPreset, ...] = (
     *_FEATURED_PRESETS,
     *_SOFT_PRESETS,
@@ -649,6 +774,8 @@ PROVIDER_PRESETS: tuple[CloudPreset | LocalPreset, ...] = (
 land first, in the order declared in :data:`_FEATURED_PRESETS`; soft
 (auto-derived from ``litellm.model_cost``) entries follow,
 alphabetical by namespace."""
+
+_audit_presets(PROVIDER_PRESETS)
 
 _PRESET_LOOKUP: MappingProxyType[str, CloudPreset | LocalPreset] = MappingProxyType(
     {p.name: p for p in PROVIDER_PRESETS},

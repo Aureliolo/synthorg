@@ -246,11 +246,9 @@ class TestProviderPresets:
         assert AuthType.API_KEY in preset.supported_auth_types
         assert AuthType.SUBSCRIPTION in preset.supported_auth_types
 
-    def test_other_cloud_presets_api_key_only(self) -> None:
-        """Cloud presets other than Anthropic only support API key auth."""
-        from synthorg.providers.enums import AuthType
-
-        for name in (
+    @pytest.mark.parametrize(
+        "name",
+        [
             "cerebras",
             "cohere",
             "deepseek",
@@ -265,13 +263,18 @@ class TestProviderPresets:
             "sambanova",
             "together_ai",
             "xai",
-        ):
-            preset = get_preset(name)
-            assert preset is not None
-            assert isinstance(preset, CloudPreset)
-            assert preset.supported_auth_types == (AuthType.API_KEY,), (
-                f"Preset {name!r} should be API-key only"
-            )
+        ],
+    )
+    def test_other_cloud_presets_api_key_only(self, name: str) -> None:
+        """Cloud presets other than Anthropic only support API key auth."""
+        from synthorg.providers.enums import AuthType
+
+        preset = get_preset(name)
+        assert preset is not None
+        assert isinstance(preset, CloudPreset)
+        assert preset.supported_auth_types == (AuthType.API_KEY,), (
+            f"Preset {name!r} should be API-key only"
+        )
 
     def test_ollama_cloud_api_key_only(self) -> None:
         """Ollama Cloud uses API key auth (no subscription flow)."""
@@ -520,3 +523,189 @@ class TestProviderPresets:
         featured = list_featured_presets()
         soft = list_soft_presets()
         assert list_presets() == (*featured, *soft)
+
+    def test_soft_presets_have_meaningful_count(self) -> None:
+        """Auto-derive produces a non-trivial set of soft presets.
+
+        If this fails, ``litellm.model_cost`` may have been removed
+        from the LiteLLM public API or the denylist became too
+        aggressive.  A silent regression to zero soft presets would
+        cripple the wizard's "More providers" surface; this guard
+        catches it loudly.
+        """
+        soft = list_soft_presets()
+        assert len(soft) >= 20, (
+            f"Unexpectedly few soft presets: {len(soft)}; "
+            "litellm.model_cost may be unavailable or the denylist "
+            "may be over-aggressive."
+        )
+
+    def test_humanise_namespace_title_cases_separators(self) -> None:
+        """Underscores and hyphens become spaces, then title-cased."""
+        from synthorg.providers.presets import _humanise_namespace
+
+        assert _humanise_namespace("perplexity") == "Perplexity"
+        assert _humanise_namespace("nvidia_nim") == "Nvidia Nim"
+        assert _humanise_namespace("together_ai") == "Together Ai"
+        assert _humanise_namespace("text-completion-openai") == (
+            "Text Completion Openai"
+        )
+
+    def test_is_denied_namespace_exact_match(self) -> None:
+        """Exact denylist entries are denied."""
+        from synthorg.providers.presets import _is_denied_namespace
+
+        assert _is_denied_namespace("bedrock")
+        assert _is_denied_namespace("github_copilot")
+        assert _is_denied_namespace("nlp_cloud")
+        assert _is_denied_namespace("cohere")
+        assert _is_denied_namespace("amazon_nova")
+
+    def test_is_denied_namespace_prefix_match(self) -> None:
+        """Sub-namespaces inheriting a deny prefix are denied."""
+        from synthorg.providers.presets import _is_denied_namespace
+
+        assert _is_denied_namespace("bedrock_mantle")
+        assert _is_denied_namespace("vertex_ai-anthropic_models")
+        assert _is_denied_namespace("vertex_ai-openai_models")
+        assert _is_denied_namespace("sagemaker_chat")
+        assert _is_denied_namespace("watsonx_text")
+        assert _is_denied_namespace("text-completion-codestral")
+
+    def test_is_denied_namespace_allowlist(self) -> None:
+        """Curated and unrelated namespaces are not denied."""
+        from synthorg.providers.presets import _is_denied_namespace
+
+        assert not _is_denied_namespace("openai")
+        assert not _is_denied_namespace("anthropic")
+        assert not _is_denied_namespace("perplexity")
+        assert not _is_denied_namespace("xai")
+        assert not _is_denied_namespace("cohere_chat")
+
+    def test_iter_litellm_chat_namespaces_filters_non_chat_modes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Embedding / image / audio / rerank entries are skipped."""
+        import litellm
+
+        from synthorg.providers.presets import _iter_litellm_chat_namespaces
+
+        chat = {"mode": "chat", "litellm_provider": "alpha"}
+        embed = {"mode": "embedding", "litellm_provider": "beta"}
+        image = {"mode": "image_generation", "litellm_provider": "gamma"}
+        audio = {"mode": "audio_transcription", "litellm_provider": "delta"}
+        rerank = {"mode": "rerank", "litellm_provider": "epsilon"}
+        completion = {"mode": "completion", "litellm_provider": "zeta"}
+        monkeypatch.setattr(
+            litellm,
+            "model_cost",
+            {
+                "chat-model": chat,
+                "embed-model": embed,
+                "image-model": image,
+                "audio-model": audio,
+                "rerank-model": rerank,
+                "completion-model": completion,
+            },
+        )
+        result = _iter_litellm_chat_namespaces()
+        assert result == ("alpha", "zeta")
+
+    def test_iter_litellm_chat_namespaces_handles_malformed_entries(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Non-dict, missing-field, and empty-string entries are skipped."""
+        import litellm
+
+        from synthorg.providers.presets import _iter_litellm_chat_namespaces
+
+        monkeypatch.setattr(
+            litellm,
+            "model_cost",
+            {
+                "good": {"mode": "chat", "litellm_provider": "alpha"},
+                "missing-provider": {"mode": "chat"},
+                "empty-provider": {"mode": "chat", "litellm_provider": ""},
+                "none-provider": {"mode": "chat", "litellm_provider": None},
+                "missing-mode": {"litellm_provider": "delta"},
+                "not-a-dict": "this is a string",
+            },
+        )
+        result = _iter_litellm_chat_namespaces()
+        assert result == ("alpha",)
+
+    def test_iter_litellm_chat_namespaces_handles_none_model_cost(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``litellm.model_cost`` being ``None`` returns an empty tuple."""
+        import litellm
+
+        from synthorg.providers.presets import _iter_litellm_chat_namespaces
+
+        monkeypatch.setattr(litellm, "model_cost", None)
+        assert _iter_litellm_chat_namespaces() == ()
+
+    def test_soft_preset_validator_rejects_non_api_key_auth(self) -> None:
+        """Constructing a soft CloudPreset with non-API_KEY auth fails."""
+        from pydantic import ValidationError
+
+        from synthorg.providers.enums import AuthType
+
+        with pytest.raises(ValidationError, match=r"Soft preset.*API_KEY"):
+            CloudPreset(
+                name="bad-soft",
+                display_name="Bad Soft",
+                description="Soft preset with subscription auth",
+                driver="litellm",
+                litellm_provider="bad-soft",
+                auth_type=AuthType.SUBSCRIPTION,
+                supported_auth_types=(AuthType.API_KEY, AuthType.SUBSCRIPTION),
+                is_featured=False,
+            )
+
+    def test_soft_preset_validator_rejects_extended_supported_types(self) -> None:
+        """Constructing a soft CloudPreset with extra supported_auth_types fails."""
+        from pydantic import ValidationError
+
+        from synthorg.providers.enums import AuthType
+
+        with pytest.raises(ValidationError, match=r"supported_auth_types"):
+            CloudPreset(
+                name="bad-soft-2",
+                display_name="Bad Soft 2",
+                description="Soft preset with extra auth types",
+                driver="litellm",
+                litellm_provider="bad-soft-2",
+                auth_type=AuthType.API_KEY,
+                supported_auth_types=(AuthType.API_KEY, AuthType.OAUTH),
+                is_featured=False,
+            )
+
+    def test_denylist_actually_filters_real_namespaces(self) -> None:
+        """At least one denylisted namespace must be present in
+        ``litellm.model_cost``.
+
+        Without this guard, the denylist could pass vacuously if a
+        future LiteLLM version simply removes the denied entries
+        from the catalog.  We rely on the denylist to gate IAM /
+        OAuth flows; if it stops doing real filtering work we want
+        a loud signal, not silent passing.
+        """
+        import litellm
+
+        from synthorg.providers.presets import _LITELLM_NAMESPACE_DENYLIST
+
+        cost_table = getattr(litellm, "model_cost", {}) or {}
+        all_providers: set[str] = set()
+        for info in cost_table.values():
+            if not isinstance(info, dict):
+                continue
+            provider = info.get("litellm_provider")
+            if isinstance(provider, str) and provider:
+                all_providers.add(provider)
+        intersection = _LITELLM_NAMESPACE_DENYLIST & all_providers
+        assert intersection, (
+            "Denylist did not intersect with any namespace in "
+            "litellm.model_cost; the denylist may be filtering "
+            "nothing at all."
+        )

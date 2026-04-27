@@ -46,7 +46,7 @@ For SynthOrg this means:
 
 - **No new `AuthType.SUBSCRIPTION` surfaces** are unlocked by Phase 1. The Anthropic preset's existing `(API_KEY, SUBSCRIPTION)` is the right shape and remains.
 - **No new `AuthType.OAUTH_PKCE` enum variant is needed.** `AuthorizationCodeFlow` in `src/synthorg/integrations/oauth/flows/authorization_code.py` already implements PKCE; if a future provider needs OAuth login wired into the wizard, the existing `AuthType.OAUTH` variant covers it.
-- **Phase 2 ships API-key-only `CloudPreset` entries** for: Kimi (Moonshot AI), Together AI, Fireworks AI, xAI (Grok), Cohere, Cerebras, SambaNova. Hyperbolic, Lambda, Perplexity, NVIDIA NIM, and Qwen / DashScope are documented but deferred for the reasons noted in §4.
+- **Phase 2 ships API-key-only `CloudPreset` entries** for: Kimi (Moonshot AI), Together AI, Fireworks AI, xAI (Grok), Cohere, Cerebras, SambaNova, NVIDIA NIM. Hyperbolic, Lambda, Perplexity, and Qwen / DashScope are documented but deferred for the reasons noted in §4.
 - **LiteLLM coverage is universal** for every provider considered. No custom-driver work is required.
 
 ## Section 1. Methodology
@@ -205,11 +205,15 @@ Each entry answers six dimensions:
 - **LiteLLM routing**: `lambda_ai/<model>`. Verified.
 - **SynthOrg action**: DEFER. Newer platform (Dec 2024 launch); minimal catalog. Re-evaluate when the inference offering matures.
 
-### 2.16 NVIDIA NIM -- DEFERRED
+### 2.16 NVIDIA NIM -- NEW PRESET
 
-- **Consumer plan**: N/A (developer + enterprise platform).
+- **Consumer plan**: N/A (developer + enterprise platform). Free tier via NVIDIA Developer Program; NGC Personal API key (`nvapi-` prefix).
+- **OAuth**: NGC OAuth exists for the container registry (login as `$oauthtoken`); the model-inference API uses Bearer token (API key) only.
+- **API endpoint structure**: `https://integrate.api.nvidia.com/v1/chat/completions`. OpenAI-compatible. Header: `Authorization: Bearer <key>`.
 - **LiteLLM routing**: `nvidia_nim/<model>`. Verified.
-- **SynthOrg action**: DEFER. Catalog of 100+ models heavily mixes LLMs with vision / speech / scientific models that are out of SynthOrg's scope. Adding NIM as a single preset would require additional UX to filter the model list. Re-evaluate when SynthOrg has multi-modal preset slotting.
+- **Notable quirks**: catalog mixes LLM, vision, speech (Riva), and specialised scientific models (BioNeMo, FourCastNet). The chat-only subset is the SynthOrg target; non-LLM entries are filtered server-side by LiteLLM's chat routing.
+- **Logo**: `nvidia` (lobe-icons; verified).
+- **SynthOrg action**: ADD `_NVIDIA_NIM` cloud preset, name `nvidia_nim`, `litellm_provider="nvidia_nim"`, `auth_type=AuthType.API_KEY`, `default_models=()`. Promoted from DEFER to SHIP after the user's explicit request (mid-PR direction): the platform is widely adopted by enterprise users despite the mixed-modality catalog, and the LiteLLM chat namespace already isolates the LLM subset cleanly.
 
 ### 2.17 Qwen / Alibaba DashScope -- DEFERRED
 
@@ -272,14 +276,14 @@ How peer AI-assistant tools authenticate against the same provider universe.
 | Cohere | YES | api_key | cohere_chat | Enterprise RAG focus; LiteLLM `cohere_chat/` (not `cohere/`) |
 | Cerebras | YES | api_key | cerebras | Generous free tier; fastest open-model serving |
 | SambaNova | YES | api_key | sambanova | High-throughput Llama serving with free tier |
+| NVIDIA NIM | YES | api_key | nvidia_nim | Enterprise-adopted developer platform; LiteLLM chat namespace cleanly isolates the LLM subset (added per user direction mid-PR) |
 | Perplexity | DEFER | -- | -- | Sonar models need search-augmented UX surface; not a generic chat-completion preset |
 | Hyperbolic | DEFER | -- | -- | Catalog overlaps Together / Fireworks; weak differentiator |
 | Lambda AI | DEFER | -- | -- | Newer platform; minimal catalog |
-| NVIDIA NIM | DEFER | -- | -- | Mixed-modality catalog needs filter UX |
 | Qwen / DashScope | DEFER | -- | -- | Regional fragmentation needs per-region preset surface |
 | Vertex AI | DEFER | -- | -- | ADC / service-account complexity needs dedicated preset |
 
-**Total new presets in Phase 2**: 7 (Kimi, Together, Fireworks, xAI, Cohere, Cerebras, SambaNova).
+**Total new presets in Phase 2**: 8 (Kimi, Together, Fireworks, xAI, Cohere, Cerebras, SambaNova, NVIDIA NIM).
 
 ## Section 5. AuthType enum considerations
 

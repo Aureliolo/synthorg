@@ -163,6 +163,48 @@ describe('PresetPickerSections', () => {
     expect(onConfigureManually).toHaveBeenCalledTimes(1)
   })
 
+  it('hides the More providers section when no soft (non-featured) cloud presets are present', () => {
+    // All fixtures here are featured (is_featured=true), so the
+    // collapsible "More providers via LiteLLM" surface should not
+    // render.
+    render(<PresetPickerSections {...makeProps()} />)
+    expect(
+      screen.queryByText(/More providers via LiteLLM/),
+    ).not.toBeInTheDocument()
+  })
+
+  it('renders the More providers section when soft cloud presets exist', () => {
+    const softCloud: CloudPreset = {
+      kind: 'cloud',
+      name: 'softprovider',
+      display_name: 'Softprovider',
+      description: "Models served via LiteLLM provider 'softprovider'",
+      driver: 'litellm',
+      litellm_provider: 'softprovider',
+      auth_type: 'api_key',
+      supported_auth_types: ['api_key'],
+      default_base_url: null,
+      requires_base_url: false,
+      is_featured: false,
+      default_models: [],
+    }
+    render(
+      <PresetPickerSections
+        {...makeProps({ presets: [cloud, softCloud, ollama, vllm] })}
+      />,
+    )
+    // Summary text is visible immediately (count in label).
+    expect(
+      screen.getByText(/More providers via LiteLLM \(1\)/),
+    ).toBeInTheDocument()
+    // The soft preset card lives inside the collapsible details and
+    // is reachable via its accessible button label even when the
+    // <details> is closed (jsdom keeps it in the DOM tree).
+    expect(
+      screen.getByRole('button', { name: /Add Softprovider/ }),
+    ).toBeInTheDocument()
+  })
+
   it('shows only successful detected rows when probe returned mixed results', () => {
     // ollama probe succeeded; lm-studio probe failed.  The component
     // should render Ollama in the detected list and silently omit

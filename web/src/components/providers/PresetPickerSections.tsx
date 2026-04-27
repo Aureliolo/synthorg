@@ -1,3 +1,4 @@
+import { ChevronDown } from 'lucide-react'
 import { useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import type {
@@ -124,13 +125,10 @@ export function PresetPickerSections({
               <span>
                 More providers via LiteLLM ({moreCloudPresets.length})
               </span>
-              <span
+              <ChevronDown
                 aria-hidden="true"
-                className="text-xs font-normal text-text-muted transition-transform group-open:rotate-180"
-              >
-                {/* unicode caret-down */}
-                v
-              </span>
+                className="size-4 text-text-muted transition-transform group-open:rotate-180"
+              />
             </summary>
             <p className="text-xs text-text-muted">
               Auto-derived from the LiteLLM model catalog. Logos and curated
