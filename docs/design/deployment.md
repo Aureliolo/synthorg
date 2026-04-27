@@ -60,6 +60,40 @@ When `--sandbox` is enabled, the CLI verifies the sandbox image alongside the ot
 
 The backend gets `/var/run/docker.sock` mounted **read-write** (it needs `create`, `start`, `stop`, and `exec` on the daemon). The sandbox image retains a full shell plus `git` but no iptables; it is fully rootless (UID 10001, `cap_drop: ALL`, `no-new-privileges`, read-only root filesystem). Per-host:port `allowed_hosts` network enforcement is handled by a separate sidecar proxy container that shares the sandbox's network namespace. The sidecar runs with `NET_ADMIN` (for iptables DNAT setup) and provides dual-layer enforcement: DNS filtering (allowed hostnames forwarded, denied get NXDOMAIN) and transparent TCP proxying (connections to unauthorized hosts are dropped with TCP RST).
 
+## Graceful shutdown
+
+The backend tears down in three stages so requests are not cancelled mid-transaction during a rolling restart (#1600 Phase 3):
+
+1. **HTTP request drain (25 s budget)**: `RequestDrainMiddleware` (`src/synthorg/api/drain.py`) is wrapped around the Litestar ASGI app as the outermost layer. The first `on_shutdown` hook flips the drain gate; new requests after that return `503 Service Unavailable` with `Retry-After: 5`, while in-flight requests have up to 25 s to finish. A drain that exceeds the budget is logged at WARNING (`api.app.drain.timeout`) and service teardown begins regardless. The budget lives at `_DRAIN_TIMEOUT_SECONDS` in `src/synthorg/api/lifecycle.py`.
+2. **Service teardown (~26 s typical, 42 s absolute cap)**: `_safe_shutdown` runs the per-service shutdown budgets in `src/synthorg/api/lifecycle.py` in this order: approval timeout (1 s), meeting (2 s), TaskEngine drain (8 s, 17 s outer cap with slack), perf (2 s), backup (5 s), settings (2 s), bridge (2 s), distributed queue (3 s), message bus (3 s), persistence (5 s). Most services return well under their cap in practice, hence the ~26 s typical figure; the 42 s absolute cap fires only when every service simultaneously hits its individual budget.
+3. **Uvicorn graceful close**: `uvicorn.run` is invoked with `timeout_graceful_shutdown=75`, which covers the drain budget plus the full service teardown sequence with ~8 s headroom over the absolute worst case.
+
+**Recommended `terminationGracePeriodSeconds: 75`** for both Kubernetes pods and Docker Compose stacks. The realistic budget is `25 (drain) + ~26 (services) ≈ 51 s` and the absolute worst case is ~67 s if every service hits its individual cap; 75 s leaves ~8 s headroom over the absolute worst case so the orchestrator never SIGKILLs the process mid-teardown. Operators that consistently hit drain timeouts should raise the grace and document the incident motivating the change.
+
+Kubernetes example:
+
+```yaml
+apiVersion: v1
+kind: Pod
+spec:
+  terminationGracePeriodSeconds: 75
+  containers:
+    - name: backend
+      image: ghcr.io/aureliolo/synthorg-backend@sha256:...
+```
+
+Docker Compose example:
+
+```yaml
+services:
+  backend:
+    image: ghcr.io/aureliolo/synthorg-backend@sha256:...
+    stop_grace_period: 75s
+    stop_signal: SIGTERM
+```
+
+The drain emits three observability log events documented in `docs/design/observability.md` § "Telemetry collector lifecycle" (sibling table for `api.app.drain.*`): `api.app.drain.started`, `api.app.drain.completed`, `api.app.drain.timeout`. Tail those during a deploy to confirm a clean drain.
+
 ## Web server
 
 The web image runs **Caddy** inside a pure-apko Wolfi image. Caddy serves the React SPA at `/`, the built documentation at `/docs`, proxies REST requests at `/api/` and WebSocket connections at `/api/v1/ws` to the backend, and emits a per-request CSP nonce via the `templates` directive + `{http.request.uuid}` placeholder. The full security-header set (CSP, HSTS, X-Frame-Options, Referrer-Policy, Permissions-Policy) is configured in `web/Caddyfile`. Pre-compressed `.gz` siblings built by melange are served via Caddy's `precompressed gzip` file_server option.

@@ -38,3 +38,9 @@ class ConsoleNotificationSink:
             title=notification.title,
             source=notification.source,
         )
+
+    async def start(self) -> None:
+        """No-op (stateless sink); satisfies the protocol."""
+
+    async def close(self) -> None:
+        """No-op (stateless sink); satisfies the protocol."""

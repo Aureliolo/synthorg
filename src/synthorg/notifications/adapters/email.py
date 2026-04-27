@@ -8,7 +8,7 @@ import ssl
 from email.message import EmailMessage
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.notification import (
     NOTIFICATION_EMAIL_DELIVERED,
     NOTIFICATION_EMAIL_FAILED,
@@ -91,6 +91,12 @@ class EmailNotificationSink:
         """Return the sink identifier."""
         return "email"
 
+    async def start(self) -> None:
+        """No-op: SMTP connections are opened per ``send`` call."""
+
+    async def close(self) -> None:
+        """No-op: SMTP connections are closed per ``send`` call."""
+
     async def send(self, notification: Notification) -> None:
         """Send the notification via SMTP.
 
@@ -110,7 +116,8 @@ class EmailNotificationSink:
             logger.warning(
                 NOTIFICATION_EMAIL_FAILED,
                 notification_id=notification.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 

@@ -1,17 +1,22 @@
 """ntfy notification sink -- HTTP POST to an ntfy server."""
 
+import asyncio
 import ipaddress
 import math
 import re
+from typing import TYPE_CHECKING, Self
 from urllib.parse import urlparse
 
 import httpx
+
+if TYPE_CHECKING:
+    from types import TracebackType
 
 from synthorg.notifications.models import (
     Notification,
     NotificationSeverity,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.notification import (
     NOTIFICATION_NTFY_DELIVERED,
     NOTIFICATION_NTFY_FAILED,
@@ -55,9 +60,12 @@ def _validate_outbound_url(url: str, field: str) -> None:
 class NtfyNotificationSink:
     """Notification sink that posts to an ntfy server.
 
-    Uses ``httpx.AsyncClient`` for a single HTTP POST per
-    notification. The client is eagerly created for connection
-    pooling and properly cleaned up via ``close()``.
+    The ``httpx.AsyncClient`` is created lazily inside ``start()``
+    and closed inside ``close()`` so a never-started sink leaks
+    nothing (#1600). Both methods are idempotent under the
+    ``_lifecycle_lock``: a second ``start()`` is a no-op, a
+    ``close()`` before ``start()`` is a no-op, concurrent calls
+    converge on a single client instance.
 
     Args:
         server_url: ntfy server base URL (e.g. ``"https://ntfy.sh"``).
@@ -75,7 +83,14 @@ class NtfyNotificationSink:
             or if *webhook_timeout_seconds* is not positive.
     """
 
-    __slots__ = ("_client", "_server_url", "_token", "_topic")
+    __slots__ = (
+        "_client",
+        "_lifecycle_lock",
+        "_server_url",
+        "_token",
+        "_topic",
+        "_webhook_timeout_seconds",
+    )
 
     def __init__(
         self,
@@ -95,22 +110,88 @@ class NtfyNotificationSink:
         self._server_url = server_url.rstrip("/")
         self._topic = topic
         self._token = token
-        self._client = httpx.AsyncClient(
-            timeout=webhook_timeout_seconds,
-            follow_redirects=False,
-        )
+        self._webhook_timeout_seconds = webhook_timeout_seconds
+        self._client: httpx.AsyncClient | None = None
+        self._lifecycle_lock = asyncio.Lock()
 
     @property
     def sink_name(self) -> str:
         """Return the sink identifier."""
         return "ntfy"
 
+    async def start(self) -> None:
+        """Create the underlying HTTP client (idempotent)."""
+        async with self._lifecycle_lock:
+            if self._client is not None:
+                return
+            self._client = httpx.AsyncClient(
+                timeout=self._webhook_timeout_seconds,
+                follow_redirects=False,
+            )
+
+    async def close(self) -> None:
+        """Close the underlying HTTP client (idempotent).
+
+        ``self._client`` is cleared only after ``aclose()`` succeeds:
+        if the close raises (network error, cancellation, ...), the
+        reference stays so a subsequent ``close()`` can retry. Without
+        that, an exception or cancellation would silently leak the
+        still-open HTTP client and break the idempotency contract.
+        Failures are logged before re-raising so standalone
+        ``async with`` users see them too -- ``NotificationDispatcher``
+        only sees the post-raise log path via ``_safe_close``.
+        """
+        async with self._lifecycle_lock:
+            if self._client is None:
+                return
+            client = self._client
+            try:
+                await client.aclose()
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    NOTIFICATION_NTFY_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    detail="close_failed",
+                )
+                raise
+            self._client = None
+
+    async def __aenter__(self) -> Self:
+        """Start the sink; return self for ``async with`` callers."""
+        await self.start()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        """Close the sink on ``async with`` exit (ignores exception args)."""
+        await self.close()
+
     async def send(self, notification: Notification) -> None:
         """Post the notification to the ntfy server.
+
+        Raises:
+            RuntimeError: If called before ``start()``.
 
         Args:
             notification: The notification to deliver.
         """
+        client = self._client
+        if client is None:
+            logger.warning(
+                NOTIFICATION_NTFY_FAILED,
+                notification_id=notification.id,
+                error_type="RuntimeError",
+                detail="send_called_before_start",
+            )
+            msg = "NtfyNotificationSink.send called before start()"
+            raise RuntimeError(msg)
         safe_title = _CONTROL_CHAR_RE.sub("", notification.title)
         url = f"{self._server_url}/{self._topic}"
         headers: dict[str, str] = {
@@ -125,7 +206,7 @@ class NtfyNotificationSink:
             headers["Authorization"] = f"Bearer {self._token}"
 
         try:
-            response = await self._client.post(
+            response = await client.post(
                 url,
                 content=notification.body or notification.title,
                 headers=headers,
@@ -142,10 +223,7 @@ class NtfyNotificationSink:
             logger.warning(
                 NOTIFICATION_NTFY_FAILED,
                 notification_id=notification.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
-
-    async def close(self) -> None:
-        """Close the underlying HTTP client."""
-        await self._client.aclose()

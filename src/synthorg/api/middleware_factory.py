@@ -18,6 +18,7 @@ from litestar.middleware.rate_limit import (
 
 from synthorg.api.auth.csrf import create_csrf_middleware_class
 from synthorg.api.auth.middleware import create_auth_middleware_class
+from synthorg.api.etag import ETagMiddleware
 from synthorg.api.middleware import RequestLoggingMiddleware
 from synthorg.api.rate_limits import PerOpConcurrencyMiddleware
 from synthorg.observability import get_logger
@@ -390,16 +391,28 @@ def _build_middleware(
 
     # Middleware order (outside-in, i.e. request flow):
     #   1. ip_floor -- un-gated IP cap; counts every request
-    #   2. auth_middleware -- resolves identity, populates scope["user"]
-    #   3. csrf_middleware -- validates double-submit for cookie sessions
-    #   4. unauth_rl -- 20/min/IP for requests where user is None
-    #   5. RequestLoggingMiddleware
-    #   6. auth_rl -- per-user cap for authenticated requests
-    #   7. PerOpConcurrencyMiddleware -- per-op inflight cap;
+    #   2. ETagMiddleware -- conditional GET / 304 short-circuit on
+    #      allowlisted read-only endpoints (#1600 Phase 4). Today
+    #      this is a *bandwidth* optimisation only: the middleware
+    #      computes the ETag from the rendered response body, so the
+    #      inner stack (auth, handler, serialisation) still runs on
+    #      every request. The 304 short-circuit only avoids the
+    #      response body on the wire. Reaching the documented
+    #      "cached read costs zero auth cycles" goal needs a stable
+    #      validator (e.g. a per-resource version stamp) plumbed in
+    #      front of the inner stack -- tracked as a follow-up to
+    #      #1600 rather than scoped here.
+    #   3. auth_middleware -- resolves identity, populates scope["user"]
+    #   4. csrf_middleware -- validates double-submit for cookie sessions
+    #   5. unauth_rl -- 20/min/IP for requests where user is None
+    #   6. RequestLoggingMiddleware
+    #   7. auth_rl -- per-user cap for authenticated requests
+    #   8. PerOpConcurrencyMiddleware -- per-op inflight cap;
     #      innermost so ``scope["user"]`` is already populated and the
     #      permit is held only during actual handler execution.
     return [
         ip_floor.middleware,
+        ETagMiddleware,
         auth_middleware,
         csrf_middleware,
         unauth_rl.middleware,

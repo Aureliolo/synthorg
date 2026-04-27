@@ -313,8 +313,11 @@ class TestNotificationFactoryBridgeConfig:
         ]
         assert slack_sinks, "Slack sink should have been registered"
         slack = slack_sinks[0]
-        # The sink's httpx client received the bridge timeout.
-        assert slack._client.timeout.connect == 7.5
+        # The sink stores the bridge timeout; the underlying
+        # ``httpx.AsyncClient`` is created lazily inside ``start()``
+        # (#1600 Phase 1) so we assert on the stored value rather
+        # than on a not-yet-constructed client.
+        assert slack._webhook_timeout_seconds == 7.5
 
     @pytest.mark.unit
     def test_factory_without_bridge_uses_default(self) -> None:
@@ -334,7 +337,9 @@ class TestNotificationFactoryBridgeConfig:
         assert slack_sinks
         slack = slack_sinks[0]
         # Default is 10.0 (module default on SlackNotificationSink).
-        assert slack._client.timeout.connect == 10.0
+        # The sink stores it for lazy client construction in
+        # ``start()`` (#1600 Phase 1).
+        assert slack._webhook_timeout_seconds == 10.0
 
 
 # ── SubprocessSandbox.kill_grace_seconds ───────────────────────

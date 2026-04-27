@@ -1350,17 +1350,18 @@ def _raise_runtime_error(_config: object) -> None:
 class TestBuildMiddleware:
     """Tests for the tiered rate-limit middleware stack."""
 
-    def test_middleware_stack_has_seven_entries(
+    def test_middleware_stack_has_eight_entries(
         self,
         root_config: Any,
     ) -> None:
         from synthorg.api.middleware_factory import _build_middleware
 
         mw = _build_middleware(root_config.api)
-        # Seven layers (outside-in): ip_floor, auth_mw, csrf_mw,
-        # unauth_rl, RequestLoggingMiddleware, auth_rl, and the
-        # innermost PerOpConcurrencyMiddleware (#1489, SEC-2).
-        assert len(mw) == 7
+        # Eight layers (outside-in): ip_floor, ETagMiddleware,
+        # auth_mw, csrf_mw, unauth_rl, RequestLoggingMiddleware,
+        # auth_rl, and the innermost PerOpConcurrencyMiddleware
+        # (#1489 SEC-2 + #1600 Phase 4 ETag conditional GET).
+        assert len(mw) == 8
 
     def test_three_rate_limiters_have_distinct_stores(
         self,

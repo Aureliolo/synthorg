@@ -4,9 +4,32 @@ import type { ComponentProps, ReactNode, Ref } from 'react'
 import { afterAll, afterEach, beforeAll, beforeEach, vi } from 'vitest'
 import { MotionGlobalConfig } from 'motion/react'
 import { setupServer } from 'msw/node'
-import { useToastStore } from '@/stores/toast'
-import { useThemeStore } from '@/stores/theme'
 import { cancelPendingPersist } from '@/stores/notifications'
+import { useThemeStore } from '@/stores/theme'
+import { useToastStore } from '@/stores/toast'
+// NOTE: meetings, approvals, scaling stores are intentionally NOT
+// imported (statically OR dynamically) from this global setup file
+// because doing so transitively loads `@/api/client` and runs its
+// import-time side effects -- the module-level `axios.create(...)`
+// call and the `apiClient.interceptors.request.use(...)` registration
+// that captures a live binding to `@/utils/csrf`. Once those side
+// effects have fired, per-test `vi.mock('@/utils/csrf', ...)` and
+// `vi.mock('axios', ...)` setups are too late to retroactively
+// replace what the interceptor closure already resolved, so any
+// test that mocks one of those modules sees real-module behaviour
+// instead of its mock.
+//
+// The fix is structural, not "skip the cleanup": when a domain
+// store eventually schedules a real timer / listener, expose its
+// teardown through a *side-effect-free* entrypoint -- e.g. a
+// dedicated ``@/stores/<name>/teardown`` module that re-exports
+// only a plain ``teardown(): void`` callable and does NOT
+// transitively load `@/api/client`. This file can then import that
+// thin shim from the global ``afterEach`` without poisoning
+// per-test mocks. The contract from web/CLAUDE.md ("any new store
+// that schedules timers ... must expose an equivalent cleanup hook
+// and register it in the global afterEach") is preserved; the
+// constraint is only on HOW the hook is reached.
 import { defaultHandlers } from '@/mocks/handlers'
 import { cookieJar, installCookieShim } from '@/cookie-shim'
 

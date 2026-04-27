@@ -92,6 +92,16 @@
             "timeout": 10000
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/record_push_throttle.sh",
+            "timeout": 5000
+          }
+        ]
       }
     ]
   }

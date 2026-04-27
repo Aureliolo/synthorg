@@ -23,6 +23,12 @@ class _FakeSink:
     async def send(self, notification: Notification) -> None:
         self.sent.append(notification)
 
+    async def start(self) -> None:
+        """No-op (stateless sink); satisfies the protocol."""
+
+    async def close(self) -> None:
+        """No-op (stateless sink); satisfies the protocol."""
+
 
 class _FailingSink:
     """Sink that raises on send."""
@@ -34,6 +40,12 @@ class _FailingSink:
     async def send(self, notification: Notification) -> None:
         msg = "Sink delivery failed"
         raise RuntimeError(msg)
+
+    async def start(self) -> None:
+        """No-op (stateless sink); satisfies the protocol."""
+
+    async def close(self) -> None:
+        """No-op (stateless sink); satisfies the protocol."""
 
 
 def _signal(quality: StepQuality, step_index: int = 0) -> StepQualitySignal:

@@ -17,6 +17,10 @@ NOTIFICATION_SINK_CONFIG_INVALID: Final[str] = "notification.sink.config_invalid
 NOTIFICATION_SINK_UNKNOWN_TYPE: Final[str] = "notification.sink.unknown_type"
 NOTIFICATION_SINK_DISABLED: Final[str] = "notification.sink.disabled"
 NOTIFICATION_NO_SINKS: Final[str] = "notification.no_sinks"
+NOTIFICATION_SINK_START_FAILED: Final[str] = "notification.sink.start_failed"
+NOTIFICATION_SINK_CLOSE_FAILED: Final[str] = "notification.sink.close_failed"
+NOTIFICATION_DISPATCHER_STARTED: Final[str] = "notification.dispatcher.started"
+NOTIFICATION_DISPATCHER_CLOSED: Final[str] = "notification.dispatcher.closed"
 NOTIFICATION_EMAIL_PARTIAL_CREDENTIALS: Final[str] = (
     "notification.email.partial_credentials"
 )

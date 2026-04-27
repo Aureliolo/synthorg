@@ -19,4 +19,4 @@ git push <args>
 
 The flag is consumed (deleted) on use; each override authorises exactly one push.
 
-Backstop: `scripts/check_push_throttle.sh` runs as a PreToolUse-Bash hook and enforces the 5-minute minimum interval between pushes to the same branch when a PR exists. Outside a PR, normal feature pushes are unthrottled.
+Backstop: `scripts/check_push_throttle.sh` runs as a PreToolUse-Bash hook and enforces the 5-minute minimum interval between **successful** pushes to the same branch when a PR exists. The companion `scripts/record_push_throttle.sh` runs as a PostToolUse-Bash hook and only writes the throttle timestamp when `git push` actually exited 0 -- so a push that another PreToolUse hook (mypy, eslint, ruff, ...) rejected does not consume the throttle window. Outside a PR, normal feature pushes are unthrottled.

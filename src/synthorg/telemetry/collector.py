@@ -6,6 +6,7 @@ import os
 import platform
 import sys
 import tempfile
+import time
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -15,6 +16,9 @@ from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.telemetry import (
+    TELEMETRY_CLOSED,
+    TELEMETRY_DEPLOYMENT_ID_CREATED,
+    TELEMETRY_DEPLOYMENT_ID_LOADED,
     TELEMETRY_DISABLED,
     TELEMETRY_ENABLED,
     TELEMETRY_ENVIRONMENT_RESOLVED,
@@ -25,6 +29,7 @@ from synthorg.observability.events.telemetry import (
     TELEMETRY_HEARTBEAT_SENT,
     TELEMETRY_REPORT_FAILED,
     TELEMETRY_SESSION_SUMMARY_SENT,
+    TELEMETRY_SHUTDOWN_WITHOUT_START,
 )
 from synthorg.telemetry.config import DEFAULT_ENVIRONMENT, MAX_STRING_LENGTH
 from synthorg.telemetry.host_info import DockerHostInfo, fetch_docker_info
@@ -72,6 +77,48 @@ _CI_ENV_PREFIXES: tuple[str, ...] = ("RUNPOD_",)
 Stored as a tuple because :meth:`str.startswith` accepts a tuple of
 candidate prefixes natively; any future prefix (e.g. ``MODAL_``,
 ``REPLIT_``) goes here without touching :func:`_looks_like_ci`.
+"""
+
+
+_DEPLOYMENT_ID_LOAD_TIMEOUT_SECONDS: float = 5.0
+"""Hard deadline for the deployment-id ``asyncio.to_thread`` boundary.
+
+Above this, the load is abandoned and :class:`start` falls back to a
+freshly-generated UUID (logged at WARNING with
+``using_generated_id=True``). Defends against hung NFS / stale-handle
+data dirs starving the executor pool under thundering-herd startup.
+"""
+
+
+_PEER_READ_RETRY_ATTEMPTS: int = 3
+"""Re-read attempts when a peer wins the ``O_CREAT|O_EXCL`` race.
+
+Defends against the partial-write window where the peer has just
+created the file but hasn't yet finished ``write()`` -- our re-read
+sees an empty / truncated string. Retries inside the same
+``to_thread`` boundary so the OS-level race semantics stay atomic.
+"""
+
+
+_PEER_READ_RETRY_DELAY_SECONDS: float = 0.005
+"""Sleep between peer-read retries (5 ms). Short enough to converge
+within a typical write window, long enough to yield CPU to the peer."""
+
+
+_TEMP_ROOT: str | None
+try:
+    _TEMP_ROOT = os.path.normcase(
+        os.path.normpath(str(Path(tempfile.gettempdir()))),
+    )
+except OSError, RuntimeError:
+    # Sandboxed / security-locked environments may forbid temp access.
+    # Fall back to ``/data``-only allow-list at I/O time.
+    _TEMP_ROOT = None
+"""Pre-computed normalised path of ``tempfile.gettempdir()``.
+
+Cached at module load so the sync helper does not re-resolve the
+temp dir on every ``start()``. The fallback to ``None`` activates
+the data-root allow-list path in the helper.
 """
 
 
@@ -212,10 +259,12 @@ class TelemetryCollector:
 
         Applies the ``SYNTHORG_TELEMETRY`` opt-in override first, then
         runs the parsed ``config.environment`` through the four-level
-        resolution chain in :func:`_resolve_environment`. Only after
-        consent is established does the constructor load or create the
-        anonymous ``deployment_id`` on disk -- a disabled collector
-        leaves no on-disk trace.
+        resolution chain in :func:`_resolve_environment`. The
+        constructor performs **zero filesystem I/O**; loading or
+        creating the anonymous ``deployment_id`` is deferred to
+        :meth:`start`. The load itself runs outside the event loop's
+        thread via ``asyncio.to_thread`` (#1600). A disabled collector
+        still leaves no on-disk trace.
 
         Args:
             config: Parsed telemetry configuration from
@@ -267,16 +316,16 @@ class TelemetryCollector:
         self._heartbeat_snapshot_provider = heartbeat_snapshot_provider
         self._session_summary_snapshot_provider = session_summary_snapshot_provider
         self._lifecycle_lock = asyncio.Lock()
+        # ``shutdown()`` flips this so a stray second ``start()`` is
+        # rejected loudly rather than silently re-using a torn-down
+        # reporter. Restart-after-shutdown is not a supported flow:
+        # the reporter holds transports that were aclose()'d in
+        # shutdown(), and the heartbeat task cannot be re-scheduled
+        # safely on a different loop without re-validating that
+        # contract end-to-end.
+        self._closed: bool = False
 
-        if config.enabled:
-            # Persist deployment ID only after consent is given.
-            self._deployment_id = self._load_or_create_deployment_id()
-            logger.info(
-                TELEMETRY_ENABLED,
-                backend=config.backend.value,
-                deployment_id=self._deployment_id,
-            )
-        else:
+        if not config.enabled:
             logger.debug(TELEMETRY_DISABLED)
 
     @property
@@ -307,17 +356,87 @@ class TelemetryCollector:
         )
 
     async def start(self) -> None:
-        """Start the periodic heartbeat if telemetry is enabled.
+        """Load the deployment ID and start the periodic heartbeat.
 
-        Idempotent and safe under concurrent callers: serialised by
-        a lifecycle lock so the guard check, startup event, and
-        heartbeat task creation happen atomically.
+        Performs the lifecycle transition deferred from ``__init__``:
+        the deployment-id load (previously synchronous in the
+        constructor) now runs here through ``asyncio.to_thread`` with
+        a hard deadline so the event loop's thread is never blocked
+        on filesystem I/O (#1600). Idempotent and safe under
+        concurrent callers: serialised by a lifecycle lock so the
+        load, the startup event, and heartbeat task creation happen
+        atomically. The load is wrapped in defence-in-depth try/
+        except so a contract violation in the sync helper or a
+        thread-pool timeout never crashes ``start()``.
         """
         async with self._lifecycle_lock:
+            if self._closed:
+                # Restart after a clean shutdown is not supported;
+                # raising loudly is better than silently using a
+                # torn-down reporter / a stale heartbeat task slot.
+                msg = "TelemetryCollector.start() called after shutdown()"
+                raise RuntimeError(msg)
             if not self._config.enabled:
                 return
             if self._heartbeat_task is not None and not self._heartbeat_task.done():
                 return
+            if self._deployment_id is None:
+                # Pre-generate the candidate UUID and pass it to the
+                # worker thread. ``asyncio.wait_for`` cancels the
+                # awaiting coroutine on timeout but does NOT cancel
+                # the underlying thread; if the worker eventually
+                # completes after the deadline it will persist to
+                # disk. Sharing the candidate guarantees the in-memory
+                # fallback and any post-deadline disk write agree on
+                # the same UUID, so a subsequent restart cannot load
+                # a different on-disk value and split-brain the
+                # deployment identity across boots.
+                candidate_id = str(uuid.uuid4())
+                try:
+                    self._deployment_id = await asyncio.wait_for(
+                        self._load_or_create_deployment_id(candidate_id),
+                        timeout=_DEPLOYMENT_ID_LOAD_TIMEOUT_SECONDS,
+                    )
+                except TimeoutError:
+                    # Hung filesystem (stale NFS handle, slow disk).
+                    # Fall back to the candidate UUID so the collector
+                    # can still emit events; surface the splinter
+                    # state via ``using_generated_id=True``.
+                    self._deployment_id = candidate_id
+                    logger.warning(
+                        TELEMETRY_REPORT_FAILED,
+                        detail="deployment_id_load_timeout",
+                        timeout_seconds=_DEPLOYMENT_ID_LOAD_TIMEOUT_SECONDS,
+                        using_generated_id=True,
+                    )
+                except MemoryError, RecursionError:
+                    # System-level errors must propagate so operators
+                    # see the real condition; downgrading them to a
+                    # generated UUID would mask runaway-recursion or
+                    # out-of-memory states behind a healthy-looking
+                    # telemetry boot.
+                    raise
+                except Exception as exc:
+                    # The sync helper is documented to never raise,
+                    # but a future regression must not crash start()
+                    # and leak the heartbeat task slot. Match the
+                    # pattern used elsewhere in this module: warning
+                    # severity with a categorical detail + error_type
+                    # rather than ``logger.exception`` (which would
+                    # attach a traceback that adds no actionable
+                    # context beyond the structured fields).
+                    self._deployment_id = candidate_id
+                    logger.warning(
+                        TELEMETRY_REPORT_FAILED,
+                        detail="deployment_id_load_unexpected_error",
+                        error_type=type(exc).__name__,
+                        using_generated_id=True,
+                    )
+                logger.info(
+                    TELEMETRY_ENABLED,
+                    backend=self._config.backend.value,
+                    deployment_id=self._deployment_id,
+                )
             await self._send_startup_event()
             self._heartbeat_task = asyncio.create_task(
                 self._heartbeat_loop(),
@@ -338,7 +457,20 @@ class TelemetryCollector:
                     await self._heartbeat_task
                 self._heartbeat_task = None
 
-            if self._config.enabled:
+            # Only send events when ``start()`` actually loaded the
+            # deployment ID; emitting through ``_build_event`` without
+            # one would trip its non-None assertion. ``start()``
+            # never being called for an enabled collector is unusual
+            # (constructor -> shutdown without start) but legal under
+            # the new lifecycle, so guard explicitly. Log a WARNING
+            # in the unloaded-but-enabled branch so operators have a
+            # signal that telemetry initialisation failed silently.
+            if self._config.enabled and self._deployment_id is None:
+                logger.warning(
+                    TELEMETRY_SHUTDOWN_WITHOUT_START,
+                    note="shutdown invoked before deployment ID loaded",
+                )
+            if self._config.enabled and self._deployment_id is not None:
                 params: _SessionSummaryParams | None = None
                 if self._session_summary_snapshot_provider is not None:
                     try:
@@ -381,12 +513,27 @@ class TelemetryCollector:
                     exc_info=True,
                 )
 
+            # Mark the collector terminal AFTER teardown so a stray
+            # ``start()`` call cannot resurrect a torn-down reporter.
+            self._closed = True
+            logger.info(TELEMETRY_CLOSED)
+
     async def send_heartbeat(
         self,
         params: _HeartbeatParams | None = None,
     ) -> None:
-        """Send a heartbeat event with current deployment metrics."""
+        """Send a heartbeat event with current deployment metrics.
+
+        Returns early if the deployment ID has not been loaded yet
+        (caller skipped ``start()``). The internal heartbeat loop
+        only runs after ``start()`` populates the ID, but external
+        callers may invoke this without going through the lifecycle;
+        guard the ``_build_event`` assertion explicitly so misuse
+        degrades to a no-op rather than a crash.
+        """
         if not self._config.enabled:
+            return
+        if self._deployment_id is None:
             return
         p = params or _HeartbeatParams()
         uptime = self._uptime_hours()
@@ -409,8 +556,15 @@ class TelemetryCollector:
         self,
         params: _SessionSummaryParams | None = None,
     ) -> None:
-        """Send a session summary event with aggregate metrics."""
+        """Send a session summary event with aggregate metrics.
+
+        Returns early if the deployment ID has not been loaded yet
+        (caller skipped ``start()``). See :meth:`send_heartbeat` for
+        the full rationale; same guard applies.
+        """
         if not self._config.enabled:
+            return
+        if self._deployment_id is None:
             return
         p = params or _SessionSummaryParams()
         uptime = self._uptime_hours()
@@ -585,149 +739,345 @@ class TelemetryCollector:
                     error_type=type(exc).__name__,
                 )
 
-    def _load_or_create_deployment_id(self) -> str:  # noqa: C901
-        """Load deployment ID from file or create a new UUID.
+    async def _load_or_create_deployment_id(self, candidate_id: str) -> str:
+        """Load deployment ID from file or persist ``candidate_id`` (async).
+
+        Offloads the entire path-validation + filesystem sequence to
+        ``asyncio.to_thread`` so the event loop's thread never blocks
+        on disk (#1600). Single ``to_thread`` boundary keeps the
+        read + atomic-create + peer-recover sequence on one OS
+        thread so the ``O_CREAT|O_EXCL`` race semantics are
+        preserved end-to-end; splitting the helper across multiple
+        ``to_thread`` calls would let two coroutines interleave
+        between read and create.
+
+        ``candidate_id`` is the UUID the *caller* generated before
+        spawning the worker. Passing it down ensures the timeout
+        fallback in ``start()`` and the value the worker eventually
+        persists agree on the same string, so the deployment ID
+        cannot split-brain between the in-memory value and the
+        on-disk file when the worker outlives the ``asyncio.wait_for``
+        deadline.
 
         Returns a valid UUID string in all cases (never raises).
         Logs warnings on I/O errors.
-
-        Applies the OWASP path-injection recipe (:func:`os.path.normpath`
-        + :py:meth:`str.startswith` on the normalised full path +
-        trusted-root allow-list) immediately before the filesystem
-        operations. The duplicate of
-        :func:`synthorg.api.app._resolve_memory_dir` is deliberate
-        defense-in-depth: ``normpath`` collapses ``..``/redundant
-        separators that a caller constructing ``TelemetryCollector``
-        directly could otherwise smuggle past ``self._data_dir``,
-        and the startswith check is the sanitiser CodeQL's
-        ``py/path-injection`` query tracks across the sinks below.
         """
-        # Build the full target path as a normalised, case-folded
-        # string: the ``str(os.path.normcase(os.path.normpath(
-        # os.path.join(base, name))))`` recipe from OWASP / CodeQL.
-        # ``normpath`` collapses ``..`` and redundant ``/`` so the
-        # prefix check below cannot be bypassed with
-        # ``/data/../etc/telemetry_id``; ``normcase`` lower-cases on
-        # Windows (no-op on POSIX) so the comparison is
-        # case-insensitive where the filesystem is. The ``PTH*``
-        # ruff lints (prefer ``Path``) are intentionally suppressed:
-        # CodeQL's ``py/path-injection`` query only recognises
-        # string-based ``normpath``/``startswith`` + ``os.path``/
-        # builtin I/O as a sanitiser + sink pair; the equivalent
-        # ``Path`` methods leave the sinks flagged even with a
-        # valid guard.
-        id_path_str = os.path.normcase(
-            os.path.normpath(
-                os.path.join(  # noqa: PTH118
-                    os.fspath(self._data_dir),
-                    "telemetry_id",
-                ),
-            ),
+        return await asyncio.to_thread(
+            _load_or_create_deployment_id_sync, self._data_dir, candidate_id
         )
-        data_root = os.path.normcase(os.path.normpath(str(Path("/data"))))
-        try:
-            tmp_root: str | None = os.path.normcase(
-                os.path.normpath(str(Path(tempfile.gettempdir()))),
-            )
-        except OSError, RuntimeError:
-            tmp_root = None
-        # Require a strict descendant of a trusted root (``root +
-        # sep``). Equality (``path == root``) is rejected because
-        # the caller would still derive ``parent / "telemetry"``
-        # above this function, and a path equal to the root would
-        # escape one level up (``/data`` -> ``/telemetry``). The
-        # checks here use ``id_path_str`` directly (the same
-        # variable read at every sink below) so CodeQL's dataflow
-        # query sees the sanitiser on the exact value it tracks.
-        if not (
-            id_path_str.startswith(data_root + os.sep)
-            or (tmp_root is not None and id_path_str.startswith(tmp_root + os.sep))
-        ):
-            logger.warning(
-                TELEMETRY_REPORT_FAILED,
-                detail="data_dir_not_trusted",
-                value=id_path_str,
-            )
-            return str(uuid.uuid4())
 
-        # Use the sanitised string with plain ``os`` / builtin I/O
-        # so the sanitiser and each sink sit on adjacent lines:
-        # the pattern CodeQL's static dataflow query matches on.
-        # The inline PTH-rule suppressions below carry the same
-        # rationale as the builder above.
-        try:
-            if os.path.exists(id_path_str):  # noqa: PTH110
-                with open(id_path_str, encoding="utf-8") as fh:  # noqa: PTH123
-                    stored = fh.read().strip()
-                if stored:
-                    try:
-                        uuid.UUID(stored)
-                    except ValueError:
-                        logger.warning(
-                            TELEMETRY_REPORT_FAILED,
-                            detail="deployment_id_invalid",
-                            error_type="ValueError",
-                        )
-                    else:
-                        return stored
-        except OSError as exc:
-            logger.warning(
-                TELEMETRY_REPORT_FAILED,
-                detail="deployment_id_read",
-                error_type=type(exc).__name__,
-            )
 
-        new_id = str(uuid.uuid4())
+def _load_or_create_deployment_id_sync(
+    data_dir: Path,
+    candidate_id: str,
+) -> str:
+    """Synchronous path-validate + load + atomic-create + peer-recover.
+
+    Runs inside ``asyncio.to_thread`` so the event loop's thread is
+    never blocked on filesystem I/O (#1600). The full sequence
+    (path validation -> existence probe -> read -> ``O_CREAT|O_EXCL``
+    create -> peer re-read on race, with retry on partial-write) lives
+    in one helper so the OS-level race semantics are preserved
+    end-to-end; splitting the helper across multiple ``to_thread``
+    calls would let two coroutines interleave between read and create.
+
+    ``candidate_id`` is the UUID the async caller pre-generated. It
+    is the value persisted on the create branch, so the timeout
+    fallback in ``start()`` and any post-deadline disk write the
+    worker may still produce agree on the same string.
+
+    Applies the OWASP path-injection recipe (``os.path.normpath`` +
+    :py:meth:`str.startswith` on the normalised full path +
+    trusted-root allow-list) immediately before the filesystem
+    operations. The duplicate of
+    :func:`synthorg.api.app._resolve_memory_dir` is deliberate
+    defence-in-depth: ``normpath`` collapses ``..``/redundant
+    separators that a caller constructing ``TelemetryCollector``
+    directly could otherwise smuggle past ``data_dir``, and the
+    startswith check is the sanitiser CodeQL's ``py/path-injection``
+    query tracks across the sinks below.
+
+    The whole body is wrapped in a top-level ``try/except Exception``
+    so a future contract violation (unexpected exception type) cannot
+    bubble out of the ``to_thread`` boundary and crash ``start()``.
+    """
+    try:
+        id_path_str = _resolve_telemetry_id_path(data_dir)
+        if id_path_str is None:
+            return candidate_id
+        existing = _read_existing_deployment_id(id_path_str)
+        if existing is not None:
+            return existing
+        return _atomic_create_or_recover(id_path_str, candidate_id)
+    except MemoryError, RecursionError:
+        # System-level errors must propagate so operators see the
+        # real condition; downgrading them to a generated UUID would
+        # mask out-of-memory or runaway-recursion behind a healthy
+        # telemetry boot.
+        raise
+    except Exception as exc:
+        # Belt-and-suspenders: each helper is documented to never
+        # raise, but a future regression must not bubble an exception
+        # across the ``to_thread`` boundary. Fall back to the candidate
+        # UUID. Warning, not exception, to match the structured-log
+        # pattern used elsewhere in the module (categorical detail +
+        # error_type, no traceback).
+        logger.warning(
+            TELEMETRY_REPORT_FAILED,
+            detail="deployment_id_load_unexpected_helper_error",
+            error_type=type(exc).__name__,
+            using_generated_id=True,
+        )
+    return candidate_id
+
+
+def _resolve_telemetry_id_path(data_dir: Path) -> str | None:
+    """Build + validate the on-disk path for the deployment-id file.
+
+    Returns the sanitised path string if it is a strict descendant
+    of a trusted root (``/data`` or the module-cached temp root), or
+    ``None`` (with a structured warning) if not. Implements the OWASP
+    path-injection recipe + symlink resolution:
+
+    * ``os.path.normpath`` collapses ``..`` and redundant separators
+      so a caller cannot smuggle traversal through the ``data_dir``
+      argument.
+    * ``os.path.normcase`` lower-cases on Windows so the comparison
+      is case-insensitive where the filesystem is.
+    * ``os.path.realpath`` follows symbolic links and resolves the
+      *actual* target. Without this step, a symlink under ``/data``
+      pointing to ``/etc/passwd`` would pass a normpath-only prefix
+      check yet open a path outside the trusted root, defeating the
+      whole guard.
+    * The ``startswith(root + sep)`` comparison after realpath is the
+      sanitiser pattern CodeQL's ``py/path-injection`` query tracks
+      across the sinks downstream.
+    """
+    id_path_str = os.path.normcase(
+        os.path.normpath(
+            os.path.join(  # noqa: PTH118
+                os.fspath(data_dir),
+                "telemetry_id",
+            ),
+        ),
+    )
+    # Follow symlinks on the candidate path AND on the trusted roots
+    # so the comparison is between two real (post-realpath) paths.
+    # ``realpath`` of a non-existent path returns the input with each
+    # existing component resolved, so the parent-dir resolution still
+    # catches a symlinked ``data_dir``.
+    resolved_id_path = os.path.normcase(os.path.realpath(id_path_str))
+    data_root = os.path.normcase(os.path.realpath(str(Path("/data"))))
+    temp_root = (
+        os.path.normcase(os.path.realpath(_TEMP_ROOT))
+        if _TEMP_ROOT is not None
+        else None
+    )
+    if not (
+        resolved_id_path.startswith(data_root + os.sep)
+        or (temp_root is not None and resolved_id_path.startswith(temp_root + os.sep))
+    ):
+        logger.warning(
+            TELEMETRY_REPORT_FAILED,
+            detail="data_dir_not_trusted",
+            value=id_path_str,
+            using_generated_id=True,
+        )
+        return None
+    return id_path_str
+
+
+def _read_existing_deployment_id(id_path_str: str) -> str | None:
+    """Return a valid UUID from the on-disk file, or ``None`` if absent / corrupt.
+
+    Corrupt files (non-UUID content) are unlinked so the
+    atomic-create branch can write a fresh value; without this
+    repair every subsequent boot would re-detect the same
+    corruption and keep falling back to a generated ID,
+    permanently fragmenting deployment telemetry until an
+    operator manually deleted the file. Read errors are logged
+    with a categorical detail and treated as "not present" so
+    the create path runs.
+    """
+    try:
+        if not os.path.exists(id_path_str):  # noqa: PTH110
+            return None
+        with open(id_path_str, encoding="utf-8") as fh:  # noqa: PTH123
+            stored = fh.read().strip()
+    except OSError as exc:
+        logger.warning(
+            TELEMETRY_REPORT_FAILED,
+            detail="deployment_id_read",
+            error_type=type(exc).__name__,
+        )
+        return None
+    if not stored:
+        # An empty file usually means a peer is mid-write between
+        # ``O_CREAT|O_EXCL`` and the actual content write. Re-read
+        # with the partial-write retry first; if the peer never
+        # finishes, treat the file as corrupt and unlink it so the
+        # atomic-create branch can repair it. Without this, every
+        # subsequent boot would see the same empty file, hit
+        # ``FileExistsError`` on create, retry the peer-read,
+        # return ``None``, and end up with the candidate UUID in
+        # memory while the empty file persisted on disk -- the
+        # exact "deployment IDs churn indefinitely" failure mode.
+        peer_id = _read_peer_deployment_id(id_path_str)
+        if peer_id is not None:
+            logger.info(
+                TELEMETRY_DEPLOYMENT_ID_LOADED,
+                deployment_id=peer_id,
+            )
+            return peer_id
+        with contextlib.suppress(OSError):
+            os.unlink(id_path_str)  # noqa: PTH108
+        return None
+    try:
+        uuid.UUID(stored)
+    except ValueError:
+        logger.warning(
+            TELEMETRY_REPORT_FAILED,
+            detail="deployment_id_invalid",
+            error_type="ValueError",
+        )
+        with contextlib.suppress(OSError):
+            os.unlink(id_path_str)  # noqa: PTH108
+        return None
+    logger.info(
+        TELEMETRY_DEPLOYMENT_ID_LOADED,
+        deployment_id=stored,
+    )
+    return stored
+
+
+def _atomic_create_or_recover(id_path_str: str, candidate_id: str) -> str:
+    """Try ``O_CREAT|O_EXCL`` write; on race, re-read the peer's UUID.
+
+    Wins-or-loses the race atomically so concurrent startups never
+    overwrite each other's freshly-written UUID. On ``FileExistsError``
+    a peer wrote first; the partial-write retry re-reads with a
+    short backoff inside the same ``to_thread`` so the OS-level
+    race semantics are preserved end-to-end.
+
+    Returns the successfully-persisted UUID (either ``candidate_id``
+    on the win or the peer's UUID on the loss) or ``candidate_id``
+    if the write failed without producing a peer file we can read.
+    """
+    try:
+        os.makedirs(  # noqa: PTH103
+            os.path.dirname(id_path_str),  # noqa: PTH120
+            exist_ok=True,
+        )
+        fd = os.open(
+            id_path_str,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        fd_owned = True
         try:
-            os.makedirs(  # noqa: PTH103
-                os.path.dirname(id_path_str),  # noqa: PTH120
-                exist_ok=True,
-            )
-            # Atomic exclusive create: under concurrent startups
-            # (e.g. two backend replicas mounting the same ``/data``
-            # volume) the prior ``exists`` + ``open("w")`` pair
-            # could overwrite a peer's freshly-written UUID and
-            # leave each replica with a different deployment ID.
-            # ``O_CREAT | O_EXCL`` with the final mode bits set
-            # atomically wins-or-loses the race; if a peer wrote
-            # first we re-read and reuse its UUID so the persisted
-            # ID stays stable.
-            fd = os.open(
-                id_path_str,
-                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-                0o600,
-            )
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                    fh.write(new_id)
-            except BaseException:
-                # ``fdopen`` owns the fd on success; close it
-                # ourselves if construction raised.
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fd_owned = False
+                fh.write(candidate_id)
+        except BaseException:
+            if fd_owned:
                 os.close(fd)
-                raise
-        except FileExistsError:
-            # A peer wrote first. Re-read; fall back to our own
-            # freshly-minted UUID if their file is unreadable or
-            # corrupt (same contract as the read path above).
-            try:
-                with open(id_path_str, encoding="utf-8") as fh:  # noqa: PTH123
-                    stored = fh.read().strip()
-                uuid.UUID(stored)
-            except (OSError, ValueError) as exc:
-                logger.warning(
-                    TELEMETRY_REPORT_FAILED,
-                    detail="deployment_id_peer_read",
-                    error_type=type(exc).__name__,
-                )
-            else:
-                return stored
+            raise
+    except FileExistsError:
+        peer_id = _read_peer_deployment_id(id_path_str)
+        if peer_id is not None:
+            logger.info(
+                TELEMETRY_DEPLOYMENT_ID_LOADED,
+                deployment_id=peer_id,
+            )
+            return peer_id
+        return candidate_id
+    except OSError as exc:
+        logger.warning(
+            TELEMETRY_REPORT_FAILED,
+            detail="deployment_id_write",
+            error_type=type(exc).__name__,
+            using_generated_id=True,
+        )
+        return candidate_id
+    logger.info(
+        TELEMETRY_DEPLOYMENT_ID_CREATED,
+        deployment_id=candidate_id,
+    )
+    return candidate_id
+
+
+def _read_peer_deployment_id(id_path_str: str) -> str | None:
+    """Re-read a peer-created ID file with retry on partial writes.
+
+    Defends against the window where a peer has just won the
+    ``O_CREAT|O_EXCL`` race but has not yet finished ``write()``
+    (the file exists but is empty or truncated). Retries up to
+    :data:`_PEER_READ_RETRY_ATTEMPTS` times with
+    :data:`_PEER_READ_RETRY_DELAY_SECONDS` between attempts.
+
+    Returns the peer's UUID on success, ``None`` if all attempts
+    return empty / corrupt / unreadable. Distinguishes the failure
+    modes (file deleted, permission denied, decode error, validation
+    error) in the logs so operators can tell "peer file disappeared"
+    from "peer wrote garbage".
+    """
+    for attempt in range(_PEER_READ_RETRY_ATTEMPTS):
+        try:
+            with open(id_path_str, encoding="utf-8") as fh:  # noqa: PTH123
+                stored = fh.read().strip()
+        except FileNotFoundError:
+            logger.warning(
+                TELEMETRY_REPORT_FAILED,
+                detail="deployment_id_peer_file_deleted",
+                error_type="FileNotFoundError",
+                attempt=attempt,
+            )
+            return None
+        except PermissionError:
+            logger.warning(
+                TELEMETRY_REPORT_FAILED,
+                detail="deployment_id_peer_file_unreadable",
+                error_type="PermissionError",
+                attempt=attempt,
+            )
+            return None
+        except UnicodeDecodeError:
+            logger.warning(
+                TELEMETRY_REPORT_FAILED,
+                detail="deployment_id_peer_file_decode_error",
+                error_type="UnicodeDecodeError",
+                attempt=attempt,
+            )
+            return None
         except OSError as exc:
             logger.warning(
                 TELEMETRY_REPORT_FAILED,
-                detail="deployment_id_write",
+                detail="deployment_id_peer_read",
                 error_type=type(exc).__name__,
+                attempt=attempt,
             )
-        return new_id
+            return None
+
+        if not stored:
+            # Peer is mid-write. Sleep briefly and retry.
+            time.sleep(_PEER_READ_RETRY_DELAY_SECONDS)
+            continue
+        try:
+            uuid.UUID(stored)
+        except ValueError:
+            # Peer wrote partial UUID. Sleep briefly and retry; the
+            # peer may finish before our next attempt.
+            time.sleep(_PEER_READ_RETRY_DELAY_SECONDS)
+            continue
+        return stored
+
+    logger.warning(
+        TELEMETRY_REPORT_FAILED,
+        detail="deployment_id_peer_read_exhausted",
+        attempts=_PEER_READ_RETRY_ATTEMPTS,
+        using_generated_id=True,
+    )
+    return None
 
 
 def _get_version() -> str:

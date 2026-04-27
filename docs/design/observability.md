@@ -216,6 +216,23 @@ All MCP handler log calls go through `logger.warning(EVENT, error_type=type(exc)
 |----------|-------|------------|
 | `COMM_SUBSCRIBER_QUEUE_OVERFLOW` | WARNING | A subscriber cannot keep up with inbound traffic. In-memory bus: the incoming envelope is dropped (`drop_policy=newest`). NATS: the pull consumer reached its `max_ack_pending` cap and JetStream is pausing delivery (`drop_policy=delivery_paused`). Fields: `channel`, `subscriber`, `queue_size`, `drop_policy`, `backend`, `num_ack_pending` (NATS only). NATS emissions are rate-limited to one per (channel, subscriber) pair per 60s to prevent log flooding (per-pair, not per-subscriber globally, so a subscriber overflowing on two channels still produces one warning per channel). |
 
+**Telemetry collector lifecycle (`observability/events/telemetry.py`):**
+
+The module carries two name-spaces: `TELEMETRY_*` constants are observability log events (emitted via `logger.*(...)`), `TELEMETRY_EVENT_*` constants are payload event types that ride inside `TelemetryEvent.event_type` through the privacy scrubber to the reporter.
+
+| Constant | Level | When fired |
+|----------|-------|------------|
+| `TELEMETRY_ENABLED` | INFO | `start()` finished the deployment-ID lifecycle and the collector is live. The `deployment_id` carried here may be persisted on disk OR a generated UUID fallback if the load timed out / failed; the `using_generated_id` flag on the upstream `TELEMETRY_REPORT_FAILED` event distinguishes them. |
+| `TELEMETRY_DISABLED` | DEBUG | Constructor saw `enabled=false`; the collector is inert (no on-disk trace). |
+| `TELEMETRY_ENVIRONMENT_RESOLVED` | INFO | The four-level environment chain in `_resolve_environment` overrode the configured value. Carries both the configured and resolved tags. |
+| `TELEMETRY_DEPLOYMENT_ID_LOADED` | INFO | Existing `telemetry_id` file read from disk during `start()` (or after a peer wrote first). Carries `deployment_id`. |
+| `TELEMETRY_DEPLOYMENT_ID_CREATED` | INFO | This replica won the `O_CREAT\|O_EXCL` race and persisted a fresh UUID. Carries `deployment_id`. |
+| `TELEMETRY_HEARTBEAT_SENT` | DEBUG | Heartbeat event delivered successfully. |
+| `TELEMETRY_SESSION_SUMMARY_SENT` | DEBUG | Session summary delivered on shutdown. |
+| `TELEMETRY_REPORT_FAILED` | WARNING | Privacy-scrubber rejection, reporter delivery error, snapshot-provider failure, or any deployment-ID lifecycle failure. The `detail` field is one of: `invalid_env_value`, `data_dir_not_trusted`, `deployment_id_read`, `deployment_id_write`, `deployment_id_invalid`, `deployment_id_peer_read`, `deployment_id_peer_file_deleted`, `deployment_id_peer_file_unreadable`, `deployment_id_peer_file_decode_error`, `deployment_id_peer_read_exhausted`, `deployment_id_load_timeout`, `deployment_id_load_unexpected_error`, `deployment_id_load_unexpected_helper_error`, `session_summary_snapshot_failed`, `send_session_summary_failed`, `send_shutdown_event_failed`, `reporter_shutdown_failed`. UUID-fallback paths carry `using_generated_id=True` so dashboards can detect splinter deployments. |
+| `TELEMETRY_SHUTDOWN_WITHOUT_START` | WARNING | `shutdown()` invoked on an enabled collector that never had `start()` called (or whose `start()` failed before the deployment ID loaded). Surfaces silent init failure. |
+| `TELEMETRY_CLOSED` | INFO | `shutdown()` flipped the collector into its terminal state. After this event a subsequent `start()` raises rather than silently reusing a torn-down reporter. |
+
 ### Uvicorn Integration
 
 Uvicorn's default access logger is **disabled** (`access_log=False`, `log_config=None`).

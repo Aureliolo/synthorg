@@ -636,7 +636,7 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
             _old_dispatcher = app_state.swap_notification_dispatcher(_new_dispatcher)
             if _old_dispatcher is not None:
                 try:
-                    await _old_dispatcher.close()
+                    await _old_dispatcher.aclose()
                 except MemoryError, RecursionError:
                     raise
                 except Exception:
