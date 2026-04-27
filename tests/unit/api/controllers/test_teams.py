@@ -10,8 +10,9 @@ from synthorg.api.controllers.teams import (
     _check_team_name_unique,
     _find_department,
     _find_team,
+    _persisted_name,
 )
-from synthorg.api.errors import ConflictError, NotFoundError
+from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
 from tests.unit.api.conftest import make_auth_headers
 
 # ── Helpers ────────────────────────────────────────────────
@@ -558,3 +559,32 @@ class TestPrivateHelpers:
     def test_check_team_name_unique_skips_excluded_index(self) -> None:
         teams = [_team(name="Backend"), _team(name="Frontend")]
         _check_team_name_unique(teams, "Backend", exclude_index=0)
+
+    def test_persisted_name_returns_string_value(self) -> None:
+        assert _persisted_name({"name": "Engineering"}, "Department") == "Engineering"
+
+    def test_persisted_name_rejects_missing_name(self) -> None:
+        with pytest.raises(ApiValidationError, match="non-string"):
+            _persisted_name({}, "Department")
+
+    def test_persisted_name_rejects_none_name(self) -> None:
+        with pytest.raises(ApiValidationError, match="non-string"):
+            _persisted_name({"name": None}, "Team")
+
+    def test_persisted_name_rejects_int_name(self) -> None:
+        with pytest.raises(ApiValidationError, match="non-string"):
+            _persisted_name({"name": 42}, "Team")
+
+    def test_find_department_surfaces_corrupted_record(self) -> None:
+        depts: list[dict[str, Any]] = [
+            {"name": None, "budget_percent": 50.0, "teams": []},
+        ]
+        with pytest.raises(ApiValidationError, match="non-string"):
+            _find_department(depts, "anything")
+
+    def test_find_team_surfaces_corrupted_record(self) -> None:
+        teams: list[dict[str, Any]] = [
+            {"name": 7, "lead": "alice", "members": []},
+        ]
+        with pytest.raises(ApiValidationError, match="non-string"):
+            _find_team(teams, "anything")

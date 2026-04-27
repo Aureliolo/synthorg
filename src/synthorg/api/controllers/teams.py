@@ -88,6 +88,42 @@ class TeamResponse(BaseModel):
 # ── Helpers ────────────────────────────────────────────────
 
 
+def _persisted_name(record: dict[str, Any], record_type: str) -> str:
+    """Read the ``name`` field from a persisted record, asserting type.
+
+    Persisted department / team records should always carry a ``str``
+    ``name`` (model validation runs at write time). If a record reaches
+    this layer with a non-string name, the data is corrupted: surface
+    a clear validation error instead of silently coercing through
+    ``str()`` and producing a misleading ``NotFoundError`` downstream.
+
+    Args:
+        record: Raw persisted dict (department or team).
+        record_type: Human-readable label used in error messages
+            (e.g. ``"Department"``, ``"Team"``).
+
+    Returns:
+        The ``name`` field as a ``str``.
+
+    Raises:
+        ApiValidationError: If ``name`` is missing or not a string.
+    """
+    value = record.get("name")
+    if not isinstance(value, str):
+        logger.warning(
+            API_VALIDATION_FAILED,
+            record_type=record_type,
+            reason="non_string_persisted_name",
+            value_type=type(value).__name__,
+        )
+        msg = (
+            f"Persisted {record_type.lower()} record has a non-string "
+            f"name (got {type(value).__name__})"
+        )
+        raise ApiValidationError(msg)
+    return value
+
+
 def _find_department(
     depts: list[dict[str, Any]],
     name: str,
@@ -103,10 +139,11 @@ def _find_department(
 
     Raises:
         NotFoundError: If not found.
+        ApiValidationError: If a persisted record has a non-string name.
     """
     target = normalize_identifier(name)
     for idx, dept in enumerate(depts):
-        if normalize_identifier(str(dept.get("name", ""))) == target:
+        if normalize_identifier(_persisted_name(dept, "Department")) == target:
             return idx, dept
     msg = f"Department {name!r} not found"
     raise NotFoundError(msg)
@@ -127,10 +164,11 @@ def _find_team(
 
     Raises:
         NotFoundError: If not found.
+        ApiValidationError: If a persisted record has a non-string name.
     """
     target = normalize_identifier(team_name)
     for idx, team in enumerate(teams):
-        if normalize_identifier(str(team.get("name", ""))) == target:
+        if normalize_identifier(_persisted_name(team, "Team")) == target:
             return idx, team
     msg = f"Team {team_name!r} not found"
     raise NotFoundError(msg)
@@ -148,12 +186,16 @@ def _check_team_name_unique(
         teams: Team dict list.
         name: Name to check.
         exclude_index: Optional index to skip (for rename checks).
+
+    Raises:
+        ConflictError: If a name collision is detected.
+        ApiValidationError: If a persisted record has a non-string name.
     """
     target = normalize_identifier(name)
     for idx, team in enumerate(teams):
         if idx == exclude_index:
             continue
-        if normalize_identifier(str(team.get("name", ""))) == target:
+        if normalize_identifier(_persisted_name(team, "Team")) == target:
             msg = f"Team {name!r} already exists in this department"
             raise ConflictError(msg)
 
@@ -297,7 +339,7 @@ class TeamController(Controller):
             dept_idx, dept = _find_department(depts, dept_name)
 
             teams: list[dict[str, Any]] = list(dept.get("teams", []))
-            stored_names = [str(t.get("name", "")) for t in teams]
+            stored_names = [_persisted_name(t, "Team") for t in teams]
             team_map: dict[str, dict[str, Any]] = {
                 normalize_identifier(name): t
                 for name, t in zip(stored_names, teams, strict=True)
