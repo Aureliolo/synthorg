@@ -550,10 +550,15 @@ INSERT INTO conflict_escalations (
                     )
                 await conn.commit()
         except psycopg.Error as exc:
+            # Bound the logged ids: a sweep covering thousands of
+            # escalations would otherwise emit megabyte-scale warning
+            # records, which adds noise without making the failure
+            # easier to triage.
             logger.warning(
                 API_REQUEST_ERROR,
                 error_type="escalation_notify_failed",
-                escalation_ids=valid_ids,
+                escalation_id_count=len(valid_ids),
+                escalation_ids_sample=valid_ids[:10],
                 channel=channel,
                 error=safe_error_description(exc),
             )

@@ -65,9 +65,10 @@ class InMemoryMcpInstallationRepository:
         rows = tuple(
             sorted(self._store.values(), key=lambda i: i.installed_at),
         )
+        effective_offset = max(0, int(offset))
         if limit is None:
-            return rows
-        return rows[offset : offset + limit]
+            return rows[effective_offset:]
+        return rows[effective_offset : effective_offset + max(0, int(limit))]
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:
         """Delete by catalog entry id."""

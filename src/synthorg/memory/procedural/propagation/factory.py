@@ -12,10 +12,13 @@ from synthorg.memory.procedural.propagation.no_propagation import (
 from synthorg.memory.procedural.propagation.role_scoped import (
     RoleScopedPropagation,
 )
+from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from synthorg.memory.procedural.propagation.config import PropagationConfig
     from synthorg.memory.procedural.propagation.protocol import PropagationStrategy
+
+logger = get_logger(__name__)
 
 
 def _build_none(_config: PropagationConfig) -> PropagationStrategy:

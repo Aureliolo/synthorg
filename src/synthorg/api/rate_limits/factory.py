@@ -3,7 +3,14 @@
 from synthorg.api.rate_limits.config import PerOpRateLimitConfig  # noqa: TC001
 from synthorg.api.rate_limits.in_memory import InMemorySlidingWindowStore
 from synthorg.api.rate_limits.protocol import SlidingWindowStore  # noqa: TC001
-from synthorg.core.registry import StrategyRegistry
+from synthorg.core.registry import (
+    StrategyFactoryNotFoundError,
+    StrategyRegistry,
+)
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_RATE_LIMIT_BACKEND_UNSUPPORTED
+
+logger = get_logger(__name__)
 
 
 def _build_memory(_config: PerOpRateLimitConfig) -> SlidingWindowStore:
@@ -30,4 +37,12 @@ def build_sliding_window_store(
     Raises:
         StrategyFactoryNotFoundError: If ``config.backend`` is not registered.
     """
-    return _REGISTRY.build(config.backend, config)
+    try:
+        return _REGISTRY.build(config.backend, config)
+    except StrategyFactoryNotFoundError:
+        logger.warning(
+            API_RATE_LIMIT_BACKEND_UNSUPPORTED,
+            backend=config.backend,
+            available=_REGISTRY.names(),
+        )
+        raise

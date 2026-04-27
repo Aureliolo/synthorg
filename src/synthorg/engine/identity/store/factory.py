@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.registry import StrategyRegistry
 from synthorg.engine.identity.store.append_only import AppendOnlyIdentityStore
 from synthorg.engine.identity.store.copy_on_write import CopyOnWriteIdentityStore
+from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -12,6 +13,8 @@ if TYPE_CHECKING:
     from synthorg.engine.identity.store.protocol import IdentityVersionStore
     from synthorg.hr.registry import AgentRegistryService
     from synthorg.versioning.service import VersioningService
+
+logger = get_logger(__name__)
 
 
 def _build_append_only(

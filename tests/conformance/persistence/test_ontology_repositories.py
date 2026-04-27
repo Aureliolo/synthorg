@@ -164,13 +164,23 @@ class TestOntologyEntityRepository:
                 ),
             )
 
-        page = await backend.ontology_entities.search(
+        # Compare two adjacent windows so the assertion proves offset
+        # actually advances rather than just bounding the row count.
+        first_page = await backend.ontology_entities.search(
             "pagination-marker",
             limit=2,
             offset=0,
         )
-
-        assert len(page) == 2
+        second_page = await backend.ontology_entities.search(
+            "pagination-marker",
+            limit=2,
+            offset=2,
+        )
+        assert len(first_page) == 2
+        assert len(second_page) == 2
+        first_names = {e.name for e in first_page}
+        second_names = {e.name for e in second_page}
+        assert first_names.isdisjoint(second_names)
 
     async def test_backend_name_matches_fixture(
         self, backend: PersistenceBackend, request: pytest.FixtureRequest

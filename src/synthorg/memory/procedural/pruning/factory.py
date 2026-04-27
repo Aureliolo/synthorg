@@ -10,10 +10,13 @@ from synthorg.memory.procedural.pruning.pareto_strategy import (
     ParetoPruningStrategy,
 )
 from synthorg.memory.procedural.pruning.ttl_strategy import TtlPruningStrategy
+from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from synthorg.memory.procedural.pruning.config import PruningConfig
     from synthorg.memory.procedural.pruning.protocol import PruningStrategy
+
+logger = get_logger(__name__)
 
 
 def _build_ttl(config: PruningConfig) -> PruningStrategy:

@@ -56,6 +56,7 @@ class PostgresConnectionSecretRepository:
                     """,
                     (str(secret_id), encrypted_value, int(key_version), now),
                 )
+                await conn.commit()
         except Exception as exc:
             msg = f"Failed to store connection secret {secret_id!r}"
             logger.warning(
@@ -98,6 +99,7 @@ class PostgresConnectionSecretRepository:
                     (str(secret_id),),
                 )
                 deleted = cur.rowcount > 0
+                await conn.commit()
         except Exception as exc:
             msg = f"Failed to delete connection secret {secret_id!r}"
             logger.warning(

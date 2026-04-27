@@ -33,7 +33,13 @@ class McpInstallationRepository(Protocol):
         limit: int | None = None,
         offset: int = 0,
     ) -> tuple[McpInstallation, ...]:
-        """List all recorded installations, optionally paginated."""
+        """List all recorded installations, optionally paginated.
+
+        Implementations MUST return rows ordered by
+        ``installed_at ASC, catalog_entry_id ASC`` so callers paging
+        through ``offset/limit`` see a stable, deterministic window
+        across calls and across backends.
+        """
         ...
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:
