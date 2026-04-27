@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { ListHeader } from '@/components/ui/list-header'
 import { useScalingData } from '@/hooks/useScalingData'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
@@ -56,18 +57,14 @@ export default function ScalingPage() {
 
   return (
     <div className="flex flex-col gap-section-gap">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-foreground">
-          Dynamic Scaling
-        </h1>
-        <Button
-          onClick={handleEvaluateNow}
-          disabled={evaluating}
-        >
-          {evaluating ? 'Evaluating...' : 'Evaluate Now'}
-        </Button>
-      </div>
+      <ListHeader
+        title="Dynamic Scaling"
+        primaryAction={
+          <Button onClick={handleEvaluateNow} disabled={evaluating}>
+            {evaluating ? 'Evaluating...' : 'Evaluate Now'}
+          </Button>
+        }
+      />
 
       {error && (
         <ErrorBanner
