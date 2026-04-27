@@ -35,6 +35,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.meeting import (
     MEETING_ACTION_ITEM_EXTRACTED,
     MEETING_BUDGET_EXHAUSTED,
+    MEETING_CANCELLED,
     MEETING_COMPLETED,
     MEETING_FAILED,
     MEETING_LENS_ASSIGNMENT_FAILED,
@@ -156,6 +157,21 @@ class MeetingOrchestrator:
         meeting_id = f"mtg-{uuid4().hex[:12]}"
         protocol_type = protocol_config.protocol
 
+        # Validate inputs before the kill-switch check so an invalid
+        # request (e.g. token_budget=0, empty participants) always
+        # raises the same ``ValueError`` /
+        # ``MeetingParticipantError`` regardless of whether the
+        # operator has paused meetings -- callers should not see
+        # divergent error semantics across kill-switch state, and
+        # constructing the cancellation ``MeetingRecord`` below would
+        # otherwise hit pydantic validation on ``token_budget`` (gt=0).
+        self._validate_inputs(
+            meeting_id,
+            leader_id,
+            participant_ids,
+            token_budget,
+        )
+
         # ``communication.meetings_enabled`` kill switch: when False
         # the orchestrator records a CANCELLED meeting (no protocol
         # invocation, no agent calls) so an operator can suspend the
@@ -167,8 +183,11 @@ class MeetingOrchestrator:
             fallback=True,
         )
         if not meetings_enabled:
+            # ``MEETING_CANCELLED`` (not ``MEETING_FAILED``): operator
+            # cancellations should not skew failure metrics or trip
+            # alerts wired to ``meeting.lifecycle.failed``.
             logger.info(
-                MEETING_FAILED,
+                MEETING_CANCELLED,
                 meeting_id=meeting_id,
                 meeting_type=meeting_type_name,
                 reason="meetings_disabled_by_setting",
@@ -188,12 +207,6 @@ class MeetingOrchestrator:
             self._records.append(cancelled_record)
             return cancelled_record
 
-        self._validate_inputs(
-            meeting_id,
-            leader_id,
-            participant_ids,
-            token_budget,
-        )
         protocol = self._resolve_protocol(meeting_id, protocol_type)
 
         logger.info(

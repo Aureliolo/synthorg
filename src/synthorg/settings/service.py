@@ -982,22 +982,12 @@ class SettingsService:
         # already bypass the DB for read-only-post-init definitions
         # (see ``_resolve_with_db_lookup``), so any stale row that
         # ``delete_namespace_returning_keys`` removes is a no-op for
-        # the running process; the warning still fires so an operator
-        # auditing the change can see exactly which read-only rows
-        # were swept.
-        readonly_keys = [
+        # the running process.
+        readonly_definition_keys = {
             d.key
             for d in self._registry.list_namespace(namespace)
             if d.read_only_post_init
-        ]
-        if readonly_keys:
-            logger.warning(
-                SETTINGS_VALIDATION_FAILED,
-                namespace=namespace,
-                action="delete_namespace",
-                reason="read_only_post_init_swept",
-                read_only_keys=readonly_keys,
-            )
+        }
 
         # Atomic delete-and-return-keys: the repository removes every
         # override row under *namespace* in one transaction and returns
@@ -1019,6 +1009,22 @@ class SettingsService:
             )
             raise
         deleted = len(removed_keys)
+
+        # Now that we know exactly which keys were actually removed,
+        # report the read-only intersection so the audit log reflects
+        # what the storage layer did (not what was registered).  An
+        # earlier emit would have claimed sweep even for read-only
+        # definitions whose rows never existed or whose deletion the
+        # repository skipped; this version is precise.
+        swept_readonly = sorted(set(removed_keys) & readonly_definition_keys)
+        if swept_readonly:
+            logger.warning(
+                SETTINGS_VALIDATION_FAILED,
+                namespace=namespace,
+                action="delete_namespace",
+                reason="read_only_post_init_swept",
+                read_only_keys=swept_readonly,
+            )
 
         self._invalidate_namespace_cache(namespace)
 

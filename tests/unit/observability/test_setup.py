@@ -236,7 +236,12 @@ class TestApplyConsoleLevelOverride:
         result = _apply_console_level_override(config)
         assert result.sinks[0].level == LogLevel.INFO
         captured = capsys.readouterr()
-        assert "Invalid SYNTHORG_LOG_LEVEL" in captured.err
+        # The warning identifies the invalid value and the source
+        # (``env``) so an operator can see whether the override came
+        # from ``SYNTHORG_LOG_LEVEL`` or the YAML field.
+        assert "Invalid console-level override" in captured.err
+        assert "'bogus'" in captured.err
+        assert "source=env" in captured.err
 
     def test_file_sinks_unaffected(
         self,

@@ -6,6 +6,11 @@ from typing import Final
 MEETING_STARTED: Final[str] = "meeting.lifecycle.started"
 MEETING_COMPLETED: Final[str] = "meeting.lifecycle.completed"
 MEETING_FAILED: Final[str] = "meeting.lifecycle.failed"
+MEETING_CANCELLED: Final[str] = "meeting.lifecycle.cancelled"
+"""Operator-triggered cancellation -- e.g. the
+``communication.meetings_enabled`` kill switch is engaged.  Kept distinct
+from ``MEETING_FAILED`` so an intentional pause does not skew failure
+metrics or trigger alerts wired off ``meeting.lifecycle.failed``."""
 MEETING_BUDGET_EXHAUSTED: Final[str] = "meeting.lifecycle.budget_exhausted"
 
 # Phase tracking
