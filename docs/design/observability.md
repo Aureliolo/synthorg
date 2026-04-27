@@ -231,6 +231,7 @@ The module carries two name-spaces: `TELEMETRY_*` constants are observability lo
 | `TELEMETRY_SESSION_SUMMARY_SENT` | DEBUG | Session summary delivered on shutdown. |
 | `TELEMETRY_REPORT_FAILED` | WARNING | Privacy-scrubber rejection, reporter delivery error, snapshot-provider failure, or any deployment-ID lifecycle failure. The `detail` field is one of: `invalid_env_value`, `data_dir_not_trusted`, `deployment_id_read`, `deployment_id_write`, `deployment_id_invalid`, `deployment_id_peer_read`, `deployment_id_peer_file_deleted`, `deployment_id_peer_file_unreadable`, `deployment_id_peer_file_decode_error`, `deployment_id_peer_read_exhausted`, `deployment_id_load_timeout`, `deployment_id_load_unexpected_error`, `deployment_id_load_unexpected_helper_error`, `session_summary_snapshot_failed`, `send_session_summary_failed`, `send_shutdown_event_failed`, `reporter_shutdown_failed`. UUID-fallback paths carry `using_generated_id=True` so dashboards can detect splinter deployments. |
 | `TELEMETRY_SHUTDOWN_WITHOUT_START` | WARNING | `shutdown()` invoked on an enabled collector that never had `start()` called (or whose `start()` failed before the deployment ID loaded). Surfaces silent init failure. |
+| `TELEMETRY_CLOSED` | INFO | `shutdown()` flipped the collector into its terminal state. After this event a subsequent `start()` raises rather than silently reusing a torn-down reporter. |
 
 ### Uvicorn Integration
 

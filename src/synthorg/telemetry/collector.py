@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.telemetry import (
+    TELEMETRY_CLOSED,
     TELEMETRY_DEPLOYMENT_ID_CREATED,
     TELEMETRY_DEPLOYMENT_ID_LOADED,
     TELEMETRY_DISABLED,
@@ -515,6 +516,7 @@ class TelemetryCollector:
             # Mark the collector terminal AFTER teardown so a stray
             # ``start()`` call cannot resurrect a torn-down reporter.
             self._closed = True
+            logger.info(TELEMETRY_CLOSED)
 
     async def send_heartbeat(
         self,
@@ -835,12 +837,21 @@ def _resolve_telemetry_id_path(data_dir: Path) -> str | None:
     Returns the sanitised path string if it is a strict descendant
     of a trusted root (``/data`` or the module-cached temp root), or
     ``None`` (with a structured warning) if not. Implements the OWASP
-    path-injection recipe -- ``os.path.normpath`` collapses ``..``
-    and redundant separators, ``os.path.normcase`` lower-cases on
-    Windows so the comparison is case-insensitive where the
-    filesystem is, and the ``startswith(root + sep)`` check is the
-    sanitiser CodeQL's ``py/path-injection`` query tracks across
-    the sinks downstream.
+    path-injection recipe + symlink resolution:
+
+    * ``os.path.normpath`` collapses ``..`` and redundant separators
+      so a caller cannot smuggle traversal through the ``data_dir``
+      argument.
+    * ``os.path.normcase`` lower-cases on Windows so the comparison
+      is case-insensitive where the filesystem is.
+    * ``os.path.realpath`` follows symbolic links and resolves the
+      *actual* target. Without this step, a symlink under ``/data``
+      pointing to ``/etc/passwd`` would pass a normpath-only prefix
+      check yet open a path outside the trusted root, defeating the
+      whole guard.
+    * The ``startswith(root + sep)`` comparison after realpath is the
+      sanitiser pattern CodeQL's ``py/path-injection`` query tracks
+      across the sinks downstream.
     """
     id_path_str = os.path.normcase(
         os.path.normpath(
@@ -850,10 +861,21 @@ def _resolve_telemetry_id_path(data_dir: Path) -> str | None:
             ),
         ),
     )
-    data_root = os.path.normcase(os.path.normpath(str(Path("/data"))))
+    # Follow symlinks on the candidate path AND on the trusted roots
+    # so the comparison is between two real (post-realpath) paths.
+    # ``realpath`` of a non-existent path returns the input with each
+    # existing component resolved, so the parent-dir resolution still
+    # catches a symlinked ``data_dir``.
+    resolved_id_path = os.path.normcase(os.path.realpath(id_path_str))
+    data_root = os.path.normcase(os.path.realpath(str(Path("/data"))))
+    temp_root = (
+        os.path.normcase(os.path.realpath(_TEMP_ROOT))
+        if _TEMP_ROOT is not None
+        else None
+    )
     if not (
-        id_path_str.startswith(data_root + os.sep)
-        or (_TEMP_ROOT is not None and id_path_str.startswith(_TEMP_ROOT + os.sep))
+        resolved_id_path.startswith(data_root + os.sep)
+        or (temp_root is not None and resolved_id_path.startswith(temp_root + os.sep))
     ):
         logger.warning(
             TELEMETRY_REPORT_FAILED,
@@ -890,6 +912,25 @@ def _read_existing_deployment_id(id_path_str: str) -> str | None:
         )
         return None
     if not stored:
+        # An empty file usually means a peer is mid-write between
+        # ``O_CREAT|O_EXCL`` and the actual content write. Re-read
+        # with the partial-write retry first; if the peer never
+        # finishes, treat the file as corrupt and unlink it so the
+        # atomic-create branch can repair it. Without this, every
+        # subsequent boot would see the same empty file, hit
+        # ``FileExistsError`` on create, retry the peer-read,
+        # return ``None``, and end up with the candidate UUID in
+        # memory while the empty file persisted on disk -- the
+        # exact "deployment IDs churn indefinitely" failure mode.
+        peer_id = _read_peer_deployment_id(id_path_str)
+        if peer_id is not None:
+            logger.info(
+                TELEMETRY_DEPLOYMENT_ID_LOADED,
+                deployment_id=peer_id,
+            )
+            return peer_id
+        with contextlib.suppress(OSError):
+            os.unlink(id_path_str)  # noqa: PTH108
         return None
     try:
         uuid.UUID(stored)

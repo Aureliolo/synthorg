@@ -30,6 +30,10 @@ TELEMETRY_DEPLOYMENT_ID_CREATED: Final[str] = "telemetry.deployment_id.created"
 # called (or whose start() failed before the deployment ID loaded). Surfaces
 # the silent-init-failure path so operators have a log signal.
 TELEMETRY_SHUTDOWN_WITHOUT_START: Final[str] = "telemetry.shutdown.without_start"
+# Emitted when shutdown() flips the collector into its terminal state. After
+# this event a subsequent start() raises rather than silently reusing a
+# torn-down reporter.
+TELEMETRY_CLOSED: Final[str] = "telemetry.closed"
 
 # Telemetry payload event types (sent in TelemetryEvent.event_type).
 TELEMETRY_EVENT_DEPLOYMENT_HEARTBEAT: Final[str] = "deployment.heartbeat"

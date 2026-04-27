@@ -6,27 +6,39 @@ Modified`` support without per-handler changes. Wraps the outbound
 ``send`` to:
 
 1. Capture the ``http.response.start`` (status + headers) and
-   subsequent ``http.response.body`` chunks.
+   subsequent ``http.response.body`` chunks. Streaming responses
+   (the first ``http.response.body`` arrives with ``more_body=True``)
+   short-circuit to a pure pass-through: no buffering, no ETag.
 2. Compute a weak ETag (``W/"<sha256-prefix>"``) over the assembled
    body using ``hashlib.sha256`` so the value is byte-stable across
    Python versions and processes (no ``msgspec`` round-trip needed).
 3. If the client sent ``If-None-Match`` and the ETag matches,
-   replace the response with ``304 Not Modified`` (empty body, same
-   ``ETag`` and ``Cache-Control`` headers).
+   replace the response with ``304 Not Modified`` (empty body,
+   keeping the validator-friendly ``ETag`` and ``Cache-Control``
+   headers).
 4. Otherwise forward the original response with the ``ETag`` header
    appended.
 
-Only applies to GET requests on path prefixes in the allowlist
-(``settings``, ``agents``, ``template-packs``, ``providers``,
-``ontology``, ``departments``, ``company``, ``health``,
-``readyz``, ``meta/analytics``). Skips streaming responses
-(``http.response.body`` with ``more_body=True`` after the first
-chunk is forwarded as-is, with no ETag added).
+Only applies to GET requests on path prefixes in the allowlist:
+``/api/v1/settings``, ``/api/v1/agents``, ``/api/v1/template-packs``,
+``/api/v1/providers``, ``/api/v1/ontology``, ``/api/v1/departments``,
+``/api/v1/company``, ``/api/v1/meta/analytics``,
+``/api/v1/healthz``, ``/api/v1/readyz``. Prefix matching requires
+either an exact match or a ``/`` boundary so siblings like
+``/api/v1/providers-extra`` do not get accidental cache treatment.
 
-The ``Cache-Control`` companion header is added only if the
-upstream response did not already set one: ``private,
-must-revalidate`` for user-scoped data and ``public, max-age=0,
-must-revalidate`` for deployment-wide reference data.
+The ``Cache-Control`` companion header is **always replaced**
+(not just appended-when-missing) on allowlisted responses:
+``private, must-revalidate`` for user-scoped data and
+``public, max-age=0, must-revalidate`` for deployment-wide
+reference data (``template-packs``, ``providers``, ``ontology``,
+``healthz``, ``readyz``). The replace is required because the
+global ``security_headers_hook`` runs as a Litestar
+``before_send`` and unconditionally pins
+``Cache-Control: no-store, no-cache, must-revalidate, max-age=0``
+on every API response before this middleware sees it; without an
+explicit overwrite, allowlisted reads would never advertise the
+validator-friendly policy and clients would not retain ETags.
 """
 
 import hashlib
@@ -98,14 +110,62 @@ def compute_etag(body: bytes) -> str:
     return f'W/"{digest}"'
 
 
+def _split_entity_tags(value: str) -> list[str]:
+    """Split an ``If-None-Match`` header value into RFC 9110 §13.1 tags.
+
+    A bare ``str.split(",")`` would mis-handle a quoted entity-tag
+    that contains a literal comma inside the quoted-string body
+    (the spec allows it via the ``quoted-string`` production); the
+    legitimate validator carrying the matching tag would then fail
+    the 304 path. This walker tracks whether we are inside a
+    quoted-string and only treats commas at the top level as
+    separators, matching ``1#entity-tag = entity-tag *( OWS "," OWS entity-tag )``.
+    """
+    tags: list[str] = []
+    buf: list[str] = []
+    in_quote = False
+    escaped = False
+    for ch in value:
+        if escaped:
+            buf.append(ch)
+            escaped = False
+            continue
+        if in_quote:
+            if ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_quote = False
+            buf.append(ch)
+            continue
+        if ch == '"':
+            in_quote = True
+            buf.append(ch)
+            continue
+        if ch == ",":
+            token = "".join(buf).strip()
+            if token:
+                tags.append(token)
+            buf = []
+            continue
+        buf.append(ch)
+    tail = "".join(buf).strip()
+    if tail:
+        tags.append(tail)
+    return tags
+
+
 def match_etag(if_none_match: str | None, etag: str) -> bool:
     """Return ``True`` when ``if_none_match`` matches ``etag``.
 
     Handles ``*`` (matches any current representation), comma-
-    separated value lists, and weak-vs-strong comparison. Per
+    separated entity-tag lists, and weak-vs-strong comparison. Per
     RFC 9110 §13.1.2, ``If-None-Match`` always uses weak comparison,
     so we strip the leading ``W/`` from both candidates before
     comparing.
+
+    Comma splitting goes through :func:`_split_entity_tags` so a
+    quoted-string body that contains a literal comma is preserved
+    inside its tag rather than splitting it across two pseudo-tags.
     """
     if if_none_match is None:
         return False
@@ -113,8 +173,8 @@ def match_etag(if_none_match: str | None, etag: str) -> bool:
     if candidate == "*":
         return True
     target = etag.removeprefix("W/")
-    for raw in candidate.split(","):
-        normalised = raw.strip().removeprefix("W/")
+    for raw in _split_entity_tags(candidate):
+        normalised = raw.removeprefix("W/")
         if normalised == target:
             return True
     return False
