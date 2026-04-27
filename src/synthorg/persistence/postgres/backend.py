@@ -103,6 +103,9 @@ from synthorg.persistence.postgres.project_cost_aggregate_repo import (
     PostgresProjectCostAggregateRepository,
 )
 from synthorg.persistence.postgres.project_repo import PostgresProjectRepository
+from synthorg.persistence.postgres.provider_audit_repo import (
+    PostgresProviderAuditRepo,
+)
 from synthorg.persistence.postgres.refresh_repo import (
     PostgresRefreshTokenRepository,
 )
@@ -210,7 +213,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         config: Postgres-specific configuration.
     """
 
-    def __init__(self, config: PostgresConfig) -> None:
+    def __init__(self, config: PostgresConfig) -> None:  # noqa: PLR0915 -- repo registry setup intentionally enumerates every attribute
         self._config = config
         self._lifecycle_lock = asyncio.Lock()
         self._pool: AsyncConnectionPool | None = None
@@ -225,6 +228,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._collaboration_metrics: CollaborationMetricRepository | None = None
         self._parked_contexts: ParkedContextRepository | None = None
         self._audit_entries: AuditRepository | None = None
+        self._provider_audit_events: PostgresProviderAuditRepo | None = None
         self._users: UserRepository | None = None
         self._api_keys: ApiKeyRepository | None = None
         self._checkpoints: CheckpointRepository | None = None
@@ -280,6 +284,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._collaboration_metrics = None
         self._parked_contexts = None
         self._audit_entries = None
+        self._provider_audit_events = None
         self._users = None
         self._api_keys = None
         self._checkpoints = None
@@ -338,6 +343,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         # Operational + security repositories.
         self._parked_contexts = PostgresParkedContextRepository(pool)
         self._audit_entries = PostgresAuditRepository(pool)
+        self._provider_audit_events = PostgresProviderAuditRepo(pool)
         self._users = PostgresUserRepository(pool)
         self._api_keys = PostgresApiKeyRepository(pool)
         self._checkpoints = PostgresCheckpointRepository(pool)
@@ -488,6 +494,14 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
     def audit_entries(self) -> AuditRepository:
         """Repository for AuditEntry persistence."""
         return self._require_connected(self._audit_entries, "audit_entries")
+
+    @property
+    def provider_audit_events(self) -> PostgresProviderAuditRepo:
+        """Repository for the provider mutation audit log."""
+        return self._require_connected(
+            self._provider_audit_events,
+            "provider_audit_events",
+        )
 
     @property
     def decision_records(self) -> DecisionRepository:

@@ -1251,3 +1251,41 @@ CREATE TABLE idempotency_keys (
     PRIMARY KEY (scope, key)
 );
 CREATE INDEX idx_idempotency_expires ON idempotency_keys (expires_at);
+
+-- ── Provider audit events ─────────────────────────────────────────────
+-- Append-only mutation history for provider config writes.  Powers
+-- ``GET /api/v1/providers/{name}/audit`` and is written by
+-- ``ProviderAuditService.record`` from every mutation entry point on
+-- ``ProviderManagementService``.  ``id`` is BIGSERIAL so it doubles
+-- as the keyset pagination cursor.  ``payload`` is JSONB; credentials
+-- inside payload MUST be masked (``"prefix***last4"``) per SEC-1.
+CREATE TABLE provider_audit_events (
+    id BIGSERIAL PRIMARY KEY,
+    provider_name TEXT NOT NULL CHECK (length(trim(provider_name)) > 0),
+    event_type TEXT NOT NULL CHECK (length(trim(event_type)) > 0),
+    actor_id TEXT NOT NULL CHECK (length(trim(actor_id)) > 0),
+    actor_label TEXT NOT NULL CHECK (length(trim(actor_label)) > 0),
+    payload JSONB NOT NULL DEFAULT '{}'::JSONB,
+    occurred_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX idx_provider_audit_events_provider_id
+    ON provider_audit_events (provider_name, id DESC);
+CREATE INDEX idx_provider_audit_events_occurred
+    ON provider_audit_events (occurred_at);
+
+-- ── Preset overrides ──────────────────────────────────────────────────
+-- Operator overrides on top of in-code provider presets.  Read at
+-- preset-resolution time by ``PresetOverrideService.get_effective``.
+-- Cross-shape validation (cloud preset rejecting candidate_urls,
+-- local preset rejecting base_url) lives in the service layer.
+CREATE TABLE preset_overrides (
+    preset_name TEXT NOT NULL PRIMARY KEY
+        CHECK (length(trim(preset_name)) > 0),
+    default_models JSONB,
+    supported_auth_types JSONB,
+    candidate_urls JSONB,
+    base_url TEXT,
+    updated_at TIMESTAMPTZ NOT NULL,
+    updated_by TEXT NOT NULL CHECK (length(trim(updated_by)) > 0)
+);

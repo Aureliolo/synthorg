@@ -396,6 +396,7 @@ class AppState(AppStateServicesMixin):
         # every connection.  Retains the built-in default when the
         # bridge cannot be resolved.
         self._ws_auth_timeout_seconds: float = 10.0
+        self._provider_audit_service = None
         self._init_derived_services(
             settings_service=settings_service,
             config=config,
@@ -431,11 +432,32 @@ class AppState(AppStateServicesMixin):
             settings_service=settings_service,
             config=config,
         )
+        # Provider audit log: wired only when the persistence backend
+        # actually exposes the repo accessor.  ``getattr`` keeps legacy
+        # ``FakePersistenceBackend`` rigs in tests working until they
+        # opt into the new accessor; ``ProviderManagementService``
+        # treats ``None`` as a no-op for emission so neither path errors.
+        from synthorg.providers.management.audit_service import (  # noqa: PLC0415
+            ProviderAuditService,
+        )
+
+        provider_audit_repo = (
+            getattr(persistence, "provider_audit_events", None)
+            if persistence is not None
+            else None
+        )
+        audit_service = (
+            ProviderAuditService(provider_audit_repo)
+            if provider_audit_repo is not None
+            else None
+        )
+        self._provider_audit_service: ProviderAuditService | None = audit_service
         management = ProviderManagementService(
             settings_service=settings_service,
             config_resolver=resolver,
             app_state=self,
             config=config,
+            audit_service=audit_service,
         )
         org_mutations = OrgMutationService(
             settings_service=settings_service,

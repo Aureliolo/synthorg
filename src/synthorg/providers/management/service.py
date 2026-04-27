@@ -16,6 +16,10 @@ from synthorg.api.dto import (
     TestConnectionResponse,
     UpdateProviderRequest,
 )
+from synthorg.api.dto_provider_capabilities import (
+    ProviderAuditActor,
+    ProviderAuditEventType,
+)
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
@@ -69,6 +73,7 @@ if TYPE_CHECKING:
 
     from synthorg.api.state import AppState
     from synthorg.config.schema import LocalModelParams, RootConfig
+    from synthorg.providers.management.audit_service import ProviderAuditService
     from synthorg.providers.management.local_models import (
         LocalModelManager,
         PullProgressEvent,
@@ -77,6 +82,12 @@ if TYPE_CHECKING:
     from synthorg.providers.routing.selector import ModelCandidateSelector
     from synthorg.settings.resolver import ConfigResolver
     from synthorg.settings.service import SettingsService
+
+# Bookkeeping actor used when the mutation entry point lacks a
+# request-scoped actor (background bootstrap, file-driven hot-reload,
+# tests).  Real user mutations pass an explicit ``ProviderAuditActor``
+# from the controller derived from ``AuthenticatedUser``.
+_SYSTEM_ACTOR = ProviderAuditActor(id="system", label="provider-management")
 
 logger = get_logger(__name__)
 
@@ -92,6 +103,11 @@ class ProviderManagementService:
         config_resolver: Typed config accessor.
         app_state: Application state for hot-reload swaps.
         config: Root company configuration.
+        audit_service: Optional provider mutation audit log writer.
+            ``None`` when the persistence backend has not been wired
+            (legacy bootstrap paths, in-memory test rigs); each
+            mutation entry point is a no-op for audit emission in that
+            case.
     """
 
     def __init__(
@@ -101,16 +117,53 @@ class ProviderManagementService:
         config_resolver: ConfigResolver,
         app_state: AppState,
         config: RootConfig,
+        audit_service: ProviderAuditService | None = None,
     ) -> None:
         self._settings_service = settings_service
         self._config_resolver = config_resolver
         self._app_state = app_state
         self._config = config
+        self._audit_service = audit_service
         self._lock = asyncio.Lock()
         self._allowlist = DiscoveryAllowlistManager(
             settings_service=settings_service,
             config_resolver=config_resolver,
         )
+
+    async def _audit(
+        self,
+        *,
+        provider_name: str,
+        event_type: ProviderAuditEventType,
+        actor: ProviderAuditActor | None = None,
+        payload: dict[str, object] | None = None,
+    ) -> None:
+        """Emit one provider audit event if the audit service is wired.
+
+        No-op when ``self._audit_service is None`` so legacy bootstrap
+        paths keep working unchanged.  Audit failures NEVER propagate
+        out of a mutation: the mutation has already succeeded by the
+        time we reach here, and a downstream audit row failing must
+        not roll back the persisted provider change.  Failures are
+        logged at WARNING and swallowed.
+        """
+        if self._audit_service is None:
+            return
+        try:
+            await self._audit_service.record(
+                provider_name=provider_name,
+                event_type=event_type,
+                actor=actor or _SYSTEM_ACTOR,
+                payload=dict(payload) if payload else {},
+            )
+        except Exception as exc:
+            logger.warning(
+                "provider.audit.write_failed",
+                provider=provider_name,
+                event_type=event_type,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def list_providers(self) -> Mapping[str, ProviderConfig]:
         """List all configured providers keyed by name.
@@ -138,6 +191,8 @@ class ProviderManagementService:
     async def create_provider(
         self,
         request: CreateProviderRequest,
+        *,
+        actor: ProviderAuditActor | None = None,
     ) -> ProviderConfig:
         """Create a new provider.
 
@@ -167,12 +222,24 @@ class ProviderManagementService:
                 driver=new_config.driver,
                 auth_type=new_config.auth_type,
             )
+            await self._audit(
+                provider_name=request.name,
+                event_type="provider_created",
+                actor=actor,
+                payload={
+                    "driver": new_config.driver,
+                    "auth_type": new_config.auth_type.value,
+                    "model_count": len(new_config.models),
+                },
+            )
             return new_config
 
     async def update_provider(
         self,
         name: str,
         request: UpdateProviderRequest,
+        *,
+        actor: ProviderAuditActor | None = None,
     ) -> ProviderConfig:
         """Update an existing provider.
 
@@ -203,13 +270,29 @@ class ProviderManagementService:
                 driver=updated.driver,
                 auth_type=updated.auth_type,
             )
+            await self._audit(
+                provider_name=name,
+                event_type="provider_updated",
+                actor=actor,
+                payload={
+                    "fields_changed": sorted(
+                        request.model_dump(exclude_unset=True).keys(),
+                    ),
+                },
+            )
             return updated
 
-    async def delete_provider(self, name: str) -> None:
+    async def delete_provider(
+        self,
+        name: str,
+        *,
+        actor: ProviderAuditActor | None = None,
+    ) -> None:
         """Delete a provider.
 
         Args:
             name: Provider name to delete.
+            actor: Optional audit actor; defaults to ``_SYSTEM_ACTOR``.
 
         Raises:
             ProviderNotFoundError: If the provider does not exist.
@@ -230,6 +313,16 @@ class ProviderManagementService:
             )
 
             logger.info(SECURITY_PROVIDER_DELETED, provider=name)
+            await self._audit(
+                provider_name=name,
+                event_type="provider_deleted",
+                actor=actor,
+                payload={
+                    "driver": removed_config.driver,
+                    "auth_type": removed_config.auth_type.value,
+                    "model_count": len(removed_config.models),
+                },
+            )
 
     async def test_connection(
         self,
@@ -329,6 +422,8 @@ class ProviderManagementService:
     async def create_from_preset(
         self,
         request: CreateFromPresetRequest,
+        *,
+        actor: ProviderAuditActor | None = None,
     ) -> ProviderConfig:
         """Create a provider from a preset template.
 
@@ -386,7 +481,7 @@ class ProviderManagementService:
             models=models,
             preset_name=preset.name,
         )
-        return await self.create_provider(create_request)
+        return await self.create_provider(create_request, actor=actor)
 
     async def _maybe_discover_preset_models(
         self,
@@ -687,12 +782,19 @@ class ProviderManagementService:
         async for event in manager.pull_model(model_name):
             yield event
 
-    async def delete_model(self, name: str, model_id: str) -> None:
+    async def delete_model(
+        self,
+        name: str,
+        model_id: str,
+        *,
+        actor: ProviderAuditActor | None = None,
+    ) -> None:
         """Delete a model from a local provider.
 
         Args:
             name: Provider name.
             model_id: Model identifier to delete.
+            actor: Optional audit actor; defaults to ``_SYSTEM_ACTOR``.
 
         Raises:
             ProviderNotFoundError: If the provider does not exist.
@@ -714,12 +816,20 @@ class ProviderManagementService:
                 reason="post_delete_refresh_failed",
                 error=str(exc),
             )
+        await self._audit(
+            provider_name=name,
+            event_type="model_removed",
+            actor=actor,
+            payload={"model_id": model_id},
+        )
 
     async def update_model_config(
         self,
         name: str,
         model_id: str,
         local_params: LocalModelParams,
+        *,
+        actor: ProviderAuditActor | None = None,
     ) -> ProviderConfig:
         """Update per-model launch parameters for a local provider.
 
@@ -727,6 +837,7 @@ class ProviderManagementService:
             name: Provider name.
             model_id: Model identifier.
             local_params: New launch parameters.
+            actor: Optional audit actor; defaults to ``_SYSTEM_ACTOR``.
 
         Returns:
             Updated provider configuration.
@@ -778,6 +889,17 @@ class ProviderManagementService:
                 PROVIDER_MODEL_CONFIG_UPDATED,
                 provider=name,
                 model=model_id,
+            )
+            await self._audit(
+                provider_name=name,
+                event_type="model_config_updated",
+                actor=actor,
+                payload={
+                    "model_id": model_id,
+                    "fields_changed": sorted(
+                        local_params.model_dump(exclude_unset=True).keys(),
+                    ),
+                },
             )
             return updated
 

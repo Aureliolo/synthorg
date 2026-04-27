@@ -60,6 +60,9 @@ from synthorg.persistence.auth_protocol import (
     SessionRepository as SessionStore,  # noqa: TC001
 )
 from synthorg.providers.health import ProviderHealthTracker  # noqa: TC001
+from synthorg.providers.management.audit_service import (
+    ProviderAuditService,  # noqa: TC001
+)
 from synthorg.providers.management.service import (
     ProviderManagementService,  # noqa: TC001
 )
@@ -116,6 +119,7 @@ class AppStateServicesMixin(_FacadesMixin):
     _config_resolver: ConfigResolver | None
     _org_mutation_service: OrgMutationService | None
     _provider_management: ProviderManagementService | None
+    _provider_audit_service: ProviderAuditService | None
     _provider_health_tracker: ProviderHealthTracker | None
     _tool_invocation_tracker: ToolInvocationTracker | None
     _training_service: TrainingService | None
@@ -222,6 +226,26 @@ class AppStateServicesMixin(_FacadesMixin):
     def has_provider_management(self) -> bool:
         """Check whether the provider management service is configured."""
         return self._provider_management is not None
+
+    @property
+    def provider_audit_service(self) -> ProviderAuditService:
+        """Return the provider mutation audit service or raise 503.
+
+        Returns the service that owns provider audit-log writes and
+        keyset-paginated reads.  Raises ``ServiceUnavailableError``
+        (HTTP 503) when the persistence backend has not been wired
+        (in-memory fallback paths, pre-bootstrap rigs).  Most call
+        sites SHOULD prefer ``has_provider_audit_service`` first.
+        """
+        return self._require_service(
+            self._provider_audit_service,
+            "provider_audit_service",
+        )
+
+    @property
+    def has_provider_audit_service(self) -> bool:
+        """Check whether the provider audit service is wired."""
+        return self._provider_audit_service is not None
 
     @property
     def provider_health_tracker(self) -> ProviderHealthTracker:

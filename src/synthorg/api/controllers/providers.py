@@ -17,11 +17,13 @@ from litestar.response import ServerSentEvent
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.controllers._provider_helpers import enrich_with_usage, sse_error
+from synthorg.api.cursor import decode_keyset_cursor
 from synthorg.api.dto import (
     ApiResponse,
     CreateFromPresetRequest,
     CreateProviderRequest,
     DiscoverModelsResponse,
+    PaginatedResponse,
     ProbeLocalResponse,
     ProbePresetResponse,
     ProviderResponse,
@@ -37,6 +39,9 @@ from synthorg.api.dto_discovery import (
     DiscoveryPolicyResponse,
     RemoveAllowlistEntryRequest,
 )
+from synthorg.api.dto_provider_capabilities import (
+    ProviderAuditEvent,  # noqa: TC001 -- runtime litestar response model
+)
 from synthorg.api.dto_providers import (
     ProviderModelResponse,
     PullModelRequest,
@@ -50,6 +55,7 @@ from synthorg.api.errors import (
     NotFoundError,
 )
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
+from synthorg.api.pagination import CursorLimit, CursorParam, encode_keyset_meta
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.rate_limits import per_op_concurrency, per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
@@ -906,3 +912,79 @@ class ProviderController(Controller):
             )
             raise ApiError(msg)
         return ApiResponse(data=to_provider_model_response(model))
+
+    # ── Audit log (read access) ─────────────────────────────────
+
+    @get(
+        "/{name:str}/audit",
+        guards=[require_read_access],
+    )
+    async def list_audit(
+        self,
+        state: State,
+        name: PathName,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
+    ) -> PaginatedResponse[ProviderAuditEvent]:
+        """List the mutation audit log for one provider, newest first.
+
+        Keyset-paginated on the integer ``id`` column.  ``cursor`` is
+        an opaque keyset cursor returned by the previous page; pass
+        ``None`` (omit the param) for the first page.
+
+        Args:
+            state: Application state.
+            name: Provider name (must exist; returns 404 otherwise).
+            cursor: Opaque keyset cursor from a previous page.
+            limit: Page size (default 50, max ``MAX_LIMIT``).
+
+        Returns:
+            Paginated response of ``ProviderAuditEvent`` rows.
+
+        Raises:
+            NotFoundError: HTTP 404 if the provider does not exist.
+            InvalidCursorError: HTTP 400 -- malformed, tampered, or
+                signed by a different secret.
+        """
+        app_state: AppState = state.app_state
+        # Surface 404 cleanly if the provider has been deleted; an
+        # audit log for a non-existent provider would silently return
+        # an empty page and hide the deletion from monitoring.
+        try:
+            await app_state.provider_management.get_provider(name)
+        except ProviderNotFoundError as exc:
+            msg = f"Provider {name!r} not found"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="provider",
+                name=name,
+            )
+            raise NotFoundError(msg) from exc
+
+        after_id_str = (
+            decode_keyset_cursor(cursor, secret=app_state.cursor_secret)
+            if cursor is not None
+            else None
+        )
+        # The keyset cursor encodes the last id as a string for
+        # cross-domain consistency; the provider audit log carries
+        # integer ids, so coerce here.
+        after_id: int | None = int(after_id_str) if after_id_str is not None else None
+
+        events, has_more = await app_state.provider_audit_service.list_for_provider(
+            provider_name=name,
+            after_id=after_id,
+            limit=limit,
+        )
+        next_after_key = (
+            str(events[-1].id)
+            if has_more and events and events[-1].id is not None
+            else None
+        )
+        meta = encode_keyset_meta(
+            next_after_key=next_after_key,
+            has_more=has_more,
+            limit=limit,
+            secret=app_state.cursor_secret,
+        )
+        return PaginatedResponse(data=events, pagination=meta)

@@ -82,6 +82,9 @@ from synthorg.persistence.project_cost_aggregate_protocol import (
     ProjectCostAggregateRepository,  # noqa: TC001
 )
 from synthorg.persistence.project_protocol import ProjectRepository  # noqa: TC001
+from synthorg.persistence.provider_audit_protocol import (  # noqa: TC001
+    ProviderAuditRepo,
+)
 from synthorg.persistence.risk_override_repo import (
     RiskOverrideRepository,  # noqa: TC001
 )
@@ -270,6 +273,11 @@ class PersistenceBackend(Protocol):
     @property
     def audit_entries(self) -> AuditRepository:
         """Repository for AuditEntry persistence."""
+        ...
+
+    @property
+    def provider_audit_events(self) -> ProviderAuditRepo:
+        """Repository for the provider mutation audit log."""
         ...
 
     @property
