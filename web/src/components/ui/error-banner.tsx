@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import { AlertTriangle, Info, WifiOff, X, AlertCircle } from 'lucide-react'
-import { isValidElement } from 'react'
+import { isValidElement, useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from './button'
 
@@ -28,6 +28,15 @@ export interface ErrorBannerProps {
   description?: string | React.ReactNode
   /** When provided, renders a Retry button that invokes this handler. */
   onRetry?: () => void
+  /**
+   * When set, the Retry button is disabled and shows a live countdown
+   * (``Retry in 12s``) until the cooldown expires. Pass the seconds
+   * value parsed from a server ``Retry-After`` header (or
+   * ``ErrorDetail.retry_after``); the banner re-enables Retry when
+   * the countdown reaches zero. The countdown is cosmetic only -- the
+   * caller still owns the actual retry decision via ``onRetry``.
+   */
+  retryAfterSeconds?: number | null
   /** When provided, renders a Dismiss (X) button that invokes this handler. */
   onDismiss?: () => void
   /** Override the default icon (by severity). Always rendered at h-4 w-4 for consistency. */
@@ -63,6 +72,7 @@ export function ErrorBanner({
   title,
   description,
   onRetry,
+  retryAfterSeconds,
   onDismiss,
   icon,
   action,
@@ -75,6 +85,40 @@ export function ErrorBanner({
   const ariaLive = severity === 'error' ? 'assertive' : 'polite'
 
   const densityClasses = variant === 'inline' ? 'gap-2 p-card text-xs' : 'gap-3 p-card text-sm'
+
+  // Live countdown for Retry-After cooldowns. ``remaining`` is seeded
+  // from the latest ``retryAfterSeconds`` prop via render-phase deriv-
+  // ation (no synchronous ``setRemaining`` inside the effect, which
+  // ESLint's ``set-state-in-effect`` rule rightly flags as a render-
+  // loop hazard). The effect owns only the ``setInterval`` that ticks
+  // the value down once per second; ``clearInterval`` runs when the
+  // prop changes or the component unmounts.
+  const initialRemaining =
+    retryAfterSeconds && retryAfterSeconds > 0 ? Math.ceil(retryAfterSeconds) : null
+  const [remaining, setRemaining] = useState<number | null>(initialRemaining)
+  // Track the prop key we last seeded from so a fresh ``retryAfterSeconds``
+  // prop resets the countdown without firing ``setRemaining`` in the
+  // effect body.
+  const [seedKey, setSeedKey] = useState<number | null>(retryAfterSeconds ?? null)
+  if (seedKey !== (retryAfterSeconds ?? null)) {
+    setSeedKey(retryAfterSeconds ?? null)
+    setRemaining(initialRemaining)
+  }
+  useEffect(() => {
+    if (!retryAfterSeconds || retryAfterSeconds <= 0) return
+    const id = setInterval(() => {
+      setRemaining((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(id)
+          return null
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(id)
+  }, [retryAfterSeconds])
+  const retryDisabled = remaining !== null && remaining > 0
+  const retryLabel = retryDisabled ? `Retry in ${remaining}s` : 'Retry'
 
   return (
     <div
@@ -107,8 +151,14 @@ export function ErrorBanner({
         {(onRetry || action) && (
           <div className="mt-2 flex flex-wrap gap-2">
             {onRetry && (
-              <Button size="xs" variant="outline" onClick={onRetry}>
-                Retry
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={onRetry}
+                disabled={retryDisabled}
+                aria-live={retryDisabled ? 'polite' : undefined}
+              >
+                {retryLabel}
               </Button>
             )}
             {action && (isActionObject(action) ? (
