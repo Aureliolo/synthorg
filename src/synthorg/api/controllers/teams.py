@@ -489,6 +489,13 @@ class TeamController(Controller):
             if reassign_to is not None:
                 if normalize_identifier(reassign_to) == normalize_identifier(team_name):
                     msg = "Cannot reassign members to the team being deleted"
+                    logger.warning(
+                        API_VALIDATION_FAILED,
+                        department=dept_name,
+                        reason="self_reassignment",
+                        team_name=team_name,
+                        reassign_to=reassign_to,
+                    )
                     raise ApiValidationError(msg)
                 target_idx, target = _find_team(teams, reassign_to)
                 # Merge members (deduplicate, case-insensitive).
