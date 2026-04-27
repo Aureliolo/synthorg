@@ -40,6 +40,7 @@ from synthorg.observability.events.evaluation import (
     EVAL_REPORT_COMPUTED,
     EVAL_WEIGHTS_REDISTRIBUTED,
 )
+from synthorg.settings.kill_switch import resolve_bool_with_fallback
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
@@ -48,6 +49,7 @@ if TYPE_CHECKING:
     from synthorg.hr.evaluation.pillar_protocol import PillarScoringStrategy
     from synthorg.hr.performance.models import WindowMetrics
     from synthorg.hr.performance.tracker import PerformanceTracker
+    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -81,6 +83,7 @@ class EvaluationService:
         governance_strategy: PillarScoringStrategy | None = None,
         ux_strategy: PillarScoringStrategy | None = None,
         config: EvaluationConfig | None = None,
+        config_resolver: ConfigResolver | None = None,
     ) -> None:
         """Initialize the evaluation service."""
         self._tracker = tracker
@@ -90,6 +93,18 @@ class EvaluationService:
         self._governance = governance_strategy or self._default_governance()
         self._ux = ux_strategy or self._default_ux()
         self._feedback: dict[str, list[InteractionFeedback]] = {}
+        # Resolver gates the four hr.evaluation_*_enabled kill switches.
+        # Mapping (best-effort, since the registry flags don't align
+        # 1:1 with the pillar architecture):
+        #   evaluation_quality_enabled    -> Intelligence pillar
+        #   evaluation_task_count_enabled -> Resilience pillar
+        #   evaluation_cost_enabled       -> efficiency cost sub-metric
+        #   evaluation_latency_enabled    -> efficiency time sub-metric
+        # Without a resolver wired we fall back to the YAML-baked
+        # ``pillar.enabled`` / ``efficiency.cost_enabled`` /
+        # ``efficiency.time_enabled`` fields so standalone construction
+        # still honours the documented defaults.
+        self._config_resolver = config_resolver
 
     @staticmethod
     def _default_intelligence() -> PillarScoringStrategy:
@@ -147,7 +162,7 @@ class EvaluationService:
             now = datetime.now(UTC)
 
         context = await self._build_context(agent_id, now=now)
-        enabled, weights = self._resolve_enabled_pillars(agent_id)
+        enabled, weights = await self._resolve_enabled_pillars(agent_id)
         pillar_scores = await self._score_pillars(enabled, context)
         return self._assemble_report(
             agent_id,
@@ -188,15 +203,34 @@ class EvaluationService:
             resilience_metrics=resilience_metrics,
         )
 
-    def _get_pillar_configs(
+    async def _get_pillar_configs(
         self,
     ) -> list[tuple[EvaluationPillar, bool, float, PillarScoringStrategy | None]]:
-        """Return pillar configuration tuples."""
+        """Return pillar configuration tuples.
+
+        Consults the resolver for ``hr.evaluation_quality_enabled``
+        (Intelligence) and ``hr.evaluation_task_count_enabled``
+        (Resilience) when wired; falls back to the YAML-baked
+        ``pillar.enabled`` field for the other pillars and when no
+        resolver is wired.
+        """
         cfg = self._config
+        intelligence_enabled = await resolve_bool_with_fallback(
+            resolver=self._config_resolver,
+            namespace="hr",
+            key="evaluation_quality_enabled",
+            fallback=cfg.intelligence.enabled,
+        )
+        resilience_enabled = await resolve_bool_with_fallback(
+            resolver=self._config_resolver,
+            namespace="hr",
+            key="evaluation_task_count_enabled",
+            fallback=cfg.resilience.enabled,
+        )
         return [
             (
                 EvaluationPillar.INTELLIGENCE,
-                cfg.intelligence.enabled,
+                intelligence_enabled,
                 cfg.intelligence.weight,
                 self._intelligence,
             ),
@@ -208,7 +242,7 @@ class EvaluationService:
             ),
             (
                 EvaluationPillar.RESILIENCE,
-                cfg.resilience.enabled,
+                resilience_enabled,
                 cfg.resilience.weight,
                 self._resilience,
             ),
@@ -226,7 +260,7 @@ class EvaluationService:
             ),
         ]
 
-    def _resolve_enabled_pillars(
+    async def _resolve_enabled_pillars(
         self,
         agent_id: NotBlankStr,
     ) -> tuple[
@@ -234,7 +268,7 @@ class EvaluationService:
         dict[str, float],
     ]:
         """Determine enabled pillars, log skipped ones, redistribute weights."""
-        pillar_map = self._get_pillar_configs()
+        pillar_map = await self._get_pillar_configs()
 
         enabled: list[tuple[EvaluationPillar, float, PillarScoringStrategy | None]] = []
         for pillar, is_enabled, weight, strategy in pillar_map:
@@ -390,7 +424,7 @@ class EvaluationService:
             )
             return self._neutral_efficiency(0, context.now)
 
-        scores = self._compute_efficiency_sub_scores(cfg, window)
+        scores = await self._compute_efficiency_sub_scores(cfg, window)
         if not scores:
             logger.info(
                 EVAL_PILLAR_INSUFFICIENT_DATA,
@@ -402,24 +436,43 @@ class EvaluationService:
 
         return self._build_efficiency_score(scores, window, context)
 
-    @staticmethod
-    def _compute_efficiency_sub_scores(
+    async def _compute_efficiency_sub_scores(
+        self,
         cfg: EfficiencyConfig,
         window: WindowMetrics,
     ) -> list[tuple[str, float, float]]:
         """Compute enabled efficiency sub-metric scores.
 
         Returns list of (name, weight, score) tuples.
+
+        Gates the ``cost`` and ``time`` sub-metrics through the
+        resolver-backed ``hr.evaluation_cost_enabled`` and
+        ``hr.evaluation_latency_enabled`` flags so an operator can
+        suppress those sub-metrics from the efficiency report without
+        restart.  Falls back to the YAML-baked ``cfg.cost_enabled`` /
+        ``cfg.time_enabled`` fields when no resolver is wired.
         """
+        cost_enabled = await resolve_bool_with_fallback(
+            resolver=self._config_resolver,
+            namespace="hr",
+            key="evaluation_cost_enabled",
+            fallback=cfg.cost_enabled,
+        )
+        latency_enabled = await resolve_bool_with_fallback(
+            resolver=self._config_resolver,
+            namespace="hr",
+            key="evaluation_latency_enabled",
+            fallback=cfg.time_enabled,
+        )
         results: list[tuple[str, float, float]] = []
-        if cfg.cost_enabled and window.avg_cost_per_task is not None:
+        if cost_enabled and window.avg_cost_per_task is not None:
             score = max(
                 0.0,
                 MAX_SCORE * (1.0 - window.avg_cost_per_task / cfg.reference_cost),
             )
             results.append(("cost", cfg.cost_weight, min(MAX_SCORE, score)))
 
-        if cfg.time_enabled and window.avg_completion_time_seconds is not None:
+        if latency_enabled and window.avg_completion_time_seconds is not None:
             score = max(
                 0.0,
                 MAX_SCORE
