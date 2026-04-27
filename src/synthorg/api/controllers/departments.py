@@ -237,7 +237,7 @@ async def _resolve_dept_policy_cas_attempts(app_state: AppState) -> int:
     transient settings outage must not collapse the retry budget to
     zero, so the fallback equals the registered default.
     """
-    if not app_state.has_config_resolver:
+    if not getattr(app_state, "has_config_resolver", False):
         return _DEPT_POLICY_CAS_FALLBACK_ATTEMPTS
     try:
         return await app_state.config_resolver.get_int(
