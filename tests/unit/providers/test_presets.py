@@ -9,9 +9,11 @@ from synthorg.providers.presets import (
     candidate_urls_for,
     default_models_for,
     get_preset,
+    list_featured_presets,
     list_local_presets,
     list_presets,
     list_probable_presets,
+    list_soft_presets,
 )
 
 
@@ -108,19 +110,49 @@ class TestProviderPresets:
     _CLOUD_PRESETS = (
         "anthropic",
         "azure",
+        "cerebras",
+        "cohere",
         "deepseek",
+        "fireworks_ai",
         "gemini",
         "groq",
         "mistral",
+        "moonshot",
+        "nvidia_nim",
         "ollama-cloud",
         "openai",
         "openrouter",
+        "sambanova",
+        "together_ai",
+        "xai",
     )
+    """Featured (hand-curated) cloud preset names.
+
+    Soft presets auto-derived from ``litellm.model_cost`` are not
+    listed here.  Use ``test_all_featured_presets_categorized`` for
+    the categorisation invariant.
+    """
     _LOCAL_PRESETS = ("lm-studio", "ollama", "vllm")
 
     @pytest.mark.parametrize(
         "name",
-        ["anthropic", "deepseek", "gemini", "groq", "mistral", "openai", "openrouter"],
+        [
+            "anthropic",
+            "cerebras",
+            "cohere",
+            "deepseek",
+            "fireworks_ai",
+            "gemini",
+            "groq",
+            "mistral",
+            "moonshot",
+            "nvidia_nim",
+            "openai",
+            "openrouter",
+            "sambanova",
+            "together_ai",
+            "xai",
+        ],
     )
     def test_cloud_preset_does_not_require_base_url(self, name: str) -> None:
         """Most cloud presets don't require a base URL.
@@ -160,13 +192,21 @@ class TestProviderPresets:
         assert preset is not None, f"Preset {name!r} not found"
         assert preset.requires_base_url is True
 
-    def test_all_presets_categorized(self) -> None:
-        """Every preset must be in either the cloud or local set."""
-        all_names: set[str] = {str(p.name) for p in PROVIDER_PRESETS}
+    def test_all_featured_presets_categorized(self) -> None:
+        """Every featured preset must be in either the cloud or local set.
+
+        Soft presets (auto-derived from ``litellm.model_cost``) are
+        excluded from this invariant because they are dynamic; the
+        hand-curated ``_CLOUD_PRESETS`` / ``_LOCAL_PRESETS`` tuples
+        track the branded set only.
+        """
+        featured_names: set[str] = {
+            str(p.name) for p in PROVIDER_PRESETS if p.is_featured
+        }
         categorized: set[str] = set(self._CLOUD_PRESETS) | set(self._LOCAL_PRESETS)
-        assert all_names == categorized, (
-            f"Uncategorized presets: {all_names - categorized}; "
-            f"phantom presets: {categorized - all_names}"
+        assert featured_names == categorized, (
+            f"Uncategorized featured presets: {featured_names - categorized}; "
+            f"phantom featured presets: {categorized - featured_names}"
         )
 
     def test_ollama_supports_local_model_management(self) -> None:
@@ -210,7 +250,22 @@ class TestProviderPresets:
         """Cloud presets other than Anthropic only support API key auth."""
         from synthorg.providers.enums import AuthType
 
-        for name in ("openai", "gemini", "mistral", "groq", "deepseek", "openrouter"):
+        for name in (
+            "cerebras",
+            "cohere",
+            "deepseek",
+            "fireworks_ai",
+            "gemini",
+            "groq",
+            "mistral",
+            "moonshot",
+            "nvidia_nim",
+            "openai",
+            "openrouter",
+            "sambanova",
+            "together_ai",
+            "xai",
+        ):
             preset = get_preset(name)
             assert preset is not None
             assert isinstance(preset, CloudPreset)
@@ -357,3 +412,111 @@ class TestProviderPresets:
                 f"Preset {preset.name!r} appears in list_probable_presets() "
                 f"but has no candidate_urls"
             )
+
+    # ── Featured / soft tier invariants ────────────────────────────
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "moonshot",
+            "together_ai",
+            "fireworks_ai",
+            "xai",
+            "cohere",
+            "cerebras",
+            "sambanova",
+            "nvidia_nim",
+        ],
+    )
+    def test_new_branded_preset_routes_via_litellm(self, name: str) -> None:
+        """Each new branded preset routes via the matching LiteLLM namespace.
+
+        Cohere is the one curated divergence: the brand is ``cohere``
+        but LiteLLM chat completions route via ``cohere_chat/`` (the
+        bare ``cohere/`` namespace is the deprecated completions
+        endpoint).
+        """
+        preset = get_preset(name)
+        assert preset is not None, f"Preset {name!r} not found"
+        assert isinstance(preset, CloudPreset)
+        expected = "cohere_chat" if name == "cohere" else name
+        assert preset.litellm_provider == expected, (
+            f"Preset {name!r} should route via {expected!r}"
+        )
+
+    def test_featured_presets_are_marked_featured(self) -> None:
+        """Every preset in ``list_featured_presets`` has ``is_featured=True``."""
+        for preset in list_featured_presets():
+            assert preset.is_featured, (
+                f"Featured-list preset {preset.name!r} has is_featured=False"
+            )
+
+    def test_soft_presets_are_not_featured(self) -> None:
+        """Every preset from ``list_soft_presets`` has ``is_featured=False``."""
+        for preset in list_soft_presets():
+            assert not preset.is_featured, (
+                f"Soft preset {preset.name!r} has is_featured=True"
+            )
+
+    def test_soft_presets_are_all_cloud(self) -> None:
+        """Soft presets are always ``CloudPreset``.
+
+        Auto-derive never yields a ``LocalPreset``.
+        """
+        for preset in list_soft_presets():
+            assert isinstance(preset, CloudPreset), (
+                f"Soft preset {preset.name!r} is not a CloudPreset"
+            )
+
+    def test_soft_presets_are_api_key_only(self) -> None:
+        """Auto-derived soft presets default to API-key auth."""
+        from synthorg.providers.enums import AuthType
+
+        for preset in list_soft_presets():
+            assert preset.auth_type == AuthType.API_KEY
+            assert preset.supported_auth_types == (AuthType.API_KEY,)
+
+    def test_soft_presets_have_distinct_litellm_providers(self) -> None:
+        """No soft preset duplicates a featured preset's litellm_provider."""
+        featured_namespaces = {p.litellm_provider for p in list_featured_presets()}
+        for soft in list_soft_presets():
+            assert soft.litellm_provider not in featured_namespaces, (
+                f"Soft preset {soft.name!r} duplicates featured "
+                f"litellm_provider {soft.litellm_provider!r}"
+            )
+
+    def test_soft_presets_skip_denylist_namespaces(self) -> None:
+        """Denylist namespaces (IAM-bound, OAuth-only, deprecated) are excluded."""
+        soft_namespaces = {p.litellm_provider for p in list_soft_presets()}
+        for denied in (
+            "bedrock",
+            "vertex_ai",
+            "vertex_ai-anthropic_models",
+            "sagemaker",
+            "watsonx",
+            "github_copilot",
+            "ollama",
+            "huggingface",
+            "cohere",
+            "amazon_nova",
+        ):
+            assert denied not in soft_namespaces, (
+                f"Denied namespace {denied!r} leaked into soft presets"
+            )
+
+    def test_provider_presets_is_featured_then_soft(self) -> None:
+        """``PROVIDER_PRESETS`` orders featured entries before soft entries."""
+        seen_soft = False
+        for preset in PROVIDER_PRESETS:
+            if not preset.is_featured:
+                seen_soft = True
+            elif seen_soft:
+                pytest.fail(
+                    f"Featured preset {preset.name!r} appears after a soft preset"
+                )
+
+    def test_list_presets_returns_featured_plus_soft(self) -> None:
+        """``list_presets`` is the concatenation of featured and soft tuples."""
+        featured = list_featured_presets()
+        soft = list_soft_presets()
+        assert list_presets() == (*featured, *soft)

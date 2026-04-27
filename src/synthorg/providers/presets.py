@@ -12,15 +12,30 @@ Two preset kinds, expressed as a discriminated union:
   vLLM).  Carries auto-detect candidate URLs and local model-management
   capability flags.
 
+Two preset tiers, distinguished by :attr:`_BasePreset.is_featured`:
+
+* **Featured** -- hand-curated entries with brand logo, vetted
+  description, and (where useful) ``default_models`` fallback.  Listed
+  in :data:`_FEATURED_PRESETS`.
+* **Soft** -- auto-derived from ``litellm.model_cost`` for every chat
+  namespace not already covered by a featured preset and not denied
+  by :data:`_LITELLM_NAMESPACE_DENYLIST`.  Soft presets render with
+  the wizard's generic fallback icon and a generic description; they
+  exist so SynthOrg surfaces every chat-capable LiteLLM provider out
+  of the box.
+
 Consumers iterating across all presets should use the helpers
-:func:`default_models_for`, :func:`candidate_urls_for`, and
-:func:`list_local_presets` instead of conditional ``isinstance`` checks.
+:func:`default_models_for`, :func:`candidate_urls_for`,
+:func:`list_local_presets`, :func:`list_featured_presets`, and
+:func:`list_soft_presets` instead of conditional ``isinstance``
+or attribute checks.
 """
 
 import re
 from types import MappingProxyType
 from typing import Annotated, Final, Literal, Self
 
+import litellm
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.config.schema import ProviderModelConfig
@@ -46,6 +61,11 @@ class _BasePreset(BaseModel):
             ``False`` for cloud providers (the routing library knows
             the URL), ``True`` for self-hosted and deployment-specific
             backends (per-deployment).
+        is_featured: Whether this preset is hand-curated (logo, vetted
+            description, default-model fallbacks) versus auto-derived
+            from ``litellm.model_cost``.  Featured presets render in
+            the wizard's primary grid; non-featured (soft) presets
+            render in the "More providers" section.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -58,6 +78,7 @@ class _BasePreset(BaseModel):
     auth_type: AuthType
     default_base_url: NotBlankStr | None = None
     requires_base_url: bool = False
+    is_featured: bool = True
 
 
 class CloudPreset(_BasePreset):
@@ -221,6 +242,28 @@ _MISTRAL = CloudPreset(
     default_models=(),
 )
 
+_MOONSHOT = CloudPreset(
+    name="moonshot",
+    display_name="Moonshot AI (Kimi)",
+    description="Kimi long-context models from Moonshot AI",
+    driver="litellm",
+    litellm_provider="moonshot",
+    auth_type=AuthType.API_KEY,
+    supported_auth_types=(AuthType.API_KEY,),
+    default_models=(),
+)
+
+_NVIDIA_NIM = CloudPreset(
+    name="nvidia_nim",
+    display_name="NVIDIA NIM",
+    description="NVIDIA-hosted inference for Llama, Qwen, and others",
+    driver="litellm",
+    litellm_provider="nvidia_nim",
+    auth_type=AuthType.API_KEY,
+    supported_auth_types=(AuthType.API_KEY,),
+    default_models=(),
+)
+
 _GROQ = CloudPreset(
     name="groq",
     display_name="Groq",
@@ -243,6 +286,17 @@ _DEEPSEEK = CloudPreset(
     default_models=(),
 )
 
+_FIREWORKS = CloudPreset(
+    name="fireworks_ai",
+    display_name="Fireworks AI",
+    description="Fast open-model inference (Llama, DeepSeek, Mixtral)",
+    driver="litellm",
+    litellm_provider="fireworks_ai",
+    auth_type=AuthType.API_KEY,
+    supported_auth_types=(AuthType.API_KEY,),
+    default_models=(),
+)
+
 _AZURE_OPENAI = CloudPreset(
     name="azure",
     display_name="Azure OpenAI",
@@ -254,6 +308,30 @@ _AZURE_OPENAI = CloudPreset(
     # Azure requires a per-deployment base_url
     default_base_url=None,
     requires_base_url=True,
+    default_models=(),
+)
+
+_CEREBRAS = CloudPreset(
+    name="cerebras",
+    display_name="Cerebras",
+    description="Wafer-scale inference (Llama, Qwen, GPT-OSS)",
+    driver="litellm",
+    litellm_provider="cerebras",
+    auth_type=AuthType.API_KEY,
+    supported_auth_types=(AuthType.API_KEY,),
+    default_models=(),
+)
+
+_COHERE = CloudPreset(
+    name="cohere",
+    display_name="Cohere",
+    description="Command and Command-R models for chat and RAG",
+    driver="litellm",
+    # cohere/ is the legacy completions endpoint; chat-completions
+    # routes via cohere_chat/ in LiteLLM.
+    litellm_provider="cohere_chat",
+    auth_type=AuthType.API_KEY,
+    supported_auth_types=(AuthType.API_KEY,),
     default_models=(),
 )
 
@@ -345,23 +423,232 @@ _OPENROUTER = CloudPreset(
     default_models=(),
 )
 
+_SAMBANOVA = CloudPreset(
+    name="sambanova",
+    display_name="SambaNova",
+    description="High-throughput Llama inference",
+    driver="litellm",
+    litellm_provider="sambanova",
+    auth_type=AuthType.API_KEY,
+    supported_auth_types=(AuthType.API_KEY,),
+    default_models=(),
+)
 
-PROVIDER_PRESETS: tuple[CloudPreset | LocalPreset, ...] = (
-    # Cloud (alphabetical)
+_TOGETHER = CloudPreset(
+    name="together_ai",
+    display_name="Together AI",
+    description="Open-model gateway (Llama, Qwen, DeepSeek, Mixtral)",
+    driver="litellm",
+    litellm_provider="together_ai",
+    auth_type=AuthType.API_KEY,
+    supported_auth_types=(AuthType.API_KEY,),
+    default_models=(),
+)
+
+_XAI = CloudPreset(
+    name="xai",
+    display_name="xAI (Grok)",
+    description="xAI Grok reasoning and chat models",
+    driver="litellm",
+    litellm_provider="xai",
+    auth_type=AuthType.API_KEY,
+    supported_auth_types=(AuthType.API_KEY,),
+    default_models=(),
+)
+
+
+_FEATURED_PRESETS: tuple[CloudPreset | LocalPreset, ...] = (
+    # Cloud (alphabetical by preset name)
     _ANTHROPIC,
     _AZURE_OPENAI,
+    _CEREBRAS,
+    _COHERE,
     _DEEPSEEK,
+    _FIREWORKS,
     _GEMINI,
     _GROQ,
     _MISTRAL,
+    _MOONSHOT,
+    _NVIDIA_NIM,
     _OLLAMA_CLOUD,
     _OPENAI,
     _OPENROUTER,
+    _SAMBANOVA,
+    _TOGETHER,
+    _XAI,
     # Self-hosted (alphabetical)
     _LM_STUDIO,
     _OLLAMA,
     _VLLM,
 )
+"""Hand-curated presets with branding (logo, description, default
+models).  Featured presets render in the wizard's primary grid."""
+
+
+# ── Auto-derived "soft" presets from litellm.model_cost ────────
+
+_LITELLM_NAMESPACE_DENYLIST: Final[frozenset[str]] = frozenset(
+    {
+        # Cloud-IAM-bound: need AWS sigv4 / GCP ADC / IBM IAM, not API key paste.
+        "bedrock",
+        "bedrock_chat",
+        "bedrock_converse",
+        "sagemaker",
+        "sagemaker_chat",
+        "vertex_ai",
+        "vertex_ai_beta",
+        "watsonx",
+        "watsonx_text",
+        "palm",
+        "amazon_nova",  # Bedrock-routed Nova family.
+        "oci",  # Oracle Cloud Infrastructure -- IAM-bound.
+        "volcengine",  # ByteDance cloud -- complex regional + IAM auth.
+        # OAuth-bound: not pasteable as an API key.
+        "github_copilot",
+        "github_copilot_chat",
+        # Local / self-hosted: need base_url, often no auth.
+        "ollama",
+        "ollama_chat",
+        "openai_like",
+        "openai-compatible",
+        "custom_openai",
+        "text-completion-openai",
+        "huggingface",
+        "lemonade",  # Local self-hosted model server.
+        # Niche / deprecated / non-chat / wrong-API-shape.
+        "aleph_alpha",
+        "anyscale",
+        "nlpcloud",
+        "nlp_cloud",  # LiteLLM uses the underscored variant.
+        "replicate",
+        "cloudflare",
+        "voyage",
+        "petals",
+        "codestral",  # Mistral variant; covered by curated mistral preset.
+        "cohere",  # bare cohere is the deprecated completions endpoint
+        # (cohere_chat covers chat completions and is curated above).
+        "azure_ai",  # superseded by curated azure preset.
+        "azure_text",  # text-completion variant of Azure OpenAI.
+    }
+)
+"""LiteLLM provider namespaces excluded from auto-derived soft presets.
+
+Either the auth shape is incompatible with API-key paste (cloud IAM,
+local with no auth, OAuth-bound), the surface is embedding/audio/image
+only, the namespace is deprecated, or it duplicates a featured
+preset's :func:`litellm_provider`.
+"""
+
+_LITELLM_NAMESPACE_DENY_PREFIXES: Final[tuple[str, ...]] = (
+    "bedrock",  # bedrock_mantle, bedrock_runtime, ...
+    "vertex_ai",  # vertex_ai-anthropic_models, vertex_ai-openai_models, ...
+    "sagemaker",
+    "watsonx",
+    "text-completion-",  # text-completion-codestral, text-completion-openai
+)
+"""Prefixes that mark a LiteLLM namespace as denied.
+
+Used in addition to :data:`_LITELLM_NAMESPACE_DENYLIST` so that
+sub-namespaces (for example ``vertex_ai-anthropic_models`` or
+``bedrock_mantle``) inherit the parent's auth-shape exclusion without
+having to enumerate every variant.
+"""
+
+
+def _is_denied_namespace(namespace: str) -> bool:
+    """Return ``True`` when ``namespace`` matches a denylist entry."""
+    if namespace in _LITELLM_NAMESPACE_DENYLIST:
+        return True
+    return any(
+        namespace.startswith(prefix) for prefix in _LITELLM_NAMESPACE_DENY_PREFIXES
+    )
+
+
+def _humanise_namespace(namespace: str) -> str:
+    """Turn a LiteLLM namespace into a Title Case display name.
+
+    Examples:
+        ``"perplexity"`` -> ``"Perplexity"``
+        ``"nvidia_nim"`` -> ``"Nvidia Nim"`` (curated names override).
+
+    The result is a fallback for soft presets only; featured presets
+    set ``display_name`` explicitly.
+    """
+    return namespace.replace("_", " ").replace("-", " ").title()
+
+
+def _make_soft_preset(namespace: str) -> CloudPreset:
+    """Build a generic API-key-only ``CloudPreset`` for a LiteLLM namespace."""
+    return CloudPreset(
+        name=namespace,
+        display_name=_humanise_namespace(namespace),
+        description=f"Models served via LiteLLM provider {namespace!r}",
+        driver="litellm",
+        litellm_provider=namespace,
+        auth_type=AuthType.API_KEY,
+        supported_auth_types=(AuthType.API_KEY,),
+        default_models=(),
+        is_featured=False,
+    )
+
+
+def _iter_litellm_chat_namespaces() -> tuple[str, ...]:
+    """Return every chat-capable LiteLLM namespace, sorted, deduped.
+
+    A namespace is included when at least one model in
+    ``litellm.model_cost`` declares it via ``litellm_provider`` and has
+    ``mode in {"chat", "completion"}``.  Embedding / audio / image
+    providers are filtered out.
+    """
+    seen: set[str] = set()
+    cost_table = getattr(litellm, "model_cost", {}) or {}
+    for info in cost_table.values():
+        if not isinstance(info, dict):
+            continue
+        if info.get("mode") not in {"chat", "completion"}:
+            continue
+        provider = info.get("litellm_provider")
+        if not isinstance(provider, str) or not provider:
+            continue
+        seen.add(provider)
+    return tuple(sorted(seen))
+
+
+def _build_soft_presets(
+    featured: tuple[CloudPreset | LocalPreset, ...],
+) -> tuple[CloudPreset, ...]:
+    """Auto-derive soft presets for every non-excluded LiteLLM namespace.
+
+    Skips namespaces already covered by a featured preset's
+    :attr:`litellm_provider` and any namespace in
+    :data:`_LITELLM_NAMESPACE_DENYLIST`.  Returned in alphabetical
+    order by namespace.
+    """
+    covered: frozenset[str] = frozenset(p.litellm_provider for p in featured)
+    softs: list[CloudPreset] = []
+    for namespace in _iter_litellm_chat_namespaces():
+        if namespace in covered or _is_denied_namespace(namespace):
+            continue
+        softs.append(_make_soft_preset(namespace))
+    return tuple(softs)
+
+
+_SOFT_PRESETS: tuple[CloudPreset, ...] = _build_soft_presets(_FEATURED_PRESETS)
+"""Auto-derived soft presets, one per LiteLLM chat namespace not
+already covered by :data:`_FEATURED_PRESETS` or denied by
+:data:`_LITELLM_NAMESPACE_DENYLIST`.  Computed once at module load
+because ``litellm.model_cost`` is itself a static module-level table.
+"""
+
+
+PROVIDER_PRESETS: tuple[CloudPreset | LocalPreset, ...] = (
+    *_FEATURED_PRESETS,
+    *_SOFT_PRESETS,
+)
+"""All available presets.  Featured (hand-curated, branded) entries
+land first, in the order declared in :data:`_FEATURED_PRESETS`; soft
+(auto-derived from ``litellm.model_cost``) entries follow,
+alphabetical by namespace."""
 
 _PRESET_LOOKUP: MappingProxyType[str, CloudPreset | LocalPreset] = MappingProxyType(
     {p.name: p for p in PROVIDER_PRESETS},
@@ -381,12 +668,36 @@ def get_preset(name: str) -> CloudPreset | LocalPreset | None:
 
 
 def list_presets() -> tuple[CloudPreset | LocalPreset, ...]:
-    """Return all available presets.
+    """Return all available presets (featured first, then soft).
 
     Returns:
-        Tuple of all provider presets (cloud + local).
+        Tuple of all provider presets (cloud + local).  Featured
+        (hand-curated, branded) presets are first; soft (auto-derived
+        from ``litellm.model_cost``) presets follow.
     """
     return PROVIDER_PRESETS
+
+
+def list_featured_presets() -> tuple[CloudPreset | LocalPreset, ...]:
+    """Return only the hand-curated (branded) presets.
+
+    Returns:
+        Tuple of presets where :attr:`is_featured` is ``True``.  Used
+        by the wizard's primary grid to surface the curated set
+        separately from the auto-derived "More providers" section.
+    """
+    return tuple(p for p in PROVIDER_PRESETS if p.is_featured)
+
+
+def list_soft_presets() -> tuple[CloudPreset, ...]:
+    """Return only the auto-derived soft presets.
+
+    Returns:
+        Tuple of :class:`CloudPreset` instances where
+        :attr:`is_featured` is ``False``.  Used by the wizard's
+        "More providers" section.
+    """
+    return _SOFT_PRESETS
 
 
 def list_local_presets() -> tuple[LocalPreset, ...]:
