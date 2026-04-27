@@ -50,7 +50,11 @@ async def test_uses_resolver_value_when_wired() -> None:
 
 
 async def test_resolver_outage_falls_back() -> None:
-    state: Any = _AppStateWithResolver(value=0.0)
+    # ``value`` is irrelevant here because ``get_float`` is replaced
+    # with a side_effect that raises before returning; pass any
+    # placeholder.  Use a clearly arbitrary sentinel so a future
+    # reader does not assume the value matters.
+    state: Any = _AppStateWithResolver(value=-1.0)
     state.config_resolver.get_float.side_effect = RuntimeError("transient")
     result = await events_mod._resolve_sse_keepalive_seconds(state)
     assert result == events_mod._SSE_KEEPALIVE_FALLBACK_SECONDS

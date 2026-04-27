@@ -57,9 +57,14 @@ class _TicketEntry(BaseModel):
 class WsTicketStore:
     """In-memory store for one-time WebSocket auth tickets.
 
-    Each ticket is a cryptographically random URL-safe token
-    (43 characters, 256-bit entropy).  Tickets expire after
-    *ttl_seconds* or on first use, whichever comes first.
+    Each ticket is a cryptographically random URL-safe token whose
+    length and entropy are governed by the
+    ``security.auth_token_bytes`` setting (default 32 bytes, which
+    encodes to 43 URL-safe base64 characters and 256 bits of
+    entropy).  ``secrets.token_urlsafe(N)`` produces
+    ``ceil(N * 8 / 6)`` characters and ``N * 8`` bits of entropy.
+    Tickets expire after *ttl_seconds* or on first use, whichever
+    comes first.
 
     Args:
         ttl_seconds: Ticket lifetime in seconds (default 30).

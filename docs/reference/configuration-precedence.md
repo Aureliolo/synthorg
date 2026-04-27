@@ -8,7 +8,7 @@ exception registry, source matrix, and rationale.
 
 For every mutable setting:
 
-```
+```text
 1. Settings Database  (SettingsService.get())  -- canonical
 2. Environment Variable  (SYNTHORG_<NAMESPACE>_<KEY>)
 3. YAML Configuration  (RootConfig)

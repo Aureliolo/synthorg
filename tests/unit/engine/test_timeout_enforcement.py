@@ -1,5 +1,6 @@
 """Coverage for the engine.timeout_enforcement_enabled global gate."""
 
+import asyncio
 from collections.abc import Iterator
 
 import pytest
@@ -25,8 +26,6 @@ def test_setter_disables_enforcement() -> None:
 
 
 async def test_engine_timeout_enforces_when_enabled() -> None:
-    import asyncio
-
     timeout_enforcement.set_timeout_enforcement_enabled(value=True)
     with pytest.raises(TimeoutError):
         async with timeout_enforcement.engine_timeout(0.01):
@@ -47,6 +46,4 @@ async def test_engine_timeout_passes_through_none() -> None:
 
 
 async def _short_yield() -> None:
-    import asyncio
-
     await asyncio.sleep(0)

@@ -597,11 +597,11 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
             fallback_bytes=_DEFAULT_AUTH_TOKEN_BYTES,
         )
 
-    try:
-        from synthorg.engine.timeout_enforcement import (  # noqa: PLC0415
-            set_timeout_enforcement_enabled,
-        )
+    from synthorg.engine.timeout_enforcement import (  # noqa: PLC0415
+        set_timeout_enforcement_enabled,
+    )
 
+    try:
         set_timeout_enforcement_enabled(
             value=await app_state.config_resolver.get_bool(
                 SettingNamespace.ENGINE.value,
@@ -611,6 +611,14 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
+        # Make the safe default *real*: the warning previously logged
+        # ``fallback_enabled=True`` but did not actually call the
+        # setter, so a misconfigured deployment whose resolver had
+        # already returned False on a prior request would keep
+        # enforcement off even after this branch fires.  Force the
+        # cache back to True so the operator-facing log claim
+        # matches process state.
+        set_timeout_enforcement_enabled(value=True)
         logger.warning(
             API_APP_STARTUP,
             error=(

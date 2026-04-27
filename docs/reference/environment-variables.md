@@ -93,7 +93,7 @@ For every **mutable** setting registered in
 `src/synthorg/settings/definitions/`, the env-var override is
 auto-derived as:
 
-```
+```text
 SYNTHORG_<NAMESPACE>_<KEY>
 ```
 

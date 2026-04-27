@@ -43,6 +43,7 @@ from synthorg.observability.events.a2a import (
     A2A_TASK_CANCELLED,
     A2A_TASK_CREATED,
 )
+from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
 
 logger = get_logger(__name__)
 
@@ -81,8 +82,14 @@ async def _resolve_max_message_parts(app_state: Any) -> int:
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
+        # SETTINGS_FETCH_FAILED is the correct surface for an
+        # internal settings-resolution failure; A2A_JSONRPC_INVALID_PARAMS
+        # would mislead operators into thinking a client request was
+        # malformed.
         logger.warning(
-            A2A_JSONRPC_INVALID_PARAMS,
+            SETTINGS_FETCH_FAILED,
+            namespace="a2a",
+            key="max_message_parts",
             note="failed to resolve a2a.max_message_parts; using fallback",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),

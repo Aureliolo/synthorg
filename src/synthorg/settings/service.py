@@ -947,9 +947,31 @@ class SettingsService:
         # the namespace must block the whole-namespace delete. A bulk
         # operation that silently leaves the read-only row in place
         # would mislead the caller; rejecting up front forces the
-        # operator to delete writable keys explicitly.
-        for definition in self._registry.list_namespace(namespace):
-            _reject_if_read_only(definition, action="delete_namespace")
+        # operator to delete writable keys explicitly.  Aggregate
+        # every read-only key under the namespace into a single error
+        # message so the operator does not have to retry to discover
+        # additional offenders.
+        readonly_keys = [
+            d.key
+            for d in self._registry.list_namespace(namespace)
+            if d.read_only_post_init
+        ]
+        if readonly_keys:
+            logger.warning(
+                SETTINGS_VALIDATION_FAILED,
+                namespace=namespace,
+                action="delete_namespace",
+                reason="read_only_post_init",
+                read_only_keys=readonly_keys,
+            )
+            keys_csv = ", ".join(readonly_keys)
+            msg = (
+                f"Cannot delete namespace {namespace!r}: contains"
+                f" read_only_post_init settings ({keys_csv}). Update"
+                f" the env / YAML and restart, or delete the writable"
+                f" keys individually."
+            )
+            raise SettingReadOnlyError(msg)
 
         # Atomic delete-and-return-keys: the repository removes every
         # override row under *namespace* in one transaction and returns
@@ -1056,12 +1078,14 @@ class SettingsService:
         except Exception as exc:
             # Notification failure should not break settings writes.
             # Settings is a credential-bearing path so use the
-            # SEC-1-compliant ``safe_error_description`` redactor.
+            # SEC-1-compliant ``safe_error_description`` redactor and
+            # do NOT pass exc_info=True -- the traceback could leak
+            # sensitive payload through the cryptography exception
+            # chain.
             logger.warning(
                 SETTINGS_NOTIFICATION_FAILED,
                 namespace=namespace,
                 key=key,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                exc_info=True,
             )

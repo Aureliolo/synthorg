@@ -374,15 +374,6 @@ def _build_middleware(
     """
     prefix = api_config.api_prefix
     ws_path = f"^{prefix}/ws$"
-    trusted = frozenset(api_config.server.trusted_proxies)
-    _warn_if_untrusted_proxies(api_config)
-
-    unauth_identifier = _build_unauth_identifier(trusted)
-    ip_floor, unauth_rl, auth_rl = _build_rate_limits(
-        api_config,
-        ws_path=ws_path,
-        unauth_identifier=unauth_identifier,
-    )
     auth_middleware, csrf_middleware = _build_auth_and_csrf(
         api_config,
         prefix=prefix,
@@ -414,10 +405,21 @@ def _build_middleware(
     #
     # When ``api.rate_limiter_enabled`` is False (dev only, opt-in
     # via the registry), the three global rate-limit tiers are
-    # omitted from the chain.  PerOpConcurrencyMiddleware and the
-    # per-op guard surface still apply since they have their own
-    # master switches.
+    # omitted from the chain AND the rate-limit helpers
+    # (`_build_unauth_identifier`, `_build_rate_limits`,
+    # `_warn_if_untrusted_proxies`) are short-circuited so a broken
+    # rate-limit config in dev cannot fail app construction.
+    # PerOpConcurrencyMiddleware and the per-op guard surface still
+    # apply since they have their own master switches.
     if rate_limiter_enabled:
+        trusted = frozenset(api_config.server.trusted_proxies)
+        _warn_if_untrusted_proxies(api_config)
+        unauth_identifier = _build_unauth_identifier(trusted)
+        ip_floor, unauth_rl, auth_rl = _build_rate_limits(
+            api_config,
+            ws_path=ws_path,
+            unauth_identifier=unauth_identifier,
+        )
         return [
             ip_floor.middleware,
             ETagMiddleware,

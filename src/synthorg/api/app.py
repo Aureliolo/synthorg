@@ -522,12 +522,29 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     )
     plugins: list[ChannelsPlugin] = [channels_plugin]
     # Resolve api.rate_limiter_enabled at boot.  The flag is
-    # restart_required=True so a single env-or-default read is the
-    # canonical source -- the DB precedence layer activates only on
-    # the next process start when an operator changes the setting.
-    rate_limiter_enabled = os.environ.get(
-        "SYNTHORG_API_RATE_LIMITER_ENABLED", "true"
-    ).strip().lower() in ("true", "1", "yes")
+    # restart_required=True + read_only_post_init=True so a single
+    # env-or-default read is the canonical source; the DB precedence
+    # layer (rejected for read-only entries) cannot apply.  Validate
+    # the env value strictly: an unrecognized token (e.g. typo "yse")
+    # must NOT silently disable the global rate limiter -- fall back
+    # to True (safe default) and warn.
+    _rate_limit_env = (
+        os.environ.get("SYNTHORG_API_RATE_LIMITER_ENABLED", "").strip().lower()
+    )
+    if _rate_limit_env in ("", "true", "1", "yes"):
+        rate_limiter_enabled = True
+    elif _rate_limit_env in ("false", "0", "no"):
+        rate_limiter_enabled = False
+    else:
+        logger.warning(
+            API_APP_STARTUP,
+            note=(
+                "Unrecognized SYNTHORG_API_RATE_LIMITER_ENABLED value;"
+                " keeping rate limiter on (safe default)"
+            ),
+            env_value=_rate_limit_env,
+        )
+        rate_limiter_enabled = True
     if not rate_limiter_enabled:
         logger.warning(
             API_APP_STARTUP,

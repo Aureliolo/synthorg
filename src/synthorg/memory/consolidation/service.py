@@ -303,7 +303,13 @@ class MemoryConsolidationService:
         Returns:
             Consolidation result from the consolidation step.
         """
-        if not self._config.enabled:
+        enabled = await resolve_bool_with_fallback(
+            resolver=self._config_resolver,
+            namespace="memory",
+            key="consolidation_enabled",
+            fallback=self._config.enabled,
+        )
+        if not enabled:
             logger.info(
                 CONSOLIDATION_SKIPPED,
                 agent_id=agent_id,
