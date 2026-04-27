@@ -41,7 +41,7 @@ class TestBuildTelemetryCollector:
         collector = _build_telemetry_collector()
         assert collector._data_dir == tmp_path / "telemetry"
 
-    def test_opt_in_flips_enabled_via_env(
+    async def test_opt_in_flips_enabled_via_env(
         self,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
@@ -49,9 +49,15 @@ class TestBuildTelemetryCollector:
         monkeypatch.setenv("SYNTHORG_MEMORY_DIR", str(tmp_path / "memory"))
         monkeypatch.setenv("SYNTHORG_TELEMETRY", "true")
         collector = _build_telemetry_collector()
-        assert collector.enabled is True
-        # Deployment ID gets persisted under the derived telemetry dir.
-        assert (tmp_path / "telemetry").exists()
+        try:
+            assert collector.enabled is True
+            # ``start()`` performs the deployment-id load via
+            # ``asyncio.to_thread``; the directory is materialised
+            # there, not in ``__init__`` (#1600).
+            await collector.start()
+            assert (tmp_path / "telemetry").exists()
+        finally:
+            await collector.shutdown()
 
 
 @pytest.mark.unit

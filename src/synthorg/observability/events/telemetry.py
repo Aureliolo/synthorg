@@ -21,6 +21,8 @@ TELEMETRY_ENABLED: Final[str] = "telemetry.enabled"
 TELEMETRY_DISABLED: Final[str] = "telemetry.disabled"
 TELEMETRY_REPORTER_INITIALIZED: Final[str] = "telemetry.reporter.initialized"
 TELEMETRY_ENVIRONMENT_RESOLVED: Final[str] = "telemetry.environment.resolved"
+TELEMETRY_DEPLOYMENT_ID_LOADED: Final[str] = "telemetry.deployment_id.loaded"
+TELEMETRY_DEPLOYMENT_ID_CREATED: Final[str] = "telemetry.deployment_id.created"
 
 # Telemetry payload event types (sent in TelemetryEvent.event_type).
 TELEMETRY_EVENT_DEPLOYMENT_HEARTBEAT: Final[str] = "deployment.heartbeat"
