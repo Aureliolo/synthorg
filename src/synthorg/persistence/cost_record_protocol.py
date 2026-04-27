@@ -26,12 +26,18 @@ class CostRecordRepository(Protocol):
         *,
         agent_id: NotBlankStr | None = None,
         task_id: NotBlankStr | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[CostRecord, ...]:
-        """Query cost records with optional filters.
+        """Query cost records with optional filters and pagination.
 
         Args:
             agent_id: Filter by agent identifier.
             task_id: Filter by task identifier.
+            limit: Maximum rows to return; ``None`` (default) preserves
+                fetch-all semantics.
+            offset: Rows to skip before applying *limit*; ignored when
+                *limit* is ``None``.
 
         Returns:
             Matching cost records as a tuple.

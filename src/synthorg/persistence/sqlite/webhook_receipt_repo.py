@@ -124,6 +124,7 @@ class SQLiteWebhookReceiptRepository:
         connection_name: NotBlankStr,
         *,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[WebhookReceipt, ...]:
         """List receipts for *connection_name*, newest-first up to *limit*."""
         if limit <= 0:
@@ -132,8 +133,8 @@ class SQLiteWebhookReceiptRepository:
             async with self._db.execute(
                 f"SELECT {_SELECT_COLS} FROM webhook_receipts "  # noqa: S608
                 "WHERE connection_name = ? "
-                "ORDER BY received_at DESC, id ASC LIMIT ?",
-                (str(connection_name), int(limit)),
+                "ORDER BY received_at DESC, id ASC LIMIT ? OFFSET ?",
+                (str(connection_name), int(limit), int(offset)),
             ) as cursor:
                 rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:

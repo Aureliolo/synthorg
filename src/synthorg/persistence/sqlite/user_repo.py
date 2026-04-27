@@ -644,11 +644,21 @@ ON CONFLICT(id) DO UPDATE SET
             logger.exception(PERSISTENCE_API_KEY_FETCH_FAILED, error=str(exc))
             raise QueryError(msg) from exc
 
-    async def list_by_user(self, user_id: NotBlankStr) -> tuple[ApiKey, ...]:
+    async def list_by_user(
+        self,
+        user_id: NotBlankStr,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[ApiKey, ...]:
         """List all API keys belonging to a user, ordered by creation date.
 
         Args:
             user_id: Owner user identifier.
+            limit: Maximum keys to return; ``None`` (default) preserves
+                fetch-all semantics.
+            offset: Keys to skip before applying *limit*; ignored when
+                *limit* is ``None``.
 
         Returns:
             Tuple of ``ApiKey`` records, oldest first.
@@ -656,28 +666,32 @@ ON CONFLICT(id) DO UPDATE SET
         Raises:
             QueryError: If the database query or deserialization fails.
         """
+        sql = "SELECT * FROM api_keys WHERE user_id = ? ORDER BY created_at"
+        params: tuple[object, ...] = (user_id,)
+        if limit is not None:
+            sql += " LIMIT ? OFFSET ?"
+            params = (*params, int(limit), int(offset))
         try:
-            cursor = await self._db.execute(
-                "SELECT * FROM api_keys WHERE user_id = ? ORDER BY created_at",
-                (user_id,),
-            )
+            cursor = await self._db.execute(sql, params)
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to list API keys for user {user_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_API_KEY_LIST_FAILED,
                 user_id=user_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         try:
             keys = tuple(_row_to_api_key(row) for row in rows)
         except (ValueError, TypeError, ValidationError) as exc:
             msg = f"Failed to deserialize API keys for user {user_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_API_KEY_LIST_FAILED,
                 user_id=user_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.debug(

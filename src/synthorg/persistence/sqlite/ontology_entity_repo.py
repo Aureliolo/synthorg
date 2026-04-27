@@ -211,31 +211,57 @@ class SQLiteOntologyEntityRepository:
         self,
         *,
         tier: EntityTier | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[EntityDefinition, ...]:
-        """List entities, optionally filtered by tier."""
+        """List entities, optionally filtered by tier and paginated.
+
+        The legacy hard cap of 1000 rows applies when *limit* is
+        ``None`` so callers that haven't migrated to pagination still
+        receive a bounded result set.
+        """
+        effective_limit = 1000 if limit is None else int(limit)
+        effective_offset = 0 if limit is None else int(offset)
         if tier is not None:
             cursor = await self._db.execute(
                 """SELECT * FROM entity_definitions
-                   WHERE tier = :tier LIMIT 1000""",
-                {"tier": tier.value},
+                   WHERE tier = :tier LIMIT :limit OFFSET :offset""",
+                {
+                    "tier": tier.value,
+                    "limit": effective_limit,
+                    "offset": effective_offset,
+                },
             )
         else:
             cursor = await self._db.execute(
-                "SELECT * FROM entity_definitions LIMIT 1000",
+                "SELECT * FROM entity_definitions LIMIT :limit OFFSET :offset",
+                {"limit": effective_limit, "offset": effective_offset},
             )
         rows = await cursor.fetchall()
         return self._rows_to_entities(rows)
 
-    async def search(self, query: str) -> tuple[EntityDefinition, ...]:
+    async def search(
+        self,
+        query: str,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[EntityDefinition, ...]:
         """Search entities by name or definition text."""
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
+        effective_limit = 1000 if limit is None else int(limit)
+        effective_offset = 0 if limit is None else int(offset)
         cursor = await self._db.execute(
             """SELECT * FROM entity_definitions
                WHERE name LIKE :pattern ESCAPE '\\'
                   OR definition LIKE :pattern ESCAPE '\\'
-               LIMIT 1000""",
-            {"pattern": pattern},
+               LIMIT :limit OFFSET :offset""",
+            {
+                "pattern": pattern,
+                "limit": effective_limit,
+                "offset": effective_offset,
+            },
         )
         rows = list(await cursor.fetchall())
         logger.debug(

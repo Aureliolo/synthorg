@@ -55,11 +55,19 @@ class InMemoryMcpInstallationRepository:
         """Fetch by catalog entry id."""
         return self._store.get(catalog_entry_id)
 
-    async def list_all(self) -> tuple[McpInstallation, ...]:
+    async def list_all(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[McpInstallation, ...]:
         """List all installations ordered by ``installed_at`` ASC."""
-        return tuple(
+        rows = tuple(
             sorted(self._store.values(), key=lambda i: i.installed_at),
         )
+        if limit is None:
+            return rows
+        return rows[offset : offset + limit]
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:
         """Delete by catalog entry id."""

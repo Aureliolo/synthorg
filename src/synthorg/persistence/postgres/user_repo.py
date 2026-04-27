@@ -458,30 +458,44 @@ class PostgresApiKeyRepository:
             logger.exception(PERSISTENCE_API_KEY_FETCH_FAILED, error=str(exc))
             raise QueryError(msg) from exc
 
-    async def list_by_user(self, user_id: NotBlankStr) -> tuple[ApiKey, ...]:
+    async def list_by_user(
+        self,
+        user_id: NotBlankStr,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[ApiKey, ...]:
         """List all API keys belonging to a user, ordered by creation date."""
+        sql = "SELECT * FROM api_keys WHERE user_id = %s ORDER BY created_at"
+        params: tuple[object, ...] = (user_id,)
+        if limit is not None:
+            sql += " LIMIT %s OFFSET %s"
+            params = (*params, int(limit), int(offset))
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
-                await cur.execute(
-                    "SELECT * FROM api_keys WHERE user_id = %s ORDER BY created_at",
-                    (user_id,),
-                )
+                await cur.execute(sql, params)
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = f"Failed to list API keys for user {user_id!r}"
-            logger.exception(
-                PERSISTENCE_API_KEY_LIST_FAILED, user_id=user_id, error=str(exc)
+            logger.warning(
+                PERSISTENCE_API_KEY_LIST_FAILED,
+                user_id=user_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         try:
             keys = tuple(_row_to_api_key(row) for row in rows)
         except (ValueError, TypeError, KeyError, ValidationError) as exc:
             msg = f"Failed to deserialize API keys for user {user_id!r}"
-            logger.exception(
-                PERSISTENCE_API_KEY_LIST_FAILED, user_id=user_id, error=str(exc)
+            logger.warning(
+                PERSISTENCE_API_KEY_LIST_FAILED,
+                user_id=user_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_API_KEY_LISTED, user_id=user_id, count=len(keys))
@@ -496,8 +510,11 @@ class PostgresApiKeyRepository:
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to delete API key {key_id!r}"
-            logger.exception(
-                PERSISTENCE_API_KEY_DELETE_FAILED, key_id=key_id, error=str(exc)
+            logger.warning(
+                PERSISTENCE_API_KEY_DELETE_FAILED,
+                key_id=key_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         return deleted

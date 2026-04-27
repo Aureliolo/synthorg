@@ -45,20 +45,36 @@ class InMemoryConnectionRepository:
         existing = self._store.get(name)
         return copy.deepcopy(existing) if existing is not None else None
 
-    async def list_all(self) -> tuple[Connection, ...]:
+    async def list_all(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[Connection, ...]:
         """List all (deep-copied)."""
-        return tuple(copy.deepcopy(c) for c in self._store.values())
+        rows = tuple(
+            copy.deepcopy(c) for c in sorted(self._store.values(), key=lambda c: c.name)
+        )
+        if limit is None:
+            return rows
+        return rows[offset : offset + limit]
 
     async def list_by_type(
         self,
         connection_type: ConnectionType,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List by type (deep-copied)."""
-        return tuple(
+        matches = tuple(
             copy.deepcopy(c)
-            for c in self._store.values()
+            for c in sorted(self._store.values(), key=lambda c: c.name)
             if c.connection_type == connection_type
         )
+        if limit is None:
+            return matches
+        return matches[offset : offset + limit]
 
     async def delete(self, name: str) -> bool:
         """Delete by name."""
@@ -128,8 +144,11 @@ class InMemoryWebhookReceiptRepository:
         connection_name: str,
         *,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[WebhookReceipt, ...]:
         """List by connection (deep-copied), newest-first."""
+        if limit <= 0:
+            return ()
         # ``self._store`` is append-ordered, so the most recent
         # receipts live at the end. The repository contract asks
         # callers to receive newest-first, so reverse before slicing.
@@ -138,7 +157,7 @@ class InMemoryWebhookReceiptRepository:
             for r in reversed(self._store)
             if r.connection_name == connection_name
         ]
-        return tuple(matches[:limit])
+        return tuple(matches[offset : offset + limit])
 
     async def cleanup_old(
         self,

@@ -134,6 +134,7 @@ class PostgresWebhookReceiptRepository:
         connection_name: NotBlankStr,
         *,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[WebhookReceipt, ...]:
         """List receipts for *connection_name*, newest-first up to *limit*."""
         if limit <= 0:
@@ -146,8 +147,8 @@ class PostgresWebhookReceiptRepository:
                 await cur.execute(
                     f"SELECT {_SELECT_COLS} FROM webhook_receipts "  # noqa: S608
                     "WHERE connection_name = %s "
-                    "ORDER BY received_at DESC, id ASC LIMIT %s",
-                    (str(connection_name), int(limit)),
+                    "ORDER BY received_at DESC, id ASC LIMIT %s OFFSET %s",
+                    (str(connection_name), int(limit), int(offset)),
                 )
                 rows = await cur.fetchall()
         except Exception as exc:

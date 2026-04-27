@@ -198,17 +198,27 @@ class PostgresConnectionRepository:
             )
             raise QueryError(msg) from exc
 
-    async def list_all(self) -> tuple[Connection, ...]:
+    async def list_all(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[Connection, ...]:
         """List all connections, sorted by name for determinism."""
+        sql = (
+            f"SELECT {_SELECT_COLS} FROM connections "  # noqa: S608
+            "ORDER BY name ASC"
+        )
+        params: tuple[object, ...] = ()
+        if limit is not None:
+            sql += " LIMIT %s OFFSET %s"
+            params = (int(limit), int(offset))
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
-                await cur.execute(
-                    f"SELECT {_SELECT_COLS} FROM connections "  # noqa: S608
-                    "ORDER BY name ASC",
-                )
+                await cur.execute(sql, params)
                 rows = await cur.fetchall()
         except Exception as exc:
             msg = "Failed to list connections"
@@ -223,18 +233,25 @@ class PostgresConnectionRepository:
     async def list_by_type(
         self,
         connection_type: ConnectionType,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List connections of *connection_type*, sorted by name."""
+        sql = (
+            f"SELECT {_SELECT_COLS} FROM connections "  # noqa: S608
+            "WHERE connection_type = %s ORDER BY name ASC"
+        )
+        params: tuple[object, ...] = (connection_type.value,)
+        if limit is not None:
+            sql += " LIMIT %s OFFSET %s"
+            params = (*params, int(limit), int(offset))
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
-                await cur.execute(
-                    f"SELECT {_SELECT_COLS} FROM connections "  # noqa: S608
-                    "WHERE connection_type = %s ORDER BY name ASC",
-                    (connection_type.value,),
-                )
+                await cur.execute(sql, params)
                 rows = await cur.fetchall()
         except Exception as exc:
             msg = f"Failed to list connections of type {connection_type.value!r}"

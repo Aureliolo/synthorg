@@ -64,11 +64,19 @@ class OntologyEntityRepository(Protocol):
         self,
         *,
         tier: EntityTier | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[EntityDefinition, ...]:
         """List all entity definitions, optionally filtered by tier."""
         ...
 
-    async def search(self, query: str) -> tuple[EntityDefinition, ...]:
+    async def search(
+        self,
+        query: str,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[EntityDefinition, ...]:
         """Substring search against entity name and definition text."""
         ...
 

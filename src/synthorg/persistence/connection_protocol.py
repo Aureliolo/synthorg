@@ -27,15 +27,28 @@ class ConnectionRepository(Protocol):
         """Retrieve a connection by name."""
         ...
 
-    async def list_all(self) -> tuple[Connection, ...]:
-        """List all connections."""
+    async def list_all(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[Connection, ...]:
+        """List all connections, optionally bounded by *limit* / *offset*.
+
+        Sorted by ``name`` ascending; pass ``limit=None`` (default) to
+        retain the legacy fetch-all semantics, or set both to consume
+        a paginated window.
+        """
         ...
 
     async def list_by_type(
         self,
         connection_type: ConnectionType,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[Connection, ...]:
-        """List connections of a specific type."""
+        """List connections of a specific type with optional limit/offset."""
         ...
 
     async def delete(self, name: NotBlankStr) -> bool:
@@ -111,8 +124,13 @@ class WebhookReceiptRepository(Protocol):
         connection_name: NotBlankStr,
         *,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[WebhookReceipt, ...]:
-        """List receipts for a connection, newest first."""
+        """List receipts for a connection, newest first.
+
+        ``limit <= 0`` returns ``()``; ``offset`` skips that many rows
+        before slicing the limit window.
+        """
         ...
 
     async def cleanup_old(self, retention_days: int) -> int:

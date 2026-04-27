@@ -215,12 +215,20 @@ class SQLiteConnectionRepository:
             )
             raise QueryError(msg) from exc
 
-    async def list_all(self) -> tuple[Connection, ...]:
+    async def list_all(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[Connection, ...]:
         """List all connections, sorted by name for determinism."""
+        sql = f"SELECT {_SELECT_COLS} FROM connections ORDER BY name ASC"  # noqa: S608
+        params: tuple[object, ...] = ()
+        if limit is not None:
+            sql += " LIMIT ? OFFSET ?"
+            params = (int(limit), int(offset))
         try:
-            async with self._db.execute(
-                f"SELECT {_SELECT_COLS} FROM connections ORDER BY name ASC",  # noqa: S608
-            ) as cursor:
+            async with self._db.execute(sql, params) as cursor:
                 rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list connections"
@@ -235,14 +243,21 @@ class SQLiteConnectionRepository:
     async def list_by_type(
         self,
         connection_type: ConnectionType,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List connections of *connection_type*, sorted by name."""
+        sql = (
+            f"SELECT {_SELECT_COLS} FROM connections "  # noqa: S608
+            "WHERE connection_type = ? ORDER BY name ASC"
+        )
+        params: tuple[object, ...] = (connection_type.value,)
+        if limit is not None:
+            sql += " LIMIT ? OFFSET ?"
+            params = (*params, int(limit), int(offset))
         try:
-            async with self._db.execute(
-                f"SELECT {_SELECT_COLS} FROM connections "  # noqa: S608
-                "WHERE connection_type = ? ORDER BY name ASC",
-                (connection_type.value,),
-            ) as cursor:
+            async with self._db.execute(sql, params) as cursor:
                 rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to list connections of type {connection_type.value!r}"

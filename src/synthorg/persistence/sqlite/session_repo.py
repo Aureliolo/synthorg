@@ -138,28 +138,47 @@ class SQLiteSessionRepository:
         row = await cursor.fetchone()
         return _row_to_session(row) if row else None
 
-    async def list_by_user(self, user_id: str) -> tuple[Session, ...]:
+    async def list_by_user(
+        self,
+        user_id: str,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[Session, ...]:
         """List active (non-expired, non-revoked) sessions for a user."""
         now = format_iso_utc(datetime.now(UTC))
-        cursor = await self._db.execute(
+        sql = (
             "SELECT * FROM sessions "
             "WHERE user_id = ? AND revoked = 0 "
             "AND expires_at > ? "
-            "ORDER BY created_at DESC",
-            (user_id, now),
+            "ORDER BY created_at DESC"
         )
+        params: tuple[object, ...] = (user_id, now)
+        if limit is not None:
+            sql += " LIMIT ? OFFSET ?"
+            params = (*params, int(limit), int(offset))
+        cursor = await self._db.execute(sql, params)
         rows = await cursor.fetchall()
         return tuple(_row_to_session(r) for r in rows)
 
-    async def list_all(self) -> tuple[Session, ...]:
+    async def list_all(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[Session, ...]:
         """List all active (non-expired, non-revoked) sessions."""
         now = format_iso_utc(datetime.now(UTC))
-        cursor = await self._db.execute(
+        sql = (
             "SELECT * FROM sessions "
             "WHERE revoked = 0 AND expires_at > ? "
-            "ORDER BY created_at DESC",
-            (now,),
+            "ORDER BY created_at DESC"
         )
+        params: tuple[object, ...] = (now,)
+        if limit is not None:
+            sql += " LIMIT ? OFFSET ?"
+            params = (*params, int(limit), int(offset))
+        cursor = await self._db.execute(sql, params)
         rows = await cursor.fetchall()
         return tuple(_row_to_session(r) for r in rows)
 

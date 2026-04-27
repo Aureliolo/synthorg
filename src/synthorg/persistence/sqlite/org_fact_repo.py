@@ -437,10 +437,12 @@ class SQLiteOrgFactRepository:
         categories: frozenset[OrgFactCategory] | None = None,
         text: str | None = None,
         limit: int = 5,
+        offset: int = 0,
     ) -> tuple[OrgFact, ...]:
         """Query active facts by category and/or text content."""
         db = self._db
         limit = max(1, min(limit, 100))
+        offset = max(0, int(offset))
         clauses: list[str] = ["retracted_at IS NULL"]
         params: list[str | int] = []
 
@@ -463,8 +465,11 @@ class SQLiteOrgFactRepository:
             params.append(text)
         else:
             order = "ORDER BY created_at DESC"
-        sql = f"SELECT * FROM org_facts_snapshot{where} {order} LIMIT ?"  # noqa: S608
-        params.append(limit)
+        sql = (
+            f"SELECT * FROM org_facts_snapshot{where} {order} "  # noqa: S608
+            "LIMIT ? OFFSET ?"
+        )
+        params.extend([limit, offset])
 
         try:
             cursor = await db.execute(sql, params)
@@ -482,15 +487,22 @@ class SQLiteOrgFactRepository:
     async def list_by_category(
         self,
         category: OrgFactCategory,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[OrgFact, ...]:
-        """List all active facts in a category."""
+        """List all active facts in a category, optionally paginated."""
+        sql = (
+            "SELECT * FROM org_facts_snapshot "
+            "WHERE category = ? AND retracted_at IS NULL "
+            "ORDER BY created_at DESC"
+        )
+        params: tuple[object, ...] = (category.value,)
+        if limit is not None:
+            sql += " LIMIT ? OFFSET ?"
+            params = (*params, int(limit), int(offset))
         try:
-            cursor = await self._db.execute(
-                "SELECT * FROM org_facts_snapshot "
-                "WHERE category = ? AND retracted_at IS NULL "
-                "ORDER BY created_at DESC",
-                (category.value,),
-            )
+            cursor = await self._db.execute(sql, params)
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:
             logger.warning(
