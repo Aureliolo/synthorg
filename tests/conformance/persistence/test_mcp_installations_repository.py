@@ -98,6 +98,30 @@ class TestMcpInstallationRepository:
         ids = {r.catalog_entry_id for r in rows}
         assert {"cat_a", "cat_b"} <= ids
 
+    async def test_list_all_pagination(self, backend: PersistenceBackend) -> None:
+        # Insert with monotonically increasing installed_at so the
+        # deterministic ORDER BY installed_at, catalog_entry_id places
+        # the rows in a known order.
+        base = datetime.now(UTC)
+        for i in range(5):
+            await backend.mcp_installations.save(
+                _installation(
+                    f"cat_pag_{i}",
+                    at=base + timedelta(seconds=i),
+                ),
+            )
+
+        page_one = await backend.mcp_installations.list_all(limit=2, offset=0)
+        page_two = await backend.mcp_installations.list_all(limit=2, offset=2)
+        page_three = await backend.mcp_installations.list_all(limit=2, offset=4)
+
+        assert len(page_one) == 2
+        assert len(page_two) == 2
+        assert len(page_three) == 1
+        assert [r.catalog_entry_id for r in page_one] == ["cat_pag_0", "cat_pag_1"]
+        assert [r.catalog_entry_id for r in page_two] == ["cat_pag_2", "cat_pag_3"]
+        assert [r.catalog_entry_id for r in page_three] == ["cat_pag_4"]
+
     async def test_delete_returns_true_when_present(
         self, backend: PersistenceBackend
     ) -> None:

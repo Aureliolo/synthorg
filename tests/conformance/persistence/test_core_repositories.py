@@ -1,6 +1,6 @@
 """Parametrized conformance tests for Task, CostRecord, and Message."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -90,6 +90,40 @@ class TestCostRecordRepository:
         results = await backend.cost_records.query(agent_id="agent_1")
         assert len(results) == 1
         assert results[0].cost == 0.05
+
+    async def test_query_pagination(self, backend: PersistenceBackend) -> None:
+        task = make_task(task_id="t_query_pag")
+        await backend.tasks.save(task)
+
+        from synthorg.budget.cost_record import CostRecord
+
+        base = datetime(2026, 4, 10, 12, tzinfo=UTC)
+        for i in range(4):
+            await backend.cost_records.save(
+                CostRecord(
+                    agent_id="agent_pg",
+                    task_id="t_query_pag",
+                    provider="test-provider",
+                    model="test-small-001",
+                    input_tokens=10,
+                    output_tokens=5,
+                    cost=0.01 * (i + 1),
+                    currency="EUR",
+                    timestamp=base + timedelta(seconds=i),
+                    call_category=LLMCallCategory.PRODUCTIVE,
+                ),
+            )
+
+        page = await backend.cost_records.query(
+            agent_id="agent_pg",
+            limit=2,
+            offset=1,
+        )
+
+        # ORDER BY timestamp DESC: rows are i=3, i=2, i=1, i=0;
+        # offset=1 limit=2 -> i=2, i=1 (costs 0.03, 0.02).
+        assert len(page) == 2
+        assert [round(r.cost, 2) for r in page] == [0.03, 0.02]
 
     async def test_aggregate_sum(self, backend: PersistenceBackend) -> None:
         task = make_task(task_id="t1")

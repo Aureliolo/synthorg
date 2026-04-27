@@ -31,12 +31,6 @@ from synthorg.observability.events.persistence import (
 )
 from synthorg.persistence import atlas
 from synthorg.persistence.errors import PersistenceConnectionError
-from synthorg.persistence.integration_stubs import (
-    InMemoryConnectionRepository,
-    InMemoryConnectionSecretRepository,
-    InMemoryOAuthStateRepository,
-    InMemoryWebhookReceiptRepository,
-)
 from synthorg.persistence.sqlite.agent_state_repo import (
     SQLiteAgentStateRepository,
 )
@@ -51,6 +45,10 @@ from synthorg.persistence.sqlite.checkpoint_repo import (
 )
 from synthorg.persistence.sqlite.circuit_breaker_repo import (
     SQLiteCircuitBreakerStateRepository,
+)
+from synthorg.persistence.sqlite.connection_repo import SQLiteConnectionRepository
+from synthorg.persistence.sqlite.connection_secret_repo import (
+    SQLiteConnectionSecretRepository,
 )
 from synthorg.persistence.sqlite.custom_rule_repo import (
     SQLiteCustomRuleRepository,
@@ -79,6 +77,7 @@ from synthorg.persistence.sqlite.lockout_repo import (
 from synthorg.persistence.sqlite.mcp_installation_repo import (
     SQLiteMcpInstallationRepository,
 )
+from synthorg.persistence.sqlite.oauth_state_repo import SQLiteOAuthStateRepository
 from synthorg.persistence.sqlite.ontology_drift_repo import (
     SQLiteOntologyDriftReportRepository,
 )
@@ -134,6 +133,9 @@ from synthorg.persistence.sqlite.user_repo import (
     SQLiteUserRepository,
 )
 from synthorg.persistence.sqlite.version_repo import SQLiteVersionRepository
+from synthorg.persistence.sqlite.webhook_receipt_repo import (
+    SQLiteWebhookReceiptRepository,
+)
 from synthorg.persistence.sqlite.workflow_definition_repo import (
     SQLiteWorkflowDefinitionRepository,
 )
@@ -226,10 +228,10 @@ class SQLitePersistenceBackend:
         # across ``build_lockouts`` calls, otherwise ``is_locked`` is
         # always False on a freshly-built instance.
         self._lockouts: SQLiteLockoutRepository | None = None
-        self._connections_stub = InMemoryConnectionRepository()
-        self._connection_secrets_stub = InMemoryConnectionSecretRepository()
-        self._oauth_states_stub = InMemoryOAuthStateRepository()
-        self._webhook_receipts_stub = InMemoryWebhookReceiptRepository()
+        self._connections: SQLiteConnectionRepository | None = None
+        self._connection_secrets: SQLiteConnectionSecretRepository | None = None
+        self._oauth_states: SQLiteOAuthStateRepository | None = None
+        self._webhook_receipts: SQLiteWebhookReceiptRepository | None = None
 
     def _clear_state(self) -> None:
         """Reset connection and repository references to ``None``."""
@@ -278,6 +280,10 @@ class SQLitePersistenceBackend:
         self._ontology_entities = None
         self._ontology_drift = None
         self._lockouts = None
+        self._connections = None
+        self._connection_secrets = None
+        self._oauth_states = None
+        self._webhook_receipts = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -340,7 +346,7 @@ class SQLitePersistenceBackend:
             raise PersistenceConnectionError(msg)
         return self._db
 
-    def _create_repositories(self) -> None:
+    def _create_repositories(self) -> None:  # noqa: PLR0915
         """Instantiate all repository objects from the active connection."""
         assert self._db is not None  # noqa: S101
         self._artifacts = SQLiteArtifactRepository(
@@ -529,6 +535,22 @@ class SQLitePersistenceBackend:
             write_lock=self._shared_write_lock,
         )
         self._ontology_drift = SQLiteOntologyDriftReportRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._connections = SQLiteConnectionRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._connection_secrets = SQLiteConnectionSecretRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._oauth_states = SQLiteOAuthStateRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._webhook_receipts = SQLiteWebhookReceiptRepository(
             self._db,
             write_lock=self._shared_write_lock,
         )
@@ -866,24 +888,30 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def connections(self) -> InMemoryConnectionRepository:
+    def connections(self) -> SQLiteConnectionRepository:
         """Repository for external service connection persistence."""
-        return self._connections_stub
+        return self._require_connected(self._connections, "connections")
 
     @property
-    def connection_secrets(self) -> InMemoryConnectionSecretRepository:
+    def connection_secrets(self) -> SQLiteConnectionSecretRepository:
         """Repository for encrypted connection secret persistence."""
-        return self._connection_secrets_stub
+        return self._require_connected(
+            self._connection_secrets,
+            "connection_secrets",
+        )
 
     @property
-    def oauth_states(self) -> InMemoryOAuthStateRepository:
+    def oauth_states(self) -> SQLiteOAuthStateRepository:
         """Repository for transient OAuth state persistence."""
-        return self._oauth_states_stub
+        return self._require_connected(self._oauth_states, "oauth_states")
 
     @property
-    def webhook_receipts(self) -> InMemoryWebhookReceiptRepository:
+    def webhook_receipts(self) -> SQLiteWebhookReceiptRepository:
         """Repository for webhook receipt log persistence."""
-        return self._webhook_receipts_stub
+        return self._require_connected(
+            self._webhook_receipts,
+            "webhook_receipts",
+        )
 
     @property
     def training_plans(self) -> SQLiteTrainingPlanRepository:

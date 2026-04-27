@@ -398,6 +398,81 @@ PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED: Final[str] = (
     "persistence.ssrf_violation.query_failed"
 )
 
+# Connection events (durable connection catalog)
+PERSISTENCE_CONNECTION_SAVED: Final[str] = "persistence.connection.saved"
+PERSISTENCE_CONNECTION_SAVE_FAILED: Final[str] = "persistence.connection.save_failed"
+PERSISTENCE_CONNECTION_FETCHED: Final[str] = "persistence.connection.fetched"
+PERSISTENCE_CONNECTION_FETCH_FAILED: Final[str] = "persistence.connection.fetch_failed"
+PERSISTENCE_CONNECTION_LISTED: Final[str] = "persistence.connection.listed"
+PERSISTENCE_CONNECTION_LIST_FAILED: Final[str] = "persistence.connection.list_failed"
+PERSISTENCE_CONNECTION_DELETED: Final[str] = "persistence.connection.deleted"
+PERSISTENCE_CONNECTION_DELETE_FAILED: Final[str] = (
+    "persistence.connection.delete_failed"
+)
+PERSISTENCE_CONNECTION_DESERIALIZE_FAILED: Final[str] = (
+    "persistence.connection.deserialize_failed"
+)
+
+# Connection secret events (encrypted blob storage for SecretBackend).
+# ``noqa: S105`` -- the ``_SECRET_`` token in the constant *name* is an
+# observability domain, not a hardcoded credential value. The S105 check
+# fires on the assigned string literal because the identifier matches a
+# secret-like pattern; suppressed once per literal.
+PERSISTENCE_CONNECTION_SECRET_STORED: Final[str] = (
+    "persistence.connection_secret.stored"  # noqa: S105
+)
+PERSISTENCE_CONNECTION_SECRET_STORE_FAILED: Final[str] = (
+    "persistence.connection_secret.store_failed"  # noqa: S105
+)
+PERSISTENCE_CONNECTION_SECRET_RETRIEVED: Final[str] = (
+    "persistence.connection_secret.retrieved"  # noqa: S105
+)
+PERSISTENCE_CONNECTION_SECRET_RETRIEVE_FAILED: Final[str] = (
+    "persistence.connection_secret.retrieve_failed"  # noqa: S105
+)
+PERSISTENCE_CONNECTION_SECRET_DELETED: Final[str] = (
+    "persistence.connection_secret.deleted"  # noqa: S105
+)
+PERSISTENCE_CONNECTION_SECRET_DELETE_FAILED: Final[str] = (
+    "persistence.connection_secret.delete_failed"  # noqa: S105
+)
+
+# OAuth state events (transient authorization-flow state)
+PERSISTENCE_OAUTH_STATE_SAVED: Final[str] = "persistence.oauth_state.saved"
+PERSISTENCE_OAUTH_STATE_SAVE_FAILED: Final[str] = "persistence.oauth_state.save_failed"
+PERSISTENCE_OAUTH_STATE_FETCHED: Final[str] = "persistence.oauth_state.fetched"
+PERSISTENCE_OAUTH_STATE_FETCH_FAILED: Final[str] = (
+    "persistence.oauth_state.fetch_failed"
+)
+PERSISTENCE_OAUTH_STATE_DELETED: Final[str] = "persistence.oauth_state.deleted"
+PERSISTENCE_OAUTH_STATE_DELETE_FAILED: Final[str] = (
+    "persistence.oauth_state.delete_failed"
+)
+PERSISTENCE_OAUTH_STATE_CLEANUP: Final[str] = "persistence.oauth_state.cleanup"
+PERSISTENCE_OAUTH_STATE_CLEANUP_FAILED: Final[str] = (
+    "persistence.oauth_state.cleanup_failed"
+)
+PERSISTENCE_OAUTH_STATE_DESERIALIZE_FAILED: Final[str] = (
+    "persistence.oauth_state.deserialize_failed"
+)
+
+# Webhook receipt events (provider event log)
+PERSISTENCE_WEBHOOK_RECEIPT_LOGGED: Final[str] = "persistence.webhook_receipt.logged"
+PERSISTENCE_WEBHOOK_RECEIPT_LOG_FAILED: Final[str] = (
+    "persistence.webhook_receipt.log_failed"
+)
+PERSISTENCE_WEBHOOK_RECEIPT_LISTED: Final[str] = "persistence.webhook_receipt.listed"
+PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED: Final[str] = (
+    "persistence.webhook_receipt.list_failed"
+)
+PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP: Final[str] = "persistence.webhook_receipt.cleanup"
+PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED: Final[str] = (
+    "persistence.webhook_receipt.cleanup_failed"
+)
+PERSISTENCE_WEBHOOK_RECEIPT_DESERIALIZE_FAILED: Final[str] = (
+    "persistence.webhook_receipt.deserialize_failed"
+)
+
 # Circuit breaker state events
 PERSISTENCE_CIRCUIT_BREAKER_SAVED: Final[str] = "persistence.circuit_breaker.saved"
 PERSISTENCE_CIRCUIT_BREAKER_SAVE_FAILED: Final[str] = (

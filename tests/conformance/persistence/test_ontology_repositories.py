@@ -141,6 +141,47 @@ class TestOntologyEntityRepository:
         assert "Searchable" in {e.name for e in by_name}
         assert "Searchable" in {e.name for e in by_def}
 
+    async def test_list_entities_pagination(self, backend: PersistenceBackend) -> None:
+        for name in ("AlphaEnt", "BetaEnt", "GammaEnt", "DeltaEnt"):
+            await backend.ontology_entities.register(_entity(name))
+
+        # Anchor pagination assertions against the deterministic
+        # ORDER BY name ASC contract on both backends so a regression
+        # that breaks ordering surfaces here.
+        full = await backend.ontology_entities.list_entities()
+        full_names = [e.name for e in full]
+        assert {"AlphaEnt", "BetaEnt", "DeltaEnt", "GammaEnt"} <= set(full_names)
+
+        page = await backend.ontology_entities.list_entities(limit=2, offset=1)
+        assert [e.name for e in page] == full_names[1:3]
+
+    async def test_search_pagination(self, backend: PersistenceBackend) -> None:
+        for i in range(4):
+            await backend.ontology_entities.register(
+                _entity(
+                    f"PagedEnt{i}",
+                    definition=f"common-pagination-marker entry {i}",
+                ),
+            )
+
+        # Compare two adjacent windows so the assertion proves offset
+        # actually advances rather than just bounding the row count.
+        first_page = await backend.ontology_entities.search(
+            "pagination-marker",
+            limit=2,
+            offset=0,
+        )
+        second_page = await backend.ontology_entities.search(
+            "pagination-marker",
+            limit=2,
+            offset=2,
+        )
+        assert len(first_page) == 2
+        assert len(second_page) == 2
+        first_names = {e.name for e in first_page}
+        second_names = {e.name for e in second_page}
+        assert first_names.isdisjoint(second_names)
+
     async def test_backend_name_matches_fixture(
         self, backend: PersistenceBackend, request: pytest.FixtureRequest
     ) -> None:

@@ -50,12 +50,12 @@ export function SubworkflowDetailDrawer({
       setLoading(true)
       try {
         const [v, p] = await Promise.all([
-          listVersions(subId),
-          listParents(subId, subVersion),
+          listVersions(subId, { limit: 100 }),
+          listParents(subId, subVersion, { limit: 100 }),
         ])
         if (!cancelled) {
-          setVersions(v)
-          setParents(p)
+          setVersions(v.data)
+          setParents(p.data)
           setLoadedKey(key)
         }
       } catch (err: unknown) {

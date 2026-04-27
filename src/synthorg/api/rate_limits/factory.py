@@ -3,10 +3,24 @@
 from synthorg.api.rate_limits.config import PerOpRateLimitConfig  # noqa: TC001
 from synthorg.api.rate_limits.in_memory import InMemorySlidingWindowStore
 from synthorg.api.rate_limits.protocol import SlidingWindowStore  # noqa: TC001
+from synthorg.core.registry import (
+    StrategyFactoryNotFoundError,
+    StrategyRegistry,
+)
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.api import API_RATE_LIMIT_BACKEND_UNSUPPORTED
 
 logger = get_logger(__name__)
+
+
+def _build_memory(_config: PerOpRateLimitConfig) -> SlidingWindowStore:
+    return InMemorySlidingWindowStore()
+
+
+_REGISTRY: StrategyRegistry[SlidingWindowStore] = StrategyRegistry(
+    {"memory": _build_memory},
+    kind="rate_limit_window",
+)
 
 
 def build_sliding_window_store(
@@ -19,11 +33,16 @@ def build_sliding_window_store(
 
     Returns:
         A concrete :class:`SlidingWindowStore` implementation.
+
+    Raises:
+        StrategyFactoryNotFoundError: If ``config.backend`` is not registered.
     """
-    if config.backend == "memory":
-        return InMemorySlidingWindowStore()
-    # Defensive: the Literal union is exhaustive today, but any future
-    # backend value must be explicitly handled here before landing.
-    msg = f"Unknown per-op rate limit backend: {config.backend!r}"  # type: ignore[unreachable]
-    logger.error(API_APP_STARTUP, backend=config.backend, error="unknown_backend")
-    raise ValueError(msg)
+    try:
+        return _REGISTRY.build(config.backend, config)
+    except StrategyFactoryNotFoundError:
+        logger.warning(
+            API_RATE_LIMIT_BACKEND_UNSUPPORTED,
+            backend=config.backend,
+            available=_REGISTRY.names(),
+        )
+        raise

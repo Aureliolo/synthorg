@@ -29,11 +29,13 @@ export async function searchSubworkflows(
 
 export async function listVersions(
   subworkflowId: string,
-): Promise<readonly string[]> {
-  const response = await apiClient.get<ApiResponse<readonly string[]>>(
+  params?: PaginationParams,
+): Promise<PaginatedResult<string>> {
+  const response = await apiClient.get<PaginatedResponse<string>>(
     `/subworkflows/${encodeURIComponent(subworkflowId)}/versions`,
+    { params },
   )
-  return unwrap(response)
+  return unwrapPaginated<string>(response)
 }
 
 export async function getVersion(
@@ -49,11 +51,13 @@ export async function getVersion(
 export async function listParents(
   subworkflowId: string,
   version: string,
-): Promise<readonly ParentReference[]> {
-  const response = await apiClient.get<ApiResponse<readonly ParentReference[]>>(
+  params?: PaginationParams,
+): Promise<PaginatedResult<ParentReference>> {
+  const response = await apiClient.get<PaginatedResponse<ParentReference>>(
     `/subworkflows/${encodeURIComponent(subworkflowId)}/versions/${encodeURIComponent(version)}/parents`,
+    { params },
   )
-  return unwrap(response)
+  return unwrapPaginated<ParentReference>(response)
 }
 
 export async function createSubworkflow(

@@ -182,11 +182,22 @@ class ApiKeyRepository(Protocol):
         """
         ...
 
-    async def list_by_user(self, user_id: NotBlankStr) -> tuple[ApiKey, ...]:
-        """List API keys belonging to a user.
+    async def list_by_user(
+        self,
+        user_id: NotBlankStr,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[ApiKey, ...]:
+        """List API keys belonging to a user, optionally paginated.
 
         Args:
             user_id: The owner user ID.
+            limit: Maximum keys to return; ``None`` (default) preserves
+                fetch-all semantics.
+            offset: Keys to skip; applied independently of *limit*.
+                ``offset > 0`` with ``limit=None`` yields a tail
+                window starting after *offset* rows.
 
         Returns:
             API keys for the user.

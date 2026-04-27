@@ -6,7 +6,7 @@ import type {
   searchMcpCatalog,
 } from '@/api/endpoints/mcp-catalog'
 import type { McpCatalogEntry } from '@/api/types/integrations'
-import { apiError, successFor, voidSuccess } from './helpers'
+import { apiError, emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 
 export function buildMcpCatalogEntry(
   overrides: Partial<McpCatalogEntry> = {},
@@ -54,9 +54,29 @@ const mockCatalogEntries: McpCatalogEntry[] = [
   }),
 ]
 
+function _catalogPage(
+  rows: readonly McpCatalogEntry[],
+): import('@/api/client').PaginatedResult<McpCatalogEntry> {
+  return {
+    data: [...rows],
+    total: rows.length,
+    offset: 0,
+    limit: rows.length || 1,
+    nextCursor: null,
+    hasMore: false,
+    pagination: {
+      total: rows.length,
+      offset: 0,
+      limit: rows.length || 1,
+      next_cursor: null,
+      has_more: false,
+    },
+  }
+}
+
 export const mcpCatalogHandlers = [
   http.get('/api/v1/integrations/mcp/catalog', () =>
-    HttpResponse.json(successFor<typeof browseMcpCatalog>(mockCatalogEntries)),
+    HttpResponse.json(paginatedFor<typeof browseMcpCatalog>(_catalogPage(mockCatalogEntries))),
   ),
   http.get('/api/v1/integrations/mcp/catalog/search', ({ request }) => {
     const url = new URL(request.url)
@@ -67,7 +87,7 @@ export const mcpCatalogHandlers = [
         e.description.toLowerCase().includes(q) ||
         e.tags.some((t) => t.toLowerCase().includes(q)),
     )
-    return HttpResponse.json(successFor<typeof searchMcpCatalog>(matches))
+    return HttpResponse.json(paginatedFor<typeof searchMcpCatalog>(_catalogPage(matches)))
   }),
   http.get('/api/v1/integrations/mcp/catalog/:entryId', ({ params }) => {
     const entry = mockCatalogEntries.find((e) => e.id === params.entryId)
@@ -101,10 +121,10 @@ export const mcpCatalogHandlers = [
 
 export const mcpCatalogDefaultHandlers = [
   http.get('/api/v1/integrations/mcp/catalog', () =>
-    HttpResponse.json(successFor<typeof browseMcpCatalog>([])),
+    HttpResponse.json(paginatedFor<typeof browseMcpCatalog>(emptyPage<McpCatalogEntry>())),
   ),
   http.get('/api/v1/integrations/mcp/catalog/search', () =>
-    HttpResponse.json(successFor<typeof searchMcpCatalog>([])),
+    HttpResponse.json(paginatedFor<typeof searchMcpCatalog>(emptyPage<McpCatalogEntry>())),
   ),
   http.get('/api/v1/integrations/mcp/catalog/:entryId', ({ params }) =>
     HttpResponse.json(

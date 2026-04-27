@@ -57,6 +57,53 @@ class TestEscalationNotifyConformance:
             with contextlib.suppress(asyncio.CancelledError):
                 await listener
 
+    async def test_postgres_publishes_one_payload_per_id_on_batch(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """``_publish_notifies`` over N ids emits N distinct payloads.
+
+        Verifies the post-#1597 batching collapse preserves the
+        per-id payload contract subscribers depend on.
+        """
+        if backend.backend_name != "postgres":
+            pytest.skip("Postgres-only: exercises LISTEN/NOTIFY semantics")
+
+        repo = backend.build_escalations(notify_channel="batch_channel")
+        seen: list[str] = []
+        ready = asyncio.Event()
+        target = 3
+
+        async def _listen() -> None:
+            async with repo.subscribe_notifications("batch_channel") as gen:
+                ready.set()
+                async for payload in gen:
+                    seen.append(payload)
+                    if len(seen) >= target:
+                        return
+
+        listener = asyncio.create_task(_listen())
+        try:
+            await asyncio.wait_for(ready.wait(), timeout=5.0)
+            # Reach into the private batch publisher to verify the
+            # observable contract: N ids -> N payloads on the wire.
+            await repo._publish_notifies(  # type: ignore[attr-defined]
+                ("esc-a", "esc-b", "esc-c"),
+                "expired",
+            )
+            await asyncio.wait_for(
+                asyncio.shield(listener),
+                timeout=5.0,
+            )
+            assert sorted(seen) == [
+                "esc-a:expired",
+                "esc-b:expired",
+                "esc-c:expired",
+            ]
+        finally:
+            listener.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await listener
+
     async def test_sqlite_subscription_is_noop(
         self, backend: PersistenceBackend
     ) -> None:

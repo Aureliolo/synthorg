@@ -415,10 +415,12 @@ class PostgresOrgFactRepository:
         categories: frozenset[OrgFactCategory] | None = None,
         text: str | None = None,
         limit: int = 5,
+        offset: int = 0,
     ) -> tuple[OrgFact, ...]:
         """Query active facts by category and/or text content."""
         dict_row = self._dict_row
         limit = max(1, min(limit, 100))
+        offset = max(0, int(offset))
         clauses: list[str] = ["retracted_at IS NULL"]
         params: list[Any] = []
 
@@ -436,13 +438,16 @@ class PostgresOrgFactRepository:
         if text is not None:
             order = (
                 "ORDER BY POSITION(LOWER(%s) IN LOWER(content)) ASC, "
-                "LENGTH(content) ASC, created_at DESC"
+                "LENGTH(content) ASC, created_at DESC, fact_id ASC"
             )
             params.append(text)
         else:
-            order = "ORDER BY created_at DESC"
-        sql = f"SELECT * FROM org_facts_snapshot{where} {order} LIMIT %s"  # noqa: S608
-        params.append(limit)
+            order = "ORDER BY created_at DESC, fact_id ASC"
+        sql = (
+            f"SELECT * FROM org_facts_snapshot{where} {order} "  # noqa: S608
+            "LIMIT %s OFFSET %s"
+        )
+        params.extend([limit, offset])
 
         try:
             async with (
@@ -464,20 +469,31 @@ class PostgresOrgFactRepository:
     async def list_by_category(
         self,
         category: OrgFactCategory,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[OrgFact, ...]:
-        """List all active facts in a category."""
+        """List all active facts in a category, optionally paginated."""
         dict_row = self._dict_row
+        sql = (
+            "SELECT * FROM org_facts_snapshot "
+            "WHERE category = %s AND retracted_at IS NULL "
+            "ORDER BY created_at DESC, fact_id ASC"
+        )
+        params: tuple[object, ...] = (category.value,)
+        effective_offset = max(0, int(offset))
+        if limit is not None:
+            sql += " LIMIT %s OFFSET %s"
+            params = (*params, int(limit), effective_offset)
+        elif effective_offset > 0:
+            sql += " OFFSET %s"
+            params = (*params, effective_offset)
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
-                await cur.execute(
-                    "SELECT * FROM org_facts_snapshot "
-                    "WHERE category = %s AND retracted_at IS NULL "
-                    "ORDER BY created_at DESC",
-                    (category.value,),
-                )
+                await cur.execute(sql, params)
                 rows = await cur.fetchall()
         except Exception as exc:
             logger.warning(

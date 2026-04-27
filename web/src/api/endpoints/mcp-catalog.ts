@@ -1,26 +1,30 @@
-import { apiClient, unwrap, unwrapVoid } from '../client'
-import type { ApiResponse } from '../types/http'
+import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
+import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
 import type {
   McpCatalogEntry,
   McpInstallRequest,
   McpInstallResponse,
 } from '../types/integrations'
 
-export async function browseMcpCatalog(): Promise<readonly McpCatalogEntry[]> {
-  const response = await apiClient.get<ApiResponse<readonly McpCatalogEntry[]>>(
+export async function browseMcpCatalog(
+  params?: PaginationParams,
+): Promise<PaginatedResult<McpCatalogEntry>> {
+  const response = await apiClient.get<PaginatedResponse<McpCatalogEntry>>(
     '/integrations/mcp/catalog',
+    { params },
   )
-  return unwrap(response)
+  return unwrapPaginated<McpCatalogEntry>(response)
 }
 
 export async function searchMcpCatalog(
   query: string,
-): Promise<readonly McpCatalogEntry[]> {
-  const response = await apiClient.get<ApiResponse<readonly McpCatalogEntry[]>>(
+  params?: PaginationParams,
+): Promise<PaginatedResult<McpCatalogEntry>> {
+  const response = await apiClient.get<PaginatedResponse<McpCatalogEntry>>(
     '/integrations/mcp/catalog/search',
-    { params: { q: query } },
+    { params: { q: query, ...params } },
   )
-  return unwrap(response)
+  return unwrapPaginated<McpCatalogEntry>(response)
 }
 
 export async function getMcpCatalogEntry(entryId: string): Promise<McpCatalogEntry> {

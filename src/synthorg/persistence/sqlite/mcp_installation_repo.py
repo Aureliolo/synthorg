@@ -101,15 +101,27 @@ class SQLiteMcpInstallationRepository:
             installed_at=coerce_row_timestamp(row[2]),
         )
 
-    async def list_all(self) -> tuple[McpInstallation, ...]:
+    async def list_all(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[McpInstallation, ...]:
         """List all recorded installations, oldest-first."""
-        async with self._db.execute(
-            """
-            SELECT catalog_entry_id, connection_name, installed_at
-            FROM mcp_installations
-            ORDER BY installed_at ASC
-            """,
-        ) as cursor:
+        sql = (
+            "SELECT catalog_entry_id, connection_name, installed_at "
+            "FROM mcp_installations "
+            "ORDER BY installed_at ASC, catalog_entry_id ASC"
+        )
+        params: tuple[object, ...] = ()
+        effective_offset = max(0, int(offset))
+        if limit is not None:
+            sql += " LIMIT ? OFFSET ?"
+            params = (int(limit), effective_offset)
+        elif effective_offset > 0:
+            sql += " LIMIT -1 OFFSET ?"
+            params = (effective_offset,)
+        async with self._db.execute(sql, params) as cursor:
             rows = await cursor.fetchall()
         return tuple(
             McpInstallation(

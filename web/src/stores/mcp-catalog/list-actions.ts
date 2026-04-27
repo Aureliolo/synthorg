@@ -17,8 +17,18 @@ export function createListActions(set: McpCatalogSet) {
     fetchCatalog: async () => {
       set({ loading: true, error: null })
       try {
-        const entries = await browseMcpCatalog()
-        set({ entries, loading: false })
+        // Walk all cursor pages so the store reflects the full bundled
+        // catalog regardless of how the server chooses to chunk it. The
+        // catalog is bounded (~20-50 entries today) but ``limit:100``
+        // would silently truncate if it ever grew past one page.
+        const all: McpCatalogEntry[] = []
+        let cursor: string | null = null
+        do {
+          const page = await browseMcpCatalog({ limit: 100, cursor })
+          all.push(...page.data)
+          cursor = page.hasMore ? page.nextCursor : null
+        } while (cursor !== null)
+        set({ entries: all, loading: false })
       } catch (err) {
         log.error('Failed to fetch MCP catalog:', getErrorMessage(err))
         set({
@@ -43,10 +53,10 @@ export function createListActions(set: McpCatalogSet) {
       _searchDebounceHandle = setTimeout(async () => {
         if (generation !== _searchGeneration) return
         try {
-          const results = await searchMcpCatalog(q)
+          const page = await searchMcpCatalog(q, { limit: 100 })
           if (generation !== _searchGeneration) return
           set({
-            searchResults: results as readonly McpCatalogEntry[],
+            searchResults: page.data as readonly McpCatalogEntry[],
             searchLoading: false,
           })
         } catch (err) {

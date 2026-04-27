@@ -387,10 +387,12 @@ class PostgresCostRecordRepository:
         *,
         agent_id: str | None = None,
         task_id: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[CostRecord, ...]:
-        """Query cost records with optional filters."""
+        """Query cost records with optional filters and pagination."""
         clauses: list[str] = []
-        params: list[str] = []
+        params: list[object] = []
         if agent_id is not None:
             clauses.append("agent_id = %s")
             params.append(agent_id)
@@ -405,6 +407,14 @@ class PostgresCostRecordRepository:
         )
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY timestamp DESC, agent_id ASC, rowid ASC"
+        effective_offset = max(0, int(offset))
+        if limit is not None:
+            sql += " LIMIT %s OFFSET %s"
+            params.extend([int(limit), effective_offset])
+        elif effective_offset > 0:
+            sql += " OFFSET %s"
+            params.append(effective_offset)
 
         try:
             async with (

@@ -46,12 +46,23 @@ class SessionRepository(Protocol):
         """Look up a session by ID, or return ``None`` if missing."""
         ...
 
-    async def list_by_user(self, user_id: str) -> tuple[Session, ...]:
-        """List active (non-expired, non-revoked) sessions for a user."""
+    async def list_by_user(
+        self,
+        user_id: str,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[Session, ...]:
+        """List active sessions for a user, optionally paginated."""
         ...
 
-    async def list_all(self) -> tuple[Session, ...]:
-        """List all active (non-expired, non-revoked) sessions."""
+    async def list_all(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[Session, ...]:
+        """List all active sessions, optionally paginated."""
         ...
 
     async def revoke(self, session_id: str) -> bool:

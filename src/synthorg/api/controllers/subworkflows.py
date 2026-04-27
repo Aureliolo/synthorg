@@ -17,9 +17,14 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.api.controllers._workflow_helpers import get_auth_user_id
 from synthorg.api.cursor import InvalidCursorError, decode_keyset_cursor
-from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import CursorLimit, CursorParam, encode_keyset_meta
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    encode_keyset_meta,
+    paginate_cursor,
+)
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.enums import WorkflowType
@@ -231,12 +236,20 @@ class SubworkflowController(Controller):
         self,
         state: State,
         subworkflow_id: PathId,
-    ) -> Response[ApiResponse[tuple[str, ...]]]:
-        """List every semver for a subworkflow, newest first."""
+        limit: CursorLimit = DEFAULT_LIMIT,
+        cursor: CursorParam = None,
+    ) -> Response[PaginatedResponse[str]]:
+        """List every semver for a subworkflow, newest first (cursor-paginated)."""
         registry = _registry(state)
         versions = await registry.list_versions(subworkflow_id)
+        page, meta = paginate_cursor(
+            versions,
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
+        )
         return Response(
-            content=ApiResponse[tuple[str, ...]](data=versions),
+            content=PaginatedResponse[str](data=page, pagination=meta),
         )
 
     @get(
@@ -276,12 +289,20 @@ class SubworkflowController(Controller):
             str,
             Parameter(min_length=1, max_length=64),
         ],
-    ) -> Response[ApiResponse[tuple[ParentReference, ...]]]:
-        """List parent workflow definitions pinning this version."""
+        limit: CursorLimit = DEFAULT_LIMIT,
+        cursor: CursorParam = None,
+    ) -> Response[PaginatedResponse[ParentReference]]:
+        """List parent workflow definitions pinning this version (cursor-paginated)."""
         registry = _registry(state)
         parents = await registry.find_parents(subworkflow_id, version)
+        page, meta = paginate_cursor(
+            parents,
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
+        )
         return Response(
-            content=ApiResponse[tuple[ParentReference, ...]](data=parents),
+            content=PaginatedResponse[ParentReference](data=page, pagination=meta),
         )
 
     @post("", guards=[require_write_access])

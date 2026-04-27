@@ -123,7 +123,12 @@ class PostgresMcpInstallationRepository:
             return None
         return _row_to_installation(row)
 
-    async def list_all(self) -> tuple[McpInstallation, ...]:
+    async def list_all(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[McpInstallation, ...]:
         """List all recorded installations in a deterministic order.
 
         Sorted by ``installed_at`` ascending with ``catalog_entry_id``
@@ -131,18 +136,25 @@ class PostgresMcpInstallationRepository:
         (restores, backfills, clock skew) are always returned in the
         same order across calls.
         """
+        sql = (
+            "SELECT catalog_entry_id, connection_name, installed_at "
+            "FROM mcp_installations "
+            "ORDER BY installed_at ASC, catalog_entry_id ASC"
+        )
+        params: tuple[object, ...] = ()
+        effective_offset = max(0, int(offset))
+        if limit is not None:
+            sql += " LIMIT %s OFFSET %s"
+            params = (int(limit), effective_offset)
+        elif effective_offset > 0:
+            sql += " OFFSET %s"
+            params = (effective_offset,)
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
-                await cur.execute(
-                    """
-                    SELECT catalog_entry_id, connection_name, installed_at
-                    FROM mcp_installations
-                    ORDER BY installed_at ASC, catalog_entry_id ASC
-                    """,
-                )
+                await cur.execute(sql, params)
                 rows = await cur.fetchall()
         except MemoryError, RecursionError:
             raise

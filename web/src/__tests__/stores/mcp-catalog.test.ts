@@ -1,7 +1,8 @@
 import { http, HttpResponse } from 'msw'
 import type { McpCatalogEntry } from '@/api/types/integrations'
 import { useMcpCatalogStore } from '@/stores/mcp-catalog'
-import { apiError, apiSuccess, voidSuccess } from '@/mocks/handlers'
+import { apiError, apiSuccess, paginatedFor, voidSuccess } from '@/mocks/handlers'
+import type { browseMcpCatalog } from '@/api/endpoints/mcp-catalog'
 import { server } from '@/test-setup'
 
 const githubEntry: McpCatalogEntry = {
@@ -32,9 +33,26 @@ describe('useMcpCatalogStore', () => {
   })
 
   it('loads the catalog on fetchCatalog', async () => {
+    const entries = [githubEntry, filesystemEntry]
     server.use(
       http.get('/api/v1/integrations/mcp/catalog', () =>
-        HttpResponse.json(apiSuccess([githubEntry, filesystemEntry])),
+        HttpResponse.json(
+          paginatedFor<typeof browseMcpCatalog>({
+            data: entries,
+            total: entries.length,
+            offset: 0,
+            limit: entries.length,
+            nextCursor: null,
+            hasMore: false,
+            pagination: {
+              total: entries.length,
+              offset: 0,
+              limit: entries.length,
+              next_cursor: null,
+              has_more: false,
+            },
+          }),
+        ),
       ),
     )
     await useMcpCatalogStore.getState().fetchCatalog()

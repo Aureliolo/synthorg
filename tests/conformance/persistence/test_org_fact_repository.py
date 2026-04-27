@@ -102,6 +102,47 @@ class TestOrgFactRepository:
         assert {"lp1", "lp2"} <= ids
         assert "other" not in ids
 
+    async def test_list_by_category_pagination(
+        self, backend: PersistenceBackend
+    ) -> None:
+        for i in range(4):
+            await backend.org_facts.save(
+                _fact(
+                    f"pg_{i}",
+                    category=OrgFactCategory.CORE_POLICY,
+                ),
+            )
+
+        # Pull the full ordered list to anchor pagination assertions
+        # against the actual sort order rather than guessing.
+        full = await backend.org_facts.list_by_category(
+            OrgFactCategory.CORE_POLICY,
+        )
+        full_ids = [f.id for f in full]
+        assert {"pg_0", "pg_1", "pg_2", "pg_3"} <= set(full_ids)
+
+        page = await backend.org_facts.list_by_category(
+            OrgFactCategory.CORE_POLICY,
+            limit=2,
+            offset=1,
+        )
+        assert [f.id for f in page] == full_ids[1:3]
+
+    async def test_query_offset(self, backend: PersistenceBackend) -> None:
+        for i in range(3):
+            await backend.org_facts.save(
+                _fact(f"qoff_{i}", "Common ship statement."),
+            )
+
+        page = await backend.org_facts.query(
+            text="ship",
+            limit=10,
+            offset=1,
+        )
+
+        # All three match; offset=1 drops the first result.
+        assert len(page) == 2
+
     async def test_delete_retracts_fact(self, backend: PersistenceBackend) -> None:
         await backend.org_facts.save(_fact("doomed"))
         deleted = await backend.org_facts.delete(

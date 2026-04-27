@@ -202,6 +202,52 @@ class TestSubworkflowCrud:
         versions = resp.json()["data"]
         assert versions == ["1.10.0", "1.9.0", "1.0.0"]
 
+    def test_list_versions_pagination(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        # Five versions; ``limit=2&cursor=`` returns the first page;
+        # ``limit=2&cursor=<next_cursor>`` returns the second.
+        for v in ("1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0"):
+            _create_subworkflow(test_client, _sub_payload(version=v))
+
+        first = test_client.get(
+            f"/api/v1/subworkflows/{_SUB_ID}/versions",
+            params={"limit": 2},
+            headers=make_auth_headers("ceo"),
+        )
+        assert first.status_code == 200
+        first_body = first.json()
+        assert len(first_body["data"]) == 2
+        assert first_body["pagination"]["has_more"] is True
+        assert first_body["pagination"]["next_cursor"]
+
+        second = test_client.get(
+            f"/api/v1/subworkflows/{_SUB_ID}/versions",
+            params={
+                "limit": 2,
+                "cursor": first_body["pagination"]["next_cursor"],
+            },
+            headers=make_auth_headers("ceo"),
+        )
+        assert second.status_code == 200
+        second_body = second.json()
+        assert len(second_body["data"]) == 2
+        # Pages do not overlap.
+        assert set(first_body["data"]).isdisjoint(set(second_body["data"]))
+
+    def test_list_versions_rejects_tampered_cursor(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _create_subworkflow(test_client)
+        resp = test_client.get(
+            f"/api/v1/subworkflows/{_SUB_ID}/versions",
+            params={"limit": 2, "cursor": "obviously-not-signed"},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 400
+
     def test_get_version_missing_returns_404(
         self,
         test_client: TestClient[Any],

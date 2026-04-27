@@ -38,6 +38,7 @@ class OrgFactRepository(Protocol):
         categories: frozenset[OrgFactCategory] | None = None,
         text: str | None = None,
         limit: int = 5,
+        offset: int = 0,
     ) -> tuple[OrgFact, ...]:
         """Query active facts by category and/or text substring."""
         ...
@@ -45,8 +46,11 @@ class OrgFactRepository(Protocol):
     async def list_by_category(
         self,
         category: OrgFactCategory,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[OrgFact, ...]:
-        """List all active facts in a category."""
+        """List all active facts in a category, optionally paginated."""
         ...
 
     async def delete(

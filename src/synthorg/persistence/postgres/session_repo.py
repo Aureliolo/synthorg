@@ -120,40 +120,67 @@ class PostgresSessionRepository:
             row = await cur.fetchone()
         return _row_to_session(row) if row else None
 
-    async def list_by_user(self, user_id: str) -> tuple[Session, ...]:
+    async def list_by_user(
+        self,
+        user_id: str,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[Session, ...]:
         """List active (non-expired, non-revoked) sessions for a user."""
         dict_row = self._dict_row
 
         now = datetime.now(UTC)
+        sql = (
+            "SELECT * FROM sessions "
+            "WHERE user_id = %s AND revoked = FALSE "
+            "AND expires_at > %s "
+            "ORDER BY created_at DESC, session_id ASC"
+        )
+        params: tuple[object, ...] = (user_id, now)
+        effective_offset = max(0, int(offset))
+        if limit is not None:
+            sql += " LIMIT %s OFFSET %s"
+            params = (*params, int(limit), effective_offset)
+        elif effective_offset > 0:
+            sql += " OFFSET %s"
+            params = (*params, effective_offset)
         async with (
             self._pool.connection() as conn,
             conn.cursor(row_factory=dict_row) as cur,
         ):
-            await cur.execute(
-                "SELECT * FROM sessions "
-                "WHERE user_id = %s AND revoked = FALSE "
-                "AND expires_at > %s "
-                "ORDER BY created_at DESC",
-                (user_id, now),
-            )
+            await cur.execute(sql, params)
             rows = await cur.fetchall()
         return tuple(_row_to_session(r) for r in rows)
 
-    async def list_all(self) -> tuple[Session, ...]:
+    async def list_all(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[Session, ...]:
         """List all active (non-expired, non-revoked) sessions."""
         dict_row = self._dict_row
 
         now = datetime.now(UTC)
+        sql = (
+            "SELECT * FROM sessions "
+            "WHERE revoked = FALSE AND expires_at > %s "
+            "ORDER BY created_at DESC, session_id ASC"
+        )
+        params: tuple[object, ...] = (now,)
+        effective_offset = max(0, int(offset))
+        if limit is not None:
+            sql += " LIMIT %s OFFSET %s"
+            params = (*params, int(limit), effective_offset)
+        elif effective_offset > 0:
+            sql += " OFFSET %s"
+            params = (*params, effective_offset)
         async with (
             self._pool.connection() as conn,
             conn.cursor(row_factory=dict_row) as cur,
         ):
-            await cur.execute(
-                "SELECT * FROM sessions "
-                "WHERE revoked = FALSE AND expires_at > %s "
-                "ORDER BY created_at DESC",
-                (now,),
-            )
+            await cur.execute(sql, params)
             rows = await cur.fetchall()
         return tuple(_row_to_session(r) for r in rows)
 

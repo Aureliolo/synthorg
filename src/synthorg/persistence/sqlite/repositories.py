@@ -373,10 +373,12 @@ INSERT INTO cost_records (
         *,
         agent_id: str | None = None,
         task_id: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[CostRecord, ...]:
-        """Query cost records with optional filters."""
+        """Query cost records with optional filters and pagination."""
         clauses: list[str] = []
-        params: list[str] = []
+        params: list[object] = []
         if agent_id is not None:
             clauses.append("agent_id = ?")
             params.append(agent_id)
@@ -390,6 +392,14 @@ SELECT agent_id, task_id, provider, model, input_tokens,
 FROM cost_records"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY timestamp DESC, agent_id ASC, rowid ASC"
+        effective_offset = max(0, int(offset))
+        if limit is not None:
+            sql += " LIMIT ? OFFSET ?"
+            params.extend([int(limit), effective_offset])
+        elif effective_offset > 0:
+            sql += " LIMIT -1 OFFSET ?"
+            params.append(effective_offset)
 
         try:
             cursor = await self._db.execute(sql, params)
@@ -402,7 +412,11 @@ FROM cost_records"""
             ValidationError,
         ) as exc:
             msg = "Failed to query cost records"
-            logger.exception(PERSISTENCE_COST_RECORD_QUERY_FAILED, error=str(exc))
+            logger.warning(
+                PERSISTENCE_COST_RECORD_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_COST_RECORD_QUERIED, count=len(records))
         return records
@@ -447,10 +461,11 @@ FROM cost_records"""
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to aggregate cost records"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_COST_RECORD_AGGREGATE_FAILED,
                 agent_id=agent_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:

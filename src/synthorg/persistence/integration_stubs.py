@@ -1,18 +1,17 @@
 """In-memory repository implementations for integration tables.
 
-.. warning::
-    These are **process-local, non-durable** repositories. Data lives
-    only in the current Python process, is not replicated across
-    replicas, and is lost on restart. Use them for local development,
-    tests, and single-process dev servers only -- **never** for
-    production. The ``PersistenceBackend`` protocol routes integration
-    domains here while SQLite / Postgres repositories for connections,
-    connection secrets, OAuth state, and webhook receipts are still
-    being built (see issue #1517 / HYG-3).
+.. note::
+    The production ``SQLitePersistenceBackend`` and
+    ``PostgresPersistenceBackend`` now wire in durable connection,
+    connection-secret, OAuth state, and webhook-receipt repositories
+    directly (``synthorg.persistence.{sqlite,postgres}.<repo>_repo``).
+    These ``InMemory*`` classes remain available for **unit-test
+    fakes** that don't want to spin up a real database.
 
-When the durable drivers land, these classes move to the test-only
-fakes directory and the production ``PersistenceBackend`` wires in
-the real SQLite / Postgres repos directly.
+.. warning::
+    Process-local, non-durable. Data lives only in the current
+    Python process, is not replicated across replicas, and is lost
+    on restart. **Never** wire these into a production backend.
 
 All reads return deep copies so callers cannot mutate internal
 state by holding references to returned models. Even though the
@@ -46,20 +45,38 @@ class InMemoryConnectionRepository:
         existing = self._store.get(name)
         return copy.deepcopy(existing) if existing is not None else None
 
-    async def list_all(self) -> tuple[Connection, ...]:
+    async def list_all(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[Connection, ...]:
         """List all (deep-copied)."""
-        return tuple(copy.deepcopy(c) for c in self._store.values())
+        rows = tuple(
+            copy.deepcopy(c) for c in sorted(self._store.values(), key=lambda c: c.name)
+        )
+        effective_offset = max(0, int(offset))
+        if limit is None:
+            return rows[effective_offset:]
+        return rows[effective_offset : effective_offset + max(0, int(limit))]
 
     async def list_by_type(
         self,
         connection_type: ConnectionType,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[Connection, ...]:
         """List by type (deep-copied)."""
-        return tuple(
+        matches = tuple(
             copy.deepcopy(c)
-            for c in self._store.values()
+            for c in sorted(self._store.values(), key=lambda c: c.name)
             if c.connection_type == connection_type
         )
+        effective_offset = max(0, int(offset))
+        if limit is None:
+            return matches[effective_offset:]
+        return matches[effective_offset : effective_offset + max(0, int(limit))]
 
     async def delete(self, name: str) -> bool:
         """Delete by name."""
@@ -129,8 +146,12 @@ class InMemoryWebhookReceiptRepository:
         connection_name: str,
         *,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[WebhookReceipt, ...]:
         """List by connection (deep-copied), newest-first."""
+        if limit <= 0:
+            return ()
+        effective_offset = max(0, int(offset))
         # ``self._store`` is append-ordered, so the most recent
         # receipts live at the end. The repository contract asks
         # callers to receive newest-first, so reverse before slicing.
@@ -139,7 +160,7 @@ class InMemoryWebhookReceiptRepository:
             for r in reversed(self._store)
             if r.connection_name == connection_name
         ]
-        return tuple(matches[:limit])
+        return tuple(matches[effective_offset : effective_offset + int(limit)])
 
     async def cleanup_old(
         self,

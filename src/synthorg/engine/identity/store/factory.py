@@ -2,10 +2,10 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.registry import StrategyRegistry
 from synthorg.engine.identity.store.append_only import AppendOnlyIdentityStore
 from synthorg.engine.identity.store.copy_on_write import CopyOnWriteIdentityStore
 from synthorg.observability import get_logger
-from synthorg.observability.events.evolution import EVOLUTION_INVALID_STORE_TYPE
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -15,6 +15,33 @@ if TYPE_CHECKING:
     from synthorg.versioning.service import VersioningService
 
 logger = get_logger(__name__)
+
+
+def _build_append_only(
+    _config: IdentityStoreConfig,
+    *,
+    registry: AgentRegistryService,
+    versioning: VersioningService[AgentIdentity],
+) -> IdentityVersionStore:
+    return AppendOnlyIdentityStore(registry=registry, versioning=versioning)
+
+
+def _build_copy_on_write(
+    _config: IdentityStoreConfig,
+    *,
+    registry: AgentRegistryService,
+    versioning: VersioningService[AgentIdentity],
+) -> IdentityVersionStore:
+    return CopyOnWriteIdentityStore(registry=registry, versioning=versioning)
+
+
+_REGISTRY: StrategyRegistry[IdentityVersionStore] = StrategyRegistry(
+    {
+        "append_only": _build_append_only,
+        "copy_on_write": _build_copy_on_write,
+    },
+    kind="identity_store",
+)
 
 
 def build_identity_store(
@@ -34,18 +61,11 @@ def build_identity_store(
         Configured identity version store.
 
     Raises:
-        ValueError: If config.type is not recognized.
+        StrategyFactoryNotFoundError: If ``config.type`` is not registered.
     """
-    if config.type == "append_only":
-        return AppendOnlyIdentityStore(
-            registry=registry,
-            versioning=versioning,
-        )
-    if config.type == "copy_on_write":
-        return CopyOnWriteIdentityStore(
-            registry=registry,
-            versioning=versioning,
-        )
-    msg = f"Unknown identity store type: {config.type!r}"  # type: ignore[unreachable]
-    logger.warning(EVOLUTION_INVALID_STORE_TYPE, store_type=config.type)
-    raise ValueError(msg)
+    return _REGISTRY.build(
+        config.type,
+        config,
+        registry=registry,
+        versioning=versioning,
+    )

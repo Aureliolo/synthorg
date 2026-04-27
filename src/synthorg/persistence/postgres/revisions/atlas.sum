@@ -1,7 +1,8 @@
-h1:5W9T4sq+tfOiZFbgKTAA/yhsw6mSf7LzVRUVeUSvFZo=
+h1:0dtvgflsnTN7qC+VuSkBqD5tGcrgZwgSk1yP3/QoKo8=
 00000000000000_baseline.sql h1:TFe+cyJnIUi99mruIQ2OukbFYT53VJAV04egAmJTqIA=
 20260421223602_pst1_parity_and_indices.sql h1:1TZHKK51bU9RZlV7mvrZ+dXPoHF+NO0i+VNkCBwb5js=
 20260422081439_add_approvals_task_id_index.sql h1:8P1EtN8n939/fe39nAUCwYAbMg6GVV4erh0c3CZJQQE=
 20260424185325_add_idx_wfe_definition_revision.sql h1:YGaoXkNlyWNEHpa/XZXBxKWPcKwtdLcrR4m3TiHaKK0=
 20260425132212_add_artifact_project_id.sql h1:0XqHNAtXhwbkUMy7owaVmv3k6hlkyOZjmaWL3MeGEp0=
 20260426182651_add_idempotency_keys.sql h1:9WStqMS0bjKmqg/Uvu3abbSPtCB/9cG/7KoLpOL7CZE=
+20260427161641_perf_indices_and_a2a_peer.sql h1:QpUGhtRAIYnT8sIjl61hWP2BZlrq+SPVvETFbipwpQ0=

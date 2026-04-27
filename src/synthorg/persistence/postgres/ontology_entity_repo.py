@@ -221,8 +221,12 @@ class PostgresOntologyEntityRepository:
         self,
         *,
         tier: EntityTier | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[EntityDefinition, ...]:
-        """List entities, optionally filtered by tier."""
+        """List entities, optionally filtered by tier and paginated."""
+        effective_limit = 1000 if limit is None else int(limit)
+        effective_offset = max(0, int(offset))
         dict_row = self._dict_row
         async with (
             self._pool.connection() as conn,
@@ -231,20 +235,37 @@ class PostgresOntologyEntityRepository:
             if tier is not None:
                 await cur.execute(
                     """SELECT * FROM entity_definitions
-                       WHERE tier = %(tier)s LIMIT 1000""",
-                    {"tier": tier.value},
+                       WHERE tier = %(tier)s
+                       ORDER BY name ASC
+                       LIMIT %(limit)s OFFSET %(offset)s""",
+                    {
+                        "tier": tier.value,
+                        "limit": effective_limit,
+                        "offset": effective_offset,
+                    },
                 )
             else:
                 await cur.execute(
-                    "SELECT * FROM entity_definitions LIMIT 1000",
+                    "SELECT * FROM entity_definitions "
+                    "ORDER BY name ASC "
+                    "LIMIT %(limit)s OFFSET %(offset)s",
+                    {"limit": effective_limit, "offset": effective_offset},
                 )
             rows = await cur.fetchall()
         return self._rows_to_entities(rows)
 
-    async def search(self, query: str) -> tuple[EntityDefinition, ...]:
+    async def search(
+        self,
+        query: str,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[EntityDefinition, ...]:
         """Search entities by name or definition text."""
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
+        effective_limit = 1000 if limit is None else int(limit)
+        effective_offset = max(0, int(offset))
         dict_row = self._dict_row
         async with (
             self._pool.connection() as conn,
@@ -254,8 +275,13 @@ class PostgresOntologyEntityRepository:
                 """SELECT * FROM entity_definitions
                    WHERE name LIKE %(pattern)s ESCAPE '\\'
                       OR definition LIKE %(pattern)s ESCAPE '\\'
-                   LIMIT 1000""",
-                {"pattern": pattern},
+                   ORDER BY name ASC
+                   LIMIT %(limit)s OFFSET %(offset)s""",
+                {
+                    "pattern": pattern,
+                    "limit": effective_limit,
+                    "offset": effective_offset,
+                },
             )
             rows = list(await cur.fetchall())
         logger.debug(
