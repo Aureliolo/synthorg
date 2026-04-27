@@ -20,6 +20,7 @@ import time
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.api.auth.models import AuthenticatedUser  # noqa: TC001
+from synthorg.api.auth.token_size import get_auth_token_bytes
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_WS_TICKET_CLEANUP,
@@ -36,8 +37,6 @@ class TicketLimitExceededError(Exception):
     """Raised when a user exceeds the per-user pending ticket cap."""
 
 
-# 32 bytes → 256 bits of entropy, encoded as 43 URL-safe base64 chars.
-_TOKEN_BYTES: int = 32
 _MAX_PENDING_PER_USER: int = 5
 
 
@@ -134,7 +133,7 @@ class WsTicketStore:
             msg = f"Ticket limit exceeded for user {user.user_id}"
             raise TicketLimitExceededError(msg)
 
-        ticket = secrets.token_urlsafe(_TOKEN_BYTES)
+        ticket = secrets.token_urlsafe(get_auth_token_bytes())
         entry = _TicketEntry(
             user=user,
             expires_at=time.monotonic() + self._ttl,

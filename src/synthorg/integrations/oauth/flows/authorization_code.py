@@ -7,6 +7,7 @@ from urllib.parse import urlencode
 
 import httpx
 
+from synthorg.api.auth.token_size import get_auth_token_bytes
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
     OAuthState,
@@ -83,7 +84,7 @@ class AuthorizationCodeFlow:
         Returns:
             (authorization_url, OAuthState) tuple.
         """
-        state_token = stdlib_secrets.token_urlsafe(32)
+        state_token = stdlib_secrets.token_urlsafe(get_auth_token_bytes())
         verifier = generate_code_verifier()
         challenge = generate_code_challenge(verifier)
         # The verifier is persisted until the code exchange completes;

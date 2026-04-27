@@ -559,6 +559,27 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
             error_desc=safe_error_description(exc),
         )
 
+    try:
+        from synthorg.api.auth.token_size import (  # noqa: PLC0415
+            set_auth_token_bytes,
+        )
+
+        set_auth_token_bytes(
+            await app_state.config_resolver.get_int(
+                SettingNamespace.SECURITY.value,
+                "auth_token_bytes",
+            )
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            error=("Failed to apply security.auth_token_bytes; using built-in default"),
+            error_type=type(exc).__name__,
+            error_desc=safe_error_description(exc),
+        )
+
     if app_state.oauth_token_manager is not None:
         app_state.oauth_token_manager.set_config_resolver(
             app_state.config_resolver,

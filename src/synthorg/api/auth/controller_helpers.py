@@ -22,6 +22,7 @@ from synthorg.api.auth.cookies import (
 )
 from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.auth.session import Session
+from synthorg.api.auth.token_size import get_auth_token_bytes
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_AUTH_CONFIG_FALLBACK,
@@ -66,7 +67,7 @@ async def make_session_cookies(  # noqa: PLR0913
         make_csrf_cookie(generate_csrf_token(), expires_in, config),
     ]
     if config.jwt_refresh_enabled:
-        refresh_token = secrets.token_urlsafe(32)
+        refresh_token = secrets.token_urlsafe(get_auth_token_bytes())
         refresh_max_age = config.jwt_refresh_expiry_minutes * 60
         refresh_persisted = False
         if app_state is not None and session_id and user_id:
