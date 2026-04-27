@@ -75,7 +75,7 @@ def test_contains_only_matches_registered_string_keys() -> None:
 
     assert "loud" in registry
     assert "quiet" not in registry
-    assert 42 not in registry  # type: ignore[operator]
+    assert 42 not in registry
 
 
 def test_names_returns_sorted_tuple() -> None:

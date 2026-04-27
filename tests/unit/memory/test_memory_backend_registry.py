@@ -18,7 +18,7 @@ pytestmark = pytest.mark.unit
 
 
 def _stub_backend() -> MemoryBackend:
-    return MagicMock(spec_set=[])  # type: ignore[return-value]
+    return MagicMock(spec_set=[])
 
 
 def test_default_registry_includes_all_three_backends() -> None:
@@ -79,4 +79,4 @@ def test_contains_only_matches_string_keys() -> None:
 
     assert "inmemory" in registry
     assert "mem0" not in registry
-    assert 42 not in registry  # type: ignore[operator]
+    assert 42 not in registry

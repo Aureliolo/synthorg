@@ -1,18 +1,17 @@
 """In-memory repository implementations for integration tables.
 
-.. warning::
-    These are **process-local, non-durable** repositories. Data lives
-    only in the current Python process, is not replicated across
-    replicas, and is lost on restart. Use them for local development,
-    tests, and single-process dev servers only -- **never** for
-    production. The ``PersistenceBackend`` protocol routes integration
-    domains here while SQLite / Postgres repositories for connections,
-    connection secrets, OAuth state, and webhook receipts are still
-    being built (see issue #1517 / HYG-3).
+.. note::
+    The production ``SQLitePersistenceBackend`` and
+    ``PostgresPersistenceBackend`` now wire in durable connection,
+    connection-secret, OAuth state, and webhook-receipt repositories
+    directly (``synthorg.persistence.{sqlite,postgres}.<repo>_repo``).
+    These ``InMemory*`` classes remain available for **unit-test
+    fakes** that don't want to spin up a real database.
 
-When the durable drivers land, these classes move to the test-only
-fakes directory and the production ``PersistenceBackend`` wires in
-the real SQLite / Postgres repos directly.
+.. warning::
+    Process-local, non-durable. Data lives only in the current
+    Python process, is not replicated across replicas, and is lost
+    on restart. **Never** wire these into a production backend.
 
 All reads return deep copies so callers cannot mutate internal
 state by holding references to returned models. Even though the

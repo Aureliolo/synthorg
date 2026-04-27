@@ -17,7 +17,7 @@ pytestmark = pytest.mark.unit
 
 
 def _stub_backend() -> PersistenceBackend:
-    return MagicMock(spec_set=[])  # type: ignore[return-value]
+    return MagicMock(spec_set=[])
 
 
 def test_default_registry_includes_sqlite_and_postgres() -> None:
@@ -68,7 +68,7 @@ def test_contains_only_matches_string_keys() -> None:
 
     assert "sqlite" in registry
     assert "postgres" not in registry
-    assert 42 not in registry  # type: ignore[operator]
+    assert 42 not in registry
 
 
 def test_factory_exception_propagates() -> None:

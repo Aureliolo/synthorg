@@ -37,12 +37,6 @@ from synthorg.persistence.fine_tune_protocol import (
     FineTuneCheckpointRepository,  # noqa: TC001
     FineTuneRunRepository,  # noqa: TC001
 )
-from synthorg.persistence.integration_stubs import (
-    InMemoryConnectionRepository,
-    InMemoryConnectionSecretRepository,
-    InMemoryOAuthStateRepository,
-    InMemoryWebhookReceiptRepository,
-)
 from synthorg.persistence.postgres.agent_state_repo import (
     PostgresAgentStateRepository,
 )
@@ -55,6 +49,12 @@ from synthorg.persistence.postgres.checkpoint_repo import (
 )
 from synthorg.persistence.postgres.circuit_breaker_repo import (
     PostgresCircuitBreakerStateRepository,
+)
+from synthorg.persistence.postgres.connection_repo import (
+    PostgresConnectionRepository,
+)
+from synthorg.persistence.postgres.connection_secret_repo import (
+    PostgresConnectionSecretRepository,
 )
 from synthorg.persistence.postgres.custom_rule_repo import (
     PostgresCustomRuleRepository,
@@ -80,6 +80,9 @@ from synthorg.persistence.postgres.lockout_repo import (
 )
 from synthorg.persistence.postgres.mcp_installation_repo import (
     PostgresMcpInstallationRepository,
+)
+from synthorg.persistence.postgres.oauth_state_repo import (
+    PostgresOAuthStateRepository,
 )
 from synthorg.persistence.postgres.ontology_drift_repo import (
     PostgresOntologyDriftReportRepository,
@@ -132,6 +135,9 @@ from synthorg.persistence.postgres.user_repo import (
     PostgresUserRepository,
 )
 from synthorg.persistence.postgres.version_repo import PostgresVersionRepository
+from synthorg.persistence.postgres.webhook_receipt_repo import (
+    PostgresWebhookReceiptRepository,
+)
 from synthorg.persistence.postgres.workflow_definition_repo import (
     PostgresWorkflowDefinitionRepository,
 )
@@ -251,10 +257,10 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._org_facts: PostgresOrgFactRepository | None = None
         self._ontology_entities: PostgresOntologyEntityRepository | None = None
         self._ontology_drift: PostgresOntologyDriftReportRepository | None = None
-        self._connections_stub = InMemoryConnectionRepository()
-        self._connection_secrets_stub = InMemoryConnectionSecretRepository()
-        self._oauth_states_stub = InMemoryOAuthStateRepository()
-        self._webhook_receipts_stub = InMemoryWebhookReceiptRepository()
+        self._connections: PostgresConnectionRepository | None = None
+        self._connection_secrets: PostgresConnectionSecretRepository | None = None
+        self._oauth_states: PostgresOAuthStateRepository | None = None
+        self._webhook_receipts: PostgresWebhookReceiptRepository | None = None
         self._project_cost_aggregates: PostgresProjectCostAggregateRepository | None = (
             None
         )
@@ -307,8 +313,12 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._ontology_drift = None
         self._fine_tune_runs = None
         self._fine_tune_checkpoints = None
+        self._connections = None
+        self._connection_secrets = None
+        self._oauth_states = None
+        self._webhook_receipts = None
 
-    def _create_repositories(self) -> None:
+    def _create_repositories(self) -> None:  # noqa: PLR0915
         """Instantiate all repository objects from the active pool."""
         assert self._pool is not None  # noqa: S101
         pool = self._pool
@@ -387,6 +397,10 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._ontology_drift = PostgresOntologyDriftReportRepository(pool)
         self._fine_tune_runs = PostgresFineTuneRunRepository(pool)
         self._fine_tune_checkpoints = PostgresFineTuneCheckpointRepository(pool)
+        self._connections = PostgresConnectionRepository(pool)
+        self._connection_secrets = PostgresConnectionSecretRepository(pool)
+        self._oauth_states = PostgresOAuthStateRepository(pool)
+        self._webhook_receipts = PostgresWebhookReceiptRepository(pool)
 
     def get_db(self) -> AsyncConnectionPool:
         """Return the shared connection pool.
@@ -621,24 +635,30 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         return self._require_connected(self._fine_tune_runs, "fine_tune_runs")
 
     @property
-    def connections(self) -> InMemoryConnectionRepository:
+    def connections(self) -> PostgresConnectionRepository:
         """Repository for external service connection persistence."""
-        return self._connections_stub
+        return self._require_connected(self._connections, "connections")
 
     @property
-    def connection_secrets(self) -> InMemoryConnectionSecretRepository:
+    def connection_secrets(self) -> PostgresConnectionSecretRepository:
         """Repository for encrypted connection secret persistence."""
-        return self._connection_secrets_stub
+        return self._require_connected(
+            self._connection_secrets,
+            "connection_secrets",
+        )
 
     @property
-    def oauth_states(self) -> InMemoryOAuthStateRepository:
+    def oauth_states(self) -> PostgresOAuthStateRepository:
         """Repository for transient OAuth state persistence."""
-        return self._oauth_states_stub
+        return self._require_connected(self._oauth_states, "oauth_states")
 
     @property
-    def webhook_receipts(self) -> InMemoryWebhookReceiptRepository:
+    def webhook_receipts(self) -> PostgresWebhookReceiptRepository:
         """Repository for webhook receipt log persistence."""
-        return self._webhook_receipts_stub
+        return self._require_connected(
+            self._webhook_receipts,
+            "webhook_receipts",
+        )
 
     @property
     def training_plans(self) -> PostgresTrainingPlanRepository:
