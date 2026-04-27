@@ -255,6 +255,40 @@ class SettingsService:
         self._encryptor = encryptor
         self._message_bus = message_bus
         self._cache: dict[tuple[str, str], SettingValue] = {}
+        # Source-of-resolution audit: every (namespace, key) emits one
+        # INFO SETTINGS_VALUE_RESOLVED on the first cold read of the
+        # process so operators can see which source won at startup.
+        # Subsequent resolutions stay at DEBUG. The check+add pair is
+        # purely CPU-bound and asyncio cannot interleave it (no
+        # awaits between the membership test and the set mutation),
+        # so no lock is required for cooperative concurrency.
+        self._resolution_logged: set[tuple[str, str]] = set()
+
+    def _emit_resolved(
+        self,
+        definition: SettingDefinition,
+        source: str,
+    ) -> None:
+        """Log a setting resolution; promote to INFO on first cold read.
+
+        Every ``(namespace, key)`` pair emits exactly one INFO
+        ``SETTINGS_VALUE_RESOLVED`` event during the lifetime of the
+        process so operators can audit which source supplied each
+        configuration value at startup.  Subsequent resolutions for
+        the same pair stay at DEBUG to avoid log spam.
+        """
+        cache_key = (definition.namespace, definition.key)
+        first_read = cache_key not in self._resolution_logged
+        if first_read:
+            self._resolution_logged.add(cache_key)
+        log = logger.info if first_read else logger.debug
+        log(
+            SETTINGS_VALUE_RESOLVED,
+            namespace=definition.namespace,
+            key=definition.key,
+            source=source,
+            yaml_path=definition.yaml_path,
+        )
 
     async def _resolve_db(
         self,
@@ -351,12 +385,7 @@ class SettingsService:
             # is a single-opcode operation and safe without locking.
             if not definition.sensitive:
                 self._cache[cache_key] = setting_value
-            logger.debug(
-                SETTINGS_VALUE_RESOLVED,
-                namespace=namespace,
-                key=key,
-                source="db",
-            )
+            self._emit_resolved(definition, source="db")
             return setting_value
 
         return self._resolve_fallback(definition)
@@ -507,7 +536,7 @@ class SettingsService:
         env_name = _env_var_name(ns, key)
         env_val = os.environ.get(env_name)
         if env_val is not None:
-            logger.debug(SETTINGS_VALUE_RESOLVED, namespace=ns, key=key, source="env")
+            self._emit_resolved(definition, source="env")
             return SettingValue(
                 namespace=ns,
                 key=key,
@@ -518,9 +547,7 @@ class SettingsService:
         if definition.yaml_path is not None:
             yaml_val = extract_from_config(self._config, definition.yaml_path)
             if yaml_val is not None:
-                logger.debug(
-                    SETTINGS_VALUE_RESOLVED, namespace=ns, key=key, source="yaml"
-                )
+                self._emit_resolved(definition, source="yaml")
                 return SettingValue(
                     namespace=ns,
                     key=key,
@@ -533,7 +560,7 @@ class SettingsService:
         # will raise ValueError on empty, giving a clear error at the
         # consumer layer rather than here).
         default = definition.default if definition.default is not None else ""
-        logger.debug(SETTINGS_VALUE_RESOLVED, namespace=ns, key=key, source="default")
+        self._emit_resolved(definition, source="default")
         return SettingValue(
             namespace=ns,
             key=key,
@@ -587,6 +614,7 @@ class SettingsService:
                         updated_at=updated_at,
                     )
             display = _SENSITIVE_MASK if definition.sensitive else value
+            self._emit_resolved(definition, source="db")
             return SettingEntry(
                 definition=definition,
                 value=display,
