@@ -659,6 +659,11 @@ CREATE TABLE refresh_tokens (
 CREATE INDEX idx_rt_user_id ON refresh_tokens(user_id);
 CREATE INDEX idx_rt_session_id ON refresh_tokens(session_id);
 CREATE INDEX idx_rt_expires_at ON refresh_tokens(expires_at);
+-- Speeds up "revoke every unused refresh token for a session" sweeps
+-- (revoke_by_session) which scan once per session_id and filter on
+-- used=0; without this composite the planner falls back to the
+-- single-column session_id index plus a row-by-row used filter.
+CREATE INDEX idx_rt_session_used ON refresh_tokens(session_id, used);
 
 -- ── Risk tier overrides ─────────────────────────────────────
 CREATE TABLE risk_overrides (
@@ -1062,6 +1067,12 @@ CREATE INDEX idx_approvals_risk_level ON approvals(risk_level);
 CREATE INDEX idx_approvals_requested_by_status ON approvals(requested_by, status);
 CREATE INDEX idx_approvals_status_expires_at ON approvals(status, expires_at);
 CREATE INDEX idx_approvals_task_id ON approvals(task_id);
+-- Lets "list pending approvals newest-first" (the dashboard inbox)
+-- and the operator-driven "show me last N rejected" queries hit one
+-- index range scan instead of (idx_approvals_status -> sort by
+-- created_at).
+CREATE INDEX idx_approvals_status_created_at
+    ON approvals(status, created_at DESC);
 
 -- Conflict escalations (#1418: human escalation approval queue).
 -- Persists one row per conflict awaiting a human decision so the
@@ -1158,6 +1169,12 @@ CREATE TABLE org_facts_operation_log (
 CREATE INDEX idx_oplog_fact_id ON org_facts_operation_log (fact_id);
 CREATE INDEX idx_oplog_timestamp ON org_facts_operation_log (timestamp);
 CREATE INDEX idx_oplog_ts_fact ON org_facts_operation_log (timestamp, fact_id);
+-- Supports OrgFactRepository.list_by_category and snapshot_at when a
+-- category filter is supplied; without this composite the planner
+-- chooses the single-column timestamp index then filters category
+-- inline (linear in the matching window).
+CREATE INDEX idx_oplog_category_ts
+    ON org_facts_operation_log (category, timestamp DESC);
 
 CREATE TABLE org_facts_snapshot (
     fact_id TEXT PRIMARY KEY,

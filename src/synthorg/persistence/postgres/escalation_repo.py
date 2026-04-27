@@ -350,8 +350,7 @@ INSERT INTO conflict_escalations (
             )
             raise QueryError(msg) from exc
         ids = tuple(str(r[0]) for r in rows)
-        for escalation_id in ids:
-            await self._publish_notify(escalation_id, "expired")
+        await self._publish_notifies(ids, "expired")
         return ids
 
     async def close(self) -> None:
@@ -502,30 +501,58 @@ INSERT INTO conflict_escalations (
                         await conn.close()
 
     async def _publish_notify(self, escalation_id: str, status: str) -> None:
-        """Publish ``<id>:<status>`` on the configured NOTIFY channel.
+        """Publish ``<id>:<status>`` for a single escalation.
 
-        Best-effort: failure is logged and swallowed because the
-        persistent state has already been committed and the sweeper
-        can still reap stale rows even if the signal is missed.
+        Thin wrapper around :meth:`_publish_notifies` that retains the
+        single-id ergonomics of the per-decision call sites.
+        """
+        await self._publish_notifies((escalation_id,), status)
+
+    async def _publish_notifies(
+        self,
+        escalation_ids: tuple[str, ...],
+        status: str,
+    ) -> None:
+        """Publish one NOTIFY per id over a single pool checkout.
+
+        Avoids the N+1 connection churn of looping ``_publish_notify``
+        over a batch (e.g. the sweeper's expire-overdue path). Each id
+        still emits its own ``pg_notify`` call so subscribers continue
+        to see one ``"<id>:<status>"`` payload per transition -- only
+        the connection-pool overhead collapses.
+
+        Best-effort: any psycopg failure is logged and swallowed
+        because the persistent state has already been committed and
+        the sweeper can still reap stale rows even if the signal is
+        missed.
         """
         channel = self._notify_channel
-        if channel is None or not escalation_id or not status:
+        if channel is None or not status or not escalation_ids:
+            return
+        # Filter empty ids defensively; ``pg_notify`` would otherwise
+        # accept them and produce useless payloads on the wire.
+        valid_ids = tuple(eid for eid in escalation_ids if eid)
+        if not valid_ids:
             return
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
-                payload = f"{escalation_id}:{status}"
-                # Channel name and payload are quoted server-side; we
-                # send them as query parameters to avoid SQL injection.
-                await cur.execute(
-                    "SELECT pg_notify(%s, %s)",
-                    (channel, payload),
-                )
+                # ``execute`` per id keeps the payload-per-id contract
+                # subscribers depend on while reusing the single
+                # connection. Postgres coalesces NOTIFYs at COMMIT time
+                # so this is also cheaper than the per-id-commit path
+                # the loop previously used.
+                for escalation_id in valid_ids:
+                    payload = f"{escalation_id}:{status}"
+                    await cur.execute(
+                        "SELECT pg_notify(%s, %s)",
+                        (channel, payload),
+                    )
                 await conn.commit()
         except psycopg.Error as exc:
             logger.warning(
                 API_REQUEST_ERROR,
                 error_type="escalation_notify_failed",
-                escalation_id=escalation_id,
+                escalation_ids=valid_ids,
                 channel=channel,
                 error=safe_error_description(exc),
             )
