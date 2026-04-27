@@ -46,6 +46,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_ETAG_CACHE_HIT
 
 if TYPE_CHECKING:
     from litestar.types import ASGIApp, Receive, Scope, Send
@@ -328,6 +329,11 @@ async def _emit_response(
     extended_headers.append((b"cache-control", cache_default))
 
     if match_etag(if_none_match, etag):
+        # DEBUG-only: every 304 saves a body roundtrip; logging at
+        # debug keeps the hot path quiet but surfaces cache-hit
+        # rates when an operator pulls debug-level logs to verify
+        # client-side validator handling.
+        logger.debug(API_ETAG_CACHE_HIT, path=path, etag=etag)
         await _emit_not_modified(send, extended_headers)
         return
     await _emit_with_etag(send, captured_start, body, extended_headers)
