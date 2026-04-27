@@ -130,7 +130,17 @@ class SQLiteOAuthStateRepository:
             raise QueryError(msg) from exc
         if row is None:
             return None
-        return _row_to_state(row)
+        try:
+            return _row_to_state(row)
+        except (ValueError, TypeError, KeyError) as exc:
+            msg = f"Failed to deserialize oauth_state {state_token!r}"
+            logger.warning(
+                PERSISTENCE_OAUTH_STATE_FETCH_FAILED,
+                state_token=str(state_token),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
 
     async def delete(self, state_token: NotBlankStr) -> bool:
         """Delete an OAuth state; return ``True`` if a row was removed."""

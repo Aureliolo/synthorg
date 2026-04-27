@@ -171,7 +171,17 @@ class PostgresWebhookReceiptRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        return tuple(_row_to_receipt(row) for row in rows)
+        try:
+            return tuple(_row_to_receipt(row) for row in rows)
+        except (ValueError, TypeError, KeyError) as exc:
+            msg = f"Failed to deserialize webhook receipts for {connection_name!r}"
+            logger.warning(
+                PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
+                connection_name=str(connection_name),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
 
     async def cleanup_old(self, retention_days: int) -> int:
         """Delete receipts whose ``received_at`` is older than *retention_days*.

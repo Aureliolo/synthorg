@@ -302,7 +302,7 @@ ON CONFLICT(id) DO UPDATE SET
         """
         try:
             cursor = await self._db.execute(
-                "SELECT * FROM users WHERE role != ? ORDER BY created_at",
+                "SELECT * FROM users WHERE role != ? ORDER BY created_at, id",
                 (HumanRole.SYSTEM.value,),
             )
             rows = await cursor.fetchall()
@@ -666,11 +666,15 @@ ON CONFLICT(id) DO UPDATE SET
         Raises:
             QueryError: If the database query or deserialization fails.
         """
-        sql = "SELECT * FROM api_keys WHERE user_id = ? ORDER BY created_at"
+        sql = "SELECT * FROM api_keys WHERE user_id = ? ORDER BY created_at, id"
         params: tuple[object, ...] = (user_id,)
+        effective_offset = max(0, int(offset))
         if limit is not None:
             sql += " LIMIT ? OFFSET ?"
-            params = (*params, int(limit), int(offset))
+            params = (*params, int(limit), effective_offset)
+        elif effective_offset > 0:
+            sql += " LIMIT -1 OFFSET ?"
+            params = (*params, effective_offset)
         try:
             cursor = await self._db.execute(sql, params)
             rows = await cursor.fetchall()

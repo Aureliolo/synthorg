@@ -362,19 +362,24 @@ class TestOAuthStateRepository:
         await backend.oauth_states.save(
             _state(state_token="alive", expires_in=timedelta(hours=1)),
         )
-        await backend.oauth_states.save(
-            _state(state_token="dead", expires_in=timedelta(seconds=1)),
+        # Build an already-expired state directly so the assertion does
+        # not depend on wall-clock sleeps; ``cleanup_expired`` then has
+        # to remove this row deterministically on every run.
+        now = datetime.now(UTC)
+        expired = OAuthState(
+            state_token=NotBlankStr("dead"),
+            connection_name=NotBlankStr("github-bot"),
+            pkce_verifier=NotBlankStr("verifier-xyz"),
+            scopes_requested="repo user",
+            redirect_uri="https://app.example.com/callback",
+            created_at=now - timedelta(hours=2),
+            expires_at=now - timedelta(hours=1),
         )
-        # Make the second one expired by waiting past expiry.
-        # Using a very short expires_in plus a small sleep keeps the
-        # test deterministic without monkey-patching the clock.
-        import asyncio
-
-        await asyncio.sleep(1.1)
+        await backend.oauth_states.save(expired)
 
         removed = await backend.oauth_states.cleanup_expired()
 
-        assert removed >= 1
+        assert removed == 1
         assert await backend.oauth_states.get(NotBlankStr("alive")) is not None
         assert await backend.oauth_states.get(NotBlankStr("dead")) is None
 

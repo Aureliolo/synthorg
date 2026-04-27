@@ -114,9 +114,13 @@ class SQLiteMcpInstallationRepository:
             "ORDER BY installed_at ASC, catalog_entry_id ASC"
         )
         params: tuple[object, ...] = ()
+        effective_offset = max(0, int(offset))
         if limit is not None:
             sql += " LIMIT ? OFFSET ?"
-            params = (int(limit), int(offset))
+            params = (int(limit), effective_offset)
+        elif effective_offset > 0:
+            sql += " LIMIT -1 OFFSET ?"
+            params = (effective_offset,)
         async with self._db.execute(sql, params) as cursor:
             rows = await cursor.fetchall()
         return tuple(

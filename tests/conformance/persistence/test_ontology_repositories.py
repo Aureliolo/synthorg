@@ -145,15 +145,15 @@ class TestOntologyEntityRepository:
         for name in ("AlphaEnt", "BetaEnt", "GammaEnt", "DeltaEnt"):
             await backend.ontology_entities.register(_entity(name))
 
-        page = await backend.ontology_entities.list_entities(limit=2, offset=1)
-
-        # The protocol does not guarantee a sort order; the contract
-        # this assertion covers is that ``limit`` returns ``<= limit``
-        # rows and ``offset`` skips at least one row.
-        assert len(page) == 2
+        # Anchor pagination assertions against the deterministic
+        # ORDER BY name ASC contract on both backends so a regression
+        # that breaks ordering surfaces here.
         full = await backend.ontology_entities.list_entities()
-        assert len(full) >= 4
-        assert page[0] != full[0]  # offset advanced past the first row
+        full_names = [e.name for e in full]
+        assert {"AlphaEnt", "BetaEnt", "DeltaEnt", "GammaEnt"} <= set(full_names)
+
+        page = await backend.ontology_entities.list_entities(limit=2, offset=1)
+        assert [e.name for e in page] == full_names[1:3]
 
     async def test_search_pagination(self, backend: PersistenceBackend) -> None:
         for i in range(4):

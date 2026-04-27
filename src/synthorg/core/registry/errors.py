@@ -1,5 +1,6 @@
 """Errors raised by :class:`synthorg.core.registry.StrategyRegistry`."""
 
+import copy
 from types import MappingProxyType
 from typing import Any
 
@@ -15,8 +16,10 @@ class StrategyFactoryError(LookupError):
     ) -> None:
         """Store *message* and an immutable *context* mapping."""
         self.message = message
+        # Deep-copy to insulate the stored context from later mutation of
+        # nested values supplied by the caller (e.g. a list of names).
         self.context: MappingProxyType[str, Any] = MappingProxyType(
-            dict(context) if context else {},
+            copy.deepcopy(context) if context else {},
         )
         super().__init__(message)
 

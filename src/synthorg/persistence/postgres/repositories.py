@@ -407,10 +407,14 @@ class PostgresCostRecordRepository:
         )
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
-        sql += " ORDER BY timestamp DESC, agent_id ASC"
+        sql += " ORDER BY timestamp DESC, agent_id ASC, rowid ASC"
+        effective_offset = max(0, int(offset))
         if limit is not None:
             sql += " LIMIT %s OFFSET %s"
-            params.extend([int(limit), int(offset)])
+            params.extend([int(limit), effective_offset])
+        elif effective_offset > 0:
+            sql += " OFFSET %s"
+            params.append(effective_offset)
 
         try:
             async with (

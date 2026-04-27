@@ -14,6 +14,7 @@ from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_SERVICE_AUTO_WIRED,
 )
+from synthorg.persistence.errors import PersistenceConnectionError
 
 if TYPE_CHECKING:
     from synthorg.api.config import ApiConfig
@@ -255,8 +256,30 @@ def auto_wire_integrations(  # noqa: PLR0913
             db_path=secret_db_path,
             pg_pool=pg_pool_getter,
         )
+        try:
+            connections_repo = persistence.connections
+        except PersistenceConnectionError:
+            # ``auto_wire_integrations`` runs before ``persistence.connect()``
+            # in the ``create_app`` boot path; the lifecycle hook does the
+            # connect inside ``_safe_startup``. The durable connection repos
+            # require a live connection, so fall back to the in-memory stub
+            # for the wiring window. The controllers still need an instance
+            # attached to the bundle so they register on the app; OpenAPI
+            # export depends on that registration.
+            from synthorg.persistence.integration_stubs import (  # noqa: PLC0415
+                InMemoryConnectionRepository,
+            )
+
+            connections_repo = InMemoryConnectionRepository()
+            logger.warning(
+                API_APP_STARTUP,
+                note=(
+                    "persistence not yet connected; using in-memory "
+                    "connection repository for integrations wiring"
+                ),
+            )
         bundle.connection_catalog = ConnectionCatalog(
-            repository=persistence.connections,
+            repository=connections_repo,
             secret_backend=secret_backend,
         )
         bind_health_check_catalog(bundle.connection_catalog)

@@ -145,15 +145,19 @@ class TestApiKeyRepository:
         for i in range(4):
             await backend.api_keys.save(_make_api_key(f"key_pg_{i}"))
 
+        # Anchor pagination assertions against the actual sort order so
+        # the test catches a window-shift regression even if the global
+        # order changes.
+        full = await backend.api_keys.list_by_user(NotBlankStr("user_alice"))
+        full_ids = [k.id for k in full]
+        assert {"key_pg_0", "key_pg_1", "key_pg_2", "key_pg_3"} <= set(full_ids)
+
         page = await backend.api_keys.list_by_user(
             NotBlankStr("user_alice"),
             limit=2,
             offset=1,
         )
-
-        # ORDER BY created_at; per-test database means only our 4 rows
-        # exist, so offset=1 limit=2 yields the second + third rows.
-        assert len(page) == 2
+        assert [k.id for k in page] == full_ids[1:3]
 
     async def test_delete(self, backend: PersistenceBackend) -> None:
         await backend.users.save(_make_user())

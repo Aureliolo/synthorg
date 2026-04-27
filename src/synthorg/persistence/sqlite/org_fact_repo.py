@@ -460,11 +460,11 @@ class SQLiteOrgFactRepository:
         if text is not None:
             order = (
                 "ORDER BY INSTR(LOWER(content), LOWER(?)) ASC, "
-                "LENGTH(content) ASC, created_at DESC"
+                "LENGTH(content) ASC, created_at DESC, fact_id ASC"
             )
             params.append(text)
         else:
-            order = "ORDER BY created_at DESC"
+            order = "ORDER BY created_at DESC, fact_id ASC"
         sql = (
             f"SELECT * FROM org_facts_snapshot{where} {order} "  # noqa: S608
             "LIMIT ? OFFSET ?"
@@ -495,12 +495,16 @@ class SQLiteOrgFactRepository:
         sql = (
             "SELECT * FROM org_facts_snapshot "
             "WHERE category = ? AND retracted_at IS NULL "
-            "ORDER BY created_at DESC"
+            "ORDER BY created_at DESC, fact_id ASC"
         )
         params: tuple[object, ...] = (category.value,)
+        effective_offset = max(0, int(offset))
         if limit is not None:
             sql += " LIMIT ? OFFSET ?"
-            params = (*params, int(limit), int(offset))
+            params = (*params, int(limit), effective_offset)
+        elif effective_offset > 0:
+            sql += " LIMIT -1 OFFSET ?"
+            params = (*params, effective_offset)
         try:
             cursor = await self._db.execute(sql, params)
             rows = await cursor.fetchall()

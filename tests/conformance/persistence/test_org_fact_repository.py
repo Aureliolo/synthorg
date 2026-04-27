@@ -113,15 +113,20 @@ class TestOrgFactRepository:
                 ),
             )
 
+        # Pull the full ordered list to anchor pagination assertions
+        # against the actual sort order rather than guessing.
+        full = await backend.org_facts.list_by_category(
+            OrgFactCategory.CORE_POLICY,
+        )
+        full_ids = [f.id for f in full]
+        assert {"pg_0", "pg_1", "pg_2", "pg_3"} <= set(full_ids)
+
         page = await backend.org_facts.list_by_category(
             OrgFactCategory.CORE_POLICY,
             limit=2,
             offset=1,
         )
-
-        # ORDER BY created_at DESC; per-test database means only our 4
-        # rows exist. offset=1, limit=2 yields the second + third.
-        assert len(page) == 2
+        assert [f.id for f in page] == full_ids[1:3]
 
     async def test_query_offset(self, backend: PersistenceBackend) -> None:
         for i in range(3):

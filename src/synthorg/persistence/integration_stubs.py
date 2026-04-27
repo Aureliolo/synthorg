@@ -55,9 +55,10 @@ class InMemoryConnectionRepository:
         rows = tuple(
             copy.deepcopy(c) for c in sorted(self._store.values(), key=lambda c: c.name)
         )
+        effective_offset = max(0, int(offset))
         if limit is None:
-            return rows
-        return rows[offset : offset + limit]
+            return rows[effective_offset:]
+        return rows[effective_offset : effective_offset + max(0, int(limit))]
 
     async def list_by_type(
         self,
@@ -72,9 +73,10 @@ class InMemoryConnectionRepository:
             for c in sorted(self._store.values(), key=lambda c: c.name)
             if c.connection_type == connection_type
         )
+        effective_offset = max(0, int(offset))
         if limit is None:
-            return matches
-        return matches[offset : offset + limit]
+            return matches[effective_offset:]
+        return matches[effective_offset : effective_offset + max(0, int(limit))]
 
     async def delete(self, name: str) -> bool:
         """Delete by name."""
@@ -149,6 +151,7 @@ class InMemoryWebhookReceiptRepository:
         """List by connection (deep-copied), newest-first."""
         if limit <= 0:
             return ()
+        effective_offset = max(0, int(offset))
         # ``self._store`` is append-ordered, so the most recent
         # receipts live at the end. The repository contract asks
         # callers to receive newest-first, so reverse before slicing.
@@ -157,7 +160,7 @@ class InMemoryWebhookReceiptRepository:
             for r in reversed(self._store)
             if r.connection_name == connection_name
         ]
-        return tuple(matches[offset : offset + limit])
+        return tuple(matches[effective_offset : effective_offset + int(limit)])
 
     async def cleanup_old(
         self,

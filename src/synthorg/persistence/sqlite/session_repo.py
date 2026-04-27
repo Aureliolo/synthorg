@@ -151,12 +151,16 @@ class SQLiteSessionRepository:
             "SELECT * FROM sessions "
             "WHERE user_id = ? AND revoked = 0 "
             "AND expires_at > ? "
-            "ORDER BY created_at DESC"
+            "ORDER BY created_at DESC, session_id ASC"
         )
         params: tuple[object, ...] = (user_id, now)
+        effective_offset = max(0, int(offset))
         if limit is not None:
             sql += " LIMIT ? OFFSET ?"
-            params = (*params, int(limit), int(offset))
+            params = (*params, int(limit), effective_offset)
+        elif effective_offset > 0:
+            sql += " LIMIT -1 OFFSET ?"
+            params = (*params, effective_offset)
         cursor = await self._db.execute(sql, params)
         rows = await cursor.fetchall()
         return tuple(_row_to_session(r) for r in rows)
@@ -172,12 +176,16 @@ class SQLiteSessionRepository:
         sql = (
             "SELECT * FROM sessions "
             "WHERE revoked = 0 AND expires_at > ? "
-            "ORDER BY created_at DESC"
+            "ORDER BY created_at DESC, session_id ASC"
         )
         params: tuple[object, ...] = (now,)
+        effective_offset = max(0, int(offset))
         if limit is not None:
             sql += " LIMIT ? OFFSET ?"
-            params = (*params, int(limit), int(offset))
+            params = (*params, int(limit), effective_offset)
+        elif effective_offset > 0:
+            sql += " LIMIT -1 OFFSET ?"
+            params = (*params, effective_offset)
         cursor = await self._db.execute(sql, params)
         rows = await cursor.fetchall()
         return tuple(_row_to_session(r) for r in rows)

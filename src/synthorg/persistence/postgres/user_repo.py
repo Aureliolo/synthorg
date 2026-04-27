@@ -226,7 +226,7 @@ class PostgresUserRepository:
                 conn.cursor(row_factory=dict_row) as cur,
             ):
                 await cur.execute(
-                    "SELECT * FROM users WHERE role != %s ORDER BY created_at",
+                    "SELECT * FROM users WHERE role != %s ORDER BY created_at, id",
                     (HumanRole.SYSTEM.value,),
                 )
                 rows = await cur.fetchall()
@@ -466,11 +466,15 @@ class PostgresApiKeyRepository:
         offset: int = 0,
     ) -> tuple[ApiKey, ...]:
         """List all API keys belonging to a user, ordered by creation date."""
-        sql = "SELECT * FROM api_keys WHERE user_id = %s ORDER BY created_at"
+        sql = "SELECT * FROM api_keys WHERE user_id = %s ORDER BY created_at, id"
         params: tuple[object, ...] = (user_id,)
+        effective_offset = max(0, int(offset))
         if limit is not None:
             sql += " LIMIT %s OFFSET %s"
-            params = (*params, int(limit), int(offset))
+            params = (*params, int(limit), effective_offset)
+        elif effective_offset > 0:
+            sql += " OFFSET %s"
+            params = (*params, effective_offset)
         try:
             async with (
                 self._pool.connection() as conn,

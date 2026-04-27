@@ -226,7 +226,7 @@ class PostgresOntologyEntityRepository:
     ) -> tuple[EntityDefinition, ...]:
         """List entities, optionally filtered by tier and paginated."""
         effective_limit = 1000 if limit is None else int(limit)
-        effective_offset = 0 if limit is None else int(offset)
+        effective_offset = max(0, int(offset))
         dict_row = self._dict_row
         async with (
             self._pool.connection() as conn,
@@ -236,6 +236,7 @@ class PostgresOntologyEntityRepository:
                 await cur.execute(
                     """SELECT * FROM entity_definitions
                        WHERE tier = %(tier)s
+                       ORDER BY name ASC
                        LIMIT %(limit)s OFFSET %(offset)s""",
                     {
                         "tier": tier.value,
@@ -246,6 +247,7 @@ class PostgresOntologyEntityRepository:
             else:
                 await cur.execute(
                     "SELECT * FROM entity_definitions "
+                    "ORDER BY name ASC "
                     "LIMIT %(limit)s OFFSET %(offset)s",
                     {"limit": effective_limit, "offset": effective_offset},
                 )
@@ -263,7 +265,7 @@ class PostgresOntologyEntityRepository:
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
         effective_limit = 1000 if limit is None else int(limit)
-        effective_offset = 0 if limit is None else int(offset)
+        effective_offset = max(0, int(offset))
         dict_row = self._dict_row
         async with (
             self._pool.connection() as conn,
@@ -273,6 +275,7 @@ class PostgresOntologyEntityRepository:
                 """SELECT * FROM entity_definitions
                    WHERE name LIKE %(pattern)s ESCAPE '\\'
                       OR definition LIKE %(pattern)s ESCAPE '\\'
+                   ORDER BY name ASC
                    LIMIT %(limit)s OFFSET %(offset)s""",
                 {
                     "pattern": pattern,

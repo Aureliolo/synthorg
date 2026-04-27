@@ -221,11 +221,13 @@ class SQLiteOntologyEntityRepository:
         receive a bounded result set.
         """
         effective_limit = 1000 if limit is None else int(limit)
-        effective_offset = 0 if limit is None else int(offset)
+        effective_offset = max(0, int(offset))
         if tier is not None:
             cursor = await self._db.execute(
                 """SELECT * FROM entity_definitions
-                   WHERE tier = :tier LIMIT :limit OFFSET :offset""",
+                   WHERE tier = :tier
+                   ORDER BY name ASC
+                   LIMIT :limit OFFSET :offset""",
                 {
                     "tier": tier.value,
                     "limit": effective_limit,
@@ -234,7 +236,9 @@ class SQLiteOntologyEntityRepository:
             )
         else:
             cursor = await self._db.execute(
-                "SELECT * FROM entity_definitions LIMIT :limit OFFSET :offset",
+                """SELECT * FROM entity_definitions
+                   ORDER BY name ASC
+                   LIMIT :limit OFFSET :offset""",
                 {"limit": effective_limit, "offset": effective_offset},
             )
         rows = await cursor.fetchall()
@@ -251,11 +255,12 @@ class SQLiteOntologyEntityRepository:
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
         effective_limit = 1000 if limit is None else int(limit)
-        effective_offset = 0 if limit is None else int(offset)
+        effective_offset = max(0, int(offset))
         cursor = await self._db.execute(
             """SELECT * FROM entity_definitions
                WHERE name LIKE :pattern ESCAPE '\\'
                   OR definition LIKE :pattern ESCAPE '\\'
+               ORDER BY name ASC
                LIMIT :limit OFFSET :offset""",
             {
                 "pattern": pattern,

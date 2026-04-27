@@ -438,11 +438,11 @@ class PostgresOrgFactRepository:
         if text is not None:
             order = (
                 "ORDER BY POSITION(LOWER(%s) IN LOWER(content)) ASC, "
-                "LENGTH(content) ASC, created_at DESC"
+                "LENGTH(content) ASC, created_at DESC, fact_id ASC"
             )
             params.append(text)
         else:
-            order = "ORDER BY created_at DESC"
+            order = "ORDER BY created_at DESC, fact_id ASC"
         sql = (
             f"SELECT * FROM org_facts_snapshot{where} {order} "  # noqa: S608
             "LIMIT %s OFFSET %s"
@@ -478,12 +478,16 @@ class PostgresOrgFactRepository:
         sql = (
             "SELECT * FROM org_facts_snapshot "
             "WHERE category = %s AND retracted_at IS NULL "
-            "ORDER BY created_at DESC"
+            "ORDER BY created_at DESC, fact_id ASC"
         )
         params: tuple[object, ...] = (category.value,)
+        effective_offset = max(0, int(offset))
         if limit is not None:
             sql += " LIMIT %s OFFSET %s"
-            params = (*params, int(limit), int(offset))
+            params = (*params, int(limit), effective_offset)
+        elif effective_offset > 0:
+            sql += " OFFSET %s"
+            params = (*params, effective_offset)
         try:
             async with (
                 self._pool.connection() as conn,

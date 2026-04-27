@@ -17,11 +17,18 @@ export function createListActions(set: McpCatalogSet) {
     fetchCatalog: async () => {
       set({ loading: true, error: null })
       try {
-        // The catalog is bundled and bounded (~20-50 entries today);
-        // page through it once with a generous limit so the store keeps
-        // exposing the full list to callers that don't yet paginate.
-        const page = await browseMcpCatalog({ limit: 100 })
-        set({ entries: page.data, loading: false })
+        // Walk all cursor pages so the store reflects the full bundled
+        // catalog regardless of how the server chooses to chunk it. The
+        // catalog is bounded (~20-50 entries today) but ``limit:100``
+        // would silently truncate if it ever grew past one page.
+        const all: McpCatalogEntry[] = []
+        let cursor: string | null = null
+        do {
+          const page = await browseMcpCatalog({ limit: 100, cursor })
+          all.push(...page.data)
+          cursor = page.hasMore ? page.nextCursor : null
+        } while (cursor !== null)
+        set({ entries: all, loading: false })
       } catch (err) {
         log.error('Failed to fetch MCP catalog:', getErrorMessage(err))
         set({
