@@ -68,6 +68,27 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COMMUNICATION,
+        key="nats_url",
+        type=SettingType.STRING,
+        default="nats://nats:4222",
+        description=(
+            "NATS server URL.  Sourced from SYNTHORG_NATS_URL env >"
+            " YAML (communication.nats.url) > default at process"
+            " start.  Read-only post-init: the bus driver opens its"
+            " connection once at boot, so a runtime change requires"
+            " a process restart."
+        ),
+        group="NATS",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        yaml_path="communication.nats.url",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
         key="webhook_bridge_poll_timeout_seconds",
         type=SettingType.FLOAT,
         default="1.0",

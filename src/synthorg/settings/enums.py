@@ -29,6 +29,7 @@ class SettingNamespace(StrEnum):
     SETTINGS = "settings"
     DISPLAY = "display"
     HR = "hr"
+    WORKERS = "workers"
 
 
 class SettingType(StrEnum):

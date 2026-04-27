@@ -169,3 +169,47 @@ _r.register(
         yaml_path="logging.audit_chain.signing_timeout_seconds",
     )
 )
+
+# ── Multi-surface settings (#1613) ─────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.OBSERVABILITY,
+        key="log_directory",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Log output directory. Sourced from the SYNTHORG_LOG_DIR env"
+            " var > YAML (logging.log_dir) > unset at process start."
+            " Read-only post-init: the directory is opened once at"
+            " bootstrap_logging and a runtime change requires a"
+            " process restart."
+        ),
+        group="Logging",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        yaml_path="logging.log_dir",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.OBSERVABILITY,
+        key="log_level_console",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Override the console sink's log level distinct from the root"
+            " logger.  Empty string means 'use the root_log_level / sink"
+            " default'.  Accepts debug / info / warning / error / critical"
+            " (case-insensitive) or the empty string.  Sourced from"
+            " DB > env (SYNTHORG_LOG_LEVEL) > unset.  Mutable at runtime:"
+            " the next call to _apply_console_level_override applies"
+            " the new value."
+        ),
+        group="Logging",
+        level=SettingLevel.ADVANCED,
+        validator_pattern=r"^(?:|debug|info|warning|error|critical|DEBUG|INFO|WARNING|ERROR|CRITICAL)$",
+    )
+)
