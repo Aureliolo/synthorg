@@ -116,6 +116,16 @@ Enforced by `scripts/check_web_design_system.py` (PostToolUse hook on every `web
 
 See [docs/reference/persistence-boundary.md](docs/reference/persistence-boundary.md) for the three sanctioned exception categories, in-memory fallback naming rules, and migration-hash guardrails.
 
+## Configuration Precedence (MANDATORY)
+
+For every mutable setting: **DB > env (`SYNTHORG_<NAMESPACE>_<KEY>`) > YAML > code default**, resolved through `SettingsService` / `ConfigResolver`. First-cold-read emits one INFO `settings.value.resolved` carrying `source` + `yaml_path`; subsequent reads stay at DEBUG.
+
+Two sanctioned exceptions: **init-time only** (DB credentials, bootstrap secrets -- env-only, **no** registry entry) and **read-only post-init** (log directory, NATS URL, worker count -- registered with `read_only_post_init=True` for /settings discoverability; `SettingsService.set()` raises `SettingReadOnlyError`).
+
+Direct `os.environ.get(...)` reads in application code outside startup are forbidden. New settings register in `src/synthorg/settings/definitions/<namespace>.py` and are consumed via `ConfigResolver.get_*`.
+
+See [docs/reference/configuration-precedence.md](docs/reference/configuration-precedence.md) for the full source matrix, exception registry, and migration recipe.
+
 ## Shell Usage
 
 - **NEVER use `cd` in Bash commands**: the working directory is already set to the project root. Use absolute paths or run commands directly. Do NOT prefix commands with `cd C:/Users/Aurelio/synthorg &&`. Exception: `bash -c "cd <dir> && <cmd>"` is safe (runs in a child process, no cwd side effects). Use this for tools without a `-C` flag, e.g. `bash -c "cd web && npm install"` since `npm --prefix` is broken for bare `npm install`.
