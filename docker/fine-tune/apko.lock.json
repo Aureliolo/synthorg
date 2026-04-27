@@ -459,25 +459,6 @@
         "checksum": "Q1jnHIPf1a+AFFphFRxYrocFYb8gE="
       },
       {
-        "name": "py3-pip-wheel",
-        "url": "https://packages.wolfi.dev/os/x86_64/py3-pip-wheel-26.0.1-r2.apk",
-        "version": "26.0.1-r2",
-        "architecture": "x86_64",
-        "signature": {
-          "range": "",
-          "checksum": ""
-        },
-        "control": {
-          "range": "bytes=0-10075",
-          "checksum": "sha1-JmqTrZxmplQNZCMSuCWwmyHCouA="
-        },
-        "data": {
-          "range": "bytes=10076-1771838",
-          "checksum": "sha256-5lFVYKbfSdqgp5N20QGT8ourpQryGYB3cgMTYO7DKeo="
-        },
-        "checksum": "Q1JmqTrZxmplQNZCMSuCWwmyHCouA="
-      },
-      {
         "name": "libcrypto3",
         "url": "https://packages.wolfi.dev/os/x86_64/libcrypto3-3.6.2-r2.apk",
         "version": "3.6.2-r2",
@@ -514,6 +495,25 @@
           "checksum": "sha256-94EkNvWB+wc2z1GROycnCrHl1grXy4XOZ8fgIqAnOdY="
         },
         "checksum": "Q1dpkwebrYQMqZxuj/uKNPBcV8RDc="
+      },
+      {
+        "name": "py3-pip-wheel",
+        "url": "https://packages.wolfi.dev/os/x86_64/py3-pip-wheel-26.0.1-r2.apk",
+        "version": "26.0.1-r2",
+        "architecture": "x86_64",
+        "signature": {
+          "range": "",
+          "checksum": ""
+        },
+        "control": {
+          "range": "bytes=0-10075",
+          "checksum": "sha1-JmqTrZxmplQNZCMSuCWwmyHCouA="
+        },
+        "data": {
+          "range": "bytes=10076-1771838",
+          "checksum": "sha256-5lFVYKbfSdqgp5N20QGT8ourpQryGYB3cgMTYO7DKeo="
+        },
+        "checksum": "Q1JmqTrZxmplQNZCMSuCWwmyHCouA="
       },
       {
         "name": "python-3.14-base",
