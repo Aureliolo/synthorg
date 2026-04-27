@@ -83,7 +83,10 @@ export function useBulkSelection(): BulkSelectionApi {
   }, [])
 
   const clear = useCallback(() => {
-    setSelectedIds(new Set())
+    // Skip the state update when nothing is selected; otherwise every
+    // ``clear()`` call (e.g. on each route change) would allocate a
+    // fresh empty Set and trigger a no-op rerender across consumers.
+    setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()))
   }, [])
 
   const isAllSelected = useCallback(

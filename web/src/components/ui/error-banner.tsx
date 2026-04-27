@@ -37,6 +37,15 @@ export interface ErrorBannerProps {
    * caller still owns the actual retry decision via ``onRetry``.
    */
   retryAfterSeconds?: number | null
+  /**
+   * Optional token that re-arms the countdown when the value changes,
+   * even if ``retryAfterSeconds`` is unchanged. Pass a fresh value
+   * (e.g. an incrementing error counter or the timestamp of the
+   * latest 429) when the caller wants a new error with the same
+   * ``retry_after`` to restart the cooldown rather than leave the
+   * Retry button enabled after the previous countdown reached zero.
+   */
+  retryResetToken?: string | number | null
   /** When provided, renders a Dismiss (X) button that invokes this handler. */
   onDismiss?: () => void
   /** Override the default icon (by severity). Always rendered at h-4 w-4 for consistency. */
@@ -73,6 +82,7 @@ export function ErrorBanner({
   description,
   onRetry,
   retryAfterSeconds,
+  retryResetToken,
   onDismiss,
   icon,
   action,
@@ -103,12 +113,15 @@ export function ErrorBanner({
       ? Math.ceil(retryAfterSeconds)
       : null
   const [remaining, setRemaining] = useState<number | null>(initialRemaining)
-  // Track the prop key we last seeded from so a fresh ``retryAfterSeconds``
-  // prop resets the countdown without firing ``setRemaining`` in the
-  // effect body.
-  const [seedKey, setSeedKey] = useState<number | null>(retryAfterSeconds ?? null)
-  if (seedKey !== (retryAfterSeconds ?? null)) {
-    setSeedKey(retryAfterSeconds ?? null)
+  // Track ``retryAfterSeconds`` AND ``retryResetToken`` so a fresh
+  // 429 with the SAME duration but a NEW token (e.g. a different error
+  // instance) restarts the countdown -- without the token, an
+  // identical-duration follow-up would silently leave Retry enabled
+  // because the countdown ran to zero on the previous error.
+  const seedSignature = `${retryAfterSeconds ?? ''}|${retryResetToken ?? ''}`
+  const [seedKey, setSeedKey] = useState<string>(seedSignature)
+  if (seedKey !== seedSignature) {
+    setSeedKey(seedSignature)
     setRemaining(initialRemaining)
   }
   useEffect(() => {

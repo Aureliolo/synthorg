@@ -168,10 +168,10 @@ function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupTyp
         )}
 
         {/* Status dots row -- one dot per agent (capped at 10 +N).
-            Each dot gets a visible ring so it reads clearly on the
-            dark card background and a `title` tooltip so the user
-            can identify which agent/status it represents.  Hidden
-            when the user disables dots in the view menu. */}
+            Each dot is a `<StatusBadge>` with a status-color ring
+            from `STATUS_DOT_RING` and an `aria-label` that surfaces
+            "<agentId>: <status>" to assistive tech.  Hidden when
+            the user disables dots in the view menu. */}
         {showStatusDots && visibleDots.length > 0 && (
           <div className="flex items-center gap-1.5 pt-1" aria-label="Agent status overview">
             {visibleDots.map((dot) => (
