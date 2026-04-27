@@ -21,8 +21,15 @@ TELEMETRY_ENABLED: Final[str] = "telemetry.enabled"
 TELEMETRY_DISABLED: Final[str] = "telemetry.disabled"
 TELEMETRY_REPORTER_INITIALIZED: Final[str] = "telemetry.reporter.initialized"
 TELEMETRY_ENVIRONMENT_RESOLVED: Final[str] = "telemetry.environment.resolved"
+# Emitted when an existing deployment ID is read from disk during start().
 TELEMETRY_DEPLOYMENT_ID_LOADED: Final[str] = "telemetry.deployment_id.loaded"
+# Emitted when a fresh deployment ID is atomically written to disk during start()
+# (this replica won the O_CREAT|O_EXCL race or no peer file existed).
 TELEMETRY_DEPLOYMENT_ID_CREATED: Final[str] = "telemetry.deployment_id.created"
+# Emitted when shutdown() runs on an enabled collector that never had start()
+# called (or whose start() failed before the deployment ID loaded). Surfaces
+# the silent-init-failure path so operators have a log signal.
+TELEMETRY_SHUTDOWN_WITHOUT_START: Final[str] = "telemetry.shutdown.without_start"
 
 # Telemetry payload event types (sent in TelemetryEvent.event_type).
 TELEMETRY_EVENT_DEPLOYMENT_HEARTBEAT: Final[str] = "deployment.heartbeat"
