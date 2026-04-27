@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PreToolUse hook: enforce a minimum interval between consecutive
-# ``git push`` invocations on the same branch.
+# *successful* ``git push`` invocations on the same branch.
 #
 # Why this exists:
 #   Each push triggers full CI + reviewer (CodeRabbit) re-runs that
@@ -12,13 +12,23 @@
 #   ``feedback_push_and_review_discipline.md`` despite the memory
 #   being present, so this script is the hard backstop.
 #
+# Pairing:
+#   This is the read-only ``CHECK`` half of the pair. The recording
+#   half is ``scripts/record_push_throttle.sh``, wired as a
+#   PostToolUse-Bash hook: it inspects the tool_response and only
+#   records the timestamp when ``git push`` actually succeeded
+#   (exit code 0). A push that was rejected by another PreToolUse
+#   hook (mypy, eslint, ruff, ...) or that the remote refused never
+#   updates the timestamp, so the throttle does not punish dev
+#   loops where pushes get bounced back for unrelated reasons.
+#
 # Behaviour:
 #   - Non-push commands: exit 0 (allow).
-#   - First push to a branch in this repo: exit 0 (allow), record
-#     timestamp + branch in ``.claude/state/last-push.json``.
-#   - Push within < THROTTLE_MIN minutes of the last push to the
-#     SAME branch: emit blocking JSON with a clear override
-#     instruction, exit 2.
+#   - First successful push to a branch in this repo: exit 0
+#     (allow); the PostToolUse partner records the timestamp.
+#   - Push within < THROTTLE_MIN minutes of the last *successful*
+#     push to the SAME branch: emit blocking JSON with a clear
+#     override instruction, exit 2.
 #   - Override: a one-shot flag file
 #     ``.claude/state/allow-double-push.flag`` must exist AND its
 #     first non-empty line must equal the current branch name
@@ -179,28 +189,13 @@ if [[ "${OVERRIDE}" -eq 1 ]]; then
     rm -f "${OVERRIDE_FLAG}" 2>/dev/null || true
 fi
 
-# Record this push (allowed or override). We write atomically via a
-# temp file in the same dir to survive a crash mid-write. Every step
-# fails OPEN: the script's job is throttling, not gating on its own
-# state-file health. JSON is generated via ``jq -n --arg`` so a
-# branch name containing ``"`` cannot produce malformed JSON
-# (CodeRabbit, 2026-04-26).
-TMP_FILE=$(mktemp "${STATE_DIR}/last-push.json.XXXXXX" 2>/dev/null || echo "")
-if [[ -z "${TMP_FILE}" ]]; then
-    exit 0
-fi
-if ! jq -n \
-    --argjson timestamp "${NOW}" \
-    --arg branch "${BRANCH}" \
-    --argjson override "${OVERRIDE}" \
-    '{timestamp: $timestamp, branch: $branch, override: $override}' \
-    >"${TMP_FILE}" 2>/dev/null; then
-    rm -f "${TMP_FILE}" 2>/dev/null || true
-    exit 0
-fi
-if ! mv -f "${TMP_FILE}" "${STATE_FILE}" 2>/dev/null; then
-    rm -f "${TMP_FILE}" 2>/dev/null || true
-    exit 0
-fi
+# NOTE: this script does NOT record the push timestamp. Recording
+# is the PostToolUse partner's job (``record_push_throttle.sh``),
+# which fires only after the bash command actually runs and only
+# writes the timestamp when ``git push`` exits 0. Doing the record
+# here (the original behaviour pre-2026-04-27) burned the throttle
+# window every time a sibling PreToolUse hook (mypy, eslint, ...)
+# rejected the push -- the tool never reached the remote yet the
+# next attempt was throttled as if a real push had happened.
 
 exit 0
