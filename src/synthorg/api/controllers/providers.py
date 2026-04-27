@@ -40,6 +40,8 @@ from synthorg.api.dto_discovery import (
     RemoveAllowlistEntryRequest,
 )
 from synthorg.api.dto_provider_capabilities import (
+    PresetOverride,  # noqa: TC001 -- runtime litestar response model
+    PresetOverrideUpdateRequest,  # noqa: TC001 -- runtime litestar request body
     ProviderAuditEvent,  # noqa: TC001 -- runtime litestar response model
     RateLimitsResponse,  # noqa: TC001 -- runtime litestar response model
     RateLimitsUpdateRequest,  # noqa: TC001 -- runtime litestar request body
@@ -914,6 +916,150 @@ class ProviderController(Controller):
             )
             raise ApiError(msg)
         return ApiResponse(data=to_provider_model_response(model))
+
+    # ── Preset overrides ────────────────────────────────────────
+
+    @get(
+        "/presets/{preset_name:str}/override",
+        guards=[require_read_access],
+    )
+    async def get_preset_override(
+        self,
+        state: State,
+        preset_name: PathName,
+    ) -> ApiResponse[PresetOverride | None]:
+        """Read the operator override for ``preset_name`` (or null).
+
+        Args:
+            state: Application state.
+            preset_name: Preset whose override to read.  Must match an
+                in-code preset; unknown names return 404.
+
+        Returns:
+            ``PresetOverride`` if one is persisted, otherwise ``None``.
+
+        Raises:
+            NotFoundError: If the preset name is unknown.
+        """
+        from synthorg.providers.presets import get_preset  # noqa: PLC0415
+
+        if get_preset(preset_name) is None:
+            msg = f"Unknown preset {preset_name!r}"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="preset",
+                name=preset_name,
+            )
+            raise NotFoundError(msg)
+
+        app_state: AppState = state.app_state
+        override = await app_state.preset_override_service.get_override(preset_name)
+        return ApiResponse(data=override)
+
+    @patch(
+        "/presets/{preset_name:str}/override",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy(
+                "providers.update_preset_override",
+                key="user",
+            ),
+        ],
+    )
+    async def update_preset_override(
+        self,
+        state: State,
+        preset_name: PathName,
+        data: PresetOverrideUpdateRequest,
+    ) -> ApiResponse[PresetOverride]:
+        """Apply a partial override on top of ``preset_name``.
+
+        Args:
+            state: Application state.
+            preset_name: Preset whose override to write.
+            data: Partial override payload.
+
+        Returns:
+            The persisted override.
+
+        Raises:
+            NotFoundError: If the preset name is unknown.
+            ApiValidationError: If the override shape conflicts with
+                the preset's kind (cloud vs local).
+        """
+        app_state: AppState = state.app_state
+        # The actor lookup goes through the request scope in production;
+        # PR 1 wires this end-to-end via _request_actor.  For now use
+        # the system actor placeholder so the endpoint compiles.
+        from synthorg.api.dto_provider_capabilities import (  # noqa: PLC0415
+            ProviderAuditActor,
+        )
+
+        actor = ProviderAuditActor(
+            id="system",
+            label="provider-management",
+        )
+        try:
+            saved = await app_state.preset_override_service.upsert_override(
+                preset_name,
+                data,
+                actor=actor,
+            )
+        except ProviderValidationError as exc:
+            exc_msg = str(exc)
+            if "Unknown preset" in exc_msg:
+                logger.warning(
+                    API_RESOURCE_NOT_FOUND,
+                    resource="preset",
+                    name=preset_name,
+                )
+                raise NotFoundError(exc_msg) from exc
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="preset",
+                name=preset_name,
+                error=exc_msg,
+            )
+            raise ApiValidationError(exc_msg) from exc
+        return ApiResponse(data=saved)
+
+    @delete(
+        "/presets/{preset_name:str}/override",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy(
+                "providers.delete_preset_override",
+                key="user",
+            ),
+        ],
+        status_code=HTTP_204_NO_CONTENT,
+    )
+    async def delete_preset_override(
+        self,
+        state: State,
+        preset_name: PathName,
+    ) -> None:
+        """Drop the override for ``preset_name``.
+
+        Idempotent: returns 204 whether or not a row existed.
+
+        Args:
+            state: Application state.
+            preset_name: Preset whose override to delete.
+        """
+        app_state: AppState = state.app_state
+        from synthorg.api.dto_provider_capabilities import (  # noqa: PLC0415
+            ProviderAuditActor,
+        )
+
+        actor = ProviderAuditActor(
+            id="system",
+            label="provider-management",
+        )
+        await app_state.preset_override_service.delete_override(
+            preset_name,
+            actor=actor,
+        )
 
     # ── Rate-limit overrides ────────────────────────────────────
 

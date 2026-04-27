@@ -63,6 +63,9 @@ from synthorg.providers.health import ProviderHealthTracker  # noqa: TC001
 from synthorg.providers.management.audit_service import (
     ProviderAuditService,  # noqa: TC001
 )
+from synthorg.providers.management.preset_override_service import (
+    PresetOverrideService,  # noqa: TC001
+)
 from synthorg.providers.management.service import (
     ProviderManagementService,  # noqa: TC001
 )
@@ -120,6 +123,7 @@ class AppStateServicesMixin(_FacadesMixin):
     _org_mutation_service: OrgMutationService | None
     _provider_management: ProviderManagementService | None
     _provider_audit_service: ProviderAuditService | None
+    _preset_override_service: PresetOverrideService | None
     _provider_health_tracker: ProviderHealthTracker | None
     _tool_invocation_tracker: ToolInvocationTracker | None
     _training_service: TrainingService | None
@@ -246,6 +250,24 @@ class AppStateServicesMixin(_FacadesMixin):
     def has_provider_audit_service(self) -> bool:
         """Check whether the provider audit service is wired."""
         return self._provider_audit_service is not None
+
+    @property
+    def preset_override_service(self) -> PresetOverrideService:
+        """Return the preset override service or raise 503.
+
+        ``None`` when the persistence backend has not been wired
+        (in-memory fallback paths).  Callers should prefer
+        ``has_preset_override_service`` first.
+        """
+        return self._require_service(
+            self._preset_override_service,
+            "preset_override_service",
+        )
+
+    @property
+    def has_preset_override_service(self) -> bool:
+        """Check whether the preset override service is wired."""
+        return self._preset_override_service is not None
 
     @property
     def provider_health_tracker(self) -> ProviderHealthTracker:

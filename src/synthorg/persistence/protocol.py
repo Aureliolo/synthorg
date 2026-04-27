@@ -75,6 +75,9 @@ from synthorg.persistence.ontology_protocol import (
 from synthorg.persistence.parked_context_protocol import (
     ParkedContextRepository,  # noqa: TC001
 )
+from synthorg.persistence.preset_override_protocol import (  # noqa: TC001
+    PresetOverrideRepo,
+)
 from synthorg.persistence.preset_repository import (
     PersonalityPresetRepository,  # noqa: TC001
 )
@@ -278,6 +281,11 @@ class PersistenceBackend(Protocol):
     @property
     def provider_audit_events(self) -> ProviderAuditRepo:
         """Repository for the provider mutation audit log."""
+        ...
+
+    @property
+    def preset_overrides(self) -> PresetOverrideRepo:
+        """Repository for operator-authored provider preset overrides."""
         ...
 
     @property

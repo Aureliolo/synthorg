@@ -96,6 +96,9 @@ from synthorg.persistence.postgres.org_fact_repo import (
 from synthorg.persistence.postgres.parked_context_repo import (
     PostgresParkedContextRepository,
 )
+from synthorg.persistence.postgres.preset_override_repo import (
+    PostgresPresetOverrideRepo,
+)
 from synthorg.persistence.postgres.preset_repo import (
     PostgresPersonalityPresetRepository,
 )
@@ -229,6 +232,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._parked_contexts: ParkedContextRepository | None = None
         self._audit_entries: AuditRepository | None = None
         self._provider_audit_events: PostgresProviderAuditRepo | None = None
+        self._preset_overrides: PostgresPresetOverrideRepo | None = None
         self._users: UserRepository | None = None
         self._api_keys: ApiKeyRepository | None = None
         self._checkpoints: CheckpointRepository | None = None
@@ -271,7 +275,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._fine_tune_runs: PostgresFineTuneRunRepository | None = None
         self._fine_tune_checkpoints: PostgresFineTuneCheckpointRepository | None = None
 
-    def _clear_state(self) -> None:
+    def _clear_state(self) -> None:  # noqa: PLR0915 -- repo registry reset intentionally enumerates every attribute
         """Reset pool and repository references to ``None``."""
         self._pool = None
         self._artifacts = None
@@ -285,6 +289,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._parked_contexts = None
         self._audit_entries = None
         self._provider_audit_events = None
+        self._preset_overrides = None
         self._users = None
         self._api_keys = None
         self._checkpoints = None
@@ -344,6 +349,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._parked_contexts = PostgresParkedContextRepository(pool)
         self._audit_entries = PostgresAuditRepository(pool)
         self._provider_audit_events = PostgresProviderAuditRepo(pool)
+        self._preset_overrides = PostgresPresetOverrideRepo(pool)
         self._users = PostgresUserRepository(pool)
         self._api_keys = PostgresApiKeyRepository(pool)
         self._checkpoints = PostgresCheckpointRepository(pool)
@@ -501,6 +507,14 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         return self._require_connected(
             self._provider_audit_events,
             "provider_audit_events",
+        )
+
+    @property
+    def preset_overrides(self) -> PostgresPresetOverrideRepo:
+        """Repository for operator-authored provider preset overrides."""
+        return self._require_connected(
+            self._preset_overrides,
+            "preset_overrides",
         )
 
     @property

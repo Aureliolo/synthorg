@@ -397,6 +397,7 @@ class AppState(AppStateServicesMixin):
         # bridge cannot be resolved.
         self._ws_auth_timeout_seconds: float = 10.0
         self._provider_audit_service = None
+        self._preset_override_service = None
         self._init_derived_services(
             settings_service=settings_service,
             config=config,
@@ -452,6 +453,26 @@ class AppState(AppStateServicesMixin):
             else None
         )
         self._provider_audit_service: ProviderAuditService | None = audit_service
+
+        # Preset overrides: same getattr-guarded wiring as the audit
+        # log so legacy fakes that lack the new repo accessor stay
+        # functional.  The override service depends on the audit
+        # service (it emits ``preset_override_updated`` rows on each
+        # write) so it is None whenever audit is None.
+        from synthorg.providers.management.preset_override_service import (  # noqa: PLC0415
+            PresetOverrideService,
+        )
+
+        preset_override_repo = (
+            getattr(persistence, "preset_overrides", None)
+            if persistence is not None
+            else None
+        )
+        self._preset_override_service: PresetOverrideService | None = (
+            PresetOverrideService(preset_override_repo, audit_service=audit_service)
+            if preset_override_repo is not None
+            else None
+        )
         management = ProviderManagementService(
             settings_service=settings_service,
             config_resolver=resolver,
