@@ -203,7 +203,7 @@ export function ErrorBanner({
                    */
                   <span
                     aria-hidden="true"
-                    className="font-mono text-[11px] text-muted-foreground"
+                    className="font-mono text-compact text-muted-foreground"
                   >
                     Retry in {remaining}s
                   </span>
