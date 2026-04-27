@@ -1,5 +1,35 @@
 name: CLA
 
+# Contributor License Agreement gate.
+#
+# Two jobs split by event type:
+#
+#   cla-check (pull_request_target):
+#     READ-only path. contributor-assistant/github-action checks each PR
+#     commit author against .github/cla-signatures.json on the
+#     cla-signatures branch and posts a prompt comment if any author has
+#     not signed. The action never reaches its write code path here
+#     because that path only fires on issue_comment events (see issue
+#     #1633 + the action's source).
+#
+#   cla-sign (issue_comment matching the sign-text body):
+#     WRITE path. Replaces the bundled action's commit step with a
+#     custom Git Data API mint under the synthorg-repo-bot App token,
+#     so the resulting commit on cla-signatures verifies as
+#     {verified: true, reason: "valid"} attributed to the App's bot
+#     identity. After the commit lands the job posts the confirmation
+#     comment and re-runs the most recent cla-check run on the PR's
+#     head SHA, mirroring the rerun behaviour the bundled action
+#     provides on its issue_comment path.
+#
+# Why the split. The default branch-protection ruleset enforces
+# required_signatures across ~ALL refs (no cla-signatures carve-out).
+# All other automation in the repo already mints signed commits as
+# synthorg-repo-bot via the Git Data API (release.yml,
+# dev-release.yml, auto-rollover.yml, graduate.yml). Routing CLA
+# writes through the same mechanism keeps the trusted-write surface
+# uniform and lets the default ruleset stay at a clean ~ALL scope.
+
 on:
   issue_comment:
     types: [created]
@@ -9,25 +39,20 @@ on:
 permissions: {}
 
 jobs:
+  # ── Read-only check + prompt-comment path ──
   cla-check:
     name: CLA Signature Check
-    runs-on: ubuntu-latest
-    # Skip CLA for known-trusted bots whose commits are legitimate
-    # automated work, not human contributions. Adding a bot here
-    # requires a second line of defence below (``allowlist`` input on
-    # the action itself) because this ``if:`` gates on the PR OPENER
-    # while ``allowlist`` gates on each individual COMMITTER -- a
-    # release-please PR is opened by the App but may carry commits
-    # authored by other contributors too, so both gates need to be in
-    # sync for full coverage.
     if: |
-      (github.event_name == 'pull_request_target'
+      github.event_name == 'pull_request_target'
         && github.event.pull_request.user.login != 'dependabot[bot]'
         && github.event.pull_request.user.login != 'renovate[bot]'
-        && github.event.pull_request.user.login != 'synthorg-repo-bot[bot]') ||
-      (github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA')
+        && github.event.pull_request.user.login != 'synthorg-repo-bot[bot]'
+    runs-on: ubuntu-latest
     permissions:
-      contents: write
+      # contents: read (was: write) -- the read path never writes back.
+      # The write path lives in cla-sign below, which mints via the App
+      # token, NOT GITHUB_TOKEN.
+      contents: read
       pull-requests: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -56,8 +81,230 @@ jobs:
           # Bots whose commits bypass the CLA check. Release automation
           # and dependency bumpers commit under these identities; the
           # human-contributor CLA obligation does not apply to them.
-          # Must stay in sync with the ``if:`` gate at the top of the
-          # job -- that gate protects against the whole workflow firing
-          # while this gate protects against the action flagging any
-          # individual commit inside a mixed-authorship PR.
+          # Must stay in sync with the if: gate above -- that gate
+          # protects against the whole workflow firing while this gate
+          # protects against the action flagging any individual commit
+          # inside a mixed-authorship PR.
           allowlist: dependabot[bot],renovate[bot],synthorg-repo-bot[bot],github-actions[bot]
+
+  # ── App-token mint write path ──
+  cla-sign:
+    name: CLA Signature Record
+    if: |
+      github.event_name == 'issue_comment'
+        && github.event.issue.pull_request
+        && github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA'
+        && github.event.comment.user.login != 'dependabot[bot]'
+        && github.event.comment.user.login != 'renovate[bot]'
+        && github.event.comment.user.login != 'synthorg-repo-bot[bot]'
+        && github.event.comment.user.login != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # release env scopes RELEASE_BOT_APP_* secrets to refs/heads/main.
+    # issue_comment events have github.ref == refs/heads/main, so the
+    # branch policy admits this job.
+    environment: release
+    permissions:
+      contents: read       # checkout for release-runner-setup composite
+      pull-requests: write # post the all-signed confirmation comment
+      # actions: write on GITHUB_TOKEN so the post-record step can re-run
+      # the failing cla-check run on the PR's head SHA, flipping the gate
+      # green without waiting for a fresh push. Mirrors the rerun
+      # behaviour the bundled action provides on its issue_comment path.
+      actions: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Release runner setup
+        id: setup
+        uses: ./.github/actions/release-runner-setup
+        with:
+          client-id: ${{ secrets.RELEASE_BOT_APP_CLIENT_ID }}
+          app-private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
+
+      - name: Validate commenter and record signature
+        env:
+          # Two tokens, two scopes:
+          #   GITHUB_TOKEN_RW: PR reads, comment posts, workflow re-run.
+          #   APP_TOKEN: signed commit on cla-signatures via Git Data API.
+          GITHUB_TOKEN_RW: ${{ secrets.GITHUB_TOKEN }}
+          APP_TOKEN: ${{ steps.setup.outputs.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          COMMENTER_LOGIN: ${{ github.event.comment.user.login }}
+          COMMENTER_ID: ${{ github.event.comment.user.id }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          REPO_ID: ${{ github.event.repository.id }}
+        run: |
+          set -euo pipefail
+
+          # ── Step 1: Validate commenter is a PR contributor ──
+          GH_TOKEN="$GITHUB_TOKEN_RW" \
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha' > /tmp/pr-head-sha
+          PR_HEAD_SHA=$(cat /tmp/pr-head-sha)
+          echo "PR head SHA: $PR_HEAD_SHA"
+
+          # Collect distinct PR commit authors (login). Some commits may
+          # have a null .author (unmatched email) -- skip those; the
+          # match below requires a positive identity.
+          GH_TOKEN="$GITHUB_TOKEN_RW" \
+            gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/commits" \
+              --jq '.[].author.login | select(.)' \
+            | sort -u > /tmp/pr-authors
+          echo "PR commit authors:"
+          cat /tmp/pr-authors
+
+          if ! grep -qx "$COMMENTER_LOGIN" /tmp/pr-authors; then
+            echo "::error::Commenter '$COMMENTER_LOGIN' is not an author of any PR commit"
+            exit 1
+          fi
+
+          # ── Step 2: Read current cla-signatures.json from cla-signatures branch ──
+          GH_TOKEN="$APP_TOKEN" \
+            gh api "repos/$GITHUB_REPOSITORY/contents/.github/cla-signatures.json?ref=cla-signatures" \
+              --jq '.content' \
+            | base64 -d > /tmp/cla-current.json
+          echo "Current signatures:"
+          jq '.' /tmp/cla-current.json
+
+          # ── Step 3: Idempotency -- skip if commenter already signed ──
+          if jq -e --argjson id "$COMMENTER_ID" \
+              '.signedContributors | map(.id) | index($id)' \
+              /tmp/cla-current.json > /dev/null; then
+            echo "::notice::Commenter id $COMMENTER_ID already in signedContributors; nothing to record."
+            echo "already_signed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # ── Step 4: Build the new signatures file ──
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          jq \
+            --arg name "$COMMENTER_LOGIN" \
+            --argjson id "$COMMENTER_ID" \
+            --argjson comment_id "$COMMENT_ID" \
+            --arg created_at "$NOW" \
+            --argjson repoId "$REPO_ID" \
+            --argjson pr "$PR_NUMBER" \
+            '.signedContributors += [{
+              name: $name,
+              id: $id,
+              comment_id: $comment_id,
+              created_at: $created_at,
+              repoId: $repoId,
+              pullRequestNo: $pr
+            }]' \
+            /tmp/cla-current.json > /tmp/cla-new.json
+          echo "New signatures:"
+          jq '.' /tmp/cla-new.json
+
+          # ── Step 5: Mint a signed commit on cla-signatures via Git Data API ──
+          # Pretty-print the JSON with a trailing newline so contributor-
+          # assistant + jq + manual edits all read the same canonical
+          # shape. The action emits 2-space-indented JSON; match that.
+          jq --indent 2 '.' /tmp/cla-new.json > /tmp/cla-final.json
+          # Append a trailing newline (jq omits it).
+          printf '\n' >> /tmp/cla-final.json
+
+          BLOB_CONTENT_B64=$(base64 -w0 < /tmp/cla-final.json)
+          BLOB_SHA=$(jq -n \
+              --arg content "$BLOB_CONTENT_B64" \
+              '{content: $content, encoding: "base64"}' \
+            | GH_TOKEN="$APP_TOKEN" \
+                gh api --method POST \
+                  "repos/$GITHUB_REPOSITORY/git/blobs" \
+                  --input - --jq '.sha')
+          echo "Created blob: $BLOB_SHA"
+
+          BRANCH_INFO=$(GH_TOKEN="$APP_TOKEN" \
+            gh api "repos/$GITHUB_REPOSITORY/branches/cla-signatures")
+          PARENT_SHA=$(jq -r '.commit.sha' <<< "$BRANCH_INFO")
+          BASE_TREE_SHA=$(jq -r '.commit.commit.tree.sha' <<< "$BRANCH_INFO")
+          echo "Parent commit: $PARENT_SHA"
+          echo "Base tree:     $BASE_TREE_SHA"
+
+          NEW_TREE_SHA=$(jq -n \
+              --arg base_tree "$BASE_TREE_SHA" \
+              --arg blob "$BLOB_SHA" \
+              '{
+                base_tree: $base_tree,
+                tree: [{
+                  path: ".github/cla-signatures.json",
+                  mode: "100644",
+                  type: "blob",
+                  sha: $blob
+                }]
+              }' \
+            | GH_TOKEN="$APP_TOKEN" \
+                gh api --method POST \
+                  "repos/$GITHUB_REPOSITORY/git/trees" \
+                  --input - --jq '.sha')
+          echo "Created tree: $NEW_TREE_SHA"
+
+          COMMIT_MESSAGE="@$COMMENTER_LOGIN has signed the CLA in $GITHUB_REPOSITORY#$PR_NUMBER"
+          NEW_COMMIT_SHA=$(jq -n \
+              --arg msg "$COMMIT_MESSAGE" \
+              --arg tree "$NEW_TREE_SHA" \
+              --arg parent "$PARENT_SHA" \
+              '{message: $msg, tree: $tree, parents: [$parent]}' \
+            | GH_TOKEN="$APP_TOKEN" \
+                gh api --method POST \
+                  "repos/$GITHUB_REPOSITORY/git/commits" \
+                  --input - --jq '.sha')
+          echo "Created commit: $NEW_COMMIT_SHA"
+
+          GH_TOKEN="$APP_TOKEN" \
+            gh api --method PATCH \
+              "repos/$GITHUB_REPOSITORY/git/refs/heads/cla-signatures" \
+              -f sha="$NEW_COMMIT_SHA"
+          echo "Updated cla-signatures ref to $NEW_COMMIT_SHA"
+
+          # ── Step 6: Verify signature ──
+          VERIFY=$(GH_TOKEN="$APP_TOKEN" \
+            gh api "repos/$GITHUB_REPOSITORY/commits/$NEW_COMMIT_SHA" \
+              --jq '.commit.verification')
+          VERIFIED=$(jq -r '.verified' <<< "$VERIFY")
+          REASON=$(jq -r '.reason' <<< "$VERIFY")
+          if [[ "$VERIFIED" != "true" || "$REASON" != "valid" ]]; then
+            echo "::error::Signature verification failed: verified=$VERIFIED reason=$REASON"
+            exit 1
+          fi
+          echo "Signature verified: verified=$VERIFIED reason=$REASON"
+
+          # Outputs for downstream steps.
+          echo "commit_sha=$NEW_COMMIT_SHA" >> "$GITHUB_OUTPUT"
+          echo "pr_head_sha=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "already_signed=false" >> "$GITHUB_OUTPUT"
+        id: record
+
+      - name: Post all-signed confirmation comment
+        if: steps.record.outputs.already_signed == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            -f body="All contributors have signed the CLA. Thank you!"
+
+      - name: Re-run the cla-check workflow on PR head SHA
+        if: steps.record.outputs.already_signed == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_HEAD_SHA: ${{ steps.record.outputs.pr_head_sha }}
+        run: |
+          set -euo pipefail
+          # Find the most recent cla-check run on the PR's head SHA so the
+          # PR's CLA gate flips green without waiting for a fresh push.
+          # Filter on event=pull_request_target so we don't accidentally
+          # re-run the current issue_comment job.
+          LAST_RUN=$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/cla.yml/runs?head_sha=$PR_HEAD_SHA&event=pull_request_target&per_page=1" \
+            --jq '.workflow_runs[0].id // empty')
+          if [ -z "$LAST_RUN" ]; then
+            echo "::notice::No prior cla-check run found for $PR_HEAD_SHA; nothing to re-run."
+            exit 0
+          fi
+          echo "Re-running cla-check workflow run: $LAST_RUN"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$LAST_RUN/rerun"

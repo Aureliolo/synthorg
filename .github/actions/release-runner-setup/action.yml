@@ -1,13 +1,16 @@
 name: Release runner setup
 description: >-
-  Shared setup for release-pipeline workflows (release.yml, dev-release.yml,
-  auto-rollover.yml). Asserts the triggering ref is refs/heads/main and mints
-  a short-lived installation token for the `synthorg-repo-bot` GitHub App.
-  The minted token is exposed on the `token` output so downstream steps can
-  use it for API calls that produce signed commits AND fire downstream
-  workflows; the two constraints PAT + GITHUB_TOKEN could not satisfy
-  together. See docs/reference/github-environments.md#release_bot_app_ for
-  provisioning.
+  Shared setup for workflows that mint signed commits as `synthorg-repo-bot`.
+  Primary callers are the release-pipeline workflows (release.yml,
+  dev-release.yml, auto-rollover.yml, graduate.yml); cla.yml's signature-
+  recording job uses the same composite to satisfy the default ruleset's
+  required_signatures rule on the cla-signatures branch (see #1633).
+  Asserts the triggering ref is refs/heads/main and mints a short-lived
+  installation token for the `synthorg-repo-bot` GitHub App. The minted
+  token is exposed on the `token` output so downstream steps can use it
+  for API calls that produce signed commits AND fire downstream workflows;
+  the two constraints PAT + GITHUB_TOKEN could not satisfy together. See
+  docs/reference/github-environments.md#release_bot_app_ for provisioning.
 
   Callers MUST have checked out the repository before invoking this composite;
   the action.yml file needs to exist on the runner's disk. Every current
