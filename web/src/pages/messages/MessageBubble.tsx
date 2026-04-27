@@ -27,10 +27,19 @@ export function MessageBubble({ message, isNew, onClick }: MessageBubbleProps) {
 
   const priorityColor = getMessagePriorityColor(message.priority)
 
+  const ariaLabel = [
+    `${message.type} from ${message.sender}`,
+    message.priority ? `${message.priority} priority` : null,
+    `sent ${formatRelativeTime(message.timestamp)}`,
+  ]
+    .filter(Boolean)
+    .join(', ')
+
   return (
     <button
       type="button"
       onClick={onClick}
+      aria-label={ariaLabel}
       className={cn(
         'flex w-full gap-3 rounded-lg p-3 text-left transition-colors',
         'hover:bg-card-hover',

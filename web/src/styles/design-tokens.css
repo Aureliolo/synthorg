@@ -293,9 +293,13 @@
  * without needing per-breakpoint media queries.
  * --------------------------------------------------------------------------- */
 :root {
-  /* Drawer widths: cover the right-hand slide-in panel. Narrow is mobile-
-   * friendly, default suits approvals / task detail, wide is for the
-   * template compare drawer and other large forms. */
+  /* Drawer widths: cover the right-hand slide-in panel. Compact is the
+   * tightest variant for content-light drawers (single-field edits,
+   * confirmation flows) where the default 45vw consumes too much of
+   * narrow viewports. Narrow is mobile-friendly, default suits approvals
+   * / task detail, wide is for the template compare drawer and other
+   * large forms. */
+  --so-drawer-width-compact: clamp(18rem, 35vw, 22rem);
   --so-drawer-width-narrow: clamp(20rem, 40vw, 28rem);
   --so-drawer-width-default: clamp(20rem, 45vw, 36rem);
   --so-drawer-width-wide: clamp(24rem, 55vw, 48rem);
