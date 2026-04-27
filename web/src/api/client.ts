@@ -220,12 +220,15 @@ export class ApiRequestError extends Error {
   /**
    * Convenience accessor for ``error_detail.retry_after``. Returns the
    * number of seconds the server suggests waiting before retrying, or
-   * ``null`` when the server didn't provide one. Use this with
-   * ``ErrorBanner``'s ``retryAfterSeconds`` prop to surface a live
-   * "Retry in Ns" countdown to the operator.
+   * ``null`` when the server didn't provide one or it was malformed.
+   * Use this with ``ErrorBanner``'s ``retryAfterSeconds`` prop to surface
+   * a live "Retry in Ns" countdown to the operator.
    */
   get retryAfter(): number | null {
-    return this.errorDetail?.retry_after ?? null
+    const value = this.errorDetail?.retry_after
+    return typeof value === 'number' && Number.isFinite(value) && value > 0
+      ? value
+      : null
   }
 }
 

@@ -134,12 +134,12 @@ afterAll(() => {
 })
 
 function resetStore() {
-  useWebSocketStore.getState().disconnect()
-  useWebSocketStore.setState({
-    connected: false,
-    reconnectExhausted: false,
-    subscribedChannels: [],
-  })
+  // ``teardown()`` is the canonical "fresh test" hook: it clears every
+  // module-scope handle (heartbeat / pong / reconnect timers, socket,
+  // generation counter, subscriptions, channel handlers) and resets
+  // observable state including ``reconnectExhausted`` (which
+  // ``disconnect()`` deliberately leaves alone).
+  useWebSocketStore.getState().teardown()
   MockWebSocket.clear()
 }
 

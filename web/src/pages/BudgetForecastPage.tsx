@@ -25,13 +25,13 @@ function ProjectionRow({ point, cumulative, currency, totalMonthly }: {
   return (
     <tr>
       <td className="px-4 py-2 font-mono text-xs text-foreground">{point.day}</td>
-      <td className="w-28 px-4 py-2 text-right font-mono text-xs text-text-secondary">
+      <td className="min-w-[7ch] px-4 py-2 text-right font-mono text-xs text-text-secondary">
         {formatCurrency(point.projected_spend, currency)}
       </td>
-      <td className="w-28 px-4 py-2 text-right font-mono text-xs text-text-secondary">
+      <td className="min-w-[7ch] px-4 py-2 text-right font-mono text-xs text-text-secondary">
         {formatCurrency(cumulative, currency)}
       </td>
-      <td className="w-24 px-4 py-2 text-right font-mono text-xs text-text-muted">
+      <td className="min-w-[6ch] px-4 py-2 text-right font-mono text-xs text-text-muted">
         {budgetPct.toFixed(1)}%
       </td>
     </tr>

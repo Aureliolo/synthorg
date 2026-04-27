@@ -26,6 +26,12 @@ export function MessageBubble({ message, isNew, onClick }: MessageBubbleProps) {
   }, [isNew, triggerFlash])
 
   const priorityColor = getMessagePriorityColor(message.priority)
+  const relativeTime = formatRelativeTime(message.timestamp)
+  // Truncate the content preview to keep the accessible name short
+  // (long aria-labels overwhelm screen readers and lose context).
+  // Collapse whitespace so multi-line / multi-space bodies don't
+  // produce ragged labels.
+  const contentPreview = message.content.trim().replace(/\s+/g, ' ').slice(0, 120)
 
   // ``priorityColor`` is null for ``normal`` priority (the default
   // visible state has no dot), so we only mention priority in the
@@ -35,7 +41,8 @@ export function MessageBubble({ message, isNew, onClick }: MessageBubbleProps) {
   const ariaLabel = [
     `${message.type} from ${message.sender}`,
     priorityColor ? `${message.priority} priority` : null,
-    `sent ${formatRelativeTime(message.timestamp)}`,
+    `sent ${relativeTime}`,
+    contentPreview ? `message ${contentPreview}` : null,
   ]
     .filter(Boolean)
     .join(', ')
@@ -65,7 +72,7 @@ export function MessageBubble({ message, isNew, onClick }: MessageBubbleProps) {
             />
           )}
           <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">
-            {formatRelativeTime(message.timestamp)}
+            {relativeTime}
           </span>
         </div>
 

@@ -93,8 +93,15 @@ export function ErrorBanner({
   // loop hazard). The effect owns only the ``setInterval`` that ticks
   // the value down once per second; ``clearInterval`` runs when the
   // prop changes or the component unmounts.
+  // Reject ``Infinity`` and ``NaN``: either would lock the Retry button
+  // forever (``Infinity > 0`` is true and never decrements; ``Math.ceil(NaN)``
+  // is ``NaN`` which fails every ``<= 1`` comparison).
   const initialRemaining =
-    retryAfterSeconds && retryAfterSeconds > 0 ? Math.ceil(retryAfterSeconds) : null
+    typeof retryAfterSeconds === 'number' &&
+    Number.isFinite(retryAfterSeconds) &&
+    retryAfterSeconds > 0
+      ? Math.ceil(retryAfterSeconds)
+      : null
   const [remaining, setRemaining] = useState<number | null>(initialRemaining)
   // Track the prop key we last seeded from so a fresh ``retryAfterSeconds``
   // prop resets the countdown without firing ``setRemaining`` in the
@@ -105,7 +112,12 @@ export function ErrorBanner({
     setRemaining(initialRemaining)
   }
   useEffect(() => {
-    if (!retryAfterSeconds || retryAfterSeconds <= 0) return
+    if (
+      typeof retryAfterSeconds !== 'number' ||
+      !Number.isFinite(retryAfterSeconds) ||
+      retryAfterSeconds <= 0
+    )
+      return
     const id = setInterval(() => {
       setRemaining((prev) => {
         if (prev === null || prev <= 1) {

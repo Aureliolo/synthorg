@@ -162,6 +162,15 @@ export function validateProvidersStep(input: ProvidersStepInput): StepValidation
   // provider, missing model on existing provider) live here so the
   // wizard's ``Next`` button gates on either failure mode.
   const providerSet = new Set(providerNames)
+  // Build provider→ModelIds once so the per-agent model check is
+  // O(1) instead of allocating a fresh Set per agent (the agent loop
+  // is N×M in the worst case, which is the wizard's hottest path).
+  const modelIdsByProvider = new Map<string, Set<string>>(
+    Object.entries(input.providers).map(([name, provider]) => [
+      name,
+      new Set(provider.models.map((m) => m.id)),
+    ]),
+  )
   const missingProviders = new Set<string>()
   const missingModels: string[] = []
 
@@ -171,9 +180,8 @@ export function validateProvidersStep(input: ProvidersStepInput): StepValidation
       continue
     }
     if (agent.model_provider && agent.model_id) {
-      const provider = input.providers[agent.model_provider]
-      const modelIds = new Set(provider?.models.map((m) => m.id) ?? [])
-      if (!modelIds.has(agent.model_id)) {
+      const modelIds = modelIdsByProvider.get(agent.model_provider)
+      if (!modelIds?.has(agent.model_id)) {
         missingModels.push(
           `Agent "${agent.name}" references model "${agent.model_id}" on "${agent.model_provider}", but that provider does not expose it.`,
         )

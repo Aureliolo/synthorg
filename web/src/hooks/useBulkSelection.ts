@@ -59,13 +59,18 @@ export function useBulkSelection(): BulkSelectionApi {
   }, [])
 
   const toggleAll = useCallback((ids: readonly string[]) => {
+    // Skip the state update entirely when the visible set is empty
+    // (e.g. a filter returned zero rows). Without this guard,
+    // ``setSelectedIds`` would still allocate a fresh ``Set`` and
+    // trigger a no-op re-render across consumers.
+    if (ids.length === 0) return
     setSelectedIds((prev) => {
       // If every visible id is already selected, the header checkbox
       // toggles OFF (clear visible selection). Otherwise, select every
       // visible id while preserving any selections from rows the
       // current filter has hidden (so toggling filters then clicking
       // the header checkbox doesn't silently lose hidden selections).
-      const allSelected = ids.length > 0 && ids.every((id) => prev.has(id))
+      const allSelected = ids.every((id) => prev.has(id))
       if (allSelected) {
         const next = new Set(prev)
         for (const id of ids) next.delete(id)
