@@ -6,7 +6,7 @@ import {
   validateProvidersStep,
   validateThemeStep,
 } from '@/utils/setup-validation'
-import type { ProviderConfig, ProviderModelResponse } from '@/api/types/providers'
+import type { ProviderConfig, ProviderModelConfig } from '@/api/types/providers'
 import type { SetupAgentSummary, SetupCompanyResponse } from '@/api/types/setup'
 
 const makeAgent = (overrides: Partial<SetupAgentSummary> = {}): SetupAgentSummary => ({
@@ -33,16 +33,14 @@ const makeCompanyResponse = (
   ...overrides,
 })
 
-const makeModel = (overrides: Partial<ProviderModelResponse> = {}): ProviderModelResponse => ({
+const makeModel = (overrides: Partial<ProviderModelConfig> = {}): ProviderModelConfig => ({
   id: 'test-model-001',
   alias: null,
   max_context: 8192,
   cost_per_1k_input: 0,
   cost_per_1k_output: 0,
-  supports_function_calling: false,
-  supports_vision: false,
-  supports_streaming: true,
-  supports_reasoning: false,
+  estimated_latency_ms: null,
+  local_params: null,
   ...overrides,
 })
 
