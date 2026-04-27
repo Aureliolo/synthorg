@@ -72,11 +72,16 @@ repos:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
-        exclude: ^(src/synthorg/templates/builtins/|mkdocs\.yml$)
+        # docker/compose.dast.yml uses Docker Compose's !override custom
+        # tag (compose v2.20+) to drop the postgres dependency in DAST.
+        # pyyaml's safe loader cannot parse this without --unsafe; the
+        # dedicated unsafe-mode hook below handles compose overlays plus
+        # mkdocs.yml.
+        exclude: ^(src/synthorg/templates/builtins/|mkdocs\.yml$|docker/compose\.dast\.yml$)
       - id: check-yaml
         name: check-yaml (mkdocs, unsafe for !!python tags)
         args: [--unsafe]
-        files: ^mkdocs\.yml$
+        files: ^(mkdocs\.yml|docker/compose\.dast\.yml)$
       - id: check-toml
       - id: check-json
       - id: check-merge-conflict

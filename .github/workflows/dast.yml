@@ -32,9 +32,13 @@ jobs:
         with:
           persist-credentials: false
 
-      # Create env file with generated secrets (compose requires env_file: .env).
-      # Postgres is a required compose service, so POSTGRES_PASSWORD must be set
-      # even for API-only scans; the backend connects on startup.
+      # Create env file with generated secrets (compose requires
+      # env_file: .env).  POSTGRES_PASSWORD is unused under the DAST
+      # overlay (compose.dast.yml swaps the backend onto SQLite +
+      # internal bus, dropping the postgres + nats services), but
+      # docker/.env.example still declares it with a `:?Set ...`
+      # required-variable check, so we generate a value to keep
+      # `docker compose config` happy at parse time.
       - name: Create env file
         run: |
           cp docker/.env.example docker/.env
@@ -58,15 +62,22 @@ jobs:
 
       # Build the backend application image. Compose passes the
       # workflow-built `BASE_IMAGE` through to the Dockerfile via the
-      # backend.build.args mapping in docker/compose.yml.
+      # backend.build.args mapping in docker/compose.yml. The DAST
+      # overlay (compose.dast.yml) is a no-op at build time -- it only
+      # patches runtime fields (depends_on, environment) -- but we pass
+      # both files for symmetry with `up` and `down`.
       - name: Build backend image
         env:
           BASE_IMAGE: ghcr.io/aureliolo/synthorg-backend-base:${{ steps.base.outputs.tag }}
-        run: docker compose -f docker/compose.yml build backend
+        run: docker compose -f docker/compose.yml -f docker/compose.dast.yml build backend
 
-      # Start backend only (no web/caddy needed for API scan)
+      # Start backend only. The DAST overlay swaps the backend onto
+      # SQLite + internal bus, so neither postgres nor nats start (no
+      # dhi.io pull is performed -- DHI requires a Docker Hardened
+      # Images subscription that the DAST workflow does not carry).
+      # data-init still runs to chown the bind-mounted /data volume.
       - name: Start backend
-        run: docker compose -f docker/compose.yml up -d backend
+        run: docker compose -f docker/compose.yml -f docker/compose.dast.yml up -d backend
 
       - name: Wait for healthy
         run: |
@@ -78,7 +89,7 @@ jobs:
             sleep 2
           done
           echo "::error::Backend failed to start within 60s"
-          docker compose -f docker/compose.yml logs backend
+          docker compose -f docker/compose.yml -f docker/compose.dast.yml logs backend
           exit 1
 
       # Generate a long-lived system-user JWT so ZAP can scan authenticated
@@ -93,7 +104,7 @@ jobs:
       - name: Generate DAST JWT
         id: jwt
         run: |
-          TOKEN=$(docker compose -f docker/compose.yml exec -T backend \
+          TOKEN=$(docker compose -f docker/compose.yml -f docker/compose.dast.yml exec -T backend \
             python -c "
           import os, jwt, datetime, uuid
           secret = os.environ['SYNTHORG_JWT_SECRET']
@@ -151,7 +162,7 @@ jobs:
 
       - name: Stop backend
         if: always()
-        run: docker compose -f docker/compose.yml down
+        run: docker compose -f docker/compose.yml -f docker/compose.dast.yml down
 
   report-failure:
     name: Open / update tracking issue on schedule failure

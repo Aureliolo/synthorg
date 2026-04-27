@@ -1,0 +1,42 @@
+# Overlay for the DAST CI profile.
+#
+# DAST scans the SynthOrg API surface (Litestar app at port 3001) for
+# OWASP-style web-app vulnerabilities. The scan is independent of which
+# persistence and message-bus backends the app is wired to: ZAP probes
+# HTTP routes, not Postgres or NATS internals. Running DAST against
+# SQLite + the in-process (`internal`) bus is therefore production-
+# representative at the surface that matters AND removes the runtime
+# dependency on `dhi.io/postgres` and `dhi.io/nats`, which require a
+# Docker Hardened Images subscription as of 2026-04.
+#
+# Both `sqlite` and `internal` are first-class production-supported
+# backends (the single-node default in CLAUDE.md). The CLI compose
+# template under `cli/internal/compose/compose.yml.tmpl` already ships
+# this combination as the default for `synthorg init` users; DAST is
+# simply opting into the same shape.
+#
+# Apply via:
+#   docker compose -f docker/compose.yml -f docker/compose.dast.yml up -d backend
+
+services:
+  backend:
+    # Drop the postgres dependency entirely (we don't start postgres in
+    # DAST). data-init still runs to chown the bind-mounted volumes.
+    # !override replaces the field instead of merging (compose v2.20+).
+    depends_on: !override
+      data-init:
+        condition: service_completed_successfully
+    environment:
+      # Persistence: SQLite at the bind-mounted /data path. data-init
+      # already chowns /data to 65532 (the backend non-root UID), so
+      # SQLite can create the file without further setup.
+      SYNTHORG_PERSISTENCE_BACKEND: "sqlite"
+      SYNTHORG_DB_PATH: "/data/synthorg.db"
+      # Empty SYNTHORG_DATABASE_URL is treated as unset by the backend
+      # (see src/synthorg/api/app.py: `(os.environ.get(...) or "").strip()`).
+      # Without this override, the parent compose.yml's postgres URL
+      # would short-circuit the SQLite path.
+      SYNTHORG_DATABASE_URL: ""
+      # Bus: in-process queues. SYNTHORG_NATS_URL is unused under this
+      # backend, so the parent compose.yml's value is harmless.
+      SYNTHORG_BUS_BACKEND: "internal"
