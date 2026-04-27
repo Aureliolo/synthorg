@@ -11,7 +11,13 @@ _r.register(
         namespace=SettingNamespace.OBSERVABILITY,
         key="root_log_level",
         type=SettingType.ENUM,
-        default="debug",
+        # Production-unsafe default: a "debug" registry default leaks
+        # verbose payloads to HTTP log sinks and wastes bandwidth in
+        # deployments that have not explicitly set the value. The
+        # operator escape hatch for incident-response verbose logging
+        # is the SYNTHORG_LOG_LEVEL env var (consumed by
+        # _apply_console_level_override at boot).
+        default="info",
         description="Root logger level",
         group="Logging",
         enum_values=("debug", "info", "warning", "error", "critical"),
