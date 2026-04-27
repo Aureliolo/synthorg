@@ -48,6 +48,26 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COMMUNICATION,
+        key="bus_bridge_drain_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="10.0",
+        description=(
+            "Hard deadline for the bus bridge stop() drain. The drain"
+            " is wrapped in asyncio.wait_for so the lifecycle lock"
+            " cannot be held indefinitely if a polling task ignores"
+            " cancellation. Resolved at stop() entry."
+        ),
+        group="Bus Bridge",
+        level=SettingLevel.ADVANCED,
+        min_value=1.0,
+        max_value=300.0,
+        yaml_path="communication.bus_bridge.drain_timeout_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
         key="webhook_bridge_poll_timeout_seconds",
         type=SettingType.FLOAT,
         default="1.0",

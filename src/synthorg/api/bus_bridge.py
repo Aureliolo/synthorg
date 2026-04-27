@@ -37,7 +37,12 @@ _POLL_TIMEOUT: Final[float] = 1.0
 _MAX_CONSECUTIVE_ERRORS: Final[int] = 30
 """Fallback error budget used when no resolver is wired in."""
 _STOP_DRAIN_TIMEOUT_SECONDS: Final[float] = 10.0
-"""Hard deadline for the ``stop()`` drain.
+"""Fallback hard deadline for the ``stop()`` drain.
+
+Mirrors the registry default for
+``communication.bus_bridge_drain_timeout_seconds`` so a bridge
+constructed without a resolver (test harness, anonymous boot path)
+still observes the documented deadline.
 
 Per CLAUDE.md ``## Code Conventions`` > Lifecycle synchronization:
 services whose ``stop()`` drains across ``await`` boundaries must
@@ -92,6 +97,7 @@ class MessageBusBridge:
         # first successful resolution so a re-failure still surfaces.
         self._poll_timeout_fallback_logged: bool = False
         self._max_errors_fallback_logged: bool = False
+        self._drain_timeout_fallback_logged: bool = False
 
     async def _get_poll_timeout(self) -> float:
         """Resolve the current poll timeout, falling back to the constant.
@@ -125,6 +131,40 @@ class MessageBusBridge:
                 self._poll_timeout_fallback_logged = True
             return _POLL_TIMEOUT
         self._poll_timeout_fallback_logged = False
+        return value
+
+    async def _get_stop_drain_timeout(self) -> float:
+        """Resolve the stop() drain deadline, falling back to the constant.
+
+        Same guard and log-once-per-failure-run semantics as
+        :meth:`_get_poll_timeout`.  Resolved at stop() entry so a
+        runtime change applies to the next shutdown.
+        """
+        if self._config_resolver is None:
+            return _STOP_DRAIN_TIMEOUT_SECONDS
+        try:
+            value = await self._config_resolver.get_float(
+                SettingNamespace.COMMUNICATION.value,
+                "bus_bridge_drain_timeout_seconds",
+            )
+        except asyncio.CancelledError:
+            raise
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            if not self._drain_timeout_fallback_logged:
+                logger.warning(
+                    API_BUS_BRIDGE_POLL_ERROR,
+                    error=(
+                        "failed to resolve bus_bridge_drain_timeout_seconds;"
+                        " using fallback (logging suppressed until recovery)"
+                    ),
+                    timeout_seconds=_STOP_DRAIN_TIMEOUT_SECONDS,
+                    exc_info=True,
+                )
+                self._drain_timeout_fallback_logged = True
+            return _STOP_DRAIN_TIMEOUT_SECONDS
+        self._drain_timeout_fallback_logged = False
         return value
 
     async def _get_max_consecutive_errors(self) -> int:
@@ -406,10 +446,11 @@ class MessageBusBridge:
                 drain_task: asyncio.Task[list[BaseException | None]] = (
                     asyncio.create_task(_drain())
                 )
+                drain_timeout_seconds = await self._get_stop_drain_timeout()
                 try:
                     results = await asyncio.wait_for(
                         asyncio.shield(drain_task),
-                        timeout=_STOP_DRAIN_TIMEOUT_SECONDS,
+                        timeout=drain_timeout_seconds,
                     )
                 except TimeoutError:
                     # Drain exceeded the hard deadline. Mark the bridge
@@ -432,7 +473,7 @@ class MessageBusBridge:
                         error=(
                             "stop exceeded hard deadline; bridge marked unrestartable"
                         ),
-                        timeout_seconds=_STOP_DRAIN_TIMEOUT_SECONDS,
+                        timeout_seconds=drain_timeout_seconds,
                         pending_tasks=sum(1 for t in self._tasks if not t.done()),
                     )
                     raise
