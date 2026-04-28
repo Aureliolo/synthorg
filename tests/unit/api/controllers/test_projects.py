@@ -98,7 +98,7 @@ class TestProjectController:
         self, test_client: TestClient[Any]
     ) -> None:
         resp = test_client.get("/api/v1/projects?status=bogus")
-        # ApiValidationError is 422 Unprocessable Entity (RFC 9457).
+        # ValidationError is 422 Unprocessable Entity (RFC 9457).
         assert resp.status_code == 422
         body = resp.json()
         assert body["success"] is False

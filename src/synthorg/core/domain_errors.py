@@ -50,7 +50,16 @@ class DomainError(Exception):
         super().__init__(message or self.default_message)
 
     def __init_subclass__(cls, **kwargs: object) -> None:
-        """Validate that error_code's first digit matches error_category."""
+        """Validate that error_code's first digit matches error_category.
+
+        Validation runs at class-definition time only.  Rebinding
+        ``cls.error_code`` or ``cls.error_category`` post-definition
+        (e.g. from a test fixture or dynamic patching) silently
+        bypasses this check; treat the ClassVars as immutable in
+        production code.  ``resource_not_found`` deliberately mutates
+        the *instance* attribute, which is a different namespace from
+        the class-level ClassVar this validator inspects.
+        """
         super().__init_subclass__(**kwargs)
         prefix = cls.error_code.value // 1000
         expected = CODE_CATEGORY_PREFIX.get(prefix)
@@ -142,7 +151,10 @@ class AccountLockedError(DomainError):
     header indicating when the lockout expires.
 
     Attributes:
-        retry_after: Seconds the client should wait before retrying.
+        retry_after: Seconds the client should wait before retrying;
+            clamped to non-negative.  Declared in the class body so
+            external readers and IDE tooling see the field without
+            needing to inspect ``__init__``.
     """
 
     default_message: ClassVar[str] = "Account temporarily locked"
@@ -150,6 +162,8 @@ class AccountLockedError(DomainError):
     error_code: ClassVar[ErrorCode] = ErrorCode.ACCOUNT_LOCKED
     retryable: ClassVar[bool] = True
     status_code: ClassVar[int] = 429
+
+    retry_after: int
 
     def __init__(
         self,
@@ -217,6 +231,8 @@ class PerOperationRateLimitError(DomainError):
     error_code: ClassVar[ErrorCode] = ErrorCode.PER_OPERATION_RATE_LIMITED
     retryable: ClassVar[bool] = True
     status_code: ClassVar[int] = 429
+
+    retry_after: int
 
     def __init__(
         self,

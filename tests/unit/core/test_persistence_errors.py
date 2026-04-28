@@ -81,6 +81,15 @@ class TestConstraintViolationConstructor:
         assert exc.constraint == "users_email_uniq"
         assert str(exc) == "violated"
 
+    def test_strips_whitespace_from_constraint(self) -> None:
+        exc = ConstraintViolationError("violated", constraint="  users_email_uniq  ")
+        assert exc.constraint == "users_email_uniq"
+
+    @pytest.mark.parametrize("blank", ["", "   ", "\t", "\n"])
+    def test_rejects_blank_constraint(self, blank: str) -> None:
+        with pytest.raises(ValueError, match="non-blank constraint"):
+            ConstraintViolationError("violated", constraint=blank)
+
     def test_constraint_violation_overrides_query_retry(self) -> None:
         """``ConstraintViolationError`` is non-retryable despite ``QueryError``."""
         assert ConstraintViolationError.is_retryable is False

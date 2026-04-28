@@ -8,6 +8,15 @@ here, which is why the module is dependency-free apart from stdlib --
 keeping the boundary intact lets the CLI and any future extension import
 error metadata without pulling in ``synthorg.api`` or
 ``synthorg.persistence``.
+
+Public constants (``NOT_FOUND_BAND``, ``CODE_CATEGORY_PREFIX``,
+``CATEGORY_TITLES``) are exported without an underscore prefix because
+they are imported across the package -- by ``synthorg.core.domain_errors``
+to validate ``error_code`` / ``error_category`` consistency in
+``DomainError.__init_subclass__``, and by ``tests/unit/core/`` and
+``tests/unit/architecture/`` to assert layering invariants.  An
+underscore prefix would have implied module-private intent that does
+not match how they are consumed.
 """
 
 from enum import IntEnum, StrEnum

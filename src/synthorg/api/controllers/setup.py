@@ -364,7 +364,7 @@ class SetupController(Controller):
         Raises:
             ConflictError: If setup has already been completed.
             NotFoundError: If the provider does not exist.
-            ApiValidationError: If the model is not in the provider.
+            ValidationError: If the model is not in the provider.
         """
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service
@@ -465,7 +465,7 @@ class SetupController(Controller):
         Raises:
             ConflictError: If setup has already been completed.
             NotFoundError: If the agent index is out of range.
-            ApiValidationError: If the provider/model is invalid.
+            ValidationError: If the provider/model is invalid.
         """
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service
@@ -762,7 +762,7 @@ class SetupController(Controller):
 
         Raises:
             ConflictError: If setup has already been completed.
-            ApiValidationError: If company or providers are missing.
+            ValidationError: If company or providers are missing.
         """
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service

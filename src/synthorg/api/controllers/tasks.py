@@ -87,7 +87,7 @@ def _map_task_engine_errors(
         TaskEngineQueueFullError    -> 503 ServiceUnavailableError
         TaskInternalError           -> 503 ServiceUnavailableError
         TaskVersionConflictError    -> 409 ConflictError
-        TaskMutationError           -> 422 ApiValidationError
+        TaskMutationError           -> 422 ValidationError
         Other                       -> 503 ServiceUnavailableError
 
     Args:

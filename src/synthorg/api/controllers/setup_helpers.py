@@ -275,7 +275,7 @@ def validate_locale_selection(
         valid_codes: Set of valid locale codes.
 
     Raises:
-        ApiValidationError: On mixed sentinel or invalid codes.
+        ValidationError: On mixed sentinel or invalid codes.
     """
     if sentinel in locales and len(locales) > 1:
         msg = f"'{sentinel}' cannot be combined with explicit locale codes"
@@ -589,7 +589,7 @@ def load_template_safe(template_name: str) -> LoadedTemplate:
 
     Raises:
         NotFoundError: If the template does not exist.
-        ApiValidationError: If it fails to render or validate.
+        ValidationError: If it fails to render or validate.
     """
     from synthorg.templates.errors import (  # noqa: PLC0415
         TemplateNotFoundError,

@@ -199,3 +199,19 @@ def test_core_error_modules_are_leaf() -> None:
                     "core modules."
                 )
                 raise AssertionError(msg)
+
+
+@pytest.mark.unit
+def test_layering_test_does_not_import_forbidden_modules() -> None:
+    """Meta-guard: this test file itself must not regress to the legacy paths.
+
+    A layering test that catches `from synthorg.api.errors import ...`
+    elsewhere is useless if it accidentally imports the same path itself
+    (e.g. via a refactor mistake).  Self-validate.
+    """
+    self_path = Path(__file__).resolve()
+    for module in _imported_modules(self_path):
+        assert module not in _FORBIDDEN_MODULES, (
+            f"tests/unit/architecture/test_layering.py imports {module}; "
+            "the layering guard must not depend on the very modules it forbids."
+        )

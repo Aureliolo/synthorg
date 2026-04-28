@@ -405,7 +405,7 @@ class TestResolveAgentsBatchLookup:
         assert [a.name for a in result] == ["alice", "bob", "carol"]
 
     async def test_raises_validation_error_on_missing_agent(self) -> None:
-        """A None entry in the batch result surfaces as ApiValidationError."""
+        """A None entry in the batch result surfaces as ValidationError."""
         from synthorg.api.controllers.coordination import CoordinationController
         from synthorg.api.dto import CoordinateTaskRequest
         from synthorg.core.domain_errors import ValidationError

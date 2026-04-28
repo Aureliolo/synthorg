@@ -192,7 +192,7 @@ def _validate_provider_model_pair(
 
     Raises:
         NotFoundError: If the provider does not exist.
-        ApiValidationError: If the model is not in the provider.
+        ValidationError: If the model is not in the provider.
     """
     if provider_name not in providers:
         msg = f"Provider {provider_name!r} not found"
@@ -223,7 +223,7 @@ def validate_model_assignment(
 
     Raises:
         NotFoundError: If the provider does not exist.
-        ApiValidationError: If the model is not in the provider.
+        ValidationError: If the model is not in the provider.
     """
     _validate_provider_model_pair(providers, data.model_provider, data.model_id)
 
@@ -240,7 +240,7 @@ def validate_provider_and_model(
 
     Raises:
         NotFoundError: If the provider does not exist.
-        ApiValidationError: If the model is not in the provider.
+        ValidationError: If the model is not in the provider.
     """
     _validate_provider_model_pair(providers, data.model_provider, data.model_id)
 
@@ -260,7 +260,7 @@ def build_agent_config(
         Agent configuration dict suitable for JSON serialization.
 
     Raises:
-        ApiValidationError: If the personality preset name is not
+        ValidationError: If the personality preset name is not
             found in either custom or builtin presets.
     """
     from synthorg.templates.presets import get_personality_preset  # noqa: PLC0415
@@ -310,7 +310,7 @@ async def get_existing_agents(
         List of agent config dicts (empty if entry is absent or None).
 
     Raises:
-        ApiValidationError: If the stored value is not valid JSON or
+        ValidationError: If the stored value is not valid JSON or
             not a JSON array.
     """
     try:
@@ -357,7 +357,7 @@ def _validate_agent_elements(parsed: list[Any]) -> None:
     """Validate each element in a parsed agents list.
 
     Raises:
-        ApiValidationError: If any element is not a dict with valid
+        ValidationError: If any element is not a dict with valid
             string values for required keys.
     """
     for idx, element in enumerate(parsed):
@@ -396,7 +396,7 @@ def _validate_agent_elements(parsed: list[Any]) -> None:
 def validate_agents_value(raw: str, *, strict: bool) -> bool:
     """Parse *raw* as JSON and return True if it is a non-empty list.
 
-    When *strict* is True, raises ``ApiValidationError`` on corrupted
+    When *strict* is True, raises ``ValidationError`` on corrupted
     data instead of returning False.
 
     Args:

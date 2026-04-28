@@ -84,7 +84,7 @@ async def _enforce_max_payload(
     ``request.stream()`` and abort as soon as the running total
     exceeds ``max_payload``.
 
-    Raises :class:`ApiValidationError` with a structured WARNING when
+    Raises :class:`ValidationError` with a structured WARNING when
     the cap is exceeded; returns the assembled body otherwise.
     """
     content_length_header = request.headers.get(

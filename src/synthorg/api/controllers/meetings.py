@@ -343,7 +343,7 @@ class MeetingController(Controller):
             Tuple of meeting responses for all triggered meetings.
 
         Raises:
-            ApiValidationError: If ``data.context`` exceeds the
+            ValidationError: If ``data.context`` exceeds the
                 operator-configured key cap
                 (``api.max_meeting_context_keys``).
             ServiceUnavailableError: Raised by the

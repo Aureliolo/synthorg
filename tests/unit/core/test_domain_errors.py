@@ -53,6 +53,41 @@ class TestDomainErrorBase:
     @pytest.mark.parametrize(
         ("category", "code"),
         [
+            # Each pair is wrong: category does not match the first
+            # digit of error_code.value.  The validator must fire for
+            # every cross-category mismatch, not just one.
+            (ErrorCategory.AUTH, ErrorCode.VALIDATION_ERROR),  # 1 vs 2
+            (ErrorCategory.VALIDATION, ErrorCode.RESOURCE_NOT_FOUND),  # 2 vs 3
+            (ErrorCategory.NOT_FOUND, ErrorCode.RESOURCE_CONFLICT),  # 3 vs 4
+            (ErrorCategory.CONFLICT, ErrorCode.RATE_LIMITED),  # 4 vs 5
+            (ErrorCategory.RATE_LIMIT, ErrorCode.BUDGET_EXHAUSTED),  # 5 vs 6
+            (ErrorCategory.BUDGET_EXHAUSTED, ErrorCode.PROVIDER_ERROR),  # 6 vs 7
+            (ErrorCategory.PROVIDER_ERROR, ErrorCode.INTERNAL_ERROR),  # 7 vs 8
+            (ErrorCategory.INTERNAL, ErrorCode.UNAUTHORIZED),  # 8 vs 1
+        ],
+    )
+    def test_init_subclass_rejects_every_cross_category_mismatch(
+        self,
+        category: ErrorCategory,
+        code: ErrorCode,
+    ) -> None:
+        """The validator fires for every cross-category mismatch, not just one.
+
+        ``__init_subclass__`` runs once at class-body completion, so the
+        broken subclass is constructed via the ``type(name, bases, dict)``
+        metaclass call -- equivalent to a class statement, but a single
+        expression so it fits inside ``pytest.raises``.
+        """
+        with pytest.raises(TypeError, match="implies category"):
+            type(
+                "_BadError",
+                (DomainError,),
+                {"error_category": category, "error_code": code},
+            )
+
+    @pytest.mark.parametrize(
+        ("category", "code"),
+        [
             (ErrorCategory.AUTH, ErrorCode.UNAUTHORIZED),
             (ErrorCategory.VALIDATION, ErrorCode.VALIDATION_ERROR),
             (ErrorCategory.NOT_FOUND, ErrorCode.RESOURCE_NOT_FOUND),
@@ -244,6 +279,12 @@ class TestRetryAfterCarriers:
         exc = PerOperationRateLimitError(retry_after=0)
         assert exc.retry_after == 1
 
+    def test_per_op_rate_limit_negative_clamped_to_one(self) -> None:
+        """``PerOperationRateLimitError`` floor (1) differs from
+        ``AccountLockedError`` floor (0); pin the asymmetry explicitly."""
+        exc = PerOperationRateLimitError(retry_after=-10)
+        assert exc.retry_after == 1
+
     def test_concurrency_inherits_retry_after(self) -> None:
         exc = ConcurrencyLimitExceededError(retry_after=5)
         assert exc.retry_after == 5
@@ -288,6 +329,22 @@ class TestResourceNotFoundFactory:
                 continue
             err = resource_not_found("thing", "id", code=code)
             assert err.error_code == code
+
+    def test_factory_does_not_mutate_class_level_classvar(self) -> None:
+        """``resource_not_found`` shadows ``error_code`` on the instance only.
+
+        Regression guard: the factory assigns ``error.error_code = code`` as
+        an instance attribute (per the documented carve-out for the
+        otherwise-immutable ClassVar).  This must not leak to the class
+        and corrupt subsequent constructions.
+        """
+        before = NotFoundError.error_code
+        instance = resource_not_found("task", "abc", code=ErrorCode.TASK_NOT_FOUND)
+        assert instance.error_code == ErrorCode.TASK_NOT_FOUND
+        assert NotFoundError.error_code == before
+        # Fresh construction without the factory still sees the class default.
+        plain = NotFoundError()
+        assert plain.error_code == before
 
 
 class TestInstanceConstruction:

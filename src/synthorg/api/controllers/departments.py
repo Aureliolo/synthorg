@@ -723,7 +723,7 @@ class DepartmentController(Controller):
 
         Raises:
             NotFoundError: If the department does not exist.
-            ApiValidationError: If the policy data is invalid.
+            ValidationError: If the policy data is invalid.
         """
         app_state: AppState = state.app_state
 

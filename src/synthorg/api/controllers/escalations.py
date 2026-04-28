@@ -221,7 +221,7 @@ class EscalationsController(Controller):
             NotFoundError: ``escalation_id`` does not exist.
             ConflictError: the escalation is already decided, expired,
                 or cancelled.
-            ApiValidationError: the decision shape is not accepted by
+            ValidationError: the decision shape is not accepted by
                 the server's configured decision strategy.
         """
         app_state: AppState = state.app_state

@@ -83,13 +83,23 @@ class ConstraintViolationError(QueryError):
 
     Non-retryable: constraint violations are deterministic for a
     given input and will not succeed on a bare retry.
+
+    Raises:
+        ValueError: If ``constraint`` is empty / whitespace-only.  An
+            unidentifiable constraint name defeats the purpose of this
+            class -- callers downstream branch on the constraint token
+            and a blank one cannot be matched.
     """
 
     is_retryable: bool = False
 
     def __init__(self, message: str, *, constraint: str) -> None:
         super().__init__(message)
-        self.constraint: str = constraint
+        stripped = constraint.strip()
+        if not stripped:
+            msg = "ConstraintViolationError requires a non-blank constraint name"
+            raise ValueError(msg)
+        self.constraint: str = stripped
 
 
 class VersionConflictError(QueryError):

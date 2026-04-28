@@ -81,7 +81,7 @@ class ProjectController(Controller):
             Paginated list of projects.
 
         Raises:
-            ApiValidationError: ``status`` is not a valid
+            ValidationError: ``status`` is not a valid
                 :class:`ProjectStatus` value.
         """
         parsed_status: ProjectStatus | None = None

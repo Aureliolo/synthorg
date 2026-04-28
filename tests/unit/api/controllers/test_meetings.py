@@ -364,7 +364,7 @@ class TestMeetingController:
                 "context": {"k1": "v1", "k2": "v2"},
             },
         )
-        # ApiValidationError -> structured 4xx envelope (RFC 9457).
+        # ValidationError -> structured 4xx envelope (RFC 9457).
         assert resp.status_code in {400, 422}, resp.text
         body = resp.json()
         assert body["success"] is False
@@ -553,7 +553,7 @@ class TestTriggerMeetingRequestValidation:
         ``TriggerMeetingRequest`` only validates per-key/per-value
         invariants; ``trigger_meeting`` reads
         ``api.max_meeting_context_keys`` from the settings backend at
-        request time and raises :class:`ApiValidationError` when the
+        request time and raises :class:`ValidationError` when the
         cap is exceeded.  See ``test_rejects_too_many_context_keys``
         below for the controller-layer assertion.
         """

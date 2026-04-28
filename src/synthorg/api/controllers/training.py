@@ -104,7 +104,11 @@ def _coerce_override_sources(
         stripped = raw_id.strip()
         if not stripped:
             msg = "override_sources entries must be non-blank"
-            logger.warning(API_REQUEST_ERROR, error=msg)
+            logger.warning(
+                API_REQUEST_ERROR,
+                error_type=ValidationError.__name__,
+                error=msg,
+            )
             raise ValidationError(msg)
         coerced.append(NotBlankStr(stripped))
     return tuple(coerced)
@@ -174,7 +178,7 @@ class TrainingController(Controller):
             ``ApiResponse`` wrapping the created plan response DTO.
 
         Raises:
-            ApiValidationError: If the request contains invalid
+            ValidationError: If the request contains invalid
                 content types, caps, or override sources.
             NotFoundError: If the agent name does not resolve.
         """
@@ -272,11 +276,12 @@ class TrainingController(Controller):
                     failed_plan,
                 )
             except Exception as save_exc:
-                logger.exception(
+                logger.warning(
                     HR_TRAINING_PLAN_FAILED,
                     plan_id=str(plan.id),
                     error="Failed to persist FAILED status",
-                    persistence_error=str(save_exc),
+                    error_type=type(save_exc).__name__,
+                    persistence_error=safe_error_description(save_exc),
                 )
             logger.warning(
                 HR_TRAINING_PLAN_FAILED,
@@ -446,7 +451,7 @@ class TrainingController(Controller):
 
         Raises:
             NotFoundError: If the plan or agent cannot be resolved.
-            ApiValidationError: If the request contains invalid caps
+            ValidationError: If the request contains invalid caps
                 or override source ids.
         """
         identity = await _resolve_agent(app_state, agent_name)

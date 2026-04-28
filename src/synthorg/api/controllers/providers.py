@@ -346,7 +346,7 @@ class ProviderController(Controller):
 
         Raises:
             ConflictError: If a provider with this name already exists.
-            ApiValidationError: If the provider configuration fails
+            ValidationError: If the provider configuration fails
                 validation.
         """
         app_state: AppState = state.app_state
@@ -400,7 +400,7 @@ class ProviderController(Controller):
 
         Raises:
             ConflictError: If a provider with this name already exists.
-            ApiValidationError: If the preset is unknown or config
+            ValidationError: If the preset is unknown or config
                 validation fails.
         """
         app_state: AppState = state.app_state
@@ -450,7 +450,7 @@ class ProviderController(Controller):
 
         Raises:
             NotFoundError: If the provider does not exist.
-            ApiValidationError: If the update fails validation.
+            ValidationError: If the update fails validation.
         """
         app_state: AppState = state.app_state
         try:
@@ -1078,7 +1078,7 @@ class ProviderController(Controller):
 
         Raises:
             NotFoundError: If the provider does not exist.
-            ApiValidationError: If the rotation payload's ``auth_type``
+            ValidationError: If the rotation payload's ``auth_type``
                 does not match the provider's persisted ``auth_type``.
         """
         app_state: AppState = state.app_state
@@ -1175,7 +1175,7 @@ class ProviderController(Controller):
 
         Raises:
             NotFoundError: If the preset name is unknown.
-            ApiValidationError: If the override shape conflicts with
+            ValidationError: If the override shape conflicts with
                 the preset's kind (cloud vs local).
         """
         app_state: AppState = state.app_state
@@ -1325,7 +1325,7 @@ class ProviderController(Controller):
 
         Raises:
             NotFoundError: If the provider does not exist.
-            ApiValidationError: If the merged config fails validation.
+            ValidationError: If the merged config fails validation.
         """
         app_state: AppState = state.app_state
         actor = request_audit_actor(request)

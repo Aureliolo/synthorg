@@ -215,7 +215,7 @@ def _validate_resume_payload(
         data: The client's resume payload.
 
     Raises:
-        ApiValidationError: If required fields are missing.
+        ValidationError: If required fields are missing.
     """
     if interrupt.type == InterruptType.TOOL_APPROVAL and data.decision is None:
         msg = "TOOL_APPROVAL interrupts require a decision"
@@ -244,7 +244,7 @@ async def _resolve_interrupt(
 
     Raises:
         NotFoundError: If interrupt doesn't exist or is no longer pending.
-        ApiValidationError: If payload doesn't match interrupt type.
+        ValidationError: If payload doesn't match interrupt type.
     """
     interrupt = await store.get(interrupt_id)
     if interrupt is None:

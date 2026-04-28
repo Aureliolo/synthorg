@@ -137,7 +137,7 @@ class CoordinationController(Controller):
 
         Raises:
             NotFoundError: If the task is not found.
-            ApiValidationError: If agent resolution fails.
+            ValidationError: If agent resolution fails.
             ServiceUnavailableError: If coordinator not configured.
         """
         app_state: AppState = state.app_state
@@ -329,7 +329,7 @@ class CoordinationController(Controller):
             Tuple of agent identities.
 
         Raises:
-            ApiValidationError: If agents cannot be resolved.
+            ValidationError: If agents cannot be resolved.
         """
         registry = app_state.agent_registry
 

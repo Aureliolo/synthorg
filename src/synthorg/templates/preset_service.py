@@ -77,7 +77,7 @@ def _normalize_preset_name(raw: str) -> str:
         Normalized lowercase name.
 
     Raises:
-        ApiValidationError: If the name is empty or has invalid format.
+        ValidationError: If the name is empty or has invalid format.
     """
     name = raw.strip().lower()
     if not name:
@@ -115,7 +115,7 @@ def _validate_personality_config(
         Validated PersonalityConfig instance.
 
     Raises:
-        ApiValidationError: If validation fails.
+        ValidationError: If validation fails.
     """
     try:
         return PersonalityConfig(**config)
@@ -264,7 +264,7 @@ class PersonalityPresetService:
         Raises:
             ConflictError: If name shadows a builtin preset or a
                 custom preset with the same name already exists.
-            ApiValidationError: If name format or config is invalid.
+            ValidationError: If name format or config is invalid.
         """
         key = _normalize_preset_name(name)
         _check_not_builtin(key, "create")
@@ -327,7 +327,7 @@ class PersonalityPresetService:
         Raises:
             ConflictError: If name is a builtin preset.
             NotFoundError: If no custom preset with this name exists.
-            ApiValidationError: If name or config is invalid.
+            ValidationError: If name or config is invalid.
         """
         key = _normalize_preset_name(name)
         _check_not_builtin(key, "update")
@@ -380,7 +380,7 @@ class PersonalityPresetService:
         Raises:
             ConflictError: If name is a builtin preset.
             NotFoundError: If no custom preset with this name exists.
-            ApiValidationError: If name format is invalid.
+            ValidationError: If name format is invalid.
         """
         key = _normalize_preset_name(name)
         _check_not_builtin(key, "delete")

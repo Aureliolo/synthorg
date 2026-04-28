@@ -1493,7 +1493,7 @@ class TestBareResponseFixes:
             )
 
     def test_invalid_project_status_produces_rfc_9457_422(self) -> None:
-        """Invalid project status filter raises ApiValidationError (422)."""
+        """Invalid project status filter raises ValidationError (422)."""
 
         @get("/projects")
         async def handler() -> None:

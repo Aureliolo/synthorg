@@ -181,7 +181,7 @@ class UserController(Controller):
             Created user response.
 
         Raises:
-            ApiValidationError: If the role is SYSTEM or password
+            ValidationError: If the role is SYSTEM or password
                 is too short.
             ConflictError: If username is taken or a second CEO is
                 requested.
@@ -334,7 +334,7 @@ class UserController(Controller):
 
         Raises:
             NotFoundError: If the user is not found.
-            ApiValidationError: If the target role is SYSTEM.
+            ValidationError: If the target role is SYSTEM.
             ConflictError: If the target user is the system user,
                 changing the only CEO's role, or assigning a
                 second CEO.
@@ -494,7 +494,7 @@ class UserController(Controller):
         Raises:
             NotFoundError: If the user is not found.
             ConflictError: If the user already has the role.
-            ApiValidationError: If department_admin without departments.
+            ValidationError: If department_admin without departments.
         """
         service = _service(state)
         user = await _get_user_or_404(service, user_id)
@@ -590,7 +590,7 @@ class UserController(Controller):
 
         Raises:
             NotFoundError: If the user is not found.
-            ApiValidationError: If the role value is invalid.
+            ValidationError: If the role value is invalid.
             ConflictError: If revoking the last owner.
         """
         service = _service(state)

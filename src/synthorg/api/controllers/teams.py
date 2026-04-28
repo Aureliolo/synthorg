@@ -106,7 +106,7 @@ def _persisted_name(record: dict[str, Any], record_type: str) -> str:
         The ``name`` field as a ``str``.
 
     Raises:
-        ApiValidationError: If ``name`` is missing or not a string.
+        ValidationError: If ``name`` is missing or not a string.
     """
     value = record.get("name")
     if not isinstance(value, str):
@@ -139,7 +139,7 @@ def _find_department(
 
     Raises:
         NotFoundError: If not found.
-        ApiValidationError: If a persisted record has a non-string name.
+        ValidationError: If a persisted record has a non-string name.
     """
     target = normalize_identifier(name)
     for idx, dept in enumerate(depts):
@@ -164,7 +164,7 @@ def _find_team(
 
     Raises:
         NotFoundError: If not found.
-        ApiValidationError: If a persisted record has a non-string name.
+        ValidationError: If a persisted record has a non-string name.
     """
     target = normalize_identifier(team_name)
     for idx, team in enumerate(teams):
@@ -189,7 +189,7 @@ def _check_team_name_unique(
 
     Raises:
         ConflictError: If a name collision is detected.
-        ApiValidationError: If a persisted record has a non-string name.
+        ValidationError: If a persisted record has a non-string name.
     """
     target = normalize_identifier(name)
     for idx, team in enumerate(teams):
@@ -210,7 +210,7 @@ def _validate_team_model(team_dict: dict[str, Any]) -> Team:
         Validated Team instance.
 
     Raises:
-        ApiValidationError: If validation fails.
+        ValidationError: If validation fails.
     """
     try:
         return Team(**team_dict)
@@ -274,7 +274,7 @@ class TeamController(Controller):
         Raises:
             NotFoundError: If the department does not exist.
             ConflictError: If a team with this name already exists.
-            ApiValidationError: If team data is invalid.
+            ValidationError: If team data is invalid.
         """
         app_state: AppState = state.app_state
 
@@ -330,7 +330,7 @@ class TeamController(Controller):
 
         Raises:
             NotFoundError: If the department does not exist.
-            ApiValidationError: If names set does not match.
+            ValidationError: If names set does not match.
         """
         app_state: AppState = state.app_state
 
@@ -452,7 +452,7 @@ class TeamController(Controller):
         Raises:
             NotFoundError: If department or team not found.
             ConflictError: If rename conflicts with existing name.
-            ApiValidationError: If updated team data is invalid.
+            ValidationError: If updated team data is invalid.
         """
         app_state: AppState = state.app_state
 
@@ -517,7 +517,7 @@ class TeamController(Controller):
         Raises:
             NotFoundError: If department, team, or reassignment target
                 not found.
-            ApiValidationError: If reassignment produces invalid data.
+            ValidationError: If reassignment produces invalid data.
         """
         app_state: AppState = state.app_state
 
