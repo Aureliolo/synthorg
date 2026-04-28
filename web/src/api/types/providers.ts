@@ -262,7 +262,12 @@ export interface ProviderAuditActor {
 
 /** One row in the provider mutation audit log (append-only). */
 export interface ProviderAuditEvent {
-  readonly id: number
+  /**
+   * Repo-assigned monotonic id.  Null for events constructed in memory
+   * before persistence; always non-null on rows returned by the audit
+   * list endpoint.  Mirrors the backend ``int | None`` contract.
+   */
+  readonly id: number | null
   readonly provider_name: string
   readonly event_type: ProviderAuditEventType
   readonly actor: ProviderAuditActor

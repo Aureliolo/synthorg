@@ -124,7 +124,7 @@ export function AuditLogDrawer({ providerName, open, onClose }: AuditLogDrawerPr
           <ol className="flex flex-col divide-y divide-border">
             {events.map((event) => (
               <li
-                key={event.id}
+                key={event.id ?? `${event.provider_name}-${event.occurred_at}`}
                 className="flex flex-col gap-1 py-grid-gap"
               >
                 <div className="flex items-center justify-between gap-grid-gap">

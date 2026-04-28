@@ -1,7 +1,10 @@
+import { useMemo } from 'react'
 import { useParams } from 'react-router'
+import { createVersionHistoryClient } from '@/api/endpoints/version-history'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { VersionHistorySection } from '@/components/version-rollback/VersionHistorySection'
 import { ROUTES } from '@/router/routes'
 import { useAgentDetailData } from '@/hooks/useAgentDetailData'
 import { useCompanyStore } from '@/stores/company'
@@ -45,6 +48,20 @@ export default function AgentDetailPage() {
     wsSetupError,
     fetchMoreActivity,
   } = useAgentDetailData(resolvedAgentName)
+
+  // Build the version-history client lazily once per agent id.  The
+  // ``VersionHistorySection`` re-fetches when the client identity
+  // changes, so memoising on ``agent.id`` keeps the page from
+  // hammering the endpoint on every render.
+  const versionsClient = useMemo(
+    () =>
+      agent?.id !== undefined && agent.id !== ''
+        ? createVersionHistoryClient<Record<string, unknown>>(
+            `/agents/${encodeURIComponent(agent.id)}`,
+          )
+        : null,
+    [agent?.id],
+  )
 
   if (loading && !agent) {
     return <AgentDetailSkeleton />
@@ -121,6 +138,19 @@ export default function AgentDetailPage() {
           onLoadMore={fetchMoreActivity}
         />
       </ErrorBoundary>
+
+      {versionsClient !== null && (
+        <ErrorBoundary level="section">
+          <VersionHistorySection
+            client={versionsClient}
+            title="Version history"
+            description="Each agent identity edit is captured as a snapshot. Select two versions to compare; select one to roll back."
+            rollbackSupported
+            emptyTitle="No identity versions yet"
+            emptyDescription="Versions appear here after the first edit to this agent's identity."
+          />
+        </ErrorBoundary>
+      )}
     </div>
   )
 }

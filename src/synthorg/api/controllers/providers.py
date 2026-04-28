@@ -17,7 +17,7 @@ from litestar.response import ServerSentEvent
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.controllers._provider_helpers import enrich_with_usage, sse_error
-from synthorg.api.cursor import decode_keyset_cursor
+from synthorg.api.cursor import InvalidCursorError, decode_keyset_cursor
 from synthorg.api.dto import (
     ApiResponse,
     CreateFromPresetRequest,
@@ -366,7 +366,8 @@ class ProviderController(Controller):
             logger.warning(
                 API_VALIDATION_FAILED,
                 resource="provider",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise ApiValidationError(str(exc)) from exc
         return ApiResponse(data=to_provider_response(config))
@@ -416,7 +417,8 @@ class ProviderController(Controller):
             logger.warning(
                 API_VALIDATION_FAILED,
                 resource="provider",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise ApiValidationError(str(exc)) from exc
         return ApiResponse(data=to_provider_response(config))
@@ -465,7 +467,8 @@ class ProviderController(Controller):
             logger.warning(
                 API_VALIDATION_FAILED,
                 resource="provider",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise ApiValidationError(str(exc)) from exc
         return ApiResponse(data=to_provider_response(config))
@@ -820,7 +823,8 @@ class ProviderController(Controller):
                 API_VALIDATION_FAILED,
                 resource="provider",
                 name=name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise ApiValidationError(str(exc)) from exc
         except ValueError as exc:
@@ -1066,7 +1070,8 @@ class ProviderController(Controller):
                 API_VALIDATION_FAILED,
                 resource="provider",
                 name=name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise ApiValidationError(str(exc)) from exc
         return ApiResponse(data=to_provider_response(updated))
@@ -1300,7 +1305,8 @@ class ProviderController(Controller):
                 API_VALIDATION_FAILED,
                 resource="provider",
                 name=name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise ApiValidationError(str(exc)) from exc
         return ApiResponse(data=updated)
@@ -1360,8 +1366,16 @@ class ProviderController(Controller):
         )
         # The keyset cursor encodes the last id as a string for
         # cross-domain consistency; the provider audit log carries
-        # integer ids, so coerce here.
-        after_id: int | None = int(after_id_str) if after_id_str is not None else None
+        # integer ids, so coerce here.  A validly-signed but malformed
+        # cursor (e.g. tampered payload that survived signature check
+        # but no longer parses as int) maps to a 400.
+        after_id: int | None = None
+        if after_id_str is not None:
+            try:
+                after_id = int(after_id_str)
+            except ValueError as exc:
+                msg = "cursor payload is not an integer"
+                raise InvalidCursorError(msg) from exc
 
         events, has_more = await app_state.provider_audit_service.list_for_provider(
             provider_name=name,

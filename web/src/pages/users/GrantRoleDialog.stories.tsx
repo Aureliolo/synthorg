@@ -6,7 +6,7 @@ import type { UserResponse } from '@/api/endpoints/users'
 const sampleUser: UserResponse = {
   id: 'user-1',
   username: 'alice@example.com',
-  role: 'human',
+  role: 'observer',
   must_change_password: false,
   org_roles: ['viewer'],
   scoped_departments: [],

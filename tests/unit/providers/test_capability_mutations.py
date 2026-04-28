@@ -235,6 +235,10 @@ class TestCredentialsRotation:
             actor=actor,
         )
         assert result.api_key == "rotated-secret-y"
+        # Round-trip the config to confirm rotation persisted: the
+        # in-memory provider state reflects the new key, not the old.
+        persisted = await service.get_provider("cloud-test")
+        assert persisted.api_key == "rotated-secret-y"
         # Audit row carries the masked secret only.
         assert len(audit_repo.records) == 1
         masked = audit_repo.records[0].payload["masked_secret"]
@@ -314,3 +318,45 @@ class TestPresetOverrideService:
         # Delete with no row present.
         result = await service.delete_override("openai", actor=actor)
         assert result is False
+
+
+@pytest.mark.unit
+class TestMaskSecret:
+    """Direct unit tests for the credential-masking helper."""
+
+    def test_mask_secret_long(self) -> None:
+        from synthorg.providers.management._capability_helpers import mask_secret
+
+        # 16-char secret: first 4 + *** + last 4 = "abcd***mnop".
+        masked = mask_secret("abcdefghijklmnop")
+        assert masked == "abcd***mnop"
+        assert "efgh" not in masked  # middle chars never leak
+
+    def test_mask_secret_exactly_eight(self) -> None:
+        from synthorg.providers.management._capability_helpers import mask_secret
+
+        # Boundary: 8 chars = first 4 + *** + last 4 (the prefix and
+        # suffix overlap structurally but the algorithm masks middle
+        # zero-width).
+        masked = mask_secret("abcdwxyz")
+        assert masked == "abcd***wxyz"
+
+    def test_mask_secret_short_fully_masked(self) -> None:
+        from synthorg.providers.management._capability_helpers import mask_secret
+
+        # 7 chars (< 8 threshold) -> entirely masked, never reveals
+        # any prefix/suffix that would together expose the value.
+        masked = mask_secret("abc1234")
+        assert masked == "********"
+        assert "abc" not in masked
+        assert "234" not in masked
+
+    def test_mask_secret_single_char(self) -> None:
+        from synthorg.providers.management._capability_helpers import mask_secret
+
+        assert mask_secret("x") == "********"
+
+    def test_mask_secret_empty(self) -> None:
+        from synthorg.providers.management._capability_helpers import mask_secret
+
+        assert mask_secret("") == "********"

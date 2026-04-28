@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, vi } from 'vitest'
 import { MotionGlobalConfig } from 'motion/react'
 import { setupServer } from 'msw/node'
 import { cancelPendingPersist } from '@/stores/notifications'
+import { cancelSetupWizardPersist } from '@/stores/setup-wizard/teardown'
 import { useThemeStore } from '@/stores/theme'
 import { useToastStore } from '@/stores/toast'
 // NOTE: meetings, approvals, scaling stores are intentionally NOT
@@ -255,6 +256,11 @@ afterEach(() => {
   // Notifications store debounces localStorage persistence with a 300ms
   // setTimeout; drop any pending handle so it does not outlive the test.
   cancelPendingPersist()
+  // Setup-wizard store wraps itself in Zustand ``persist``; clear the
+  // localStorage key directly via the side-effect-free teardown shim
+  // so we do not transitively load ``@/api/client`` (see top-of-file
+  // comment).  The shim is a no-op when localStorage is unavailable.
+  cancelSetupWizardPersist()
   // Theme store subscribes to a `prefers-reduced-motion` MediaQueryList
   // at factory time; detach the listener here so
   // `--detect-async-leaks` does not count it per-test. Paired with

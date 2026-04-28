@@ -25,7 +25,7 @@ const sampleDetail: EscalationResponse = {
         {
           agent_id: 'agent-cto',
           agent_department: 'engineering',
-          agent_level: 'C-Suite',
+          agent_level: 'c_suite',
           position: 'Roll out today; risk is acceptable.',
           reasoning: 'Mitigations are in place.',
           timestamp: '2026-04-28T07:56:00+00:00',
@@ -33,7 +33,7 @@ const sampleDetail: EscalationResponse = {
         {
           agent_id: 'agent-cso',
           agent_department: 'security',
-          agent_level: 'C-Suite',
+          agent_level: 'c_suite',
           position: 'Hold for 24h pending pen-test results.',
           reasoning: 'Pen-test surfaced ambiguous findings.',
           timestamp: '2026-04-28T07:57:00+00:00',

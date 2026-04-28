@@ -11,7 +11,7 @@ const NEXT_STEPS = [
   {
     icon: Users,
     label: 'Review your org chart',
-    to: ROUTES.ORG_CHART,
+    to: ROUTES.ORG,
     description: 'See the agent hierarchy you just provisioned.',
   },
   {

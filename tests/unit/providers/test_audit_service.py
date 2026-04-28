@@ -11,8 +11,27 @@ from synthorg.api.dto_provider_capabilities import (
 from synthorg.providers.management.audit_service import ProviderAuditService
 
 
+def _row_id(event: ProviderAuditEvent) -> int:
+    """Asserting accessor for ``event.id`` after a ``record()`` call.
+
+    The ``ProviderAuditRepo`` contract guarantees ``id`` is non-null
+    on the row returned from ``record()``; the field stays optional
+    on the DTO only because pre-persistence in-memory events do not
+    carry one.  Tests that operate on persisted rows should assert
+    that invariant instead of falling back to ``or 0``, which would
+    silently mask a contract bug.
+    """
+    assert event.id is not None
+    return event.id
+
+
 class _FakeRepo:
-    """In-memory ``ProviderAuditRepo`` for unit tests."""
+    """In-memory ``ProviderAuditRepo`` for unit tests.
+
+    Mirrors the protocol contract: every ``record()`` returns a row
+    with a non-null monotonic ``id``; ``list()`` reads sort/filter on
+    that id without defensive fallbacks.
+    """
 
     def __init__(self) -> None:
         self.records: list[ProviderAuditEvent] = []
@@ -34,11 +53,11 @@ class _FakeRepo:
     ) -> tuple[tuple[ProviderAuditEvent, ...], bool]:
         rows = sorted(
             (e for e in self.records if e.provider_name == provider_name),
-            key=lambda e: e.id or 0,
+            key=_row_id,
             reverse=True,
         )
         if after_id is not None:
-            rows = [e for e in rows if (e.id or 0) < after_id]
+            rows = [e for e in rows if _row_id(e) < after_id]
         page = rows[:limit]
         has_more = len(rows) > limit
         return tuple(page), has_more
@@ -46,7 +65,7 @@ class _FakeRepo:
     async def purge_before_id(self, *, before_id: int) -> int:
         self.purged.append(before_id)
         before = len(self.records)
-        self.records = [e for e in self.records if (e.id or 0) >= before_id]
+        self.records = [e for e in self.records if _row_id(e) >= before_id]
         return before - len(self.records)
 
 
@@ -139,15 +158,24 @@ class TestProviderAuditService:
     async def test_purge_before_id(self, actor: ProviderAuditActor) -> None:
         repo = _FakeRepo()
         service = ProviderAuditService(repo)
+        saved_ids: list[int] = []
         for _ in range(3):
-            await service.record(
+            saved = await service.record(
                 provider_name="cloud-test",
                 event_type="provider_updated",
                 actor=actor,
             )
-        removed = await service.purge_before_id(before_id=2)
+            saved_ids.append(_row_id(saved))
+        # Purge ids strictly less than the second-recorded id.
+        cutoff = saved_ids[1]
+        removed = await service.purge_before_id(before_id=cutoff)
         assert removed == 1
-        assert repo.purged == [2]
+        assert repo.purged == [cutoff]
+        # Verify the *correct* row was dropped (id < cutoff) and the
+        # rows at and above the cutoff survived.
+        remaining_ids = sorted(_row_id(e) for e in repo.records)
+        assert saved_ids[0] not in remaining_ids
+        assert remaining_ids == saved_ids[1:]
 
     async def test_record_uses_now_utc(self, actor: ProviderAuditActor) -> None:
         repo = _FakeRepo()
