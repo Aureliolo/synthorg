@@ -145,28 +145,12 @@ func commitsBetweenFromURL(ctx context.Context, commitsBaseURL, tagRefURL, tagOb
 		return CommitRange{}, fmt.Errorf("comparing %s...%s: %w", base, head, err)
 	}
 
-	var collected []Commit
-	for page := 1; page <= maxCommitPages; page++ {
-		pageURL, err := buildCommitsPageURL(commitsBaseURL, head, page)
-		if err != nil {
-			return CommitRange{}, fmt.Errorf("comparing %s...%s: %w", base, head, err)
-		}
-		entries, err := fetchJSON[[]listCommitJSON](ctx, pageURL)
-		if err != nil {
-			return CommitRange{}, fmt.Errorf("comparing %s...%s: %w", base, head, err)
-		}
-		if len(entries) == 0 {
-			break
-		}
-		for _, c := range entries {
-			if shaMatches(c.SHA, baseSHA) {
-				return CommitRange{Commits: collected, TotalCommits: len(collected)}, nil
-			}
-			collected = append(collected, projectListCommit(c))
-		}
-		if len(entries) < commitsPerPage {
-			break
-		}
+	collected, foundBase, err := walkCommitsToBase(ctx, commitsBaseURL, baseSHA, head)
+	if err != nil {
+		return CommitRange{}, fmt.Errorf("comparing %s...%s: %w", base, head, err)
+	}
+	if foundBase {
+		return CommitRange{Commits: collected, TotalCommits: len(collected)}, nil
 	}
 
 	// Walked without finding base. If we collected nothing the head ref
@@ -184,6 +168,37 @@ func commitsBetweenFromURL(ctx context.Context, commitsBaseURL, tagRefURL, tagOb
 		Commits:      collected,
 		TotalCommits: total,
 	}, nil
+}
+
+// walkCommitsToBase paginates the list-commits endpoint backwards from head
+// and returns the commits encountered up to (but not including) the entry
+// matching baseSHA. foundBase reports whether the walk terminated because
+// it hit baseSHA (true) or because it ran out of pages / hit an empty page
+// (false). The caller decides how to render the truncated case.
+func walkCommitsToBase(ctx context.Context, commitsBaseURL, baseSHA, head string) (collected []Commit, foundBase bool, err error) {
+	for page := 1; page <= maxCommitPages; page++ {
+		pageURL, err := buildCommitsPageURL(commitsBaseURL, head, page)
+		if err != nil {
+			return nil, false, err
+		}
+		entries, err := fetchJSON[[]listCommitJSON](ctx, pageURL)
+		if err != nil {
+			return nil, false, err
+		}
+		if len(entries) == 0 {
+			return collected, false, nil
+		}
+		for _, c := range entries {
+			if shaMatches(c.SHA, baseSHA) {
+				return collected, true, nil
+			}
+			collected = append(collected, projectListCommit(c))
+		}
+		if len(entries) < commitsPerPage {
+			return collected, false, nil
+		}
+	}
+	return collected, false, nil
 }
 
 // resolveBaseToSHA returns the full commit SHA for base. SHA-shaped inputs
@@ -214,6 +229,11 @@ func resolveBaseToSHA(ctx context.Context, tagRefURL, tagObjectURL, base string)
 	}
 
 	// Annotated tag -- one extra dereference to reach the wrapped commit.
+	// Annotated tags chain at most one level on GitHub (a tag object always
+	// points at a commit object, never at another tag object), so we
+	// deliberately do not loop: a second-level "tag" type would indicate a
+	// malformed or manipulated response and is rejected by the type check
+	// below rather than chased further.
 	tagURL := strings.ReplaceAll(tagObjectURL, "{sha}", url.PathEscape(ref.Object.SHA))
 	tag, err := fetchJSON[gitTagJSON](ctx, tagURL)
 	if err != nil {
@@ -221,6 +241,11 @@ func resolveBaseToSHA(ctx context.Context, tagRefURL, tagObjectURL, base string)
 	}
 	if tag.Object.SHA == "" {
 		return "", fmt.Errorf("dereferencing annotated tag %q: empty target sha", base)
+	}
+	if tag.Object.Type != "commit" {
+		return "", fmt.Errorf(
+			"dereferencing annotated tag %q: expected commit, got %q",
+			base, tag.Object.Type)
 	}
 	return tag.Object.SHA, nil
 }
@@ -231,7 +256,7 @@ func resolveBaseToSHA(ctx context.Context, tagRefURL, tagObjectURL, base string)
 func buildCommitsPageURL(baseURL, head string, page int) (string, error) {
 	parsed, err := url.Parse(baseURL)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("parsing commits URL: %w", err)
 	}
 	q := parsed.Query()
 	q.Set("sha", head)

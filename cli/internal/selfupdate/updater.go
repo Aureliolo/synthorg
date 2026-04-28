@@ -590,10 +590,17 @@ func assetName() string {
 	return fmt.Sprintf("synthorg_%s_%s%s", runtime.GOOS, runtime.GOARCH, ext)
 }
 
-// AllowedDownloadHosts are the domains GitHub may redirect release asset
-// downloads to. Requests that end up elsewhere are rejected.
+// AllowedDownloadHosts are the domains GitHub may redirect to from any
+// self-update request -- both the API metadata fetches (releases listing,
+// list-commits walk, tag-ref resolution) routed through `apiClient`, and
+// the asset download path. Requests that end up elsewhere are rejected
+// by `checkRedirectHost`. `api.github.com` does not normally redirect,
+// but listing it keeps the allowlist consistent with every host we
+// actually open a connection to and prevents a future GitHub edge-case
+// (e.g. region-routed API endpoints) from silently breaking the walk.
 // Exported for test injection.
 var AllowedDownloadHosts = map[string]bool{
+	"api.github.com":                        true,
 	"github.com":                            true,
 	"objects.githubusercontent.com":         true,
 	"github-releases.githubusercontent.com": true,

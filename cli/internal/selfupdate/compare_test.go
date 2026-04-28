@@ -196,10 +196,10 @@ func TestCommitsBetween_paginatesUntilBase(t *testing.T) {
 }
 
 func TestCommitsBetween_truncationFooterWhenBaseNotReached(t *testing.T) {
-	// Every page is a full 100-entry block and base is never encountered.
-	// The walk should hit the maxCommitPages cap and surface a TotalCommits
-	// value greater than len(Commits) so the renderer shows "showing N
-	// (truncated)".
+	// Every page is a full commitsPerPage-entry block and base is never
+	// encountered. The walk should hit the maxCommitPages cap and surface
+	// a TotalCommits value greater than len(Commits) so the renderer
+	// shows "showing N (truncated)".
 	f := newFakeCommitsServer(t)
 	for page := 1; page <= maxCommitPages; page++ {
 		entries := make([]listCommitJSON, commitsPerPage)
