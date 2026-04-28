@@ -117,7 +117,7 @@ If `state` is `MERGED` or `CLOSED`:
 Convergence holds when ALL true:
 - Every entry in `statusCheckRollup` has `conclusion` in {SUCCESS, NEUTRAL, SKIPPED} and no entry is `IN_PROGRESS` / `QUEUED` / `PENDING`.
 - The most recent CodeRabbit review body (if any CodeRabbit reviews exist) contains `Actionable comments posted: 0`.
-- **Zero open security alerts on the PR branch** across all three scanners (code-scanning, dependabot, secret-scanning). Every alert must be either fixed or explicitly dismissed via Phase 6b.
+- **Zero open security alerts in scope.** Scope is per-scanner (matches Phase 6b): zero open **code-scanning** alerts on the PR branch (`ref=refs/heads/$HEAD_BRANCH`), zero **Dependabot** vulnerabilities introduced/surfaced by the PR's dependency changes (via `/dependency-graph/compare/<base>...<head>`), and zero open **secret-scanning** alerts at the repository level (secret-scanning is always repo-scoped because a leaked secret is a leaked secret regardless of which PR happened to surface it). Every in-scope alert must be either fixed or explicitly dismissed via Phase 6b.
 - No new reviews / inline comments / issue comments since cached IDs from any author other than `synthorg-repo-bot[bot]` or you (skip your own ping comments via Phase 4).
 
 If converged:
@@ -337,6 +337,7 @@ Render the full triage table only when there's something to fix.
 ## Rules
 
 ### Loop discipline
+
 - **Never invoke `/aurelio-review-pr` or any Task agent.** This is a watchdog, not a re-reviewer.
 - **One push per round.** Bundle CI fixes + reviewer fixes + security-alert fixes + alert dismissals into a single commit. Multiple pushes burn CodeRabbit re-review rate limits and fragment threads. (`feedback_push_and_review_discipline.md` §4.)
 - **Check CI and external reviewers TOGETHER every cycle.** Never push a CodeRabbit-only fix and leave CI red, or vice versa. (`feedback_push_and_review_discipline.md` §5.)
@@ -344,6 +345,7 @@ Render the full triage table only when there's something to fix.
 - **Default push immediately after committing.** No "ready to push?" prompt. (`feedback_push_and_review_discipline.md` §1.)
 
 ### Completeness, the only sanctioned exits
+
 - **Fix EVERYTHING valid.** Out-of-scope, pre-existing, larger work, older non-touched code, all in scope. The user's mandate.
 - **Security alerts: FIX or DISMISS, never leave open.** Phase 6b. Open alerts across rounds = workflow failure.
 - **Never push incomplete work.** Before every push verify: all changes committed, lint passes, tests pass, schema drift zero (`atlas schema diff` if touching persistence), no pending TODO from this round. (`feedback_completeness.md` §1.)
@@ -353,6 +355,7 @@ Render the full triage table only when there's something to fix.
 - **Never silently dismiss a security alert.** Phase 6b dismissals always carry a `dismissed_comment` AND a round-history entry.
 
 ### External reviewer hygiene
+
 - **Fetch ALL reviewers unfiltered.** Don't `select(.user.login == "coderabbitai[bot]")` in the initial fetch. Bots vary per repo (CodeRabbit, Gemini, Copilot, Greptile, Socket Security, ...) and human reviewers can show up at any time. Categorize by author from the response, never by an allowlist baked into this skill.
 - **Stale duplicate comments are artifacts.** When CodeRabbit re-posts a finding on already-fixed code (because its index was stale at review time), verify the fix exists in the current code, post `@coderabbitai resolve` on the thread, and move on. Don't re-implement. Log as `{action: "stale_duplicate_resolved", thread_id, evidence}` in history.
 - **Self-pings:** when scanning issue comments, exclude any with body exactly `@coderabbitai review` so the skill doesn't mistake its own pings for new feedback.
@@ -360,6 +363,7 @@ Render the full triage table only when there's something to fix.
 - **Outside-diff-range comments:** CodeRabbit embeds these in `<details>` blocks at the top of the review body when the affected lines are outside the diff. Parse them as actionable inline comments. They're NOT optional. (Same parser as `/aurelio-review-pr` Phase 4.)
 
 ### Mechanics
+
 - **Never `durable: true`** on any cron primitive. Session-only. (`feedback_no_cloud_schedule.md`.)
 - **Never offer cloud `/schedule`.** Default `/loop`-style scheduling is `ScheduleWakeup`. (`feedback_no_cloud_schedule.md`.)
 - **Never `--no-verify`, never `--amend`.** Hook failures get fixed in a NEW commit, never bypassed.
