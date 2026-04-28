@@ -100,6 +100,11 @@ export function VersionHistorySection<T>(
     to: number
   } | null>(null)
   const [rollbackOpen, setRollbackOpen] = useState(false)
+  // Bump to re-arm the guarded fetch effect.  Keeps the refresh
+  // path inside the same cancellation-aware flow as the initial
+  // load so a stale in-flight request cannot apply data after
+  // ``client`` changes or the host unmounts.
+  const [reloadNonce, setReloadNonce] = useState(0)
 
   // Initial load.  ``client`` is captured as the dependency; new
   // clients (rare; only when the parent rebuilds the factory)
@@ -136,7 +141,7 @@ export function VersionHistorySection<T>(
     return () => {
       cancelled = true
     }
-  }, [client])
+  }, [client, reloadNonce])
 
   const handleLoadMore = async (): Promise<void> => {
     // Guard against fast repeated triggers re-requesting the same
@@ -176,23 +181,11 @@ export function VersionHistorySection<T>(
   }
 
   const handleRefresh = (): void => {
-    // Re-trigger the initial-load effect by bumping a key state.
-    // Simpler approach: re-call ``client.list`` here directly.
-    setLoading(true)
-    setError(null)
-    void (async () => {
-      try {
-        const page = await client.list({ limit: 25 })
-        setItems(page.data)
-        setCursor(page.nextCursor)
-        setHasMore(page.hasMore)
-      } catch (err) {
-        log.warn('refresh versions failed:', getErrorMessage(err))
-        setError(getErrorMessage(err))
-      } finally {
-        setLoading(false)
-      }
-    })()
+    // Bump the reload nonce so the guarded fetch effect re-runs.
+    // Routing refresh through the effect (instead of an inline
+    // unguarded async) ensures stale in-flight requests cannot
+    // commit data after ``client`` changes or unmount.
+    setReloadNonce((n) => n + 1)
   }
 
   return (

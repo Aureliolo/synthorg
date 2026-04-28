@@ -9,7 +9,7 @@ import type { VersionHistoryClient } from '@/api/endpoints/version-history'
 
 const log = createLogger('rollback-confirm')
 
-interface RollbackConfirmDialogProps<T> {
+export interface RollbackConfirmDialogProps<T> {
   client: VersionHistoryClient<T>
   toVersion: number | null
   open: boolean

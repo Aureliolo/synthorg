@@ -90,6 +90,11 @@ class SQLitePresetOverrideRepo:
         """Insert or replace the override for ``override.preset_name``."""
         if override.updated_at is None or override.updated_by is None:
             msg = "PresetOverride.updated_at and updated_by must be set on upsert"
+            logger.warning(
+                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                preset_name=override.preset_name,
+                error=msg,
+            )
             raise QueryError(msg)
         params = (
             override.preset_name,

@@ -51,6 +51,10 @@ PROVIDER_NOT_FOUND: Final[str] = "provider.management.not_found"
 PROVIDER_ALREADY_EXISTS: Final[str] = "provider.management.already_exists"
 PROVIDER_VALIDATION_FAILED: Final[str] = "provider.management.validation_failed"
 PROVIDER_AUDIT_WRITE_FAILED: Final[str] = "provider.audit.write_failed"
+PROVIDER_MODEL_ADDED: Final[str] = "provider.management.model_added"
+PROVIDER_MODELS_SYNCED: Final[str] = "provider.management.models_synced"
+PROVIDER_CREDENTIALS_ROTATED: Final[str] = "provider.management.credentials_rotated"
+PROVIDER_RATE_LIMITS_UPDATED: Final[str] = "provider.management.rate_limits_updated"
 
 # ── Provider model discovery ───────────────────────────────
 

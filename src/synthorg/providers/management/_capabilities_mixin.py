@@ -28,7 +28,11 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_ALREADY_EXISTS,
     PROVIDER_AUDIT_WRITE_FAILED,
+    PROVIDER_CREDENTIALS_ROTATED,
+    PROVIDER_MODEL_ADDED,
+    PROVIDER_MODELS_SYNCED,
     PROVIDER_NOT_FOUND,
+    PROVIDER_RATE_LIMITS_UPDATED,
     PROVIDER_VALIDATION_FAILED,
 )
 from synthorg.providers.errors import (
@@ -161,6 +165,12 @@ class ProviderCapabilitiesMixin:
             new_providers = {**providers, name: updated}
             await self._validate_and_persist(new_providers)
 
+        logger.info(
+            PROVIDER_MODEL_ADDED,
+            provider=name,
+            model=new_model.id,
+            alias=new_model.alias,
+        )
         # Audit AFTER the mutation is durably persisted and the lock
         # is released; audit-row I/O must not extend the critical
         # section for every concurrent provider mutation.  Mirrors
@@ -187,6 +197,12 @@ class ProviderCapabilitiesMixin:
         ``replace_existing=False`` keeps existing models verbatim and
         only appends models the discovery surfaced as new.
         """
+        # Snapshot the provider config that drove discovery (base_url
+        # / auth_type / preset_name) so we can detect a concurrent
+        # mutation that swapped the endpoint or credentials between
+        # the discovery call and the persistence write.
+        pre_discover = await self.get_provider(name)
+
         # Discovery is idempotent and pure-read; run it outside the
         # lock so concurrent provider mutations are not blocked
         # behind potentially-slow upstream HTTP calls.  Forward the
@@ -206,6 +222,29 @@ class ProviderCapabilitiesMixin:
                 msg = f"Provider {name!r} not found"
                 logger.warning(PROVIDER_NOT_FOUND, provider=name, error=msg)
                 raise ProviderNotFoundError(msg)
+
+            # If the discovery target was swapped under us (different
+            # base_url / auth_type / preset) we must NOT persist the
+            # discovered set onto the new endpoint config -- it would
+            # be stale data from a different upstream.  Reject with
+            # ProviderValidationError so the operator can re-issue
+            # the sync; HTTP 422 surfaces this on the controller.
+            if (
+                current.base_url != pre_discover.base_url
+                or current.auth_type != pre_discover.auth_type
+                or current.preset_name != pre_discover.preset_name
+            ):
+                msg = (
+                    f"Provider {name!r} configuration changed during "
+                    f"discovery; aborting sync to avoid persisting "
+                    f"stale upstream data"
+                )
+                logger.warning(
+                    PROVIDER_VALIDATION_FAILED,
+                    provider=name,
+                    error=msg,
+                )
+                raise ProviderValidationError(msg)
 
             # Re-derive the diff against ``current`` (the post-lock
             # snapshot) rather than the pre-lock ``existing`` we
@@ -244,6 +283,14 @@ class ProviderCapabilitiesMixin:
             new_providers = {**providers, name: updated_config}
             await self._validate_and_persist(new_providers)
 
+        logger.info(
+            PROVIDER_MODELS_SYNCED,
+            provider=name,
+            added_count=len(added),
+            removed_count=len(removed),
+            updated_count=len(updated),
+            replace_existing=request.replace_existing,
+        )
         await self._audit(  # type: ignore[attr-defined]
             provider_name=name,
             event_type="models_synced",
@@ -302,6 +349,11 @@ class ProviderCapabilitiesMixin:
             new_providers = {**providers, name: updated}
             await self._validate_and_persist(new_providers)
 
+        logger.info(
+            PROVIDER_CREDENTIALS_ROTATED,
+            provider=name,
+            auth_type=existing.auth_type.value,
+        )
         # Audit out of the critical section: rotation has already
         # been persisted and hot-reloaded by the time we get here;
         # the audit row must not extend lock contention.
@@ -370,6 +422,11 @@ class ProviderCapabilitiesMixin:
             new_providers = {**providers, name: updated}
             await self._validate_and_persist(new_providers)
 
+        logger.info(
+            PROVIDER_RATE_LIMITS_UPDATED,
+            provider=name,
+            fields_changed=sorted(updates.keys()),
+        )
         # Audit out of the lock for the same reason as
         # ``rotate_credentials`` and ``add_model``: the change is
         # durably persisted by here, and audit-row I/O should not

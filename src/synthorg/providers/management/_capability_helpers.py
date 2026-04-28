@@ -58,15 +58,28 @@ def credentials_update_fields(
         secret = request.api_key.get_secret_value()  # type: ignore[union-attr]
         return ({"api_key": secret}, mask_secret(secret))
     if auth_type == AuthType.SUBSCRIPTION:
+        # ToS re-acceptance is mandatory on subscription rotation;
+        # silently rotating with ``tos_accepted=False`` would let
+        # callers strip the previously-recorded acceptance timestamp
+        # and bypass the contract.
+        if not request.tos_accepted:  # type: ignore[union-attr]
+            msg = (
+                "Subscription rotation requires tos_accepted=true; "
+                "the operator must re-accept the provider's terms"
+            )
+            exc = ProviderValidationError(msg)
+            logger.warning(
+                PROVIDER_VALIDATION_FAILED,
+                auth_type=str(auth_type),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise exc
         secret = request.subscription_token.get_secret_value()  # type: ignore[union-attr]
         return (
             {
                 "subscription_token": secret,
-                "tos_accepted_at": (
-                    format_iso_utc(datetime.now(UTC))
-                    if request.tos_accepted  # type: ignore[union-attr]
-                    else None
-                ),
+                "tos_accepted_at": format_iso_utc(datetime.now(UTC)),
             },
             mask_secret(secret),
         )

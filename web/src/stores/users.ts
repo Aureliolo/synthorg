@@ -4,6 +4,10 @@
  * Wires the ``/users`` listing + org-role grant/revoke endpoints into
  * a Zustand store with the canonical sentinel-error contract.
  */
+/* eslint-disable security/detect-possible-timing-attacks --
+   Comparisons against in-flight request tokens (plain monotonic
+   ints) are not timing-sensitive secrets; they are how this store
+   discards stale fetch responses. */
 import { create } from 'zustand'
 
 import {
@@ -45,7 +49,14 @@ interface UsersState {
   revokeOrgRole: (userId: string, role: OrgRole) => Promise<boolean>
 }
 
-export const useUsersStore = create<UsersState>()((set, get) => ({
+export const useUsersStore = create<UsersState>()((set, get) => {
+  // Monotonic request token used to discard stale fetch-more
+  // results.  ``fetchUsers`` bumps the token; any in-flight
+  // ``fetchMoreUsers`` whose token is no longer current discards
+  // its result instead of appending stale page data.
+  let listRequestToken = 0
+
+  return {
   users: [],
   total: null,
   nextCursor: null,
@@ -56,6 +67,9 @@ export const useUsersStore = create<UsersState>()((set, get) => ({
   submitting: false,
 
   fetchUsers: async () => {
+    // Bump the token so any in-flight fetchMoreUsers knows its
+    // result is stale and should be discarded.
+    const token = ++listRequestToken
     set({
       users: [],
       nextCursor: null,
@@ -65,6 +79,7 @@ export const useUsersStore = create<UsersState>()((set, get) => ({
     })
     try {
       const page = await apiListUsers({ limit: USERS_PAGE_LIMIT })
+      if (token !== listRequestToken) return
       set({
         users: page.data,
         total: page.total,
@@ -74,6 +89,7 @@ export const useUsersStore = create<UsersState>()((set, get) => ({
       })
     } catch (err) {
       log.error('Failed to fetch users', sanitizeForLog(err))
+      if (token !== listRequestToken) return
       set({ loading: false, error: getErrorMessage(err) })
     }
   },
@@ -88,12 +104,17 @@ export const useUsersStore = create<UsersState>()((set, get) => ({
     ) {
       return
     }
+    const token = listRequestToken
     set({ loadingMore: true })
     try {
       const page = await apiListUsers({
         cursor: state.nextCursor,
         limit: USERS_PAGE_LIMIT,
       })
+      // Drop the result if a newer ``fetchUsers`` (different token)
+      // has superseded this load-more while we were awaiting; the
+      // pre-await snapshot is no longer authoritative.
+      if (token !== listRequestToken) return
       // Use the functional setter so concurrent mutations (e.g. a
       // grantOrgRole that lands while this page is in flight) are
       // not clobbered by the pre-await ``state.users`` snapshot.
@@ -105,6 +126,7 @@ export const useUsersStore = create<UsersState>()((set, get) => ({
       }))
     } catch (err) {
       log.error('Failed to fetch more users', sanitizeForLog(err))
+      if (token !== listRequestToken) return
       set({ loadingMore: false, error: getErrorMessage(err) })
     }
   },
@@ -160,4 +182,5 @@ export const useUsersStore = create<UsersState>()((set, get) => ({
       return false
     }
   },
-}))
+  }
+})
