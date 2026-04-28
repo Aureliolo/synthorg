@@ -207,7 +207,6 @@ class TestMessagesHandlers:
         response = await handler(
             app_state=fake_app_state,
             arguments={
-                "channel": "ch",
                 "message_id": "m-1",
                 "confirm": True,
                 "reason": "cleanup",
@@ -228,7 +227,6 @@ class TestMessagesHandlers:
         response = await handler(
             app_state=fake_app_state,
             arguments={
-                "channel": "ch",
                 "message_id": "missing",
                 "confirm": True,
                 "reason": "cleanup",
@@ -247,7 +245,6 @@ class TestMessagesHandlers:
         response = await handler(
             app_state=fake_app_state,
             arguments={
-                "channel": "ch",
                 "message_id": "m-1",
                 "reason": "c",
             },
@@ -268,7 +265,6 @@ class TestMessagesHandlers:
         response = await handler(
             app_state=fake_app_state,
             arguments={
-                "channel": "ch",
                 "message_id": "m-1",
                 "confirm": True,
                 "reason": "cleanup",

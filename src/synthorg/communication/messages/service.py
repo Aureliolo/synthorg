@@ -115,18 +115,20 @@ class MessageService:
     async def delete_message(
         self,
         *,
-        channel: NotBlankStr,
-        message_id: str,
+        message_id: NotBlankStr,
         actor_id: NotBlankStr,
         reason: NotBlankStr,
     ) -> bool:
-        """Delete a single message owned by ``message_id``.
+        """Delete a single message by id.
 
-        The ``channel`` argument is preserved as part of the public
-        contract for symmetry with the read API even though the
-        underlying ``messages.id`` column is globally unique. The
-        ``actor_id`` and ``reason`` arguments drive the audit log so
-        operator-initiated removals are traceable end-to-end.
+        ``messages.id`` is globally unique so deletion is scoped by
+        id alone. The ``actor_id`` and ``reason`` arguments drive the
+        audit log so operator-initiated removals are traceable
+        end-to-end. ``channel`` is intentionally absent from this
+        contract: callers cannot scope the delete to a channel
+        without first reading the message, and accepting an
+        unvalidated ``channel`` field would let stale or wrong values
+        pollute the audit trail.
 
         Returns ``True`` if a row was removed, ``False`` if the
         ``message_id`` did not exist.
@@ -135,7 +137,6 @@ class MessageService:
         if deleted:
             logger.info(
                 COMMUNICATION_MESSAGE_DELETED,
-                channel=channel,
                 message_id=message_id,
                 actor_id=actor_id,
                 reason=reason,

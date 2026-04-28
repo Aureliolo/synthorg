@@ -39,6 +39,7 @@ from synthorg.memory.service import (
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
+    MEMORY_ENTRY_DELETE_FAILED,
     MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED,
     MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED,
     MEMORY_FINE_TUNE_REQUESTED,
@@ -480,11 +481,24 @@ class MemoryAdminController(Controller):
                 NotBlankStr(memory_id),
             )
         except BackendUnsupportedError as exc:
+            logger.warning(
+                MEMORY_ENTRY_DELETE_FAILED,
+                agent_id=agent_id,
+                memory_id=memory_id,
+                reason="backend_unsupported",
+                error=safe_error_description(exc),
+            )
             raise ClientException(
                 detail=str(exc),
                 status_code=HTTP_501_NOT_IMPLEMENTED,
             ) from exc
         if not deleted:
+            logger.warning(
+                MEMORY_ENTRY_DELETE_FAILED,
+                agent_id=agent_id,
+                memory_id=memory_id,
+                reason="not_found",
+            )
             raise NotFoundException(detail=f"memory entry {memory_id!r} not found")
         return ApiResponse(data=None)
 

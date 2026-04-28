@@ -8,7 +8,7 @@ This is the final acceptance test for META-MCP-1.  It asserts:
    arg set returns an envelope whose ``status`` is ``"ok"`` or
    ``"error"``, never ``"not_implemented"``.  The placeholder
    scaffold only fires for tools added after PR1 that haven't been
-   given a real handler yet; after META-MCP-1 the full 203-tool
+   given a real handler yet; after META-MCP-1 the full 205-tool
    surface is covered by real handlers, even if many of them return
    a structured ``not_supported`` error envelope because the
    underlying service layer isn't yet exposed on ``app_state``.

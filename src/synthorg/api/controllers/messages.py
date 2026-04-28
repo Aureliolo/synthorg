@@ -1,4 +1,4 @@
-"""Message controller -- read + operator-driven DELETE via MessageRepository."""
+"""Message controller -- read + operator-driven DELETE via MessageService."""
 
 from typing import Any
 
@@ -12,10 +12,8 @@ from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.communication.channel import Channel
 from synthorg.communication.message import Message  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
-from synthorg.observability.events.communication import (
-    COMMUNICATION_MESSAGE_DELETED,
-)
 
 logger = get_logger(__name__)
 
@@ -75,24 +73,15 @@ class MessageController(Controller):
         state: State,
         request: Request[Any, Any, Any],
         message_id: str,
-        channel: str | None = None,
     ) -> ApiResponse[None]:
         """Delete a single message by id.
 
         Returns ``200 OK`` with ``data=None`` on success and
-        ``404 Not Found`` when the id does not exist. Emits the
-        ``COMMUNICATION_MESSAGE_DELETED`` audit event on success with
-        the authenticated user as the actor; the parallel MCP path
-        (``synthorg_messages_delete``) emits the same event from the
-        :class:`MessageService` layer so both surfaces produce a
-        uniform audit trail (same key set, with ``channel`` reported
-        as ``None`` when the REST caller did not supply it).
-
-        Goes directly through the repository (matching the read path
-        in ``list_messages``) because :class:`MessageService` is wired
-        only inside the MCP host today; the audit log is emitted
-        inline so the HTTP path retains the same audit semantics
-        regardless.
+        ``404 Not Found`` when the id does not exist. Routes through
+        :class:`MessageService` so the audit-grade
+        ``COMMUNICATION_MESSAGE_DELETED`` event is emitted exactly
+        once from the service layer, on parity with the parallel MCP
+        path (``synthorg_messages_delete``).
 
         Args:
             state: Litestar app state.
@@ -100,23 +89,15 @@ class MessageController(Controller):
                 drives the audit log's actor field.
             message_id: Globally unique message identifier (the
                 lookup key on the messages table).
-            channel: Optional channel attribution for the audit log
-                so callers can record which logical bus the message
-                belonged to. ``None`` is acceptable since
-                ``messages.id`` is globally unique; the value is
-                advisory metadata, not a lookup key.
         """
         app_state: AppState = state.app_state
-        deleted = await app_state.persistence.messages.delete(message_id)
+        deleted = await app_state.message_service.delete_message(
+            message_id=message_id,
+            actor_id=NotBlankStr(str(request.user.user_id)),
+            reason=NotBlankStr("operator delete via REST API"),
+        )
         if not deleted:
             raise NotFoundException(detail=f"message {message_id!r} not found")
-        logger.info(
-            COMMUNICATION_MESSAGE_DELETED,
-            channel=channel,
-            message_id=message_id,
-            actor_id=str(request.user.user_id),
-            reason="operator delete via REST API",
-        )
         return ApiResponse(data=None)
 
     @get("/channels")

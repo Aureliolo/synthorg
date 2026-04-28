@@ -48,6 +48,7 @@ from synthorg.observability.events.memory import (
     MEMORY_CHECKPOINT_ROLLBACK_FAILED,
     MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED,
     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
+    MEMORY_ENTRY_DELETE_FAILED,
     MEMORY_ENTRY_DELETED,
     MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
     MEMORY_FINE_TUNE_INVALID_REQUEST,
@@ -202,6 +203,12 @@ class MemoryService:
             msg = (
                 "memory backend is not wired on the active application "
                 "state; memory entry deletion is unavailable"
+            )
+            logger.warning(
+                MEMORY_ENTRY_DELETE_FAILED,
+                agent_id=agent_id,
+                memory_id=memory_id,
+                reason="backend_unsupported",
             )
             raise BackendUnsupportedError(msg)
         deleted = await self._memory_backend.delete(agent_id, memory_id)

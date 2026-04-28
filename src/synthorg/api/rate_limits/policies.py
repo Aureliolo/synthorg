@@ -77,8 +77,8 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     # memory
     "memory.checkpoint_delete": (20, 60),
     "memory.checkpoint_deploy": (2, 3600),
-    "memory.entry_delete": (60, 60),
     "memory.checkpoint_rollback": (2, 3600),
+    "memory.entry_delete": (60, 60),
     "memory.fine_tune": (2, 3600),
     "memory.fine_tune_cancel": (10, 3600),
     "memory.fine_tune_preflight": (50, 60),

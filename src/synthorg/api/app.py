@@ -475,6 +475,31 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         escalation_config,
         persistence,
     )
+    # Communication-domain services (messages + meetings).
+    # Both wrap pre-existing infrastructure (bus + persistence,
+    # orchestrator) and centralize audit logging so HTTP controllers
+    # and MCP handlers route through a single facade per
+    # `docs/reference/conventions.md` § Repository CRUD pattern. The
+    # MCP handlers in `meta/mcp/handlers/communication.py` already
+    # call `app_state.message_service` / `app_state.meeting_service`,
+    # so wiring here is what activates them in production.
+    if message_bus is not None and persistence is not None:
+        from synthorg.communication.messages.service import (  # noqa: PLC0415
+            MessageService,
+        )
+
+        app_state.set_message_service(
+            MessageService(bus=message_bus, persistence=persistence),
+        )
+    if meeting_orchestrator is not None:
+        from synthorg.communication.meetings.service import (  # noqa: PLC0415
+            MeetingService,
+        )
+
+        app_state.set_meeting_service(
+            MeetingService(orchestrator=meeting_orchestrator),
+        )
+
     app_state.set_escalation_store(_escalation_store)
     app_state.set_escalation_processor(build_decision_processor(escalation_config))
     _escalation_registry = PendingFuturesRegistry()

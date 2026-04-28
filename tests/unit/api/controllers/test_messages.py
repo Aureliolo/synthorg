@@ -50,23 +50,6 @@ class TestMessageControllerDelete:
         assert body["success"] is True
         assert body["data"] is None
 
-    async def test_delete_accepts_optional_channel_query_param(
-        self,
-        test_client: TestClient[Any],
-        fake_persistence: Any,
-    ) -> None:
-        """``?channel=X`` is recorded in the audit log for parity with the MCP path."""
-        msg = make_message(msg_id=uuid4(), channel="ops")
-        await fake_persistence.messages.save(msg)
-
-        resp = test_client.delete(
-            f"/api/v1/messages/{msg.id}",
-            params={"channel": "ops"},
-        )
-
-        assert resp.status_code == 200
-        assert resp.json()["data"] is None
-
     def test_delete_returns_404_when_id_missing(
         self,
         test_client: TestClient[Any],

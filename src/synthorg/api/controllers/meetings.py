@@ -1,9 +1,9 @@
 """Meeting controller -- list, get, and trigger meetings."""
 
 import asyncio
-from typing import Annotated, Self
+from typing import Annotated, Any, Self
 
-from litestar import Controller, delete, get, post
+from litestar import Controller, Request, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -328,17 +328,23 @@ class MeetingController(Controller):
     async def delete_meeting(
         self,
         state: State,
+        request: Request[Any, Any, Any],
         meeting_id: PathId,
     ) -> ApiResponse[None]:
         """Delete a meeting record by id.
 
         Returns ``200 OK`` with ``data=None`` on success and
-        ``404 Not Found`` when the id does not exist. The record is
-        removed from the in-memory orchestrator audit store; durable
-        replay is preserved through audit logs.
+        ``404 Not Found`` when the id does not exist. Routes through
+        :class:`MeetingService` so the
+        ``COMMUNICATION_MEETING_DELETED`` audit event is emitted from
+        the service layer on parity with the MCP path.
         """
-        orchestrator = state.app_state.meeting_orchestrator
-        deleted = orchestrator.delete_record(meeting_id)
+        app_state: AppState = state.app_state
+        deleted = await app_state.meeting_service.delete_meeting(
+            meeting_id=NotBlankStr(meeting_id),
+            actor_id=NotBlankStr(str(request.user.user_id)),
+            reason=NotBlankStr("operator delete via REST API"),
+        )
         if not deleted:
             logger.warning(MEETING_NOT_FOUND, meeting_id=meeting_id)
             msg = f"Meeting {meeting_id!r} not found"

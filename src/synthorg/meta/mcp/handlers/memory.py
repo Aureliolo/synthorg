@@ -574,10 +574,14 @@ async def _memory_delete_entry(  # noqa: PLR0911
         return err(exc)
 
     if not deleted:
-        return err(
-            ValueError(f"memory entry {memory_id!r} not found"),
-            domain_code="not_found",
+        not_found_exc = ValueError(f"memory entry {memory_id!r} not found")
+        log_handler_invoke_failed(
+            tool,
+            not_found_exc,
+            agent_id=agent_id,
+            memory_id=memory_id,
         )
+        return err(not_found_exc, domain_code="not_found")
 
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(

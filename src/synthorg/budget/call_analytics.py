@@ -157,7 +157,9 @@ def _build_aggregation(
     failure_count = sum(1 for r in records if r.success is False)
 
     retried = sum(
-        1 for r in records if r.retry_count is not None and r.retry_count >= 1
+        1
+        for r in records
+        if r.retry_count is not None and r.retry_count >= _MIN_RETRY_COUNT
     )
     retry_rate = retried / total if total > 0 else 0.0
 

@@ -468,6 +468,14 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
         nonlocal _health_prober, _training_memory_backend
         # Disconnect training memory backend if auto-wired.
         if _training_memory_backend is not None:
+            # If this backend was published to ``app_state.memory_backend``
+            # at startup, clear the slot before disconnecting so a
+            # subsequent re-entry of the lifespan can wire a fresh
+            # connected backend without ``has_memory_backend`` reporting
+            # a stale handle.
+            shared = getattr(app_state, "_memory_backend", None)
+            if shared is _training_memory_backend:
+                app_state._memory_backend = None  # noqa: SLF001
             disconnect = getattr(_training_memory_backend, "disconnect", None)
             if callable(disconnect):
                 # getattr + callable narrow statically only to ``object``

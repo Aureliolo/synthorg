@@ -44,16 +44,22 @@ held across the full body of their respective method per
 
 ## 3. API response wrapping
 
-Controllers return one of two shapes:
+Controllers return one of three shapes:
 
 * `ApiResponse[T]`: success-only path with no header or status-code
   customization. Litestar serializes it as `{"data": ..., "error": null,
   "success": true}`.
+* `PaginatedResponse[T]`: list endpoints that return a page of items
+  plus pagination metadata. Wraps `ApiResponse[T]` and adds a
+  `pagination` envelope ({`limit`, `offset`, `total`, `next_cursor`,
+  `has_more`}). Required for any controller method whose return type
+  is a collection. Opaque cursor pagination is the project default.
 * `Response[ApiResponse[T]]`: only when status code or response
   headers must be customized (e.g. setting a `Location` header on a
   201, attaching a `Retry-After` header on a 429).
 
-Reference: `src/synthorg/api/dto.py`, almost every controller under
+Reference: `src/synthorg/api/dto.py` (`ApiResponse`,
+`PaginatedResponse`, `PaginationMeta`); almost every controller under
 `src/synthorg/api/controllers/`.
 
 ## 4. `@model_validator(mode="after")` is the default

@@ -247,7 +247,14 @@ class TestDeleteMemoryEntryDestructiveAudit:
         assert event["reason"] == "operator gdpr request"
         assert event["target_id"] == memory_id
         assert event["agent_id"] == agent_id
-        state.memory_service.delete_memory_entry.assert_awaited_once()
+        # Tighten the regression: confirm the service was called with
+        # the correct positional ordering (agent_id then memory_id) so
+        # an accidental swap would surface as a test failure rather
+        # than as a confused audit log on a real backend.
+        state.memory_service.delete_memory_entry.assert_awaited_once_with(
+            agent_id,
+            memory_id,
+        )
 
     async def test_not_found_returns_not_found_envelope(
         self,

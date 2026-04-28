@@ -227,11 +227,9 @@ async def _messages_delete(
     tool = "synthorg_messages_delete"
     try:
         reason, resolved_actor = require_destructive_guardrails(arguments, actor)
-        channel = _require_str(arguments, _ARG_CHANNEL)
         message_id = _require_str(arguments, _ARG_MESSAGE_ID)
         try:
             removed = await app_state.message_service.delete_message(
-                channel=channel,
                 message_id=message_id,
                 actor_id=require_actor_id(resolved_actor),
                 reason=reason,

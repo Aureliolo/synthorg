@@ -1,4 +1,4 @@
-"""META-MCP acceptance sweep for the full 204-tool MCP surface.
+"""META-MCP acceptance sweep for the full 205-tool MCP surface.
 
 The unit sweep in ``tests/unit/meta/mcp/test_all_handlers_wired.py``
 already asserts parity between the registry and the handler map, and
@@ -389,11 +389,11 @@ class TestNoServiceFallbackEvents:
 
 
 class TestToolSurfaceCount:
-    """Pin the tool count at 204 to catch accidental add/remove regressions."""
+    """Pin the tool count at 205 to catch accidental add/remove regressions."""
 
-    def test_total_tool_count_is_204(self) -> None:
+    def test_total_tool_count_is_205(self) -> None:
         registry = build_full_registry()
-        assert registry.tool_count == 204
+        assert registry.tool_count == 205
 
     def test_no_orphan_handlers(self) -> None:
         registry = build_full_registry()

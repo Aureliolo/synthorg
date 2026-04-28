@@ -37,8 +37,7 @@ class TestMessageServiceDelete:
 
         with structlog.testing.capture_logs() as events:
             result = await service.delete_message(
-                channel=NotBlankStr("ops"),
-                message_id="msg-1",
+                message_id=NotBlankStr("msg-1"),
                 actor_id=NotBlankStr("user-1"),
                 reason=NotBlankStr("operator gdpr request"),
             )
@@ -47,7 +46,7 @@ class TestMessageServiceDelete:
         repo.delete.assert_awaited_once_with("msg-1")
         audit = [e for e in events if e.get("event") == COMMUNICATION_MESSAGE_DELETED]
         assert len(audit) == 1
-        assert audit[0]["channel"] == "ops"
+        assert "channel" not in audit[0]
         assert audit[0]["message_id"] == "msg-1"
         assert audit[0]["actor_id"] == "user-1"
         assert audit[0]["reason"] == "operator gdpr request"
@@ -57,8 +56,7 @@ class TestMessageServiceDelete:
 
         with structlog.testing.capture_logs() as events:
             result = await service.delete_message(
-                channel=NotBlankStr("ops"),
-                message_id="missing",
+                message_id=NotBlankStr("missing"),
                 actor_id=NotBlankStr("user-1"),
                 reason=NotBlankStr("cleanup"),
             )
