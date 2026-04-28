@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { MetricCard } from '@/components/ui/metric-card'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
+import { PostSetupGuidanceCard } from '@/components/setup/PostSetupGuidanceCard'
 import { useDashboardData } from '@/hooks/useDashboardData'
 import { computeMetricCards } from '@/utils/dashboard'
 import { DashboardSkeleton } from './dashboard/DashboardSkeleton'
@@ -9,7 +11,19 @@ import { OrgHealthSection } from './dashboard/OrgHealthSection'
 import { ActivityFeed } from './dashboard/ActivityFeed'
 import { BudgetBurnChart } from './dashboard/BudgetBurnChart'
 
+const FIRST_RUN_KEY = 'synthorg.firstRun'
+
+function readFirstRunFlag(): boolean {
+  try {
+    return window.localStorage.getItem(FIRST_RUN_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 export default function DashboardPage() {
+  const [showGuidance, setShowGuidance] = useState(() => readFirstRunFlag())
+
   const {
     overview,
     forecast,
@@ -27,8 +41,19 @@ export default function DashboardPage() {
 
   const metricCards = overview ? computeMetricCards(overview, budgetConfig) : []
 
+  const dismissGuidance = (): void => {
+    setShowGuidance(false)
+    try {
+      window.localStorage.removeItem(FIRST_RUN_KEY)
+    } catch {
+      // localStorage may be disabled; the in-memory state already hides the card.
+    }
+  }
+
   return (
     <div className="space-y-section-gap">
+      {showGuidance && <PostSetupGuidanceCard onDismiss={dismissGuidance} />}
+
       <h1 className="text-lg font-semibold text-foreground">Overview</h1>
 
       {error && (
