@@ -1132,8 +1132,6 @@ class ProviderController(Controller):
         Raises:
             NotFoundError: If the preset name is unknown.
         """
-        from synthorg.providers.presets import get_preset  # noqa: PLC0415
-
         if get_preset(preset_name) is None:
             msg = f"Unknown preset {preset_name!r}"
             logger.warning(
