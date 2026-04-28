@@ -8,15 +8,14 @@ from litestar import get
 from litestar.exceptions import HTTPException, ValidationException
 from litestar.testing import TestClient
 
-from synthorg.api.errors import (
+from synthorg.api.exception_handlers import _wants_problem_json
+from synthorg.core.domain_errors import ServiceUnavailableError, UnauthorizedError
+from synthorg.core.error_taxonomy import (
     ErrorCategory,
     ErrorCode,
-    ServiceUnavailableError,
-    UnauthorizedError,
     category_title,
     category_type_uri,
 )
-from synthorg.api.exception_handlers import _wants_problem_json
 from synthorg.persistence.errors import (
     DuplicateRecordError,
     RecordNotFoundError,

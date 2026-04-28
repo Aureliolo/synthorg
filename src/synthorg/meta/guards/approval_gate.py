@@ -12,8 +12,8 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import NAMESPACE_URL, uuid5
 
-from synthorg.api.errors import ConflictError
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.domain_errors import ConflictError
 from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (

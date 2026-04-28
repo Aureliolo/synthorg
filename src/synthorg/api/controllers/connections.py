@@ -11,14 +11,10 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
-from synthorg.api.errors import (
-    ApiValidationError,
-    ConflictError,
-    NotFoundError,
-)
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from synthorg.integrations.connections.catalog import _UNSET
 from synthorg.integrations.connections.models import (
     Connection,
@@ -126,7 +122,7 @@ class ConnectionsController(Controller):
         name = data.get("name")
         if not isinstance(name, str) or not name.strip():
             msg = "Field 'name' is required and must be a non-empty string"
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
         # Persist the canonical trimmed form so "  github  " and
         # "github" cannot become two distinct identities and so the
         # /{name} routes consistently address the stored row.
@@ -135,27 +131,27 @@ class ConnectionsController(Controller):
         connection_type_raw = data.get("connection_type")
         if not isinstance(connection_type_raw, str) or not connection_type_raw:
             msg = "Field 'connection_type' is required"
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
         try:
             connection_type = ConnectionType(connection_type_raw)
         except ValueError as exc:
             msg = f"Unknown connection_type '{connection_type_raw}'"
-            raise ApiValidationError(msg) from exc
+            raise ValidationError(msg) from exc
 
         credentials = data.get("credentials", {})
         if not isinstance(credentials, dict):
             msg = "Field 'credentials' must be an object"
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
 
         metadata = data.get("metadata")
         if metadata is not None and not isinstance(metadata, dict):
             msg = "Field 'metadata' must be an object if provided"
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
 
         health_check_enabled = data.get("health_check_enabled", True)
         if not isinstance(health_check_enabled, bool):
             msg = "Field 'health_check_enabled' must be a boolean"
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
 
         catalog = state["app_state"].connection_catalog
         try:
@@ -171,7 +167,7 @@ class ConnectionsController(Controller):
         except DuplicateConnectionError as exc:
             raise ConflictError(str(exc)) from exc
         except InvalidConnectionAuthError as exc:
-            raise ApiValidationError(str(exc)) from exc
+            raise ValidationError(str(exc)) from exc
         return ApiResponse(data=conn)
 
     @patch(
@@ -196,18 +192,18 @@ class ConnectionsController(Controller):
             base_url_value = data["base_url"]
             if base_url_value is not None and not isinstance(base_url_value, str):
                 msg = "Field 'base_url' must be a string or null"
-                raise ApiValidationError(msg)
+                raise ValidationError(msg)
         metadata = data.get("metadata")
         if metadata is not None and not isinstance(metadata, dict):
             msg = "Field 'metadata' must be an object if provided"
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
         health_check_enabled = data.get("health_check_enabled")
         if health_check_enabled is not None and not isinstance(
             health_check_enabled,
             bool,
         ):
             msg = "Field 'health_check_enabled' must be a boolean if provided"
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
 
         catalog = state["app_state"].connection_catalog
         try:

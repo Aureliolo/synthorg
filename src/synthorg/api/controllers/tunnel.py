@@ -35,9 +35,7 @@ class TunnelController(Controller):
         state: State,
     ) -> ApiResponse[dict[str, str]]:
         """Start the ngrok tunnel and return the public URL."""
-        from synthorg.api.errors import (  # noqa: PLC0415
-            ServiceUnavailableError,
-        )
+        from synthorg.core.domain_errors import ServiceUnavailableError  # noqa: PLC0415
 
         tunnel = state["app_state"].tunnel_provider
         try:
@@ -65,9 +63,7 @@ class TunnelController(Controller):
         state: State,
     ) -> ApiResponse[None]:
         """Stop the ngrok tunnel."""
-        from synthorg.api.errors import (  # noqa: PLC0415
-            ServiceUnavailableError,
-        )
+        from synthorg.core.domain_errors import ServiceUnavailableError  # noqa: PLC0415
 
         tunnel = state["app_state"].tunnel_provider
         try:

@@ -8,8 +8,8 @@ from litestar import Controller, get, post
 from litestar.params import Parameter
 
 from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import ServiceUnavailableError
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.meta.telemetry.collector import InMemoryAnalyticsCollector  # noqa: TC001
 from synthorg.meta.telemetry.models import (
     AggregatedPattern,

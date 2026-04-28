@@ -7,11 +7,11 @@ from litestar.datastructures import State  # noqa: TC002
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import ServiceUnavailableError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.report_config import ReportPeriod
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_SERVICE_UNAVAILABLE
 

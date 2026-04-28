@@ -14,15 +14,15 @@ from synthorg.api.controllers.approvals import (
     _resolve_decision,
     _signal_resume_intent,
 )
-from synthorg.api.errors import (
+from synthorg.api.state import AppState
+from synthorg.core.approval import ApprovalItem
+from synthorg.core.domain_errors import (
     ConflictError,
     ForbiddenError,
     NotFoundError,
     ServiceUnavailableError,
     UnauthorizedError,
 )
-from synthorg.api.state import AppState
-from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.engine.errors import (
     SelfReviewError,

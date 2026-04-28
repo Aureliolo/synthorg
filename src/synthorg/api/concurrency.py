@@ -8,7 +8,7 @@ modification conflicts.  Strong ETags are required for
 
 import hashlib
 
-from synthorg.api.errors import VersionConflictError
+from synthorg.core.domain_errors import VersionConflictError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_CONCURRENCY_CONFLICT,

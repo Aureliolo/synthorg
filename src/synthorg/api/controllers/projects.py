@@ -14,12 +14,12 @@ from synthorg.api.dto import (
     CreateProjectRequest,
     PaginatedResponse,
 )
-from synthorg.api.errors import ApiValidationError, NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.services.project_service import ProjectService
 from synthorg.api.ws_models import WsEventType
+from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.core.enums import ProjectStatus
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
@@ -91,7 +91,7 @@ class ProjectController(Controller):
             except ValueError as exc:
                 valid = ", ".join(e.value for e in ProjectStatus)
                 msg = f"Invalid project status: {status!r}. Valid values: {valid}"
-                raise ApiValidationError(msg) from exc
+                raise ValidationError(msg) from exc
 
         projects = await _service(state).list_projects(
             status=parsed_status,

@@ -9,17 +9,17 @@ from litestar.params import Body, Parameter
 
 from synthorg.api.channels import CHANNEL_ARTIFACTS, publish_ws_event
 from synthorg.api.dto import ApiResponse, CreateArtifactRequest, PaginatedResponse
-from synthorg.api.errors import (
-    ArtifactStorageFullApiError,
-    ArtifactTooLargeApiError,
-    NotFoundError,
-)
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.artifact import Artifact
+from synthorg.core.domain_errors import (
+    ArtifactRejectedTooLargeError,
+    ArtifactStorageRejectedFullError,
+    NotFoundError,
+)
 from synthorg.core.enums import ArtifactType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.artifacts.service import ArtifactService
@@ -371,7 +371,7 @@ class ArtifactController(Controller):
                 error=str(exc),
                 note="artifact_too_large",
             )
-            raise ArtifactTooLargeApiError from exc
+            raise ArtifactRejectedTooLargeError from exc
         except ArtifactStorageFullError as exc:
             logger.warning(
                 PERSISTENCE_ARTIFACT_STORE_FAILED,
@@ -380,7 +380,7 @@ class ArtifactController(Controller):
                 error=str(exc),
                 note="artifact_storage_full",
             )
-            raise ArtifactStorageFullApiError from exc
+            raise ArtifactStorageRejectedFullError from exc
 
         updated = artifact.model_copy(
             update={

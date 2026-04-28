@@ -14,7 +14,6 @@ from synthorg.api.dto import (
     ErrorDetail,
     PaginationMeta,
 )
-from synthorg.api.errors import ApiValidationError
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
@@ -23,6 +22,7 @@ from synthorg.budget.config import BudgetConfig  # noqa: TC001
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.errors import MixedCurrencyAggregationError
+from synthorg.core.domain_errors import ValidationError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -324,7 +324,7 @@ class BudgetController(Controller):
                     actual_length=len(value),
                     max_length=QUERY_MAX_LENGTH,
                 )
-                raise ApiValidationError(msg)
+                raise ValidationError(msg)
 
         app_state: AppState = state.app_state
         budget_cfg = await app_state.config_resolver.get_budget_config()

@@ -38,8 +38,8 @@ from collections.abc import Callable  # noqa: TC003
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from synthorg.api.errors import ConflictError
 from synthorg.core.approval import ApprovalItem  # noqa: TC001
+from synthorg.core.domain_errors import ConflictError
 from synthorg.core.enums import (
     ApprovalRiskLevel,
     ApprovalStatus,

@@ -12,10 +12,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.api.controllers.setup_agents import expand_template_agents
 from synthorg.api.controllers.setup_helpers import AGENT_LOCK as _AGENT_LOCK
 from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import ApiError, ConflictError, NotFoundError
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.rebalance import RebalanceMode, compute_rebalance
+from synthorg.core.domain_errors import ConflictError, DomainError, NotFoundError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
@@ -143,7 +143,7 @@ async def _read_setting_list(
             action="corrupt_setting_json",
         )
         msg = f"Setting 'company/{key}' contains invalid JSON"
-        raise ApiError(msg) from exc
+        raise DomainError(msg) from exc
     if not isinstance(parsed, list) or not all(
         isinstance(item, dict) for item in parsed
     ):
@@ -155,7 +155,7 @@ async def _read_setting_list(
             got=type(parsed).__name__,
         )
         msg = f"Setting 'company/{key}' is not a list of objects"
-        raise ApiError(msg)
+        raise DomainError(msg)
     return parsed
 
 

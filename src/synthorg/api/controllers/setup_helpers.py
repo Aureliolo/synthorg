@@ -19,13 +19,9 @@ from synthorg.api.controllers.setup_agents import (
 from synthorg.api.controllers.setup_models import (
     SetupAgentSummary,  # noqa: TC001
 )
-from synthorg.api.errors import (
-    ApiValidationError,
-    ConflictError,
-    NotFoundError,
-)
 from synthorg.api.guards import HumanRole
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.setup import (
     SETUP_AGENT_BOOTSTRAP_FAILED,
@@ -287,7 +283,7 @@ def validate_locale_selection(
             SETUP_NAME_LOCALES_INVALID,
             reason="mixed_sentinel",
         )
-        raise ApiValidationError(msg)
+        raise ValidationError(msg)
     invalid = [loc for loc in locales if loc != sentinel and loc not in valid_codes]
     if invalid:
         logger.warning(
@@ -295,7 +291,7 @@ def validate_locale_selection(
             invalid_locales=invalid,
         )
         msg = f"Invalid locale codes: {invalid}"
-        raise ApiValidationError(msg)
+        raise ValidationError(msg)
     unique = list(dict.fromkeys(locales))
     if len(unique) != len(locales):
         logger.warning(
@@ -303,7 +299,7 @@ def validate_locale_selection(
             reason="duplicates",
         )
         msg = "Duplicate locale codes are not allowed"
-        raise ApiValidationError(msg)
+        raise ValidationError(msg)
 
 
 async def check_has_name_locales(
@@ -620,7 +616,7 @@ def load_template_safe(template_name: str) -> LoadedTemplate:
             template=template_name,
             error=str(exc),
         )
-        raise ApiValidationError(msg) from exc
+        raise ValidationError(msg) from exc
 
 
 async def collect_model_ids(app_state: AppState) -> tuple[str, ...]:

@@ -22,12 +22,6 @@ from synthorg.api.dto_org import (  # noqa: TC001
     ReorderAgentsRequest,
     UpdateDepartmentRequest,
 )
-from synthorg.api.errors import (
-    ApiValidationError,
-    NotFoundError,
-    ServiceUnavailableError,
-    VersionConflictError,
-)
 from synthorg.api.guards import (
     require_org_mutation,
     require_read_access,
@@ -39,6 +33,12 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
 from synthorg.config.schema import AgentConfig  # noqa: TC001
 from synthorg.core.company import Department  # noqa: TC001
+from synthorg.core.domain_errors import (
+    NotFoundError,
+    ServiceUnavailableError,
+    ValidationError,
+    VersionConflictError,
+)
 from synthorg.core.normalization import find_by_name_ci
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.ceremony_policy import CeremonyPolicyConfig
@@ -742,7 +742,7 @@ class DepartmentController(Controller):
                 endpoint="departments.ceremony_policy.update",
                 error=str(exc),
             )
-            raise ApiValidationError(msg) from exc
+            raise ValidationError(msg) from exc
 
         clean_data = validated.model_dump(mode="json", exclude_none=True)
 

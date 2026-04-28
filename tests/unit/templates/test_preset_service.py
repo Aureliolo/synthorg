@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
+from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from synthorg.templates.preset_service import PersonalityPresetService
 from synthorg.templates.presets import PERSONALITY_PRESETS
 from tests.unit.api.fakes import FakePersonalityPresetRepository
@@ -160,21 +160,21 @@ class TestCreate:
     ) -> None:
         config = _make_valid_config()
         config["openness"] = 2.0  # Out of range
-        with pytest.raises(ApiValidationError):
+        with pytest.raises(ValidationError):
             await service.create("bad_preset", config)
 
     async def test_create_rejects_invalid_name_format(
         self, service: PersonalityPresetService
     ) -> None:
         config = _make_valid_config()
-        with pytest.raises(ApiValidationError, match="Invalid preset name"):
+        with pytest.raises(ValidationError, match="Invalid preset name"):
             await service.create("has spaces", config)
 
     async def test_create_rejects_empty_name(
         self, service: PersonalityPresetService
     ) -> None:
         config = _make_valid_config()
-        with pytest.raises(ApiValidationError, match="blank"):
+        with pytest.raises(ValidationError, match="blank"):
             await service.create("  ", config)
 
 
@@ -218,7 +218,7 @@ class TestUpdate:
         config = _make_valid_config()
         await service.create("update_invalid", config)
         config["openness"] = 2.0
-        with pytest.raises(ApiValidationError):
+        with pytest.raises(ValidationError):
             await service.update("update_invalid", config)
 
 

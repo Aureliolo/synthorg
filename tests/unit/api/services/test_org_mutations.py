@@ -12,9 +12,9 @@ from synthorg.api.dto_org import (
     UpdateCompanyRequest,
     UpdateDepartmentRequest,
 )
-from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
 from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.config.schema import RootConfig
+from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from synthorg.core.enums import AutonomyLevel, SeniorityLevel
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
@@ -214,7 +214,7 @@ class TestReorderDepartments:
         await service.create_department(
             CreateDepartmentRequest(name="beta"),
         )
-        with pytest.raises(ApiValidationError, match="exact permutation"):
+        with pytest.raises(ValidationError, match="exact permutation"):
             await service.reorder_departments(
                 ReorderDepartmentsRequest(department_names=("alpha",)),
             )
@@ -226,7 +226,7 @@ class TestReorderDepartments:
         await service.create_department(
             CreateDepartmentRequest(name="alpha"),
         )
-        with pytest.raises(ApiValidationError, match="exact permutation"):
+        with pytest.raises(ValidationError, match="exact permutation"):
             await service.reorder_departments(
                 ReorderDepartmentsRequest(
                     department_names=("alpha", "gamma"),
@@ -268,7 +268,7 @@ class TestCreateAgent:
             department="nonexistent",
             level=SeniorityLevel.MID,
         )
-        with pytest.raises(ApiValidationError, match="does not exist"):
+        with pytest.raises(ValidationError, match="does not exist"):
             await service.create_agent(req)
 
     async def test_create_agent_duplicate_name_409(
@@ -337,7 +337,7 @@ class TestUpdateAgent:
                 level=SeniorityLevel.MID,
             ),
         )
-        with pytest.raises(ApiValidationError, match="does not exist"):
+        with pytest.raises(ValidationError, match="does not exist"):
             await service.update_agent(
                 "alice",
                 UpdateAgentOrgRequest(department="nonexistent"),
@@ -458,7 +458,7 @@ class TestReorderAgents:
                 level=SeniorityLevel.MID,
             ),
         )
-        with pytest.raises(ApiValidationError, match="exact permutation"):
+        with pytest.raises(ValidationError, match="exact permutation"):
             await service.reorder_agents(
                 "eng",
                 ReorderAgentsRequest(agent_names=("alice",)),

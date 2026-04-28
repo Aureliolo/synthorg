@@ -19,7 +19,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.api.auth.config import SSE_REVALIDATE_INTERVAL_SECONDS
 from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import ApiValidationError, NotFoundError, UnauthorizedError
 from synthorg.api.guards import _READ_ROLES, require_approval_roles, require_read_access
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.state import AppState  # noqa: TC001
@@ -32,6 +31,11 @@ from synthorg.communication.event_stream.interrupt import (
 )
 from synthorg.communication.event_stream.stream import EventStreamHub  # noqa: TC001
 from synthorg.communication.event_stream.types import StreamEvent  # noqa: TC001
+from synthorg.core.domain_errors import (
+    NotFoundError,
+    UnauthorizedError,
+    ValidationError,
+)
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.event_stream import (
@@ -215,10 +219,10 @@ def _validate_resume_payload(
     """
     if interrupt.type == InterruptType.TOOL_APPROVAL and data.decision is None:
         msg = "TOOL_APPROVAL interrupts require a decision"
-        raise ApiValidationError(msg)
+        raise ValidationError(msg)
     if interrupt.type == InterruptType.INFO_REQUEST and data.response is None:
         msg = "INFO_REQUEST interrupts require a response"
-        raise ApiValidationError(msg)
+        raise ValidationError(msg)
 
 
 async def _resolve_interrupt(

@@ -3,9 +3,9 @@
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.errors import ServiceUnavailableError
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.routing.router import ModelRouter
 

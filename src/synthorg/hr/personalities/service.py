@@ -13,7 +13,7 @@ module is intentionally narrow.
 
 from typing import TYPE_CHECKING
 
-from synthorg.api.errors import NotFoundError
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
 from synthorg.observability import get_logger
 from synthorg.observability.events.preset import (

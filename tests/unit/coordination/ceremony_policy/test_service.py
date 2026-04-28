@@ -252,7 +252,7 @@ class TestGetResolvedPolicyDepartmentNotFound:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from synthorg.api.errors import NotFoundError
+        from synthorg.core.domain_errors import NotFoundError
 
         project = CeremonyPolicyConfig(
             strategy=CeremonyStrategyType.TASK_DRIVEN,

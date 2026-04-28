@@ -16,16 +16,12 @@ from synthorg.api.dto_training import (
     TrainingResultResponse,
     UpdateTrainingOverridesRequest,
 )
-from synthorg.api.errors import (
-    ApiValidationError,
-    ConflictError,
-    NotFoundError,
-)
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
+from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.training.models import (
     ContentType,
@@ -33,7 +29,7 @@ from synthorg.hr.training.models import (
     TrainingPlanStatus,
     TrainingResult,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_REQUEST_ERROR,
     API_RESOURCE_NOT_FOUND,
@@ -109,7 +105,7 @@ def _coerce_override_sources(
         if not stripped:
             msg = "override_sources entries must be non-blank"
             logger.warning(API_REQUEST_ERROR, error=msg)
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
         coerced.append(NotBlankStr(stripped))
     return tuple(coerced)
 
@@ -282,10 +278,11 @@ class TrainingController(Controller):
                     error="Failed to persist FAILED status",
                     persistence_error=str(save_exc),
                 )
-            logger.exception(
+            logger.warning(
                 HR_TRAINING_PLAN_FAILED,
                 plan_id=str(plan.id),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 

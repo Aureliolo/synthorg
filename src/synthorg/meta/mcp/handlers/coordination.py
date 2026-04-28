@@ -19,7 +19,7 @@ from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
-from synthorg.api.errors import NotFoundError
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,

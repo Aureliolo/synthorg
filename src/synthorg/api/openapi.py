@@ -30,7 +30,7 @@ import copy
 from typing import Any, Final, NamedTuple
 
 from synthorg.api.dto import ProblemDetail
-from synthorg.api.errors import (
+from synthorg.core.error_taxonomy import (
     CATEGORY_TITLES,
     ErrorCategory,
     ErrorCode,

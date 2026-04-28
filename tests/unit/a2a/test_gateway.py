@@ -230,8 +230,8 @@ class TestRequireTaskEngine:
         from unittest.mock import MagicMock, PropertyMock
 
         from synthorg.a2a.gateway import _A2AMethodError, _require_task_engine
-        from synthorg.api.errors import ServiceUnavailableError
         from synthorg.api.state import AppState
+        from synthorg.core.domain_errors import ServiceUnavailableError
 
         app_state = MagicMock(spec=AppState)
         type(app_state).task_engine = PropertyMock(

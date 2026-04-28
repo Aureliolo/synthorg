@@ -11,11 +11,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.api.controllers.setup_helpers import AGENT_LOCK as _AGENT_LOCK
 from synthorg.api.controllers.template_packs import _read_setting_list
 from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.company import Team
+from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from synthorg.core.normalization import normalize_identifier
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -120,7 +120,7 @@ def _persisted_name(record: dict[str, Any], record_type: str) -> str:
             f"Persisted {record_type.lower()} record has a non-string "
             f"name (got {type(value).__name__})"
         )
-        raise ApiValidationError(msg)
+        raise ValidationError(msg)
     return value
 
 
@@ -216,7 +216,7 @@ def _validate_team_model(team_dict: dict[str, Any]) -> Team:
         return Team(**team_dict)
     except (ValueError, TypeError) as exc:
         msg = f"Team validation failed: {exc}"
-        raise ApiValidationError(msg) from exc
+        raise ValidationError(msg) from exc
 
 
 def _team_to_response(team_dict: dict[str, Any]) -> TeamResponse:
@@ -373,7 +373,7 @@ class TeamController(Controller):
                     stored_names=stored_names,
                     colliding=colliding,
                 )
-                raise ApiValidationError(msg)
+                raise ValidationError(msg)
             current_names = set(team_map)
             requested_order = [normalize_identifier(n) for n in data.team_names]
             requested_names = set(requested_order)
@@ -390,7 +390,7 @@ class TeamController(Controller):
                     requested=list(data.team_names),
                     duplicates=sorted(set(duplicates)),
                 )
-                raise ApiValidationError(msg)
+                raise ValidationError(msg)
 
             if current_names != requested_names:
                 msg = (
@@ -406,7 +406,7 @@ class TeamController(Controller):
                     missing=sorted(current_names - requested_names),
                     extra=sorted(requested_names - current_names),
                 )
-                raise ApiValidationError(msg)
+                raise ValidationError(msg)
 
             reordered = [team_map[name] for name in requested_order]
 
@@ -538,7 +538,7 @@ class TeamController(Controller):
                         team_name=team_name,
                         reassign_to=reassign_to,
                     )
-                    raise ApiValidationError(msg)
+                    raise ValidationError(msg)
                 target_idx, target = _find_team(teams, reassign_to)
                 # Merge members (deduplicate, case-insensitive).
                 existing_members = list(target.get("members", []))

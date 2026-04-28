@@ -11,9 +11,9 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
 from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import ApiValidationError, NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.integrations.errors import (
     ConnectionNotFoundError,
     InvalidStateError,
@@ -54,14 +54,14 @@ class OAuthController(Controller):
         connection_name = data.get("connection_name")
         if not isinstance(connection_name, str) or not connection_name.strip():
             msg = "Field 'connection_name' is required"
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
 
         scopes_raw = data.get("scopes", [])
         if not isinstance(scopes_raw, list) or not all(
             isinstance(s, str) for s in scopes_raw
         ):
             msg = "Field 'scopes' must be a list of strings"
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
 
         catalog = state["app_state"].connection_catalog
         try:
@@ -81,7 +81,7 @@ class OAuthController(Controller):
         config = app_state.config.integrations.oauth
         if not config.redirect_uri_base:
             msg = "oauth.redirect_uri_base must be configured to initiate OAuth flows"
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
 
         # Build the callback URL from the configured API prefix so
         # deployments on a non-default prefix do not hand the OAuth
@@ -158,9 +158,9 @@ class OAuthController(Controller):
                 config_resolver=resolver,
             )
         except InvalidStateError as exc:
-            raise ApiValidationError(str(exc)) from exc
+            raise ValidationError(str(exc)) from exc
         except TokenExchangeFailedError as exc:
-            raise ApiValidationError(str(exc)) from exc
+            raise ValidationError(str(exc)) from exc
         return ApiResponse(
             data={
                 "status": "connected",

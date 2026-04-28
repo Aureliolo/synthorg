@@ -9,10 +9,10 @@ from synthorg.api.dto import (
     ActivateWorkflowRequest,
     ApiResponse,
 )
-from synthorg.api.errors import NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.engine.errors import (
     WorkflowConditionEvalError,
     WorkflowDefinitionInvalidError,

@@ -13,7 +13,7 @@ Exposes:
 
 from typing import TYPE_CHECKING
 
-from synthorg.api.errors import (
+from synthorg.core.domain_errors import (
     ConflictError,
     ForbiddenError,
     NotFoundError,

@@ -3,7 +3,7 @@
 import pytest
 
 from synthorg.api.dto_personalities import PresetSource
-from synthorg.api.errors import NotFoundError
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.personalities.service import PersonalityService
 from synthorg.templates.preset_service import PresetEntry

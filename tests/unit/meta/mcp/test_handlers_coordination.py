@@ -22,8 +22,8 @@ from unittest.mock import AsyncMock
 import pytest
 import structlog.testing
 
-from synthorg.api.errors import NotFoundError
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.meta.mcp.handlers.coordination import COORDINATION_HANDLERS
 from synthorg.observability.events.mcp import (
     MCP_HANDLER_ARGUMENT_INVALID,

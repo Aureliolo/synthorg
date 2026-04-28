@@ -652,7 +652,7 @@ class TestExtractTemplateDepartments:
         from synthorg.api.controllers.setup_helpers import (
             load_template_safe as _load_template_safe,
         )
-        from synthorg.api.errors import NotFoundError
+        from synthorg.core.domain_errors import NotFoundError
 
         with pytest.raises(NotFoundError):
             _load_template_safe("nonexistent_template")

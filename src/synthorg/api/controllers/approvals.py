@@ -28,12 +28,6 @@ from synthorg.api.dto import (
     PaginatedResponse,
     RejectRequest,
 )
-from synthorg.api.errors import (
-    ApiValidationError,
-    ConflictError,
-    NotFoundError,
-    UnauthorizedError,
-)
 from synthorg.api.guards import (
     require_approval_roles,
     require_read_access,
@@ -45,6 +39,12 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.domain_errors import (
+    ConflictError,
+    NotFoundError,
+    UnauthorizedError,
+    ValidationError,
+)
 from synthorg.core.enums import (
     ApprovalRiskLevel,
     ApprovalStatus,
@@ -516,7 +516,7 @@ class ApprovalsController(Controller):
                 actual_length=len(action_type),
                 max_length=QUERY_MAX_LENGTH,
             )
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
 
         app_state: AppState = state.app_state
         items = await app_state.approval_store.list_items(

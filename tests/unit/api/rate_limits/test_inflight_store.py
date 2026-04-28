@@ -4,8 +4,8 @@ import asyncio
 
 import pytest
 
-from synthorg.api.errors import ConcurrencyLimitExceededError
 from synthorg.api.rate_limits.in_memory_inflight import InMemoryInflightStore
+from synthorg.core.domain_errors import ConcurrencyLimitExceededError
 
 pytestmark = pytest.mark.unit
 

@@ -520,7 +520,7 @@ class TestActivityFeed:
         performance_tracker: PerformanceTracker,
     ) -> None:
         """ServiceUnavailableError from a fetcher results in 503."""
-        from synthorg.api.errors import ServiceUnavailableError
+        from synthorg.core.domain_errors import ServiceUnavailableError
 
         await fake_persistence.lifecycle_events.save(
             _make_lifecycle_event(timestamp=_NOW - timedelta(hours=1)),

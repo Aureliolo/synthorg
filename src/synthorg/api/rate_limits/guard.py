@@ -14,7 +14,6 @@ from typing import Any, Final, NoReturn, get_args
 from litestar.connection import ASGIConnection  # noqa: TC002
 from litestar.handlers.base import BaseRouteHandler  # noqa: TC002
 
-from synthorg.api.errors import PerOperationRateLimitError, ServiceUnavailableError
 from synthorg.api.rate_limits._subject import (
     STATE_KEY_CONFIG,
     STATE_KEY_STORE,
@@ -23,6 +22,10 @@ from synthorg.api.rate_limits._subject import (
 )
 from synthorg.api.rate_limits.config import PerOpRateLimitConfig  # noqa: TC001
 from synthorg.api.rate_limits.protocol import SlidingWindowStore  # noqa: TC001
+from synthorg.core.domain_errors import (
+    PerOperationRateLimitError,
+    ServiceUnavailableError,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP, API_GUARD_DENIED
 

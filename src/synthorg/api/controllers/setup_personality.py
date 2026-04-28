@@ -93,9 +93,7 @@ class SetupPersonalityController(Controller):
                 custom_presets=custom_presets,
             )
         except KeyError:
-            from synthorg.api.errors import (  # noqa: PLC0415
-                ApiValidationError,
-            )
+            from synthorg.core.domain_errors import ValidationError  # noqa: PLC0415
 
             logger.warning(
                 SETUP_PRESET_NOT_FOUND,
@@ -103,7 +101,7 @@ class SetupPersonalityController(Controller):
                 agent_index=agent_index,
             )
             msg = f"Unknown personality preset {data.personality_preset!r}"
-            raise ApiValidationError(msg) from None
+            raise ValidationError(msg) from None
 
         async with _AGENT_LOCK:
             agents = await get_existing_agents(settings_svc)

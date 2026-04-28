@@ -11,7 +11,6 @@ from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import ServiceUnavailableError
 from synthorg.api.guards import require_read_access
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.billing import billing_period_start
@@ -31,6 +30,7 @@ from synthorg.budget.trends import (
     resolve_bucket_size,
 )
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.enums import TaskStatus
 from synthorg.observability import get_logger
 from synthorg.observability.events.analytics import (

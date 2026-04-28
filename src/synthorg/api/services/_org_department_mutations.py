@@ -9,13 +9,13 @@ from collections.abc import Sequence  # noqa: TC003
 from typing import TYPE_CHECKING, Any
 
 from synthorg.api.concurrency import check_if_match, compute_etag
-from synthorg.api.errors import (
+from synthorg.config.schema import AgentConfig  # noqa: TC001
+from synthorg.core.company import Department
+from synthorg.core.domain_errors import (
     ConflictError,
     NotFoundError,
     VersionConflictError,
 )
-from synthorg.config.schema import AgentConfig  # noqa: TC001
-from synthorg.core.company import Department
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_CONCURRENCY_CONFLICT,

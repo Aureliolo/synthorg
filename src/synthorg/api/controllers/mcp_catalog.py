@@ -11,16 +11,13 @@ from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
-from synthorg.api.errors import (
-    ApiValidationError,
-    NotFoundError,
-)
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
     paginate_cursor,
 )
+from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.integrations.connections.models import CatalogEntry  # noqa: TC001
 from synthorg.integrations.errors import (
@@ -201,7 +198,7 @@ class MCPCatalogController(Controller):
                 reason="connection_type_mismatch",
                 error=str(exc),
             )
-            raise ApiValidationError(str(exc)) from exc
+            raise ValidationError(str(exc)) from exc
 
         # NB: we intentionally don't re-log ``MCP_SERVER_INSTALLED``
         # here - the repository's ``save()`` is the canonical audit

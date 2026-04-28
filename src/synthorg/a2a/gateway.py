@@ -550,7 +550,7 @@ def _require_task_engine(app_state: Any) -> Any:
     as ``_A2AMethodError`` so the JSON-RPC dispatcher can format
     a proper error response.
     """
-    from synthorg.api.errors import ServiceUnavailableError  # noqa: PLC0415
+    from synthorg.core.domain_errors import ServiceUnavailableError  # noqa: PLC0415
 
     try:
         return app_state.task_engine

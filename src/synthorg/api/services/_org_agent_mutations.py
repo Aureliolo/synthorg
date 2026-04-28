@@ -8,13 +8,13 @@ import json
 from typing import TYPE_CHECKING, Any
 
 from synthorg.api.concurrency import check_if_match, compute_etag
-from synthorg.api.errors import (
-    ApiValidationError,
+from synthorg.config.schema import AgentConfig
+from synthorg.core.domain_errors import (
     ConflictError,
     NotFoundError,
+    ValidationError,
     VersionConflictError,
 )
-from synthorg.config.schema import AgentConfig
 from synthorg.core.enums import SeniorityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -110,7 +110,7 @@ class OrgAgentMutationsMixin:
                         reason=msg,
                         department=data.department,
                     )
-                    raise ApiValidationError(msg)
+                    raise ValidationError(msg)
 
                 agents = await self._read_agents()
                 if self._find_agent(agents, data.name):
@@ -199,7 +199,7 @@ class OrgAgentMutationsMixin:
                 logger.warning(
                     API_VALIDATION_FAILED, reason=msg, department=str(data.department)
                 )
-                raise ApiValidationError(msg)
+                raise ValidationError(msg)
             updates["department"] = data.department
 
         if "level" in fields_set and data.level is not None:

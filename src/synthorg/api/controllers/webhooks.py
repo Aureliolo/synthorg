@@ -13,14 +13,14 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
 from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import (
-    ApiValidationError,
+from synthorg.api.guards import require_read_access
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.core.domain_errors import (
     ConflictError,
     NotFoundError,
     UnauthorizedError,
+    ValidationError,
 )
-from synthorg.api.guards import require_read_access
-from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.integrations.connections.models import WebhookReceipt  # noqa: TC001
 from synthorg.integrations.webhooks.event_bus_bridge import (
     publish_webhook_event,
@@ -100,7 +100,7 @@ async def _enforce_max_payload(
                 reason="malformed content-length header",
             )
             msg = "Malformed Content-Length header"
-            raise ApiValidationError(msg) from None
+            raise ValidationError(msg) from None
         if content_length > max_payload:
             logger.warning(
                 WEBHOOK_REJECTED,
@@ -112,7 +112,7 @@ async def _enforce_max_payload(
             msg = (
                 f"Webhook payload exceeds configured max_payload_bytes ({max_payload})"
             )
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
     chunks: list[bytes] = []
     total = 0
     async for chunk in request.stream():
@@ -128,7 +128,7 @@ async def _enforce_max_payload(
             msg = (
                 f"Webhook payload exceeds configured max_payload_bytes ({max_payload})"
             )
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
         chunks.append(chunk)
     return b"".join(chunks)
 
@@ -192,7 +192,7 @@ def _parse_timestamp(
             reason="malformed x-timestamp header",
         )
         msg = "Malformed x-timestamp header"
-        raise ApiValidationError(msg) from None
+        raise ValidationError(msg) from None
 
 
 def _check_replay_or_freshness(

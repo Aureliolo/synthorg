@@ -153,7 +153,7 @@ class TestDepartmentCeremonyPolicyCas:
             _load_dept_policies_versioned,
             _mutate_dept_policies_with_retry,
         )
-        from synthorg.api.errors import VersionConflictError
+        from synthorg.core.domain_errors import VersionConflictError
 
         config = RootConfig(company_name="test")
         settings_service = SettingsService(
@@ -214,7 +214,7 @@ class TestDepartmentCeremonyPolicyCas:
             _DEPT_POLICY_CAS_FALLBACK_ATTEMPTS,
             _mutate_dept_policies_with_retry,
         )
-        from synthorg.api.errors import VersionConflictError
+        from synthorg.core.domain_errors import VersionConflictError
 
         config = RootConfig(company_name="test")
         settings_service = SettingsService(
@@ -263,7 +263,7 @@ class TestDepartmentCeremonyPolicyCas:
         from synthorg.api.controllers.departments import (
             _mutate_dept_policies_with_retry,
         )
-        from synthorg.api.errors import VersionConflictError
+        from synthorg.core.domain_errors import VersionConflictError
 
         config = RootConfig(company_name="test")
         settings_service = SettingsService(

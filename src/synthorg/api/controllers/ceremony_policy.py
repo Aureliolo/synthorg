@@ -14,9 +14,9 @@ from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import NotFoundError, ServiceUnavailableError
 from synthorg.api.guards import require_read_access
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.domain_errors import NotFoundError, ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_policy import (
     CeremonyPolicyConfig,

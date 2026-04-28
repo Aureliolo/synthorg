@@ -94,10 +94,10 @@ from synthorg.api.controllers.setup_models import (
     UpdateAgentNameRequest,
 )
 from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import ApiValidationError
 from synthorg.api.guards import require_ceo, require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.domain_errors import ValidationError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.setup import (
     SETUP_AGENT_CREATED,
@@ -773,7 +773,7 @@ class SetupController(Controller):
         if not has_company:
             msg = "A company must be created before completing setup"
             logger.warning(SETUP_NO_COMPANY)
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
 
         # Verify at least one agent exists (warn-only, not required).
         # Quick Setup mode skips agent configuration -- users add agents
@@ -786,7 +786,7 @@ class SetupController(Controller):
         if not app_state.has_provider_registry or len(app_state.provider_registry) == 0:
             msg = "At least one provider must be configured before completing setup"
             logger.warning(SETUP_NO_PROVIDERS)
-            raise ApiValidationError(msg)
+            raise ValidationError(msg)
 
         # Auto-select embedding model from configured providers.
         # Best-effort: does not block setup completion on failure.
