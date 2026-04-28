@@ -2,10 +2,10 @@
 # Format: rule_id<TAB>action<TAB>description (description is informational only).
 # Valid actions: PASS, IGNORE, INFO, WARN, FAIL.
 #
-# Rule IDs and matcher behaviour can shift between major ZAP versions.
+# Rule IDs and matcher behavior can shift between major ZAP versions.
 # When upgrading the ``zaproxy/action-api-scan`` action in dast.yml,
 # revisit each IGNORE rationale below and confirm the underlying
-# behaviour has not changed.
+# behavior has not changed.
 #
 # --- Critical: these MUST block the scan when fail_action is enabled ---
 40018	FAIL	SQL Injection
