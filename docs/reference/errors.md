@@ -50,7 +50,7 @@ Clients should dispatch on `error_code` (most specific) and fall back to `error_
 
 ## Not Found (3xxx)
 
-The NotFound hierarchy is driven by a single `NotFoundError` class with domain-specific `ErrorCode` members. Callers use :func:`synthorg.api.errors.resource_not_found` to pick the right code without constructing an error subclass by hand.
+The NotFound hierarchy is driven by a single `NotFoundError` class with domain-specific `ErrorCode` members. Callers use :func:`synthorg.core.domain_errors.resource_not_found` to pick the right code without constructing an error subclass by hand.
 
 | Code | Name | Resource |
 |------|------|----------|
@@ -179,4 +179,6 @@ When introducing a new domain error family:
 
 - [Design: security](../design/security.md): the SEC-1 rules behind the categories
 - [REST API reference](../openapi/index.md): per-route examples plus a worked content-negotiation walkthrough
-- `src/synthorg/api/errors.py`: the authoritative enum and error classes
+- `src/synthorg/core/error_taxonomy.py`: the authoritative `ErrorCategory` / `ErrorCode` enums + RFC 9457 helpers
+- `src/synthorg/core/domain_errors.py`: the `DomainError` base + concrete subclasses (`NotFoundError`, `ConflictError`, `ValidationError`, ...)
+- `src/synthorg/core/persistence_errors.py`: the `PersistenceError` hierarchy

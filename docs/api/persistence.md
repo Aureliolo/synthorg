@@ -52,7 +52,7 @@ typed-ID and helper imports.
 
 ## Errors
 
-::: synthorg.persistence.errors
+::: synthorg.core.persistence_errors
 
 ## SQLite Backend
 

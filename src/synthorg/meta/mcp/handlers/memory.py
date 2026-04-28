@@ -124,7 +124,7 @@ def _service(app_state: Any) -> MemoryService:
       (legacy / partial backend).
     * The backend is not yet connected and the property's
       ``_require_connected`` guard raises
-      :class:`~synthorg.persistence.errors.PersistenceConnectionError`.
+      :class:`~synthorg.core.persistence_errors.PersistenceConnectionError`.
 
     Raises:
         BackendUnsupportedError: In any of the above cases.
