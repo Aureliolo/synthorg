@@ -607,6 +607,21 @@ class TestToolPermissions:
         with pytest.raises(ValidationError, match="whitespace-only"):
             ToolPermissions(denied=("  ",))
 
+    def test_mcp_capability_with_surrounding_whitespace_accepted(self) -> None:
+        """Pin the whitespace path: validation runs on the normalized form."""
+        t = ToolPermissions(mcp_capabilities=("  tasks:read  ",))
+        assert t.mcp_capabilities == ("  tasks:read  ",)
+
+    def test_mcp_capability_uppercase_accepted_via_casefold(self) -> None:
+        """Pin the case path: validation runs on the casefolded form."""
+        t = ToolPermissions(mcp_capabilities=("Tasks:Read",))
+        assert t.mcp_capabilities == ("Tasks:Read",)
+
+    def test_mcp_capability_invalid_format_rejected(self) -> None:
+        """Reject capability that fails the pattern even after normalization."""
+        with pytest.raises(ValidationError, match="Invalid MCP capability pattern"):
+            ToolPermissions(mcp_capabilities=("  not-a-pattern  ",))
+
     def test_frozen(self) -> None:
         """Ensure ToolPermissions is immutable."""
         t = ToolPermissions()

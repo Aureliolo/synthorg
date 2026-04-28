@@ -6,6 +6,13 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
+from synthorg.api.controllers.teams import (
+    _check_team_name_unique,
+    _find_department,
+    _find_team,
+    _persisted_name,
+)
+from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
 from tests.unit.api.conftest import make_auth_headers
 
 # ── Helpers ────────────────────────────────────────────────
@@ -434,6 +441,34 @@ class TestReorderTeams:
         )
         assert resp.status_code == 422
 
+    def test_reorder_teams_duplicate_names_rejected(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(
+            test_client,
+            [_dept_with_teams(teams=[_team("alpha"), _team("beta")])],
+        )
+        resp = test_client.patch(
+            "/api/v1/departments/engineering/teams/reorder",
+            json={"team_names": ["alpha", "alpha"]},
+        )
+        assert resp.status_code == 422
+
+    def test_reorder_teams_case_insensitive_duplicates_rejected(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _seed_departments(
+            test_client,
+            [_dept_with_teams(teams=[_team("alpha"), _team("beta")])],
+        )
+        resp = test_client.patch(
+            "/api/v1/departments/engineering/teams/reorder",
+            json={"team_names": ["Alpha", "ALPHA"]},
+        )
+        assert resp.status_code == 422
+
     def test_reorder_zero_teams(
         self,
         test_client: TestClient[Any],
@@ -455,3 +490,101 @@ class TestReorderTeams:
             json={"team_names": []},
         )
         assert resp.status_code == 404
+
+
+# ── Private helpers (direct unit tests) ──────────────────────
+
+
+@pytest.mark.unit
+class TestPrivateHelpers:
+    """Direct tests for the module-level lookup helpers.
+
+    The controller endpoints exercise these indirectly, but a direct
+    unit suite gives independent insurance: a regression that drops
+    one of the ``normalize_identifier`` calls would show up here even
+    if the controller's request flow happens to mask it.
+    """
+
+    def test_find_department_matches_case_insensitively(self) -> None:
+        depts = [
+            {"name": "Engineering", "budget_percent": 60.0, "teams": []},
+            {"name": "Design", "budget_percent": 40.0, "teams": []},
+        ]
+        idx, dept = _find_department(depts, "engineering")
+        assert idx == 0
+        assert dept["name"] == "Engineering"
+
+    def test_find_department_strips_whitespace(self) -> None:
+        depts = [{"name": "Engineering", "budget_percent": 60.0, "teams": []}]
+        idx, dept = _find_department(depts, "  ENGINEERING  ")
+        assert idx == 0
+        assert dept["name"] == "Engineering"
+
+    def test_find_department_raises_not_found(self) -> None:
+        depts = [{"name": "Engineering", "budget_percent": 60.0, "teams": []}]
+        with pytest.raises(NotFoundError, match="Department"):
+            _find_department(depts, "marketing")
+
+    def test_find_team_matches_case_insensitively(self) -> None:
+        teams = [_team(name="Backend"), _team(name="Frontend")]
+        idx, team = _find_team(teams, "backend")
+        assert idx == 0
+        assert team["name"] == "Backend"
+
+    def test_find_team_strips_whitespace(self) -> None:
+        teams = [_team(name="Backend")]
+        idx, team = _find_team(teams, "  BACKEND  ")
+        assert idx == 0
+        assert team["name"] == "Backend"
+
+    def test_find_team_raises_not_found(self) -> None:
+        teams = [_team(name="Backend")]
+        with pytest.raises(NotFoundError, match="Team"):
+            _find_team(teams, "platform")
+
+    def test_check_team_name_unique_passes_for_new_name(self) -> None:
+        teams = [_team(name="Backend")]
+        _check_team_name_unique(teams, "Frontend")
+
+    def test_check_team_name_unique_rejects_case_collision(self) -> None:
+        teams = [_team(name="Backend")]
+        with pytest.raises(ConflictError, match="already exists"):
+            _check_team_name_unique(teams, "BACKEND")
+
+    def test_check_team_name_unique_rejects_whitespace_collision(self) -> None:
+        teams = [_team(name="Backend")]
+        with pytest.raises(ConflictError, match="already exists"):
+            _check_team_name_unique(teams, "  Backend  ")
+
+    def test_check_team_name_unique_skips_excluded_index(self) -> None:
+        teams = [_team(name="Backend"), _team(name="Frontend")]
+        _check_team_name_unique(teams, "Backend", exclude_index=0)
+
+    def test_persisted_name_returns_string_value(self) -> None:
+        assert _persisted_name({"name": "Engineering"}, "Department") == "Engineering"
+
+    def test_persisted_name_rejects_missing_name(self) -> None:
+        with pytest.raises(ApiValidationError, match="non-string"):
+            _persisted_name({}, "Department")
+
+    def test_persisted_name_rejects_none_name(self) -> None:
+        with pytest.raises(ApiValidationError, match="non-string"):
+            _persisted_name({"name": None}, "Team")
+
+    def test_persisted_name_rejects_int_name(self) -> None:
+        with pytest.raises(ApiValidationError, match="non-string"):
+            _persisted_name({"name": 42}, "Team")
+
+    def test_find_department_surfaces_corrupted_record(self) -> None:
+        depts: list[dict[str, Any]] = [
+            {"name": None, "budget_percent": 50.0, "teams": []},
+        ]
+        with pytest.raises(ApiValidationError, match="non-string"):
+            _find_department(depts, "anything")
+
+    def test_find_team_surfaces_corrupted_record(self) -> None:
+        teams: list[dict[str, Any]] = [
+            {"name": 7, "lead": "alice", "members": []},
+        ]
+        with pytest.raises(ApiValidationError, match="non-string"):
+            _find_team(teams, "anything")

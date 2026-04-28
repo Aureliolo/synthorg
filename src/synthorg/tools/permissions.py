@@ -16,6 +16,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar, Self
 
 from synthorg.core.enums import ToolAccessLevel, ToolCategory
+from synthorg.core.normalization import normalize_identifier
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
     TOOL_PERMISSION_CHECKER_CREATED,
@@ -122,8 +123,8 @@ class ToolPermissionChecker:
                 sub-constraint enforcement is performed.
         """
         self._access_level = access_level
-        self._allowed = frozenset(n.strip().casefold() for n in allowed)
-        self._denied = frozenset(n.strip().casefold() for n in denied)
+        self._allowed = frozenset(normalize_identifier(n) for n in allowed)
+        self._denied = frozenset(normalize_identifier(n) for n in denied)
 
         # Resolve sub-constraint enforcer.  For CUSTOM without explicit
         # constraints, sub-constraint enforcement is skipped (only
@@ -168,7 +169,7 @@ class ToolPermissionChecker:
         Returns:
             ``True`` if the tool is permitted, ``False`` otherwise.
         """
-        name_lower = tool_name.strip().casefold()
+        name_lower = normalize_identifier(tool_name)
         if name_lower in self._denied:
             return False
         if name_lower in self._allowed:
@@ -216,7 +217,7 @@ class ToolPermissionChecker:
         Returns:
             Explanation string suitable for error messages.
         """
-        name_lower = tool_name.strip().casefold()
+        name_lower = normalize_identifier(tool_name)
         if name_lower in self._denied:
             return f"Tool {tool_name!r} is explicitly denied"
         if self._access_level == ToolAccessLevel.CUSTOM:

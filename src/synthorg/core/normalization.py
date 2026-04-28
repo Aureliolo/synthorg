@@ -1,8 +1,15 @@
 """Unicode-safe normalization helpers.
 
 Uses :py:meth:`str.casefold` (not :py:meth:`str.lower`) so
-case-insensitive comparisons behave correctly across Latin, German
-sharp-s, Greek, and Turkish dotted-I pairs.
+case-insensitive comparisons fold German sharp-s (``ß`` → ``ss``)
+and Greek final-sigma forms consistently. Case-folding is
+locale-independent: Turkish dotted-I (``İ``) folds to
+``i`` + combining dot above, not Turkish-locale ``i``.
+
+These helpers do **not** apply Unicode normalization (NFC/NFD).
+Callers that need form equivalence (e.g. ``café`` written as
+``e + combining acute`` vs precomposed ``é``) must normalize
+upstream.
 """
 
 from typing import TYPE_CHECKING
@@ -15,14 +22,26 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def casefold_equals(a: str, b: str) -> bool:
-    """Return ``True`` when ``a`` and ``b`` compare equal after casefolding.
+def normalize_identifier(value: str) -> str:
+    """Normalize an identifier for case-insensitive comparison.
 
-    Leading and trailing whitespace is stripped before comparison so
-    ``"Alice "`` matches ``"alice"``. Callers that need the exact
-    whitespace-sensitive form should do the comparison themselves.
+    Strips whitespace and applies locale-independent Unicode
+    case-folding. Suitable for matching across Latin, German
+    sharp-s, Greek, and Cyrillic scripts. Turkish dotted-I folds
+    to the Unicode default form (``i`` + combining dot above), not
+    the Turkish-locale plain ``i``; callers that need
+    Turkish-locale semantics must handle that themselves.
+
+    Does not apply Unicode NFC/NFD normalization; callers needing
+    form equivalence must normalize upstream.
+
+    Args:
+        value: Identifier to normalize (e.g. agent name, role, capability).
+
+    Returns:
+        Normalized string suitable for case-insensitive comparison.
     """
-    return a.strip().casefold() == b.strip().casefold()
+    return value.strip().casefold()
 
 
 def find_by_name_ci[T](
@@ -31,11 +50,13 @@ def find_by_name_ci[T](
     *,
     name_attr: str = "name",
 ) -> T | None:
-    """Return the first item whose ``name_attr`` casefolds to ``target``.
+    """Return the first item whose ``name_attr`` matches ``target``.
 
     Works on any iterable of objects that expose a string attribute
-    named ``name_attr`` (default ``"name"``). Returns ``None`` when
-    no match is found.
+    named ``name_attr`` (default ``"name"``). Both the target and
+    each candidate value are run through :func:`normalize_identifier`
+    before comparison, so the match is case- and
+    whitespace-insensitive in both directions.
 
     Args:
         items: Iterable to scan linearly.
@@ -43,11 +64,12 @@ def find_by_name_ci[T](
         name_attr: Attribute name holding the comparable string.
 
     Returns:
-        The first matching item, or ``None``.
+        The first item whose ``name_attr`` normalizes to the same
+        value as ``target``, or ``None`` if none matches.
     """
-    target_normalised = target.strip().casefold()
+    target_normalised = normalize_identifier(target)
     for item in items:
         value = getattr(item, name_attr, None)
-        if isinstance(value, str) and value.strip().casefold() == target_normalised:
+        if isinstance(value, str) and normalize_identifier(value) == target_normalised:
             return item
     return None

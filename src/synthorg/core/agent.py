@@ -22,6 +22,7 @@ from synthorg.core.enums import (
     StrategicOutputMode,
     ToolAccessLevel,
 )
+from synthorg.core.normalization import normalize_identifier
 from synthorg.core.role import Authority, Skill
 from synthorg.core.types import ModelTier, NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -372,8 +373,8 @@ class ToolPermissions(BaseModel):
 
         Comparison is case-insensitive.
         """
-        allowed_normalized = {t.strip().casefold() for t in self.allowed}
-        denied_normalized = {t.strip().casefold() for t in self.denied}
+        allowed_normalized = {normalize_identifier(t) for t in self.allowed}
+        denied_normalized = {normalize_identifier(t) for t in self.denied}
         overlap = allowed_normalized & denied_normalized
         if overlap:
             msg = f"Tools appear in both allowed and denied lists: {sorted(overlap)}"
@@ -397,7 +398,7 @@ class ToolPermissions(BaseModel):
         """
         pattern = re.compile(r"^(?:\*|[a-z][a-z0-9_]*):(?:\*|[a-z][a-z0-9_]*)$|^\*$")
         for cap in self.mcp_capabilities:
-            if not pattern.match(cap.strip().casefold()):
+            if not pattern.match(normalize_identifier(cap)):
                 msg = (
                     f"Invalid MCP capability pattern: {cap!r}. "
                     f"Expected 'domain:action', 'domain:*', '*:action', or '*'"

@@ -16,7 +16,7 @@ from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.company import Team
-from synthorg.core.normalization import casefold_equals
+from synthorg.core.normalization import normalize_identifier
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -24,6 +24,7 @@ from synthorg.observability.events.api import (
     API_TEAM_DELETED,
     API_TEAM_REORDERED,
     API_TEAM_UPDATED,
+    API_VALIDATION_FAILED,
 )
 
 logger = get_logger(__name__)
@@ -87,6 +88,42 @@ class TeamResponse(BaseModel):
 # ── Helpers ────────────────────────────────────────────────
 
 
+def _persisted_name(record: dict[str, Any], record_type: str) -> str:
+    """Read the ``name`` field from a persisted record, asserting type.
+
+    Persisted department / team records should always carry a ``str``
+    ``name`` (model validation runs at write time). If a record reaches
+    this layer with a non-string name, the data is corrupted: surface
+    a clear validation error instead of silently coercing through
+    ``str()`` and producing a misleading ``NotFoundError`` downstream.
+
+    Args:
+        record: Raw persisted dict (department or team).
+        record_type: Human-readable label used in error messages
+            (e.g. ``"Department"``, ``"Team"``).
+
+    Returns:
+        The ``name`` field as a ``str``.
+
+    Raises:
+        ApiValidationError: If ``name`` is missing or not a string.
+    """
+    value = record.get("name")
+    if not isinstance(value, str):
+        logger.warning(
+            API_VALIDATION_FAILED,
+            record_type=record_type,
+            reason="non_string_persisted_name",
+            value_type=type(value).__name__,
+        )
+        msg = (
+            f"Persisted {record_type.lower()} record has a non-string "
+            f"name (got {type(value).__name__})"
+        )
+        raise ApiValidationError(msg)
+    return value
+
+
 def _find_department(
     depts: list[dict[str, Any]],
     name: str,
@@ -102,10 +139,11 @@ def _find_department(
 
     Raises:
         NotFoundError: If not found.
+        ApiValidationError: If a persisted record has a non-string name.
     """
-    target = name.strip().casefold()
+    target = normalize_identifier(name)
     for idx, dept in enumerate(depts):
-        if str(dept.get("name", "")).strip().casefold() == target:
+        if normalize_identifier(_persisted_name(dept, "Department")) == target:
             return idx, dept
     msg = f"Department {name!r} not found"
     raise NotFoundError(msg)
@@ -126,10 +164,11 @@ def _find_team(
 
     Raises:
         NotFoundError: If not found.
+        ApiValidationError: If a persisted record has a non-string name.
     """
-    target = team_name.strip().casefold()
+    target = normalize_identifier(team_name)
     for idx, team in enumerate(teams):
-        if str(team.get("name", "")).strip().casefold() == target:
+        if normalize_identifier(_persisted_name(team, "Team")) == target:
             return idx, team
     msg = f"Team {team_name!r} not found"
     raise NotFoundError(msg)
@@ -147,12 +186,16 @@ def _check_team_name_unique(
         teams: Team dict list.
         name: Name to check.
         exclude_index: Optional index to skip (for rename checks).
+
+    Raises:
+        ConflictError: If a name collision is detected.
+        ApiValidationError: If a persisted record has a non-string name.
     """
-    target = name.strip().casefold()
+    target = normalize_identifier(name)
     for idx, team in enumerate(teams):
         if idx == exclude_index:
             continue
-        if str(team.get("name", "")).strip().casefold() == target:
+        if normalize_identifier(_persisted_name(team, "Team")) == target:
             msg = f"Team {name!r} already exists in this department"
             raise ConflictError(msg)
 
@@ -296,21 +339,76 @@ class TeamController(Controller):
             dept_idx, dept = _find_department(depts, dept_name)
 
             teams: list[dict[str, Any]] = list(dept.get("teams", []))
-            current_names = {str(t.get("name", "")).strip().casefold() for t in teams}
-            requested_names = {n.strip().casefold() for n in data.team_names}
+            stored_names = [_persisted_name(t, "Team") for t in teams]
+            team_map: dict[str, dict[str, Any]] = {
+                normalize_identifier(name): t
+                for name, t in zip(stored_names, teams, strict=True)
+            }
+            if len(team_map) != len(teams):
+                # Defense-in-depth: Department validation should reject
+                # case-collision team names at write time, but if persisted
+                # data ever contains them, refuse to reorder rather than
+                # silently dropping the overwritten entries.
+                normalized_to_originals: dict[str, list[str]] = {}
+                for name in stored_names:
+                    normalized_to_originals.setdefault(
+                        normalize_identifier(name), []
+                    ).append(name)
+                colliding = sorted(
+                    {
+                        name
+                        for originals in normalized_to_originals.values()
+                        if len(originals) > 1
+                        for name in originals
+                    }
+                )
+                msg = (
+                    "Cannot reorder teams: stored team names contain "
+                    "case-insensitive duplicates"
+                )
+                logger.warning(
+                    API_VALIDATION_FAILED,
+                    department=dept_name,
+                    reason="stored_team_name_collision",
+                    stored_names=stored_names,
+                    colliding=colliding,
+                )
+                raise ApiValidationError(msg)
+            current_names = set(team_map)
+            requested_order = [normalize_identifier(n) for n in data.team_names]
+            requested_names = set(requested_order)
+
+            if len(requested_order) != len(requested_names):
+                duplicates = sorted(
+                    n for n in requested_order if requested_order.count(n) > 1
+                )
+                msg = "team_names must not contain duplicates (case-insensitive)"
+                logger.warning(
+                    API_VALIDATION_FAILED,
+                    department=dept_name,
+                    reason="duplicate_team_names_in_request",
+                    requested=list(data.team_names),
+                    duplicates=sorted(set(duplicates)),
+                )
+                raise ApiValidationError(msg)
 
             if current_names != requested_names:
                 msg = (
                     "team_names must contain exactly the current team "
                     f"names: {sorted(current_names)}"
                 )
+                logger.warning(
+                    API_VALIDATION_FAILED,
+                    department=dept_name,
+                    reason="team_names_set_mismatch",
+                    requested=list(data.team_names),
+                    stored=sorted(current_names),
+                    missing=sorted(current_names - requested_names),
+                    extra=sorted(requested_names - current_names),
+                )
                 raise ApiValidationError(msg)
 
-            # Build name->team lookup for reordering.
-            team_map: dict[str, dict[str, Any]] = {
-                str(t.get("name", "")).strip().casefold(): t for t in teams
-            }
-            reordered = [team_map[n.strip().casefold()] for n in data.team_names]
+            reordered = [team_map[name] for name in requested_order]
 
             dept = {**dept, "teams": reordered}
             depts[dept_idx] = dept
@@ -431,17 +529,30 @@ class TeamController(Controller):
             team_idx, team = _find_team(teams, team_name)
 
             if reassign_to is not None:
-                if casefold_equals(reassign_to, team_name):
+                if normalize_identifier(reassign_to) == normalize_identifier(team_name):
                     msg = "Cannot reassign members to the team being deleted"
+                    logger.warning(
+                        API_VALIDATION_FAILED,
+                        department=dept_name,
+                        reason="self_reassignment",
+                        team_name=team_name,
+                        reassign_to=reassign_to,
+                    )
                     raise ApiValidationError(msg)
                 target_idx, target = _find_team(teams, reassign_to)
                 # Merge members (deduplicate, case-insensitive).
                 existing_members = list(target.get("members", []))
-                existing_lower = {m.strip().casefold() for m in existing_members}
+                # Coerce to str so a corrupted persisted member (None, int,
+                # ...) raises a 422 via _validate_team_model below rather
+                # than a 500 from normalize_identifier.
+                existing_lower = {
+                    normalize_identifier(str(m)) for m in existing_members
+                }
                 for member in team.get("members", []):
-                    if member.strip().casefold() not in existing_lower:
+                    member_normalized = normalize_identifier(str(member))
+                    if member_normalized not in existing_lower:
                         existing_members.append(member)
-                        existing_lower.add(member.strip().casefold())
+                        existing_lower.add(member_normalized)
 
                 updated_target = {**target, "members": existing_members}
                 _validate_team_model(updated_target)
