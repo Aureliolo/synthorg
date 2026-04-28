@@ -144,21 +144,16 @@ const architecture = [
 ];
 ---
 
-<!--
-  Each card contains its own button + collapsible panel so the panel
-  expands inline directly under the button it belongs to.  The
-  ``items-start`` on the grid keeps each card height-independent, so
-  one card growing on expand does not stretch the others.
--->
-<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-start text-left">
-  {architecture.map((arch) => (
-    <div class="bg-[#1a1f2e] rounded-xl border border-white/10 hover:border-violet-500/30 transition-colors overflow-hidden">
+<div class="text-left">
+  <!-- Trigger row: 4 cards. Stays a 4-column grid; cards do not stretch when one expands. -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    {architecture.map((arch) => (
       <button
         id={`btn-${arch.id}`}
         data-arch-toggle
         aria-expanded="false"
         aria-controls={`panel-${arch.id}`}
-        class="w-full p-6 text-left group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1f2e]"
+        class="bg-[#1a1f2e] rounded-xl border border-white/10 hover:border-violet-500/30 aria-expanded:border-violet-500/40 aria-expanded:shadow-[inset_0_-2px_0_0_#8b5cf6] transition-colors p-6 text-left group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1f2e]"
       >
         <div class="flex items-center justify-between gap-2">
           <div>
@@ -177,6 +172,12 @@ const architecture = [
           </svg>
         </div>
       </button>
+    ))}
+  </div>
+
+  <!-- Panel area: full-width, one panel visible at a time. -->
+  <div class="mt-4">
+    {architecture.map((arch) => (
       <div
         id={`panel-${arch.id}`}
         role="region"
@@ -186,7 +187,7 @@ const architecture = [
         class="grid grid-rows-[0fr] transition-[grid-template-rows] duration-300 ease-in-out"
       >
         <div class="overflow-hidden">
-          <div class="px-6 pb-6 flex flex-col gap-2 border-t border-white/5 pt-4">
+          <div class="bg-[#1a1f2e] rounded-xl border border-violet-500/20 p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {arch.submodules.map((sub) => (
               <a
                 href={sub.href}
@@ -199,8 +200,8 @@ const architecture = [
           </div>
         </div>
       </div>
-    </div>
-  ))}
+    ))}
+  </div>
 </div>
 
 <script>
