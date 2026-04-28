@@ -15,6 +15,12 @@ import { ProviderFormModal } from './providers/ProviderFormModal'
 import { TestConnectionResult } from './providers/TestConnectionResult'
 import { ModelPullDialog } from './providers/ModelPullDialog'
 import { ModelConfigDrawer } from './providers/ModelConfigDrawer'
+import { AuditLogDrawer } from './providers/AuditLogDrawer'
+import { RateLimitsDrawer } from './providers/RateLimitsDrawer'
+import { CredentialsRotateDialog } from './providers/CredentialsRotateDialog'
+import { AddManualModelDialog } from './providers/AddManualModelDialog'
+import { SyncModelsConfirmDialog } from './providers/SyncModelsConfirmDialog'
+import { Button } from '@/components/ui/button'
 import { Server } from 'lucide-react'
 import type { ProviderModelResponse } from '@/api/types/providers'
 
@@ -38,6 +44,11 @@ export default function ProviderDetailPage() {
   const [pullOpen, setPullOpen] = useState(false)
   const [configModel, setConfigModel] = useState<ProviderModelResponse | null>(null)
   const [deleteModelId, setDeleteModelId] = useState<string | null>(null)
+  const [auditOpen, setAuditOpen] = useState(false)
+  const [rateLimitsOpen, setRateLimitsOpen] = useState(false)
+  const [rotateOpen, setRotateOpen] = useState(false)
+  const [addModelOpen, setAddModelOpen] = useState(false)
+  const [syncOpen, setSyncOpen] = useState(false)
 
   const discoveringModels = useProvidersStore((s) => s.discoveringModels)
   const deletingModel = useProvidersStore((s) => s.deletingModel)
@@ -104,6 +115,25 @@ export default function ProviderDetailPage() {
           supportsPull={provider.supports_model_pull}
         />
       </ErrorBoundary>
+
+      {/* Capability action bar */}
+      <div className="flex flex-wrap gap-grid-gap">
+        <Button variant="secondary" onClick={() => setAuditOpen(true)}>
+          Audit log
+        </Button>
+        <Button variant="secondary" onClick={() => setRateLimitsOpen(true)}>
+          Rate limits
+        </Button>
+        <Button variant="secondary" onClick={() => setRotateOpen(true)}>
+          Rotate credentials
+        </Button>
+        <Button variant="secondary" onClick={() => setAddModelOpen(true)}>
+          Add model manually
+        </Button>
+        <Button variant="secondary" onClick={() => setSyncOpen(true)}>
+          Sync models
+        </Button>
+      </div>
 
       {/* Test connection result */}
       {testConnectionResult && (
@@ -183,6 +213,43 @@ export default function ProviderDetailPage() {
           }
           setDeleteModelId(null)
         }}
+      />
+
+      {/* Audit log drawer */}
+      <AuditLogDrawer
+        providerName={decodedName}
+        open={auditOpen}
+        onClose={() => setAuditOpen(false)}
+      />
+
+      {/* Rate-limits drawer */}
+      <RateLimitsDrawer
+        providerName={decodedName}
+        open={rateLimitsOpen}
+        onClose={() => setRateLimitsOpen(false)}
+      />
+
+      {/* Credentials rotate dialog */}
+      <CredentialsRotateDialog
+        providerName={decodedName}
+        provider={provider}
+        open={rotateOpen}
+        onClose={() => setRotateOpen(false)}
+      />
+
+      {/* Add manual model dialog */}
+      <AddManualModelDialog
+        providerName={decodedName}
+        open={addModelOpen}
+        onClose={() => setAddModelOpen(false)}
+      />
+
+      {/* Sync models confirmation */}
+      <SyncModelsConfirmDialog
+        providerName={decodedName}
+        presetHint={provider.preset_name ?? undefined}
+        open={syncOpen}
+        onClose={() => setSyncOpen(false)}
       />
     </div>
   )
