@@ -390,12 +390,13 @@ func TestRunDevCommitWalk_usesEmbeddedCommitSHA(t *testing.T) {
 	// Warn label uses the version refs (with the production wrapper's
 	// SHA scrubbed back to the version label), and the inner cause is
 	// preserved so the user can self-diagnose rate-limit vs 404 vs
-	// network errors.
+	// truncation. The hint no longer guesses at "transient network or
+	// rate limit"; the inner error speaks for itself.
 	requireContains(t, got,
 		"Could not fetch commit list for v0.7.3-dev.20..v0.7.3-dev.24",
 		"comparing v0.7.3-dev.20...v0.7.3-dev.24", // wrapper rewritten back to tag form
 		"simulated rate limit",
-		"transient network error or GitHub rate limit",
+		"Showing terse update notice instead",
 		"New version available: v0.7.3-dev.24",
 	)
 	// And critically, the SHA must NOT leak into the user-facing warn line --
@@ -517,8 +518,15 @@ func TestDevCommitWalkErrorHint(t *testing.T) {
 	if strings.Contains(shaHint, "tag was pruned") {
 		t.Errorf("SHA-base hint should NOT mention tag pruning, got %q", shaHint)
 	}
-	if !strings.Contains(shaHint, "rate limit") {
-		t.Errorf("SHA-base hint should mention transient network/rate limit, got %q", shaHint)
+	// The SHA-base hint deliberately drops the "transient network or rate
+	// limit" guess: the inner error wrapped into the warn line above already
+	// names the real cause (rate-limit, 4xx, truncation cap, etc.).
+	if strings.Contains(shaHint, "rate limit") || strings.Contains(shaHint, "transient network") {
+		t.Errorf("SHA-base hint should not guess at network/rate-limit causes -- "+
+			"that would shadow the real inner error. got %q", shaHint)
+	}
+	if !strings.Contains(shaHint, "Showing terse update notice") {
+		t.Errorf("SHA-base hint should still announce the fallback, got %q", shaHint)
 	}
 }
 

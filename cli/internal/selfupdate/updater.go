@@ -40,7 +40,7 @@ const (
 // because Configure runs exactly once in root.go PersistentPreRunE before
 // any self-update operation starts.
 var (
-	maxAPIResponseBytes  int64 = 1 * 1024 * 1024   // 1 MiB for API/checksums
+	maxAPIResponseBytes  int64 = 4 * 1024 * 1024   // 4 MiB for API/checksums (typical list-commits page is ~400 KiB; 4 MiB gives 10x headroom for outlier release-PR-heavy pages)
 	maxBinaryBytes       int64 = 256 * 1024 * 1024 // 256 MiB for binary archives
 	maxArchiveEntryBytes int64 = 128 * 1024 * 1024 // 128 MiB per archive entry
 
@@ -254,9 +254,19 @@ func fetchJSON[T any](ctx context.Context, url string) (T, error) {
 		return zero, fmt.Errorf("github API returned %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAPIResponseBytes))
+	// Read one byte past the cap so a body that exactly hits the limit can be
+	// distinguished from one that exceeds it. Without the +1, a truncated
+	// payload silently fed json.Unmarshal a half-finished object and produced
+	// the meaningless "decoding response: unexpected end of JSON input" error
+	// that gave no signal about the real cause being response size.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAPIResponseBytes+1))
 	if err != nil {
 		return zero, fmt.Errorf("reading API response: %w", err)
+	}
+	if int64(len(body)) > maxAPIResponseBytes {
+		return zero, fmt.Errorf(
+			"response exceeded %d-byte cap (raise max_api_response_bytes via `synthorg config set max_api_response_bytes <size>`)",
+			maxAPIResponseBytes)
 	}
 
 	var result T

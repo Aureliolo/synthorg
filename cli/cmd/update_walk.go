@@ -245,14 +245,15 @@ func scrubAPIBase(errMsg, apiBase, tagRef string) string {
 }
 
 // devCommitWalkErrorHint returns the HintError body shown when the dev
-// commit-walk compare API call fails. The wording differs based on whether
-// we already used the embedded commit SHA: with a SHA the tag-pruning
-// explanation no longer fits, so we name the more likely real causes
-// (network, rate limit) instead of misdirecting the user.
+// commit-walk list-commits API call fails. The wording differs based on
+// whether we already used the embedded commit SHA: with a SHA the
+// tag-pruning explanation no longer fits, so we leave the inner error
+// (which now carries the real cause -- rate limit, 4xx, or the explicit
+// "response exceeded N-byte cap" guard from fetchJSON) to speak for
+// itself instead of guessing at "transient network or rate limit".
 func devCommitWalkErrorHint(usedCommitSHA bool) string {
 	if usedCommitSHA {
-		return "This is usually a transient network error or GitHub rate limit. " +
-			"Showing terse update notice instead."
+		return "Showing terse update notice instead."
 	}
 	return "This usually means the installed dev pre-release tag was pruned from GitHub " +
 		"(dev releases are auto-rolled), or this is a local build without an embedded " +

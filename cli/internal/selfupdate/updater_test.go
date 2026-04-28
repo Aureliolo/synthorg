@@ -137,6 +137,62 @@ func TestHTTPGetWithClient(t *testing.T) {
 	})
 }
 
+// TestFetchJSON_truncationGuard verifies fetchJSON surfaces a clear "response
+// exceeded N-byte cap" error when the body is larger than maxAPIResponseBytes
+// instead of letting LimitReader silently truncate and produce the
+// meaningless "decoding response: unexpected end of JSON input" downstream.
+func TestFetchJSON_truncationGuard(t *testing.T) {
+	// Shrink the cap for this test so we can produce an over-cap body
+	// cheaply. Restore afterwards because the var is package-global.
+	prev := maxAPIResponseBytes
+	maxAPIResponseBytes = 64
+	t.Cleanup(func() { maxAPIResponseBytes = prev })
+
+	// 200 bytes of well-formed JSON -- well past the 64-byte cap.
+	body := []byte(`{"tag_name":"vX.Y.Z","name":"` + strings.Repeat("A", 200) + `"}`)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	_, err := fetchJSON[Release](context.Background(), srv.URL)
+	if err == nil {
+		t.Fatal("expected truncation guard error, got nil")
+	}
+	if !strings.Contains(err.Error(), "response exceeded") {
+		t.Errorf("error = %v, want explicit 'response exceeded ... cap' message "+
+			"(silent truncation would surface as 'unexpected end of JSON input')", err)
+	}
+	if strings.Contains(err.Error(), "unexpected end of JSON input") {
+		t.Errorf("error = %v, must NOT fall through to json.Unmarshal -- the guard is supposed to short-circuit", err)
+	}
+}
+
+// TestFetchJSON_atCapSucceeds verifies a body that exactly fills the cap
+// still parses successfully -- the +1 read in fetchJSON is a strict-greater
+// trigger, not a >= one, so equality must not be flagged.
+func TestFetchJSON_atCapSucceeds(t *testing.T) {
+	body := []byte(`{"tag_name":"vX.Y.Z"}`)
+	prev := maxAPIResponseBytes
+	maxAPIResponseBytes = int64(len(body))
+	t.Cleanup(func() { maxAPIResponseBytes = prev })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	got, err := fetchJSON[Release](context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("fetchJSON at exactly cap: %v", err)
+	}
+	if got.TagName != "vX.Y.Z" {
+		t.Errorf("TagName = %q, want vX.Y.Z", got.TagName)
+	}
+}
+
 func TestCheckDevFromURL(t *testing.T) {
 	asset := assetName()
 	releases := []devRelease{

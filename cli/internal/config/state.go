@@ -164,7 +164,14 @@ const (
 	// operational range (3-5) but finite.
 	MaxImagePullAttempts = 100
 
-	DefaultMaxAPIResponseBytes  int64 = 1 * 1024 * 1024
+	// DefaultMaxAPIResponseBytes is the per-call cap on JSON responses from
+	// the GitHub API. Sized for the list-commits walk used by `synthorg
+	// update`: each commit object inlines the full PGP signature plus the
+	// signed payload (a duplicate of the message) plus 20+ author/committer
+	// URL fields, averaging ~15 KiB per commit; at per_page=25 a typical
+	// page is ~400 KiB. 4 MiB gives 10x headroom for outlier release-PR-
+	// heavy pages without inviting runaway allocations.
+	DefaultMaxAPIResponseBytes  int64 = 4 * 1024 * 1024
 	DefaultMaxBinaryBytes       int64 = 256 * 1024 * 1024
 	DefaultMaxArchiveEntryBytes int64 = 128 * 1024 * 1024
 
