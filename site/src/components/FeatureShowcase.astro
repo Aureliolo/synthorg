@@ -46,48 +46,10 @@ const heroFeatures = [
   },
 ];
 
-const compactFeatures = [
-  {
-    title: "100+ LLM Providers",
-    description:
-      "11 built-in presets, hot-reload management, quota-aware routing, automatic fallback chains.",
-    href: "/docs/design/operations/",
-  },
-  {
-    title: "Pluggable Architecture",
-    description:
-      "10+ protocol interfaces: swap memory, persistence, routing, sandboxing, and more via config.",
-    href: "/docs/architecture/",
-  },
-  {
-    title: "Real-Time Dashboard",
-    description:
-      "Org chart, task board, budget gauges, agent detail, activity feeds, all live.",
-    href: "/docs/",
-  },
-  {
-    title: "Cost Transparency",
-    description:
-      "Per-token tracking, coordination overhead metrics, hierarchical budget cascades, CFO optimization.",
-    href: "/docs/design/operations/",
-  },
-  {
-    title: "Tool Sandboxing",
-    description:
-      "Subprocess or Docker isolation per tool category. Explicit network controls. MCP protocol support.",
-    href: "/docs/design/operations/",
-  },
-  {
-    title: "Templates & Presets",
-    description:
-      "9 org archetypes from Solo Builder to Enterprise. Personality presets. Locale-aware name generation.",
-    href: "/docs/design/organization/",
-  },
-];
 ---
 
 <!-- Hero feature cards -->
-<div class="grid md:grid-cols-2 gap-6 mb-8">
+<div class="grid md:grid-cols-2 gap-6">
   {heroFeatures.map((f) => {
     const borderColor = f.color === "violet"
       ? "border-violet-500/20 hover:border-violet-500/40"
@@ -111,17 +73,4 @@ const compactFeatures = [
       </a>
     );
   })}
-</div>
-
-<!-- Compact feature grid -->
-<div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-  {compactFeatures.map((f) => (
-    <a
-      href={f.href}
-      class="block bg-[#1a1f2e]/50 rounded-lg p-5 border border-white/5 hover:border-white/15 transition-colors no-underline text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1f2e]"
-    >
-      <p class="font-semibold text-sm mb-1">{f.title}</p>
-      <p class="text-xs text-gray-400">{f.description}</p>
-    </a>
-  ))}
 </div>
