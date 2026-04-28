@@ -226,15 +226,52 @@ class SQLitePresetOverrideRepo:
             else None
         )
         urls_raw = _decode_json_list(row["candidate_urls_json"])
+        if urls_raw is not None and not all(isinstance(u, str) for u in urls_raw):
+            msg = (
+                f"preset_overrides.candidate_urls_json for preset "
+                f"{row.get('preset_name')!r} contains non-string elements"
+            )
+            raise QueryError(msg)
         urls: tuple[str, ...] | None = (
             tuple(str(u) for u in urls_raw) if urls_raw is not None else None
         )
+
+        # Validate scalar fields fail-closed: stringifying ``None``
+        # via ``str(...)`` would silently produce ``"None"`` and let
+        # ``get()`` return a seemingly valid ``PresetOverride`` for
+        # a corrupt row.  Type-check each required scalar instead.
+        preset_name_raw = row["preset_name"]
+        if not isinstance(preset_name_raw, str) or preset_name_raw == "":
+            msg = f"preset_overrides.preset_name corrupt or empty: {preset_name_raw!r}"
+            raise QueryError(msg)
+        base_url_raw = row["base_url"]
+        if base_url_raw is not None and not isinstance(base_url_raw, str):
+            msg = (
+                f"preset_overrides.base_url for preset "
+                f"{preset_name_raw!r} is not str|null: {base_url_raw!r}"
+            )
+            raise QueryError(msg)
+        updated_at_raw = row["updated_at"]
+        if not isinstance(updated_at_raw, str):
+            msg = (
+                f"preset_overrides.updated_at for preset "
+                f"{preset_name_raw!r} is not a string: {updated_at_raw!r}"
+            )
+            raise QueryError(msg)
+        updated_by_raw = row["updated_by"]
+        if not isinstance(updated_by_raw, str) or updated_by_raw == "":
+            msg = (
+                f"preset_overrides.updated_by for preset "
+                f"{preset_name_raw!r} is not a non-empty string: "
+                f"{updated_by_raw!r}"
+            )
+            raise QueryError(msg)
         return PresetOverride(
-            preset_name=str(row["preset_name"]),
+            preset_name=preset_name_raw,
             default_models=models,
             supported_auth_types=auth_types,
             candidate_urls=urls,
-            base_url=str(row["base_url"]) if row["base_url"] is not None else None,
-            updated_at=parse_iso_utc(str(row["updated_at"])),
-            updated_by=str(row["updated_by"]),
+            base_url=base_url_raw,
+            updated_at=parse_iso_utc(updated_at_raw),
+            updated_by=updated_by_raw,
         )

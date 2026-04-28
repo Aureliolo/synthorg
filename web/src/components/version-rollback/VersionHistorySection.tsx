@@ -124,6 +124,15 @@ export function VersionHistorySection<T>(
     let cancelled = false
     const run = async (): Promise<void> => {
       setLoading(true)
+      // Reset ``loadingMore`` on every new epoch.  An in-flight
+      // ``handleLoadMore()`` whose epoch advanced will skip its
+      // own ``finally`` (intentional: it must not commit stale
+      // data), but that leaves the spinner stuck unless the new
+      // load clears it explicitly.  Without this, a single stale
+      // load-more would block all future pagination because the
+      // ``loadingMore || loading`` guard at the top of
+      // ``handleLoadMore`` would always early-return.
+      setLoadingMore(false)
       setError(null)
       setItems([])
       setCursor(null)
