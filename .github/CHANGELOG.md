@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.7.5](https://github.com/Aureliolo/synthorg/compare/v0.7.4...v0.7.5) (2026-04-28)
+
+
+### Features
+
+* **persistence:** connection-family durable repos + factory registries + perf + pagination ([#1647](https://github.com/Aureliolo/synthorg/issues/1647)) ([5525d25](https://github.com/Aureliolo/synthorg/commit/5525d25f34fa33996eed2be3ded05e3db3929565)), closes [#1597](https://github.com/Aureliolo/synthorg/issues/1597) [#1609](https://github.com/Aureliolo/synthorg/issues/1609)
+* **providers:** OAuth/subscription auth survey + auto-derived LiteLLM presets + 8 branded entries ([#1629](https://github.com/Aureliolo/synthorg/issues/1629)) ([#1653](https://github.com/Aureliolo/synthorg/issues/1653)) ([6eb572c](https://github.com/Aureliolo/synthorg/commit/6eb572c5f40422b41d26800b0369bac6f904cc92))
+* **web,providers:** frontend completeness audit + Tier-1 follow-up pt.2 ([#1603](https://github.com/Aureliolo/synthorg/issues/1603), [#1642](https://github.com/Aureliolo/synthorg/issues/1642)) ([#1662](https://github.com/Aureliolo/synthorg/issues/1662)) ([58696e5](https://github.com/Aureliolo/synthorg/commit/58696e5fd1a2d483c41d6b5288a16b9f2c7e52f8))
+* **web:** [#1603](https://github.com/Aureliolo/synthorg/issues/1603) audit slice + heartbeat flake fix (closes [#1635](https://github.com/Aureliolo/synthorg/issues/1635)) ([#1646](https://github.com/Aureliolo/synthorg/issues/1646)) ([6f2c321](https://github.com/Aureliolo/synthorg/commit/6f2c3214e0af0eee2b0f0d75c58c9cd631a16a2f))
+
+
+### Bug Fixes
+
+* **api,ci,docs:** structured BackupError responses + suppress DAST noise + pre-PR review hardening ([#1661](https://github.com/Aureliolo/synthorg/issues/1661)) ([1088323](https://github.com/Aureliolo/synthorg/commit/10883233b8192f791c6529a83f06d74036aa0f6f)), closes [#1659](https://github.com/Aureliolo/synthorg/issues/1659) [#1660](https://github.com/Aureliolo/synthorg/issues/1660)
+* **ci:** deterministic manifest digest extraction + DAST base image build ([#1650](https://github.com/Aureliolo/synthorg/issues/1650)) ([afbdbcf](https://github.com/Aureliolo/synthorg/commit/afbdbcfa38ba7135c11e63866a5c2accd28402d7))
+* **ci:** release-pipeline robustness — keep main pushes from cancelling each other + unstick finalize-release ([#1658](https://github.com/Aureliolo/synthorg/issues/1658)) ([9874d8f](https://github.com/Aureliolo/synthorg/commit/9874d8f3916d0811a9e56208d34085b0e7742e00)), closes [#1656](https://github.com/Aureliolo/synthorg/issues/1656) [#1657](https://github.com/Aureliolo/synthorg/issues/1657)
+* **resource-hygiene:** notification sinks, telemetry async, drain, ETag, web stores ([#1600](https://github.com/Aureliolo/synthorg/issues/1600)) ([#1645](https://github.com/Aureliolo/synthorg/issues/1645)) ([ad52c25](https://github.com/Aureliolo/synthorg/commit/ad52c257ad81ed6065f06971baca61ac2d0877e1))
+* **site:** broken docs links, inline architecture panels, link-validity test ([#1663](https://github.com/Aureliolo/synthorg/issues/1663)) ([109d0d7](https://github.com/Aureliolo/synthorg/commit/109d0d77a9c504e83f26f1823af11604d43059c8))
+
+
+### Refactoring
+
+* collapse wrong-axis abstractions into CandidateRanker + MetricExtractor ([#1612](https://github.com/Aureliolo/synthorg/issues/1612)) ([#1655](https://github.com/Aureliolo/synthorg/issues/1655)) ([4ab1dba](https://github.com/Aureliolo/synthorg/commit/4ab1dba54cbef2159030f8adab122fa4f2bbac56))
+* **settings:** unified configuration precedence + kill-switch wiring + reference docs ([#1648](https://github.com/Aureliolo/synthorg/issues/1648)) ([371e8c1](https://github.com/Aureliolo/synthorg/commit/371e8c1b15bef29a16ba4f853ec23d240233b136)), closes [#1602](https://github.com/Aureliolo/synthorg/issues/1602) [#1613](https://github.com/Aureliolo/synthorg/issues/1613)
+
+
+### CI/CD
+
+* hygiene bundle — DAST plumbing, CodSpeed sharded benchmarks, CLA App-mint ([#1652](https://github.com/Aureliolo/synthorg/issues/1652)) ([cbbca2a](https://github.com/Aureliolo/synthorg/commit/cbbca2ad314854ce712beddae70f9c5191d0e61c))
+
 ## [0.7.4](https://github.com/Aureliolo/synthorg/compare/v0.7.3...v0.7.4) (2026-04-27)
 
 
