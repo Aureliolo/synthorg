@@ -5,6 +5,7 @@ and bulk model sync.  Each test exercises both the service-layer
 state transition and the audit-row emission.
 """
 
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -17,7 +18,11 @@ from synthorg.api.dto_provider_capabilities import (
     ProviderAuditActor,
     ProviderAuditEvent,
     RateLimitsUpdateRequest,
+    SyncModelsRequest,
     _ApiKeyRotation,
+    _CustomHeaderRotation,
+    _OAuthRotation,
+    _SubscriptionRotation,
 )
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.resilience_config import RateLimiterConfig
@@ -77,16 +82,31 @@ def _make_provider_config(
     *,
     models: tuple[ProviderModelConfig, ...] = (),
     rate_limiter: RateLimiterConfig | None = None,
+    auth_type: AuthType = AuthType.API_KEY,
 ) -> ProviderConfig:
+    extras: dict[str, object] = {}
+    if auth_type == AuthType.API_KEY:
+        extras["api_key"] = "initial-secret-x"
+    elif auth_type == AuthType.SUBSCRIPTION:
+        extras["subscription_token"] = "initial-token-x"
+        extras["tos_accepted_at"] = datetime.now(UTC).isoformat()
+    elif auth_type == AuthType.CUSTOM_HEADER:
+        extras["custom_header_name"] = "X-Init-Token"
+        extras["custom_header_value"] = "initial-header-x"
+    elif auth_type == AuthType.OAUTH:
+        extras["oauth_token_url"] = "https://oauth.example.com/token"
+        extras["oauth_client_id"] = "init-client-id"
+        extras["oauth_client_secret"] = "initial-oauth-secret-x"
+        extras["oauth_scope"] = None
     return ProviderConfig(
         driver="litellm",
         litellm_provider="cloud-test",
-        auth_type=AuthType.API_KEY,
-        api_key="initial-secret-x",
+        auth_type=auth_type,
         base_url=None,
         models=models,
         rate_limiter=rate_limiter or RateLimiterConfig(),
         preset_name=None,
+        **extras,  # type: ignore[arg-type]
     )
 
 
@@ -267,6 +287,239 @@ class TestCredentialsRotation:
                 request,
                 actor=actor,
             )
+
+
+@pytest.mark.unit
+class TestRotateCredentialsAllAuthTypes:
+    """Cover the SUBSCRIPTION / CUSTOM_HEADER / OAUTH branches of
+    ``credentials_update_fields`` end-to-end through the service."""
+
+    @staticmethod
+    def _build_service(
+        audit_service: ProviderAuditService,
+        provider: ProviderConfig,
+    ) -> ProviderManagementService:
+        settings_service = AsyncMock()
+        config_resolver = AsyncMock()
+        app_state = MagicMock()
+        app_state.swap_provider_registry = MagicMock()
+        app_state.swap_model_router = MagicMock()
+        config = MagicMock()
+        config.providers = {}
+        initial = {"cloud-test": provider}
+        config_resolver.get_provider_configs = AsyncMock(return_value=initial)
+        svc = ProviderManagementService(
+            settings_service=settings_service,
+            config_resolver=config_resolver,
+            app_state=app_state,
+            config=config,
+            audit_service=audit_service,
+        )
+
+        def _persist_stub(new_providers: dict[str, ProviderConfig]) -> None:
+            config_resolver.get_provider_configs = AsyncMock(return_value=new_providers)
+
+        svc._validate_and_persist = AsyncMock(  # type: ignore[method-assign]
+            side_effect=_persist_stub,
+        )
+        return svc
+
+    async def test_rotate_subscription_token(
+        self,
+        actor: ProviderAuditActor,
+    ) -> None:
+        audit_repo = _FakeAuditRepo()
+        audit = ProviderAuditService(audit_repo)
+        provider = _make_provider_config(auth_type=AuthType.SUBSCRIPTION)
+        service = self._build_service(audit, provider)
+
+        request = _SubscriptionRotation.model_validate(
+            {
+                "auth_type": AuthType.SUBSCRIPTION,
+                "subscription_token": "rotated-sub-token-y",
+                "tos_accepted": True,
+            },
+        )
+        result = await service.rotate_credentials(
+            "cloud-test",
+            request,
+            actor=actor,
+        )
+        assert result.subscription_token == "rotated-sub-token-y"
+        assert result.tos_accepted_at is not None
+        assert len(audit_repo.records) == 1
+        masked = audit_repo.records[0].payload["masked_secret"]
+        assert "rota" in masked
+        assert "en-y" in masked
+        assert "rotated-sub-token-y" not in masked
+
+    async def test_rotate_custom_header(self, actor: ProviderAuditActor) -> None:
+        audit_repo = _FakeAuditRepo()
+        audit = ProviderAuditService(audit_repo)
+        provider = _make_provider_config(auth_type=AuthType.CUSTOM_HEADER)
+        service = self._build_service(audit, provider)
+
+        request = _CustomHeaderRotation.model_validate(
+            {
+                "auth_type": AuthType.CUSTOM_HEADER,
+                "custom_header_name": "X-Rotated-Token",
+                "custom_header_value": "rotated-header-zzz",
+            },
+        )
+        result = await service.rotate_credentials(
+            "cloud-test",
+            request,
+            actor=actor,
+        )
+        assert result.custom_header_name == "X-Rotated-Token"
+        assert result.custom_header_value == "rotated-header-zzz"
+        assert len(audit_repo.records) == 1
+        masked = audit_repo.records[0].payload["masked_secret"]
+        assert "rota" in masked
+        assert "-zzz" in masked
+        assert "rotated-header-zzz" not in masked
+
+    async def test_rotate_oauth_credentials(
+        self,
+        actor: ProviderAuditActor,
+    ) -> None:
+        audit_repo = _FakeAuditRepo()
+        audit = ProviderAuditService(audit_repo)
+        provider = _make_provider_config(auth_type=AuthType.OAUTH)
+        service = self._build_service(audit, provider)
+
+        request = _OAuthRotation.model_validate(
+            {
+                "auth_type": AuthType.OAUTH,
+                "oauth_token_url": "https://oauth.example.com/token2",
+                "oauth_client_id": "client-id-rotated",
+                "oauth_client_secret": "rotated-oauth-secret-yyy",
+                "oauth_scope": "read write",
+            },
+        )
+        result = await service.rotate_credentials(
+            "cloud-test",
+            request,
+            actor=actor,
+        )
+        assert result.oauth_client_secret == "rotated-oauth-secret-yyy"
+        assert result.oauth_client_id == "client-id-rotated"
+        assert result.oauth_scope == "read write"
+        assert len(audit_repo.records) == 1
+        masked = audit_repo.records[0].payload["masked_secret"]
+        assert "rota" in masked
+        assert "-yyy" in masked
+        assert "rotated-oauth-secret-yyy" not in masked
+
+
+@pytest.mark.unit
+class TestSyncModels:
+    """Cover both ``replace_existing`` branches of ``sync_models``."""
+
+    async def test_sync_replace_existing_appends_and_removes(
+        self,
+        service: ProviderManagementService,
+        audit_repo: _FakeAuditRepo,
+        actor: ProviderAuditActor,
+    ) -> None:
+        # Seed with one model that will be removed by the sync.
+        old_model = ProviderModelConfig(id="old-model-001", alias="old")
+        config = _make_provider_config(models=(old_model,))
+        service._config_resolver.get_provider_configs = AsyncMock(  # type: ignore[method-assign]
+            return_value={"cloud-test": config},
+        )
+
+        # Stub discovery to return a fresh set with one new model.
+        new_model = ProviderModelConfig(id="new-model-001", alias="new")
+        service.discover_models_for_provider = AsyncMock(  # type: ignore[method-assign]
+            return_value=(new_model,),
+        )
+
+        result = await service.sync_models(
+            "cloud-test",
+            SyncModelsRequest(replace_existing=True),
+            actor=actor,
+        )
+        assert result.added == ("new-model-001",)
+        assert result.removed == ("old-model-001",)
+        assert len(audit_repo.records) == 1
+        assert audit_repo.records[0].event_type == "models_synced"
+        payload = audit_repo.records[0].payload
+        assert payload["added_count"] == 1
+        assert payload["removed_count"] == 1
+
+    async def test_sync_append_only_keeps_existing(
+        self,
+        service: ProviderManagementService,
+        actor: ProviderAuditActor,
+    ) -> None:
+        old_model = ProviderModelConfig(id="keep-model-001", alias="keep")
+        config = _make_provider_config(models=(old_model,))
+        service._config_resolver.get_provider_configs = AsyncMock(  # type: ignore[method-assign]
+            return_value={"cloud-test": config},
+        )
+        added_model = ProviderModelConfig(id="added-model-001", alias="added")
+        service.discover_models_for_provider = AsyncMock(  # type: ignore[method-assign]
+            return_value=(added_model,),
+        )
+
+        result = await service.sync_models(
+            "cloud-test",
+            SyncModelsRequest(replace_existing=False),
+            actor=actor,
+        )
+        assert result.added == ("added-model-001",)
+        assert result.removed == ()
+        # Existing model is preserved.
+        assert any(m.id == "keep-model-001" for m in result.models)
+
+
+@pytest.mark.unit
+class TestAuditFailureIsolation:
+    """The mutation succeeds even if the audit write fails (T2 from triage)."""
+
+    async def test_audit_repo_raises_does_not_break_mutation(
+        self,
+        actor: ProviderAuditActor,
+    ) -> None:
+        # Fake audit repo whose record() always raises.
+        class _ExplodingRepo:
+            async def record(
+                self,
+                event: ProviderAuditEvent,
+            ) -> ProviderAuditEvent:
+                msg = "audit backend down"
+                raise RuntimeError(msg)
+
+            async def list(
+                self,
+                *,
+                provider_name: str,
+                after_id: int | None = None,
+                limit: int = 50,
+            ) -> tuple[tuple[ProviderAuditEvent, ...], bool]:
+                return (), False
+
+            async def purge_before_id(
+                self,
+                *,
+                before_id: int,
+            ) -> int:
+                return 0
+
+        audit_service = ProviderAuditService(_ExplodingRepo())
+        provider = _make_provider_config()
+        svc = TestRotateCredentialsAllAuthTypes._build_service(
+            audit_service,
+            provider,
+        )
+        # The mutation must succeed even though the audit write blew up.
+        result = await svc.update_rate_limits(
+            "cloud-test",
+            RateLimitsUpdateRequest(requests_per_minute=99),
+            actor=actor,
+        )
+        assert result.requests_per_minute == 99
 
 
 @pytest.mark.unit
