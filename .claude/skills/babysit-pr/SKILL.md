@@ -20,7 +20,9 @@ Self-contained watchdog for the post-PR-creation phase. Sits between you and a P
 
 **Rule (mandatory):** When fixes are needed, fix EVERYTHING valid in this round. No "out of scope", no "pre-existing", no "too big", no "older non-touched code". The only items skipped are ones factually wrong (verified against current code, not vibes); each skip is logged in the round-history entry with the reason.
 
-**Security alerts (CodeQL, Dependabot, Secret Scanning, Socket Security) are NEVER allowed to sit open.** Each alert visible on the PR's branch must be either (a) fixed in the source code in this round, or (b) explicitly dismissed via the GitHub API with one of the sanctioned reasons (Phase 6b). Silent acceptance ("we'll get to it later", "not blocking", "third-party issue") is forbidden. The only sanctioned exits are FIX or DISMISS WITH REASON.
+**Security alerts (CodeQL / code-scanning, Dependabot, Secret Scanning) are NEVER allowed to sit open.** Each open alert in scope for this PR must be either (a) fixed in the source code in this round, or (b) explicitly dismissed via the GitHub API with one of the sanctioned reasons (Phase 6b). Silent acceptance ("we'll get to it later", "not blocking", "third-party issue") is forbidden. The only sanctioned exits are FIX or DISMISS WITH REASON.
+
+**Socket Security** alerts surface as PR-level review comments, not via a dedicated GitHub API. Treat them as part of the regular reviewer feedback in Phase 6 (FIX in code or, if a verified false-positive, post an `@socket-security ignore-rule <rule>` reply on the comment thread per Socket's ignore syntax). Convergence (Phase 3) does not gate on a separate Socket Security counter; the "no new comments since cached IDs" branch already covers Socket's PR-comment flow.
 
 **Arguments:** "$ARGUMENTS"
 
@@ -37,6 +39,7 @@ Self-contained watchdog for the post-PR-creation phase. Sits between you and a P
    {
      "pr": N,
      "owner_repo": "OWNER/REPO",
+     "self_login": "<gh api user --jq .login, cached>",
      "round": 0,
      "cadence_seconds": 900,
      "max_rounds": 12,
@@ -44,11 +47,19 @@ Self-contained watchdog for the post-PR-creation phase. Sits between you and a P
      "last_review_id": 0,
      "last_pr_comment_id": 0,
      "last_issue_comment_id": 0,
+     "last_ci_state": "",
      "last_action_at": "<ISO-now>",
      "rate_limit_pings": 0,
+     "scanners_available": {
+       "code_scanning": true,
+       "dependabot": true,
+       "secret_scanning": true
+     },
      "history": []
    }
    ```
+
+   `self_login` is cached on the first invocation so subsequent ticks don't re-call `gh api user`. `last_ci_state` is the cached overall CI verdict (e.g. `"success"`, `"failure"`, `"pending"`) used for the Phase 5 `ci_state_change` delta. `scanners_available` starts with all three scanners optimistically true; Phase 1 flips an entry to `false` if the corresponding endpoint returns 404 / 403, and Phase 1 reads the map on subsequent ticks to skip endpoints already proven unavailable on this repo.
 
 5. Apply `$2` / `$3` overrides if given (parse `15m` -> 900, `30m` -> 1800, plain int -> seconds; max-rounds is plain int).
 6. Use `Write` (not `cat >`) to create / update the state file. Read it first if it exists (Read tool requirement).
@@ -75,9 +86,16 @@ HEAD_BRANCH="$(gh pr view N --json headRefName --jq .headRefName)"
 gh api "repos/OWNER/REPO/code-scanning/alerts?state=open&ref=refs/heads/$HEAD_BRANCH&per_page=100" --paginate \
   --jq '[.[] | {number, severity: .rule.severity, rule: .rule.id, path: .most_recent_instance.location.path, line: .most_recent_instance.location.start_line, message: .most_recent_instance.message.text, html_url}]'
 
-# Dependabot alerts (repo-wide; PR-branch filter is not exposed via REST).
-gh api "repos/OWNER/REPO/dependabot/alerts?state=open&per_page=100" --paginate \
-  --jq '[.[] | {number, severity: .security_advisory.severity, package: .dependency.package.name, ecosystem: .dependency.package.ecosystem, summary: .security_advisory.summary, ghsa: .security_advisory.ghsa_id, html_url}]'
+# Dependabot vulnerability info, scoped to the PR's actual dependency
+# changes. The /dependabot/alerts endpoint is repo-wide (no ref filter
+# in the REST API), which would surface issues unrelated to this PR;
+# the dependency-review compare endpoint takes a base...head range and
+# returns vulnerabilities introduced by the PR's manifest changes
+# directly. Use this instead so the babysit loop only blocks on
+# vulnerabilities the PR actually introduced or surfaced.
+BASE_REF="$(gh pr view N --json baseRefName --jq .baseRefName)"
+gh api "repos/OWNER/REPO/dependency-graph/compare/$BASE_REF...$HEAD_BRANCH" --paginate \
+  --jq '[.[] | select(.vulnerabilities | length > 0) | {package: .name, ecosystem: .ecosystem, manifest: .manifest, change_type, vulnerabilities: [.vulnerabilities[] | {severity, advisory_ghsa_id, advisory_summary}]}]'
 
 # Secret-scanning alerts (repo-wide).
 gh api "repos/OWNER/REPO/secret-scanning/alerts?state=open&per_page=100" --paginate \
@@ -150,18 +168,33 @@ If NONE of these AND no rate-limit dance fired in Phase 4:
 
 Build the working set:
 
-- **CI failures:** for each entry in `statusCheckRollup` with `conclusion: FAILURE`, capture `name` and pull failed-job logs:
+- **CI failures:** for each entry in `statusCheckRollup` with `conclusion: FAILURE`, capture `name` and the `targetUrl`. The `targetUrl` is the link to the failed job on github.com and embeds the run id (e.g. `https://github.com/OWNER/REPO/actions/runs/<RUN_ID>/job/<JOB_ID>`). Extract the run id from that URL, then pull the failed-job logs:
+
   ```bash
-  gh run view "$RUN_ID" --log-failed --json jobs --jq '.jobs[] | select(.conclusion == "failure")'
+  # statusCheckRollup gives us the per-check targetUrl; iterate and extract.
+  gh pr view N --json statusCheckRollup --jq '.statusCheckRollup[] | select(.conclusion == "FAILURE") | {name, targetUrl}' \
+    | while read -r row; do
+        TARGET_URL="$(printf '%s' "$row" | jq -r .targetUrl)"
+        RUN_ID="$(printf '%s' "$TARGET_URL" | sed -n 's#.*actions/runs/\([0-9]\{1,\}\).*#\1#p')"
+        [ -z "$RUN_ID" ] && continue
+        gh run view "$RUN_ID" --log-failed
+      done
   ```
-  Or for cleaner output, parse the job URL from `statusCheckRollup` entries and fetch with `gh api`.
+
+  If `targetUrl` is missing on an entry (rare; happens with status-check rollups that aren't workflow runs, e.g. external GitHub Apps), surface the check name and conclusion in the round summary and skip log collection for that entry rather than blocking the whole tick.
 - **New review submissions:** every review with `id > last_review_id` (excluding self/bot). Parse review body for embedded outside-diff-range comments (CodeRabbit puts them in `<details>` blocks at the top, same parser as `/aurelio-review-pr` Phase 4).
 - **New inline comments:** every PR comment with `id > last_pr_comment_id` (excluding self).
 - **New issue comments:** every issue comment with `id > last_issue_comment_id` (excluding self + `@coderabbitai review` pings).
 
 ## Phase 6b: security-alert triage (FIX or DISMISS, never leave open)
 
-Build a separate working set from the three scanner fetches in Phase 1. For each open alert visible on the PR branch:
+Build a separate working set from the three scanner fetches in Phase 1. Scope per scanner:
+
+- **code-scanning** (CodeQL etc.): alerts visible on the PR branch (`ref=refs/heads/$HEAD_BRANCH`), filtered by Phase 1's fetch.
+- **Dependabot**: vulnerabilities the PR's manifest changes introduce or surface, returned by the `/dependency-graph/compare/<base>...<head>` endpoint. Anything pre-existing-and-unchanged at the dependency level is out of scope for this PR's babysit (it would block every unrelated PR otherwise).
+- **secret-scanning**: alerts on the repo. Secret-scanning has no per-PR or per-branch filter, so every open secret alert is treated as in scope; the whole point of secret scanning is that any leaked secret needs immediate handling regardless of which PR happened to surface it.
+
+For each in-scope alert:
 
 1. **Read the cited file:line** to confirm the alert applies to current code (not stale from a removed line).
 2. **Decide**: FIX (in-code) or DISMISS (via API with reason). There is no third option. "Pre-existing", "not blocking", "third-party advisory", "we'll address later" all map to either FIX or DISMISS, pick one.
@@ -195,7 +228,7 @@ Build a separate working set from the three scanner fetches in Phase 1. For each
 
    Allowed `resolution` values: `false_positive`, `wont_fix`, `revoked`, `used_in_tests`. If `revoked`, the secret MUST actually have been rotated before dismissal. Verify with the relevant secret backend before issuing the PATCH.
 
-   **Socket Security** alerts surface as PR-level review comments, not via a dedicated GitHub API. Treat them like any other reviewer comment in Phase 6 (fix in code or, if a false-positive, post an `@socket-security ignore-rule <rule>` reply on the comment thread per Socket's ignore syntax).
+   **Socket Security** is handled in Phase 6 (regular reviewer-comment triage), not here. It does not have a dedicated dismiss-via-API endpoint; the comment-thread reply `@socket-security ignore-rule <rule>` is the only suppression path.
 
 5. **Record every dismissal** in the round-history entry: `{round, action: "alert_dismissed", scanner, alert_number, reason, justification}`. Dismissals are auditable; never make one without the entry.
 
@@ -230,19 +263,24 @@ If a fix changes test expectations: update the test in the same round. If a fix 
 Conditional gates by file type touched:
 
 - **Python** (`.py` in `src/` or `tests/`):
+
   ```bash
   uv run ruff check src/ tests/ --fix
   uv run ruff format src/ tests/
   uv run mypy src/ tests/
   uv run python -m pytest tests/ -m unit -n 8
   ```
+
 - **Web** (`.tsx`/`.ts`/`.css` in `web/src/`):
+
   ```bash
   npm --prefix web run lint
   npm --prefix web run type-check
   npm --prefix web run test
   ```
+
 - **Go** (`.go` in `cli/`):
+
   ```bash
   go -C cli vet ./...
   go -C cli test ./...
@@ -272,7 +310,8 @@ Failure handling: if a gate fails, fix the failure in this round (don't push bro
    - On "stop": write state and exit (no reschedule).
    - On "raise cap": apply the new value (Other -> integer), reschedule.
 3. **Reschedule:**
-   ```
+
+   ```text
    ScheduleWakeup({
      delaySeconds: state.cadence_seconds,
      prompt: "/babysit-pr <PR>",
