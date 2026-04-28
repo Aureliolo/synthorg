@@ -36,6 +36,12 @@ from synthorg.api.exception_handlers import (
     handle_http_exception,
     handle_unexpected,
 )
+from synthorg.backup.errors import (
+    BackupError,
+    BackupInProgressError,
+    BackupNotFoundError,
+    ManifestError,
+)
 from synthorg.persistence.errors import (
     DuplicateRecordError,
     PersistenceError,
@@ -133,6 +139,90 @@ class TestExceptionHandlers:
                 error_category=ErrorCategory.INTERNAL,
                 retryable=False,
             )
+
+    def test_backup_not_found_error_maps_to_404(self) -> None:
+        @get("/test")
+        async def handler() -> None:
+            msg = "Backup not found: abc123"
+            raise BackupNotFoundError(msg)
+
+        with TestClient(make_exception_handler_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 404
+            body = resp.json()
+            assert body["success"] is False
+            assert body["error"] == "Backup not found: abc123"
+            _assert_error_detail(
+                body,
+                error_code=ErrorCode.RECORD_NOT_FOUND,
+                error_category=ErrorCategory.NOT_FOUND,
+                retryable=False,
+            )
+
+    def test_backup_in_progress_error_maps_to_409(self) -> None:
+        @get("/test")
+        async def handler() -> None:
+            msg = "A backup is already in progress"
+            raise BackupInProgressError(msg)
+
+        with TestClient(make_exception_handler_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 409
+            body = resp.json()
+            assert body["success"] is False
+            assert body["error"] == "A backup is already in progress"
+            _assert_error_detail(
+                body,
+                error_code=ErrorCode.RESOURCE_CONFLICT,
+                error_category=ErrorCategory.CONFLICT,
+                retryable=False,
+            )
+
+    def test_manifest_error_maps_to_structured_500(self) -> None:
+        @get("/test")
+        async def handler() -> None:
+            msg = "Manifest checksum mismatch"
+            raise ManifestError(msg)
+
+        with TestClient(make_exception_handler_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 500
+            body = resp.json()
+            assert body["success"] is False
+            # 5xx scrubs the upstream message; the structured envelope
+            # surfaces the category title, not the raw exception text.
+            assert body["error"] == "Backup operation failed"
+            _assert_error_detail(
+                body,
+                error_code=ErrorCode.INTERNAL_ERROR,
+                error_category=ErrorCategory.INTERNAL,
+                retryable=False,
+            )
+
+    def test_generic_backup_error_does_not_fall_through_to_500_unstructured(
+        self,
+    ) -> None:
+        """Catch-all BackupError must hit handle_backup_error, not handle_unexpected.
+
+        Regression test for ZAP DAST 90022/10023: prior to the BackupError
+        handler being added to EXCEPTION_HANDLERS, any BackupError subtype
+        not explicitly handled in a controller fell through to
+        handle_unexpected, returning a generic 500 with no Backup-specific
+        error_code.
+        """
+
+        @get("/test")
+        async def handler() -> None:
+            msg = "generic backup failure"
+            raise BackupError(msg)
+
+        with TestClient(make_exception_handler_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 500
+            body = resp.json()
+            assert body["error"] == "Backup operation failed"
+            # Goes through handle_backup_error, not handle_unexpected.
+            assert body["error_detail"]["error_code"] == ErrorCode.INTERNAL_ERROR
 
     def test_api_not_found_error_maps_to_404(self) -> None:
         @get("/test")

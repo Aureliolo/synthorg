@@ -38,6 +38,11 @@ from synthorg.api.errors import (
     category_title,
     category_type_uri,
 )
+from synthorg.backup.errors import (
+    BackupError,
+    BackupInProgressError,
+    BackupNotFoundError,
+)
 from synthorg.budget.errors import (
     BudgetExhaustedError,
     MixedCurrencyAggregationError,
@@ -349,6 +354,48 @@ def handle_persistence_error(
         request,
         detail="Internal server error",
         error_code=ErrorCode.PERSISTENCE_ERROR,
+        error_category=ErrorCategory.INTERNAL,
+        status_code=500,
+    )
+
+
+def handle_backup_error(
+    request: Request[Any, Any, Any],
+    exc: BackupError,
+) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
+    """Map ``BackupError`` subclasses to appropriate HTTP status codes.
+
+    Without this catch-all, any ``BackupError`` subtype not explicitly
+    handled in a controller (``BackupInProgressError``, ``ManifestError``,
+    ``RestoreError``, ``RetentionError``, ``ComponentBackupError``)
+    falls through to ``handle_unexpected`` and returns a generic 500
+    instead of a structured response.  ZAP DAST flagged this as
+    "Application Error Disclosure" (rule 90022) on
+    ``GET/DELETE /admin/backups/{backup_id}``.
+    """
+    if isinstance(exc, BackupNotFoundError):
+        _log_error(request, exc, status=404)
+        return _build_response(
+            request,
+            detail=str(exc) or "Backup not found",
+            error_code=ErrorCode.RECORD_NOT_FOUND,
+            error_category=ErrorCategory.NOT_FOUND,
+            status_code=404,
+        )
+    if isinstance(exc, BackupInProgressError):
+        _log_error(request, exc, status=409)
+        return _build_response(
+            request,
+            detail=str(exc) or "Backup operation already in progress",
+            error_code=ErrorCode.RESOURCE_CONFLICT,
+            error_category=ErrorCategory.CONFLICT,
+            status_code=409,
+        )
+    _log_error(request, exc, status=500)
+    return _build_response(
+        request,
+        detail="Backup operation failed",
+        error_code=ErrorCode.INTERNAL_ERROR,
         error_category=ErrorCategory.INTERNAL,
         status_code=500,
     )
@@ -699,6 +746,7 @@ EXCEPTION_HANDLERS: MappingProxyType[type[Exception], object] = MappingProxyType
         CommunicationError: handle_domain_error,
         IntegrationError: handle_domain_error,
         ToolError: handle_domain_error,
+        BackupError: handle_backup_error,
         Exception: handle_unexpected,
     }
 )
