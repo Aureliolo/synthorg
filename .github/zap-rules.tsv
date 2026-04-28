@@ -26,7 +26,7 @@
 10104	IGNORE	User Agent Fuzzer
 #
 # 90022 / 10023 fire on the substring "Internal Server Error" appearing
-# anywhere in a response body.  Synthorg's RFC 9457 envelope (see
+# anywhere in a response body.  SynthOrg's RFC 9457 envelope (see
 # src/synthorg/api/errors.py CATEGORY_TITLES) sets that exact title for
 # every ``ErrorCategory.INTERNAL`` response (5xx + 503), so the rule
 # matches every legitimate structured 5xx without distinguishing it
