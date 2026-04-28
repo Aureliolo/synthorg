@@ -16,16 +16,27 @@ from synthorg.engine.assignment._shared import (
     score_and_filter_candidates,
 )
 from synthorg.engine.assignment.models import AssignmentRequest, AssignmentResult
-from synthorg.observability import get_logger
-from synthorg.observability.events.task_assignment import TASK_ASSIGNMENT_NO_ELIGIBLE
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.task_assignment import (
+    TASK_ASSIGNMENT_NO_ELIGIBLE,
+    TASK_ASSIGNMENT_REASON_REWRITER_FAILED,
+)
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from synthorg.core.agent import AgentIdentity
+    from synthorg.engine.assignment.models import AssignmentCandidate
     from synthorg.engine.assignment.pool_filter_protocol import (
         CandidatePoolFilter,
     )
-    from synthorg.engine.assignment.ranker_protocol import CandidateRanker
+    from synthorg.engine.assignment.ranker_protocol import (
+        CandidateRanker,
+        RankingResult,
+    )
     from synthorg.engine.routing.scorer import AgentTaskScorer
+
+    ReasonRewriter = Callable[[AssignmentCandidate], str]
 
 logger = get_logger(__name__)
 
@@ -86,10 +97,10 @@ class ScoringBasedAssignmentStrategy:
             return self._no_eligible_result(request)
 
         ranking = self._ranker.rank(candidates, effective_request)
-        reason = (
-            filter_result.rewrite_success_reason(ranking.selected)
-            if filter_result.rewrite_success_reason is not None
-            else ranking.reason
+        reason = self._compose_reason(
+            request,
+            filter_result.rewrite_success_reason,
+            ranking,
         )
         return AssignmentResult(
             task_id=request.task.id,
@@ -98,6 +109,34 @@ class ScoringBasedAssignmentStrategy:
             alternatives=ranking.alternatives,
             reason=reason,
         )
+
+    def _compose_reason(
+        self,
+        request: AssignmentRequest,
+        rewriter: ReasonRewriter | None,
+        ranking: RankingResult,
+    ) -> str:
+        """Run the optional pool-filter reason rewriter, defensively.
+
+        A buggy filter callable should not crash the entire assignment.
+        On exception we log a warning and fall back to the ranker's
+        reason -- the assignment itself is still valid since the
+        rewriter only affects the human-readable explanation.
+        """
+        if rewriter is None:
+            return ranking.reason
+        try:
+            return rewriter(ranking.selected)
+        except Exception as exc:
+            logger.warning(
+                TASK_ASSIGNMENT_REASON_REWRITER_FAILED,
+                task_id=request.task.id,
+                strategy=self.name,
+                pool_filter=self._pool_filter.name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return ranking.reason
 
     def _empty_pool_result(
         self,

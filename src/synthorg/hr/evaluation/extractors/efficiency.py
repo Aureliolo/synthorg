@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.hr.evaluation.constants import MAX_SCORE
 from synthorg.hr.evaluation.enums import EvaluationPillar
+from synthorg.hr.evaluation.extractors._shared import log_disabled_metrics
 from synthorg.hr.evaluation.metric_extractor_protocol import ExtractedMetrics
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
 
@@ -60,7 +61,7 @@ class EfficiencyMetricExtractor:
                 insufficient_data_event_kwargs={"reason": "no_window_data"},
             )
 
-        scores, weights = await self._compute_sub_scores(cfg, window)
+        scores, weights = await self._compute_sub_scores(context, cfg, window)
         if not weights:
             return ExtractedMetrics(
                 insufficient_data=True,
@@ -78,6 +79,7 @@ class EfficiencyMetricExtractor:
 
     async def _compute_sub_scores(
         self,
+        context: EvaluationContext,
         cfg: EfficiencyConfig,
         window: WindowMetrics,
     ) -> tuple[dict[str, float], dict[str, float]]:
@@ -104,6 +106,24 @@ class EfficiencyMetricExtractor:
             )
         cost_enabled = cost_task.result()
         latency_enabled = latency_task.result()
+
+        # Audit-trail: emit DEBUG for sub-metrics gated off by either
+        # YAML config or the resolver-backed kill switches.
+        disabled_metrics = tuple(
+            metric
+            for metric, enabled in (
+                ("cost", cost_enabled),
+                ("time", latency_enabled),
+                ("tokens", cfg.tokens_enabled),
+            )
+            if not enabled
+        )
+        if disabled_metrics:
+            log_disabled_metrics(
+                context,
+                EvaluationPillar.EFFICIENCY,
+                disabled_metrics,
+            )
 
         scores: dict[str, float] = {}
         weights: dict[str, float] = {}

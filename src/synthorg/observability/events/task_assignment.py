@@ -26,3 +26,20 @@ TASK_ASSIGNMENT_WORKLOAD_MISSING: Final[str] = "task_assignment.agent.workload_m
 # Project team filtering events
 TASK_ASSIGNMENT_PROJECT_FILTERED: Final[str] = "task_assignment.project.filtered"
 TASK_ASSIGNMENT_PROJECT_NO_ELIGIBLE: Final[str] = "task_assignment.project.no_eligible"
+
+# Pool-filter reason rewriter (rewrite_success_reason callable on
+# PoolFilterResult) raised an exception; the strategy fell back to
+# the ranker's default reason. The assignment itself is still valid
+# since the rewriter only affects the human-readable explanation.
+TASK_ASSIGNMENT_REASON_REWRITER_FAILED: Final[str] = (
+    "task_assignment.reason_rewriter_failed"
+)
+
+# HierarchicalPoolFilter could not consult the HierarchyResolver
+# (transient backing-store error, malformed graph, ...). The filter
+# returned an empty pool and the strategy treats this as
+# no-eligible. Distinct from "delegator unknown" / "no subordinates"
+# which are normal data outcomes, not operational failures.
+TASK_ASSIGNMENT_HIERARCHY_LOOKUP_FAILED: Final[str] = (
+    "task_assignment.hierarchy.lookup_failed"
+)

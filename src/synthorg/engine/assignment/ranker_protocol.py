@@ -39,6 +39,18 @@ class RankingResult:
     alternatives: tuple[AssignmentCandidate, ...]
     reason: str
 
+    def __post_init__(self) -> None:
+        """Enforce that ``selected`` is not duplicated in ``alternatives``."""
+        selected_id = self.selected.agent_identity.id
+        for alt in self.alternatives:
+            if alt.agent_identity.id == selected_id:
+                msg = (
+                    f"RankingResult: selected candidate "
+                    f"{self.selected.agent_identity.name!r} also appears in "
+                    f"alternatives"
+                )
+                raise ValueError(msg)
+
 
 @runtime_checkable
 class CandidateRanker(Protocol):

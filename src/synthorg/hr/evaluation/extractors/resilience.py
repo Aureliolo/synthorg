@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.hr.evaluation.constants import MAX_SCORE, NEUTRAL_SCORE
 from synthorg.hr.evaluation.enums import EvaluationPillar
+from synthorg.hr.evaluation.extractors._shared import log_disabled_metrics
 from synthorg.hr.evaluation.metric_extractor_protocol import ExtractedMetrics
 
 if TYPE_CHECKING:
@@ -36,7 +37,23 @@ class ResilienceMetricExtractor:
                 insufficient_data_event_kwargs={"reason": "no_resilience_metrics"},
             )
 
-        scores, weights = _collect_metrics(context.config.resilience, rm)
+        cfg = context.config.resilience
+        scores, weights = _collect_metrics(cfg, rm)
+        # Emit DEBUG audit trail for any sub-metric the operator
+        # explicitly disabled via config so future "where did this
+        # metric go?" questions show up in logs.
+        disabled_metrics = tuple(
+            metric
+            for metric, enabled in (
+                ("success_rate", cfg.success_rate_enabled),
+                ("recovery_rate", cfg.recovery_rate_enabled),
+                ("consistency", cfg.consistency_enabled),
+                ("streak", cfg.streak_enabled),
+            )
+            if not enabled
+        )
+        if disabled_metrics:
+            log_disabled_metrics(context, EvaluationPillar.RESILIENCE, disabled_metrics)
 
         if not weights:
             return ExtractedMetrics(

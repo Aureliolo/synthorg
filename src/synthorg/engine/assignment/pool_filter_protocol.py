@@ -55,6 +55,24 @@ class PoolFilterResult:
     reason: str | None = None
     rewrite_success_reason: Callable[[AssignmentCandidate], str] | None = None
 
+    def __post_init__(self) -> None:
+        """Enforce the agents/reason invariant.
+
+        - Empty pool MUST carry a reason (callers use it for the
+          ``AssignmentResult.reason`` of the no-eligible result).
+        - Non-empty pool MUST NOT carry a reason (the ranker will
+          produce the success reason; carrying both is ambiguous).
+        """
+        if not self.agents and self.reason is None:
+            msg = "PoolFilterResult: empty agents requires a non-None reason"
+            raise ValueError(msg)
+        if self.agents and self.reason is not None:
+            msg = (
+                "PoolFilterResult: non-empty agents must not carry a reason "
+                "(the ranker produces the success reason)"
+            )
+            raise ValueError(msg)
+
 
 @runtime_checkable
 class CandidatePoolFilter(Protocol):

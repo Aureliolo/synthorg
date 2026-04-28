@@ -20,6 +20,7 @@ from synthorg.hr.evaluation.constants import (
     MAX_SCORE,
 )
 from synthorg.hr.evaluation.enums import EvaluationPillar
+from synthorg.hr.evaluation.extractors._shared import log_disabled_metrics
 from synthorg.hr.evaluation.metric_extractor_protocol import ExtractedMetrics
 
 if TYPE_CHECKING:
@@ -78,6 +79,22 @@ class ExperienceMetricExtractor:
                 },
                 neutral_data_point_count=len(feedback),
             )
+
+        # Audit-trail: emit DEBUG for any rating dimension the
+        # operator explicitly disabled via config.
+        disabled_metrics = tuple(
+            metric
+            for metric, enabled in (
+                ("clarity", cfg.clarity_enabled),
+                ("tone", cfg.tone_enabled),
+                ("helpfulness", cfg.helpfulness_enabled),
+                ("trust", cfg.trust_enabled),
+                ("satisfaction", cfg.satisfaction_enabled),
+            )
+            if not enabled
+        )
+        if disabled_metrics:
+            log_disabled_metrics(context, EvaluationPillar.EXPERIENCE, disabled_metrics)
 
         scores, weights = _collect_metrics(cfg, feedback)
 

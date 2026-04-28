@@ -13,6 +13,7 @@ This helper concentrates that shape so per-subsystem gates stay terse
 and consistent across the codebase.
 """
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger, safe_error_description
@@ -62,7 +63,12 @@ async def resolve_bool_with_fallback(
         return fallback
     try:
         return await resolver.get_bool(namespace, key)
-    except MemoryError, RecursionError:
+    except MemoryError, RecursionError, asyncio.CancelledError:
+        # MemoryError + RecursionError are out-of-budget and cannot be
+        # safely handled here. CancelledError must propagate so task
+        # cancellation works; swallowing it would convert an aborted
+        # await into a "settings outage" log + fallback, masking the
+        # real semantic.
         raise
     except Exception as exc:
         logger.warning(

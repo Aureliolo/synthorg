@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.hr.evaluation.constants import MAX_SCORE, NEUTRAL_SCORE
 from synthorg.hr.evaluation.enums import EvaluationPillar
+from synthorg.hr.evaluation.extractors._shared import log_disabled_metrics
 from synthorg.hr.evaluation.metric_extractor_protocol import ExtractedMetrics
 from synthorg.observability import get_logger
 from synthorg.observability.events.evaluation import EVAL_TRUST_LEVEL_UNKNOWN
@@ -69,15 +70,22 @@ class GovernanceMetricExtractor:
         weights: dict[str, float] = {}
         data_points = 0
 
+        # Collect disabled metrics for audit logging.
+        disabled_metrics: list[str] = []
+
         if cfg.audit_compliance_enabled and total_audits > 0:
             scores["audit_compliance"] = _audit_score(context, total_audits)
             weights["audit_compliance"] = cfg.audit_compliance_weight
             data_points += total_audits
+        elif not cfg.audit_compliance_enabled:
+            disabled_metrics.append("audit_compliance")
 
         if cfg.trust_level_enabled and context.trust_level is not None:
             scores["trust_level"] = _trust_score(context, context.trust_level)
             weights["trust_level"] = cfg.trust_level_weight
             data_points += 1
+        elif not cfg.trust_level_enabled:
+            disabled_metrics.append("trust_level")
 
         if cfg.autonomy_compliance_enabled:
             scores["autonomy_compliance"] = max(
@@ -86,6 +94,15 @@ class GovernanceMetricExtractor:
             )
             weights["autonomy_compliance"] = cfg.autonomy_compliance_weight
             data_points += 1
+        else:
+            disabled_metrics.append("autonomy_compliance")
+
+        if disabled_metrics:
+            log_disabled_metrics(
+                context,
+                EvaluationPillar.GOVERNANCE,
+                tuple(disabled_metrics),
+            )
 
         if not weights:
             return ExtractedMetrics(

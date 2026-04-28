@@ -201,9 +201,16 @@ class CostDescendingRanker:
                 agent_name=selected.agent_identity.name,
                 total_cost=cost_map[str(selected.agent_identity.id)],
             )
+            # Alternatives are returned score-ranked (not cost-ranked) so
+            # callers that treat ``alternatives`` as a generic fallback
+            # list see a consistent ordering across the workload, cost,
+            # and auction rankers.
+            alternatives = tuple(
+                sorted(ranked[1:], key=lambda c: c.score, reverse=True),
+            )
             return RankingResult(
                 selected=selected,
-                alternatives=tuple(ranked[1:]),
+                alternatives=alternatives,
                 reason=(
                     f"Cheapest: {selected.agent_identity.name!r} "
                     f"(score={selected.score:.2f})"

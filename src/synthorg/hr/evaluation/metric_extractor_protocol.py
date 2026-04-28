@@ -13,6 +13,7 @@ an extractor with the shared finalize step to produce a
 """
 
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -20,6 +21,13 @@ if TYPE_CHECKING:
 
     from synthorg.hr.evaluation.enums import EvaluationPillar
     from synthorg.hr.evaluation.models import EvaluationContext
+
+# Read-only sentinels used as default factories so the type-level
+# `Mapping` (read-only) promise matches the runtime value. These are
+# shared across instances; safe because ``MappingProxyType`` is a
+# read-only view over the underlying empty dict.
+_EMPTY_FLOAT_MAP = MappingProxyType[str, float]({})
+_EMPTY_LOG_KWARGS = MappingProxyType[str, str | int | float | bool]({})
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,19 +37,20 @@ class ExtractedMetrics:
     Attributes:
         scores: Sub-metric name -> 0.0-10.0 score. ``ConfigurablePillarScorer``
             applies ``redistribute_weights`` then computes a weighted
-            average across the ``scores.keys()`` overlap with
-            ``weights.keys()``.
+            average across ``scores`` keyed by ``weights``. Every key
+            in ``weights`` must be present in ``scores``; the
+            ``__post_init__`` validator enforces this.
         weights: Sub-metric name -> raw weight. Disabled metrics
             should be omitted entirely (not present here at all).
             The composite normalises with ``redistribute_weights``.
         data_points: Number of underlying observations the extractor
             saw. Drives the base confidence ``min(1.0, data_points / N)``.
         confidence_multiplier: Multiplied into the base confidence
-            (after the ``data_points / N`` normalisation). Default
-            ``1.0`` (no penalty/bonus). Intelligence uses this for
-            the calibration-drift penalty; Experience uses it to
-            redirect the confidence saturation point from
-            ``FULL_CONFIDENCE_DATA_POINTS`` to
+            (after the ``data_points / N`` normalisation). Must be
+            non-negative. Default ``1.0`` (no penalty/bonus).
+            Intelligence uses this for the calibration-drift penalty;
+            Experience uses it to redirect the confidence saturation
+            point from ``FULL_CONFIDENCE_DATA_POINTS`` to
             ``min_feedback_count * 3``.
         insufficient_data: When ``True`` the composite short-circuits
             to a neutral ``PillarScore`` (score = ``NEUTRAL_SCORE``,
@@ -50,8 +59,9 @@ class ExtractedMetrics:
         insufficient_data_event_kwargs: Extra structured kwargs for
             the ``EVAL_PILLAR_INSUFFICIENT_DATA`` log event when
             ``insufficient_data`` is ``True`` (typically
-            ``{"reason": "<short_id>"}``; values may be any
-            JSON-serialisable scalar).
+            ``{"reason": "<short_id>"}``). Value type is restricted
+            to JSON-serialisable scalars so structured-log sinks never
+            choke on the payload.
         neutral_data_point_count: When ``insufficient_data`` is
             ``True`` and this is non-``None``, overrides the neutral
             ``PillarScore.data_point_count`` (default ``0``).
@@ -59,13 +69,39 @@ class ExtractedMetrics:
             neutral score still carries the actual count.
     """
 
-    scores: Mapping[str, float] = field(default_factory=dict)
-    weights: Mapping[str, float] = field(default_factory=dict)
+    scores: Mapping[str, float] = field(default_factory=lambda: _EMPTY_FLOAT_MAP)
+    weights: Mapping[str, float] = field(default_factory=lambda: _EMPTY_FLOAT_MAP)
     data_points: int = 0
     confidence_multiplier: float = 1.0
     insufficient_data: bool = False
-    insufficient_data_event_kwargs: Mapping[str, object] = field(default_factory=dict)
+    insufficient_data_event_kwargs: Mapping[str, str | int | float | bool] = field(
+        default_factory=lambda: _EMPTY_LOG_KWARGS,
+    )
     neutral_data_point_count: int | None = None
+
+    def __post_init__(self) -> None:
+        """Enforce ``ExtractedMetrics`` invariants at construction.
+
+        - ``confidence_multiplier`` must be non-negative.
+        - When ``insufficient_data`` is ``False``, every key in
+          ``weights`` must have a corresponding entry in ``scores``;
+          otherwise ``ConfigurablePillarScorer`` would ``KeyError`` at
+          runtime building the weighted sum.
+        """
+        if self.confidence_multiplier < 0.0:
+            msg = (
+                f"confidence_multiplier must be non-negative, "
+                f"got {self.confidence_multiplier}"
+            )
+            raise ValueError(msg)
+        if not self.insufficient_data:
+            missing = set(self.weights) - set(self.scores)
+            if missing:
+                msg = (
+                    f"weights keys {sorted(missing)} have no matching "
+                    f"scores entries; ConfigurablePillarScorer would KeyError"
+                )
+                raise ValueError(msg)
 
 
 @runtime_checkable
