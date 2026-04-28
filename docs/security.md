@@ -371,8 +371,15 @@ suppresses validated false positives and informational findings:
 | Base64 Disclosure | 10094 | Ignore | OpenAPI schema contains UUID/JWT-format refs, not secrets |
 | Sec-Fetch-* Missing | 90005 | Ignore | CSRF is mitigated via the double-submit cookie pattern; Sec-Fetch-* headers are defence-in-depth but not required, and enforcing them would break non-browser API clients |
 | Non-Storable Content | 10049 | Warn | API endpoints correctly use `no-store`; dashboard HTML uses `no-cache`; hashed assets use `immutable`; docs use `public, max-age=300` |
+| Application Error Disclosure | 90022 | Ignore | The ZAP rule fires on the substring "Internal Server Error" appearing in the response body. Synthorg's RFC 9457 envelope (see `src/synthorg/api/errors.py:CATEGORY_TITLES`) sets that exact string as the `title` for every `ErrorCategory.INTERNAL` response, so the rule cannot distinguish a structured 5xx from a real debug-page leak. Real Python tracebacks would surface with framework-specific markers, not the curated envelope; regression coverage lives in the exception-handler unit tests. |
+| Debug Error Messages | 10023 | Ignore | Same trigger and rationale as 90022. |
+| Cookie No HttpOnly Flag | 10010 | Ignore | Fires on the `csrf_token` cookie. That cookie is intentionally non-HttpOnly per the **double-submit cookie pattern**: the frontend JS reads the token and echoes it back as `X-CSRF-Token`. The actual auth/session cookie IS HttpOnly (see `src/synthorg/api/auth/cookies.py`). ZAP has no per-cookie scoping. |
+| Authentication Request Identified | 10111 | Ignore | Informational only (riskcode=0). ZAP labels endpoints with a `password` field as auth requests for its own auth-flow inference; not a finding. |
+| Sensitive Information in URL | 10024 | Ignore | Informational only. Fires on any URL containing the substring "session". In Synthorg `session_id` is a domain runtime/agent session identifier (workflow resource), NOT an HTTP/auth session token; auth lives in HttpOnly cookies. Putting domain IDs in query params is standard REST. |
 
 The rules file is reviewed when ZAP or the API surface changes.
+**When upgrading the ZAP action**, revisit each Ignore row above to
+confirm the underlying rule behaviour has not changed.
 Cache-Control is path-aware: API data endpoints use `no-store` to prevent
 sensitive data caching, the web dashboard entry point (`index.html`) uses
 `no-cache` to force revalidation on every request (ensuring fresh deployments),

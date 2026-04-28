@@ -58,6 +58,24 @@ Backup settings live in the `backup` namespace with runtime editability via `Bac
 | `DELETE` | `/api/v1/admin/backups/{id}` | Delete a specific backup |
 | `POST` | `/api/v1/admin/backups/restore` | Restore from backup (requires `confirm=true`) |
 
+### Error responses
+
+Every endpoint surfaces a structured RFC 9457 envelope on failure (see
+[errors reference](../reference/errors.md)). Backup-specific status
+mapping is enforced by `handle_backup_error` in
+`src/synthorg/api/exception_handlers.py`:
+
+| Exception | Status | `error_code` |
+|-----------|--------|---------------|
+| `BackupNotFoundError` | `404` | `RECORD_NOT_FOUND` |
+| `BackupInProgressError` | `409` | `RESOURCE_CONFLICT` |
+| `ManifestError`, `RestoreError`, `RetentionError`, `ComponentBackupError`, plain `BackupError` | `500` | `INTERNAL_ERROR` |
+
+Controllers also catch the common cases explicitly and translate to
+Litestar exceptions (e.g. `BackupNotFoundError → NotFoundException`).
+The central `handle_backup_error` is the safety net for any backup
+error that escapes a controller's local catch.
+
 ---
 
 ## See Also

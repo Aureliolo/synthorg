@@ -15,6 +15,7 @@ from litestar.exceptions import (
 )
 from litestar.testing import TestClient
 
+from synthorg.api.dto import ProblemDetail
 from synthorg.api.errors import (
     ApiError,
     ApiValidationError,
@@ -40,7 +41,10 @@ from synthorg.backup.errors import (
     BackupError,
     BackupInProgressError,
     BackupNotFoundError,
+    ComponentBackupError,
     ManifestError,
+    RestoreError,
+    RetentionError,
 )
 from synthorg.persistence.errors import (
     DuplicateRecordError,
@@ -140,17 +144,31 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
+    # The five backup tests below use the explicit form (rather than
+    # collapsing into one parametrize) because each exercises a distinct
+    # dispatch branch (404 / 409 / 500-with-specific-subtype /
+    # 500-via-base-class) and the assertions diverge on more than the
+    # exception input.  An assertion failure should name which branch
+    # diverged without the reader having to decode parameter ids.
+
     def test_backup_not_found_error_maps_to_404(self) -> None:
         @get("/test")
         async def handler() -> None:
             msg = "Backup not found: abc123"
             raise BackupNotFoundError(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
+        with (
+            structlog.testing.capture_logs() as logs,
+            TestClient(make_exception_handler_app(handler)) as client,
+        ):
             resp = client.get("/test")
             assert resp.status_code == 404
             body = resp.json()
             assert body["success"] is False
+            # 4xx responses surface the raw exception message.  The
+            # backup_id in that message is a public identifier (returned
+            # by ``GET /admin/backups`` as resource metadata), not PII or
+            # internal state, so the pass-through is intentional.
             assert body["error"] == "Backup not found: abc123"
             _assert_error_detail(
                 body,
@@ -158,6 +176,11 @@ class TestExceptionHandlers:
                 error_category=ErrorCategory.NOT_FOUND,
                 retryable=False,
             )
+        request_errors = [
+            log for log in logs if log.get("event") == "api.request.error"
+        ]
+        assert request_errors, "_log_error must emit api.request.error"
+        assert request_errors[0]["log_level"] == "warning"
 
     def test_backup_in_progress_error_maps_to_409(self) -> None:
         @get("/test")
@@ -165,7 +188,10 @@ class TestExceptionHandlers:
             msg = "A backup is already in progress"
             raise BackupInProgressError(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
+        with (
+            structlog.testing.capture_logs() as logs,
+            TestClient(make_exception_handler_app(handler)) as client,
+        ):
             resp = client.get("/test")
             assert resp.status_code == 409
             body = resp.json()
@@ -177,6 +203,10 @@ class TestExceptionHandlers:
                 error_category=ErrorCategory.CONFLICT,
                 retryable=False,
             )
+        request_errors = [
+            log for log in logs if log.get("event") == "api.request.error"
+        ]
+        assert request_errors[0]["log_level"] == "warning"
 
     def test_manifest_error_maps_to_structured_500(self) -> None:
         @get("/test")
@@ -184,7 +214,10 @@ class TestExceptionHandlers:
             msg = "Manifest checksum mismatch"
             raise ManifestError(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
+        with (
+            structlog.testing.capture_logs() as logs,
+            TestClient(make_exception_handler_app(handler)) as client,
+        ):
             resp = client.get("/test")
             assert resp.status_code == 500
             body = resp.json()
@@ -198,17 +231,23 @@ class TestExceptionHandlers:
                 error_category=ErrorCategory.INTERNAL,
                 retryable=False,
             )
+        request_errors = [
+            log for log in logs if log.get("event") == "api.request.error"
+        ]
+        assert request_errors[0]["log_level"] == "error"
 
     def test_generic_backup_error_does_not_fall_through_to_500_unstructured(
         self,
     ) -> None:
-        """Catch-all BackupError must hit handle_backup_error, not handle_unexpected.
+        """Catch-all ``BackupError`` must reach ``handle_backup_error``.
 
-        Regression test for ZAP DAST 90022/10023: prior to the BackupError
-        handler being added to EXCEPTION_HANDLERS, any BackupError subtype
-        not explicitly handled in a controller fell through to
-        handle_unexpected, returning a generic 500 with no Backup-specific
-        error_code.
+        Without the ``BackupError`` entry in ``EXCEPTION_HANDLERS``, any
+        subtype not explicitly caught in a controller would fall through
+        to ``handle_unexpected``, producing a generic 500 with no
+        backup-specific ``error_code``.  This test pins the contract:
+        the response must carry a structured envelope with
+        ``ErrorCode.INTERNAL_ERROR`` and the scrubbed
+        ``"Backup operation failed"`` detail.
         """
 
         @get("/test")
@@ -221,8 +260,75 @@ class TestExceptionHandlers:
             assert resp.status_code == 500
             body = resp.json()
             assert body["error"] == "Backup operation failed"
-            # Goes through handle_backup_error, not handle_unexpected.
             assert body["error_detail"]["error_code"] == ErrorCode.INTERNAL_ERROR
+
+    @pytest.mark.parametrize(
+        "exc_cls",
+        [RestoreError, RetentionError, ComponentBackupError],
+        ids=["restore_error", "retention_error", "component_backup_error"],
+    )
+    def test_other_backup_subtypes_map_to_structured_500(
+        self,
+        exc_cls: type[BackupError],
+    ) -> None:
+        """``RestoreError``, ``RetentionError``, ``ComponentBackupError``.
+
+        Pin the contract that every non-special-cased ``BackupError``
+        subtype routes through ``handle_backup_error``'s catch-all
+        branch and produces a structured 5xx with ``INTERNAL_ERROR``.
+        Adding an explicit branch for any of these in a future refactor
+        must update this test.
+        """
+
+        @get("/test")
+        async def handler() -> None:
+            msg = "subtype failure"
+            raise exc_cls(msg)
+
+        with TestClient(make_exception_handler_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 500
+            body = resp.json()
+            assert body["error"] == "Backup operation failed"
+            _assert_error_detail(
+                body,
+                error_code=ErrorCode.INTERNAL_ERROR,
+                error_category=ErrorCategory.INTERNAL,
+                retryable=False,
+            )
+
+    @pytest.mark.parametrize(
+        ("exc_cls", "status_code", "expected_detail"),
+        [
+            (BackupNotFoundError, 404, "Backup not found"),
+            (BackupInProgressError, 409, "Backup operation already in progress"),
+        ],
+        ids=["not_found_empty_msg", "in_progress_empty_msg"],
+    )
+    def test_backup_error_4xx_uses_fallback_when_message_empty(
+        self,
+        exc_cls: type[BackupError],
+        status_code: int,
+        expected_detail: str,
+    ) -> None:
+        """Empty exception messages must trigger the 4xx fallback strings.
+
+        ``handle_backup_error`` uses ``str(exc) or "<fallback>"`` so a
+        ``BackupNotFoundError("")`` does not propagate an empty
+        ``detail`` field to the client.  Without coverage, a refactor
+        could drop the ``or "<fallback>"`` guard silently.
+        """
+
+        @get("/test")
+        async def handler() -> None:
+            msg = ""
+            raise exc_cls(msg)
+
+        with TestClient(make_exception_handler_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == status_code
+            body = resp.json()
+            assert body["error"] == expected_detail
 
     def test_api_not_found_error_maps_to_404(self) -> None:
         @get("/test")
@@ -832,7 +938,14 @@ class TestBuildResponseFallback:
     """Test _build_response defensive fallback when construction fails."""
 
     def test_fallback_returns_500_on_build_failure(self) -> None:
-        """If ProblemDetail/ErrorDetail construction fails, return 500."""
+        """If ProblemDetail/ErrorDetail construction fails, return 500.
+
+        The fallback path emits a minimal but valid ``ProblemDetail``
+        envelope so client SDKs that decode ``error_detail`` fields do
+        not crash on null access; an unstructured ``{"error": "..."}``
+        dict would have left those clients without an ``error_code`` or
+        ``instance`` to surface to operators.
+        """
         request = MagicMock()
         request.accept.best_match.return_value = "application/json"
 
@@ -848,7 +961,15 @@ class TestBuildResponseFallback:
                 status_code=404,
             )
         assert resp.status_code == 500
-        assert resp.content == {"error": "Internal server error"}  # type: ignore[comparison-overlap]
+        # The fallback returns a structured ProblemDetail, not a plain dict.
+        assert isinstance(resp.content, ProblemDetail)
+        assert resp.content.status == 500
+        assert resp.content.detail == "Internal server error"
+        assert resp.content.error_code == ErrorCode.INTERNAL_ERROR
+        assert resp.content.error_category == ErrorCategory.INTERNAL
+        assert resp.content.retryable is False
+        assert isinstance(resp.content.instance, str)
+        assert resp.content.instance
 
     def test_fallback_returns_500_on_problem_json_build_failure(self) -> None:
         """Fallback fires for problem+json path too."""
