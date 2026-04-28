@@ -13,6 +13,12 @@ concurrency:
 
 env:
   TRIVY_VERSION: 0.70.0
+  # COMPOSE_FILE makes every `docker compose` invocation in this job pick
+  # up both the base + DAST overlay automatically (colon separator on
+  # Linux runners), so we don't repeat `-f docker/compose.yml -f
+  # docker/compose.dast.yml` on every step. Workflow-scoped so the
+  # build / start / exec / logs / down calls share the same view.
+  COMPOSE_FILE: docker/compose.yml:docker/compose.dast.yml
 
 jobs:
   zap-scan:
@@ -32,15 +38,45 @@ jobs:
         with:
           persist-credentials: false
 
-      # Create env file with generated secrets (compose requires env_file: .env).
-      # Postgres is a required compose service, so POSTGRES_PASSWORD must be set
-      # even for API-only scans; the backend connects on startup.
+      # Create env file with generated secrets (compose requires
+      # env_file: .env).
+      #
+      # POSTGRES_PASSWORD is unused under the DAST overlay
+      # (compose.dast.yml swaps the backend onto SQLite + internal
+      # bus, dropping the postgres + nats services), but
+      # docker/.env.example still declares it with a `:?Set ...`
+      # required-variable check, so we generate a value to keep
+      # `docker compose config` happy at parse time.
+      #
+      # SYNTHORG_PAGINATION_CURSOR_SECRET is a hard-required boot
+      # guard: the backend exits with RuntimeError when the env var
+      # is unset, because an ephemeral per-process key silently
+      # invalidates every outstanding cursor token across restarts
+      # (see src/synthorg/api/app.py).  The same boot guard holds in
+      # dev / pre-release / prod, so DAST mirrors prod and generates
+      # a per-run value here.
       - name: Create env file
         run: |
+          set -euo pipefail
           cp docker/.env.example docker/.env
-          echo "SYNTHORG_JWT_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')" >> docker/.env
-          echo "SYNTHORG_SETTINGS_KEY=$(python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')" >> docker/.env
-          echo "POSTGRES_PASSWORD=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')" >> docker/.env
+          # Each generation runs in its own VAR=$(...) so a Python failure
+          # surfaces immediately as a non-zero exit (set -e + pipefail)
+          # rather than appending an empty value and surfacing later as a
+          # confusing `compose config` parse error.
+          JWT_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')
+          SETTINGS_KEY=$(python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')
+          PAGINATION_CURSOR_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
+          POSTGRES_PW=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
+          # printf '%s\n' (not echo) so a generated value starting with
+          # `-n` / `-e` is treated as data, not as a builtin flag.  Each
+          # value goes through %s with no escape interpretation, so
+          # backslashes from base64 / urlsafe_b64 are also preserved.
+          {
+            printf '%s\n' "SYNTHORG_JWT_SECRET=$JWT_SECRET"
+            printf '%s\n' "SYNTHORG_SETTINGS_KEY=$SETTINGS_KEY"
+            printf '%s\n' "SYNTHORG_PAGINATION_CURSOR_SECRET=$PAGINATION_CURSOR_SECRET"
+            printf '%s\n' "POSTGRES_PASSWORD=$POSTGRES_PW"
+          } >> docker/.env
 
       # Build the apko-composed Wolfi base image locally, mirroring CI's
       # backend-base build. The backend Dockerfile has no default for
@@ -58,27 +94,52 @@ jobs:
 
       # Build the backend application image. Compose passes the
       # workflow-built `BASE_IMAGE` through to the Dockerfile via the
-      # backend.build.args mapping in docker/compose.yml.
+      # backend.build.args mapping in docker/compose.yml. The DAST
+      # overlay (compose.dast.yml) is a no-op at build time -- it only
+      # patches runtime fields (depends_on, environment) -- but it is
+      # picked up automatically via the workflow-scoped COMPOSE_FILE
+      # env var (above) for symmetry with `up`, `exec`, `logs`, `down`.
       - name: Build backend image
         env:
           BASE_IMAGE: ghcr.io/aureliolo/synthorg-backend-base:${{ steps.base.outputs.tag }}
-        run: docker compose -f docker/compose.yml build backend
+        run: docker compose build backend
 
-      # Start backend only (no web/caddy needed for API scan)
+      # Start backend only. The DAST overlay swaps the backend onto
+      # SQLite + internal bus, so neither postgres nor nats start (no
+      # dhi.io pull is performed -- DHI requires a Docker Hardened
+      # Images subscription that the DAST workflow does not carry).
+      # data-init still runs to chown the bind-mounted /data volume.
       - name: Start backend
-        run: docker compose -f docker/compose.yml up -d backend
+        run: docker compose up -d backend
 
       - name: Wait for healthy
         run: |
-          for i in $(seq 1 30); do
+          set -euo pipefail
+          # Poll readyz for up to 60s. break-on-success + post-loop guard
+          # makes the failure path explicit, instead of relying on `exit 0`
+          # inside the loop body that a future refactor could move into a
+          # function or subshell.
+          healthy=false
+          for _ in $(seq 1 30); do
             if curl -sf http://localhost:3001/api/v1/readyz > /dev/null 2>&1; then
-              echo "Backend healthy"
-              exit 0
+              healthy=true
+              break
             fi
             sleep 2
           done
+          if [ "$healthy" = "true" ]; then
+            echo "Backend healthy"
+            exit 0
+          fi
           echo "::error::Backend failed to start within 60s"
-          docker compose -f docker/compose.yml logs backend
+          # Capture the whole compose project's diagnostic state so a
+          # scheduled-run failure is triageable without rerun: ps shows
+          # which deps started, which exited, and exit codes; logs (no
+          # service arg) emits every service so a `data-init` chown
+          # failure or stuck dependency surfaces alongside backend's
+          # own output. Tail-bound to keep the artifact size sane.
+          docker compose ps
+          docker compose logs --tail=500
           exit 1
 
       # Generate a long-lived system-user JWT so ZAP can scan authenticated
@@ -93,7 +154,8 @@ jobs:
       - name: Generate DAST JWT
         id: jwt
         run: |
-          TOKEN=$(docker compose -f docker/compose.yml exec -T backend \
+          set -euo pipefail
+          TOKEN=$(docker compose exec -T backend \
             python -c "
           import os, jwt, datetime, uuid
           secret = os.environ['SYNTHORG_JWT_SECRET']
@@ -108,6 +170,10 @@ jobs:
           }
           print(jwt.encode(payload, secret, algorithm='HS256'))
           ")
+          if [ -z "$TOKEN" ]; then
+            echo "::error::DAST JWT generation produced an empty token (docker compose exec or python failed)"
+            exit 1
+          fi
           echo "::add-mask::$TOKEN"
           echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
 
@@ -151,7 +217,7 @@ jobs:
 
       - name: Stop backend
         if: always()
-        run: docker compose -f docker/compose.yml down
+        run: docker compose down
 
   report-failure:
     name: Open / update tracking issue on schedule failure

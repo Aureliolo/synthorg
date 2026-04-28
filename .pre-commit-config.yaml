@@ -72,11 +72,21 @@ repos:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
-        exclude: ^(src/synthorg/templates/builtins/|mkdocs\.yml$)
+        # Two files reach the unsafe-mode hook below:
+        #   - mkdocs.yml uses pymdownx's !!python tags
+        #   - docker/compose.dast.yml uses Docker Compose's !override
+        #     custom tag (compose v2.20+) to drop the postgres dependency
+        #     in DAST.
+        # `check-yaml --unsafe` switches pre-commit-hooks from
+        # `ruamel.yaml.YAML(typ='safe').load` to `ruamel.yaml.parse`
+        # (syntactic-only stream parser; no constructor needed) so
+        # custom tags pass without registering constructors. The plain
+        # PyYAML SafeLoader/UnsafeLoader behaviour is irrelevant here.
+        exclude: ^(src/synthorg/templates/builtins/|mkdocs\.yml$|docker/compose\.dast\.yml$)
       - id: check-yaml
-        name: check-yaml (mkdocs, unsafe for !!python tags)
+        name: check-yaml (unsafe parser for custom tags; mkdocs + compose overlays)
         args: [--unsafe]
-        files: ^mkdocs\.yml$
+        files: ^(mkdocs\.yml|docker/compose\.dast\.yml)$
       - id: check-toml
       - id: check-json
       - id: check-merge-conflict
