@@ -473,6 +473,78 @@ class TestSyncModels:
         # Existing model is preserved.
         assert any(m.id == "keep-model-001" for m in result.models)
 
+    async def test_sync_rejects_when_provider_endpoint_changed_during_discovery(
+        self,
+        service: ProviderManagementService,
+        actor: ProviderAuditActor,
+    ) -> None:
+        """Round-3 fix: don't persist discovered models onto a swapped endpoint.
+
+        If the provider's ``base_url`` (or ``auth_type`` /
+        ``preset_name``) is mutated while discovery is in flight,
+        the resulting model set came from a different upstream and
+        must not be persisted onto the new config.
+        """
+        original = _make_provider_config(
+            models=(ProviderModelConfig(id="m1", alias="m1"),),
+        )
+        # First call returns ``original``; second call (post-discovery)
+        # returns a config with a different ``base_url`` to simulate a
+        # concurrent endpoint swap.
+        swapped = original.model_copy(
+            update={"base_url": "https://swapped.example.com/v1"},
+        )
+        service._config_resolver.get_provider_configs = AsyncMock(  # type: ignore[method-assign]
+            side_effect=[
+                {"cloud-test": original},  # get_provider() pre-discover
+                {"cloud-test": swapped},  # post-lock snapshot
+            ],
+        )
+        service.discover_models_for_provider = AsyncMock(  # type: ignore[method-assign]
+            return_value=(ProviderModelConfig(id="m2", alias="m2"),),
+        )
+        with pytest.raises(ProviderValidationError, match="configuration changed"):
+            await service.sync_models(
+                "cloud-test",
+                SyncModelsRequest(replace_existing=True),
+                actor=actor,
+            )
+
+
+@pytest.mark.unit
+class TestSubscriptionRotationToSGuard:
+    """Round-3 fix: subscription rotation rejects ``tos_accepted=false``."""
+
+    async def test_subscription_rotation_with_tos_false_rejected(
+        self,
+        actor: ProviderAuditActor,
+    ) -> None:
+        from synthorg.api.dto_provider_capabilities import _SubscriptionRotation
+
+        audit_repo = _FakeAuditRepo()
+        audit = ProviderAuditService(audit_repo)
+        provider = _make_provider_config(auth_type=AuthType.SUBSCRIPTION)
+        service = TestRotateCredentialsAllAuthTypes._build_service(
+            audit,
+            provider,
+        )
+
+        request = _SubscriptionRotation.model_validate(
+            {
+                "auth_type": AuthType.SUBSCRIPTION,
+                "subscription_token": "rotated-sub-token-y",
+                "tos_accepted": False,
+            },
+        )
+        with pytest.raises(ProviderValidationError, match="tos_accepted=true"):
+            await service.rotate_credentials(
+                "cloud-test",
+                request,
+                actor=actor,
+            )
+        # Audit row must NOT be written when validation rejects.
+        assert len(audit_repo.records) == 0
+
 
 @pytest.mark.unit
 class TestAuditFailureIsolation:
