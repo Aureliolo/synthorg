@@ -282,12 +282,14 @@ class TrainingController(Controller):
                     error="Failed to persist FAILED status",
                     error_type=type(save_exc).__name__,
                     persistence_error=safe_error_description(save_exc),
+                    exc_info=True,
                 )
             logger.warning(
                 HR_TRAINING_PLAN_FAILED,
                 plan_id=str(plan.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
+                exc_info=True,
             )
             raise
 

@@ -71,10 +71,12 @@ def _python_files(root: Path) -> list[Path]:
 
 
 def _imported_modules(path: Path) -> set[str]:
-    """Return every module referenced by a ``from MODULE import ...`` block.
+    """Return every module referenced by an import statement.
 
-    Walks both top-level imports and lazy/function-local imports so
-    repointing missed nothing.
+    Walks both ``from MODULE import ...`` (``ast.ImportFrom``) and bare
+    ``import MODULE`` / ``import MODULE as alias`` (``ast.Import``) at
+    top level and inside function bodies, so a stray ``import
+    synthorg.api.errors`` cannot slip past the layering guard.
     """
     src = path.read_text(encoding="utf-8")
     try:
@@ -86,6 +88,9 @@ def _imported_modules(path: Path) -> set[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module:
             out.add(node.module)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                out.add(alias.name)
     return out
 
 

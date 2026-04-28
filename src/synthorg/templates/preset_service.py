@@ -151,6 +151,7 @@ def _parse_config_json(config_json: str, preset_name: str) -> dict[str, Any]:
             reason="corrupt_json",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
+            exc_info=True,
         )
         msg = f"Personality preset {preset_name!r} has corrupt configuration"
         raise NotFoundError(msg) from exc
