@@ -63,6 +63,35 @@ function summariseEvent(event: ProviderAuditEvent): string {
  * "Load more" is rendered while ``has_more`` is true.  The list is
  * read-only and ordered newest-first by the backend.
  */
+/**
+ * One audit log row.  Extracted so the ``.map()`` body in
+ * ``AuditLogDrawer`` stays simple and the row's structure can be
+ * tested / restyled independently.
+ */
+function AuditRowItem({ event }: { event: ProviderAuditEvent }) {
+  return (
+    <li className="flex flex-col gap-1 py-grid-gap">
+      <div className="flex items-center justify-between gap-grid-gap">
+        <span className="font-medium text-foreground">
+          {EVENT_LABEL[event.event_type] ?? event.event_type}
+        </span>
+        <time
+          dateTime={event.occurred_at}
+          className="text-xs text-text-secondary"
+        >
+          {formatDateTime(event.occurred_at)}
+        </time>
+      </div>
+      <div className="text-sm text-text-secondary">
+        {summariseEvent(event)}
+      </div>
+      <div className="text-xs text-text-tertiary">
+        by {event.actor.label}
+      </div>
+    </li>
+  )
+}
+
 export function AuditLogDrawer({ providerName, open, onClose }: AuditLogDrawerProps) {
   const events = useProvidersStore((s) => s.auditEvents)
   const loading = useProvidersStore((s) => s.auditLoading)
@@ -138,25 +167,10 @@ export function AuditLogDrawer({ providerName, open, onClose }: AuditLogDrawerPr
         {!loading && visibleEvents.length > 0 && (
           <ol className="flex flex-col divide-y divide-border">
             {visibleEvents.map((event) => (
-              <li
+              <AuditRowItem
                 key={event.id ?? `${event.provider_name}-${event.occurred_at}`}
-                className="flex flex-col gap-1 py-grid-gap"
-              >
-                <div className="flex items-center justify-between gap-grid-gap">
-                  <span className="font-medium text-foreground">
-                    {EVENT_LABEL[event.event_type] ?? event.event_type}
-                  </span>
-                  <time className="text-xs text-text-secondary">
-                    {formatDateTime(event.occurred_at)}
-                  </time>
-                </div>
-                <div className="text-sm text-text-secondary">
-                  {summariseEvent(event)}
-                </div>
-                <div className="text-xs text-text-tertiary">
-                  by {event.actor.label}
-                </div>
-              </li>
+                event={event}
+              />
             ))}
           </ol>
         )}

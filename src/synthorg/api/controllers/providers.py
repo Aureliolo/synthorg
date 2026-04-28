@@ -1233,7 +1233,9 @@ class ProviderController(Controller):
     ) -> None:
         """Drop the override for ``preset_name``.
 
-        Idempotent: returns 204 whether or not a row existed.
+        Idempotent: returns 204 whether or not a row existed for a
+        VALID preset name; an unknown preset name returns 404 to
+        match the upsert path.
 
         Args:
             state: Application state.
@@ -1242,6 +1244,18 @@ class ProviderController(Controller):
         """
         app_state: AppState = state.app_state
         actor = request_audit_actor(request)
+        # Match the upsert path's preflight: an unknown preset name
+        # is a 404, not a silent no-op.  Without this, callers can
+        # DELETE arbitrary strings with no signal -- defeats the
+        # accountability intent of the audit row.
+        if get_preset(preset_name) is None:
+            msg = f"Unknown preset {preset_name!r}"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="preset",
+                name=preset_name,
+            )
+            raise NotFoundError(msg)
         await app_state.preset_override_service.delete_override(
             preset_name,
             actor=actor,
@@ -1383,17 +1397,11 @@ class ProviderController(Controller):
                 signed by a different secret.
         """
         app_state: AppState = state.app_state
-        # Surface 404 cleanly if the provider has been deleted; an
-        # audit log for a non-existent provider would silently return
-        # an empty page and hide the deletion from monitoring.
-        #
-        # The pre-existence check we used to do here was wrong for
-        # the audit log specifically: the most important row a user
-        # ever queries is the ``provider_deleted`` event, and 404'ing
-        # the audit endpoint after deletion makes that row
-        # undiscoverable (CodeRabbit caught this).  Audit history
-        # remains queryable by name forever; if the name was never
-        # provisioned, the result page is simply empty.
+        # Audit history is queryable by name forever -- including
+        # for providers that have been deleted, since the most
+        # important row a user ever queries is the
+        # ``provider_deleted`` event itself.  A name with no rows
+        # simply yields an empty page.
 
         after_id_str = (
             decode_keyset_cursor(cursor, secret=app_state.cursor_secret)

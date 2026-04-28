@@ -81,7 +81,10 @@ export function VersionTimeline<T extends TimelineItem>({
                 <span className="font-mono text-sm text-foreground">
                   v{item.version}
                 </span>
-                <time className="text-xs text-text-secondary">
+                <time
+                  dateTime={item.created_at}
+                  className="text-xs text-text-secondary"
+                >
                   {formatDateTime(item.created_at)}
                 </time>
               </button>

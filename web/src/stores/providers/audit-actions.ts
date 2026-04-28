@@ -86,7 +86,9 @@ export function createAuditActions(set: ProvidersSet, get: ProvidersGet) {
           limit: DEFAULT_AUDIT_LIMIT,
         })
         // Guard against the user navigating away mid-fetch: discard
-        // results that no longer match the active provider.
+        // results that no longer match the active provider.  Clear
+        // ``auditError`` on success so a successful retry of a
+        // previously-failed load-more dismisses the stale banner.
         set((s) => {
           if (s.auditProviderName !== providerName) return s
           return {
@@ -95,6 +97,7 @@ export function createAuditActions(set: ProvidersSet, get: ProvidersGet) {
             auditNextCursor: page.nextCursor,
             auditHasMore: page.hasMore,
             auditLoadingMore: false,
+            auditError: null,
           }
         })
       } catch (err) {

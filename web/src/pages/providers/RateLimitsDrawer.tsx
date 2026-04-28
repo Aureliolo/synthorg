@@ -52,6 +52,10 @@ function RateLimitsForm({
   const [validationError, setValidationError] = useState<string | null>(null)
 
   const handleSave = async (): Promise<void> => {
+    // Guard against duplicate submissions while a save is already
+    // in flight; rapid clicks would otherwise issue parallel PATCH
+    // requests, each writing a separate audit row.
+    if (saving) return
     const rpmCap = parseCap(rpm)
     const concurrentCap = parseCap(concurrent)
     if (rpmCap === null && rpm.trim() !== '') {
@@ -75,10 +79,15 @@ function RateLimitsForm({
     }
     setValidationError(null)
     setSaving(true)
-    const result = await updateRateLimits(providerName, updates)
-    setSaving(false)
-    if (result !== null) {
-      onClose()
+    try {
+      const result = await updateRateLimits(providerName, updates)
+      if (result !== null) {
+        onClose()
+      }
+    } finally {
+      // Always release ``saving`` so a one-off bug in the store
+      // mutation can't leave the form permanently disabled.
+      setSaving(false)
     }
   }
 

@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useEscalationsStore } from '@/stores/escalations'
 import { formatDateTime } from '@/utils/format'
 import type {
+  ConflictPosition,
   EscalationDecision,
   EscalationResponse,
 } from '@/api/types/escalations'
@@ -25,6 +26,47 @@ const MODE_OPTIONS: ReadonlyArray<{ value: DecisionMode; label: string }> = [
   { value: 'reject', label: 'Reject' },
   { value: 'cancel', label: 'Cancel' },
 ]
+
+/**
+ * One radio-row for picking the winning agent from a conflict's
+ * positions list.  Extracted so the ``positions.map(...)`` body in
+ * ``DecisionForm`` stays small and the row's accessibility shape
+ * (label wrapping radio + descriptive children) can be unit-tested.
+ */
+function WinnerOptionRow({
+  position,
+  selected,
+  onSelect,
+}: {
+  position: ConflictPosition
+  selected: boolean
+  onSelect: () => void
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-grid-gap rounded-md border border-border bg-surface p-card text-sm">
+      <input
+        type="radio"
+        name="winner"
+        value={position.agent_id}
+        checked={selected}
+        onChange={onSelect}
+        className="mt-1"
+      />
+      <div className="flex flex-col gap-1">
+        <span className="font-medium text-foreground">
+          {position.agent_id}
+          <span className="ml-2 text-xs text-text-secondary">
+            {position.agent_department} · {position.agent_level}
+          </span>
+        </span>
+        <span className="text-text-secondary">
+          {position.position}
+        </span>
+      </div>
+    </label>
+  )
+}
+
 
 function DecisionForm({
   escalationId,
@@ -107,30 +149,12 @@ function DecisionForm({
           </legend>
           <div className="flex flex-col gap-1">
             {positions.map((position) => (
-              <label
+              <WinnerOptionRow
                 key={position.agent_id}
-                className="flex cursor-pointer items-start gap-grid-gap rounded-md border border-border bg-surface p-card text-sm"
-              >
-                <input
-                  type="radio"
-                  name="winner"
-                  value={position.agent_id}
-                  checked={winnerId === position.agent_id}
-                  onChange={() => setWinnerId(position.agent_id)}
-                  className="mt-1"
-                />
-                <div className="flex flex-col gap-1">
-                  <span className="font-medium text-foreground">
-                    {position.agent_id}
-                    <span className="ml-2 text-xs text-text-secondary">
-                      {position.agent_department} · {position.agent_level}
-                    </span>
-                  </span>
-                  <span className="text-text-secondary">
-                    {position.position}
-                  </span>
-                </div>
-              </label>
+                position={position}
+                selected={winnerId === position.agent_id}
+                onSelect={() => setWinnerId(position.agent_id)}
+              />
             ))}
           </div>
         </fieldset>
