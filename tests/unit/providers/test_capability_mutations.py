@@ -96,8 +96,13 @@ def actor() -> ProviderAuditActor:
 
 
 @pytest.fixture
-def audit_service() -> ProviderAuditService:
-    return ProviderAuditService(_FakeAuditRepo())
+def audit_repo() -> _FakeAuditRepo:
+    return _FakeAuditRepo()
+
+
+@pytest.fixture
+def audit_service(audit_repo: _FakeAuditRepo) -> ProviderAuditService:
+    return ProviderAuditService(audit_repo)
 
 
 @pytest.fixture
@@ -166,7 +171,7 @@ class TestRateLimitsUpdate:
     async def test_audits_on_success(
         self,
         service: ProviderManagementService,
-        audit_service: ProviderAuditService,
+        audit_repo: _FakeAuditRepo,
         actor: ProviderAuditActor,
     ) -> None:
         await service.update_rate_limits(
@@ -174,9 +179,8 @@ class TestRateLimitsUpdate:
             RateLimitsUpdateRequest(requests_per_minute=60),
             actor=actor,
         )
-        repo = audit_service._repo  # type: ignore[attr-defined]
-        assert len(repo.records) == 1
-        assert repo.records[0].event_type == "provider_rate_limits_updated"
+        assert len(audit_repo.records) == 1
+        assert audit_repo.records[0].event_type == "provider_rate_limits_updated"
 
 
 @pytest.mark.unit
@@ -219,7 +223,7 @@ class TestCredentialsRotation:
     async def test_rotate_api_key(
         self,
         service: ProviderManagementService,
-        audit_service: ProviderAuditService,
+        audit_repo: _FakeAuditRepo,
         actor: ProviderAuditActor,
     ) -> None:
         request = _ApiKeyRotation.model_validate(
@@ -227,14 +231,13 @@ class TestCredentialsRotation:
         )
         result = await service.rotate_credentials(
             "cloud-test",
-            request,  # type: ignore[arg-type]
+            request,
             actor=actor,
         )
         assert result.api_key == "rotated-secret-y"
         # Audit row carries the masked secret only.
-        repo = audit_service._repo  # type: ignore[attr-defined]
-        assert len(repo.records) == 1
-        masked = repo.records[0].payload["masked_secret"]
+        assert len(audit_repo.records) == 1
+        masked = audit_repo.records[0].payload["masked_secret"]
         assert "rota" in masked  # first 4
         assert "et-y" in masked  # last 4
         assert "rotated-secret-y" not in masked  # never plaintext
@@ -257,7 +260,7 @@ class TestCredentialsRotation:
         with pytest.raises(ProviderValidationError):
             await service.rotate_credentials(
                 "cloud-test",
-                request,  # type: ignore[arg-type]
+                request,
                 actor=actor,
             )
 
