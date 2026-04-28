@@ -18,6 +18,7 @@ const cloudPreset: CloudPresetType = {
   default_base_url: 'https://api.example.com/v1',
   requires_base_url: false,
   default_models: [],
+  is_featured: false,
 }
 
 const localPreset: LocalPresetType = {
@@ -34,6 +35,7 @@ const localPreset: LocalPresetType = {
   supports_model_pull: true,
   supports_model_delete: true,
   supports_model_config: true,
+  is_featured: false,
 }
 
 const meta = {

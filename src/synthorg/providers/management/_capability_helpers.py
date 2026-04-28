@@ -12,6 +12,7 @@ from synthorg.api.dto_provider_capabilities import (
     CredentialsRotateRequest,
     ProviderAuditActor,
 )
+from synthorg.persistence._shared import format_iso_utc
 from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import ProviderValidationError
 
@@ -29,11 +30,12 @@ def mask_secret(secret: str) -> str:
 
     Returns a string of the form ``"abcd***xyz9"`` with the first 4
     and last 4 characters preserved and the middle replaced by
-    ``***``.  Secrets shorter than 8 characters are masked entirely
-    (``"********"``) so the prefix/suffix never overlap and reveal
-    the whole value.
+    ``***``.  Secrets of length 8 or shorter are masked entirely
+    (``"********"``) -- at exactly 8 chars the first-4 and last-4
+    windows already cover every byte of the secret, so any
+    "partial" masking would in fact reveal the whole value.
     """
-    if len(secret) < _SECRET_SHORT_THRESHOLD:
+    if len(secret) <= _SECRET_SHORT_THRESHOLD:
         return "*" * 8
     return f"{secret[:4]}***{secret[-4:]}"
 
@@ -57,7 +59,7 @@ def credentials_update_fields(
             {
                 "subscription_token": secret,
                 "tos_accepted_at": (
-                    datetime.now(UTC).isoformat()
+                    format_iso_utc(datetime.now(UTC))
                     if request.tos_accepted  # type: ignore[union-attr]
                     else None
                 ),

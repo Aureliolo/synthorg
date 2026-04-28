@@ -154,9 +154,14 @@ export function PresetOverrideDrawer({
   if (preset === null) return null
 
   // Form state is seeded from the loaded override via remount-on-key.
+  // The "no-override" branch must include the preset name so that
+  // moving between two presets that both lack overrides still
+  // re-mounts the form with the correct preset context (otherwise
+  // form state from the previous preset would leak into the new
+  // one).
   const formKey = override
     ? `${override.preset_name}/${override.updated_at ?? 'new'}`
-    : 'no-override'
+    : `no-override/${preset.name}`
 
   return (
     <Drawer

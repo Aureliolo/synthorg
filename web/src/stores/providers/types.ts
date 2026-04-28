@@ -73,6 +73,8 @@ export interface ProvidersState {
   rateLimits: RateLimitsConfig | null
   rateLimitsLoading: boolean
   rateLimitsError: string | null
+  /** The provider whose rate-limits are currently in state (or ``null``). */
+  rateLimitsProviderName: string | null
 
   // Preset overrides (read state; mutations live in crud-actions)
   presetOverride: PresetOverride | null

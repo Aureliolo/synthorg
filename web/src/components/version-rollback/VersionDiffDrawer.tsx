@@ -5,12 +5,22 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
-import type { VersionDiffResponse, VersionHistoryClient } from '@/api/endpoints/version-history'
+import type {
+  ReadOnlyVersionHistoryClient,
+  VersionDiffResponse,
+} from '@/api/endpoints/version-history'
 
 const log = createLogger('version-diff')
 
 interface VersionDiffDrawerProps<T> {
-  client: VersionHistoryClient<T>
+  /**
+   * Read-only client is sufficient: this component only calls
+   * ``client.diff(...)``.  Accepting the broader read-only contract
+   * lets read-only domains (role, budget config, evaluation config,
+   * company) render this drawer without forcing a rollback-capable
+   * client at the call site.
+   */
+  client: ReadOnlyVersionHistoryClient<T>
   fromVersion: number | null
   toVersion: number | null
   open: boolean
@@ -28,6 +38,12 @@ function formatValue(value: unknown): string {
  * between two version snapshots.  ``client`` is the version-history
  * client for the resource scope (e.g. ``roleVersions(roleName)``);
  * ``fromVersion`` / ``toVersion`` identify the snapshots to compare.
+ *
+ * IMPORTANT: ``client`` MUST be a stable reference across renders
+ * (e.g. constructed once via ``useMemo`` or imported as a
+ * module-level singleton).  This component depends on ``client`` in
+ * its diff-fetch effect; passing a freshly-constructed client on
+ * every render would trigger an infinite fetch loop.
  */
 export function VersionDiffDrawer<T>({
   client,

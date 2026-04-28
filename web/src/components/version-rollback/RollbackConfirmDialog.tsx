@@ -44,15 +44,14 @@ export function RollbackConfirmDialog<T>({
     }
     setValidationError(null)
     setSubmitting(true)
+    let succeeded = false
     try {
       await client.rollback({ to_version: toVersion, reason: reason.trim() })
+      succeeded = true
       useToastStore.getState().add({
         variant: 'success',
         title: `Rolled back to v${toVersion}`,
       })
-      onSuccess?.()
-      setReason('')
-      onClose()
     } catch (err) {
       log.warn('Rollback failed:', getErrorMessage(err))
       useToastStore.getState().add({
@@ -62,6 +61,19 @@ export function RollbackConfirmDialog<T>({
       })
     } finally {
       setSubmitting(false)
+    }
+    // Run the success callback OUTSIDE the rollback try/catch so a
+    // throw from the host page (e.g. a failed re-fetch) does not
+    // surface as "Rollback failed": the rollback already committed
+    // server-side.
+    if (succeeded) {
+      try {
+        onSuccess?.()
+      } catch (err) {
+        log.warn('Rollback onSuccess callback failed:', getErrorMessage(err))
+      }
+      setReason('')
+      onClose()
     }
   }
 

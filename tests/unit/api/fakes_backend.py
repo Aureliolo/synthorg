@@ -328,6 +328,11 @@ class _FakeProviderAuditRepo:
         self._events: list[Any] = []
         self._next_id = 1
 
+    def clear(self) -> None:
+        """Reset to a fresh, empty repo with the id counter at 1."""
+        self._events = []
+        self._next_id = 1
+
     async def record(self, event: Any) -> Any:
         saved = event.model_copy(update={"id": self._next_id})
         self._next_id += 1
@@ -363,6 +368,10 @@ class _FakePresetOverrideRepo:
 
     def __init__(self) -> None:
         self._overrides: dict[str, Any] = {}
+
+    def clear(self) -> None:
+        """Reset to a fresh, empty override map."""
+        self._overrides = {}
 
     async def get(self, preset_name: NotBlankStr) -> Any | None:
         return self._overrides.get(preset_name)
@@ -426,6 +435,49 @@ class FakeCustomRuleRepository:
             del self._rules[key]
             return True
         return False
+
+
+def _clear_attr(value: object) -> None:
+    """Reset one attribute of ``FakePersistenceBackend`` in-place.
+
+    Strategy: skip primitives that have no clear-able state, clear
+    mutable containers directly, and call any nested ``clear()``
+    method exposed by fake-repo objects.  Falls back to walking
+    ``__dict__`` for repos that do not yet implement their own
+    ``clear()``.  Extracted to a module-level helper so the
+    iteration body in ``FakePersistenceBackend.clear`` stays under
+    the project's complexity ceiling.
+    """
+    # Skip primitives that have no internal state to reset.
+    if value is None or isinstance(value, (bool, str, int, float)):
+        return
+    # Clear mutable containers directly.
+    if isinstance(value, (dict, list, set)):
+        value.clear()
+        return
+    # Repositories that expose a dedicated ``clear()`` know how to
+    # reset every piece of internal state -- including scalar
+    # counters (e.g. ``_next_id``) that the generic walk below
+    # cannot recognise.  Prefer that hook when available; the
+    # generic walk is the legacy fallback.
+    repo_clear = getattr(value, "clear", None)
+    if callable(repo_clear):
+        try:
+            repo_clear()
+        except TypeError:
+            pass
+        else:
+            return
+    # Clear internal state of fake repository objects.
+    try:
+        inner_vars = vars(value)
+    except TypeError:
+        # Objects that legitimately have no ``__dict__`` (e.g.
+        # ``unittest.mock.AsyncMock`` bindings on lazy stubs).
+        return
+    for inner_value in inner_vars.values():
+        if isinstance(inner_value, (dict, list, set)):
+            inner_value.clear()
 
 
 class FakePersistenceBackend:
@@ -500,25 +552,7 @@ class FakePersistenceBackend:
         for attr_name in list(vars(self)):
             if attr_name == "_connected":
                 continue
-            value = getattr(self, attr_name)
-            # Skip lazily-instantiated stubs that aren't live yet and
-            # primitives (None, bool, str) which have no __dict__.
-            if value is None or isinstance(value, (bool, str, int, float)):
-                continue
-            # Clear mutable containers directly.
-            if isinstance(value, (dict, list, set)):
-                value.clear()
-                continue
-            # Clear internal state of fake repository objects.
-            try:
-                inner_vars = vars(value)
-            except TypeError:
-                # Objects that legitimately have no ``__dict__`` (e.g.
-                # ``unittest.mock.AsyncMock`` bindings on lazy stubs).
-                continue
-            for inner_value in inner_vars.values():
-                if isinstance(inner_value, (dict, list, set)):
-                    inner_value.clear()
+            _clear_attr(getattr(self, attr_name))
 
     async def connect(self) -> None:
         self._connected = True

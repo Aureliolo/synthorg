@@ -158,13 +158,17 @@ class ProviderCapabilitiesMixin:
             new_providers = {**providers, name: updated}
             await self._validate_and_persist(new_providers)
 
-            await self._audit(  # type: ignore[attr-defined]
-                provider_name=name,
-                event_type="model_added",
-                actor=actor,
-                payload={"model_id": new_model.id, "alias": new_model.alias},
-            )
-            return updated
+        # Audit AFTER the mutation is durably persisted and the lock
+        # is released; audit-row I/O must not extend the critical
+        # section for every concurrent provider mutation.  Mirrors
+        # the pattern in ``sync_models``.
+        await self._audit(  # type: ignore[attr-defined]
+            provider_name=name,
+            event_type="model_added",
+            actor=actor,
+            payload={"model_id": new_model.id, "alias": new_model.alias},
+        )
+        return updated
 
     async def sync_models(
         self: _ServiceProtocol,
@@ -180,34 +184,10 @@ class ProviderCapabilitiesMixin:
         ``replace_existing=False`` keeps existing models verbatim and
         only appends models the discovery surfaced as new.
         """
-        existing = await self.get_provider(name)
-        # Discovery is idempotent; we re-read state under the lock
-        # before persisting to handle concurrent mutations.
+        # Discovery is idempotent and pure-read; run it outside the
+        # lock so concurrent provider mutations are not blocked
+        # behind potentially-slow upstream HTTP calls.
         discovered = await self.discover_models_for_provider(name)
-
-        prev_by_id = {m.id: m for m in existing.models}
-        disc_by_id = {m.id: m for m in discovered}
-
-        added: list[str] = []
-        removed: list[str] = []
-        updated: list[str] = []
-        new_models: list[ProviderModelConfig] = []
-        if request.replace_existing:
-            for m in discovered:
-                if m.id not in prev_by_id:
-                    added.append(m.id)
-                elif prev_by_id[m.id].model_dump() != m.model_dump():
-                    updated.append(m.id)
-                new_models.append(m)
-            removed.extend(
-                prev_id for prev_id in prev_by_id if prev_id not in disc_by_id
-            )
-        else:
-            new_models.extend(existing.models)
-            for m in discovered:
-                if m.id not in prev_by_id:
-                    new_models.append(m)
-                    added.append(m.id)
 
         async with self._lock:
             providers = await self._config_resolver.get_provider_configs()
@@ -218,6 +198,38 @@ class ProviderCapabilitiesMixin:
                 msg = f"Provider {name!r} not found"
                 logger.warning(PROVIDER_NOT_FOUND, provider=name, error=msg)
                 raise ProviderNotFoundError(msg)
+
+            # Re-derive the diff against ``current`` (the post-lock
+            # snapshot) rather than the pre-lock ``existing`` we
+            # peeked at earlier.  Otherwise a concurrent
+            # ``add_model()`` or manual edit that lands between
+            # discovery and lock acquisition would be silently
+            # clobbered by the merge -- exactly the lost-update race
+            # the lock is meant to prevent.
+            prev_by_id = {m.id: m for m in current.models}
+            disc_by_id = {m.id: m for m in discovered}
+
+            added: list[str] = []
+            removed: list[str] = []
+            updated: list[str] = []
+            new_models: list[ProviderModelConfig] = []
+            if request.replace_existing:
+                for m in discovered:
+                    if m.id not in prev_by_id:
+                        added.append(m.id)
+                    elif prev_by_id[m.id].model_dump() != m.model_dump():
+                        updated.append(m.id)
+                    new_models.append(m)
+                removed.extend(
+                    prev_id for prev_id in prev_by_id if prev_id not in disc_by_id
+                )
+            else:
+                new_models.extend(current.models)
+                for m in discovered:
+                    if m.id not in prev_by_id:
+                        new_models.append(m)
+                        added.append(m.id)
+
             updated_config = current.model_copy(
                 update={"models": tuple(new_models)},
             )
@@ -282,16 +294,19 @@ class ProviderCapabilitiesMixin:
             new_providers = {**providers, name: updated}
             await self._validate_and_persist(new_providers)
 
-            await self._audit(  # type: ignore[attr-defined]
-                provider_name=name,
-                event_type="provider_credentials_rotated",
-                actor=actor,
-                payload={
-                    "auth_type": existing.auth_type.value,
-                    "masked_secret": masked_secret,
-                },
-            )
-            return updated
+        # Audit out of the critical section: rotation has already
+        # been persisted and hot-reloaded by the time we get here;
+        # the audit row must not extend lock contention.
+        await self._audit(  # type: ignore[attr-defined]
+            provider_name=name,
+            event_type="provider_credentials_rotated",
+            actor=actor,
+            payload={
+                "auth_type": existing.auth_type.value,
+                "masked_secret": masked_secret,
+            },
+        )
+        return updated
 
     async def get_rate_limits(self: _ServiceProtocol, name: str) -> RateLimitsResponse:
         """Read the persisted rate-limit configuration for one provider.
@@ -347,16 +362,20 @@ class ProviderCapabilitiesMixin:
             new_providers = {**providers, name: updated}
             await self._validate_and_persist(new_providers)
 
-            await self._audit(  # type: ignore[attr-defined]
-                provider_name=name,
-                event_type="provider_rate_limits_updated",
-                actor=actor,
-                payload={
-                    "fields_changed": sorted(updates.keys()),
-                    **updates,
-                },
-            )
-            return RateLimitsResponse(
-                requests_per_minute=new_rl.max_requests_per_minute,
-                concurrent_requests=new_rl.max_concurrent,
-            )
+        # Audit out of the lock for the same reason as
+        # ``rotate_credentials`` and ``add_model``: the change is
+        # durably persisted by here, and audit-row I/O should not
+        # extend the critical section.
+        await self._audit(  # type: ignore[attr-defined]
+            provider_name=name,
+            event_type="provider_rate_limits_updated",
+            actor=actor,
+            payload={
+                "fields_changed": sorted(updates.keys()),
+                **updates,
+            },
+        )
+        return RateLimitsResponse(
+            requests_per_minute=new_rl.max_requests_per_minute,
+            concurrent_requests=new_rl.max_concurrent,
+        )

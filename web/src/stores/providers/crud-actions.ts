@@ -274,6 +274,12 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
           title: `Model "${data.model.id}" added to "${name}"`,
         })
         await get().fetchProviders()
+        // Refresh the active detail panel so the new model is
+        // visible without a manual reload.  Mirrors the pattern in
+        // ``updateProvider`` / ``discoverModels``.
+        if (get().selectedProvider?.name === name) {
+          await get().fetchProviderDetail(name)
+        }
         return updated
       } catch (err) {
         log.warn('Failed to add model:', getErrorMessage(err))
@@ -312,6 +318,11 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
           description: summary,
         })
         await get().fetchProviders()
+        // Refresh the active detail panel so the synced model list
+        // is visible without a manual reload.
+        if (get().selectedProvider?.name === name) {
+          await get().fetchProviderDetail(name)
+        }
         return result
       } catch (err) {
         log.warn('Failed to sync models:', getErrorMessage(err))
@@ -340,6 +351,11 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
           variant: 'success',
           title: `Rate limits updated for "${name}"`,
         })
+        // Refresh the active detail panel so any rate-limits the
+        // panel surfaces stay in sync.
+        if (get().selectedProvider?.name === name) {
+          await get().fetchProviderDetail(name)
+        }
         return updated
       } catch (err) {
         log.warn('Failed to update rate limits:', getErrorMessage(err))

@@ -585,23 +585,27 @@ class TestMaskSecret:
         assert masked == "abcd***mnop"
         assert "efgh" not in masked  # middle chars never leak
 
-    def test_mask_secret_exactly_eight(self) -> None:
+    def test_mask_secret_exactly_eight_fully_masked(self) -> None:
         from synthorg.providers.management._capability_helpers import mask_secret
 
-        # Boundary: 8 chars = first 4 + *** + last 4 (the prefix and
-        # suffix overlap structurally but the algorithm masks middle
-        # zero-width).
+        # Boundary: at exactly 8 chars, the first-4 and last-4
+        # windows together cover every byte of the secret, so
+        # partial masking would in fact reveal the whole value.
+        # Therefore 8-char inputs MUST mask entirely.
         masked = mask_secret("abcdwxyz")
-        assert masked == "abcd***wxyz"
+        assert masked == "********"
+        assert "abcd" not in masked
+        assert "wxyz" not in masked
 
     def test_mask_secret_short_fully_masked(self) -> None:
         from synthorg.providers.management._capability_helpers import mask_secret
 
-        # 7 chars (< 8 threshold) -> entirely masked, never reveals
+        # 7 chars (<= 8 threshold) -> entirely masked, never reveals
         # any prefix/suffix that would together expose the value.
         masked = mask_secret("abc1234")
         assert masked == "********"
         assert "abc" not in masked
+        assert "1234" not in masked
         assert "234" not in masked
 
     def test_mask_secret_single_char(self) -> None:

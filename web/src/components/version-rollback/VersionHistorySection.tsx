@@ -16,6 +16,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
 import type {
+  ReadOnlyVersionHistoryClient,
   VersionHistoryClient,
   VersionSnapshot,
 } from '@/api/endpoints/version-history'
@@ -25,26 +26,38 @@ import { VersionTimeline, type TimelineItem } from './VersionTimeline'
 
 const log = createLogger('version-history-section')
 
-interface VersionHistorySectionProps<T> {
-  client: VersionHistoryClient<T>
+/**
+ * Props discriminated on rollback capability so the type system
+ * surfaces the rollback-capable client requirement at the call
+ * site.  Read-only consumers pass a ``ReadOnlyVersionHistoryClient``
+ * and OMIT (or set ``false`` on) ``rollbackSupported``;
+ * rollback-capable consumers pass a full ``VersionHistoryClient``
+ * AND set ``rollbackSupported: true``.
+ */
+export type VersionHistorySectionProps<T> =
+  | (VersionHistorySectionBase & {
+      client: VersionHistoryClient<T>
+      rollbackSupported: true
+      /**
+       * Optional callback fired after a successful rollback so the
+       * host page can refresh its primary data.
+       */
+      onAfterRollback?: () => void
+    })
+  | (VersionHistorySectionBase & {
+      client: ReadOnlyVersionHistoryClient<T>
+      rollbackSupported?: false
+    })
+
+interface VersionHistorySectionBase {
   /** Section heading shown above the timeline. */
   title: string
   /** Subtitle / hint copy shown beneath the heading. */
   description?: string
-  /**
-   * ``true`` when the backing domain supports rollback (only agent
-   * identity today).  Read-only domains hide the rollback CTA.
-   */
-  rollbackSupported?: boolean
   /** Empty-state copy for first-load with zero versions. */
   emptyTitle?: string
   /** Empty-state secondary copy. */
   emptyDescription?: string
-  /**
-   * Optional callback fired after a successful rollback so the host
-   * page can refresh its primary data.
-   */
-  onAfterRollback?: () => void
 }
 
 /**
@@ -56,15 +69,24 @@ function toItem<T>(s: VersionSnapshot<T>): TimelineItem {
   return { id: s.id, version: s.version, created_at: s.created_at }
 }
 
-export function VersionHistorySection<T>({
-  client,
-  title,
-  description,
-  rollbackSupported = false,
-  emptyTitle,
-  emptyDescription,
-  onAfterRollback,
-}: VersionHistorySectionProps<T>) {
+export function VersionHistorySection<T>(
+  props: VersionHistorySectionProps<T>,
+) {
+  const {
+    client,
+    title,
+    description,
+    emptyTitle,
+    emptyDescription,
+  } = props
+  const rollbackSupported = props.rollbackSupported === true
+  const onAfterRollback = rollbackSupported ? props.onAfterRollback : undefined
+  // Narrow ``client`` to the rollback-capable subtype only when the
+  // host explicitly opted in; this keeps ``RollbackConfirmDialog``
+  // (which requires ``rollback``) statically valid.
+  const rollbackClient = rollbackSupported
+    ? (client as VersionHistoryClient<T>)
+    : null
   const [items, setItems] = useState<readonly VersionSnapshot<T>[]>([])
   const [cursor, setCursor] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
@@ -218,9 +240,9 @@ export function VersionHistorySection<T>({
           onClose={() => setDiffOpen(false)}
         />
 
-        {rollbackSupported && (
+        {rollbackClient !== null && (
           <RollbackConfirmDialog<T>
-            client={client}
+            client={rollbackClient}
             toVersion={selectedVersion}
             open={rollbackOpen}
             onClose={() => setRollbackOpen(false)}

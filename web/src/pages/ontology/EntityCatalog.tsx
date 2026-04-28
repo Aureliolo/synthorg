@@ -1,10 +1,11 @@
 /**
  * Entity catalog section -- card grid with filter tabs.
  */
-import { ArrowDownAZ, ArrowUpAZ, Search, Shapes } from 'lucide-react'
+import { ArrowDownAZ, ArrowUpAZ, Shapes } from 'lucide-react'
 import { useMemo } from 'react'
 import { useOntologyStore } from '@/stores/ontology'
 import { SectionCard } from '@/components/ui/section-card'
+import { SearchInput } from '@/components/ui/search-input'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
@@ -102,17 +103,13 @@ export function EntityCatalog({ entities }: EntityCatalogProps) {
             )}
           </button>
 
-          <div className="relative">
-            <Search aria-hidden="true" className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search entities..."
-              className="h-8 w-full rounded-md border border-border bg-surface pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent sm:w-56"
-              aria-label="Search entities"
-            />
-          </div>
+          <SearchInput
+            value={searchQuery}
+            onChange={(value) => setSearchQuery(value)}
+            placeholder="Search entities..."
+            aria-label="Search entities"
+            maxWidth="narrow"
+          />
         </div>
       </div>
 

@@ -173,9 +173,12 @@ class TestModelMutationDtos:
         assert req.preset_hint is None
 
     def test_sync_request_append_only(self) -> None:
-        req = SyncModelsRequest(replace_existing=False, preset_hint="ollama")
+        req = SyncModelsRequest(
+            replace_existing=False,
+            preset_hint="test-provider",
+        )
         assert req.replace_existing is False
-        assert req.preset_hint == "ollama"
+        assert req.preset_hint == "test-provider"
 
     def test_sync_response_construction(self) -> None:
         resp = SyncModelsResponse(

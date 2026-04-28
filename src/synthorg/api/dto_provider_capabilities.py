@@ -19,9 +19,11 @@ PR; the existing CRUD DTOs (create / update / delete provider, pull
 model, ...) stay in ``dto_providers.py``.
 """
 
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal, Self
 
 from pydantic import (
+    AfterValidator,
     AwareDatetime,
     BaseModel,
     ConfigDict,
@@ -35,6 +37,24 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.providers.enums import (
     AuthType,  # noqa: TC001 -- runtime literal discriminator
 )
+
+
+def _require_utc(value: datetime) -> datetime:
+    """Reject ``AwareDatetime`` values whose offset is not exactly UTC.
+
+    ``AwareDatetime`` accepts any non-naive offset (``+02:00``,
+    ``-07:00``, etc.), but every persisted timestamp on this surface
+    is documented and stored as UTC.  Enforcing the invariant at the
+    DTO boundary keeps round-trips deterministic and pushes the
+    burden of normalisation off downstream layers.
+    """
+    if value.utcoffset() != UTC.utcoffset(None):
+        msg = f"datetime must be in UTC; got offset {value.utcoffset()!r}"
+        raise ValueError(msg)
+    return value
+
+
+UTCDatetime = Annotated[AwareDatetime, AfterValidator(_require_utc)]
 
 # ── Provider audit log ────────────────────────────────────────────────
 
@@ -123,7 +143,7 @@ class ProviderAuditEvent(BaseModel):
         default_factory=dict,
         description="Event-specific metadata; credentials must be masked",
     )
-    occurred_at: AwareDatetime = Field(description="UTC timestamp of the mutation")
+    occurred_at: UTCDatetime = Field(description="UTC timestamp of the mutation")
 
 
 # ── Rate-limit override ───────────────────────────────────────────────
@@ -246,7 +266,7 @@ class PresetOverride(BaseModel):
         default=None,
         description="Override for cloud-preset base URL",
     )
-    updated_at: AwareDatetime | None = Field(
+    updated_at: UTCDatetime | None = Field(
         default=None,
         description="UTC timestamp of last override write",
     )

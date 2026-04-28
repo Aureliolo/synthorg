@@ -5,18 +5,19 @@ import json as _json
 from collections.abc import (
     Mapping,  # noqa: TC003  # Litestar inspects runtime return-type annotation
 )
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-from litestar import Controller, delete, get, patch, post, put
+from litestar import Controller, Request, delete, get, patch, post, put
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 from litestar.response import ServerSentEvent
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.controllers._provider_helpers import enrich_with_usage, sse_error
+from synthorg.api.controllers._workflow_helpers import request_audit_actor
 from synthorg.api.cursor import InvalidCursorError, decode_keyset_cursor
 from synthorg.api.dto import (
     ApiResponse,
@@ -937,6 +938,7 @@ class ProviderController(Controller):
     async def add_model(
         self,
         state: State,
+        request: Request[Any, Any, Any],
         name: PathName,
         data: AddModelRequest,
     ) -> ApiResponse[ProviderResponse]:
@@ -944,6 +946,7 @@ class ProviderController(Controller):
 
         Args:
             state: Application state.
+            request: Litestar request, used to derive the audit actor.
             name: Provider name.
             data: Payload carrying the new model spec.
 
@@ -956,8 +959,13 @@ class ProviderController(Controller):
                 persisted on the provider.
         """
         app_state: AppState = state.app_state
+        actor = request_audit_actor(request)
         try:
-            updated = await app_state.provider_management.add_model(name, data)
+            updated = await app_state.provider_management.add_model(
+                name,
+                data,
+                actor=actor,
+            )
         except ProviderNotFoundError as exc:
             msg = f"Provider {name!r} not found"
             logger.warning(
@@ -986,6 +994,7 @@ class ProviderController(Controller):
     async def sync_models(
         self,
         state: State,
+        request: Request[Any, Any, Any],
         name: PathName,
         data: SyncModelsRequest,
     ) -> ApiResponse[SyncModelsResponse]:
@@ -993,6 +1002,7 @@ class ProviderController(Controller):
 
         Args:
             state: Application state.
+            request: Litestar request, used to derive the audit actor.
             name: Provider name.
             data: Sync request (``replace_existing`` flag, optional
                 ``preset_hint``).
@@ -1005,8 +1015,13 @@ class ProviderController(Controller):
             NotFoundError: If the provider does not exist.
         """
         app_state: AppState = state.app_state
+        actor = request_audit_actor(request)
         try:
-            result = await app_state.provider_management.sync_models(name, data)
+            result = await app_state.provider_management.sync_models(
+                name,
+                data,
+                actor=actor,
+            )
         except ProviderNotFoundError as exc:
             msg = f"Provider {name!r} not found"
             logger.warning(
@@ -1032,6 +1047,7 @@ class ProviderController(Controller):
     async def rotate_credentials(
         self,
         state: State,
+        request: Request[Any, Any, Any],
         name: PathName,
         data: CredentialsRotateRequest,
     ) -> ApiResponse[ProviderResponse]:
@@ -1039,6 +1055,7 @@ class ProviderController(Controller):
 
         Args:
             state: Application state.
+            request: Litestar request, used to derive the audit actor.
             name: Provider name.
             data: Discriminated-union rotation payload keyed by
                 ``auth_type``.
@@ -1052,10 +1069,12 @@ class ProviderController(Controller):
                 does not match the provider's persisted ``auth_type``.
         """
         app_state: AppState = state.app_state
+        actor = request_audit_actor(request)
         try:
             updated = await app_state.provider_management.rotate_credentials(
                 name,
                 data,
+                actor=actor,
             )
         except ProviderNotFoundError as exc:
             msg = f"Provider {name!r} not found"
@@ -1128,6 +1147,7 @@ class ProviderController(Controller):
     async def update_preset_override(
         self,
         state: State,
+        request: Request[Any, Any, Any],
         preset_name: PathName,
         data: PresetOverrideUpdateRequest,
     ) -> ApiResponse[PresetOverride]:
@@ -1135,6 +1155,7 @@ class ProviderController(Controller):
 
         Args:
             state: Application state.
+            request: Litestar request, used to derive the audit actor.
             preset_name: Preset whose override to write.
             data: Partial override payload.
 
@@ -1147,17 +1168,7 @@ class ProviderController(Controller):
                 the preset's kind (cloud vs local).
         """
         app_state: AppState = state.app_state
-        # The actor lookup goes through the request scope in production;
-        # PR 1 wires this end-to-end via _request_actor.  For now use
-        # the system actor placeholder so the endpoint compiles.
-        from synthorg.api.dto_provider_capabilities import (  # noqa: PLC0415
-            ProviderAuditActor,
-        )
-
-        actor = ProviderAuditActor(
-            id="system",
-            label="provider-management",
-        )
+        actor = request_audit_actor(request)
         try:
             saved = await app_state.preset_override_service.upsert_override(
                 preset_name,
@@ -1196,6 +1207,7 @@ class ProviderController(Controller):
     async def delete_preset_override(
         self,
         state: State,
+        request: Request[Any, Any, Any],
         preset_name: PathName,
     ) -> None:
         """Drop the override for ``preset_name``.
@@ -1204,17 +1216,11 @@ class ProviderController(Controller):
 
         Args:
             state: Application state.
+            request: Litestar request, used to derive the audit actor.
             preset_name: Preset whose override to delete.
         """
         app_state: AppState = state.app_state
-        from synthorg.api.dto_provider_capabilities import (  # noqa: PLC0415
-            ProviderAuditActor,
-        )
-
-        actor = ProviderAuditActor(
-            id="system",
-            label="provider-management",
-        )
+        actor = request_audit_actor(request)
         await app_state.preset_override_service.delete_override(
             preset_name,
             actor=actor,
@@ -1269,6 +1275,7 @@ class ProviderController(Controller):
     async def update_rate_limits(
         self,
         state: State,
+        request: Request[Any, Any, Any],
         name: PathName,
         data: RateLimitsUpdateRequest,
     ) -> ApiResponse[RateLimitsResponse]:
@@ -1276,6 +1283,7 @@ class ProviderController(Controller):
 
         Args:
             state: Application state.
+            request: Litestar request, used to derive the audit actor.
             name: Provider name.
             data: Partial-update payload; at least one field required.
 
@@ -1287,10 +1295,12 @@ class ProviderController(Controller):
             ApiValidationError: If the merged config fails validation.
         """
         app_state: AppState = state.app_state
+        actor = request_audit_actor(request)
         try:
             updated = await app_state.provider_management.update_rate_limits(
                 name,
                 data,
+                actor=actor,
             )
         except ProviderNotFoundError as exc:
             msg = f"Provider {name!r} not found"
@@ -1348,16 +1358,14 @@ class ProviderController(Controller):
         # Surface 404 cleanly if the provider has been deleted; an
         # audit log for a non-existent provider would silently return
         # an empty page and hide the deletion from monitoring.
-        try:
-            await app_state.provider_management.get_provider(name)
-        except ProviderNotFoundError as exc:
-            msg = f"Provider {name!r} not found"
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="provider",
-                name=name,
-            )
-            raise NotFoundError(msg) from exc
+        #
+        # The pre-existence check we used to do here was wrong for
+        # the audit log specifically: the most important row a user
+        # ever queries is the ``provider_deleted`` event, and 404'ing
+        # the audit endpoint after deletion makes that row
+        # undiscoverable (CodeRabbit caught this).  Audit history
+        # remains queryable by name forever; if the name was never
+        # provisioned, the result page is simply empty.
 
         after_id_str = (
             decode_keyset_cursor(cursor, secret=app_state.cursor_secret)

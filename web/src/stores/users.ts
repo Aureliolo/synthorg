@@ -85,12 +85,15 @@ export const useUsersStore = create<UsersState>()((set, get) => ({
     set({ loadingMore: true })
     try {
       const page = await apiListUsers({ cursor: state.nextCursor })
-      set({
-        users: [...state.users, ...page.data],
+      // Use the functional setter so concurrent mutations (e.g. a
+      // grantOrgRole that lands while this page is in flight) are
+      // not clobbered by the pre-await ``state.users`` snapshot.
+      set((current) => ({
+        users: [...current.users, ...page.data],
         nextCursor: page.nextCursor,
         hasMore: page.hasMore,
         loadingMore: false,
-      })
+      }))
     } catch (err) {
       log.warn('Failed to fetch more users:', getErrorMessage(err))
       set({ loadingMore: false, error: getErrorMessage(err) })

@@ -214,13 +214,18 @@ export default function UsersPage() {
         confirmLabel={submitting ? 'Revoking…' : 'Revoke'}
         loading={submitting}
         onConfirm={async () => {
-          if (revokingTarget) {
-            await revokeOrgRole(
-              revokingTarget.user.id,
-              revokingTarget.role,
-            )
+          if (!revokingTarget) {
+            setRevokingTarget(null)
+            return
           }
-          setRevokingTarget(null)
+          const ok = await revokeOrgRole(
+            revokingTarget.user.id,
+            revokingTarget.role,
+          )
+          // Only dismiss on success; on failure the store has
+          // already surfaced the error toast and we keep the
+          // confirm dialog open so the user can retry in context.
+          if (ok) setRevokingTarget(null)
         }}
       />
     </div>

@@ -39,17 +39,29 @@ export function createAuditActions(set: ProvidersSet, get: ProvidersGet) {
       })
       try {
         const page = await listProviderAudit(providerName, { limit })
-        set({
-          auditEvents: page.data,
-          auditNextCursor: page.nextCursor,
-          auditHasMore: page.hasMore,
-          auditLoading: false,
+        // Guard: only commit the result if the active provider
+        // hasn't changed while we were awaiting.  Without this a
+        // slow fetch for provider A can land after the user already
+        // switched to provider B and overwrite B's audit page.
+        set((s) => {
+          if (s.auditProviderName !== providerName) return s
+          return {
+            ...s,
+            auditEvents: page.data,
+            auditNextCursor: page.nextCursor,
+            auditHasMore: page.hasMore,
+            auditLoading: false,
+          }
         })
       } catch (err) {
         log.warn('Failed to fetch provider audit:', getErrorMessage(err))
-        set({
-          auditLoading: false,
-          auditError: getErrorMessage(err),
+        set((s) => {
+          if (s.auditProviderName !== providerName) return s
+          return {
+            ...s,
+            auditLoading: false,
+            auditError: getErrorMessage(err),
+          }
         })
       }
     },
@@ -72,19 +84,25 @@ export function createAuditActions(set: ProvidersSet, get: ProvidersGet) {
         const page = await listProviderAudit(providerName, { cursor })
         // Guard against the user navigating away mid-fetch: discard
         // results that no longer match the active provider.
-        const after = get()
-        if (after.auditProviderName !== providerName) return
-        set({
-          auditEvents: [...after.auditEvents, ...page.data],
-          auditNextCursor: page.nextCursor,
-          auditHasMore: page.hasMore,
-          auditLoadingMore: false,
+        set((s) => {
+          if (s.auditProviderName !== providerName) return s
+          return {
+            ...s,
+            auditEvents: [...s.auditEvents, ...page.data],
+            auditNextCursor: page.nextCursor,
+            auditHasMore: page.hasMore,
+            auditLoadingMore: false,
+          }
         })
       } catch (err) {
         log.warn('Failed to fetch more provider audit:', getErrorMessage(err))
-        set({
-          auditLoadingMore: false,
-          auditError: getErrorMessage(err),
+        set((s) => {
+          if (s.auditProviderName !== providerName) return s
+          return {
+            ...s,
+            auditLoadingMore: false,
+            auditError: getErrorMessage(err),
+          }
         })
       }
     },
@@ -102,15 +120,32 @@ export function createAuditActions(set: ProvidersSet, get: ProvidersGet) {
     },
 
     fetchRateLimits: async (name: string): Promise<void> => {
-      set({ rateLimitsLoading: true, rateLimitsError: null })
+      // Reset cached state from a different provider so the drawer
+      // does not briefly render the previous provider's caps before
+      // the fetch resolves.
+      set({
+        rateLimitsLoading: true,
+        rateLimitsError: null,
+        rateLimits: null,
+        rateLimitsProviderName: name,
+      })
       try {
         const config = await getProviderRateLimits(name)
-        set({ rateLimits: config, rateLimitsLoading: false })
+        set((s) => {
+          // Drop the result if a newer fetch (different provider)
+          // has superseded this one while we were awaiting.
+          if (s.rateLimitsProviderName !== name) return s
+          return { ...s, rateLimits: config, rateLimitsLoading: false }
+        })
       } catch (err) {
         log.warn('Failed to fetch rate limits:', getErrorMessage(err))
-        set({
-          rateLimitsLoading: false,
-          rateLimitsError: getErrorMessage(err),
+        set((s) => {
+          if (s.rateLimitsProviderName !== name) return s
+          return {
+            ...s,
+            rateLimitsLoading: false,
+            rateLimitsError: getErrorMessage(err),
+          }
         })
       }
     },

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -31,6 +31,16 @@ export function SyncModelsConfirmDialog({
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<SyncModelsResponse | null>(null)
 
+  // Track open-state in a ref so an in-flight sync that resolves
+  // after the dialog closes does not repopulate ``result`` /
+  // ``submitting`` and visually re-open with a stale "Sync complete"
+  // banner.  ``open`` is the canonical truth; the ref mirrors it
+  // without forcing a re-render on close.
+  const openRef = useRef(open)
+  useEffect(() => {
+    openRef.current = open
+  }, [open])
+
   const reset = (): void => {
     setReplaceExisting(true)
     setSubmitting(false)
@@ -44,6 +54,7 @@ export function SyncModelsConfirmDialog({
       replace_existing: replaceExisting,
       ...(presetHint ? { preset_hint: presetHint } : {}),
     })
+    if (!openRef.current) return
     setSubmitting(false)
     if (response !== null) {
       setResult(response)

@@ -48,24 +48,63 @@ export interface RollbackRequest {
   readonly reason: string
 }
 
-export interface VersionHistoryClient<T> {
+/**
+ * Read-only contract: every domain that exposes version history
+ * supports list / get / diff.  The type does not promise rollback;
+ * use :class:`VersionHistoryClient` (the rollback-capable subtype)
+ * for surfaces that wire a rollback action.
+ */
+export interface ReadOnlyVersionHistoryClient<T> {
   list: (
     options?: { cursor?: string | null; limit?: number },
   ) => Promise<PaginatedResult<VersionSnapshot<T>>>
   get: (version: number) => Promise<VersionSnapshot<T>>
   diff: (from: number, to: number) => Promise<VersionDiffResponse>
+}
+
+/**
+ * Rollback-capable contract: extends the read-only surface with
+ * ``rollback``.  Backed today only by the agent-identity domain;
+ * other domains return a ``ReadOnlyVersionHistoryClient`` so the
+ * type system surfaces the missing capability instead of letting
+ * call sites hit a runtime 404 / 405.
+ */
+export interface VersionHistoryClient<T> extends ReadOnlyVersionHistoryClient<T> {
   rollback: (data: RollbackRequest) => Promise<VersionSnapshot<T>>
 }
 
 /**
- * Build a version-history client.  ``basePath`` is the absolute
- * controller path: ``"/roles/research"`` for a role-scoped client,
- * ``"/budget/config"`` for a singleton-scoped one.  Trailing slashes
- * are not added.
+ * Build a rollback-capable version-history client.  ``basePath`` is
+ * the absolute controller path: ``"/agents/example-agent"`` for the
+ * agent-identity domain.  Trailing slashes are not added.  Only
+ * domains whose backend exposes a rollback endpoint should use this
+ * factory; every other domain should use
+ * :func:`createReadOnlyVersionHistoryClient`.
  */
 export function createVersionHistoryClient<T>(
   basePath: string,
 ): VersionHistoryClient<T> {
+  return {
+    ...createReadOnlyVersionHistoryClient<T>(basePath),
+    async rollback(data: RollbackRequest): Promise<VersionSnapshot<T>> {
+      const response = await apiClient.post<ApiResponse<VersionSnapshot<T>>>(
+        `${basePath}/versions/rollback`,
+        data,
+      )
+      return unwrap(response)
+    },
+  }
+}
+
+/**
+ * Build a read-only version-history client.  Use this for domains
+ * whose backend exposes list / get / diff but no rollback (role
+ * versions, budget-config versions, evaluation-config versions,
+ * company versions today).
+ */
+export function createReadOnlyVersionHistoryClient<T>(
+  basePath: string,
+): ReadOnlyVersionHistoryClient<T> {
   return {
     async list(
       options: { cursor?: string | null; limit?: number } = {},
@@ -93,50 +132,38 @@ export function createVersionHistoryClient<T>(
       )
       return unwrap(response)
     },
-
-    async rollback(data: RollbackRequest): Promise<VersionSnapshot<T>> {
-      const response = await apiClient.post<ApiResponse<VersionSnapshot<T>>>(
-        `${basePath}/versions/rollback`,
-        data,
-      )
-      return unwrap(response)
-    },
   }
 }
 
 // ── Domain-specific clients ───────────────────────────────────────────
 
 /**
- * Build the role-versions client for ``roleName``.
- *
- * Read-only on the backend today (no rollback endpoint); the
- * ``rollback`` action will surface a 404 / 405 if invoked.
+ * Build the role-versions client for ``roleName``.  Read-only on
+ * the backend today.
  */
 export function createRoleVersionsClient(roleName: string) {
-  return createVersionHistoryClient<Record<string, unknown>>(
+  return createReadOnlyVersionHistoryClient<Record<string, unknown>>(
     `/roles/${encodeURIComponent(roleName)}`,
   )
 }
 
 /**
- * Singleton budget-config versions client.
- *
- * Read-only on the backend today.
+ * Singleton budget-config versions client.  Read-only.
  */
-export const budgetConfigVersionsClient = createVersionHistoryClient<
+export const budgetConfigVersionsClient = createReadOnlyVersionHistoryClient<
   Record<string, unknown>
 >('/budget/config')
 
 /**
  * Singleton evaluation-config versions client.  Read-only.
  */
-export const evaluationConfigVersionsClient = createVersionHistoryClient<
+export const evaluationConfigVersionsClient = createReadOnlyVersionHistoryClient<
   Record<string, unknown>
 >('/evaluation/config')
 
 /**
  * Singleton company-structure versions client.  Read-only.
  */
-export const companyVersionsClient = createVersionHistoryClient<
+export const companyVersionsClient = createReadOnlyVersionHistoryClient<
   Record<string, unknown>
 >('/company')

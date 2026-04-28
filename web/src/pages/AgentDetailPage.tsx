@@ -49,18 +49,21 @@ export default function AgentDetailPage() {
     fetchMoreActivity,
   } = useAgentDetailData(resolvedAgentName)
 
-  // Build the version-history client lazily once per agent id.  The
-  // ``VersionHistorySection`` re-fetches when the client identity
-  // changes, so memoising on ``agent.id`` keeps the page from
-  // hammering the endpoint on every render.
+  // Build the version-history client lazily once per agent name.
+  // The agent identity API is name-keyed (per the in-page note
+  // above); ``agent.id`` is sometimes absent and using it would
+  // either point at the wrong resource or disable history entirely.
+  // The ``VersionHistorySection`` re-fetches when the client
+  // identity changes, so memoising on the resolved name keeps the
+  // page from hammering the endpoint on every render.
   const versionsClient = useMemo(
     () =>
-      agent?.id !== undefined && agent.id !== ''
+      resolvedAgentName !== ''
         ? createVersionHistoryClient<Record<string, unknown>>(
-            `/agents/${encodeURIComponent(agent.id)}`,
+            `/agents/${encodeURIComponent(resolvedAgentName)}`,
           )
         : null,
-    [agent?.id],
+    [resolvedAgentName],
   )
 
   if (loading && !agent) {

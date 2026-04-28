@@ -5,6 +5,10 @@
  * ``web/CLAUDE.md`` Zustand store error handling: log + error toast +
  * sentinel return on failure, callers MUST NOT wrap in try/catch.
  */
+/* eslint-disable security/detect-possible-timing-attacks --
+   Comparisons against in-flight request tokens (plain monotonic
+   ints) are not timing-sensitive secrets; they are how this store
+   discards stale fetch responses. */
 import { create } from 'zustand'
 
 import {
@@ -43,6 +47,8 @@ interface EscalationsState {
   selected: EscalationResponse | null
   detailLoading: boolean
   detailError: string | null
+  /** The id whose detail fetch is currently active (or null). */
+  detailRequestedId: string | null
 
   // Mutation state
   submitting: boolean
@@ -64,6 +70,14 @@ interface EscalationsState {
 }
 
 export const useEscalationsStore = create<EscalationsState>()((set, get) => {
+  // Monotonic request tokens used to discard stale fetch results.
+  // ``listRequestToken`` covers both ``fetchEscalations`` and
+  // ``fetchMoreEscalations``; ``detailRequestToken`` covers
+  // ``fetchEscalationDetail`` and is invalidated by
+  // ``clearDetail``.
+  let listRequestToken = 0
+  let detailRequestToken = 0
+
   const buildFilters = (): ListEscalationsFilters => {
     const filters: ListEscalationsFilters = {}
     const status = get().statusFilter
@@ -90,10 +104,14 @@ export const useEscalationsStore = create<EscalationsState>()((set, get) => {
     selected: null,
     detailLoading: false,
     detailError: null,
+    detailRequestedId: null,
 
     submitting: false,
 
     fetchEscalations: async () => {
+      // Bump request token so any concurrent in-flight list / detail
+      // fetch knows its result is stale and should be discarded.
+      const token = ++listRequestToken
       set({
         escalations: [],
         nextCursor: null,
@@ -104,6 +122,7 @@ export const useEscalationsStore = create<EscalationsState>()((set, get) => {
       })
       try {
         const page = await apiListEscalations(buildFilters())
+        if (token !== listRequestToken) return
         set({
           escalations: page.data,
           total: page.total,
@@ -113,6 +132,7 @@ export const useEscalationsStore = create<EscalationsState>()((set, get) => {
         })
       } catch (err) {
         log.warn('Failed to fetch escalations:', getErrorMessage(err))
+        if (token !== listRequestToken) return
         set({ loading: false, error: getErrorMessage(err) })
       }
     },
@@ -127,20 +147,23 @@ export const useEscalationsStore = create<EscalationsState>()((set, get) => {
       ) {
         return
       }
+      const token = listRequestToken
       set({ loadingMore: true })
       try {
         const page = await apiListEscalations({
           ...buildFilters(),
           cursor: state.nextCursor,
         })
-        set({
-          escalations: [...state.escalations, ...page.data],
+        if (token !== listRequestToken) return
+        set((s) => ({
+          escalations: [...s.escalations, ...page.data],
           nextCursor: page.nextCursor,
           hasMore: page.hasMore,
           loadingMore: false,
-        })
+        }))
       } catch (err) {
         log.warn('Failed to fetch more escalations:', getErrorMessage(err))
+        if (token !== listRequestToken) return
         set({ loadingMore: false, error: getErrorMessage(err) })
       }
     },
@@ -151,17 +174,36 @@ export const useEscalationsStore = create<EscalationsState>()((set, get) => {
     },
 
     fetchEscalationDetail: async (id: string) => {
-      set({ detailLoading: true, detailError: null, selected: null })
+      // Bump the detail token so a slower previous fetch (or a
+      // ``clearDetail()``) cannot overwrite this one's result.
+      const token = ++detailRequestToken
+      set({
+        detailLoading: true,
+        detailError: null,
+        selected: null,
+        detailRequestedId: id,
+      })
       try {
         const response = await apiGetEscalation(id)
+        if (token !== detailRequestToken) return
         set({ selected: response, detailLoading: false })
       } catch (err) {
         log.warn('Failed to fetch escalation detail:', getErrorMessage(err))
+        if (token !== detailRequestToken) return
         set({ detailLoading: false, detailError: getErrorMessage(err) })
       }
     },
 
-    clearDetail: () => set({ selected: null, detailError: null }),
+    clearDetail: () => {
+      // Invalidate any in-flight detail fetch so its result cannot
+      // re-populate ``selected`` after the drawer closes.
+      detailRequestToken++
+      set({
+        selected: null,
+        detailError: null,
+        detailRequestedId: null,
+      })
+    },
 
     submitDecision: async (id, data) => {
       set({ submitting: true })

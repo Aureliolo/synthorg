@@ -281,9 +281,9 @@ export default function OrgEditPage() {
         <VersionHistorySection
           client={companyVersionsClient}
           title="Company history"
-          description="Read-only audit trail of organisation snapshots. Select two versions to compare."
+          description="Read-only audit trail of organization snapshots. Select two versions to compare."
           emptyTitle="No company versions yet"
-          emptyDescription="Versions appear here after the first edit to the organisation structure."
+          emptyDescription="Versions appear here after the first edit to the organization structure."
         />
       </ErrorBoundary>
     </div>

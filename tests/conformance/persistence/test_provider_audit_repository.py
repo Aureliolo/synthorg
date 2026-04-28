@@ -33,7 +33,10 @@ def _event(  # noqa: PLR0913 -- test factory with explicit knobs
         provider_name=provider_name,
         event_type=event_type,  # type: ignore[arg-type]
         actor=ProviderAuditActor(id=actor_id, label=actor_label),
-        payload=payload or {"k": "v"},
+        # Use ``is None`` instead of truthy fallback: ``payload={}``
+        # is a meaningful test input (intentional empty payload) and
+        # must not be silently replaced with the default object.
+        payload=payload if payload is not None else {"k": "v"},
         occurred_at=occurred_at or datetime.now(UTC),
     )
 

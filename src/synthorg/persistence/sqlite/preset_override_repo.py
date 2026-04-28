@@ -165,7 +165,19 @@ class SQLitePresetOverrideRepo:
                     f"{row.get('preset_name')!r}"
                 )
                 raise QueryError(msg) from exc
-            return parsed if isinstance(parsed, list) else None
+            if not isinstance(parsed, list):
+                # Non-list JSON (e.g. an object or scalar) is on-disk
+                # corruption: silently dropping it would make the
+                # field disappear from the reconstructed override and
+                # hide a real schema violation.  Surface it as a
+                # query failure so the bug gets investigated.
+                msg = (
+                    f"preset override JSON column on preset "
+                    f"{row.get('preset_name')!r} is not a JSON array "
+                    f"(got {type(parsed).__name__})"
+                )
+                raise QueryError(msg)
+            return parsed
 
         models_raw = _decode_json_list(row["default_models_json"])
         models: tuple[ProviderModelConfig, ...] | None = (

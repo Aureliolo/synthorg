@@ -48,6 +48,7 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
   rateLimits: null,
   rateLimitsLoading: false,
   rateLimitsError: null,
+  rateLimitsProviderName: null,
   presetOverride: null,
   presetOverrideLoading: false,
   presetOverrideError: null,

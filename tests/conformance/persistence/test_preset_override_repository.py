@@ -18,7 +18,7 @@ pytestmark = pytest.mark.integration
 
 
 def _override(
-    preset_name: str = "openai",
+    preset_name: str = "test-cloud-provider",
     *,
     base_url: str | None = "https://api.example.com/v1",
     candidate_urls: tuple[str, ...] | None = None,
@@ -45,9 +45,9 @@ async def test_get_when_missing_returns_none(backend: PersistenceBackend) -> Non
 async def test_upsert_then_get(backend: PersistenceBackend) -> None:
     repo = backend.preset_overrides
     saved = await repo.upsert(_override())
-    loaded = await repo.get("openai")
+    loaded = await repo.get("test-cloud-provider")
     assert loaded is not None
-    assert loaded.preset_name == "openai"
+    assert loaded.preset_name == "test-cloud-provider"
     assert loaded.base_url == saved.base_url
 
 
@@ -55,7 +55,7 @@ async def test_upsert_replaces_existing(backend: PersistenceBackend) -> None:
     repo = backend.preset_overrides
     await repo.upsert(_override(base_url="https://first.example.com/v1"))
     await repo.upsert(_override(base_url="https://second.example.com/v1"))
-    loaded = await repo.get("openai")
+    loaded = await repo.get("test-cloud-provider")
     assert loaded is not None
     assert loaded.base_url == "https://second.example.com/v1"
 
@@ -63,9 +63,9 @@ async def test_upsert_replaces_existing(backend: PersistenceBackend) -> None:
 async def test_delete_existing(backend: PersistenceBackend) -> None:
     repo = backend.preset_overrides
     await repo.upsert(_override())
-    removed = await repo.delete("openai")
+    removed = await repo.delete("test-cloud-provider")
     assert removed is True
-    assert await repo.get("openai") is None
+    assert await repo.get("test-cloud-provider") is None
 
 
 async def test_delete_missing_returns_false(backend: PersistenceBackend) -> None:
@@ -81,7 +81,7 @@ async def test_round_trip_models_list(backend: PersistenceBackend) -> None:
         ProviderModelConfig(id="example-small-001", alias="small"),
     )
     await repo.upsert(_override(default_models=models))
-    loaded = await repo.get("openai")
+    loaded = await repo.get("test-cloud-provider")
     assert loaded is not None
     assert loaded.default_models is not None
     assert len(loaded.default_models) == 2
@@ -92,9 +92,13 @@ async def test_round_trip_candidate_urls_list(backend: PersistenceBackend) -> No
     repo = backend.preset_overrides
     urls = ("http://localhost:11434", "http://10.0.0.5:11434")
     await repo.upsert(
-        _override(preset_name="ollama", base_url=None, candidate_urls=urls),
+        _override(
+            preset_name="test-local-provider",
+            base_url=None,
+            candidate_urls=urls,
+        ),
     )
-    loaded = await repo.get("ollama")
+    loaded = await repo.get("test-local-provider")
     assert loaded is not None
     assert loaded.candidate_urls == urls
 
@@ -103,6 +107,6 @@ async def test_round_trip_supported_auth_types(backend: PersistenceBackend) -> N
     repo = backend.preset_overrides
     auth_types = (AuthType.API_KEY, AuthType.SUBSCRIPTION)
     await repo.upsert(_override(supported_auth_types=auth_types))
-    loaded = await repo.get("openai")
+    loaded = await repo.get("test-cloud-provider")
     assert loaded is not None
     assert loaded.supported_auth_types == auth_types

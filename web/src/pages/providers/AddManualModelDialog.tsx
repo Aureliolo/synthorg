@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { InputField } from '@/components/ui/input-field'
 import { useProvidersStore } from '@/stores/providers'
+import { useSettingsStore } from '@/stores/settings'
 import type { ProviderModelConfig } from '@/api/types/providers'
 
 interface AddManualModelDialogProps {
@@ -37,6 +38,7 @@ export function AddManualModelDialog({
   onClose,
 }: AddManualModelDialogProps) {
   const addProviderModel = useProvidersStore((s) => s.addProviderModel)
+  const currency = useSettingsStore((s) => s.currency)
 
   const [modelId, setModelId] = useState('')
   const [alias, setAlias] = useState('')
@@ -149,7 +151,7 @@ export function AddManualModelDialog({
             <div className="grid grid-cols-2 gap-grid-gap">
               <InputField
                 label="Cost / 1k input tokens"
-                hint="USD; leave blank for 0"
+                hint={`${currency}; leave blank for 0`}
                 type="number"
                 inputMode="decimal"
                 value={costInput}
@@ -159,7 +161,7 @@ export function AddManualModelDialog({
               />
               <InputField
                 label="Cost / 1k output tokens"
-                hint="USD; leave blank for 0"
+                hint={`${currency}; leave blank for 0`}
                 type="number"
                 inputMode="decimal"
                 value={costOutput}

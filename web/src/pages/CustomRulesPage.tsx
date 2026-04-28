@@ -204,10 +204,15 @@ export default function CustomRulesPage() {
         confirmLabel={submitting ? 'Deleting…' : 'Delete'}
         loading={submitting}
         onConfirm={async () => {
-          if (deletingId !== null) {
-            await deleteRule(deletingId)
+          if (deletingId === null) {
+            setDeletingId(null)
+            return
           }
-          setDeletingId(null)
+          const ok = await deleteRule(deletingId)
+          // Only dismiss on success; on failure the store has
+          // already surfaced the error toast and we keep the
+          // dialog open so the user can retry in context.
+          if (ok) setDeletingId(null)
         }}
       />
     </div>

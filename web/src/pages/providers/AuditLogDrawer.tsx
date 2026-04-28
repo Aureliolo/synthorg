@@ -76,7 +76,10 @@ export function AuditLogDrawer({ providerName, open, onClose }: AuditLogDrawerPr
   useEffect(() => {
     if (open && providerName) {
       void fetchAudit(providerName)
-    } else if (!open) {
+    } else {
+      // Clear whenever the drawer is closed OR open without a
+      // valid provider name; otherwise stale audit data from the
+      // previous provider lingers visibly until the next fetch.
       clearAudit()
     }
   }, [open, providerName, fetchAudit, clearAudit])

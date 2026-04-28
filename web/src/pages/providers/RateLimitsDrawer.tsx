@@ -135,6 +135,9 @@ export function RateLimitsDrawer({
   const rateLimits = useProvidersStore((s) => s.rateLimits)
   const loading = useProvidersStore((s) => s.rateLimitsLoading)
   const error = useProvidersStore((s) => s.rateLimitsError)
+  const rateLimitsProviderName = useProvidersStore(
+    (s) => s.rateLimitsProviderName,
+  )
   const fetchRateLimits = useProvidersStore((s) => s.fetchRateLimits)
 
   useEffect(() => {
@@ -143,11 +146,18 @@ export function RateLimitsDrawer({
     }
   }, [open, providerName, fetchRateLimits])
 
-  // Form state is seeded from the loaded config via remount-on-key
-  // (avoids the eslint-react ``set-state-in-effect`` anti-pattern
-  // that would arise from mirroring read state into useState).
-  const formKey = rateLimits
-    ? `${rateLimits.requests_per_minute}/${rateLimits.concurrent_requests}`
+  // Only render the form when the loaded rate-limits actually belong
+  // to the active provider; prevents briefly rendering provider A's
+  // caps while opening the drawer for provider B (and editing them
+  // under the wrong name).  ``providerName`` is also folded into the
+  // remount key so two providers with identical caps still get a
+  // fresh form when switching between them.
+  const isLoadedForActiveProvider =
+    rateLimits !== null
+    && providerName !== null
+    && rateLimitsProviderName === providerName
+  const formKey = isLoadedForActiveProvider
+    ? `${providerName}/${rateLimits.requests_per_minute}/${rateLimits.concurrent_requests}`
     : 'loading'
 
   return (
@@ -173,7 +183,7 @@ export function RateLimitsDrawer({
             }
           />
         )}
-        {loading || rateLimits === null || providerName === null ? (
+        {loading || !isLoadedForActiveProvider ? (
           <div className="flex flex-col gap-grid-gap">
             <Skeleton className="h-12 w-full" />
             <Skeleton className="h-12 w-full" />
