@@ -261,6 +261,44 @@ class TestHierarchicalPoolFilter:
         assert "Hierarchy lookup failed" in (result.reason or "")
         assert "filter_by_hierarchy" in (result.reason or "")
 
+    def test_resolves_when_hierarchy_is_keyed_by_agent_id(self) -> None:
+        """HierarchyResolver may key edges by agent ID, not name.
+
+        ``ReportingLine`` entries resolve to ``_id`` when set, falling
+        back to name (per ``HierarchyResolver`` docstring). The filter
+        must match candidates against both ``a.name`` and ``str(a.id)``
+        so an ID-keyed graph still resolves.
+        """
+        dev = make_assignment_agent("dev-1")
+        # Stub returns the agent's UUID string as the reporting key.
+        hierarchy: Any = _StubHierarchy(
+            direct_reports={"manager": [str(dev.id)]},
+        )
+        flt = HierarchicalPoolFilter(hierarchy)
+        request = AssignmentRequest(
+            task=make_assignment_task(created_by="manager"),
+            available_agents=(dev,),
+        )
+        result = flt.filter(request)
+        names = [a.name for a in result.agents]
+        assert names == ["dev-1"]
+
+    def test_resolves_transitive_via_agent_id(self) -> None:
+        """Transitive subordinate lookup also matches by agent ID."""
+        dev = make_assignment_agent("dev-1")
+        hierarchy: Any = _StubHierarchy(
+            direct_reports={"ceo": ["lead"]},  # not in the pool
+            subordinates={"ceo": {str(dev.id)}},  # transitive by ID
+        )
+        flt = HierarchicalPoolFilter(hierarchy)
+        request = AssignmentRequest(
+            task=make_assignment_task(created_by="ceo"),
+            available_agents=(dev,),
+        )
+        result = flt.filter(request)
+        names = [a.name for a in result.agents]
+        assert names == ["dev-1"]
+
     def test_rewrite_success_reason_includes_delegator(self) -> None:
         hierarchy: Any = _StubHierarchy(
             direct_reports={"manager": ["dev-1"]},

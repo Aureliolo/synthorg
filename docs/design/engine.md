@@ -392,6 +392,10 @@ sort is ascending by cost), or `AuctionBidRanker` (highest
 `score * 1/(1 + active_task_count)` bid wins, score breaks ties). Manual
 assignment is its own class. Scoring-based strategies
 filter out agents at capacity via `AssignmentRequest.max_concurrent_tasks`.
+Capacity filtering inside `score_and_filter_candidates()` only excludes
+at-or-above-capacity agents when `AssignmentRequest.max_concurrent_tasks` is set
+*and* `AssignmentRequest.workloads` carries a snapshot covering the candidate
+pool; without both, every available agent reaches the scorer and ranker.
 `ManualAssignmentStrategy` raises exceptions on failure; scoring-based strategies
 return `AssignmentResult(selected=None)`.
 

@@ -179,9 +179,20 @@ class HierarchicalPoolFilter:
         request: AssignmentRequest,
         delegator: str,
     ) -> tuple[AgentIdentity, ...]:
-        """Subordinates of ``delegator`` (direct first, transitive fallback)."""
+        """Subordinates of ``delegator`` (direct first, transitive fallback).
+
+        ``HierarchyResolver`` keys edges by *either* agent name or
+        agent ID (per ``hierarchy.py`` docstring). We therefore match
+        each candidate against both ``a.name`` and ``str(a.id)`` so a
+        graph keyed by IDs (typical when explicit ``ReportingLine``
+        entries are used) still resolves correctly.
+        """
         direct_reports = set(self._hierarchy.get_direct_reports(delegator))
-        direct = tuple(a for a in request.available_agents if a.name in direct_reports)
+        direct = tuple(
+            a
+            for a in request.available_agents
+            if a.name in direct_reports or str(a.id) in direct_reports
+        )
         if direct:
             # Prefer direct reports so delegation stays close: each hop
             # adds reporting overhead and dilutes accountability.
@@ -200,6 +211,7 @@ class HierarchicalPoolFilter:
             a
             for a in request.available_agents
             if self._hierarchy.is_subordinate(delegator, a.name)
+            or self._hierarchy.is_subordinate(delegator, str(a.id))
         )
 
     def _is_known_delegator(self, delegator: str) -> bool:
