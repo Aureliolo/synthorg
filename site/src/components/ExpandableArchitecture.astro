@@ -88,7 +88,7 @@ const architecture = [
       {
         name: "Tool System",
         description: "Sandboxed execution (subprocess/Docker), MCP protocol, git SSRF prevention, per-category isolation.",
-        href: "/docs/design/operations/",
+        href: "/docs/design/tools/",
       },
       {
         name: "Memory Pipeline",
@@ -112,12 +112,12 @@ const architecture = [
       {
         name: "LLM Providers",
         description: "100+ via LiteLLM, 11 built-in presets, hot-reload management, health probing every 30 minutes.",
-        href: "/docs/design/operations/",
+        href: "/docs/design/providers/",
       },
       {
         name: "Smart Routing",
         description: "Multi-provider resolution, quota-aware selection, fallback chains, task-type model rules.",
-        href: "/docs/design/operations/",
+        href: "/docs/design/providers/",
       },
       {
         name: "Persistence",
@@ -127,73 +127,76 @@ const architecture = [
       {
         name: "Observability",
         description: "Structured logging, correlation tracking, redaction, log shipping (syslog, HTTP), compressed archival.",
-        href: "/docs/design/operations/",
+        href: "/docs/design/observability/",
       },
       {
         name: "Budget Engine",
         description: "Hierarchical cascades, 3-layer cost controls, CFO optimization, trend analysis with Theil-Sen regression.",
-        href: "/docs/design/operations/",
+        href: "/docs/design/budget/",
       },
     ],
   },
 ];
 ---
 
-<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+<!--
+  Each card contains its own button + collapsible panel so the panel
+  expands inline directly under the button it belongs to.  The
+  ``items-start`` on the grid keeps each card height-independent, so
+  one card growing on expand does not stretch the others.
+-->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-start text-left">
   {architecture.map((arch) => (
-    <div class="relative">
+    <div class="bg-[#1a1f2e] rounded-xl border border-white/10 hover:border-violet-500/30 transition-colors overflow-hidden">
       <button
         id={`btn-${arch.id}`}
         data-arch-toggle
         aria-expanded="false"
         aria-controls={`panel-${arch.id}`}
-        class="w-full bg-[#1a1f2e] rounded-xl p-6 border border-white/10 hover:border-violet-500/30 transition-colors text-left group cursor-pointer"
+        class="w-full p-6 text-left group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1f2e]"
       >
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between gap-2">
           <div>
             <p class="font-semibold text-violet-400">{arch.title}</p>
             <p class="text-xs text-gray-400 mt-1">{arch.summary}</p>
           </div>
           <svg
-            class="w-4 h-4 text-gray-500 transition-transform duration-300 group-aria-expanded:rotate-180 shrink-0 ml-2"
+            class="w-4 h-4 text-gray-500 transition-transform duration-300 group-aria-expanded:rotate-180 shrink-0"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
             stroke-width="2"
+            aria-hidden="true"
           >
             <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
           </svg>
         </div>
       </button>
+      <div
+        id={`panel-${arch.id}`}
+        role="region"
+        aria-labelledby={`btn-${arch.id}`}
+        aria-hidden="true"
+        inert
+        class="grid grid-rows-[0fr] transition-[grid-template-rows] duration-300 ease-in-out"
+      >
+        <div class="overflow-hidden">
+          <div class="px-6 pb-6 flex flex-col gap-2 border-t border-white/5 pt-4">
+            {arch.submodules.map((sub) => (
+              <a
+                href={sub.href}
+                class="block bg-[#0F1219] rounded-lg p-3 border border-white/5 hover:border-violet-500/30 transition-colors no-underline text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0F1219]"
+              >
+                <p class="text-sm font-medium text-violet-400 mb-1">{sub.name}</p>
+                <p class="text-xs text-gray-400">{sub.description}</p>
+              </a>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   ))}
 </div>
-
-<!-- Expandable panels (positioned below the grid) -->
-{architecture.map((arch) => (
-  <div
-    id={`panel-${arch.id}`}
-    role="region"
-    aria-labelledby={`btn-${arch.id}`}
-    aria-hidden="true"
-    inert
-    class="grid grid-rows-[0fr] transition-[grid-template-rows] duration-300 ease-in-out"
-  >
-    <div class="overflow-hidden">
-      <div class="pt-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {arch.submodules.map((sub) => (
-          <a
-            href={sub.href}
-            class="block bg-[#1a1f2e]/60 rounded-lg p-4 border border-white/5 hover:border-violet-500/20 transition-colors no-underline text-white"
-          >
-            <p class="text-sm font-medium text-violet-400 mb-1">{sub.name}</p>
-            <p class="text-xs text-gray-400">{sub.description}</p>
-          </a>
-        ))}
-      </div>
-    </div>
-  </div>
-))}
 
 <script>
   const buttons = document.querySelectorAll<HTMLButtonElement>("[data-arch-toggle]");
