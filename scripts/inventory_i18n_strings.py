@@ -1,9 +1,10 @@
 """Inventory hardcoded user-facing strings in the web dashboard.
 
-Walks ``web/src/pages/`` and ``web/src/components/`` looking for
-double- or single-quoted strings that look like user-facing copy
-(at least 6 chars, contain a space, start with a letter, are not
-imports / class names / hex literals / token paths / event names).
+Walks ``web/src/`` (excluding tests, mocks, stories, bench files)
+looking for double- or single-quoted strings that look like
+user-facing copy (at least 6 chars, contain a space, start with a
+letter, are not imports / class names / hex literals / token paths /
+event names).
 
 The output is two files in ``docs/internal/``:
 
@@ -79,10 +80,20 @@ def walk_sources() -> list[Path]:
 
 def extract(path: Path) -> list[tuple[int, str]]:
     """Extract ``(line, text)`` candidates from ``path``."""
+    import sys
+
     hits: list[tuple[int, str]] = []
     try:
         text = path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
+    except UnicodeDecodeError as exc:
+        # Don't silently drop decode failures: a binary blob in the
+        # web source tree is unexpected and worth surfacing.  Print
+        # to stderr so the artefact build still succeeds while the
+        # operator (or #1417 follow-up) sees the warning.
+        print(
+            f"warning: skipping {path} due to UnicodeDecodeError: {exc}",
+            file=sys.stderr,
+        )
         return hits
     for line_no, line in enumerate(text.splitlines(), start=1):
         # Skip lines that are entirely import / from / etc.

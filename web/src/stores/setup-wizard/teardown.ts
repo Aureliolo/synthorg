@@ -12,7 +12,16 @@ import { SETUP_WIZARD_PERSIST_NAME } from './persist-key'
 
 export function cancelSetupWizardPersist(): void {
   if (typeof globalThis === 'undefined') return
-  const storage = (globalThis as { localStorage?: Storage }).localStorage
+  // ``globalThis.localStorage`` access can throw under restrictive
+  // browser-runtime sandboxes (private mode, third-party-cookie
+  // blocked, custom CSP).  Wrap the lookup itself so the teardown
+  // never crashes the test runner.
+  let storage: Storage | undefined
+  try {
+    storage = (globalThis as { localStorage?: Storage }).localStorage
+  } catch {
+    return
+  }
   if (storage === undefined) return
   try {
     storage.removeItem(SETUP_WIZARD_PERSIST_NAME)

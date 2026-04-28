@@ -81,7 +81,10 @@ export function createAuditActions(set: ProvidersSet, get: ProvidersGet) {
       const cursor = state.auditNextCursor
       set({ auditLoadingMore: true })
       try {
-        const page = await listProviderAudit(providerName, { cursor })
+        const page = await listProviderAudit(providerName, {
+          cursor,
+          limit: DEFAULT_AUDIT_LIMIT,
+        })
         // Guard against the user navigating away mid-fetch: discard
         // results that no longer match the active provider.
         set((s) => {

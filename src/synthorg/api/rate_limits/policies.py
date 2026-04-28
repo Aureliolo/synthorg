@@ -96,8 +96,8 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "personalities.delete": (10, 60),
     "personalities.update": (30, 60),
     # providers
-    "providers.allowlist_add": (50, 60),
     "providers.add_model": (20, 60),
+    "providers.allowlist_add": (50, 60),
     "providers.allowlist_remove": (50, 60),
     "providers.create": (10, 60),
     "providers.create_from_preset": (10, 60),

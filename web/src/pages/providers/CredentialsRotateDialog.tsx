@@ -69,6 +69,10 @@ export function CredentialsRotateDialog({
   }
 
   const handleSubmit = async (): Promise<void> => {
+    // Guard against duplicate submissions: rapid clicks before the
+    // store mutation resolves would issue parallel rotation
+    // requests, each writing a separate audit row.
+    if (submitting) return
     let payload: CredentialsRotateRequest
     if (authType === 'api_key') {
       payload = { auth_type: 'api_key', api_key: apiKey }
@@ -96,11 +100,17 @@ export function CredentialsRotateDialog({
       return
     }
     setSubmitting(true)
-    const result = await rotateCredentials(providerName, payload)
-    setSubmitting(false)
-    if (result !== null) {
-      reset()
-      onClose()
+    try {
+      const result = await rotateCredentials(providerName, payload)
+      if (result !== null) {
+        reset()
+        onClose()
+      }
+    } finally {
+      // Always clear ``submitting`` even if the store mutation
+      // throws past the sentinel contract; otherwise a one-off bug
+      // would leave the dialog permanently disabled.
+      setSubmitting(false)
     }
   }
 

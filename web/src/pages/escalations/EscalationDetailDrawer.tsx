@@ -175,6 +175,9 @@ export function EscalationDetailDrawer({
   const detail = useEscalationsStore((s) => s.selected)
   const loading = useEscalationsStore((s) => s.detailLoading)
   const error = useEscalationsStore((s) => s.detailError)
+  const detailRequestedId = useEscalationsStore(
+    (s) => s.detailRequestedId,
+  )
   const fetchDetail = useEscalationsStore((s) => s.fetchEscalationDetail)
   const clearDetail = useEscalationsStore((s) => s.clearDetail)
 
@@ -186,6 +189,23 @@ export function EscalationDetailDrawer({
     }
   }, [open, escalationId, fetchDetail, clearDetail])
 
+  // Gate visible detail on the active escalation: while a new fetch
+  // is in flight the previously-loaded escalation must NOT render
+  // (showing it would let the operator review or submit a decision
+  // on the wrong record).  ``detailRequestedId`` is the id whose
+  // fetch is currently outstanding; render only when ``detail``
+  // matches the active prop.
+  const isActiveEscalation =
+    escalationId !== null
+    && detail !== null
+    && detail.escalation.id === escalationId
+    && detailRequestedId === escalationId
+  const visibleDetail = isActiveEscalation ? detail : null
+  const visibleError = escalationId !== null
+    && detailRequestedId === escalationId
+    ? error
+    : null
+
   return (
     <Drawer
       open={open}
@@ -195,11 +215,11 @@ export function EscalationDetailDrawer({
       width="wide"
     >
       <div className="flex flex-col gap-section-gap p-card">
-        {error && (
+        {visibleError && (
           <ErrorBanner
             severity="error"
             title="Failed to load escalation"
-            description={error}
+            description={visibleError}
             onRetry={
               escalationId
                 ? () => {
@@ -210,7 +230,7 @@ export function EscalationDetailDrawer({
           />
         )}
 
-        {loading || detail === null ? (
+        {loading || visibleDetail === null ? (
           <div className="flex flex-col gap-grid-gap">
             <Skeleton className="h-12 w-full" />
             <Skeleton className="h-32 w-full" />
@@ -220,18 +240,18 @@ export function EscalationDetailDrawer({
           <>
             <header>
               <h2 className="text-base font-semibold text-foreground">
-                {detail.escalation.conflict.subject}
+                {visibleDetail.escalation.conflict.subject}
               </h2>
               <p className="text-sm text-text-secondary">
-                {detail.escalation.conflict.type} · detected{' '}
-                {formatDateTime(detail.escalation.conflict.detected_at)}
+                {visibleDetail.escalation.conflict.type} · detected{' '}
+                {formatDateTime(visibleDetail.escalation.conflict.detected_at)}
               </p>
             </header>
 
             <DecisionForm
-              key={detail.escalation.id}
-              escalationId={detail.escalation.id}
-              detail={detail}
+              key={visibleDetail.escalation.id}
+              escalationId={visibleDetail.escalation.id}
+              detail={visibleDetail}
               onClose={onClose}
             />
           </>

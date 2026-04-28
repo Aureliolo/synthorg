@@ -136,7 +136,24 @@ class SQLiteProviderAuditRepo:
 
         has_more = len(rows) > limit
         page = rows[:limit]
-        events = tuple(self._row_to_event(dict(r)) for r in page)
+        try:
+            events = tuple(self._row_to_event(dict(r)) for r in page)
+        except QueryError:
+            # Already logged + classified by ``_row_to_event``;
+            # propagate so callers see the repo's exception type.
+            raise
+        except Exception as exc:
+            # A bad row would otherwise escape as raw Pydantic /
+            # enum / datetime errors, bypassing the warning log and
+            # turning one corrupt row into an unexpected 500.
+            msg = f"corrupt provider_audit_events row(s) for provider {provider_name!r}"
+            logger.warning(
+                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                provider_name=provider_name,
+            )
+            raise QueryError(msg) from exc
         logger.debug(
             PERSISTENCE_AUDIT_ENTRY_QUERIED,
             count=len(events),
@@ -186,15 +203,49 @@ class SQLiteProviderAuditRepo:
         except json.JSONDecodeError as exc:
             msg = f"corrupt payload_json on row id={row.get('id')!r}"
             raise QueryError(msg) from exc
+        if not isinstance(payload, dict):
+            # Audit payloads must be JSON objects.  A persisted scalar /
+            # array / null is corruption -- silently coercing would hide
+            # the schema violation and let bad rows slip downstream.
+            msg = (
+                f"provider_audit_events.payload_json on row "
+                f"id={row.get('id')!r} is not a JSON object "
+                f"(got {type(payload).__name__})"
+            )
+            raise QueryError(msg)
+        # Type-check scalar columns: ``str(...)`` of a corrupt NULL
+        # would produce ``"None"`` and let a malformed audit row
+        # masquerade as valid.  Fail closed instead.
+        for col in ("provider_name", "event_type", "actor_id", "actor_label"):
+            value = row[col]
+            if not isinstance(value, str) or value == "":
+                msg = (
+                    f"provider_audit_events.{col} on row "
+                    f"id={row.get('id')!r} is not a non-empty string: "
+                    f"{value!r}"
+                )
+                raise QueryError(msg)
+        id_raw = row["id"]
+        if not isinstance(id_raw, int):
+            msg = f"provider_audit_events.id is not int: {id_raw!r}"
+            raise QueryError(msg)
+        occurred_at_raw = row["occurred_at"]
+        if not isinstance(occurred_at_raw, str):
+            msg = (
+                f"provider_audit_events.occurred_at on row "
+                f"id={row.get('id')!r} is not a string: "
+                f"{occurred_at_raw!r}"
+            )
+            raise QueryError(msg)
         actor = ProviderAuditActor(
             id=str(row["actor_id"]),
             label=str(row["actor_label"]),
         )
         return ProviderAuditEvent(
-            id=int(str(row["id"])),
+            id=id_raw,
             provider_name=str(row["provider_name"]),
             event_type=str(row["event_type"]),  # type: ignore[arg-type]
             actor=actor,
             payload=payload,
-            occurred_at=parse_iso_utc(str(row["occurred_at"])),
+            occurred_at=parse_iso_utc(occurred_at_raw),
         )

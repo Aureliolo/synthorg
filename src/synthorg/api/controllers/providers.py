@@ -94,6 +94,7 @@ from synthorg.providers.health import ProviderHealthSummary  # noqa: TC001
 from synthorg.providers.presets import (
     LocalPreset,
     ProviderPreset,
+    get_preset,
     list_presets,
     list_probable_presets,
 )
@@ -1030,6 +1031,18 @@ class ProviderController(Controller):
                 name=name,
             )
             raise NotFoundError(msg) from exc
+        except ProviderValidationError as exc:
+            # Validation errors (e.g. provider configuration changed
+            # mid-discovery) are operator-actionable; surface as 422
+            # rather than letting them escape to a generic 500.
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="provider",
+                name=name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise ApiValidationError(str(exc)) from exc
         return ApiResponse(data=result)
 
     # ── Credentials rotation ────────────────────────────────────
@@ -1169,6 +1182,21 @@ class ProviderController(Controller):
         """
         app_state: AppState = state.app_state
         actor = request_audit_actor(request)
+        # Preflight existence check: classifying "preset not found"
+        # vs "override invalid for this preset's kind" via substring
+        # match on the error message is brittle and silently misroutes
+        # any unrelated validation error that happens to contain the
+        # phrase "Unknown preset".  Fail-fast with 404 here when the
+        # name is unknown; everything that survives this check is a
+        # genuine validation failure on the override shape.
+        if get_preset(preset_name) is None:
+            msg = f"Unknown preset {preset_name!r}"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="preset",
+                name=preset_name,
+            )
+            raise NotFoundError(msg)
         try:
             saved = await app_state.preset_override_service.upsert_override(
                 preset_name,
@@ -1176,21 +1204,14 @@ class ProviderController(Controller):
                 actor=actor,
             )
         except ProviderValidationError as exc:
-            exc_msg = str(exc)
-            if "Unknown preset" in exc_msg:
-                logger.warning(
-                    API_RESOURCE_NOT_FOUND,
-                    resource="preset",
-                    name=preset_name,
-                )
-                raise NotFoundError(exc_msg) from exc
             logger.warning(
                 API_VALIDATION_FAILED,
                 resource="preset",
                 name=preset_name,
-                error=exc_msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            raise ApiValidationError(exc_msg) from exc
+            raise ApiValidationError(str(exc)) from exc
         return ApiResponse(data=saved)
 
     @delete(
@@ -1340,9 +1361,17 @@ class ProviderController(Controller):
         an opaque keyset cursor returned by the previous page; pass
         ``None`` (omit the param) for the first page.
 
+        The endpoint accepts any provider name and returns whatever
+        rows exist for it -- including for providers that have since
+        been deleted.  The most important audit row a user ever
+        queries is ``provider_deleted``; gating the endpoint on
+        live-provider existence would make that row undiscoverable.
+        A name with no rows simply yields an empty page.
+
         Args:
             state: Application state.
-            name: Provider name (must exist; returns 404 otherwise).
+            name: Provider name (any value accepted; missing
+                providers yield an empty page rather than 404).
             cursor: Opaque keyset cursor from a previous page.
             limit: Page size (default 50, max ``MAX_LIMIT``).
 
@@ -1350,7 +1379,6 @@ class ProviderController(Controller):
             Paginated response of ``ProviderAuditEvent`` rows.
 
         Raises:
-            NotFoundError: HTTP 404 if the provider does not exist.
             InvalidCursorError: HTTP 400 -- malformed, tampered, or
                 signed by a different secret.
         """

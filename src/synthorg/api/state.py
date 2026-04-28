@@ -454,7 +454,6 @@ class AppState(AppStateServicesMixin):
             if provider_audit_repo is not None
             else None
         )
-        self._provider_audit_service: ProviderAuditService | None = audit_service
 
         # Preset overrides: same getattr-guarded wiring as the audit
         # log so legacy fakes that lack the new repo accessor stay
@@ -470,7 +469,7 @@ class AppState(AppStateServicesMixin):
             if persistence is not None
             else None
         )
-        self._preset_override_service: PresetOverrideService | None = (
+        preset_override_service: PresetOverrideService | None = (
             PresetOverrideService(preset_override_repo, audit_service=audit_service)
             if preset_override_repo is not None
             else None
@@ -491,6 +490,14 @@ class AppState(AppStateServicesMixin):
             company_versions=(
                 persistence.company_versions if persistence is not None else None
             ),
+        )
+        # Atomic assignment: every service constructor above runs
+        # before any ``self.*`` attribute mutation.  If any constructor
+        # raises, AppState stays in its prior (clean) state.  The
+        # docstring promises this contract.
+        self._provider_audit_service: ProviderAuditService | None = audit_service
+        self._preset_override_service: PresetOverrideService | None = (
+            preset_override_service
         )
         self._config_resolver = resolver
         self._provider_management = management

@@ -19,7 +19,7 @@ export interface TimelineItem {
   readonly created_at: string
 }
 
-interface VersionTimelineProps<T extends TimelineItem> {
+export interface VersionTimelineProps<T extends TimelineItem> {
   items: readonly T[]
   loading: boolean
   loadingMore: boolean

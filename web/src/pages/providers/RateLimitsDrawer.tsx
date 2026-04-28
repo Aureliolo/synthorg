@@ -169,18 +169,16 @@ export function RateLimitsDrawer({
       width="compact"
     >
       <div className="flex flex-col gap-section-gap p-card">
-        {error && (
+        {error
+          && providerName !== null
+          && rateLimitsProviderName === providerName && (
           <ErrorBanner
             severity="error"
             title="Failed to load rate limits"
             description={error}
-            onRetry={
-              providerName
-                ? () => {
-                    void fetchRateLimits(providerName)
-                  }
-                : undefined
-            }
+            onRetry={() => {
+              void fetchRateLimits(providerName)
+            }}
           />
         )}
         {loading || !isLoadedForActiveProvider ? (

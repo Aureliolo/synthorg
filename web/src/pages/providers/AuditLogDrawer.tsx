@@ -69,9 +69,21 @@ export function AuditLogDrawer({ providerName, open, onClose }: AuditLogDrawerPr
   const loadingMore = useProvidersStore((s) => s.auditLoadingMore)
   const error = useProvidersStore((s) => s.auditError)
   const hasMore = useProvidersStore((s) => s.auditHasMore)
+  const auditProviderName = useProvidersStore((s) => s.auditProviderName)
   const fetchAudit = useProvidersStore((s) => s.fetchAudit)
   const fetchMoreAudit = useProvidersStore((s) => s.fetchMoreAudit)
   const clearAudit = useProvidersStore((s) => s.clearAudit)
+
+  // Gate every read-state surface on the audit slice belonging to
+  // the active provider.  The store's stale-response guards prevent
+  // a slow fetch from overwriting the wrong provider's events, but
+  // until the new fetch completes the drawer would still render
+  // events / hasMore / error from the previous provider.
+  const isActiveProvider =
+    providerName !== null && auditProviderName === providerName
+  const visibleEvents = isActiveProvider ? events : []
+  const visibleError = isActiveProvider ? error : null
+  const visibleHasMore = isActiveProvider && hasMore
 
   useEffect(() => {
     if (open && providerName) {
@@ -93,11 +105,11 @@ export function AuditLogDrawer({ providerName, open, onClose }: AuditLogDrawerPr
       width="default"
     >
       <div className="flex flex-col gap-grid-gap p-card">
-        {error && (
+        {visibleError && (
           <ErrorBanner
             severity="error"
             title="Failed to load audit log"
-            description={error}
+            description={visibleError}
             onRetry={
               providerName
                 ? () => {
@@ -116,16 +128,16 @@ export function AuditLogDrawer({ providerName, open, onClose }: AuditLogDrawerPr
           </div>
         )}
 
-        {!loading && !error && events.length === 0 && (
+        {!loading && !visibleError && visibleEvents.length === 0 && (
           <EmptyState
             title="No audit events"
             description="Mutations to this provider will appear here."
           />
         )}
 
-        {!loading && events.length > 0 && (
+        {!loading && visibleEvents.length > 0 && (
           <ol className="flex flex-col divide-y divide-border">
-            {events.map((event) => (
+            {visibleEvents.map((event) => (
               <li
                 key={event.id ?? `${event.provider_name}-${event.occurred_at}`}
                 className="flex flex-col gap-1 py-grid-gap"
@@ -149,7 +161,7 @@ export function AuditLogDrawer({ providerName, open, onClose }: AuditLogDrawerPr
           </ol>
         )}
 
-        {hasMore && (
+        {visibleHasMore && (
           <Button
             variant="secondary"
             onClick={() => {
