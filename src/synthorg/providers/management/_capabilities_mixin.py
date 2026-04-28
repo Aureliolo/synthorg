@@ -64,7 +64,10 @@ class _ServiceProtocol(Protocol):
     async def get_provider(self, name: str) -> ProviderConfig: ...
 
     async def discover_models_for_provider(
-        self, name: str
+        self,
+        name: str,
+        *,
+        preset_hint: str | None = None,
     ) -> tuple[ProviderModelConfig, ...]: ...
 
     async def _validate_and_persist(
@@ -186,8 +189,13 @@ class ProviderCapabilitiesMixin:
         """
         # Discovery is idempotent and pure-read; run it outside the
         # lock so concurrent provider mutations are not blocked
-        # behind potentially-slow upstream HTTP calls.
-        discovered = await self.discover_models_for_provider(name)
+        # behind potentially-slow upstream HTTP calls.  Forward the
+        # caller-supplied ``preset_hint`` so preset-guided discovery
+        # paths (Ollama vs standard ``/models``) work as documented.
+        discovered = await self.discover_models_for_provider(
+            name,
+            preset_hint=request.preset_hint,
+        )
 
         async with self._lock:
             providers = await self._config_resolver.get_provider_configs()

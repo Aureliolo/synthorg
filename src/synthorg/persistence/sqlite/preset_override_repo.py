@@ -65,7 +65,26 @@ class SQLitePresetOverrideRepo:
             raise QueryError(msg) from exc
         if row is None:
             return None
-        return self._row_to_override(dict(row))
+        try:
+            return self._row_to_override(dict(row))
+        except QueryError:
+            # Already a QueryError (e.g. from ``_decode_json_list``);
+            # preserve as-is so callers see a single repository
+            # exception type for both query and deserialise failures.
+            raise
+        except Exception as exc:
+            # A bad row would otherwise escape as raw Pydantic /
+            # enum / datetime errors, bypassing the warning log and
+            # turning one corrupt row into an unexpected 500.
+            # Wrap in ``QueryError`` so the repo contract holds.
+            msg = f"corrupt preset_overrides row for preset {preset_name!r}"
+            logger.warning(
+                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                preset_name=preset_name,
+            )
+            raise QueryError(msg) from exc
 
     async def upsert(self, override: PresetOverride) -> PresetOverride:
         """Insert or replace the override for ``override.preset_name``."""

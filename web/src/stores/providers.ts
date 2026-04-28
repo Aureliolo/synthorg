@@ -52,6 +52,7 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
   presetOverride: null,
   presetOverrideLoading: false,
   presetOverrideError: null,
+  presetOverridePresetName: null,
 
   // Actions (delegated to focused modules)
   ...createListActions(set),

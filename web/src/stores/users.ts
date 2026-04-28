@@ -14,11 +14,17 @@ import {
   type UserResponse,
 } from '@/api/endpoints/users'
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import type { OrgRole } from '@/api/types/enums'
 
 const log = createLogger('users')
+
+// Page size for the cursor-paginated users list.  Centralised so
+// the initial fetch + load-more agree on the same limit (the
+// cursor-pagination contract requires it on every fetch-more call).
+const USERS_PAGE_LIMIT = 50
 
 interface UsersState {
   users: readonly UserResponse[]
@@ -58,7 +64,7 @@ export const useUsersStore = create<UsersState>()((set, get) => ({
       error: null,
     })
     try {
-      const page = await apiListUsers()
+      const page = await apiListUsers({ limit: USERS_PAGE_LIMIT })
       set({
         users: page.data,
         total: page.total,
@@ -67,7 +73,7 @@ export const useUsersStore = create<UsersState>()((set, get) => ({
         loading: false,
       })
     } catch (err) {
-      log.warn('Failed to fetch users:', getErrorMessage(err))
+      log.error('Failed to fetch users', sanitizeForLog(err))
       set({ loading: false, error: getErrorMessage(err) })
     }
   },
@@ -84,7 +90,10 @@ export const useUsersStore = create<UsersState>()((set, get) => ({
     }
     set({ loadingMore: true })
     try {
-      const page = await apiListUsers({ cursor: state.nextCursor })
+      const page = await apiListUsers({
+        cursor: state.nextCursor,
+        limit: USERS_PAGE_LIMIT,
+      })
       // Use the functional setter so concurrent mutations (e.g. a
       // grantOrgRole that lands while this page is in flight) are
       // not clobbered by the pre-await ``state.users`` snapshot.
@@ -95,7 +104,7 @@ export const useUsersStore = create<UsersState>()((set, get) => ({
         loadingMore: false,
       }))
     } catch (err) {
-      log.warn('Failed to fetch more users:', getErrorMessage(err))
+      log.error('Failed to fetch more users', sanitizeForLog(err))
       set({ loadingMore: false, error: getErrorMessage(err) })
     }
   },
@@ -115,7 +124,7 @@ export const useUsersStore = create<UsersState>()((set, get) => ({
       })
       return updated
     } catch (err) {
-      log.warn('Failed to grant org role:', getErrorMessage(err))
+      log.error('Failed to grant org role', sanitizeForLog(err))
       useToastStore.getState().add({
         variant: 'error',
         title: 'Failed to grant role',
@@ -141,7 +150,7 @@ export const useUsersStore = create<UsersState>()((set, get) => ({
       set({ submitting: false })
       return true
     } catch (err) {
-      log.warn('Failed to revoke org role:', getErrorMessage(err))
+      log.error('Failed to revoke org role', sanitizeForLog(err))
       useToastStore.getState().add({
         variant: 'error',
         title: 'Failed to revoke role',

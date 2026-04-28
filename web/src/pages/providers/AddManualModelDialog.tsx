@@ -1,5 +1,5 @@
 import { Dialog } from '@base-ui/react/dialog'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { InputField } from '@/components/ui/input-field'
@@ -39,6 +39,14 @@ export function AddManualModelDialog({
 }: AddManualModelDialogProps) {
   const addProviderModel = useProvidersStore((s) => s.addProviderModel)
   const currency = useSettingsStore((s) => s.currency)
+  // Track open-state in a ref so a slow add-model request that
+  // resolves after the dialog closes does not wipe new-session
+  // inputs by triggering ``reset()`` + ``onClose()`` on the new
+  // form instance (mirrors SyncModelsConfirmDialog).
+  const openRef = useRef(open)
+  useEffect(() => {
+    openRef.current = open
+  }, [open])
 
   const [modelId, setModelId] = useState('')
   const [alias, setAlias] = useState('')
@@ -99,6 +107,7 @@ export function AddManualModelDialog({
     setValidationError(null)
     setSubmitting(true)
     const result = await addProviderModel(providerName, { model })
+    if (!openRef.current) return
     setSubmitting(false)
     if (result !== null) {
       reset()

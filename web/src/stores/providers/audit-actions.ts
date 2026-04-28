@@ -151,15 +151,36 @@ export function createAuditActions(set: ProvidersSet, get: ProvidersGet) {
     },
 
     fetchPresetOverride: async (presetName: string): Promise<void> => {
-      set({ presetOverrideLoading: true, presetOverrideError: null })
+      // Reset cached state from a different preset so the drawer
+      // does not briefly render the previous preset's override
+      // before the fetch resolves.
+      set({
+        presetOverrideLoading: true,
+        presetOverrideError: null,
+        presetOverride: null,
+        presetOverridePresetName: presetName,
+      })
       try {
         const override = await getPresetOverride(presetName)
-        set({ presetOverride: override, presetOverrideLoading: false })
+        set((s) => {
+          // Drop the result if a newer fetch (different preset) has
+          // superseded this one while we were awaiting.
+          if (s.presetOverridePresetName !== presetName) return s
+          return {
+            ...s,
+            presetOverride: override,
+            presetOverrideLoading: false,
+          }
+        })
       } catch (err) {
         log.warn('Failed to fetch preset override:', getErrorMessage(err))
-        set({
-          presetOverrideLoading: false,
-          presetOverrideError: getErrorMessage(err),
+        set((s) => {
+          if (s.presetOverridePresetName !== presetName) return s
+          return {
+            ...s,
+            presetOverrideLoading: false,
+            presetOverrideError: getErrorMessage(err),
+          }
         })
       }
     },

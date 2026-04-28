@@ -351,6 +351,13 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
           variant: 'success',
           title: `Rate limits updated for "${name}"`,
         })
+        // Sync the rate-limits read slice the drawer is bound to;
+        // otherwise the drawer keeps rendering the previous caps
+        // until the user manually re-opens it.
+        set((s) => {
+          if (s.rateLimitsProviderName !== name) return s
+          return { ...s, rateLimits: updated }
+        })
         // Refresh the active detail panel so any rate-limits the
         // panel surfaces stay in sync.
         if (get().selectedProvider?.name === name) {
@@ -386,6 +393,13 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
           variant: 'success',
           title: `Preset override saved for "${presetName}"`,
         })
+        // Sync the preset-override read slice the drawer is bound
+        // to so the form does not keep rendering the pre-write
+        // value after a successful PATCH.
+        set((s) => {
+          if (s.presetOverridePresetName !== presetName) return s
+          return { ...s, presetOverride: updated }
+        })
         return updated
       } catch (err) {
         log.warn('Failed to update preset override:', getErrorMessage(err))
@@ -412,6 +426,12 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         useToastStore.getState().add({
           variant: 'success',
           title: `Preset override cleared for "${presetName}"`,
+        })
+        // Drop the cached override so the drawer reverts to the
+        // base preset rendering immediately.
+        set((s) => {
+          if (s.presetOverridePresetName !== presetName) return s
+          return { ...s, presetOverride: null }
         })
         return true
       } catch (err) {

@@ -196,12 +196,17 @@ export const useEscalationsStore = create<EscalationsState>()((set, get) => {
 
     clearDetail: () => {
       // Invalidate any in-flight detail fetch so its result cannot
-      // re-populate ``selected`` after the drawer closes.
+      // re-populate ``selected`` after the drawer closes.  Also
+      // clear ``detailLoading`` so the store does not get stuck in
+      // a phantom loading state when ``clearDetail`` runs while a
+      // fetch is still pending (the in-flight callback bails on
+      // the token mismatch and never flips the flag itself).
       detailRequestToken++
       set({
         selected: null,
         detailError: null,
         detailRequestedId: null,
+        detailLoading: false,
       })
     },
 

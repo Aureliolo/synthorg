@@ -12,9 +12,13 @@ from synthorg.api.dto_provider_capabilities import (
     CredentialsRotateRequest,
     ProviderAuditActor,
 )
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.provider import PROVIDER_VALIDATION_FAILED
 from synthorg.persistence._shared import format_iso_utc
 from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import ProviderValidationError
+
+logger = get_logger(__name__)
 
 # Bookkeeping actor used when the mutation entry point lacks a
 # request-scoped actor (background bootstrap, file-driven hot-reload,
@@ -90,4 +94,11 @@ def credentials_update_fields(
     # by the rotation contract, so this line is reachable only if the
     # union is extended without updating this dispatch.
     msg = f"Unsupported auth_type for rotation: {auth_type!r}"  # type: ignore[unreachable]
-    raise ProviderValidationError(msg)
+    exc = ProviderValidationError(msg)
+    logger.warning(
+        PROVIDER_VALIDATION_FAILED,
+        auth_type=str(auth_type),
+        error_type=type(exc).__name__,
+        error=safe_error_description(exc),
+    )
+    raise exc

@@ -37,6 +37,7 @@ export function RollbackConfirmDialog<T>({
   const [validationError, setValidationError] = useState<string | null>(null)
 
   const handleConfirm = async (): Promise<void> => {
+    if (submitting) return
     if (toVersion === null) return
     if (!reason.trim()) {
       setValidationError('Rollback requires a reason for the audit log.')

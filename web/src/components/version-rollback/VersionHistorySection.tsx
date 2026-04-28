@@ -103,12 +103,22 @@ export function VersionHistorySection<T>(
 
   // Initial load.  ``client`` is captured as the dependency; new
   // clients (rare; only when the parent rebuilds the factory)
-  // trigger a fresh fetch with state reset.
+  // trigger a fresh fetch with state reset.  We also clear
+  // selection / diff / rollback state so cross-entity navigation
+  // does not surface a stale rollback action against the previous
+  // resource.
   useEffect(() => {
     let cancelled = false
     const run = async (): Promise<void> => {
       setLoading(true)
       setError(null)
+      setItems([])
+      setCursor(null)
+      setHasMore(false)
+      setSelectedVersion(null)
+      setDiffOpen(false)
+      setDiffPair(null)
+      setRollbackOpen(false)
       try {
         const page = await client.list({ limit: 25 })
         if (cancelled) return
@@ -129,6 +139,9 @@ export function VersionHistorySection<T>(
   }, [client])
 
   const handleLoadMore = async (): Promise<void> => {
+    // Guard against fast repeated triggers re-requesting the same
+    // cursor and appending duplicate rows.
+    if (loadingMore || loading) return
     if (!hasMore || cursor === null) return
     setLoadingMore(true)
     try {

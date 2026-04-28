@@ -4,6 +4,7 @@
 import { ArrowDownAZ, ArrowUpAZ, Shapes } from 'lucide-react'
 import { useMemo } from 'react'
 import { useOntologyStore } from '@/stores/ontology'
+import { Button } from '@/components/ui/button'
 import { SectionCard } from '@/components/ui/section-card'
 import { SearchInput } from '@/components/ui/search-input'
 import { SegmentedControl } from '@/components/ui/segmented-control'
@@ -38,11 +39,19 @@ function sortEntities(
   const cmp = (a: EntityResponse, b: EntityResponse): number => {
     if (key === 'name') return a.name.localeCompare(b.name) * sign
     if (key === 'tier') return a.tier.localeCompare(b.tier) * sign
-    // ``attribute_count`` may not be a direct field on the response;
-    // fall back to attributes.length when present, then break ties
-    // by name to keep ordering stable across re-fetches.
-    const aCount = (a as unknown as { attributes?: readonly unknown[] }).attributes?.length ?? 0
-    const bCount = (b as unknown as { attributes?: readonly unknown[] }).attributes?.length ?? 0
+    // ``attribute_count`` is the canonical scalar on summary list
+    // payloads; ``attributes`` (the full array) is only present on
+    // detail responses.  Read both so the comparator works against
+    // either shape and falls through to a name tiebreaker for stable
+    // ordering across re-fetches.
+    const readCount = (e: EntityResponse): number => {
+      const summary = (e as unknown as { attribute_count?: number }).attribute_count
+      if (typeof summary === 'number') return summary
+      const detail = (e as unknown as { attributes?: readonly unknown[] }).attributes
+      return detail?.length ?? 0
+    }
+    const aCount = readCount(a)
+    const bCount = readCount(b)
     if (aCount === bCount) return a.name.localeCompare(b.name) * sign
     return (aCount - bCount) * sign
   }
@@ -86,22 +95,23 @@ export function EntityCatalog({ entities }: EntityCatalogProps) {
             options={SORT_OPTIONS}
             size="sm"
           />
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="icon"
             onClick={() => setEntitySort(sortBy)}
             aria-label={
               sortDirection === 'asc'
                 ? 'Sort descending'
                 : 'Sort ascending'
             }
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-surface text-text-secondary transition-colors hover:text-foreground"
           >
             {sortDirection === 'asc' ? (
               <ArrowDownAZ aria-hidden="true" className="size-4" />
             ) : (
               <ArrowUpAZ aria-hidden="true" className="size-4" />
             )}
-          </button>
+          </Button>
 
           <SearchInput
             value={searchQuery}

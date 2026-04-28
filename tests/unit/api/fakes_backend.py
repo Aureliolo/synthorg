@@ -460,14 +460,23 @@ def _clear_attr(value: object) -> None:
     # counters (e.g. ``_next_id``) that the generic walk below
     # cannot recognise.  Prefer that hook when available; the
     # generic walk is the legacy fallback.
-    repo_clear = getattr(value, "clear", None)
-    if callable(repo_clear):
-        try:
-            repo_clear()
-        except TypeError:
-            pass
-        else:
-            return
+    #
+    # ``unittest.mock.Mock`` objects expose every attribute lookup
+    # as a callable Mock (so ``getattr(stub, "clear")`` is a Mock,
+    # not a real reset).  Skip them by checking for the ``Mock``
+    # marker; otherwise the generic walk is what the lazy stub
+    # actually expects.
+    from unittest.mock import Mock
+
+    if not isinstance(value, Mock):
+        repo_clear = getattr(value, "clear", None)
+        if callable(repo_clear):
+            try:
+                repo_clear()
+            except TypeError:
+                pass
+            else:
+                return
     # Clear internal state of fake repository objects.
     try:
         inner_vars = vars(value)

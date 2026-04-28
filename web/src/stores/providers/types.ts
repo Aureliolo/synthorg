@@ -80,6 +80,8 @@ export interface ProvidersState {
   presetOverride: PresetOverride | null
   presetOverrideLoading: boolean
   presetOverrideError: string | null
+  /** The preset whose override is currently in state (or ``null``). */
+  presetOverridePresetName: string | null
 
   // Actions
   fetchProviders: () => Promise<void>
