@@ -131,12 +131,36 @@ def _imported_modules(path: Path) -> set[str]:
             resolved = _resolve_relative_import(
                 base=base, level=node.level, module=node.module
             )
-            if resolved:
-                out.add(resolved)
+            if not resolved:
+                continue
+            out.add(resolved)
+            # ``from synthorg.api import errors`` resolves the base to
+            # ``synthorg.api`` but the imported name (``errors``) makes
+            # the actually-imported module ``synthorg.api.errors``.
+            # Record the per-name combination too so the layering guard
+            # cannot be bypassed via that two-step form.  ``import *``
+            # has no specific submodule name; skip it.
+            for alias in node.names:
+                if alias.name == "*":
+                    continue
+                out.add(f"{resolved}.{alias.name}")
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 out.add(alias.name)
     return out
+
+
+def _is_forbidden(module: str) -> bool:
+    """Return True if ``module`` is a forbidden namespace or its submodule.
+
+    Treats every entry in :data:`_FORBIDDEN_MODULES` as a namespace
+    prefix so ``synthorg.persistence.errors.sqlite`` (and similar
+    nested paths) are caught alongside the bare top-level form.
+    """
+    return any(
+        module == forbid or module.startswith(forbid + ".")
+        for forbid in _FORBIDDEN_MODULES
+    )
 
 
 @pytest.mark.unit
@@ -152,7 +176,7 @@ def test_no_module_imports_legacy_error_paths() -> None:
         (path, module)
         for path in _python_files(_SRC)
         for module in _imported_modules(path)
-        if module in _FORBIDDEN_MODULES
+        if _is_forbidden(module)
     ]
     if offenders:
         rendered = "\n".join(
@@ -207,11 +231,12 @@ def test_controllers_use_core_persistence_errors() -> None:
     ``synthorg.persistence`` package internals.
     """
     controllers = _SRC / "api" / "controllers"
+    persistence_legacy = "synthorg.persistence.errors"
     offenders = [
         (path, module)
         for path in controllers.glob("*.py")
         for module in _imported_modules(path)
-        if module == "synthorg.persistence.errors"
+        if module == persistence_legacy or module.startswith(persistence_legacy + ".")
     ]
     if offenders:
         rendered = "\n".join(
@@ -265,7 +290,7 @@ def test_layering_test_does_not_import_forbidden_modules() -> None:
     """
     self_path = Path(__file__).resolve()
     for module in _imported_modules(self_path):
-        assert module not in _FORBIDDEN_MODULES, (
+        assert not _is_forbidden(module), (
             f"tests/unit/architecture/test_layering.py imports {module}; "
             "the layering guard must not depend on the very modules it forbids."
         )
