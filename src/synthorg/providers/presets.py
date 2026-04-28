@@ -641,19 +641,71 @@ def _is_denied_namespace(namespace: str) -> bool:
     )
 
 
-def _humanise_namespace(namespace: str) -> str:
-    """Turn a LiteLLM namespace into a Title Case display name.
+_DISPLAY_NAME_ACRONYMS: Final[frozenset[str]] = frozenset(
+    {
+        "AI",
+        "AI21",
+        "API",
+        "AWS",
+        "GCP",
+        "GPT",
+        "IBM",
+        "LLM",
+        "ML",
+        "NIM",
+        "NLP",
+        "OCI",
+        "TTS",
+    }
+)
+"""Words that should keep their fully-uppercased form even after the
+title-casing pass in :func:`_humanise_namespace`.
 
-    Pure title-casing on a string with underscores and hyphens
-    converted to spaces.  Featured presets set ``display_name``
-    explicitly via the constructor and never reach this helper.
+The bare ``str.title()`` output mangles common AI / cloud acronyms
+(``"ai21"`` -> ``"Ai21"``, ``"together_ai"`` -> ``"Together Ai"``);
+this set restores the canonical casing for the soft-preset display
+labels rendered in the wizard's "More providers" surface.  Featured
+presets set ``display_name`` explicitly and do not pass through this
+helper, so growing this set is a low-risk operation.
+"""
+
+_DISPLAY_NAME_LOWERCASE: Final[MappingProxyType[str, str]] = MappingProxyType(
+    {
+        "V0": "v0",  # Vercel's product is officially lowercase.
+    }
+)
+"""Title-cased tokens that should be normalised back to a specific
+non-title casing.  Keep small; prefer growing
+:data:`_DISPLAY_NAME_ACRONYMS` for the common upper-case path.
+"""
+
+
+def _humanise_namespace(namespace: str) -> str:
+    """Turn a LiteLLM namespace into a readable display name.
+
+    Title-cases the string with underscores and hyphens converted to
+    spaces, then restores known acronyms (``"AI"``, ``"API"``,
+    ``"NIM"``, ...) and a small set of lowercase product names
+    (e.g. ``"v0"``).  Featured presets set ``display_name`` explicitly
+    via the constructor and never reach this helper.
 
     Examples:
         ``"perplexity"`` -> ``"Perplexity"``
-        ``"nvidia_nim"`` -> ``"Nvidia Nim"``
-        ``"together_ai"`` -> ``"Together Ai"``
+        ``"ai21"`` -> ``"AI21"``
+        ``"lambda_ai"`` -> ``"Lambda AI"``
+        ``"v0"`` -> ``"v0"``
     """
-    return namespace.replace("_", " ").replace("-", " ").title()
+    titled = namespace.replace("_", " ").replace("-", " ").title()
+    parts: list[str] = []
+    for word in titled.split(" "):
+        upper = word.upper()
+        if upper in _DISPLAY_NAME_ACRONYMS:
+            parts.append(upper)
+        elif word in _DISPLAY_NAME_LOWERCASE:
+            parts.append(_DISPLAY_NAME_LOWERCASE[word])
+        else:
+            parts.append(word)
+    return " ".join(parts)
 
 
 def _make_soft_preset(namespace: str) -> CloudPreset:

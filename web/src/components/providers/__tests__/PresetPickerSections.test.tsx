@@ -194,12 +194,11 @@ describe('PresetPickerSections', () => {
       />,
     )
     // Summary text is visible immediately (count in label).
-    expect(
-      screen.getByText(/More providers via LiteLLM \(1\)/),
-    ).toBeInTheDocument()
-    // The soft preset card lives inside the collapsible details and
-    // is reachable via its accessible button label even when the
-    // <details> is closed (jsdom keeps it in the DOM tree).
+    const summary = screen.getByText(/More providers via LiteLLM \(1\)/)
+    // Click to expand the <details>; jsdom keeps closed descendants
+    // in the DOM, so without this click the assertion below would
+    // pass even if the toggle stopped revealing its content.
+    fireEvent.click(summary)
     expect(
       screen.getByRole('button', { name: /Add Softprovider/ }),
     ).toBeInTheDocument()
