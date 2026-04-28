@@ -12,9 +12,13 @@ on:
 
 permissions: {}
 
+# Serialize dev-release jobs across main pushes -- each commit must mint
+# its own per-SHA dev tag (v0.7.5-dev.N). Cancelling an in-flight run
+# would lose that commit's tag entirely (gap in version sequence, broken
+# per-commit traceability for downstream Docker / CLI / finalize-release).
 concurrency:
   group: dev-release
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   dev-release:
