@@ -1051,14 +1051,17 @@ class TestBuildErrorResponseRetryAfter:
 class TestBuildResponseFallback:
     """Test _build_response defensive fallback when construction fails."""
 
-    def test_fallback_returns_500_on_build_failure(self) -> None:
-        """If ProblemDetail/ErrorDetail construction fails, return 500.
+    def test_fallback_preserves_envelope_shape_for_application_json(
+        self,
+    ) -> None:
+        """Default JSON clients keep the ``ApiResponse`` envelope shape.
 
-        The fallback path emits a minimal but valid ``ProblemDetail``
-        envelope so client SDKs that decode ``error_detail`` fields do
-        not crash on null access; an unstructured ``{"error": "..."}``
-        dict would have left those clients without an ``error_code`` or
-        ``instance`` to surface to operators.
+        The fallback path must respect content negotiation: a client
+        sending ``Accept: application/json`` (the dashboard, every SDK)
+        expects ``error`` + ``error_detail`` keys.  Returning a bare
+        ``ProblemDetail`` instead would silently drop the envelope
+        contract on the very degraded path the fallback is designed to
+        cover.
         """
         request = MagicMock()
         request.accept.best_match.return_value = "application/json"
@@ -1075,15 +1078,41 @@ class TestBuildResponseFallback:
                 status_code=404,
             )
         assert resp.status_code == 500
-        # The fallback returns a structured ProblemDetail, not a plain dict.
+        envelope = resp.content
+        # JSON clients receive the standard envelope.
+        assert hasattr(envelope, "error")
+        assert hasattr(envelope, "error_detail")
+        assert envelope.error == "Internal server error"
+        assert envelope.error_detail is not None
+        assert envelope.error_detail.error_code == ErrorCode.INTERNAL_ERROR
+        assert envelope.error_detail.error_category == ErrorCategory.INTERNAL
+        assert envelope.error_detail.retryable is False
+        assert isinstance(envelope.error_detail.instance, str)
+        assert envelope.error_detail.instance
+
+    def test_fallback_returns_problem_detail_for_problem_json(self) -> None:
+        """``Accept: application/problem+json`` keeps the bare RFC 9457 body."""
+        request = MagicMock()
+        request.accept.best_match.return_value = "application/problem+json"
+
+        with patch(
+            "synthorg.api.exception_handlers._build_problem_detail_response",
+            side_effect=RuntimeError("construction failed"),
+        ):
+            resp = _build_response(
+                request,
+                detail="Resource not found",
+                error_code=ErrorCode.RECORD_NOT_FOUND,
+                error_category=ErrorCategory.NOT_FOUND,
+                status_code=404,
+            )
+        assert resp.status_code == 500
         assert isinstance(resp.content, ProblemDetail)
         assert resp.content.status == 500
         assert resp.content.detail == "Internal server error"
         assert resp.content.error_code == ErrorCode.INTERNAL_ERROR
         assert resp.content.error_category == ErrorCategory.INTERNAL
         assert resp.content.retryable is False
-        assert isinstance(resp.content.instance, str)
-        assert resp.content.instance
 
     def test_fallback_returns_500_on_problem_json_build_failure(self) -> None:
         """Fallback fires for problem+json path too."""

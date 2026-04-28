@@ -70,16 +70,16 @@ because they run before the central exception handler:
 
 | Endpoint | Caught exception | Status |
 |----------|------------------|--------|
-| `POST /admin/backups/restore` | `ManifestError` | `422` |
-| `POST /admin/backups/restore` | `RestoreError` | `500` (with detail `"Restore operation failed"`) |
-| `POST /admin/backups`, `restore` | `BackupInProgressError` | `409` |
-| `GET`, `DELETE`, `restore` | `BackupNotFoundError` | `404` |
+| `POST /api/v1/admin/backups/restore` | `ManifestError` | `422` |
+| `POST /api/v1/admin/backups/restore` | `RestoreError` | `500` (with detail `"Restore operation failed"`) |
+| `POST /api/v1/admin/backups`, `POST /api/v1/admin/backups/restore` | `BackupInProgressError` | `409` |
+| `GET /api/v1/admin/backups/{id}`, `DELETE /api/v1/admin/backups/{id}`, `POST /api/v1/admin/backups/restore` | `BackupNotFoundError` | `404` |
 
 **Layer 2: catch-all** via `handle_backup_error` in
 `src/synthorg/api/exception_handlers.py`.  This is the safety net for
 any `BackupError` subtype that is not caught by the controller (for
-example, `ManifestError` raised from `GET /admin/backups/{id}` since
-that endpoint does not catch it explicitly):
+example, `ManifestError` raised from `GET /api/v1/admin/backups/{id}`
+since that endpoint does not catch it explicitly):
 
 | Exception | Status | `error_code` |
 |-----------|--------|---------------|

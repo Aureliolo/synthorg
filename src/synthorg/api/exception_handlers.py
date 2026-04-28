@@ -252,12 +252,13 @@ def _build_response(  # noqa: PLR0913
     except Exception:
         # Last-resort fallback when structured-response construction
         # itself fails (e.g. Pydantic validation error from a corrupted
-        # ErrorCode, structlog context corruption, jq-time enum drift).
-        # Emit a minimal but valid RFC 9457 ``ProblemDetail`` envelope so
-        # client SDKs that decode ``error_detail`` fields do not crash on
-        # null access. The original error context is logged server-side
-        # for triage; the correlation ID lets operators trace the
-        # malformed response back to its triggering request.
+        # ErrorCode, structlog context corruption, enum drift).  Emit a
+        # minimal but valid RFC 9457 body so client SDKs that decode
+        # ``error_detail`` fields do not crash on null access.  The
+        # negotiated content type is preserved -- ``application/json``
+        # clients still receive the standard ``ApiResponse`` envelope
+        # shape, only ``application/problem+json`` clients see a bare
+        # ``ProblemDetail``.
         logger.error(
             API_REQUEST_ERROR,
             error_type="response_build_failure",
@@ -266,20 +267,47 @@ def _build_response(  # noqa: PLR0913
             original_status_code=status_code,
             exc_info=True,
         )
+        # Re-check content negotiation defensively: if ``_wants_problem_json``
+        # itself was the original failure, default to the envelope shape
+        # so the fallback never repeats the same crash.
+        try:
+            use_problem_json = _wants_problem_json(request)
+        except Exception:  # pragma: no cover
+            use_problem_json = False
+        instance = _get_instance_id()
+        fallback_title = category_title(ErrorCategory.INTERNAL)
+        fallback_type = category_type_uri(ErrorCategory.INTERNAL)
+        if use_problem_json:
+            return Response(
+                content=ProblemDetail(
+                    type=fallback_type,
+                    title=fallback_title,
+                    status=500,
+                    detail="Internal server error",
+                    instance=instance,
+                    error_code=ErrorCode.INTERNAL_ERROR,
+                    error_category=ErrorCategory.INTERNAL,
+                    retryable=False,
+                    retry_after=None,
+                ),
+                status_code=500,
+                media_type=_PROBLEM_JSON,
+            )
         return Response(
-            content=ProblemDetail(
-                type=category_type_uri(ErrorCategory.INTERNAL),
-                title=category_title(ErrorCategory.INTERNAL),
-                status=500,
-                detail="Internal server error",
-                instance=_get_instance_id(),
-                error_code=ErrorCode.INTERNAL_ERROR,
-                error_category=ErrorCategory.INTERNAL,
-                retryable=False,
-                retry_after=None,
+            content=ApiResponse[None](
+                error="Internal server error",
+                error_detail=ErrorDetail(
+                    detail="Internal server error",
+                    error_code=ErrorCode.INTERNAL_ERROR,
+                    error_category=ErrorCategory.INTERNAL,
+                    retryable=False,
+                    retry_after=None,
+                    instance=instance,
+                    title=fallback_title,
+                    type=fallback_type,
+                ),
             ),
             status_code=500,
-            media_type=_PROBLEM_JSON,
         )
 
 
