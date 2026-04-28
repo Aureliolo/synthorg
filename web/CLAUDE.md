@@ -150,6 +150,10 @@ All Zustand store **mutation** actions (create/update/delete) MUST follow the `s
 | `ProgressIndicator` | `@/components/ui/progress-indicator` | Long-running operation progress. Variants: `determinate` (labeled bar + percentage), `indeterminate` (shimmer), `stages` (multi-step list with done / running / pending / failed). Use for fine-tuning pipelines, setup flows, provider probes. |
 | `KeyboardShortcutHint` | `@/components/ui/keyboard-shortcut-hint` | Inline `<kbd>` pills for tooltip / button hints. Example: `<KeyboardShortcutHint keys={['Ctrl', 'K']} label="palette" />`. |
 | `CommandCheatsheet` | `@/components/ui/command-cheatsheet` | Full-screen overlay triggered by `?` showing all registered shortcuts grouped by section. Reads from `useShortcutRegistry`. Mount once in AppLayout. |
+| `VersionTimeline` | `@/components/version-rollback/VersionTimeline` | Generic read-only timeline of `{ id, version, created_at }` snapshots. Domain-agnostic; reused across agent identity, role, budget config, evaluation config, and company version-rollback surfaces. Skeleton + empty + load-more states built in. |
+| `VersionDiffDrawer` | `@/components/version-rollback/VersionDiffDrawer` | Side-by-side JSON diff of two versions in a Drawer (`width="wide"`). Pairs with `VersionTimeline` selection state. |
+| `RollbackConfirmDialog` | `@/components/version-rollback/RollbackConfirmDialog` | Destructive `ConfirmDialog` wrapper with rollback-specific copy + a final preview of "what will change". |
+| `PostSetupGuidanceCard` | `@/components/setup/PostSetupGuidanceCard` | One-time guidance banner shown on the dashboard after setup completes. Visibility flag in localStorage under `synthorg.firstRun`; dismissible across reloads. |
 
 #### Provider picker (shared between wizard and Settings)
 

@@ -317,6 +317,73 @@ class FakeTrainingResultRepository:
         return max(agent_results, key=lambda r: r.completed_at)
 
 
+class _FakeProviderAuditRepo:
+    """Minimal in-memory ``ProviderAuditRepo`` stub for tests.
+
+    Records all events under one provider key with monotonically
+    increasing integer ids; supports keyset pagination on ``id``.
+    """
+
+    def __init__(self) -> None:
+        self._events: list[Any] = []
+        self._next_id = 1
+
+    def clear(self) -> None:
+        """Reset to a fresh, empty repo with the id counter at 1."""
+        self._events = []
+        self._next_id = 1
+
+    async def record(self, event: Any) -> Any:
+        saved = event.model_copy(update={"id": self._next_id})
+        self._next_id += 1
+        self._events.append(saved)
+        return saved
+
+    async def list(
+        self,
+        *,
+        provider_name: NotBlankStr,
+        after_id: int | None = None,
+        limit: int = 50,
+    ) -> tuple[tuple[Any, ...], bool]:
+        rows = sorted(
+            (e for e in self._events if e.provider_name == provider_name),
+            key=lambda e: e.id,
+            reverse=True,
+        )
+        if after_id is not None:
+            rows = [e for e in rows if e.id < after_id]
+        page = rows[:limit]
+        has_more = len(rows) > limit
+        return tuple(page), has_more
+
+    async def purge_before_id(self, *, before_id: int) -> int:
+        before = len(self._events)
+        self._events = [e for e in self._events if e.id >= before_id]
+        return before - len(self._events)
+
+
+class _FakePresetOverrideRepo:
+    """Minimal in-memory ``PresetOverrideRepo`` stub for tests."""
+
+    def __init__(self) -> None:
+        self._overrides: dict[str, Any] = {}
+
+    def clear(self) -> None:
+        """Reset to a fresh, empty override map."""
+        self._overrides = {}
+
+    async def get(self, preset_name: NotBlankStr) -> Any | None:
+        return self._overrides.get(preset_name)
+
+    async def upsert(self, override: Any) -> Any:
+        self._overrides[override.preset_name] = override
+        return override
+
+    async def delete(self, preset_name: NotBlankStr) -> bool:
+        return self._overrides.pop(preset_name, None) is not None
+
+
 class FakeCustomRuleRepository:
     """In-memory fake for ``CustomRuleRepository``."""
 
@@ -370,6 +437,58 @@ class FakeCustomRuleRepository:
         return False
 
 
+def _clear_attr(value: object) -> None:
+    """Reset one attribute of ``FakePersistenceBackend`` in-place.
+
+    Strategy: skip primitives that have no clear-able state, clear
+    mutable containers directly, and call any nested ``clear()``
+    method exposed by fake-repo objects.  Falls back to walking
+    ``__dict__`` for repos that do not yet implement their own
+    ``clear()``.  Extracted to a module-level helper so the
+    iteration body in ``FakePersistenceBackend.clear`` stays under
+    the project's complexity ceiling.
+    """
+    # Skip primitives that have no internal state to reset.
+    if value is None or isinstance(value, (bool, str, int, float)):
+        return
+    # Clear mutable containers directly.
+    if isinstance(value, (dict, list, set)):
+        value.clear()
+        return
+    # Repositories that expose a dedicated ``clear()`` know how to
+    # reset every piece of internal state -- including scalar
+    # counters (e.g. ``_next_id``) that the generic walk below
+    # cannot recognise.  Prefer that hook when available; the
+    # generic walk is the legacy fallback.
+    #
+    # ``unittest.mock.Mock`` objects expose every attribute lookup
+    # as a callable Mock (so ``getattr(stub, "clear")`` is a Mock,
+    # not a real reset).  Skip them by checking for the ``Mock``
+    # marker; otherwise the generic walk is what the lazy stub
+    # actually expects.
+    from unittest.mock import Mock
+
+    if not isinstance(value, Mock):
+        repo_clear = getattr(value, "clear", None)
+        if callable(repo_clear):
+            try:
+                repo_clear()
+            except TypeError:
+                pass
+            else:
+                return
+    # Clear internal state of fake repository objects.
+    try:
+        inner_vars = vars(value)
+    except TypeError:
+        # Objects that legitimately have no ``__dict__`` (e.g.
+        # ``unittest.mock.AsyncMock`` bindings on lazy stubs).
+        return
+    for inner_value in inner_vars.values():
+        if isinstance(inner_value, (dict, list, set)):
+            inner_value.clear()
+
+
 class FakePersistenceBackend:
     """In-memory persistence backend for tests."""
 
@@ -399,6 +518,8 @@ class FakePersistenceBackend:
         self._collaboration_metrics = FakeCollaborationMetricRepository()
         self._parked_contexts = FakeParkedContextRepository()
         self._audit_entries = FakeAuditRepository()
+        self._provider_audit_events = _FakeProviderAuditRepo()
+        self._preset_overrides = _FakePresetOverrideRepo()
         self._decision_records = FakeDecisionRepository()
         self._users = FakeUserRepository()
         self._api_keys = FakeApiKeyRepository()
@@ -440,25 +561,7 @@ class FakePersistenceBackend:
         for attr_name in list(vars(self)):
             if attr_name == "_connected":
                 continue
-            value = getattr(self, attr_name)
-            # Skip lazily-instantiated stubs that aren't live yet and
-            # primitives (None, bool, str) which have no __dict__.
-            if value is None or isinstance(value, (bool, str, int, float)):
-                continue
-            # Clear mutable containers directly.
-            if isinstance(value, (dict, list, set)):
-                value.clear()
-                continue
-            # Clear internal state of fake repository objects.
-            try:
-                inner_vars = vars(value)
-            except TypeError:
-                # Objects that legitimately have no ``__dict__`` (e.g.
-                # ``unittest.mock.AsyncMock`` bindings on lazy stubs).
-                continue
-            for inner_value in inner_vars.values():
-                if isinstance(inner_value, (dict, list, set)):
-                    inner_value.clear()
+            _clear_attr(getattr(self, attr_name))
 
     async def connect(self) -> None:
         self._connected = True
@@ -523,6 +626,14 @@ class FakePersistenceBackend:
     @property
     def audit_entries(self) -> FakeAuditRepository:
         return self._audit_entries
+
+    @property
+    def provider_audit_events(self) -> _FakeProviderAuditRepo:
+        return self._provider_audit_events
+
+    @property
+    def preset_overrides(self) -> _FakePresetOverrideRepo:
+        return self._preset_overrides
 
     @property
     def decision_records(self) -> FakeDecisionRepository:

@@ -6,12 +6,27 @@ import {
   deleteProvider as apiDeleteProvider,
   testConnection as apiTestConnection,
   discoverModels as apiDiscoverModels,
+  rotateProviderCredentials as apiRotateCredentials,
+  addProviderModel as apiAddModel,
+  syncProviderModels as apiSyncModels,
+  updateProviderRateLimits as apiUpdateRateLimits,
+  updatePresetOverride as apiUpdatePresetOverride,
+  deletePresetOverride as apiDeletePresetOverride,
 } from '@/api/endpoints/providers'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
 import type {
+  AddModelRequest,
   CreateFromPresetRequest,
   CreateProviderRequest,
+  CredentialsRotateRequest,
+  PresetOverride,
+  PresetOverrideUpdateRequest,
+  ProviderConfig,
+  RateLimitsConfig,
+  RateLimitsUpdateRequest,
+  SyncModelsRequest,
+  SyncModelsResponse,
   TestConnectionRequest,
   TestConnectionResponse,
   UpdateProviderRequest,
@@ -207,5 +222,229 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
     },
 
     clearTestResult: () => set({ testConnectionResult: null }),
+
+    /**
+     * Rotate the credentials on an existing provider.  The variant of
+     * ``data.auth_type`` must match the provider's persisted auth_type
+     * or the backend rejects with 422; the toast surfaces that as a
+     * normal mutation error.
+     *
+     * Returns the updated ``ProviderConfig`` on success or ``null``
+     * on failure (toast already surfaced).
+     */
+    rotateCredentials: async (
+      name: string,
+      data: CredentialsRotateRequest,
+    ): Promise<ProviderConfig | null> => {
+      beginMutation(set)
+      try {
+        const updated = await apiRotateCredentials(name, data)
+        useToastStore.getState().add({
+          variant: 'success',
+          title: `Credentials rotated for "${name}"`,
+        })
+        await get().fetchProviders()
+        return updated
+      } catch (err) {
+        log.warn('Failed to rotate credentials:', getErrorMessage(err))
+        useToastStore.getState().add({
+          variant: 'error',
+          title: `Failed to rotate credentials for "${name}"`,
+          description: getErrorMessage(err),
+        })
+        return null
+      } finally {
+        endMutation(set)
+      }
+    },
+
+    /**
+     * Add a single ``ProviderModelConfig`` to the persisted list.
+     * Conflict (model id already exists) becomes a 409 + error toast.
+     */
+    addProviderModel: async (
+      name: string,
+      data: AddModelRequest,
+    ): Promise<ProviderConfig | null> => {
+      beginMutation(set)
+      try {
+        const updated = await apiAddModel(name, data)
+        useToastStore.getState().add({
+          variant: 'success',
+          title: `Model "${data.model.id}" added to "${name}"`,
+        })
+        await get().fetchProviders()
+        // Refresh the active detail panel so the new model is
+        // visible without a manual reload.  Mirrors the pattern in
+        // ``updateProvider`` / ``discoverModels``.
+        if (get().selectedProvider?.name === name) {
+          await get().fetchProviderDetail(name)
+        }
+        return updated
+      } catch (err) {
+        log.warn('Failed to add model:', getErrorMessage(err))
+        useToastStore.getState().add({
+          variant: 'error',
+          title: `Failed to add model to "${name}"`,
+          description: getErrorMessage(err),
+        })
+        return null
+      } finally {
+        endMutation(set)
+      }
+    },
+
+    /**
+     * Re-run discovery + pricing-enrichment and merge with persisted.
+     * Returns the diff (added / removed / updated id sets) plus the
+     * new model list on success, ``null`` on failure.
+     */
+    syncProviderModels: async (
+      name: string,
+      data: SyncModelsRequest = {},
+    ): Promise<SyncModelsResponse | null> => {
+      beginMutation(set)
+      try {
+        const result = await apiSyncModels(name, data)
+        const summary =
+          result.added.length === 0 &&
+          result.removed.length === 0 &&
+          result.updated.length === 0
+            ? 'No changes'
+            : `+${result.added.length} / -${result.removed.length} / ~${result.updated.length}`
+        useToastStore.getState().add({
+          variant: 'success',
+          title: `Models synced for "${name}"`,
+          description: summary,
+        })
+        await get().fetchProviders()
+        // Refresh the active detail panel so the synced model list
+        // is visible without a manual reload.
+        if (get().selectedProvider?.name === name) {
+          await get().fetchProviderDetail(name)
+        }
+        return result
+      } catch (err) {
+        log.warn('Failed to sync models:', getErrorMessage(err))
+        useToastStore.getState().add({
+          variant: 'error',
+          title: `Failed to sync models for "${name}"`,
+          description: getErrorMessage(err),
+        })
+        return null
+      } finally {
+        endMutation(set)
+      }
+    },
+
+    /**
+     * Apply a partial update to a provider's rate-limit config.
+     */
+    updateRateLimits: async (
+      name: string,
+      data: RateLimitsUpdateRequest,
+    ): Promise<RateLimitsConfig | null> => {
+      beginMutation(set)
+      try {
+        const updated = await apiUpdateRateLimits(name, data)
+        useToastStore.getState().add({
+          variant: 'success',
+          title: `Rate limits updated for "${name}"`,
+        })
+        // Sync the rate-limits read slice the drawer is bound to;
+        // otherwise the drawer keeps rendering the previous caps
+        // until the user manually re-opens it.
+        set((s) => {
+          if (s.rateLimitsProviderName !== name) return s
+          return { ...s, rateLimits: updated }
+        })
+        // Refresh the active detail panel so any rate-limits the
+        // panel surfaces stay in sync.
+        if (get().selectedProvider?.name === name) {
+          await get().fetchProviderDetail(name)
+        }
+        return updated
+      } catch (err) {
+        log.warn('Failed to update rate limits:', getErrorMessage(err))
+        useToastStore.getState().add({
+          variant: 'error',
+          title: `Failed to update rate limits for "${name}"`,
+          description: getErrorMessage(err),
+        })
+        return null
+      } finally {
+        endMutation(set)
+      }
+    },
+
+    /**
+     * Upsert the operator override for a preset.  ``null`` fields
+     * clear the override (inherit from base preset); ``undefined``
+     * fields leave the override unchanged.
+     */
+    updatePresetOverride: async (
+      presetName: string,
+      data: PresetOverrideUpdateRequest,
+    ): Promise<PresetOverride | null> => {
+      beginMutation(set)
+      try {
+        const updated = await apiUpdatePresetOverride(presetName, data)
+        useToastStore.getState().add({
+          variant: 'success',
+          title: `Preset override saved for "${presetName}"`,
+        })
+        // Sync the preset-override read slice the drawer is bound
+        // to so the form does not keep rendering the pre-write
+        // value after a successful PATCH.
+        set((s) => {
+          if (s.presetOverridePresetName !== presetName) return s
+          return { ...s, presetOverride: updated }
+        })
+        return updated
+      } catch (err) {
+        log.warn('Failed to update preset override:', getErrorMessage(err))
+        useToastStore.getState().add({
+          variant: 'error',
+          title: `Failed to save preset override for "${presetName}"`,
+          description: getErrorMessage(err),
+        })
+        return null
+      } finally {
+        endMutation(set)
+      }
+    },
+
+    /**
+     * Drop the override for ``presetName``.  Idempotent: returns
+     * ``true`` whether or not a row existed; the caller distinguishes
+     * via the surrounding flow if needed.
+     */
+    deletePresetOverride: async (presetName: string): Promise<boolean> => {
+      beginMutation(set)
+      try {
+        await apiDeletePresetOverride(presetName)
+        useToastStore.getState().add({
+          variant: 'success',
+          title: `Preset override cleared for "${presetName}"`,
+        })
+        // Drop the cached override so the drawer reverts to the
+        // base preset rendering immediately.
+        set((s) => {
+          if (s.presetOverridePresetName !== presetName) return s
+          return { ...s, presetOverride: null }
+        })
+        return true
+      } catch (err) {
+        log.warn('Failed to delete preset override:', getErrorMessage(err))
+        useToastStore.getState().add({
+          variant: 'error',
+          title: `Failed to clear preset override for "${presetName}"`,
+          description: getErrorMessage(err),
+        })
+        return false
+      } finally {
+        endMutation(set)
+      }
+    },
   }
 }

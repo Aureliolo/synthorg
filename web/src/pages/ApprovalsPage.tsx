@@ -17,10 +17,7 @@ import {
   type ApprovalPageFilters,
 } from '@/utils/approvals'
 import { formatNumber } from '@/utils/format'
-import { sanitizeForLog } from '@/utils/logging'
-import { createLogger } from '@/lib/logger'
 
-const log = createLogger('approvals-page')
 import { ApprovalFilterBar } from './approvals/ApprovalFilterBar'
 import { ApprovalRiskGroupSection } from './approvals/ApprovalRiskGroupSection'
 import { ApprovalDetailDrawer } from './approvals/ApprovalDetailDrawer'
@@ -148,63 +145,61 @@ export default function ApprovalsPage() {
   prevSelectionSizeRef.current = selectedIds.size
 
   // Batch actions
+  //
+  // The store owns error UX per ``web/CLAUDE.md`` "Zustand Store Error
+  // Handling": ``batchApprove`` / ``batchReject`` use ``allSettled``
+  // internally and always resolve to a structured ``{ succeeded,
+  // failed, failedReasons }`` result.  Per-item failures land in the
+  // result; the page just renders the right toast variant from the
+  // counts.  No try/catch wraps the store call (audit 38 + 58).
   const handleBatchApprove = useCallback(async () => {
     setBatchLoading(true)
     const ids = Array.from(selectedIds)
-    try {
-      const result = await batchApprove(ids, batchComment.trim() || undefined)
-      setBatchApproveOpen(false)
-      setBatchComment('')
-      if (result.failed === 0) {
-        useToastStore.getState().add({ variant: 'success', title: `Approved ${result.succeeded} items` })
-      } else {
-        useToastStore.getState().add({
-          variant: 'warning',
-          title: `Approved ${result.succeeded} of ${ids.length}. ${result.failed} failed.`,
-          description: result.failedReasons.length > 0 ? result.failedReasons.join('; ') : undefined,
-        })
-      }
-    } catch (err) {
-      log.error('Batch approve failed', sanitizeForLog(err))
+    const result = await batchApprove(ids, batchComment.trim() || undefined)
+    setBatchLoading(false)
+    setBatchApproveOpen(false)
+    setBatchComment('')
+    if (result.failed === 0) {
       useToastStore.getState().add({
-        variant: 'error',
-        title: 'Could not approve all items',
-        description: 'Please try again. If this keeps happening, check the application logs.',
+        variant: 'success',
+        title: `Approved ${result.succeeded} items`,
       })
-    } finally {
-      setBatchLoading(false)
+    } else {
+      useToastStore.getState().add({
+        variant: 'warning',
+        title: `Approved ${result.succeeded} of ${ids.length}. ${result.failed} failed.`,
+        description:
+          result.failedReasons.length > 0 ? result.failedReasons.join('; ') : undefined,
+      })
     }
   }, [selectedIds, batchApprove, batchComment])
 
   const handleBatchReject = useCallback(async () => {
     if (!batchReason.trim()) {
-      useToastStore.getState().add({ variant: 'error', title: 'Please provide a rejection reason' })
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Please provide a rejection reason',
+      })
       return
     }
     setBatchLoading(true)
     const ids = Array.from(selectedIds)
-    try {
-      const result = await batchReject(ids, batchReason.trim())
-      setBatchRejectOpen(false)
-      setBatchReason('')
-      if (result.failed === 0) {
-        useToastStore.getState().add({ variant: 'success', title: `Rejected ${result.succeeded} items` })
-      } else {
-        useToastStore.getState().add({
-          variant: 'warning',
-          title: `Rejected ${result.succeeded} of ${ids.length}. ${result.failed} failed.`,
-          description: result.failedReasons.length > 0 ? result.failedReasons.join('; ') : undefined,
-        })
-      }
-    } catch (err) {
-      log.error('Batch reject failed', sanitizeForLog(err))
+    const result = await batchReject(ids, batchReason.trim())
+    setBatchLoading(false)
+    setBatchRejectOpen(false)
+    setBatchReason('')
+    if (result.failed === 0) {
       useToastStore.getState().add({
-        variant: 'error',
-        title: 'Could not reject all items',
-        description: 'Please try again. If this keeps happening, check the application logs.',
+        variant: 'success',
+        title: `Rejected ${result.succeeded} items`,
       })
-    } finally {
-      setBatchLoading(false)
+    } else {
+      useToastStore.getState().add({
+        variant: 'warning',
+        title: `Rejected ${result.succeeded} of ${ids.length}. ${result.failed} failed.`,
+        description:
+          result.failedReasons.length > 0 ? result.failedReasons.join('; ') : undefined,
+      })
     }
   }, [selectedIds, batchReject, batchReason])
 

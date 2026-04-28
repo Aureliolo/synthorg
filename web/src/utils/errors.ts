@@ -44,8 +44,11 @@ export function getErrorMessage(error: unknown): string {
         return 'Validation error. Please check your input.'
       case 429:
         return 'Too many requests. Please try again in a moment.'
+      case 502:
+      case 504:
+        return 'Temporary connectivity issue. Please retry shortly.'
       case 503:
-        return 'Service temporarily unavailable. Please try again later.'
+        return 'The service is temporarily unavailable. Try again in a moment.'
       default:
         break
     }
@@ -59,8 +62,13 @@ export function getErrorMessage(error: unknown): string {
       return `Request failed (${status}). Please check your input.`
     }
 
-    // For 5xx, use generic message instead of leaking server internals
-    return 'A server error occurred. Please try again later.'
+    // For other 5xx (500, 505, ...): generic message + escalation hint.
+    // Avoids leaking server internals while signalling to the operator
+    // whether to retry transiently or escalate.
+    return (
+      'An unexpected server error occurred. Please try again later or '
+      + 'contact support if this persists.'
+    )
   }
 
   if (error instanceof Error) {

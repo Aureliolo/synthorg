@@ -2,11 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { Tabs } from '@base-ui/react/tabs'
 import { ArrowLeft, Building2, Settings, Users } from 'lucide-react'
+import { companyVersionsClient } from '@/api/endpoints/version-history'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ToggleField } from '@/components/ui/toggle-field'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { VersionHistorySection } from '@/components/version-rollback/VersionHistorySection'
 import type { UpdateCompanyRequest } from '@/api/types/org'
 import { useOrgEditData } from '@/hooks/useOrgEditData'
 import { useToastStore } from '@/stores/toast'
@@ -274,6 +276,16 @@ export default function OrgEditPage() {
           </div>
         </Tabs.Root>
       )}
+
+      <ErrorBoundary level="section">
+        <VersionHistorySection
+          client={companyVersionsClient}
+          title="Company history"
+          description="Read-only audit trail of organization snapshots. Select two versions to compare."
+          emptyTitle="No company versions yet"
+          emptyDescription="Versions appear here after the first edit to the organization structure."
+        />
+      </ErrorBoundary>
     </div>
   )
 }

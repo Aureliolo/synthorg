@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
+import { budgetConfigVersionsClient } from '@/api/endpoints/version-history'
 import { MetricCard } from '@/components/ui/metric-card'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
+import { VersionHistorySection } from '@/components/version-rollback/VersionHistorySection'
 import { useBudgetData } from '@/hooks/useBudgetData'
 import {
   computeAgentSpending,
@@ -158,6 +160,16 @@ export default function BudgetPage() {
 
       <ErrorBoundary level="section">
         <CfoActivityFeed events={cfoEvents} />
+      </ErrorBoundary>
+
+      <ErrorBoundary level="section">
+        <VersionHistorySection
+          client={budgetConfigVersionsClient}
+          title="Budget config history"
+          description="Read-only audit trail of budget configuration snapshots. Select two versions to compare."
+          emptyTitle="No budget config versions yet"
+          emptyDescription="Versions appear here after the first edit to the budget configuration."
+        />
       </ErrorBoundary>
     </div>
   )

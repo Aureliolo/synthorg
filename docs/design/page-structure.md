@@ -158,7 +158,7 @@ LLM provider management. CRUD cards for configured providers with health status 
 
 No WebSocket subscription; provider changes are low-frequency admin operations. TanStack Query polling is sufficient.
 
-**API endpoints**: `GET /providers`, `GET /providers/{name}`, `GET /providers/{name}/models`, `GET /providers/{name}/health`, `POST /providers`, `PUT /providers/{name}`, `DELETE /providers/{name}`, `POST /providers/{name}/test`, `GET /providers/presets`, `POST /providers/from-preset`, `POST /providers/{name}/discover-models`, `POST /providers/probe-local`, `GET /providers/discovery-policy`, `POST /providers/discovery-policy/entries`, `POST /providers/discovery-policy/remove-entry`
+**API endpoints**: `GET /providers`, `GET /providers/{name}`, `GET /providers/{name}/models`, `GET /providers/{name}/health`, `POST /providers`, `PUT /providers/{name}`, `DELETE /providers/{name}`, `POST /providers/{name}/test`, `GET /providers/presets`, `POST /providers/from-preset`, `POST /providers/{name}/discover-models`, `POST /providers/probe-local`, `GET /providers/discovery-policy`, `POST /providers/discovery-policy/entries`, `POST /providers/discovery-policy/remove-entry`, `POST /providers/{name}/models` (manual add), `POST /providers/{name}/models/sync` (bulk sync), `POST /providers/{name}/credentials/rotate`, `GET /providers/{name}/rate-limits`, `PATCH /providers/{name}/rate-limits`, `GET /providers/presets/{preset_name}/override`, `PATCH /providers/presets/{preset_name}/override`, `DELETE /providers/presets/{preset_name}/override`, `GET /providers/{name}/audit`
 
 #### Workflows (`/workflows`)
 

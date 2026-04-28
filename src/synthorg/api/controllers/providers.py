@@ -5,23 +5,26 @@ import json as _json
 from collections.abc import (
     Mapping,  # noqa: TC003  # Litestar inspects runtime return-type annotation
 )
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-from litestar import Controller, delete, get, post, put
+from litestar import Controller, Request, delete, get, patch, post, put
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 from litestar.response import ServerSentEvent
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.controllers._provider_helpers import enrich_with_usage, sse_error
+from synthorg.api.controllers._workflow_helpers import request_audit_actor
+from synthorg.api.cursor import InvalidCursorError, decode_keyset_cursor
 from synthorg.api.dto import (
     ApiResponse,
     CreateFromPresetRequest,
     CreateProviderRequest,
     DiscoverModelsResponse,
+    PaginatedResponse,
     ProbeLocalResponse,
     ProbePresetResponse,
     ProviderResponse,
@@ -37,6 +40,17 @@ from synthorg.api.dto_discovery import (
     DiscoveryPolicyResponse,
     RemoveAllowlistEntryRequest,
 )
+from synthorg.api.dto_provider_capabilities import (
+    AddModelRequest,  # noqa: TC001 -- runtime litestar request body
+    CredentialsRotateRequest,  # noqa: TC001 -- runtime litestar request body
+    PresetOverride,  # noqa: TC001 -- runtime litestar response model
+    PresetOverrideUpdateRequest,  # noqa: TC001 -- runtime litestar request body
+    ProviderAuditEvent,  # noqa: TC001 -- runtime litestar response model
+    RateLimitsResponse,  # noqa: TC001 -- runtime litestar response model
+    RateLimitsUpdateRequest,  # noqa: TC001 -- runtime litestar request body
+    SyncModelsRequest,  # noqa: TC001 -- runtime litestar request body
+    SyncModelsResponse,  # noqa: TC001 -- runtime litestar response model
+)
 from synthorg.api.dto_providers import (
     ProviderModelResponse,
     PullModelRequest,
@@ -50,6 +64,7 @@ from synthorg.api.errors import (
     NotFoundError,
 )
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
+from synthorg.api.pagination import CursorLimit, CursorParam, encode_keyset_meta
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.rate_limits import per_op_concurrency, per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
@@ -79,6 +94,7 @@ from synthorg.providers.health import ProviderHealthSummary  # noqa: TC001
 from synthorg.providers.presets import (
     LocalPreset,
     ProviderPreset,
+    get_preset,
     list_presets,
     list_probable_presets,
 )
@@ -352,7 +368,8 @@ class ProviderController(Controller):
             logger.warning(
                 API_VALIDATION_FAILED,
                 resource="provider",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise ApiValidationError(str(exc)) from exc
         return ApiResponse(data=to_provider_response(config))
@@ -402,7 +419,8 @@ class ProviderController(Controller):
             logger.warning(
                 API_VALIDATION_FAILED,
                 resource="provider",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise ApiValidationError(str(exc)) from exc
         return ApiResponse(data=to_provider_response(config))
@@ -451,7 +469,8 @@ class ProviderController(Controller):
             logger.warning(
                 API_VALIDATION_FAILED,
                 resource="provider",
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise ApiValidationError(str(exc)) from exc
         return ApiResponse(data=to_provider_response(config))
@@ -806,7 +825,8 @@ class ProviderController(Controller):
                 API_VALIDATION_FAILED,
                 resource="provider",
                 name=name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise ApiValidationError(str(exc)) from exc
         except ValueError as exc:
@@ -906,3 +926,513 @@ class ProviderController(Controller):
             )
             raise ApiError(msg)
         return ApiResponse(data=to_provider_model_response(model))
+
+    # ── Manual model add + bulk sync ────────────────────────────
+
+    @post(
+        "/{name:str}/models",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy("providers.add_model", key="user"),
+        ],
+    )
+    async def add_model(
+        self,
+        state: State,
+        request: Request[Any, Any, Any],
+        name: PathName,
+        data: AddModelRequest,
+    ) -> ApiResponse[ProviderResponse]:
+        """Add a single ``ProviderModelConfig`` to the persisted list.
+
+        Args:
+            state: Application state.
+            request: Litestar request, used to derive the audit actor.
+            name: Provider name.
+            data: Payload carrying the new model spec.
+
+        Returns:
+            Updated provider response (secrets stripped).
+
+        Raises:
+            NotFoundError: If the provider does not exist.
+            ConflictError: If a model with the same id is already
+                persisted on the provider.
+        """
+        app_state: AppState = state.app_state
+        actor = request_audit_actor(request)
+        try:
+            updated = await app_state.provider_management.add_model(
+                name,
+                data,
+                actor=actor,
+            )
+        except ProviderNotFoundError as exc:
+            msg = f"Provider {name!r} not found"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="provider",
+                name=name,
+            )
+            raise NotFoundError(msg) from exc
+        except ProviderAlreadyExistsError as exc:
+            logger.warning(
+                API_RESOURCE_CONFLICT,
+                resource="model",
+                name=data.model.id,
+                provider=name,
+            )
+            raise ConflictError(str(exc)) from exc
+        return ApiResponse(data=to_provider_response(updated))
+
+    @post(
+        "/{name:str}/models/sync",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy("providers.sync_models", key="user"),
+        ],
+    )
+    async def sync_models(
+        self,
+        state: State,
+        request: Request[Any, Any, Any],
+        name: PathName,
+        data: SyncModelsRequest,
+    ) -> ApiResponse[SyncModelsResponse]:
+        """Re-run discovery + pricing enrichment for the provider.
+
+        Args:
+            state: Application state.
+            request: Litestar request, used to derive the audit actor.
+            name: Provider name.
+            data: Sync request (``replace_existing`` flag, optional
+                ``preset_hint``).
+
+        Returns:
+            ``SyncModelsResponse`` with the diff and the new model
+            list.
+
+        Raises:
+            NotFoundError: If the provider does not exist.
+        """
+        app_state: AppState = state.app_state
+        actor = request_audit_actor(request)
+        try:
+            result = await app_state.provider_management.sync_models(
+                name,
+                data,
+                actor=actor,
+            )
+        except ProviderNotFoundError as exc:
+            msg = f"Provider {name!r} not found"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="provider",
+                name=name,
+            )
+            raise NotFoundError(msg) from exc
+        except ProviderValidationError as exc:
+            # Validation errors (e.g. provider configuration changed
+            # mid-discovery) are operator-actionable; surface as 422
+            # rather than letting them escape to a generic 500.
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="provider",
+                name=name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise ApiValidationError(str(exc)) from exc
+        return ApiResponse(data=result)
+
+    # ── Credentials rotation ────────────────────────────────────
+
+    @post(
+        "/{name:str}/credentials/rotate",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy(
+                "providers.rotate_credentials",
+                key="user",
+            ),
+        ],
+    )
+    async def rotate_credentials(
+        self,
+        state: State,
+        request: Request[Any, Any, Any],
+        name: PathName,
+        data: CredentialsRotateRequest,
+    ) -> ApiResponse[ProviderResponse]:
+        """Rotate the secret credentials on an existing provider.
+
+        Args:
+            state: Application state.
+            request: Litestar request, used to derive the audit actor.
+            name: Provider name.
+            data: Discriminated-union rotation payload keyed by
+                ``auth_type``.
+
+        Returns:
+            Updated provider response (secrets stripped).
+
+        Raises:
+            NotFoundError: If the provider does not exist.
+            ApiValidationError: If the rotation payload's ``auth_type``
+                does not match the provider's persisted ``auth_type``.
+        """
+        app_state: AppState = state.app_state
+        actor = request_audit_actor(request)
+        try:
+            updated = await app_state.provider_management.rotate_credentials(
+                name,
+                data,
+                actor=actor,
+            )
+        except ProviderNotFoundError as exc:
+            msg = f"Provider {name!r} not found"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="provider",
+                name=name,
+            )
+            raise NotFoundError(msg) from exc
+        except ProviderValidationError as exc:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="provider",
+                name=name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise ApiValidationError(str(exc)) from exc
+        return ApiResponse(data=to_provider_response(updated))
+
+    # ── Preset overrides ────────────────────────────────────────
+
+    @get(
+        "/presets/{preset_name:str}/override",
+        guards=[require_read_access],
+    )
+    async def get_preset_override(
+        self,
+        state: State,
+        preset_name: PathName,
+    ) -> ApiResponse[PresetOverride | None]:
+        """Read the operator override for ``preset_name`` (or null).
+
+        Args:
+            state: Application state.
+            preset_name: Preset whose override to read.  Must match an
+                in-code preset; unknown names return 404.
+
+        Returns:
+            ``PresetOverride`` if one is persisted, otherwise ``None``.
+
+        Raises:
+            NotFoundError: If the preset name is unknown.
+        """
+        if get_preset(preset_name) is None:
+            msg = f"Unknown preset {preset_name!r}"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="preset",
+                name=preset_name,
+            )
+            raise NotFoundError(msg)
+
+        app_state: AppState = state.app_state
+        override = await app_state.preset_override_service.get_override(preset_name)
+        return ApiResponse(data=override)
+
+    @patch(
+        "/presets/{preset_name:str}/override",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy(
+                "providers.update_preset_override",
+                key="user",
+            ),
+        ],
+    )
+    async def update_preset_override(
+        self,
+        state: State,
+        request: Request[Any, Any, Any],
+        preset_name: PathName,
+        data: PresetOverrideUpdateRequest,
+    ) -> ApiResponse[PresetOverride]:
+        """Apply a partial override on top of ``preset_name``.
+
+        Args:
+            state: Application state.
+            request: Litestar request, used to derive the audit actor.
+            preset_name: Preset whose override to write.
+            data: Partial override payload.
+
+        Returns:
+            The persisted override.
+
+        Raises:
+            NotFoundError: If the preset name is unknown.
+            ApiValidationError: If the override shape conflicts with
+                the preset's kind (cloud vs local).
+        """
+        app_state: AppState = state.app_state
+        actor = request_audit_actor(request)
+        # Preflight existence check: classifying "preset not found"
+        # vs "override invalid for this preset's kind" via substring
+        # match on the error message is brittle and silently misroutes
+        # any unrelated validation error that happens to contain the
+        # phrase "Unknown preset".  Fail-fast with 404 here when the
+        # name is unknown; everything that survives this check is a
+        # genuine validation failure on the override shape.
+        if get_preset(preset_name) is None:
+            msg = f"Unknown preset {preset_name!r}"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="preset",
+                name=preset_name,
+            )
+            raise NotFoundError(msg)
+        try:
+            saved = await app_state.preset_override_service.upsert_override(
+                preset_name,
+                data,
+                actor=actor,
+            )
+        except ProviderValidationError as exc:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="preset",
+                name=preset_name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise ApiValidationError(str(exc)) from exc
+        return ApiResponse(data=saved)
+
+    @delete(
+        "/presets/{preset_name:str}/override",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy(
+                "providers.delete_preset_override",
+                key="user",
+            ),
+        ],
+        status_code=HTTP_204_NO_CONTENT,
+    )
+    async def delete_preset_override(
+        self,
+        state: State,
+        request: Request[Any, Any, Any],
+        preset_name: PathName,
+    ) -> None:
+        """Drop the override for ``preset_name``.
+
+        Idempotent: returns 204 whether or not a row existed for a
+        VALID preset name; an unknown preset name returns 404 to
+        match the upsert path.
+
+        Args:
+            state: Application state.
+            request: Litestar request, used to derive the audit actor.
+            preset_name: Preset whose override to delete.
+        """
+        app_state: AppState = state.app_state
+        actor = request_audit_actor(request)
+        # Match the upsert path's preflight: an unknown preset name
+        # is a 404, not a silent no-op.  Without this, callers can
+        # DELETE arbitrary strings with no signal -- defeats the
+        # accountability intent of the audit row.
+        if get_preset(preset_name) is None:
+            msg = f"Unknown preset {preset_name!r}"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="preset",
+                name=preset_name,
+            )
+            raise NotFoundError(msg)
+        await app_state.preset_override_service.delete_override(
+            preset_name,
+            actor=actor,
+        )
+
+    # ── Rate-limit overrides ────────────────────────────────────
+
+    @get(
+        "/{name:str}/rate-limits",
+        guards=[require_read_access],
+    )
+    async def get_rate_limits(
+        self,
+        state: State,
+        name: PathName,
+    ) -> ApiResponse[RateLimitsResponse]:
+        """Read the persisted rate-limit configuration for one provider.
+
+        Args:
+            state: Application state.
+            name: Provider name.
+
+        Returns:
+            ``RateLimitsResponse`` with ``0`` meaning unlimited.
+
+        Raises:
+            NotFoundError: If the provider does not exist.
+        """
+        app_state: AppState = state.app_state
+        try:
+            data = await app_state.provider_management.get_rate_limits(name)
+        except ProviderNotFoundError as exc:
+            msg = f"Provider {name!r} not found"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="provider",
+                name=name,
+            )
+            raise NotFoundError(msg) from exc
+        return ApiResponse(data=data)
+
+    @patch(
+        "/{name:str}/rate-limits",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy(
+                "providers.update_rate_limits",
+                key="user",
+            ),
+        ],
+    )
+    async def update_rate_limits(
+        self,
+        state: State,
+        request: Request[Any, Any, Any],
+        name: PathName,
+        data: RateLimitsUpdateRequest,
+    ) -> ApiResponse[RateLimitsResponse]:
+        """Apply a partial update to the provider's rate-limit config.
+
+        Args:
+            state: Application state.
+            request: Litestar request, used to derive the audit actor.
+            name: Provider name.
+            data: Partial-update payload; at least one field required.
+
+        Returns:
+            ``RateLimitsResponse`` reflecting the new effective config.
+
+        Raises:
+            NotFoundError: If the provider does not exist.
+            ApiValidationError: If the merged config fails validation.
+        """
+        app_state: AppState = state.app_state
+        actor = request_audit_actor(request)
+        try:
+            updated = await app_state.provider_management.update_rate_limits(
+                name,
+                data,
+                actor=actor,
+            )
+        except ProviderNotFoundError as exc:
+            msg = f"Provider {name!r} not found"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="provider",
+                name=name,
+            )
+            raise NotFoundError(msg) from exc
+        except ProviderValidationError as exc:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="provider",
+                name=name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise ApiValidationError(str(exc)) from exc
+        return ApiResponse(data=updated)
+
+    # ── Audit log (read access) ─────────────────────────────────
+
+    @get(
+        "/{name:str}/audit",
+        guards=[require_read_access],
+    )
+    async def list_audit(
+        self,
+        state: State,
+        name: PathName,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
+    ) -> PaginatedResponse[ProviderAuditEvent]:
+        """List the mutation audit log for one provider, newest first.
+
+        Keyset-paginated on the integer ``id`` column.  ``cursor`` is
+        an opaque keyset cursor returned by the previous page; pass
+        ``None`` (omit the param) for the first page.
+
+        The endpoint accepts any provider name and returns whatever
+        rows exist for it -- including for providers that have since
+        been deleted.  The most important audit row a user ever
+        queries is ``provider_deleted``; gating the endpoint on
+        live-provider existence would make that row undiscoverable.
+        A name with no rows simply yields an empty page.
+
+        Args:
+            state: Application state.
+            name: Provider name (any value accepted; missing
+                providers yield an empty page rather than 404).
+            cursor: Opaque keyset cursor from a previous page.
+            limit: Page size (default 50, max ``MAX_LIMIT``).
+
+        Returns:
+            Paginated response of ``ProviderAuditEvent`` rows.
+
+        Raises:
+            InvalidCursorError: HTTP 400 -- malformed, tampered, or
+                signed by a different secret.
+        """
+        app_state: AppState = state.app_state
+        # Audit history is queryable by name forever -- including
+        # for providers that have been deleted, since the most
+        # important row a user ever queries is the
+        # ``provider_deleted`` event itself.  A name with no rows
+        # simply yields an empty page.
+
+        after_id_str = (
+            decode_keyset_cursor(cursor, secret=app_state.cursor_secret)
+            if cursor is not None
+            else None
+        )
+        # The keyset cursor encodes the last id as a string for
+        # cross-domain consistency; the provider audit log carries
+        # integer ids, so coerce here.  A validly-signed but malformed
+        # cursor (e.g. tampered payload that survived signature check
+        # but no longer parses as int) maps to a 400.
+        after_id: int | None = None
+        if after_id_str is not None:
+            try:
+                after_id = int(after_id_str)
+            except ValueError as exc:
+                msg = "cursor payload is not an integer"
+                raise InvalidCursorError(msg) from exc
+
+        events, has_more = await app_state.provider_audit_service.list_for_provider(
+            provider_name=name,
+            after_id=after_id,
+            limit=limit,
+        )
+        next_after_key = (
+            str(events[-1].id)
+            if has_more and events and events[-1].id is not None
+            else None
+        )
+        meta = encode_keyset_meta(
+            next_after_key=next_after_key,
+            has_more=has_more,
+            limit=limit,
+            secret=app_state.cursor_secret,
+        )
+        return PaginatedResponse(data=events, pagination=meta)

@@ -88,7 +88,12 @@ describe('getErrorMessage', () => {
 
   it('does NOT leak 5xx error body', () => {
     const error = makeAxiosError(500, { error: 'Internal: SQL deadlock on users table' })
-    expect(getErrorMessage(error)).toBe('A server error occurred. Please try again later.')
+    // Message refined to escalate on the unknown-5xx path; SQL detail
+    // must still never reach the user.
+    const message = getErrorMessage(error)
+    expect(message).not.toContain('SQL')
+    expect(message).not.toContain('deadlock')
+    expect(message).toContain('contact support')
   })
 
   it('returns network error for no response', () => {
@@ -96,9 +101,9 @@ describe('getErrorMessage', () => {
     expect(getErrorMessage(error)).toBe('Network error. Please check your connection.')
   })
 
-  it('returns generic server error for unknown 5xx', () => {
+  it('returns transient connectivity hint for 502', () => {
     const error = makeAxiosError(502)
-    expect(getErrorMessage(error)).toBe('A server error occurred. Please try again later.')
+    expect(getErrorMessage(error)).toContain('connectivity')
   })
 
   it('returns Error.message for non-axios Error with short message', () => {

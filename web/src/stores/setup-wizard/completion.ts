@@ -1,10 +1,29 @@
 import { completeSetup } from '@/api/endpoints/setup'
 import { createLogger } from '@/lib/logger'
+import { useThemeStore } from '@/stores/theme'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { getErrorMessage } from '@/utils/errors'
 import { initialStepsCompleted } from './navigation'
 import { DEFAULT_THEME } from './theme'
-import type { CompletionSlice, SliceCreator } from './types'
+import type { CompletionSlice, SliceCreator, ThemeSettings } from './types'
+
+/**
+ * Mirror the wizard's collected theme into the persistent theme store.
+ *
+ * The wizard collects ``ThemeSettings`` (a narrower shape with no
+ * typography axis); the dashboard-wide ``useThemeStore`` exposes
+ * per-axis setters that persist to ``localStorage`` and apply the
+ * matching CSS classes to ``<html>``.  We forward each axis through
+ * the existing setters so users see the theme they picked during
+ * setup the moment the wizard hands off to the dashboard.
+ */
+function persistWizardTheme(settings: ThemeSettings): void {
+  const theme = useThemeStore.getState()
+  theme.setColorPalette(settings.palette)
+  theme.setDensity(settings.density)
+  theme.setAnimation(settings.animation)
+  theme.setSidebarMode(settings.sidebar)
+}
 
 const log = createLogger('setup-wizard:completion')
 
@@ -58,7 +77,7 @@ function getInitialState() {
   }
 }
 
-export const createCompletionSlice: SliceCreator<CompletionSlice> = (set) => ({
+export const createCompletionSlice: SliceCreator<CompletionSlice> = (set, get) => ({
   completing: false,
   completionError: null,
 
@@ -66,6 +85,11 @@ export const createCompletionSlice: SliceCreator<CompletionSlice> = (set) => ({
     set({ completing: true, completionError: null })
     try {
       await completeSetup()
+      // Forward the wizard's collected theme into the persistent
+      // theme store so the dashboard renders the chosen palette /
+      // density / animation / sidebar mode immediately after the
+      // wizard hands off, instead of reverting to the system default.
+      persistWizardTheme(get().themeSettings)
       set({ completing: false })
     } catch (err) {
       log.error('completeSetup failed:', getErrorMessage(err))

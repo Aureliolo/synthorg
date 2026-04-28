@@ -1246,3 +1246,46 @@ CREATE TABLE idempotency_keys (
     PRIMARY KEY (scope, key)
 );
 CREATE INDEX idx_idempotency_expires ON idempotency_keys(expires_at);
+
+-- ── Provider audit events ─────────────────────────────────────────────
+-- Append-only mutation history for ``ProviderConfig`` writes.  Powers
+-- ``GET /api/v1/providers/{name}/audit`` and is written by
+-- ``ProviderAuditService.record(...)`` from every mutation entry point
+-- on ``ProviderManagementService``.  ``id`` is monotonically assigned
+-- (AUTOINCREMENT) so it doubles as the keyset pagination cursor.
+-- ``payload_json`` is JSON-stringified event metadata; credentials
+-- inside payload MUST be masked (``"prefix***last4"``) per SEC-1.
+CREATE TABLE provider_audit_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider_name TEXT NOT NULL CHECK(length(trim(provider_name)) > 0),
+    event_type TEXT NOT NULL CHECK(length(trim(event_type)) > 0),
+    actor_id TEXT NOT NULL CHECK(length(trim(actor_id)) > 0),
+    actor_label TEXT NOT NULL CHECK(length(trim(actor_label)) > 0),
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    -- Timestamp format is enforced by the Python layer via
+    -- ``parse_iso_utc`` / ``format_iso_utc`` (see
+    -- ``persistence/_shared/datetime_marshaller.py``); the DB only
+    -- enforces non-blank.
+    occurred_at TEXT NOT NULL CHECK(length(trim(occurred_at)) > 0)
+);
+
+CREATE INDEX idx_provider_audit_events_provider_id
+    ON provider_audit_events(provider_name, id DESC);
+CREATE INDEX idx_provider_audit_events_occurred
+    ON provider_audit_events(occurred_at);
+
+-- ── Preset overrides ──────────────────────────────────────────────────
+-- Operator overrides on top of in-code provider presets.  Read at
+-- preset-resolution time by ``PresetOverrideService.get_effective``.
+-- Cross-shape validation (cloud preset rejecting candidate_urls,
+-- local preset rejecting base_url) lives in the service layer.
+CREATE TABLE preset_overrides (
+    preset_name TEXT NOT NULL PRIMARY KEY
+        CHECK(length(trim(preset_name)) > 0),
+    default_models_json TEXT,
+    supported_auth_types_json TEXT,
+    candidate_urls_json TEXT,
+    base_url TEXT,
+    updated_at TEXT NOT NULL CHECK(length(trim(updated_at)) > 0),
+    updated_by TEXT NOT NULL CHECK(length(trim(updated_by)) > 0)
+);

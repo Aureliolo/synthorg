@@ -35,6 +35,15 @@ export function CompleteStep() {
       variant: 'success',
       title: `Setup complete! Welcome to ${companyResponse?.company_name ?? 'your organization'}.`,
     })
+    // Surface the post-setup guidance card on the dashboard.  The flag
+    // lives in localStorage so the card stays dismissible across
+    // reloads and is read by ``PostSetupGuidanceCard`` host components.
+    try {
+      window.localStorage.setItem('synthorg.firstRun', '1')
+    } catch {
+      // localStorage may be disabled (private mode); the guidance card
+      // simply won't surface in that case.  Setup completion proceeds.
+    }
     setConfirmOpen(false)
     navigate('/')
   }, [wizardCompleteSetup, companyResponse, navigate])

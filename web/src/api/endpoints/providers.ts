@@ -1,23 +1,38 @@
 import { createLogger } from '@/lib/logger'
 import { getCsrfToken } from '@/utils/csrf'
 import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
-import { apiClient, unwrap, unwrapVoid } from '../client'
-import type { ApiResponse } from '../types/http'
+import {
+  apiClient,
+  unwrap,
+  unwrapPaginated,
+  unwrapVoid,
+  type PaginatedResult,
+} from '../client'
+import type { ApiResponse, PaginatedResponse } from '../types/http'
 import type {
   AddAllowlistEntryRequest,
+  AddModelRequest,
   CreateFromPresetRequest,
   CreateProviderRequest,
+  CredentialsRotateRequest,
   DiscoverModelsResponse,
   DiscoveryPolicyResponse,
   LocalModelParams,
+  PresetOverride,
+  PresetOverrideUpdateRequest,
   ProbeLocalResponse,
+  ProviderAuditEvent,
   ProviderConfig,
   ProviderHealthSummary,
   ProviderModelResponse,
   ProviderPreset,
   PullModelRequest,
   PullProgressEvent,
+  RateLimitsConfig,
+  RateLimitsUpdateRequest,
   RemoveAllowlistEntryRequest,
+  SyncModelsRequest,
+  SyncModelsResponse,
   TestConnectionRequest,
   TestConnectionResponse,
   UpdateModelConfigRequest,
@@ -260,6 +275,106 @@ export async function updateModelConfig(
   const response = await apiClient.put<ApiResponse<ProviderModelResponse>>(
     `/providers/${encodeURIComponent(name)}/models/${encodeModelIdPath(modelId)}/config`,
     payload,
+  )
+  return unwrap(response)
+}
+
+// ── Provider audit log ────────────────────────────────────────────────
+
+export async function listProviderAudit(
+  name: string,
+  options: { cursor?: string | null; limit?: number } = {},
+): Promise<PaginatedResult<ProviderAuditEvent>> {
+  const params: Record<string, string | number> = {}
+  if (options.cursor) params.cursor = options.cursor
+  if (typeof options.limit === 'number') params.limit = options.limit
+  const response = await apiClient.get<PaginatedResponse<ProviderAuditEvent>>(
+    `/providers/${encodeURIComponent(name)}/audit`,
+    { params },
+  )
+  return unwrapPaginated<ProviderAuditEvent>(response)
+}
+
+// ── Rate-limit overrides ──────────────────────────────────────────────
+
+export async function getProviderRateLimits(name: string): Promise<RateLimitsConfig> {
+  const response = await apiClient.get<ApiResponse<RateLimitsConfig>>(
+    `/providers/${encodeURIComponent(name)}/rate-limits`,
+  )
+  return unwrap(response)
+}
+
+export async function updateProviderRateLimits(
+  name: string,
+  data: RateLimitsUpdateRequest,
+): Promise<RateLimitsConfig> {
+  const response = await apiClient.patch<ApiResponse<RateLimitsConfig>>(
+    `/providers/${encodeURIComponent(name)}/rate-limits`,
+    data,
+  )
+  return unwrap(response)
+}
+
+// ── Preset overrides ──────────────────────────────────────────────────
+
+export async function getPresetOverride(presetName: string): Promise<PresetOverride | null> {
+  const response = await apiClient.get<ApiResponse<PresetOverride | null>>(
+    `/providers/presets/${encodeURIComponent(presetName)}/override`,
+  )
+  return unwrap<PresetOverride | null>(response)
+}
+
+export async function updatePresetOverride(
+  presetName: string,
+  data: PresetOverrideUpdateRequest,
+): Promise<PresetOverride> {
+  const response = await apiClient.patch<ApiResponse<PresetOverride>>(
+    `/providers/presets/${encodeURIComponent(presetName)}/override`,
+    data,
+  )
+  return unwrap(response)
+}
+
+export async function deletePresetOverride(presetName: string): Promise<void> {
+  const response = await apiClient.delete<ApiResponse<null>>(
+    `/providers/presets/${encodeURIComponent(presetName)}/override`,
+  )
+  unwrapVoid(response)
+}
+
+// ── Credentials rotation ──────────────────────────────────────────────
+
+export async function rotateProviderCredentials(
+  name: string,
+  data: CredentialsRotateRequest,
+): Promise<ProviderConfig> {
+  const response = await apiClient.post<ApiResponse<ProviderConfig>>(
+    `/providers/${encodeURIComponent(name)}/credentials/rotate`,
+    data,
+  )
+  return unwrap(response)
+}
+
+// ── Manual model add + bulk model sync ────────────────────────────────
+
+export async function addProviderModel(
+  name: string,
+  data: AddModelRequest,
+): Promise<ProviderConfig> {
+  const response = await apiClient.post<ApiResponse<ProviderConfig>>(
+    `/providers/${encodeURIComponent(name)}/models`,
+    data,
+  )
+  return unwrap(response)
+}
+
+export async function syncProviderModels(
+  name: string,
+  data: SyncModelsRequest = {},
+): Promise<SyncModelsResponse> {
+  const response = await apiClient.post<ApiResponse<SyncModelsResponse>>(
+    `/providers/${encodeURIComponent(name)}/models/sync`,
+    data,
   )
   return unwrap(response)
 }

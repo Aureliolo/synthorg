@@ -207,8 +207,10 @@ class AppState(AppStateServicesMixin):
         "_performance_tracker",
         "_persistence",
         "_personality_service",
+        "_preset_override_service",
         "_project_facade_service",
         "_prometheus_collector",
+        "_provider_audit_service",
         "_provider_health_tracker",
         "_provider_management",
         "_provider_read_service",
@@ -396,6 +398,8 @@ class AppState(AppStateServicesMixin):
         # every connection.  Retains the built-in default when the
         # bridge cannot be resolved.
         self._ws_auth_timeout_seconds: float = 10.0
+        self._provider_audit_service = None
+        self._preset_override_service = None
         self._init_derived_services(
             settings_service=settings_service,
             config=config,
@@ -431,11 +435,51 @@ class AppState(AppStateServicesMixin):
             settings_service=settings_service,
             config=config,
         )
+        # Provider audit log: wired only when the persistence backend
+        # actually exposes the repo accessor.  ``getattr`` keeps legacy
+        # ``FakePersistenceBackend`` rigs in tests working until they
+        # opt into the new accessor; ``ProviderManagementService``
+        # treats ``None`` as a no-op for emission so neither path errors.
+        from synthorg.providers.management.audit_service import (  # noqa: PLC0415
+            ProviderAuditService,
+        )
+
+        provider_audit_repo = (
+            getattr(persistence, "provider_audit_events", None)
+            if persistence is not None
+            else None
+        )
+        audit_service = (
+            ProviderAuditService(provider_audit_repo)
+            if provider_audit_repo is not None
+            else None
+        )
+
+        # Preset overrides: same getattr-guarded wiring as the audit
+        # log so legacy fakes that lack the new repo accessor stay
+        # functional.  The override service depends on the audit
+        # service (it emits ``preset_override_updated`` rows on each
+        # write) so it is None whenever audit is None.
+        from synthorg.providers.management.preset_override_service import (  # noqa: PLC0415
+            PresetOverrideService,
+        )
+
+        preset_override_repo = (
+            getattr(persistence, "preset_overrides", None)
+            if persistence is not None
+            else None
+        )
+        preset_override_service: PresetOverrideService | None = (
+            PresetOverrideService(preset_override_repo, audit_service=audit_service)
+            if preset_override_repo is not None
+            else None
+        )
         management = ProviderManagementService(
             settings_service=settings_service,
             config_resolver=resolver,
             app_state=self,
             config=config,
+            audit_service=audit_service,
         )
         org_mutations = OrgMutationService(
             settings_service=settings_service,
@@ -446,6 +490,14 @@ class AppState(AppStateServicesMixin):
             company_versions=(
                 persistence.company_versions if persistence is not None else None
             ),
+        )
+        # Atomic assignment: every service constructor above runs
+        # before any ``self.*`` attribute mutation.  If any constructor
+        # raises, AppState stays in its prior (clean) state.  The
+        # docstring promises this contract.
+        self._provider_audit_service: ProviderAuditService | None = audit_service
+        self._preset_override_service: PresetOverrideService | None = (
+            preset_override_service
         )
         self._config_resolver = resolver
         self._provider_management = management

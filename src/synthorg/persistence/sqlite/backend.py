@@ -90,6 +90,9 @@ from synthorg.persistence.sqlite.org_fact_repo import (
 from synthorg.persistence.sqlite.parked_context_repo import (
     SQLiteParkedContextRepository,
 )
+from synthorg.persistence.sqlite.preset_override_repo import (
+    SQLitePresetOverrideRepo,
+)
 from synthorg.persistence.sqlite.preset_repo import (
     SQLitePersonalityPresetRepository,
 )
@@ -98,6 +101,9 @@ from synthorg.persistence.sqlite.project_cost_aggregate_repo import (
 )
 from synthorg.persistence.sqlite.project_repo import (
     SQLiteProjectRepository,
+)
+from synthorg.persistence.sqlite.provider_audit_repo import (
+    SQLiteProviderAuditRepo,
 )
 from synthorg.persistence.sqlite.refresh_repo import (
     SQLiteRefreshTokenRepository,
@@ -187,6 +193,8 @@ class SQLitePersistenceBackend:
         self._collaboration_metrics: SQLiteCollaborationMetricRepository | None = None
         self._parked_contexts: SQLiteParkedContextRepository | None = None
         self._audit_entries: SQLiteAuditRepository | None = None
+        self._provider_audit_events: SQLiteProviderAuditRepo | None = None
+        self._preset_overrides: SQLitePresetOverrideRepo | None = None
         self._users: SQLiteUserRepository | None = None
         self._api_keys: SQLiteApiKeyRepository | None = None
         self._checkpoints: SQLiteCheckpointRepository | None = None
@@ -233,7 +241,7 @@ class SQLitePersistenceBackend:
         self._oauth_states: SQLiteOAuthStateRepository | None = None
         self._webhook_receipts: SQLiteWebhookReceiptRepository | None = None
 
-    def _clear_state(self) -> None:
+    def _clear_state(self) -> None:  # noqa: PLR0915 -- repo registry reset intentionally enumerates every attribute
         """Reset connection and repository references to ``None``."""
         self._db = None
         self._artifacts = None
@@ -246,6 +254,8 @@ class SQLitePersistenceBackend:
         self._collaboration_metrics = None
         self._parked_contexts = None
         self._audit_entries = None
+        self._provider_audit_events = None
+        self._preset_overrides = None
         self._users = None
         self._api_keys = None
         self._checkpoints = None
@@ -386,6 +396,14 @@ class SQLitePersistenceBackend:
             write_lock=self._shared_write_lock,
         )
         self._audit_entries = SQLiteAuditRepository(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._provider_audit_events = SQLiteProviderAuditRepo(
+            self._db,
+            write_lock=self._shared_write_lock,
+        )
+        self._preset_overrides = SQLitePresetOverrideRepo(
             self._db,
             write_lock=self._shared_write_lock,
         )
@@ -706,6 +724,22 @@ class SQLitePersistenceBackend:
     def audit_entries(self) -> SQLiteAuditRepository:
         """Repository for AuditEntry persistence."""
         return self._require_connected(self._audit_entries, "audit_entries")
+
+    @property
+    def provider_audit_events(self) -> SQLiteProviderAuditRepo:
+        """Repository for the provider mutation audit log."""
+        return self._require_connected(
+            self._provider_audit_events,
+            "provider_audit_events",
+        )
+
+    @property
+    def preset_overrides(self) -> SQLitePresetOverrideRepo:
+        """Repository for operator-authored provider preset overrides."""
+        return self._require_connected(
+            self._preset_overrides,
+            "preset_overrides",
+        )
 
     @property
     def decision_records(self) -> SQLiteDecisionRepository:

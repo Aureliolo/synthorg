@@ -15,6 +15,9 @@ const log = createLogger('ontology')
 
 type TierFilter = 'all' | 'core' | 'user'
 
+export type EntitySortKey = 'name' | 'tier' | 'attribute_count'
+export type SortDirection = 'asc' | 'desc'
+
 interface OntologyState {
   // ── Entity catalog ──
   entities: readonly EntityResponse[]
@@ -27,9 +30,11 @@ interface OntologyState {
   driftLoading: boolean
   driftError: string | null
 
-  // ── Filters ──
+  // ── Filters + sort ──
   tierFilter: TierFilter
   searchQuery: string
+  entitySortBy: EntitySortKey
+  entitySortDirection: SortDirection
 
   // ── Selected entity ──
   selectedEntity: EntityResponse | null
@@ -39,6 +44,7 @@ interface OntologyState {
   fetchDriftReports: () => Promise<void>
   setTierFilter: (tier: TierFilter) => void
   setSearchQuery: (q: string) => void
+  setEntitySort: (key: EntitySortKey, direction?: SortDirection) => void
   setSelectedEntity: (entity: EntityResponse | null) => void
 }
 
@@ -55,6 +61,8 @@ export const useOntologyStore = create<OntologyState>()((set) => ({
 
   tierFilter: 'all',
   searchQuery: '',
+  entitySortBy: 'name',
+  entitySortDirection: 'asc',
   selectedEntity: null,
 
   // ── Actions ──
@@ -95,6 +103,20 @@ export const useOntologyStore = create<OntologyState>()((set) => ({
 
   setTierFilter: (tier: TierFilter) => set({ tierFilter: tier }),
   setSearchQuery: (q: string) => set({ searchQuery: q }),
+  setEntitySort: (key, direction) =>
+    set((state) => {
+      // When the same key is re-selected without an explicit direction,
+      // toggle.  Otherwise apply the explicit direction or default to
+      // ascending for a new key.
+      const nextDirection: SortDirection =
+        direction ??
+        (state.entitySortBy === key
+          ? state.entitySortDirection === 'asc'
+            ? 'desc'
+            : 'asc'
+          : 'asc')
+      return { entitySortBy: key, entitySortDirection: nextDirection }
+    }),
   setSelectedEntity: (entity: EntityResponse | null) =>
     set({ selectedEntity: entity }),
 }))
