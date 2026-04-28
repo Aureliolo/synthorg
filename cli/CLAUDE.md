@@ -169,7 +169,7 @@ Overriding any of `registry_host`, `image_repo_prefix`, `dhi_registry`, `postgre
 | `update` | `--dry-run`, `--no-restart`, `--timeout`, `--cli-only`, `--images-only`, `--check` |
 | `cleanup` | `--dry-run`, `--all`, `--keep N` |
 | `backup create` | `--output`/`-o`, `--timeout` |
-| `backup list` | `--limit`/`-n`, `--sort` |
+| `backup list` | `--limit`/`-n`, `--sort` (`newest`\|`oldest`\|`size`) |
 | `backup restore` | `--confirm` (required), `--dry-run`, `--no-restart`, `--timeout` |
 | `completion` | `[bash \| zsh \| fish \| powershell]`: emit shell autocompletion script (Cobra built-in) |
 | `completion-install` | `[bash \| zsh \| fish \| powershell]`: write the autocompletion script into your shell startup (`~/.bashrc`, `~/.zshrc`, etc.) |

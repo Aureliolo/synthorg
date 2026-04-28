@@ -1,19 +1,17 @@
 """MessageService -- read + publish facade over the message bus.
 
-Wraps :class:`MessageBus` for channel / history reads and the publish
-path; destructive removal raises
-:class:`CapabilityNotSupportedError` because the underlying
-:class:`MessageRepository` is append-only by design (durable channel
-history is an audit log; operators redact via content rewrite rather
-than deletion).  Handlers translate that to a typed ``not_supported``
-envelope so callers understand the gap.
+Wraps :class:`MessageBus` for channel / history reads, the publish
+path, and now operator-driven deletion. ``MessageRepository.delete``
+is implemented on both SQLite and Postgres backends; the service
+forwards the call and emits an audit-grade
+:data:`COMMUNICATION_MESSAGE_DELETED` event on success.
 """
 
 from typing import TYPE_CHECKING
 
-from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
+    COMMUNICATION_MESSAGE_DELETED,
     COMMUNICATION_MESSAGE_SENT_VIA_MCP,
 )
 
@@ -27,12 +25,6 @@ if TYPE_CHECKING:
     from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
-
-_DELETE_CAP = "message_delete"
-_DELETE_DETAIL = (
-    "MessageRepository is append-only; operators rewrite content via "
-    "a follow-up message rather than deleting history entries"
-)
 
 
 class MessageService:
@@ -123,18 +115,32 @@ class MessageService:
     async def delete_message(
         self,
         *,
-        channel: NotBlankStr,  # noqa: ARG002 - part of public contract
-        message_id: str,  # noqa: ARG002
-        actor_id: NotBlankStr,  # noqa: ARG002
-        reason: NotBlankStr,  # noqa: ARG002
+        channel: NotBlankStr,
+        message_id: str,
+        actor_id: NotBlankStr,
+        reason: NotBlankStr,
     ) -> bool:
-        """Reject deletion with a typed ``not_supported`` error.
+        """Delete a single message owned by ``message_id``.
 
-        The audit-grade durability of channel history means content
-        removal is a separate operator workflow (log rotation /
-        compliance tooling) rather than an MCP surface.
+        The ``channel`` argument is preserved as part of the public
+        contract for symmetry with the read API even though the
+        underlying ``messages.id`` column is globally unique. The
+        ``actor_id`` and ``reason`` arguments drive the audit log so
+        operator-initiated removals are traceable end-to-end.
+
+        Returns ``True`` if a row was removed, ``False`` if the
+        ``message_id`` did not exist.
         """
-        raise CapabilityNotSupportedError(_DELETE_CAP, _DELETE_DETAIL)
+        deleted = await self._persistence.messages.delete(message_id)
+        if deleted:
+            logger.info(
+                COMMUNICATION_MESSAGE_DELETED,
+                channel=channel,
+                message_id=message_id,
+                actor_id=actor_id,
+                reason=reason,
+            )
+        return deleted
 
 
 __all__ = [

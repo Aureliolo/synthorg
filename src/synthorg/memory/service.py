@@ -48,6 +48,7 @@ from synthorg.observability.events.memory import (
     MEMORY_CHECKPOINT_ROLLBACK_FAILED,
     MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED,
     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
+    MEMORY_ENTRY_DELETED,
     MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
     MEMORY_FINE_TUNE_INVALID_REQUEST,
     MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED,
@@ -63,6 +64,7 @@ if TYPE_CHECKING:
     from synthorg.memory.embedding.fine_tune_orchestrator import (
         FineTuneOrchestrator,
     )
+    from synthorg.memory.protocol import MemoryBackend
     from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
@@ -128,6 +130,7 @@ class MemoryService:
     __slots__ = (
         "_checkpoints",
         "_embedder_state_lock",
+        "_memory_backend",
         "_orchestrator",
         "_runs",
         "_settings",
@@ -140,6 +143,7 @@ class MemoryService:
         run_repo: FineTuneRunRepository,
         settings_service: SettingsService | None,
         orchestrator: FineTuneOrchestrator | None = None,
+        memory_backend: MemoryBackend | None = None,
     ) -> None:
         """Initialize with repository + settings + orchestrator deps.
 
@@ -153,11 +157,16 @@ class MemoryService:
                 backends that do not support fine-tune runs (the
                 fine-tune lifecycle methods raise
                 :class:`BackendUnsupportedError` in that case).
+            memory_backend: Shared memory backend exposed to admin
+                operations such as ``delete_memory_entry``. ``None``
+                when no backend is wired (the entry-delete method
+                raises :class:`BackendUnsupportedError` in that case).
         """
         self._checkpoints = checkpoint_repo
         self._runs = run_repo
         self._settings = settings_service
         self._orchestrator = orchestrator
+        self._memory_backend = memory_backend
         # Serializes the three-step reads in ``get_active_embedder`` and
         # the multi-repo writes in ``deploy_checkpoint`` /
         # ``rollback_checkpoint`` / ``delete_checkpoint`` so a
@@ -167,6 +176,42 @@ class MemoryService:
         # only; read-mostly endpoints (``list_checkpoints``,
         # ``list_runs``, ``get_checkpoint``) are not gated through it.
         self._embedder_state_lock = asyncio.Lock()
+
+    async def delete_memory_entry(
+        self,
+        agent_id: NotBlankStr,
+        memory_id: NotBlankStr,
+    ) -> bool:
+        """Delete a single memory entry owned by *agent_id*.
+
+        Routes through the shared :class:`MemoryBackend` instance.
+        Both arguments are validated as non-blank by the caller; the
+        service trusts the contract and forwards to the backend.
+
+        Args:
+            agent_id: Owning agent identifier.
+            memory_id: Backend-assigned memory identifier.
+
+        Returns:
+            ``True`` if the entry was deleted, ``False`` if not found.
+
+        Raises:
+            BackendUnsupportedError: When no memory backend is wired.
+        """
+        if self._memory_backend is None:
+            msg = (
+                "memory backend is not wired on the active application "
+                "state; memory entry deletion is unavailable"
+            )
+            raise BackendUnsupportedError(msg)
+        deleted = await self._memory_backend.delete(agent_id, memory_id)
+        if deleted:
+            logger.info(
+                MEMORY_ENTRY_DELETED,
+                agent_id=agent_id,
+                memory_id=memory_id,
+            )
+        return deleted
 
     async def list_checkpoints(
         self,

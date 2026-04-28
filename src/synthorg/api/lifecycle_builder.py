@@ -326,6 +326,12 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                             tool_tracker=app_state.tool_invocation_tracker,
                         )
                         app_state.set_training_service(_ts)
+                        # Expose the same backend to admin paths so
+                        # ``DELETE /agents/{id}/memories/{id}`` and the
+                        # ``delete_memory`` MCP tool can route through
+                        # one connected backend instance per process.
+                        if not app_state.has_memory_backend:
+                            app_state.set_memory_backend(_mem)
                     except MemoryError, RecursionError:
                         await _mem.disconnect()
                         raise

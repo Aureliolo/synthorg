@@ -6,6 +6,15 @@ to scope cost queries to the current billing cycle.
 """
 
 from datetime import UTC, datetime
+from typing import Final
+
+# Reset-day bounds: 1 keeps period start in-month; 28 is the largest day
+# guaranteed to exist in every Gregorian month, so the rollback branch
+# never has to coerce out-of-range days.
+_RESET_DAY_MIN: Final[int] = 1
+_RESET_DAY_MAX: Final[int] = 28
+_DECEMBER_MONTH: Final[int] = 12
+_JANUARY_MONTH: Final[int] = 1
 
 
 def billing_period_start(
@@ -29,8 +38,8 @@ def billing_period_start(
     Raises:
         ValueError: If ``reset_day`` is not in ``[1, 28]``.
     """
-    if not 1 <= reset_day <= 28:  # noqa: PLR2004
-        msg = f"reset_day must be 1-28, got {reset_day}"
+    if not _RESET_DAY_MIN <= reset_day <= _RESET_DAY_MAX:
+        msg = f"reset_day must be {_RESET_DAY_MIN}-{_RESET_DAY_MAX}, got {reset_day}"
         raise ValueError(msg)
 
     if now is None:
@@ -40,8 +49,8 @@ def billing_period_start(
         return datetime(now.year, now.month, reset_day, tzinfo=UTC)
 
     # Roll back to previous month
-    if now.month == 1:
-        return datetime(now.year - 1, 12, reset_day, tzinfo=UTC)
+    if now.month == _JANUARY_MONTH:
+        return datetime(now.year - 1, _DECEMBER_MONTH, reset_day, tzinfo=UTC)
     return datetime(now.year, now.month - 1, reset_day, tzinfo=UTC)
 
 

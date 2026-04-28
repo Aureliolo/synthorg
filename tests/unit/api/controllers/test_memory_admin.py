@@ -240,3 +240,105 @@ class TestRecommendBatchSize:
         assert kwargs.get("error_type") == "RuntimeError"
         assert "CUDA driver unavailable" in kwargs.get("error", "")
         assert kwargs.get("exc_info") is True
+
+
+@pytest.mark.unit
+class TestDeleteMemoryEntryEndpoint:
+    """Direct-method coverage for ``MemoryAdminController.delete_memory_entry``."""
+
+    async def test_returns_ok_when_backend_deletes_entry(self) -> None:
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        from litestar.datastructures import State
+
+        from synthorg.api.controllers import memory as memory_module
+        from synthorg.api.controllers.memory import MemoryAdminController
+
+        # Stub MemoryService to avoid the full _build_memory_service path.
+        fake_service = SimpleNamespace(delete_memory_entry=AsyncMock(return_value=True))
+
+        def _fake_build(_app_state: object) -> SimpleNamespace:
+            return fake_service
+
+        controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
+        original_build = memory_module._build_memory_service
+        memory_module._build_memory_service = _fake_build  # type: ignore[assignment]
+        try:
+            response = await controller.delete_memory_entry.fn(
+                controller,
+                state=State({"app_state": SimpleNamespace()}),
+                agent_id="agent-1",
+                memory_id="mem-1",
+            )
+        finally:
+            memory_module._build_memory_service = original_build
+
+        assert response.data is None
+        fake_service.delete_memory_entry.assert_awaited_once()
+
+    async def test_raises_404_when_backend_returns_false(self) -> None:
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        from litestar.datastructures import State
+        from litestar.exceptions import NotFoundException
+
+        from synthorg.api.controllers import memory as memory_module
+        from synthorg.api.controllers.memory import MemoryAdminController
+
+        fake_service = SimpleNamespace(
+            delete_memory_entry=AsyncMock(return_value=False),
+        )
+
+        def _fake_build(_app_state: object) -> SimpleNamespace:
+            return fake_service
+
+        controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
+        original_build = memory_module._build_memory_service
+        memory_module._build_memory_service = _fake_build  # type: ignore[assignment]
+        try:
+            with pytest.raises(NotFoundException):
+                await controller.delete_memory_entry.fn(
+                    controller,
+                    state=State({"app_state": SimpleNamespace()}),
+                    agent_id="agent-1",
+                    memory_id="missing",
+                )
+        finally:
+            memory_module._build_memory_service = original_build
+
+    async def test_raises_501_when_backend_unsupported(self) -> None:
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        from litestar.datastructures import State
+        from litestar.exceptions import ClientException
+
+        from synthorg.api.controllers import memory as memory_module
+        from synthorg.api.controllers.memory import MemoryAdminController
+        from synthorg.memory.fine_tune_plan import BackendUnsupportedError
+
+        fake_service = SimpleNamespace(
+            delete_memory_entry=AsyncMock(
+                side_effect=BackendUnsupportedError("no memory backend wired"),
+            ),
+        )
+
+        def _fake_build(_app_state: object) -> SimpleNamespace:
+            return fake_service
+
+        controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
+        original_build = memory_module._build_memory_service
+        memory_module._build_memory_service = _fake_build  # type: ignore[assignment]
+        try:
+            with pytest.raises(ClientException) as exc_info:
+                await controller.delete_memory_entry.fn(
+                    controller,
+                    state=State({"app_state": SimpleNamespace()}),
+                    agent_id="agent-1",
+                    memory_id="mem-1",
+                )
+        finally:
+            memory_module._build_memory_service = original_build
+        assert exc_info.value.status_code == 501

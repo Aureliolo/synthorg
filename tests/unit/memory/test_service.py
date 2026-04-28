@@ -501,3 +501,70 @@ class TestMemoryServiceReReadFailure:
         )
         with pytest.raises(QueryError):
             await service.deploy_checkpoint(NotBlankStr("a"))
+
+
+class _FakeMemoryBackend:
+    """Minimal :class:`MemoryBackend` fake exposing only ``delete``."""
+
+    def __init__(self, *, present: dict[tuple[str, str], bool] | None = None) -> None:
+        # Map ``(agent_id, memory_id)`` -> exists. Defaults to empty;
+        # tests stage by setting True before calling delete.
+        self._present: dict[tuple[str, str], bool] = dict(present or {})
+        self.delete_calls: list[tuple[str, str]] = []
+
+    async def delete(self, agent_id: str, memory_id: str) -> bool:
+        self.delete_calls.append((str(agent_id), str(memory_id)))
+        return self._present.pop((str(agent_id), str(memory_id)), False)
+
+
+class TestMemoryServiceDeleteEntry:
+    """``delete_memory_entry`` routes through the wired ``MemoryBackend``."""
+
+    async def test_returns_true_on_successful_delete(self) -> None:
+        backend = _FakeMemoryBackend(present={("agent-a", "mem-1"): True})
+        service = MemoryService(
+            checkpoint_repo=_FakeCheckpointRepo(),
+            run_repo=_FakeRunRepo(),
+            settings_service=None,
+            memory_backend=backend,  # type: ignore[arg-type]
+        )
+
+        result = await service.delete_memory_entry(
+            NotBlankStr("agent-a"),
+            NotBlankStr("mem-1"),
+        )
+
+        assert result is True
+        assert backend.delete_calls == [("agent-a", "mem-1")]
+
+    async def test_returns_false_when_not_found(self) -> None:
+        backend = _FakeMemoryBackend()
+        service = MemoryService(
+            checkpoint_repo=_FakeCheckpointRepo(),
+            run_repo=_FakeRunRepo(),
+            settings_service=None,
+            memory_backend=backend,  # type: ignore[arg-type]
+        )
+
+        result = await service.delete_memory_entry(
+            NotBlankStr("agent-a"),
+            NotBlankStr("missing"),
+        )
+
+        assert result is False
+        assert backend.delete_calls == [("agent-a", "missing")]
+
+    async def test_raises_backend_unsupported_when_no_backend(self) -> None:
+        from synthorg.memory.fine_tune_plan import BackendUnsupportedError
+
+        service = MemoryService(
+            checkpoint_repo=_FakeCheckpointRepo(),
+            run_repo=_FakeRunRepo(),
+            settings_service=None,
+        )
+
+        with pytest.raises(BackendUnsupportedError):
+            await service.delete_memory_entry(
+                NotBlankStr("agent-a"),
+                NotBlankStr("mem-1"),
+            )

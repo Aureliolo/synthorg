@@ -104,13 +104,13 @@ class NetworkPolicy(BaseModel):
     @classmethod
     def _normalize_allowlist(cls, data: Any) -> Any:
         """Lowercase and deduplicate allowlist entries before construction."""
-        if isinstance(data, dict) and "hostname_allowlist" in data:
-            raw = data["hostname_allowlist"]
-            if isinstance(raw, tuple | list):
-                data["hostname_allowlist"] = tuple(
-                    dict.fromkeys(h.lower() for h in raw)
-                )
-        return data
+        if not isinstance(data, dict) or "hostname_allowlist" not in data:
+            return data
+        raw = data["hostname_allowlist"]
+        if not isinstance(raw, tuple | list):
+            return data
+        normalized = tuple(dict.fromkeys(h.lower() for h in raw))
+        return {**data, "hostname_allowlist": normalized}
 
 
 # ── Validation result model ─────────────────────────────────────

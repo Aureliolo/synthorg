@@ -155,6 +155,13 @@ class FakeMessageRepository:
             result = result[:limit]
         return tuple(result)
 
+    async def delete(self, message_id: str) -> bool:
+        for i, m in enumerate(self._messages):
+            if str(m.id) == message_id:
+                self._messages.pop(i)
+                return True
+        return False
+
 
 class FakeLifecycleEventRepository:
     """In-memory lifecycle event repository for tests."""

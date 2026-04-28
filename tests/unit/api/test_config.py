@@ -171,3 +171,32 @@ class TestServerConfigTLS:
     def test_trusted_proxies_empty_by_default(self) -> None:
         server = ServerConfig()
         assert server.trusted_proxies == ()
+
+
+@pytest.mark.unit
+class TestServerConfigBeforeValidatorImmutability:
+    """The empty-string TLS normalizer must not mutate caller input."""
+
+    def test_empty_string_normalization_does_not_mutate_input(self) -> None:
+        import copy
+
+        original = {
+            "ssl_certfile": "",
+            "ssl_keyfile": "  ",
+            "ssl_ca_certs": "/etc/tls/ca.pem",
+        }
+        snapshot = copy.deepcopy(original)
+        with pytest.raises(ValidationError):
+            ServerConfig.model_validate(original)
+        assert original == snapshot, "before-validator mutated caller input"
+
+    def test_input_dict_remains_reusable(self) -> None:
+        original = {
+            "ssl_certfile": "",
+            "ssl_keyfile": "",
+        }
+        first = ServerConfig.model_validate(original)
+        second = ServerConfig.model_validate(original)
+        assert first.ssl_certfile is None
+        assert second.ssl_certfile is None
+        assert original == {"ssl_certfile": "", "ssl_keyfile": ""}

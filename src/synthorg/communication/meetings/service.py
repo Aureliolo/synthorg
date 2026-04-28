@@ -1,18 +1,21 @@
 """MeetingService -- read facade over :class:`MeetingOrchestrator`.
 
 Reads are direct: ``list_meetings`` returns the orchestrator's audit
-records newest-first, ``get_meeting`` looks up by ID.  Write ops
-(create / update / delete) raise :class:`CapabilityNotSupportedError`
-because meetings are produced by executing a
-:class:`MeetingProtocol` via the engine, not by ad-hoc record
-insertion; the MCP tool surface therefore intentionally lacks a
-creation path until a scheduled-meetings DTO lands in a later pass.
+records newest-first, ``get_meeting`` looks up by ID. ``delete_meeting``
+removes a single record from the orchestrator's in-memory store and
+emits an audit-grade :data:`COMMUNICATION_MEETING_DELETED` event.
+Create / update remain capability-gated because meetings are
+produced by executing a :class:`MeetingProtocol` via the engine, not
+by ad-hoc record insertion.
 """
 
 from typing import TYPE_CHECKING
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.observability import get_logger
+from synthorg.observability.events.communication import (
+    COMMUNICATION_MEETING_DELETED,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -34,11 +37,6 @@ _UPDATE_CAP = "meeting_update"
 _UPDATE_DETAIL = (
     "MeetingRecord is an immutable audit entry; status transitions "
     "happen inside the orchestrator, not via MCP edits"
-)
-_DELETE_CAP = "meeting_delete"
-_DELETE_DETAIL = (
-    "MeetingRecord is retained as an audit trail; operators prune "
-    "records through the retention policy, not an MCP delete"
 )
 
 
@@ -107,9 +105,35 @@ class MeetingService:
         """Reject update with a typed ``not_supported`` error."""
         raise CapabilityNotSupportedError(_UPDATE_CAP, _UPDATE_DETAIL)
 
-    async def delete_meeting(self) -> None:
-        """Reject deletion with a typed ``not_supported`` error."""
-        raise CapabilityNotSupportedError(_DELETE_CAP, _DELETE_DETAIL)
+    async def delete_meeting(
+        self,
+        *,
+        meeting_id: NotBlankStr,
+        actor_id: NotBlankStr,
+        reason: NotBlankStr,
+    ) -> bool:
+        """Delete a meeting record by id.
+
+        Removes the record from the orchestrator's in-memory audit
+        store. Returns ``True`` when a row was removed, ``False`` when
+        the id did not exist.
+
+        Args:
+            meeting_id: Meeting record identifier.
+            actor_id: Authenticated actor that initiated the delete
+                (drives the audit log).
+            reason: Operator-supplied justification (drives the audit
+                log).
+        """
+        deleted = self._orchestrator.delete_record(meeting_id)
+        if deleted:
+            logger.info(
+                COMMUNICATION_MEETING_DELETED,
+                meeting_id=meeting_id,
+                actor_id=actor_id,
+                reason=reason,
+            )
+        return deleted
 
 
 __all__ = [

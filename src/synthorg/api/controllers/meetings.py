@@ -3,7 +3,7 @@
 import asyncio
 from typing import Annotated, Self
 
-from litestar import Controller, get, post
+from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -319,6 +319,31 @@ class MeetingController(Controller):
         )
         msg = f"Meeting {meeting_id!r} not found"
         raise NotFoundError(msg)
+
+    @delete(
+        "/{meeting_id:str}",
+        status_code=200,
+        guards=[require_write_access],
+    )
+    async def delete_meeting(
+        self,
+        state: State,
+        meeting_id: PathId,
+    ) -> ApiResponse[None]:
+        """Delete a meeting record by id.
+
+        Returns ``200 OK`` with ``data=None`` on success and
+        ``404 Not Found`` when the id does not exist. The record is
+        removed from the in-memory orchestrator audit store; durable
+        replay is preserved through audit logs.
+        """
+        orchestrator = state.app_state.meeting_orchestrator
+        deleted = orchestrator.delete_record(meeting_id)
+        if not deleted:
+            logger.warning(MEETING_NOT_FOUND, meeting_id=meeting_id)
+            msg = f"Meeting {meeting_id!r} not found"
+            raise NotFoundError(msg)
+        return ApiResponse(data=None)
 
     @post(
         "/trigger",

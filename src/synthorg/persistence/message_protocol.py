@@ -41,3 +41,18 @@ class MessageRepository(Protocol):
             PersistenceError: If the operation fails.
         """
         ...
+
+    async def delete(self, message_id: NotBlankStr) -> bool:
+        """Delete a message by id.
+
+        Args:
+            message_id: The unique message identifier.
+
+        Returns:
+            ``True`` if a row was deleted, ``False`` if the id did not
+            exist.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...

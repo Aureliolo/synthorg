@@ -146,6 +146,9 @@ class _FakeMessageRepository:
     ) -> tuple[Message, ...]:
         return ()
 
+    async def delete(self, message_id: str) -> bool:
+        return False
+
 
 class _FakeLifecycleEventRepository:
     async def save(self, event: AgentLifecycleEvent) -> None:

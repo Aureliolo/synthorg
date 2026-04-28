@@ -1,21 +1,23 @@
-"""Message controller -- read-only access via MessageRepository."""
+"""Message controller -- read + operator-driven DELETE via MessageRepository."""
 
-from litestar import Controller, get
+from litestar import Controller, delete, get
 from litestar.datastructures import State  # noqa: TC002
+from litestar.exceptions import NotFoundException
 
-from synthorg.api.dto import PaginatedResponse
-from synthorg.api.guards import require_read_access
+from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.communication.channel import Channel
 from synthorg.communication.message import Message  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
 
 
 class MessageController(Controller):
-    """Read-only access to message history."""
+    """Access to message history (read + operator-driven delete)."""
 
     path = "/messages"
     tags = ("messages",)
@@ -58,6 +60,30 @@ class MessageController(Controller):
             secret=app_state.cursor_secret,
         )
         return PaginatedResponse(data=page, pagination=meta)
+
+    @delete(
+        "/{message_id:str}",
+        status_code=200,
+        guards=[require_write_access],
+    )
+    async def delete_message(
+        self,
+        state: State,
+        message_id: str,
+    ) -> ApiResponse[None]:
+        """Delete a single message by id.
+
+        Returns ``200 OK`` with ``data=None`` on success and
+        ``404 Not Found`` when the id does not exist. Uses the
+        message-id only since ``messages.id`` is a globally unique PK.
+        """
+        app_state: AppState = state.app_state
+        deleted = await app_state.persistence.messages.delete(
+            NotBlankStr(message_id),
+        )
+        if not deleted:
+            raise NotFoundException(detail=f"message {message_id!r} not found")
+        return ApiResponse(data=None)
 
     @get("/channels")
     async def list_channels(

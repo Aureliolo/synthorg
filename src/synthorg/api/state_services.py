@@ -88,6 +88,7 @@ if TYPE_CHECKING:
     from synthorg.integrations.mcp_catalog.service import CatalogService
     from synthorg.integrations.oauth.token_manager import OAuthTokenManager
     from synthorg.integrations.tunnel.protocol import TunnelProvider
+    from synthorg.memory.protocol import MemoryBackend
 
 logger = get_logger(__name__)
 
@@ -127,6 +128,7 @@ class AppStateServicesMixin(_FacadesMixin):
     _provider_health_tracker: ProviderHealthTracker | None
     _tool_invocation_tracker: ToolInvocationTracker | None
     _training_service: TrainingService | None
+    _memory_backend: MemoryBackend | None
     _delegation_record_store: DelegationRecordStore | None
     _auth_service: AuthService | None
     _ticket_store: WsTicketStore
@@ -311,6 +313,23 @@ class AppStateServicesMixin(_FacadesMixin):
     def set_training_service(self, service: TrainingService) -> None:
         """Attach the training service (once-only)."""
         self._set_once("_training_service", service, "Training service")
+
+    @property
+    def has_memory_backend(self) -> bool:
+        """Check whether a shared MemoryBackend is configured."""
+        return self._memory_backend is not None
+
+    @property
+    def memory_backend(self) -> MemoryBackend:
+        """Return the shared memory backend or raise 503."""
+        return self._require_service(
+            self._memory_backend,
+            "memory_backend",
+        )
+
+    def set_memory_backend(self, backend: MemoryBackend) -> None:
+        """Attach the shared memory backend (once-only)."""
+        self._set_once("_memory_backend", backend, "Memory backend")
 
     @property
     def has_delegation_record_store(self) -> bool:

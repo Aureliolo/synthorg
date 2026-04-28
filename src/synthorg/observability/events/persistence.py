@@ -62,6 +62,8 @@ PERSISTENCE_MESSAGE_HISTORY_FAILED: Final[str] = "persistence.message.history_fa
 PERSISTENCE_MESSAGE_DESERIALIZE_FAILED: Final[str] = (
     "persistence.message.deserialize_failed"
 )
+PERSISTENCE_MESSAGE_DELETED: Final[str] = "persistence.message.deleted"
+PERSISTENCE_MESSAGE_DELETE_FAILED: Final[str] = "persistence.message.delete_failed"
 
 PERSISTENCE_LIFECYCLE_EVENT_SAVED: Final[str] = "persistence.lifecycle_event.saved"
 PERSISTENCE_LIFECYCLE_EVENT_SAVE_FAILED: Final[str] = (

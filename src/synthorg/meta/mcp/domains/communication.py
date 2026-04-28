@@ -6,6 +6,7 @@ Covers messages, meetings, connections, webhooks, and tunnel.
 from typing import TYPE_CHECKING
 
 from synthorg.meta.mcp.tool_builder import (
+    DESTRUCTIVE_GUARDRAIL_PROPERTIES,
     PAGINATION_PROPERTIES,
     admin_tool,
     read_tool,
@@ -47,14 +48,16 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         },
         required=("channel", "content"),
     ),
-    write_tool(
+    admin_tool(
         "messages",
         "delete",
-        "Delete a message.",
+        "Delete a message (destructive; requires confirm).",
         {
+            "channel": {"type": "string", "description": "Owning channel"},
             "message_id": {"type": "string", "description": "Message UUID"},
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
-        required=("message_id",),
+        required=("channel", "message_id", "reason", "confirm"),
     ),
     # --- Meetings ---
     read_tool("meetings", "list", "List meeting records.", PAGINATION_PROPERTIES),
@@ -91,14 +94,15 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         },
         required=("meeting_id", "updates"),
     ),
-    write_tool(
+    admin_tool(
         "meetings",
         "delete",
-        "Delete a meeting record.",
+        "Delete a meeting record (destructive; requires confirm).",
         {
             "meeting_id": {"type": "string", "description": "Meeting UUID"},
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
-        required=("meeting_id",),
+        required=("meeting_id", "reason", "confirm"),
     ),
     # --- Connections ---
     read_tool("connections", "list", "List external connections."),

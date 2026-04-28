@@ -216,4 +216,29 @@ MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
         "get_active_embedder",
         "Get active embedder configuration (provider, model, dims).",
     ),
+    # --- Memory entries (GDPR) ---
+    admin_tool(
+        "memory",
+        "delete_entry",
+        (
+            "Delete a single memory entry owned by an agent (destructive; "
+            "requires confirm)."
+        ),
+        {
+            "agent_id": {
+                "type": "string",
+                "description": "Owning agent identifier",
+                "minLength": 1,
+                "pattern": _NON_BLANK_STRING_PATTERN,
+            },
+            "memory_id": {
+                "type": "string",
+                "description": "Backend-assigned memory identifier",
+                "minLength": 1,
+                "pattern": _NON_BLANK_STRING_PATTERN,
+            },
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
+        },
+        required=("agent_id", "memory_id", "reason", "confirm"),
+    ),
 )

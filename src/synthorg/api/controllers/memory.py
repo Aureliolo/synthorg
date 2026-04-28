@@ -29,6 +29,7 @@ from synthorg.memory.embedding.fine_tune_models import (
     PreflightResult,
 )
 from synthorg.memory.errors import FineTuneDependencyError
+from synthorg.memory.fine_tune_plan import BackendUnsupportedError
 from synthorg.memory.service import (
     CheckpointNotFoundError,
     CheckpointRollbackCorruptError,
@@ -85,6 +86,9 @@ def _build_memory_service(app_state: AppState) -> MemoryService:
         run_repo=run_repo,
         settings_service=(
             app_state.settings_service if app_state.has_settings_service else None
+        ),
+        memory_backend=(
+            app_state.memory_backend if app_state.has_memory_backend else None
         ),
     )
 
@@ -442,6 +446,46 @@ class MemoryAdminController(Controller):
                 detail=str(exc),
                 status_code=HTTP_409_CONFLICT,
             ) from exc
+        return ApiResponse(data=None)
+
+    # -- Memory entries (GDPR) ---------------------------------------
+
+    @delete(
+        "/agents/{agent_id:str}/memories/{memory_id:str}",
+        status_code=200,
+        guards=[
+            per_op_rate_limit_from_policy(
+                "memory.entry_delete",
+                key="user",
+            ),
+        ],
+    )
+    async def delete_memory_entry(
+        self,
+        state: State,
+        agent_id: str,
+        memory_id: str,
+    ) -> ApiResponse[None]:
+        """Delete a single memory entry owned by an agent.
+
+        Returns ``200 OK`` on success and ``404 Not Found`` when the
+        memory entry does not exist (or the agent has no entry with
+        that id). Returns ``501 Not Implemented`` when no memory
+        backend is wired on the active app state.
+        """
+        service = _build_memory_service(state.app_state)
+        try:
+            deleted = await service.delete_memory_entry(
+                NotBlankStr(agent_id),
+                NotBlankStr(memory_id),
+            )
+        except BackendUnsupportedError as exc:
+            raise ClientException(
+                detail=str(exc),
+                status_code=HTTP_501_NOT_IMPLEMENTED,
+            ) from exc
+        if not deleted:
+            raise NotFoundException(detail=f"memory entry {memory_id!r} not found")
         return ApiResponse(data=None)
 
     # -- Run history -------------------------------------------------

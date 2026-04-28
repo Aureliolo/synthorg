@@ -65,6 +65,7 @@ from synthorg.hr.training.service import TrainingService  # noqa: TC001
 from synthorg.memory.embedding.fine_tune_orchestrator import (
     FineTuneOrchestrator,  # noqa: TC001
 )
+from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
 from synthorg.notifications.dispatcher import (
     NotificationDispatcher,  # noqa: TC001
 )
@@ -191,6 +192,7 @@ class AppState(AppStateServicesMixin):
         "_meeting_orchestrator",
         "_meeting_scheduler",
         "_meeting_service",
+        "_memory_backend",
         "_memory_service",
         "_message_bus",
         "_message_service",
@@ -357,6 +359,11 @@ class AppState(AppStateServicesMixin):
         self._prometheus_collector: PrometheusCollector | None = None
         self._trace_handler: TraceHandler | None = None
         self._fine_tune_orchestrator: FineTuneOrchestrator | None = None
+        # Shared MemoryBackend instance for admin operations (DELETE
+        # endpoints, MCP delete_memory). Wired during startup when a
+        # backend is constructed (e.g. during the training-service
+        # auto-wire path); ``None`` when no backend is configured.
+        self._memory_backend: MemoryBackend | None = None
         self._config_resolver: ConfigResolver | None = None
         # One-shot flag: on_startup applies bridge-config settings
         # exactly once per ``AppState`` lifetime, even when the

@@ -7,7 +7,7 @@ Split out of ``lifecycle_builder.py`` so neither file exceeds the
 
 import asyncio
 import inspect
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.notifications.factory import build_notification_dispatcher
 from synthorg.observability import get_logger, safe_error_description
@@ -278,6 +278,12 @@ async def _audit_retention_tick(app_state: AppState) -> None:
     )
 
 
+_AUDIT_RETENTION_TICK_SECONDS: Final[float] = 86_400.0
+"""Audit retention sweep cadence (24h). Hardcoded by design: retention is
+not a hot path and operators tune the *window* (``security.audit_retention_days``)
+rather than the *cadence*."""
+
+
 async def _audit_retention_loop(app_state: AppState) -> None:
     """Daily sweep that purges audit_entries older than retention window.
 
@@ -288,13 +294,13 @@ async def _audit_retention_loop(app_state: AppState) -> None:
     ``security.audit_retention_days=0``); resolver outages fall back
     to the registered default of 730 days rather than disabling
     retention. The loop stays resident even when paused so lifecycle
-    plumbing is unchanged. Tick cadence is 24h -- audit retention is
-    not a hot path.
+    plumbing is unchanged. Tick cadence is fixed at
+    ``_AUDIT_RETENTION_TICK_SECONDS`` (24h) -- audit retention is not a
+    hot path.
     """
-    tick_seconds = 86_400.0
     while True:
         await _audit_retention_tick(app_state)
-        await asyncio.sleep(tick_seconds)
+        await asyncio.sleep(_AUDIT_RETENTION_TICK_SECONDS)
 
 
 async def _maybe_promote_first_owner(app_state: AppState) -> None:

@@ -8,6 +8,7 @@ overhead (O%), and error amplification (Ae) metrics.
 import statistics
 from collections import deque
 from datetime import UTC, datetime
+from typing import Final
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
@@ -19,6 +20,11 @@ from synthorg.observability.events.coordination_metrics import (
 )
 
 logger = get_logger(__name__)
+
+# Default rolling-window size for the single-agent baseline store. Sized
+# for ~1 day of normal traffic on a small org while keeping in-memory
+# state bounded.
+_DEFAULT_BASELINE_WINDOW_SIZE: Final[int] = 50
 
 
 class BaselineRecord(BaseModel):
@@ -60,7 +66,7 @@ class BaselineStore:
         window_size: Maximum number of records to retain.
     """
 
-    def __init__(self, *, window_size: int = 50) -> None:
+    def __init__(self, *, window_size: int = _DEFAULT_BASELINE_WINDOW_SIZE) -> None:
         if window_size <= 0:
             msg = "window_size must be positive"
             raise ValueError(msg)
