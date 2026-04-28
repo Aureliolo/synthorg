@@ -126,8 +126,8 @@ _EXAMPLE_PROVIDER = CloudPreset(
 ```
 
 A canonical `LocalPreset` example (for a local inference server that
-is OpenAI-compatible on the wire and runs on a user-chosen port that
-collides with common defaults):
+exposes a known wire-protocol adapter and runs on a user-chosen port
+that collides with common defaults):
 
 ```python
 _EXAMPLE_LOCAL_SERVER = LocalPreset(
@@ -135,7 +135,10 @@ _EXAMPLE_LOCAL_SERVER = LocalPreset(
     display_name="Example Local Server",
     description="High-throughput local inference engine",
     driver="litellm",
-    litellm_provider="openai",  # Speaks OpenAI-compatible.
+    # Set litellm_provider to whichever LiteLLM adapter namespace
+    # matches the local server's wire protocol; consult the LiteLLM
+    # docs for the correct identifier.
+    litellm_provider="example-adapter",
     auth_type=AuthType.NONE,
     default_base_url="http://localhost:8000/v1",
     requires_base_url=True,
@@ -149,10 +152,10 @@ _EXAMPLE_LOCAL_SERVER = LocalPreset(
 
 In [`tests/unit/providers/test_presets.py`](https://github.com/Aureliolo/synthorg/blob/main/tests/unit/providers/test_presets.py):
 
-1. Add the preset name to `_CLOUD_PRESETS` (or `_LOCAL_PRESETS`), alphabetical.
+1. Add the preset name to the class-level `_CLOUD_PRESETS` (or `_LOCAL_PRESETS`) tuple on `TestProviderPresets`, alphabetical. These tuples are the test ledger that `test_all_featured_presets_categorized` compares against the runtime registry to detect drift; they are distinct from the production `_FEATURED_PRESETS` constant updated in Step 7.
 2. Extend the `@pytest.mark.parametrize` cases for `test_cloud_preset_does_not_require_base_url` (if the preset doesn't require a base URL).
 3. Extend the `test_other_cloud_presets_api_key_only` enumeration (if API-key only).
-4. Extend the `@pytest.mark.parametrize` cases for `test_new_branded_preset_routes_via_litellm`. If the preset has a divergent `litellm_provider` (Cohere-style), add the `expected = "<override>"` branch.
+4. Extend the `@pytest.mark.parametrize` cases for `test_new_branded_preset_routes_via_litellm`. If the preset has a divergent `litellm_provider` (a provider whose chat namespace differs from its bare brand namespace), add the `expected = "<override>"` branch.
 
 The featured/soft tier invariants are already tested generically: `test_featured_presets_are_marked_featured`, `test_soft_presets_skip_denylist_namespaces`, etc. You don't need to add per-preset variants of those.
 
