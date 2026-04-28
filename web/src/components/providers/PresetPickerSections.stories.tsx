@@ -54,7 +54,7 @@ const cloud: CloudPreset[] = [
   {
     kind: 'cloud',
     name: 'fireworks_ai',
-    display_name: 'Fireworks Ai',
+    display_name: 'Fireworks AI',
     description: "Models served via LiteLLM provider 'fireworks_ai'",
     driver: 'litellm',
     litellm_provider: 'fireworks_ai',

@@ -27,22 +27,22 @@ Two preset kinds are expressed as a discriminated union (`kind` field):
 
 | Kind | When to use | Carries |
 |---|---|---|
-| `CloudPreset` | hosted LLM APIs (Anthropic, OpenAI, Together AI, ...) | `supported_auth_types`, `default_models`, `is_featured` |
-| `LocalPreset` | self-hosted / local LLM servers (Ollama, LM Studio, vLLM) | `candidate_urls` (auto-detect probes), `supports_model_pull`, `supports_model_delete`, `supports_model_config` |
+| `CloudPreset` | hosted, paid-API providers | `supported_auth_types`, `default_models`, `is_featured` |
+| `LocalPreset` | self-hosted / local LLM servers | `candidate_urls` (auto-detect probes), `supports_model_pull`, `supports_model_delete`, `supports_model_config` |
 
 Both kinds inherit from `_BasePreset` and share: `name`, `display_name`, `description`, `driver`, `litellm_provider`, `auth_type`, `default_base_url`, `requires_base_url`, `is_featured`.
 
-If the user installs your provider on their own machine (Ollama-style), you want `LocalPreset`. If it's a hosted API the user pays per-token for, you want `CloudPreset`. Anything in between (managed-cloud Ollama, vLLM-on-the-cloud) ships as a separate `CloudPreset` even if the underlying server is the same software, because the auth shape differs.
+If the user installs your provider on their own machine, you want `LocalPreset`. If it's a hosted API the user pays per-token for, you want `CloudPreset`. Anything in between (managed-cloud variants of an otherwise self-hosted server) ships as a separate `CloudPreset` even if the underlying server is the same software, because the auth shape differs.
 
 ## Step 2 -- Pick the preset name
 
 Three rules:
 
-1. The `name` field is the machine-readable identifier and the SVG filename. **Use the LiteLLM namespace.** For Together AI: `together_ai`. For Fireworks AI: `fireworks_ai`. For xAI: `xai`. This avoids surprising users who paste a model string from LiteLLM's docs.
-2. The `display_name` is the brand name, optionally with a clarifying parenthetical. Examples: `"Moonshot AI (Kimi)"`, `"xAI (Grok)"`, `"Google AI Studio"`.
-3. The `description` is one short sentence that names what is distinctive about the provider. Don't mention "models" -- it's redundant. Examples: `"Kimi long-context inference from Moonshot AI"`, `"Wafer-scale inference (Llama, Qwen, GPT-OSS)"`.
+1. The `name` field is the machine-readable identifier and the SVG filename. **Use the LiteLLM namespace exactly.** Underscored namespaces (e.g. `example_provider`, `another_example_ai`) stay as the preset name verbatim. This avoids surprising users who paste a model string from LiteLLM's docs.
+2. The `display_name` is the brand name, optionally with a clarifying parenthetical. Examples: `"Example Provider"`, `"Another Provider (Product)"`.
+3. The `description` is one short sentence that names what is distinctive about the provider. Don't mention "models" -- it's redundant. Examples: `"Long-context inference from example-provider"`, `"Wafer-scale open-model serving"`.
 
-The `litellm_provider` field is _almost_ always the same as `name`, with one curated exception: `cohere` uses `litellm_provider="cohere_chat"` because the bare `cohere/` namespace in LiteLLM is the deprecated completions endpoint while `cohere_chat/` is the chat completions API SynthOrg uses.
+The `litellm_provider` field is _almost_ always the same as `name`. Occasionally a provider's chat-completion namespace in LiteLLM differs from the bare brand namespace; one curated preset uses `litellm_provider="<brand>_chat"` because the bare `<brand>/` namespace in LiteLLM is the deprecated completions endpoint while `<brand>_chat/` is the chat completions API SynthOrg uses. When in doubt, check the LiteLLM provider page for the routing string used in chat-completion examples.
 
 ## Step 3 -- Wire `auth_type` + `supported_auth_types`
 
@@ -53,7 +53,7 @@ auth_type=AuthType.API_KEY,
 supported_auth_types=(AuthType.API_KEY,),
 ```
 
-The exceptions are documented in [`docs/research/llm-provider-auth-survey.md`](../research/llm-provider-auth-survey.md). The summary as of the most recent survey: **Anthropic** is the only mainstream provider whose consumer subscription doubles as an API credential, and so its preset declares:
+The exceptions are documented in [`docs/research/llm-provider-auth-survey.md`](../research/llm-provider-auth-survey.md). As of the most recent survey, one mainstream provider's consumer subscription doubles as an API credential, and so its preset declares both API-key and subscription auth:
 
 ```python
 auth_type=AuthType.API_KEY,
@@ -72,8 +72,8 @@ The `auth_type` is the wizard's _default_; `supported_auth_types` is the menu of
 
 Rules:
 
-- If LiteLLM `model_cost` has the provider's models, ship `default_models=()`. This is the common case (DeepSeek, Mistral, Groq, Azure, OpenRouter, NVIDIA NIM all ship empty).
-- If LiteLLM's coverage is empty or stale, ship 2-3 conservative entries (1 large, 1 medium, 1 small) with verified pricing from the provider's pricing page. **Cite the source URL with retrieval date in the commit message.** Match the Anthropic / OpenAI / Gemini precedent.
+- If LiteLLM `model_cost` has the provider's models, ship `default_models=()`. This is the common case for most existing presets.
+- If LiteLLM's coverage is empty or stale, ship 2-3 conservative entries (1 large, 1 medium, 1 small) with verified pricing from the provider's pricing page. **Cite the source URL with retrieval date in the commit message.** Match the precedent of the few existing presets that ship a non-empty `default_models` list (search `presets.py` for `default_models=(`).
 - **Never invent pricing numbers.** If pricing isn't verifiable from a primary source, ship `default_models=()` and note the gap.
 
 ## Step 5 -- Source a brand logo
@@ -84,7 +84,7 @@ Default source: [lobe-icons](https://github.com/lobehub/lobe-icons), MIT license
 https://raw.githubusercontent.com/lobehub/lobe-icons/master/packages/static-svg/icons/<slug>.svg
 ```
 
-The slug is _usually_ the brand name (e.g. `cohere`, `cerebras`). Note exceptions: `together` (not `together_ai`), `fireworks` (not `fireworks_ai`), `nvidia` (not `nvidia_nim`), `lmstudio` (not `lm-studio`).
+The slug is _usually_ the same as the preset name. Some preset names differ from their lobe-icons slug (an underscored preset name like `<brand>_ai` may map to a bare `<brand>` slug); consult [`web/public/provider-logos/README.md`](https://github.com/Aureliolo/synthorg/blob/main/web/public/provider-logos/README.md) for the existing mapping before fetching.
 
 Verify the SVG before committing:
 
@@ -113,31 +113,35 @@ In [`src/synthorg/providers/presets.py`](https://github.com/Aureliolo/synthorg/b
 A canonical `CloudPreset` example:
 
 ```python
-_KIMI = CloudPreset(
-    name="moonshot",
-    display_name="Moonshot AI (Kimi)",
-    description="Kimi long-context models from Moonshot AI",
+_EXAMPLE_PROVIDER = CloudPreset(
+    name="example_provider",
+    display_name="Example Provider",
+    description="Long-context inference from example-provider",
     driver="litellm",
-    litellm_provider="moonshot",
+    litellm_provider="example_provider",
     auth_type=AuthType.API_KEY,
     supported_auth_types=(AuthType.API_KEY,),
     default_models=(),
 )
 ```
 
-A canonical `LocalPreset` example:
+A canonical `LocalPreset` example (for a local inference server that
+is OpenAI-compatible on the wire and runs on a user-chosen port that
+collides with common defaults):
 
 ```python
-_VLLM = LocalPreset(
-    name="vllm",
-    display_name="vLLM",
+_EXAMPLE_LOCAL_SERVER = LocalPreset(
+    name="example-local-server",
+    display_name="Example Local Server",
     description="High-throughput local inference engine",
     driver="litellm",
-    litellm_provider="openai",  # vLLM speaks OpenAI-compatible
+    litellm_provider="openai",  # Speaks OpenAI-compatible.
     auth_type=AuthType.NONE,
     default_base_url="http://localhost:8000/v1",
     requires_base_url=True,
-    candidate_urls=(),  # empty: port collision risk
+    # candidate_urls intentionally empty when the default port is a
+    # known collision risk; users configure manually.
+    candidate_urls=(),
 )
 ```
 
