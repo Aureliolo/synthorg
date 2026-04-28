@@ -177,6 +177,96 @@ describe('SidebarNavItem', () => {
     })
   })
 
+  describe('inactivePaths prop', () => {
+    it('forces the link inactive when current path is in inactivePaths', () => {
+      const { container } = renderWithRouter(
+        <SidebarNavItem
+          to={ROUTES.SETTINGS}
+          icon={Users}
+          label="Settings"
+          collapsed={false}
+          inactivePaths={[ROUTES.SETTINGS_FINE_TUNING]}
+        />,
+        { initialEntries: [ROUTES.SETTINGS_FINE_TUNING] },
+      )
+
+      const link = container.querySelector('a')
+      // text-accent is only applied when isActive && !forcedInactive.
+      expect(link?.className).not.toMatch(/text-accent/)
+    })
+
+    it('forces inactive on a deeper child of an inactivePath entry', () => {
+      const { container } = renderWithRouter(
+        <SidebarNavItem
+          to={ROUTES.SETTINGS}
+          icon={Users}
+          label="Settings"
+          collapsed={false}
+          inactivePaths={[ROUTES.SETTINGS_FINE_TUNING]}
+        />,
+        {
+          initialEntries: [`${ROUTES.SETTINGS_FINE_TUNING}/checkpoints/abc`],
+        },
+      )
+
+      const link = container.querySelector('a')
+      expect(link?.className).not.toMatch(/text-accent/)
+    })
+
+    it('still highlights when the current path does not match any inactivePath', () => {
+      const { container } = renderWithRouter(
+        <SidebarNavItem
+          to={ROUTES.SETTINGS}
+          icon={Users}
+          label="Settings"
+          collapsed={false}
+          inactivePaths={[ROUTES.SETTINGS_FINE_TUNING]}
+        />,
+        { initialEntries: [`${ROUTES.SETTINGS}/observability/sinks`] },
+      )
+
+      const link = container.querySelector('a')
+      expect(link?.className).toMatch(/text-accent/)
+    })
+
+    it('does not affect highlighting when no inactivePaths is provided', () => {
+      const { container } = renderWithRouter(
+        <SidebarNavItem
+          to={ROUTES.SETTINGS}
+          icon={Users}
+          label="Settings"
+          collapsed={false}
+        />,
+        { initialEntries: [ROUTES.SETTINGS_FINE_TUNING] },
+      )
+
+      // Without inactivePaths, NavLink's prefix-match isActive applies.
+      const link = container.querySelector('a')
+      expect(link?.className).toMatch(/text-accent/)
+    })
+
+    it('match is by path-segment, not arbitrary substring', () => {
+      // /settings-extras must NOT match /settings via prefix.
+      const { container } = renderWithRouter(
+        <SidebarNavItem
+          to={ROUTES.SETTINGS}
+          icon={Users}
+          label="Settings"
+          collapsed={false}
+          inactivePaths={[ROUTES.SETTINGS_FINE_TUNING]}
+        />,
+        // Path that only string-prefix-matches the inactivePath entry
+        // ("/settings/memory/fine-tuning-extras") must not falsely match;
+        // the implementation checks `pathname === p || pathname.startsWith(p + '/')`.
+        { initialEntries: [`${ROUTES.SETTINGS_FINE_TUNING}-extras`] },
+      )
+
+      const link = container.querySelector('a')
+      // Highlight should remain (matches /settings prefix, not in inactivePaths).
+      expect(link?.className).toMatch(/text-accent/)
+    })
+  })
+
   describe('DOCUMENTATION route invariants', () => {
     it('has a trailing slash (nginx location block requires it)', () => {
       expect(ROUTES.DOCUMENTATION).toBe('/docs/')
