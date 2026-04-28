@@ -3,93 +3,347 @@ package selfupdate
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
-func TestCommitsBetween_normal(t *testing.T) {
-	resp := compareResponse{
-		TotalCommits: 3,
-		Commits: []compareCommitJSON{
-			{
-				SHA:     "abc1234567890abcdef",
-				HTMLURL: "https://github.com/Aureliolo/synthorg/commit/abc1234567890abcdef",
-				Commit: compareCommitInner{
-					Message: "feat(cli): per-version Highlights walk\n\nLong body that should be ignored.",
-					Author:  compareCommitAuthor{Name: "Daisy", Date: "2026-04-25T12:00:00Z"},
-				},
-			},
-			{
-				SHA:     "def4567890abcdef1234",
-				HTMLURL: "https://github.com/Aureliolo/synthorg/commit/def4567890abcdef1234",
-				Commit: compareCommitInner{
-					Message: "fix(selfupdate): pagination cap",
-					Author:  compareCommitAuthor{Name: "Bob", Date: "2026-04-26T14:00:00Z"},
-				},
-			},
-			{
-				SHA:     "ff0000aabbccddeeff",
-				HTMLURL: "https://github.com/Aureliolo/synthorg/commit/ff0000aabbccddeeff",
-				Commit: compareCommitInner{
-					Message: "chore(deps): bump",
-					Author:  compareCommitAuthor{Name: "renovate[bot]", Date: "2026-04-27T09:00:00Z"},
-				},
-			},
-		},
-	}
-	body, _ := json.Marshal(resp)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		want := "/v0.7.3-dev.5...v0.7.3-dev.9"
-		if !strings.HasSuffix(r.URL.Path, want) {
-			t.Errorf("path = %q, want suffix %q", r.URL.Path, want)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(body)
-	}))
-	defer srv.Close()
+// Test fixture SHAs are valid hex (0-9, a-f) so isLikelyCommitSHA accepts
+// them and the resolver short-circuits the tag-lookup branch. Mnemonic
+// stems are kept readable by living in the leading bytes; the trailing
+// padding fills out to 40 chars so projectListCommit / shaMatches see
+// realistic full-length SHAs.
+const (
+	headSHA            = "aaaaaaa1111111111111111111111111111111aa"
+	middleSHA          = "bbbbbbb2222222222222222222222222222222bb"
+	baseSHA            = "ccccccc3333333333333333333333333333333cc"
+	olderSHA           = "ddddddd4444444444444444444444444444444dd"
+	shortBaseFullSHA   = "ba5eabc1234567890abcdef0000000000000000a" // matches "ba5eabc" prefix
+	shortBasePrefix    = "ba5eabc"
+	page2HeadSHA       = "9a9e2f1257aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	page2BaseSHA       = "ba5e02f21bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	neverFoundSHA      = "cafef00d000000000000000000000000000000ee"
+	annotatedRefSHA    = "7a90b1ec00000000000000000000000000000000"
+	annotatedTargetSHA = "a44074ed7a96e1000000000000000000000000bb"
+	lightweightTagSHA  = "7a90e501ed5ba000000000000000000000000000"
+	deadbeefSHA        = "deadbeefcafebabe1234567890abcdef00000000"
+)
 
-	got, err := commitsBetweenFromURL(context.Background(), srv.URL+"/repos/Aureliolo/synthorg/compare/{base}...{head}", "v0.7.3-dev.5", "v0.7.3-dev.9")
-	if err != nil {
-		t.Fatalf("CommitsBetween: %v", err)
+// fakeCommitsServer wires the list-commits endpoint and the two tag-resolution
+// endpoints on a single httptest.Server so each test can drive the walk
+// through one fixture set without standing up three separate servers.
+type fakeCommitsServer struct {
+	srv          *httptest.Server
+	commitsByPg  map[int][]listCommitJSON
+	tagRefs      map[string]gitRefJSON // tag -> /git/ref/tags/<tag> response
+	tagObjects   map[string]gitTagJSON // sha -> /git/tags/<sha> response
+	commitsCalls int
+	commitsURIs  []string
+	tagRefURIs   []string
+	tagObjURIs   []string
+}
+
+func newFakeCommitsServer(t *testing.T) *fakeCommitsServer {
+	t.Helper()
+	f := &fakeCommitsServer{
+		commitsByPg: map[int][]listCommitJSON{},
+		tagRefs:     map[string]gitRefJSON{},
+		tagObjects:  map[string]gitTagJSON{},
 	}
-	if got.TotalCommits != 3 {
-		t.Errorf("TotalCommits = %d, want 3", got.TotalCommits)
-	}
-	if len(got.Commits) != 3 {
-		t.Fatalf("len(Commits) = %d, want 3", len(got.Commits))
-	}
-	c := got.Commits[0]
-	if c.SHA != "abc1234567890abcdef" {
-		t.Errorf("SHA = %q, want abc1234567890abcdef", c.SHA)
-	}
-	if c.Subject != "feat(cli): per-version Highlights walk" {
-		t.Errorf("Subject = %q, want first line only", c.Subject)
-	}
-	if c.Author != "Daisy" {
-		t.Errorf("Author = %q, want Daisy", c.Author)
-	}
-	if c.Date != "2026-04-25" {
-		t.Errorf("Date = %q, want 2026-04-25 (YYYY-MM-DD)", c.Date)
+	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.Contains(r.URL.Path, "/git/ref/tags/"):
+			f.tagRefURIs = append(f.tagRefURIs, r.RequestURI)
+			tag := strings.TrimPrefix(r.URL.Path, "/git/ref/tags/")
+			ref, ok := f.tagRefs[tag]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(ref)
+		case strings.Contains(r.URL.Path, "/git/tags/"):
+			f.tagObjURIs = append(f.tagObjURIs, r.RequestURI)
+			sha := strings.TrimPrefix(r.URL.Path, "/git/tags/")
+			obj, ok := f.tagObjects[sha]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(obj)
+		case strings.HasSuffix(r.URL.Path, "/commits"):
+			f.commitsCalls++
+			f.commitsURIs = append(f.commitsURIs, r.RequestURI)
+			page := 1
+			if p := r.URL.Query().Get("page"); p != "" {
+				_, _ = fmt.Sscanf(p, "%d", &page)
+			}
+			entries, ok := f.commitsByPg[page]
+			if !ok {
+				entries = []listCommitJSON{}
+			}
+			_ = json.NewEncoder(w).Encode(entries)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(f.srv.Close)
+	return f
+}
+
+func (f *fakeCommitsServer) call(ctx context.Context, base, head string) (CommitRange, error) {
+	commitsURL := f.srv.URL + "/commits"
+	tagRefURL := f.srv.URL + "/git/ref/tags/{tag}"
+	tagObjURL := f.srv.URL + "/git/tags/{sha}"
+	return commitsBetweenFromURL(ctx, commitsURL, tagRefURL, tagObjURL, base, head)
+}
+
+// commitFixture is a brevity helper for building list-commits entries
+// in-line. Tests that care about subject parsing (multiline, blank-line
+// stripping) build the entry by hand instead.
+func commitFixture(sha, subject, author, date string) listCommitJSON {
+	return listCommitJSON{
+		SHA:     sha,
+		HTMLURL: "https://github.com/Aureliolo/synthorg/commit/" + sha,
+		Commit: compareCommitInner{
+			Message: subject,
+			Author:  compareCommitAuthor{Name: author, Date: date},
+		},
 	}
 }
 
-func TestCommitsBetween_emptyRange(t *testing.T) {
-	resp := compareResponse{TotalCommits: 0, Commits: nil}
-	body, _ := json.Marshal(resp)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(body)
-	}))
-	defer srv.Close()
+func TestCommitsBetween_walksBackToBaseSHA(t *testing.T) {
+	f := newFakeCommitsServer(t)
+	// Single page returned by /commits; walk stops at the base SHA.
+	f.commitsByPg[1] = []listCommitJSON{
+		commitFixture(headSHA, "feat: head commit", "Daisy", "2026-04-25T12:00:00Z"),
+		commitFixture(middleSHA, "fix: middle commit", "Bob", "2026-04-24T11:00:00Z"),
+		commitFixture(baseSHA, "chore: base commit -- should NOT be in result", "Carol", "2026-04-23T10:00:00Z"),
+		commitFixture(olderSHA, "older commit -- never reached", "Dan", "2026-04-22T09:00:00Z"),
+	}
 
-	got, err := commitsBetweenFromURL(context.Background(), srv.URL+"/{base}...{head}", "v0.7.3", "v0.7.3")
+	got, err := f.call(context.Background(), baseSHA, "v0.7.5")
 	if err != nil {
 		t.Fatalf("CommitsBetween: %v", err)
 	}
-	if got.TotalCommits != 0 || len(got.Commits) != 0 {
-		t.Errorf("got = %+v, want empty", got)
+	if len(got.Commits) != 2 {
+		t.Fatalf("len(Commits) = %d, want 2 (head + middle, base excluded)", len(got.Commits))
+	}
+	if got.Commits[0].SHA != headSHA {
+		t.Errorf("Commits[0].SHA = %q, want head SHA", got.Commits[0].SHA)
+	}
+	if got.Commits[0].Subject != "feat: head commit" {
+		t.Errorf("Commits[0].Subject = %q", got.Commits[0].Subject)
+	}
+	if got.Commits[0].Author != "Daisy" {
+		t.Errorf("Commits[0].Author = %q, want Daisy", got.Commits[0].Author)
+	}
+	if got.Commits[0].Date != "2026-04-25" {
+		t.Errorf("Commits[0].Date = %q, want 2026-04-25 (YYYY-MM-DD)", got.Commits[0].Date)
+	}
+	if got.TotalCommits != 2 {
+		t.Errorf("TotalCommits = %d, want 2 (no truncation hint)", got.TotalCommits)
+	}
+	if f.commitsCalls != 1 {
+		t.Errorf("commitsCalls = %d, want 1 (single page sufficient)", f.commitsCalls)
+	}
+}
+
+func TestCommitsBetween_shortSHABaseRoutesToTagResolver(t *testing.T) {
+	// Short hex strings (>= 7 hex chars but != 40) are NOT canonical
+	// commit SHAs. The resolver routes them through the tag-ref
+	// endpoint instead, which closes a corner case where a hex-named
+	// tag (e.g. "abcdef1") would otherwise match the prefix test and
+	// the walk would search for the wrong commit.
+	f := newFakeCommitsServer(t)
+	// No tag fixture registered for shortBasePrefix -> /git/ref/tags/<x>
+	// will 404. We assert on the error shape: the resolver attempted
+	// the tag lookup (proving SHA-form was rejected) and surfaced
+	// "resolving tag" with the tag-ref 404.
+	_, err := f.call(context.Background(), shortBasePrefix, "v0.7.5")
+	if err == nil {
+		t.Fatal("expected error from tag resolution (short SHA must NOT pass as a SHA)")
+	}
+	wantSubstr := "resolving tag \"" + shortBasePrefix + "\""
+	if !strings.Contains(err.Error(), wantSubstr) {
+		t.Errorf("error = %v, want substring %q (proving the short SHA was routed to tag resolution rather than treated as a SHA)",
+			err, wantSubstr)
+	}
+	if len(f.tagRefURIs) != 1 {
+		t.Errorf("tagRefURIs = %v, want exactly one /git/ref/tags lookup", f.tagRefURIs)
+	}
+}
+
+func TestCommitsBetween_paginatesUntilBase(t *testing.T) {
+	// Base lives on page 2. The walk must follow pagination and combine the
+	// per-page results in order before stopping at base.
+	f := newFakeCommitsServer(t)
+	f.commitsByPg[1] = make([]listCommitJSON, commitsPerPage)
+	for i := range f.commitsByPg[1] {
+		sha := fmt.Sprintf("a1%038x", i)
+		f.commitsByPg[1][i] = commitFixture(sha, fmt.Sprintf("p1 commit %d", i), "x", "2026-04-25T00:00:00Z")
+	}
+	f.commitsByPg[2] = []listCommitJSON{
+		commitFixture(page2HeadSHA, "p2 head", "x", "2026-04-24T00:00:00Z"),
+		commitFixture(page2BaseSHA, "base on p2", "x", "2026-04-23T00:00:00Z"),
+	}
+
+	got, err := f.call(context.Background(), page2BaseSHA, "v0.7.5")
+	if err != nil {
+		t.Fatalf("CommitsBetween: %v", err)
+	}
+	if want := commitsPerPage + 1; len(got.Commits) != want {
+		t.Errorf("len(Commits) = %d, want %d (page 1 + 1 from page 2)", len(got.Commits), want)
+	}
+	if f.commitsCalls != 2 {
+		t.Errorf("commitsCalls = %d, want 2 (paginated)", f.commitsCalls)
+	}
+}
+
+func TestCommitsBetween_truncationFooterWhenBaseNotReached(t *testing.T) {
+	// Every page is a full commitsPerPage-entry block and base is never
+	// encountered. The walk should hit the maxCommitPages cap and surface
+	// a TotalCommits value greater than len(Commits) so the renderer
+	// shows "showing N (truncated)".
+	f := newFakeCommitsServer(t)
+	for page := 1; page <= maxCommitPages; page++ {
+		entries := make([]listCommitJSON, commitsPerPage)
+		for i := range entries {
+			sha := fmt.Sprintf("%02x%038x", page, i)
+			entries[i] = commitFixture(sha, fmt.Sprintf("p%d c%d", page, i), "x", "2026-04-25T00:00:00Z")
+		}
+		f.commitsByPg[page] = entries
+	}
+
+	got, err := f.call(context.Background(), neverFoundSHA, "v0.7.5")
+	if err != nil {
+		t.Fatalf("CommitsBetween: %v", err)
+	}
+	if want := maxCommitPages * commitsPerPage; len(got.Commits) != want {
+		t.Errorf("len(Commits) = %d, want %d", len(got.Commits), want)
+	}
+	if got.TotalCommits <= len(got.Commits) {
+		t.Errorf("TotalCommits = %d, want > %d so the UI renders the truncation footer",
+			got.TotalCommits, len(got.Commits))
+	}
+	if f.commitsCalls != maxCommitPages {
+		t.Errorf("commitsCalls = %d, want %d", f.commitsCalls, maxCommitPages)
+	}
+}
+
+func TestCommitsBetween_shortFinalPageNoBaseDoesNotTruncate(t *testing.T) {
+	// Stream ends naturally on a short page (fewer than commitsPerPage
+	// entries) without containing the base SHA. This represents a
+	// disconnected / non-ancestor history where head simply does not
+	// reach base. We have ALL commits reachable from head; the UI must
+	// NOT render a "(truncated)" footer because there is no further
+	// history to fetch upstream. Regression guard for the previous
+	// behavior that incorrectly bumped TotalCommits whenever foundBase
+	// was false.
+	f := newFakeCommitsServer(t)
+	f.commitsByPg[1] = []listCommitJSON{
+		commitFixture(headSHA, "head", "x", "2026-04-25T00:00:00Z"),
+		commitFixture(middleSHA, "second", "x", "2026-04-24T00:00:00Z"),
+		commitFixture(olderSHA, "third (last reachable)", "x", "2026-04-23T00:00:00Z"),
+	}
+
+	got, err := f.call(context.Background(), neverFoundSHA, "v0.7.5")
+	if err != nil {
+		t.Fatalf("CommitsBetween: %v", err)
+	}
+	if len(got.Commits) != 3 {
+		t.Errorf("len(Commits) = %d, want 3 (entire reachable history)", len(got.Commits))
+	}
+	if got.TotalCommits != len(got.Commits) {
+		t.Errorf("TotalCommits = %d, want %d (no truncation footer; we have the full history)",
+			got.TotalCommits, len(got.Commits))
+	}
+}
+
+func TestCommitsBetween_emptyHeadStream(t *testing.T) {
+	// /commits returns an empty array on the first page (head ref returns
+	// no history -- e.g. an unborn ref). The walk returns an empty range
+	// with no error AND no truncation hint so the caller can show its own
+	// "range looks empty" message rather than a misleading "showing 0
+	// (truncated)" footer.
+	f := newFakeCommitsServer(t)
+	f.commitsByPg[1] = []listCommitJSON{}
+
+	got, err := f.call(context.Background(), deadbeefSHA, "v0.7.5")
+	if err != nil {
+		t.Fatalf("CommitsBetween: %v", err)
+	}
+	if len(got.Commits) != 0 {
+		t.Errorf("len(Commits) = %d, want 0", len(got.Commits))
+	}
+	if got.TotalCommits != 0 {
+		t.Errorf("TotalCommits = %d, want 0", got.TotalCommits)
+	}
+}
+
+func TestCommitsBetween_resolvesLightweightTagBase(t *testing.T) {
+	// Base is a tag name, not a SHA. The resolver should look it up via
+	// /git/ref/tags/<tag>, see object.type == "commit", and use the
+	// returned SHA directly without dereferencing.
+	f := newFakeCommitsServer(t)
+	f.tagRefs["v0.7.4"] = gitRefJSON{
+		Object: struct {
+			SHA  string `json:"sha"`
+			Type string `json:"type"`
+		}{SHA: lightweightTagSHA, Type: "commit"},
+	}
+	f.commitsByPg[1] = []listCommitJSON{
+		commitFixture(headSHA, "head", "x", "2026-04-25T00:00:00Z"),
+		commitFixture(lightweightTagSHA, "this is the tag target", "x", "2026-04-24T00:00:00Z"),
+	}
+
+	got, err := f.call(context.Background(), "v0.7.4", "v0.7.5")
+	if err != nil {
+		t.Fatalf("CommitsBetween: %v", err)
+	}
+	if len(got.Commits) != 1 {
+		t.Errorf("len(Commits) = %d, want 1", len(got.Commits))
+	}
+	if len(f.tagRefURIs) != 1 {
+		t.Errorf("tagRefURIs = %v, want exactly one /git/ref/tags lookup", f.tagRefURIs)
+	}
+	if len(f.tagObjURIs) != 0 {
+		t.Errorf("tagObjURIs = %v, want zero (lightweight tag should not dereference)", f.tagObjURIs)
+	}
+}
+
+func TestCommitsBetween_dereferencesAnnotatedTagBase(t *testing.T) {
+	// Annotated tag: /git/ref/tags returns object.type "tag"; the resolver
+	// must follow up with /git/tags/<sha> to recover the wrapped commit.
+	f := newFakeCommitsServer(t)
+	f.tagRefs["v0.7.4"] = gitRefJSON{
+		Object: struct {
+			SHA  string `json:"sha"`
+			Type string `json:"type"`
+		}{SHA: annotatedRefSHA, Type: "tag"},
+	}
+	f.tagObjects[annotatedRefSHA] = gitTagJSON{
+		Object: struct {
+			SHA  string `json:"sha"`
+			Type string `json:"type"`
+		}{SHA: annotatedTargetSHA, Type: "commit"},
+	}
+	f.commitsByPg[1] = []listCommitJSON{
+		commitFixture(headSHA, "head", "x", "2026-04-25T00:00:00Z"),
+		commitFixture(annotatedTargetSHA, "annotated tag target", "x", "2026-04-24T00:00:00Z"),
+	}
+
+	got, err := f.call(context.Background(), "v0.7.4", "v0.7.5")
+	if err != nil {
+		t.Fatalf("CommitsBetween: %v", err)
+	}
+	if len(got.Commits) != 1 {
+		t.Errorf("len(Commits) = %d, want 1", len(got.Commits))
+	}
+	if len(f.tagRefURIs) != 1 || len(f.tagObjURIs) != 1 {
+		t.Errorf("tagRefURIs=%v tagObjURIs=%v, want one of each", f.tagRefURIs, f.tagObjURIs)
 	}
 }
 
@@ -98,7 +352,14 @@ func TestCommitsBetween_rateLimited(t *testing.T) {
 		w.WriteHeader(http.StatusForbidden)
 	}))
 	defer srv.Close()
-	_, err := commitsBetweenFromURL(context.Background(), srv.URL+"/{base}...{head}", "v0.7.1", "v0.7.5")
+	_, err := commitsBetweenFromURL(
+		context.Background(),
+		srv.URL+"/commits",
+		srv.URL+"/git/ref/tags/{tag}",
+		srv.URL+"/git/tags/{sha}",
+		deadbeefSHA,
+		"v0.7.5",
+	)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -112,135 +373,96 @@ func TestCommitsBetween_notFound(t *testing.T) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
-	_, err := commitsBetweenFromURL(context.Background(), srv.URL+"/{base}...{head}", "vX", "vY")
+	_, err := commitsBetweenFromURL(
+		context.Background(),
+		srv.URL+"/commits",
+		srv.URL+"/git/ref/tags/{tag}",
+		srv.URL+"/git/tags/{sha}",
+		deadbeefSHA,
+		"v0.7.5",
+	)
 	if err == nil {
 		t.Fatal("expected error for 404")
 	}
 }
 
-func TestCommitsBetween_truncated(t *testing.T) {
-	// total_commits exceeds len(commits) -- the GitHub compare API caps at 250.
-	commits := make([]compareCommitJSON, 250)
-	for i := range commits {
-		commits[i] = compareCommitJSON{
-			SHA: "0000000000000000000000000000000000000000",
-			Commit: compareCommitInner{
-				Message: "commit subject",
-				Author:  compareCommitAuthor{Name: "tester", Date: "2026-04-25T00:00:00Z"},
-			},
-		}
-	}
-	resp := compareResponse{TotalCommits: 320, Commits: commits}
-	body, _ := json.Marshal(resp)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(body)
-	}))
-	defer srv.Close()
-
-	got, err := commitsBetweenFromURL(context.Background(), srv.URL+"/{base}...{head}", "v0.6.0", "v0.7.0")
-	if err != nil {
-		t.Fatalf("CommitsBetween: %v", err)
-	}
-	if got.TotalCommits != 320 {
-		t.Errorf("TotalCommits = %d, want 320", got.TotalCommits)
-	}
-	if len(got.Commits) != 250 {
-		t.Errorf("len(Commits) = %d, want 250 (API cap)", len(got.Commits))
-	}
-}
-
-func TestCommitsBetween_pathSubstitution(t *testing.T) {
-	var seenPath string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		seenPath = r.URL.Path
-		_, _ = w.Write([]byte(`{"total_commits":0,"commits":[]}`))
-	}))
-	defer srv.Close()
-	urlTpl := srv.URL + "/repos/foo/bar/compare/{base}...{head}"
-	_, _ = commitsBetweenFromURL(context.Background(), urlTpl, "v0.1.0", "v0.2.0")
-	wantPath := "/repos/foo/bar/compare/v0.1.0...v0.2.0"
-	if seenPath != wantPath {
-		t.Errorf("seenPath = %q, want %q", seenPath, wantPath)
-	}
-}
-
-func TestCommitsBetween_pathEscapesMetacharacters(t *testing.T) {
-	// Tag values containing URL metacharacters must be percent-escaped so
-	// they cannot break out of the path segment (e.g. flip the request to
-	// a different endpoint via "?" or split the path with "/").
+func TestCommitsBetween_tagResolutionPathEscapesMetacharacters(t *testing.T) {
+	// A tag name carrying URL metacharacters must be percent-escaped so it
+	// cannot break out of the path segment of the /git/ref/tags/<tag>
+	// lookup. Hits the resolver directly because passing through to the
+	// commits endpoint would obscure which URL we are testing.
 	tests := []struct {
-		name     string
-		base     string
-		head     string
-		wantPath string
+		name    string
+		tag     string
+		wantSeg string
 	}{
-		{
-			name:     "question_mark_in_base",
-			base:     "v0.1.0?evil=1",
-			head:     "v0.2.0",
-			wantPath: "/repos/foo/bar/compare/v0.1.0%3Fevil=1...v0.2.0",
-		},
-		{
-			name:     "hash_in_head",
-			base:     "v0.1.0",
-			head:     "v0.2.0#anchor",
-			wantPath: "/repos/foo/bar/compare/v0.1.0...v0.2.0%23anchor",
-		},
-		{
-			name:     "slash_in_tag",
-			base:     "v0.1.0/evil",
-			head:     "v0.2.0",
-			wantPath: "/repos/foo/bar/compare/v0.1.0%2Fevil...v0.2.0",
-		},
-		{
-			name:     "space_in_tag",
-			base:     "v0 1",
-			head:     "v0.2.0",
-			wantPath: "/repos/foo/bar/compare/v0%201...v0.2.0",
-		},
+		{"slash_in_tag", "v0.7.4/evil", "/git/ref/tags/v0.7.4%2Fevil"},
+		{"hash_in_tag", "v0.7.4#anchor", "/git/ref/tags/v0.7.4%23anchor"},
+		{"question_in_tag", "v0.7.4?evil=1", "/git/ref/tags/v0.7.4%3Fevil=1"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// r.RequestURI preserves the percent-encoding as sent on the
-			// wire. r.URL.Path silently decodes it, which would defeat the
-			// purpose of this test.
 			var seenURI string
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				seenURI = r.RequestURI
-				_, _ = w.Write([]byte(`{"total_commits":0,"commits":[]}`))
+				http.NotFound(w, r) // bail early -- we only care about the URI shape
 			}))
 			defer srv.Close()
-			urlTpl := srv.URL + "/repos/foo/bar/compare/{base}...{head}"
-			_, _ = commitsBetweenFromURL(context.Background(), urlTpl, tt.base, tt.head)
-			if seenURI != tt.wantPath {
-				t.Errorf("seenURI = %q, want %q", seenURI, tt.wantPath)
+			_, _ = commitsBetweenFromURL(
+				context.Background(),
+				srv.URL+"/commits",
+				srv.URL+"/git/ref/tags/{tag}",
+				srv.URL+"/git/tags/{sha}",
+				tt.tag,
+				"v0.7.5",
+			)
+			if seenURI != tt.wantSeg {
+				t.Errorf("seenURI = %q, want %q", seenURI, tt.wantSeg)
 			}
 		})
 	}
 }
 
-// TestCommitsBetween_subjectSkipsLeadingBlankLines guards firstLine against
-// messages that begin with one or more blank lines: the subject must resolve
-// to the first non-empty line, otherwise commits render with empty subjects.
+func TestCommitsBetween_commitsURIShape(t *testing.T) {
+	// Per-page commits requests must carry sha=<head>, per_page=<commitsPerPage>,
+	// page=N. Tests against the URI rather than a structural Query().Get
+	// check so a future regression that rebuilds the URL by string-concat
+	// is caught too.
+	f := newFakeCommitsServer(t)
+	f.commitsByPg[1] = []listCommitJSON{
+		commitFixture(shortBaseFullSHA, "base", "x", "2026-04-24T00:00:00Z"),
+	}
+	_, _ = f.call(context.Background(), shortBaseFullSHA, "v0.7.5")
+	if len(f.commitsURIs) == 0 {
+		t.Fatalf("commitsURIs = %v, want at least one", f.commitsURIs)
+	}
+	got := f.commitsURIs[0]
+	wantParams := []string{
+		"sha=v0.7.5",
+		fmt.Sprintf("per_page=%d", commitsPerPage),
+		"page=1",
+	}
+	for _, want := range wantParams {
+		if !strings.Contains(got, want) {
+			t.Errorf("commits URI %q missing query param %q", got, want)
+		}
+	}
+}
+
 func TestCommitsBetween_subjectSkipsLeadingBlankLines(t *testing.T) {
-	resp := compareResponse{
-		TotalCommits: 1,
-		Commits: []compareCommitJSON{{
-			SHA: "deadbeefcafebabe1234",
+	f := newFakeCommitsServer(t)
+	f.commitsByPg[1] = []listCommitJSON{
+		{
+			SHA:     deadbeefSHA,
+			HTMLURL: "https://github.com/Aureliolo/synthorg/commit/" + deadbeefSHA,
 			Commit: compareCommitInner{
 				Message: "\n\nsubject line\n\nbody",
 				Author:  compareCommitAuthor{Name: "x", Date: "2026-04-25T00:00:00Z"},
 			},
-		}},
+		},
+		commitFixture(shortBaseFullSHA, "base", "x", "2026-04-24T00:00:00Z"),
 	}
-	body, _ := json.Marshal(resp)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write(body)
-	}))
-	defer srv.Close()
-
-	got, err := commitsBetweenFromURL(context.Background(), srv.URL+"/{base}...{head}", "a", "b")
+	got, err := f.call(context.Background(), shortBaseFullSHA, "v0.7.5")
 	if err != nil {
 		t.Fatalf("CommitsBetween: %v", err)
 	}
@@ -250,27 +472,38 @@ func TestCommitsBetween_subjectSkipsLeadingBlankLines(t *testing.T) {
 }
 
 func TestCommitsBetween_invalidDateGracefulFallback(t *testing.T) {
-	resp := compareResponse{
-		TotalCommits: 1,
-		Commits: []compareCommitJSON{{
-			SHA: "deadbeefcafebabe1234",
-			Commit: compareCommitInner{
-				Message: "subject",
-				Author:  compareCommitAuthor{Name: "x", Date: "not-a-date"},
-			},
-		}},
+	f := newFakeCommitsServer(t)
+	f.commitsByPg[1] = []listCommitJSON{
+		commitFixture(deadbeefSHA, "subject", "x", "not-a-date"),
+		commitFixture(shortBaseFullSHA, "base", "x", "2026-04-24T00:00:00Z"),
 	}
-	body, _ := json.Marshal(resp)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write(body)
-	}))
-	defer srv.Close()
-
-	got, err := commitsBetweenFromURL(context.Background(), srv.URL+"/{base}...{head}", "a", "b")
+	got, err := f.call(context.Background(), shortBaseFullSHA, "v0.7.5")
 	if err != nil {
 		t.Fatalf("CommitsBetween: %v", err)
 	}
 	if got.Commits[0].Date != "not-a-date" {
 		t.Errorf("Date = %q, want raw fallback when unparseable", got.Commits[0].Date)
+	}
+}
+
+func TestCommitsBetween_emptyBaseRejected(t *testing.T) {
+	f := newFakeCommitsServer(t)
+	_, err := f.call(context.Background(), "", "v0.7.5")
+	if err == nil {
+		t.Fatal("expected error for empty base ref")
+	}
+	if !strings.Contains(err.Error(), "empty base ref") {
+		t.Errorf("error = %v, want explicit empty-base message", err)
+	}
+}
+
+func TestCommitsBetween_emptyHeadRejected(t *testing.T) {
+	f := newFakeCommitsServer(t)
+	_, err := f.call(context.Background(), deadbeefSHA, "")
+	if err == nil {
+		t.Fatal("expected error for empty head ref")
+	}
+	if !strings.Contains(err.Error(), "empty head ref") {
+		t.Errorf("error = %v, want explicit empty-head message", err)
 	}
 }

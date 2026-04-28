@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/version"
 )
 
@@ -40,7 +41,12 @@ const (
 // because Configure runs exactly once in root.go PersistentPreRunE before
 // any self-update operation starts.
 var (
-	maxAPIResponseBytes  int64 = 1 * 1024 * 1024   // 1 MiB for API/checksums
+	// Sourced from config.DefaultMaxAPIResponseBytes so the runtime
+	// enforcement value never drifts from the user-facing default
+	// surfaced by `synthorg config get max_api_response_bytes`. Configure
+	// (called from root.go PersistentPreRunE) overwrites this with the
+	// operator's resolved State.MaxAPIResponseBytes when set.
+	maxAPIResponseBytes  int64 = config.DefaultMaxAPIResponseBytes
 	maxBinaryBytes       int64 = 256 * 1024 * 1024 // 256 MiB for binary archives
 	maxArchiveEntryBytes int64 = 128 * 1024 * 1024 // 128 MiB per archive entry
 
@@ -254,14 +260,40 @@ func fetchJSON[T any](ctx context.Context, url string) (T, error) {
 		return zero, fmt.Errorf("github API returned %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAPIResponseBytes))
-	if err != nil {
-		return zero, fmt.Errorf("reading API response: %w", err)
-	}
-
+	// Stream-decode through a size-capped LimitReader. The +1 lets us
+	// distinguish a body that exactly fills the cap (LimitedReader.N == 1
+	// after Decode succeeds) from one that exceeds it (N == 0, meaning
+	// the cap byte was actually consumed). io.ReadAll into a buffer plus
+	// json.Unmarshal would peak memory at body_size + decoded_size; the
+	// streaming Decoder caps additional buffering at its internal token
+	// buffer, which is bounded by the largest single JSON value in the
+	// response. For our list-commits payloads (long arrays of small
+	// objects) this is a meaningful win.
+	limited := &io.LimitedReader{R: resp.Body, N: maxAPIResponseBytes + 1}
+	dec := json.NewDecoder(limited)
 	var result T
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := dec.Decode(&result); err != nil {
+		// Cap-hit produces a decode error (unexpected EOF mid-token)
+		// because the LimitReader returned io.EOF before the JSON value
+		// closed. Surface the real cause so the operator gets an
+		// actionable message instead of a meaningless "unexpected end
+		// of JSON input".
+		if limited.N == 0 {
+			return zero, fmt.Errorf(
+				"response exceeded %d-byte cap (raise max_api_response_bytes via `synthorg config set max_api_response_bytes <size>`)",
+				maxAPIResponseBytes)
+		}
 		return zero, fmt.Errorf("decoding response: %w", err)
+	}
+	// Decode succeeded but the body still pushed the LimitReader past
+	// its cap (N == 0 means the +1 byte was consumed). The decoded
+	// value is technically usable but the response was over-budget;
+	// fail the call so we don't quietly let a future expansion of the
+	// payload normalize over the cap.
+	if limited.N == 0 {
+		return zero, fmt.Errorf(
+			"response exceeded %d-byte cap (raise max_api_response_bytes via `synthorg config set max_api_response_bytes <size>`)",
+			maxAPIResponseBytes)
 	}
 	return result, nil
 }
@@ -580,10 +612,17 @@ func assetName() string {
 	return fmt.Sprintf("synthorg_%s_%s%s", runtime.GOOS, runtime.GOARCH, ext)
 }
 
-// AllowedDownloadHosts are the domains GitHub may redirect release asset
-// downloads to. Requests that end up elsewhere are rejected.
+// AllowedDownloadHosts are the domains GitHub may redirect to from any
+// self-update request -- both the API metadata fetches (releases listing,
+// list-commits walk, tag-ref resolution) routed through `apiClient`, and
+// the asset download path. Requests that end up elsewhere are rejected
+// by `checkRedirectHost`. `api.github.com` does not normally redirect,
+// but listing it keeps the allowlist consistent with every host we
+// actually open a connection to and prevents a future GitHub edge-case
+// (e.g. region-routed API endpoints) from silently breaking the walk.
 // Exported for test injection.
 var AllowedDownloadHosts = map[string]bool{
+	"api.github.com":                        true,
 	"github.com":                            true,
 	"objects.githubusercontent.com":         true,
 	"github-releases.githubusercontent.com": true,

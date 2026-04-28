@@ -210,13 +210,21 @@ func effectiveBaseRef(tagRef, commitSHA string) string {
 	return tagRef
 }
 
-// isLikelyCommitSHA reports whether s has the shape of a git commit SHA
-// (>= 7 hex chars). Sentinel ldflags values like "none", "dev", and the
-// empty string fail this check, which is the trigger for falling back to
-// the tag-based ref. The name avoids "stable" because that term is already
-// used in this file for the release channel (see runStableHighlightsWalk).
+// commitSHALen is the canonical length of a git commit SHA. GoReleaser
+// stamps the full 40-char SHA into version.Commit; sentinel values
+// ("none", "dev", "unknown", "") are shorter and fail the length check,
+// which is the trigger for falling back to the tag-based ref.
+const commitSHALen = 40
+
+// isLikelyCommitSHA reports whether s has the canonical shape of a git
+// commit SHA: exactly commitSHALen hex chars. Restricting to the full
+// length closes a hex-named-tag bypass (a tag like "abcdef1" would
+// otherwise match a >= 7-char prefix test and the dev commit walk would
+// search for the wrong commit). The name avoids "stable" because that
+// term is already used in this file for the release channel (see
+// runStableHighlightsWalk).
 func isLikelyCommitSHA(s string) bool {
-	if len(s) < 7 {
+	if len(s) != commitSHALen {
 		return false
 	}
 	for _, r := range s {
@@ -245,14 +253,15 @@ func scrubAPIBase(errMsg, apiBase, tagRef string) string {
 }
 
 // devCommitWalkErrorHint returns the HintError body shown when the dev
-// commit-walk compare API call fails. The wording differs based on whether
-// we already used the embedded commit SHA: with a SHA the tag-pruning
-// explanation no longer fits, so we name the more likely real causes
-// (network, rate limit) instead of misdirecting the user.
+// commit-walk list-commits API call fails. The wording differs based on
+// whether we already used the embedded commit SHA: with a SHA the
+// tag-pruning explanation no longer fits, so we leave the inner error
+// (which now carries the real cause -- rate limit, 4xx, or the explicit
+// "response exceeded N-byte cap" guard from fetchJSON) to speak for
+// itself instead of guessing at "transient network or rate limit".
 func devCommitWalkErrorHint(usedCommitSHA bool) string {
 	if usedCommitSHA {
-		return "This is usually a transient network error or GitHub rate limit. " +
-			"Showing terse update notice instead."
+		return "Showing terse update notice instead."
 	}
 	return "This usually means the installed dev pre-release tag was pruned from GitHub " +
 		"(dev releases are auto-rolled), or this is a local build without an embedded " +
