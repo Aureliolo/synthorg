@@ -3,23 +3,26 @@
 import pytest
 
 from synthorg.api.errors import (
-    _CODE_CATEGORY_PREFIX,
-    _ERROR_DOCS_BASE,
-    CATEGORY_TITLES,
     ApiError,
     ApiValidationError,
     ConflictError,
-    ErrorCategory,
-    ErrorCode,
     ForbiddenError,
     NotFoundError,
     ServiceUnavailableError,
     SessionRevokedError,
     UnauthorizedError,
     VersionConflictError,
+)
+from synthorg.core.error_taxonomy import (
+    CATEGORY_TITLES,
+    CODE_CATEGORY_PREFIX,
+    ErrorCategory,
+    ErrorCode,
     category_title,
     category_type_uri,
 )
+
+_ERROR_DOCS_BASE = "https://synthorg.io/docs/errors"
 
 pytestmark = pytest.mark.unit
 
@@ -136,10 +139,10 @@ class TestErrorCode:
         assert len(values) == len(set(values))
 
     def test_code_category_prefix_consistency(self) -> None:
-        """First digit of each code matches _CODE_CATEGORY_PREFIX."""
+        """First digit of each code matches CODE_CATEGORY_PREFIX."""
         for code in ErrorCode:
             prefix = code.value // 1000
-            assert prefix in _CODE_CATEGORY_PREFIX, (
+            assert prefix in CODE_CATEGORY_PREFIX, (
                 f"{code.name} has prefix {prefix} not in mapping"
             )
 

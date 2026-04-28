@@ -10,7 +10,7 @@ stays below the 800-line limit mandated by ``CLAUDE.md``.
 import math
 from typing import Final, get_args
 
-from synthorg.api.errors import ErrorCategory
+from synthorg.core.error_taxonomy import ErrorCategory
 from synthorg.observability import get_logger
 from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
 from synthorg.providers.errors import ProviderErrorLabel
