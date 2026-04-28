@@ -555,22 +555,35 @@ class TestProviderPresets:
         """Underscores and hyphens become spaces, then title-cased."""
         from synthorg.providers.preset_softlist import _humanise_namespace
 
-        assert _humanise_namespace("perplexity") == "Perplexity"
-        assert _humanise_namespace("text-completion-openai") == (
-            "Text Completion Openai"
-        )
+        assert _humanise_namespace("simpleword") == "Simpleword"
+        assert _humanise_namespace("multi-token-input") == "Multi Token Input"
 
     def test_humanise_namespace_preserves_acronyms(self) -> None:
-        """Known acronyms stay fully uppercased after the title-case pass."""
+        """Known acronyms stay fully uppercased after the title-case pass.
+
+        Test inputs use generic placeholders that exercise the
+        acronym-restoration paths (bare acronym, acronym after a
+        separator) without naming a specific vendor.  Real vendor
+        strings flow through this helper at runtime via the soft-list
+        module; here we test the transformation rules in isolation.
+        """
         from synthorg.providers.preset_softlist import _humanise_namespace
 
-        assert _humanise_namespace("ai21") == "AI21"
-        assert _humanise_namespace("lambda_ai") == "Lambda AI"
-        assert _humanise_namespace("gradient_ai") == "Gradient AI"
-        assert _humanise_namespace("nvidia_nim") == "Nvidia NIM"
+        # Bare acronym stays uppercase.
+        assert _humanise_namespace("ai") == "AI"
+        assert _humanise_namespace("api") == "API"
+        # Acronym after an underscore separator.
+        assert _humanise_namespace("test_ai") == "Test AI"
+        assert _humanise_namespace("test_llm") == "Test LLM"
+        # Acronym after a hyphen separator.
+        assert _humanise_namespace("test-nim") == "Test NIM"
 
     def test_humanise_namespace_lowercase_overrides(self) -> None:
-        """Tokens listed in the lowercase override map are de-titled."""
+        """Tokens listed in the lowercase override map are de-titled.
+
+        The placeholder ``"v0"`` is a generic short token; it tests
+        that the override map wins over the default title-casing.
+        """
         from synthorg.providers.preset_softlist import _humanise_namespace
 
         assert _humanise_namespace("v0") == "v0"
@@ -597,13 +610,24 @@ class TestProviderPresets:
         assert _is_denied_namespace("text-completion-codestral")
 
     def test_is_denied_namespace_allowlist(self) -> None:
-        """Curated and unrelated namespaces are not denied."""
+        """Unrelated and curated-divergent namespaces are not denied.
+
+        The synthetic placeholders cover the negative behaviour of the
+        predicate without coupling the test to specific runtime preset
+        names.  The single real-name assertion (``"cohere_chat"``)
+        guards a deliberate divergence: the soft-list denylist
+        contains bare ``"cohere"`` (LiteLLM's deprecated completions
+        endpoint) but not ``"cohere_chat"`` (our curated chat
+        namespace); a regression that accidentally promotes the deny
+        rule from the bare name to the chat namespace would silently
+        knock the curated Cohere preset off the picker.
+        """
         from synthorg.providers.preset_softlist import _is_denied_namespace
 
-        assert not _is_denied_namespace("openai")
-        assert not _is_denied_namespace("anthropic")
-        assert not _is_denied_namespace("perplexity")
-        assert not _is_denied_namespace("xai")
+        assert not _is_denied_namespace("test-allowed-namespace")
+        assert not _is_denied_namespace("synthetic-provider")
+        assert not _is_denied_namespace("example_provider")
+        # Regression guard for the cohere/cohere_chat divergence.
         assert not _is_denied_namespace("cohere_chat")
 
     def test_iter_litellm_chat_namespaces_filters_non_chat_modes(

@@ -17,12 +17,13 @@ Two preset tiers, distinguished by :attr:`_BasePreset.is_featured`:
 * **Featured** -- hand-curated entries with brand logo, vetted
   description, and (where useful) ``default_models`` fallback.  Listed
   in :data:`_FEATURED_PRESETS`.
-* **Soft** -- auto-derived from ``litellm.model_cost`` for every chat
-  namespace not already covered by a featured preset and not denied
-  by :data:`_LITELLM_NAMESPACE_DENYLIST`.  Soft presets render with
-  the wizard's generic fallback icon and a generic description; they
-  exist so SynthOrg surfaces every chat-capable LiteLLM provider out
-  of the box.
+* **Soft** -- auto-derived from ``litellm.model_cost`` by
+  :mod:`synthorg.providers.preset_softlist` for every chat namespace
+  not already covered by a featured preset and not denied by the
+  soft-list module's denylist + deny-prefix table.  Soft presets
+  render with the wizard's generic fallback icon and a generic
+  description; they exist so SynthOrg surfaces every chat-capable
+  LiteLLM provider out of the box.
 
 Consumers iterating across all presets should use the helpers
 :func:`default_models_for`, :func:`candidate_urls_for`,

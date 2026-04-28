@@ -22,10 +22,14 @@ from typing import TYPE_CHECKING, Final
 
 import litellm
 
+from synthorg.observability import get_logger
+from synthorg.observability.events.provider import PROVIDER_LITELLM_CATALOG_INVALID
 from synthorg.providers.enums import AuthType
 
 if TYPE_CHECKING:
     from synthorg.providers.presets import CloudPreset, LocalPreset
+
+logger = get_logger(__name__)
 
 
 _LITELLM_NAMESPACE_DENYLIST: Final[frozenset[str]] = frozenset(
@@ -230,6 +234,16 @@ def _iter_litellm_chat_namespaces() -> tuple[str, ...]:
     seen: set[str] = set()
     cost_table = getattr(litellm, "model_cost", {}) or {}
     if not isinstance(cost_table, Mapping):
+        logger.warning(
+            PROVIDER_LITELLM_CATALOG_INVALID,
+            catalog_type=type(cost_table).__name__,
+            error=(
+                "litellm.model_cost is not a Mapping; auto-derived "
+                "soft presets disabled. The wizard's More-providers "
+                "section will be empty until LiteLLM's catalog shape "
+                "is restored or this module is updated."
+            ),
+        )
         return ()
     for info in cost_table.values():
         if not isinstance(info, dict):
