@@ -86,9 +86,18 @@ class TestConstraintViolationConstructor:
         assert exc.constraint == "users_email_uniq"
 
     @pytest.mark.parametrize("blank", ["", "   ", "\t", "\n"])
-    def test_rejects_blank_constraint(self, blank: str) -> None:
-        with pytest.raises(ValueError, match="non-blank constraint"):
-            ConstraintViolationError("violated", constraint=blank)
+    def test_blank_constraint_normalises_to_sentinel(self, blank: str) -> None:
+        """Blank input maps to a sentinel instead of raising.
+
+        Raising :class:`ValueError` from ``__init__`` would bypass
+        downstream ``except PersistenceError`` handlers, so blank
+        constraints normalise to ``ConstraintViolationError.UNKNOWN_CONSTRAINT``
+        instead.  Callers branching on the constraint token can detect
+        the sentinel explicitly.
+        """
+        exc = ConstraintViolationError("violated", constraint=blank)
+        assert exc.constraint == ConstraintViolationError.UNKNOWN_CONSTRAINT
+        assert isinstance(exc, ConstraintViolationError)
 
     def test_constraint_violation_overrides_query_retry(self) -> None:
         """``ConstraintViolationError`` is non-retryable despite ``QueryError``."""

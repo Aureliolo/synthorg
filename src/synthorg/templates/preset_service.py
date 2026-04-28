@@ -123,7 +123,8 @@ def _validate_personality_config(
         logger.warning(
             PRESET_VALIDATION_FAILED,
             reason="invalid_config",
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = "Invalid personality configuration: one or more fields failed validation"
         raise ValidationError(msg) from exc

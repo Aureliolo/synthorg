@@ -362,6 +362,13 @@ class TemplatePackController(Controller):
             raise
         except ConflictError:
             raise
+        except DomainError:
+            # ``_read_setting_list`` already logs corrupt-settings paths
+            # with structured context (``key`` + ``action``); re-raising
+            # here without logging avoids the duplicate generic
+            # ``apply_failed`` trace the outer ``except Exception`` would
+            # otherwise emit for the same expected error.
+            raise
         except Exception:
             logger.exception(
                 TEMPLATE_PACK_APPLY_ERROR,

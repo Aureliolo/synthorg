@@ -70,13 +70,53 @@ def _python_files(root: Path) -> list[Path]:
     return [p for p in root.rglob("*.py") if "__pycache__" not in p.parts]
 
 
+def _module_path_from_file(path: Path) -> tuple[str, ...]:
+    """Compute the dotted-package path of a source file.
+
+    Used to resolve ``from ..api.errors import X`` relative-import
+    targets to absolute paths like ``synthorg.api.errors`` so the
+    layering guard cannot be bypassed by a relative import.
+
+    Files outside ``src/synthorg/`` (e.g. tests) cannot host package-
+    relative imports of the project's modules; an empty tuple is
+    returned so relative-import resolution becomes a no-op for them.
+    """
+    src_parent = _SRC.parent
+    try:
+        rel = path.relative_to(src_parent).with_suffix("")
+    except ValueError:
+        return ()
+    parts = rel.parts
+    if parts and parts[-1] == "__init__":
+        parts = parts[:-1]
+    return parts
+
+
+def _resolve_relative_import(
+    *,
+    base: tuple[str, ...],
+    level: int,
+    module: str | None,
+) -> str | None:
+    """Resolve a relative ``ImportFrom`` target to an absolute module path."""
+    if level <= 0 or level > len(base):
+        return module
+    parent = base[:-level] if level <= len(base) else ()
+    if module:
+        parent = (*parent, *module.split("."))
+    return ".".join(parent) if parent else None
+
+
 def _imported_modules(path: Path) -> set[str]:
     """Return every module referenced by an import statement.
 
-    Walks both ``from MODULE import ...`` (``ast.ImportFrom``) and bare
+    Walks ``from MODULE import ...`` (``ast.ImportFrom``) and bare
     ``import MODULE`` / ``import MODULE as alias`` (``ast.Import``) at
-    top level and inside function bodies, so a stray ``import
-    synthorg.api.errors`` cannot slip past the layering guard.
+    top level and inside function bodies.  Relative ``from ..pkg
+    import ...`` imports are resolved to their absolute dotted path
+    using the source file's location, so a stray ``from ..api.errors
+    import X`` cannot slip past the guard by being seen as
+    ``api.errors`` instead of ``synthorg.api.errors``.
     """
     src = path.read_text(encoding="utf-8")
     try:
@@ -84,10 +124,15 @@ def _imported_modules(path: Path) -> set[str]:
     except SyntaxError as exc:  # pragma: no cover - defensive
         msg = f"could not parse {path}: {exc}"
         raise AssertionError(msg) from exc
+    base = _module_path_from_file(path)
     out: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module:
-            out.add(node.module)
+        if isinstance(node, ast.ImportFrom):
+            resolved = _resolve_relative_import(
+                base=base, level=node.level, module=node.module
+            )
+            if resolved:
+                out.add(resolved)
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 out.add(alias.name)

@@ -72,6 +72,8 @@ class SetupPersonalityController(Controller):
         Raises:
             ConflictError: If setup has already been completed.
             NotFoundError: If the agent index is out of range.
+            ValidationError: If the requested personality preset name
+                is not a known builtin or custom preset.
         """
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service

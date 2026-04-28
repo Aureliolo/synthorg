@@ -20,6 +20,8 @@ from synthorg.core.normalization import normalize_identifier
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
+    API_RESOURCE_CONFLICT,
+    API_RESOURCE_NOT_FOUND,
     API_TEAM_CREATED,
     API_TEAM_DELETED,
     API_TEAM_REORDERED,
@@ -146,6 +148,11 @@ def _find_department(
         if normalize_identifier(_persisted_name(dept, "Department")) == target:
             return idx, dept
     msg = f"Department {name!r} not found"
+    logger.warning(
+        API_RESOURCE_NOT_FOUND,
+        resource="department",
+        name=name,
+    )
     raise NotFoundError(msg)
 
 
@@ -171,6 +178,11 @@ def _find_team(
         if normalize_identifier(_persisted_name(team, "Team")) == target:
             return idx, team
     msg = f"Team {team_name!r} not found"
+    logger.warning(
+        API_RESOURCE_NOT_FOUND,
+        resource="team",
+        name=team_name,
+    )
     raise NotFoundError(msg)
 
 
@@ -197,6 +209,12 @@ def _check_team_name_unique(
             continue
         if normalize_identifier(_persisted_name(team, "Team")) == target:
             msg = f"Team {name!r} already exists in this department"
+            logger.warning(
+                API_RESOURCE_CONFLICT,
+                resource="team",
+                name=name,
+                reason="duplicate_team_name",
+            )
             raise ConflictError(msg)
 
 
@@ -508,7 +526,7 @@ class TeamController(Controller):
         state: State,
         dept_name: PathName,
         team_name: PathName,
-        reassign_to: str | None = None,
+        reassign_to: NotBlankStr | None = None,
     ) -> None:
         """Delete a team from a department.
 

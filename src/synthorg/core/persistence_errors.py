@@ -84,22 +84,22 @@ class ConstraintViolationError(QueryError):
     Non-retryable: constraint violations are deterministic for a
     given input and will not succeed on a bare retry.
 
-    Raises:
-        ValueError: If ``constraint`` is empty / whitespace-only.  An
-            unidentifiable constraint name defeats the purpose of this
-            class -- callers downstream branch on the constraint token
-            and a blank one cannot be matched.
+    Blank ``constraint`` (empty / whitespace-only) is normalised to the
+    sentinel ``"<unknown>"`` rather than raising.  Raising
+    :class:`ValueError` from ``__init__`` would bypass downstream
+    ``except PersistenceError`` handlers; the sentinel keeps the
+    construction inside the persistence-error family so callers that
+    branch on ``constraint`` see a known token they can detect.
     """
+
+    UNKNOWN_CONSTRAINT: str = "<unknown>"
 
     is_retryable: bool = False
 
     def __init__(self, message: str, *, constraint: str) -> None:
         super().__init__(message)
         stripped = constraint.strip()
-        if not stripped:
-            msg = "ConstraintViolationError requires a non-blank constraint name"
-            raise ValueError(msg)
-        self.constraint: str = stripped
+        self.constraint: str = stripped or self.UNKNOWN_CONSTRAINT
 
 
 class VersionConflictError(QueryError):
