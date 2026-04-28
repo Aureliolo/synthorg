@@ -281,7 +281,7 @@ How peer AI-assistant tools authenticate against the same provider universe.
 | Hyperbolic | DEFER | -- | -- | Catalog overlaps Together / Fireworks; weak differentiator |
 | Lambda AI | DEFER | -- | -- | Newer platform; minimal catalog |
 | Qwen / DashScope | DEFER | -- | -- | Regional fragmentation needs per-region preset surface |
-| Vertex AI | DEFER | -- | -- | ADC / service-account complexity needs dedicated preset |
+| Vertex AI | DEFER | -- | -- | ADC / service-account complexity needs a dedicated preset |
 
 **Total new presets in Phase 2**: 8 (Kimi, Together, Fireworks, xAI, Cohere, Cerebras, SambaNova, NVIDIA NIM).
 

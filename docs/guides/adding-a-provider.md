@@ -14,7 +14,7 @@ SynthOrg auto-derives a **soft preset** for every chat-capable provider in `lite
 So before starting: check whether your provider is already surfaced as a soft preset. Run:
 
 ```bash
-uv run python -c 'from synthorg.providers.presets import list_soft_presets; print(*[p.name for p in list_soft_presets()], sep="\n")' | grep <namespace>
+uv run python -c 'from synthorg.providers.presets import list_soft_presets; print(*[p.name for p in list_soft_presets()], sep="\n")' | grep '<namespace>'
 ```
 
 If it's already there, you only need a **branded** preset if you want to add: a brand logo, a curated description, or `default_models` fallback for when LiteLLM's `model_cost` is empty for that namespace.
@@ -80,7 +80,7 @@ Rules:
 
 Default source: [lobe-icons](https://github.com/lobehub/lobe-icons), MIT licensed (Copyright 2023 LobeHub). Fetch path:
 
-```
+```text
 https://raw.githubusercontent.com/lobehub/lobe-icons/master/packages/static-svg/icons/<slug>.svg
 ```
 
@@ -181,7 +181,7 @@ Use [`/pre-pr-review`](../../.claude/skills/pre-pr-review/SKILL.md) to land the 
 
 Commit message style (per [CLAUDE.md](../../CLAUDE.md) git conventions):
 
-```
+```text
 feat(providers): add <Provider Name> preset (#<issue>)
 ```
 

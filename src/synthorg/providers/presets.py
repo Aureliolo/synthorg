@@ -40,7 +40,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 from synthorg.providers.enums import AuthType
+
+logger = get_logger(__name__)
 
 
 class _BasePreset(BaseModel):
@@ -109,6 +113,14 @@ class CloudPreset(_BasePreset):
                 f"auth_type {self.auth_type!r} not in "
                 f"supported_auth_types {self.supported_auth_types!r}"
             )
+            logger.error(
+                CONFIG_VALIDATION_FAILED,
+                model="CloudPreset",
+                preset_name=self.name,
+                auth_type=self.auth_type.value,
+                supported_auth_types=[t.value for t in self.supported_auth_types],
+                error=msg,
+            )
             raise ValueError(msg)
         return self
 
@@ -130,12 +142,28 @@ class CloudPreset(_BasePreset):
                 f"Soft preset {self.name!r} (is_featured=False) must use "
                 f"AuthType.API_KEY; got {self.auth_type!r}."
             )
+            logger.error(
+                CONFIG_VALIDATION_FAILED,
+                model="CloudPreset",
+                preset_name=self.name,
+                is_featured=self.is_featured,
+                auth_type=self.auth_type.value,
+                error=msg,
+            )
             raise ValueError(msg)
         if self.supported_auth_types != (AuthType.API_KEY,):
             msg = (
                 f"Soft preset {self.name!r} (is_featured=False) must declare "
                 f"supported_auth_types=(API_KEY,); got "
                 f"{self.supported_auth_types!r}."
+            )
+            logger.error(
+                CONFIG_VALIDATION_FAILED,
+                model="CloudPreset",
+                preset_name=self.name,
+                is_featured=self.is_featured,
+                supported_auth_types=[t.value for t in self.supported_auth_types],
+                error=msg,
             )
             raise ValueError(msg)
         return self
@@ -731,6 +759,13 @@ def _audit_presets(presets: tuple[CloudPreset | LocalPreset, ...]) -> None:
         if preset.name in seen_names:
             other = seen_names[preset.name]
             msg = f"Duplicate preset name {preset.name!r}: {other!r} and {preset!r}"
+            logger.error(
+                CONFIG_VALIDATION_FAILED,
+                model="PROVIDER_PRESETS",
+                check="duplicate_name",
+                preset_name=preset.name,
+                error=msg,
+            )
             raise ValueError(msg)
         seen_names[preset.name] = preset
 
@@ -752,6 +787,15 @@ def _audit_presets(presets: tuple[CloudPreset | LocalPreset, ...]) -> None:
                     f"between {other.name!r} and {preset.name!r}; soft "
                     f"presets must dedupe against featured."
                 )
+                logger.error(
+                    CONFIG_VALIDATION_FAILED,
+                    model="PROVIDER_PRESETS",
+                    check="soft_duplicates_featured_namespace",
+                    preset_name=preset.name,
+                    other_preset_name=other.name,
+                    litellm_provider=preset.litellm_provider,
+                    error=msg,
+                )
                 raise ValueError(msg)
         else:
             seen_namespaces[preset.litellm_provider] = preset
@@ -762,6 +806,13 @@ def _audit_presets(presets: tuple[CloudPreset | LocalPreset, ...]) -> None:
             msg = (
                 f"Featured preset {preset.name!r} appears after a soft preset; "
                 "PROVIDER_PRESETS must list featured entries first."
+            )
+            logger.error(
+                CONFIG_VALIDATION_FAILED,
+                model="PROVIDER_PRESETS",
+                check="featured_after_soft",
+                preset_name=preset.name,
+                error=msg,
             )
             raise ValueError(msg)
 
