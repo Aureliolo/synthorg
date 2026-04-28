@@ -93,22 +93,55 @@ jobs:
             exit 0
           fi
 
-          # Check status of both workflows for this tag.
-          CLI_CONCLUSION=$(gh run list --repo "$GITHUB_REPOSITORY" \
-            --workflow cli.yml --branch "$TAG" --event push --commit "$HEAD_SHA" \
-            --limit 1 --status completed \
-            --json conclusion --jq '.[0].conclusion // "pending"')
-          DOCKER_CONCLUSION=$(gh run list --repo "$GITHUB_REPOSITORY" \
-            --workflow docker.yml --branch "$TAG" --event push --commit "$HEAD_SHA" \
-            --limit 1 --status completed \
-            --json conclusion --jq '.[0].conclusion // "pending"')
-          echo "CLI: $CLI_CONCLUSION"
-          echo "Docker: $DOCKER_CONCLUSION"
+          # The triggering workflow's conclusion is known directly from the
+          # event payload above -- never query it back, since the Actions
+          # search API has eventual-consistency lag (`gh run list --status
+          # completed` has been observed to miss runs that finished tens of
+          # minutes earlier under load) and would falsely report `pending`,
+          # leaving the commit's `finalize-release` status stuck.
+          #
+          # Query only the SIBLING (the workflow we did NOT just observe
+          # complete). Use the direct `actions/runs?head_sha=` endpoint
+          # instead of `gh run list` -- it is more reliable than the
+          # search-indexed listing -- and retry with backoff to absorb any
+          # residual lag from the indexer.
+          case "$WORKFLOW_NAME" in
+            Docker) SIBLING_NAME=CLI ;;
+            CLI) SIBLING_NAME=Docker ;;
+            *)
+              echo "::error::Unexpected triggering workflow: $WORKFLOW_NAME"
+              exit 1
+              ;;
+          esac
 
-          if [ "$CLI_CONCLUSION" != "success" ] || [ "$DOCKER_CONCLUSION" != "success" ]; then
-            echo "Not all workflows succeeded yet (CLI=$CLI_CONCLUSION, Docker=$DOCKER_CONCLUSION)."
-            echo "The other workflow's completion will trigger another attempt."
+          SIBLING_STATUS=missing
+          SIBLING_CONCLUSION=pending
+          for attempt in 1 2 3 4 5 6; do
+            SIBLING_JSON=$(gh api \
+              "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$HEAD_SHA&per_page=100" \
+              --jq "[.workflow_runs[] | select(.name == \"$SIBLING_NAME\" and .head_branch == \"$TAG\" and .event == \"push\")] | .[0] // {}")
+            SIBLING_STATUS=$(jq -r '.status // "missing"' <<< "$SIBLING_JSON")
+            SIBLING_CONCLUSION=$(jq -r '.conclusion // "pending"' <<< "$SIBLING_JSON")
+            if [ "$SIBLING_STATUS" = "completed" ]; then
+              break
+            fi
+            echo "Sibling $SIBLING_NAME status=$SIBLING_STATUS conclusion=$SIBLING_CONCLUSION (attempt $attempt/6); sleeping..."
+            sleep $((attempt * 10))
+          done
+
+          echo "$WORKFLOW_NAME (this trigger): $WORKFLOW_CONCLUSION"
+          echo "$SIBLING_NAME (sibling): status=$SIBLING_STATUS conclusion=$SIBLING_CONCLUSION"
+
+          if [ "$SIBLING_STATUS" != "completed" ]; then
+            echo "Sibling $SIBLING_NAME has not completed yet -- its workflow_run event will retrigger this run."
             echo "proceed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$SIBLING_CONCLUSION" != "success" ]; then
+            echo "Sibling $SIBLING_NAME concluded $SIBLING_CONCLUSION -- release will not publish."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "sibling_failed=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -436,6 +469,7 @@ jobs:
           JOB_STATUS: ${{ job.status }}
           PROCEED: ${{ steps.preflight.outputs.proceed }}
           ALREADY_PUBLISHED: ${{ steps.preflight.outputs.already_published }}
+          SIBLING_FAILED: ${{ steps.preflight.outputs.sibling_failed }}
           PUBLISHED: ${{ steps.publish.outputs.published }}
           TRIGGER_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: |
@@ -451,6 +485,13 @@ jobs:
             # Triggering workflow (Docker/CLI) failed -- release will not publish.
             STATE=failure
             DESC="Upstream ${TRIGGER_CONCLUSION} blocked publish of ${TAG}"
+          elif [ "$PROCEED" != "true" ] && [ "$SIBLING_FAILED" = "true" ]; then
+            # Sibling workflow (the OTHER of Docker/CLI) failed/cancelled --
+            # release will never publish. Mark the commit red now rather
+            # than leaving a yellow dot waiting for a re-trigger that
+            # cannot succeed.
+            STATE=failure
+            DESC="Sibling workflow blocked publish of ${TAG}"
           elif [ "$PROCEED" != "true" ]; then
             # Sibling workflow (Docker / CLI) still pending; its
             # completion will retrigger this workflow and post the

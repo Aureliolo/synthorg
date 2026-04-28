@@ -29,9 +29,13 @@ on:
 
 permissions: {}
 
+# PR runs cancel each other (we don't care about intermediate PR-build
+# artifacts). Main pushes and tag pushes queue serially: cancelling
+# would drop per-SHA `:main` images, skip "Update Release Notes", and
+# leave finalize-release with an upstream conclusion of `cancelled`.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   # renovate: datasource=github-releases depName=aquasecurity/trivy
