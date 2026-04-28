@@ -324,6 +324,12 @@ The `/metrics` endpoint exposes business and infrastructure metrics under the `s
 - `synthorg_agent_identity_version_changes_total{agent_id, change_type}`: counter; emitted on each agent identity change. `change_type` is one of `created`, `updated`, `rolled_back`, `archived`.
 - `synthorg_workflow_execution_seconds{workflow_definition_id, status}`: histogram; wall-clock duration of completed workflow executions. `workflow_definition_id` is the stable workflow **definition** id (bounded by defined workflows); passing an execution id would explode cardinality.
 
+**Client transport**
+
+- `synthorg_client_disconnects_total{transport, reason}`: counter; emitted from SSE / WebSocket / MCP-stdio disconnect handlers. `transport` ∈ {`sse`, `websocket`, `mcp_stdio`}; `reason` ∈ {`client_initiated`, `transport_error`, `cancelled`, `timeout`}. Bounded labels keep cardinality at 12 series.
+
+**Snapshot-backed registry-bound labels.** Five push-time labels (`agent_id`, `agent`, `department`, `workflow_definition_id` on the metrics above) are validated against a process-global `_LabelSnapshot` rebuilt on every async pre-scrape `PrometheusCollector.refresh()`. Sync `record_*` callers consult the snapshot via `validate_<label>` / `is_known_agent_id`; unknown values drop the sample with a `metrics.scrape.failed` WARN log. The snapshot starts in **bootstrap mode** (unseeded, every value passes through) so the very first scrape doesn't suppress every metric; once `update_label_snapshot` runs, fail-closed semantics engage. A `threading.Lock` guards the `seeded` check + frozenset access pair so concurrent readers see a coherent snapshot during rebind. See `src/synthorg/observability/prometheus_labels.py`.
+
 **Cost + tokens**
 
 - `synthorg_provider_tokens_total{provider, model, direction}`: counter; input/output token consumption.

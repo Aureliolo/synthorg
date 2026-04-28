@@ -1,5 +1,7 @@
 """Unit tests for task_engine_apply dispatch and apply functions."""
 
+from unittest.mock import patch
+
 import pytest
 
 from synthorg.core.enums import TaskStatus
@@ -558,3 +560,148 @@ class TestApplyCancel:
         result = await apply_cancel(mutation, persistence, versions, timings)  # type: ignore[arg-type]
         assert result.success is False
         assert result.error_code == "validation"
+
+
+# ── record_task_run wiring ───────────────────────────────────
+
+
+@pytest.mark.unit
+class TestRecordTaskRunWiring:
+    """Verify the task-engine apply path emits metrics on terminal hops."""
+
+    @staticmethod
+    async def _create_and_assign(
+        persistence: FakePersistence,
+        versions: VersionTracker,
+        timings: TaskTimingTracker,
+    ) -> str:
+        create_result = await apply_create(
+            CreateTaskMutation(
+                request_id="req-c",
+                requested_by="alice",
+                task_data=make_create_data(),
+            ),
+            persistence,  # type: ignore[arg-type]
+            versions,
+            timings,
+        )
+        assert create_result.task is not None
+        task_id = create_result.task.id
+        await apply_transition(
+            TransitionTaskMutation(
+                request_id="req-a",
+                requested_by="alice",
+                task_id=task_id,
+                target_status=TaskStatus.ASSIGNED,
+                reason="Assign",
+                overrides={"assigned_to": "bob"},
+            ),
+            persistence,  # type: ignore[arg-type]
+            versions,
+            timings,
+        )
+        return task_id
+
+    async def test_terminal_transition_records_task_run(
+        self,
+        persistence: FakePersistence,
+        versions: VersionTracker,
+        timings: TaskTimingTracker,
+    ) -> None:
+        """FAILED transition from IN_PROGRESS emits ``record_task_run``."""
+        task_id = await self._create_and_assign(persistence, versions, timings)
+        # ASSIGNED -> IN_PROGRESS, then IN_PROGRESS -> FAILED
+        # (IN_PROGRESS -> COMPLETED is not a valid transition;
+        # COMPLETED requires IN_REVIEW first).
+        await apply_transition(
+            TransitionTaskMutation(
+                request_id="req-p",
+                requested_by="alice",
+                task_id=task_id,
+                target_status=TaskStatus.IN_PROGRESS,
+                reason="start",
+            ),
+            persistence,  # type: ignore[arg-type]
+            versions,
+            timings,
+        )
+        with patch(
+            "synthorg.engine.task_engine_apply.record_task_run",
+        ) as mock_record:
+            await apply_transition(
+                TransitionTaskMutation(
+                    request_id="req-f",
+                    requested_by="alice",
+                    task_id=task_id,
+                    target_status=TaskStatus.FAILED,
+                    reason="boom",
+                ),
+                persistence,  # type: ignore[arg-type]
+                versions,
+                timings,
+            )
+        mock_record.assert_called_once()
+        kwargs = mock_record.call_args.kwargs
+        assert kwargs["outcome"] == "failed"
+        assert kwargs["duration_sec"] >= 0.0
+
+    async def test_non_terminal_transition_does_not_record_task_run(
+        self,
+        persistence: FakePersistence,
+        versions: VersionTracker,
+        timings: TaskTimingTracker,
+    ) -> None:
+        """CREATED -> ASSIGNED is not a terminal hop; no metric fires."""
+        create_result = await apply_create(
+            CreateTaskMutation(
+                request_id="req-c",
+                requested_by="alice",
+                task_data=make_create_data(),
+            ),
+            persistence,  # type: ignore[arg-type]
+            versions,
+            timings,
+        )
+        assert create_result.task is not None
+        with patch(
+            "synthorg.engine.task_engine_apply.record_task_run",
+        ) as mock_record:
+            await apply_transition(
+                TransitionTaskMutation(
+                    request_id="req-a",
+                    requested_by="alice",
+                    task_id=create_result.task.id,
+                    target_status=TaskStatus.ASSIGNED,
+                    reason="assign",
+                    overrides={"assigned_to": "bob"},
+                ),
+                persistence,  # type: ignore[arg-type]
+                versions,
+                timings,
+            )
+        mock_record.assert_not_called()
+
+    async def test_apply_cancel_records_task_run(
+        self,
+        persistence: FakePersistence,
+        versions: VersionTracker,
+        timings: TaskTimingTracker,
+    ) -> None:
+        """``apply_cancel`` emits ``record_task_run`` with outcome 'cancelled'."""
+        task_id = await self._create_and_assign(persistence, versions, timings)
+        with patch(
+            "synthorg.engine.task_engine_apply.record_task_run",
+        ) as mock_record:
+            await apply_cancel(
+                CancelTaskMutation(
+                    request_id="req-x",
+                    requested_by="alice",
+                    task_id=task_id,
+                    reason="No longer needed",
+                ),
+                persistence,  # type: ignore[arg-type]
+                versions,
+                timings,
+            )
+        mock_record.assert_called_once()
+        assert mock_record.call_args.kwargs["outcome"] == "cancelled"

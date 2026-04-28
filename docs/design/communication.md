@@ -766,6 +766,13 @@ All three meeting protocols (StructuredPhases, RoundRobin, PositionPapers) guara
 bounded execution via `TokenTracker` phase-boundary checks, hard token budgets with 20%
 synthesis reserve, and turn/round limits. No protocol has unbounded execution paths.
 
+**Meeting state-transition logs.** Per the CLAUDE.md state-transition contract, the
+orchestrator emits `MEETING_COMPLETED` / `MEETING_FAILED` / `MEETING_BUDGET_EXHAUSTED` /
+`MEETING_CANCELLED` at INFO/WARNING/ERROR level **after** the corresponding `MeetingRecord`
+is appended to `self._records`. Logs only fire for transitions that actually landed; if
+record assembly raises (model_validate, memory pressure), the log is skipped so the audit
+trail stays consistent with the in-memory record store.
+
 **Meeting-task feedback loop mitigation**: `MeetingProtocolConfig.auto_create_tasks`
 defaults to `True`. Two guardrails prevent runaway task/meeting cycles:
 `MeetingTypeConfig.min_interval_seconds` enforces per-type cooldown on event-triggered

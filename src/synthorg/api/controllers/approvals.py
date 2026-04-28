@@ -700,17 +700,7 @@ class ApprovalsController(Controller):
 
         auth_user = _resolve_decision(request, item, approval_id)
         now = datetime.now(UTC)
-        # State-transition log fires before the persistence model_copy
-        # so the audit trail captures intent even if the copy or save
-        # raises (decision_reason validators, optimistic-concurrency
-        # collisions, ...).
-        logger.info(
-            APPROVAL_STATUS_TRANSITIONED,
-            approval_id=approval_id,
-            from_status=item.status.value,
-            to_status=ApprovalStatus.APPROVED.value,
-            decided_by=auth_user.username,
-        )
+        previous_status = item.status
         updated = item.model_copy(
             update={
                 "status": ApprovalStatus.APPROVED,
@@ -733,6 +723,18 @@ class ApprovalsController(Controller):
             decided_by=auth_user.username,
             decision_reason=data.comment,
             ws_event=WsEventType.APPROVAL_APPROVED,
+        )
+        # State-transition log fires AFTER persistence succeeds. The
+        # ``decided_by`` field uses the immutable user id (not the
+        # username) so the observability stream stays free of
+        # human-readable identifiers; the persisted decision still
+        # carries username for the operator audit trail.
+        logger.info(
+            APPROVAL_STATUS_TRANSITIONED,
+            approval_id=approval_id,
+            from_status=previous_status.value,
+            to_status=ApprovalStatus.APPROVED.value,
+            decided_by=auth_user.user_id,
         )
 
         return ApiResponse(
@@ -782,13 +784,7 @@ class ApprovalsController(Controller):
 
         auth_user = _resolve_decision(request, item, approval_id)
         now = datetime.now(UTC)
-        logger.info(
-            APPROVAL_STATUS_TRANSITIONED,
-            approval_id=approval_id,
-            from_status=item.status.value,
-            to_status=ApprovalStatus.REJECTED.value,
-            decided_by=auth_user.username,
-        )
+        previous_status = item.status
         updated = item.model_copy(
             update={
                 "status": ApprovalStatus.REJECTED,
@@ -811,6 +807,18 @@ class ApprovalsController(Controller):
             decided_by=auth_user.username,
             decision_reason=data.reason,
             ws_event=WsEventType.APPROVAL_REJECTED,
+        )
+        # State-transition log fires AFTER persistence succeeds;
+        # ``decided_by`` carries the immutable user id so the log
+        # stream stays free of human-readable identifiers (the
+        # persisted decision keeps username for the operator
+        # audit trail).
+        logger.info(
+            APPROVAL_STATUS_TRANSITIONED,
+            approval_id=approval_id,
+            from_status=previous_status.value,
+            to_status=ApprovalStatus.REJECTED.value,
+            decided_by=auth_user.user_id,
         )
 
         return ApiResponse(

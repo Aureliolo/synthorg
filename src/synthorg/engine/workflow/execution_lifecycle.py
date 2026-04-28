@@ -55,10 +55,23 @@ def _execution_duration_seconds(
 ) -> float:
     """Compute end-to-end duration from creation to terminal moment.
 
-    Used for ``synthorg_workflow_execution_seconds`` histogram. Falls
-    back to 0.0 if ``created_at`` is in the future (clock skew).
+    Used for ``synthorg_workflow_execution_seconds`` histogram.
+    Negative deltas (clock skew between nodes, NTP misconfig, VM
+    time jumps) are clamped to 0 AND a WARN is emitted so an
+    operator can spot the underlying clock issue instead of
+    silently absorbing it into the 0-bucket.
     """
-    return max(0.0, (now - execution.created_at).total_seconds())
+    duration = (now - execution.created_at).total_seconds()
+    if duration < 0:
+        logger.warning(
+            WORKFLOW_EXEC_INVALID_STATUS,
+            execution_id=execution.id,
+            reason="clock_skew_detected",
+            skew_seconds=abs(duration),
+            note=("completed_at < created_at; check NTP or multi-node clock sync"),
+        )
+        return 0.0
+    return duration
 
 
 # -- CRUD helpers ----------------------------------------------------------
@@ -127,10 +140,18 @@ async def cancel_execution(
         },
     ):
         now = datetime.now(UTC)
-        # Log the state transition BEFORE persistence so the audit
-        # trail shows intent even if the save fails. Both the
-        # transitioned event (every hop) and the terminal-state
-        # event (CANCELLED specifically) are emitted.
+        cancelled = execution.model_copy(
+            update={
+                "status": WorkflowExecutionStatus.CANCELLED,
+                "updated_at": now,
+                "completed_at": now,
+                "version": execution.version + 1,
+            }
+        )
+        await repo.save(cancelled)
+        # State-transition logs fire AFTER persistence succeeds so
+        # the audit trail only records transitions that actually
+        # happened. A save failure raises, skipping these logs.
         logger.info(
             WORKFLOW_EXEC_STATUS_TRANSITIONED,
             execution_id=execution_id,
@@ -143,15 +164,6 @@ async def cancel_execution(
             execution_id=execution_id,
             cancelled_by=cancelled_by,
         )
-        cancelled = execution.model_copy(
-            update={
-                "status": WorkflowExecutionStatus.CANCELLED,
-                "updated_at": now,
-                "completed_at": now,
-                "version": execution.version + 1,
-            }
-        )
-        await repo.save(cancelled)
         record_workflow_execution(
             workflow_definition_id=execution.definition_id,
             status=WorkflowExecutionStatus.CANCELLED.value,
@@ -180,6 +192,15 @@ async def complete_execution(
         },
     ):
         now = datetime.now(UTC)
+        completed = execution.model_copy(
+            update={
+                "status": WorkflowExecutionStatus.COMPLETED,
+                "updated_at": now,
+                "completed_at": now,
+                "version": execution.version + 1,
+            },
+        )
+        await repo.save(completed)
         logger.info(
             WORKFLOW_EXEC_STATUS_TRANSITIONED,
             execution_id=execution_id,
@@ -191,15 +212,6 @@ async def complete_execution(
             WORKFLOW_EXEC_COMPLETED,
             execution_id=execution_id,
         )
-        completed = execution.model_copy(
-            update={
-                "status": WorkflowExecutionStatus.COMPLETED,
-                "updated_at": now,
-                "completed_at": now,
-                "version": execution.version + 1,
-            },
-        )
-        await repo.save(completed)
         record_workflow_execution(
             workflow_definition_id=execution.definition_id,
             status=WorkflowExecutionStatus.COMPLETED.value,
@@ -230,6 +242,16 @@ async def fail_execution(
         },
     ):
         now = datetime.now(UTC)
+        failed = execution.model_copy(
+            update={
+                "status": WorkflowExecutionStatus.FAILED,
+                "error": error,
+                "updated_at": now,
+                "completed_at": now,
+                "version": execution.version + 1,
+            },
+        )
+        await repo.save(failed)
         logger.info(
             WORKFLOW_EXEC_STATUS_TRANSITIONED,
             execution_id=execution_id,
@@ -243,16 +265,6 @@ async def fail_execution(
             execution_id=execution_id,
             error=error,
         )
-        failed = execution.model_copy(
-            update={
-                "status": WorkflowExecutionStatus.FAILED,
-                "error": error,
-                "updated_at": now,
-                "completed_at": now,
-                "version": execution.version + 1,
-            },
-        )
-        await repo.save(failed)
         record_workflow_execution(
             workflow_definition_id=execution.definition_id,
             status=WorkflowExecutionStatus.FAILED.value,
@@ -350,6 +362,17 @@ async def _handle_task_failed(
     now = datetime.now(UTC)
     verb = "cancelled" if event.new_status is TaskStatus.CANCELLED else "failed"
     error_msg = f"Task {event.task_id} {verb}"
+    failed = updated.model_copy(
+        update={
+            "status": WorkflowExecutionStatus.FAILED,
+            "error": error_msg,
+            "updated_at": now,
+            "completed_at": now,
+        },
+    )
+    await repo.save(failed)
+    # State-transition logs fire AFTER persistence succeeds. Save
+    # raises propagate here, skipping these logs and the metric.
     logger.info(
         WORKFLOW_EXEC_NODE_STATUS_TRANSITIONED,
         execution_id=execution.id,
@@ -378,15 +401,6 @@ async def _handle_task_failed(
         execution_id=execution.id,
         error=error_msg,
     )
-    failed = updated.model_copy(
-        update={
-            "status": WorkflowExecutionStatus.FAILED,
-            "error": error_msg,
-            "updated_at": now,
-            "completed_at": now,
-        },
-    )
-    await repo.save(failed)
     record_workflow_execution(
         workflow_definition_id=execution.definition_id,
         status=WorkflowExecutionStatus.FAILED.value,
@@ -406,23 +420,32 @@ async def _handle_task_completed(
         event.task_id,
         WorkflowNodeExecutionStatus.TASK_COMPLETED,
     )
-    logger.info(
-        WORKFLOW_EXEC_NODE_STATUS_TRANSITIONED,
-        execution_id=execution.id,
-        workflow_definition_id=execution.definition_id,
-        task_id=event.task_id,
-        from_status=previous_node_status.value
-        if previous_node_status is not None
-        else None,
-        to_status=WorkflowNodeExecutionStatus.TASK_COMPLETED.value,
-    )
-    logger.info(
-        WORKFLOW_EXEC_NODE_TASK_COMPLETED,
-        execution_id=execution.id,
-        task_id=event.task_id,
-    )
     if _all_tasks_completed(updated):
         now = datetime.now(UTC)
+        completed = updated.model_copy(
+            update={
+                "status": WorkflowExecutionStatus.COMPLETED,
+                "updated_at": now,
+                "completed_at": now,
+            },
+        )
+        await repo.save(completed)
+        # State-transition logs fire AFTER persistence succeeds.
+        logger.info(
+            WORKFLOW_EXEC_NODE_STATUS_TRANSITIONED,
+            execution_id=execution.id,
+            workflow_definition_id=execution.definition_id,
+            task_id=event.task_id,
+            from_status=previous_node_status.value
+            if previous_node_status is not None
+            else None,
+            to_status=WorkflowNodeExecutionStatus.TASK_COMPLETED.value,
+        )
+        logger.info(
+            WORKFLOW_EXEC_NODE_TASK_COMPLETED,
+            execution_id=execution.id,
+            task_id=event.task_id,
+        )
         logger.info(
             WORKFLOW_EXEC_STATUS_TRANSITIONED,
             execution_id=execution.id,
@@ -434,14 +457,6 @@ async def _handle_task_completed(
             WORKFLOW_EXEC_COMPLETED,
             execution_id=execution.id,
         )
-        completed = updated.model_copy(
-            update={
-                "status": WorkflowExecutionStatus.COMPLETED,
-                "updated_at": now,
-                "completed_at": now,
-            },
-        )
-        await repo.save(completed)
         record_workflow_execution(
             workflow_definition_id=execution.definition_id,
             status=WorkflowExecutionStatus.COMPLETED.value,
@@ -449,6 +464,23 @@ async def _handle_task_completed(
         )
     else:
         await repo.save(updated)
+        # Node-status log fires AFTER persistence; the workflow
+        # itself stays RUNNING so no terminal log is emitted here.
+        logger.info(
+            WORKFLOW_EXEC_NODE_STATUS_TRANSITIONED,
+            execution_id=execution.id,
+            workflow_definition_id=execution.definition_id,
+            task_id=event.task_id,
+            from_status=previous_node_status.value
+            if previous_node_status is not None
+            else None,
+            to_status=WorkflowNodeExecutionStatus.TASK_COMPLETED.value,
+        )
+        logger.info(
+            WORKFLOW_EXEC_NODE_TASK_COMPLETED,
+            execution_id=execution.id,
+            task_id=event.task_id,
+        )
 
 
 async def _load_running(

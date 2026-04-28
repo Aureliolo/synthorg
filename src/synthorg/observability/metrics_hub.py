@@ -97,6 +97,17 @@ def _safe_record(
                 # would mask a programming bug; let it propagate
                 # so the caller sees the wiring mistake.
                 raise
+            except ValueError:
+                # ValueError from ``record_*`` means a label-validation
+                # failure: a bounded vocabulary (``VALID_*``) rejected
+                # the value, or a numeric guard (``require_non_negative``,
+                # ``require_finite``) rejected an invalid input. Both
+                # are programming bugs in the caller, NOT transient
+                # runtime glitches. Swallowing them would silently
+                # drop metrics every time the caller is broken; let
+                # the exception propagate so the bug surfaces in
+                # tests and traces.
+                raise
             except Exception as exc:
                 logger.warning(
                     event,

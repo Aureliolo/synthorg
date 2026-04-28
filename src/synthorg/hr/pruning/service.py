@@ -339,14 +339,6 @@ class PruningService:
         )
         await self._approval_store.add(approval)
 
-        logger.info(
-            PRUNING_REQUEST_STATUS_TRANSITIONED,
-            request_id=request_id,
-            agent_id=agent_id,
-            approval_id=str(approval_id),
-            from_status=None,
-            to_status=ApprovalStatus.PENDING.value,
-        )
         request = PruningRequest(
             id=request_id,
             agent_id=NotBlankStr(agent_id),
@@ -359,6 +351,18 @@ class PruningService:
         self._pending_requests[agent_id] = request
         pending_agent_ids.add(agent_id)
 
+        # State-transition log fires AFTER the request is built and
+        # registered. ``model_validator`` raises (deep-copy,
+        # type narrowing) skip these logs so the audit trail only
+        # records transitions that actually landed.
+        logger.info(
+            PRUNING_REQUEST_STATUS_TRANSITIONED,
+            request_id=request_id,
+            agent_id=agent_id,
+            approval_id=str(approval_id),
+            from_status=None,
+            to_status=ApprovalStatus.PENDING.value,
+        )
         logger.info(
             HR_PRUNING_APPROVAL_SUBMITTED,
             agent_id=agent_id,

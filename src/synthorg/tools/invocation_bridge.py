@@ -30,10 +30,20 @@ async def record_tool_invocation(
 ) -> None:
     """Record a tool invocation for activity tracking and Prometheus.
 
-    Silently degrades on Activity-DB failure so tool execution is
-    never affected. Always emits the Prometheus counter / histogram
-    so duration is observable even when the activity tracker is
-    disabled.
+    Order-of-record contract:
+
+    1. Write the activity record first. If the activity DB is
+       unavailable, log a WARN at ``TOOL_INVOCATION_RECORD_FAILED``
+       and continue: the Prometheus metric still emits so duration
+       histograms aren't blind to a tracker outage.
+    2. Then increment the Prometheus counter / histogram.
+
+    The previous ordering (Prometheus first, activity DB second) was
+    asymmetric: a tracker failure left a phantom metric sample with
+    no audit row to correlate. Emitting the metric AFTER the
+    activity-DB attempt means a high metric counter paired with a
+    visible WARN about activity-DB failures is the unambiguous
+    signature of an outage; both succeed-or-both-fail is the goal.
 
     Args:
         invoker: The invoker instance (provides agent/task context).
@@ -44,32 +54,32 @@ async def record_tool_invocation(
     """
     completed_at = datetime.now(UTC)
     duration_sec = max(0.0, (completed_at - started_at).total_seconds())
+
+    tracker = invoker._invocation_tracker  # noqa: SLF001
+    agent_id = invoker._agent_id  # noqa: SLF001
+    if tracker is not None and agent_id is not None:
+        try:
+            record = ToolInvocationRecord(
+                agent_id=agent_id,
+                task_id=invoker._task_id,  # noqa: SLF001
+                tool_name=tool_call.name,
+                is_success=not result.is_error,
+                timestamp=completed_at,
+                error_message=(result.content[:2048] if result.is_error else None),
+            )
+            await tracker.record(record)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                TOOL_INVOCATION_RECORD_FAILED,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                exc_info=True,
+            )
+
     record_tool_invocation_metric(
         tool_name=tool_call.name,
         outcome="error" if result.is_error else "success",
         duration_sec=duration_sec,
     )
-
-    tracker = invoker._invocation_tracker  # noqa: SLF001
-    agent_id = invoker._agent_id  # noqa: SLF001
-    if tracker is None or agent_id is None:
-        return
-    try:
-        record = ToolInvocationRecord(
-            agent_id=agent_id,
-            task_id=invoker._task_id,  # noqa: SLF001
-            tool_name=tool_call.name,
-            is_success=not result.is_error,
-            timestamp=completed_at,
-            error_message=(result.content[:2048] if result.is_error else None),
-        )
-        await tracker.record(record)
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
-        logger.warning(
-            TOOL_INVOCATION_RECORD_FAILED,
-            tool_call_id=tool_call.id,
-            tool_name=tool_call.name,
-            exc_info=True,
-        )

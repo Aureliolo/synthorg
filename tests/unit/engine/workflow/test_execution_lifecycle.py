@@ -702,3 +702,112 @@ class TestHandleTaskStateChanged:
         stored = await exec_repo.get(exe.id)
         assert stored is not None
         assert stored.status is WorkflowExecutionStatus.COMPLETED
+
+
+# ── record_workflow_execution + state-transition log wiring ────────
+
+
+class TestWorkflowMetricsAndLogs:
+    """Verify lifecycle terminal handlers emit metrics + transition logs."""
+
+    @pytest.mark.unit
+    async def test_complete_emits_metric_and_status_transitioned_log(
+        self,
+        service: WorkflowExecutionService,
+        def_repo: FakeDefinitionRepo,
+    ) -> None:
+        from unittest.mock import patch
+
+        import structlog.testing
+
+        from synthorg.observability.events.workflow_execution import (
+            WORKFLOW_EXEC_STATUS_TRANSITIONED,
+        )
+
+        exe = await _activate_simple(service, def_repo)
+        with (
+            structlog.testing.capture_logs() as logs,
+            patch(
+                "synthorg.engine.workflow.execution_lifecycle"
+                ".record_workflow_execution",
+            ) as mock_metric,
+        ):
+            await service.complete_execution(exe.id)
+
+        mock_metric.assert_called_once()
+        kwargs = mock_metric.call_args.kwargs
+        assert kwargs["workflow_definition_id"] == exe.definition_id
+        assert kwargs["status"] == "completed"
+        assert kwargs["duration_seconds"] >= 0.0
+
+        assert any(
+            rec.get("event") == WORKFLOW_EXEC_STATUS_TRANSITIONED
+            and rec.get("from_status") == "running"
+            and rec.get("to_status") == "completed"
+            for rec in logs
+        )
+
+    @pytest.mark.unit
+    async def test_fail_emits_metric_and_status_transitioned_log(
+        self,
+        service: WorkflowExecutionService,
+        def_repo: FakeDefinitionRepo,
+    ) -> None:
+        from unittest.mock import patch
+
+        import structlog.testing
+
+        from synthorg.observability.events.workflow_execution import (
+            WORKFLOW_EXEC_STATUS_TRANSITIONED,
+        )
+
+        exe = await _activate_simple(service, def_repo)
+        with (
+            structlog.testing.capture_logs() as logs,
+            patch(
+                "synthorg.engine.workflow.execution_lifecycle"
+                ".record_workflow_execution",
+            ) as mock_metric,
+        ):
+            await service.fail_execution(exe.id, error="boom")
+
+        mock_metric.assert_called_once()
+        assert mock_metric.call_args.kwargs["status"] == "failed"
+        assert any(
+            rec.get("event") == WORKFLOW_EXEC_STATUS_TRANSITIONED
+            and rec.get("to_status") == "failed"
+            and rec.get("error") == "boom"
+            for rec in logs
+        )
+
+    @pytest.mark.unit
+    async def test_cancel_emits_metric_and_status_transitioned_log(
+        self,
+        service: WorkflowExecutionService,
+        def_repo: FakeDefinitionRepo,
+    ) -> None:
+        from unittest.mock import patch
+
+        import structlog.testing
+
+        from synthorg.observability.events.workflow_execution import (
+            WORKFLOW_EXEC_STATUS_TRANSITIONED,
+        )
+
+        exe = await _activate_simple(service, def_repo)
+        with (
+            structlog.testing.capture_logs() as logs,
+            patch(
+                "synthorg.engine.workflow.execution_lifecycle"
+                ".record_workflow_execution",
+            ) as mock_metric,
+        ):
+            await service.cancel_execution(exe.id, cancelled_by="alice")
+
+        mock_metric.assert_called_once()
+        assert mock_metric.call_args.kwargs["status"] == "cancelled"
+        assert any(
+            rec.get("event") == WORKFLOW_EXEC_STATUS_TRANSITIONED
+            and rec.get("to_status") == "cancelled"
+            for rec in logs
+        )

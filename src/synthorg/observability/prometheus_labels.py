@@ -8,6 +8,7 @@ stays below the 800-line limit mandated by ``CLAUDE.md``.
 """
 
 import math
+import threading
 from dataclasses import dataclass
 from typing import Final, get_args
 
@@ -188,6 +189,11 @@ VALID_DISCONNECT_REASONS: Final[frozenset[str]] = frozenset(
 # any ``update_label_snapshot()`` call swaps in a real snapshot, the
 # fail-closed semantics engage: unknown values raise ``ValueError``
 # (logged WARN once via :func:`require_label`).
+#
+# Ephemeral label values that never enter the registries (e.g. a test
+# agent created and immediately discarded between scrapes) are
+# permanently rejected after the snapshot seeds. This is intentional:
+# cardinality safety beats capturing every transient value.
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,6 +216,13 @@ class _LabelSnapshot:
 
 _INITIAL_SNAPSHOT: Final[_LabelSnapshot] = _LabelSnapshot()
 _snapshot: _LabelSnapshot = _INITIAL_SNAPSHOT
+# Guards every read+write of ``_snapshot`` so the
+# ``seeded`` check + frozenset lookup pair in ``validate_*`` /
+# ``is_known_agent_id`` is atomic against a concurrent
+# ``update_label_snapshot`` rebind. Reads hold the lock briefly to
+# capture a single coherent reference; the actual ``in`` check on the
+# frozen set runs lock-free against that captured reference.
+_snapshot_lock: Final[threading.Lock] = threading.Lock()
 
 
 def update_label_snapshot(snapshot: _LabelSnapshot) -> None:
@@ -217,18 +230,27 @@ def update_label_snapshot(snapshot: _LabelSnapshot) -> None:
 
     Intended caller: :meth:`PrometheusCollector.refresh` once it has
     queried the registries for live agent ids, workflow definition
-    ids, and departments. The replacement is atomic from the
-    perspective of sync ``validate_*`` callers because Python
-    rebinds the module-global in a single bytecode op.
+    ids, and departments. Held briefly under :data:`_snapshot_lock`
+    so concurrent readers see a coherent ``(seeded, frozenset)``
+    pair rather than the new ``seeded=True`` paired with the old
+    empty set (or vice versa) during the rebind.
     """
     global _snapshot  # noqa: PLW0603
-    _snapshot = snapshot
+    with _snapshot_lock:
+        _snapshot = snapshot
 
 
 def _reset_label_snapshot_for_tests() -> None:
     """Reset to bootstrap mode. Only call from test fixtures."""
     global _snapshot  # noqa: PLW0603
-    _snapshot = _INITIAL_SNAPSHOT
+    with _snapshot_lock:
+        _snapshot = _INITIAL_SNAPSHOT
+
+
+def _read_snapshot() -> _LabelSnapshot:
+    """Capture a coherent snapshot reference under the rebind lock."""
+    with _snapshot_lock:
+        return _snapshot
 
 
 def validate_agent_id(value: str) -> None:
@@ -238,23 +260,26 @@ def validate_agent_id(value: str) -> None:
     :func:`update_label_snapshot` call yet) so the very first scrape
     doesn't suppress every push-time metric.
     """
-    if not _snapshot.seeded:
+    snapshot = _read_snapshot()
+    if not snapshot.seeded:
         return
-    require_label("agent_id", value, _snapshot.agent_ids)
+    require_label("agent_id", value, snapshot.agent_ids)
 
 
 def validate_workflow_definition_id(value: str) -> None:
     """Raise ``ValueError`` if *value* is not a known workflow definition."""
-    if not _snapshot.seeded:
+    snapshot = _read_snapshot()
+    if not snapshot.seeded:
         return
-    require_label("workflow_definition_id", value, _snapshot.workflow_definition_ids)
+    require_label("workflow_definition_id", value, snapshot.workflow_definition_ids)
 
 
 def validate_department(value: str) -> None:
     """Raise ``ValueError`` if *value* is not a known department."""
-    if not _snapshot.seeded:
+    snapshot = _read_snapshot()
+    if not snapshot.seeded:
         return
-    require_label("department", value, _snapshot.departments)
+    require_label("department", value, snapshot.departments)
 
 
 def is_known_agent_id(value: str) -> bool:
@@ -265,6 +290,7 @@ def is_known_agent_id(value: str) -> bool:
     for orphan ``task.assigned_to`` references without aborting the
     full refresh.
     """
-    if not _snapshot.seeded:
+    snapshot = _read_snapshot()
+    if not snapshot.seeded:
         return True
-    return value in _snapshot.agent_ids
+    return value in snapshot.agent_ids

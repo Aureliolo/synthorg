@@ -7,8 +7,12 @@ lifecycle, queue management, and the public API.
 """
 
 from datetime import UTC, datetime
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 from pydantic import ValidationError as PydanticValidationError
 
@@ -37,11 +41,15 @@ _tracer = get_tracer(__name__)
 # Mapping from terminal TaskStatus values to the bounded outcome
 # vocabulary expected by ``synthorg_task_runs_total`` /
 # ``synthorg_task_duration_seconds`` (``VALID_TASK_OUTCOMES``).
-_TERMINAL_STATUS_OUTCOME: dict[TaskStatus, str] = {
-    TaskStatus.COMPLETED: "succeeded",
-    TaskStatus.FAILED: "failed",
-    TaskStatus.CANCELLED: "cancelled",
-}
+# Wrapped in MappingProxyType so a misbehaving import-site cannot
+# mutate the registry at runtime.
+_TERMINAL_STATUS_OUTCOME: Mapping[TaskStatus, str] = MappingProxyType(
+    {
+        TaskStatus.COMPLETED: "succeeded",
+        TaskStatus.FAILED: "failed",
+        TaskStatus.CANCELLED: "cancelled",
+    },
+)
 
 if TYPE_CHECKING:
     from synthorg.engine.task_engine_version import (
@@ -374,6 +382,20 @@ async def apply_transition(
                 (datetime.now(UTC) - created_at).total_seconds(),
             )
         else:
+            # In-memory timing tracker resets on process restart, so
+            # tasks that straddled a restart have no creation entry.
+            # Emit a WARN so the 0.0-duration histogram sample is
+            # searchable rather than silently distorting p50/p95.
+            logger.warning(
+                TASK_ENGINE_MUTATION_APPLIED,
+                mutation_type="transition",
+                task_id=mutation.task_id,
+                reason="creation_timestamp_missing",
+                note=(
+                    "0-duration sample emitted; task likely created"
+                    " before process restart"
+                ),
+            )
             duration_sec = 0.0
         record_task_run(
             outcome=_TERMINAL_STATUS_OUTCOME[mutation.target_status],
@@ -494,6 +516,18 @@ async def apply_cancel(
             (datetime.now(UTC) - created_at).total_seconds(),
         )
     else:
+        # In-memory timing tracker resets on process restart; task
+        # straddled the restart. Emit a WARN so the 0-duration
+        # sample is searchable rather than silently distorting p95.
+        logger.warning(
+            TASK_ENGINE_MUTATION_APPLIED,
+            mutation_type="cancel",
+            task_id=mutation.task_id,
+            reason="creation_timestamp_missing",
+            note=(
+                "0-duration sample emitted; task likely created before process restart"
+            ),
+        )
         duration_sec = 0.0
     record_task_run(outcome="cancelled", duration_sec=duration_sec)
 

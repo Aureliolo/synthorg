@@ -135,7 +135,10 @@ class MCPClient:
                 raise
             except Exception as exc:
                 await stack.aclose()
-                logger.warning(
+                # ERROR (not WARNING) so log aggregators retain the
+                # event for ops triage; secrets are scrubbed via
+                # safe_error_description per SEC-1 (#1601).
+                logger.error(  # noqa: TRY400 -- exc_info would re-bind str(exc), bypassing SEC-1 scrubbing
                     MCP_CLIENT_CONNECTION_FAILED,
                     server=self._config.name,
                     error_type=type(exc).__name__,
@@ -223,7 +226,7 @@ class MCPClient:
             try:
                 result = await session.list_tools()
             except Exception as exc:
-                logger.warning(
+                logger.error(  # noqa: TRY400 -- exc_info would re-bind str(exc), bypassing SEC-1 scrubbing
                     MCP_DISCOVERY_FAILED,
                     server=self._config.name,
                     error_type=type(exc).__name__,
@@ -304,7 +307,7 @@ class MCPClient:
                     },
                 ) from exc
             except Exception as exc:
-                logger.warning(
+                logger.error(  # noqa: TRY400 -- exc_info would re-bind str(exc), bypassing SEC-1 scrubbing
                     MCP_INVOKE_FAILED,
                     server=self._config.name,
                     tool=tool_name,

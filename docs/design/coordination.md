@@ -48,6 +48,8 @@ Strategies that only have an error string (`FailAndReassignStrategy`, `Checkpoin
 
 **Transition-reason wire format.** After a recovery, the post-execution pipeline embeds `failure_category` (and a sanitized summary of `criteria_failed` when present) into the task-status transition reason as `"Post-recovery status: <status> (failure_category=<value>[, unmet_criteria=<summary>])"`.  The `(failure_category=<value>)` suffix is a hook for downstream consumers (e.g. routing / reassignment components) to read category metadata from status history without re-parsing the raw error message.  The key name (`failure_category`) and value format are a stable contract: future consumers will depend on it, so changes require a coordinated rollout.
 
+**State-transition log timing.** Per CLAUDE.md, every status enum hop emits an INFO-level `*_STATUS_TRANSITIONED` event (`WORKFLOW_EXEC_STATUS_TRANSITIONED`, `WORKFLOW_EXEC_NODE_STATUS_TRANSITIONED`) **after** persistence succeeds. A save failure raises before the log fires, so the audit trail only ever records transitions that actually landed; this avoids the "phantom transition" failure mode where a `VersionConflictError` would otherwise leave a log entry showing a hop that the database never accepted. Subsystems that also emit a terminal-state event (`WORKFLOW_EXEC_COMPLETED`, `WORKFLOW_EXEC_FAILED`, `WORKFLOW_EXEC_CANCELLED`) keep those for final-hop summaries; the per-hop transition log is the canonical audit trail.
+
 ### Recovery Strategies
 
 === "Strategy 1: Fail-and-Reassign"

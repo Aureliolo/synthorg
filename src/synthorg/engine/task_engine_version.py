@@ -112,12 +112,23 @@ class TaskTimingTracker:
     ``apply_cancel`` to compute duration for
     ``synthorg_task_runs_total`` and ``synthorg_task_duration_seconds``.
 
-    **Limitation:** like version tracking, timing state is volatile
-    and resets on process restart. A task created before the restart
+    **Immutability exemption (CLAUDE.md ``# lint-allow: immutability``):**
+    the underlying dict is mutated in place rather than wrapped in
+    ``MappingProxyType``. The tracker is volatile single-writer state
+    owned by the TaskEngine processing loop; it is never exposed to
+    callers and resets on every process restart, so the read-only
+    enforcement that ``MappingProxyType`` exists to provide is moot.
+    Read accessors (:meth:`get_creation`) return immutable
+    ``datetime`` values, not internal references, so callers cannot
+    mutate the dict via the public API.
+
+    **Volatility limitation:** like version tracking, timing state
+    resets on process restart. A task created before the restart
     that transitions to a terminal state after the restart will have
-    no recorded creation time; the engine emits a duration of 0.0 in
-    that case. Persisting creation timestamps alongside the task is a
-    future enhancement that requires a schema migration.
+    no recorded creation time; the engine emits a duration of 0.0
+    plus a WARN log so the gap is searchable. Persisting creation
+    timestamps alongside the task is a future enhancement that
+    requires a schema migration.
 
     Single-writer, not thread-safe.
     """
@@ -126,7 +137,29 @@ class TaskTimingTracker:
         self._created_at: dict[str, datetime] = {}
 
     def record_creation(self, task_id: str, created_at: datetime) -> None:
-        """Stamp *task_id* with its creation time (overwrites)."""
+        """Stamp *task_id* with its creation time (overwrites).
+
+        Args:
+            task_id: Task identifier.
+            created_at: Creation timestamp; must be timezone-aware
+                and in UTC. Naive datetimes (or anything other than
+                UTC) raise ``ValueError`` to prevent silent metric
+                corruption from a caller that forgot ``tzinfo=UTC``.
+
+        Raises:
+            ValueError: If *created_at* is naive or not in UTC.
+        """
+        offset = (
+            created_at.tzinfo.utcoffset(created_at)
+            if created_at.tzinfo is not None
+            else None
+        )
+        if offset is None or offset.total_seconds() != 0:
+            msg = (
+                f"TaskTimingTracker.record_creation requires a UTC datetime;"
+                f" got {created_at!r} (tzinfo={created_at.tzinfo!r})"
+            )
+            raise ValueError(msg)
         self._created_at[task_id] = created_at
 
     def get_creation(self, task_id: str) -> datetime | None:
