@@ -375,7 +375,7 @@ suppresses validated false positives and informational findings:
 | Debug Error Messages | 10023 | Ignore | Same trigger and rationale as 90022. |
 | Cookie No HttpOnly Flag | 10010 | Ignore | The `csrf_token` cookie is intentionally configured non-HttpOnly (`httponly=False` in `src/synthorg/api/auth/cookies.py`) as part of the double-submit CSRF pattern: the frontend reads the cookie and echoes its value back in the `X-CSRF-Token` header. Suppressing the rule prevents recurring noise on this intentional configuration. The auth/session cookie itself is HttpOnly. |
 | Authentication Request Identified | 10111 | Ignore | Under the current ZAP ruleset, this rule labels endpoints carrying a `password` field for the scanner's own auth-flow inference; not a security finding. |
-| Sensitive Information in URL | 10024 | Ignore | Under the current ZAP ruleset matching behavior, this rule fires when an URL contains substrings such as `session`. In Synthorg, `session_id` query parameters reference domain runtime/agent session resources (a workflow ID), not HTTP/auth session tokens; auth state is carried in HttpOnly cookies. Behaviour can vary across ZAP versions, so revisit on upgrade. |
+| Sensitive Information in URL | 10024 | Ignore | Under the current ZAP ruleset matching behavior, this rule fires when a URL contains substrings such as `session`. In Synthorg, `session_id` query parameters reference domain runtime/agent session resources (a workflow ID), not HTTP/auth session tokens; auth state is carried in HttpOnly cookies. Behaviour can vary across ZAP versions, so revisit on upgrade. |
 
 The rules file is reviewed when ZAP or the API surface changes.
 **When upgrading the ZAP action, the bundled ZAP version, or the

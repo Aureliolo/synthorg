@@ -152,8 +152,15 @@ Each handler:
 2. Returns `_build_response(...)` so the response carries the full RFC
    9457 envelope (or bare `application/problem+json` body when the
    client asks for it).
-3. Scrubs the upstream message on 5xx and passes the controller-authored
-   message through on 4xx.
+3. Scrubs the upstream message on 5xx.  4xx behaviour varies: domain
+   handlers like `handle_backup_error` and `handle_api_error` pass a
+   user-safe exception message through, while several Litestar-side
+   handlers intentionally return fixed public messages
+   (`handle_record_not_found` -> `"Resource not found"`,
+   `handle_not_authorized` -> `"Authentication required"`,
+   `handle_permission_denied` -> `"Forbidden"`,
+   `handle_not_found` -> `"Not found"`).  When in doubt, mirror the
+   nearest existing handler in `exception_handlers.py`.
 
 When introducing a new domain error family:
 
