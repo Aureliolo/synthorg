@@ -8,6 +8,7 @@ stays below the 800-line limit mandated by ``CLAUDE.md``.
 """
 
 import math
+from dataclasses import dataclass
 from typing import Final, get_args
 
 from synthorg.core.error_taxonomy import ErrorCategory
@@ -20,6 +21,8 @@ __all__ = [
     "VALID_AUDIT_APPEND_STATUSES",
     "VALID_CACHE_NAMES",
     "VALID_CACHE_OUTCOMES",
+    "VALID_DISCONNECT_REASONS",
+    "VALID_DISCONNECT_TRANSPORTS",
     "VALID_IDENTITY_CHANGE_TYPES",
     "VALID_OTLP_KINDS",
     "VALID_OTLP_OUTCOMES",
@@ -30,10 +33,17 @@ __all__ = [
     "VALID_TOOL_OUTCOMES",
     "VALID_VERDICTS",
     "VALID_WORKFLOW_EXECUTION_STATUSES",
+    "_LabelSnapshot",
+    "_reset_label_snapshot_for_tests",
+    "is_known_agent_id",
     "require_finite",
     "require_label",
     "require_non_negative",
     "status_class",
+    "update_label_snapshot",
+    "validate_agent_id",
+    "validate_department",
+    "validate_workflow_definition_id",
 ]
 
 logger = get_logger(__name__)
@@ -148,3 +158,113 @@ def status_class(status_code: int) -> str:
     if 100 <= status_code < 600:  # noqa: PLR2004
         return f"{status_code // 100}xx"
     return "invalid"
+
+
+# -- Client disconnect ------------------------------------------------------
+# Bounded transport / reason vocab for ``synthorg_client_disconnects_total``.
+# Single counter with two labels (max 12 series) is preferred over per-
+# transport counters: one alert rule, one panel, one query path.
+VALID_DISCONNECT_TRANSPORTS: Final[frozenset[str]] = frozenset(
+    {"sse", "websocket", "mcp_stdio"}
+)
+VALID_DISCONNECT_REASONS: Final[frozenset[str]] = frozenset(
+    {"client_initiated", "transport_error", "cancelled", "timeout"}
+)
+
+
+# -- Snapshot-backed registry-bound label validation -----------------------
+# Push-time ``record_*`` methods on the Prometheus collector are
+# synchronous, but the runtime registries that own the truth about
+# valid agent / workflow / department label values are async-only and
+# lock-guarded. Awaiting from a sync metric path is impossible, so we
+# keep a process-global ``_LabelSnapshot`` of the relevant frozensets
+# and refresh it from the existing async ``PrometheusCollector.refresh()``
+# pre-scrape coroutine. Sync record sites consult this snapshot via the
+# ``validate_<label>`` helpers below.
+#
+# Until ``refresh()`` runs for the first time, the snapshot is in
+# ``seeded=False`` bootstrap mode and every value is accepted -- this
+# keeps the very first scrape from nuking every push-time metric. Once
+# any ``update_label_snapshot()`` call swaps in a real snapshot, the
+# fail-closed semantics engage: unknown values raise ``ValueError``
+# (logged WARN once via :func:`require_label`).
+
+
+@dataclass(frozen=True, slots=True)
+class _LabelSnapshot:
+    """Immutable snapshot of bounded values for high-cardinality labels.
+
+    The Prometheus collector's async ``refresh()`` rebuilds this on
+    every scrape and hands the new snapshot to
+    :func:`update_label_snapshot`. Lag between scrapes (~15s) is
+    acceptable: a brand-new agent's first metric may be dropped with a
+    WARN, but the next scrape rotates the snapshot and the sample
+    lands.
+    """
+
+    agent_ids: frozenset[str] = frozenset()
+    workflow_definition_ids: frozenset[str] = frozenset()
+    departments: frozenset[str] = frozenset()
+    seeded: bool = False
+
+
+_INITIAL_SNAPSHOT: Final[_LabelSnapshot] = _LabelSnapshot()
+_snapshot: _LabelSnapshot = _INITIAL_SNAPSHOT
+
+
+def update_label_snapshot(snapshot: _LabelSnapshot) -> None:
+    """Replace the active label snapshot.
+
+    Intended caller: :meth:`PrometheusCollector.refresh` once it has
+    queried the registries for live agent ids, workflow definition
+    ids, and departments. The replacement is atomic from the
+    perspective of sync ``validate_*`` callers because Python
+    rebinds the module-global in a single bytecode op.
+    """
+    global _snapshot  # noqa: PLW0603
+    _snapshot = snapshot
+
+
+def _reset_label_snapshot_for_tests() -> None:
+    """Reset to bootstrap mode. Only call from test fixtures."""
+    global _snapshot  # noqa: PLW0603
+    _snapshot = _INITIAL_SNAPSHOT
+
+
+def validate_agent_id(value: str) -> None:
+    """Raise ``ValueError`` if *value* is not a known agent id.
+
+    No-op while the snapshot is in bootstrap mode (no
+    :func:`update_label_snapshot` call yet) so the very first scrape
+    doesn't suppress every push-time metric.
+    """
+    if not _snapshot.seeded:
+        return
+    require_label("agent_id", value, _snapshot.agent_ids)
+
+
+def validate_workflow_definition_id(value: str) -> None:
+    """Raise ``ValueError`` if *value* is not a known workflow definition."""
+    if not _snapshot.seeded:
+        return
+    require_label("workflow_definition_id", value, _snapshot.workflow_definition_ids)
+
+
+def validate_department(value: str) -> None:
+    """Raise ``ValueError`` if *value* is not a known department."""
+    if not _snapshot.seeded:
+        return
+    require_label("department", value, _snapshot.departments)
+
+
+def is_known_agent_id(value: str) -> bool:
+    """Return ``True`` if *value* is a known agent id or snapshot is unseeded.
+
+    Non-raising counterpart to :func:`validate_agent_id`. Used by the
+    async ``refresh()`` path's task-metric loop to drop gauge updates
+    for orphan ``task.assigned_to`` references without aborting the
+    full refresh.
+    """
+    if not _snapshot.seeded:
+        return True
+    return value in _snapshot.agent_ids

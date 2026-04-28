@@ -19,7 +19,7 @@ from synthorg.engine.task_engine_models import (
     TransitionTaskMutation,
     UpdateTaskMutation,
 )
-from synthorg.engine.task_engine_version import VersionTracker
+from synthorg.engine.task_engine_version import TaskTimingTracker, VersionTracker
 from tests.unit.engine.task_engine_helpers import FakePersistence, make_create_data
 
 
@@ -33,6 +33,11 @@ def versions() -> VersionTracker:
     return VersionTracker()
 
 
+@pytest.fixture
+def timings() -> TaskTimingTracker:
+    return TaskTimingTracker()
+
+
 # ── Dispatch routing ─────────────────────────────────────────
 
 
@@ -44,13 +49,14 @@ class TestDispatch:
         self,
         persistence: FakePersistence,
         versions: VersionTracker,
+        timings: TaskTimingTracker,
     ) -> None:
         mutation = CreateTaskMutation(
             request_id="req-1",
             requested_by="alice",
             task_data=make_create_data(),
         )
-        result = await dispatch(mutation, persistence, versions)  # type: ignore[arg-type]
+        result = await dispatch(mutation, persistence, versions, timings)  # type: ignore[arg-type]
         assert result.success is True
         assert result.task is not None
 
@@ -58,6 +64,7 @@ class TestDispatch:
         self,
         persistence: FakePersistence,
         versions: VersionTracker,
+        timings: TaskTimingTracker,
     ) -> None:
         """Unknown mutation type raises TypeError."""
 
@@ -67,7 +74,7 @@ class TestDispatch:
             requested_by = "alice"
 
         with pytest.raises(TypeError, match="Unknown mutation type"):
-            await dispatch(FakeMutation(), persistence, versions)  # type: ignore[arg-type]
+            await dispatch(FakeMutation(), persistence, versions, timings)  # type: ignore[arg-type]
 
 
 # ── apply_create ─────────────────────────────────────────────
@@ -81,13 +88,14 @@ class TestApplyCreate:
         self,
         persistence: FakePersistence,
         versions: VersionTracker,
+        timings: TaskTimingTracker,
     ) -> None:
         mutation = CreateTaskMutation(
             request_id="req-1",
             requested_by="alice",
             task_data=make_create_data(title="New Task"),
         )
-        result = await apply_create(mutation, persistence, versions)  # type: ignore[arg-type]
+        result = await apply_create(mutation, persistence, versions, timings)  # type: ignore[arg-type]
         assert result.success is True
         assert result.task is not None
         assert result.task.title == "New Task"
@@ -98,6 +106,7 @@ class TestApplyCreate:
         self,
         persistence: FakePersistence,
         versions: VersionTracker,
+        timings: TaskTimingTracker,
     ) -> None:
         """Invalid task data returns failure with validation error code.
 
@@ -109,7 +118,7 @@ class TestApplyCreate:
             requested_by="alice",
             task_data=make_create_data(assigned_to="bob"),
         )
-        result = await apply_create(mutation, persistence, versions)  # type: ignore[arg-type]
+        result = await apply_create(mutation, persistence, versions, timings)  # type: ignore[arg-type]
         assert result.success is False
         assert result.error_code == "validation"
         assert "Invalid task data" in (result.error or "")
@@ -118,13 +127,14 @@ class TestApplyCreate:
         self,
         persistence: FakePersistence,
         versions: VersionTracker,
+        timings: TaskTimingTracker,
     ) -> None:
         mutation = CreateTaskMutation(
             request_id="req-1",
             requested_by="alice",
             task_data=make_create_data(),
         )
-        result = await apply_create(mutation, persistence, versions)  # type: ignore[arg-type]
+        result = await apply_create(mutation, persistence, versions, timings)  # type: ignore[arg-type]
         assert result.task is not None
         stored = await persistence.tasks.get(result.task.id)
         assert stored is not None
@@ -147,7 +157,12 @@ class TestApplyUpdate:
             requested_by="alice",
             task_data=make_create_data(),
         )
-        return await apply_create(mutation, persistence, versions)  # type: ignore[arg-type]
+        return await apply_create(
+            mutation,
+            persistence,  # type: ignore[arg-type]
+            versions,
+            TaskTimingTracker(),
+        )
 
     async def test_update_fields(
         self,
@@ -265,20 +280,22 @@ class TestApplyTransition:
         self,
         persistence: FakePersistence,
         versions: VersionTracker,
+        timings: TaskTimingTracker,
     ) -> TaskMutationResult:
         mutation = CreateTaskMutation(
             request_id="req-c",
             requested_by="alice",
             task_data=make_create_data(),
         )
-        return await apply_create(mutation, persistence, versions)  # type: ignore[arg-type]
+        return await apply_create(mutation, persistence, versions, timings)  # type: ignore[arg-type]
 
     async def test_valid_transition(
         self,
         persistence: FakePersistence,
         versions: VersionTracker,
+        timings: TaskTimingTracker,
     ) -> None:
-        created = await self._create_task(persistence, versions)
+        created = await self._create_task(persistence, versions, timings)
         assert created.task is not None
         mutation = TransitionTaskMutation(
             request_id="req-1",
@@ -288,7 +305,7 @@ class TestApplyTransition:
             reason="Assigning",
             overrides={"assigned_to": "bob"},
         )
-        result = await apply_transition(mutation, persistence, versions)  # type: ignore[arg-type]
+        result = await apply_transition(mutation, persistence, versions, timings)  # type: ignore[arg-type]
         assert result.success is True
         assert result.task is not None
         assert result.task.status == TaskStatus.ASSIGNED
@@ -298,6 +315,7 @@ class TestApplyTransition:
         self,
         persistence: FakePersistence,
         versions: VersionTracker,
+        timings: TaskTimingTracker,
     ) -> None:
         mutation = TransitionTaskMutation(
             request_id="req-1",
@@ -306,7 +324,7 @@ class TestApplyTransition:
             target_status=TaskStatus.ASSIGNED,
             reason="Assigning",
         )
-        result = await apply_transition(mutation, persistence, versions)  # type: ignore[arg-type]
+        result = await apply_transition(mutation, persistence, versions, timings)  # type: ignore[arg-type]
         assert result.success is False
         assert result.error_code == "not_found"
 
@@ -314,8 +332,9 @@ class TestApplyTransition:
         self,
         persistence: FakePersistence,
         versions: VersionTracker,
+        timings: TaskTimingTracker,
     ) -> None:
-        created = await self._create_task(persistence, versions)
+        created = await self._create_task(persistence, versions, timings)
         assert created.task is not None
         mutation = TransitionTaskMutation(
             request_id="req-1",
@@ -326,7 +345,7 @@ class TestApplyTransition:
             overrides={"assigned_to": "bob"},
             expected_version=99,
         )
-        result = await apply_transition(mutation, persistence, versions)  # type: ignore[arg-type]
+        result = await apply_transition(mutation, persistence, versions, timings)  # type: ignore[arg-type]
         assert result.success is False
         assert result.error_code == "version_conflict"
 
@@ -334,9 +353,10 @@ class TestApplyTransition:
         self,
         persistence: FakePersistence,
         versions: VersionTracker,
+        timings: TaskTimingTracker,
     ) -> None:
         """CREATED -> COMPLETED is not valid."""
-        created = await self._create_task(persistence, versions)
+        created = await self._create_task(persistence, versions, timings)
         assert created.task is not None
         mutation = TransitionTaskMutation(
             request_id="req-1",
@@ -346,7 +366,7 @@ class TestApplyTransition:
             reason="skip",
             overrides={"assigned_to": "bob"},
         )
-        result = await apply_transition(mutation, persistence, versions)  # type: ignore[arg-type]
+        result = await apply_transition(mutation, persistence, versions, timings)  # type: ignore[arg-type]
         assert result.success is False
         assert result.error_code == "validation"
 
@@ -362,6 +382,7 @@ class TestApplyDelete:
         self,
         persistence: FakePersistence,
         versions: VersionTracker,
+        timings: TaskTimingTracker,
     ) -> None:
         create_result = await apply_create(
             CreateTaskMutation(
@@ -371,6 +392,7 @@ class TestApplyDelete:
             ),
             persistence,  # type: ignore[arg-type]
             versions,
+            timings,
         )
         assert create_result.task is not None
         mutation = DeleteTaskMutation(
@@ -378,7 +400,7 @@ class TestApplyDelete:
             requested_by="alice",
             task_id=create_result.task.id,
         )
-        result = await apply_delete(mutation, persistence, versions)  # type: ignore[arg-type]
+        result = await apply_delete(mutation, persistence, versions, timings)  # type: ignore[arg-type]
         assert result.success is True
         assert result.version == 0
 
@@ -389,13 +411,14 @@ class TestApplyDelete:
         self,
         persistence: FakePersistence,
         versions: VersionTracker,
+        timings: TaskTimingTracker,
     ) -> None:
         mutation = DeleteTaskMutation(
             request_id="req-1",
             requested_by="alice",
             task_id="task-nonexistent",
         )
-        result = await apply_delete(mutation, persistence, versions)  # type: ignore[arg-type]
+        result = await apply_delete(mutation, persistence, versions, timings)  # type: ignore[arg-type]
         assert result.success is False
         assert result.error_code == "not_found"
 
@@ -403,6 +426,7 @@ class TestApplyDelete:
         self,
         persistence: FakePersistence,
         versions: VersionTracker,
+        timings: TaskTimingTracker,
     ) -> None:
         create_result = await apply_create(
             CreateTaskMutation(
@@ -412,6 +436,7 @@ class TestApplyDelete:
             ),
             persistence,  # type: ignore[arg-type]
             versions,
+            timings,
         )
         assert create_result.task is not None
         task_id = create_result.task.id
@@ -425,6 +450,7 @@ class TestApplyDelete:
             ),
             persistence,  # type: ignore[arg-type]
             versions,
+            timings,
         )
         assert versions.get(task_id) == 0
 
@@ -440,6 +466,7 @@ class TestApplyCancel:
         self,
         persistence: FakePersistence,
         versions: VersionTracker,
+        timings: TaskTimingTracker,
     ) -> str:
         """Create a task and transition to ASSIGNED, return task_id."""
         create_result = await apply_create(
@@ -450,6 +477,7 @@ class TestApplyCancel:
             ),
             persistence,  # type: ignore[arg-type]
             versions,
+            timings,
         )
         assert create_result.task is not None
         task_id = create_result.task.id
@@ -464,6 +492,7 @@ class TestApplyCancel:
             ),
             persistence,  # type: ignore[arg-type]
             versions,
+            timings,
         )
         return task_id
 
@@ -471,15 +500,16 @@ class TestApplyCancel:
         self,
         persistence: FakePersistence,
         versions: VersionTracker,
+        timings: TaskTimingTracker,
     ) -> None:
-        task_id = await self._create_and_assign(persistence, versions)
+        task_id = await self._create_and_assign(persistence, versions, timings)
         mutation = CancelTaskMutation(
             request_id="req-1",
             requested_by="alice",
             task_id=task_id,
             reason="No longer needed",
         )
-        result = await apply_cancel(mutation, persistence, versions)  # type: ignore[arg-type]
+        result = await apply_cancel(mutation, persistence, versions, timings)  # type: ignore[arg-type]
         assert result.success is True
         assert result.task is not None
         assert result.task.status == TaskStatus.CANCELLED
@@ -489,6 +519,7 @@ class TestApplyCancel:
         self,
         persistence: FakePersistence,
         versions: VersionTracker,
+        timings: TaskTimingTracker,
     ) -> None:
         mutation = CancelTaskMutation(
             request_id="req-1",
@@ -496,7 +527,7 @@ class TestApplyCancel:
             task_id="task-nonexistent",
             reason="test",
         )
-        result = await apply_cancel(mutation, persistence, versions)  # type: ignore[arg-type]
+        result = await apply_cancel(mutation, persistence, versions, timings)  # type: ignore[arg-type]
         assert result.success is False
         assert result.error_code == "not_found"
 
@@ -504,6 +535,7 @@ class TestApplyCancel:
         self,
         persistence: FakePersistence,
         versions: VersionTracker,
+        timings: TaskTimingTracker,
     ) -> None:
         """CREATED -> CANCELLED is not a valid transition."""
         create_result = await apply_create(
@@ -514,6 +546,7 @@ class TestApplyCancel:
             ),
             persistence,  # type: ignore[arg-type]
             versions,
+            timings,
         )
         assert create_result.task is not None
         mutation = CancelTaskMutation(
@@ -522,6 +555,6 @@ class TestApplyCancel:
             task_id=create_result.task.id,
             reason="Oops",
         )
-        result = await apply_cancel(mutation, persistence, versions)  # type: ignore[arg-type]
+        result = await apply_cancel(mutation, persistence, versions, timings)  # type: ignore[arg-type]
         assert result.success is False
         assert result.error_code == "validation"

@@ -58,6 +58,9 @@ from synthorg.observability.events.api import (
     API_SETTINGS_BACKEND_RECOVERED,
     API_VALIDATION_FAILED,
 )
+from synthorg.observability.events.approval_gate import (
+    APPROVAL_STATUS_TRANSITIONED,
+)
 from synthorg.observability.events.security import (
     SECURITY_APPROVAL_APPROVED,
     SECURITY_APPROVAL_REJECTED,
@@ -697,6 +700,17 @@ class ApprovalsController(Controller):
 
         auth_user = _resolve_decision(request, item, approval_id)
         now = datetime.now(UTC)
+        # State-transition log fires before the persistence model_copy
+        # so the audit trail captures intent even if the copy or save
+        # raises (decision_reason validators, optimistic-concurrency
+        # collisions, ...).
+        logger.info(
+            APPROVAL_STATUS_TRANSITIONED,
+            approval_id=approval_id,
+            from_status=item.status.value,
+            to_status=ApprovalStatus.APPROVED.value,
+            decided_by=auth_user.username,
+        )
         updated = item.model_copy(
             update={
                 "status": ApprovalStatus.APPROVED,
@@ -768,6 +782,13 @@ class ApprovalsController(Controller):
 
         auth_user = _resolve_decision(request, item, approval_id)
         now = datetime.now(UTC)
+        logger.info(
+            APPROVAL_STATUS_TRANSITIONED,
+            approval_id=approval_id,
+            from_status=item.status.value,
+            to_status=ApprovalStatus.REJECTED.value,
+            decided_by=auth_user.username,
+        )
         updated = item.model_copy(
             update={
                 "status": ApprovalStatus.REJECTED,

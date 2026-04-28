@@ -1,11 +1,14 @@
 """Tests for the tool invocation bridge (best-effort recording)."""
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from synthorg.tools.invocation_bridge import record_tool_invocation
 from synthorg.tools.invocation_tracker import ToolInvocationTracker
+
+_TEST_STARTED_AT = datetime.now(UTC)
 
 
 def _make_invoker(
@@ -48,7 +51,12 @@ class TestRecordToolInvocation:
         tool_call = _make_tool_call()
         result = _make_result()
 
-        await record_tool_invocation(invoker, tool_call, result)
+        await record_tool_invocation(
+            invoker,
+            tool_call,
+            result,
+            started_at=_TEST_STARTED_AT,
+        )
 
         records = await tracker.get_records()
         assert len(records) == 1
@@ -63,7 +71,12 @@ class TestRecordToolInvocation:
         tool_call = _make_tool_call(name="write_file")
         result = _make_result(is_error=True, content="Permission denied")
 
-        await record_tool_invocation(invoker, tool_call, result)
+        await record_tool_invocation(
+            invoker,
+            tool_call,
+            result,
+            started_at=_TEST_STARTED_AT,
+        )
 
         records = await tracker.get_records()
         assert len(records) == 1
@@ -76,7 +89,12 @@ class TestRecordToolInvocation:
         result = _make_result()
 
         # Should not raise
-        await record_tool_invocation(invoker, tool_call, result)
+        await record_tool_invocation(
+            invoker,
+            tool_call,
+            result,
+            started_at=_TEST_STARTED_AT,
+        )
 
     async def test_early_return_when_agent_id_is_none(self) -> None:
         tracker = ToolInvocationTracker()
@@ -84,7 +102,12 @@ class TestRecordToolInvocation:
         tool_call = _make_tool_call()
         result = _make_result()
 
-        await record_tool_invocation(invoker, tool_call, result)
+        await record_tool_invocation(
+            invoker,
+            tool_call,
+            result,
+            started_at=_TEST_STARTED_AT,
+        )
 
         records = await tracker.get_records()
         assert records == ()
@@ -97,7 +120,12 @@ class TestRecordToolInvocation:
         result = _make_result()
 
         # Should not raise
-        await record_tool_invocation(invoker, tool_call, result)
+        await record_tool_invocation(
+            invoker,
+            tool_call,
+            result,
+            started_at=_TEST_STARTED_AT,
+        )
 
     @pytest.mark.parametrize(
         "exc_class",
@@ -115,7 +143,12 @@ class TestRecordToolInvocation:
         result = _make_result()
 
         with pytest.raises(exc_class):
-            await record_tool_invocation(invoker, tool_call, result)
+            await record_tool_invocation(
+                invoker,
+                tool_call,
+                result,
+                started_at=_TEST_STARTED_AT,
+            )
 
     async def test_error_message_truncated_to_2048(self) -> None:
         tracker = ToolInvocationTracker()
@@ -124,7 +157,12 @@ class TestRecordToolInvocation:
         long_content = "x" * 5000
         result = _make_result(is_error=True, content=long_content)
 
-        await record_tool_invocation(invoker, tool_call, result)
+        await record_tool_invocation(
+            invoker,
+            tool_call,
+            result,
+            started_at=_TEST_STARTED_AT,
+        )
 
         records = await tracker.get_records()
         assert len(records) == 1

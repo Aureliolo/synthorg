@@ -13,7 +13,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamablehttp_client
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_CLIENT_CONNECTED,
     MCP_CLIENT_CONNECTING,
@@ -30,6 +30,7 @@ from synthorg.observability.events.mcp import (
     MCP_INVOKE_SUCCESS,
     MCP_INVOKE_TIMEOUT,
 )
+from synthorg.observability.metrics_hub import record_client_disconnect
 from synthorg.tools.mcp.errors import (
     MCPConnectionError,
     MCPDiscoveryError,
@@ -134,10 +135,11 @@ class MCPClient:
                 raise
             except Exception as exc:
                 await stack.aclose()
-                logger.exception(
+                logger.warning(
                     MCP_CLIENT_CONNECTION_FAILED,
                     server=self._config.name,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 msg = f"Failed to connect to {self._config.name!r}: {exc}"
                 raise MCPConnectionError(
@@ -183,10 +185,18 @@ class MCPClient:
                         server=self._config.name,
                         error=str(exc),
                     )
+                    record_client_disconnect(
+                        transport="mcp_stdio",
+                        reason="transport_error",
+                    )
                 else:
                     logger.info(
                         MCP_CLIENT_DISCONNECTED,
                         server=self._config.name,
+                    )
+                    record_client_disconnect(
+                        transport="mcp_stdio",
+                        reason="client_initiated",
                     )
                 finally:
                     self._session = None
@@ -213,10 +223,11 @@ class MCPClient:
             try:
                 result = await session.list_tools()
             except Exception as exc:
-                logger.exception(
+                logger.warning(
                     MCP_DISCOVERY_FAILED,
                     server=self._config.name,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 msg = f"Tool discovery failed for {self._config.name!r}: {exc}"
                 raise MCPDiscoveryError(
@@ -293,11 +304,12 @@ class MCPClient:
                     },
                 ) from exc
             except Exception as exc:
-                logger.exception(
+                logger.warning(
                     MCP_INVOKE_FAILED,
                     server=self._config.name,
                     tool=tool_name,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 msg = f"Tool {tool_name!r} failed on {self._config.name!r}: {exc}"
                 raise MCPInvocationError(

@@ -189,3 +189,48 @@ def record_api_error(*, category: str, status_code: int) -> None:
     if collector is None:
         return
     collector.record_api_error(category=category, status_code=status_code)
+
+
+@_safe_record(METRICS_SCRAPE_FAILED, "record_workflow_execution")
+def record_workflow_execution(
+    *,
+    workflow_definition_id: str,
+    status: str,
+    duration_seconds: float,
+) -> None:
+    """Forward to :meth:`PrometheusCollector.record_workflow_execution`."""
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_workflow_execution(
+        workflow_definition_id=workflow_definition_id,
+        status=status,
+        duration_seconds=duration_seconds,
+    )
+
+
+@_safe_record(METRICS_SCRAPE_FAILED, "record_tool_invocation")
+def record_tool_invocation(
+    *,
+    tool_name: str,
+    outcome: str,
+    duration_sec: float,
+) -> None:
+    """Forward to :meth:`PrometheusCollector.record_tool_invocation`."""
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_tool_invocation(
+        tool_name=tool_name,
+        outcome=outcome,
+        duration_sec=duration_sec,
+    )
+
+
+@_safe_record(METRICS_SCRAPE_FAILED, "record_client_disconnect")
+def record_client_disconnect(*, transport: str, reason: str) -> None:
+    """Forward to :meth:`PrometheusCollector.record_client_disconnect`."""
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_client_disconnect(transport=transport, reason=reason)

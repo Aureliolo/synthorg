@@ -6,6 +6,7 @@ In-memory only -- presence is inherently ephemeral.
 """
 
 from synthorg.observability import get_logger
+from synthorg.observability.metrics_hub import record_client_disconnect
 
 logger = get_logger(__name__)
 
@@ -58,6 +59,10 @@ class UserPresence:
                 user_id=user_id,
                 count=count,
             )
+        record_client_disconnect(
+            transport="websocket",
+            reason="client_initiated",
+        )
 
     def is_online(self, user_id: str) -> bool:
         """Check whether a user has at least one open connection.

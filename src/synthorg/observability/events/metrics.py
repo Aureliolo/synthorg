@@ -29,3 +29,8 @@ METRICS_COLLECTOR_DEACTIVATED: Final[str] = "metrics.collector.deactivated"
 # Prometheus recording / validation failures (distinct from scrape failures)
 METRICS_RECORD_FAILED: Final[str] = "metrics.record.failed"
 API_REQUEST_VALIDATION_FAILED: Final[str] = "metrics.api_request.validation_failed"
+
+# Client transport disconnect (SSE / WebSocket / MCP stdio); recorded only
+# after the corresponding ``synthorg_client_disconnects_total`` increment
+# succeeds so the metric and the log stay in lockstep.
+CLIENT_DISCONNECTED: Final[str] = "metrics.client_disconnected"

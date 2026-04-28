@@ -6,6 +6,7 @@ Extracted from ``task_engine.py`` to keep the main module focused on
 lifecycle, queue management, and the public API.
 """
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -28,9 +29,25 @@ from synthorg.observability.events.task_engine import (
     TASK_ENGINE_MUTATION_APPLIED,
     TASK_ENGINE_MUTATION_FAILED,
 )
+from synthorg.observability.metrics_hub import record_task_run
+from synthorg.observability.tracing.instrumentation import get_tracer
+
+_tracer = get_tracer(__name__)
+
+# Mapping from terminal TaskStatus values to the bounded outcome
+# vocabulary expected by ``synthorg_task_runs_total`` /
+# ``synthorg_task_duration_seconds`` (``VALID_TASK_OUTCOMES``).
+_TERMINAL_STATUS_OUTCOME: dict[TaskStatus, str] = {
+    TaskStatus.COMPLETED: "succeeded",
+    TaskStatus.FAILED: "failed",
+    TaskStatus.CANCELLED: "cancelled",
+}
 
 if TYPE_CHECKING:
-    from synthorg.engine.task_engine_version import VersionTracker
+    from synthorg.engine.task_engine_version import (
+        TaskTimingTracker,
+        VersionTracker,
+    )
     from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
@@ -86,6 +103,7 @@ async def dispatch(
     mutation: TaskMutation,
     persistence: PersistenceBackend,
     versions: VersionTracker,
+    timings: TaskTimingTracker,
 ) -> TaskMutationResult:
     """Dispatch and apply a mutation by type.
 
@@ -94,15 +112,15 @@ async def dispatch(
     """
     match mutation:
         case CreateTaskMutation():
-            return await apply_create(mutation, persistence, versions)
+            return await apply_create(mutation, persistence, versions, timings)
         case UpdateTaskMutation():
             return await apply_update(mutation, persistence, versions)
         case TransitionTaskMutation():
-            return await apply_transition(mutation, persistence, versions)
+            return await apply_transition(mutation, persistence, versions, timings)
         case DeleteTaskMutation():
-            return await apply_delete(mutation, persistence, versions)
+            return await apply_delete(mutation, persistence, versions, timings)
         case CancelTaskMutation():
-            return await apply_cancel(mutation, persistence, versions)
+            return await apply_cancel(mutation, persistence, versions, timings)
         case _:
             msg = f"Unknown mutation type: {type(mutation).__name__}"  # type: ignore[unreachable]
             raise TypeError(msg)
@@ -115,6 +133,7 @@ async def apply_create(
     mutation: CreateTaskMutation,
     persistence: PersistenceBackend,
     versions: VersionTracker,
+    timings: TaskTimingTracker,
 ) -> TaskMutationResult:
     """Create a new task.
 
@@ -122,6 +141,10 @@ async def apply_create(
         mutation: Creation request with task data.
         persistence: Backend for task storage.
         versions: Version tracker for optimistic concurrency.
+        timings: Creation-time tracker; stamps ``task_id`` with the
+            current UTC time so terminal transitions can compute
+            duration for ``synthorg_task_runs_total`` /
+            ``synthorg_task_duration_seconds``.
 
     Returns:
         Result with the created task on success, or a validation
@@ -160,6 +183,7 @@ async def apply_create(
         )
     await persistence.tasks.save(task)
     versions.set_initial(task_id, 1)
+    timings.record_creation(task_id, datetime.now(UTC))
 
     logger.info(
         TASK_ENGINE_MUTATION_APPLIED,
@@ -260,6 +284,7 @@ async def apply_transition(
     mutation: TransitionTaskMutation,
     persistence: PersistenceBackend,
     versions: VersionTracker,
+    timings: TaskTimingTracker,
 ) -> TaskMutationResult:
     """Perform a task status transition.
 
@@ -267,6 +292,10 @@ async def apply_transition(
         mutation: Transition request with target status and reason.
         persistence: Backend for task storage.
         versions: Version tracker for optimistic concurrency.
+        timings: Creation-time tracker; consulted on terminal
+            transitions to compute duration for
+            ``synthorg_task_runs_total`` /
+            ``synthorg_task_duration_seconds``.
 
     Returns:
         Result with the transitioned task on success, or a failure
@@ -289,38 +318,68 @@ async def apply_transition(
 
     previous_status = task.status
 
-    try:
-        updated = task.with_transition(
-            mutation.target_status,
-            **mutation.overrides,
-        )
-    except ValueError as exc:
-        logger.warning(
-            TASK_ENGINE_MUTATION_FAILED,
+    with _tracer.start_as_current_span(
+        "task.transition",
+        attributes={
+            "task.id": mutation.task_id,
+            "task.status.from": previous_status.value,
+            "task.status.to": mutation.target_status.value,
+            "task.transition.reason": mutation.reason or "",
+        },
+    ):
+        try:
+            updated = task.with_transition(
+                mutation.target_status,
+                **mutation.overrides,
+            )
+        except ValueError as exc:
+            logger.warning(
+                TASK_ENGINE_MUTATION_FAILED,
+                mutation_type="transition",
+                request_id=mutation.request_id,
+                task_id=mutation.task_id,
+                error=str(exc),
+            )
+            return TaskMutationResult(
+                request_id=mutation.request_id,
+                success=False,
+                error=str(exc),
+                error_code="validation",
+            )
+
+        await persistence.tasks.save(updated)
+        version = versions.bump(mutation.task_id)
+
+        logger.info(
+            TASK_ENGINE_MUTATION_APPLIED,
             mutation_type="transition",
             request_id=mutation.request_id,
             task_id=mutation.task_id,
-            error=str(exc),
-        )
-        return TaskMutationResult(
-            request_id=mutation.request_id,
-            success=False,
-            error=str(exc),
-            error_code="validation",
+            from_status=previous_status.value,
+            to_status=mutation.target_status.value,
+            reason=mutation.reason,
         )
 
-    await persistence.tasks.save(updated)
-    version = versions.bump(mutation.task_id)
+    # Emit terminal-state metric only on actual terminal transitions
+    # so a CREATED -> ASSIGNED hop doesn't pollute the counter. The
+    # duration baseline is the engine's recorded creation time;
+    # tasks created before a process restart have no entry, in which
+    # case duration falls back to 0.0 (logged + counted, but no
+    # spurious "instant" sample skews the histogram materially).
+    if mutation.target_status in _TERMINAL_STATUS_OUTCOME:
+        created_at = timings.get_creation(mutation.task_id)
+        if created_at is not None:
+            duration_sec = max(
+                0.0,
+                (datetime.now(UTC) - created_at).total_seconds(),
+            )
+        else:
+            duration_sec = 0.0
+        record_task_run(
+            outcome=_TERMINAL_STATUS_OUTCOME[mutation.target_status],
+            duration_sec=duration_sec,
+        )
 
-    logger.info(
-        TASK_ENGINE_MUTATION_APPLIED,
-        mutation_type="transition",
-        request_id=mutation.request_id,
-        task_id=mutation.task_id,
-        from_status=previous_status.value,
-        to_status=mutation.target_status.value,
-        reason=mutation.reason,
-    )
     return TaskMutationResult(
         request_id=mutation.request_id,
         success=True,
@@ -334,6 +393,7 @@ async def apply_delete(
     mutation: DeleteTaskMutation,
     persistence: PersistenceBackend,
     versions: VersionTracker,
+    timings: TaskTimingTracker,
 ) -> TaskMutationResult:
     """Delete a task.
 
@@ -341,6 +401,7 @@ async def apply_delete(
         mutation: Deletion request with task identifier.
         persistence: Backend for task storage.
         versions: Version tracker for optimistic concurrency.
+        timings: Creation-time tracker (entry dropped on delete).
 
     Returns:
         Result with ``success=True`` on deletion, or a failure
@@ -351,6 +412,7 @@ async def apply_delete(
         return _not_found_result("delete", mutation.request_id, mutation.task_id)
 
     versions.remove(mutation.task_id)
+    timings.remove(mutation.task_id)
 
     logger.info(
         TASK_ENGINE_MUTATION_APPLIED,
@@ -369,6 +431,7 @@ async def apply_cancel(
     mutation: CancelTaskMutation,
     persistence: PersistenceBackend,
     versions: VersionTracker,
+    timings: TaskTimingTracker,
 ) -> TaskMutationResult:
     """Cancel a task (shortcut for transition to CANCELLED).
 
@@ -381,6 +444,9 @@ async def apply_cancel(
         mutation: Cancellation request with task identifier and reason.
         persistence: Backend for task storage.
         versions: Version tracker for optimistic concurrency.
+        timings: Creation-time tracker; consulted to compute the
+            duration observation for ``synthorg_task_runs_total`` /
+            ``synthorg_task_duration_seconds``.
 
     Returns:
         Result with the cancelled task on success, or a failure with
@@ -420,6 +486,17 @@ async def apply_cancel(
         to_status=TaskStatus.CANCELLED.value,
         reason=mutation.reason,
     )
+
+    created_at = timings.get_creation(mutation.task_id)
+    if created_at is not None:
+        duration_sec = max(
+            0.0,
+            (datetime.now(UTC) - created_at).total_seconds(),
+        )
+    else:
+        duration_sec = 0.0
+    record_task_run(outcome="cancelled", duration_sec=duration_sec)
+
     return TaskMutationResult(
         request_id=mutation.request_id,
         success=True,

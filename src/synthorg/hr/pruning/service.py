@@ -43,6 +43,7 @@ from synthorg.observability.events.hr import (
     HR_PRUNING_REJECTED,
     HR_PRUNING_SCHEDULER_STARTED,
     HR_PRUNING_SCHEDULER_STOPPED,
+    PRUNING_REQUEST_STATUS_TRANSITIONED,
 )
 
 if TYPE_CHECKING:
@@ -338,6 +339,14 @@ class PruningService:
         )
         await self._approval_store.add(approval)
 
+        logger.info(
+            PRUNING_REQUEST_STATUS_TRANSITIONED,
+            request_id=request_id,
+            agent_id=agent_id,
+            approval_id=str(approval_id),
+            from_status=None,
+            to_status=ApprovalStatus.PENDING.value,
+        )
         request = PruningRequest(
             id=request_id,
             agent_id=NotBlankStr(agent_id),

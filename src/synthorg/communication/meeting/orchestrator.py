@@ -336,18 +336,13 @@ class MeetingOrchestrator:
         status: MeetingStatus,
         exc: BaseException,
     ) -> MeetingRecord:
-        """Build, store, and log a failure record."""
-        error_msg = _format_exception(exc)
-        record = MeetingRecord(
-            meeting_id=meeting_id,
-            meeting_type_name=meeting_type_name,
-            protocol_type=protocol.get_protocol_type(),
-            status=status,
-            error_message=error_msg,
-            token_budget=token_budget,
-        )
-        self._records.append(record)
+        """Build, store, and log a failure record.
 
+        State-transition log fires BEFORE the record is constructed
+        and appended so the audit trail captures intent even if a
+        downstream model_validate or persistence step raises.
+        """
+        error_msg = _format_exception(exc)
         if status == MeetingStatus.BUDGET_EXHAUSTED:
             logger.warning(
                 MEETING_BUDGET_EXHAUSTED,
@@ -364,6 +359,15 @@ class MeetingOrchestrator:
                 error=error_msg,
                 error_type=type(exc).__name__,
             )
+        record = MeetingRecord(
+            meeting_id=meeting_id,
+            meeting_type_name=meeting_type_name,
+            protocol_type=protocol.get_protocol_type(),
+            status=status,
+            error_message=error_msg,
+            token_budget=token_budget,
+        )
+        self._records.append(record)
         return record
 
     def _record_success(
@@ -374,7 +378,18 @@ class MeetingOrchestrator:
         minutes: MeetingMinutes,
         token_budget: int,
     ) -> MeetingRecord:
-        """Build, store, and log a success record."""
+        """Build, store, and log a success record.
+
+        State-transition log fires before record assembly so the
+        audit trail shows the COMPLETED transition even if record
+        construction or store-append raises.
+        """
+        logger.info(
+            MEETING_COMPLETED,
+            meeting_id=meeting_id,
+            total_tokens=minutes.total_tokens,
+            contributions=len(minutes.contributions),
+        )
         record = MeetingRecord(
             meeting_id=meeting_id,
             meeting_type_name=meeting_type_name,
@@ -384,12 +399,6 @@ class MeetingOrchestrator:
             token_budget=token_budget,
         )
         self._records.append(record)
-        logger.info(
-            MEETING_COMPLETED,
-            meeting_id=meeting_id,
-            total_tokens=minutes.total_tokens,
-            contributions=len(minutes.contributions),
-        )
         return record
 
     def _create_tasks(

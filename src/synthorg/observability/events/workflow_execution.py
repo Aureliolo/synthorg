@@ -56,6 +56,19 @@ WORKFLOW_EXEC_FAILED: Final[str] = "workflow.execution.failed"
 WORKFLOW_EXEC_CANCELLED: Final[str] = "workflow.execution.cancelled"
 """Workflow execution cancelled by user."""
 
+WORKFLOW_EXEC_STATUS_TRANSITIONED: Final[str] = "workflow.execution.status_transitioned"
+"""Workflow execution status transitioned -- emitted on every hop with from/to.
+
+Complements terminal-state events above: the ``*_COMPLETED`` /
+``*_FAILED`` / ``*_CANCELLED`` constants stay on the terminal hop, while
+this constant fires on every transition (including non-terminal hops like
+``PENDING -> RUNNING``)."""
+
+WORKFLOW_EXEC_NODE_STATUS_TRANSITIONED: Final[str] = (
+    "workflow.execution.node_status_transitioned"
+)
+"""Workflow node execution status transitioned -- emitted on every hop."""
+
 WORKFLOW_EXEC_PERSISTENCE_FAILED: Final[str] = "workflow.execution.persistence_failed"
 """Persistence operation failed during workflow execution."""
 

@@ -22,6 +22,7 @@ from synthorg.budget.billing import billing_period_start
 from synthorg.observability import get_logger
 from synthorg.observability.events.metrics import (
     API_REQUEST_VALIDATION_FAILED,
+    CLIENT_DISCONNECTED,
     METRICS_COLLECTOR_INITIALIZED,
     METRICS_COORDINATION_RECORDED,
     METRICS_SCRAPE_COMPLETED,
@@ -32,6 +33,8 @@ from synthorg.observability.prometheus_labels import (
     VALID_AUDIT_APPEND_STATUSES,
     VALID_CACHE_NAMES,
     VALID_CACHE_OUTCOMES,
+    VALID_DISCONNECT_REASONS,
+    VALID_DISCONNECT_TRANSPORTS,
     VALID_IDENTITY_CHANGE_TYPES,
     VALID_OTLP_KINDS,
     VALID_OTLP_OUTCOMES,
@@ -41,10 +44,16 @@ from synthorg.observability.prometheus_labels import (
     VALID_TOOL_OUTCOMES,
     VALID_VERDICTS,
     VALID_WORKFLOW_EXECUTION_STATUSES,
+    _LabelSnapshot,
+    is_known_agent_id,
     require_finite,
     require_label,
     require_non_negative,
     status_class,
+    update_label_snapshot,
+    validate_agent_id,
+    validate_department,
+    validate_workflow_definition_id,
 )
 from synthorg.observability.prometheus_push_metrics import PushMetrics
 
@@ -180,6 +189,7 @@ class PrometheusCollector:
         self._provider_errors = self._push.provider_errors
         self._cache_operations = self._push.cache_operations
         self._api_error_classification = self._push.api_error_classification
+        self._client_disconnects = self._push.client_disconnects
 
         logger.debug(METRICS_COLLECTOR_INITIALIZED, prefix=prefix)
 
@@ -495,6 +505,10 @@ class PrometheusCollector:
     ) -> None:
         """Set the escalation queue depth gauge for a department.
 
+        ``department`` is validated against the live registry snapshot
+        seeded by :meth:`refresh`; unknown values raise ``ValueError``
+        and are dropped via the metrics-hub safe-record decorator.
+
         Args:
             department: Department name owning the escalation queue.
             depth: Current count of pending escalations.
@@ -507,6 +521,7 @@ class PrometheusCollector:
             )
             msg = "record_escalation_queue_depth: department must be non-empty"
             raise ValueError(msg)
+        validate_department(department)
         require_non_negative("record_escalation_queue_depth: depth", depth)
         self._escalation_queue_depth.labels(department=department).set(depth)
 
@@ -518,8 +533,11 @@ class PrometheusCollector:
     ) -> None:
         """Increment the agent identity change counter.
 
-        ``change_type`` must be one of ``VALID_IDENTITY_CHANGE_TYPES``
-        (``"created"``, ``"updated"``, ``"rolled_back"``, ``"archived"``).
+        ``agent_id`` is validated against the live agent-registry
+        snapshot seeded by :meth:`refresh`; unknown ids raise
+        ``ValueError`` and are dropped by the metrics-hub safe-record
+        decorator. ``change_type`` is bounded by
+        :data:`VALID_IDENTITY_CHANGE_TYPES`.
         """
         if not agent_id:
             logger.warning(
@@ -529,6 +547,7 @@ class PrometheusCollector:
             )
             msg = "record_agent_identity_change: agent_id must be non-empty"
             raise ValueError(msg)
+        validate_agent_id(agent_id)
         require_label(
             "record_agent_identity_change: change_type",
             change_type,
@@ -549,8 +568,10 @@ class PrometheusCollector:
         """Observe a completed workflow execution in the duration histogram.
 
         ``workflow_definition_id`` must be the stable workflow
-        definition id (bounded), NOT a per-run execution id, to keep
-        Prometheus cardinality in check.
+        definition id (bounded), NOT a per-run execution id. The
+        snapshot validator additionally rejects ids that aren't in
+        the active workflow-definition repository so an orphan
+        execution can't bloat label cardinality.
         """
         if not workflow_definition_id:
             logger.warning(
@@ -560,6 +581,7 @@ class PrometheusCollector:
             )
             msg = "record_workflow_execution: workflow_definition_id must be non-empty"
             raise ValueError(msg)
+        validate_workflow_definition_id(workflow_definition_id)
         require_label(
             "record_workflow_execution: status",
             status,
@@ -573,6 +595,40 @@ class PrometheusCollector:
             workflow_definition_id=workflow_definition_id,
             status=status,
         ).observe(duration_seconds)
+
+    def record_client_disconnect(
+        self,
+        *,
+        transport: str,
+        reason: str,
+    ) -> None:
+        """Increment the client-disconnect counter.
+
+        Wired into SSE / WebSocket / MCP-stdio disconnect handlers so
+        ops can alert on
+        ``rate(synthorg_client_disconnects_total{reason="transport_error"}[5m])``.
+        Both labels are bounded vocabularies so the time-series
+        cardinality is fixed at 12 (transports x reasons).
+        """
+        require_label(
+            "client disconnect transport",
+            transport,
+            VALID_DISCONNECT_TRANSPORTS,
+        )
+        require_label(
+            "client disconnect reason",
+            reason,
+            VALID_DISCONNECT_REASONS,
+        )
+        self._client_disconnects.labels(
+            transport=transport,
+            reason=reason,
+        ).inc()
+        logger.info(
+            CLIENT_DISCONNECTED,
+            transport=transport,
+            reason=reason,
+        )
 
     async def refresh(self, app_state: AppState) -> None:
         """Refresh all gauge values from AppState services.
@@ -624,6 +680,11 @@ class PrometheusCollector:
         self._refresh_budget_metrics(app_state, billing_cost)
         self._refresh_daily_budget_metric(app_state, daily_cost, utc_midnight)
         agents = await self._refresh_agent_metrics(app_state)
+        # Snapshot must seed BEFORE any downstream loop that consults
+        # ``is_known_agent_id`` / ``validate_*`` so the freshly-fetched
+        # registry data is the basis for label validation in the same
+        # scrape.
+        await self._rebuild_label_snapshot(app_state, agents)
         await self._refresh_agent_cost_metrics(
             app_state,
             agents,
@@ -631,6 +692,61 @@ class PrometheusCollector:
         )
         await self._refresh_task_metrics(app_state)
         logger.debug(METRICS_SCRAPE_COMPLETED)
+
+    async def _rebuild_label_snapshot(
+        self,
+        app_state: AppState,
+        agents: tuple[Any, ...],
+    ) -> None:
+        """Refresh the snapshot consumed by sync ``validate_*`` helpers.
+
+        Per-source ``try/except`` so a failure in one registry yields
+        a partial snapshot rather than blanking everything; callers
+        in bootstrap mode see no-op validation, callers in the
+        previous seeded state may briefly fall back to that older
+        snapshot until the next refresh succeeds.
+        """
+        agent_ids = frozenset(str(a.id) for a in agents)
+
+        workflow_definition_ids: frozenset[str] = frozenset()
+        try:
+            persistence = getattr(app_state, "persistence", None)
+            wf_repo = getattr(persistence, "workflow_definitions", None)
+            if wf_repo is not None:
+                definitions = await wf_repo.list_definitions()
+                workflow_definition_ids = frozenset(str(d.id) for d in definitions)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                METRICS_SCRAPE_FAILED,
+                component="workflow_definition_repo",
+                exc_info=True,
+            )
+
+        departments: frozenset[str] = frozenset()
+        try:
+            dept_service = getattr(app_state, "department_service", None)
+            if dept_service is not None:
+                records, _ = await dept_service.list_departments()
+                departments = frozenset(str(r.name) for r in records)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                METRICS_SCRAPE_FAILED,
+                component="department_service",
+                exc_info=True,
+            )
+
+        update_label_snapshot(
+            _LabelSnapshot(
+                agent_ids=agent_ids,
+                workflow_definition_ids=workflow_definition_ids,
+                departments=departments,
+                seeded=True,
+            ),
+        )
 
     def _refresh_cost_gauge(self, total_cost: float | None) -> None:
         """Update cost gauge from a pre-fetched total."""
@@ -856,7 +972,14 @@ class PrometheusCollector:
             )
 
     async def _refresh_task_metrics(self, app_state: AppState) -> None:
-        """Update task gauges from TaskEngine."""
+        """Update task gauges from TaskEngine.
+
+        Tasks whose ``assigned_to`` references an agent that is no
+        longer in the live registry snapshot are dropped from the
+        gauge: keeping them would inflate the ``agent`` label
+        cardinality with orphan ids forever. Unassigned tasks are
+        preserved under the empty-string label as before.
+        """
         self._tasks_total.clear()
         if not app_state.has_task_engine:
             return
@@ -866,6 +989,8 @@ class PrometheusCollector:
             for task in tasks:
                 status = str(task.status)
                 agent = str(task.assigned_to) if task.assigned_to else ""
+                if agent and not is_known_agent_id(agent):
+                    continue
                 counts[(status, agent)] += 1
             for (status, agent), count in counts.items():
                 self._tasks_total.labels(

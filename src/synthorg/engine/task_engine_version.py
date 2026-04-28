@@ -1,13 +1,19 @@
-"""Version tracking for TaskEngine optimistic concurrency.
+"""Version + timing tracking for TaskEngine bookkeeping.
 
-Wraps a plain ``dict[str, int]`` with seed, bump, check, and remove
-operations.  Extracted from ``task_engine.py`` to keep the main module
-focused on lifecycle and queue management.
+Wraps two plain dicts -- per-task version counters and per-task
+creation timestamps -- with seed, bump, check, and remove operations.
+Extracted from ``task_engine.py`` to keep the main module focused on
+lifecycle and queue management.
 """
+
+from typing import TYPE_CHECKING
 
 from synthorg.engine.errors import TaskVersionConflictError
 from synthorg.observability import get_logger
 from synthorg.observability.events.task_engine import TASK_ENGINE_VERSION_CONFLICT
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 logger = get_logger(__name__)
 
@@ -96,3 +102,37 @@ class VersionTracker:
                 current_version=current,
             )
             raise TaskVersionConflictError(msg)
+
+
+class TaskTimingTracker:
+    """In-memory per-task creation timestamps for duration metrics.
+
+    Mirrors :class:`VersionTracker` semantics: the engine seeds an
+    entry on ``apply_create`` and reads it on ``apply_transition`` /
+    ``apply_cancel`` to compute duration for
+    ``synthorg_task_runs_total`` and ``synthorg_task_duration_seconds``.
+
+    **Limitation:** like version tracking, timing state is volatile
+    and resets on process restart. A task created before the restart
+    that transitions to a terminal state after the restart will have
+    no recorded creation time; the engine emits a duration of 0.0 in
+    that case. Persisting creation timestamps alongside the task is a
+    future enhancement that requires a schema migration.
+
+    Single-writer, not thread-safe.
+    """
+
+    def __init__(self) -> None:
+        self._created_at: dict[str, datetime] = {}
+
+    def record_creation(self, task_id: str, created_at: datetime) -> None:
+        """Stamp *task_id* with its creation time (overwrites)."""
+        self._created_at[task_id] = created_at
+
+    def get_creation(self, task_id: str) -> datetime | None:
+        """Return the recorded creation time, or ``None`` if absent."""
+        return self._created_at.get(task_id)
+
+    def remove(self, task_id: str) -> None:
+        """Drop the creation timestamp for a deleted task."""
+        self._created_at.pop(task_id, None)

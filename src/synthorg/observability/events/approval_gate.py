@@ -33,3 +33,9 @@ APPROVAL_GATE_DECISION_RECORD_FAILED: Final[str] = (
 APPROVAL_GATE_TASK_NOT_FOUND: Final[str] = "approval_gate.task.not_found"
 APPROVAL_GATE_TASK_UNASSIGNED: Final[str] = "approval_gate.task.unassigned"
 APPROVAL_GATE_NOTIFICATION_FAILED: Final[str] = "approval_gate.notification.failed"
+
+# Status-machine event: emitted on every ApprovalStatus hop (PENDING ->
+# APPROVED / REJECTED / EXPIRED). Distinct from the audit-trail security
+# events (SECURITY_APPROVAL_APPROVED / SECURITY_APPROVAL_REJECTED) so the
+# state-transition log layer and the audit chain layer stay independent.
+APPROVAL_STATUS_TRANSITIONED: Final[str] = "approval.status_transitioned"

@@ -10,6 +10,7 @@ re-raised.  ``BaseException`` subclasses (``KeyboardInterrupt``,
 import asyncio
 import copy
 from contextlib import nullcontext
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.approval.models import EscalationInfo
@@ -427,6 +428,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         tool_call: ToolCall,
     ) -> ToolResult:
         """Inner body of ``_invoke_single`` -- guarded by the span."""
+        started_at = datetime.now(UTC)
         tool_or_error = self._lookup_tool(tool_call)
         if isinstance(tool_or_error, ToolResult):
             return tool_or_error
@@ -479,7 +481,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             )
 
         result = self._build_result(tool_call, exec_result)
-        await record_tool_invocation(self, tool_call, result)
+        await record_tool_invocation(self, tool_call, result, started_at=started_at)
         return result
 
     def _lookup_tool(self, tool_call: ToolCall) -> BaseTool | ToolResult:

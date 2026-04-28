@@ -45,6 +45,7 @@ from synthorg.observability.events.event_stream import (
     EVENT_STREAM_INTERRUPT_NOT_FOUND,
     EVENT_STREAM_PROJECTION_FAILED,
 )
+from synthorg.observability.metrics_hub import record_client_disconnect
 
 logger = get_logger(__name__)
 
@@ -459,6 +460,10 @@ async def _sse_event_stream(
             logger.info(
                 EVENT_STREAM_CLIENT_DISCONNECTED,
                 session_id=session_id,
+            )
+            record_client_disconnect(
+                transport="sse",
+                reason="client_initiated",
             )
 
 
