@@ -151,21 +151,28 @@ func TestCommitsBetween_walksBackToBaseSHA(t *testing.T) {
 	}
 }
 
-func TestCommitsBetween_acceptsShortSHABase(t *testing.T) {
-	// Embedded build SHAs are 40-char full SHAs in production, but the
-	// resolver also accepts >= minSHAPrefixLen-char prefixes for forward
-	// compatibility with abbreviated forms.
+func TestCommitsBetween_shortSHABaseRoutesToTagResolver(t *testing.T) {
+	// Short hex strings (>= 7 hex chars but != 40) are NOT canonical
+	// commit SHAs. The resolver routes them through the tag-ref
+	// endpoint instead, which closes a corner case where a hex-named
+	// tag (e.g. "abcdef1") would otherwise match the prefix test and
+	// the walk would search for the wrong commit.
 	f := newFakeCommitsServer(t)
-	f.commitsByPg[1] = []listCommitJSON{
-		commitFixture(headSHA, "head", "x", "2026-04-25T00:00:00Z"),
-		commitFixture(shortBaseFullSHA, "this is base", "x", "2026-04-24T00:00:00Z"),
+	// No tag fixture registered for shortBasePrefix -> /git/ref/tags/<x>
+	// will 404. We assert on the error shape: the resolver attempted
+	// the tag lookup (proving SHA-form was rejected) and surfaced
+	// "resolving tag" with the tag-ref 404.
+	_, err := f.call(context.Background(), shortBasePrefix, "v0.7.5")
+	if err == nil {
+		t.Fatal("expected error from tag resolution (short SHA must NOT pass as a SHA)")
 	}
-	got, err := f.call(context.Background(), shortBasePrefix, "v0.7.5")
-	if err != nil {
-		t.Fatalf("CommitsBetween: %v", err)
+	wantSubstr := "resolving tag \"" + shortBasePrefix + "\""
+	if !strings.Contains(err.Error(), wantSubstr) {
+		t.Errorf("error = %v, want substring %q (proving the short SHA was routed to tag resolution rather than treated as a SHA)",
+			err, wantSubstr)
 	}
-	if len(got.Commits) != 1 {
-		t.Errorf("len(Commits) = %d, want 1 (short SHA prefix should match)", len(got.Commits))
+	if len(f.tagRefURIs) != 1 {
+		t.Errorf("tagRefURIs = %v, want exactly one /git/ref/tags lookup", f.tagRefURIs)
 	}
 }
 
@@ -223,6 +230,35 @@ func TestCommitsBetween_truncationFooterWhenBaseNotReached(t *testing.T) {
 	}
 	if f.commitsCalls != maxCommitPages {
 		t.Errorf("commitsCalls = %d, want %d", f.commitsCalls, maxCommitPages)
+	}
+}
+
+func TestCommitsBetween_shortFinalPageNoBaseDoesNotTruncate(t *testing.T) {
+	// Stream ends naturally on a short page (fewer than commitsPerPage
+	// entries) without containing the base SHA. This represents a
+	// disconnected / non-ancestor history where head simply does not
+	// reach base. We have ALL commits reachable from head; the UI must
+	// NOT render a "(truncated)" footer because there is no further
+	// history to fetch upstream. Regression guard for the previous
+	// behavior that incorrectly bumped TotalCommits whenever foundBase
+	// was false.
+	f := newFakeCommitsServer(t)
+	f.commitsByPg[1] = []listCommitJSON{
+		commitFixture(headSHA, "head", "x", "2026-04-25T00:00:00Z"),
+		commitFixture(middleSHA, "second", "x", "2026-04-24T00:00:00Z"),
+		commitFixture(olderSHA, "third (last reachable)", "x", "2026-04-23T00:00:00Z"),
+	}
+
+	got, err := f.call(context.Background(), neverFoundSHA, "v0.7.5")
+	if err != nil {
+		t.Fatalf("CommitsBetween: %v", err)
+	}
+	if len(got.Commits) != 3 {
+		t.Errorf("len(Commits) = %d, want 3 (entire reachable history)", len(got.Commits))
+	}
+	if got.TotalCommits != len(got.Commits) {
+		t.Errorf("TotalCommits = %d, want %d (no truncation footer; we have the full history)",
+			got.TotalCommits, len(got.Commits))
 	}
 }
 
@@ -388,7 +424,7 @@ func TestCommitsBetween_tagResolutionPathEscapesMetacharacters(t *testing.T) {
 }
 
 func TestCommitsBetween_commitsURIShape(t *testing.T) {
-	// Per-page commits requests must carry sha=<head>, per_page=100,
+	// Per-page commits requests must carry sha=<head>, per_page=<commitsPerPage>,
 	// page=N. Tests against the URI rather than a structural Query().Get
 	// check so a future regression that rebuilds the URL by string-concat
 	// is caught too.
@@ -396,7 +432,7 @@ func TestCommitsBetween_commitsURIShape(t *testing.T) {
 	f.commitsByPg[1] = []listCommitJSON{
 		commitFixture(shortBaseFullSHA, "base", "x", "2026-04-24T00:00:00Z"),
 	}
-	_, _ = f.call(context.Background(), shortBasePrefix, "v0.7.5")
+	_, _ = f.call(context.Background(), shortBaseFullSHA, "v0.7.5")
 	if len(f.commitsURIs) == 0 {
 		t.Fatalf("commitsURIs = %v, want at least one", f.commitsURIs)
 	}
@@ -426,7 +462,7 @@ func TestCommitsBetween_subjectSkipsLeadingBlankLines(t *testing.T) {
 		},
 		commitFixture(shortBaseFullSHA, "base", "x", "2026-04-24T00:00:00Z"),
 	}
-	got, err := f.call(context.Background(), shortBasePrefix, "v0.7.5")
+	got, err := f.call(context.Background(), shortBaseFullSHA, "v0.7.5")
 	if err != nil {
 		t.Fatalf("CommitsBetween: %v", err)
 	}
@@ -441,7 +477,7 @@ func TestCommitsBetween_invalidDateGracefulFallback(t *testing.T) {
 		commitFixture(deadbeefSHA, "subject", "x", "not-a-date"),
 		commitFixture(shortBaseFullSHA, "base", "x", "2026-04-24T00:00:00Z"),
 	}
-	got, err := f.call(context.Background(), shortBasePrefix, "v0.7.5")
+	got, err := f.call(context.Background(), shortBaseFullSHA, "v0.7.5")
 	if err != nil {
 		t.Fatalf("CommitsBetween: %v", err)
 	}

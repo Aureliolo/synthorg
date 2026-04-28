@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/version"
 )
 
@@ -40,7 +41,12 @@ const (
 // because Configure runs exactly once in root.go PersistentPreRunE before
 // any self-update operation starts.
 var (
-	maxAPIResponseBytes  int64 = 4 * 1024 * 1024   // 4 MiB for API/checksums (typical list-commits page is ~400 KiB; 4 MiB gives 10x headroom for outlier release-PR-heavy pages)
+	// Sourced from config.DefaultMaxAPIResponseBytes so the runtime
+	// enforcement value never drifts from the user-facing default
+	// surfaced by `synthorg config get max_api_response_bytes`. Configure
+	// (called from root.go PersistentPreRunE) overwrites this with the
+	// operator's resolved State.MaxAPIResponseBytes when set.
+	maxAPIResponseBytes  int64 = config.DefaultMaxAPIResponseBytes
 	maxBinaryBytes       int64 = 256 * 1024 * 1024 // 256 MiB for binary archives
 	maxArchiveEntryBytes int64 = 128 * 1024 * 1024 // 128 MiB per archive entry
 
@@ -254,24 +260,40 @@ func fetchJSON[T any](ctx context.Context, url string) (T, error) {
 		return zero, fmt.Errorf("github API returned %d", resp.StatusCode)
 	}
 
-	// Read one byte past the cap so a body that exactly hits the limit can be
-	// distinguished from one that exceeds it. Without the +1, a truncated
-	// payload silently fed json.Unmarshal a half-finished object and produced
-	// the meaningless "decoding response: unexpected end of JSON input" error
-	// that gave no signal about the real cause being response size.
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAPIResponseBytes+1))
-	if err != nil {
-		return zero, fmt.Errorf("reading API response: %w", err)
+	// Stream-decode through a size-capped LimitReader. The +1 lets us
+	// distinguish a body that exactly fills the cap (LimitedReader.N == 1
+	// after Decode succeeds) from one that exceeds it (N == 0, meaning
+	// the cap byte was actually consumed). io.ReadAll into a buffer plus
+	// json.Unmarshal would peak memory at body_size + decoded_size; the
+	// streaming Decoder caps additional buffering at its internal token
+	// buffer, which is bounded by the largest single JSON value in the
+	// response. For our list-commits payloads (long arrays of small
+	// objects) this is a meaningful win.
+	limited := &io.LimitedReader{R: resp.Body, N: maxAPIResponseBytes + 1}
+	dec := json.NewDecoder(limited)
+	var result T
+	if err := dec.Decode(&result); err != nil {
+		// Cap-hit produces a decode error (unexpected EOF mid-token)
+		// because the LimitReader returned io.EOF before the JSON value
+		// closed. Surface the real cause so the operator gets an
+		// actionable message instead of a meaningless "unexpected end
+		// of JSON input".
+		if limited.N == 0 {
+			return zero, fmt.Errorf(
+				"response exceeded %d-byte cap (raise max_api_response_bytes via `synthorg config set max_api_response_bytes <size>`)",
+				maxAPIResponseBytes)
+		}
+		return zero, fmt.Errorf("decoding response: %w", err)
 	}
-	if int64(len(body)) > maxAPIResponseBytes {
+	// Decode succeeded but the body still pushed the LimitReader past
+	// its cap (N == 0 means the +1 byte was consumed). The decoded
+	// value is technically usable but the response was over-budget;
+	// fail the call so we don't quietly let a future expansion of the
+	// payload normalize over the cap.
+	if limited.N == 0 {
 		return zero, fmt.Errorf(
 			"response exceeded %d-byte cap (raise max_api_response_bytes via `synthorg config set max_api_response_bytes <size>`)",
 			maxAPIResponseBytes)
-	}
-
-	var result T
-	if err := json.Unmarshal(body, &result); err != nil {
-		return zero, fmt.Errorf("decoding response: %w", err)
 	}
 	return result, nil
 }

@@ -466,13 +466,14 @@ func TestEffectiveBaseRef(t *testing.T) {
 		commitSHA string
 		want      string
 	}{
-		{"prefers full SHA over tag", "v0.7.3-dev.20", "deadbeefcafebabe1234567890abcdef12345678", "deadbeefcafebabe1234567890abcdef12345678"},
-		{"prefers short SHA (>= 7 chars) over tag", "v0.7.3-dev.20", "deadbee", "deadbee"},
+		{"prefers full 40-char SHA over tag", "v0.7.3-dev.20", "deadbeefcafebabe1234567890abcdef12345678", "deadbeefcafebabe1234567890abcdef12345678"},
+		{"falls back to tag for short SHA (only full SHAs are accepted)", "v0.7.3-dev.20", "deadbee", "v0.7.3-dev.20"},
 		{"falls back to tag for none sentinel", "v0.7.3-dev.20", "none", "v0.7.3-dev.20"},
 		{"falls back to tag for dev sentinel", "v0.7.3-dev.20", "dev", "v0.7.3-dev.20"},
 		{"falls back to tag for empty SHA", "v0.7.3-dev.20", "", "v0.7.3-dev.20"},
 		{"falls back to tag for too-short SHA", "v0.7.3-dev.20", "abc123", "v0.7.3-dev.20"},
 		{"falls back to tag for non-hex SHA", "v0.7.3-dev.20", "notahexstring", "v0.7.3-dev.20"},
+		{"falls back to tag for hex-named tag (would-be collision guard)", "v0.7.3-dev.20", "abcdef1", "v0.7.3-dev.20"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -488,10 +489,14 @@ func TestIsLikelyCommitSHA(t *testing.T) {
 		in   string
 		want bool
 	}{
-		{"deadbeefcafebabe1234567890abcdef12345678", true}, // full 40-char SHA
-		{"DEADBEEFCAFEBABE1234567890ABCDEF12345678", true}, // uppercase hex
-		{"DeadBeef", true},       // mixed case, >= 7 chars
-		{"deadbee", true},        // exactly 7 chars
+		{"deadbeefcafebabe1234567890abcdef12345678", true},   // full 40-char SHA
+		{"DEADBEEFCAFEBABE1234567890ABCDEF12345678", true},   // uppercase hex full length
+		{"DeadBeefCafeBabe1234567890ABCDEFdeadbeef", true},   // mixed case, full length
+		{"deadbeefcafebabe1234567890abcdef1234567", false},   // 39 chars, one short
+		{"deadbeefcafebabe1234567890abcdef123456789", false}, // 41 chars, one long
+		{"DeadBeef", false},      // 8 chars: was true in the prefix-based version, now rejected
+		{"deadbee", false},       // 7-char short SHA: rejected to close the hex-tag-bypass corner case
+		{"abcdef1", false},       // hex-named tag of >= 7 chars: must NOT be treated as SHA
 		{"abc123", false},        // too short
 		{"", false},              // empty
 		{"none", false},          // GoReleaser default sentinel

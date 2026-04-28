@@ -210,13 +210,21 @@ func effectiveBaseRef(tagRef, commitSHA string) string {
 	return tagRef
 }
 
-// isLikelyCommitSHA reports whether s has the shape of a git commit SHA
-// (>= 7 hex chars). Sentinel ldflags values like "none", "dev", and the
-// empty string fail this check, which is the trigger for falling back to
-// the tag-based ref. The name avoids "stable" because that term is already
-// used in this file for the release channel (see runStableHighlightsWalk).
+// commitSHALen is the canonical length of a git commit SHA. GoReleaser
+// stamps the full 40-char SHA into version.Commit; sentinel values
+// ("none", "dev", "unknown", "") are shorter and fail the length check,
+// which is the trigger for falling back to the tag-based ref.
+const commitSHALen = 40
+
+// isLikelyCommitSHA reports whether s has the canonical shape of a git
+// commit SHA: exactly commitSHALen hex chars. Restricting to the full
+// length closes a hex-named-tag bypass (a tag like "abcdef1" would
+// otherwise match a >= 7-char prefix test and the dev commit walk would
+// search for the wrong commit). The name avoids "stable" because that
+// term is already used in this file for the release channel (see
+// runStableHighlightsWalk).
 func isLikelyCommitSHA(s string) bool {
-	if len(s) < 7 {
+	if len(s) != commitSHALen {
 		return false
 	}
 	for _, r := range s {

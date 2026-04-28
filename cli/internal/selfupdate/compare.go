@@ -44,10 +44,16 @@ const (
 	// to the user that the listing is incomplete.
 	maxCommitPages = 20
 
-	// minSHAPrefixLen is the shortest SHA prefix we will accept when
-	// matching a list-commits entry against the requested base ref. Seven
-	// hex chars is the standard `git log --abbrev-commit` short-SHA length.
-	minSHAPrefixLen = 7
+	// commitSHALen is the canonical length of a git commit SHA. The base
+	// ref must be exactly this many hex chars to be treated as a SHA;
+	// anything shorter (or any non-hex char) is routed through tag
+	// resolution. Restricting to the full length closes a corner case
+	// flagged by external review: a hex-only tag of >= 7 chars (e.g.
+	// "abcdef1") would otherwise bypass the tag-ref endpoint and the
+	// list-commits walk would miss the actual commit the tag points at.
+	// Real callers always pass the full 40-char SHA stamped in by
+	// GoReleaser, so the tightening is purely defensive.
+	commitSHALen = 40
 )
 
 // listCommitJSON mirrors the subset of the GitHub list-commits payload we
@@ -145,7 +151,7 @@ func commitsBetweenFromURL(ctx context.Context, commitsBaseURL, tagRefURL, tagOb
 		return CommitRange{}, fmt.Errorf("comparing %s...%s: %w", base, head, err)
 	}
 
-	collected, foundBase, err := walkCommitsToBase(ctx, commitsBaseURL, baseSHA, head)
+	collected, foundBase, hitCap, err := walkCommitsToBase(ctx, commitsBaseURL, baseSHA, head)
 	if err != nil {
 		return CommitRange{}, fmt.Errorf("comparing %s...%s: %w", base, head, err)
 	}
@@ -153,15 +159,14 @@ func commitsBetweenFromURL(ctx context.Context, commitsBaseURL, tagRefURL, tagOb
 		return CommitRange{Commits: collected, TotalCommits: len(collected)}, nil
 	}
 
-	// Walked without finding base. If we collected nothing the head ref
-	// itself returned an empty history (unborn / disconnected stream) --
-	// surface the empty range as-is so the caller can show its "range
-	// looks empty" message. If we did collect commits but ran out the
-	// page cap, set TotalCommits one above the collected count so the
-	// UI renders a "showing N (truncated)" footer instead of
-	// misrepresenting the range as complete.
+	// Walked without finding base. The "(truncated)" footer is only
+	// honest when we actually hit the page cap (hitCap=true). If the
+	// commit stream ran out naturally (empty or short final page),
+	// we have the complete reachable history from head and there is
+	// nothing more to show; bumping TotalCommits in that case would
+	// lie to the UI about there being more commits than we render.
 	total := len(collected)
-	if total > 0 {
+	if hitCap {
 		total++
 	}
 	return CommitRange{
@@ -172,33 +177,42 @@ func commitsBetweenFromURL(ctx context.Context, commitsBaseURL, tagRefURL, tagOb
 
 // walkCommitsToBase paginates the list-commits endpoint backwards from head
 // and returns the commits encountered up to (but not including) the entry
-// matching baseSHA. foundBase reports whether the walk terminated because
-// it hit baseSHA (true) or because it ran out of pages / hit an empty page
-// (false). The caller decides how to render the truncated case.
-func walkCommitsToBase(ctx context.Context, commitsBaseURL, baseSHA, head string) (collected []Commit, foundBase bool, err error) {
+// matching baseSHA. The three terminal flags distinguish the outcomes:
+//   - foundBase = true: we encountered baseSHA in the stream (the happy path).
+//   - hitCap = true: the loop ran out of pages without finding baseSHA AND
+//     the last fetched page was full (commitsPerPage entries), implying more
+//     history exists upstream that we did not fetch. The caller surfaces
+//     this as a "(truncated)" footer.
+//   - both false: the stream ended naturally (empty page or short final
+//     page) without finding baseSHA. We have the complete reachable
+//     history from head; nothing more to show. The caller MUST NOT render
+//     a truncation footer in this case.
+func walkCommitsToBase(ctx context.Context, commitsBaseURL, baseSHA, head string) (collected []Commit, foundBase, hitCap bool, err error) {
 	for page := 1; page <= maxCommitPages; page++ {
 		pageURL, err := buildCommitsPageURL(commitsBaseURL, head, page)
 		if err != nil {
-			return nil, false, err
+			return nil, false, false, err
 		}
 		entries, err := fetchJSON[[]listCommitJSON](ctx, pageURL)
 		if err != nil {
-			return nil, false, err
+			return nil, false, false, err
 		}
 		if len(entries) == 0 {
-			return collected, false, nil
+			return collected, false, false, nil
 		}
 		for _, c := range entries {
 			if shaMatches(c.SHA, baseSHA) {
-				return collected, true, nil
+				return collected, true, false, nil
 			}
 			collected = append(collected, projectListCommit(c))
 		}
 		if len(entries) < commitsPerPage {
-			return collected, false, nil
+			return collected, false, false, nil
 		}
 	}
-	return collected, false, nil
+	// Exhausted maxCommitPages with full pages all the way; more history
+	// exists upstream that we did not fetch.
+	return collected, false, true, nil
 }
 
 // resolveBaseToSHA returns the full commit SHA for base. SHA-shaped inputs
@@ -267,15 +281,17 @@ func buildCommitsPageURL(baseURL, head string, page int) (string, error) {
 }
 
 // shaMatches reports whether the full 40-char SHA returned by GitHub
-// matches the requested ref. ref may be a full SHA or a short SHA prefix
-// of at least minSHAPrefixLen characters. Comparison is case-insensitive
-// because tag-resolved SHAs and embedded build-time SHAs have historically
-// arrived in different cases.
+// matches the requested ref. ref must be exactly commitSHALen hex chars
+// (the canonical git commit SHA length); resolveBaseToSHA guarantees this
+// by either pass-through (for SHA-form base inputs that pass
+// isLikelyCommitSHA) or by tag dereferencing. Comparison is
+// case-insensitive because tag-resolved SHAs and embedded build-time
+// SHAs have historically arrived in different cases.
 func shaMatches(full, ref string) bool {
-	if len(ref) < minSHAPrefixLen || len(ref) > len(full) {
+	if len(ref) != commitSHALen || len(full) != commitSHALen {
 		return false
 	}
-	return strings.EqualFold(full[:len(ref)], ref)
+	return strings.EqualFold(full, ref)
 }
 
 // projectListCommit narrows a list-commits entry to the UI-facing Commit
@@ -290,12 +306,16 @@ func projectListCommit(c listCommitJSON) Commit {
 	}
 }
 
-// isLikelyCommitSHA reports whether s has the shape of a git commit SHA
-// (>= minSHAPrefixLen hex chars). Tag names like "v0.7.5" fail this check
-// because the leading "v" is non-hex, which is the trigger for routing the
-// resolution through the tag-ref endpoint.
+// isLikelyCommitSHA reports whether s has the canonical shape of a git
+// commit SHA: exactly commitSHALen hex chars. Anything shorter (or any
+// non-hex character) falls through to tag resolution. The strict length
+// requirement closes a hex-named-tag bypass: a tag like "abcdef1" would
+// otherwise match the prefix-length test and the list-commits walk would
+// search for the wrong commit. Real callers (the embedded build-time
+// SHA from GoReleaser and tag-dereferenced SHAs from /git/ref/tags) are
+// always full 40-char SHAs, so the tightening costs nothing in practice.
 func isLikelyCommitSHA(s string) bool {
-	if len(s) < minSHAPrefixLen {
+	if len(s) != commitSHALen {
 		return false
 	}
 	for _, r := range s {
