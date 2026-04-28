@@ -87,8 +87,9 @@ describe("ComparisonTable", () => {
     const filterBar = screen.getByTestId("ct-filter-bar");
     const catBtn = within(filterBar).getByText("Commercial Platform");
     fireEvent.click(catBtn);
+    // SynthOrg is always pinned through every filter (see ComparisonTable.tsx:188).
     expect(screen.getByTestId("result-count").textContent).toBe(
-      "Showing 1 of 3 frameworks",
+      "Showing 2 of 3 frameworks",
     );
     expect(screen.getAllByText("PlatformX")).toHaveLength(2);
     expect(screen.queryAllByText("TestAI")).toHaveLength(0);
@@ -99,7 +100,7 @@ describe("ComparisonTable", () => {
     const searchInput = screen.getByPlaceholderText("Search frameworks...");
     fireEvent.change(searchInput, { target: { value: "TestAI" } });
     expect(screen.getByTestId("result-count").textContent).toBe(
-      "Showing 1 of 3 frameworks",
+      "Showing 2 of 3 frameworks",
     );
   });
 
@@ -108,7 +109,7 @@ describe("ComparisonTable", () => {
     const licenseSelect = screen.getByLabelText("Filter by license");
     fireEvent.change(licenseSelect, { target: { value: "MIT" } });
     expect(screen.getByTestId("result-count").textContent).toBe(
-      "Showing 1 of 3 frameworks",
+      "Showing 2 of 3 frameworks",
     );
     expect(screen.getAllByText("TestAI")).toHaveLength(2);
   });
@@ -129,7 +130,7 @@ describe("ComparisonTable", () => {
     const catBtn = within(filterBar).getByText("Commercial Platform");
     fireEvent.click(catBtn);
     expect(screen.getByTestId("result-count").textContent).toBe(
-      "Showing 1 of 3 frameworks",
+      "Showing 2 of 3 frameworks",
     );
     const clearBtn = within(filterBar).getByText("Clear");
     fireEvent.click(clearBtn);
