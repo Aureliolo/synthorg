@@ -12,9 +12,24 @@ Two preset kinds, expressed as a discriminated union:
   vLLM).  Carries auto-detect candidate URLs and local model-management
   capability flags.
 
+Two preset tiers, distinguished by :attr:`_BasePreset.is_featured`:
+
+* **Featured** -- hand-curated entries with brand logo, vetted
+  description, and (where useful) ``default_models`` fallback.  Listed
+  in :data:`_FEATURED_PRESETS`.
+* **Soft** -- auto-derived from ``litellm.model_cost`` by
+  :mod:`synthorg.providers.preset_softlist` for every chat namespace
+  not already covered by a featured preset and not denied by the
+  soft-list module's denylist + deny-prefix table.  Soft presets
+  render with the wizard's generic fallback icon and a generic
+  description; they exist so SynthOrg surfaces every chat-capable
+  LiteLLM provider out of the box.
+
 Consumers iterating across all presets should use the helpers
-:func:`default_models_for`, :func:`candidate_urls_for`, and
-:func:`list_local_presets` instead of conditional ``isinstance`` checks.
+:func:`default_models_for`, :func:`candidate_urls_for`,
+:func:`list_local_presets`, :func:`list_featured_presets`, and
+:func:`list_soft_presets` instead of conditional ``isinstance``
+or attribute checks.
 """
 
 import re
@@ -25,7 +40,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 from synthorg.providers.enums import AuthType
+from synthorg.providers.preset_softlist import build_soft_presets
+
+logger = get_logger(__name__)
 
 
 class _BasePreset(BaseModel):
@@ -46,6 +66,11 @@ class _BasePreset(BaseModel):
             ``False`` for cloud providers (the routing library knows
             the URL), ``True`` for self-hosted and deployment-specific
             backends (per-deployment).
+        is_featured: Whether this preset is hand-curated (logo, vetted
+            description, default-model fallbacks) versus auto-derived
+            from ``litellm.model_cost``.  Featured presets render in
+            the wizard's primary grid; non-featured (soft) presets
+            render in the "More providers" section.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -58,6 +83,7 @@ class _BasePreset(BaseModel):
     auth_type: AuthType
     default_base_url: NotBlankStr | None = None
     requires_base_url: bool = False
+    is_featured: bool = True
 
 
 class CloudPreset(_BasePreset):
@@ -87,6 +113,58 @@ class CloudPreset(_BasePreset):
             msg = (
                 f"auth_type {self.auth_type!r} not in "
                 f"supported_auth_types {self.supported_auth_types!r}"
+            )
+            logger.error(
+                CONFIG_VALIDATION_FAILED,
+                model="CloudPreset",
+                preset_name=self.name,
+                auth_type=self.auth_type.value,
+                supported_auth_types=[t.value for t in self.supported_auth_types],
+                error=msg,
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_soft_preset_shape(self) -> Self:
+        """Ensure soft presets follow the API-key-only contract.
+
+        Soft presets are auto-derived from ``litellm.model_cost`` and
+        cannot reasonably support subscription / OAuth / custom-header
+        auth without per-provider research.  Today only
+        :func:`_make_soft_preset` constructs ``is_featured=False``
+        instances, but encoding the invariant on the type prevents a
+        future caller from minting a misconfigured soft preset.
+        """
+        if self.is_featured:
+            return self
+        if self.auth_type != AuthType.API_KEY:
+            msg = (
+                f"Soft preset {self.name!r} (is_featured=False) must use "
+                f"AuthType.API_KEY; got {self.auth_type!r}."
+            )
+            logger.error(
+                CONFIG_VALIDATION_FAILED,
+                model="CloudPreset",
+                preset_name=self.name,
+                is_featured=self.is_featured,
+                auth_type=self.auth_type.value,
+                error=msg,
+            )
+            raise ValueError(msg)
+        if self.supported_auth_types != (AuthType.API_KEY,):
+            msg = (
+                f"Soft preset {self.name!r} (is_featured=False) must declare "
+                f"supported_auth_types=(API_KEY,); got "
+                f"{self.supported_auth_types!r}."
+            )
+            logger.error(
+                CONFIG_VALIDATION_FAILED,
+                model="CloudPreset",
+                preset_name=self.name,
+                is_featured=self.is_featured,
+                supported_auth_types=[t.value for t in self.supported_auth_types],
+                error=msg,
             )
             raise ValueError(msg)
         return self
@@ -221,6 +299,28 @@ _MISTRAL = CloudPreset(
     default_models=(),
 )
 
+_MOONSHOT = CloudPreset(
+    name="moonshot",
+    display_name="Moonshot AI (Kimi)",
+    description="Kimi long-context models from Moonshot AI",
+    driver="litellm",
+    litellm_provider="moonshot",
+    auth_type=AuthType.API_KEY,
+    supported_auth_types=(AuthType.API_KEY,),
+    default_models=(),
+)
+
+_NVIDIA_NIM = CloudPreset(
+    name="nvidia_nim",
+    display_name="NVIDIA NIM",
+    description="NVIDIA-hosted inference for Llama, Qwen, and others",
+    driver="litellm",
+    litellm_provider="nvidia_nim",
+    auth_type=AuthType.API_KEY,
+    supported_auth_types=(AuthType.API_KEY,),
+    default_models=(),
+)
+
 _GROQ = CloudPreset(
     name="groq",
     display_name="Groq",
@@ -243,6 +343,17 @@ _DEEPSEEK = CloudPreset(
     default_models=(),
 )
 
+_FIREWORKS = CloudPreset(
+    name="fireworks_ai",
+    display_name="Fireworks AI",
+    description="Fast open-model inference (Llama, DeepSeek, Mixtral)",
+    driver="litellm",
+    litellm_provider="fireworks_ai",
+    auth_type=AuthType.API_KEY,
+    supported_auth_types=(AuthType.API_KEY,),
+    default_models=(),
+)
+
 _AZURE_OPENAI = CloudPreset(
     name="azure",
     display_name="Azure OpenAI",
@@ -254,6 +365,30 @@ _AZURE_OPENAI = CloudPreset(
     # Azure requires a per-deployment base_url
     default_base_url=None,
     requires_base_url=True,
+    default_models=(),
+)
+
+_CEREBRAS = CloudPreset(
+    name="cerebras",
+    display_name="Cerebras",
+    description="Wafer-scale inference (Llama, Qwen, GPT-OSS)",
+    driver="litellm",
+    litellm_provider="cerebras",
+    auth_type=AuthType.API_KEY,
+    supported_auth_types=(AuthType.API_KEY,),
+    default_models=(),
+)
+
+_COHERE = CloudPreset(
+    name="cohere",
+    display_name="Cohere",
+    description="Command and Command-R models for chat and RAG",
+    driver="litellm",
+    # cohere/ is the legacy completions endpoint; chat-completions
+    # routes via cohere_chat/ in LiteLLM.
+    litellm_provider="cohere_chat",
+    auth_type=AuthType.API_KEY,
+    supported_auth_types=(AuthType.API_KEY,),
     default_models=(),
 )
 
@@ -345,23 +480,190 @@ _OPENROUTER = CloudPreset(
     default_models=(),
 )
 
+_SAMBANOVA = CloudPreset(
+    name="sambanova",
+    display_name="SambaNova",
+    description="High-throughput Llama inference",
+    driver="litellm",
+    litellm_provider="sambanova",
+    auth_type=AuthType.API_KEY,
+    supported_auth_types=(AuthType.API_KEY,),
+    default_models=(),
+)
 
-PROVIDER_PRESETS: tuple[CloudPreset | LocalPreset, ...] = (
-    # Cloud (alphabetical)
+_TOGETHER = CloudPreset(
+    name="together_ai",
+    display_name="Together AI",
+    description="Open-model gateway (Llama, Qwen, DeepSeek, Mixtral)",
+    driver="litellm",
+    litellm_provider="together_ai",
+    auth_type=AuthType.API_KEY,
+    supported_auth_types=(AuthType.API_KEY,),
+    default_models=(),
+)
+
+_XAI = CloudPreset(
+    name="xai",
+    display_name="xAI (Grok)",
+    description="xAI Grok reasoning and chat models",
+    driver="litellm",
+    litellm_provider="xai",
+    auth_type=AuthType.API_KEY,
+    supported_auth_types=(AuthType.API_KEY,),
+    default_models=(),
+)
+
+
+_FEATURED_PRESETS: tuple[CloudPreset | LocalPreset, ...] = (
+    # Cloud (alphabetical by preset name)
     _ANTHROPIC,
     _AZURE_OPENAI,
+    _CEREBRAS,
+    _COHERE,
     _DEEPSEEK,
+    _FIREWORKS,
     _GEMINI,
     _GROQ,
     _MISTRAL,
+    _MOONSHOT,
+    _NVIDIA_NIM,
     _OLLAMA_CLOUD,
     _OPENAI,
     _OPENROUTER,
+    _SAMBANOVA,
+    _TOGETHER,
+    _XAI,
     # Self-hosted (alphabetical)
     _LM_STUDIO,
     _OLLAMA,
     _VLLM,
 )
+"""Hand-curated presets with branding (logo, description, default
+models).  Featured presets render in the wizard's primary grid."""
+
+
+# ── Auto-derived "soft" presets ────────────────────────────────
+#
+# The discovery + denylist machinery lives in
+# :mod:`synthorg.providers.preset_softlist` to keep this module
+# under the project's 800-line file ceiling.  See that module's
+# docstring for the maintainer note about LiteLLM dependency bumps.
+
+_SOFT_PRESETS: tuple[CloudPreset, ...] = build_soft_presets(_FEATURED_PRESETS)
+"""Auto-derived soft presets, one per LiteLLM chat namespace not
+already covered by :data:`_FEATURED_PRESETS` or denied by the
+soft-list module's denylist.  Computed once at module load because
+``litellm.model_cost`` is itself a static module-level table.
+"""
+
+
+def _audit_duplicate_names(
+    presets: tuple[CloudPreset | LocalPreset, ...],
+) -> None:
+    """Reject duplicate ``name`` values across the merged preset tuple."""
+    seen: dict[str, CloudPreset | LocalPreset] = {}
+    for preset in presets:
+        if preset.name in seen:
+            other = seen[preset.name]
+            msg = f"Duplicate preset name {preset.name!r}: {other!r} and {preset!r}"
+            logger.error(
+                CONFIG_VALIDATION_FAILED,
+                model="PROVIDER_PRESETS",
+                check="duplicate_name",
+                preset_name=preset.name,
+                error=msg,
+            )
+            raise ValueError(msg)
+        seen[preset.name] = preset
+
+
+def _audit_namespace_collisions(
+    presets: tuple[CloudPreset | LocalPreset, ...],
+) -> None:
+    """Reject soft presets that duplicate a featured ``litellm_provider``.
+
+    Multiple presets sharing one ``litellm_provider`` is allowed by
+    design for re-uses such as ollama (``ollama`` and ``ollama-cloud``)
+    and the openai-compatible local presets (``lm-studio`` / ``vllm``).
+    A collision is only rejected when both sides are CloudPresets and
+    at least one is a soft preset, because that means the auto-derive
+    layer leaked a duplicate of a featured entry.
+    """
+    seen: dict[str, CloudPreset | LocalPreset] = {}
+    for preset in presets:
+        if preset.litellm_provider not in seen:
+            seen[preset.litellm_provider] = preset
+            continue
+        other = seen[preset.litellm_provider]
+        both_cloud = isinstance(preset, CloudPreset) and isinstance(other, CloudPreset)
+        either_soft = not (preset.is_featured and other.is_featured)
+        if both_cloud and either_soft:
+            msg = (
+                f"Duplicate litellm_provider {preset.litellm_provider!r} "
+                f"between {other.name!r} and {preset.name!r}; soft "
+                f"presets must dedupe against featured."
+            )
+            logger.error(
+                CONFIG_VALIDATION_FAILED,
+                model="PROVIDER_PRESETS",
+                check="soft_duplicates_featured_namespace",
+                preset_name=preset.name,
+                other_preset_name=other.name,
+                litellm_provider=preset.litellm_provider,
+                error=msg,
+            )
+            raise ValueError(msg)
+
+
+def _audit_featured_order(
+    presets: tuple[CloudPreset | LocalPreset, ...],
+) -> None:
+    """Reject any featured preset that appears after a soft preset.
+
+    The API contract surfaces featured entries first (driving the
+    wizard's primary-grid / more-providers split).
+    """
+    saw_soft = False
+    for preset in presets:
+        if not preset.is_featured:
+            saw_soft = True
+        elif saw_soft:
+            msg = (
+                f"Featured preset {preset.name!r} appears after a soft preset; "
+                "PROVIDER_PRESETS must list featured entries first."
+            )
+            logger.error(
+                CONFIG_VALIDATION_FAILED,
+                model="PROVIDER_PRESETS",
+                check="featured_after_soft",
+                preset_name=preset.name,
+                error=msg,
+            )
+            raise ValueError(msg)
+
+
+def _audit_presets(presets: tuple[CloudPreset | LocalPreset, ...]) -> None:
+    """Validate cross-cutting preset invariants at module load.
+
+    Catches mistakes that the per-instance Pydantic validators cannot
+    see; raises :class:`ValueError` on any violation so a
+    misconfiguration fails the import rather than reaching runtime.
+    """
+    _audit_duplicate_names(presets)
+    _audit_namespace_collisions(presets)
+    _audit_featured_order(presets)
+
+
+PROVIDER_PRESETS: tuple[CloudPreset | LocalPreset, ...] = (
+    *_FEATURED_PRESETS,
+    *_SOFT_PRESETS,
+)
+"""All available presets.  Featured (hand-curated, branded) entries
+land first, in the order declared in :data:`_FEATURED_PRESETS`; soft
+(auto-derived from ``litellm.model_cost``) entries follow,
+alphabetical by namespace."""
+
+_audit_presets(PROVIDER_PRESETS)
 
 _PRESET_LOOKUP: MappingProxyType[str, CloudPreset | LocalPreset] = MappingProxyType(
     {p.name: p for p in PROVIDER_PRESETS},
@@ -381,12 +683,36 @@ def get_preset(name: str) -> CloudPreset | LocalPreset | None:
 
 
 def list_presets() -> tuple[CloudPreset | LocalPreset, ...]:
-    """Return all available presets.
+    """Return all available presets (featured first, then soft).
 
     Returns:
-        Tuple of all provider presets (cloud + local).
+        Tuple of all provider presets (cloud + local).  Featured
+        (hand-curated, branded) presets are first; soft (auto-derived
+        from ``litellm.model_cost``) presets follow.
     """
     return PROVIDER_PRESETS
+
+
+def list_featured_presets() -> tuple[CloudPreset | LocalPreset, ...]:
+    """Return only the hand-curated (branded) presets.
+
+    Returns:
+        Tuple of presets where :attr:`is_featured` is ``True``.  Used
+        by the wizard's primary grid to surface the curated set
+        separately from the auto-derived "More providers" section.
+    """
+    return tuple(p for p in PROVIDER_PRESETS if p.is_featured)
+
+
+def list_soft_presets() -> tuple[CloudPreset, ...]:
+    """Return only the auto-derived soft presets.
+
+    Returns:
+        Tuple of :class:`CloudPreset` instances where
+        :attr:`is_featured` is ``False``.  Used by the wizard's
+        "More providers" section.
+    """
+    return _SOFT_PRESETS
 
 
 def list_local_presets() -> tuple[LocalPreset, ...]:

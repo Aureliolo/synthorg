@@ -18,6 +18,7 @@ const cloud: CloudPreset = {
   supported_auth_types: ['api_key'],
   default_base_url: null,
   requires_base_url: false,
+  is_featured: true,
   default_models: [],
 }
 
@@ -31,6 +32,7 @@ const ollama: LocalPreset = {
   auth_type: 'none',
   default_base_url: 'http://localhost:11434',
   requires_base_url: true,
+  is_featured: true,
   candidate_urls: ['http://localhost:11434'],
   supports_model_pull: true,
   supports_model_delete: true,
@@ -47,6 +49,7 @@ const vllm: LocalPreset = {
   auth_type: 'none',
   default_base_url: 'http://localhost:8000/v1',
   requires_base_url: true,
+  is_featured: true,
   candidate_urls: [],
   supports_model_pull: false,
   supports_model_delete: false,
@@ -158,6 +161,52 @@ describe('PresetPickerSections', () => {
     render(<PresetPickerSections {...makeProps({ onConfigureManually })} />)
     fireEvent.click(screen.getByRole('button', { name: /Configure manually/ }))
     expect(onConfigureManually).toHaveBeenCalledTimes(1)
+  })
+
+  it('hides the More providers section when no soft (non-featured) cloud presets are present', () => {
+    // All fixtures here are featured (is_featured=true), so the
+    // collapsible "More providers via LiteLLM" surface should not
+    // render.
+    render(<PresetPickerSections {...makeProps()} />)
+    expect(
+      screen.queryByText(/More providers via LiteLLM/),
+    ).not.toBeInTheDocument()
+  })
+
+  it('renders the More providers section when soft cloud presets exist', () => {
+    const softCloud: CloudPreset = {
+      kind: 'cloud',
+      name: 'softprovider',
+      display_name: 'Softprovider',
+      description: "Models served via LiteLLM provider 'softprovider'",
+      driver: 'litellm',
+      litellm_provider: 'softprovider',
+      auth_type: 'api_key',
+      supported_auth_types: ['api_key'],
+      default_base_url: null,
+      requires_base_url: false,
+      is_featured: false,
+      default_models: [],
+    }
+    render(
+      <PresetPickerSections
+        {...makeProps({ presets: [cloud, softCloud, ollama, vllm] })}
+      />,
+    )
+    // Summary text is visible immediately (count in label).
+    const summary = screen.getByText(/More providers via LiteLLM \(1\)/)
+    const details = summary.closest('details')
+    expect(details).not.toBeNull()
+    // <details> starts closed.
+    expect(details).not.toHaveAttribute('open')
+    // Click to expand; jsdom keeps closed descendants in the DOM, so
+    // without asserting the open transition the button query below
+    // would pass even if the toggle stopped revealing its content.
+    fireEvent.click(summary)
+    expect(details).toHaveAttribute('open')
+    expect(
+      screen.getByRole('button', { name: /Add Softprovider/ }),
+    ).toBeInTheDocument()
   })
 
   it('shows only successful detected rows when probe returned mixed results', () => {

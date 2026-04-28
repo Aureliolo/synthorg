@@ -104,6 +104,7 @@ PROVIDER_DISCOVERY_URL_ALLOWED: Final[str] = "provider.discovery.url_allowed"
 PROVIDER_LITELLM_LOOKUP_SKIPPED: Final[str] = "provider.litellm.lookup_skipped"
 PROVIDER_LITELLM_MODELS_LOADED: Final[str] = "provider.litellm.models_loaded"
 PROVIDER_LITELLM_MODELS_EMPTY: Final[str] = "provider.litellm.models_empty"
+PROVIDER_LITELLM_CATALOG_INVALID: Final[str] = "provider.litellm.catalog_invalid"
 
 # ── Health tracker eviction events ───────────────────────────
 PROVIDER_HEALTH_PRUNED: Final[str] = "provider.health.pruned"

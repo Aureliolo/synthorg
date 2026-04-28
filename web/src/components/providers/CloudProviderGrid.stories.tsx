@@ -15,6 +15,7 @@ const samplePresets: CloudPreset[] = [
     supported_auth_types: ['api_key', 'subscription'],
     default_base_url: null,
     requires_base_url: false,
+    is_featured: true,
     default_models: [],
   },
   {
@@ -28,6 +29,7 @@ const samplePresets: CloudPreset[] = [
     supported_auth_types: ['api_key'],
     default_base_url: null,
     requires_base_url: false,
+    is_featured: true,
     default_models: [],
   },
   {
@@ -41,6 +43,7 @@ const samplePresets: CloudPreset[] = [
     supported_auth_types: ['api_key'],
     default_base_url: null,
     requires_base_url: false,
+    is_featured: true,
     default_models: [],
   },
   {
@@ -54,6 +57,7 @@ const samplePresets: CloudPreset[] = [
     supported_auth_types: ['api_key'],
     default_base_url: 'https://ollama.com',
     requires_base_url: false,
+    is_featured: true,
     default_models: [],
   },
 ]

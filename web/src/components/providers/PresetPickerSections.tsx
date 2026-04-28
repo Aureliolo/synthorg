@@ -1,4 +1,6 @@
+import { ChevronDown } from 'lucide-react'
 import { useMemo } from 'react'
+import { cn } from '@/lib/utils'
 import type {
   CloudPreset,
   LocalPreset,
@@ -60,8 +62,18 @@ export function PresetPickerSections({
   onReprobe,
   onConfigureManually,
 }: PresetPickerSectionsProps) {
-  const cloudPresets: readonly CloudPreset[] = useMemo(
-    () => presets.filter((p): p is CloudPreset => p.kind === 'cloud'),
+  const featuredCloudPresets: readonly CloudPreset[] = useMemo(
+    () =>
+      presets.filter(
+        (p): p is CloudPreset => p.kind === 'cloud' && p.is_featured,
+      ),
+    [presets],
+  )
+  const moreCloudPresets: readonly CloudPreset[] = useMemo(
+    () =>
+      presets.filter(
+        (p): p is CloudPreset => p.kind === 'cloud' && !p.is_featured,
+      ),
     [presets],
   )
   const localPresetsWithCandidates: readonly LocalPreset[] = useMemo(
@@ -91,11 +103,49 @@ export function PresetPickerSections({
           Cloud providers
         </h3>
         <CloudProviderGrid
-          presets={cloudPresets}
+          presets={featuredCloudPresets}
           addedPresets={addedPresets}
           onSelect={onSelectCloud}
         />
       </section>
+
+      {moreCloudPresets.length > 0 && (
+        <section aria-labelledby="more-providers-heading" className="space-y-3">
+          <details className="group space-y-3">
+            <summary
+              id="more-providers-heading"
+              className={cn(
+                // Suppress the native disclosure triangle; the
+                // ChevronDown below is the only indicator.
+                'list-none [&::-webkit-details-marker]:hidden',
+                'flex cursor-pointer items-center justify-between',
+                'rounded-lg border border-border bg-card p-card',
+                'text-sm font-semibold text-foreground',
+                'transition-colors duration-[var(--so-transition-fast)]',
+                'hover:bg-card-hover hover:border-bright',
+              )}
+            >
+              <span>
+                More providers via LiteLLM ({moreCloudPresets.length})
+              </span>
+              <ChevronDown
+                aria-hidden="true"
+                className="size-4 text-text-muted transition-transform group-open:rotate-180"
+              />
+            </summary>
+            <p className="text-xs text-text-muted">
+              Auto-derived from the LiteLLM model catalog. Logos and curated
+              defaults are not provided -- click any card to open the credential
+              form.
+            </p>
+            <CloudProviderGrid
+              presets={moreCloudPresets}
+              addedPresets={addedPresets}
+              onSelect={onSelectCloud}
+            />
+          </details>
+        </section>
+      )}
 
       <DetectedLocalList
         localPresets={localPresetsWithCandidates}

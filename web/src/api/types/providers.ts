@@ -157,6 +157,13 @@ interface BasePresetFields {
   auth_type: AuthType
   default_base_url: string | null
   requires_base_url: boolean
+  /**
+   * ``true`` for hand-curated presets (logo, vetted description,
+   * default-model fallbacks); ``false`` for soft presets auto-derived
+   * from ``litellm.model_cost``.  Drives the wizard's split between
+   * the primary grid and the "More providers" section.
+   */
+  is_featured: boolean
 }
 
 /** Hosted LLM provider (no auto-detect, prefilled model list). */

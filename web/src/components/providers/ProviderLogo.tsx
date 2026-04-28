@@ -13,16 +13,24 @@ import { cn } from '@/lib/utils'
 const KNOWN_LOGOS: ReadonlySet<string> = new Set([
   'anthropic',
   'azure',
+  'cerebras',
+  'cohere',
   'deepseek',
+  'fireworks_ai',
   'gemini',
   'groq',
   'lm-studio',
   'mistral',
+  'moonshot',
+  'nvidia_nim',
   'ollama',
   'ollama-cloud',
   'openai',
   'openrouter',
+  'sambanova',
+  'together_ai',
   'vllm',
+  'xai',
 ])
 
 interface ProviderLogoProps {

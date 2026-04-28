@@ -44,6 +44,7 @@ export function buildCloudPreset(
     supported_auth_types: ['api_key'],
     default_base_url: null,
     requires_base_url: false,
+    is_featured: true,
     default_models: [],
     ...overrides,
   }
@@ -69,6 +70,7 @@ export function buildLocalPreset(
     auth_type: 'none',
     default_base_url: 'http://localhost:11434',
     requires_base_url: true,
+    is_featured: true,
     candidate_urls: ['http://localhost:11434'],
     supports_model_pull: true,
     supports_model_delete: true,
