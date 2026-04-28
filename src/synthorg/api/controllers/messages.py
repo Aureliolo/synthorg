@@ -75,6 +75,7 @@ class MessageController(Controller):
         state: State,
         request: Request[Any, Any, Any],
         message_id: str,
+        channel: str | None = None,
     ) -> ApiResponse[None]:
         """Delete a single message by id.
 
@@ -84,13 +85,26 @@ class MessageController(Controller):
         the authenticated user as the actor; the parallel MCP path
         (``synthorg_messages_delete``) emits the same event from the
         :class:`MessageService` layer so both surfaces produce a
-        uniform audit trail.
+        uniform audit trail (same key set, with ``channel`` reported
+        as ``None`` when the REST caller did not supply it).
 
         Goes directly through the repository (matching the read path
         in ``list_messages``) because :class:`MessageService` is wired
         only inside the MCP host today; the audit log is emitted
         inline so the HTTP path retains the same audit semantics
         regardless.
+
+        Args:
+            state: Litestar app state.
+            request: Authenticated request; ``request.user.user_id``
+                drives the audit log's actor field.
+            message_id: Globally unique message identifier (the
+                lookup key on the messages table).
+            channel: Optional channel attribution for the audit log
+                so callers can record which logical bus the message
+                belonged to. ``None`` is acceptable since
+                ``messages.id`` is globally unique; the value is
+                advisory metadata, not a lookup key.
         """
         app_state: AppState = state.app_state
         deleted = await app_state.persistence.messages.delete(message_id)
@@ -98,6 +112,7 @@ class MessageController(Controller):
             raise NotFoundException(detail=f"message {message_id!r} not found")
         logger.info(
             COMMUNICATION_MESSAGE_DELETED,
+            channel=channel,
             message_id=message_id,
             actor_id=str(request.user.user_id),
             reason="operator delete via REST API",

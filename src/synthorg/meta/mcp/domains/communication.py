@@ -53,8 +53,16 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         "delete",
         "Delete a message (destructive; requires confirm).",
         {
-            "channel": {"type": "string", "description": "Owning channel"},
-            "message_id": {"type": "string", "description": "Message UUID"},
+            "channel": {
+                "type": "string",
+                "description": "Owning channel",
+                "minLength": 1,
+            },
+            "message_id": {
+                "type": "string",
+                "description": "Message UUID",
+                "minLength": 1,
+            },
             **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
         required=("channel", "message_id", "reason", "confirm"),
@@ -99,7 +107,11 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         "delete",
         "Delete a meeting record (destructive; requires confirm).",
         {
-            "meeting_id": {"type": "string", "description": "Meeting UUID"},
+            "meeting_id": {
+                "type": "string",
+                "description": "Meeting UUID",
+                "minLength": 1,
+            },
             **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
         required=("meeting_id", "reason", "confirm"),
