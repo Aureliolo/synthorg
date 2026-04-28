@@ -77,6 +77,16 @@ def _module_path_from_file(path: Path) -> tuple[str, ...]:
     targets to absolute paths like ``synthorg.api.errors`` so the
     layering guard cannot be bypassed by a relative import.
 
+    The ``__init__`` segment is intentionally retained: a package's
+    ``__init__.py`` represents the package itself, so a ``from .
+    import foo`` inside ``synthorg/api/__init__.py`` must resolve
+    against the parts ``("synthorg", "api", "__init__")``.  After the
+    ``base[:-level]`` shave in :func:`_resolve_relative_import` that
+    yields ``("synthorg", "api")`` and a final ``synthorg.api.foo``,
+    which matches Python's own resolution.  Stripping ``__init__``
+    here would shave one level too many and route the import to the
+    parent package, hiding genuine forbidden imports.
+
     Files outside ``src/synthorg/`` (e.g. tests) cannot host package-
     relative imports of the project's modules; an empty tuple is
     returned so relative-import resolution becomes a no-op for them.
@@ -86,10 +96,7 @@ def _module_path_from_file(path: Path) -> tuple[str, ...]:
         rel = path.relative_to(src_parent).with_suffix("")
     except ValueError:
         return ()
-    parts = rel.parts
-    if parts and parts[-1] == "__init__":
-        parts = parts[:-1]
-    return parts
+    return rel.parts
 
 
 def _resolve_relative_import(
