@@ -174,8 +174,23 @@ def category_title(cat: ErrorCategory) -> str:
 
     Returns:
         Human-readable title string.
+
+    Raises:
+        ValueError: If ``cat`` has no entry in :data:`CATEGORY_TITLES`.
+            The two structures must stay in lockstep; a missing entry
+            indicates :class:`ErrorCategory` was extended without
+            updating :data:`CATEGORY_TITLES`, which would otherwise
+            surface as an opaque ``KeyError`` deep inside the
+            exception handler.
     """
-    return CATEGORY_TITLES[cat]
+    title = CATEGORY_TITLES.get(cat)
+    if title is None:
+        msg = (
+            f"ErrorCategory {cat.name!r} has no entry in CATEGORY_TITLES; "
+            "extend the mapping when adding a new category."
+        )
+        raise ValueError(msg)
+    return title
 
 
 def category_type_uri(cat: ErrorCategory) -> str:

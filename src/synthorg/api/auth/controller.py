@@ -47,6 +47,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_SESSION_LISTED,
     API_SESSION_REVOKE_FAILED,
+    API_VALIDATION_FAILED,
 )
 from synthorg.observability.events.security import (
     SECURITY_AUTH_ACCOUNT_LOCKED,
@@ -618,6 +619,12 @@ class AuthController(Controller):
 
         if scope not in _VALID_SCOPES:
             msg = f"Invalid scope: {scope!r}. Valid: own, all"
+            logger.warning(
+                API_VALIDATION_FAILED,
+                reason="invalid_session_scope",
+                scope=scope,
+                valid_scopes=sorted(_VALID_SCOPES),
+            )
             raise ValidationError(msg)
 
         app_state = request.app.state["app_state"]

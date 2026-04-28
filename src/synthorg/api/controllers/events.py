@@ -38,6 +38,7 @@ from synthorg.core.domain_errors import (
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.api import API_VALIDATION_FAILED
 from synthorg.observability.events.event_stream import (
     EVENT_STREAM_CLIENT_CONNECTED,
     EVENT_STREAM_CLIENT_DISCONNECTED,
@@ -219,9 +220,21 @@ def _validate_resume_payload(
     """
     if interrupt.type == InterruptType.TOOL_APPROVAL and data.decision is None:
         msg = "TOOL_APPROVAL interrupts require a decision"
+        logger.warning(
+            API_VALIDATION_FAILED,
+            reason="resume_payload_missing_field",
+            interrupt_type=interrupt.type.value,
+            missing_field="decision",
+        )
         raise ValidationError(msg)
     if interrupt.type == InterruptType.INFO_REQUEST and data.response is None:
         msg = "INFO_REQUEST interrupts require a response"
+        logger.warning(
+            API_VALIDATION_FAILED,
+            reason="resume_payload_missing_field",
+            interrupt_type=interrupt.type.value,
+            missing_field="response",
+        )
         raise ValidationError(msg)
 
 

@@ -103,15 +103,20 @@ class TestDomainErrorBase:
         category: ErrorCategory,
         code: ErrorCode,
     ) -> None:
-        """Each prefix-matching pair successfully creates a subclass."""
+        """Each prefix-matching pair successfully creates a subclass.
 
-        class _OkError(DomainError):
-            pass
-
-        _OkError.error_category = category
-        _OkError.error_code = code
-        # If the trigger fired, the assertion above would have raised.
-        assert _OkError.error_category == category
+        The ClassVars are bound INSIDE the ``type(...)`` namespace dict
+        so ``__init_subclass__`` runs against the matched pair at
+        class-creation time.  Setting attributes after the class body
+        completes would skip the validator.
+        """
+        cls: type[DomainError] = type(
+            "_OkError",
+            (DomainError,),
+            {"error_category": category, "error_code": code},
+        )
+        assert cls.error_category == category
+        assert cls.error_code == code
 
 
 class TestConcreteClassMetadata:

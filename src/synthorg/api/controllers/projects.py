@@ -24,7 +24,10 @@ from synthorg.core.enums import ProjectStatus
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
+from synthorg.observability.events.api import (
+    API_RESOURCE_NOT_FOUND,
+    API_VALIDATION_FAILED,
+)
 
 logger = get_logger(__name__)
 
@@ -91,6 +94,12 @@ class ProjectController(Controller):
             except ValueError as exc:
                 valid = ", ".join(e.value for e in ProjectStatus)
                 msg = f"Invalid project status: {status!r}. Valid values: {valid}"
+                logger.warning(
+                    API_VALIDATION_FAILED,
+                    reason="invalid_project_status",
+                    status=status,
+                    valid=valid,
+                )
                 raise ValidationError(msg) from exc
 
         projects = await _service(state).list_projects(

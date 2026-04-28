@@ -228,7 +228,7 @@ class OntologyController(Controller):
             await app_state.ontology_service.register(entity)
         except OntologyDuplicateError:
             msg = "Entity already exists"
-            logger.info(
+            logger.warning(
                 API_REQUEST_ERROR,
                 reason="duplicate_entity",
                 name=data.name,
@@ -338,6 +338,12 @@ class OntologyController(Controller):
 
         if entity.tier == EntityTier.CORE:
             msg = "CORE entities cannot be deleted via API"
+            logger.warning(
+                API_REQUEST_ERROR,
+                reason="core_entity_delete_rejected",
+                name=name,
+                tier=entity.tier.value,
+            )
             raise ValidationError(msg)
 
         await svc.delete(name)

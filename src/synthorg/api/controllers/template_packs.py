@@ -17,7 +17,7 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.rebalance import RebalanceMode, compute_rebalance
 from synthorg.core.domain_errors import ConflictError, DomainError, NotFoundError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
     TEMPLATE_PACK_APPLY_DEPT_SKIPPED,
     TEMPLATE_PACK_APPLY_ERROR,
@@ -120,7 +120,8 @@ async def _read_setting_list(
         Parsed list, or ``[]`` if the setting is missing or empty.
 
     Raises:
-        NotFoundError: If the stored JSON is corrupted.
+        DomainError: If the stored JSON is corrupted (invalid JSON or
+            not a list of objects).
     """
     try:
         entry = await app_state.settings_service.get("company", key)
@@ -136,11 +137,13 @@ async def _read_setting_list(
     try:
         parsed = json.loads(entry.value)
     except json.JSONDecodeError as exc:
-        logger.exception(
+        logger.warning(
             TEMPLATE_PACK_APPLY_ERROR,
             key=key,
-            error=str(exc),
             action="corrupt_setting_json",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            exc_info=True,
         )
         msg = f"Setting 'company/{key}' contains invalid JSON"
         raise DomainError(msg) from exc

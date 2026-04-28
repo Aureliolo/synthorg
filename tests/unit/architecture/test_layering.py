@@ -192,18 +192,22 @@ def test_core_error_modules_are_leaf() -> None:
         _SRC / "core" / "domain_errors.py",
         _SRC / "core" / "persistence_errors.py",
     ]
-    allowed_prefixes = ("synthorg.core.",)
+    # Both ``synthorg.core`` (e.g. ``from synthorg.core import X``,
+    # which yields ``module == "synthorg.core"`` on the AST node) and
+    # ``synthorg.core.<sub>`` paths are valid; only non-core
+    # ``synthorg.*`` imports are forbidden.
     for path in leaf_modules:
         for module in _imported_modules(path):
-            if module.startswith("synthorg.") and not module.startswith(
-                allowed_prefixes
-            ):
-                msg = (
-                    f"{path.relative_to(_REPO)} imports {module}; core "
-                    "error modules must depend only on stdlib and other "
-                    "core modules."
-                )
-                raise AssertionError(msg)
+            if not module.startswith("synthorg."):
+                continue
+            if module == "synthorg.core" or module.startswith("synthorg.core."):
+                continue
+            msg = (
+                f"{path.relative_to(_REPO)} imports {module}; core "
+                "error modules must depend only on stdlib and other "
+                "core modules."
+            )
+            raise AssertionError(msg)
 
 
 @pytest.mark.unit

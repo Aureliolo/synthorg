@@ -18,7 +18,7 @@ from synthorg.core.company import Team
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from synthorg.core.normalization import normalize_identifier
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_TEAM_CREATED,
     API_TEAM_DELETED,
@@ -216,6 +216,13 @@ def _validate_team_model(team_dict: dict[str, Any]) -> Team:
         return Team(**team_dict)
     except (ValueError, TypeError) as exc:
         msg = f"Team validation failed: {exc}"
+        logger.warning(
+            API_VALIDATION_FAILED,
+            reason="team_model_validation_failed",
+            team_name=team_dict.get("name"),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         raise ValidationError(msg) from exc
 
 
