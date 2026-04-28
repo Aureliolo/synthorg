@@ -9,15 +9,24 @@
  */
 
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import type { APIRoute } from "astro";
 
 export const prerender = true;
 
+// See install.sh.ts for the rationale: anchoring to ``import.meta.url``
+// avoids the cwd-dependent path resolution that caused gemini /
+// CodeRabbit reviewers to flag the previous resolve("../cli/...") form
+// as brittle in monorepos.
+const SCRIPT_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../../cli/scripts/install.ps1",
+);
+
 export const GET: APIRoute = () => {
-  const scriptPath = resolve("../cli/scripts/install.ps1");
-  const content = readFileSync(scriptPath, "utf-8");
+  const content = readFileSync(SCRIPT_PATH, "utf-8");
   return new Response(content, {
     headers: {
       // PowerShell scripts are typically served as text/plain.  Some

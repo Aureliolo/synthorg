@@ -178,5 +178,5 @@ When introducing a new domain error family:
 ## Further reading
 
 - [Design: security](../design/security.md): the SEC-1 rules behind the categories
-- [Guides: content-negotiation](../guides/content-negotiation.md) for client setup
+- [REST API reference](../openapi/index.md): per-route examples plus a worked content-negotiation walkthrough
 - `src/synthorg/api/errors.py`: the authoritative enum and error classes

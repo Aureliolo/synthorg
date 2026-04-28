@@ -79,38 +79,85 @@ function extractHrefs(file: string): LinkOccurrence[] {
   const source = readFileSync(file, "utf-8");
   const occurrences: LinkOccurrence[] = [];
   const lines = source.split("\n");
-  // Patterns:
-  //   ``href="..."``          (JSX/HTML attribute)
-  //   ``href: "..."``         (object literal)
-  //   ``href: '...'``         (object literal, single quotes)
-  const pattern = /href\s*[=:]\s*"([^"$\n]+)"|href\s*[=:]\s*'([^'$\n]+)'/g;
+  const isMarkdown = file.endsWith(".md");
+  // Patterns covered:
+  //   1. ``href="..."``       (HTML / JSX attribute, double quote)
+  //   2. ``href='...'``       (HTML / JSX attribute, single quote)
+  //   3. ``href={"..."}``     (Astro / JSX brace-wrapped string literal)
+  //   4. ``href: "..."``      (object-literal data, double quote)
+  //   5. ``href: '...'``      (object-literal data, single quote)
+  //   6. Markdown ``[text](url)`` links (only scanned in ``.md`` files)
+  //
+  // Template-literal hrefs with ``${...}`` interpolations are still
+  // skipped: we cannot validate them statically.  The ``[^"$\n]`` /
+  // ``[^'$\n]`` character class blocks template-literal capture
+  // because a captured ``${`` would yield a useless dynamic href.
+  const attrPattern =
+    /href\s*=\s*"([^"$\n]+)"|href\s*=\s*'([^'$\n]+)'|href\s*=\s*\{\s*"([^"$\n]+)"\s*\}|href\s*=\s*\{\s*'([^'$\n]+)'\s*\}/g;
+  const objPattern = /href\s*:\s*"([^"$\n]+)"|href\s*:\s*'([^'$\n]+)'/g;
+  // Markdown link pattern: ``[link text](url "optional title")``.  Scope
+  // restricted to .md files because curly-quoted prose like ``[note](this)``
+  // in TS strings would otherwise match.
+  const mdPattern = /\[(?:[^\]]+)\]\(([^\s)]+)(?:\s+"[^"]*")?\)/g;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    let match: RegExpExecArray | null;
-    pattern.lastIndex = 0;
-    while ((match = pattern.exec(line)) !== null) {
-      const href = match[1] ?? match[2];
-      if (href === undefined || href === "") {
-        continue;
+    for (const pattern of [attrPattern, objPattern]) {
+      pattern.lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = pattern.exec(line)) !== null) {
+        const href = match[1] ?? match[2] ?? match[3] ?? match[4];
+        if (href === undefined || href === "") continue;
+        occurrences.push({ href, file, line: i + 1 });
       }
-      occurrences.push({ href, file, line: i + 1 });
+    }
+    if (isMarkdown) {
+      mdPattern.lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = mdPattern.exec(line)) !== null) {
+        const href = match[1];
+        if (href === undefined || href === "") continue;
+        occurrences.push({ href, file, line: i + 1 });
+      }
     }
   }
   return occurrences;
 }
 
-/** Slugify the way Material for MkDocs / pymdownx slugify (lowercase, dashes). */
+/**
+ * Slugify the way python-markdown's default ``toc`` extension does.
+ *
+ * The slugifier (matched against the rendered MkDocs HTML this repo
+ * actually produces): lowercase, drop ``[^\w\s-]`` chars in place, then
+ * convert each whitespace character individually to a dash without
+ * collapsing runs.  This means a heading like ``Event Stream & HITL
+ * Surface`` -- where ``&`` is stripped, leaving ``Event Stream  HITL
+ * Surface`` with two consecutive spaces -- emits the slug
+ * ``event-stream--hitl-surface`` (double dash), not the collapsed
+ * ``event-stream-hitl-surface`` form.  Existing links across the docs
+ * tree (verified in ``communication.md`` and ``agent-execution.md``) use
+ * the double-dash form.
+ */
 function slugifyHeading(heading: string): string {
   return heading
     .toLowerCase()
     .replace(/`/g, "")
     .replace(/[^a-z0-9\s-]/g, "")
     .trim()
-    .replace(/\s+/g, "-");
+    .replace(/\s/g, "-");
 }
 
-/** Collect headings from a markdown file as slug strings. */
+/**
+ * Collect headings from a markdown file as slug strings.
+ *
+ * Memoised because ``resolveHref`` calls this once per anchor link, and
+ * many cross-references share the same target file.  Without the cache,
+ * a doc cluster that links into ``security.md`` 50 times re-reads and
+ * re-parses the file 50 times.
+ */
+const headingCache = new Map<string, Set<string>>();
 function headingSlugsFor(mdFile: string): Set<string> {
+  const cached = headingCache.get(mdFile);
+  if (cached !== undefined) return cached;
   const slugs = new Set<string>();
   const lines = readFileSync(mdFile, "utf-8").split("\n");
   for (const line of lines) {
@@ -119,6 +166,7 @@ function headingSlugsFor(mdFile: string): Set<string> {
       slugs.add(slugifyHeading(m[2]));
     }
   }
+  headingCache.set(mdFile, slugs);
   return slugs;
 }
 
@@ -158,12 +206,15 @@ function resolveAstroRoute(pathname: string): string | null {
     return existsSync(candidate) ? candidate : null;
   }
   const stripped = normalised.replace(/^\//, "");
-  for (const ext of [".astro", ".ts", ".js", ".mts", ".mjs"]) {
+  const supportedExtensions = [".astro", ".ts", ".js", ".mts", ".mjs"];
+  for (const ext of supportedExtensions) {
     const direct = join(SITE_PAGES, stripped + ext);
     if (existsSync(direct)) return direct;
   }
-  const indexInside = join(SITE_PAGES, stripped, "index.astro");
-  if (existsSync(indexInside)) return indexInside;
+  for (const ext of supportedExtensions) {
+    const indexInside = join(SITE_PAGES, stripped, `index${ext}`);
+    if (existsSync(indexInside)) return indexInside;
+  }
   return null;
 }
 
@@ -181,14 +232,27 @@ interface ResolutionResult {
   resolvedFile?: string;
 }
 
-function resolveHref(href: string): ResolutionResult {
-  // External, mail, tel, javascript:, data: -> skip.
+// Schemes that are not internal site routes and are intentionally skipped
+// by the resolver.  Any URL whose scheme matches one of these short-circuits
+// validation: external HTTP(S) URLs are out of scope (we do not network
+// hit), and the script / data / mail / tel schemes are not validatable
+// at the static link level.  ``vbscript:`` is included for completeness
+// (CodeQL ``py/incomplete-url-scheme-check`` flags any check that omits
+// it from a non-allowlist scheme test).
+const NON_INTERNAL_SCHEMES = [
+  "mailto:",
+  "tel:",
+  "javascript:",
+  "vbscript:",
+  "data:",
+  "file:",
+  "blob:",
+];
+
+function resolveHref(href: string, sourceFile: string): ResolutionResult {
   if (
     /^https?:\/\//.test(href) ||
-    href.startsWith("mailto:") ||
-    href.startsWith("tel:") ||
-    href.startsWith("javascript:") ||
-    href.startsWith("data:")
+    NON_INTERNAL_SCHEMES.some((scheme) => href.startsWith(scheme))
   ) {
     return { ok: true, reason: "external (skipped)" };
   }
@@ -204,6 +268,50 @@ function resolveHref(href: string): ResolutionResult {
 
   // Split path and anchor.
   const [pathOnly, anchor] = href.split("#", 2) as [string, string | undefined];
+
+  // Relative link from a Markdown file: MkDocs resolves these against
+  // the source file's directory.  ``foo.md`` from ``docs/user_guide.md``
+  // -> ``docs/foo.md``.  ``../guides/index.md`` from
+  // ``docs/design/agents.md`` -> ``docs/guides/index.md``.  Validate
+  // both the target file and any anchor.
+  const isAbsolute =
+    pathOnly.startsWith("/") || /^[a-z][a-z0-9+\-.]*:/i.test(pathOnly);
+  if (!isAbsolute && sourceFile.endsWith(".md")) {
+    if (pathOnly === "") {
+      // Pure anchor in source-relative form (rare; most cases caught by
+      // the earlier ``href.startsWith("#")`` branch).
+      return { ok: true, reason: "same-page anchor (skipped)" };
+    }
+    const sourceDir = dirname(sourceFile);
+    let target = resolve(sourceDir, pathOnly);
+    // MkDocs accepts ``../foo.md`` and emits ``../foo/`` at runtime;
+    // both forms point at the same source file.  Normalise by
+    // stripping trailing slashes and adding ``.md`` if the target is a
+    // directory or has no extension.
+    if (existsSync(target) && statSync(target).isDirectory()) {
+      target = join(target, "index.md");
+    } else if (!target.endsWith(".md") && !target.endsWith(".html")) {
+      const candidate = target + ".md";
+      if (existsSync(candidate)) target = candidate;
+    }
+    if (!existsSync(target)) {
+      return {
+        ok: false,
+        reason: `no markdown source for relative link ${pathOnly} (resolved to ${relative(REPO_ROOT, target)})`,
+      };
+    }
+    if (anchor !== undefined && anchor !== "" && target.endsWith(".md")) {
+      const slugs = headingSlugsFor(target);
+      if (!slugs.has(anchor)) {
+        return {
+          ok: false,
+          reason: `anchor #${anchor} not found in ${relative(REPO_ROOT, target)}`,
+          resolvedFile: target,
+        };
+      }
+    }
+    return { ok: true, resolvedFile: target };
+  }
 
   // Docs route?
   if (pathOnly.startsWith("/docs/") || pathOnly === "/docs") {
@@ -259,15 +367,23 @@ describe("link-validity", () => {
 
   it("every internal link resolves to a real source artefact", () => {
     const failures: string[] = [];
+    // The cache key includes the source file because relative links
+    // resolve against the source's directory, so the same href value
+    // can mean different targets from different files.
     const seen = new Map<string, ResolutionResult>();
     for (const link of ALL_LINKS) {
-      const cached = seen.get(link.href);
-      const result = cached ?? resolveHref(link.href);
-      if (!cached) seen.set(link.href, result);
-      if (!result.ok) {
-        const rel = relative(REPO_ROOT, link.file).replace(/\\/g, "/");
-        failures.push(`${rel}:${link.line}  href=${link.href}  ${result.reason}`);
-      }
+      const cacheKey = `${link.file}::${link.href}`;
+      const cached = seen.get(cacheKey);
+      const result = cached ?? resolveHref(link.href, link.file);
+      if (!cached) seen.set(cacheKey, result);
+      if (result.ok) continue;
+      // The dedicated anchor-validation test below owns
+      // ``anchor #x not found`` failures (it has its own baseline for
+      // pre-existing breakage).  Skip them here so the file-resolution
+      // test stays focused on missing files / pages / assets.
+      if (result.reason?.startsWith("anchor ")) continue;
+      const rel = relative(REPO_ROOT, link.file).replace(/\\/g, "/");
+      failures.push(`${rel}:${link.line}  href=${link.href}  ${result.reason}`);
     }
     if (failures.length > 0) {
       // Group identical failures so the same broken href across many
@@ -283,21 +399,58 @@ describe("link-validity", () => {
     }
   });
 
+  // Pre-existing broken anchors in the docs tree.  These match a heading
+  // structure that has drifted out of sync with cross-references; they
+  // pre-date this test and need their own follow-up to resolve (heading
+  // renames are usually localised to a single doc, but the inbound
+  // links spread across multiple files).  Listed here so the test fails
+  // on NEW breakage while not blocking on existing debt.  Each entry
+  // matches the ``href`` plus the ``source-file:line`` pin so a later
+  // refactor that accidentally moves the broken link still surfaces.
+  const KNOWN_BROKEN_ANCHORS: ReadonlySet<string> = new Set([
+    "docs/design/agent-execution.md:329 :: engine.md#agentengine--taskengine-incremental-sync",
+    "docs/design/index.md:75 :: engine.md#task-decomposability-coordination-topology",
+    "docs/design/organization.md:32 :: engine.md#coordination-group-size-bounds",
+    "docs/design/organization.md:105 :: agents.md#seniority-authority-levels",
+    "docs/design/organization.md:180 :: agents.md#hiring-process",
+    "docs/guides/memory.md:373 :: ../design/memory.md#consolidation",
+    "docs/reference/claude-reference.md:98 :: ./github-environments.md#release_bot_app_",
+    "docs/reference/research.md:74 :: ../architecture/tech-stack.md#why-litestar-over-fastapi",
+    "docs/research/s1-multi-agent-decision.md:15 :: ../design/engine.md#task-decomposability-coordination-topology",
+  ]);
+
   it("docs anchor targets resolve in their markdown source", () => {
     const failures: string[] = [];
+    const baselineHits: string[] = [];
     for (const link of ALL_LINKS) {
       if (!link.href.includes("#")) continue;
       if (link.href.startsWith("#")) continue;
       if (/^https?:\/\//.test(link.href)) continue;
-      const result = resolveHref(link.href);
+      const result = resolveHref(link.href, link.file);
       if (!result.ok && result.reason?.startsWith("anchor ")) {
         const rel = relative(REPO_ROOT, link.file).replace(/\\/g, "/");
+        const key = `${rel}:${link.line} :: ${link.href}`;
+        if (KNOWN_BROKEN_ANCHORS.has(key)) {
+          baselineHits.push(key);
+          continue;
+        }
         failures.push(`${rel}:${link.line}  ${link.href}  ${result.reason}`);
       }
     }
     if (failures.length > 0) {
       throw new Error(
-        `Found ${failures.length} broken anchor target(s):\n${failures.join("\n")}`,
+        `Found ${failures.length} new broken anchor target(s):\n${failures.join("\n")}`,
+      );
+    }
+    // If a baseline entry no longer matches a real broken link, drop it
+    // from the set so the baseline cannot grow stale in the other
+    // direction.
+    const unused = [...KNOWN_BROKEN_ANCHORS].filter(
+      (k) => !baselineHits.includes(k),
+    );
+    if (unused.length > 0) {
+      throw new Error(
+        `KNOWN_BROKEN_ANCHORS contains ${unused.length} stale entries; remove them:\n${unused.join("\n")}`,
       );
     }
   });
