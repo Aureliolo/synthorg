@@ -255,6 +255,29 @@ class TestMessagesHandlers:
         )
         assert json.loads(response)["domain_code"] == "guardrail_violated"
 
+    async def test_delete_unexpected_service_exception_returns_error(
+        self,
+        fake_app_state: SimpleNamespace,
+        fake_message_service: AsyncMock,
+    ) -> None:
+        """An unexpected exception bubbles into the generic error envelope."""
+        fake_message_service.delete_message = AsyncMock(
+            side_effect=RuntimeError("connection pool exhausted"),
+        )
+        handler = COMMUNICATION_HANDLERS["synthorg_messages_delete"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={
+                "channel": "ch",
+                "message_id": "m-1",
+                "confirm": True,
+                "reason": "cleanup",
+            },
+            actor=make_test_actor(),
+        )
+        payload = json.loads(response)
+        assert payload["status"] == "error"
+
 
 # ── Meetings ────────────────────────────────────────────────────────
 
@@ -349,6 +372,28 @@ class TestMeetingsHandlers:
         payload = json.loads(response)
         assert payload["status"] == "ok"
         assert payload["data"]["removed"] is False
+
+    async def test_delete_unexpected_service_exception_returns_error(
+        self,
+        fake_app_state: SimpleNamespace,
+        fake_meeting_service: AsyncMock,
+    ) -> None:
+        """An unexpected exception bubbles into the generic error envelope."""
+        fake_meeting_service.delete_meeting = AsyncMock(
+            side_effect=RuntimeError("orchestrator unavailable"),
+        )
+        handler = COMMUNICATION_HANDLERS["synthorg_meetings_delete"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={
+                "meeting_id": "m-1",
+                "confirm": True,
+                "reason": "cleanup",
+            },
+            actor=make_test_actor(),
+        )
+        payload = json.loads(response)
+        assert payload["status"] == "error"
 
 
 # ── Connections ─────────────────────────────────────────────────────

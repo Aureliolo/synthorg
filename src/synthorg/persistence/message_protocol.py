@@ -42,8 +42,14 @@ class MessageRepository(Protocol):
         """
         ...
 
-    async def delete(self, message_id: NotBlankStr) -> bool:
+    async def delete(self, message_id: str) -> bool:
         """Delete a message by id.
+
+        ``message_id`` is typed ``str`` (not ``NotBlankStr``) because
+        non-blankness is enforced at the API boundary (the controller
+        wraps user input via ``NotBlankStr(...)`` before it reaches
+        this layer). The repository accepts whatever the service hands
+        it; validation is a layering concern, not a repository one.
 
         Args:
             message_id: The unique message identifier.

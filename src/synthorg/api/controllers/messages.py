@@ -1,6 +1,8 @@
 """Message controller -- read + operator-driven DELETE via MessageRepository."""
 
-from litestar import Controller, delete, get
+from typing import Any
+
+from litestar import Controller, Request, delete, get
 from litestar.datastructures import State  # noqa: TC002
 from litestar.exceptions import NotFoundException
 
@@ -10,8 +12,10 @@ from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.communication.channel import Channel
 from synthorg.communication.message import Message  # noqa: TC001
-from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
+from synthorg.observability.events.communication import (
+    COMMUNICATION_MESSAGE_DELETED,
+)
 
 logger = get_logger(__name__)
 
@@ -69,20 +73,35 @@ class MessageController(Controller):
     async def delete_message(
         self,
         state: State,
+        request: Request[Any, Any, Any],
         message_id: str,
     ) -> ApiResponse[None]:
         """Delete a single message by id.
 
         Returns ``200 OK`` with ``data=None`` on success and
-        ``404 Not Found`` when the id does not exist. Uses the
-        message-id only since ``messages.id`` is a globally unique PK.
+        ``404 Not Found`` when the id does not exist. Emits the
+        ``COMMUNICATION_MESSAGE_DELETED`` audit event on success with
+        the authenticated user as the actor; the parallel MCP path
+        (``synthorg_messages_delete``) emits the same event from the
+        :class:`MessageService` layer so both surfaces produce a
+        uniform audit trail.
+
+        Goes directly through the repository (matching the read path
+        in ``list_messages``) because :class:`MessageService` is wired
+        only inside the MCP host today; the audit log is emitted
+        inline so the HTTP path retains the same audit semantics
+        regardless.
         """
         app_state: AppState = state.app_state
-        deleted = await app_state.persistence.messages.delete(
-            NotBlankStr(message_id),
-        )
+        deleted = await app_state.persistence.messages.delete(message_id)
         if not deleted:
             raise NotFoundException(detail=f"message {message_id!r} not found")
+        logger.info(
+            COMMUNICATION_MESSAGE_DELETED,
+            message_id=message_id,
+            actor_id=str(request.user.user_id),
+            reason="operator delete via REST API",
+        )
         return ApiResponse(data=None)
 
     @get("/channels")

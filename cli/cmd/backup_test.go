@@ -288,13 +288,22 @@ func writeTestConfig(t *testing.T, backendPort int) string {
 // runBackupCmd executes a backup subcommand and returns stdout+stderr output.
 // Resets the --confirm flag between runs to avoid stale state from prior tests
 // (Cobra does not reset flag values between Execute() calls on global commands).
+// Also clears the flag's `Changed` bit so MarkFlagRequired remains effective:
+// a prior Flags().Set() call would otherwise mark the flag as "supplied" and
+// short-circuit cobra's required-flag enforcement on the next invocation.
 // NOTE: If new persistent boolean flags are added to backup commands, add them here.
 func runBackupCmd(t *testing.T, dir string, args ...string) (string, error) {
 	t.Helper()
 	// Reset sticky boolean flags before each execution.
+	confirmFlag := backupRestoreCmd.Flags().Lookup("confirm")
+	if confirmFlag == nil {
+		t.Fatal("--confirm flag not found on backup restore command")
+	}
 	if err := backupRestoreCmd.Flags().Set("confirm", "false"); err != nil {
 		t.Fatalf("resetting --confirm flag: %v", err)
 	}
+	// Clear Changed so MarkFlagRequired still fires when the test omits --confirm.
+	confirmFlag.Changed = false
 
 	var buf bytes.Buffer
 	rootCmd.SetOut(&buf)
@@ -504,7 +513,16 @@ func TestBackupList_SortCompletionRegistered(t *testing.T) {
 	// Cobra exposes registered completions via __complete; if a fixed
 	// completion is registered the values come back on stdout. We invoke
 	// the special completion subcommand to confirm the three values are
-	// surfaced.
+	// surfaced. SetOut/SetErr/SetArgs leak between Execute() calls on
+	// rootCmd, so capture and restore them around the test body.
+	prevOut := rootCmd.OutOrStdout()
+	prevErr := rootCmd.ErrOrStderr()
+	t.Cleanup(func() {
+		rootCmd.SetOut(prevOut)
+		rootCmd.SetErr(prevErr)
+		rootCmd.SetArgs(nil)
+	})
+
 	var buf bytes.Buffer
 	rootCmd.SetOut(&buf)
 	rootCmd.SetErr(&buf)
@@ -637,20 +655,19 @@ func TestBackupRestore_InvalidID(t *testing.T) {
 
 func TestBackupRestore_MissingConfirm(t *testing.T) {
 	// No server needed -- --confirm is gated by Cobra's MarkFlagRequired
-	// before the RunE handler is reached.
+	// before the RunE handler is reached. rootCmd has SilenceUsage and
+	// SilenceErrors set, so cobra's auto-emitted usage block never reaches
+	// the buffer; we assert on the error value only.
 	dir := writeTestConfig(t, 19999)
 
-	out, err := runBackupCmd(t, dir, "restore", "abcdef012345")
+	_, err := runBackupCmd(t, dir, "restore", "abcdef012345")
 	if err == nil {
 		t.Fatal("expected error for missing --confirm flag")
 	}
-	// Cobra's required-flag error reads: required flag(s) "confirm" not set
-	if !strings.Contains(err.Error(), "confirm") {
-		t.Errorf("error %q does not mention confirm", err.Error())
-	}
-	// Cobra's auto-emitted usage includes the --confirm flag listing.
-	if !strings.Contains(out, "--confirm") {
-		t.Errorf("output missing --confirm in usage:\n%s", out)
+	// Cobra's required-flag error reads exactly: required flag(s) "confirm" not set
+	const wantErr = `required flag(s) "confirm" not set`
+	if !strings.Contains(err.Error(), wantErr) {
+		t.Errorf("error %q does not contain %q", err.Error(), wantErr)
 	}
 }
 

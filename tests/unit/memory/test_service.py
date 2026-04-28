@@ -568,3 +568,23 @@ class TestMemoryServiceDeleteEntry:
                 NotBlankStr("agent-a"),
                 NotBlankStr("mem-1"),
             )
+
+    async def test_blank_agent_id_rejected_at_type_boundary(self) -> None:
+        """``NotBlankStr`` rejects blank agent ids at the type boundary."""
+        from pydantic import TypeAdapter, ValidationError
+
+        adapter = TypeAdapter(NotBlankStr)
+        with pytest.raises(ValidationError):
+            adapter.validate_python("")
+        with pytest.raises(ValidationError):
+            adapter.validate_python("   ")
+
+    async def test_blank_memory_id_rejected_at_type_boundary(self) -> None:
+        """Same boundary check for ``memory_id``."""
+        from pydantic import TypeAdapter, ValidationError
+
+        adapter = TypeAdapter(NotBlankStr)
+        with pytest.raises(ValidationError):
+            adapter.validate_python("")
+        with pytest.raises(ValidationError):
+            adapter.validate_python("\t\n")

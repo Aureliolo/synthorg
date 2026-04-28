@@ -259,3 +259,29 @@ class TestMessageRepository:
         second = await backend.messages.delete(str(msg_id))
         assert first is True
         assert second is False
+
+    async def test_delete_concurrent_invocations_only_one_succeeds(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Concurrent deletes of the same id race safely.
+
+        Two async tasks issue DELETE for the same row; exactly one
+        must report ``True`` and the other ``False``. Guards against
+        repos that miscount affected rows when the underlying driver
+        serializes inside a connection pool.
+        """
+        import asyncio
+
+        msg_id = uuid4()
+        await backend.messages.save(
+            make_message(msg_id=msg_id, channel="chan1"),
+        )
+
+        results = await asyncio.gather(
+            backend.messages.delete(str(msg_id)),
+            backend.messages.delete(str(msg_id)),
+        )
+
+        assert sum(1 for r in results if r) == 1
+        assert sum(1 for r in results if not r) == 1
+        assert len(await backend.messages.get_history("chan1")) == 0

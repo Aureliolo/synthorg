@@ -217,7 +217,13 @@ async def _messages_delete(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Capability gap: message store is append-only by design."""
+    """Delete a single message by id.
+
+    The destructive-op audit event fires only when a row was actually
+    removed (``removed=True``); not-found responses are returned as a
+    successful envelope with ``removed=False`` and no audit emission
+    so the audit trail stays semantically clean.
+    """
     tool = "synthorg_messages_delete"
     try:
         reason, resolved_actor = require_destructive_guardrails(arguments, actor)
@@ -238,7 +244,7 @@ async def _messages_delete(
                 tool_name=tool,
                 actor=require_actor_id(resolved_actor),
                 reason=reason,
-                removed=removed,
+                target_id=message_id,
             )
         return ok({"removed": removed})
     except GuardrailViolationError as exc:
