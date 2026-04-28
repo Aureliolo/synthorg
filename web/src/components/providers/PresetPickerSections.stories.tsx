@@ -49,6 +49,22 @@ const cloud: CloudPreset[] = [
     is_featured: true,
     default_models: [],
   },
+  // Auto-derived soft preset: surfaces the collapsible "More
+  // providers via LiteLLM" branch in the story.
+  {
+    kind: 'cloud',
+    name: 'fireworks_ai',
+    display_name: 'Fireworks Ai',
+    description: "Models served via LiteLLM provider 'fireworks_ai'",
+    driver: 'litellm',
+    litellm_provider: 'fireworks_ai',
+    auth_type: 'api_key',
+    supported_auth_types: ['api_key'],
+    default_base_url: null,
+    requires_base_url: false,
+    is_featured: false,
+    default_models: [],
+  },
 ]
 
 const local: LocalPreset[] = [

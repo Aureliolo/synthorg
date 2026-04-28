@@ -40,7 +40,7 @@ Three rules:
 
 1. The `name` field is the machine-readable identifier and the SVG filename. **Use the LiteLLM namespace.** For Together AI: `together_ai`. For Fireworks AI: `fireworks_ai`. For xAI: `xai`. This avoids surprising users who paste a model string from LiteLLM's docs.
 2. The `display_name` is the brand name, optionally with a clarifying parenthetical. Examples: `"Moonshot AI (Kimi)"`, `"xAI (Grok)"`, `"Google AI Studio"`.
-3. The `description` is one short sentence that names what is distinctive about the provider. Don't mention "models" -- it's redundant. Examples: `"Kimi long-context models from Moonshot AI"`, `"Wafer-scale inference (Llama, Qwen, GPT-OSS)"`.
+3. The `description` is one short sentence that names what is distinctive about the provider. Don't mention "models" -- it's redundant. Examples: `"Kimi long-context inference from Moonshot AI"`, `"Wafer-scale inference (Llama, Qwen, GPT-OSS)"`.
 
 The `litellm_provider` field is _almost_ always the same as `name`, with one curated exception: `cohere` uses `litellm_provider="cohere_chat"` because the bare `cohere/` namespace in LiteLLM is the deprecated completions endpoint while `cohere_chat/` is the chat completions API SynthOrg uses.
 
@@ -146,9 +146,9 @@ _VLLM = LocalPreset(
 In [`tests/unit/providers/test_presets.py`](https://github.com/Aureliolo/synthorg/blob/main/tests/unit/providers/test_presets.py):
 
 1. Add the preset name to `_CLOUD_PRESETS` (or `_LOCAL_PRESETS`), alphabetical.
-2. Extend the `test_cloud_preset_does_not_require_base_url` parametrize list (if the preset doesn't require a base URL).
+2. Extend the `@pytest.mark.parametrize` cases for `test_cloud_preset_does_not_require_base_url` (if the preset doesn't require a base URL).
 3. Extend the `test_other_cloud_presets_api_key_only` enumeration (if API-key only).
-4. Extend the `test_new_branded_preset_routes_via_litellm` parametrize list. If the preset has a divergent `litellm_provider` (Cohere-style), add the `expected = "<override>"` branch.
+4. Extend the `@pytest.mark.parametrize` cases for `test_new_branded_preset_routes_via_litellm`. If the preset has a divergent `litellm_provider` (Cohere-style), add the `expected = "<override>"` branch.
 
 The featured/soft tier invariants are already tested generically: `test_featured_presets_are_marked_featured`, `test_soft_presets_skip_denylist_namespaces`, etc. You don't need to add per-preset variants of those.
 
