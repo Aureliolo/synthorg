@@ -61,7 +61,19 @@ class EfficiencyMetricExtractor:
                 insufficient_data_event_kwargs={"reason": "no_window_data"},
             )
 
-        scores, weights = await self._compute_sub_scores(context, cfg, window)
+        cost_enabled, latency_enabled = await self._resolve_kill_switches(cfg)
+        _audit_disabled_metrics(
+            context,
+            cfg=cfg,
+            cost_enabled=cost_enabled,
+            latency_enabled=latency_enabled,
+        )
+        scores, weights = _build_score_weight_dicts(
+            cfg=cfg,
+            window=window,
+            cost_enabled=cost_enabled,
+            latency_enabled=latency_enabled,
+        )
         if not weights:
             return ExtractedMetrics(
                 insufficient_data=True,
@@ -75,33 +87,6 @@ class EfficiencyMetricExtractor:
             scores=scores,
             weights=weights,
             data_points=window.data_point_count,
-        )
-
-    async def _compute_sub_scores(
-        self,
-        context: EvaluationContext,
-        cfg: EfficiencyConfig,
-        window: WindowMetrics,
-    ) -> tuple[dict[str, float], dict[str, float]]:
-        """Compute cost / time / tokens sub-scores; gate cost+time via resolver.
-
-        Splits into three focused steps:
-        1. Resolve the cost + latency runtime kill switches in parallel.
-        2. Audit-log any metric disabled by config (per-pillar trail).
-        3. Build the score/weight dicts via per-metric helpers.
-        """
-        cost_enabled, latency_enabled = await self._resolve_kill_switches(cfg)
-        _audit_disabled_metrics(
-            context,
-            cost_enabled=cost_enabled,
-            latency_enabled=latency_enabled,
-            tokens_enabled=cfg.tokens_enabled,
-        )
-        return _build_score_weight_dicts(
-            cfg=cfg,
-            window=window,
-            cost_enabled=cost_enabled,
-            latency_enabled=latency_enabled,
         )
 
     async def _resolve_kill_switches(
@@ -143,22 +128,34 @@ class EfficiencyMetricExtractor:
 def _audit_disabled_metrics(
     context: EvaluationContext,
     *,
+    cfg: EfficiencyConfig,
     cost_enabled: bool,
     latency_enabled: bool,
-    tokens_enabled: bool,
 ) -> None:
-    """Emit DEBUG audit trail for any sub-metric gated off."""
-    disabled = tuple(
-        metric
-        for metric, enabled in (
-            ("cost", cost_enabled),
-            ("time", latency_enabled),
-            ("tokens", tokens_enabled),
+    """Emit DEBUG audit trail for any sub-metric gated off.
+
+    Distinguishes the disable source: the cost and time sub-metrics
+    can be turned off either by YAML config (``cfg.cost_enabled`` /
+    ``cfg.time_enabled``) or by the runtime resolver-backed kill
+    switches (``hr.evaluation_cost_enabled`` /
+    ``hr.evaluation_latency_enabled``); the audit reason reflects
+    which one fired so an operator can grep for the right cause.
+    Tokens has no resolver flag, so its disable reason is always
+    ``disabled_by_config``.
+    """
+    reasons: dict[str, str] = {}
+    if not cost_enabled:
+        reasons["cost"] = (
+            "disabled_by_config" if not cfg.cost_enabled else "disabled_by_resolver"
         )
-        if not enabled
-    )
-    if disabled:
-        log_disabled_metrics(context, EvaluationPillar.EFFICIENCY, disabled)
+    if not latency_enabled:
+        reasons["time"] = (
+            "disabled_by_config" if not cfg.time_enabled else "disabled_by_resolver"
+        )
+    if not cfg.tokens_enabled:
+        reasons["tokens"] = "disabled_by_config"
+    if reasons:
+        log_disabled_metrics(context, EvaluationPillar.EFFICIENCY, reasons)
 
 
 def _build_score_weight_dicts(

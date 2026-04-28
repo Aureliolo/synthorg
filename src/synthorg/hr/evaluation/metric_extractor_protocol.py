@@ -116,6 +116,16 @@ class ExtractedMetrics:
                     f"scores entries; ConfigurablePillarScorer would KeyError"
                 )
                 raise ValueError(msg)
+            extra = set(self.scores) - set(self.weights)
+            if extra:
+                msg = (
+                    f"scores keys {sorted(extra)} have no matching "
+                    f"weights entries; they would surface in "
+                    f"PillarScore.breakdown without contributing to the "
+                    f"weighted score. Drop them from scores or supply a "
+                    f"matching weight"
+                )
+                raise ValueError(msg)
         # Freeze the mappings against post-construction mutation.
         # ``frozen=True`` only prevents attribute reassignment; the
         # underlying dicts can still be mutated through the caller's
