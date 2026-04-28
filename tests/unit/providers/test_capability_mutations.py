@@ -594,20 +594,61 @@ class TestAuditFailureIsolation:
         assert result.requests_per_minute == 99
 
 
+@pytest.fixture
+def stub_preset_lookup(monkeypatch: pytest.MonkeyPatch) -> str:
+    """Make the preset catalog return a vendor-agnostic preset.
+
+    ``PresetOverrideService.upsert_override`` rejects unknown
+    preset names by calling ``get_preset(name)``; tests here would
+    otherwise need to use real vendor names like ``"openai"``.
+    Patching the symbol the service imports lets us assert the
+    happy-path with a fixture-owned name.
+    """
+    from synthorg.providers.presets import CloudPreset
+
+    fake_name = "test-cloud-provider"
+    fake_preset = CloudPreset(
+        name=fake_name,
+        display_name="Test Cloud Provider",
+        description="Vendor-agnostic preset used in unit tests",
+        driver="litellm",
+        litellm_provider="test-cloud-provider",
+        auth_type=AuthType.API_KEY,
+        supported_auth_types=(AuthType.API_KEY,),
+        default_base_url="https://api.example.com/v1",
+        requires_base_url=False,
+        default_models=(),
+        is_featured=False,
+    )
+
+    def _fake_get_preset(name: str) -> CloudPreset | None:
+        return fake_preset if name == fake_name else None
+
+    monkeypatch.setattr(
+        "synthorg.providers.management.preset_override_service.get_preset",
+        _fake_get_preset,
+    )
+    return fake_name
+
+
 @pytest.mark.unit
 class TestPresetOverrideService:
-    async def test_upsert_then_get(self, actor: ProviderAuditActor) -> None:
+    async def test_upsert_then_get(
+        self,
+        actor: ProviderAuditActor,
+        stub_preset_lookup: str,
+    ) -> None:
         repo = _FakeOverrideRepo()
         audit = ProviderAuditService(_FakeAuditRepo())
         service = PresetOverrideService(repo, audit_service=audit)
         await service.upsert_override(
-            "openai",
+            stub_preset_lookup,
             PresetOverrideUpdateRequest(
                 base_url="https://api.example.com/v1",
             ),
             actor=actor,
         )
-        loaded = await service.get_override("openai")
+        loaded = await service.get_override(stub_preset_lookup)
         assert loaded is not None
         assert loaded.base_url == "https://api.example.com/v1"
 
@@ -624,13 +665,17 @@ class TestPresetOverrideService:
                 actor=actor,
             )
 
-    async def test_upsert_audit_row(self, actor: ProviderAuditActor) -> None:
+    async def test_upsert_audit_row(
+        self,
+        actor: ProviderAuditActor,
+        stub_preset_lookup: str,
+    ) -> None:
         repo = _FakeOverrideRepo()
         audit_repo = _FakeAuditRepo()
         audit = ProviderAuditService(audit_repo)
         service = PresetOverrideService(repo, audit_service=audit)
         await service.upsert_override(
-            "openai",
+            stub_preset_lookup,
             PresetOverrideUpdateRequest(base_url="https://api.example.com"),
             actor=actor,
         )
@@ -641,7 +686,7 @@ class TestPresetOverrideService:
         repo = _FakeOverrideRepo()
         service = PresetOverrideService(repo)
         # Delete with no row present.
-        result = await service.delete_override("openai", actor=actor)
+        result = await service.delete_override("test-cloud-provider", actor=actor)
         assert result is False
 
 
