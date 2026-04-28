@@ -178,6 +178,13 @@ class MCPClient:
 
     async def disconnect(self) -> None:
         """Close the connection and release resources."""
+        # Map MCP config transport ('stdio' / 'streamable_http') to the
+        # bounded ``synthorg_client_disconnects_total`` transport label
+        # so each MCP transport keeps its own time-series rather than
+        # all collapsing into ``mcp_stdio``.
+        metric_transport = (
+            "mcp_stdio" if self._config.transport == "stdio" else "mcp_http"
+        )
         async with self._lock:
             if self._exit_stack is not None:
                 try:
@@ -189,7 +196,7 @@ class MCPClient:
                         error=str(exc),
                     )
                     record_client_disconnect(
-                        transport="mcp_stdio",
+                        transport=metric_transport,
                         reason="transport_error",
                     )
                 else:
@@ -198,7 +205,7 @@ class MCPClient:
                         server=self._config.name,
                     )
                     record_client_disconnect(
-                        transport="mcp_stdio",
+                        transport=metric_transport,
                         reason="client_initiated",
                     )
                 finally:

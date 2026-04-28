@@ -78,8 +78,14 @@ async def record_tool_invocation(
                 exc_info=True,
             )
 
+    if result.is_timeout:
+        outcome = "timeout"
+    elif result.is_error:
+        outcome = "error"
+    else:
+        outcome = "success"
     record_tool_invocation_metric(
         tool_name=tool_call.name,
-        outcome="error" if result.is_error else "success",
+        outcome=outcome,
         duration_sec=duration_sec,
     )

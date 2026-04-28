@@ -407,6 +407,12 @@ async def _sse_event_stream(
     next_revalidate_ts: float | None = (
         loop_now + SSE_REVALIDATE_INTERVAL_SECONDS if revalidation_armed else None
     )
+    # Track the disconnect reason by exit path so the
+    # ``synthorg_client_disconnects_total`` metric reflects the real
+    # cause: ``cancelled`` for revocation / asyncio.CancelledError,
+    # ``transport_error`` for unexpected exceptions, and
+    # ``client_initiated`` for clean drops (the default).
+    disconnect_reason = "client_initiated"
     try:
         while True:
             now = asyncio.get_event_loop().time()
@@ -446,8 +452,15 @@ async def _sse_event_stream(
                 )
                 consecutive_failures = verdict.consecutive_failures
                 if verdict.revoked_event is not None:
+                    disconnect_reason = "cancelled"
                     yield verdict.revoked_event
                     return
+    except asyncio.CancelledError:
+        disconnect_reason = "cancelled"
+        raise
+    except Exception:
+        disconnect_reason = "transport_error"
+        raise
     finally:
         # Unsubscribe must run before the disconnect log: a raise here
         # leaves the queue subscribed to the hub, which would leak
@@ -463,7 +476,7 @@ async def _sse_event_stream(
             )
             record_client_disconnect(
                 transport="sse",
-                reason="client_initiated",
+                reason=disconnect_reason,
             )
 
 

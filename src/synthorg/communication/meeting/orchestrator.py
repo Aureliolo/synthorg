@@ -183,15 +183,6 @@ class MeetingOrchestrator:
             fallback=True,
         )
         if not meetings_enabled:
-            # ``MEETING_CANCELLED`` (not ``MEETING_FAILED``): operator
-            # cancellations should not skew failure metrics or trip
-            # alerts wired to ``meeting.lifecycle.failed``.
-            logger.info(
-                MEETING_CANCELLED,
-                meeting_id=meeting_id,
-                meeting_type=meeting_type_name,
-                reason="meetings_disabled_by_setting",
-            )
             cancelled_record = MeetingRecord(
                 meeting_id=meeting_id,
                 meeting_type_name=meeting_type_name,
@@ -205,6 +196,17 @@ class MeetingOrchestrator:
             # kill-switch cancellations would mislead operators
             # reconstructing what happened during a paused window.
             self._records.append(cancelled_record)
+            # ``MEETING_CANCELLED`` (not ``MEETING_FAILED``): operator
+            # cancellations should not skew failure metrics or trip
+            # alerts wired to ``meeting.lifecycle.failed``. Logged
+            # AFTER the record append per the post-persist contract
+            # (CLAUDE.md state-transition rule).
+            logger.info(
+                MEETING_CANCELLED,
+                meeting_id=meeting_id,
+                meeting_type=meeting_type_name,
+                reason="meetings_disabled_by_setting",
+            )
             return cancelled_record
 
         protocol = self._resolve_protocol(meeting_id, protocol_type)

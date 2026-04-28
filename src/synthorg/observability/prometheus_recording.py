@@ -99,18 +99,7 @@ class RecordingMixin:
         Raises:
             ValueError: If *verdict* is not in the allowed set.
         """
-        if verdict not in VALID_VERDICTS:
-            msg = (
-                f"Unknown security verdict {verdict!r}; "
-                f"expected one of {sorted(VALID_VERDICTS)}"
-            )
-            logger.warning(
-                METRICS_SCRAPE_FAILED,
-                component="security_verdict",
-                verdict=verdict,
-                expected=sorted(VALID_VERDICTS),
-            )
-            raise ValueError(msg)
+        require_label("security verdict", verdict, VALID_VERDICTS)
         self._security_evaluations.labels(verdict=verdict).inc()
 
     def record_provider_usage(
@@ -376,7 +365,15 @@ class RecordingMixin:
         Args:
             efficiency: Coordination efficiency ratio (0.0-1.0).
             overhead_percent: Coordination overhead percentage.
+
+        Raises:
+            ValueError: If either input is NaN, Inf, or negative.
         """
+        require_non_negative("record_coordination_metrics: efficiency", efficiency)
+        require_non_negative(
+            "record_coordination_metrics: overhead_percent",
+            overhead_percent,
+        )
         self._coordination_efficiency.set(efficiency)
         self._coordination_overhead_percent.set(overhead_percent)
         logger.debug(

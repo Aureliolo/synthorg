@@ -97,18 +97,19 @@ def _safe_record(
                 # would mask a programming bug; let it propagate
                 # so the caller sees the wiring mistake.
                 raise
-            except ValueError:
-                # ValueError from ``record_*`` means a label-validation
-                # failure: a bounded vocabulary (``VALID_*``) rejected
-                # the value, or a numeric guard (``require_non_negative``,
-                # ``require_finite``) rejected an invalid input. Both
-                # are programming bugs in the caller, NOT transient
-                # runtime glitches. Swallowing them would silently
-                # drop metrics every time the caller is broken; let
-                # the exception propagate so the bug surfaces in
-                # tests and traces.
-                raise
             except Exception as exc:
+                # ValueError lives under this branch on purpose: it
+                # surfaces both genuine programming bugs (caller
+                # passed an unknown label) AND transient validation
+                # misses caused by the ~15s lag in the registry
+                # snapshot (a brand-new agent / workflow / department
+                # whose first metric arrives before the next
+                # ``refresh()`` seeds the snapshot). Crashing the
+                # business path here would punish callers for
+                # operator-introduced delays they cannot avoid;
+                # tests catch programming bugs by calling
+                # ``validate_*`` / ``record_*`` directly, where
+                # ValueError still propagates.
                 logger.warning(
                     event,
                     hub_method=method,

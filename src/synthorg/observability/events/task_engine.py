@@ -28,6 +28,15 @@ TASK_ENGINE_DRAIN_COMPLETE: Final[str] = "task_engine.drain.complete"
 TASK_ENGINE_DRAIN_TIMEOUT: Final[str] = "task_engine.drain.timeout"
 TASK_ENGINE_NOT_RUNNING: Final[str] = "task_engine.not_running"
 TASK_ENGINE_VERSION_CONFLICT: Final[str] = "task_engine.version.conflict"
+
+TASK_ENGINE_TIMING_FALLBACK: Final[str] = "task_engine.timing.fallback"
+"""Emitted when the in-memory ``TaskTimingTracker`` has no creation
+timestamp for a task that just transitioned to a terminal state
+(typically because the task was created before a process restart).
+The emitting site falls back to ``duration_sec=0.0`` for the
+``synthorg_task_runs_total`` / ``synthorg_task_duration_seconds``
+sample; the WARN keeps the gap searchable so operators can tell
+why a task shows up with a zero duration."""
 TASK_ENGINE_LOOP_ERROR: Final[str] = "task_engine.loop.error"
 TASK_ENGINE_READ_FAILED: Final[str] = "task_engine.read.failed"
 TASK_ENGINE_LIST_CAPPED: Final[str] = "task_engine.list.capped"

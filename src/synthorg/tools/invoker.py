@@ -621,10 +621,15 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
             )
+        # Surface timeout metadata so the metrics layer can record
+        # ``outcome="timeout"`` for tools that hit their time budget,
+        # distinguishing them from generic errors in dashboards.
+        is_timeout = bool(result.metadata.get("timed_out", False))
         return ToolResult(
             tool_call_id=tool_call.id,
             content=result.content,
             is_error=result.is_error,
+            is_timeout=is_timeout,
         )
 
     def _apply_html_guard(

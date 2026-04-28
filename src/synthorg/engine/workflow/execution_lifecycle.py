@@ -24,6 +24,7 @@ from synthorg.engine.workflow.execution_models import (  # noqa: TC001
     WorkflowNodeExecution,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.metrics import METRICS_CLOCK_SKEW_DETECTED
 from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_CANCELLED,
     WORKFLOW_EXEC_COMPLETED,
@@ -64,9 +65,8 @@ def _execution_duration_seconds(
     duration = (now - execution.created_at).total_seconds()
     if duration < 0:
         logger.warning(
-            WORKFLOW_EXEC_INVALID_STATUS,
+            METRICS_CLOCK_SKEW_DETECTED,
             execution_id=execution.id,
-            reason="clock_skew_detected",
             skew_seconds=abs(duration),
             note=("completed_at < created_at; check NTP or multi-node clock sync"),
         )

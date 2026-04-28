@@ -16,7 +16,6 @@ test modules; this module covers the observability-layer
 invariants that the engine tests rely on.
 """
 
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
 import pytest
@@ -173,9 +172,7 @@ async def test_rebuild_label_snapshot_uses_live_registries() -> None:
     assert is_known_agent_id("agent-99") is False
 
 
-async def test_rebuild_label_snapshot_partial_when_workflow_repo_fails(
-    caplog: Any,
-) -> None:
+async def test_rebuild_label_snapshot_partial_when_workflow_repo_fails() -> None:
     collector = PrometheusCollector()
     agents = (_stub_agent("agent-1"),)
     state = _stub_app_state(

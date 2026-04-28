@@ -172,12 +172,12 @@
         {
           "type": "table",
           "id": 204,
-          "title": "Top tasks per agent ($agent_id)",
-          "description": "Per-agent task count, filterable via $agent_id. Defaults to all agents.",
+          "title": "Top tasks per agent ($agent)",
+          "description": "Per-agent task count, filterable via $agent (sourced from synthorg_tasks_total's agent label, distinct from $agent_id which is sourced from synthorg_agent_cost_total).",
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-              "expr": "topk(25, sum by (agent, status) (synthorg_tasks_total{agent=~\"$agent_id\"}))",
+              "expr": "topk(25, sum by (agent, status) (synthorg_tasks_total{agent=~\"$agent\"}))",
               "instant": true,
               "format": "table",
               "refId": "A"
@@ -653,6 +653,19 @@
         "type": "query",
         "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
         "query": {"query": "label_values(synthorg_agent_cost_total, agent_id)", "refId": "Prometheus-agent-id-Variable-Query"},
+        "regex": "",
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {"selected": true, "text": ["All"], "value": ["$__all"]},
+        "hide": 0
+      },
+      {
+        "name": "agent",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+        "query": {"query": "label_values(synthorg_tasks_total, agent)", "refId": "Prometheus-agent-Variable-Query"},
         "regex": "",
         "sort": 1,
         "multi": true,

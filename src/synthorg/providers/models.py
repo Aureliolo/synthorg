@@ -156,6 +156,11 @@ class ToolResult(BaseModel):
         tool_call_id: The ``ToolCall.id`` this result corresponds to.
         content: String content returned by the tool.
         is_error: Whether the tool execution failed.
+        is_timeout: Whether the tool execution timed out specifically
+            (a stricter form of ``is_error``). Lets the metric layer
+            distinguish a tool that hit its time budget from one
+            that returned a deterministic error so dashboards
+            don't conflate the two.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -163,6 +168,10 @@ class ToolResult(BaseModel):
     tool_call_id: NotBlankStr = Field(description="Matching tool call ID")
     content: str = Field(description="Tool output content")
     is_error: bool = Field(default=False, description="Whether tool errored")
+    is_timeout: bool = Field(
+        default=False,
+        description="Whether tool errored due to timeout specifically",
+    )
 
 
 class ChatMessage(BaseModel):

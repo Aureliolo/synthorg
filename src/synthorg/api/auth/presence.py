@@ -44,7 +44,14 @@ class UserPresence:
         Args:
             user_id: The disconnecting user's ID.
         """
-        count = self._counts.get(user_id, 0) - 1
+        current = self._counts.get(user_id, 0)
+        if current <= 0:
+            # No active connection to drop -- this is a no-op (e.g.
+            # second teardown for the same socket, or a dangling
+            # disconnect after presence reset). Skip the metric so
+            # we don't overcount disconnects.
+            return
+        count = current - 1
         if count <= 0:
             self._counts.pop(user_id, None)
             logger.debug(

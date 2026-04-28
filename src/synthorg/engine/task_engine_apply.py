@@ -32,6 +32,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.task_engine import (
     TASK_ENGINE_MUTATION_APPLIED,
     TASK_ENGINE_MUTATION_FAILED,
+    TASK_ENGINE_TIMING_FALLBACK,
 )
 from synthorg.observability.metrics_hub import record_task_run
 from synthorg.observability.tracing.instrumentation import get_tracer
@@ -384,10 +385,11 @@ async def apply_transition(
         else:
             # In-memory timing tracker resets on process restart, so
             # tasks that straddled a restart have no creation entry.
-            # Emit a WARN so the 0.0-duration histogram sample is
-            # searchable rather than silently distorting p50/p95.
+            # Emit a dedicated WARN so the 0.0-duration histogram
+            # sample is searchable rather than silently distorting
+            # p50/p95.
             logger.warning(
-                TASK_ENGINE_MUTATION_APPLIED,
+                TASK_ENGINE_TIMING_FALLBACK,
                 mutation_type="transition",
                 task_id=mutation.task_id,
                 reason="creation_timestamp_missing",
@@ -517,10 +519,11 @@ async def apply_cancel(
         )
     else:
         # In-memory timing tracker resets on process restart; task
-        # straddled the restart. Emit a WARN so the 0-duration
-        # sample is searchable rather than silently distorting p95.
+        # straddled the restart. Emit a dedicated WARN so the
+        # 0-duration sample is searchable rather than silently
+        # distorting p95.
         logger.warning(
-            TASK_ENGINE_MUTATION_APPLIED,
+            TASK_ENGINE_TIMING_FALLBACK,
             mutation_type="cancel",
             task_id=mutation.task_id,
             reason="creation_timestamp_missing",

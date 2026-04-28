@@ -6,14 +6,13 @@ Extracted from ``task_engine.py`` to keep the main module focused on
 lifecycle and queue management.
 """
 
-from typing import TYPE_CHECKING
+from datetime import (
+    datetime,  # noqa: TC003 -- runtime import: see record_creation tzinfo handling
+)
 
 from synthorg.engine.errors import TaskVersionConflictError
 from synthorg.observability import get_logger
 from synthorg.observability.events.task_engine import TASK_ENGINE_VERSION_CONFLICT
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 logger = get_logger(__name__)
 
