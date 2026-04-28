@@ -115,6 +115,9 @@ export function PresetPickerSections({
             <summary
               id="more-providers-heading"
               className={cn(
+                // Suppress the native disclosure triangle; the
+                // ChevronDown below is the only indicator.
+                'list-none [&::-webkit-details-marker]:hidden',
                 'flex cursor-pointer items-center justify-between',
                 'rounded-lg border border-border bg-card p-card',
                 'text-sm font-semibold text-foreground',
