@@ -8,6 +8,7 @@ import { useProvidersStore } from '@/stores/providers'
 import type {
   CloudPreset,
   LocalPreset,
+  PresetOverride,
   PresetOverrideUpdateRequest,
   ProviderPreset,
 } from '@/api/types/providers'
@@ -39,47 +40,34 @@ function parseLines(raw: string): readonly string[] | null {
 }
 
 /**
- * Drawer for reading + writing the operator override on top of an
- * in-code preset.  Field shape is gated by the preset's ``kind``:
- * cloud presets cannot override ``candidate_urls``; local presets
- * cannot override ``base_url``.  The backend rejects mismatches
- * with HTTP 422 if the form somehow still sends them.
+ * Inner form for the preset override.  Re-mounted via the outer
+ * drawer's ``key`` whenever the read state changes, which lets us
+ * seed initial state from props without a setState-in-effect.
  */
-export function PresetOverrideDrawer({
+function PresetOverrideForm({
   preset,
-  open,
+  override,
   onClose,
-}: PresetOverrideDrawerProps) {
-  const override = useProvidersStore((s) => s.presetOverride)
-  const loading = useProvidersStore((s) => s.presetOverrideLoading)
-  const error = useProvidersStore((s) => s.presetOverrideError)
-  const fetchPresetOverride = useProvidersStore((s) => s.fetchPresetOverride)
+}: {
+  preset: CloudPreset | LocalPreset
+  override: PresetOverride | null
+  onClose: () => void
+}) {
   const updatePresetOverride = useProvidersStore((s) => s.updatePresetOverride)
   const deletePresetOverride = useProvidersStore((s) => s.deletePresetOverride)
 
-  const [baseUrl, setBaseUrl] = useState('')
-  const [candidateUrls, setCandidateUrls] = useState('')
+  const [baseUrl, setBaseUrl] = useState(() => override?.base_url ?? '')
+  const [candidateUrls, setCandidateUrls] = useState(() =>
+    joinList(override?.candidate_urls ?? null),
+  )
   const [submitting, setSubmitting] = useState(false)
-
-  useEffect(() => {
-    if (open && preset) {
-      void fetchPresetOverride(preset.name)
-    }
-  }, [open, preset, fetchPresetOverride])
-
-  useEffect(() => {
-    setBaseUrl(override?.base_url ?? '')
-    setCandidateUrls(joinList(override?.candidate_urls ?? null))
-  }, [override])
-
-  if (preset === null) return null
 
   const handleSave = async (): Promise<void> => {
     const payload: PresetOverrideUpdateRequest = {}
     if (isCloud(preset)) {
       const trimmed = baseUrl.trim()
       payload.base_url = trimmed === '' ? null : trimmed
-    } else if (isLocal(preset)) {
+    } else {
       payload.candidate_urls = parseLines(candidateUrls)
     }
     setSubmitting(true)
@@ -98,6 +86,77 @@ export function PresetOverrideDrawer({
       onClose()
     }
   }
+
+  return (
+    <>
+      {isCloud(preset) && (
+        <InputField
+          label="Base URL override"
+          hint={`Defaults to ${preset.default_base_url ?? '(provider default)'}`}
+          value={baseUrl}
+          onChange={(e) => setBaseUrl(e.target.value)}
+          placeholder="https://api.example.com/v1"
+        />
+      )}
+      {isLocal(preset) && (
+        <InputField
+          label="Candidate URLs"
+          hint="One URL per line; replaces the preset's discovery candidates."
+          value={candidateUrls}
+          onChange={(e) => setCandidateUrls(e.target.value)}
+          multiline
+          rows={4}
+        />
+      )}
+
+      <div className="flex justify-end gap-grid-gap pt-card">
+        <Button
+          variant="ghost"
+          onClick={() => void handleClear()}
+          disabled={submitting || override === null}
+        >
+          Clear override
+        </Button>
+        <Button variant="secondary" onClick={onClose} disabled={submitting}>
+          Cancel
+        </Button>
+        <Button onClick={() => void handleSave()} disabled={submitting}>
+          {submitting ? 'Saving…' : 'Save override'}
+        </Button>
+      </div>
+    </>
+  )
+}
+
+/**
+ * Drawer for reading + writing the operator override on top of an
+ * in-code preset.  Field shape is gated by the preset's ``kind``:
+ * cloud presets cannot override ``candidate_urls``; local presets
+ * cannot override ``base_url``.  The backend rejects mismatches
+ * with HTTP 422 if the form somehow still sends them.
+ */
+export function PresetOverrideDrawer({
+  preset,
+  open,
+  onClose,
+}: PresetOverrideDrawerProps) {
+  const override = useProvidersStore((s) => s.presetOverride)
+  const loading = useProvidersStore((s) => s.presetOverrideLoading)
+  const error = useProvidersStore((s) => s.presetOverrideError)
+  const fetchPresetOverride = useProvidersStore((s) => s.fetchPresetOverride)
+
+  useEffect(() => {
+    if (open && preset) {
+      void fetchPresetOverride(preset.name)
+    }
+  }, [open, preset, fetchPresetOverride])
+
+  if (preset === null) return null
+
+  // Form state is seeded from the loaded override via remount-on-key.
+  const formKey = override
+    ? `${override.preset_name}/${override.updated_at ?? 'new'}`
+    : 'no-override'
 
   return (
     <Drawer
@@ -125,43 +184,12 @@ export function PresetOverrideDrawer({
             <Skeleton className="h-24 w-full" />
           </div>
         ) : (
-          <>
-            {isCloud(preset) && (
-              <InputField
-                label="Base URL override"
-                hint={`Defaults to ${preset.default_base_url ?? '(provider default)'}`}
-                value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder="https://api.example.com/v1"
-              />
-            )}
-            {isLocal(preset) && (
-              <InputField
-                label="Candidate URLs"
-                hint="One URL per line; replaces the preset's discovery candidates."
-                value={candidateUrls}
-                onChange={(e) => setCandidateUrls(e.target.value)}
-                multiline
-                rows={4}
-              />
-            )}
-
-            <div className="flex justify-end gap-grid-gap pt-card">
-              <Button
-                variant="ghost"
-                onClick={() => void handleClear()}
-                disabled={submitting || override === null}
-              >
-                Clear override
-              </Button>
-              <Button variant="secondary" onClick={onClose} disabled={submitting}>
-                Cancel
-              </Button>
-              <Button onClick={() => void handleSave()} disabled={submitting}>
-                {submitting ? 'Saving…' : 'Save override'}
-              </Button>
-            </div>
-          </>
+          <PresetOverrideForm
+            key={formKey}
+            preset={preset}
+            override={override}
+            onClose={onClose}
+          />
         )}
       </div>
     </Drawer>

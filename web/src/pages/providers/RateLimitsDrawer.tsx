@@ -5,6 +5,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { InputField } from '@/components/ui/input-field'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useProvidersStore } from '@/stores/providers'
+import type { RateLimitsConfig } from '@/api/types/providers'
 
 interface RateLimitsDrawerProps {
   providerName: string | null
@@ -27,6 +28,96 @@ function formatCap(value: number): string {
 }
 
 /**
+ * Inner form component.  Initial state is seeded from the read
+ * ``rateLimits`` prop on mount; if the read state changes, the
+ * outer drawer re-mounts via ``key={...}`` instead of patching
+ * state via an effect.  This avoids the ``set-state-in-effect``
+ * anti-pattern.
+ */
+function RateLimitsForm({
+  providerName,
+  initial,
+  onClose,
+}: {
+  providerName: string
+  initial: RateLimitsConfig
+  onClose: () => void
+}) {
+  const updateRateLimits = useProvidersStore((s) => s.updateRateLimits)
+  const [rpm, setRpm] = useState(() => formatCap(initial.requests_per_minute))
+  const [concurrent, setConcurrent] = useState(() =>
+    formatCap(initial.concurrent_requests),
+  )
+  const [saving, setSaving] = useState(false)
+  const [validationError, setValidationError] = useState<string | null>(null)
+
+  const handleSave = async (): Promise<void> => {
+    const rpmCap = parseCap(rpm)
+    const concurrentCap = parseCap(concurrent)
+    if (rpmCap === null && rpm.trim() !== '') {
+      setValidationError('Requests per minute must be a non-negative integer.')
+      return
+    }
+    if (concurrentCap === null && concurrent.trim() !== '') {
+      setValidationError('Concurrent requests must be a non-negative integer.')
+      return
+    }
+    const updates: { requests_per_minute?: number; concurrent_requests?: number } = {}
+    if (rpmCap !== initial.requests_per_minute) {
+      updates.requests_per_minute = rpmCap ?? 0
+    }
+    if (concurrentCap !== initial.concurrent_requests) {
+      updates.concurrent_requests = concurrentCap ?? 0
+    }
+    if (Object.keys(updates).length === 0) {
+      setValidationError('No fields changed.')
+      return
+    }
+    setValidationError(null)
+    setSaving(true)
+    const result = await updateRateLimits(providerName, updates)
+    setSaving(false)
+    if (result !== null) {
+      onClose()
+    }
+  }
+
+  return (
+    <>
+      {validationError && (
+        <ErrorBanner severity="warning" title={validationError} />
+      )}
+      <InputField
+        label="Requests per minute"
+        value={rpm}
+        onChange={(e) => setRpm(e.target.value)}
+        hint="Empty or 0 = unlimited"
+        type="number"
+        inputMode="numeric"
+        min={0}
+      />
+      <InputField
+        label="Max concurrent requests"
+        value={concurrent}
+        onChange={(e) => setConcurrent(e.target.value)}
+        hint="Empty or 0 = unlimited"
+        type="number"
+        inputMode="numeric"
+        min={0}
+      />
+      <div className="flex justify-end gap-grid-gap pt-card">
+        <Button variant="secondary" onClick={onClose} disabled={saving}>
+          Cancel
+        </Button>
+        <Button onClick={() => void handleSave()} disabled={saving}>
+          {saving ? 'Saving…' : 'Save'}
+        </Button>
+      </div>
+    </>
+  )
+}
+
+/**
  * Drawer for reading + partially updating one provider's rate-limit
  * configuration.  ``0`` (an empty input) means "unlimited" on both
  * fields, matching the persisted ``RateLimiterConfig`` semantics.
@@ -45,12 +136,6 @@ export function RateLimitsDrawer({
   const loading = useProvidersStore((s) => s.rateLimitsLoading)
   const error = useProvidersStore((s) => s.rateLimitsError)
   const fetchRateLimits = useProvidersStore((s) => s.fetchRateLimits)
-  const updateRateLimits = useProvidersStore((s) => s.updateRateLimits)
-
-  const [rpm, setRpm] = useState('')
-  const [concurrent, setConcurrent] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [validationError, setValidationError] = useState<string | null>(null)
 
   useEffect(() => {
     if (open && providerName) {
@@ -58,44 +143,12 @@ export function RateLimitsDrawer({
     }
   }, [open, providerName, fetchRateLimits])
 
-  useEffect(() => {
-    if (rateLimits) {
-      setRpm(formatCap(rateLimits.requests_per_minute))
-      setConcurrent(formatCap(rateLimits.concurrent_requests))
-    }
-  }, [rateLimits])
-
-  const handleSave = async (): Promise<void> => {
-    if (!providerName) return
-    const rpmCap = parseCap(rpm)
-    const concurrentCap = parseCap(concurrent)
-    if (rpmCap === null && rpm.trim() !== '') {
-      setValidationError('Requests per minute must be a non-negative integer.')
-      return
-    }
-    if (concurrentCap === null && concurrent.trim() !== '') {
-      setValidationError('Concurrent requests must be a non-negative integer.')
-      return
-    }
-    const updates: { requests_per_minute?: number; concurrent_requests?: number } = {}
-    if (rateLimits === null || rpmCap !== rateLimits.requests_per_minute) {
-      updates.requests_per_minute = rpmCap ?? 0
-    }
-    if (rateLimits === null || concurrentCap !== rateLimits.concurrent_requests) {
-      updates.concurrent_requests = concurrentCap ?? 0
-    }
-    if (Object.keys(updates).length === 0) {
-      setValidationError('No fields changed.')
-      return
-    }
-    setValidationError(null)
-    setSaving(true)
-    const result = await updateRateLimits(providerName, updates)
-    setSaving(false)
-    if (result !== null) {
-      onClose()
-    }
-  }
+  // Form state is seeded from the loaded config via remount-on-key
+  // (avoids the eslint-react ``set-state-in-effect`` anti-pattern
+  // that would arise from mirroring read state into useState).
+  const formKey = rateLimits
+    ? `${rateLimits.requests_per_minute}/${rateLimits.concurrent_requests}`
+    : 'loading'
 
   return (
     <Drawer
@@ -120,43 +173,18 @@ export function RateLimitsDrawer({
             }
           />
         )}
-        {validationError && (
-          <ErrorBanner severity="warning" title={validationError} />
-        )}
-        {loading ? (
+        {loading || rateLimits === null || providerName === null ? (
           <div className="flex flex-col gap-grid-gap">
             <Skeleton className="h-12 w-full" />
             <Skeleton className="h-12 w-full" />
           </div>
         ) : (
-          <>
-            <InputField
-              label="Requests per minute"
-              value={rpm}
-              onChange={(e) => setRpm(e.target.value)}
-              hint="Empty or 0 = unlimited"
-              type="number"
-              inputMode="numeric"
-              min={0}
-            />
-            <InputField
-              label="Max concurrent requests"
-              value={concurrent}
-              onChange={(e) => setConcurrent(e.target.value)}
-              hint="Empty or 0 = unlimited"
-              type="number"
-              inputMode="numeric"
-              min={0}
-            />
-            <div className="flex justify-end gap-grid-gap pt-card">
-              <Button variant="secondary" onClick={onClose} disabled={saving}>
-                Cancel
-              </Button>
-              <Button onClick={() => void handleSave()} disabled={saving}>
-                {saving ? 'Saving…' : 'Save'}
-              </Button>
-            </div>
-          </>
+          <RateLimitsForm
+            key={formKey}
+            providerName={providerName}
+            initial={rateLimits}
+            onClose={onClose}
+          />
         )}
       </div>
     </Drawer>
