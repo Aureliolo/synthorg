@@ -1,13 +1,15 @@
-"""Unit tests for AuctionAssignmentStrategy."""
+"""Unit tests for the auction scoring strategy."""
 
 import pytest
 
 from synthorg.core.enums import Complexity, SeniorityLevel
-from synthorg.engine.assignment.auction import AuctionAssignmentStrategy
 from synthorg.engine.assignment.models import (
     AgentWorkload,
     AssignmentRequest,
 )
+from synthorg.engine.assignment.pool_filters import IdentityPoolFilter
+from synthorg.engine.assignment.rankers import AuctionBidRanker
+from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrategy
 from synthorg.engine.routing.scorer import AgentTaskScorer
 
 from .conftest import make_assignment_agent, make_assignment_task
@@ -15,13 +17,23 @@ from .conftest import make_assignment_agent, make_assignment_task
 pytestmark = pytest.mark.unit
 
 
+def _auction_strategy(scorer: AgentTaskScorer) -> ScoringBasedAssignmentStrategy:
+    """Build the auction composition (the registry's "auction" entry)."""
+    return ScoringBasedAssignmentStrategy(
+        name="auction",
+        scorer=scorer,
+        pool_filter=IdentityPoolFilter(),
+        ranker=AuctionBidRanker(),
+    )
+
+
 class TestAuctionAssignmentStrategy:
-    """AuctionAssignmentStrategy tests."""
+    """Tests for the auction composition."""
 
     def test_highest_bid_wins(self) -> None:
         """Best combined score+availability wins."""
         scorer = AgentTaskScorer()
-        strategy = AuctionAssignmentStrategy(scorer)
+        strategy = _auction_strategy(scorer)
 
         agent_a = make_assignment_agent(
             "agent-a",
@@ -64,7 +76,7 @@ class TestAuctionAssignmentStrategy:
     def test_idle_agent_preferred_over_busy(self) -> None:
         """Equal scores, idle agent wins."""
         scorer = AgentTaskScorer()
-        strategy = AuctionAssignmentStrategy(scorer)
+        strategy = _auction_strategy(scorer)
 
         busy = make_assignment_agent(
             "busy-dev",
@@ -102,7 +114,7 @@ class TestAuctionAssignmentStrategy:
     def test_high_score_can_overcome_load(self) -> None:
         """High score beats low-score idle agent."""
         scorer = AgentTaskScorer()
-        strategy = AuctionAssignmentStrategy(scorer)
+        strategy = _auction_strategy(scorer)
 
         # Expert with high score but some load
         expert = make_assignment_agent(
@@ -145,7 +157,7 @@ class TestAuctionAssignmentStrategy:
     def test_empty_workloads_equivalent_to_role_based(self) -> None:
         """No workloads -> all availability=1.0, bid=score."""
         scorer = AgentTaskScorer()
-        strategy = AuctionAssignmentStrategy(scorer)
+        strategy = _auction_strategy(scorer)
 
         best = make_assignment_agent(
             "best-dev",
@@ -173,7 +185,7 @@ class TestAuctionAssignmentStrategy:
     def test_no_eligible_returns_none(self) -> None:
         """All below min_score returns selected=None."""
         scorer = AgentTaskScorer()
-        strategy = AuctionAssignmentStrategy(scorer)
+        strategy = _auction_strategy(scorer)
 
         agent = make_assignment_agent(
             "qa",
@@ -212,7 +224,7 @@ class TestAuctionAssignmentStrategy:
     ) -> None:
         """Various (score, load) combinations."""
         scorer = AgentTaskScorer()
-        strategy = AuctionAssignmentStrategy(scorer)
+        strategy = _auction_strategy(scorer)
 
         agents = tuple(
             make_assignment_agent(
@@ -245,4 +257,4 @@ class TestAuctionAssignmentStrategy:
     def test_name_property(self) -> None:
         """Strategy name is 'auction'."""
         scorer = AgentTaskScorer()
-        assert AuctionAssignmentStrategy(scorer).name == "auction"
+        assert _auction_strategy(scorer).name == "auction"

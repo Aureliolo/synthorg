@@ -1,8 +1,10 @@
 """Evaluation service -- five-pillar orchestrator.
 
 Central service for computing five-pillar evaluation reports.
-Delegates to pluggable pillar strategies, computes efficiency
-inline, and handles pillar toggling with weight redistribution.
+Delegates to a single pluggable ``PillarScoringStrategy`` per
+pillar (defaulting to ``ConfigurablePillarScorer`` composed with a
+per-pillar ``MetricExtractor``) and handles pillar toggling with
+weight redistribution.
 """
 
 import asyncio
@@ -13,9 +15,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.hr.evaluation.constants import (
-    FULL_CONFIDENCE_DATA_POINTS,
     MAX_SCORE,
-    NEUTRAL_SCORE,
 )
 from synthorg.hr.evaluation.enums import EvaluationPillar
 from synthorg.hr.evaluation.models import (
@@ -34,8 +34,6 @@ from synthorg.hr.performance.models import (  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.evaluation import (
     EVAL_FEEDBACK_RECORDED,
-    EVAL_PILLAR_INSUFFICIENT_DATA,
-    EVAL_PILLAR_SCORED,
     EVAL_PILLAR_SKIPPED,
     EVAL_REPORT_COMPUTED,
     EVAL_WEIGHTS_REDISTRIBUTED,
@@ -45,9 +43,7 @@ from synthorg.settings.kill_switch import resolve_bool_with_fallback
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
 
-    from synthorg.hr.evaluation.config import EfficiencyConfig
     from synthorg.hr.evaluation.pillar_protocol import PillarScoringStrategy
-    from synthorg.hr.performance.models import WindowMetrics
     from synthorg.hr.performance.tracker import PerformanceTracker
     from synthorg.settings.resolver import ConfigResolver
 
@@ -59,19 +55,26 @@ _MIN_QUALITY_SCORES_FOR_STDDEV: int = 2
 class EvaluationService:
     """Central service for computing five-pillar evaluation reports.
 
-    Delegates to pluggable strategies for Intelligence, Resilience,
-    Governance, and Experience pillars. Efficiency is computed inline
-    from snapshot window metrics. Disabled pillars are skipped and
-    their weight redistributed.
+    Delegates to one pluggable ``PillarScoringStrategy`` per pillar
+    (Intelligence, Efficiency, Resilience, Governance, Experience).
+    The default per-pillar strategy is ``ConfigurablePillarScorer``
+    composed with the corresponding ``MetricExtractor`` (see
+    ``hr/evaluation/extractors/``). Disabled pillars are skipped
+    and their weight redistributed.
 
     Args:
         tracker: Performance tracker for snapshot and metric data.
         intelligence_strategy: Intelligence/Accuracy strategy (optional).
+        efficiency_strategy: Performance/Efficiency strategy (optional).
         resilience_strategy: Reliability/Resilience strategy (optional).
         governance_strategy: Responsibility/Governance strategy (optional).
         ux_strategy: User Experience strategy (optional).
         config: Evaluation configuration (optional, defaults to all
             pillars enabled).
+        config_resolver: Settings resolver that gates the four
+            ``hr.evaluation_*_enabled`` runtime kill switches; passed
+            through to the default ``EfficiencyMetricExtractor`` and
+            consulted by ``_get_pillar_configs``.
     """
 
     def __init__(  # noqa: PLR0913
@@ -79,6 +82,7 @@ class EvaluationService:
         *,
         tracker: PerformanceTracker,
         intelligence_strategy: PillarScoringStrategy | None = None,
+        efficiency_strategy: PillarScoringStrategy | None = None,
         resilience_strategy: PillarScoringStrategy | None = None,
         governance_strategy: PillarScoringStrategy | None = None,
         ux_strategy: PillarScoringStrategy | None = None,
@@ -88,11 +92,6 @@ class EvaluationService:
         """Initialize the evaluation service."""
         self._tracker = tracker
         self._config = config or EvaluationConfig()
-        self._intelligence = intelligence_strategy or self._default_intelligence()
-        self._resilience = resilience_strategy or self._default_resilience()
-        self._governance = governance_strategy or self._default_governance()
-        self._ux = ux_strategy or self._default_ux()
-        self._feedback: dict[str, list[InteractionFeedback]] = {}
         # Resolver gates the four hr.evaluation_*_enabled kill switches.
         # Mapping (best-effort, since the registry flags don't align
         # 1:1 with the pillar architecture):
@@ -105,38 +104,81 @@ class EvaluationService:
         # ``efficiency.time_enabled`` fields so standalone construction
         # still honours the documented defaults.
         self._config_resolver = config_resolver
+        self._intelligence = intelligence_strategy or self._default_intelligence()
+        self._efficiency = efficiency_strategy or self._default_efficiency()
+        self._resilience = resilience_strategy or self._default_resilience()
+        self._governance = governance_strategy or self._default_governance()
+        self._ux = ux_strategy or self._default_ux()
+        self._feedback: dict[str, list[InteractionFeedback]] = {}
 
     @staticmethod
     def _default_intelligence() -> PillarScoringStrategy:
-        from synthorg.hr.evaluation.intelligence_strategy import (  # noqa: PLC0415
-            QualityBlendIntelligenceStrategy,
+        from synthorg.hr.evaluation.configurable_scorer import (  # noqa: PLC0415
+            ConfigurablePillarScorer,
+        )
+        from synthorg.hr.evaluation.extractors.intelligence import (  # noqa: PLC0415
+            IntelligenceMetricExtractor,
         )
 
-        return QualityBlendIntelligenceStrategy()
+        return ConfigurablePillarScorer(
+            EvaluationPillar.INTELLIGENCE,
+            IntelligenceMetricExtractor(),
+        )
+
+    def _default_efficiency(self) -> PillarScoringStrategy:
+        from synthorg.hr.evaluation.configurable_scorer import (  # noqa: PLC0415
+            ConfigurablePillarScorer,
+        )
+        from synthorg.hr.evaluation.extractors.efficiency import (  # noqa: PLC0415
+            EfficiencyMetricExtractor,
+        )
+
+        return ConfigurablePillarScorer(
+            EvaluationPillar.EFFICIENCY,
+            EfficiencyMetricExtractor(config_resolver=self._config_resolver),
+        )
 
     @staticmethod
     def _default_resilience() -> PillarScoringStrategy:
-        from synthorg.hr.evaluation.resilience_strategy import (  # noqa: PLC0415
-            TaskBasedResilienceStrategy,
+        from synthorg.hr.evaluation.configurable_scorer import (  # noqa: PLC0415
+            ConfigurablePillarScorer,
+        )
+        from synthorg.hr.evaluation.extractors.resilience import (  # noqa: PLC0415
+            ResilienceMetricExtractor,
         )
 
-        return TaskBasedResilienceStrategy()
+        return ConfigurablePillarScorer(
+            EvaluationPillar.RESILIENCE,
+            ResilienceMetricExtractor(),
+        )
 
     @staticmethod
     def _default_governance() -> PillarScoringStrategy:
-        from synthorg.hr.evaluation.governance_strategy import (  # noqa: PLC0415
-            AuditBasedGovernanceStrategy,
+        from synthorg.hr.evaluation.configurable_scorer import (  # noqa: PLC0415
+            ConfigurablePillarScorer,
+        )
+        from synthorg.hr.evaluation.extractors.governance import (  # noqa: PLC0415
+            GovernanceMetricExtractor,
         )
 
-        return AuditBasedGovernanceStrategy()
+        return ConfigurablePillarScorer(
+            EvaluationPillar.GOVERNANCE,
+            GovernanceMetricExtractor(),
+        )
 
     @staticmethod
     def _default_ux() -> PillarScoringStrategy:
-        from synthorg.hr.evaluation.experience_strategy import (  # noqa: PLC0415
-            FeedbackBasedUxStrategy,
+        from synthorg.hr.evaluation.configurable_scorer import (  # noqa: PLC0415
+            ConfigurablePillarScorer,
+        )
+        from synthorg.hr.evaluation.extractors.experience import (  # noqa: PLC0415
+            ExperienceMetricExtractor,
         )
 
-        return FeedbackBasedUxStrategy()
+        return ConfigurablePillarScorer(
+            EvaluationPillar.EXPERIENCE,
+            ExperienceMetricExtractor(),
+        )
 
     async def evaluate(
         self,
@@ -205,7 +247,7 @@ class EvaluationService:
 
     async def _get_pillar_configs(
         self,
-    ) -> list[tuple[EvaluationPillar, bool, float, PillarScoringStrategy | None]]:
+    ) -> list[tuple[EvaluationPillar, bool, float, PillarScoringStrategy]]:
         """Return pillar configuration tuples.
 
         Consults the resolver for ``hr.evaluation_quality_enabled``
@@ -249,7 +291,7 @@ class EvaluationService:
                 EvaluationPillar.EFFICIENCY,
                 cfg.efficiency.enabled,
                 cfg.efficiency.weight,
-                None,
+                self._efficiency,
             ),
             (
                 EvaluationPillar.RESILIENCE,
@@ -275,13 +317,13 @@ class EvaluationService:
         self,
         agent_id: NotBlankStr,
     ) -> tuple[
-        list[tuple[EvaluationPillar, PillarScoringStrategy | None]],
+        list[tuple[EvaluationPillar, PillarScoringStrategy]],
         dict[str, float],
     ]:
         """Determine enabled pillars, log skipped ones, redistribute weights."""
         pillar_map = await self._get_pillar_configs()
 
-        enabled: list[tuple[EvaluationPillar, float, PillarScoringStrategy | None]] = []
+        enabled: list[tuple[EvaluationPillar, float, PillarScoringStrategy]] = []
         for pillar, is_enabled, weight, strategy in pillar_map:
             if is_enabled:
                 enabled.append((pillar, weight, strategy))
@@ -305,22 +347,15 @@ class EvaluationService:
 
     async def _score_pillars(
         self,
-        enabled: list[tuple[EvaluationPillar, PillarScoringStrategy | None]],
+        enabled: list[tuple[EvaluationPillar, PillarScoringStrategy]],
         context: EvaluationContext,
     ) -> list[PillarScore]:
         """Score all enabled pillars concurrently via TaskGroup."""
         async with asyncio.TaskGroup() as tg:
-            tasks: dict[EvaluationPillar, asyncio.Task[PillarScore]] = {}
-            for pillar, strategy in enabled:
-                if strategy is not None:
-                    tasks[pillar] = tg.create_task(
-                        strategy.score(context=context),
-                    )
-                else:
-                    tasks[pillar] = tg.create_task(
-                        self._score_efficiency(context),
-                    )
-
+            tasks: dict[EvaluationPillar, asyncio.Task[PillarScore]] = {
+                pillar: tg.create_task(strategy.score(context=context))
+                for pillar, strategy in enabled
+            }
         return [tasks[p].result() for p, _ in enabled]
 
     def _assemble_report(
@@ -410,163 +445,6 @@ class EvaluationService:
         if since is not None:
             records = [r for r in records if r.recorded_at >= since]
         return tuple(records)
-
-    async def _score_efficiency(
-        self,
-        context: EvaluationContext,
-    ) -> PillarScore:
-        """Compute efficiency pillar score inline from snapshot windows.
-
-        Uses the 30d window (falling back to 7d) for cost, time,
-        and token efficiency sub-metrics. Returns a neutral 5.0 score
-        with zero confidence when neither window is available or when
-        no enabled metrics have data in the selected window.
-        """
-        cfg = context.config.efficiency
-        window_map = {w.window_size: w for w in context.snapshot.windows}
-        window = window_map.get("30d") or window_map.get("7d")
-
-        if window is None or window.data_point_count == 0:
-            logger.info(
-                EVAL_PILLAR_INSUFFICIENT_DATA,
-                agent_id=context.agent_id,
-                pillar=EvaluationPillar.EFFICIENCY.value,
-                reason="no_window_data",
-            )
-            return self._neutral_efficiency(0, context.now)
-
-        scores = await self._compute_efficiency_sub_scores(cfg, window)
-        if not scores:
-            logger.info(
-                EVAL_PILLAR_INSUFFICIENT_DATA,
-                agent_id=context.agent_id,
-                pillar=EvaluationPillar.EFFICIENCY.value,
-                reason="no_enabled_metrics_with_data",
-            )
-            return self._neutral_efficiency(window.data_point_count, context.now)
-
-        return self._build_efficiency_score(scores, window, context)
-
-    async def _compute_efficiency_sub_scores(
-        self,
-        cfg: EfficiencyConfig,
-        window: WindowMetrics,
-    ) -> list[tuple[str, float, float]]:
-        """Compute enabled efficiency sub-metric scores.
-
-        Returns list of (name, weight, score) tuples.
-
-        Gates the ``cost`` and ``time`` sub-metrics through the
-        resolver-backed ``hr.evaluation_cost_enabled`` and
-        ``hr.evaluation_latency_enabled`` flags so an operator can
-        suppress those sub-metrics from the efficiency report without
-        restart.  Falls back to the YAML-baked ``cfg.cost_enabled`` /
-        ``cfg.time_enabled`` fields when no resolver is wired.
-        """
-        # Mirror ``_get_pillar_configs``: the cost and latency lookups
-        # are independent, so a ``TaskGroup`` saves a resolver
-        # round-trip per efficiency calculation.
-        async with asyncio.TaskGroup() as tg:
-            cost_task = tg.create_task(
-                resolve_bool_with_fallback(
-                    resolver=self._config_resolver,
-                    namespace="hr",
-                    key="evaluation_cost_enabled",
-                    fallback=cfg.cost_enabled,
-                ),
-            )
-            latency_task = tg.create_task(
-                resolve_bool_with_fallback(
-                    resolver=self._config_resolver,
-                    namespace="hr",
-                    key="evaluation_latency_enabled",
-                    fallback=cfg.time_enabled,
-                ),
-            )
-        cost_enabled = cost_task.result()
-        latency_enabled = latency_task.result()
-        results: list[tuple[str, float, float]] = []
-        if cost_enabled and window.avg_cost_per_task is not None:
-            score = max(
-                0.0,
-                MAX_SCORE * (1.0 - window.avg_cost_per_task / cfg.reference_cost),
-            )
-            results.append(("cost", cfg.cost_weight, min(MAX_SCORE, score)))
-
-        if latency_enabled and window.avg_completion_time_seconds is not None:
-            score = max(
-                0.0,
-                MAX_SCORE
-                * (
-                    1.0
-                    - window.avg_completion_time_seconds / cfg.reference_time_seconds
-                ),
-            )
-            results.append(("time", cfg.time_weight, min(MAX_SCORE, score)))
-
-        if cfg.tokens_enabled and window.avg_tokens_per_task is not None:
-            score = max(
-                0.0,
-                MAX_SCORE * (1.0 - window.avg_tokens_per_task / cfg.reference_tokens),
-            )
-            results.append(("tokens", cfg.tokens_weight, min(MAX_SCORE, score)))
-        return results
-
-    @staticmethod
-    def _neutral_efficiency(
-        data_point_count: int,
-        now: AwareDatetime,
-    ) -> PillarScore:
-        """Return a neutral efficiency score with zero confidence."""
-        return PillarScore(
-            pillar=EvaluationPillar.EFFICIENCY,
-            score=NEUTRAL_SCORE,
-            confidence=0.0,
-            strategy_name=NotBlankStr("inline_efficiency"),
-            data_point_count=data_point_count,
-            evaluated_at=now,
-        )
-
-    @staticmethod
-    def _build_efficiency_score(
-        sub_scores: list[tuple[str, float, float]],
-        window: WindowMetrics,
-        context: EvaluationContext,
-    ) -> PillarScore:
-        """Aggregate sub-metric scores into an efficiency pillar score."""
-        weights = redistribute_weights(
-            [(name, w, True) for name, w, _ in sub_scores],
-        )
-        score_map = {name: s for name, _, s in sub_scores}
-        weighted_sum = sum(score_map[k] * weights[k] for k in weights)
-        final_score = max(0.0, min(MAX_SCORE, weighted_sum))
-
-        breakdown = tuple(
-            (NotBlankStr(k), round(v, 4)) for k, v in sorted(score_map.items())
-        )
-        confidence = min(
-            1.0,
-            window.data_point_count / FULL_CONFIDENCE_DATA_POINTS,
-        )
-
-        result = PillarScore(
-            pillar=EvaluationPillar.EFFICIENCY,
-            score=round(final_score, 4),
-            confidence=round(confidence, 4),
-            strategy_name=NotBlankStr("inline_efficiency"),
-            breakdown=breakdown,
-            data_point_count=window.data_point_count,
-            evaluated_at=context.now,
-        )
-
-        logger.debug(
-            EVAL_PILLAR_SCORED,
-            agent_id=context.agent_id,
-            pillar=EvaluationPillar.EFFICIENCY.value,
-            score=result.score,
-            confidence=result.confidence,
-        )
-        return result
 
     @staticmethod
     def _compute_resilience_metrics(

@@ -9,7 +9,9 @@ from synthorg.core.enums import SeniorityLevel, TaskType
 from synthorg.core.role import Skill
 from synthorg.core.task import Task
 from synthorg.engine.assignment.models import AssignmentRequest
-from synthorg.engine.assignment.role_based import RoleBasedAssignmentStrategy
+from synthorg.engine.assignment.pool_filters import IdentityPoolFilter
+from synthorg.engine.assignment.rankers import ScoreDescendingRanker
+from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrategy
 from synthorg.engine.assignment.service import TaskAssignmentService
 from synthorg.engine.routing.scorer import AgentTaskScorer
 
@@ -51,7 +53,12 @@ def _make_task(**overrides: object) -> Task:
 
 def _make_service() -> TaskAssignmentService:
     scorer = AgentTaskScorer()
-    strategy = RoleBasedAssignmentStrategy(scorer=scorer)
+    strategy = ScoringBasedAssignmentStrategy(
+        name="role_based",
+        scorer=scorer,
+        pool_filter=IdentityPoolFilter(),
+        ranker=ScoreDescendingRanker(),
+    )
     return TaskAssignmentService(strategy)
 
 

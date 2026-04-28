@@ -1,10 +1,11 @@
-"""Tests for User Experience pillar strategy."""
+"""Tests for the User Experience pillar composition."""
 
 import pytest
 
 from synthorg.hr.evaluation.config import EvaluationConfig, ExperienceConfig
+from synthorg.hr.evaluation.configurable_scorer import ConfigurablePillarScorer
 from synthorg.hr.evaluation.enums import EvaluationPillar
-from synthorg.hr.evaluation.experience_strategy import FeedbackBasedUxStrategy
+from synthorg.hr.evaluation.extractors.experience import ExperienceMetricExtractor
 from tests.unit.hr.evaluation.conftest import (
     make_evaluation_context,
     make_interaction_feedback,
@@ -14,20 +15,23 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.fixture
-def strategy() -> FeedbackBasedUxStrategy:
-    return FeedbackBasedUxStrategy()
+def strategy() -> ConfigurablePillarScorer:
+    return ConfigurablePillarScorer(
+        EvaluationPillar.EXPERIENCE,
+        ExperienceMetricExtractor(),
+    )
 
 
-class TestFeedbackBasedUxStrategy:
-    """FeedbackBasedUxStrategy tests."""
+class TestConfigurableExperienceScorer:
+    """Composed experience scorer behaviour tests."""
 
-    def test_protocol_properties(self, strategy: FeedbackBasedUxStrategy) -> None:
-        assert strategy.name == "feedback_based_ux"
+    def test_protocol_properties(self, strategy: ConfigurablePillarScorer) -> None:
+        assert strategy.name == "configurable[experience]"
         assert strategy.pillar == EvaluationPillar.EXPERIENCE
 
     async def test_insufficient_feedback_returns_neutral(
         self,
-        strategy: FeedbackBasedUxStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         """Below min_feedback_count returns neutral with 0 confidence."""
         fb = (make_interaction_feedback(),)  # Only 1, min is 3.
@@ -39,7 +43,7 @@ class TestFeedbackBasedUxStrategy:
 
     async def test_all_dimensions_present(
         self,
-        strategy: FeedbackBasedUxStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         fb = tuple(make_interaction_feedback() for _ in range(5))
         ctx = make_evaluation_context()
@@ -52,7 +56,7 @@ class TestFeedbackBasedUxStrategy:
 
     async def test_high_ratings_produce_high_score(
         self,
-        strategy: FeedbackBasedUxStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         fb = tuple(
             make_interaction_feedback(
@@ -71,7 +75,7 @@ class TestFeedbackBasedUxStrategy:
 
     async def test_low_ratings_produce_low_score(
         self,
-        strategy: FeedbackBasedUxStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         fb = tuple(
             make_interaction_feedback(
@@ -90,7 +94,7 @@ class TestFeedbackBasedUxStrategy:
 
     async def test_partial_feedback_redistributes(
         self,
-        strategy: FeedbackBasedUxStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         """Feedback with some None ratings still produces a score."""
         fb = tuple(
@@ -112,7 +116,7 @@ class TestFeedbackBasedUxStrategy:
 
     async def test_tone_disabled(
         self,
-        strategy: FeedbackBasedUxStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         cfg = EvaluationConfig(
             experience=ExperienceConfig(tone_enabled=False),
@@ -127,7 +131,7 @@ class TestFeedbackBasedUxStrategy:
 
     async def test_all_metrics_disabled_returns_neutral(
         self,
-        strategy: FeedbackBasedUxStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         cfg = EvaluationConfig(
             experience=ExperienceConfig(
@@ -148,7 +152,7 @@ class TestFeedbackBasedUxStrategy:
 
     async def test_custom_min_feedback_count(
         self,
-        strategy: FeedbackBasedUxStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         cfg = EvaluationConfig(
             experience=ExperienceConfig(min_feedback_count=1),

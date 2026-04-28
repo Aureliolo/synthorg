@@ -17,7 +17,9 @@ from synthorg.engine.assignment.manual import ManualAssignmentStrategy
 from synthorg.engine.assignment.models import (
     AssignmentRequest,
 )
-from synthorg.engine.assignment.role_based import RoleBasedAssignmentStrategy
+from synthorg.engine.assignment.pool_filters import IdentityPoolFilter
+from synthorg.engine.assignment.rankers import ScoreDescendingRanker
+from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrategy
 from synthorg.engine.assignment.service import TaskAssignmentService
 from synthorg.engine.errors import TaskAssignmentError
 from synthorg.engine.routing.scorer import AgentTaskScorer
@@ -61,14 +63,23 @@ def _make_task(**overrides: object) -> Task:
     return Task(**defaults)  # type: ignore[arg-type]
 
 
+def _role_based_strategy(scorer: AgentTaskScorer) -> ScoringBasedAssignmentStrategy:
+    """Build the role-based composition (the registry's "role_based" entry)."""
+    return ScoringBasedAssignmentStrategy(
+        name="role_based",
+        scorer=scorer,
+        pool_filter=IdentityPoolFilter(),
+        ranker=ScoreDescendingRanker(),
+    )
+
+
 class TestTaskAssignmentService:
     """TaskAssignmentService tests."""
 
     def test_delegates_to_strategy(self) -> None:
         """Service delegates to the configured strategy."""
         scorer = AgentTaskScorer()
-        strategy = RoleBasedAssignmentStrategy(scorer)
-        service = TaskAssignmentService(strategy)
+        service = TaskAssignmentService(_role_based_strategy(scorer))
 
         agent = _make_agent(
             "dev-1",
@@ -104,8 +115,7 @@ class TestTaskAssignmentService:
     ) -> None:
         """Service accepts CREATED, FAILED, INTERRUPTED, and SUSPENDED tasks."""
         scorer = AgentTaskScorer()
-        strategy = RoleBasedAssignmentStrategy(scorer)
-        service = TaskAssignmentService(strategy)
+        service = TaskAssignmentService(_role_based_strategy(scorer))
 
         agent = _make_agent("dev-1", primary_skills=("python",))
         overrides: dict[str, object] = {"status": status.value}
@@ -139,8 +149,7 @@ class TestTaskAssignmentService:
     ) -> None:
         """Service rejects tasks with non-assignable statuses."""
         scorer = AgentTaskScorer()
-        strategy = RoleBasedAssignmentStrategy(scorer)
-        service = TaskAssignmentService(strategy)
+        service = TaskAssignmentService(_role_based_strategy(scorer))
 
         agent = _make_agent("dev-1")
 
@@ -214,8 +223,7 @@ class TestTaskAssignmentService:
     def test_result_contains_strategy_name(self) -> None:
         """Result contains the name of the strategy used."""
         scorer = AgentTaskScorer()
-        strategy = RoleBasedAssignmentStrategy(scorer)
-        service = TaskAssignmentService(strategy)
+        service = TaskAssignmentService(_role_based_strategy(scorer))
 
         agent = _make_agent("dev-1", primary_skills=("python",))
         task = _make_task()

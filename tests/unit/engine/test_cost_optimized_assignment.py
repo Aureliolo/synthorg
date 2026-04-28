@@ -1,13 +1,15 @@
-"""Unit tests for CostOptimizedAssignmentStrategy."""
+"""Unit tests for the cost-optimized scoring strategy."""
 
 import pytest
 
 from synthorg.core.enums import Complexity, SeniorityLevel
-from synthorg.engine.assignment.cost_optimized import CostOptimizedAssignmentStrategy
 from synthorg.engine.assignment.models import (
     AgentWorkload,
     AssignmentRequest,
 )
+from synthorg.engine.assignment.pool_filters import IdentityPoolFilter
+from synthorg.engine.assignment.rankers import CostDescendingRanker
+from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrategy
 from synthorg.engine.routing.scorer import AgentTaskScorer
 
 from .conftest import make_assignment_agent, make_assignment_task
@@ -15,13 +17,25 @@ from .conftest import make_assignment_agent, make_assignment_task
 pytestmark = pytest.mark.unit
 
 
+def _cost_optimized_strategy(
+    scorer: AgentTaskScorer,
+) -> ScoringBasedAssignmentStrategy:
+    """Build the cost-optimized composition (registry's "cost_optimized" entry)."""
+    return ScoringBasedAssignmentStrategy(
+        name="cost_optimized",
+        scorer=scorer,
+        pool_filter=IdentityPoolFilter(),
+        ranker=CostDescendingRanker(),
+    )
+
+
 class TestCostOptimizedAssignmentStrategy:
-    """CostOptimizedAssignmentStrategy tests."""
+    """Tests for the cost-optimized composition."""
 
     def test_cheapest_agent_selected(self) -> None:
         """Agent with lower total_cost wins."""
         scorer = AgentTaskScorer()
-        strategy = CostOptimizedAssignmentStrategy(scorer)
+        strategy = _cost_optimized_strategy(scorer)
 
         expensive = make_assignment_agent(
             "expensive-dev",
@@ -63,7 +77,7 @@ class TestCostOptimizedAssignmentStrategy:
     def test_cost_tie_broken_by_score(self) -> None:
         """Equal cost, higher score wins."""
         scorer = AgentTaskScorer()
-        strategy = CostOptimizedAssignmentStrategy(scorer)
+        strategy = _cost_optimized_strategy(scorer)
 
         better = make_assignment_agent(
             "better-dev",
@@ -105,7 +119,7 @@ class TestCostOptimizedAssignmentStrategy:
     def test_empty_workloads_falls_back_to_capability(self) -> None:
         """Without workloads, falls back to score-only sorting."""
         scorer = AgentTaskScorer()
-        strategy = CostOptimizedAssignmentStrategy(scorer)
+        strategy = _cost_optimized_strategy(scorer)
 
         best = make_assignment_agent(
             "best-dev",
@@ -134,7 +148,7 @@ class TestCostOptimizedAssignmentStrategy:
     def test_no_eligible_returns_none(self) -> None:
         """All below min_score returns selected=None."""
         scorer = AgentTaskScorer()
-        strategy = CostOptimizedAssignmentStrategy(scorer)
+        strategy = _cost_optimized_strategy(scorer)
 
         agent = make_assignment_agent(
             "qa",
@@ -158,7 +172,7 @@ class TestCostOptimizedAssignmentStrategy:
     def test_partial_cost_data(self) -> None:
         """Incomplete cost data triggers score-only fallback."""
         scorer = AgentTaskScorer()
-        strategy = CostOptimizedAssignmentStrategy(scorer)
+        strategy = _cost_optimized_strategy(scorer)
 
         known = make_assignment_agent(
             "known-dev",
@@ -210,7 +224,7 @@ class TestCostOptimizedAssignmentStrategy:
     ) -> None:
         """Parametrized test for various cost distributions."""
         scorer = AgentTaskScorer()
-        strategy = CostOptimizedAssignmentStrategy(scorer)
+        strategy = _cost_optimized_strategy(scorer)
 
         agents = tuple(
             make_assignment_agent(
@@ -244,4 +258,4 @@ class TestCostOptimizedAssignmentStrategy:
     def test_name_property(self) -> None:
         """Strategy name is 'cost_optimized'."""
         scorer = AgentTaskScorer()
-        assert CostOptimizedAssignmentStrategy(scorer).name == "cost_optimized"
+        assert _cost_optimized_strategy(scorer).name == "cost_optimized"

@@ -1,12 +1,11 @@
-"""Tests for Intelligence/Accuracy pillar strategy."""
+"""Tests for the Intelligence/Accuracy pillar composition."""
 
 import pytest
 
 from synthorg.hr.evaluation.config import EvaluationConfig, IntelligenceConfig
+from synthorg.hr.evaluation.configurable_scorer import ConfigurablePillarScorer
 from synthorg.hr.evaluation.enums import EvaluationPillar
-from synthorg.hr.evaluation.intelligence_strategy import (
-    QualityBlendIntelligenceStrategy,
-)
+from synthorg.hr.evaluation.extractors.intelligence import IntelligenceMetricExtractor
 from tests.unit.hr.evaluation.conftest import make_evaluation_context, make_snapshot
 from tests.unit.hr.performance.conftest import make_calibration_record
 
@@ -14,23 +13,26 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.fixture
-def strategy() -> QualityBlendIntelligenceStrategy:
-    return QualityBlendIntelligenceStrategy()
+def strategy() -> ConfigurablePillarScorer:
+    return ConfigurablePillarScorer(
+        EvaluationPillar.INTELLIGENCE,
+        IntelligenceMetricExtractor(),
+    )
 
 
-class TestQualityBlendIntelligenceStrategy:
-    """QualityBlendIntelligenceStrategy tests."""
+class TestConfigurableIntelligenceScorer:
+    """Composed intelligence scorer behaviour tests."""
 
     def test_protocol_properties(
         self,
-        strategy: QualityBlendIntelligenceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
-        assert strategy.name == "quality_blend_intelligence"
+        assert strategy.name == "configurable[intelligence]"
         assert strategy.pillar == EvaluationPillar.INTELLIGENCE
 
     async def test_no_quality_score_returns_neutral(
         self,
-        strategy: QualityBlendIntelligenceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         ctx = make_evaluation_context(
             snapshot=make_snapshot(overall_quality_score=None),
@@ -42,7 +44,7 @@ class TestQualityBlendIntelligenceStrategy:
 
     async def test_ci_quality_only(
         self,
-        strategy: QualityBlendIntelligenceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         ctx = make_evaluation_context(
             snapshot=make_snapshot(overall_quality_score=8.0),
@@ -54,7 +56,7 @@ class TestQualityBlendIntelligenceStrategy:
 
     async def test_with_calibration_records(
         self,
-        strategy: QualityBlendIntelligenceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         records = tuple(
             make_calibration_record(llm_score=8.5, behavioral_score=7.0)
@@ -71,7 +73,7 @@ class TestQualityBlendIntelligenceStrategy:
 
     async def test_llm_calibration_disabled(
         self,
-        strategy: QualityBlendIntelligenceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         """With LLM calibration disabled, CI quality gets 100% weight."""
         cfg = EvaluationConfig(
@@ -92,7 +94,7 @@ class TestQualityBlendIntelligenceStrategy:
 
     async def test_high_drift_reduces_confidence(
         self,
-        strategy: QualityBlendIntelligenceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         """High calibration drift should reduce confidence."""
         # Create records with large drift.
@@ -122,7 +124,7 @@ class TestQualityBlendIntelligenceStrategy:
 
     async def test_all_metrics_disabled_returns_neutral(
         self,
-        strategy: QualityBlendIntelligenceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         cfg = EvaluationConfig(
             intelligence=IntelligenceConfig(
@@ -141,7 +143,7 @@ class TestQualityBlendIntelligenceStrategy:
 
     async def test_ci_disabled_llm_calibration_only(
         self,
-        strategy: QualityBlendIntelligenceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         """With CI disabled, LLM calibration gets 100% weight."""
         cfg = EvaluationConfig(
@@ -162,7 +164,7 @@ class TestQualityBlendIntelligenceStrategy:
 
     async def test_ci_disabled_no_calibration_returns_neutral(
         self,
-        strategy: QualityBlendIntelligenceStrategy,
+        strategy: ConfigurablePillarScorer,
     ) -> None:
         """With CI disabled and no calibration data, return neutral."""
         cfg = EvaluationConfig(

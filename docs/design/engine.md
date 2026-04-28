@@ -379,10 +379,25 @@ Tasks can be assigned through multiple strategies:
 | **Cost-optimized** | Assign to cheapest capable agent |
 
 All six strategies are implemented behind the `TaskAssignmentStrategy` protocol.
-Scoring-based strategies filter out agents at capacity via
-`AssignmentRequest.max_concurrent_tasks`. `ManualAssignmentStrategy` raises
-exceptions on failure; scoring-based strategies return
-`AssignmentResult(selected=None)`.
+The five scoring-based strategies (role_based, load_balanced, cost_optimized,
+hierarchical, auction) are all instances of `ScoringBasedAssignmentStrategy`
+composed with different `(CandidatePoolFilter, CandidateRanker)` pairs:
+hierarchical uses `HierarchicalPoolFilter` to narrow the pool to subordinates of
+the task's delegator before scoring; the other four use `IdentityPoolFilter` and
+differ only in the ranker: `ScoreDescendingRanker` (highest capability score
+wins), `WorkloadAscendingRanker` (lowest active task count wins, score breaks
+ties), `CostDescendingRanker` (lowest `total_cost` wins, score breaks ties; the
+class name keeps the wrong-axis vocabulary from issue #1612 even though the
+sort is ascending by cost), or `AuctionBidRanker` (highest
+`score * 1/(1 + active_task_count)` bid wins, score breaks ties). Manual
+assignment is its own class. Scoring-based strategies
+filter out agents at capacity via `AssignmentRequest.max_concurrent_tasks`.
+Capacity filtering inside `score_and_filter_candidates()` only excludes
+at-or-above-capacity agents when `AssignmentRequest.max_concurrent_tasks` is set
+*and* `AssignmentRequest.workloads` carries a snapshot covering the candidate
+pool; without both, every available agent reaches the scorer and ranker.
+`ManualAssignmentStrategy` raises exceptions on failure; scoring-based strategies
+return `AssignmentResult(selected=None)`.
 
 ---
 

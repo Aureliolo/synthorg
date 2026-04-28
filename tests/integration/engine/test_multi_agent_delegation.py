@@ -41,12 +41,16 @@ from synthorg.core.enums import (
 from synthorg.core.role import Authority, Skill
 from synthorg.core.task import Task
 from synthorg.engine.agent_engine import AgentEngine
-from synthorg.engine.assignment.load_balanced import LoadBalancedAssignmentStrategy
 from synthorg.engine.assignment.models import (
     AgentWorkload,
     AssignmentRequest,
 )
-from synthorg.engine.assignment.role_based import RoleBasedAssignmentStrategy
+from synthorg.engine.assignment.pool_filters import IdentityPoolFilter
+from synthorg.engine.assignment.rankers import (
+    ScoreDescendingRanker,
+    WorkloadAscendingRanker,
+)
+from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrategy
 from synthorg.engine.assignment.service import TaskAssignmentService
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.manual import ManualDecompositionStrategy
@@ -861,7 +865,12 @@ class TestTaskAssignmentServiceIntegration:
         """TaskAssignmentService integrates with AgentTaskScorer."""
         agents = _build_agent_pool()
         scorer = AgentTaskScorer()
-        strategy = RoleBasedAssignmentStrategy(scorer)
+        strategy = ScoringBasedAssignmentStrategy(
+            name="role_based",
+            scorer=scorer,
+            pool_filter=IdentityPoolFilter(),
+            ranker=ScoreDescendingRanker(),
+        )
         service = TaskAssignmentService(strategy)
 
         task = _make_task()
@@ -882,10 +891,15 @@ class TestTaskAssignmentServiceIntegration:
         assert result.strategy_used == "role_based"
 
     def test_load_balanced_prefers_least_loaded(self) -> None:
-        """LoadBalancedAssignmentStrategy picks the least-loaded agent."""
+        """The load-balanced composition picks the least-loaded agent."""
         agents = _build_agent_pool()
         scorer = AgentTaskScorer()
-        strategy = LoadBalancedAssignmentStrategy(scorer)
+        strategy = ScoringBasedAssignmentStrategy(
+            name="load_balanced",
+            scorer=scorer,
+            pool_filter=IdentityPoolFilter(),
+            ranker=WorkloadAscendingRanker(),
+        )
         service = TaskAssignmentService(strategy)
 
         task = _make_task(
