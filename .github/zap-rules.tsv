@@ -2,6 +2,11 @@
 # Format: rule_id<TAB>action<TAB>description (description is informational only).
 # Valid actions: PASS, IGNORE, INFO, WARN, FAIL.
 #
+# Rule IDs and matcher behavior can shift between major ZAP versions.
+# When upgrading the ``zaproxy/action-api-scan`` action in dast.yml,
+# revisit each IGNORE rationale below and confirm the underlying
+# behavior has not changed.
+#
 # --- Critical: these MUST block the scan when fail_action is enabled ---
 40018	FAIL	SQL Injection
 90020	FAIL	Remote OS Command Injection
@@ -19,3 +24,39 @@
 90005	IGNORE	Sec-Fetch-* Header is Missing
 10049	IGNORE	Storable and Cacheable Content
 10104	IGNORE	User Agent Fuzzer
+#
+# 90022 / 10023 fire on the substring "Internal Server Error" appearing
+# anywhere in a response body.  SynthOrg's RFC 9457 envelope (see
+# src/synthorg/api/errors.py CATEGORY_TITLES) sets that exact title for
+# every ``ErrorCategory.INTERNAL`` response (5xx + 503), so the rule
+# matches every legitimate structured 5xx without distinguishing it
+# from a real debug-page leak.  Real Python tracebacks / framework
+# debug pages would surface as 500 with framework-specific markers,
+# not the curated structured envelope.  Ignore both rules; if a
+# regression ever leaks an unstructured stack trace, the underlying
+# fact will still surface via test coverage on the exception
+# handlers, not via this scanner rule.
+90022	IGNORE	Application Error Disclosure (matches RFC 9457 envelope title)
+10023	IGNORE	Information Disclosure - Debug Error Messages (same as 90022)
+#
+# 10010 fires on the ``csrf_token`` cookie not having ``HttpOnly``.
+# That cookie is intentionally non-HttpOnly: SynthOrg uses the
+# double-submit-cookie pattern, so the frontend JavaScript MUST be
+# able to read the token and echo it back as an ``X-CSRF-Token``
+# header.  The actual auth/session cookie IS ``HttpOnly`` (see
+# src/synthorg/api/auth/cookies.py).  ZAP's rule has no per-cookie
+# scoping, so the only options are global IGNORE or false-positive
+# noise on every scan.
+10010	IGNORE	Cookie No HttpOnly Flag (csrf_token by design, double-submit)
+#
+# 10111 is informational (riskcode=0): ZAP just labels endpoints with
+# a ``password`` field as auth requests for its own auth-flow inference.
+# Not a finding.
+10111	IGNORE	Authentication Request Identified (informational labelling)
+#
+# 10024 is informational (riskcode=0): ZAP flags any URL containing
+# the substring "session".  In SynthOrg ``session_id`` is a
+# domain/runtime resource identifier (workflow session), NOT an HTTP
+# auth token -- auth lives in HttpOnly cookies.  Putting domain IDs
+# in query strings is normal REST and does not leak credentials.
+10024	IGNORE	Sensitive Information in URL (session_id is domain ID)

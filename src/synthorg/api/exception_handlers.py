@@ -13,7 +13,6 @@ All handlers populate structured RFC 9457 metadata (error code, category,
 retryability, title, type URI, request correlation ID).
 """
 
-import contextlib
 import math
 from http import HTTPStatus
 from types import MappingProxyType
@@ -37,6 +36,11 @@ from synthorg.api.errors import (
     ErrorCode,
     category_title,
     category_type_uri,
+)
+from synthorg.backup.errors import (
+    BackupError,
+    BackupInProgressError,
+    BackupNotFoundError,
 )
 from synthorg.budget.errors import (
     BudgetExhaustedError,
@@ -83,12 +87,18 @@ def _get_instance_id() -> str:
 
     Wrapped defensively because this runs inside exception handlers,
     which are the last line of defense and must never crash.
+    ``MemoryError`` and ``RecursionError`` are re-raised so process-level
+    failures still surface; every other ``Exception`` falls back to a
+    fresh correlation ID with a warning so operators can correlate the
+    fallback to its triggering request.
     """
     try:
         ctx = structlog.contextvars.get_contextvars()
         request_id = ctx.get("request_id")
         if isinstance(request_id, str) and request_id:
             return request_id
+    except MemoryError, RecursionError:  # pragma: no cover
+        raise
     except Exception as exc:
         logger.warning(
             API_CORRELATION_FALLBACK,
@@ -107,11 +117,17 @@ def _wants_problem_json(request: Request[Any, Any, Any]) -> bool:
 
     Wrapped defensively because this runs inside exception handlers,
     which are the last line of defense and must never crash.
+    ``MemoryError`` and ``RecursionError`` are re-raised so process-level
+    failures still surface; every other ``Exception`` falls back to the
+    envelope format with a warning so a malformed Accept header from a
+    misbehaving client cannot crash the response path.
     """
     try:
         match = request.accept.best_match(
             ["application/json", _PROBLEM_JSON],
         )
+    except MemoryError, RecursionError:  # pragma: no cover
+        raise
     except Exception as exc:
         logger.warning(
             API_ACCEPT_PARSE_FAILED,
@@ -234,6 +250,15 @@ def _build_response(  # noqa: PLR0913
             headers=headers,
         )
     except Exception:
+        # Last-resort fallback when structured-response construction
+        # itself fails (e.g. Pydantic validation error from a corrupted
+        # ErrorCode, structlog context corruption, enum drift).  Emit a
+        # minimal but valid RFC 9457 body so client SDKs that decode
+        # ``error_detail`` fields do not crash on null access.  The
+        # negotiated content type is preserved -- ``application/json``
+        # clients still receive the standard ``ApiResponse`` envelope
+        # shape, only ``application/problem+json`` clients see a bare
+        # ``ProblemDetail``.
         logger.error(
             API_REQUEST_ERROR,
             error_type="response_build_failure",
@@ -242,10 +267,47 @@ def _build_response(  # noqa: PLR0913
             original_status_code=status_code,
             exc_info=True,
         )
-        return Response(  # type: ignore[return-value]
-            content={"error": "Internal server error"},
+        # Re-check content negotiation defensively: if ``_wants_problem_json``
+        # itself was the original failure, default to the envelope shape
+        # so the fallback never repeats the same crash.
+        try:
+            use_problem_json = _wants_problem_json(request)
+        except Exception:  # pragma: no cover
+            use_problem_json = False
+        instance = _get_instance_id()
+        fallback_title = category_title(ErrorCategory.INTERNAL)
+        fallback_type = category_type_uri(ErrorCategory.INTERNAL)
+        if use_problem_json:
+            return Response(
+                content=ProblemDetail(
+                    type=fallback_type,
+                    title=fallback_title,
+                    status=500,
+                    detail="Internal server error",
+                    instance=instance,
+                    error_code=ErrorCode.INTERNAL_ERROR,
+                    error_category=ErrorCategory.INTERNAL,
+                    retryable=False,
+                    retry_after=None,
+                ),
+                status_code=500,
+                media_type=_PROBLEM_JSON,
+            )
+        return Response(
+            content=ApiResponse[None](
+                error="Internal server error",
+                error_detail=ErrorDetail(
+                    detail="Internal server error",
+                    error_code=ErrorCode.INTERNAL_ERROR,
+                    error_category=ErrorCategory.INTERNAL,
+                    retryable=False,
+                    retry_after=None,
+                    instance=instance,
+                    title=fallback_title,
+                    type=fallback_type,
+                ),
+            ),
             status_code=500,
-            media_type="application/json",
         )
 
 
@@ -354,6 +416,52 @@ def handle_persistence_error(
     )
 
 
+def handle_backup_error(
+    request: Request[Any, Any, Any],
+    exc: BackupError,
+) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
+    """Map ``BackupError`` subclasses to structured HTTP responses.
+
+    ``BackupNotFoundError`` and ``BackupInProgressError`` carry semantic
+    HTTP analogues (404 / 409); every other ``BackupError`` subtype
+    surfaces as a structured 5xx instead of falling through to
+    ``handle_unexpected`` and producing an unstructured generic 500.
+
+    The 4xx branches pass the exception's message through to the client
+    because ``BackupError`` instances raised by ``synthorg.backup`` carry
+    user-safe identifiers only (backup_id, the in-progress reason);
+    they do not embed filesystem paths, secrets, or internal state.
+    The 5xx branch scrubs the message via the standard server-error
+    convention (the original is logged server-side via ``_log_error``).
+    """
+    if isinstance(exc, BackupNotFoundError):
+        _log_error(request, exc, status=404)
+        return _build_response(
+            request,
+            detail=str(exc) or "Backup not found",
+            error_code=ErrorCode.RECORD_NOT_FOUND,
+            error_category=ErrorCategory.NOT_FOUND,
+            status_code=404,
+        )
+    if isinstance(exc, BackupInProgressError):
+        _log_error(request, exc, status=409)
+        return _build_response(
+            request,
+            detail=str(exc) or "Backup operation already in progress",
+            error_code=ErrorCode.RESOURCE_CONFLICT,
+            error_category=ErrorCategory.CONFLICT,
+            status_code=409,
+        )
+    _log_error(request, exc, status=500)
+    return _build_response(
+        request,
+        detail="Backup operation failed",
+        error_code=ErrorCode.INTERNAL_ERROR,
+        error_category=ErrorCategory.INTERNAL,
+        status_code=500,
+    )
+
+
 def handle_api_error(
     request: Request[Any, Any, Any],
     exc: ApiError,
@@ -396,16 +504,36 @@ def _normalize_status_code(raw: object) -> int:
 
     A non-int attribute or a value outside the 400-599 error range is
     mis-annotation territory; normalize to 500 so the handler cannot
-    produce a "successful" error envelope.
+    produce a "successful" error envelope.  A warning is logged on
+    every normalization so a typo'd ``status_code`` field on an
+    exception class surfaces in operator logs instead of silently
+    rendering as 500.
     """
     value: int
     try:
         if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
+            logger.warning(
+                API_REQUEST_ERROR,
+                error_type="status_code_invalid_type",
+                raw_value_type=type(raw).__qualname__,
+                raw_value=repr(raw)[:100],
+            )
             return 500
         value = int(raw)
-    except TypeError, ValueError:
+    except (TypeError, ValueError) as exc:
+        logger.warning(
+            API_REQUEST_ERROR,
+            error_type="status_code_coercion_failed",
+            raw_value=repr(raw)[:100],
+            error=safe_error_description(exc),
+        )
         return 500
     if not (400 <= value <= 599):  # noqa: PLR2004
+        logger.warning(
+            API_REQUEST_ERROR,
+            error_type="status_code_out_of_range",
+            raw_value=value,
+        )
         return 500
     return value
 
@@ -643,15 +771,32 @@ def handle_http_exception(
             fallback = HTTPStatus(status).phrase
         except ValueError:
             fallback = "Request error"
-        msg = (exc.detail or fallback)[:_MAX_DETAIL_LEN]
+        # ``exc.detail`` is typed as ``str | None`` in Litestar but
+        # third-party HTTPException subclasses occasionally set it to
+        # bytes or a non-string sequence; coerce so the slice always
+        # returns a str rather than the same type as ``detail``.
+        raw_detail = exc.detail or fallback
+        msg = (raw_detail if isinstance(raw_detail, str) else str(raw_detail))[
+            :_MAX_DETAIL_LEN
+        ]
     code, category, retryable = _category_for_status(status)
     # Parse Retry-After header into the body field for agent consumers.
     retry_after: int | None = None
     raw_headers = exc.headers or {}
     raw_retry = raw_headers.get("Retry-After") or raw_headers.get("retry-after")
     if raw_retry:
-        with contextlib.suppress(ValueError):
+        try:
             retry_after = int(raw_retry)
+        except ValueError:
+            # Malformed Retry-After header from upstream is rare but
+            # observable; surfacing it lets operators distinguish a real
+            # missing header from a misbehaving upstream service.
+            logger.warning(
+                API_REQUEST_ERROR,
+                error_type="retry_after_parse_error",
+                raw_retry_after=raw_retry,
+                path=str(request.url.path),
+            )
     return _build_response(
         request,
         detail=msg,
@@ -699,6 +844,7 @@ EXCEPTION_HANDLERS: MappingProxyType[type[Exception], object] = MappingProxyType
         CommunicationError: handle_domain_error,
         IntegrationError: handle_domain_error,
         ToolError: handle_domain_error,
+        BackupError: handle_backup_error,
         Exception: handle_unexpected,
     }
 )

@@ -241,6 +241,12 @@ class BackupController(Controller):
         Args:
             state: Application state.
             backup_id: Backup identifier.
+
+        Raises:
+            NotFoundException: If backup does not exist (404).
+            HTTPException: 409 if a backup operation is already in
+                progress (mapped centrally from
+                ``BackupInProgressError`` via ``handle_backup_error``).
         """
         app_state: AppState = state.app_state
         try:

@@ -134,6 +134,47 @@ All 13 share the same `type` URI; the numeric code is the discriminator.
 
 Clients that set `Accept: application/problem+json` receive a bare RFC 9457 body. Clients that accept `application/json` receive an `ApiResponse` envelope with `error_detail` carrying the same fields. See the [API reference](../openapi/) for per-route examples.
 
+## HTTP exception handler registration
+
+Litestar resolves exception handlers by walking the raised exception's
+MRO; the first matching type in `EXCEPTION_HANDLERS`
+(`src/synthorg/api/exception_handlers.py`) wins. Domain error families
+register a single base-class handler (e.g. `BackupError`,
+`PersistenceError`, `OntologyError`) so every subtype maps to a
+structured response without falling through to the catch-all
+`Exception: handle_unexpected` (which would surface as a generic 500
+without a domain-specific `error_code`).
+
+Each handler:
+
+1. Calls `_log_error(request, exc, status=...)` for structured logging
+   (WARNING for 4xx, ERROR + traceback for 5xx).
+2. Returns `_build_response(...)` so the response carries the full RFC
+   9457 envelope (or bare `application/problem+json` body when the
+   client asks for it).
+3. Scrubs the upstream message on 5xx.  4xx behavior varies: domain
+   handlers like `handle_backup_error` and `handle_api_error` pass a
+   user-safe exception message through, while several Litestar-side
+   handlers intentionally return fixed public messages
+   (`handle_record_not_found` -> `"Resource not found"`,
+   `handle_not_authorized` -> `"Authentication required"`,
+   `handle_permission_denied` -> `"Forbidden"`,
+   `handle_not_found` -> `"Not found"`).  When in doubt, mirror the
+   nearest existing handler in `exception_handlers.py`.
+
+When introducing a new domain error family:
+
+1. Add the base class to `EXCEPTION_HANDLERS` mapped to a dedicated
+   `handle_<domain>_error` function.
+2. Use `isinstance` dispatch inside the handler to map subtypes to
+   specific HTTP status codes (`404`, `409`, etc.) before falling
+   through to the structured `500` branch.
+3. Register the entry **above** the catch-all `Exception:
+   handle_unexpected` line in the dict; MRO ordering does not depend on
+   dict insertion order, but readability does.
+4. Add tests in `tests/unit/api/test_exception_handlers.py` covering
+   each branch and a regression test for the catch-all.
+
 ## Further reading
 
 - [Design: security](../design/security.md): the SEC-1 rules behind the categories

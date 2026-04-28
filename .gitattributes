@@ -26,6 +26,11 @@ src/synthorg/persistence/postgres/schema.sql text eol=lf
 # Shell scripts must use LF (bash can't parse CRLF).
 *.sh text eol=lf
 
+# ZAP DAST rules file is parsed on Linux runners; CRLF was observed
+# leaking in from Windows-side edits, leaving the file with mixed
+# endings that some TSV consumers cannot handle.
+*.tsv text eol=lf
+
 # Dockerfiles run in Linux containers -- CRLF breaks shell continuations and heredocs.
 Dockerfile text eol=lf
 
