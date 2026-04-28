@@ -378,8 +378,12 @@ suppresses validated false positives and informational findings:
 | Sensitive Information in URL | 10024 | Ignore | Informational only. Fires on any URL containing the substring "session". In Synthorg `session_id` is a domain runtime/agent session identifier (workflow resource), NOT an HTTP/auth session token; auth lives in HttpOnly cookies. Putting domain IDs in query params is standard REST. |
 
 The rules file is reviewed when ZAP or the API surface changes.
-**When upgrading the ZAP action**, revisit each Ignore row above to
-confirm the underlying rule behaviour has not changed.
+**When upgrading the ZAP action, the bundled ZAP version, or the
+ruleset it uses,** revisit each Ignore row above to confirm the
+underlying rule's matcher behaviour, severity, and rule ID have not
+changed.  Action wrapper bumps and ZAP-engine bumps both alter what
+each rule fires on; do not skip the revisit just because the action
+version changed by a single minor bump.
 Cache-Control is path-aware: API data endpoints use `no-store` to prevent
 sensitive data caching, the web dashboard entry point (`index.html`) uses
 `no-cache` to force revalidation on every request (ensuring fresh deployments),

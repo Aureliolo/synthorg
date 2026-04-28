@@ -97,7 +97,7 @@ def _get_instance_id() -> str:
         request_id = ctx.get("request_id")
         if isinstance(request_id, str) and request_id:
             return request_id
-    except MemoryError, RecursionError:
+    except MemoryError, RecursionError:  # pragma: no cover
         raise
     except Exception as exc:
         logger.warning(
@@ -126,7 +126,7 @@ def _wants_problem_json(request: Request[Any, Any, Any]) -> bool:
         match = request.accept.best_match(
             ["application/json", _PROBLEM_JSON],
         )
-    except MemoryError, RecursionError:
+    except MemoryError, RecursionError:  # pragma: no cover
         raise
     except Exception as exc:
         logger.warning(

@@ -659,6 +659,120 @@ class TestExceptionHandlers:
         assert resp.content.error_detail is not None  # type: ignore[union-attr]
         assert resp.content.error_detail.error_category == ErrorCategory.VALIDATION  # type: ignore[union-attr]
 
+    def test_http_exception_malformed_retry_after_logs_warning(self) -> None:
+        """A non-integer Retry-After header logs a warning, falls back to None.
+
+        ``contextlib.suppress`` previously swallowed this silently.  The
+        new explicit try/except emits ``api.request.error`` with a
+        ``retry_after_parse_error`` marker so a misbehaving upstream
+        is observable in operator logs.
+        """
+        exc = MagicMock(spec=HTTPException)
+        exc.status_code = 429
+        exc.detail = "Slow down"
+        exc.headers = {"Retry-After": "soon"}
+
+        request = MagicMock()
+        request.method = "GET"
+        request.url.path = "/test"
+        request.accept.best_match.return_value = "application/json"
+
+        with structlog.testing.capture_logs() as logs:
+            resp = handle_http_exception(request, exc)
+
+        assert resp.status_code == 429
+        assert resp.content.error_detail is not None  # type: ignore[union-attr]
+        assert resp.content.error_detail.retry_after is None  # type: ignore[union-attr]
+
+        parse_warnings = [
+            log
+            for log in logs
+            if log.get("event") == "api.request.error"
+            and log.get("error_type") == "retry_after_parse_error"
+        ]
+        assert len(parse_warnings) == 1
+        assert parse_warnings[0]["raw_retry_after"] == "soon"
+
+    def test_http_exception_non_string_detail_is_coerced(self) -> None:
+        """``exc.detail`` set to bytes (or any non-string) is coerced to str.
+
+        Litestar types ``detail`` as ``str | None`` but third-party
+        ``HTTPException`` subclasses occasionally set it to bytes.  The
+        slice ``[:_MAX_DETAIL_LEN]`` would otherwise yield a bytes
+        result that the response builder cannot serialise as JSON.
+        """
+        exc = MagicMock(spec=HTTPException)
+        exc.status_code = 400
+        exc.detail = b"bytes detail"
+        exc.headers = None
+
+        request = MagicMock()
+        request.method = "GET"
+        request.url.path = "/test"
+        request.accept.best_match.return_value = "application/json"
+
+        resp = handle_http_exception(request, exc)
+        assert resp.status_code == 400
+        assert isinstance(resp.content.error, str)  # type: ignore[union-attr]
+        assert "bytes detail" in resp.content.error  # type: ignore[union-attr]
+
+
+class TestNormalizeStatusCode:
+    """``_normalize_status_code`` warning paths added in #1659."""
+
+    def test_invalid_type_logs_warning(self) -> None:
+        """Non-numeric, non-string types (e.g. ``object``) emit a warning."""
+        from synthorg.api.exception_handlers import _normalize_status_code
+
+        with structlog.testing.capture_logs() as logs:
+            assert _normalize_status_code(object()) == 500
+        warnings = [
+            log for log in logs if log.get("error_type") == "status_code_invalid_type"
+        ]
+        assert len(warnings) == 1
+
+    def test_bool_logs_warning(self) -> None:
+        """``bool`` is rejected to avoid ``True`` coercing to ``1``."""
+        from synthorg.api.exception_handlers import _normalize_status_code
+
+        with structlog.testing.capture_logs() as logs:
+            assert _normalize_status_code(True) == 500
+        assert any(log.get("error_type") == "status_code_invalid_type" for log in logs)
+
+    def test_unparseable_string_logs_warning(self) -> None:
+        """A string that ``int()`` cannot parse logs the coercion failure."""
+        from synthorg.api.exception_handlers import _normalize_status_code
+
+        with structlog.testing.capture_logs() as logs:
+            assert _normalize_status_code("not-a-number") == 500
+        warnings = [
+            log
+            for log in logs
+            if log.get("error_type") == "status_code_coercion_failed"
+        ]
+        assert len(warnings) == 1
+
+    def test_out_of_range_logs_warning(self) -> None:
+        """A 200- or 600-range value is logged as out-of-range."""
+        from synthorg.api.exception_handlers import _normalize_status_code
+
+        with structlog.testing.capture_logs() as logs:
+            assert _normalize_status_code(200) == 500
+            assert _normalize_status_code(600) == 500
+        out_of_range = [
+            log for log in logs if log.get("error_type") == "status_code_out_of_range"
+        ]
+        assert len(out_of_range) == 2
+
+    def test_valid_4xx_passes_through(self) -> None:
+        """Valid 4xx/5xx values return unchanged with no warnings."""
+        from synthorg.api.exception_handlers import _normalize_status_code
+
+        with structlog.testing.capture_logs() as logs:
+            assert _normalize_status_code(404) == 404
+            assert _normalize_status_code("503") == 503
+        assert not [log for log in logs if log.get("event") == "api.request.error"]
+
 
 class TestStructuredErrorMetadata:
     """Tests specifically for RFC 9457 structured error features."""

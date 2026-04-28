@@ -61,20 +61,31 @@ Backup settings live in the `backup` namespace with runtime editability via `Bac
 ### Error responses
 
 Every endpoint surfaces a structured RFC 9457 envelope on failure (see
-[errors reference](../reference/errors.md)). Backup-specific status
-mapping is enforced by `handle_backup_error` in
-`src/synthorg/api/exception_handlers.py`:
+[errors reference](../reference/errors.md)). Status codes are produced
+in two layers and the layer that runs first wins.
+
+**Layer 1: controller-specific catches** (in
+`src/synthorg/api/controllers/backup.py`).  These take precedence
+because they run before the central exception handler:
+
+| Endpoint | Caught exception | Status |
+|----------|------------------|--------|
+| `POST /admin/backups/restore` | `ManifestError` | `422` |
+| `POST /admin/backups/restore` | `RestoreError` | `500` (with detail `"Restore operation failed"`) |
+| `POST /admin/backups`, `restore` | `BackupInProgressError` | `409` |
+| `GET`, `DELETE`, `restore` | `BackupNotFoundError` | `404` |
+
+**Layer 2: catch-all** via `handle_backup_error` in
+`src/synthorg/api/exception_handlers.py`.  This is the safety net for
+any `BackupError` subtype that is not caught by the controller (for
+example, `ManifestError` raised from `GET /admin/backups/{id}` since
+that endpoint does not catch it explicitly):
 
 | Exception | Status | `error_code` |
 |-----------|--------|---------------|
 | `BackupNotFoundError` | `404` | `RECORD_NOT_FOUND` |
 | `BackupInProgressError` | `409` | `RESOURCE_CONFLICT` |
-| `ManifestError`, `RestoreError`, `RetentionError`, `ComponentBackupError`, plain `BackupError` | `500` | `INTERNAL_ERROR` |
-
-Controllers also catch the common cases explicitly and translate to
-Litestar exceptions (e.g. `BackupNotFoundError → NotFoundException`).
-The central `handle_backup_error` is the safety net for any backup
-error that escapes a controller's local catch.
+| Any other `BackupError` subtype (`ManifestError`, `RestoreError`, `RetentionError`, `ComponentBackupError`, plain `BackupError`) | `500` | `INTERNAL_ERROR` (detail `"Backup operation failed"`) |
 
 ---
 
