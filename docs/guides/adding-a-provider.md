@@ -122,6 +122,7 @@ _EXAMPLE_PROVIDER = CloudPreset(
     auth_type=AuthType.API_KEY,
     supported_auth_types=(AuthType.API_KEY,),
     default_models=(),
+    is_featured=True,  # Defaults to True; set explicitly for clarity.
 )
 ```
 
@@ -145,6 +146,7 @@ _EXAMPLE_LOCAL_SERVER = LocalPreset(
     # candidate_urls intentionally empty when the default port is a
     # known collision risk; users configure manually.
     candidate_urls=(),
+    is_featured=True,  # Defaults to True; set explicitly for clarity.
 )
 ```
 
