@@ -12,6 +12,7 @@ an extractor with the shared finalize step to produce a
 ``PillarScoringStrategy``.
 """
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
@@ -87,6 +88,11 @@ class ExtractedMetrics:
           ``weights`` must have a corresponding entry in ``scores``;
           otherwise ``ConfigurablePillarScorer`` would ``KeyError`` at
           runtime building the weighted sum.
+        - The three caller-supplied mappings (``scores``, ``weights``,
+          ``insufficient_data_event_kwargs``) are deep-copied and
+          wrapped in ``MappingProxyType`` so a later mutation of the
+          originating dict by the extractor cannot bypass these
+          checks or change scorer inputs after validation.
         """
         if self.confidence_multiplier < 0.0:
             msg = (
@@ -102,6 +108,30 @@ class ExtractedMetrics:
                     f"scores entries; ConfigurablePillarScorer would KeyError"
                 )
                 raise ValueError(msg)
+        # Freeze the mappings against post-construction mutation.
+        # ``frozen=True`` only prevents attribute reassignment; the
+        # underlying dicts can still be mutated through the caller's
+        # original reference. Skip the wrap when the value is already
+        # one of our read-only sentinels (default case) to avoid an
+        # unnecessary deepcopy round-trip.
+        if self.scores is not _EMPTY_FLOAT_MAP:
+            object.__setattr__(
+                self,
+                "scores",
+                MappingProxyType(deepcopy(dict(self.scores))),
+            )
+        if self.weights is not _EMPTY_FLOAT_MAP:
+            object.__setattr__(
+                self,
+                "weights",
+                MappingProxyType(deepcopy(dict(self.weights))),
+            )
+        if self.insufficient_data_event_kwargs is not _EMPTY_LOG_KWARGS:
+            object.__setattr__(
+                self,
+                "insufficient_data_event_kwargs",
+                MappingProxyType(deepcopy(dict(self.insufficient_data_event_kwargs))),
+            )
 
 
 @runtime_checkable

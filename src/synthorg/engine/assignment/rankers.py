@@ -41,6 +41,33 @@ def _candidates_covered_by(
     return all(str(c.agent_identity.id) in keys for c in candidates)
 
 
+def _score_ordered_alternatives(
+    candidates: Sequence[AssignmentCandidate],
+    *,
+    selected_agent_id: str,
+) -> tuple[AssignmentCandidate, ...]:
+    """Return non-selected candidates in the input's score-descending order.
+
+    The input ``candidates`` is the score-descending output of
+    ``score_and_filter_candidates`` (per the ranker contract). By
+    iterating it directly and skipping the selected agent, we
+    preserve the original score-order tie-break for equal-score
+    candidates instead of letting each ranker's intermediate
+    ordering leak through ``sorted(..., key=score)``'s stability.
+    Used by the workload, cost, and auction rankers so their
+    alternatives lists are byte-for-byte identical when scores tie.
+
+    Args:
+        candidates: The score-descending candidate list.
+        selected_agent_id: ``str(agent_identity.id)`` of the picked
+            candidate; that agent is excluded from the result.
+
+    Returns:
+        Tuple of non-selected candidates in score-descending order.
+    """
+    return tuple(c for c in candidates if str(c.agent_identity.id) != selected_agent_id)
+
+
 class ScoreDescendingRanker:
     """Selects the highest-scoring candidate.
 
@@ -65,7 +92,17 @@ class ScoreDescendingRanker:
         candidates: Sequence[AssignmentCandidate],
         request: AssignmentRequest,
     ) -> RankingResult:
-        """Pick the highest scorer; alternatives stay in score order."""
+        """Pick the highest scorer; alternatives stay in score order.
+
+        Args:
+            candidates: Score-descending candidate list.
+            request: Original assignment request (unused; this ranker
+                has no secondary key).
+
+        Returns:
+            ``RankingResult`` whose ``selected`` is ``candidates[0]``
+            and whose ``alternatives`` is the tail in score order.
+        """
         del request
         selected = candidates[0]
         return RankingResult(
@@ -103,7 +140,19 @@ class WorkloadAscendingRanker:
         candidates: Sequence[AssignmentCandidate],
         request: AssignmentRequest,
     ) -> RankingResult:
-        """Pick the least-loaded candidate."""
+        """Pick the least-loaded candidate.
+
+        Args:
+            candidates: Score-descending candidate list.
+            request: Original assignment request (read for
+                ``workloads``).
+
+        Returns:
+            ``RankingResult`` ranking by ``(workload, -score)``.
+            Alternatives are returned in the input's score-descending
+            order (via ``_score_ordered_alternatives``) for
+            cross-ranker consistency.
+        """
         workload_map: dict[str, int] = {
             w.agent_id: w.active_task_count for w in request.workloads
         }
@@ -126,8 +175,9 @@ class WorkloadAscendingRanker:
                 agent_name=selected.agent_identity.name,
                 workload=workload_map[str(selected.agent_identity.id)],
             )
-            alternatives = tuple(
-                sorted(ranked[1:], key=lambda c: c.score, reverse=True),
+            alternatives = _score_ordered_alternatives(
+                candidates,
+                selected_agent_id=str(selected.agent_identity.id),
             )
             return RankingResult(
                 selected=selected,
@@ -178,7 +228,20 @@ class CostDescendingRanker:
         candidates: Sequence[AssignmentCandidate],
         request: AssignmentRequest,
     ) -> RankingResult:
-        """Pick the cheapest candidate."""
+        """Pick the cheapest candidate.
+
+        Args:
+            candidates: Score-descending candidate list.
+            request: Original assignment request (read for
+                ``workloads`` cost data).
+
+        Returns:
+            ``RankingResult`` ranking by ``(total_cost, -score)``
+            (lowest cost wins; score breaks cost ties).
+            Alternatives are returned in the input's score-descending
+            order (via ``_score_ordered_alternatives``) for
+            cross-ranker consistency.
+        """
         cost_map: dict[str, float] = {
             w.agent_id: w.total_cost for w in request.workloads
         }
@@ -201,12 +264,9 @@ class CostDescendingRanker:
                 agent_name=selected.agent_identity.name,
                 total_cost=cost_map[str(selected.agent_identity.id)],
             )
-            # Alternatives are returned score-ranked (not cost-ranked) so
-            # callers that treat ``alternatives`` as a generic fallback
-            # list see a consistent ordering across the workload, cost,
-            # and auction rankers.
-            alternatives = tuple(
-                sorted(ranked[1:], key=lambda c: c.score, reverse=True),
+            alternatives = _score_ordered_alternatives(
+                candidates,
+                selected_agent_id=str(selected.agent_identity.id),
             )
             return RankingResult(
                 selected=selected,
@@ -258,7 +318,20 @@ class AuctionBidRanker:
         candidates: Sequence[AssignmentCandidate],
         request: AssignmentRequest,
     ) -> RankingResult:
-        """Pick the highest-bidding candidate."""
+        """Pick the highest-bidding candidate.
+
+        Args:
+            candidates: Score-descending candidate list.
+            request: Original assignment request (read for
+                ``workloads`` to compute availability factors).
+
+        Returns:
+            ``RankingResult`` ranking by ``(bid, score)`` desc where
+            ``bid = score * 1/(1 + active_task_count)``.
+            Alternatives are returned in the input's score-descending
+            order (via ``_score_ordered_alternatives``) for
+            cross-ranker consistency.
+        """
         workload_map: dict[str, int] = {
             w.agent_id: w.active_task_count for w in request.workloads
         }
@@ -296,12 +369,9 @@ class AuctionBidRanker:
             reverse=True,
         )
         selected, winning_bid = ranked_bids[0]
-        alternatives = tuple(
-            sorted(
-                (b[0] for b in ranked_bids[1:]),
-                key=lambda c: c.score,
-                reverse=True,
-            ),
+        alternatives = _score_ordered_alternatives(
+            candidates,
+            selected_agent_id=str(selected.agent_identity.id),
         )
         logger.debug(
             TASK_ASSIGNMENT_AUCTION_WON,

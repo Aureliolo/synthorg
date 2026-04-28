@@ -79,6 +79,52 @@ class TestExtractedMetrics:
             m.data_points = 10  # type: ignore[misc]
 
 
+class TestExtractedMetricsValidation:
+    """``ExtractedMetrics.__post_init__`` invariants."""
+
+    def test_negative_confidence_multiplier_rejected(self) -> None:
+        with pytest.raises(ValueError, match="non-negative"):
+            ExtractedMetrics(confidence_multiplier=-0.5)
+
+    def test_weights_with_missing_scores_key_rejected(self) -> None:
+        with pytest.raises(ValueError, match="have no matching"):
+            ExtractedMetrics(
+                scores={"a": 5.0},
+                weights={"a": 0.5, "b": 0.5},
+                data_points=10,
+            )
+
+    def test_misalignment_allowed_when_insufficient_data(self) -> None:
+        # When the extractor short-circuits, weights/scores alignment
+        # is not required (the composite ignores them).
+        result = ExtractedMetrics(
+            insufficient_data=True,
+            weights={"missing": 0.5},
+            scores={},
+        )
+        assert result.insufficient_data is True
+
+    def test_caller_dict_mutation_does_not_leak(self) -> None:
+        # The Mapping fields should be deep-copied + frozen so a
+        # post-construction mutation of the caller's dict cannot
+        # change the dataclass's view.
+        scores_in = {"a": 5.0}
+        weights_in = {"a": 1.0}
+        kwargs_in = {"reason": "x"}
+        m = ExtractedMetrics(
+            scores=scores_in,
+            weights=weights_in,
+            data_points=1,
+            insufficient_data_event_kwargs=kwargs_in,
+        )
+        scores_in["a"] = 999.0
+        weights_in["b"] = 999.0
+        kwargs_in["reason"] = "mutated"
+        assert m.scores == {"a": 5.0}
+        assert m.weights == {"a": 1.0}
+        assert m.insufficient_data_event_kwargs == {"reason": "x"}
+
+
 class TestConfigurablePillarScorer:
     """``ConfigurablePillarScorer`` finalize behaviour."""
 

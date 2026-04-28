@@ -65,6 +65,25 @@ def _request_with_workloads(
     )
 
 
+class TestRankingResultValidator:
+    """``RankingResult.__post_init__`` rejects selected-in-alternatives."""
+
+    def test_selected_in_alternatives_raises(self) -> None:
+        c = _candidate("dup", 0.9)
+        with pytest.raises(ValueError, match="also appears in alternatives"):
+            RankingResult(
+                selected=c,
+                alternatives=(c,),
+                reason="oops",
+            )
+
+    def test_distinct_agents_accepted(self) -> None:
+        a = _candidate("a", 0.9)
+        b = _candidate("b", 0.5)
+        result = RankingResult(selected=a, alternatives=(b,), reason="ok")
+        assert result.selected is a
+
+
 class TestScoreDescendingRanker:
     """``ScoreDescendingRanker`` is the pass-through ranker."""
 

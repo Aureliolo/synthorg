@@ -94,7 +94,7 @@ class ScoringBasedAssignmentStrategy:
             subtask,
         )
         if not candidates:
-            return self._no_eligible_result(request)
+            return self._no_eligible_result(effective_request)
 
         ranking = self._ranker.rank(candidates, effective_request)
         reason = self._compose_reason(
@@ -176,16 +176,12 @@ class ScoringBasedAssignmentStrategy:
         request: AssignmentRequest,
         narrowed_agents: tuple[AgentIdentity, ...],
     ) -> AssignmentRequest:
-        """Return ``request`` if no narrowing occurred, else a narrowed copy."""
+        """Return ``request`` if no narrowing occurred, else a narrowed copy.
+
+        Uses Pydantic ``model_copy(update=...)`` so any new
+        ``AssignmentRequest`` field automatically rides through
+        without an extra edit here.
+        """
         if narrowed_agents == request.available_agents:
             return request
-        return AssignmentRequest(
-            task=request.task,
-            available_agents=narrowed_agents,
-            workloads=request.workloads,
-            min_score=request.min_score,
-            required_skills=request.required_skills,
-            required_role=request.required_role,
-            max_concurrent_tasks=request.max_concurrent_tasks,
-            project_team=request.project_team,
-        )
+        return request.model_copy(update={"available_agents": narrowed_agents})

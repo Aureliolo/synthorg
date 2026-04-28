@@ -28,7 +28,7 @@ def strategy() -> ConfigurablePillarScorer:
     )
 
 
-class TestTaskBasedResilienceStrategy:
+class TestConfigurableResilienceScorer:
     """Composed resilience scorer behaviour tests."""
 
     def test_protocol_properties(self, strategy: ConfigurablePillarScorer) -> None:

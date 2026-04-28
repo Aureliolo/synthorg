@@ -112,6 +112,23 @@ class TestIdentityPoolFilter:
         # Request is frozen; the field still equals what we passed in.
         assert request.available_agents == (a1,)
 
+    def test_empty_pool_returns_empty_with_reason(self) -> None:
+        # AssignmentRequest validates non-empty `available_agents`,
+        # so we bypass it via model_construct to simulate the
+        # defensive code path.
+        a1 = make_assignment_agent("dev-1")
+        request = AssignmentRequest(
+            task=make_assignment_task(),
+            available_agents=(a1,),
+        )
+        request_with_empty_pool = request.model_construct(
+            **{**dict(request), "available_agents": ()},
+        )
+        result = IdentityPoolFilter().filter(request_with_empty_pool)
+        assert result.agents == ()
+        assert result.reason is not None
+        assert "No available agents" in result.reason
+
 
 class TestHierarchicalPoolFilter:
     """Direct unit tests for ``HierarchicalPoolFilter.filter()``."""

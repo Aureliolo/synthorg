@@ -39,7 +39,20 @@ class IdentityPoolFilter:
         return POOL_FILTER_NAME_IDENTITY
 
     def filter(self, request: AssignmentRequest) -> PoolFilterResult:
-        """Return the request's pool unchanged."""
+        """Return the request's pool unchanged.
+
+        ``AssignmentRequest`` already validates ``available_agents`` is
+        non-empty at construction, so the empty branch here is
+        defensive: it guards against a future caller / mock that
+        bypasses that validator and would otherwise trip
+        ``PoolFilterResult.__post_init__`` (which requires a reason
+        when agents is empty).
+        """
+        if not request.available_agents:
+            return PoolFilterResult(
+                agents=(),
+                reason=f"No available agents for task {request.task.id!r}",
+            )
         return PoolFilterResult(agents=request.available_agents)
 
 

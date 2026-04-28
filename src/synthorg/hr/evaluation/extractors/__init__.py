@@ -11,12 +11,14 @@ per pillar. The right axis of variation is the per-pillar metric
 extraction, which is what these modules own.
 """
 
+from synthorg.hr.evaluation.extractors.efficiency import EfficiencyMetricExtractor
 from synthorg.hr.evaluation.extractors.experience import ExperienceMetricExtractor
 from synthorg.hr.evaluation.extractors.governance import GovernanceMetricExtractor
 from synthorg.hr.evaluation.extractors.intelligence import IntelligenceMetricExtractor
 from synthorg.hr.evaluation.extractors.resilience import ResilienceMetricExtractor
 
 __all__ = [
+    "EfficiencyMetricExtractor",
     "ExperienceMetricExtractor",
     "GovernanceMetricExtractor",
     "IntelligenceMetricExtractor",

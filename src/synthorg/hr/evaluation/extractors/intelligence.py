@@ -67,12 +67,23 @@ def _collect_metrics(
 ) -> tuple[dict[str, float], dict[str, float], int, float]:
     """Gather enabled CI quality + LLM calibration sub-metrics.
 
+    ``data_points`` only counts observations that actually contribute
+    a score: task records count toward the total exactly when
+    ``ci_quality`` is enabled AND a quality score is present;
+    calibration records count when ``llm_calibration`` is enabled AND
+    at least one record exists. Counting records that did not feed
+    into ``scores`` would overstate confidence.
+
+    Args:
+        context: Evaluation context with snapshot, task records, and
+            calibration records.
+
     Returns:
         ``(scores, weights, data_points, calibration_drift)``.
     """
     scores: dict[str, float] = {}
     weights: dict[str, float] = {}
-    data_points = len(context.task_records)
+    data_points = 0
     calibration_drift = 0.0
     cfg = context.config.intelligence
     ci_score = context.snapshot.overall_quality_score
@@ -80,6 +91,7 @@ def _collect_metrics(
     if cfg.ci_quality_enabled and ci_score is not None:
         scores["ci_quality"] = ci_score
         weights["ci_quality"] = cfg.ci_quality_weight
+        data_points += len(context.task_records)
     elif cfg.ci_quality_enabled:
         logger.debug(
             EVAL_METRIC_SKIPPED,

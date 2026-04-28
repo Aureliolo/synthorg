@@ -35,16 +35,57 @@ from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from synthorg.communication.delegation.hierarchy import (
         HierarchyResolver,
     )
     from synthorg.engine.assignment.protocol import (
         TaskAssignmentStrategy,
     )
+    from synthorg.engine.assignment.ranker_protocol import CandidateRanker
 
 logger = get_logger(__name__)
 
 _DEFAULT_SCORER = AgentTaskScorer()
+
+# Single source of truth for the (name, ranker_factory) pairs that
+# wire up every non-hierarchical scoring strategy. Both the static
+# ``STRATEGY_MAP`` and ``build_strategy_map`` iterate this list so a
+# new ranker only has to be added in one place. Hierarchical is
+# special-cased because it needs the runtime ``HierarchyResolver``
+# and a different pool filter.
+_SCORING_STRATEGY_SPECS: tuple[tuple[str, Callable[[], CandidateRanker]], ...] = (
+    (STRATEGY_NAME_ROLE_BASED, ScoreDescendingRanker),
+    (STRATEGY_NAME_LOAD_BALANCED, WorkloadAscendingRanker),
+    (STRATEGY_NAME_COST_OPTIMIZED, CostDescendingRanker),
+    (STRATEGY_NAME_AUCTION, AuctionBidRanker),
+)
+
+
+def _build_scoring_strategies(
+    *,
+    scorer: AgentTaskScorer,
+) -> dict[str, TaskAssignmentStrategy]:
+    """Instantiate the non-hierarchical ScoringBased strategies for ``scorer``.
+
+    Args:
+        scorer: The ``AgentTaskScorer`` to inject into every strategy.
+
+    Returns:
+        A fresh dict mapping each non-hierarchical strategy name to a
+        configured ``ScoringBasedAssignmentStrategy``.
+    """
+    return {
+        name: ScoringBasedAssignmentStrategy(
+            name=name,
+            scorer=scorer,
+            pool_filter=IdentityPoolFilter(),
+            ranker=ranker_factory(),
+        )
+        for name, ranker_factory in _SCORING_STRATEGY_SPECS
+    }
+
 
 # Excludes the hierarchical composition -- it requires a
 # HierarchyResolver at construction. Use
@@ -53,30 +94,7 @@ _DEFAULT_SCORER = AgentTaskScorer()
 STRATEGY_MAP: MappingProxyType[str, TaskAssignmentStrategy] = MappingProxyType(
     {
         STRATEGY_NAME_MANUAL: ManualAssignmentStrategy(),
-        STRATEGY_NAME_ROLE_BASED: ScoringBasedAssignmentStrategy(
-            name=STRATEGY_NAME_ROLE_BASED,
-            scorer=_DEFAULT_SCORER,
-            pool_filter=IdentityPoolFilter(),
-            ranker=ScoreDescendingRanker(),
-        ),
-        STRATEGY_NAME_LOAD_BALANCED: ScoringBasedAssignmentStrategy(
-            name=STRATEGY_NAME_LOAD_BALANCED,
-            scorer=_DEFAULT_SCORER,
-            pool_filter=IdentityPoolFilter(),
-            ranker=WorkloadAscendingRanker(),
-        ),
-        STRATEGY_NAME_COST_OPTIMIZED: ScoringBasedAssignmentStrategy(
-            name=STRATEGY_NAME_COST_OPTIMIZED,
-            scorer=_DEFAULT_SCORER,
-            pool_filter=IdentityPoolFilter(),
-            ranker=CostDescendingRanker(),
-        ),
-        STRATEGY_NAME_AUCTION: ScoringBasedAssignmentStrategy(
-            name=STRATEGY_NAME_AUCTION,
-            scorer=_DEFAULT_SCORER,
-            pool_filter=IdentityPoolFilter(),
-            ranker=AuctionBidRanker(),
-        ),
+        **_build_scoring_strategies(scorer=_DEFAULT_SCORER),
     },
 )
 
@@ -111,30 +129,7 @@ def build_strategy_map(
 
     strategies: dict[str, TaskAssignmentStrategy] = {
         STRATEGY_NAME_MANUAL: ManualAssignmentStrategy(),
-        STRATEGY_NAME_ROLE_BASED: ScoringBasedAssignmentStrategy(
-            name=STRATEGY_NAME_ROLE_BASED,
-            scorer=effective_scorer,
-            pool_filter=IdentityPoolFilter(),
-            ranker=ScoreDescendingRanker(),
-        ),
-        STRATEGY_NAME_LOAD_BALANCED: ScoringBasedAssignmentStrategy(
-            name=STRATEGY_NAME_LOAD_BALANCED,
-            scorer=effective_scorer,
-            pool_filter=IdentityPoolFilter(),
-            ranker=WorkloadAscendingRanker(),
-        ),
-        STRATEGY_NAME_COST_OPTIMIZED: ScoringBasedAssignmentStrategy(
-            name=STRATEGY_NAME_COST_OPTIMIZED,
-            scorer=effective_scorer,
-            pool_filter=IdentityPoolFilter(),
-            ranker=CostDescendingRanker(),
-        ),
-        STRATEGY_NAME_AUCTION: ScoringBasedAssignmentStrategy(
-            name=STRATEGY_NAME_AUCTION,
-            scorer=effective_scorer,
-            pool_filter=IdentityPoolFilter(),
-            ranker=AuctionBidRanker(),
-        ),
+        **_build_scoring_strategies(scorer=effective_scorer),
     }
 
     if hierarchy is not None:
