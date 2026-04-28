@@ -20,7 +20,7 @@ def strategy() -> ConfigurablePillarScorer:
     )
 
 
-class TestQualityBlendIntelligenceStrategy:
+class TestConfigurableIntelligenceScorer:
     """Composed intelligence scorer behaviour tests."""
 
     def test_protocol_properties(

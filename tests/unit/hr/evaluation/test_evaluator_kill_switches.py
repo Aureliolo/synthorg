@@ -78,9 +78,7 @@ async def test_resilience_pillar_skipped_when_task_count_disabled(
     assert EvaluationPillar.INTELLIGENCE in pillars
 
 
-async def test_efficiency_cost_submetric_gated_by_evaluation_cost_enabled(
-    tracker_with_no_data: Any,
-) -> None:
+async def test_efficiency_cost_submetric_gated_by_evaluation_cost_enabled() -> None:
     """Cost sub-metric drops out when evaluation_cost_enabled=False."""
     from synthorg.hr.evaluation.extractors.efficiency import (
         EfficiencyMetricExtractor,
@@ -95,9 +93,7 @@ async def test_efficiency_cost_submetric_gated_by_evaluation_cost_enabled(
     assert "tokens" in metrics.weights
 
 
-async def test_efficiency_time_submetric_gated_by_evaluation_latency_enabled(
-    tracker_with_no_data: Any,
-) -> None:
+async def test_efficiency_time_submetric_gated_by_evaluation_latency_enabled() -> None:
     """Time sub-metric drops out when evaluation_latency_enabled=False."""
     from synthorg.hr.evaluation.extractors.efficiency import (
         EfficiencyMetricExtractor,

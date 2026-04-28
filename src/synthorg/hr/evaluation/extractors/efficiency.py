@@ -83,10 +83,43 @@ class EfficiencyMetricExtractor:
         cfg: EfficiencyConfig,
         window: WindowMetrics,
     ) -> tuple[dict[str, float], dict[str, float]]:
-        """Compute cost / time / tokens sub-scores; gate cost+time via resolver."""
-        # Mirror the prior inline implementation: cost and latency
-        # lookups are independent so a TaskGroup saves a resolver
-        # round-trip per evaluation.
+        """Compute cost / time / tokens sub-scores; gate cost+time via resolver.
+
+        Splits into three focused steps:
+        1. Resolve the cost + latency runtime kill switches in parallel.
+        2. Audit-log any metric disabled by config (per-pillar trail).
+        3. Build the score/weight dicts via per-metric helpers.
+        """
+        cost_enabled, latency_enabled = await self._resolve_kill_switches(cfg)
+        _audit_disabled_metrics(
+            context,
+            cost_enabled=cost_enabled,
+            latency_enabled=latency_enabled,
+            tokens_enabled=cfg.tokens_enabled,
+        )
+        return _build_score_weight_dicts(
+            cfg=cfg,
+            window=window,
+            cost_enabled=cost_enabled,
+            latency_enabled=latency_enabled,
+        )
+
+    async def _resolve_kill_switches(
+        self,
+        cfg: EfficiencyConfig,
+    ) -> tuple[bool, bool]:
+        """Resolve the cost + latency kill switches concurrently.
+
+        The two lookups are independent, so a ``TaskGroup`` saves a
+        resolver round-trip per evaluation versus serial awaits.
+
+        Args:
+            cfg: Efficiency config; supplies the YAML-baked fallback
+                values for both flags when no resolver is wired.
+
+        Returns:
+            ``(cost_enabled, latency_enabled)``.
+        """
         async with asyncio.TaskGroup() as tg:
             cost_task = tg.create_task(
                 resolve_bool_with_fallback(
@@ -104,56 +137,74 @@ class EfficiencyMetricExtractor:
                     fallback=cfg.time_enabled,
                 ),
             )
-        cost_enabled = cost_task.result()
-        latency_enabled = latency_task.result()
+        return cost_task.result(), latency_task.result()
 
-        # Audit-trail: emit DEBUG for sub-metrics gated off by either
-        # YAML config or the resolver-backed kill switches.
-        disabled_metrics = tuple(
-            metric
-            for metric, enabled in (
-                ("cost", cost_enabled),
-                ("time", latency_enabled),
-                ("tokens", cfg.tokens_enabled),
-            )
-            if not enabled
+
+def _audit_disabled_metrics(
+    context: EvaluationContext,
+    *,
+    cost_enabled: bool,
+    latency_enabled: bool,
+    tokens_enabled: bool,
+) -> None:
+    """Emit DEBUG audit trail for any sub-metric gated off."""
+    disabled = tuple(
+        metric
+        for metric, enabled in (
+            ("cost", cost_enabled),
+            ("time", latency_enabled),
+            ("tokens", tokens_enabled),
         )
-        if disabled_metrics:
-            log_disabled_metrics(
-                context,
-                EvaluationPillar.EFFICIENCY,
-                disabled_metrics,
-            )
+        if not enabled
+    )
+    if disabled:
+        log_disabled_metrics(context, EvaluationPillar.EFFICIENCY, disabled)
 
-        scores: dict[str, float] = {}
-        weights: dict[str, float] = {}
 
-        if cost_enabled and window.avg_cost_per_task is not None:
-            score = max(
-                0.0,
-                MAX_SCORE * (1.0 - window.avg_cost_per_task / cfg.reference_cost),
-            )
-            scores["cost"] = min(MAX_SCORE, score)
-            weights["cost"] = cfg.cost_weight
+def _build_score_weight_dicts(
+    *,
+    cfg: EfficiencyConfig,
+    window: WindowMetrics,
+    cost_enabled: bool,
+    latency_enabled: bool,
+) -> tuple[dict[str, float], dict[str, float]]:
+    """Compute the cost / time / tokens score+weight dicts.
 
-        if latency_enabled and window.avg_completion_time_seconds is not None:
-            score = max(
-                0.0,
-                MAX_SCORE
-                * (
-                    1.0
-                    - window.avg_completion_time_seconds / cfg.reference_time_seconds
-                ),
-            )
-            scores["time"] = min(MAX_SCORE, score)
-            weights["time"] = cfg.time_weight
+    Each sub-metric is added only when its toggle is on AND the
+    window carries the source value. Returned dicts share keys.
+    """
+    scores: dict[str, float] = {}
+    weights: dict[str, float] = {}
 
-        if cfg.tokens_enabled and window.avg_tokens_per_task is not None:
-            score = max(
-                0.0,
-                MAX_SCORE * (1.0 - window.avg_tokens_per_task / cfg.reference_tokens),
-            )
-            scores["tokens"] = min(MAX_SCORE, score)
-            weights["tokens"] = cfg.tokens_weight
+    if cost_enabled and window.avg_cost_per_task is not None:
+        scores["cost"] = _normalize_to_score(
+            window.avg_cost_per_task,
+            cfg.reference_cost,
+        )
+        weights["cost"] = cfg.cost_weight
 
-        return scores, weights
+    if latency_enabled and window.avg_completion_time_seconds is not None:
+        scores["time"] = _normalize_to_score(
+            window.avg_completion_time_seconds,
+            cfg.reference_time_seconds,
+        )
+        weights["time"] = cfg.time_weight
+
+    if cfg.tokens_enabled and window.avg_tokens_per_task is not None:
+        scores["tokens"] = _normalize_to_score(
+            window.avg_tokens_per_task,
+            cfg.reference_tokens,
+        )
+        weights["tokens"] = cfg.tokens_weight
+
+    return scores, weights
+
+
+def _normalize_to_score(observed: float, reference: float) -> float:
+    """Convert an observed value to a 0-10 score against ``reference``.
+
+    ``score = clamp(MAX_SCORE * (1 - observed / reference), 0, MAX_SCORE)``.
+    Values at or above ``reference`` clamp to 0; values at zero clamp
+    to ``MAX_SCORE``.
+    """
+    return min(MAX_SCORE, max(0.0, MAX_SCORE * (1.0 - observed / reference)))

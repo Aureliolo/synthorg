@@ -20,7 +20,7 @@ def strategy() -> ConfigurablePillarScorer:
     )
 
 
-class TestAuditBasedGovernanceStrategy:
+class TestConfigurableGovernanceScorer:
     """Composed governance scorer behaviour tests."""
 
     def test_protocol_properties(self, strategy: ConfigurablePillarScorer) -> None:

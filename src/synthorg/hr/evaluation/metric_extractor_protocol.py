@@ -101,6 +101,14 @@ class ExtractedMetrics:
             )
             raise ValueError(msg)
         if not self.insufficient_data:
+            if not self.weights:
+                msg = (
+                    "weights must be non-empty when insufficient_data is False; "
+                    "ConfigurablePillarScorer.redistribute_weights would raise. "
+                    "Set insufficient_data=True (with insufficient_data_event_kwargs) "
+                    "to short-circuit to a neutral PillarScore instead."
+                )
+                raise ValueError(msg)
             missing = set(self.weights) - set(self.scores)
             if missing:
                 msg = (

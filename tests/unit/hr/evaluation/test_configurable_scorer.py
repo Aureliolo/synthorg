@@ -39,16 +39,25 @@ class _FakeExtractor:
         weights: Mapping[str, float] | None = None,
         data_points: int = 0,
         confidence_multiplier: float = 1.0,
-        insufficient_data: bool = False,
+        insufficient_data: bool | None = None,
         insufficient_data_event_kwargs: Mapping[str, str] | None = None,
     ) -> None:
         self._pillar = pillar
+        # When the caller does not specify insufficient_data, infer
+        # from the (scores, weights) shape: an empty pair signals
+        # "nothing to score" and matches ExtractedMetrics's
+        # insufficient_data invariant.
+        effective_insufficient = (
+            insufficient_data
+            if insufficient_data is not None
+            else not (scores and weights)
+        )
         self._metrics = ExtractedMetrics(
             scores=scores or {},
             weights=weights or {},
             data_points=data_points,
             confidence_multiplier=confidence_multiplier,
-            insufficient_data=insufficient_data,
+            insufficient_data=effective_insufficient,
             insufficient_data_event_kwargs=insufficient_data_event_kwargs or {},
         )
 
@@ -64,17 +73,27 @@ class _FakeExtractor:
 class TestExtractedMetrics:
     """``ExtractedMetrics`` invariants."""
 
-    def test_defaults(self) -> None:
-        m = ExtractedMetrics()
+    def test_defaults_require_insufficient_data(self) -> None:
+        # An empty weights map only makes semantic sense when the
+        # extractor is signalling insufficient_data; otherwise the
+        # composite would feed an empty mapping into
+        # ``redistribute_weights`` which raises.
+        m = ExtractedMetrics(insufficient_data=True)
         assert m.scores == {}
         assert m.weights == {}
         assert m.data_points == 0
         assert m.confidence_multiplier == 1.0
-        assert m.insufficient_data is False
+        assert m.insufficient_data is True
         assert m.insufficient_data_event_kwargs == {}
 
+    def test_default_no_arg_construction_rejected(self) -> None:
+        # Default-constructed ExtractedMetrics() (insufficient_data=False
+        # + empty weights) is an invalid combination.
+        with pytest.raises(ValueError, match="weights must be non-empty"):
+            ExtractedMetrics()
+
     def test_is_frozen(self) -> None:
-        m = ExtractedMetrics(data_points=5)
+        m = ExtractedMetrics(insufficient_data=True, data_points=5)
         with pytest.raises(AttributeError):
             m.data_points = 10  # type: ignore[misc]
 

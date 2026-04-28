@@ -22,7 +22,7 @@ def strategy() -> ConfigurablePillarScorer:
     )
 
 
-class TestFeedbackBasedUxStrategy:
+class TestConfigurableExperienceScorer:
     """Composed experience scorer behaviour tests."""
 
     def test_protocol_properties(self, strategy: ConfigurablePillarScorer) -> None:
