@@ -9,7 +9,7 @@ This guide walks through every step of adding a new LLM provider preset, from pi
 
 ## When you do _not_ need a preset
 
-SynthOrg auto-derives a **soft preset** for every chat-capable provider in `litellm.model_cost` that is not already covered by a featured (hand-curated) preset and not denied by `_LITELLM_NAMESPACE_DENYLIST` / `_LITELLM_NAMESPACE_DENY_PREFIXES` in [`src/synthorg/providers/presets.py`](https://github.com/Aureliolo/synthorg/blob/main/src/synthorg/providers/presets.py). Soft presets render in the wizard's "More providers via LiteLLM" collapsible section with the generic Lucide `Server` fallback icon.
+SynthOrg auto-derives a **soft preset** for every chat-capable provider in `litellm.model_cost` that is not already covered by a featured (hand-curated) preset and not denied by `_LITELLM_NAMESPACE_DENYLIST` / `_LITELLM_NAMESPACE_DENY_PREFIXES` in [`src/synthorg/providers/preset_softlist.py`](https://github.com/Aureliolo/synthorg/blob/main/src/synthorg/providers/preset_softlist.py). Soft presets render in the wizard's "More providers via LiteLLM" collapsible section with the generic Lucide `Server` fallback icon.
 
 So before starting: check whether your provider is already surfaced as a soft preset. Run:
 
