@@ -1,15 +1,24 @@
 import type { StoreApi } from 'zustand'
 import type {
+  AddModelRequest,
   CreateFromPresetRequest,
   CreateProviderRequest,
+  CredentialsRotateRequest,
   DiscoverModelsResponse,
   LocalModelParams,
+  PresetOverride,
+  PresetOverrideUpdateRequest,
+  ProviderAuditEvent,
   ProviderConfig,
   ProviderHealthStatus,
   ProviderHealthSummary,
   ProviderModelResponse,
   ProviderPreset,
   PullProgressEvent,
+  RateLimitsConfig,
+  RateLimitsUpdateRequest,
+  SyncModelsRequest,
+  SyncModelsResponse,
   TestConnectionRequest,
   TestConnectionResponse,
   UpdateProviderRequest,
@@ -50,6 +59,26 @@ export interface ProvidersState {
   pullProgress: PullProgressEvent | null
   deletingModel: boolean
 
+  // Audit log (cursor-paginated, scoped to one provider at a time)
+  auditEvents: readonly ProviderAuditEvent[]
+  auditNextCursor: string | null
+  auditHasMore: boolean
+  auditLoading: boolean
+  auditLoadingMore: boolean
+  auditError: string | null
+  /** The provider whose audit log is currently in state (or ``null``). */
+  auditProviderName: string | null
+
+  // Rate-limit overrides (read state; mutations live in crud-actions)
+  rateLimits: RateLimitsConfig | null
+  rateLimitsLoading: boolean
+  rateLimitsError: string | null
+
+  // Preset overrides (read state; mutations live in crud-actions)
+  presetOverride: PresetOverride | null
+  presetOverrideLoading: boolean
+  presetOverrideError: string | null
+
   // Actions
   fetchProviders: () => Promise<void>
   fetchProviderDetail: (name: string) => Promise<void>
@@ -70,6 +99,35 @@ export interface ProvidersState {
   cancelPull: () => void
   deleteModel: (name: string, modelId: string) => Promise<boolean>
   updateModelConfig: (name: string, modelId: string, params: LocalModelParams) => Promise<boolean>
+
+  // Audit log read actions
+  fetchAudit: (providerName: string, opts?: { limit?: number }) => Promise<void>
+  fetchMoreAudit: () => Promise<void>
+  clearAudit: () => void
+
+  // Rate-limit + preset-override read actions
+  fetchRateLimits: (name: string) => Promise<void>
+  fetchPresetOverride: (presetName: string) => Promise<void>
+
+  // Capability mutations (six new endpoints)
+  rotateCredentials: (
+    name: string,
+    data: CredentialsRotateRequest,
+  ) => Promise<ProviderConfig | null>
+  addProviderModel: (name: string, data: AddModelRequest) => Promise<ProviderConfig | null>
+  syncProviderModels: (
+    name: string,
+    data?: SyncModelsRequest,
+  ) => Promise<SyncModelsResponse | null>
+  updateRateLimits: (
+    name: string,
+    data: RateLimitsUpdateRequest,
+  ) => Promise<RateLimitsConfig | null>
+  updatePresetOverride: (
+    presetName: string,
+    data: PresetOverrideUpdateRequest,
+  ) => Promise<PresetOverride | null>
+  deletePresetOverride: (presetName: string) => Promise<boolean>
 }
 
 export type ProvidersSet = StoreApi<ProvidersState>['setState']

@@ -1,27 +1,38 @@
 import { http, HttpResponse } from 'msw'
 import type {
   addAllowlistEntry,
+  addProviderModel,
   createFromPreset,
   createProvider,
   discoverModels,
   getDiscoveryPolicy,
+  getPresetOverride,
   getProvider,
   getProviderHealth,
   getProviderModels,
+  getProviderRateLimits,
   listPresets,
+  listProviderAudit,
   listProviders,
   probeLocal,
   removeAllowlistEntry,
+  rotateProviderCredentials,
+  syncProviderModels,
   testConnection,
   updateModelConfig,
+  updatePresetOverride,
   updateProvider,
+  updateProviderRateLimits,
 } from '@/api/endpoints/providers'
 import type {
   CloudPreset,
   LocalPreset,
+  PresetOverride,
+  ProviderAuditEvent,
   ProviderConfig,
+  RateLimitsConfig,
 } from '@/api/types/providers'
-import { successFor, voidSuccess } from './helpers'
+import { paginatedFor, successFor, voidSuccess } from './helpers'
 
 /**
  * Canonical cloud-preset fixture builder.
@@ -247,4 +258,125 @@ export const providersHandlers = [
       }),
     ),
   ),
+  // ── Audit log ─────────────────────────────────────────────────
+  http.get('/api/v1/providers/:name/audit', () =>
+    HttpResponse.json(
+      paginatedFor<typeof listProviderAudit>({
+        data: [],
+        total: null,
+        offset: 0,
+        limit: 50,
+        nextCursor: null,
+        hasMore: false,
+        pagination: {
+          total: null,
+          offset: 0,
+          limit: 50,
+          next_cursor: null,
+          has_more: false,
+        },
+      }),
+    ),
+  ),
+  // ── Rate-limit overrides ──────────────────────────────────────
+  http.get('/api/v1/providers/:name/rate-limits', () =>
+    HttpResponse.json(
+      successFor<typeof getProviderRateLimits>({
+        requests_per_minute: 0,
+        concurrent_requests: 0,
+      }),
+    ),
+  ),
+  http.patch('/api/v1/providers/:name/rate-limits', () =>
+    HttpResponse.json(
+      successFor<typeof updateProviderRateLimits>({
+        requests_per_minute: 0,
+        concurrent_requests: 0,
+      }),
+    ),
+  ),
+  // ── Preset overrides ──────────────────────────────────────────
+  http.get('/api/v1/providers/presets/:presetName/override', () =>
+    HttpResponse.json(successFor<typeof getPresetOverride>(null)),
+  ),
+  http.patch('/api/v1/providers/presets/:presetName/override', ({ params }) =>
+    HttpResponse.json(
+      successFor<typeof updatePresetOverride>({
+        preset_name: String(params.presetName),
+        default_models: null,
+        supported_auth_types: null,
+        candidate_urls: null,
+        base_url: null,
+        updated_at: '2026-04-28T00:00:00+00:00',
+        updated_by: 'test-actor',
+      }),
+    ),
+  ),
+  http.delete('/api/v1/providers/presets/:presetName/override', () =>
+    HttpResponse.json(voidSuccess()),
+  ),
+  // ── Credentials rotation ──────────────────────────────────────
+  http.post('/api/v1/providers/:name/credentials/rotate', () =>
+    HttpResponse.json(
+      successFor<typeof rotateProviderCredentials>(buildProvider()),
+    ),
+  ),
+  // ── Manual model add ──────────────────────────────────────────
+  http.post('/api/v1/providers/:name/models', () =>
+    HttpResponse.json(
+      successFor<typeof addProviderModel>(buildProvider()),
+    ),
+  ),
+  // ── Bulk model sync ───────────────────────────────────────────
+  http.post('/api/v1/providers/:name/models/sync', () =>
+    HttpResponse.json(
+      successFor<typeof syncProviderModels>({
+        added: [],
+        removed: [],
+        updated: [],
+        models: [],
+      }),
+    ),
+  ),
 ]
+
+// ── Fixture builders for the new capability shapes ────────────────────
+
+export function buildProviderAuditEvent(
+  overrides: Partial<ProviderAuditEvent> = {},
+): ProviderAuditEvent {
+  return {
+    id: 1,
+    provider_name: 'provider-default',
+    event_type: 'provider_updated',
+    actor: { id: 'test-actor', label: 'Test Operator' },
+    payload: {},
+    occurred_at: '2026-04-28T00:00:00+00:00',
+    ...overrides,
+  }
+}
+
+export function buildRateLimitsConfig(
+  overrides: Partial<RateLimitsConfig> = {},
+): RateLimitsConfig {
+  return {
+    requests_per_minute: 0,
+    concurrent_requests: 0,
+    ...overrides,
+  }
+}
+
+export function buildPresetOverride(
+  overrides: Partial<PresetOverride> = {},
+): PresetOverride {
+  return {
+    preset_name: 'preset-default',
+    default_models: null,
+    supported_auth_types: null,
+    candidate_urls: null,
+    base_url: null,
+    updated_at: '2026-04-28T00:00:00+00:00',
+    updated_by: 'test-actor',
+    ...overrides,
+  }
+}
