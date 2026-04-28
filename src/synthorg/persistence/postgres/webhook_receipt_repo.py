@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import WebhookReceipt
 from synthorg.observability import get_logger, safe_error_description
@@ -22,7 +23,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WEBHOOK_RECEIPT_LOG_FAILED,
 )
 from synthorg.persistence._shared import coerce_row_timestamp, normalize_utc
-from synthorg.persistence.errors import QueryError
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool

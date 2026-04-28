@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.core.enums import DecisionOutcome, TaskStatus
+from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.engine.errors import SelfReviewError, TaskNotFoundError
 from synthorg.engine.review.models import PipelineResult, ReviewVerdict
 from synthorg.engine.task_sync import sync_to_task_engine
@@ -39,7 +40,6 @@ from synthorg.observability.events.security import (
     SECURITY_APPROVAL_SELF_REVIEW_PREVENTED,
 )
 from synthorg.observability.events.versioning import VERSION_FETCH_FAILED
-from synthorg.persistence.errors import DuplicateRecordError, QueryError
 
 if TYPE_CHECKING:
     from synthorg.core.task import Task

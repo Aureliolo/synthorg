@@ -16,6 +16,7 @@ from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.communication.message import Message
 from synthorg.core.enums import TaskStatus  # noqa: TC001
+from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.task import Task
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
@@ -39,7 +40,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_TASK_LISTED,
     PERSISTENCE_TASK_SAVE_FAILED,
 )
-from synthorg.persistence.errors import DuplicateRecordError, QueryError
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool

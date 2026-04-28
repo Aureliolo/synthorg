@@ -7,12 +7,12 @@ from unittest.mock import patch
 import pytest
 from pydantic import SecretStr
 
+from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.persistence.config import (
     PersistenceConfig,
     PostgresConfig,
     SQLiteConfig,
 )
-from synthorg.persistence.errors import PersistenceConnectionError
 from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend

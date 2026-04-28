@@ -14,10 +14,10 @@ from uuid import UUID, uuid4
 import psycopg
 import pytest
 
+from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
 from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
 from synthorg.persistence._shared import normalize_utc as _ensure_tz
-from synthorg.persistence.errors import ConstraintViolationError, QueryError
 from synthorg.persistence.postgres.custom_rule_repo import (
     PostgresCustomRuleRepository,
     _row_to_definition,

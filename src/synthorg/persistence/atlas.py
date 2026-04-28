@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Literal
 
+from synthorg.core.persistence_errors import MigrationError
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_MIGRATION_COMPLETED,
@@ -25,7 +26,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_MIGRATION_STARTED,
 )
 from synthorg.persistence.config import PostgresConfig  # noqa: TC001
-from synthorg.persistence.errors import MigrationError
 
 logger = get_logger(__name__)
 

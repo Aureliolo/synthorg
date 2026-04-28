@@ -13,8 +13,8 @@ import psycopg
 import pytest
 from pydantic import SecretStr
 
+from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.persistence.config import PostgresConfig
-from synthorg.persistence.errors import PersistenceConnectionError
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 
 

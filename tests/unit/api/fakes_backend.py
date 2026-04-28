@@ -9,10 +9,10 @@ from typing import Any
 
 from pydantic import AwareDatetime
 
+from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.training.models import TrainingPlan, TrainingPlanStatus, TrainingResult
 from synthorg.meta.rules.custom import CustomRuleDefinition
-from synthorg.persistence.errors import DuplicateRecordError
 from synthorg.persistence.integration_stubs import (
     InMemoryConnectionRepository,
     InMemoryConnectionSecretRepository,
@@ -391,7 +391,7 @@ class FakeCustomRuleRepository:
         self._rules: dict[str, CustomRuleDefinition] = {}
 
     async def save(self, rule: CustomRuleDefinition) -> None:
-        from synthorg.persistence.errors import (
+        from synthorg.core.persistence_errors import (
             ConstraintViolationError,
         )
 

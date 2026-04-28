@@ -5,7 +5,7 @@ import json
 import aiosqlite
 import pytest
 
-from synthorg.persistence.errors import QueryError
+from synthorg.core.persistence_errors import QueryError
 from synthorg.persistence.sqlite.preset_repo import (
     SQLitePersonalityPresetRepository,
 )

@@ -18,6 +18,7 @@ from typing import Any
 
 import aiosqlite
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.resilience_config import RateLimiterConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
@@ -36,7 +37,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_CONNECTION_SAVE_FAILED,
 )
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
-from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
 

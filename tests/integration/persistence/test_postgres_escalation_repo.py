@@ -98,7 +98,9 @@ async def test_create_and_get(repo: PostgresEscalationRepository) -> None:
 
 
 async def test_duplicate_id_raises(repo: PostgresEscalationRepository) -> None:
-    from synthorg.persistence.errors import ConstraintViolationError
+    from synthorg.core.persistence_errors import (
+        ConstraintViolationError,
+    )
 
     row = _make_escalation(escalation_id="escalation-pg-dup-01")
     await repo.create(row)

@@ -11,16 +11,13 @@ import structlog
 
 from synthorg.api.services.project_service import ProjectService
 from synthorg.core.enums import ProjectStatus
+from synthorg.core.persistence_errors import DuplicateRecordError, RecordNotFoundError
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.api import (
     API_PROJECT_CREATED,
     API_PROJECT_DELETED,
     API_PROJECT_UPDATED,
-)
-from synthorg.persistence.errors import (
-    DuplicateRecordError,
-    RecordNotFoundError,
 )
 
 pytestmark = pytest.mark.unit

@@ -13,6 +13,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
@@ -22,7 +23,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED,
     PERSISTENCE_PARKED_CONTEXT_SAVE_FAILED,
 )
-from synthorg.persistence.errors import QueryError
 from synthorg.security.timeout.parked_context import ParkedContext
 
 if TYPE_CHECKING:

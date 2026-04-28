@@ -22,12 +22,12 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from synthorg.core.persistence_errors import MalformedRowError
 from synthorg.meta.models import ProposalAltitude
 from synthorg.meta.rules.custom import CustomRuleDefinition
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import META_CUSTOM_RULE_FETCH_FAILED
 from synthorg.persistence._shared import coerce_row_timestamp
-from synthorg.persistence.errors import MalformedRowError
 
 logger = get_logger(__name__)
 

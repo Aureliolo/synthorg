@@ -20,6 +20,7 @@ from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
+from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -34,7 +35,6 @@ from synthorg.persistence.constraint_tokens import (
     LAST_OWNER_TRIGGER,
     USERS_USERNAME_UNIQUE,
 )
-from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
 logger = get_logger(__name__)
 

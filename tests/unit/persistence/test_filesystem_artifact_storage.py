@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from synthorg.persistence.errors import (
+from synthorg.core.persistence_errors import (
     ArtifactStorageFullError,
     ArtifactTooLargeError,
     RecordNotFoundError,

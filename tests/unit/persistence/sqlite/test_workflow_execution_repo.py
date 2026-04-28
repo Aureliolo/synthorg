@@ -10,11 +10,11 @@ from synthorg.core.enums import (
     WorkflowNodeExecutionStatus,
     WorkflowNodeType,
 )
+from synthorg.core.persistence_errors import VersionConflictError
 from synthorg.engine.workflow.execution_models import (
     WorkflowExecution,
     WorkflowNodeExecution,
 )
-from synthorg.persistence.errors import VersionConflictError
 from synthorg.persistence.sqlite.workflow_execution_repo import (
     SQLiteWorkflowExecutionRepository,
 )

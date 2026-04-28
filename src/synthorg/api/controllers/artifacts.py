@@ -21,6 +21,12 @@ from synthorg.core.domain_errors import (
     NotFoundError,
 )
 from synthorg.core.enums import ArtifactType
+from synthorg.core.persistence_errors import (
+    ArtifactStorageFullError,
+    ArtifactTooLargeError,
+    PersistenceError,
+    RecordNotFoundError,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.artifacts.service import ArtifactService
 from synthorg.observability import get_logger
@@ -32,12 +38,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
     PERSISTENCE_ARTIFACT_STORE_FAILED,
     PERSISTENCE_ARTIFACT_STORED,
-)
-from synthorg.persistence.errors import (
-    ArtifactStorageFullError,
-    ArtifactTooLargeError,
-    PersistenceError,
-    RecordNotFoundError,
 )
 
 logger = get_logger(__name__)

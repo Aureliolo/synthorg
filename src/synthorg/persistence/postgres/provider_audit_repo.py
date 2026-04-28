@@ -17,13 +17,13 @@ from synthorg.api.dto_provider_capabilities import (
     ProviderAuditActor,
     ProviderAuditEvent,
 )
+from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_QUERIED,
     PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
 )
 from synthorg.persistence._shared import normalize_utc
-from synthorg.persistence.errors import QueryError
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from packaging.version import InvalidVersion, Version
 
 from synthorg.core.enums import WorkflowExecutionStatus, WorkflowNodeType
-from synthorg.persistence.errors import DuplicateRecordError, VersionConflictError
+from synthorg.core.persistence_errors import DuplicateRecordError, VersionConflictError
 from synthorg.persistence.subworkflow_repo import (
     ParentReference,
     SubworkflowSummary,

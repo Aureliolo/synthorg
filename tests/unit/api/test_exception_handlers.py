@@ -48,7 +48,7 @@ from synthorg.core.error_taxonomy import (
     category_title,
     category_type_uri,
 )
-from synthorg.persistence.errors import (
+from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     PersistenceError,
     RecordNotFoundError,

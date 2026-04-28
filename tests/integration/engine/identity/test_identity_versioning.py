@@ -264,8 +264,8 @@ class TestCharterVersionInDecisionRecord:
         version_repo: SQLiteVersionRepository[AgentIdentity],
     ) -> None:
         """QueryError during charter lookup results in failure-flag metadata."""
+        from synthorg.core.persistence_errors import QueryError
         from synthorg.engine.review_gate import ReviewGateService
-        from synthorg.persistence.errors import QueryError
 
         captured_metadata: dict[str, object] | None = None
 

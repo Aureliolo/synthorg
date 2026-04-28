@@ -358,7 +358,7 @@ class TestDeserializeRowErrors:
     async def test_corrupt_json_raises_query_error(
         self, repo: SQLiteVersionRepository[_Stub]
     ) -> None:
-        from synthorg.persistence.errors import QueryError
+        from synthorg.core.persistence_errors import QueryError
 
         # Insert a row with corrupt JSON directly
         await repo._db.execute(
@@ -375,7 +375,7 @@ class TestDeserializeRowErrors:
     async def test_schema_drift_raises_query_error(
         self, repo: SQLiteVersionRepository[_Stub]
     ) -> None:
-        from synthorg.persistence.errors import QueryError
+        from synthorg.core.persistence_errors import QueryError
 
         # Insert a row whose JSON is valid but doesn't match _Stub schema
         bad_snapshot = json.dumps({"unexpected_field": "oops"})
@@ -394,7 +394,7 @@ class TestDeserializeRowErrors:
         self, repo: SQLiteVersionRepository[_Stub]
     ) -> None:
         """Deserialize callback raising TypeError is wrapped as QueryError."""
-        from synthorg.persistence.errors import QueryError
+        from synthorg.core.persistence_errors import QueryError
 
         # Insert a valid row, then swap the deserializer to one that fails
         await repo._db.execute(
@@ -425,7 +425,7 @@ class TestDeserializeRowErrors:
         self, repo: SQLiteVersionRepository[_Stub]
     ) -> None:
         """Serialize callback raising TypeError is wrapped as QueryError."""
-        from synthorg.persistence.errors import QueryError
+        from synthorg.core.persistence_errors import QueryError
         from synthorg.versioning.models import VersionSnapshot
 
         def _bad_serialize(_m: _Stub) -> str:

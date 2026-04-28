@@ -16,12 +16,12 @@ from synthorg.api.auth.refresh_record import (
     RefreshRecord,
     RefreshRejectReason,
 )
+from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_AUTH_REFRESH_PERSISTENCE_ERROR,
 )
 from synthorg.persistence._shared import normalize_utc
-from synthorg.persistence.errors import QueryError
 
 # Persistence-boundary rule (#1599): SECURITY_AUTH_REFRESH_* events are
 # auth decisions, not storage facts. Repos must not emit them; the

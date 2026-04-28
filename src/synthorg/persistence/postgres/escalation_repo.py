@@ -29,10 +29,10 @@ from synthorg.communication.conflict_resolution.escalation.protocol import (
     EscalationQueueStore,
 )
 from synthorg.communication.conflict_resolution.models import Conflict
+from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_REQUEST_ERROR
 from synthorg.persistence._shared import parse_iso_utc
-from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool

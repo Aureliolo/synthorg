@@ -9,6 +9,7 @@ import copy
 from synthorg.api.auth.models import OrgRole, User
 from synthorg.api.auth.system_user import is_system_user
 from synthorg.api.guards import HumanRole
+from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.constraint_tokens import (
     IDX_SINGLE_CEO,
@@ -16,7 +17,6 @@ from synthorg.persistence.constraint_tokens import (
     LAST_OWNER_TRIGGER,
     USERS_USERNAME_UNIQUE,
 )
-from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
 
 class FakeUserRepository:

@@ -198,7 +198,7 @@ class TestSQLiteHeartbeatRepositoryErrors:
     async def test_save_raises_query_error_on_db_error(
         self, memory_db: aiosqlite.Connection
     ) -> None:
-        from synthorg.persistence.errors import QueryError
+        from synthorg.core.persistence_errors import QueryError
 
         repo = SQLiteHeartbeatRepository(memory_db)
         hb = _make_heartbeat()
@@ -208,7 +208,7 @@ class TestSQLiteHeartbeatRepositoryErrors:
     async def test_get_raises_query_error_on_db_error(
         self, memory_db: aiosqlite.Connection
     ) -> None:
-        from synthorg.persistence.errors import QueryError
+        from synthorg.core.persistence_errors import QueryError
 
         repo = SQLiteHeartbeatRepository(memory_db)
         with pytest.raises(QueryError, match="Failed to query"):
@@ -217,7 +217,7 @@ class TestSQLiteHeartbeatRepositoryErrors:
     async def test_get_stale_raises_query_error_on_db_error(
         self, memory_db: aiosqlite.Connection
     ) -> None:
-        from synthorg.persistence.errors import QueryError
+        from synthorg.core.persistence_errors import QueryError
 
         repo = SQLiteHeartbeatRepository(memory_db)
         threshold = datetime.now(UTC) - timedelta(minutes=5)
@@ -227,7 +227,7 @@ class TestSQLiteHeartbeatRepositoryErrors:
     async def test_delete_raises_query_error_on_db_error(
         self, memory_db: aiosqlite.Connection
     ) -> None:
-        from synthorg.persistence.errors import QueryError
+        from synthorg.core.persistence_errors import QueryError
 
         repo = SQLiteHeartbeatRepository(memory_db)
         with pytest.raises(QueryError, match="Failed to delete"):
@@ -236,7 +236,7 @@ class TestSQLiteHeartbeatRepositoryErrors:
     async def test_row_to_model_raises_query_error_on_invalid_row(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        from synthorg.persistence.errors import QueryError
+        from synthorg.core.persistence_errors import QueryError
 
         repo = SQLiteHeartbeatRepository(migrated_db)
         # Insert row with invalid timestamp

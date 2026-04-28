@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
@@ -16,7 +17,6 @@ from synthorg.memory.embedding.fine_tune_models import (
     FineTuneRun,
     FineTuneRunConfig,
 )
-from synthorg.persistence.errors import QueryError
 from synthorg.persistence.protocol import PersistenceBackend
 
 pytestmark = pytest.mark.integration

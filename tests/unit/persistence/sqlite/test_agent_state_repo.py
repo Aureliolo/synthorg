@@ -264,7 +264,7 @@ class TestSQLiteAgentStateRepositoryErrors:
         args: tuple[object, ...],
         match: str,
     ) -> None:
-        from synthorg.persistence.errors import QueryError
+        from synthorg.core.persistence_errors import QueryError
 
         repo = SQLiteAgentStateRepository(memory_db)
         with pytest.raises(QueryError, match=match) as exc_info:
@@ -274,7 +274,7 @@ class TestSQLiteAgentStateRepositoryErrors:
     async def test_row_to_model_raises_query_error_on_invalid_row(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        from synthorg.persistence.errors import QueryError
+        from synthorg.core.persistence_errors import QueryError
 
         repo = SQLiteAgentStateRepository(migrated_db)
         # Insert a row with a malformed datetime to trigger deserialization
@@ -304,7 +304,7 @@ class TestSQLiteAgentStateRepositoryErrors:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         """get_active() fails when any row has corrupt data."""
-        from synthorg.persistence.errors import QueryError
+        from synthorg.core.persistence_errors import QueryError
 
         repo = SQLiteAgentStateRepository(migrated_db)
         # Insert a valid executing row

@@ -11,6 +11,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.training.models import (
     ContentType,
@@ -21,7 +22,6 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
     HR_TRAINING_PERSISTENCE_ERROR,
 )
-from synthorg.persistence.errors import QueryError
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool

@@ -21,6 +21,7 @@ from synthorg.api.services._org_department_mutations import OrgDepartmentMutatio
 from synthorg.config.schema import AgentConfig  # noqa: TC001
 from synthorg.core.company import Company, Department
 from synthorg.core.domain_errors import ValidationError, VersionConflictError
+from synthorg.core.persistence_errors import PersistenceError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_COMPANY_UPDATED,
@@ -28,7 +29,6 @@ from synthorg.observability.events.api import (
     API_VALIDATION_FAILED,
 )
 from synthorg.observability.events.versioning import VERSION_SNAPSHOT_FAILED
-from synthorg.persistence.errors import PersistenceError
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.resolver import ConfigResolver  # noqa: TC001
 from synthorg.settings.service import SettingsService  # noqa: TC001

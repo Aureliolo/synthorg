@@ -16,7 +16,7 @@ import pytest
 
 from synthorg.api.auth.models import OrgRole, User
 from synthorg.api.guards import HumanRole
-from synthorg.persistence.errors import ConstraintViolationError
+from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 
 

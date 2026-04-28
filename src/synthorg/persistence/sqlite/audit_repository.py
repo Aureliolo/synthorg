@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import aiosqlite
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_QUERIED,
@@ -19,7 +20,6 @@ from synthorg.persistence._shared.audit import (
     classify_audit_save_error,
     row_to_audit_entry,
 )
-from synthorg.persistence.errors import QueryError
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime

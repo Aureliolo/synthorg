@@ -21,6 +21,7 @@ from synthorg.api.pagination import (
     encode_repo_seek_meta,
 )
 from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.core.persistence_errors import PersistenceError, VersionConflictError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
 )
@@ -37,7 +38,6 @@ from synthorg.observability.events.workflow_definition import (
 from synthorg.observability.events.workflow_version import (
     WORKFLOW_VERSION_SNAPSHOT_FAILED,
 )
-from synthorg.persistence.errors import PersistenceError, VersionConflictError
 from synthorg.persistence.version_repo import VersionRepository  # noqa: TC001
 from synthorg.persistence.workflow_definition_repo import (
     WorkflowDefinitionRepository,  # noqa: TC001

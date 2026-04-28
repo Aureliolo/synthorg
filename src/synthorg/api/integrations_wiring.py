@@ -9,12 +9,12 @@ from dataclasses import dataclass, field
 from pathlib import Path  # noqa: TC003
 from typing import TYPE_CHECKING
 
+from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_SERVICE_AUTO_WIRED,
 )
-from synthorg.persistence.errors import PersistenceConnectionError
 
 if TYPE_CHECKING:
     from synthorg.api.config import ApiConfig

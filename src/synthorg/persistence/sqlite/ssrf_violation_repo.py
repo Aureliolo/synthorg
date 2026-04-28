@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING, Any
 import aiosqlite
 from pydantic import AwareDatetime, ValidationError
 
+from synthorg.core.persistence_errors import DuplicateRecordError, PersistenceError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
     PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
 )
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
-from synthorg.persistence.errors import DuplicateRecordError, PersistenceError
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 
 if TYPE_CHECKING:

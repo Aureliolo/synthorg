@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     import aiosqlite
 
 from synthorg.core.enums import WorkflowType
+from synthorg.core.persistence_errors import QueryError, VersionConflictError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
@@ -29,7 +30,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_DEF_LISTED,
     PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
 )
-from synthorg.persistence.errors import QueryError, VersionConflictError
 
 logger = get_logger(__name__)
 

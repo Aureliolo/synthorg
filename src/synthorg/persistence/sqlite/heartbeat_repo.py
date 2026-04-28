@@ -8,6 +8,7 @@ from datetime import UTC
 import aiosqlite
 from pydantic import AwareDatetime, ValidationError
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.checkpoint.models import Heartbeat
 from synthorg.observability import get_logger
@@ -19,7 +20,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_HEARTBEAT_QUERY_FAILED,
     PERSISTENCE_HEARTBEAT_SAVE_FAILED,
 )
-from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
 

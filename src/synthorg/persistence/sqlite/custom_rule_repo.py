@@ -7,6 +7,11 @@ from typing import TYPE_CHECKING
 
 import aiosqlite  # noqa: TC002
 
+from synthorg.core.persistence_errors import (
+    ConstraintViolationError,
+    MalformedRowError,
+    QueryError,
+)
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
@@ -21,11 +26,6 @@ from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence._shared.custom_rule import (
     row_to_custom_rule,
     serialize_altitudes,
-)
-from synthorg.persistence.errors import (
-    ConstraintViolationError,
-    MalformedRowError,
-    QueryError,
 )
 
 if TYPE_CHECKING:

@@ -1,14 +1,19 @@
 """Persistence error hierarchy.
 
-All persistence-related errors inherit from ``PersistenceError`` so
+All persistence-related errors inherit from :class:`PersistenceError` so
 callers can catch the entire family with a single except clause.
 
 Each concrete exception carries an ``is_retryable`` class attribute
-mirroring the provider-layer convention in ``synthorg.providers.errors``.
-Callers that implement bounded retry/backoff (e.g. a repository
-middleware) can branch on this flag without string-matching the driver
-exception.  Default: ``False``.  Transient I/O failures override to
-``True``.
+mirroring the provider-layer convention in
+:mod:`synthorg.providers.errors`.  Callers that implement bounded
+retry/backoff (e.g. a repository middleware) can branch on this flag
+without string-matching the driver exception.  Default: ``False``.
+Transient I/O failures override to ``True``.
+
+This module is dependency-free apart from stdlib so the persistence
+implementation (SQLite/Postgres repositories) and any consumer
+(controllers, services, engine) can import it without pulling in the
+HTTP layer.
 """
 
 

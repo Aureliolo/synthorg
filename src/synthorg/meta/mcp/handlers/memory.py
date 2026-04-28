@@ -31,6 +31,7 @@ from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from synthorg.core.persistence_errors import PersistenceConnectionError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune_models import FineTuneExecutionConfig
 from synthorg.memory.fine_tune_plan import (
@@ -76,7 +77,6 @@ from synthorg.observability.events.mcp import (
     MCP_DESTRUCTIVE_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
-from synthorg.persistence.errors import PersistenceConnectionError, QueryError
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity

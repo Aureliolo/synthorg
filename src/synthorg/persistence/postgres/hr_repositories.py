@@ -14,6 +14,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.hr.enums import LifecycleEventType  # noqa: TC001
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import (
@@ -35,7 +36,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_TASK_METRIC_QUERY_FAILED,
     PERSISTENCE_TASK_METRIC_SAVE_FAILED,
 )
-from synthorg.persistence.errors import QueryError
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool

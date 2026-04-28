@@ -700,7 +700,7 @@ class AgentRegistryService:
         # Local import breaks a circular dependency:
         # persistence.__init__ -> workflow_definition_repo -> engine.workflow
         # -> communication -> hr.registry
-        from synthorg.persistence.errors import PersistenceError  # noqa: PLC0415
+        from synthorg.core.persistence_errors import PersistenceError  # noqa: PLC0415
 
         try:
             await self._versioning.snapshot_if_changed(

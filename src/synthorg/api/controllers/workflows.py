@@ -33,6 +33,7 @@ from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.enums import WorkflowType
+from synthorg.core.persistence_errors import VersionConflictError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.blueprint_loader import list_blueprints
 from synthorg.engine.workflow.definition import (
@@ -61,9 +62,6 @@ from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_INVALID_REQUEST,
     WORKFLOW_DEF_NOT_FOUND,
     WORKFLOW_DEF_VERSION_CONFLICT,
-)
-from synthorg.persistence.errors import (
-    VersionConflictError,
 )
 
 logger = get_logger(__name__)

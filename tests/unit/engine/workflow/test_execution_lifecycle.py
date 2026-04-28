@@ -13,6 +13,7 @@ from synthorg.core.enums import (
     WorkflowExecutionStatus,
     WorkflowNodeExecutionStatus,
 )
+from synthorg.core.persistence_errors import DuplicateRecordError, VersionConflictError
 from synthorg.core.task import Task
 from synthorg.engine.errors import (
     WorkflowExecutionError,
@@ -24,7 +25,6 @@ from synthorg.engine.workflow.execution_models import WorkflowExecution
 from synthorg.engine.workflow.execution_service import (
     WorkflowExecutionService,
 )
-from synthorg.persistence.errors import DuplicateRecordError, VersionConflictError
 from tests.unit.engine.workflow.conftest import (
     make_edge,
     make_end_node,

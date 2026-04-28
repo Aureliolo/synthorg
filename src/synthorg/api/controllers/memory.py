@@ -17,6 +17,7 @@ from synthorg.api.dto import ApiResponse, PaginatedResponse, PaginationMeta
 from synthorg.api.guards import HumanRole, require_roles
 from synthorg.api.rate_limits import per_op_concurrency, per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
@@ -41,7 +42,6 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED,
     MEMORY_FINE_TUNE_REQUESTED,
 )
-from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
 

@@ -21,7 +21,7 @@ from psycopg.types.json import Jsonb
 
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
-from synthorg.persistence.errors import ConstraintViolationError, QueryError
+from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.persistence.postgres.approval_repo import (
     PostgresApprovalRepository,
 )

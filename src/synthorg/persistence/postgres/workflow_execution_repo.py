@@ -18,6 +18,11 @@ from synthorg.core.enums import (
     WorkflowNodeExecutionStatus,
     WorkflowNodeType,
 )
+from synthorg.core.persistence_errors import (
+    DuplicateRecordError,
+    QueryError,
+    VersionConflictError,
+)
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.execution_models import (
     WorkflowExecution,
@@ -34,11 +39,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED,
     PERSISTENCE_WORKFLOW_EXEC_LISTED,
     PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-)
-from synthorg.persistence.errors import (
-    DuplicateRecordError,
-    QueryError,
-    VersionConflictError,
 )
 
 if TYPE_CHECKING:

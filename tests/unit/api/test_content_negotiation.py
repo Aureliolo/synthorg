@@ -16,10 +16,7 @@ from synthorg.core.error_taxonomy import (
     category_title,
     category_type_uri,
 )
-from synthorg.persistence.errors import (
-    DuplicateRecordError,
-    RecordNotFoundError,
-)
+from synthorg.core.persistence_errors import DuplicateRecordError, RecordNotFoundError
 from tests.unit.api.conftest import make_exception_handler_app
 
 pytestmark = pytest.mark.unit

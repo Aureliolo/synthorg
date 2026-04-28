@@ -3,12 +3,9 @@
 import pytest
 
 from synthorg.core.enums import ProjectStatus
+from synthorg.core.persistence_errors import DuplicateRecordError, RecordNotFoundError
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
-from synthorg.persistence.errors import (
-    DuplicateRecordError,
-    RecordNotFoundError,
-)
 from synthorg.persistence.protocol import PersistenceBackend
 
 pytestmark = pytest.mark.integration

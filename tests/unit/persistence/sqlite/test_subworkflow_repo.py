@@ -11,13 +11,13 @@ from synthorg.core.enums import (
     WorkflowType,
     WorkflowValueType,
 )
+from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
     WorkflowIODeclaration,
     WorkflowNode,
 )
-from synthorg.persistence.errors import DuplicateRecordError
 from synthorg.persistence.sqlite.subworkflow_repo import (
     SQLiteSubworkflowRepository,
 )

@@ -17,6 +17,7 @@ import pytest
 import structlog
 
 from synthorg.api.services.ssrf_violation_service import SsrfViolationService
+from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.api import (
     API_SSRF_VIOLATION_FETCH_FAILED,
@@ -24,7 +25,6 @@ from synthorg.observability.events.api import (
     API_SSRF_VIOLATION_RECORDED,
     API_SSRF_VIOLATION_STATUS_UPDATED,
 )
-from synthorg.persistence.errors import DuplicateRecordError, QueryError
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 
 pytestmark = pytest.mark.unit

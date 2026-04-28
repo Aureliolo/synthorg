@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence  # noqa: TC003
 
 import aiosqlite
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
@@ -14,7 +15,6 @@ from synthorg.observability.events.settings import (
     SETTINGS_SET_FAILED,
     SETTINGS_VALUE_SET,
 )
-from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
 

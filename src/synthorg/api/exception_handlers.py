@@ -47,6 +47,11 @@ from synthorg.core.error_taxonomy import (
     category_title,
     category_type_uri,
 )
+from synthorg.core.persistence_errors import (
+    DuplicateRecordError,
+    PersistenceError,
+    RecordNotFoundError,
+)
 from synthorg.engine.errors import EngineError
 from synthorg.integrations.errors import IntegrationError
 from synthorg.observability import get_logger, safe_error_description
@@ -60,11 +65,6 @@ from synthorg.observability.events.api import (
 )
 from synthorg.observability.metrics_hub import record_api_error
 from synthorg.ontology.errors import OntologyError
-from synthorg.persistence.errors import (
-    DuplicateRecordError,
-    PersistenceError,
-    RecordNotFoundError,
-)
 from synthorg.providers.errors import ProviderError, RateLimitError
 from synthorg.tools.errors import ToolError
 

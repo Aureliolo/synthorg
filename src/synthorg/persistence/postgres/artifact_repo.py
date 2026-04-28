@@ -14,6 +14,7 @@ from psycopg.rows import dict_row
 from pydantic import ValidationError
 
 from synthorg.core.artifact import Artifact
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
@@ -25,7 +26,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_LISTED,
     PERSISTENCE_ARTIFACT_SAVE_FAILED,
 )
-from synthorg.persistence.errors import QueryError
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool

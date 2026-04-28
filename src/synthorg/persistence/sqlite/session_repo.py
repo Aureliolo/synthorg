@@ -15,6 +15,7 @@ import aiosqlite
 
 from synthorg.api.auth.session import Session
 from synthorg.api.guards import HumanRole
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
@@ -23,7 +24,6 @@ from synthorg.observability.events.api import (
     API_SESSION_REVOKE_FAILED,
 )
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
-from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
 

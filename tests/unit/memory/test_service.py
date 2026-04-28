@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
@@ -22,7 +23,6 @@ from synthorg.memory.service import (
     CheckpointRollbackUnavailableError,
     MemoryService,
 )
-from synthorg.persistence.errors import QueryError
 from synthorg.settings.enums import SettingNamespace, SettingSource
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.models import SettingValue

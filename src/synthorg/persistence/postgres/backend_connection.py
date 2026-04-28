@@ -15,6 +15,7 @@ import psycopg
 from psycopg import sql
 from psycopg_pool import AsyncConnectionPool
 
+from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_BACKEND_ALREADY_CONNECTED,
@@ -26,7 +27,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_BACKEND_DISCONNECTING,
     PERSISTENCE_BACKEND_HEALTH_CHECK,
 )
-from synthorg.persistence.errors import PersistenceConnectionError
 
 if TYPE_CHECKING:
     from synthorg.persistence.config import PostgresConfig

@@ -6,6 +6,7 @@ company, selectable via the ``PersistenceConfig`` embedded in each
 company's ``RootConfig``.
 """
 
+from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
@@ -14,7 +15,6 @@ from synthorg.observability.events.persistence import (
 )
 from synthorg.observability.redaction import safe_error_description
 from synthorg.persistence.config import PersistenceConfig  # noqa: TC001
-from synthorg.persistence.errors import PersistenceConnectionError
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
 from synthorg.persistence.registry import PersistenceBackendRegistry
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend

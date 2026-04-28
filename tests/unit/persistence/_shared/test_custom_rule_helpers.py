@@ -7,6 +7,7 @@ from uuid import UUID
 import pytest
 import structlog
 
+from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
 from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
 from synthorg.observability import safe_error_description
@@ -16,7 +17,6 @@ from synthorg.persistence._shared.custom_rule import (
     row_to_custom_rule,
     serialize_altitudes,
 )
-from synthorg.persistence.errors import MalformedRowError, QueryError
 
 
 def _rule(

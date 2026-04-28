@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 import pytest
 import structlog
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.observability.events.settings import SETTINGS_SET_FAILED
-from synthorg.persistence.errors import QueryError
 from synthorg.persistence.postgres.settings_repo import PostgresSettingsRepository
 
 

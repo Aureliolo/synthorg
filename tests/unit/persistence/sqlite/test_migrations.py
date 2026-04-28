@@ -7,8 +7,8 @@ from unittest.mock import patch
 import aiosqlite
 import pytest
 
+from synthorg.core.persistence_errors import MigrationError
 from synthorg.persistence import atlas
-from synthorg.persistence.errors import MigrationError
 
 
 @pytest.mark.unit

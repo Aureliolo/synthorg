@@ -10,6 +10,7 @@ from synthorg.core.enums import (
     WorkflowNodeType,
     WorkflowType,
 )
+from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.engine.errors import (
     SubworkflowIOError,
     SubworkflowNotFoundError,
@@ -24,7 +25,6 @@ from synthorg.engine.workflow.subworkflow_registry import (
     MAX_WORKFLOW_DEPTH,
     SubworkflowRegistry,
 )
-from synthorg.persistence.errors import DuplicateRecordError
 from synthorg.persistence.subworkflow_repo import (
     ParentReference,
     SubworkflowRepository,

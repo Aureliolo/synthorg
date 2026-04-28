@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 import aiosqlite
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
@@ -21,7 +22,6 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_PERSIST_FAILED,
 )
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
-from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
 

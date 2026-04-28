@@ -9,12 +9,12 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType, WorkflowType
+from synthorg.core.persistence_errors import VersionConflictError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
     WorkflowNode,
 )
-from synthorg.persistence.errors import VersionConflictError
 from synthorg.persistence.protocol import PersistenceBackend
 
 

@@ -10,6 +10,7 @@ place so the audit trail stays consistent.
 from typing import TYPE_CHECKING
 
 from synthorg.core.enums import WorkflowType  # noqa: TC001
+from synthorg.core.persistence_errors import VersionConflictError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.definition import WorkflowDefinition  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
@@ -24,7 +25,6 @@ from synthorg.observability.events.workflow_definition import (
 from synthorg.observability.events.workflow_version import (
     WORKFLOW_VERSION_SNAPSHOT_FAILED,
 )
-from synthorg.persistence.errors import VersionConflictError
 
 if TYPE_CHECKING:
     from synthorg.engine.workflow.validation_types import (

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 import psycopg
 
+from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_BACKEND_DISCONNECT_ERROR,
@@ -19,7 +20,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_TIMESCALEDB_UNAVAILABLE,
 )
 from synthorg.persistence import atlas
-from synthorg.persistence.errors import PersistenceConnectionError
 
 if TYPE_CHECKING:
     import asyncio
