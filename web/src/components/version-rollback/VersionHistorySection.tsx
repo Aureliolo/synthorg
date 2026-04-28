@@ -9,7 +9,7 @@
  * rollback notifications), promote the state to a domain store and
  * keep this component as a presentational helper.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { SectionCard } from '@/components/ui/section-card'
@@ -105,6 +105,12 @@ export function VersionHistorySection<T>(
   // load so a stale in-flight request cannot apply data after
   // ``client`` changes or the host unmounts.
   const [reloadNonce, setReloadNonce] = useState(0)
+  // Monotonic epoch bumped on every initial-load / refresh /
+  // client-change.  ``handleLoadMore`` reads the current epoch
+  // before its await and discards the page if the epoch advanced
+  // while the request was in flight, so a slow load-more cannot
+  // append stale rows onto a freshly-reloaded timeline.
+  const requestEpochRef = useRef(0)
 
   // Initial load.  ``client`` is captured as the dependency; new
   // clients (rare; only when the parent rebuilds the factory)
@@ -113,6 +119,8 @@ export function VersionHistorySection<T>(
   // does not surface a stale rollback action against the previous
   // resource.
   useEffect(() => {
+    requestEpochRef.current += 1
+    const epoch = requestEpochRef.current
     let cancelled = false
     const run = async (): Promise<void> => {
       setLoading(true)
@@ -126,15 +134,19 @@ export function VersionHistorySection<T>(
       setRollbackOpen(false)
       try {
         const page = await client.list({ limit: 25 })
-        if (cancelled) return
+        if (cancelled || epoch !== requestEpochRef.current) return
         setItems(page.data)
         setCursor(page.nextCursor)
         setHasMore(page.hasMore)
       } catch (err) {
         log.warn('list versions failed:', getErrorMessage(err))
-        if (!cancelled) setError(getErrorMessage(err))
+        if (!cancelled && epoch === requestEpochRef.current) {
+          setError(getErrorMessage(err))
+        }
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled && epoch === requestEpochRef.current) {
+          setLoading(false)
+        }
       }
     }
     void run()
@@ -148,24 +160,34 @@ export function VersionHistorySection<T>(
     // cursor and appending duplicate rows.
     if (loadingMore || loading) return
     if (!hasMore || cursor === null) return
+    const epoch = requestEpochRef.current
     setLoadingMore(true)
     try {
       const page = await client.list({ cursor, limit: 25 })
+      // Drop the result if a refresh / client switch advanced the
+      // epoch while we were awaiting; otherwise we'd append a
+      // stale page onto a freshly-reloaded timeline.
+      if (epoch !== requestEpochRef.current) return
       setItems((prev) => [...prev, ...page.data])
       setCursor(page.nextCursor)
       setHasMore(page.hasMore)
     } catch (err) {
       log.warn('load more versions failed:', getErrorMessage(err))
-      setError(getErrorMessage(err))
+      if (epoch === requestEpochRef.current) {
+        setError(getErrorMessage(err))
+      }
     } finally {
-      setLoadingMore(false)
+      if (epoch === requestEpochRef.current) {
+        setLoadingMore(false)
+      }
     }
   }
 
   const handleSelect = (item: VersionSnapshot<T>): void => {
     // Two-click compare: first click selects the "from" version,
-    // second opens the diff drawer.  Clicking the same version twice
-    // opens a no-op diff (timeline highlights the same row).
+    // second click on a DIFFERENT version opens the diff drawer.
+    // Clicking the same version twice CLEARS the selection -- we
+    // do not open a no-op diff against itself.
     if (selectedVersion === null) {
       setSelectedVersion(item.version)
       return

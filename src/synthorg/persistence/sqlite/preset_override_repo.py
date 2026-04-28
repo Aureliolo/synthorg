@@ -67,10 +67,20 @@ class SQLitePresetOverrideRepo:
             return None
         try:
             return self._row_to_override(dict(row))
-        except QueryError:
+        except QueryError as exc:
             # Already a QueryError (e.g. from ``_decode_json_list``);
             # preserve as-is so callers see a single repository
             # exception type for both query and deserialise failures.
+            # Log here too: the inner raise happens inside a closure
+            # whose call site does not have ``preset_name`` in scope,
+            # so adding it on this boundary keeps the corrupt-row
+            # context visible without forcing every helper to log.
+            logger.warning(
+                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                preset_name=preset_name,
+            )
             raise
         except Exception as exc:
             # A bad row would otherwise escape as raw Pydantic /
