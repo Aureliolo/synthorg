@@ -35,6 +35,7 @@ export const ROUTES = {
   WORKFLOW_EDITOR: '/workflows/editor',
   SUBWORKFLOWS: '/subworkflows',
   ONTOLOGY: '/ontology',
+  CUSTOM_RULES: '/meta/custom-rules',
   CONNECTIONS: '/connections',
   OAUTH_APPS: '/integrations/oauth-apps',
   MCP_CATALOG: '/integrations/mcp-catalog',

@@ -26,6 +26,7 @@ const MeetingDetailPage = lazy(() => import('@/pages/MeetingDetailPage'))
 const ProvidersPage = lazy(() => import('@/pages/ProvidersPage'))
 const ProviderDetailPage = lazy(() => import('@/pages/ProviderDetailPage'))
 const OntologyPage = lazy(() => import('@/pages/OntologyPage'))
+const CustomRulesPage = lazy(() => import('@/pages/CustomRulesPage'))
 const ProjectsPage = lazy(() => import('@/pages/ProjectsPage'))
 const ProjectDetailPage = lazy(() => import('@/pages/ProjectDetailPage'))
 const ArtifactsPage = lazy(() => import('@/pages/ArtifactsPage'))
@@ -137,6 +138,7 @@ export const router = createBrowserRouter([
               { path: ROUTES.OAUTH_APPS.slice(1), element: <OauthAppsPage /> },
               { path: ROUTES.MCP_CATALOG.slice(1), element: <McpCatalogPage /> },
               { path: 'ontology', element: <OntologyPage /> },
+              { path: 'meta/custom-rules', element: <CustomRulesPage /> },
               { path: 'projects', element: <ProjectsPage /> },
               { path: 'projects/:projectId', element: <ProjectDetailPage /> },
               { path: 'artifacts', element: <ArtifactsPage /> },
