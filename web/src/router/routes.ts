@@ -37,6 +37,7 @@ export const ROUTES = {
   ONTOLOGY: '/ontology',
   CUSTOM_RULES: '/meta/custom-rules',
   ESCALATIONS: '/conflicts/escalations',
+  USERS: '/settings/users',
   CONNECTIONS: '/connections',
   OAUTH_APPS: '/integrations/oauth-apps',
   MCP_CATALOG: '/integrations/mcp-catalog',
