@@ -535,10 +535,8 @@ class TestProviderPresets:
         """
         import litellm
 
-        from synthorg.providers.presets import (
-            _FEATURED_PRESETS,
-            _build_soft_presets,
-        )
+        from synthorg.providers.preset_softlist import build_soft_presets
+        from synthorg.providers.presets import _FEATURED_PRESETS
 
         fake_cost = {
             f"model-{i}": {
@@ -548,14 +546,14 @@ class TestProviderPresets:
             for i in range(10)
         }
         monkeypatch.setattr(litellm, "model_cost", fake_cost)
-        softs = _build_soft_presets(_FEATURED_PRESETS)
+        softs = build_soft_presets(_FEATURED_PRESETS)
         synth_names = {p.litellm_provider for p in softs}
         for i in range(10):
             assert f"synth_provider_{i}" in synth_names
 
     def test_humanise_namespace_title_cases_separators(self) -> None:
         """Underscores and hyphens become spaces, then title-cased."""
-        from synthorg.providers.presets import _humanise_namespace
+        from synthorg.providers.preset_softlist import _humanise_namespace
 
         assert _humanise_namespace("perplexity") == "Perplexity"
         assert _humanise_namespace("text-completion-openai") == (
@@ -564,7 +562,7 @@ class TestProviderPresets:
 
     def test_humanise_namespace_preserves_acronyms(self) -> None:
         """Known acronyms stay fully uppercased after the title-case pass."""
-        from synthorg.providers.presets import _humanise_namespace
+        from synthorg.providers.preset_softlist import _humanise_namespace
 
         assert _humanise_namespace("ai21") == "AI21"
         assert _humanise_namespace("lambda_ai") == "Lambda AI"
@@ -573,13 +571,13 @@ class TestProviderPresets:
 
     def test_humanise_namespace_lowercase_overrides(self) -> None:
         """Tokens listed in the lowercase override map are de-titled."""
-        from synthorg.providers.presets import _humanise_namespace
+        from synthorg.providers.preset_softlist import _humanise_namespace
 
         assert _humanise_namespace("v0") == "v0"
 
     def test_is_denied_namespace_exact_match(self) -> None:
         """Exact denylist entries are denied."""
-        from synthorg.providers.presets import _is_denied_namespace
+        from synthorg.providers.preset_softlist import _is_denied_namespace
 
         assert _is_denied_namespace("bedrock")
         assert _is_denied_namespace("github_copilot")
@@ -589,7 +587,7 @@ class TestProviderPresets:
 
     def test_is_denied_namespace_prefix_match(self) -> None:
         """Sub-namespaces inheriting a deny prefix are denied."""
-        from synthorg.providers.presets import _is_denied_namespace
+        from synthorg.providers.preset_softlist import _is_denied_namespace
 
         assert _is_denied_namespace("bedrock_mantle")
         assert _is_denied_namespace("vertex_ai-anthropic_models")
@@ -600,7 +598,7 @@ class TestProviderPresets:
 
     def test_is_denied_namespace_allowlist(self) -> None:
         """Curated and unrelated namespaces are not denied."""
-        from synthorg.providers.presets import _is_denied_namespace
+        from synthorg.providers.preset_softlist import _is_denied_namespace
 
         assert not _is_denied_namespace("openai")
         assert not _is_denied_namespace("anthropic")
@@ -614,7 +612,7 @@ class TestProviderPresets:
         """Embedding / image / audio / rerank entries are skipped."""
         import litellm
 
-        from synthorg.providers.presets import _iter_litellm_chat_namespaces
+        from synthorg.providers.preset_softlist import _iter_litellm_chat_namespaces
 
         chat = {"mode": "chat", "litellm_provider": "alpha"}
         embed = {"mode": "embedding", "litellm_provider": "beta"}
@@ -643,7 +641,7 @@ class TestProviderPresets:
         """Non-dict, missing-field, and empty-string entries are skipped."""
         import litellm
 
-        from synthorg.providers.presets import _iter_litellm_chat_namespaces
+        from synthorg.providers.preset_softlist import _iter_litellm_chat_namespaces
 
         monkeypatch.setattr(
             litellm,
@@ -666,10 +664,28 @@ class TestProviderPresets:
         """``litellm.model_cost`` being ``None`` returns an empty tuple."""
         import litellm
 
-        from synthorg.providers.presets import _iter_litellm_chat_namespaces
+        from synthorg.providers.preset_softlist import _iter_litellm_chat_namespaces
 
         monkeypatch.setattr(litellm, "model_cost", None)
         assert _iter_litellm_chat_namespaces() == ()
+
+    def test_iter_litellm_chat_namespaces_handles_non_mapping_model_cost(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A non-Mapping ``litellm.model_cost`` returns an empty tuple.
+
+        Guards against a future LiteLLM upgrade that replaces the
+        catalog with a list / tuple / string / other shape.  Calling
+        ``.values()`` on those would raise ``AttributeError`` and
+        crash app startup.
+        """
+        import litellm
+
+        from synthorg.providers.preset_softlist import _iter_litellm_chat_namespaces
+
+        for non_mapping in (["a", "b"], ("a", "b"), "string", 42):
+            monkeypatch.setattr(litellm, "model_cost", non_mapping)
+            assert _iter_litellm_chat_namespaces() == ()
 
     def test_soft_preset_validator_rejects_non_api_key_auth(self) -> None:
         """Constructing a soft CloudPreset with non-API_KEY auth fails."""
@@ -718,11 +734,11 @@ class TestProviderPresets:
         """
         import litellm
 
-        from synthorg.providers.presets import (
-            _FEATURED_PRESETS,
+        from synthorg.providers.preset_softlist import (
             _LITELLM_NAMESPACE_DENYLIST,
-            _build_soft_presets,
+            build_soft_presets,
         )
+        from synthorg.providers.presets import _FEATURED_PRESETS
 
         denied = next(iter(_LITELLM_NAMESPACE_DENYLIST))
         fake_cost = {
@@ -730,7 +746,7 @@ class TestProviderPresets:
             "bad-model": {"mode": "chat", "litellm_provider": denied},
         }
         monkeypatch.setattr(litellm, "model_cost", fake_cost)
-        softs = _build_soft_presets(_FEATURED_PRESETS)
+        softs = build_soft_presets(_FEATURED_PRESETS)
         namespaces = {p.litellm_provider for p in softs}
         assert "synth_allowed" in namespaces
         assert denied not in namespaces
@@ -746,10 +762,8 @@ class TestProviderPresets:
         """
         import litellm
 
-        from synthorg.providers.presets import (
-            _FEATURED_PRESETS,
-            _build_soft_presets,
-        )
+        from synthorg.providers.preset_softlist import build_soft_presets
+        from synthorg.providers.presets import _FEATURED_PRESETS
 
         fake_cost = {
             "model-a": {"mode": "chat", "litellm_provider": "vertex_ai-fake"},
@@ -757,7 +771,7 @@ class TestProviderPresets:
             "model-c": {"mode": "chat", "litellm_provider": "synth_allowed"},
         }
         monkeypatch.setattr(litellm, "model_cost", fake_cost)
-        softs = _build_soft_presets(_FEATURED_PRESETS)
+        softs = build_soft_presets(_FEATURED_PRESETS)
         namespaces = {p.litellm_provider for p in softs}
         assert "synth_allowed" in namespaces
         assert "vertex_ai-fake" not in namespaces

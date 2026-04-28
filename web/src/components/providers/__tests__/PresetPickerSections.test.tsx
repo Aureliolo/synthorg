@@ -195,10 +195,15 @@ describe('PresetPickerSections', () => {
     )
     // Summary text is visible immediately (count in label).
     const summary = screen.getByText(/More providers via LiteLLM \(1\)/)
-    // Click to expand the <details>; jsdom keeps closed descendants
-    // in the DOM, so without this click the assertion below would
-    // pass even if the toggle stopped revealing its content.
+    const details = summary.closest('details')
+    expect(details).not.toBeNull()
+    // <details> starts closed.
+    expect(details).not.toHaveAttribute('open')
+    // Click to expand; jsdom keeps closed descendants in the DOM, so
+    // without asserting the open transition the button query below
+    // would pass even if the toggle stopped revealing its content.
     fireEvent.click(summary)
+    expect(details).toHaveAttribute('open')
     expect(
       screen.getByRole('button', { name: /Add Softprovider/ }),
     ).toBeInTheDocument()
