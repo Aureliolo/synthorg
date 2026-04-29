@@ -114,6 +114,7 @@ def _redact_secrets(
 
 if TYPE_CHECKING:
     from synthorg.approval.protocol import ApprovalStoreProtocol
+    from synthorg.core.clock import Clock
     from synthorg.memory.protocol import MemoryBackend
     from synthorg.meta.appliers.architecture_applier import (
         ArchitectureApplierContext,
@@ -129,7 +130,6 @@ if TYPE_CHECKING:
         RolloutStrategy,
     )
     from synthorg.meta.rollout.before_after import SnapshotBuilder
-    from synthorg.meta.rollout.clock import Clock
     from synthorg.meta.rollout.group_aggregator import GroupSignalAggregator
     from synthorg.meta.rollout.roster import OrgRoster
     from synthorg.meta.telemetry.protocol import AnalyticsEmitter
@@ -168,7 +168,7 @@ class SelfImprovementService:
             get an applier whose ``dry_run`` rejects with an explicit
             error.
         clock: Time source for rollout observation loops. Defaults to
-            ``RealClock`` when omitted; tests inject ``FakeClock`` for
+            ``SystemClock`` when omitted; tests inject ``FakeClock`` for
             deterministic sleep behavior.
         roster: Live agent enumeration used to assign control/treatment
             groups and canary subsets. Defaults to ``NoOpOrgRoster``

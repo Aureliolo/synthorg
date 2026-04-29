@@ -27,9 +27,9 @@ from synthorg.observability.events.meta import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.core.clock import Clock
     from synthorg.meta.protocol import RegressionDetector
     from synthorg.meta.rollout.before_after import SnapshotBuilder
-    from synthorg.meta.rollout.clock import Clock
 
 logger = get_logger(__name__)
 

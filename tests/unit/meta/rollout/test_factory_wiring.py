@@ -13,7 +13,7 @@ from synthorg.meta.rollout.before_after import BeforeAfterRollout
 from synthorg.meta.rollout.canary import CanarySubsetRollout
 from synthorg.meta.rollout.inverse_dispatch import RollbackHandler
 from synthorg.meta.rollout.rollback import RollbackExecutor
-from tests.unit.meta.rollout._fake_clock import FakeClock
+from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
 

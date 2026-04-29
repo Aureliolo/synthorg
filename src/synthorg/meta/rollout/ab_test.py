@@ -12,6 +12,7 @@ import hashlib
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     ImprovementProposal,
@@ -28,7 +29,6 @@ from synthorg.meta.rollout.ab_models import (
     GroupAssignment,
     GroupMetrics,
 )
-from synthorg.meta.rollout.clock import Clock, RealClock
 from synthorg.meta.rollout.group_aggregator import (
     GroupSamples,
     GroupSignalAggregator,
@@ -121,7 +121,7 @@ class ABTestRollout:
             improvement_threshold=improvement_threshold,
             significance_level=significance_level,
         )
-        self._clock: Clock = clock or RealClock()
+        self._clock: Clock = clock or SystemClock()
         self._roster: OrgRoster = roster or NoOpOrgRoster()
         self._group_aggregator: GroupSignalAggregator = (
             group_aggregator or _NullGroupAggregator()

@@ -37,7 +37,7 @@ from synthorg.meta.rollout.regression.threshold import (
     ThresholdDetector,
 )
 from synthorg.meta.rollout.rollback import RollbackExecutor
-from tests.unit.meta.rollout._fake_clock import FakeClock
+from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
 

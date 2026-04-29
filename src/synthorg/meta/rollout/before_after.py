@@ -10,6 +10,7 @@ the observed elapsed time.
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     ImprovementProposal,
@@ -19,7 +20,6 @@ from synthorg.meta.models import (
     RolloutResult,
 )
 from synthorg.meta.rollout._observation import observe_until_verdict
-from synthorg.meta.rollout.clock import Clock, RealClock
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
     META_ROLLOUT_FAILED,
@@ -72,7 +72,7 @@ class BeforeAfterRollout:
         if check_interval_hours <= 0.0:
             msg = "check_interval_hours must be positive"
             raise ValueError(msg)
-        self._clock: Clock = clock or RealClock()
+        self._clock: Clock = clock or SystemClock()
         self._snapshot_builder: SnapshotBuilder = (
             snapshot_builder or _default_snapshot_builder
         )
