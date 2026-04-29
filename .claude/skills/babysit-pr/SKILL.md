@@ -113,7 +113,7 @@ If `state` is `MERGED` or `CLOSED`:
 - Print TWO lines, in this exact order so the URL renders as a clickable link in the user's terminal:
 
   ```text
-  babysit-pr: PR #N <state>, exiting.
+  babysit-pr round R: PR #N <MERGED|CLOSED>, exiting.
   https://github.com/OWNER/REPO/pull/N
   ```
 
@@ -134,7 +134,7 @@ If converged:
 - Print TWO lines, in this exact order so the URL renders as a clickable link in the user's terminal:
 
   ```text
-  babysit-pr: PR #N CONVERGED (CI green, 0 actionable, no new feedback). Ready for human review/merge.
+  babysit-pr round R: CONVERGED (CI green, 0 actionable, no new feedback). Ready for human review/merge.
   https://github.com/OWNER/REPO/pull/N
   ```
 
@@ -355,7 +355,7 @@ Terminal verdicts (loop-exit cases for Phase 2 / Phase 3) print a status line fo
   https://github.com/OWNER/REPO/pull/N
   ```
 
-The URL is fetched from the PR JSON (`gh pr view N --json url --jq .url`) and printed verbatim. Do not wrap it in markdown link syntax; terminals auto-detect bare https:// URLs and make them clickable, while explicit `[text](url)` links render as literal characters in plain-terminal contexts.
+The URL is fetched from the PR JSON (`gh pr view N --json url --jq .url`) and printed verbatim. Do not wrap it in Markdown link syntax; terminals auto-detect bare https:// URLs and make them clickable, while explicit `[text](url)` links render as literal characters in plain-terminal contexts.
 
 Render the full triage table only when there's something to fix.
 
