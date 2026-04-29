@@ -32,6 +32,7 @@ from synthorg.observability.events.setup import (
     SETUP_NAME_LOCALES_CORRUPTED,
     SETUP_NAME_LOCALES_INVALID,
     SETUP_PROVIDER_RELOAD_FAILED,
+    SETUP_PROVIDER_TIER_COVERAGE_INSUFFICIENT,
     SETUP_STATUS_SETTINGS_DEFAULT_USED,
     SETUP_STATUS_SETTINGS_UNAVAILABLE,
     SETUP_TEMPLATE_INVALID,
@@ -42,6 +43,8 @@ from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from synthorg.persistence.protocol import PersistenceBackend
     from synthorg.settings.service import SettingsService
     from synthorg.templates.loader import LoadedTemplate
@@ -389,6 +392,41 @@ async def check_setup_not_complete(
         raise ConflictError(msg)
 
 
+def _validate_tier_coverage(providers: Mapping[str, Any]) -> None:
+    """Reject provider sets that cannot satisfy tier classification.
+
+    The model matcher tolerates fewer than three models per provider
+    (``_MIN_TIER_SIZE`` in ``model_matcher.py``: it returns all
+    models for every tier in that case), so the gate's job is just
+    to stop the truly empty case -- zero models across all
+    registered providers, which is what produces the per-agent
+    ``no_models_available`` warnings the issue called out. Setups
+    with a couple of models continue to work; the matcher just
+    assigns the same model to every tier.
+
+    Args:
+        providers: Provider name -> config mapping resolved from
+            ``provider_management.list_providers()``.
+
+    Raises:
+        ValidationError: When NO models are available across the
+            registered providers.
+    """
+    total_models = sum(len(getattr(cfg, "models", ())) for cfg in providers.values())
+    if total_models > 0:
+        return
+    msg = (
+        "Configured providers expose no models. Add at least one "
+        "model to a provider before creating agents."
+    )
+    logger.warning(
+        SETUP_PROVIDER_TIER_COVERAGE_INSUFFICIENT,
+        provider_count=len(providers),
+        total_model_count=0,
+    )
+    raise ValidationError(msg)
+
+
 async def auto_create_template_agents(
     template: CompanyTemplate,
     app_state: AppState,
@@ -415,6 +453,7 @@ async def auto_create_template_agents(
         custom_presets=custom_presets,
     )
     providers = prov_task.result()
+    _validate_tier_coverage(providers)
     agents = match_and_assign_models(agents, providers)
 
     async with AGENT_LOCK:

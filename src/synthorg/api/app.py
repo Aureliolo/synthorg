@@ -42,7 +42,7 @@ from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.api.channels import (
     create_channels_plugin,
 )
-from synthorg.api.controllers import BASE_CONTROLLERS
+from synthorg.api.controllers import BASE_CONTROLLERS, OPTIONAL_CONTROLLERS
 from synthorg.api.controllers.ws import ws_handler
 from synthorg.api.cursor import CursorSecret
 from synthorg.api.cursor_config import CursorConfig
@@ -739,12 +739,25 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 exc_info=True,
             )
 
+    # Optional controllers gated on their primary collaborator service.
+    # Routes for unconfigured subsystems are not registered at all so
+    # the dashboard receives 404 (route does not exist) instead of the
+    # 503 it used to get for every poll cycle.  /capabilities reports
+    # which subsystems are wired so the dashboard can skip the polling
+    # loops at the source.
+    optional_controllers: tuple[type[Controller], ...] = tuple(
+        controller_cls
+        for controller_cls, predicate_attr in OPTIONAL_CONTROLLERS
+        if getattr(app_state, predicate_attr, False)
+    )
+
     api_router = Router(
         path=api_config.api_prefix,
         route_handlers=[
             *BASE_CONTROLLERS,
             *integration_controllers,
             *a2a_controllers,
+            *optional_controllers,
             ws_handler,
         ],
         guards=[require_password_changed],

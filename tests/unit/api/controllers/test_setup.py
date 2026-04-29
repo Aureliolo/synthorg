@@ -247,20 +247,55 @@ class TestSetupCompany:
         self,
         test_client: TestClient[Any],
     ) -> None:
+        # Seed a provider with at least one model so the
+        # tier-coverage gate added for issue #1666 B-5 passes; the
+        # gate rejects setups that would otherwise produce per-agent
+        # ``no_models_available`` warnings during template expansion.
+        from tests.unit.api.controllers.conftest import (
+            setup_mock_providers,
+        )
+
+        app_state, original = setup_mock_providers(test_client)
+        try:
+            resp = test_client.post(
+                "/api/v1/setup/company",
+                json={
+                    "company_name": "My Startup",
+                    "template_name": "solo_founder",
+                },
+            )
+            assert resp.status_code == 201
+            body = resp.json()
+            assert body["success"] is True
+            data = body["data"]
+            assert data["company_name"] == "My Startup"
+            assert data["template_applied"] == "solo_founder"
+            assert data["department_count"] >= 1
+        finally:
+            app_state._provider_management = original
+
+    def test_company_with_template_rejects_empty_provider_set(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Issue #1666 B-5: tier-coverage gate at the provider step.
+
+        With no providers configured, the setup wizard refuses the
+        company creation and returns 422 instead of producing per-agent
+        ``template.model_match.failed`` / ``setup.agent.model_not_found``
+        warnings during template expansion.
+        """
         resp = test_client.post(
             "/api/v1/setup/company",
             json={
-                "company_name": "My Startup",
+                "company_name": "No-Providers Startup",
                 "template_name": "solo_founder",
             },
         )
-        assert resp.status_code == 201
+        assert resp.status_code == 422
         body = resp.json()
-        assert body["success"] is True
-        data = body["data"]
-        assert data["company_name"] == "My Startup"
-        assert data["template_applied"] == "solo_founder"
-        assert data["department_count"] >= 1
+        assert body["success"] is False
+        assert "no models" in body["error"].lower()
 
     def test_invalid_template(
         self,

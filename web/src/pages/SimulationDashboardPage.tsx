@@ -15,6 +15,7 @@ import { ListHeader } from '@/components/ui/list-header'
 import { MetricCard } from '@/components/ui/metric-card'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonCard } from '@/components/ui/skeleton'
+import { useCapabilities } from '@/hooks/useCapabilities'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('SimulationDashboardPage')
@@ -28,6 +29,7 @@ const log = createLogger('SimulationDashboardPage')
  * per run.
  */
 export default function SimulationDashboardPage() {
+  const { capabilities, loading: capLoading } = useCapabilities()
   const [runs, setRuns] = useState<readonly SimulationStatus[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -47,8 +49,34 @@ export default function SimulationDashboardPage() {
   }, [])
 
   useEffect(() => {
+    if (capLoading || !capabilities.simulations) {
+      // Skip the network call entirely when the simulations
+      // subsystem is not configured for this deployment. The
+      // backend route is also not registered (returns 404), so
+      // calling listSimulations() would log a 404 in the audit
+      // trail per the issue #1666 B-3 contract.
+      setLoading(false)
+      return
+    }
     void refresh()
-  }, [refresh])
+  }, [refresh, capLoading, capabilities.simulations])
+
+  if (!capLoading && !capabilities.simulations) {
+    return (
+      <div className="space-y-section-gap">
+        <ListHeader title="Simulations" />
+        <EmptyState
+          icon={Activity}
+          title="Simulations not configured"
+          description={
+            'This deployment did not enable the client simulation ' +
+            'runtime. Configure it in your backend setup to start ' +
+            'tracking simulation runs.'
+          }
+        />
+      </div>
+    )
+  }
 
   const handleCancel = useCallback(
     async (simulationId: string) => {

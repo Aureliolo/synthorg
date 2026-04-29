@@ -15,6 +15,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ListHeader } from '@/components/ui/list-header'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonCard } from '@/components/ui/skeleton'
+import { useCapabilities } from '@/hooks/useCapabilities'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('RequestQueuePage')
@@ -45,6 +46,7 @@ const STATUS_LABELS: Record<RequestStatus, string> = {
  * → TASK_CREATED | CANCELLED) at a glance.
  */
 export default function RequestQueuePage() {
+  const { capabilities, loading: capLoading } = useCapabilities()
   const [requests, setRequests] = useState<readonly ClientRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -64,8 +66,29 @@ export default function RequestQueuePage() {
   }, [])
 
   useEffect(() => {
+    if (capLoading || !capabilities.requests) {
+      setLoading(false)
+      return
+    }
     void refresh()
-  }, [refresh])
+  }, [refresh, capLoading, capabilities.requests])
+
+  if (!capLoading && !capabilities.requests) {
+    return (
+      <div className="space-y-section-gap">
+        <ListHeader title="Requests" />
+        <EmptyState
+          icon={Inbox}
+          title="Requests not configured"
+          description={
+            'This deployment did not enable the client request facade. ' +
+            'Configure it in your backend setup to start tracking ' +
+            'incoming requests.'
+          }
+        />
+      </div>
+    )
+  }
 
   const handleScope = useCallback(
     async (requestId: string) => {

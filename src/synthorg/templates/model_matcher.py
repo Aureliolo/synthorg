@@ -15,6 +15,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
     TEMPLATE_MODEL_MATCH_FAILED,
+    TEMPLATE_MODEL_MATCH_FALLBACK,
     TEMPLATE_MODEL_MATCH_SKIPPED,
     TEMPLATE_MODEL_MATCH_SUCCESS,
 )
@@ -232,9 +233,16 @@ def match_all_agents(
             )
         elif all_models:
             # Fallback: assign first available model with score 0.
+            # This path IS the documented contract for tier-mismatch
+            # (per docs/design/agents.md §"Model matcher"); the
+            # fallback succeeded so logging at WARNING produced
+            # ~8 noisy lines per setup wizard run. Issue #1666 B-5
+            # downgrades this to DEBUG. WARNING stays for the truly
+            # failing path -- the ``no_models_available`` branch
+            # below.
             fb_provider, fb_model = all_models[0]
-            logger.warning(
-                TEMPLATE_MODEL_MATCH_FAILED,
+            logger.debug(
+                TEMPLATE_MODEL_MATCH_FALLBACK,
                 agent_index=idx,
                 tier=tier,
                 fallback_provider=fb_provider,

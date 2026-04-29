@@ -69,12 +69,12 @@ Eleven default sinks, activated at startup via `bootstrap_logging()`:
 | Sink | Type | Level | Format | Routes | Description |
 |------|------|-------|--------|--------|-------------|
 | Console | stderr | INFO | Colored text | All loggers | Human-readable development output |
-| `synthorg.log` | File | INFO | JSON | All loggers | Main application log (catch-all) |
+| `synthorg.log` | File | INFO | JSON | All loggers EXCEPT `api.request.started` / `api.request.completed` | Main application log (catch-all). Request-lifecycle events from `synthorg.api.middleware` are excluded by an event-name filter so the main log is not buried under per-request noise -- those events live in `access.log` only. |
 | `audit.log` | File | INFO | JSON | `synthorg.security.*`, `synthorg.hr.*`, `synthorg.observability.*` | Audit-relevant events (security, HR, observability) |
 | `errors.log` | File | ERROR | JSON | All loggers | Errors and above only |
 | `agent_activity.log` | File | DEBUG | JSON | `synthorg.engine.*`, `synthorg.core.*`, `synthorg.communication.*`, `synthorg.tools.*`, `synthorg.memory.*` | Agent execution, communication, tools, and memory |
 | `cost_usage.log` | File | INFO | JSON | `synthorg.budget.*`, `synthorg.providers.*` | Cost records and provider calls |
-| `debug.log` | File | DEBUG | JSON | All loggers | Full debug trace (catch-all) |
+| `debug.log` | File | DEBUG only (exact match) | JSON | All loggers | Full DEBUG trace. Pinned to `level == DEBUG` exactly so the file stays empty when nothing emits DEBUG instead of accidentally collecting INFO+ as a duplicate of `synthorg.log`. |
 | `access.log` | File | INFO | JSON | `synthorg.api.*` | HTTP request/response access log |
 | `persistence.log` | File | INFO | JSON | `synthorg.persistence.*` | Database operations, migrations, CRUD |
 | `configuration.log` | File | INFO | JSON | `synthorg.settings.*`, `synthorg.config.*` | Settings resolution, config loading |

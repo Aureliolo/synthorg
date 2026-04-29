@@ -53,6 +53,14 @@ TEMPLATE_WORKFLOW_CONFIG_UNKNOWN_KEY: Final[str] = (
 TEMPLATE_MODEL_MATCH_SUCCESS: Final[str] = "template.model_match.success"
 TEMPLATE_MODEL_MATCH_FAILED: Final[str] = "template.model_match.failed"
 TEMPLATE_MODEL_MATCH_SKIPPED: Final[str] = "template.model_match.skipped"
+# Emitted at DEBUG when the requested tier had no models but the
+# fallback path (first available model with score 0) succeeded.
+# Fallback is the documented contract per the design page; treating
+# it as a WARNING produced ~8 noisy log lines during every clean
+# setup wizard run (issue #1666 B-5). Operators only see WARNING
+# now when the fallback ALSO fails (no models available at all),
+# which after the wizard provider gate should not fire in practice.
+TEMPLATE_MODEL_MATCH_FALLBACK: Final[str] = "template.model_match.fallback"
 
 # Template packs
 TEMPLATE_PACK_LOAD_START: Final[str] = "template.pack.load.start"
