@@ -22,7 +22,7 @@ from synthorg.engine.errors import (
 )
 from synthorg.engine.workflow.execution_models import WorkflowExecution
 from synthorg.engine.workflow.execution_service import WorkflowExecutionService
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_CANCELLED,
     WORKFLOW_EXEC_CONDITION_EVAL_FAILED,
@@ -116,10 +116,11 @@ class WorkflowExecutionController(Controller):
                 status_code=422,
             )
         except PersistenceError as exc:
-            logger.exception(
+            logger.warning(
                 WORKFLOW_EXEC_PERSISTENCE_FAILED,
                 workflow_id=workflow_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 note="persistence failure during activation",
             )
             return Response(
@@ -148,10 +149,11 @@ class WorkflowExecutionController(Controller):
         try:
             executions = await service.list_executions(workflow_id)
         except PersistenceError as exc:
-            logger.exception(
+            logger.warning(
                 WORKFLOW_EXEC_PERSISTENCE_FAILED,
                 workflow_id=workflow_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 note="persistence failure during list",
             )
             return Response(
@@ -180,10 +182,11 @@ class WorkflowExecutionController(Controller):
         try:
             execution = await service.get_execution(execution_id)
         except PersistenceError as exc:
-            logger.exception(
+            logger.warning(
                 WORKFLOW_EXEC_PERSISTENCE_FAILED,
                 execution_id=execution_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 note="persistence failure during get",
             )
             return Response(
@@ -244,10 +247,11 @@ class WorkflowExecutionController(Controller):
                 status_code=409,
             )
         except PersistenceError as exc:
-            logger.exception(
+            logger.warning(
                 WORKFLOW_EXEC_PERSISTENCE_FAILED,
                 execution_id=execution_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 note="persistence failure during cancel",
             )
             return Response(
