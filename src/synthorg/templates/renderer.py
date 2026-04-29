@@ -23,7 +23,7 @@ from synthorg.config.defaults import default_config_dict
 from synthorg.config.errors import ConfigLocation
 from synthorg.config.utils import deep_merge, to_float
 from synthorg.core.enums import WorkflowType
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
     TEMPLATE_PACK_CIRCULAR,
     TEMPLATE_PACK_MERGE_START,
@@ -334,10 +334,11 @@ def _render_jinja2(
         jinja_template = _JINJA_ENV.from_string(raw_yaml)
         return jinja_template.render(**variables)
     except Jinja2TemplateError as exc:
-        logger.exception(
+        logger.warning(
             TEMPLATE_RENDER_JINJA2_ERROR,
             source_name=source_name,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = f"Jinja2 rendering failed for {source_name}: {exc}"
         raise TemplateRenderError(
@@ -365,10 +366,11 @@ def _parse_rendered_yaml(
     try:
         data = yaml.safe_load(rendered_text)
     except yaml.YAMLError as exc:
-        logger.exception(
+        logger.warning(
             TEMPLATE_RENDER_YAML_ERROR,
             source_name=source_name,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = f"Rendered template YAML is invalid for {source_name}: {exc}"
         raise TemplateRenderError(

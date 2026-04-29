@@ -350,7 +350,7 @@ class TestListTemplatesEdgeCases:
             templates = list_templates()
             # All builtins failed, so only user templates (none) remain.
             assert templates == ()
-            assert mock_logger.exception.call_count == len(BUILTIN_TEMPLATES)
+            assert mock_logger.warning.call_count == len(BUILTIN_TEMPLATES)
 
 
 # ── load_template path traversal ─────────────────────────────────
