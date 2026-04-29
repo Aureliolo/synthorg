@@ -41,6 +41,7 @@ import os
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 GHCR_REGISTRY = "ghcr.io"
@@ -170,6 +171,16 @@ def mint_pull_token(repo_path: str, ghcr_token: str | None) -> str | None:
     Returns None when no input token is available. Only GHCR is
     supported; other registries would need a different auth flow.
 
+    The ``repo_path`` is double-validated by the time it reaches this
+    function: ``_validate_repo_prefix`` + ``_validate_image_tag`` reject
+    anything outside the OCI grammar at startup, and the
+    ``urllib.parse.quote`` call below percent-encodes anything the
+    regex pass would have allowed but URLs disallow. CodeQL recognises
+    ``quote()`` as a sanitizer for ``py/partial-ssrf`` (regex-based
+    validators are not currently part of its sanitizer model), so the
+    quote call closes the static-analysis warning even though the
+    regex already prevents path-component escapes.
+
     Raises:
         urllib.error.URLError: network failure (also covers
             ``HTTPError``, e.g. an authn rejection from the token
@@ -180,11 +191,12 @@ def mint_pull_token(repo_path: str, ghcr_token: str | None) -> str | None:
     """
     if not ghcr_token:
         return None
+    safe_repo = urllib.parse.quote(repo_path, safe="")
     url = (
         f"https://{GHCR_REGISTRY}/token?service={GHCR_REGISTRY}"
-        f"&scope=repository:{repo_path}:pull"
+        f"&scope=repository:{safe_repo}:pull"
     )
-    req = urllib.request.Request(  # noqa: S310 -- URL is constructed from constants + caller-provided repo path
+    req = urllib.request.Request(  # noqa: S310 -- URL is constructed from constants + percent-encoded repo path
         url,
         headers={"Authorization": f"Basic {_basic_auth('x-access-token', ghcr_token)}"},
     )
@@ -228,8 +240,15 @@ def resolve_digest(
     Returns ``(digest, None)`` on success, or ``(None, error_message)``
     on failure. Distinguishes 404 (tag missing) from 200-without-digest
     (registry corruption / unexpected response).
+
+    Both ``repo_path`` and ``tag`` are pre-validated against anchored
+    OCI grammar regexes; the additional ``urllib.parse.quote`` calls
+    below double down on path-component encoding so CodeQL's
+    ``py/partial-ssrf`` data-flow recognises the URL as sanitised.
     """
-    url = f"https://{GHCR_REGISTRY}/v2/{repo_path}/manifests/{tag}"
+    safe_repo = urllib.parse.quote(repo_path, safe="/")
+    safe_tag = urllib.parse.quote(tag, safe="")
+    url = f"https://{GHCR_REGISTRY}/v2/{safe_repo}/manifests/{safe_tag}"
     headers = {"Accept": MANIFEST_ACCEPT, **auth_header}
     status, response_headers, _ = _request("HEAD", url, headers)
     if status != HTTP_OK:
@@ -245,11 +264,19 @@ def signature_present(
     digest: str,
     auth_header: dict[str, str],
 ) -> bool:
-    """Return True if a cosign signature referrer artifact exists for this digest."""
+    """Return True if a cosign signature referrer artifact exists for this digest.
+
+    ``repo_path`` is pre-validated; ``digest`` is checked to start with
+    the literal ``sha256:`` prefix and the hex tail is character-class
+    constrained by definition. The ``urllib.parse.quote`` call closes
+    the CodeQL ``py/partial-ssrf`` data-flow.
+    """
     if not digest.startswith("sha256:"):
         return False
-    sig_tag = "sha256-" + digest[len("sha256:") :]
-    url = f"https://{GHCR_REGISTRY}/v2/{repo_path}/manifests/{sig_tag}"
+    sig_tag = "sha256-" + digest.removeprefix("sha256:")
+    safe_repo = urllib.parse.quote(repo_path, safe="/")
+    safe_sig_tag = urllib.parse.quote(sig_tag, safe="")
+    url = f"https://{GHCR_REGISTRY}/v2/{safe_repo}/manifests/{safe_sig_tag}"
     headers = {"Accept": SIG_ACCEPT, **auth_header}
     status, _, _ = _request("HEAD", url, headers)
     return status == HTTP_OK
@@ -331,21 +358,24 @@ def _parse_args() -> argparse.Namespace:
 def _verify_pair(
     pair: ImageTag,
     repo_prefix: str,
-    ghcr_token: str | None,
+    auth_header: dict[str, str],
 ) -> tuple[str | None, str | None]:
     """Verify a single ``(image, tag)`` pair against the registry.
 
+    Caller supplies the pre-built ``auth_header`` (one per repo_path,
+    cached by ``main``) so we don't mint a fresh GHCR pull token for
+    every tag of the same image -- three tags of one image now share
+    one token mint instead of three.
+
     Returns ``(digest, None)`` on a fully-signed result, ``(None, error)``
-    on any failure. Network failures across the three constituent calls
-    (``mint_pull_token``, ``resolve_digest``, ``signature_present``) are
-    captured and returned as the error string instead of propagating, so
-    a transient failure on one pair doesn't halt verification of the
-    rest of the inventory.
+    on any failure. Network failures across the two constituent calls
+    (``resolve_digest``, ``signature_present``) are captured and
+    returned as the error string instead of propagating, so a transient
+    failure on one pair doesn't halt verification of the rest of the
+    inventory.
     """
     repo_path = f"{repo_prefix}{pair.image}"
     try:
-        reg_token = mint_pull_token(repo_path, ghcr_token)
-        auth_header = {"Authorization": f"Bearer {reg_token}"} if reg_token else {}
         digest, err = resolve_digest(repo_path, pair.tag, auth_header)
         if digest is None:
             return None, err
@@ -358,6 +388,34 @@ def _verify_pair(
     except _NetworkExceptions as exc:
         return None, f"network error ({type(exc).__name__}: {exc})"
     return digest, None
+
+
+def _auth_header_for_repo(
+    repo_path: str,
+    ghcr_token: str | None,
+    cache: dict[str, dict[str, str]],
+) -> tuple[dict[str, str] | None, str | None]:
+    """Return the cached Bearer header for ``repo_path``, minting on miss.
+
+    Returns ``(header, None)`` on success, ``(None, error_message)`` if
+    the token mint failed (network error). The cache is mutated in
+    place so subsequent calls for the same ``repo_path`` reuse the
+    minted token.
+    """
+    if repo_path in cache:
+        return cache[repo_path], None
+    try:
+        reg_token = mint_pull_token(repo_path, ghcr_token)
+    except _NetworkExceptions as exc:
+        return (
+            None,
+            f"failed to mint pull token ({type(exc).__name__}: {exc})",
+        )
+    header: dict[str, str] = (
+        {"Authorization": f"Bearer {reg_token}"} if reg_token else {}
+    )
+    cache[repo_path] = header
+    return header, None
 
 
 def _print_failures(failures: list[str]) -> None:
@@ -384,9 +442,16 @@ def main() -> int:
 
     failures: list[str] = []
     pair_to_digest: dict[ImageTag, str] = {}
+    auth_cache: dict[str, dict[str, str]] = {}
 
     for pair in pairs:
-        digest, err = _verify_pair(pair, args.repo_prefix, ghcr_token)
+        repo_path = f"{args.repo_prefix}{pair.image}"
+        auth_header, auth_err = _auth_header_for_repo(repo_path, ghcr_token, auth_cache)
+        if auth_err is not None:
+            failures.append(f"{pair}: {auth_err}")
+            continue
+        assert auth_header is not None  # noqa: S101 -- err is None, so header is set
+        digest, err = _verify_pair(pair, args.repo_prefix, auth_header)
         if err is not None:
             failures.append(f"{pair}: {err}")
             if digest is not None:
@@ -394,7 +459,6 @@ def main() -> int:
             continue
         assert digest is not None  # noqa: S101 -- err is None, so digest is set
         pair_to_digest[pair] = digest
-        repo_path = f"{args.repo_prefix}{pair.image}"
         print(f"OK  {GHCR_REGISTRY}/{repo_path}:{pair.tag} -> {digest} (signed)")
 
     failures.extend(_check_per_image_convergence(pair_to_digest))

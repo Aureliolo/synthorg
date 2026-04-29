@@ -286,23 +286,23 @@ class TestVerifyPair:
     def test_network_error_becomes_failure_message(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Mock mint_pull_token to raise a URLError; _verify_pair should
+        # Mock resolve_digest to raise a URLError; _verify_pair should
         # catch it and return a structured failure message rather than
         # propagating.
         import urllib.error
 
         err = urllib.error.URLError("connection refused")
 
-        def boom(*_args: object, **_kwargs: object) -> str | None:
+        def boom(*_args: object, **_kwargs: object) -> tuple[str | None, str | None]:
             raise err
 
-        monkeypatch.setattr(gate, "mint_pull_token", boom)
+        monkeypatch.setattr(gate, "resolve_digest", boom)
         pair = gate.ImageTag(image="backend", tag="dev")
-        digest, err = gate._verify_pair(pair, "aureliolo/synthorg-", "fake-token")
+        digest, returned_err = gate._verify_pair(pair, "aureliolo/synthorg-", {})
         assert digest is None
-        assert err is not None
-        assert "URLError" in err
-        assert "connection refused" in err
+        assert returned_err is not None
+        assert "URLError" in returned_err
+        assert "connection refused" in returned_err
 
     def test_signature_missing_becomes_failure_message(
         self, monkeypatch: pytest.MonkeyPatch
@@ -310,13 +310,12 @@ class TestVerifyPair:
         # If resolve_digest succeeds but signature_present returns False,
         # _verify_pair must surface that as an error and embed the
         # expected referrer-tag for diagnosability.
-        monkeypatch.setattr(gate, "mint_pull_token", lambda *_a, **_k: None)
         monkeypatch.setattr(
             gate, "resolve_digest", lambda *_a, **_k: ("sha256:abc123", None)
         )
         monkeypatch.setattr(gate, "signature_present", lambda *_a, **_k: False)
         pair = gate.ImageTag(image="backend", tag="dev")
-        digest, err = gate._verify_pair(pair, "aureliolo/synthorg-", None)
+        digest, err = gate._verify_pair(pair, "aureliolo/synthorg-", {})
         assert digest is None
         assert err is not None
         assert "no cosign signature artifact" in err
@@ -325,12 +324,69 @@ class TestVerifyPair:
     def test_success_returns_digest_and_no_error(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(gate, "mint_pull_token", lambda *_a, **_k: None)
         monkeypatch.setattr(
             gate, "resolve_digest", lambda *_a, **_k: ("sha256:deadbeef", None)
         )
         monkeypatch.setattr(gate, "signature_present", lambda *_a, **_k: True)
         pair = gate.ImageTag(image="backend", tag="dev")
-        digest, err = gate._verify_pair(pair, "aureliolo/synthorg-", None)
+        digest, err = gate._verify_pair(pair, "aureliolo/synthorg-", {})
         assert digest == "sha256:deadbeef"
         assert err is None
+
+
+@pytest.mark.unit
+class TestAuthHeaderForRepo:
+    """_auth_header_for_repo caches the per-repo Bearer header."""
+
+    def test_caches_header_across_calls(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # mint_pull_token must be called only once per repo_path even
+        # when the helper is invoked many times.
+        call_count = 0
+
+        def counting_mint(*_a: object, **_k: object) -> str | None:
+            nonlocal call_count
+            call_count += 1
+            return f"minted-token-{call_count}"
+
+        monkeypatch.setattr(gate, "mint_pull_token", counting_mint)
+        cache: dict[str, dict[str, str]] = {}
+        h1, e1 = gate._auth_header_for_repo("aureliolo/synthorg-backend", "tok", cache)
+        h2, e2 = gate._auth_header_for_repo("aureliolo/synthorg-backend", "tok", cache)
+        h3, e3 = gate._auth_header_for_repo("aureliolo/synthorg-sandbox", "tok", cache)
+        assert e1 is None
+        assert e2 is None
+        assert e3 is None
+        assert h1 == h2  # same repo: same cached header
+        assert h1 != h3  # different repo: different mint
+        assert call_count == 2  # one mint per unique repo
+
+    def test_returns_empty_header_when_no_token(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(gate, "mint_pull_token", lambda *_a, **_k: None)
+        cache: dict[str, dict[str, str]] = {}
+        header, err = gate._auth_header_for_repo(
+            "aureliolo/synthorg-backend", None, cache
+        )
+        assert err is None
+        assert header == {}
+
+    def test_network_error_becomes_failure_message(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import urllib.error
+
+        err = urllib.error.URLError("dns failure")
+
+        def boom(*_a: object, **_k: object) -> str | None:
+            raise err
+
+        monkeypatch.setattr(gate, "mint_pull_token", boom)
+        cache: dict[str, dict[str, str]] = {}
+        header, returned_err = gate._auth_header_for_repo(
+            "aureliolo/synthorg-backend", "tok", cache
+        )
+        assert header is None
+        assert returned_err is not None
+        assert "URLError" in returned_err
+        assert "dns failure" in returned_err

@@ -1002,7 +1002,8 @@ jobs:
         with:
           name: pushed-tags-web
           path: pushed-tags-web.txt
-          retention-days: 1
+          # Match the publish-image action; see its rationale.
+          retention-days: 7
 
   build-sandbox:
     name: Build Sandbox

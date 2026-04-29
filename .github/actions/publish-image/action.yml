@@ -362,4 +362,7 @@ runs:
       with:
         name: pushed-tags-${{ inputs.image-name }}
         path: pushed-tags-${{ inputs.image-name }}.txt
-        retention-days: 1
+        # 7d gives the verify-signatures aggregator headroom for
+        # retries / delayed downstream jobs (e.g. update-release on tag
+        # pushes). Original 1d cut it close to the workflow lifetime.
+        retention-days: 7

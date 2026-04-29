@@ -222,4 +222,5 @@ runs:
       with:
         name: pushed-tags-${{ inputs.image-name }}-base
         path: pushed-tags-${{ inputs.image-name }}-base.txt
-        retention-days: 1
+        # Match the publish-image action; see its rationale.
+        retention-days: 7
