@@ -62,7 +62,12 @@ coverage.xml
 .idea/
 .vscode/
 
-# CI/build utility scripts (not needed in Docker builds)
+# CI/build utility scripts (not needed in Docker builds).
+# Two files are allowlisted because the Dockerfile invokes them at
+# build time:
+#   * export_openapi.py    -- emits the OpenAPI schema baked into the image.
+#   * embed_logfire_token.py -- rewrites the embedded telemetry token
+#     when LOGFIRE_PROJECT_TOKEN is supplied as a --build-arg (#1666 A-3).
 scripts/
 !scripts/export_openapi.py
 !scripts/embed_logfire_token.py

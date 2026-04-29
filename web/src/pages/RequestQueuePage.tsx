@@ -120,9 +120,15 @@ export default function RequestQueuePage() {
   // requests subsystem is not configured. Backend route is also not
   // registered (returns 404). The early-return path that renders the
   // EmptyState lives below all hooks so React's hook-order rules
-  // stay satisfied across renders.
+  // stay satisfied across renders. While ``capLoading`` is true we
+  // do nothing -- the skeleton branch below covers the in-flight
+  // window so the page never flashes "No requests yet" against an
+  // unconfigured deployment.
   useEffect(() => {
-    if (capLoading || !capabilities.requests) {
+    if (capLoading) {
+      return
+    }
+    if (!capabilities.requests) {
       // Defer the loading flip out of the same synchronous render
       // frame so eslint-react's set-state-in-effect rule stays
       // satisfied and React batches one render instead of two.
@@ -149,7 +155,11 @@ export default function RequestQueuePage() {
     )
   }
 
-  if (loading && requests.length === 0) {
+  // Hold the skeleton until capabilities resolve AND the first refresh
+  // either lands data or sets loading=false. This prevents a one-frame
+  // "No requests yet" flash on an unconfigured-but-not-yet-resolved
+  // deployment.
+  if (capLoading || (loading && requests.length === 0)) {
     return (
       <div className="space-y-section-gap">
         <ListHeader title="Request Queue" />

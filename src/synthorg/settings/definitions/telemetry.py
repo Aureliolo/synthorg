@@ -1,6 +1,6 @@
 """Telemetry namespace setting definitions.
 
-Anonymous Logfire telemetry is opt-in and off by default. The
+Anonymous product telemetry is opt-in and off by default. The
 write-only project token is **embedded** in the release wheel at
 build time (``synthorg.telemetry.reporters._embedded_token``);
 operators never configure or paste it. They flip
@@ -22,9 +22,9 @@ _r.register(
         type=SettingType.BOOLEAN,
         default="false",
         description=(
-            "Send anonymous usage telemetry to the SynthOrg-owned"
-            " Logfire project. Token is embedded; operators only"
-            " toggle this flag."
+            "Send anonymous product telemetry to the SynthOrg-owned"
+            " telemetry backend. Token is embedded at build time;"
+            " operators only toggle this flag."
         ),
         group="General",
         level=SettingLevel.BASIC,

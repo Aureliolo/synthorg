@@ -4,12 +4,14 @@ import type { ClientRequest, RequestStatus } from '@/api/endpoints/clients'
 
 import { RequestCard } from './request-card'
 
+const SAMPLE_REQUEST_ID = '11111111-2222-3333-4444-555555555555'
+
 function buildRequest(
   status: RequestStatus,
   overrides: Partial<ClientRequest> = {},
 ): ClientRequest {
   return {
-    request_id: '11111111-2222-3333-4444-555555555555',
+    request_id: SAMPLE_REQUEST_ID,
     client_id: 'acme-corp',
     requirement: {
       title: 'Add CSV export to the dashboard',
@@ -90,6 +92,6 @@ export const Cancelled: Story = {
 export const PendingFlightDisablesActions: Story = {
   args: {
     request: buildRequest('triaging'),
-    pending: { '11111111-2222-3333-4444-555555555555': true },
+    pending: { [SAMPLE_REQUEST_ID]: true },
   },
 }

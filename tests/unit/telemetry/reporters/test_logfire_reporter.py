@@ -1,14 +1,14 @@
-"""Regression tests for ``LogfireReporter``.
+"""Regression tests for the telemetry-backend reporter.
 
 The collector's ``_send`` helper only flips the "delivered" return
-value to ``False`` when ``report()`` raises. Earlier revisions of
-the Logfire reporter logged and swallowed backend exceptions, so
-failed writes surfaced as successful deliveries (``*_SENT``
-debug events fired regardless). These tests lock in the
-propagate-don't-swallow contract so that regression cannot sneak
-back in. The reporter does **not** log ``TELEMETRY_REPORT_FAILED``
-itself -- :meth:`TelemetryCollector._send` owns that alert and
-duplicate logs would double-count failures.
+value to ``False`` when ``report()`` raises. The reporter must
+propagate backend exceptions instead of logging-and-swallowing
+them: a swallowed exception turns a failed write into a
+successful-looking delivery (``*_SENT`` debug events still fire),
+which is the bug class these tests lock down. The reporter does
+**not** log ``TELEMETRY_REPORT_FAILED`` itself --
+:meth:`TelemetryCollector._send` owns that alert and duplicate
+logs would double-count failures.
 """
 
 from datetime import UTC, datetime

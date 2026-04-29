@@ -154,4 +154,11 @@ class TestMain:
         """Sanity check: the default target path resolves to the in-repo file."""
         target = embed_module._resolve_target()
         assert target.exists()
-        assert target.name == "_embedded_token.py"
+        # Match the full repo-relative path so a future rename or stray
+        # ``_embedded_token.py`` elsewhere in the tree cannot satisfy
+        # this assertion. The embedder MUST land on this exact file.
+        expected_relative = Path(
+            "src/synthorg/telemetry/reporters/_embedded_token.py",
+        )
+        assert target.is_absolute()
+        assert target.resolve() == (_REPO_ROOT / expected_relative).resolve()

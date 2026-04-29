@@ -1,4 +1,4 @@
-"""Embedded Logfire write-only project token.
+"""Embedded write-only telemetry-backend project token.
 
 Sentinel value lives in source. The release workflow rewrites this
 file in-place before ``uv build`` so the published wheel carries

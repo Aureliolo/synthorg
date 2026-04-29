@@ -283,23 +283,16 @@ class TelemetryCollector:
                 snapshot; used by :meth:`shutdown` to emit the final
                 session summary.
         """
-        # Env var overrides config file (documented priority).
-        # ``SYNTHORG_TELEMETRY_ENABLED`` is the env-layer surface for
-        # the registered ``telemetry.enabled`` setting; the registry
-        # entry's ``env_var_override`` mirrors this name so the
-        # /settings API and the boot path see the same source.
-        env_val = os.environ.get("SYNTHORG_TELEMETRY_ENABLED", "").strip().lower()
-        if env_val in ("true", "1", "yes"):
-            config = config.model_copy(update={"enabled": True})
-        elif env_val in ("false", "0", "no"):
-            config = config.model_copy(update={"enabled": False})
-        elif env_val:
-            logger.warning(
-                TELEMETRY_REPORT_FAILED,
-                detail="invalid_env_value",
-                error_code="SYNTHORG_TELEMETRY_ENABLED_INVALID",
-            )
-
+        # ``config.enabled`` is taken as-given; precedence resolution
+        # for the registered ``telemetry.enabled`` setting (DB > env >
+        # YAML > default) happens upstream in
+        # ``synthorg.api.app_builders._build_telemetry_collector``,
+        # which reads ``SYNTHORG_TELEMETRY_ENABLED`` once and folds the
+        # value into the parsed ``TelemetryConfig`` before
+        # construction. This collector intentionally does not
+        # re-apply precedence here so the audit trail stays single-
+        # sourced and a future routing through ``SettingsService`` /
+        # ``ConfigResolver`` can replace the env read in one place.
         # Resolve the effective deployment-environment tag through
         # the four-level chain (operator override -> CI detection ->
         # Dockerfile-baked default -> parsed config). See
@@ -331,6 +324,12 @@ class TelemetryCollector:
         # safely on a different loop without re-validating that
         # contract end-to-end.
         self._closed: bool = False
+        # Tracks whether ``start()`` deliberately bailed out because the
+        # build artifact ships the sentinel token. Set so ``shutdown()``
+        # can skip the misleading ``TELEMETRY_SHUTDOWN_WITHOUT_START``
+        # warning that would otherwise fire (deployment_id stays None
+        # in this branch by design, not by failure).
+        self._token_missing_at_start: bool = False
 
         if not config.enabled:
             # Operator-visible signal that the collector booted in the
@@ -418,6 +417,7 @@ class TelemetryCollector:
                     ),
                     backend=self._config.backend.value,
                 )
+                self._token_missing_at_start = True
                 return
             if self._heartbeat_task is not None and not self._heartbeat_task.done():
                 return
@@ -506,7 +506,14 @@ class TelemetryCollector:
             # the new lifecycle, so guard explicitly. Log a WARNING
             # in the unloaded-but-enabled branch so operators have a
             # signal that telemetry initialisation failed silently.
-            if self._config.enabled and self._deployment_id is None:
+            # The token-missing branch is excluded: ``start()`` already
+            # logged a single-shot ERROR (TELEMETRY_TOKEN_MISSING) and
+            # deployment_id is None by design, not by failure.
+            if (
+                self._config.enabled
+                and self._deployment_id is None
+                and not self._token_missing_at_start
+            ):
                 logger.warning(
                     TELEMETRY_SHUTDOWN_WITHOUT_START,
                     note="shutdown invoked before deployment ID loaded",

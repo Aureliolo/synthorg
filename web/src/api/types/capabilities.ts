@@ -21,10 +21,10 @@ export interface Capabilities {
   /** A2A peer registry / client are configured. */
   a2a: boolean
   /**
-   * Anonymous Logfire telemetry is enabled and the reporter can
+   * Anonymous product telemetry is enabled and the reporter can
    * actually deliver.  ``true`` only when ``telemetry.enabled`` is
-   * on AND the embedded token is present AND ``logfire.configure``
-   * succeeded.
+   * on AND the embedded token is present AND the backend SDK
+   * configured successfully.
    */
   telemetry: boolean
   /**

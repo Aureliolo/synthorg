@@ -38,11 +38,20 @@ def _resolve_target() -> Path:
 
 
 def embed(token: str, target: Path) -> None:
-    """Rewrite the sentinel in *target* to *token* in place.
+    """Rewrite the sentinel string literal in *target* to *token* in place.
+
+    The sentinel lives inside a quoted Python string literal. A naive
+    ``str.replace`` would inject the token text directly into the
+    source, which breaks the literal when the token contains a quote,
+    a backslash escape, or a newline. ``repr()`` produces a properly
+    escaped Python string literal that drops in safely regardless of
+    the token's contents -- the surrounding quotes from the existing
+    sentinel literal are also replaced so the result remains
+    syntactically valid.
 
     Raises:
-        ValueError: If the sentinel is not found (already embedded
-            or wrong target file).
+        ValueError: If the quoted sentinel is not found (already
+            embedded or wrong target file).
         OSError: If the file cannot be read or written.
     """
     if not token or not token.strip():
@@ -55,7 +64,18 @@ def embed(token: str, target: Path) -> None:
             "refusing to overwrite an already-embedded token"
         )
         raise ValueError(msg)
-    rewritten = content.replace(_TOKEN_SENTINEL, token, 1)
+    # Match the sentinel WITH its surrounding quote so we replace the
+    # entire string literal with a freshly-quoted ``repr(token)``. The
+    # constants module always quotes the sentinel with double quotes
+    # (preserved by ruff format), so the pattern is exact.
+    quoted_sentinel = f'"{_TOKEN_SENTINEL}"'
+    if quoted_sentinel not in content:
+        msg = (
+            f"quoted sentinel {quoted_sentinel!r} not found in {target}; "
+            "refusing to overwrite an already-embedded token"
+        )
+        raise ValueError(msg)
+    rewritten = content.replace(quoted_sentinel, repr(token), 1)
     target.write_text(rewritten, encoding="utf-8")
 
 

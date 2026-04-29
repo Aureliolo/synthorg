@@ -83,19 +83,24 @@ class CapabilitiesController(Controller):
     ) -> ApiResponse[CapabilitiesResponse]:
         """Build the capabilities snapshot from the live app state."""
         app_state: AppState = state.app_state
-        # Reading directly from the live ``has_*`` predicates so the
-        # source of truth is the app state's wiring decisions rather
-        # than a parallel boolean cache that could drift. ``webhooks``
-        # and ``a2a`` use the nullable accessors directly because the
-        # state mixin returns ``None`` (webhook bridge) or raises
-        # 503 (a2a) on absence; ``is not None`` covers both shapes
-        # without a try/except.
+        # Read directly from the live runtime-wiring signals so each
+        # flag reflects what's actually plumbed, not what the config
+        # asked for. ``a2a`` checks the actual peer registry (the
+        # collaborator the gateway routes through) instead of
+        # ``config.a2a.enabled``; if auto-wire silently failed (e.g.
+        # missing ``connection_catalog``), the config flag would still
+        # be ``True`` while the subsystem is unavailable, breaking the
+        # capability-gating contract. ``webhooks`` uses the nullable
+        # accessor directly. ``a2a_peer_registry`` raises 503 when
+        # unset, so we read the private slot via ``getattr`` with a
+        # safe default to avoid the exception inside the response
+        # path.
         telemetry_functional = (
             app_state.has_telemetry_collector
             and app_state.telemetry_collector.is_functional
         )
         webhook_bridge = app_state.webhook_event_bridge
-        a2a_enabled = app_state.config.a2a.enabled
+        a2a_wired = getattr(app_state, "_a2a_peer_registry", None) is not None
         return ApiResponse(
             data=CapabilitiesResponse(
                 simulations=app_state.has_client_simulation_state,
@@ -103,7 +108,7 @@ class CapabilitiesController(Controller):
                 ontology=app_state.has_ontology_service,
                 tunnel=app_state.has_tunnel_provider,
                 webhooks=webhook_bridge is not None,
-                a2a=a2a_enabled,
+                a2a=a2a_wired,
                 telemetry=telemetry_functional,
                 integrations=app_state.config.integrations.enabled,
             ),

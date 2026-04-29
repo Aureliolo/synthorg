@@ -22,6 +22,10 @@ from structlog.stdlib import ProcessorFormatter
 
 from synthorg.observability.config import RotationConfig, SinkConfig
 from synthorg.observability.enums import RotationStrategy, SinkType
+from synthorg.observability.events.api import (
+    API_REQUEST_COMPLETED,
+    API_REQUEST_STARTED,
+)
 
 # ── Flushing file handlers ────────────────────────────────────────
 # Standard RotatingFileHandler and WatchedFileHandler buffer writes,
@@ -193,7 +197,7 @@ SINK_ROUTING: MappingProxyType[str, tuple[str, ...]] = MappingProxyType(
 # bury every other event.
 SINK_EVENT_EXCLUDES: MappingProxyType[str, tuple[str, ...]] = MappingProxyType(
     {
-        "synthorg.log": ("api.request.started", "api.request.completed"),
+        "synthorg.log": (API_REQUEST_STARTED, API_REQUEST_COMPLETED),
     }
 )
 

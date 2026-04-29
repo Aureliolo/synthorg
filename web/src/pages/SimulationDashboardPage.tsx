@@ -79,9 +79,15 @@ export default function SimulationDashboardPage() {
   // listSimulations() would log a 404 in the audit trail per the
   // issue #1666 B-3 contract. The early-return path that renders the
   // EmptyState is below all hooks so React's hook-order rules stay
-  // satisfied across renders.
+  // satisfied across renders. While ``capLoading`` is true the
+  // skeleton branch below covers the in-flight window so the page
+  // never flashes "No simulation runs yet" against an unconfigured
+  // deployment.
   useEffect(() => {
-    if (capLoading || !capabilities.simulations) {
+    if (capLoading) {
+      return
+    }
+    if (!capabilities.simulations) {
       // Defer the loading flip out of the same synchronous render
       // frame so eslint-react's set-state-in-effect rule stays
       // satisfied and React batches one render instead of two.
@@ -108,7 +114,11 @@ export default function SimulationDashboardPage() {
     )
   }
 
-  if (loading && runs.length === 0) {
+  // Hold the skeleton until capabilities resolve AND the first refresh
+  // either lands data or sets loading=false. This prevents a one-frame
+  // "No simulation runs yet" flash on an unconfigured-but-not-yet-
+  // resolved deployment.
+  if (capLoading || (loading && runs.length === 0)) {
     return (
       <div className="space-y-section-gap">
         <ListHeader title="Simulations" />

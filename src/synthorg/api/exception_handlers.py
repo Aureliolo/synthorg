@@ -48,6 +48,7 @@ from synthorg.core.error_taxonomy import (
     category_type_uri,
 )
 from synthorg.core.persistence_errors import (
+    ConstraintViolationError,
     DuplicateRecordError,
     PersistenceError,
     RecordNotFoundError,
@@ -807,39 +808,23 @@ def handle_http_exception(
     )
 
 
-# Lazy-import psycopg.errors so SQLite-only test runs and dev installs
-# without psycopg are unaffected.  When psycopg is not importable, the
-# IntegrityError handler entry is omitted from the table and any leak
-# of an actual ``psycopg.errors.IntegrityError`` falls through to the
-# generic ``Exception -> handle_unexpected`` (500) path -- which is the
-# same behaviour as before this fix.  When psycopg IS importable, the
-# entry maps every IntegrityError subclass (ForeignKeyViolation,
-# UniqueViolation, NotNullViolation, ...) to the validation 400 path.
-_PSYCOPG_INTEGRITY_HANDLER: tuple[type[Exception], object] | None = None
-try:
-    import psycopg.errors as _psycopg_errors  # lint-allow: persistence-boundary -- HTTP 400 backstop for #1666 B-1  # noqa: E501
-
-    _PSYCOPG_INTEGRITY_HANDLER = (
-        _psycopg_errors.IntegrityError,
-        handle_persistence_integrity_error,
-    )
-except ImportError:
-    _PSYCOPG_INTEGRITY_HANDLER = None
-
-
-# Declarative entry list for ``EXCEPTION_HANDLERS``. The optional
-# psycopg.errors.IntegrityError entry is filtered out of the
-# ``MappingProxyType`` build below when the import failed, so the
-# whole table is one expression: a tuple of (type | None, handler)
-# pairs followed by a single dict-comprehension filter. Litestar
-# resolves handlers by walking the raised exception's MRO and picks
-# the first matching type, so dict insertion order does not affect
-# resolution priority. ``HTTPException`` integer status-code keys
-# are resolved separately by Litestar; this table uses only type
-# keys.
-_HANDLER_ENTRIES: tuple[tuple[type[Exception] | None, object], ...] = (
+# Persistence-layer integrity violations (FK / unique / not-null /
+# generic constraint failures) translate into ``ConstraintViolationError``
+# inside the repository modules; the api layer catches that domain
+# class instead of importing the psycopg driver directly so the HTTP
+# layer stays decoupled from the persistence backend choice. Per the
+# project persistence-boundary rule, ``psycopg`` may only be imported
+# from ``src/synthorg/persistence/``; the previous direct import here
+# was a sanctioned exception kept while the driver-translation path
+# was incomplete -- now that ``ConstraintViolationError`` is the
+# established domain mapping (see
+# ``synthorg.persistence.postgres.approval_repo`` for the canonical
+# translation pattern), the api layer registers the domain class and
+# the driver import is no longer needed.
+_HANDLER_ENTRIES: tuple[tuple[type[Exception], object], ...] = (
     (RecordNotFoundError, handle_record_not_found),
     (DuplicateRecordError, handle_duplicate_record),
+    (ConstraintViolationError, handle_persistence_integrity_error),
     (PersistenceError, handle_persistence_error),
     (NotAuthorizedException, handle_not_authorized),
     (PermissionDeniedException, handle_permission_denied),
@@ -847,13 +832,6 @@ _HANDLER_ENTRIES: tuple[tuple[type[Exception] | None, object], ...] = (
     (InvalidCursorError, handle_invalid_cursor),
     (NotFoundException, handle_not_found),
     (HTTPException, handle_http_exception),
-    # Lazy psycopg import: ``None`` slot when psycopg is unavailable
-    # (SQLite-only test runs); filtered out by the comprehension
-    # below so the entry is simply absent rather than a sentinel.
-    (
-        _PSYCOPG_INTEGRITY_HANDLER[0] if _PSYCOPG_INTEGRITY_HANDLER else None,
-        _PSYCOPG_INTEGRITY_HANDLER[1] if _PSYCOPG_INTEGRITY_HANDLER else None,
-    ),
     # Domain error hierarchies -- MRO dispatch covers every subclass.
     # ``RateLimitError`` is listed explicitly so its narrower 429
     # status takes precedence over the ``ProviderError`` (502) default
@@ -873,6 +851,14 @@ _HANDLER_ENTRIES: tuple[tuple[type[Exception] | None, object], ...] = (
 )
 
 
+# Litestar resolves exception handlers by walking the raised exception's
+# MRO and picks the first matching type, so dict insertion order does
+# not affect resolution priority. ``HTTPException`` integer status-code
+# keys are resolved separately by Litestar; this table uses only type
+# keys. ``ConstraintViolationError`` is registered above
+# ``PersistenceError`` (its parent via ``QueryError``) so the
+# narrower 400 mapping wins for FK / unique violations -- if it were
+# below, MRO would still pick the first match.
 EXCEPTION_HANDLERS: MappingProxyType[type[Exception], object] = MappingProxyType(
     {
         exc_type: handler

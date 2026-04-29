@@ -86,7 +86,7 @@ def _count_event(lines: list[str], event: str) -> int:
     return sum(1 for line in lines if f"'event': '{event}'" in line)
 
 
-@pytest.mark.unit
+@pytest.mark.integration
 class TestSynthorgLogExcludesRequestLifecycle:
     """Issue #1666 A-1: ``synthorg.log`` does not collect request events.
 
@@ -187,6 +187,17 @@ class TestSynthorgLogExcludesRequestLifecycle:
                 method="GET",
                 path="/api/v1/health",
             )
+        for _ in range(2):
+            _emit_structlog_record(
+                handler,
+                name="synthorg.api.middleware",
+                level=logging.INFO,
+                event="api.request.completed",
+                method="GET",
+                path="/api/v1/health",
+                status_code=200,
+                duration_ms=1.4,
+            )
         # An off-prefix logger MUST be excluded by the include filter.
         _emit_structlog_record(
             handler,
@@ -197,13 +208,15 @@ class TestSynthorgLogExcludesRequestLifecycle:
         handler.flush()
 
         lines = _read_lines(tmp_path / "access.log")
-        # Lifecycle events kept (this is the access log's whole job).
+        # Both halves of the lifecycle land in access.log; the catch-all
+        # main log is the one excluding them, not this sink.
         assert _count_event(lines, "api.request.started") == 2
+        assert _count_event(lines, "api.request.completed") == 2
         # Non-api logger excluded by the access.log include filter.
         assert _count_event(lines, "task.run.started") == 0
 
 
-@pytest.mark.unit
+@pytest.mark.integration
 class TestDebugLogExactLevel:
     """Issue #1666 A-2: ``debug.log`` only collects DEBUG-level records.
 
