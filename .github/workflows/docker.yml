@@ -982,6 +982,28 @@ jobs:
           path: sbom-web.cdx.json
           retention-days: 30
 
+      # Emit canonical (image, tag) inventory for `verify-signatures` to
+      # aggregate. Mirrors the publish-image / publish-apko-base pattern.
+      - name: Write pushed-tag inventory
+        env:
+          PUSHED_TAGS: ${{ steps.push.outputs.pushed_tags }}
+        run: |
+          set -euo pipefail
+          OUT="pushed-tags-web.txt"
+          : > "$OUT"
+          while IFS= read -r t; do
+            [ -z "${t}" ] && continue
+            printf 'web:%s\n' "${t}" >> "$OUT"
+          done <<< "${PUSHED_TAGS}"
+          echo "wrote $(wc -l < "$OUT") tag entries to ${OUT}"
+
+      - name: Upload pushed-tag inventory
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pushed-tags-web
+          path: pushed-tags-web.txt
+          retention-days: 1
+
   build-sandbox:
     name: Build Sandbox
     needs: [version, build-sandbox-base, build-sandbox-base-publish]
@@ -1271,68 +1293,37 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Build pushed-tag inventory
+      # Aggregate the (image, tag) inventory directly from the artifacts
+      # each publish job emits via its `Write pushed-tag inventory` /
+      # `Upload pushed-tag inventory` steps. This avoids re-deriving the
+      # metadata-action tag policy in two places (a previous version of
+      # this job mirrored the rules locally and risked silent drift on
+      # future tag-policy changes).
+      - name: Download per-job pushed-tag inventories
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: pushed-tags-*
+          merge-multiple: true
+          path: tag-inventories
+
+      - name: Aggregate pushed-tag inventories
         id: inventory
-        env:
-          APP_VERSION: ${{ needs.version.outputs.app_version }}
         run: |
           set -euo pipefail
-          # Mirrors the metadata-action rules in publish-image/action.yml
-          # and the inline web push step. Keep this in sync if either
-          # changes its tag policy. metadata-action is configured with
-          # `pattern={{version}}` and `pattern={{major}}.{{minor}}`
-          # only -- there is no `{{major}}` (e.g. `0`) tag in our
-          # publish surface.
-          SHA_TAG="sha-${GITHUB_SHA::7}"
-          IS_VTAG=0
-          IS_DEV=0
-          IS_STABLE=0
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            IS_VTAG=1
-            REF_VERSION="${GITHUB_REF_NAME#v}"
-            if [[ "$REF_VERSION" == *-dev.* ]]; then
-              IS_DEV=1
-            else
-              IS_STABLE=1
-            fi
+          if [ ! -d tag-inventories ] || [ -z "$(ls -A tag-inventories 2>/dev/null)" ]; then
+            echo "::error::No pushed-tag inventory artifacts found -- the publish jobs did not emit any."
+            exit 1
           fi
-
-          # Per-image tag list (multi-arch images: backend/sandbox/sidecar/web).
-          # Single-arch images: fine-tune-{cpu,gpu}.
-          common_tags() {
-            echo "$SHA_TAG"
-            if [ "$IS_VTAG" -eq 1 ]; then
-              echo "$REF_VERSION"
-              if [ "$IS_DEV" -eq 1 ]; then
-                echo "dev"
-              else
-                echo "${REF_VERSION%.*}"
-                echo "$APP_VERSION"
-              fi
-            fi
-          }
-
-          {
-            for image in backend web sandbox sidecar fine-tune-cpu fine-tune-gpu; do
-              while IFS= read -r t; do
-                [ -z "$t" ] && continue
-                printf '%s:%s\n' "$image" "$t"
-              done < <(common_tags)
-            done
-            # Base images are sha-tagged only. fine-tune-base is built
-            # amd64-only (per build-fine-tune-base-publish), but it
-            # still publishes a one-member manifest list at the same
-            # tag, so this entry remains correct.
-            for base in backend-base sandbox-base sidecar-base fine-tune-base; do
-              printf '%s:%s\n' "$base" "$SHA_TAG"
-            done
-          } | sort -u > pushed-image-tags.txt
-
+          cat tag-inventories/*.txt | sort -u > pushed-image-tags.txt
+          if [ ! -s pushed-image-tags.txt ]; then
+            echo "::error::Aggregated inventory is empty"
+            exit 1
+          fi
           echo "Pushed inventory:"
           cat pushed-image-tags.txt
 
       - name: Set up Python
-        uses: actions/setup-python@e348410da18d2bccf04a9d585b46d2d57a05cce0 # v6.1.0
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
         with:
           python-version: "3.14"
 

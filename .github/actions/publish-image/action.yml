@@ -337,3 +337,29 @@ runs:
         name: sbom-${{ inputs.image-name }}
         path: sbom-${{ inputs.image-name }}.cdx.json
         retention-days: 30
+
+    # Emit the canonical (image, tag) inventory as an artifact for the
+    # workflow-level `verify-signatures` job to aggregate. Avoids the
+    # drift risk of mirroring the metadata-action tag policy in two
+    # places.
+    - name: Write pushed-tag inventory
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        PUSHED_TAGS: ${{ steps.push.outputs.pushed_tags }}
+      run: |
+        set -euo pipefail
+        OUT="pushed-tags-${IMAGE_NAME}.txt"
+        : > "$OUT"
+        while IFS= read -r t; do
+          [ -z "${t}" ] && continue
+          printf '%s:%s\n' "${IMAGE_NAME}" "${t}" >> "$OUT"
+        done <<< "${PUSHED_TAGS}"
+        echo "wrote $(wc -l < "$OUT") tag entries to ${OUT}"
+
+    - name: Upload pushed-tag inventory
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: pushed-tags-${{ inputs.image-name }}
+        path: pushed-tags-${{ inputs.image-name }}.txt
+        retention-days: 1

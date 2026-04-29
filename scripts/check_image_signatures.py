@@ -38,6 +38,7 @@ import base64
 import dataclasses
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -56,6 +57,30 @@ HTTP_OK = 200
 USAGE_EXIT_CODE = 2
 FAILURE_EXIT_CODE = 1
 
+# Anchored allowlist patterns, applied to every value that flows into
+# the registry URL path. Closes the partial-SSRF window CodeQL flags
+# (rule py/partial-ssrf): the registry hostname is hardcoded to
+# `ghcr.io`, but the path-component values come from CLI args. Without
+# strict validation, a value containing `..`, `/`, NUL, or CR/LF could
+# coerce the request into a different host or endpoint.
+#
+# Repo prefix grammar: lowercase-with-dash component segments separated
+# by `/`, ending in a literal `-` (we use it as a prefix to the image
+# name). Mirrors the OCI distribution spec name grammar
+# (https://github.com/opencontainers/distribution-spec/blob/main/spec.md#pulling-manifests).
+# `\Z` (not `$`) so a trailing newline in user input doesn't slip past
+# the anchor; with `$`, "foo\n" would match the empty string before the
+# newline.
+_REPO_PREFIX_RE = re.compile(
+    r"\A(?:[a-z0-9]+(?:[._-][a-z0-9]+)*/)+(?:[a-z0-9]+(?:[._-][a-z0-9]+)*)-\Z"
+)
+# Image suffix appended to repo_prefix: lowercase Docker name segment
+# with no `/` (already in prefix).
+_IMAGE_NAME_RE = re.compile(r"\A[a-z0-9]+(?:[._-][a-z0-9]+)*\Z")
+# OCI tag grammar: 1-128 chars from [A-Za-z0-9_], plus `.` and `-` but
+# not as the first character.
+_TAG_RE = re.compile(r"\A[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}\Z")
+
 
 @dataclasses.dataclass(frozen=True)
 class ImageTag:
@@ -67,6 +92,45 @@ class ImageTag:
     def __str__(self) -> str:
         """Render as ``image:tag`` for log output."""
         return f"{self.image}:{self.tag}"
+
+
+def _validate_repo_prefix(repo_prefix: str) -> None:
+    """Reject a malformed ``--repo-prefix`` value.
+
+    Raises:
+        SystemExit: with code 2 if the prefix doesn't match the
+            sanctioned grammar.
+    """
+    if not _REPO_PREFIX_RE.match(repo_prefix):
+        msg = (
+            f"error: --repo-prefix {repo_prefix!r} must match the OCI repo grammar "
+            "(lowercase, '.', '_', '-', '/'), and end with '-' (e.g. "
+            "'aureliolo/synthorg-')"
+        )
+        print(msg, file=sys.stderr)
+        raise SystemExit(USAGE_EXIT_CODE)
+
+
+def _validate_image_tag(pair: ImageTag) -> None:
+    """Reject malformed image or tag values.
+
+    Raises:
+        SystemExit: with code 2 if either component fails the OCI grammar.
+    """
+    if not _IMAGE_NAME_RE.match(pair.image):
+        msg = (
+            f"error: image name {pair.image!r} must match OCI name grammar "
+            "(lowercase alphanumerics with '.', '_', '-')"
+        )
+        print(msg, file=sys.stderr)
+        raise SystemExit(USAGE_EXIT_CODE)
+    if not _TAG_RE.match(pair.tag):
+        msg = (
+            f"error: tag {pair.tag!r} must match OCI tag grammar "
+            "(1-128 chars from [A-Za-z0-9_.-], not starting with '.' or '-')"
+        )
+        print(msg, file=sys.stderr)
+        raise SystemExit(USAGE_EXIT_CODE)
 
 
 def parse_image_tag_groups(args: list[str]) -> list[ImageTag]:
@@ -235,8 +299,16 @@ def _check_per_image_convergence(
     return failures
 
 
-def main() -> int:
-    """Parse arguments and verify every ``(image, tag)`` pair."""
+_NetworkExceptions = (
+    urllib.error.URLError,
+    json.JSONDecodeError,
+    UnicodeDecodeError,
+    OSError,
+)
+
+
+def _parse_args() -> argparse.Namespace:
+    """Build the argparse Namespace for this script."""
     parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n", 1)[0])
     parser.add_argument(
         "--repo-prefix",
@@ -253,12 +325,59 @@ def main() -> int:
             "Example: --image-tags backend:dev,backend:sha-abc1234"
         ),
     )
-    args = parser.parse_args()
+    return parser.parse_args()
 
+
+def _verify_pair(
+    pair: ImageTag,
+    repo_prefix: str,
+    ghcr_token: str | None,
+) -> tuple[str | None, str | None]:
+    """Verify a single ``(image, tag)`` pair against the registry.
+
+    Returns ``(digest, None)`` on a fully-signed result, ``(None, error)``
+    on any failure. Network failures across the three constituent calls
+    (``mint_pull_token``, ``resolve_digest``, ``signature_present``) are
+    captured and returned as the error string instead of propagating, so
+    a transient failure on one pair doesn't halt verification of the
+    rest of the inventory.
+    """
+    repo_path = f"{repo_prefix}{pair.image}"
+    try:
+        reg_token = mint_pull_token(repo_path, ghcr_token)
+        auth_header = {"Authorization": f"Bearer {reg_token}"} if reg_token else {}
+        digest, err = resolve_digest(repo_path, pair.tag, auth_header)
+        if digest is None:
+            return None, err
+        if not signature_present(repo_path, digest, auth_header):
+            sig_hex = digest.removeprefix("sha256:")
+            return None, (
+                f"no cosign signature artifact for {digest} "
+                f"(referrer tag sha256-{sig_hex} returned non-200)"
+            )
+    except _NetworkExceptions as exc:
+        return None, f"network error ({type(exc).__name__}: {exc})"
+    return digest, None
+
+
+def _print_failures(failures: list[str]) -> None:
+    """Render the failure block to stderr."""
+    print(file=sys.stderr)
+    print("Signature verification FAILED:", file=sys.stderr)
+    for line in failures:
+        print(f"  - {line}", file=sys.stderr)
+
+
+def main() -> int:
+    """Parse arguments and verify every ``(image, tag)`` pair."""
+    args = _parse_args()
+    _validate_repo_prefix(args.repo_prefix)
     pairs = parse_image_tag_groups(args.image_tags)
     if not pairs:
         print("error: no --image-tags pairs provided", file=sys.stderr)
         return USAGE_EXIT_CODE
+    for pair in pairs:
+        _validate_image_tag(pair)
 
     ghcr_token, token_source = _resolve_token()
     print(f"auth: token source = {token_source}")
@@ -267,44 +386,21 @@ def main() -> int:
     pair_to_digest: dict[ImageTag, str] = {}
 
     for pair in pairs:
-        repo_path = f"{args.repo_prefix}{pair.image}"
-        try:
-            reg_token = mint_pull_token(repo_path, ghcr_token)
-        except (
-            urllib.error.URLError,
-            json.JSONDecodeError,
-            UnicodeDecodeError,
-            OSError,
-        ) as exc:
-            failures.append(
-                f"{pair}: failed to mint pull token ({type(exc).__name__}: {exc})"
-            )
-            continue
-        auth_header = {"Authorization": f"Bearer {reg_token}"} if reg_token else {}
-
-        digest, err = resolve_digest(repo_path, pair.tag, auth_header)
-        if digest is None:
+        digest, err = _verify_pair(pair, args.repo_prefix, ghcr_token)
+        if err is not None:
             failures.append(f"{pair}: {err}")
+            if digest is not None:
+                pair_to_digest[pair] = digest
             continue
-
+        assert digest is not None  # noqa: S101 -- err is None, so digest is set
         pair_to_digest[pair] = digest
-
-        if not signature_present(repo_path, digest, auth_header):
-            failures.append(
-                f"{pair}: no cosign signature artifact for {digest} "
-                f"(referrer tag sha256-{digest[len('sha256:') :]} returned non-200)"
-            )
-            continue
-
+        repo_path = f"{args.repo_prefix}{pair.image}"
         print(f"OK  {GHCR_REGISTRY}/{repo_path}:{pair.tag} -> {digest} (signed)")
 
     failures.extend(_check_per_image_convergence(pair_to_digest))
 
     if failures:
-        print(file=sys.stderr)
-        print("Signature verification FAILED:", file=sys.stderr)
-        for line in failures:
-            print(f"  - {line}", file=sys.stderr)
+        _print_failures(failures)
         return FAILURE_EXIT_CODE
 
     print()

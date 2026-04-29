@@ -203,3 +203,23 @@ runs:
         subject-name: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}-base
         subject-digest: ${{ steps.push.outputs.digest }}
         push-to-registry: true
+
+    # Emit the canonical (image, tag) inventory for the workflow-level
+    # `verify-signatures` job. Base images push exactly one tag.
+    - name: Write pushed-tag inventory
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        TAG: ${{ inputs.tag }}
+      run: |
+        set -euo pipefail
+        OUT="pushed-tags-${IMAGE_NAME}-base.txt"
+        printf '%s-base:%s\n' "${IMAGE_NAME}" "${TAG}" > "$OUT"
+        echo "wrote 1 tag entry to ${OUT}"
+
+    - name: Upload pushed-tag inventory
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: pushed-tags-${{ inputs.image-name }}-base
+        path: pushed-tags-${{ inputs.image-name }}-base.txt
+        retention-days: 1

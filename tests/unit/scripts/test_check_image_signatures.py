@@ -199,3 +199,138 @@ class TestSignaturePresent:
     def test_rejects_empty_digest(self) -> None:
         repo = "aureliolo/synthorg-backend"
         assert gate.signature_present(repo, "", {}) is False
+
+
+@pytest.mark.unit
+class TestRepoPrefixValidator:
+    """_validate_repo_prefix rejects values that could escape the URL path."""
+
+    @pytest.mark.parametrize(
+        "good",
+        [
+            "aureliolo/synthorg-",
+            "library/foo-",
+            "ns/sub.ns/foo-",
+            "a-b/c-d-",
+        ],
+    )
+    def test_accepts_valid(self, good: str) -> None:
+        gate._validate_repo_prefix(good)  # does not raise
+
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            "EVIL/",
+            "aureliolo/synthorg",
+            "..",
+            "../etc-",
+            "aureliolo/synth org-",
+            "aureliolo/synthorg-\n",
+            "/aureliolo/synthorg-",
+            "",
+            "aureliolo//synthorg-",
+            "aureliolo/synthorg-/",
+        ],
+    )
+    def test_rejects_invalid(self, bad: str) -> None:
+        with pytest.raises(SystemExit) as exc:
+            gate._validate_repo_prefix(bad)
+        assert exc.value.code == gate.USAGE_EXIT_CODE
+
+
+@pytest.mark.unit
+class TestImageTagValidator:
+    """_validate_image_tag rejects values that could escape the URL path."""
+
+    @pytest.mark.parametrize(
+        ("image", "tag"),
+        [
+            ("backend", "dev"),
+            ("backend", "0.7.6-dev.9"),
+            ("sandbox", "sha-2531b65"),
+            ("fine-tune-cpu", "0.7.6"),
+            ("fine.tune", "v_1"),
+        ],
+    )
+    def test_accepts_valid(self, image: str, tag: str) -> None:
+        pair = gate.ImageTag(image=image, tag=tag)
+        gate._validate_image_tag(pair)  # does not raise
+
+    @pytest.mark.parametrize(
+        ("image", "tag"),
+        [
+            ("backend/../etc", "dev"),  # path traversal
+            ("backend", "foo\nbar"),  # CRLF
+            ("backend", "foo bar"),  # space
+            ("backend", ".dotstart"),  # leading dot
+            ("backend", "-dashstart"),  # leading dash
+            ("EVIL", "dev"),  # uppercase image
+            ("backend", "x" * 129),  # tag length > 128
+            ("", "dev"),  # empty image
+            ("backend", ""),  # empty tag
+            ("backend", "foo:bar"),  # colon in tag
+            ("backend", "foo/bar"),  # slash in tag
+        ],
+    )
+    def test_rejects_invalid(self, image: str, tag: str) -> None:
+        pair = gate.ImageTag(image=image, tag=tag)
+        with pytest.raises(SystemExit) as exc:
+            gate._validate_image_tag(pair)
+        assert exc.value.code == gate.USAGE_EXIT_CODE
+
+
+@pytest.mark.unit
+class TestVerifyPair:
+    """_verify_pair returns errors instead of raising on transient failures."""
+
+    def test_network_error_becomes_failure_message(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Mock mint_pull_token to raise a URLError; _verify_pair should
+        # catch it and return a structured failure message rather than
+        # propagating.
+        import urllib.error
+
+        err = urllib.error.URLError("connection refused")
+
+        def boom(*_args: object, **_kwargs: object) -> str | None:
+            raise err
+
+        monkeypatch.setattr(gate, "mint_pull_token", boom)
+        pair = gate.ImageTag(image="backend", tag="dev")
+        digest, err = gate._verify_pair(pair, "aureliolo/synthorg-", "fake-token")
+        assert digest is None
+        assert err is not None
+        assert "URLError" in err
+        assert "connection refused" in err
+
+    def test_signature_missing_becomes_failure_message(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # If resolve_digest succeeds but signature_present returns False,
+        # _verify_pair must surface that as an error and embed the
+        # expected referrer-tag for diagnosability.
+        monkeypatch.setattr(gate, "mint_pull_token", lambda *_a, **_k: None)
+        monkeypatch.setattr(
+            gate, "resolve_digest", lambda *_a, **_k: ("sha256:abc123", None)
+        )
+        monkeypatch.setattr(gate, "signature_present", lambda *_a, **_k: False)
+        pair = gate.ImageTag(image="backend", tag="dev")
+        digest, err = gate._verify_pair(pair, "aureliolo/synthorg-", None)
+        assert digest is None
+        assert err is not None
+        assert "no cosign signature artifact" in err
+        assert "sha256-abc123" in err
+
+    def test_success_returns_digest_and_no_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(gate, "mint_pull_token", lambda *_a, **_k: None)
+        monkeypatch.setattr(
+            gate, "resolve_digest", lambda *_a, **_k: ("sha256:deadbeef", None)
+        )
+        monkeypatch.setattr(gate, "signature_present", lambda *_a, **_k: True)
+        pair = gate.ImageTag(image="backend", tag="dev")
+        digest, err = gate._verify_pair(pair, "aureliolo/synthorg-", None)
+        assert digest == "sha256:deadbeef"
+        assert err is None
