@@ -155,11 +155,16 @@ class MessageDispatcher:
     async def dispatch(self, message: Message) -> DispatchResult:
         """Route a message to all matching handlers concurrently.
 
-        Handlers that raise ``Exception`` subclasses are isolated;
-        their errors are captured without affecting other handlers.
-        ``BaseException`` subclasses (e.g. ``KeyboardInterrupt``,
-        ``CancelledError``) propagate through the ``TaskGroup``,
-        cancelling all remaining handlers.
+        Most handler ``Exception`` subclasses are isolated; their
+        errors are captured into the per-handler ``errors`` slot
+        without affecting siblings. ``MemoryError`` and
+        ``RecursionError`` are deliberate carve-outs: the interpreter
+        is in catastrophic state, so they re-raise to abort the
+        ``TaskGroup`` and cancel all remaining handlers rather than
+        being absorbed silently. ``BaseException`` subclasses (e.g.
+        ``KeyboardInterrupt``, ``asyncio.CancelledError``) likewise
+        propagate through the ``TaskGroup``, cancelling all remaining
+        handlers.
 
         Args:
             message: The message to dispatch.

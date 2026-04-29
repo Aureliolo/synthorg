@@ -582,7 +582,7 @@ class PostgresDecisionRepository:
             )
             return DecisionRecord.model_validate(parsed)
         except (KeyError, ValidationError, TypeError, json.JSONDecodeError) as exc:
-            missing = str(exc).strip("'\"") if isinstance(exc, KeyError) else None
+            missing = exc.args[0] if isinstance(exc, KeyError) and exc.args else None
             msg = (
                 f"Failed to deserialize decision record {record_id!r}: "
                 f"{type(exc).__name__}"

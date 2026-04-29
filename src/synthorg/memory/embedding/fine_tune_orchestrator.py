@@ -321,6 +321,11 @@ class FineTuneOrchestrator:
             safe_error = safe_error_description(exc)
             try:
                 await self._mark_failed(self._current_run or run, safe_error)
+            except MemoryError, RecursionError:
+                # Catastrophic interpreter state from the persistence
+                # layer must propagate; do not absorb into the FAILED
+                # fallback path.
+                raise
             except Exception as persist_exc:
                 # Persisting the FAILED state can itself fail (DB outage,
                 # disk full, etc.). Log the persistence failure with full
