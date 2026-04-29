@@ -154,7 +154,11 @@ class HtmlParserTool(BaseWebTool):
     args_model: ClassVar[type[BaseModel] | None] = HtmlParserArgs
 
     def __init__(self) -> None:
-        """Initialize the HTML parser tool with the typed args schema."""
+        """Initialize the HTML parser tool with no extra dependencies.
+
+        The parser is stateless; HTML parsing safety (XXE, billion
+        laughs) is enforced by :class:`HTMLParseGuard` per SEC-1.
+        """
         super().__init__(
             name="html_parser",
             description=(

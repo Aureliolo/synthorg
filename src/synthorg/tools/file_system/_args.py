@@ -20,7 +20,9 @@ Tools wired to consume these models:
   -> :class:`ListDirectoryArgs`
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 
@@ -34,9 +36,10 @@ _ARGS_CONFIG = ConfigDict(
 class ReadFileArgs(BaseModel):
     """Args for ``read_file``.
 
-    Cross-field constraint (``start_line <= end_line`` when both are
-    set) is enforced inside the tool body because the LLM-facing error
-    message is more useful than Pydantic's generic complaint.
+    Both ``start_line`` and ``end_line`` are 1-based inclusive.  When
+    both are set, ``start_line <= end_line`` is enforced at validation
+    time so a malformed request is rejected at the boundary; the
+    error reports the offending field for the LLM caller.
     """
 
     model_config = _ARGS_CONFIG
@@ -52,6 +55,20 @@ class ReadFileArgs(BaseModel):
         ge=1,
         description="Last line to read (1-based inclusive)",
     )
+
+    @model_validator(mode="after")
+    def _check_line_range(self) -> Self:
+        """Reject ``start_line > end_line`` when both are supplied."""
+        if (
+            self.start_line is not None
+            and self.end_line is not None
+            and self.start_line > self.end_line
+        ):
+            msg = (
+                f"start_line ({self.start_line}) must be <= end_line ({self.end_line})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class WriteFileArgs(BaseModel):

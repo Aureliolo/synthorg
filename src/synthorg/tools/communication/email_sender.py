@@ -69,7 +69,13 @@ class EmailSenderTool(BaseCommunicationTool):
         *,
         config: CommunicationToolsConfig | None = None,
     ) -> None:
-        """Initialize the email sender tool with the typed args schema."""
+        """Initialize the email sender tool.
+
+        Args:
+            config: Communication tool configuration with email/SMTP
+                settings, recipient-count caps, and allowlist.
+                ``None`` falls back to defaults.
+        """
         super().__init__(
             name="email_sender",
             description=(

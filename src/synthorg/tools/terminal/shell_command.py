@@ -45,7 +45,14 @@ class ShellCommandTool(BaseTerminalTool):
     args_model: ClassVar[type[BaseModel] | None] = ShellCommandArgs
 
     def __init__(self, **kwargs: Any) -> None:
-        """Initialize the shell command tool with the typed args schema."""
+        """Initialize the shell command tool.
+
+        Args:
+            **kwargs: Forwarded to :class:`BaseTerminalTool`. Typically
+                includes ``sandbox`` (sandboxed execution backend) and
+                ``config`` (terminal-tool configuration with
+                allowlist/blocklist + timeouts).
+        """
         super().__init__(
             name="shell_command",
             description=(

@@ -79,7 +79,15 @@ class NotificationSenderTool(BaseCommunicationTool):
         dispatcher: NotificationDispatcherProtocol | None = None,
         config: CommunicationToolsConfig | None = None,
     ) -> None:
-        """Initialize the notification sender tool with the typed args schema."""
+        """Initialize the notification sender tool.
+
+        Args:
+            dispatcher: Notification dispatcher fanning out to
+                registered sinks (console / email / Slack / ntfy).
+                ``None`` makes ``execute`` return a configuration error.
+            config: Communication tool configuration. ``None`` falls
+                back to defaults.
+        """
         super().__init__(
             name="notification_sender",
             description=(

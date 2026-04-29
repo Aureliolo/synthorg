@@ -64,7 +64,17 @@ class HttpRequestTool(BaseWebTool):
         max_response_bytes: int = 1_048_576,
         request_timeout: float = 30.0,
     ) -> None:
-        """Initialize the HTTP request tool with the typed args schema."""
+        """Initialize the HTTP request tool.
+
+        Args:
+            network_policy: SSRF + scheme allowlist applied to every
+                outgoing request URL. ``None`` uses the default
+                conservative policy.
+            max_response_bytes: Hard cap on body size in bytes
+                (default 1 MiB) to bound memory.
+            request_timeout: Per-request timeout in seconds
+                (default 30.0).
+        """
         super().__init__(
             name="http_request",
             description=(

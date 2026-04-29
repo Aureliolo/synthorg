@@ -30,6 +30,12 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field typ
 
 _MAX_CONTENT_LEN: Final[int] = 50_000
 _MAX_MEMORY_ID_LEN: Final[int] = 256
+# Generous belt-and-braces ceiling on archival search limit.  The
+# handler clamps to ``[1, config.archival_search_limit]`` -- typically
+# much smaller -- but the model rejects pathological values like
+# ``limit=1_000_000`` that would otherwise bypass per-config clamps in
+# unwired code paths.
+_MAX_ARCHIVAL_SEARCH_LIMIT: Final[int] = 1_000
 
 
 _ARGS_CONFIG = ConfigDict(
@@ -62,9 +68,11 @@ class CoreMemoryWriteArgs(BaseModel):
 class ArchivalMemorySearchArgs(BaseModel):
     """Args for ``archival_memory_search``.
 
-    ``limit`` is left optional and unbounded here; the handler clamps to
-    ``[1, config.archival_search_limit]`` at runtime so the cap can move
-    with config.
+    ``limit`` is bounded by a generous ceiling here; the handler still
+    clamps to ``[1, config.archival_search_limit]`` at runtime so the
+    operational cap can move with config.  The model ceiling is a
+    belt-and-braces guard against pathological values reaching the
+    handler in unwired code paths.
     """
 
     model_config = _ARGS_CONFIG
@@ -78,6 +86,7 @@ class ArchivalMemorySearchArgs(BaseModel):
     limit: int | None = Field(
         default=None,
         gt=0,
+        le=_MAX_ARCHIVAL_SEARCH_LIMIT,
         description="Maximum results to return",
     )
 

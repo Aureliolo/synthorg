@@ -136,7 +136,12 @@ class ListDirectoryTool(BaseFileSystemTool):
     args_model: ClassVar[type[BaseModel] | None] = ListDirectoryArgs
 
     def __init__(self, *, workspace_root: Path) -> None:
-        """Initialize the list-directory tool with the typed args schema."""
+        """Initialize the list-directory tool.
+
+        Args:
+            workspace_root: Filesystem root that scopes every path the
+                tool inspects. Paths outside this root are rejected.
+        """
         super().__init__(
             workspace_root=workspace_root,
             name="list_directory",

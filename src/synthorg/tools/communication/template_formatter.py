@@ -61,7 +61,12 @@ class TemplateFormatterTool(BaseCommunicationTool):
         *,
         config: CommunicationToolsConfig | None = None,
     ) -> None:
-        """Initialize the template formatter tool with the typed args schema."""
+        """Initialize the template formatter tool.
+
+        Args:
+            config: Communication tool configuration with formatter
+                size limits. ``None`` falls back to defaults.
+        """
         super().__init__(
             name="template_formatter",
             description=(

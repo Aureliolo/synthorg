@@ -500,7 +500,16 @@ class GitCloneTool(_BaseGitTool):
         sandbox: SandboxBackend | None = None,
         network_policy: GitCloneNetworkPolicy | None = None,
     ) -> None:
-        """Initialize the git_clone tool with the typed args schema."""
+        """Initialize the git_clone tool.
+
+        Args:
+            workspace: Workspace root for clone destinations.
+            sandbox: Optional sandbox backend that runs ``git`` in
+                isolation. ``None`` runs locally inside the workspace.
+            network_policy: SSRF + scheme allowlist policy applied to
+                the requested URL. ``None`` uses the default
+                conservative policy (HTTPS + SSH only).
+        """
         super().__init__(
             name="git_clone",
             action_type=ActionType.VCS_READ,

@@ -97,7 +97,12 @@ class DiagramGeneratorTool(BaseDesignTool):
         *,
         config: DesignToolsConfig | None = None,
     ) -> None:
-        """Initialize the diagram generator tool with the typed args schema."""
+        """Initialize the diagram generator tool.
+
+        Args:
+            config: Design tool configuration with diagram size
+                limits. ``None`` falls back to defaults.
+        """
         super().__init__(
             name="diagram_generator",
             description=(

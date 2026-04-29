@@ -87,7 +87,14 @@ class WebSearchTool(BaseWebTool):
         provider: WebSearchProvider,
         network_policy: NetworkPolicy | None = None,
     ) -> None:
-        """Initialize the web search tool with the typed args schema."""
+        """Initialize the web search tool.
+
+        Args:
+            provider: Web search backend.
+            network_policy: SSRF + scheme allowlist applied to the
+                provider's outgoing requests. ``None`` uses the
+                default conservative policy.
+        """
         super().__init__(
             name="web_search",
             description=(

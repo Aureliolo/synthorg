@@ -112,7 +112,13 @@ class SqlQueryTool(BaseDatabaseTool):
     args_model: ClassVar[type[BaseModel] | None] = SqlQueryArgs
 
     def __init__(self, *, config: DatabaseConnectionConfig) -> None:
-        """Initialize the SQL query tool with the typed args schema."""
+        """Initialize the SQL query tool.
+
+        Args:
+            config: Database connection settings. The action type
+                resolves from ``config.read_only`` so security
+                policies can gate write-capable connections.
+        """
         # Use DB_MUTATE when writes are permitted so security
         # policies can gate write-capable connections appropriately.
         action = ActionType.DB_QUERY if config.read_only else ActionType.DB_MUTATE

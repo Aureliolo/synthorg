@@ -108,7 +108,14 @@ class ReportGeneratorTool(BaseAnalyticsTool):
         provider: AnalyticsProvider | None = None,
         config: AnalyticsToolsConfig | None = None,
     ) -> None:
-        """Initialize the report generator tool with the typed args schema."""
+        """Initialize the report generator tool.
+
+        Args:
+            provider: Analytics data source. ``None`` makes
+                ``execute`` return a configuration error.
+            config: Analytics tool configuration. ``None`` falls back
+                to defaults.
+        """
         super().__init__(
             name="report_generator",
             description=(

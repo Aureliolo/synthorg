@@ -25,9 +25,26 @@ _ADAPTER: TypeAdapter[WsEventPayload] = TypeAdapter(WsEventPayload)
 
 
 def _union_variants() -> tuple[type[BaseModel], ...]:
-    """Return every variant model in the discriminated union."""
-    union_alias, _discriminator = get_args(WsEventPayload)
-    return get_args(union_alias)
+    """Return every variant model in the discriminated union.
+
+    Defensive against future Pydantic / typing changes: the current
+    structure is ``Annotated[Union[...], Discriminator(...)]``, so
+    ``get_args(WsEventPayload)`` returns ``(union_alias, discriminator)``.
+    If that shape changes, fall back to inspecting the ``TypeAdapter``
+    via the public API.
+    """
+    parts = get_args(WsEventPayload)
+    if len(parts) >= 1:
+        variants = get_args(parts[0])
+        if variants:
+            return variants
+    # Fallback: ask the cached TypeAdapter for the variants via core schema.
+    schema = _ADAPTER.core_schema
+    msg = (
+        "WsEventPayload structure changed; update _union_variants(). "
+        f"Got core schema type: {schema.get('type')!r}"
+    )
+    raise AssertionError(msg)
 
 
 class TestUnionParity:
@@ -87,6 +104,46 @@ class TestModelInvariants:
             assert cfg.get("allow_inf_nan") is False, (
                 f"{variant.__name__} does not reject NaN/Inf"
             )
+
+
+class TestEveryVariantSchemaSane:
+    """Smoke test: every variant exposes a sensible JSON schema + discriminator.
+
+    Parametrized over all 65 variants so a new model added without the
+    discriminator literal surfaces immediately rather than waiting for
+    a per-variant unit test.
+    """
+
+    @pytest.mark.parametrize(
+        "variant",
+        _union_variants(),
+        ids=lambda v: v.__name__,
+    )
+    @pytest.mark.unit
+    def test_variant_schema_advertises_event_type(
+        self,
+        variant: type[BaseModel],
+    ) -> None:
+        """The JSON schema documents the discriminator field."""
+        schema = variant.model_json_schema()
+        properties = schema.get("properties", {})
+        assert "event_type" in properties, (
+            f"{variant.__name__} missing event_type in JSON schema"
+        )
+
+    @pytest.mark.parametrize(
+        "variant",
+        _union_variants(),
+        ids=lambda v: v.__name__,
+    )
+    @pytest.mark.unit
+    def test_variant_discriminator_is_a_known_event_type(
+        self,
+        variant: type[BaseModel],
+    ) -> None:
+        """The default ``event_type`` is a real :class:`WsEventType` value."""
+        default = variant.model_fields["event_type"].default
+        assert isinstance(default, WsEventType)
 
 
 class TestDiscriminatorRouting:

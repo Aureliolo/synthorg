@@ -91,7 +91,14 @@ class AssetManagerTool(BaseDesignTool):
         config: DesignToolsConfig | None = None,
         assets: dict[str, dict[str, Any]] | None = None,
     ) -> None:
-        """Initialize the asset manager tool with the typed args schema."""
+        """Initialize the asset manager tool.
+
+        Args:
+            config: Design tool configuration. ``None`` falls back to
+                defaults.
+            assets: Pre-existing assets to seed the in-memory store.
+                Deep-copied at construction; ``None`` starts empty.
+        """
         super().__init__(
             name="asset_manager",
             description=("List, retrieve, delete, and search generated design assets."),

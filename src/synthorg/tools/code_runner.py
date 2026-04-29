@@ -41,7 +41,12 @@ class CodeRunnerTool(BaseTool):
     args_model: ClassVar[type[BaseModel] | None] = CodeRunnerArgs
 
     def __init__(self, *, sandbox: SandboxBackend) -> None:
-        """Initialize the code runner tool with the typed args schema."""
+        """Initialize the code runner tool.
+
+        Args:
+            sandbox: Sandboxed execution backend that enforces
+                isolation and resource control.
+        """
         super().__init__(
             name="code_runner",
             description=(

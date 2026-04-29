@@ -215,3 +215,152 @@ class TestMCPToolInvoker:
         invoker = MCPToolInvoker(registry, {"synthorg_test_get": recursion_handler})
         with pytest.raises(RecursionError):
             await invoker.invoke("synthorg_test_get", {}, app_state=None)
+
+
+class TestMCPToolInvokerArgsModelValidation:
+    """Phase 4 typed-args validation at the invoker boundary (#1611)."""
+
+    @staticmethod
+    def _tool_with_args_model() -> MCPToolDef:
+        from pydantic import BaseModel, ConfigDict
+
+        from synthorg.core.types import NotBlankStr
+
+        class _SampleArgs(BaseModel):
+            model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+            name: NotBlankStr
+            count: int = 1
+
+        return MCPToolDef(
+            name="synthorg_test_validated",
+            description="A tool that validates its args",
+            parameters=_SampleArgs.model_json_schema(),
+            capability="test:read",
+            handler_key="synthorg_test_validated",
+            args_model=_SampleArgs,
+        )
+
+    async def test_valid_args_dispatch_to_handler(self) -> None:
+        """When ``args_model`` accepts the args, the handler is invoked."""
+        tool = self._tool_with_args_model()
+        registry = registry_with(tool)
+        captured: list[dict[str, object]] = []
+
+        async def handler(
+            *,
+            app_state: object,
+            arguments: dict[str, object],
+            actor: object = None,
+        ) -> str:
+            captured.append(dict(arguments))
+            return json.dumps({"ok": True})
+
+        invoker = MCPToolInvoker(registry, {"synthorg_test_validated": handler})
+        result = await invoker.invoke(
+            "synthorg_test_validated",
+            {"name": "alice", "count": 7},
+            app_state=None,
+        )
+        assert result.is_error is False
+        assert captured == [{"name": "alice", "count": 7}]
+
+    async def test_invalid_args_skip_handler_and_return_error_envelope(
+        self,
+    ) -> None:
+        """``args_model`` validation failure short-circuits to an error envelope."""
+        tool = self._tool_with_args_model()
+        registry = registry_with(tool)
+        invoked: list[bool] = []
+
+        async def handler(
+            *,
+            app_state: object,
+            arguments: dict[str, object],
+            actor: object = None,
+        ) -> str:
+            invoked.append(True)
+            return json.dumps({"ok": True})
+
+        invoker = MCPToolInvoker(registry, {"synthorg_test_validated": handler})
+        result = await invoker.invoke(
+            "synthorg_test_validated",
+            {"name": "   ", "count": "not-an-int"},
+            app_state=None,
+        )
+        assert result.is_error is True
+        assert invoked == []  # handler must NOT have been invoked
+        body = json.loads(result.content)
+        assert body["status"] == "error"
+        assert body["error_type"] == "ArgumentValidationError"
+        assert body["domain_code"] == "invalid_argument"
+        assert body["tool"] == "synthorg_test_validated"
+        # Multi-error message: every Pydantic complaint surfaces, not just the first.
+        assert "name" in body["message"]
+        assert "count" in body["message"]
+
+    async def test_missing_required_field_rejected(self) -> None:
+        """Missing required fields fail at the boundary."""
+        tool = self._tool_with_args_model()
+        registry = registry_with(tool)
+
+        async def handler(
+            *,
+            app_state: object,
+            arguments: dict[str, object],
+            actor: object = None,
+        ) -> str:
+            return json.dumps({"ok": True})
+
+        invoker = MCPToolInvoker(registry, {"synthorg_test_validated": handler})
+        result = await invoker.invoke(
+            "synthorg_test_validated",
+            {},  # missing required `name`
+            app_state=None,
+        )
+        assert result.is_error is True
+        body = json.loads(result.content)
+        assert body["error_type"] == "ArgumentValidationError"
+
+    async def test_extra_fields_rejected(self) -> None:
+        """Unknown fields are rejected (extra=forbid contract)."""
+        tool = self._tool_with_args_model()
+        registry = registry_with(tool)
+
+        async def handler(
+            *,
+            app_state: object,
+            arguments: dict[str, object],
+            actor: object = None,
+        ) -> str:
+            return json.dumps({"ok": True})
+
+        invoker = MCPToolInvoker(registry, {"synthorg_test_validated": handler})
+        result = await invoker.invoke(
+            "synthorg_test_validated",
+            {"name": "alice", "unknown": 42},
+            app_state=None,
+        )
+        assert result.is_error is True
+        body = json.loads(result.content)
+        assert body["error_type"] == "ArgumentValidationError"
+
+    async def test_legacy_tool_without_args_model_still_dispatches(self) -> None:
+        """Tools without ``args_model`` still work (legacy ``common_args`` path)."""
+        tool = make_tool()  # no args_model
+        registry = registry_with(tool)
+
+        async def handler(
+            *,
+            app_state: object,
+            arguments: dict[str, object],
+            actor: object = None,
+        ) -> str:
+            return json.dumps({"ok": True})
+
+        invoker = MCPToolInvoker(registry, {"synthorg_test_get": handler})
+        result = await invoker.invoke(
+            "synthorg_test_get",
+            {"anything": "works"},
+            app_state=None,
+        )
+        assert result.is_error is False

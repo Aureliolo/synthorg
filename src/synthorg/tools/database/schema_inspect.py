@@ -46,7 +46,12 @@ class SchemaInspectTool(BaseDatabaseTool):
     args_model: ClassVar[type[BaseModel] | None] = SchemaInspectArgs
 
     def __init__(self, *, config: DatabaseConnectionConfig) -> None:
-        """Initialize the schema inspection tool with the typed args schema."""
+        """Initialize the schema inspection tool.
+
+        Args:
+            config: Database connection settings (driver, DSN, query
+                timeouts, allowlists).
+        """
         super().__init__(
             name="schema_inspect",
             description=(

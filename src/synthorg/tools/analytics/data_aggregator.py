@@ -127,7 +127,15 @@ class DataAggregatorTool(BaseAnalyticsTool):
         provider: AnalyticsProvider | None = None,
         config: AnalyticsToolsConfig | None = None,
     ) -> None:
-        """Initialize the data aggregator tool with the typed args schema."""
+        """Initialize the data aggregator tool.
+
+        Args:
+            provider: Analytics data source. ``None`` keeps the tool
+                defined but every ``execute`` returns a configuration
+                error.
+            config: Analytics tool configuration. ``None`` falls back
+                to defaults.
+        """
         super().__init__(
             name="data_aggregator",
             description=(

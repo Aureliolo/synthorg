@@ -149,7 +149,14 @@ class ImageGeneratorTool(BaseDesignTool):
         provider: ImageProvider | None = None,
         config: DesignToolsConfig | None = None,
     ) -> None:
-        """Initialize the image generator tool with the typed args schema."""
+        """Initialize the image generator tool.
+
+        Args:
+            provider: Image generation backend. ``None`` makes
+                ``execute`` return a configuration error.
+            config: Design tool configuration with prompt-length and
+                size caps. ``None`` falls back to defaults.
+        """
         super().__init__(
             name="image_generator",
             description=(

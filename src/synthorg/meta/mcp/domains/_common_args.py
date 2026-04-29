@@ -42,10 +42,13 @@ class _ArgsBase(BaseModel):
 class PaginationFields(_ArgsBase):
     """Pagination mixin for paginated list operations.
 
-    Mirrors the ``coerce_pagination`` helper bounds in
-    ``synthorg.meta.mcp.handlers.common_args``: ``offset >= 0``,
-    ``limit > 0`` (clamped to a sane upper bound to prevent unbounded
-    fetches).
+    Bounds and defaults MUST stay in lockstep with
+    :func:`synthorg.meta.mcp.handlers.common_args.coerce_pagination`
+    (the legacy validator used by handlers that still take
+    ``arguments: dict``).  ``offset >= 0``, ``limit > 0`` and
+    ``limit <= 500`` mirror its bounds; the ``default=50`` mirrors
+    ``DEFAULT_LIMIT`` in that module.  When changing one, change the
+    other in the same commit.
     """
 
     offset: int = Field(default=0, ge=0, description="Pagination offset")

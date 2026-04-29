@@ -2,15 +2,25 @@
 
 Each :class:`~synthorg.api.ws_models.WsEventType` value has a frozen
 Pydantic model carrying an ``event_type`` ``Literal`` discriminator.
-:data:`WsEventPayload` is the discriminated union the gateway uses to
-route a parsed payload to the correct typed shape; manual
-``payload.get(...)`` walks at the consumer boundary go away.
+:data:`WsEventPayload` is the discriminated union enforced at
+``WsEvent`` construction (see ``WsEvent._validate_payload_shape``);
+manual ``payload.get(...)`` walks at the consumer boundary go away
+because every emit site is now structurally validated.
 
-Models in this file mirror the actual payload shapes constructed at
-emit sites in ``src/synthorg/api/`` (controllers + helpers + bridges).
-For events declared in :class:`WsEventType` but not yet wired by a
-Python emitter, the model is defined with the minimum shape the
-frontend handlers expect; tightening happens when the emitter lands.
+Maintainer notes:
+
+* Models mirror the actual payload shapes constructed at emit sites
+  under ``src/synthorg/api/`` (controllers + helpers + bridges) and
+  ``src/synthorg/hr/``. The actual emitter is the source of truth; if
+  a model and an emitter disagree, fix the model to match emit
+  reality, then verify the frontend consumer still reads the same
+  fields.
+* For events declared in :class:`WsEventType` but not yet wired by
+  any Python emitter (~17 stub variants today, e.g. some HR /
+  scaling / review events), the model defines the minimum shape the
+  frontend handler expects. These variants are unreachable from
+  Python today; the wire validator only fires on emit. Tightening
+  these models happens when the corresponding emitter lands.
 """
 
 from typing import Annotated, Literal
@@ -92,7 +102,7 @@ class WsTaskAssignedPayload(BaseModel):
 class WsAgentCreatedPayload(BaseModel):
     """Payload for ``agent.created`` -- agent added to the org config.
 
-    Emitted by ``api/controllers/agents.py:259`` (``create_agent``).
+    Emitted by ``create_agent`` in ``api/controllers/agents.py``.
     """
 
     model_config = _PAYLOAD_CONFIG
@@ -106,7 +116,7 @@ class WsAgentCreatedPayload(BaseModel):
 class WsAgentUpdatedPayload(BaseModel):
     """Payload for ``agent.updated`` -- agent config changed.
 
-    Emitted by ``api/controllers/agents.py:305`` (``update_agent``).
+    Emitted by ``update_agent`` in ``api/controllers/agents.py``.
     """
 
     model_config = _PAYLOAD_CONFIG
@@ -119,7 +129,7 @@ class WsAgentUpdatedPayload(BaseModel):
 class WsAgentDeletedPayload(BaseModel):
     """Payload for ``agent.deleted`` -- agent removed from the org config.
 
-    Emitted by ``api/controllers/agents.py:346`` (``delete_agent``).
+    Emitted by ``delete_agent`` in ``api/controllers/agents.py``.
     """
 
     model_config = _PAYLOAD_CONFIG
@@ -234,7 +244,7 @@ class WsDepartmentDeletedPayload(BaseModel):
 class WsDepartmentsReorderedPayload(BaseModel):
     """Payload for ``departments.reordered`` -- display order changed.
 
-    Emitted by ``api/controllers/company.py:141``.
+    Emitted by ``api/controllers/company.py``.
     """
 
     model_config = _PAYLOAD_CONFIG
@@ -307,7 +317,7 @@ class WsBudgetAlertPayload(BaseModel):
 class WsMessageSentPayload(BaseModel):
     """Payload for ``message.sent`` -- new message on the bus.
 
-    Emitted by ``api/bus_bridge.py:578`` (``_to_ws_event``). ``parts``
+    Emitted by ``_to_ws_event`` in ``api/bus_bridge.py``. ``parts``
     carries the per-part dump of every typed ``Part`` variant so the
     frontend renders text + data + file/uri parts directly.
     """
@@ -393,7 +403,7 @@ class WsApprovalRejectedPayload(_ApprovalEventBase):
 class WsApprovalExpiredPayload(_ApprovalEventBase):
     """Payload for ``approval.expired`` -- lazy expiry transition.
 
-    Emitted by ``api/app_helpers.py:66`` (``_make_expire_callback``).
+    Emitted by ``_make_expire_callback`` in ``api/app_helpers.py``.
     """
 
     event_type: Literal[WsEventType.APPROVAL_EXPIRED] = WsEventType.APPROVAL_EXPIRED
@@ -405,7 +415,7 @@ class WsApprovalExpiredPayload(_ApprovalEventBase):
 class WsCoordinationStartedPayload(BaseModel):
     """Payload for ``coordination.started`` -- multi-agent run kicking off.
 
-    Emitted by ``api/controllers/coordination.py:165``.
+    Emitted by ``api/controllers/coordination.py``.
     """
 
     model_config = _PAYLOAD_CONFIG
@@ -437,7 +447,7 @@ class WsCoordinationPhaseCompletedPayload(BaseModel):
 class WsCoordinationCompletedPayload(BaseModel):
     """Payload for ``coordination.completed`` -- full run finished.
 
-    Emitted by ``api/controllers/coordination.py:292``.
+    Emitted by ``api/controllers/coordination.py``.
     """
 
     model_config = _PAYLOAD_CONFIG
@@ -454,11 +464,10 @@ class WsCoordinationCompletedPayload(BaseModel):
 class WsCoordinationFailedPayload(BaseModel):
     """Payload for ``coordination.failed`` -- run failed (per-phase or overall).
 
-    Emitted by ``api/controllers/coordination.py:259, 277, 292``.  Three
-    sites publish this event with overlapping shapes; ``phase`` is set
-    only on per-phase failures, ``topology`` only on full-run failures
-    that reached topology resolution, ``error`` carries a client-safe
-    message.
+    Emitted by multiple sites in ``api/controllers/coordination.py``
+    with overlapping shapes; ``phase`` is set only on per-phase
+    failures, ``topology`` only on full-run failures that reached
+    topology resolution, ``error`` carries a client-safe message.
     """
 
     model_config = _PAYLOAD_CONFIG
@@ -532,7 +541,7 @@ class WsMeetingFailedPayload(_MeetingEventBase):
 class WsArtifactCreatedPayload(BaseModel):
     """Payload for ``artifact.created``.
 
-    Emitted by ``api/controllers/artifacts.py:250``.
+    Emitted by ``api/controllers/artifacts.py``.
     """
 
     model_config = _PAYLOAD_CONFIG
@@ -547,7 +556,7 @@ class WsArtifactCreatedPayload(BaseModel):
 class WsArtifactDeletedPayload(BaseModel):
     """Payload for ``artifact.deleted``.
 
-    Emitted by ``api/controllers/artifacts.py:309``.
+    Emitted by ``api/controllers/artifacts.py``.
     """
 
     model_config = _PAYLOAD_CONFIG
@@ -560,7 +569,7 @@ class WsArtifactDeletedPayload(BaseModel):
 class WsArtifactContentUploadedPayload(BaseModel):
     """Payload for ``artifact.content_uploaded``.
 
-    Emitted by ``api/controllers/artifacts.py:397``.
+    Emitted by ``api/controllers/artifacts.py``.
     """
 
     model_config = _PAYLOAD_CONFIG
@@ -594,7 +603,7 @@ class WsProjectCreatedPayload(BaseModel):
 class WsProjectDeletedPayload(BaseModel):
     """Payload for ``project.deleted``.
 
-    Emitted by ``api/controllers/projects.py:187``.
+    Emitted by ``api/controllers/projects.py``.
     """
 
     model_config = _PAYLOAD_CONFIG
@@ -788,7 +797,7 @@ class WsReviewStageCompletedPayload(BaseModel):
 class WsReviewStageDecidedPayload(BaseModel):
     """Payload for ``review.stage_decided``.
 
-    Emitted by ``api/controllers/reviews.py:187``.
+    Emitted by ``api/controllers/reviews.py``.
     """
 
     model_config = _PAYLOAD_CONFIG

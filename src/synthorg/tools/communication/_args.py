@@ -20,14 +20,14 @@ Tools wired to consume these models:
   -> :class:`ListAsyncTasksArgs`
 """
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.types import NotBlankStr
 from synthorg.notifications.models import (
-    NotificationCategory,  # noqa: TC001 -- Pydantic field type
-    NotificationSeverity,  # noqa: TC001 -- Pydantic field type
+    NotificationCategory,  # noqa: TC001
+    NotificationSeverity,  # noqa: TC001
 )
 
 _ARGS_CONFIG = ConfigDict(
@@ -39,29 +39,44 @@ _ARGS_CONFIG = ConfigDict(
 
 # ── Email ───────────────────────────────────────────────────────────
 
+# Loose RFC 5322 sanity-check at the wire boundary: must contain a
+# single ``@`` between two non-empty groups and must not contain any
+# control characters that would smuggle into SMTP headers.  Strict
+# RFC compliance is the SMTP backend's job; this guard catches obvious
+# garbage at the LLM-facing surface.
+_EMAIL_RE = r"^[^@\r\n\t \"]+@[^@\r\n\t \"]+\.[^@\r\n\t \"]+$"
+
+EmailAddress = Annotated[
+    NotBlankStr,
+    Field(
+        pattern=_EMAIL_RE,
+        description="Email address (loose RFC 5322 shape)",
+    ),
+]
+
 
 class EmailSenderArgs(BaseModel):
     """Args for ``email_sender``.
 
-    Recipient-count limits and SMTP-header injection guards stay inside
-    the tool body because they depend on per-instance ``EmailConfig``;
-    the model only enforces non-blank, control-char-free strings on
-    each address (the regex check moves to a ``model_validator`` if
-    desired in a follow-up).
+    Recipient-count limits and full SMTP-header injection guards stay
+    inside the tool body because they depend on per-instance
+    ``EmailConfig``.  The model enforces non-blank addresses with a
+    loose RFC 5322 shape regex (``user@host.tld``) on every recipient
+    so obvious garbage is rejected at the LLM-facing surface.
     """
 
     model_config = _ARGS_CONFIG
 
-    to: tuple[NotBlankStr, ...] = Field(
+    to: tuple[EmailAddress, ...] = Field(
         min_length=1,
         description="Recipient email addresses",
     )
     subject: NotBlankStr = Field(description="Email subject line")
-    cc: tuple[NotBlankStr, ...] = Field(
+    cc: tuple[EmailAddress, ...] = Field(
         default=(),
         description="CC email addresses",
     )
-    bcc: tuple[NotBlankStr, ...] = Field(
+    bcc: tuple[EmailAddress, ...] = Field(
         default=(),
         description="BCC email addresses",
     )

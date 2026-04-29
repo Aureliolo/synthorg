@@ -105,7 +105,15 @@ class MetricCollectorTool(BaseAnalyticsTool):
         sink: MetricSink | None = None,
         config: AnalyticsToolsConfig | None = None,
     ) -> None:
-        """Initialize the metric collector tool with the typed args schema."""
+        """Initialize the metric collector tool.
+
+        Args:
+            sink: Metric backend that records counters / gauges /
+                timings. ``None`` makes ``execute`` return a
+                configuration error.
+            config: Analytics tool configuration with metric-name
+                allowlist. ``None`` falls back to defaults.
+        """
         super().__init__(
             name="metric_collector",
             description=(
