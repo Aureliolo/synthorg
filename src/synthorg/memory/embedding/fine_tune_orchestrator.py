@@ -336,7 +336,15 @@ class FineTuneOrchestrator:
                 # ``get_status`` and the WS event don't return a FAILED
                 # run with stale progress or missing terminal timestamps.
                 now = datetime.now(UTC)
-                logger.error(
+                # The MemoryError/RecursionError carve-out above means
+                # persist_exc is guaranteed non-catastrophic at this
+                # point, so we deliberately omit ``exc_info=True``: the
+                # SEC-1 sanitised structured fields are the only thing
+                # that should land in the log record on this path.
+                # ``noqa: TRY400`` because SEC-1 forbids
+                # ``logger.exception`` (auto-attached traceback can
+                # carry credential-bearing frame locals).
+                logger.error(  # noqa: TRY400
                     MEMORY_FINE_TUNE_FAILED,
                     run_id=run.id,
                     stage="persist_failed_state",
@@ -344,7 +352,6 @@ class FineTuneOrchestrator:
                     error=safe_error_description(persist_exc),
                     underlying_error_type=type(exc).__name__,
                     underlying_error=safe_error,
-                    exc_info=True,
                 )
                 base = self._current_run or run
                 self._current_run = base.model_copy(

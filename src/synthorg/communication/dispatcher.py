@@ -246,11 +246,24 @@ class MessageDispatcher:
         """
         try:
             await registration.handler.handle(message)
-        except MemoryError, RecursionError:
+        except (MemoryError, RecursionError) as exc:
             # Catastrophic interpreter state: do NOT absorb these into
             # errors[index] -- they must propagate through the wrapping
             # TaskGroup so sibling handlers cancel and the process can
-            # surface the failure rather than silently degrading.
+            # surface the failure rather than silently degrading. Log
+            # at ERROR with exc_info=True before re-raising so the
+            # traceback is captured for diagnostics, per the SEC-1
+            # carve-out for catastrophic interpreter state.
+            logger.error(
+                COMM_DISPATCH_HANDLER_ERROR,
+                agent_id=self._agent_id,
+                message_id=str(message.id),
+                handler_id=registration.handler_id,
+                handler_name=registration.name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                exc_info=True,
+            )
             raise
         except Exception as exc:
             safe_error = safe_error_description(exc)
