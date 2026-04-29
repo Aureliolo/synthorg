@@ -190,8 +190,16 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "tool_name": {"type": "string", "description": "Filter by tool"},
             "action_type": {"type": "string", "description": "Filter by action type"},
             "verdict": {"type": "string", "description": "Filter by verdict"},
-            "since": {"type": "string", "description": "Start datetime (ISO 8601)"},
-            "until": {"type": "string", "description": "End datetime (ISO 8601)"},
+            "since": {
+                "type": "string",
+                "description": "Start datetime (ISO 8601)",
+                "format": "date-time",
+            },
+            "until": {
+                "type": "string",
+                "description": "End datetime (ISO 8601)",
+                "format": "date-time",
+            },
             **PAGINATION_PROPERTIES,
         },
         args_model=AuditListArgs,

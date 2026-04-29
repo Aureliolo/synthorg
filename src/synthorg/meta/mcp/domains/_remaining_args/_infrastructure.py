@@ -10,6 +10,7 @@ from pydantic import Field
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 from synthorg.meta.mcp.domains._common_args import (
     DestructiveGuardrailFields,
+    IsoDatetimeStr,
     PaginationFields,
     _ArgsBase,
 )
@@ -113,8 +114,12 @@ class AuditListArgs(PaginationFields):
         description="Filter by action type",
     )
     verdict: NotBlankStr | None = Field(default=None, description="Filter by verdict")
-    since: NotBlankStr | None = Field(default=None, description="Start datetime")
-    until: NotBlankStr | None = Field(default=None, description="End datetime")
+    since: IsoDatetimeStr | None = Field(
+        default=None, description="Start datetime (ISO 8601, timezone-aware)"
+    )
+    until: IsoDatetimeStr | None = Field(
+        default=None, description="End datetime (ISO 8601, timezone-aware)"
+    )
 
 
 class EventsListArgs(PaginationFields):

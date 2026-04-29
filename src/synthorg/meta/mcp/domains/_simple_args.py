@@ -25,6 +25,7 @@ from pydantic import Field
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 from synthorg.meta.mcp.domains._common_args import (
     DestructiveGuardrailFields,
+    IsoDatetimeStr,
     PaginationFields,
     _ArgsBase,
 )
@@ -118,13 +119,13 @@ class MetricsGetHistoryArgs(_ArgsBase):
     """Args for ``metrics.get_history``."""
 
     metric_name: NotBlankStr | None = Field(default=None, description="Metric name")
-    since: NotBlankStr | None = Field(
+    since: IsoDatetimeStr | None = Field(
         default=None,
-        description="Start datetime (ISO 8601)",
+        description="Start datetime (ISO 8601, timezone-aware)",
     )
-    until: NotBlankStr | None = Field(
+    until: IsoDatetimeStr | None = Field(
         default=None,
-        description="End datetime (ISO 8601)",
+        description="End datetime (ISO 8601, timezone-aware)",
     )
 
 
@@ -162,8 +163,12 @@ class CoordinationMetricsListArgs(PaginationFields):
 
     task_id: NotBlankStr | None = Field(default=None, description="Filter by task")
     agent_id: NotBlankStr | None = Field(default=None, description="Filter by agent")
-    since: NotBlankStr | None = Field(default=None, description="Start datetime")
-    until: NotBlankStr | None = Field(default=None, description="End datetime")
+    since: IsoDatetimeStr | None = Field(
+        default=None, description="Start datetime (ISO 8601, timezone-aware)"
+    )
+    until: IsoDatetimeStr | None = Field(
+        default=None, description="End datetime (ISO 8601, timezone-aware)"
+    )
 
 
 class ScalingListDecisionsArgs(PaginationFields):

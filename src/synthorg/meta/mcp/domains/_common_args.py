@@ -43,11 +43,45 @@ new ``dict[str, object]`` field is added it MUST live in this
 allowlist; reach for a typed nested model first.
 """
 
-from typing import Any, Literal
+from datetime import datetime
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.types import NotBlankStr
+
+
+def _validate_iso_8601_aware_datetime(value: str) -> str:
+    """Reject strings that are not timezone-aware ISO 8601 datetimes.
+
+    Mirrors :func:`synthorg.meta.mcp.handlers.common_args._parse_iso_datetime`
+    so the typed-args boundary catches the same shape of bad input the
+    legacy dict-path helper rejects.  Returns ``value`` unchanged on
+    success; handlers continue to receive the raw string and pass it to
+    :func:`parse_time_window` for the final tz-aware parse + ordering
+    check.
+    """
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        msg = f"value is not a valid ISO 8601 datetime: {value!r}"
+        raise ValueError(msg) from exc
+    if parsed.tzinfo is None:
+        msg = f"value must include a timezone (e.g. ``+00:00`` or ``Z``): {value!r}"
+        raise ValueError(msg)
+    return value
+
+
+IsoDatetimeStr = Annotated[
+    NotBlankStr, AfterValidator(_validate_iso_8601_aware_datetime)
+]
+"""Non-blank string that parses as a timezone-aware ISO 8601 datetime.
+
+Use for ``since`` / ``until`` filter fields whose wire schema documents
+``"Start datetime (ISO 8601)"``.  The args-model boundary validates the
+format up front; handlers still receive a ``str`` so the existing
+``parse_time_window`` call sites keep working unchanged.
+"""
 
 _ARGS_CONFIG = ConfigDict(
     frozen=True,
@@ -122,6 +156,7 @@ class DestructiveGuardrailFields(_ArgsBase):
 
 __all__ = [
     "DestructiveGuardrailFields",
+    "IsoDatetimeStr",
     "PaginationFields",
     "_ArgsBase",
 ]
