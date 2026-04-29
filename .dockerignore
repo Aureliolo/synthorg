@@ -65,6 +65,7 @@ coverage.xml
 # CI/build utility scripts (not needed in Docker builds)
 scripts/
 !scripts/export_openapi.py
+!scripts/embed_logfire_token.py
 
 # CLI (Go binary, not needed in Docker builds)
 cli/

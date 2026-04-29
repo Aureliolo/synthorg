@@ -827,45 +827,56 @@ except ImportError:
     _PSYCOPG_INTEGRITY_HANDLER = None
 
 
-def _build_exception_handlers() -> MappingProxyType[type[Exception], object]:
-    """Build the EXCEPTION_HANDLERS table, splicing in psycopg if present."""
-    table: dict[type[Exception], object] = {
-        RecordNotFoundError: handle_record_not_found,
-        DuplicateRecordError: handle_duplicate_record,
-        PersistenceError: handle_persistence_error,
-        NotAuthorizedException: handle_not_authorized,
-        PermissionDeniedException: handle_permission_denied,
-        ValidationException: handle_validation_error,
-        InvalidCursorError: handle_invalid_cursor,
-        NotFoundException: handle_not_found,
-        HTTPException: handle_http_exception,
+# Declarative entry list for ``EXCEPTION_HANDLERS``. The optional
+# psycopg.errors.IntegrityError entry is filtered out of the
+# ``MappingProxyType`` build below when the import failed, so the
+# whole table is one expression: a tuple of (type | None, handler)
+# pairs followed by a single dict-comprehension filter. Litestar
+# resolves handlers by walking the raised exception's MRO and picks
+# the first matching type, so dict insertion order does not affect
+# resolution priority. ``HTTPException`` integer status-code keys
+# are resolved separately by Litestar; this table uses only type
+# keys.
+_HANDLER_ENTRIES: tuple[tuple[type[Exception] | None, object], ...] = (
+    (RecordNotFoundError, handle_record_not_found),
+    (DuplicateRecordError, handle_duplicate_record),
+    (PersistenceError, handle_persistence_error),
+    (NotAuthorizedException, handle_not_authorized),
+    (PermissionDeniedException, handle_permission_denied),
+    (ValidationException, handle_validation_error),
+    (InvalidCursorError, handle_invalid_cursor),
+    (NotFoundException, handle_not_found),
+    (HTTPException, handle_http_exception),
+    # Lazy psycopg import: ``None`` slot when psycopg is unavailable
+    # (SQLite-only test runs); filtered out by the comprehension
+    # below so the entry is simply absent rather than a sentinel.
+    (
+        _PSYCOPG_INTEGRITY_HANDLER[0] if _PSYCOPG_INTEGRITY_HANDLER else None,
+        _PSYCOPG_INTEGRITY_HANDLER[1] if _PSYCOPG_INTEGRITY_HANDLER else None,
+    ),
+    # Domain error hierarchies -- MRO dispatch covers every subclass.
+    # ``RateLimitError`` is listed explicitly so its narrower 429
+    # status takes precedence over the ``ProviderError`` (502) default
+    # when Litestar walks the raised exception's MRO.
+    (RateLimitError, handle_domain_error),
+    (EngineError, handle_domain_error),
+    (BudgetExhaustedError, handle_domain_error),
+    (MixedCurrencyAggregationError, handle_domain_error),
+    (ProviderError, handle_domain_error),
+    (OntologyError, handle_domain_error),
+    (CommunicationError, handle_domain_error),
+    (IntegrationError, handle_domain_error),
+    (ToolError, handle_domain_error),
+    (DomainError, handle_domain_error),
+    (BackupError, handle_backup_error),
+    (Exception, handle_unexpected),
+)
+
+
+EXCEPTION_HANDLERS: MappingProxyType[type[Exception], object] = MappingProxyType(
+    {
+        exc_type: handler
+        for exc_type, handler in _HANDLER_ENTRIES
+        if exc_type is not None
     }
-    if _PSYCOPG_INTEGRITY_HANDLER is not None:
-        table[_PSYCOPG_INTEGRITY_HANDLER[0]] = _PSYCOPG_INTEGRITY_HANDLER[1]
-    table.update(
-        {
-            RateLimitError: handle_domain_error,
-            EngineError: handle_domain_error,
-            BudgetExhaustedError: handle_domain_error,
-            MixedCurrencyAggregationError: handle_domain_error,
-            ProviderError: handle_domain_error,
-            OntologyError: handle_domain_error,
-            CommunicationError: handle_domain_error,
-            IntegrationError: handle_domain_error,
-            ToolError: handle_domain_error,
-            DomainError: handle_domain_error,
-            BackupError: handle_backup_error,
-            Exception: handle_unexpected,
-        }
-    )
-    return MappingProxyType(table)
-
-
-# Litestar resolves exception handlers by walking the raised exception's
-# MRO -- the first matching type found in this dict wins.  Dict insertion
-# order does NOT affect resolution priority.  (For HTTPException subclasses,
-# Litestar also checks integer status-code keys first, but this dict uses
-# only type keys.)
-EXCEPTION_HANDLERS: MappingProxyType[type[Exception], object] = (
-    _build_exception_handlers()
 )

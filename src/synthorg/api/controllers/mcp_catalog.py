@@ -66,6 +66,64 @@ class InstallEntryResponse(BaseModel):
     )
 
 
+async def _validate_connection_name_for_install(
+    *,
+    entry_id: str,
+    connection_name: str | None,
+    connection_catalog: object | None,
+) -> None:
+    """Validate ``connection_name`` exists before the install INSERT.
+
+    Pre-validation closes the gap where an unknown ``connection_name``
+    would otherwise reach the FK column on ``mcp_installations`` and
+    raise ``psycopg.errors.ForeignKeyViolation`` outside the service's
+    typed ``ConnectionNotFoundError`` arm (issue #1666 B-1). The
+    service's post-call check still validates the
+    ``required_connection_type`` branch; this gate covers the
+    no-required-type-but-unknown-name path. The IntegrityError
+    backstop in ``api/exception_handlers.py`` covers the racy
+    "connection deleted between validate and INSERT" window.
+
+    Args:
+        entry_id: Catalog entry being installed (used for log context).
+        connection_name: Name supplied by the caller, or ``None`` to
+            skip validation.
+        connection_catalog: Resolved catalog (or ``None`` when the
+            integrations subsystem is unconfigured).
+
+    Raises:
+        ValidationError: When ``connection_name`` is supplied but the
+            catalog is missing or the name does not resolve.
+    """
+    if connection_name is None:
+        return
+    if connection_catalog is None:
+        msg = "Integrations subsystem is not configured; cannot bind connection_name."
+        logger.warning(
+            MCP_SERVER_INSTALL_FAILED,
+            entry_id=entry_id,
+            connection_name=connection_name,
+            reason="connection_catalog_unavailable",
+        )
+        raise ValidationError(msg)
+    # Static-type-friendly: ``connection_catalog`` carries the
+    # ``ConnectionCatalog`` protocol but is typed as ``object`` here
+    # because the controller hands it through unchanged. The runtime
+    # ``get(name) -> Connection | None`` contract is the only thing
+    # we rely on; treating it as object keeps the helper free of an
+    # otherwise-unused import.
+    existing = await connection_catalog.get(connection_name)  # type: ignore[attr-defined]
+    if existing is None:
+        msg = f"unknown connection {connection_name!r}"
+        logger.warning(
+            MCP_SERVER_INSTALL_FAILED,
+            entry_id=entry_id,
+            connection_name=connection_name,
+            reason="connection_not_found_pre_install",
+        )
+        raise ValidationError(msg)
+
+
 class MCPCatalogController(Controller):
     """Browse and install MCP servers from the bundled catalog."""
 
@@ -167,41 +225,11 @@ class MCPCatalogController(Controller):
             app_state.connection_catalog if app_state.has_connection_catalog else None
         )
 
-        # Validate-first: when the caller supplied a ``connection_name``
-        # we look it up in the catalog *before* any INSERT so the
-        # foreign-key column on ``mcp_installations`` cannot trigger a
-        # ``psycopg.errors.ForeignKeyViolation`` and slip out of the
-        # service's typed ``ConnectionNotFoundError`` arm. The service's
-        # post-call check still catches this case on the
-        # ``required_connection_type`` branch -- pre-validation closes
-        # the gap when the entry does not require a connection but the
-        # caller still supplies an unknown ``connection_name``. The
-        # exception handler at api/exception_handlers.py registers a
-        # backstop for ``IntegrityError`` so even the racy "connection
-        # deleted between validate and INSERT" path lands at 400.
-        if connection_name is not None:
-            if connection_catalog is None:
-                msg = (
-                    "Integrations subsystem is not configured; "
-                    "cannot bind connection_name."
-                )
-                logger.warning(
-                    MCP_SERVER_INSTALL_FAILED,
-                    entry_id=entry_id,
-                    connection_name=connection_name,
-                    reason="connection_catalog_unavailable",
-                )
-                raise ValidationError(msg)
-            existing = await connection_catalog.get(connection_name)
-            if existing is None:
-                msg = f"unknown connection {connection_name!r}"
-                logger.warning(
-                    MCP_SERVER_INSTALL_FAILED,
-                    entry_id=entry_id,
-                    connection_name=connection_name,
-                    reason="connection_not_found_pre_install",
-                )
-                raise ValidationError(msg)
+        await _validate_connection_name_for_install(
+            entry_id=entry_id,
+            connection_name=connection_name,
+            connection_catalog=connection_catalog,
+        )
 
         try:
             result = await service.install(

@@ -30,6 +30,11 @@ const meta = {
   title: 'UI/RequestCard',
   component: RequestCard,
   tags: ['autodocs'],
+  args: {
+    onScope: () => {},
+    onApprove: () => {},
+    onReject: () => {},
+  },
   argTypes: {
     onScope: { action: 'onScope' },
     onApprove: { action: 'onApprove' },
