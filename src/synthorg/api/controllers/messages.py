@@ -14,6 +14,9 @@ from synthorg.communication.channel import Channel
 from synthorg.communication.message import Message  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
+from synthorg.observability.events.communication import (
+    COMMUNICATION_MESSAGE_DELETE_FAILED,
+)
 
 logger = get_logger(__name__)
 
@@ -97,6 +100,12 @@ class MessageController(Controller):
             reason=NotBlankStr("operator delete via REST API"),
         )
         if not deleted:
+            logger.warning(
+                COMMUNICATION_MESSAGE_DELETE_FAILED,
+                message_id=message_id,
+                actor_id=str(request.user.user_id),
+                reason="not_found",
+            )
             raise NotFoundException(detail=f"message {message_id!r} not found")
         return ApiResponse(data=None)
 

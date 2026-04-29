@@ -333,11 +333,22 @@ class MeetingController(Controller):
     ) -> ApiResponse[None]:
         """Delete a meeting record by id.
 
-        Returns ``200 OK`` with ``data=None`` on success and
-        ``404 Not Found`` when the id does not exist. Routes through
-        :class:`MeetingService` so the
+        Routes through :class:`MeetingService` so the
         ``COMMUNICATION_MEETING_DELETED`` audit event is emitted from
         the service layer on parity with the MCP path.
+
+        Args:
+            state: Litestar app state container.
+            request: Authenticated request; ``request.user.user_id``
+                drives the audit log's actor field.
+            meeting_id: Meeting identifier (matches
+                ``MeetingRecord.meeting_id``).
+
+        Returns:
+            ``ApiResponse[None]`` with ``data=None`` on success.
+
+        Raises:
+            NotFoundError: If no meeting exists for ``meeting_id``.
         """
         app_state: AppState = state.app_state
         deleted = await app_state.meeting_service.delete_meeting(

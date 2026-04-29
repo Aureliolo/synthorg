@@ -54,6 +54,7 @@ DESTRUCTIVE_TOOLS: tuple[str, ...] = (
     "synthorg_memory_cancel_fine_tune",
     "synthorg_memory_rollback_checkpoint",
     "synthorg_memory_delete_checkpoint",
+    "synthorg_memory_delete_entry",
     "synthorg_mcp_catalog_uninstall",
     "synthorg_oauth_remove_provider",
     "synthorg_clients_deactivate",
@@ -288,6 +289,14 @@ def _baseline_args(tool_name: str) -> dict[str, Any]:
     target_key_guess = _guess_id_key(tool_name)
     if target_key_guess:
         args[target_key_guess] = "placeholder-id"
+    # ``synthorg_memory_delete_entry`` validates two non-blank ids
+    # (``agent_id`` then ``memory_id``) before the destructive guardrail
+    # check fires.  The prefix-based id-key heuristic only covers a
+    # single key per tool; seed the second one explicitly so the
+    # guardrail-branch sweeps actually reach the guardrail.
+    if tool_name == "synthorg_memory_delete_entry":
+        args["agent_id"] = "placeholder-agent"
+        args["memory_id"] = "placeholder-mem"
     return args
 
 

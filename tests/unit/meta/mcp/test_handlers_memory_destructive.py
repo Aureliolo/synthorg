@@ -260,22 +260,39 @@ class TestDeleteMemoryEntryDestructiveAudit:
         self,
         actor: AgentIdentity,
     ) -> None:
-        """When the backend returns False, the handler emits a not_found envelope."""
+        """When the backend returns False, the handler emits a not_found envelope.
+
+        Also asserts the audit log stays clean (no
+        ``MCP_DESTRUCTIVE_OP_EXECUTED`` for a delete that never
+        actually happened) and that the service call ordering matches
+        the production contract (agent_id, memory_id).
+        """
         state = _fake_state_with_delete_entry(deleted=False)
         handler = MEMORY_HANDLERS["synthorg_memory_delete_entry"]
-        raw = await handler(
-            app_state=state,
-            arguments={
-                "agent_id": "agent-x",
-                "memory_id": "missing-mem",
-                "reason": "cleanup",
-                "confirm": True,
-            },
-            actor=actor,
-        )
+        with structlog.testing.capture_logs() as events:
+            raw = await handler(
+                app_state=state,
+                arguments={
+                    "agent_id": "agent-x",
+                    "memory_id": "missing-mem",
+                    "reason": "cleanup",
+                    "confirm": True,
+                },
+                actor=actor,
+            )
         body: dict[str, Any] = json.loads(raw)
         assert body["status"] == "error"
         assert body["domain_code"] == "not_found"
+        assert not [
+            e
+            for e in events
+            if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
+            and e.get("tool_name") == "synthorg_memory_delete_entry"
+        ]
+        state.memory_service.delete_memory_entry.assert_awaited_once_with(
+            "agent-x",
+            "missing-mem",
+        )
 
     async def test_missing_confirm_rejects_with_guardrail(
         self,

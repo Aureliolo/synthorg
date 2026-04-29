@@ -481,18 +481,20 @@ class MemoryAdminController(Controller):
                 NotBlankStr(memory_id),
             )
         except BackendUnsupportedError as exc:
-            logger.warning(
-                MEMORY_ENTRY_DELETE_FAILED,
-                agent_id=agent_id,
-                memory_id=memory_id,
-                reason="backend_unsupported",
-                error=safe_error_description(exc),
-            )
+            # ``MemoryService.delete_memory_entry`` already emits
+            # ``MEMORY_ENTRY_DELETE_FAILED`` for this branch, so the
+            # controller stays in the layering role of HTTP
+            # translation only and does not double-record the event.
             raise ClientException(
                 detail=str(exc),
                 status_code=HTTP_501_NOT_IMPLEMENTED,
             ) from exc
         if not deleted:
+            # The service intentionally does not log on the not-found
+            # path (an absent row is not a failure mode at the backend
+            # layer); the controller records it because the operator
+            # request did fail and the audit trail needs to reflect
+            # that.
             logger.warning(
                 MEMORY_ENTRY_DELETE_FAILED,
                 agent_id=agent_id,

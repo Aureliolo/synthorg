@@ -128,9 +128,11 @@ COMM_DISSENT_EMITTED: Final[str] = "communication.dissent.emitted"
 # MCP facade events (META-MCP-2)
 COMMUNICATION_MESSAGE_SENT_VIA_MCP: Final[str] = "communication.message.sent_via_mcp"
 COMMUNICATION_MESSAGE_DELETED: Final[str] = "communication.message.deleted"
+COMMUNICATION_MESSAGE_DELETE_FAILED: Final[str] = "communication.message.delete_failed"
 COMMUNICATION_MEETING_CREATED: Final[str] = "communication.meeting.created"
 COMMUNICATION_MEETING_UPDATED: Final[str] = "communication.meeting.updated"
 COMMUNICATION_MEETING_DELETED: Final[str] = "communication.meeting.deleted"
+COMMUNICATION_MEETING_DELETE_FAILED: Final[str] = "communication.meeting.delete_failed"
 COMMUNICATION_CONNECTION_CREATED: Final[str] = "communication.connection.created"
 COMMUNICATION_CONNECTION_DELETED: Final[str] = "communication.connection.deleted"
 COMMUNICATION_CONNECTION_HEALTH_CHECKED: Final[str] = (
