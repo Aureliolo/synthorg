@@ -656,7 +656,11 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         underlying execution flagged a timeout, even if the inner
         ``result.is_error`` was left at its default ``False``.
         """
-        is_timeout = bool(result.metadata.get("timed_out", False))
+        # Strict identity check (``is True``) so a tool that
+        # accidentally stamped a string like ``"false"`` or a 1
+        # into ``metadata["timed_out"]`` does not get reclassified
+        # as a timeout by ``bool(...)`` truthiness rules.
+        is_timeout = result.metadata.get("timed_out") is True
         is_error = result.is_error or is_timeout
         if is_error:
             logger.warning(

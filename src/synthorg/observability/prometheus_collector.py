@@ -64,6 +64,15 @@ class PrometheusCollector(RecordingMixin):
     def __init__(self, *, prefix: str = "synthorg") -> None:
         self._prefix = prefix
         self.registry = CollectorRegistry()
+        # Serializes the read/merge/write critical section in
+        # :meth:`_rebuild_label_snapshot` so two overlapping
+        # ``refresh()`` calls cannot interleave their fetches and
+        # produce a torn snapshot (e.g. one rebuilder reading the
+        # previous snapshot before the other's update lands, then
+        # writing back its now-stale merge). One lock per collector
+        # instance is enough because the collector is a singleton
+        # owned by AppState.
+        self._snapshot_lock = asyncio.Lock()
 
         # -- Info --------------------------------------------------------
         self._info = Info(
@@ -259,7 +268,6 @@ class PrometheusCollector(RecordingMixin):
         outage in one registry no longer suppresses the unrelated
         allowlists.
         """
-        previous = _snapshot_for_collector()
         agent_ids: frozenset[str] | None = (
             frozenset(str(a.id) for a in agents) if agents is not None else None
         )
@@ -305,38 +313,46 @@ class PrometheusCollector(RecordingMixin):
 
         wf_ids = wf_task.result()
         dept_ids = dept_task.result()
-        # Carry the previous snapshot's value forward for any source
-        # that failed; only a successful fetch overwrites. The
-        # snapshot only flips to ``seeded=True`` once every source
-        # has produced at least one usable result during this
-        # process lifetime (otherwise we'd exit bootstrap with empty
-        # allowlists, fail-closing every push-time metric until the
-        # next refresh succeeds).
-        merged_agent_ids = agent_ids if agent_ids is not None else previous.agent_ids
-        merged_workflow_ids = (
-            wf_ids if wf_ids is not None else previous.workflow_definition_ids
-        )
-        merged_departments = dept_ids if dept_ids is not None else previous.departments
-        # Per-source readiness: each flag flips True the first time
-        # *its own* source produces a usable result and stays True
-        # thereafter. A transient outage on one source no longer
-        # suppresses the unrelated allowlists.
-        agent_ids_seeded = previous.agent_ids_seeded or (agent_ids is not None)
-        workflow_definition_ids_seeded = previous.workflow_definition_ids_seeded or (
-            wf_ids is not None
-        )
-        departments_seeded = previous.departments_seeded or (dept_ids is not None)
+        # The read/merge/write critical section runs under the
+        # collector's snapshot lock so two overlapping refreshes
+        # cannot interleave their fetches with one another's update
+        # and clobber a partial-failure carry-forward. The fetches
+        # above are deliberately outside the lock so a slow
+        # registry call doesn't block other refresh work; only the
+        # tiny merge-and-rebind step is serialized.
+        async with self._snapshot_lock:
+            previous = _snapshot_for_collector()
+            # Carry the previous snapshot's value forward for any source
+            # that failed; only a successful fetch overwrites.
+            merged_agent_ids = (
+                agent_ids if agent_ids is not None else previous.agent_ids
+            )
+            merged_workflow_ids = (
+                wf_ids if wf_ids is not None else previous.workflow_definition_ids
+            )
+            merged_departments = (
+                dept_ids if dept_ids is not None else previous.departments
+            )
+            # Per-source readiness: each flag flips True the first time
+            # *its own* source produces a usable result and stays True
+            # thereafter. A transient outage on one source no longer
+            # suppresses the unrelated allowlists.
+            agent_ids_seeded = previous.agent_ids_seeded or (agent_ids is not None)
+            workflow_definition_ids_seeded = (
+                previous.workflow_definition_ids_seeded or (wf_ids is not None)
+            )
+            departments_seeded = previous.departments_seeded or (dept_ids is not None)
 
-        update_label_snapshot(
-            _LabelSnapshot(
-                agent_ids=merged_agent_ids,
-                workflow_definition_ids=merged_workflow_ids,
-                departments=merged_departments,
-                agent_ids_seeded=agent_ids_seeded,
-                workflow_definition_ids_seeded=workflow_definition_ids_seeded,
-                departments_seeded=departments_seeded,
-            ),
-        )
+            update_label_snapshot(
+                _LabelSnapshot(
+                    agent_ids=merged_agent_ids,
+                    workflow_definition_ids=merged_workflow_ids,
+                    departments=merged_departments,
+                    agent_ids_seeded=agent_ids_seeded,
+                    workflow_definition_ids_seeded=workflow_definition_ids_seeded,
+                    departments_seeded=departments_seeded,
+                ),
+            )
 
     def _refresh_cost_gauge(self, total_cost: float | None) -> None:
         """Update cost gauge from a pre-fetched total."""

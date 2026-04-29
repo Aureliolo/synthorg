@@ -38,6 +38,7 @@ __all__ = [
     "is_known_agent_id",
     "require_finite",
     "require_label",
+    "require_label_summary",
     "require_non_negative",
     "status_class",
     "update_label_snapshot",
@@ -56,6 +57,15 @@ def require_label(label: str, value: str, valid: frozenset[str]) -> None:
     so a misbehaving call site is visible in monitoring -- a bare
     ``ValueError`` at the raise site would be invisible unless
     every caller logged it themselves.
+
+    Intended for *bounded-vocabulary* labels (outcomes, verdicts,
+    transports, ...): the WARN payload includes the full sorted
+    allowed set so an operator can see the expected vocabulary
+    inline. For registry-bound labels (agent_ids,
+    workflow_definition_ids, departments) where the allowlist can
+    grow to hundreds of entries, use :func:`require_label_summary`
+    instead -- sorting and serializing the full set on every
+    rejection is wasteful at scale.
     """
     if value not in valid:
         logger.warning(
@@ -66,6 +76,34 @@ def require_label(label: str, value: str, valid: frozenset[str]) -> None:
             allowed=sorted(valid),
         )
         msg = f"Unknown {label} {value!r}; expected one of {sorted(valid)}"
+        raise ValueError(msg)
+
+
+def require_label_summary(label: str, value: str, valid: frozenset[str]) -> None:
+    """Raise ``ValueError`` if *value* is not in *valid*; O(1) on rejection.
+
+    Variant of :func:`require_label` for high-cardinality
+    registry-bound labels. The WARN payload carries only
+    ``len(valid)`` instead of ``sorted(valid)``, and the
+    ``ValueError`` message references the count rather than dumping
+    the entire allowlist. The membership check itself is already
+    O(1) on a ``frozenset``; this avoids the O(n log n) sort + the
+    serialization cost of the full set on the rare unknown-label
+    path, which would otherwise scale with registry size on every
+    rejection.
+    """
+    if value not in valid:
+        logger.warning(
+            METRICS_SCRAPE_FAILED,
+            reason="invalid_label",
+            label=label,
+            rejected_value=value,
+            allowlist_size=len(valid),
+        )
+        msg = (
+            f"Unknown {label} {value!r}; "
+            f"not in registry-bound allowlist (size={len(valid)})"
+        )
         raise ValueError(msg)
 
 
@@ -281,7 +319,7 @@ def validate_agent_id(value: str) -> None:
     drops cleanly without crashing the business path.
     """
     snapshot = _snapshot
-    require_label("agent_id", value, snapshot.agent_ids)
+    require_label_summary("agent_id", value, snapshot.agent_ids)
 
 
 def validate_workflow_definition_id(value: str) -> None:
@@ -291,7 +329,9 @@ def validate_workflow_definition_id(value: str) -> None:
     the bootstrap rationale).
     """
     snapshot = _snapshot
-    require_label("workflow_definition_id", value, snapshot.workflow_definition_ids)
+    require_label_summary(
+        "workflow_definition_id", value, snapshot.workflow_definition_ids
+    )
 
 
 def validate_department(value: str) -> None:
@@ -301,7 +341,7 @@ def validate_department(value: str) -> None:
     the bootstrap rationale).
     """
     snapshot = _snapshot
-    require_label("department", value, snapshot.departments)
+    require_label_summary("department", value, snapshot.departments)
 
 
 def is_known_agent_id(value: str) -> bool:
