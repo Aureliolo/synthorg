@@ -242,7 +242,8 @@ class MessageDispatcher:
         try:
             await registration.handler.handle(message)
         except Exception as exc:
-            errors[index] = safe_error_description(exc)
+            safe_error = safe_error_description(exc)
+            errors[index] = safe_error
             logger.warning(
                 COMM_DISPATCH_HANDLER_ERROR,
                 agent_id=self._agent_id,
@@ -250,7 +251,7 @@ class MessageDispatcher:
                 handler_id=registration.handler_id,
                 handler_name=registration.name,
                 error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                error=safe_error,
             )
 
     @staticmethod

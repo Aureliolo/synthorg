@@ -452,7 +452,8 @@ class SQLiteDecisionRepository:
             logger.warning(
                 PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
                 stage="rollback",
-                error=str(rollback_exc),
+                error_type=type(rollback_exc).__name__,
+                error=safe_error_description(rollback_exc),
             )
 
     async def get(self, record_id: NotBlankStr) -> DecisionRecord | None:
@@ -638,12 +639,13 @@ class SQLiteDecisionRepository:
                 raw_criteria = row["criteria_snapshot"]
                 raw_metadata = row["metadata"]
             except KeyError as exc:
-                logger.exception(
+                missing = exc.args[0] if exc.args else None
+                logger.warning(
                     PERSISTENCE_DECISION_RECORD_DESERIALIZE_FAILED,
                     record_id=row.get("id"),
-                    missing_column=str(exc).strip("'\""),
+                    missing_column=missing,
                     error_type="KeyError",
-                    error=f"schema drift: missing column {exc}",
+                    error=safe_error_description(exc),
                 )
                 raise
             if isinstance(raw_criteria, str):

@@ -321,8 +321,25 @@ class FineTuneOrchestrator:
             safe_error = safe_error_description(exc)
             try:
                 await self._mark_failed(self._current_run or run, safe_error)
-            except Exception:
-                self._current_run = run.model_copy(
+            except Exception as persist_exc:
+                # Persisting the FAILED state can itself fail (DB outage,
+                # disk full, etc.). Log the persistence failure with full
+                # context, then preserve the most recent in-memory run
+                # (``self._current_run`` if it exists) when synthesising
+                # the FAILED state, so we don't regress to the stale
+                # ``run`` snapshot taken at orchestrator entry.
+                logger.error(
+                    MEMORY_FINE_TUNE_FAILED,
+                    run_id=run.id,
+                    stage="persist_failed_state",
+                    error_type=type(persist_exc).__name__,
+                    error=safe_error_description(persist_exc),
+                    underlying_error_type=type(exc).__name__,
+                    underlying_error=safe_error,
+                    exc_info=True,
+                )
+                base = self._current_run or run
+                self._current_run = base.model_copy(
                     update={
                         "stage": FineTuneStage.FAILED,
                         "error": safe_error,

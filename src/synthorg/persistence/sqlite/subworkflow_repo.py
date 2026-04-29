@@ -605,7 +605,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 logger.warning(
                     PERSISTENCE_SUBWORKFLOW_LIST_FAILED,
                     subworkflow_id=sub_id,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
             if not isinstance(inputs, list) or not isinstance(outputs, list):
