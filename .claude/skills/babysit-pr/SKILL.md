@@ -109,7 +109,14 @@ If any endpoint returns 404 (feature disabled on the repo) or 403 (insufficient 
 If `state` is `MERGED` or `CLOSED`:
 - Append a final history entry: `{round, action: "terminal", reason: "PR <state>"}`.
 - Write state file.
-- Print one-line summary: `babysit-pr: PR #N <state>, exiting.`
+- Resolve the PR's web URL via `gh pr view N --json url --jq .url` (or pull it from the JSON fetched in Phase 1 if you already requested `url` there).
+- Print TWO lines, in this exact order so the URL renders as a clickable link in the user's terminal:
+
+  ```text
+  babysit-pr: PR #N <state>, exiting.
+  https://github.com/OWNER/REPO/pull/N
+  ```
+
 - **Do NOT** ScheduleWakeup. Loop ends.
 
 ## Phase 3: convergence check (success exit, no reschedule)
@@ -122,7 +129,15 @@ Convergence holds when ALL true:
 
 If converged:
 - Append history `{round, action: "converged", checks_passed: N}`.
-- Write state, print: `babysit-pr: PR #N CONVERGED (CI green, 0 actionable, no new feedback).`
+- Write state.
+- Resolve the PR's web URL via `gh pr view N --json url --jq .url` (or pull it from the JSON fetched in Phase 1 if you already requested `url` there).
+- Print TWO lines, in this exact order so the URL renders as a clickable link in the user's terminal:
+
+  ```text
+  babysit-pr: PR #N CONVERGED (CI green, 0 actionable, no new feedback). Ready for human review/merge.
+  https://github.com/OWNER/REPO/pull/N
+  ```
+
 - **Do NOT** ScheduleWakeup.
 
 ## Phase 4: CodeRabbit rate-limit dance
@@ -321,14 +336,26 @@ Failure handling: if a gate fails, fix the failure in this round (don't push bro
 
 ## Output discipline (per tick)
 
-Print exactly ONE concise status line per tick at the end. Verdict types:
+Print exactly ONE concise status line per tick at the end. Mid-loop verdicts (single line):
 
 - `babysit-pr round R: no changes, sleeping <C>m.`
 - `babysit-pr round R: rate-limit ping #K sent to CodeRabbit, sleeping <C>m.`
 - `babysit-pr round R: M findings fixed and pushed, sleeping <C>m.`
-- `babysit-pr round R: CONVERGED (CI green, 0 actionable).`
-- `babysit-pr round R: PR #N <MERGED|CLOSED>, exiting.`
 - `babysit-pr round R: paused at max-rounds, awaiting decision.`
+
+Terminal verdicts (loop-exit cases for Phase 2 / Phase 3) print a status line followed by the PR's web URL on its own line so the user can click straight through to the PR. Both lines together:
+
+- ```text
+  babysit-pr round R: CONVERGED (CI green, 0 actionable, no new feedback). Ready for human review/merge.
+  https://github.com/OWNER/REPO/pull/N
+  ```
+
+- ```text
+  babysit-pr round R: PR #N <MERGED|CLOSED>, exiting.
+  https://github.com/OWNER/REPO/pull/N
+  ```
+
+The URL is fetched from the PR JSON (`gh pr view N --json url --jq .url`) and printed verbatim. Do not wrap it in markdown link syntax; terminals auto-detect bare https:// URLs and make them clickable, while explicit `[text](url)` links render as literal characters in plain-terminal contexts.
 
 Render the full triage table only when there's something to fix.
 
