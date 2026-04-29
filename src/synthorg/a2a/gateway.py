@@ -13,6 +13,7 @@ from typing import Any
 from litestar import Controller, Request, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.response import Response
+from pydantic import ValidationError
 
 from synthorg.a2a.models import (
     A2A_AUTH_REQUIRED,
@@ -24,9 +25,16 @@ from synthorg.a2a.models import (
     JSONRPC_INVALID_PARAMS,
     JSONRPC_METHOD_NOT_FOUND,
     JSONRPC_PARSE_ERROR,
+    A2ATextPart,
     JsonRpcErrorData,
     JsonRpcRequest,
     JsonRpcResponse,
+)
+from synthorg.a2a.rpc_params import (
+    A2AMessageSendParams,
+    A2ATaskCancelParams,
+    A2ATaskGetParams,
+    parse_rpc_params,
 )
 from synthorg.a2a.security import validate_peer
 from synthorg.a2a.task_mapper import to_a2a
@@ -342,6 +350,13 @@ async def _dispatch_method(
 ) -> Response[dict[str, Any]]:
     """Dispatch a validated JSON-RPC request to its handler.
 
+    The envelope's method is checked against the supported set, then
+    :func:`parse_rpc_params` validates the params dict against the
+    method-specific :class:`~synthorg.a2a.rpc_params.A2ARpcParams`
+    discriminated union.  Each typed variant routes to a dedicated
+    handler via ``match`` -- the dispatch table that previously held
+    string-keyed callables is no longer needed.
+
     Args:
         app_state: Application state container.
         rpc_request: Validated JSON-RPC request.
@@ -364,6 +379,33 @@ async def _dispatch_method(
             media_type="application/json",
         )
 
+    try:
+        params = parse_rpc_params(rpc_request)
+    except ValidationError as exc:
+        # Strip ``input`` and ``url`` from each error -- input would
+        # echo peer-supplied payload (potentially credential-bearing),
+        # and the Pydantic docs URL is noise for a wire client.
+        errors = [
+            {"loc": list(e["loc"]), "msg": e["msg"], "type": e["type"]}
+            for e in exc.errors(include_input=False, include_url=False)
+        ]
+        logger.warning(
+            A2A_JSONRPC_INVALID_PARAMS,
+            method=method,
+            peer_name=peer_name,
+            error=safe_error_description(exc),
+        )
+        return Response(
+            content=_error_response(
+                request_id,
+                JSONRPC_INVALID_PARAMS,
+                "Invalid params",
+                data={"errors": errors},
+            ),
+            media_type="application/json",
+            status_code=400,
+        )
+
     logger.info(
         A2A_INBOUND_DISPATCHED,
         method=method,
@@ -371,20 +413,19 @@ async def _dispatch_method(
         peer_name=peer_name,
     )
 
-    handler = _METHOD_HANDLERS.get(method)
-    if handler is None:
-        return Response(
-            content=_error_response(
-                request_id,
-                JSONRPC_INTERNAL_ERROR,
-                "Internal error",
-            ),
-            media_type="application/json",
-            status_code=500,
-        )
-
     try:
-        result = await handler(app_state, rpc_request, peer_name)
+        # ``A2ARpcParams`` is a closed discriminated union of three
+        # variants.  ``result`` is forward-declared so Pyright sees a
+        # binding regardless of which match arm runs; mypy still
+        # checks exhaustiveness via the variant types.
+        result: dict[str, Any]
+        match params:
+            case A2AMessageSendParams():
+                result = await _handle_message_send(app_state, params, peer_name)
+            case A2ATaskGetParams():
+                result = await _handle_tasks_get(app_state, params, peer_name)
+            case A2ATaskCancelParams():
+                result = await _handle_tasks_cancel(app_state, params, peer_name)
         return Response(
             content=_success_response(request_id, result),
             media_type="application/json",
@@ -586,34 +627,29 @@ def _validate_task_ownership(
 
 async def _handle_message_send(
     app_state: Any,
-    rpc_request: JsonRpcRequest,
+    params: A2AMessageSendParams,
     peer_name: str,
 ) -> dict[str, Any]:
     """Handle ``message/send`` -- create a task.
 
+    The :class:`A2AMessageSendParams` model has already validated that
+    ``message`` is a typed :class:`~synthorg.a2a.models.A2AMessage`
+    with at least one part of a known variant; this handler only
+    enforces the runtime, config-driven part-count cap.
+
     Args:
         app_state: Application state container.
-        rpc_request: Parsed JSON-RPC request.
+        params: Typed ``message/send`` parameters.
         peer_name: Authenticated peer name.
 
     Returns:
         Task state dict.
     """
-    params = rpc_request.params
-    message_data = params.get("message")
-    if not message_data or not isinstance(message_data, dict):
-        raise _A2AMethodError(
-            JSONRPC_INVALID_PARAMS,
-            "Missing or invalid 'message' parameter",
-        )
+    parts = params.message.parts
 
-    # Validate part count
-    parts = message_data.get("parts", [])
-    if not isinstance(parts, list):
-        raise _A2AMethodError(
-            JSONRPC_INVALID_PARAMS,
-            "'parts' must be an array",
-        )
+    # Config-driven cap (async settings lookup); cannot live in the
+    # Pydantic model because ``a2a.max_message_parts`` is mutable at
+    # runtime via the settings service.
     max_parts = await _resolve_max_message_parts(app_state)
     if len(parts) > max_parts:
         logger.warning(
@@ -627,11 +663,7 @@ async def _handle_message_send(
             f"Too many message parts (max {max_parts})",
         )
 
-    text_parts = [
-        p.get("text", "")
-        for p in parts
-        if isinstance(p, dict) and p.get("type") == "text"
-    ]
+    text_parts = [p.text for p in parts if isinstance(p, A2ATextPart)]
     description = "\n".join(text_parts) or "A2A inbound task"
 
     task_engine = _require_task_engine(app_state)
@@ -673,28 +705,21 @@ async def _handle_message_send(
 
 async def _handle_tasks_get(
     app_state: Any,
-    rpc_request: JsonRpcRequest,
+    params: A2ATaskGetParams,
     peer_name: str,
 ) -> dict[str, Any]:
     """Handle ``tasks/get`` -- retrieve task state.
 
     Args:
         app_state: Application state container.
-        rpc_request: Parsed JSON-RPC request.
+        params: Typed ``tasks/get`` parameters.
         peer_name: Authenticated peer name.
 
     Returns:
         Task state dict.
     """
-    task_id = rpc_request.params.get("id")
-    if not task_id or not isinstance(task_id, str):
-        raise _A2AMethodError(
-            JSONRPC_INVALID_PARAMS,
-            "Missing or invalid 'id' parameter",
-        )
-
     task_engine = _require_task_engine(app_state)
-    task = await task_engine.get(task_id)
+    task = await task_engine.get(params.id)
     if task is None:
         raise _A2AMethodError(
             A2A_TASK_NOT_FOUND,
@@ -712,28 +737,21 @@ async def _handle_tasks_get(
 
 async def _handle_tasks_cancel(
     app_state: Any,
-    rpc_request: JsonRpcRequest,
+    params: A2ATaskCancelParams,
     peer_name: str,
 ) -> dict[str, Any]:
     """Handle ``tasks/cancel`` -- cancel a running task.
 
     Args:
         app_state: Application state container.
-        rpc_request: Parsed JSON-RPC request.
+        params: Typed ``tasks/cancel`` parameters.
         peer_name: Authenticated peer name.
 
     Returns:
         Updated task state dict.
     """
-    task_id = rpc_request.params.get("id")
-    if not task_id or not isinstance(task_id, str):
-        raise _A2AMethodError(
-            JSONRPC_INVALID_PARAMS,
-            "Missing or invalid 'id' parameter",
-        )
-
     task_engine = _require_task_engine(app_state)
-    task = await task_engine.get(task_id)
+    task = await task_engine.get(params.id)
     if task is None:
         raise _A2AMethodError(
             A2A_TASK_NOT_FOUND,
@@ -756,11 +774,11 @@ async def _handle_tasks_cancel(
             "Task is in terminal state",
         )
 
-    cancelled = await task_engine.cancel(task_id)
+    cancelled = await task_engine.cancel(params.id)
 
     logger.info(
         A2A_TASK_CANCELLED,
-        task_id=task_id,
+        task_id=params.id,
         peer_name=peer_name,
     )
 
@@ -768,13 +786,3 @@ async def _handle_tasks_cancel(
         "id": cancelled.id,
         "state": to_a2a(cancelled.status).value,
     }
-
-
-_METHOD_HANDLERS: dict[
-    str,
-    Any,
-] = {
-    "message/send": _handle_message_send,
-    "tasks/get": _handle_tasks_get,
-    "tasks/cancel": _handle_tasks_cancel,
-}
