@@ -98,4 +98,4 @@ The `scrub_event_fields` structlog processor masks every log record (covering es
 
 ### Pre-commit gate
 
-`scripts/check_logger_exception_str_exc.py` blocks new `logger.exception(..., error=str(exc))` sites above the `scripts/_logger_exception_baseline.json` baseline. The gate matches bare `logger`, attribute-chain loggers (`self._logger`, `audit_logger`, etc.) and `str(...)` of `Name` / `Attribute` / `Subscript` expressions so swapping sites within a file is caught by location diff, not by a count that could tie.
+`scripts/check_logger_exception_str_exc.py` blocks every `logger.exception(..., error=str(exc))` site unconditionally (no allowlist, no baseline). The gate matches bare `logger`, attribute-chain loggers (`self._logger`, `audit_logger`, etc.) and `str(...)` of `Name` / `Attribute` / `Subscript` expressions, so any new occurrence -- regardless of receiver shape -- is rejected.
