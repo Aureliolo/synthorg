@@ -165,9 +165,11 @@ class TestRoundTrip:
             agent_id="a1",
             agent_name="Alice",
             task_id="t1",
-            trim_tier="aggressive",
+            trim_tier=2,
             before_tokens=1000,
             after_tokens=500,
+            max_tokens=1500,
+            budget_met=True,
         )
         restored = _ADAPTER.validate_python(original.model_dump())
         assert restored == original
@@ -276,9 +278,11 @@ class TestValidationErrors:
                 agent_id="a1",
                 agent_name="Alice",
                 task_id="t1",
-                trim_tier="aggressive",
+                trim_tier=2,
                 before_tokens=-1,
                 after_tokens=500,
+                max_tokens=1000,
+                budget_met=True,
             )
 
 

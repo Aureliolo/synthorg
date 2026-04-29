@@ -49,7 +49,7 @@ from synthorg.memory.self_editing_args import (
     parse_self_editing_args,
 )
 from synthorg.memory.tool_retriever import ERROR_PREFIX
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_SELF_EDIT_ARCHIVAL_SEARCH,
     MEMORY_SELF_EDIT_ARCHIVAL_WRITE,
@@ -177,6 +177,21 @@ _RECALL_MEMORY_WRITE_SCHEMA: Final[MappingProxyType[str, Any]] = MappingProxyTyp
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _format_self_editing_error(err: object) -> str:
+    """Render a single Pydantic ``errors()`` entry as ``loc: msg``.
+
+    Strips the ``tool`` discriminator from ``loc`` (it's a dispatch
+    concern not surfaced to the LLM caller).
+    """
+    if not isinstance(err, dict):
+        return "<arguments>: invalid"
+    loc_raw = err.get("loc", ())
+    loc_parts = loc_raw if isinstance(loc_raw, tuple) else ()
+    loc = ".".join(str(p) for p in loc_parts if p != "tool") or "<arguments>"
+    msg = err.get("msg", "")
+    return f"{loc}: {msg}" if isinstance(msg, str) else f"{loc}: invalid"
 
 
 def _format_entries(entries: tuple[MemoryEntry, ...]) -> str:
@@ -408,8 +423,8 @@ class SelfEditingMemoryStrategy:
                 MEMORY_SELF_EDIT_CORE_READ,
                 source="prepare_messages",
                 agent_id=agent_id,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ()
 
@@ -505,11 +520,13 @@ class SelfEditingMemoryStrategy:
             args = parse_self_editing_args(tool_name, arguments)
         except ValidationError as exc:
             errors = exc.errors(include_input=False, include_url=False)
-            first = errors[0] if errors else {"type": "", "loc": (), "msg": ""}
+            if not errors:
+                return f"{ERROR_PREFIX} Invalid arguments."
+            first = errors[0]
             if first["type"] == "union_tag_invalid":
                 return f"{ERROR_PREFIX} Unknown self-editing tool: {tool_name!r}"
-            loc = ".".join(str(p) for p in first["loc"] if p != "tool") or "<arguments>"
-            return f"{ERROR_PREFIX} Invalid arguments at {loc}: {first['msg']}"
+            details = "; ".join(_format_self_editing_error(e) for e in errors)
+            return f"{ERROR_PREFIX} Invalid arguments: {details}"
 
         try:
             return await self._dispatch_tool_call(args, agent_id)
@@ -520,8 +537,8 @@ class SelfEditingMemoryStrategy:
                 MEMORY_SELF_EDIT_WRITE_FAILED,
                 tool_name=tool_name,
                 agent_id=agent_id,
-                error=str(exc),
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return f"{ERROR_PREFIX} Memory operation failed."
 

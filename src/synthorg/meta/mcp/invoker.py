@@ -31,6 +31,17 @@ logger = get_logger(__name__)
 __all__ = ["MCPToolInvoker", "ToolHandler"]
 
 
+def _format_pydantic_error(err: object) -> str:
+    """Render a single Pydantic ``errors()`` entry as ``loc: msg``."""
+    if not isinstance(err, dict):
+        return "<arguments>: invalid"
+    loc_raw = err.get("loc", ())
+    loc_parts = loc_raw if isinstance(loc_raw, tuple) else ()
+    loc = ".".join(str(p) for p in loc_parts) or "<arguments>"
+    msg = err.get("msg", "")
+    return f"{loc}: {msg}" if isinstance(msg, str) else f"{loc}: invalid"
+
+
 class MCPToolInvoker:
     """Dispatches MCP tool invocations to registered handlers.
 
@@ -125,8 +136,12 @@ class MCPToolInvoker:
             try:
                 tool_def.args_model.model_validate(dict(arguments))
             except PydanticValidationError as exc:
-                first = exc.errors(include_input=False, include_url=False)
-                detail = first[0]["msg"] if first else str(exc)
+                errors = exc.errors(include_input=False, include_url=False)
+                detail = (
+                    "; ".join(_format_pydantic_error(e) for e in errors)
+                    if errors
+                    else safe_error_description(exc)
+                )
                 logger.warning(
                     MCP_SERVER_INVOKE_FAILED,
                     tool_name=tool_name,
@@ -140,6 +155,7 @@ class MCPToolInvoker:
                             "error_type": "ArgumentValidationError",
                             "message": detail,
                             "domain_code": "invalid_argument",
+                            "tool": tool_name,
                         },
                     ),
                     is_error=True,
@@ -171,7 +187,10 @@ class MCPToolInvoker:
             return ToolExecutionResult(
                 content=json.dumps(
                     {
-                        "error": error_type,
+                        "status": "error",
+                        "error_type": error_type,
+                        "message": safe_error_description(exc) or error_type,
+                        "domain_code": "handler_failure",
                         "tool": tool_name,
                     }
                 ),

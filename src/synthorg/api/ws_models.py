@@ -6,7 +6,7 @@ serialised to JSON and pushed to WebSocket subscribers.
 
 import copy
 from enum import StrEnum
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
 from pydantic import (
     AwareDatetime,
@@ -17,6 +17,30 @@ from pydantic import (
 )
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+if TYPE_CHECKING:
+    from pydantic import TypeAdapter
+
+# Lazy reference resolved on first use.  Avoids a circular import
+# (``ws_payloads`` imports ``WsEventType`` from this module).
+_PAYLOAD_ADAPTER: TypeAdapter[object] | None = None
+
+
+def _get_payload_adapter() -> TypeAdapter[object]:
+    """Return the cached :class:`TypeAdapter` for ``WsEventPayload``.
+
+    Lazy-initialised to avoid a circular import: ``ws_payloads.py``
+    imports :class:`WsEventType` from this module.
+    """
+    global _PAYLOAD_ADAPTER  # noqa: PLW0603 -- module-level cache by design
+    if _PAYLOAD_ADAPTER is None:
+        from pydantic import TypeAdapter  # noqa: PLC0415 -- lazy
+
+        from synthorg.api.ws_payloads import WsEventPayload  # noqa: PLC0415 -- lazy
+
+        _PAYLOAD_ADAPTER = TypeAdapter(WsEventPayload)
+    return _PAYLOAD_ADAPTER
+
 
 #: Current WebSocket wire-protocol version. Clients on older versions
 #: are expected to ignore unknown-version events (see
@@ -156,4 +180,20 @@ class WsEvent(BaseModel):
     @model_validator(mode="after")
     def _deep_copy_payload(self) -> Self:
         object.__setattr__(self, "payload", copy.deepcopy(self.payload))
+        return self
+
+    @model_validator(mode="after")
+    def _validate_payload_shape(self) -> Self:
+        """Validate ``payload`` against the typed :data:`WsEventPayload` union.
+
+        Every :class:`WsEventType` has a corresponding frozen Pydantic
+        model in :mod:`synthorg.api.ws_payloads`; this validator merges
+        the envelope ``event_type`` into the payload dict and runs it
+        through the discriminated union adapter.  A shape mismatch
+        (missing required field, wrong type, extra field) raises
+        :class:`pydantic.ValidationError` at construction so the bad
+        event never reaches a subscriber.
+        """
+        adapter = _get_payload_adapter()
+        adapter.validate_python({"event_type": self.event_type.value, **self.payload})
         return self

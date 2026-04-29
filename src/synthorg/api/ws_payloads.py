@@ -165,11 +165,15 @@ class WsAgentStatusChangedPayload(BaseModel):
 
 
 class WsAgentsReorderedPayload(BaseModel):
-    """Payload for ``agents.reordered`` -- agent display order changed."""
+    """Payload for ``agents.reordered`` -- agent display order changed.
+
+    Emitted by ``api/controllers/departments.py`` ``reorder_agents``.
+    """
 
     model_config = _PAYLOAD_CONFIG
 
     event_type: Literal[WsEventType.AGENTS_REORDERED] = WsEventType.AGENTS_REORDERED
+    department: NotBlankStr | None = None
     agent_names: tuple[NotBlankStr, ...]
 
 
@@ -179,28 +183,33 @@ class WsAgentsReorderedPayload(BaseModel):
 class WsCompanyUpdatedPayload(BaseModel):
     """Payload for ``company.updated`` -- company-level config changed.
 
-    Emitted by ``api/controllers/company.py:105``. Carries the updated
-    company fields the caller mutated; the structural envelope is the
-    same regardless of which subset was touched.
+    Emitted by ``api/controllers/company.py`` ``update_company``;
+    carries the subset of fields the caller actually mutated.  Field
+    names match the keys built in
+    ``OrgMutationService._apply_company_scalars``.
     """
 
     model_config = _PAYLOAD_CONFIG
 
     event_type: Literal[WsEventType.COMPANY_UPDATED] = WsEventType.COMPANY_UPDATED
-    name: NotBlankStr | None = None
-    description: str | None = None
-    mission: str | None = None
-    vision: str | None = None
+    company_name: NotBlankStr | None = None
+    autonomy_level: NotBlankStr | None = None
+    budget_monthly: float | None = Field(default=None, ge=0)
+    communication_pattern: NotBlankStr | None = None
 
 
 class WsDepartmentCreatedPayload(BaseModel):
-    """Payload for ``department.created``."""
+    """Payload for ``department.created``.
+
+    Emitted by ``api/controllers/departments.py`` ``create_department``.
+    """
 
     model_config = _PAYLOAD_CONFIG
 
     event_type: Literal[WsEventType.DEPARTMENT_CREATED] = WsEventType.DEPARTMENT_CREATED
     name: NotBlankStr
     description: str | None = None
+    budget_percent: float | None = Field(default=None, ge=0, le=100)
 
 
 class WsDepartmentUpdatedPayload(BaseModel):
@@ -242,8 +251,9 @@ class WsDepartmentsReorderedPayload(BaseModel):
 class WsPersonalityTrimmedPayload(BaseModel):
     """Payload for ``personality.trimmed`` -- engine pruned a persona.
 
-    Emitted by ``api/app_helpers.py:266`` (``make_personality_trim_notifier``)
-    via ``PersonalityTrimPayload``. Field names mirror that payload.
+    Emitted by ``make_personality_trim_notifier`` in
+    ``api/app_helpers.py``; field shape mirrors
+    ``synthorg.engine.agent_engine.PersonalityTrimPayload``.
     """
 
     model_config = _PAYLOAD_CONFIG
@@ -254,9 +264,11 @@ class WsPersonalityTrimmedPayload(BaseModel):
     agent_id: NotBlankStr
     agent_name: NotBlankStr
     task_id: NotBlankStr
-    trim_tier: NotBlankStr
+    trim_tier: Literal[1, 2, 3]
     before_tokens: int = Field(ge=0)
     after_tokens: int = Field(ge=0)
+    max_tokens: int = Field(ge=0)
+    budget_met: bool
 
 
 # ── Budget domain ───────────────────────────────────────────────────
@@ -567,7 +579,7 @@ class WsArtifactContentUploadedPayload(BaseModel):
 class WsProjectCreatedPayload(BaseModel):
     """Payload for ``project.created``.
 
-    Emitted by ``api/controllers/projects.py:221``.
+    Emitted by ``api/controllers/projects.py`` ``create_project``.
     """
 
     model_config = _PAYLOAD_CONFIG
@@ -576,7 +588,7 @@ class WsProjectCreatedPayload(BaseModel):
     project_id: NotBlankStr
     name: NotBlankStr
     status: NotBlankStr
-    lead: NotBlankStr
+    lead: NotBlankStr | None = None
 
 
 class WsProjectDeletedPayload(BaseModel):

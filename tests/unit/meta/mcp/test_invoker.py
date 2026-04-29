@@ -66,9 +66,12 @@ class TestMCPToolInvoker:
         result = await invoker.invoke("synthorg_test_get", {}, app_state=None)
         assert result.is_error is True
         body = json.loads(result.content)
-        assert body["error"] == "ValueError"
+        assert body["status"] == "error"
+        assert body["error_type"] == "ValueError"
+        assert body["domain_code"] == "handler_failure"
         assert body["tool"] == "synthorg_test_get"
-        assert "detail" not in body  # raw exc text not exposed
+        # ``message`` carries the safe-redacted description, not the raw exc text.
+        assert isinstance(body["message"], str)
 
     async def test_invoke_passes_arguments(self) -> None:
         tool = make_tool()
