@@ -12,12 +12,12 @@ Multi-instance deployments require a shared lock store.
 
 import asyncio
 import threading
-import time
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 import aiosqlite  # noqa: TC002
 
 from synthorg.api.auth.config import AuthConfig  # noqa: TC001
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AUTH_LOCKOUT_CLEANUP,
@@ -48,12 +48,14 @@ class SQLiteLockoutRepository:
         config: AuthConfig,
         *,
         write_lock: asyncio.Lock | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._db = db
         self._threshold = config.lockout_threshold
         self._window = timedelta(minutes=config.lockout_window_minutes)
         self._duration = timedelta(minutes=config.lockout_duration_minutes)
         self._duration_seconds = config.lockout_duration_minutes * 60
+        self._clock: Clock = clock or SystemClock()
         self._locked: dict[str, float] = {}
         self._locked_lock: threading.Lock = threading.Lock()
         self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
@@ -75,7 +77,7 @@ class SQLiteLockoutRepository:
             locked_until = self._locked.get(username)
             if locked_until is None:
                 return False
-            if time.monotonic() > locked_until:
+            if self._clock.monotonic() > locked_until:
                 self._locked.pop(username, None)
                 return False
             return True
@@ -90,7 +92,7 @@ class SQLiteLockoutRepository:
         ending at each user's most-recent attempt, so extending the
         scan range does not inflate the threshold check.
         """
-        now = datetime.now(UTC)
+        now = self._clock.now()
         scan_start = (now - (self._window + self._duration)).isoformat()
         cursor = await self._db.execute(
             "SELECT username, attempted_at FROM login_attempts "
@@ -106,7 +108,7 @@ class SQLiteLockoutRepository:
                 datetime.fromisoformat(row["attempted_at"]),
             )
 
-        mono_now = time.monotonic()
+        mono_now = self._clock.monotonic()
         restored = 0
         with self._locked_lock:
             for uname, attempts in per_user.items():
@@ -140,7 +142,7 @@ class SQLiteLockoutRepository:
     ) -> bool:
         """Record a failed login attempt.  Return ``True`` if now locked."""
         username = username.lower()
-        now = datetime.now(UTC)
+        now = self._clock.now()
         window_start = (now - self._window).isoformat()
         async with self._write_lock:
             await self._db.execute("BEGIN IMMEDIATE")
@@ -176,7 +178,9 @@ class SQLiteLockoutRepository:
             # by the surrounding async tx.
             if now_locked:
                 with self._locked_lock:
-                    self._locked[username] = time.monotonic() + self._duration_seconds
+                    self._locked[username] = (
+                        self._clock.monotonic() + self._duration_seconds
+                    )
         # Caller logs SECURITY_AUTH_ACCOUNT_LOCKED with the contextual
         # fields (attempts, threshold, duration) the controller
         # already tracks; persistence does not emit decision events
@@ -221,7 +225,7 @@ class SQLiteLockoutRepository:
         were pruned.
         """
         retention = self._window + self._duration
-        cutoff = (datetime.now(UTC) - retention).isoformat()
+        cutoff = (self._clock.now() - retention).isoformat()
         async with self._write_lock:
             await self._db.execute("BEGIN IMMEDIATE")
             try:

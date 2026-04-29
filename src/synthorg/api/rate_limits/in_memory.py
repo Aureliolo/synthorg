@@ -15,12 +15,12 @@ buckets prematurely.
 """
 
 import asyncio
-import time
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Final
 
 from synthorg.api.rate_limits.protocol import RateLimitOutcome, SlidingWindowStore
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_REQUEST_ERROR
 
@@ -53,8 +53,15 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
     coordination separately.
     """
 
-    def __init__(self) -> None:
-        """Initialise an empty bucket store."""
+    def __init__(self, *, clock: Clock | None = None) -> None:
+        """Initialise an empty bucket store.
+
+        Args:
+            clock: Time source for sliding-window timestamps and the
+                cold-bucket GC horizon. Defaults to ``SystemClock``;
+                tests inject ``FakeClock`` for deterministic eviction.
+        """
+        self._clock: Clock = clock or SystemClock()
         self._buckets: dict[str, _Bucket] = {}
         self._locks: dict[str, asyncio.Lock] = {}
         # Reference count of in-flight ``acquire`` calls per key, used
@@ -86,7 +93,7 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
         lock = await self._get_lock(key)
         try:
             async with lock:
-                now = time.monotonic()
+                now = self._clock.monotonic()
                 bucket = self._buckets.setdefault(key, _Bucket())
                 outcome = self._apply_sliding_window(
                     bucket=bucket,
@@ -274,7 +281,7 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
         """
         async with self._meta_lock:
             try:
-                now = time.monotonic()
+                now = self._clock.monotonic()
                 dead = [
                     key
                     for key, bucket in self._buckets.items()

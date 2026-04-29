@@ -5,6 +5,7 @@ import asyncio
 import pytest
 
 from synthorg.api.rate_limits.in_memory import InMemorySlidingWindowStore
+from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
 
@@ -33,22 +34,10 @@ class TestSlidingWindow:
         assert outcome.retry_after_seconds > 0.0
         assert outcome.retry_after_seconds <= 60.0
 
-    async def test_eviction_after_window_expires(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
+    async def test_eviction_after_window_expires(self) -> None:
         """Old timestamps are dropped; the bucket re-opens."""
-        current_time = [1000.0]
-
-        def fake_monotonic() -> float:
-            return current_time[0]
-
-        monkeypatch.setattr(
-            "synthorg.api.rate_limits.in_memory.time.monotonic",
-            fake_monotonic,
-        )
-
-        store = InMemorySlidingWindowStore()
+        clock = FakeClock()
+        store = InMemorySlidingWindowStore(clock=clock)
         for _ in range(2):
             outcome = await store.acquire(
                 "k",
@@ -60,7 +49,7 @@ class TestSlidingWindow:
         assert rejected.allowed is False
 
         # Advance past the window; the bucket should be empty again.
-        current_time[0] += 11.0
+        clock.advance(11.0)
         allowed = await store.acquire("k", max_requests=2, window_seconds=10)
         assert allowed.allowed is True
 
@@ -97,28 +86,16 @@ class TestSlidingWindow:
         results = await asyncio.gather(*[_try() for _ in range(50)])
         assert sum(results) == 10
 
-    async def test_retry_after_reflects_oldest_timestamp(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
+    async def test_retry_after_reflects_oldest_timestamp(self) -> None:
         """Rejection returns the wait until the oldest request ages out."""
-        current_time = [1000.0]
-
-        def fake_monotonic() -> float:
-            return current_time[0]
-
-        monkeypatch.setattr(
-            "synthorg.api.rate_limits.in_memory.time.monotonic",
-            fake_monotonic,
-        )
-
-        store = InMemorySlidingWindowStore()
+        clock = FakeClock()
+        store = InMemorySlidingWindowStore(clock=clock)
         await store.acquire("k", max_requests=1, window_seconds=30)
-        current_time[0] += 5.0
+        clock.advance(5.0)
         outcome = await store.acquire("k", max_requests=1, window_seconds=30)
         assert outcome.allowed is False
-        # Oldest timestamp was at t=1000, window=30 -> expires at t=1030.
-        # Current time is t=1005, so retry ~= 25 seconds.
+        # Oldest at t=0, window=30 -> expires at t=30. Current is
+        # t=5, so retry ~= 25 seconds.
         assert outcome.retry_after_seconds is not None
         assert 24.0 < outcome.retry_after_seconds < 26.0
 
